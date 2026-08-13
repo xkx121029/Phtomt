@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Happy Agent</string>
+    <string name="a11y_service_label">Happy Agent 无障碍服务</string>
+    <string name="a11y_service_description">读取屏幕可交互元素并执行点击、滑动等操作，以协助 AI 控制手机完成任务。</string>
+</resources>
