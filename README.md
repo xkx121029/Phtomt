@@ -142,7 +142,6 @@ happy_phone agent/
 │   └── wrapper/
 ├── tests/                          # AI 提示词测试脚本
 ├── 杂项/                           # 杂项文档
-├── BUGS/                           # 已知问题记录
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── version.properties
@@ -303,7 +302,6 @@ AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
 - 🔧 新增工作区界面（WorkAreaScreen/FileListScreen/FileEditorScreen）
 - 🔧 AgentEngine 核心逻辑大幅扩展（+783 行）
 - 🔧 FloatingWindowService 增强（+837 行）
-- 🔧 新增 BUGS/ 目录管理已知问题
 - 🔧 新增 3 个测试脚本（adb_priority_test/all_prompts_test/retry_rate_limited）
 
 ### v0.1.30 (30)
