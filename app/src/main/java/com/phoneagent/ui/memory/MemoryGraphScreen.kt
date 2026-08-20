@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -67,6 +66,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.liquidGlass
+import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.MemoryAnomaly

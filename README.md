@@ -9,16 +9,20 @@
 ## 核心特性
 
 - 🤖 **AI 驱动决策** — 集成主流大语言模型，支持流式思考和智能规划
-- 👁️ **视觉理解** — 支持视觉模型链路，识别页面控件语义和截图内容
+- 👁️ **视觉理解** — 云端视觉模型 + 本地 ML Kit OCR 双引擎，识别页面控件语义和截图文字
 - 🔗 **多模型链路聚合** — 主模型（决策）+ 视觉模型（截图描述/坐标定位）+ 思考模型（规划/重规划）可按需组合
-- 🖱️ **无障碍服务集成** — 通过 AccessibilityService 读取屏幕元素并执行点击、滑动、输入等操作
+- 🖱️ **双通道执行** — 无障碍服务（基础）+ Shizuku ADB Shell（高权限）双通道执行
+- 🔧 **AI 友好命令解析** — ShellCommands 将 AI 短命令（如 `tap 500 800`）翻译为 ADB 命令，支持比例/百分比/像素坐标
+- 🛡️ **内置跳广告** — AdSkipperCore 自动识别并关闭青少年模式弹窗、跳过按钮、倒计时广告
+- 📍 **常用 App 直达** — AppPageIndex 为系统设置、高德地图等常用 App 提供深链直达
 - 🛡️ **安全防护** — 敏感页面自动检测与只读保护；手机号、身份证号、银行卡号自动脱敏
 - 📍 **页面指纹验证** — 基于控件特征的页面指纹比对，确保每次操作真正生效
-- ⚡ **端侧快速决策** — 内置本地决策引擎，自动处理弹窗/广告/加载等高频场景，减少云端调用
-- 🪟 **悬浮窗实时进度** — 前台服务悬浮窗实时显示任务状态、步骤计数和 AI 思考过程
+- ⚡ **端侧快速决策** — 内置本地决策引擎，自动处理弹窗/加载等高频场景，减少云端调用
+- 🪟 **悬浮窗实时进度** — 液态玻璃悬浮窗 + 系统通知双通道显示任务状态
 - 📋 **多任务队列** — 支持顺序执行多个任务，任务可随时取消和重新规划
 - 🌐 **中文/英文双语提示词** — 可自由切换，内置自动翻译（AI 缓存去重）
 - 📱 **Material 3 设计** — 严格遵循 Material 3 Expressive 视觉标准，支持深色模式
+- 💡 **边缘光效** — EdgeLighting 曲面屏边缘光晕效果
 
 ## 技术栈
 
@@ -32,6 +36,8 @@
 | 网络 | OkHttp | 4.12.0 |
 | 序列化 | kotlinx-serialization | 1.7.3 |
 | 存储 | DataStore | 1.1.1 |
+| 本地 OCR | Google ML Kit Text Recognition | 中文支持 |
+| ADB 执行 | Shizuku | 高权限 Shell 通道 |
 | 最低 SDK | Android 8.0 (API 26) | — |
 | 目标 SDK | Android 15 (API 35) | — |
 
@@ -45,10 +51,13 @@ happy_phone agent/
 │       │   ├── a11y/              # 无障碍服务 & 执行器
 │       │   │   ├── AgentAccessibilityService.kt
 │       │   │   └── ActionExecutor.kt
+│       │   ├── adskip/            # 跳广告引擎 🆕
+│       │   │   └── AdSkipperCore.kt
 │       │   ├── agent/             # Agent 引擎 & 提示词
 │       │   │   ├── AgentEngine.kt
 │       │   │   ├── AgentPrompts.kt
-│       │   │   └── AgentPrompt.kt
+│       │   │   ├── AgentPrompt.kt
+│       │   │   └── ShellCommands.kt      # AI 友好命令解析器 🆕
 │       │   ├── ai/                # AI 客户端 & 模型配置
 │       │   │   ├── AiClient.kt
 │       │   │   ├── AiDecision.kt
@@ -60,22 +69,32 @@ happy_phone agent/
 │       │   │   └── LocalDecisionEngine.kt
 │       │   ├── di/                # Koin 依赖注入
 │       │   │   └── AppModule.kt
+│       │   ├── edge/              # 边缘光效 🆕
+│       │   │   ├── EdgeLightingService.kt
+│       │   │   └── EdgeLightingView.kt
 │       │   ├── execution/         # 带验证执行器
 │       │   │   └── VerifiedClickExecutor.kt
 │       │   ├── floating/          # 悬浮窗服务
 │       │   │   ├── FloatingWindowService.kt
-│       │   │   └── MarqueeView.kt
+│       │   │   ├── LiquidGlassDrawable.kt  # 液态玻璃绘制 🆕
+│       │   │   ├── MarqueeView.kt
+│       │   │   └── SuccessMarkView.kt      # 成功标记视图 🆕
 │       │   ├── memory/            # 记忆存储 & 异常学习
 │       │   │   └── MemoryStore.kt
 │       │   ├── model/             # 数据模型
 │       │   │   ├── AgentAction.kt
 │       │   │   ├── AgentState.kt
 │       │   │   ├── AgentLog.kt
+│       │   │   ├── AppPageIndex.kt        # App 页面直达索引 🆕
+│       │   │   ├── DebugModels.kt
+│       │   │   ├── PermissionRadar.kt
 │       │   │   ├── PhantomModels.kt
 │       │   │   ├── ScreenSnapshot.kt
 │       │   │   └── UiElement.kt
 │       │   ├── network/           # 云端 Agent 通信
 │       │   │   └── CloudAgent.kt
+│       │   ├── notify/            # 系统通知进度 🆕
+│       │   │   └── TaskProgressNotifier.kt
 │       │   ├── perception/        # 页面标注 & 指纹
 │       │   │   ├── PageAnnotator.kt
 │       │   │   └── PageFingerprint.kt
@@ -84,11 +103,17 @@ happy_phone agent/
 │       │   ├── security/          # 安全检测 & 脱敏
 │       │   │   ├── SensitivePageDetector.kt
 │       │   │   └── DataSanitizer.kt
+│       │   ├── shizuku/          # Shizuku ADB 通道 🆕
+│       │   │   └── ShizukuManager.kt
 │       │   ├── test/              # 测试引擎 & 场景
 │       │   │   ├── TestEngine.kt
 │       │   │   ├── TestModels.kt
 │       │   │   ├── TestPresets.kt
 │       │   │   └── RealScenes.kt
+│       │   ├── vision/           # 本地视觉 OCR 🆕
+│       │   │   └── LocalVisionEngine.kt
+│       │   ├── workspace/        # 工作区引擎 🆕
+│       │   │   └── WorkAreaEngine.kt
 │       │   └── ui/                # UI 界面
 │       │       ├── MainActivity.kt
 │       │       ├── MainViewModel.kt
@@ -96,8 +121,20 @@ happy_phone agent/
 │       │       ├── components/
 │       │       ├── debug/DebugScreen.kt
 │       │       ├── home/HomeScreen.kt
-│       │       ├── settings/SettingsScreen.kt
+│       │       ├── memory/MemoryGraphScreen.kt   # 记忆图谱 🆕
+│       │       ├── settings/             # 设置模块拆分
+│       │       │   ├── SettingsScreen.kt
+│       │       │   ├── SettingsAdSkip.kt        # 跳广告设置 🆕
+│       │       │   ├── SettingsAgent.kt         # Agent 设置 🆕
+│       │       │   ├── SettingsAiModels.kt       # AI 模型设置 🆕
+│       │       │   ├── SettingsComponents.kt   # 组件设置 🆕
+│       │       │   ├── SettingsHome.kt          # 主页设置 🆕
+│       │       │   └── SettingsVisual.kt        # 视觉设置 🆕
 │       │       ├── test/TestScreen.kt
+│       │       ├── workspace/            # 工作区 UI 🆕
+│       │       │   ├── WorkAreaScreen.kt
+│       │       │   ├── FileListScreen.kt
+│       │       │   └── FileEditorScreen.kt
 │       │       └── theme/
 │       └── res/                    # 资源文件
 ├── gradle/
@@ -105,6 +142,7 @@ happy_phone agent/
 │   └── wrapper/
 ├── tests/                          # AI 提示词测试脚本
 ├── 杂项/                           # 杂项文档
+├── BUGS/                           # 已知问题记录
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── version.properties
@@ -118,6 +156,7 @@ happy_phone agent/
 - JDK 17
 - Android SDK 35
 - 一台 Android 手机（需开启开发者选项）
+- （可选）安装 Shizuku 以启用 ADB 高权限执行
 
 ### 2. 构建步骤
 
@@ -142,9 +181,63 @@ cd happy_phone-agent
    - **屏幕录制** — 用于截图视觉模型
    - **通知权限** — 显示前台服务通知
    - **自启动** — 保持后台服务运行
+   - **Shizuku** — 启用 ADB 级 Shell 命令（可选，增强执行能力）
 3. 在 **设置** 页面配置 AI 模型（API Base URL、API Key、Model Name）
 4. 点击 **测试连接** 验证模型可用性
 5. 开始使用！
+
+## 核心模块详解
+
+### ShellCommands — AI 友好命令解析器
+
+AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
+
+| 命令 | 参数 | 说明 |
+|------|------|------|
+| `tap` | `x y` | 点击（支持比例/百分比/像素坐标） |
+| `lp` | `x y` | 长按 1500ms |
+| `dt` | `x y` | 双击 |
+| `sw` | `x1 y1 x2 y2` | 滑动 |
+| `key` | `BACK/HOME/ENTER/数字` | 按键 |
+| `text` | `"文字"` | 输入文字 |
+| `launch` | `包名` | 启动应用 |
+| `brightness` | `0~255` | 屏幕亮度 |
+| `raw` | `完整ADB命令` | 直接透传（兜底） |
+
+### Shizuku — ADB 高权限通道
+
+当安装了 Shizuku 时，App 可通过 ADB Shell 执行更强大的命令：
+- 三态状态管理：`UNAVAILABLE` / `PERMISSION_DENIED` / `READY`
+- 支持执行任意 ADB 命令（通过 ShellCommands 转换）
+- 未安装 Shizuku 时自动回退到无障碍服务通道
+
+### AdSkipperCore — 内置跳广告
+
+独立于 Agent 运行的后台广告拦截引擎：
+- 识别优先级：青少年模式弹窗 > 显式"跳过"按钮 > 纯倒计时角标 > 关闭按钮
+- 内置冷却机制，防止重复点击和死循环
+- 精确匹配 + 位置约束 + 控件类型约束，降低误触
+
+### AppPageIndex — App 页面直达
+
+为常用 App 提供稳定的页面直达方式，避免 AI 自行编造 scheme：
+- 系统设置：Wi-Fi、蓝牙、显示、应用管理等
+- 高德地图：地图首页、路线规划、附近
+- 支持 URI 深链 > Intent Action > 包名直达的降级策略
+
+### LocalVisionEngine — 本地 OCR
+
+基于 Google ML Kit 的端侧文字识别：
+- 支持中文 Text Recognition
+- 返回归一化坐标（cx, cy）供视觉定位使用
+- 离线运行，无网络延迟
+
+### WorkAreaEngine — 工作区
+
+文件管理和 AI 辅助编辑工作区：
+- 文件浏览和编辑
+- AI 辅助内容生成
+- 任务结果归档
 
 ## 配置说明
 
@@ -162,6 +255,11 @@ cd happy_phone-agent
 
 默认情况下仅使用主模型 + 可选视觉模型。开启链路聚合后可同时启用思考模型，用于复杂规划和重规划场景。
 
+### 执行通道
+
+- **无障碍通道**（默认）：通过 AccessibilityService 执行，兼容性好但能力有限
+- **Shizuku 通道**（可选）：通过 ADB Shell 执行，支持更丰富的命令集
+
 ### 提示词语言
 
 支持中文/英文双语提示词，可在设置中切换。
@@ -171,13 +269,13 @@ cd happy_phone-agent
 ### Agent 执行循环 (ReAct)
 
 ```
-观察屏幕 → 页面标注 → 端侧/云端决策 → 带验证执行 → 记录 → 循环
+观察屏幕 → 页面标注 → 端侧/云端决策 → 双通道执行 → 带验证 → 记录 → 循环
 ```
 
 1. **观察**：通过无障碍服务获取屏幕所有可交互元素
 2. **标注**：自动识别页面类型（弹窗/广告/加载/正常）和上下文
 3. **决策**：端侧引擎优先处理高频场景，其余委托给 AI 模型
-4. **执行**：通过无障碍服务执行动作，前后指纹比对确认生效
+4. **执行**：Shizuku 通道优先，无障碍通道兜底；前后指纹比对确认生效
 5. **记录**：保存执行历史供多轮对话参考
 
 ### 安全防护
@@ -187,6 +285,26 @@ cd happy_phone-agent
 - **用户确认**：关键操作（如支付跳转）强制要求用户确认
 
 ## 版本历史
+
+### v0.1.132 (132)
+
+- 🆕 **ShellCommands**：AI 友好命令解析器，支持 tap/swipe/key 等命名命令，三坐标格式
+- 🆕 **ShizukuManager**：ADB 高权限 Shell 执行通道，三态状态管理
+- 🆕 **AdSkipperCore**：内置跳广告引擎，识别青少年模式弹窗/跳过按钮/倒计时角标
+- 🆕 **AppPageIndex**：常用 App 页面直达索引库（系统设置/高德地图/抖音等深链）
+- 🆕 **LocalVisionEngine**：基于 ML Kit 的本地中文 OCR，离线识别文字区域
+- 🆕 **WorkAreaEngine**：工作区文件管理引擎
+- 🆕 **TaskProgressNotifier**：独立系统通知进度（与悬浮窗互补）
+- 🆕 **EdgeLighting**：曲面边缘光晕效果
+- 🆕 **LiquidGlassDrawable**：液态玻璃悬浮窗绘制
+- 🆕 **SuccessMarkView**：成功标记视图
+- 🆕 **MemoryGraphScreen**：记忆图谱 UI
+- 🔧 设置页面拆分为独立组件（6 个 Settings* 文件）
+- 🔧 新增工作区界面（WorkAreaScreen/FileListScreen/FileEditorScreen）
+- 🔧 AgentEngine 核心逻辑大幅扩展（+783 行）
+- 🔧 FloatingWindowService 增强（+837 行）
+- 🔧 新增 BUGS/ 目录管理已知问题
+- 🔧 新增 3 个测试脚本（adb_priority_test/all_prompts_test/retry_rate_limited）
 
 ### v0.1.30 (30)
 
@@ -250,4 +368,6 @@ cd happy_phone-agent
 
 - Material Design 设计团队
 - Jetpack Compose 社区
+- Google ML Kit OCR
+- Shizuku 项目
 - 所有开源贡献者
