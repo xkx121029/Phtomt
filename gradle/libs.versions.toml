@@ -12,6 +12,8 @@ serialization = "1.7.3"
 okhttp = "4.12.0"
 koin = "4.0.0"
 coroutines = "1.9.0"
+shizuku = "13.1.5"
+mlkitTextChinese = "16.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,6 +36,9 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -30,7 +30,10 @@ class LocalDecisionEngine {
             "ad_with_countdown" -> handleAd(snapshot)
             "loading" -> AgentAction(type = "wait", durationMs = 1200, reason = "页面加载中")
             "error" -> handleError(snapshot)
-            "completion" -> AgentAction(type = "task_done", summary = "页面显示完成/成功状态", reason = "检测到完成页")
+            // 完成页需元素稀疏（≤5）才直接结束；否则交还 AI 判断，避免误判普通页面
+            "completion" -> if (snapshot.elements.size <= 5) {
+                AgentAction(type = "task_done", summary = "页面显示完成/成功状态", reason = "检测到完成页")
+            } else null
             else -> null
         }
 
@@ -57,7 +60,10 @@ class LocalDecisionEngine {
             val label = it.effectiveLabel() ?: ""
             listOf("关闭", "取消", "以后再说", "跳过", "稍后", "no", "cancel", "x", "✕").any { k -> label.contains(k, ignoreCase = true) }
         }
-        return target?.let { AgentAction(type = "click", elementIndex = it.index, x = it.centerX, y = it.centerY, reason = "关闭弹窗") }
+        return target?.let {
+            val reason = if (positive != null && positive.index == it.index) "点击允许/同意按钮" else "关闭弹窗"
+            AgentAction(type = "click", elementIndex = it.index, x = it.centerX, y = it.centerY, reason = reason)
+        }
     }
 
     private fun handleAd(snapshot: ScreenSnapshot): AgentAction? {

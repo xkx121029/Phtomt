@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Insights
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,13 +57,14 @@ import com.phoneagent.model.AgentLog
 import com.phoneagent.model.AgentMetrics
 import com.phoneagent.model.ConversationMessage
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.Warning
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-// 语义化颜色常量
-private val SuccessColor = Color(0xFF2E9E6B)
-private val WarningColor = Color(0xFFE8A33D)
 
 private enum class DebugTab(val label: String) {
     METRICS("指标"),
@@ -77,28 +80,28 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val logs by vm.logs.collectAsState()
     val history by vm.executionHistory.collectAsState()
     var tab by remember { mutableStateOf(DebugTab.METRICS) }
+    val context = LocalContext.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(24.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Column {
-                Text("调试", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    "运行状态、AI 对话与性能指标",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = { vm.clearDebug() }) {
-                Icon(Icons.Rounded.Delete, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
+        AppTopBar(
+            title = "调试",
+            subtitle = "运行状态、AI 对话与性能指标",
+            trailingContent = {
+                IconButton(onClick = {
+                    android.widget.Toast.makeText(context, vm.exportLogsJsonAll(context), android.widget.Toast.LENGTH_LONG).show()
+                }) {
+                    Icon(Icons.Rounded.FileDownload, contentDescription = "导出JSON(分任务)", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = { vm.clearDebug() }) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+        )
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         SegmentedTabs(selected = tab, onSelect = { tab = it })
 
         Spacer(Modifier.height(16.dp))
@@ -114,7 +117,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 @Composable
 private fun SegmentedTabs(selected: DebugTab, onSelect: (DebugTab) -> Unit) {
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(AppRadii.Hero),
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -122,7 +125,7 @@ private fun SegmentedTabs(selected: DebugTab, onSelect: (DebugTab) -> Unit) {
             DebugTab.entries.forEach { t ->
                 val isSelected = selected == t
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(AppRadii.Item),
                     color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
                     modifier = Modifier
                         .weight(1f)
@@ -158,12 +161,12 @@ private fun MetricsPanel(m: AgentMetrics) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 MetricCard("本轮耗时", "${m.lastLatencyMs}", "ms", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                MetricCard("平均耗时", "${m.avgLatencyMs}", "ms", SuccessColor, Modifier.weight(1f))
+                MetricCard("平均耗时", "${m.avgLatencyMs}", "ms", Success, Modifier.weight(1f))
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("输入 Tokens", "${m.promptTokens}", "", WarningColor, Modifier.weight(1f))
+                MetricCard("输入 Tokens", "${m.promptTokens}", "", Warning, Modifier.weight(1f))
                 MetricCard("输出 Tokens", "${m.completionTokens}", "", MaterialTheme.colorScheme.error, Modifier.weight(1f))
             }
         }
@@ -177,7 +180,7 @@ private fun MetricsPanel(m: AgentMetrics) {
 private fun MetricCard(title: String, value: String, unit: String, accent: Color, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(AppRadii.Item),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -228,10 +231,10 @@ private fun ChatBubble(msg: ConversationMessage) {
                 .background(
                     color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
-                        bottomStart = if (isUser) 18.dp else 6.dp,
-                        bottomEnd = if (isUser) 6.dp else 18.dp,
+                        topStart = AppRadii.Bubble,
+                        topEnd = AppRadii.Bubble,
+                        bottomStart = if (isUser) AppRadii.Bubble else AppRadii.Chip,
+                        bottomEnd = if (isUser) AppRadii.Chip else AppRadii.Bubble,
                     ),
                 )
                 .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -334,7 +337,7 @@ private fun levelLabel(lvl: AgentLog.Level): String = when (lvl) {
 @Composable
 private fun levelColor(lvl: AgentLog.Level): Color = when (lvl) {
     AgentLog.Level.ERROR -> MaterialTheme.colorScheme.error
-    AgentLog.Level.WARN -> WarningColor
+    AgentLog.Level.WARN -> Warning
     AgentLog.Level.AI -> MaterialTheme.colorScheme.primary
     AgentLog.Level.INFO -> MaterialTheme.colorScheme.secondary
     AgentLog.Level.API -> MaterialTheme.colorScheme.tertiary
@@ -352,7 +355,7 @@ private fun LogRow(entry: AgentLog) {
             .fillMaxWidth()
             .background(
                 color = color.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(AppRadii.Inline),
             )
             .padding(horizontal = 12.dp, vertical = 9.dp),
     ) {
@@ -395,7 +398,7 @@ private fun LogRow(entry: AgentLog) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(color.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                    .background(color.copy(alpha = 0.06f), RoundedCornerShape(AppRadii.Chip))
                     .padding(10.dp),
             )
         }
@@ -411,9 +414,9 @@ private fun HistoryPanel(history: List<com.phoneagent.model.StepRecord>) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items(history, key = { "${it.step}:${it.action?.type}" }) { rec ->
             val color = when (rec.verificationResult) {
-                "verified_success" -> SuccessColor
+                "verified_success" -> Success
                 "failed" -> MaterialTheme.colorScheme.error
-                else -> WarningColor
+                else -> Warning
             }
             val status = when (rec.verificationResult) {
                 "verified_success" -> "已确认"
@@ -422,7 +425,7 @@ private fun HistoryPanel(history: List<com.phoneagent.model.StepRecord>) {
             }
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(AppRadii.Item),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {

@@ -25,11 +25,12 @@ class CloudAgent(private val aiClient: AiClient) {
         model: String,
         messages: List<ChatMessageDto>,
         userHint: String,
+        onDelta: (String) -> Unit = {},
     ): Result<AgentAction> {
         val hintMsg = ChatMessageDto(
             role = "user",
             content = listOf(ContentPart(type = "text", text = "用户提示：$userHint\n请据此重新决策下一步动作。" )),
         )
-        return aiClient.chatForAction(baseUrl, apiKey, model, messages + hintMsg, null, 0.15).map { it.action }
+        return aiClient.chatForAction(baseUrl, apiKey, model, messages + hintMsg, null, 0.15, onDelta = onDelta).map { it.action }
     }
 }

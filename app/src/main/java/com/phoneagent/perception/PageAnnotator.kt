@@ -32,8 +32,8 @@ object PageAnnotator {
     private val loadingWords = listOf("加载中", "请稍候", "请稍等", "loading")
     /** 异常页关键词 */
     private val errorWords = listOf("网络异常", "加载失败", "连接失败", "点击重试", "重试", "error", "失败")
-    /** 完成页关键词 */
-    private val completionWords = listOf("成功", "完成", "提交成功", "支付成功", "下单成功")
+    /** 完成页关键词（只匹配明确完成态短语，避免"完成/成功"裸词误判普通按钮） */
+    private val completionWords = listOf("提交成功", "支付成功", "下单成功", "预约成功", "发布成功", "注册成功", "办理成功", "操作成功", "交易成功", "已完成")
     /** 倒计时广告关键词 */
     private val countdownWords = listOf("跳过", "秒", "广告")
 
@@ -59,8 +59,8 @@ object PageAnnotator {
         val text = labels.joinToString(" ")
 
         // 弹窗：正向/关闭按钮共存，且元素稀疏
-        val hasPositive = labels.any { dialogPositive.any { it in it } }
-        val hasDismiss = labels.any { dialogDismiss.any { it in it } }
+        val hasPositive = labels.any { label -> dialogPositive.any { k -> label.contains(k, ignoreCase = true) } }
+        val hasDismiss = labels.any { label -> dialogDismiss.any { k -> label.contains(k, ignoreCase = true) } }
         if (hasPositive && hasDismiss && snapshot.elements.size <= 8) return "dialog_overlay"
 
         // 倒计时广告：跳过按钮 + 数字

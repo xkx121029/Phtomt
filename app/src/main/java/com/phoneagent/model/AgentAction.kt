@@ -27,6 +27,9 @@ data class AgentAction(
     val elementIndex: Int? = null,
     /** 滑动/按压持续时长（毫秒） */
     val durationMs: Long? = null,
+    /** 等待时长（毫秒），AI 的 wait 动作输出，对应 timeout_ms */
+    @SerialName("timeout_ms")
+    val timeoutMs: Long? = null,
     /** 任务完成描述，当 type=TASK_DONE 时给出 */
     val summary: String? = null,
     /** 附加说明/理由 */
@@ -53,6 +56,14 @@ data class AgentAction(
     val confidence: Double? = null,
     /** 不可逆操作（支付/删除/发送）需用户确认 */
     val needsUserConfirmation: Boolean = false,
+    /** shell 命令字符串（type=shell 时使用） */
+    val command: String? = null,
+    /** 深链/协议直达（type=open 时使用），如 https:// 链接或应用私有 scheme */
+    val uri: String? = null,
+    /** open 动作：目标软件名或包名（配合 [page] 走软件页面直达索引） */
+    val app: String? = null,
+    /** open 动作：目标软件内的页面索引序号（见软件页面直达索引表） */
+    val page: Int? = null,
 )
 
 /** 动作目标 */
@@ -91,6 +102,15 @@ object ActionType {
     const val ABORT = "abort"
     const val TASK_COMPLETE = "task_complete"
 
+    /** Shizuku ADB shell 命令 */
+    const val SHELL = "shell"
+
+    /** 写入文档到工作区（text=内容，summary=文件名，可选） */
+    const val WRITE_DOC = "write_doc"
+
+    /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */
+    const val OPEN = "open"
+
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(
         TAP to CLICK,
@@ -100,5 +120,6 @@ object ActionType {
         SCROLL_TO to SCROLL,
         ABORT to TASK_DONE,
         TASK_COMPLETE to TASK_DONE,
+        OPEN to OPEN,
     )
 }

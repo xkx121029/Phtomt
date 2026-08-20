@@ -16,21 +16,32 @@ import com.phoneagent.a11y.AgentAccessibilityService
 import com.phoneagent.agent.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.model.AgentLog
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.put
 import com.phoneagent.model.AgentMetrics
 import com.phoneagent.model.AgentState
 import com.phoneagent.model.ConversationMessage
 import com.phoneagent.model.PermissionItem
 import com.phoneagent.model.PermissionKind
 import com.phoneagent.model.StepRecord
+import com.phoneagent.memory.AnomalyMemoryEntry
+import com.phoneagent.memory.MemoryStore
+import com.phoneagent.memory.ProfileEntry
 import com.phoneagent.screen.ScreenSharingService
 import com.phoneagent.agent.PromptLang
+import com.phoneagent.shizuku.ShizukuManager
 import com.phoneagent.test.TestConfig
 import com.phoneagent.test.TestEngine
 import com.phoneagent.test.TestPreset
 import com.phoneagent.test.TestRunSummary
+import com.phoneagent.workspace.WorkAreaEngine
+import com.phoneagent.workspace.WorkDisplay
+import com.phoneagent.workspace.EditChatMessage
+import com.phoneagent.workspace.WorkFile
+import com.phoneagent.workspace.WorkLog
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,6 +53,9 @@ class MainViewModel(
     private val settings: AppSettings,
     private val engine: AgentEngine,
     private val testEngine: TestEngine,
+    private val shizukuManager: ShizukuManager,
+    private val workAreaEngine: WorkAreaEngine,
+    private val memoryStore: MemoryStore,
 ) : ViewModel() {
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
@@ -71,6 +85,27 @@ class MainViewModel(
     fun approvePlan() = engine.approvePlan()
     fun cancelPlanning() = engine.cancelPlanning()
 
+    // ---- 悬浮窗交互桥接：气泡窗按钮动作转发到引擎 ----
+    init {
+        com.phoneagent.floating.FloatingWindowService.onInteraction = { action, payload ->
+            when (action) {
+                "approve" -> approvePlan()
+                "cancel" -> cancelPlanning()
+                "clarify" -> answerClarification(com.phoneagent.model.ClarificationOption(id = payload, label = payload, description = payload))
+                "hint" -> provideUserHint(payload)
+                "dismiss" -> dismissUser()
+                // 关闭悬浮窗 → 同步停止正在运行的任务
+                "close" -> engine.stop()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        com.phoneagent.floating.FloatingWindowService.onInteraction = null
+        engine.stop()
+        super.onCleared()
+    }
+
     fun clearDebug() = engine.clearDebug()
     fun provideUserHint(hint: String) = engine.provideUserHint(hint)
     fun dismissUser() = engine.dismissUser()
@@ -83,6 +118,13 @@ class MainViewModel(
 
     private val _overlayGranted = MutableStateFlow(false)
     val overlayGranted: StateFlow<Boolean> get() = _overlayGranted.asStateFlow()
+
+    /** Shizuku 连接状态 */
+    val shizukuState: StateFlow<ShizukuManager.State> = shizukuManager.state
+
+    fun requestShizukuPermission(onResult: (Boolean) -> Unit) {
+        shizukuManager.requestPermission(onResult)
+    }
 
     fun refreshOverlayPermission(context: Context) {
         _overlayGranted.value = android.provider.Settings.canDrawOverlays(context)
@@ -100,6 +142,7 @@ class MainViewModel(
     fun refreshStatus(context: Context) {
         _a11yEnabled.value = AgentAccessibilityService.isServiceEnabled(context)
         refreshOverlayPermission(context)
+        shizukuManager.refreshState()
     }
 
     // ---- 权限雷达：聚合各类关键权限状态，一键跳转授权 ----
@@ -131,6 +174,12 @@ class MainViewModel(
                 title = "获取已安装程序",
                 description = "用于识别并启动目标应用",
                 granted = hasQueryAllPackages(context),
+            ),
+            PermissionItem(
+                kind = PermissionKind.SHIZUKU,
+                title = "Shizuku",
+                description = "ADB 级权限，执行 shell 命令",
+                granted = shizukuManager.isAvailable(),
             ),
         )
     }
@@ -170,6 +219,10 @@ class MainViewModel(
             }
             PermissionKind.QUERY_ALL_PACKAGES ->
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+            PermissionKind.SHIZUKU -> {
+                val intent = context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                intent ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api"))
+            }
         }.addFlags(flags)
         runCatching { context.startActivity(intent) }
     }
@@ -274,8 +327,169 @@ class MainViewModel(
 
     fun resetTest() = testEngine.reset()
 
-    override fun onCleared() {
-        engine.stop()
-        super.onCleared()
+    // ---- 工作区：AI 文档生成 ----
+    val workFiles: StateFlow<List<WorkFile>> = workAreaEngine.files
+    val workGenerating: StateFlow<Boolean> = workAreaEngine.isGenerating
+    val workActiveFile: StateFlow<String?> = workAreaEngine.activeFile
+    val workPreview: StateFlow<String> = workAreaEngine.previewContent
+    val workLogs: StateFlow<List<WorkLog>> = workAreaEngine.logs
+    val workError: StateFlow<String> = workAreaEngine.error
+    val workDisplay: StateFlow<WorkDisplay?> = workAreaEngine.display
+
+    fun workRefreshFiles() = workAreaEngine.refreshFiles()
+    fun workReadFile(name: String): String = workAreaEngine.readFile(name)
+    fun workDeleteFile(name: String) = workAreaEngine.deleteFile(name)
+    fun workGenerate(task: String, fileName: String = "") = workAreaEngine.generateDocument(task, fileName)
+    fun workStop() = workAreaEngine.stop()
+    fun workClearLogs() = workAreaEngine.clearLogs()
+    fun workShowFile(name: String) = workAreaEngine.showFile(name)
+    fun workDismissDisplay() = workAreaEngine.dismissDisplay()
+
+    // ---- 工作区：文档预览编辑（AI 改写） ----
+    val workEditingFile: StateFlow<String?> = workAreaEngine.editingFile
+    val workEditingContent: StateFlow<String> = workAreaEngine.editingContent
+    val workEditBusy: StateFlow<Boolean> = workAreaEngine.editBusy
+    val workEditChat: StateFlow<List<EditChatMessage>> = workAreaEngine.editChat
+    val workEditStream: StateFlow<String> = workAreaEngine.editStream
+    val workEditError: StateFlow<String> = workAreaEngine.editError
+
+    fun workOpenEditor(name: String) = workAreaEngine.openEditor(name)
+    fun workCloseEditor() = workAreaEngine.closeEditor()
+    fun workEditDocument(instruction: String) = workAreaEngine.editDocument(instruction)
+
+    // ---- AI 记忆图谱 ----
+    private val _memoryAnomalies = MutableStateFlow<List<AnomalyMemoryEntry>>(emptyList())
+    val memoryAnomalies: StateFlow<List<AnomalyMemoryEntry>> get() = _memoryAnomalies.asStateFlow()
+
+    private val _memoryProfile = MutableStateFlow<List<ProfileEntry>>(emptyList())
+    val memoryProfile: StateFlow<List<ProfileEntry>> get() = _memoryProfile.asStateFlow()
+
+    private val _memoryLoading = MutableStateFlow(false)
+    val memoryLoading: StateFlow<Boolean> get() = _memoryLoading.asStateFlow()
+
+    /** 加载记忆数据（重新编排图谱） */
+    fun refreshMemory() {
+        viewModelScope.launch {
+            _memoryLoading.value = true
+            _memoryAnomalies.value = memoryStore.loadAnomalies()
+            _memoryProfile.value = memoryStore.loadProfile()
+            _memoryLoading.value = false
+        }
     }
+
+    /** 清空异常记忆 */
+    fun clearAnomalyMemory() {
+        viewModelScope.launch {
+            memoryStore.saveAnomalies(emptyList())
+            refreshMemory()
+        }
+    }
+
+    /** 清空用户画像 */
+    fun clearProfileMemory() {
+        viewModelScope.launch {
+            memoryStore.saveProfile(emptyList())
+            refreshMemory()
+        }
+    }
+
+    // ---- 日志导出 ----
+    /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。
+     *  @return 成功返回保存路径，失败返回错误信息（以 "ERR:" 开头） */
+    fun exportLogs(context: Context, taskId: Long, taskName: String?): String {
+        return runCatching {
+            val entries = if (taskId < 0) logs.value else logs.value.filter { it.taskId == taskId }
+            if (entries.isEmpty()) return@runCatching "ERR:没有可导出的日志"
+
+            val sb = StringBuilder()
+            sb.appendLine("Happy Phone Agent 运行日志")
+            sb.appendLine("导出时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+            sb.appendLine("任务：${taskName ?: "全部"}  ·  共 ${entries.size} 条")
+            sb.appendLine("═".repeat(48))
+            entries.forEach { e ->
+                sb.append("[${levelTag(e.level)}] ${formatTs(e.timestamp)} ${e.message}")
+                e.detail?.let { sb.appendLine("\n$it") }
+                sb.appendLine()
+            }
+
+            val resolver = context.contentResolver
+            val fileName = "hpa_logs_${taskName?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "all"}_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return@runCatching "ERR:无法创建导出文件"
+            resolver.openOutputStream(uri)?.use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
+                ?: return@runCatching "ERR:无法写入导出文件"
+            "已导出到 下载/HappyPhoneAgent/$fileName"
+        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
+    }
+
+    /** 分任务批量导出：每个任务导出一个独立 JSON 文件，保存到「下载」目录（Android 10+ 无需存储权限）。
+     *  @return 成功返回保存汇总，失败返回错误信息（以 "ERR:" 开头） */
+    fun exportLogsJsonAll(context: Context): String {
+        return runCatching {
+            val all = logs.value
+            val byTask = all.filter { it.taskId >= 0 }.groupBy { it.taskId }
+            val groups = mutableListOf<Triple<Long, String?, List<AgentLog>>>()
+            byTask.values.forEach { g -> groups += Triple(g.first().taskId, g.first().taskName, g) }
+            val sys = all.filter { it.taskId < 0 }
+            if (sys.isNotEmpty()) groups += Triple(-1L, "系统日志", sys)
+            if (groups.isEmpty()) return@runCatching "ERR:没有可导出的日志"
+
+            val resolver = context.contentResolver
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+            val written = mutableListOf<String>()
+            groups.forEach { (tid, name, list) ->
+                val safeName = name?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "task"
+                val fileName = if (tid < 0) "hpa_logs_system_$stamp.json" else "hpa_logs_${tid}_${safeName}_$stamp.json"
+                val jsonObj = kotlinx.serialization.json.buildJsonObject {
+                    put("app", "Happy Phone Agent")
+                    put("exported_at", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+                    put("task_id", tid)
+                    put("task_name", name ?: "")
+                    put("log_count", list.size)
+                    put("logs", kotlinx.serialization.json.buildJsonArray {
+                        list.forEach { l ->
+                            add(
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put("ts", l.timestamp)
+                                    put("time", formatTs(l.timestamp))
+                                    put("level", l.level.name)
+                                    put("message", l.message)
+                                    l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", it) }
+                                }
+                            )
+                        }
+                    })
+                }
+                val json = jsonObj.toString()
+                val values = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
+                }
+                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: return@runCatching "ERR:无法创建导出文件"
+                resolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                    ?: return@runCatching "ERR:无法写入导出文件"
+                written += fileName
+            }
+            "已批量导出 ${written.size} 个任务 JSON 到 下载/HappyPhoneAgent/"
+        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
+    }
+
+    private fun levelTag(lvl: AgentLog.Level): String = when (lvl) {
+        AgentLog.Level.ERROR -> "错误"
+        AgentLog.Level.WARN -> "警告"
+        AgentLog.Level.AI -> "AI"
+        AgentLog.Level.INFO -> "信息"
+        AgentLog.Level.API -> "API"
+    }
+
+    private fun formatTs(t: Long): String =
+        java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date(t))
+
 }

@@ -7,25 +7,28 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// 版本号文件：读取在配置阶段（只读），自增推迟到构建执行阶段，
+// 避免 IDE 同步/任意 Gradle 配置触发版本号无意义上涨
+val versionPropsFile = rootProject.file("version.properties")
+
+fun loadBuildNumber(): Int {
+    if (!versionPropsFile.exists()) return 1
+    val props = Properties().apply {
+        runCatching { versionPropsFile.inputStream().use { load(it) } }
+    }
+    return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 1
+}
+
 android {
     namespace = "com.phoneagent"
     compileSdk = 35
-
-    // 自动递增版本号：读取 version.properties，每次构建 +1
-    val versionPropsFile = rootProject.file("version.properties")
-    val versionProps = Properties().apply {
-        if (versionPropsFile.exists()) versionPropsFile.inputStream().use { load(it) }
-    }
-    val buildNumber = (versionProps.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0) + 1
-    versionProps.setProperty("BUILD_NUMBER", buildNumber.toString())
-    versionPropsFile.outputStream().use { versionProps.store(it, "Auto-incremented by Gradle") }
 
     defaultConfig {
         applicationId = "com.phoneagent"
         minSdk = 26
         targetSdk = 35
-        versionCode = buildNumber
-        versionName = "0.1.$buildNumber"
+        versionCode = loadBuildNumber()
+        versionName = "0.1.${loadBuildNumber()}"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -86,5 +89,23 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+
+    implementation(libs.mlkit.text.chinese)
+
     debugImplementation(libs.androidx.ui.tooling)
 }
+
+// 版本号自增仅在真正执行构建（assemble/bundle）时发生，避免配置阶段误增
+tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") }
+    .configureEach {
+        doFirst {
+            val props = Properties().apply {
+                if (versionPropsFile.exists()) runCatching { versionPropsFile.inputStream().use { load(it) } }
+            }
+            val next = (props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0) + 1
+            props.setProperty("BUILD_NUMBER", next.toString())
+            runCatching { versionPropsFile.outputStream().use { props.store(it, "Auto-incremented by Gradle") } }
+        }
+    }

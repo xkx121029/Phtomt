@@ -9,6 +9,10 @@ data class AgentLog(
     val message: String,
     /** 可展开的详细内容（如完整 API 请求/响应） */
     val detail: String? = null,
+    /** 所属任务 ID：分任务查看与导出的依据（-1 表示任务无关的系统日志） */
+    val taskId: Long = -1,
+    /** 所属任务描述 */
+    val taskName: String? = null,
 ) {
     enum class Level { INFO, WARN, ERROR, AI, API }
 }

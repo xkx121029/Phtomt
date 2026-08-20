@@ -2,6 +2,7 @@ package com.phoneagent.ui.test
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import androidx.compose.foundation.BorderStroke
@@ -66,6 +67,15 @@ import com.phoneagent.test.TestStatus
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
+import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.TestDecision
+import com.phoneagent.ui.theme.TestFormat
+import com.phoneagent.ui.theme.TestMerge
+import com.phoneagent.ui.theme.TestReal
+import com.phoneagent.ui.theme.TestRegression
+import com.phoneagent.ui.theme.TestTargeting
+import com.phoneagent.ui.theme.Warning
 import androidx.compose.material.icons.rounded.SendToMobile
 
 /**
@@ -92,8 +102,6 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(24.dp))
-
         // ===== 标题 + 语言切换 =====
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.Science, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
@@ -176,7 +184,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         if (showPromptPreview) {
             Spacer(Modifier.height(8.dp))
             Card(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(AppRadii.Tile),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                 modifier = Modifier.fillMaxWidth(),
@@ -204,7 +212,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         if (showConfig) {
             Spacer(Modifier.height(8.dp))
             Card(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(AppRadii.Item),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
             ) {
@@ -275,7 +283,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             SectionHeader("实时流式输出")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(AppRadii.Tile),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
             ) {
@@ -299,10 +307,11 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(12.dp))
             SectionHeader("测试结果")
             ResultSummary(summary, vm, testLang)
-            summary.results.forEach { result ->
+            summary.results.forEachIndexed { i, result ->
                 TestResultCard(
                     result = result,
                     onUseAsTask = { vm.startPlanning(result.case.name) },
+                    modifier = Modifier.animateListItem(i + 1),
                 )
             }
 
@@ -327,12 +336,12 @@ private fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, e
     val pressHaptic = com.phoneagent.ui.components.rememberHapticPress()
     val commitHaptic = com.phoneagent.ui.components.rememberHapticCommit()
     val groupColor = when (preset.group) {
-        TestGroup.REAL -> Color(0xFF7C4DFF)
-        TestGroup.FORMAT -> Color(0xFF448AFF)
-        TestGroup.TARGETING -> Color(0xFF00BCD4)
-        TestGroup.DECISION -> Color(0xFFFF6D00)
-        TestGroup.MERGE -> Color(0xFFE91E63)
-        TestGroup.REGRESSION -> Color(0xFF2E9E6B)
+        TestGroup.REAL -> TestReal
+        TestGroup.FORMAT -> TestFormat
+        TestGroup.TARGETING -> TestTargeting
+        TestGroup.DECISION -> TestDecision
+        TestGroup.MERGE -> TestMerge
+        TestGroup.REGRESSION -> TestRegression
     }
     PressableScale(
         enabled = enabled,
@@ -341,7 +350,7 @@ private fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, e
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(AppRadii.Item),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
         ) {
@@ -414,14 +423,14 @@ private fun ResultSummary(summary: com.phoneagent.test.TestRunSummary, vm: MainV
     val allPassed = done && summary.passed == summary.total
     val bgColor = animateColorAsState(
         targetValue = if (err) MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
-        else if (allPassed) Color(0xFF2E9E6B).copy(alpha = 0.12f)
-        else if (done) Color(0xFFE8A33D).copy(alpha = 0.12f)
+        else if (allPassed) Success.copy(alpha = 0.12f)
+        else if (done) Warning.copy(alpha = 0.12f)
         else MaterialTheme.colorScheme.surfaceVariant,
         animationSpec = tween(durationMillis = DurationFast, easing = EaseOut),
         label = "bg",
     )
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(AppRadii.Item),
         colors = CardDefaults.cardColors(containerColor = bgColor.value),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -446,12 +455,12 @@ private fun ResultSummary(summary: com.phoneagent.test.TestRunSummary, vm: MainV
                         "${summary.passed} / ${summary.total}",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (allPassed) Color(0xFF2E9E6B) else Color(0xFFE8A33D),
+                        color = if (allPassed) Success else Warning,
                     )
                     Text(
                         if (allPassed) "全部通过 ✓" else "部分未通过",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (allPassed) Color(0xFF2E9E6B) else Color(0xFFE8A33D),
+                        color = if (allPassed) Success else Warning,
                         modifier = Modifier.padding(bottom = 2.dp),
                     )
                 }
@@ -461,8 +470,8 @@ private fun ResultSummary(summary: com.phoneagent.test.TestRunSummary, vm: MainV
 }
 
 @Composable
-private fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit) {
-    val passedColor = Color(0xFF2E9E6B)
+private fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifier: Modifier = Modifier) {
+    val passedColor = Success
     val failedColor = MaterialTheme.colorScheme.error
     val borderColor = animateColorAsState(
         targetValue = if (result.passed) passedColor.copy(alpha = 0.25f) else failedColor.copy(alpha = 0.25f),
@@ -470,8 +479,8 @@ private fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit) {
         label = "border",
     )
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(AppRadii.Tile),
         colors = CardDefaults.cardColors(
             containerColor = if (result.passed) passedColor.copy(alpha = 0.08f) else failedColor.copy(alpha = 0.08f),
         ),

@@ -16,6 +16,7 @@ captures/
 *.iws
 *.ipr
 .vscode/
+.trae/
 .DS_Store
 
 # Keystore

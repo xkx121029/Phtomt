@@ -74,7 +74,8 @@ Prefer a single JSON object unless merging is required.
         TestConfig(
             baseUrl = "https://api.agnes-ai.cn/v1",
             model = "agnes-2.5-flash",
-            apiKey = "sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq",
+            // 默认留空，由用户在测试页填写，避免真实密钥随源码分发
+            apiKey = "",
         ),
     )
     val config: StateFlow<TestConfig> = _config.asStateFlow()
@@ -114,7 +115,7 @@ Prefer a single JSON object unless merging is required.
      * 英文使用优化版 AGNES_SYSTEM（含反例和铁律），中文使用 AgentPrompts 的 systemCN。
      */
     private fun getSystemPrompt(lang: PromptLang): String = when (lang) {
-        PromptLang.CN -> AgentPrompts.system(PromptLang.CN, "", hasVision = false)
+        PromptLang.CN -> AgentPrompts.system(PromptLang.CN, "", hasVision = false, shizukuAvailable = false)
         PromptLang.EN -> AGNES_SYSTEM
     }
 

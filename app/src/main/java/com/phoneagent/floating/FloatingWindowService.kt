@@ -1,5 +1,6 @@
 package com.phoneagent.floating
 
+import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,48 +11,102 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.InputType
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.OverScroller
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ServiceCompat
 import com.phoneagent.R
+import com.phoneagent.data.prefs.AppSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 import com.phoneagent.ui.MainActivity
 
 /**
- * 悬浮窗服务：任务执行时在屏幕上显示实时进度面板 + 过程中提问/确认内容。
- * - 顶部状态点 + 任务名 + 关闭按钮
- * - 彩色跑马灯实时滚动 AI 思考/状态
- * - 提问/确认区域（动态显示，有内容时展开）
- * - 步骤进度条
- * 面板可拖动。
+ * 悬浮窗服务：任务执行时在屏幕上显示实时进度面板，支持用户在窗内直接交互。
+ *
+ * 视觉：白色液态玻璃（半透明白 + 折射高光 + 边缘色散 + 圆角 + 细边框）。
+ * 尺寸：宽度固定，高度随内容自适应（WRAP_CONTENT），随步骤/提问内容实时变化。
+ * 交互：等待批准（批准/取消）、歧义澄清（选项按钮）、需要指导（输入框+按钮）、
+ *       这些操作全部可在悬浮窗内完成，通过 [onInteraction] 静态回调转发到引擎。
+ * 拖动：仅头部区域可拖动，带液态物理反馈（拿起放大 + 速度倾斜 + 松手弹性回弹 + 惯性滑行）。
  */
 class FloatingWindowService : Service() {
 
     private var windowManager: WindowManager? = null
     private var root: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
+    private var glassBg: LiquidGlassDrawable? = null
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val appSettings: AppSettings by inject()
+    // 跑马灯厚度（dp）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
+    private var marqueeHeightDp = 26
+    private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
 
     private var dot: View? = null
+    private var dotPulseAnimator: ValueAnimator? = null
     private var marquee: MarqueeView? = null
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
     private var taskTitle: TextView? = null
 
-    // 提问/确认区域
-    private var queryPanel: LinearLayout? = null
-    private var queryLabel: TextView? = null
-    private var queryText: TextView? = null
+    // AI 思考实时面板：发送给 AI 的内容 + 流式返回的内容
+    private var thinkingPanel: LinearLayout? = null
+    private var thinkingScroll: ScrollView? = null
+    private var thinkingSentText: TextView? = null
+    private var thinkingReturnText: TextView? = null
+    private var reviewText: TextView? = null
+    private var lastSentShown = ""
+
+    // 头部（可拖动区域）
+    private var header: LinearLayout? = null
+
+    // 完成动效：打勾视图 + 完成文字
+    private var successMark: SuccessMarkView? = null
+    private var doneText: TextView? = null
+    private var donePanel: LinearLayout? = null
+
+    // 交互区域：批准/澄清/指导
+    private var interactPanel: LinearLayout? = null
+    private var interactTitle: TextView? = null
+    private var interactContent: TextView? = null
+    private var interactButtons: LinearLayout? = null
+    private var hintInput: EditText? = null
+    private var hintBtnRow: LinearLayout? = null
 
     private val handler = Handler(Looper.getMainLooper())
+    private var notificationManager: NotificationManager? = null
+    private val channelId = "floating_window"
+
+    // ==================== 拖动物理效果 ====================
+    private var velocityTracker: VelocityTracker? = null
+    private var flingScroller: OverScroller? = null
+    private var isFlinging = false
+    private val frameCallback = Choreographer.FrameCallback { onFlingFrame() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,13 +114,24 @@ class FloatingWindowService : Service() {
         super.onCreate()
         instance = this
         startForegroundCompat()
+        // 监听跑马灯设置：厚度/颜色修改后即时生效
+        scope.launch {
+            appSettings.settings.collect { s ->
+                marqueeHeightDp = s.marqueeHeight
+                marqueeColors = s.marqueeColors.map { it.toInt() }
+                marquee?.let { m ->
+                    m.layoutParams = m.layoutParams.apply { height = dp(marqueeHeightDp) + statusBarHeight() }
+                    m.setColors(marqueeColors)
+                    m.requestLayout()
+                }
+            }
+        }
     }
 
     private fun startForegroundCompat() {
-        val channelId = "floating_window"
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(
+            notificationManager?.createNotificationChannel(
                 NotificationChannel(channelId, "悬浮窗进度", NotificationManager.IMPORTANCE_LOW)
             )
         }
@@ -77,6 +143,8 @@ class FloatingWindowService : Service() {
                 .setContentText("实时跟踪任务进度")
                 .setContentIntent(pi)
                 .setSmallIcon(R.drawable.ic_stat_agent)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
                 .build()
         } else {
             @Suppress("DEPRECATION")
@@ -84,10 +152,31 @@ class FloatingWindowService : Service() {
         }
         ServiceCompat.startForeground(
             this,
-            1001,
+            NOTIFY_ID,
             notification,
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
+    }
+
+    /** 实时更新前台通知，显示任务状态（可选附加 AI 思考内容） */
+    private fun updateNotification(status: String, task: String, step: Int = 0, thinking: String? = null) {
+        val nm = notificationManager ?: return
+        val base = if (step > 0) "第 $step 步 · $status" else status
+        val text = if (!thinking.isNullOrBlank()) "$base\nAI：${thinking.replace("\n", " ").take(140)}" else base
+        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+                .setContentTitle("Happy Agent · $task")
+                .setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(text))
+                .setSmallIcon(R.drawable.ic_stat_agent)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this).setContentTitle("Happy Agent · $task").setContentText(text).setSmallIcon(R.drawable.ic_stat_agent).build()
+        }
+        runCatching { nm.notify(NOTIFY_ID, notification) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -100,134 +189,317 @@ class FloatingWindowService : Service() {
         return START_STICKY
     }
 
+    /** 获取系统状态栏高度（px）；无状态栏时返回 0 */
+    private fun statusBarHeight(): Int {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
     private fun showWindow() {
         if (root != null) return
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val layout = buildPanel()
+        // 获取当前屏幕尺寸，根据横竖屏调整初始位置，避免旋转后悬浮窗位置出屏
+        val point = android.graphics.Point()
+        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
+        val screenW = if (point.x > 0) point.x else dp(360)
+        val screenH = if (point.y > 0) point.y else dp(640)
+        // 宽度固定，高度随内容自适应
         params = WindowManager.LayoutParams(
-            dp(300), dp(136),
+            dp(300), WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dp(160)
-            y = dp(180)
+            // 初始位置：水平居中、贴屏幕上边缘，跑马灯覆盖状态栏区域。
+            // FLAG_LAYOUT_NO_LIMITS 允许 overlay 窗口延伸到屏幕物理边界/系统栏区域，
+            // 使 y=0 对应物理屏顶，跑马灯即可覆盖状态栏
+            x = (screenW - dp(300)) / 2
+            // y 取负状态栏高度：窗口顶在物理屏顶之上，跑马灯色带从屏幕物理顶开始，
+            // 覆盖状态栏区域（状态栏透明/半透明时色带透出，图标浮于其上）
+            y = -statusBarHeight()
         }
         root = layout
+        // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓
+        layout.elevation = dp(16).toFloat()
+        layout.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, dp(20).toFloat())
+            }
+        }
         try {
             windowManager?.addView(layout, params)
         } catch (_: Exception) {}
-    }
-
-    /** 更新面板高度（有提问时展开，无提问时收缩） */
-    private fun updatePanelHeight(hasQuery: Boolean) {
-        val targetHeight = if (hasQuery) dp(180) else dp(136)
-        if (params?.height != targetHeight) {
-            params?.height = targetHeight
-            root?.let { runCatching { windowManager?.updateViewLayout(it, params) } }
-        }
     }
 
     private fun buildPanel(): LinearLayout {
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
         }
-        // 圆角深色背景
-        val bg = GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
-            setColor(0xE6000000.toInt())
-            setStroke(dp(1), 0x55555555.toInt())
-        }
+        // 白色液态玻璃背景：半透明白 + 折射高光 + 动态光斑 + 边缘色散 + 细边框
+        // 说明：系统 blurBehind 真模糊在部分设备上会把整个屏幕背景都模糊掉，影响使用，此处不使用；
+        // 改用较高不透明度的半透明白配合光斑/色散/高光/投影来模拟液态玻璃，兼顾质感与不干扰后台
+        val bg = LiquidGlassDrawable(
+            cornerRadius = dp(20).toFloat(),
+            baseColor = 0xE6FFFFFF.toInt(),
+            strokeColor = 0x33FFFFFF.toInt(),
+        )
         panel.background = bg
+        glassBg = bg
+        panel.setPadding(dp(4), 0, dp(4), dp(4))
 
-        // 头部：状态点 + 标题 + 关闭
-        val header = LinearLayout(this).apply {
+        // 跑马灯（第一行，紧贴窗口/屏幕顶部边缘，作为顶部状态色带）
+        marquee = MarqueeView(this).apply {
+            // 高度 = 状态栏覆盖 + 用户可见厚度：窗口顶在物理屏顶之上，色带必然覆盖状态栏到顶
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(marqueeHeightDp) + statusBarHeight())
+            // 渐变颜色可在设置中调节（修改后实时生效）
+            setColors(marqueeColors)
+        }
+        panel.addView(marquee)
+
+        // 头部：状态点 + 标题 + 关闭（仅头部可拖动）
+        header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setOnTouchListener { _, event ->
+                onTouchDrag(event)
+                true
+            }
         }
         dot = View(this).apply {
             setBackgroundResource(0)
-            val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(0x4f, 0xa3, 0xff)) }
+            val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(0x29, 0x79, 0xff)) }
             background = d
             layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
         }
         taskTitle = TextView(this).apply {
             text = "Happy Agent"
-            textSize = 12f
-            setTextColor(Color.WHITE)
+            textSize = 13f
+            setTextColor(Color.rgb(0x1a, 0x1a, 0x2e))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(dp(6), 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val close = TextView(this).apply {
             text = "×"
             textSize = 18f
-            setTextColor(Color.rgb(0xff, 0x6b, 0x9d))
-            setOnClickListener { stopSelf(); removeWindow() }
-        }
-        header.addView(dot)
-        header.addView(taskTitle)
-        header.addView(close)
-        panel.addView(header)
-
-        // 跑马灯
-        marquee = MarqueeView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(30))
-        }
-        panel.addView(marquee)
-
-        // 提问/确认区域（默认隐藏）
-        queryPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            val divider = View(this@FloatingWindowService).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                setBackgroundColor(Color.rgb(0x55, 0x55, 0x55))
+            setTextColor(Color.rgb(0x88, 0x88, 0x99))
+            setPadding(dp(6), 0, 0, 0)
+            setOnClickListener {
+                // 关闭悬浮窗即同步停止任务，避免后台仍在执行
+                onInteraction?.invoke("close", "")
+                stopSelf(); removeWindow()
             }
-            addView(divider)
         }
-        queryLabel = TextView(this).apply {
-            text = "需要确认"
-            textSize = 10f
-            setTextColor(Color.rgb(0xff, 0xd0, 0x6b))
-            setPadding(0, dp(4), 0, 0)
-        }
-        queryPanel?.addView(queryLabel)
-        queryText = TextView(this).apply {
-            text = ""
-            textSize = 11f
-            setTextColor(Color.rgb(0xff, 0xff, 0xff))
-            setPadding(0, dp(2), 0, dp(4))
-            maxLines = 3
-        }
-        queryPanel?.addView(queryText)
-        panel.addView(queryPanel)
+        header?.addView(dot)
+        header?.addView(taskTitle)
+        header?.addView(close)
+        panel.addView(header)
 
         // 步骤 + 进度条
         stepText = TextView(this).apply {
             text = "等待任务..."
             textSize = 11f
-            setTextColor(Color.rgb(0xaa, 0xbb, 0xcc))
+            setTextColor(Color.rgb(0x55, 0x5f, 0x6e))
+            setPadding(dp(8), dp(2), dp(8), 0)
         }
         panel.addView(stepText)
+        // 进度条：用户反馈无用，始终保持隐藏（不占悬浮窗空间）
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 0
+            visibility = View.GONE
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4))
         }
         panel.addView(progressBar)
 
-        // 拖动
-        panel.setOnTouchListener { _, event ->
-            onTouchDrag(event)
-            true
+        // AI 思考面板：实时显示发送给 AI 的内容与流式返回的内容（默认隐藏，AI 开始思考时显示）
+        thinkingPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            val divider = View(this@FloatingWindowService).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                setBackgroundColor(0x1A555555.toInt())
+            }
+            addView(divider)
         }
+        val thinkingLabel = TextView(this).apply {
+            text = "AI 思考"
+            textSize = 10f
+            setTextColor(Color.rgb(0x9b, 0x5c, 0xff))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(5), 0, dp(2))
+        }
+        thinkingPanel?.addView(thinkingLabel)
+        // 内容可滚动，限制高度避免悬浮窗过大
+        thinkingScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150))
+            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+        }
+        val thinkCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val sentLabel = TextView(this).apply {
+            text = "→ 发送"
+            textSize = 10f
+            setTextColor(Color.rgb(0x88, 0x88, 0x99))
+            setPadding(0, dp(3), 0, 0)
+        }
+        thinkCol.addView(sentLabel)
+        thinkingSentText = TextView(this).apply {
+            text = ""
+            textSize = 11f
+            setTextColor(Color.rgb(0x55, 0x5f, 0x6e))
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        thinkCol.addView(thinkingSentText)
+        val retLabel = TextView(this).apply {
+            text = "← 返回"
+            textSize = 10f
+            setTextColor(Color.rgb(0x88, 0x88, 0x99))
+            setPadding(0, dp(4), 0, 0)
+        }
+        thinkCol.addView(retLabel)
+        thinkingReturnText = TextView(this).apply {
+            text = ""
+            textSize = 11f
+            setTextColor(Color.rgb(0x33, 0x38, 0x45))
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        thinkCol.addView(thinkingReturnText)
+        val reviewLabel = TextView(this).apply {
+            text = "审核者"
+            textSize = 11f
+            setTextColor(Color.rgb(0x8E, 0x35, 0xEF))
+            setPadding(0, dp(6), 0, 0)
+        }
+        thinkCol.addView(reviewLabel)
+        reviewText = TextView(this).apply {
+            text = ""
+            textSize = 11f
+            setTextColor(Color.rgb(0x8E, 0x35, 0xEF))
+            setPadding(0, dp(2), 0, dp(4))
+        }
+        thinkCol.addView(reviewText)
+        thinkingScroll?.addView(thinkCol)
+        thinkingPanel?.addView(thinkingScroll)
+        panel.addView(thinkingPanel)
+
+        // 交互区域（批准/澄清/指导，默认隐藏）
+        interactPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(8), dp(6), dp(8), dp(4))
+            val divider = View(this@FloatingWindowService).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                setBackgroundColor(0x1A555555.toInt())
+            }
+            addView(divider)
+        }
+        interactTitle = TextView(this).apply {
+            text = "需要确认"
+            textSize = 11f
+            setTextColor(Color.rgb(0xd8, 0x8a, 0x00))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(6), 0, 0)
+        }
+        interactPanel?.addView(interactTitle)
+        // 内容可滚动（长文本）
+        val contentScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(0), 1f)
+            isVerticalScrollBarEnabled = false
+        }
+        interactContent = TextView(this).apply {
+            text = ""
+            textSize = 12f
+            setTextColor(Color.rgb(0x33, 0x38, 0x45))
+            setPadding(0, dp(3), 0, dp(6))
+        }
+        contentScroll.addView(interactContent)
+        interactPanel?.addView(contentScroll)
+        // 选项按钮容器
+        interactButtons = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        interactPanel?.addView(interactButtons)
+        // 指导输入框
+        hintInput = EditText(this).apply {
+            textSize = 12f
+            setTextColor(Color.rgb(0x22, 0x27, 0x33))
+            setHintTextColor(Color.rgb(0x99, 0x99, 0xaa))
+            setHint("告诉 AI 该怎么做（或留空）")
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines = 2
+            maxLines = 3
+            setBackgroundResource(0)
+            val underline = GradientDrawable().apply {
+                setColor(0x00FFFFFF.toInt())
+                setStroke(0, 0xFFFFFFFF.toInt())
+            }
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(0x22FFFFFF.toInt())
+                setStroke(dp(1), 0x33000000.toInt())
+            }
+        }
+        interactPanel?.addView(hintInput)
+        hintBtnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, dp(4), 0, 0)
+        }
+        interactPanel?.addView(hintBtnRow)
+        panel.addView(interactPanel)
+
+        // 完成面板：打勾动效 + 完成文字（默认隐藏，任务完成后显示）
+        donePanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        successMark = SuccessMarkView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+        }
+        donePanel?.addView(successMark)
+        doneText = TextView(this).apply {
+            text = "任务完成"
+            textSize = 13f
+            setTextColor(Color.rgb(0x00, 0x9e, 0x5f))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(4), 0, 0)
+        }
+        donePanel?.addView(doneText)
+        // 完成后删除按钮：移除悬浮窗（避免只能清后台才能删除）
+        val doneClose = Button(this).apply {
+            text = "移除悬浮窗"
+            textSize = 12f
+            isAllCaps = false
+            setTextColor(Color.rgb(0x29, 0x79, 0xff))
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply {
+                topMargin = dp(8)
+            }
+            layoutParams = lp
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(0x11FFFFFF.toInt())
+                setStroke(dp(1), 0x222979FF.toInt())
+            }
+            setOnClickListener { stopSelf(); removeWindow() }
+        }
+        donePanel?.addView(doneClose)
+        panel.addView(donePanel)
+
         return panel
     }
 
+    // ==================== 拖动（仅头部）：液态物理效果 ====================
     private var startX = 0
     private var startY = 0
     private var startTouchX = 0f
@@ -235,32 +507,115 @@ class FloatingWindowService : Service() {
 
     private fun onTouchDrag(event: MotionEvent): Boolean {
         val p = params ?: return false
+        val vtracker = velocityTracker ?: VelocityTracker.obtain().also { velocityTracker = it }
+        vtracker.addMovement(event)
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                // 取消进行中的惯性滑动
+                isFlinging = false
+                flingScroller?.forceFinished(true)
                 startX = p.x; startY = p.y
                 startTouchX = event.rawX; startTouchY = event.rawY
+                vtracker.clear()
+                vtracker.addMovement(event)
             }
             MotionEvent.ACTION_MOVE -> {
-                p.x = (startX + (event.rawX - startTouchX)).toInt()
-                p.y = (startY + (event.rawY - startTouchY)).toInt()
-                windowManager?.updateViewLayout(root, p)
+                val dx = event.rawX - startTouchX
+                val dy = event.rawY - startTouchY
+                p.x = (startX + dx).toInt()
+                p.y = (startY + dy).toInt()
+                // 拖动期间悬浮窗可能被销毁（removeWindow），root 为空时跳过更新，避免 NPE
+                root?.let { r ->
+                    // 只更新窗口位置，不再对窗口施加缩放/旋转变形，
+                    // 避免旋转+缩放导致视觉中心偏移而在拖动中“乱晃”
+                    windowManager?.updateViewLayout(r, p)
+                    // 动态光斑：玻璃反光跟随手指位置，随手势流动，模拟真实玻璃质感
+                    if (r.width > 0 && r.height > 0) {
+                        val gx = ((event.rawX - p.x) / r.width).coerceIn(0f, 1f)
+                        val gy = ((event.rawY - p.y) / r.height).coerceIn(0f, 1f)
+                        glassBg?.setGlint(gx, gy)
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                vtracker.computeCurrentVelocity(1000)
+                val vx = vtracker.xVelocity
+                val vy = vtracker.yVelocity
+                velocityTracker?.recycle()
+                velocityTracker = null
+                // 恢复初始状态（不再有缩放/倾斜变形，直接归位即可）
+                glassBg?.setGlint(null, null)
+                root?.apply {
+                    scaleX = 1f
+                    scaleY = 1f
+                    rotation = 0f
+                }
+                // 惯性滑行：松手速度足够时沿当前方向自然滑行
+                if (kotlin.math.abs(vx) + kotlin.math.abs(vy) > 900f) {
+                    startFling(p.x, p.y, vx, vy)
+                }
             }
         }
         return true
+    }
+
+    /** 松手弹性回弹：光斑已由 setGlint(null) 复位，这里补一个轻微缩放过冲模拟液态回弹 */
+    private fun startSettle() {
+        root?.animate()
+            ?.scaleX(1f)
+            ?.scaleY(1f)
+            ?.setDuration(180)
+            ?.setInterpolator(android.view.animation.OvershootInterpolator(0.6f))
+            ?.start()
+    }
+
+    /** 惯性滑行：用 OverScroller 沿松手速度衰减滑动，平滑停止 */
+    private fun startFling(startX: Int, startY: Int, vx: Float, vy: Float) {
+        val point = android.graphics.Point()
+        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
+        val screenW = if (point.x > 0) point.x else dp(360)
+        val screenH = if (point.y > 0) point.y else dp(640)
+        val winW = dp(300)
+        flingScroller?.forceFinished(true)
+        flingScroller = OverScroller(this).apply {
+            fling(
+                startX, startY,
+                vx.toInt(), vy.toInt(),
+                -winW + 40, screenW - 40,      // x：允许大部分滑出屏幕但保留一角便于抓回
+                0, screenH - 120,               // y：不允许飞出顶部，底部保留可抓取区域
+            )
+        }
+        isFlinging = true
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    private fun onFlingFrame() {
+        if (!isFlinging) return
+        val scroller = flingScroller ?: return
+        val p = params ?: return
+        val r = root ?: return
+        if (scroller.computeScrollOffset()) {
+            if (p.x != scroller.currX || p.y != scroller.currY) {
+                p.x = scroller.currX
+                p.y = scroller.currY
+                windowManager?.updateViewLayout(r, p)
+            }
+            Choreographer.getInstance().postFrameCallback(frameCallback)
+        } else {
+            isFlinging = false
+        }
     }
 
     // ==================== 对外更新 ====================
 
     /**
      * 更新悬浮窗进度状态。
-     * @param status 状态文本（如"正在执行"）
+     * @param status 状态文本
      * @param task 任务名称
      * @param reasoning AI 推理/思考内容
      * @param step 当前步骤
      * @param total 总步骤
      * @param phase 阶段（OBSERVING/THINKING/ACTING/DONE/ERROR）
-     * @param queryLabelText 提问标签（如"需要澄清"、"需要确认"、"需要指导"），非空时展开提问区域
-     * @param queryContent 提问/确认内容
      */
     fun updateStatus(
         status: String,
@@ -269,42 +624,279 @@ class FloatingWindowService : Service() {
         step: Int,
         total: Int,
         phase: String,
-        queryLabelText: String? = null,
-        queryContent: String? = null,
     ) {
         handler.post {
+            // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
+            resetPanel()
             marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
             taskTitle?.text = task
-            stepText?.text = "第 $step 步进度 · $status"
-            progressBar?.progress = if (total > 0) (step * 100 / total).coerceIn(0, 100) else step.coerceAtMost(100)
+            stepText?.text = "第 $step 步 · $status"
+            // 进度条已隐藏（用户反馈无用），仅显示步骤文字
             dot?.setBackgroundColor(dotColor(phase))
-
-            // 提问区域
-            val hasQuery = !queryLabelText.isNullOrBlank() && !queryContent.isNullOrBlank()
-            queryPanel?.visibility = if (hasQuery) View.VISIBLE else View.GONE
-            if (hasQuery) {
-                queryLabel?.text = queryLabelText
-                queryText?.text = queryContent
-            }
-            updatePanelHeight(hasQuery && queryContent?.length ?: 0 > 80)
+            startDotPulse()
+            // 实时更新通知
+            updateNotification(status, task, step)
         }
     }
 
+    /**
+     * 实时更新 AI 思考面板：显示发送给 AI 的内容与流式返回的内容，并同步更新通知。
+     * @param sent 发送给 AI 的文本（首次传入；后续传 null 保持已显示内容）
+     * @param delta 流式返回的增量文本（null 表示不更新返回区）
+     */
+    fun updateThinking(sent: String? = null, delta: String? = null) {
+        handler.post {
+            val hasSent = !sent.isNullOrBlank()
+            val hasDelta = !delta.isNullOrBlank()
+            if (!hasSent && !hasDelta) return@post
+            // 有内容即显示思考面板（首次）
+            thinkingPanel?.visibility = View.VISIBLE
+            if (hasSent && sent != lastSentShown) {
+                lastSentShown = sent
+                thinkingSentText?.text = sent!!.take(600) + if (sent!!.length > 600) "…" else ""
+            }
+            if (hasDelta) {
+                val cur = thinkingReturnText?.text?.toString().orEmpty()
+                // 限制展示长度，避免悬浮窗内容无限增长（完整内容由 AI 客户端保留用于解析）
+                thinkingReturnText?.text = (cur + delta).take(3000)
+                thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
+            }
+            // 同步更新通知，展示最新 AI 思考
+            val task = taskTitle?.text?.toString() ?: "Happy Agent"
+            updateNotification("AI 思考中", task, 0, thinkingReturnText?.text?.toString().orEmpty())
+        }
+    }
+
+    /**
+     * 状态点呼吸脉冲：透明度在 0.45~1 间往复，让任务执行状态更“有生命”。
+     * 遵循“常驻/循环动效用线性往复”的规范，仅在任务运行期间启用。
+     */
+    private fun startDotPulse() {
+        if (dotPulseAnimator?.isRunning == true) return
+        dotPulseAnimator = ValueAnimator.ofFloat(0.45f, 1f).apply {
+            duration = 800
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { dot?.alpha = it.animatedValue as Float }
+            start()
+        }
+    }
+
+    private fun stopDotPulse() {
+        dotPulseAnimator?.cancel()
+        dotPulseAnimator = null
+        dot?.alpha = 1f
+    }
+
+    /** 审核结果行实时更新：在思考面板内展示审核者的 pass/拒绝原因/采用的修正 */
+    private fun updateReview(text: String?) {
+        handler.post {
+            reviewText?.text = text ?: ""
+            updateNotification("AI 思考中", taskTitle?.text?.toString() ?: "Happy Agent", 0, thinkingReturnText?.text?.toString().orEmpty())
+        }
+    }
+
+    /**
+     * 恢复常规面板视图：隐藏完成面板，重新显示步骤/进度/头部/交互区。
+     * 用于新任务开始时清除上一个任务完成态的残留。
+     */
+    private fun resetPanel() {
+        donePanel?.visibility = View.GONE
+        successMark?.reset()
+        dot?.visibility = View.VISIBLE
+        marquee?.visibility = View.VISIBLE
+        stepText?.visibility = View.VISIBLE
+        progressBar?.visibility = View.GONE
+        interactPanel?.visibility = View.GONE
+        thinkingPanel?.visibility = View.GONE
+        thinkingSentText?.text = ""
+        thinkingReturnText?.text = ""
+        reviewText?.text = ""
+        lastSentShown = ""
+        header?.visibility = View.VISIBLE
+    }
+
+    /**
+     * 面板淡入动画：透明度 + 轻微缩放（DecelerateInterpolator，起快收缓）。
+     * 用于完成面板、交互面板的显示，避免生硬的瞬时切换。
+     */
+    private fun showPanelWithAnim(view: View?) {
+        view ?: return
+        view.alpha = 0f
+        view.scaleX = 0.94f
+        view.scaleY = 0.94f
+        view.visibility = View.VISIBLE
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(180)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .start()
+    }
+
+    /**
+     * 显示交互面板（批准/澄清/指导），供用户在悬浮窗内直接操作。
+     * @param type approve=批准计划 / clarify=歧义澄清 / guide=需要指导 / null=隐藏
+     * @param title 交互标题
+     * @param content 交互内容
+     * @param options 澄清选项文本列表（type=clarify 时有效）
+     */
+    fun showInteraction(type: String?, title: String?, content: String?, options: List<String>? = null) {
+        handler.post {
+            if (type == null) {
+                interactPanel?.visibility = View.GONE
+                hideKeyboard()
+                return@post
+            }
+            showPanelWithAnim(interactPanel)
+            interactTitle?.text = title ?: "需要确认"
+            interactContent?.text = content ?: ""
+
+            // 清空选项与按钮
+            interactButtons?.removeAllViews()
+            hintInput?.visibility = View.GONE
+            hintBtnRow?.removeAllViews()
+
+            when (type) {
+                "approve" -> {
+                    // 批准/取消
+                    addBtn(interactButtons, "批准并开始", true) { onInteraction?.invoke("approve", "") }
+                    addBtn(interactButtons, "取消", false) { onInteraction?.invoke("cancel", "") }
+                }
+                "clarify" -> {
+                    // 选项按钮
+                    options?.forEach { opt ->
+                        addBtn(interactButtons, opt, false) { onInteraction?.invoke("clarify", opt) }
+                    }
+                    addBtn(interactButtons, "✏️ 我想自己说", false) {
+                        showHintInput()
+                    }
+                }
+                "guide" -> {
+                    showHintInput()
+                }
+            }
+        }
+    }
+
+    private fun showHintInput() {
+        // 输入前切换窗口为可聚焦输入模式，保证软键盘能弹出
+        setInputMode(true)
+        hintInput?.requestFocus()
+        hintInput?.visibility = View.VISIBLE
+        hintBtnRow?.removeAllViews()
+        addBtn(hintBtnRow, "已手动处理", false) { onInteraction?.invoke("dismiss", "") }
+        addBtn(hintBtnRow, "指导 AI", true) {
+            val text = hintInput?.text?.toString()?.trim() ?: ""
+            if (text.isEmpty()) {
+                // 留空点击「指导 AI」等价「已手动处理」，避免空串被 provideUserHint 吞掉导致静默挂起
+                onInteraction?.invoke("dismiss", "")
+            } else {
+                onInteraction?.invoke("hint", text)
+            }
+            hintInput?.setText("")
+        }
+        // 延迟弹出软键盘，等待窗口布局完成后再唤起输入法
+        hintInput?.postDelayed({
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.showSoftInput(hintInput, InputMethodManager.SHOW_IMPLICIT)
+        }, 200)
+    }
+
+    /** 切换悬浮窗输入模式：输入时窗口移除 NOT_FOCUSABLE 并加 FLAG_ALT_FOCUSABLE_IM 以弹出软键盘，
+     *  输入结束恢复 NOT_FOCUSABLE，保证窗口始终可拖动且不抢占系统焦点 */
+    private fun setInputMode(enabled: Boolean) {
+        val p = params ?: return
+        val rootView = root ?: return
+        p.flags = if (enabled) {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        }
+        runCatching { windowManager?.updateViewLayout(rootView, p) }
+    }
+
+    private fun addBtn(container: LinearLayout?, label: String, primary: Boolean, onClick: () -> Unit) {
+        val btn = Button(this).apply {
+            text = label
+            textSize = 12f
+            isAllCaps = false
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(34),
+            ).apply { topMargin = dp(4) }
+            layoutParams = params
+            if (primary) {
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(Color.rgb(0x29, 0x79, 0xff))
+                }
+            } else {
+                setTextColor(Color.rgb(0x29, 0x79, 0xff))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(0x11FFFFFF.toInt())
+                    setStroke(dp(1), 0x222979FF.toInt())
+                }
+            }
+            setOnClickListener { onClick() }
+        }
+        container?.addView(btn)
+    }
+
     private fun marqueeColor(phase: String): Int = when (phase) {
-        "OBSERVING" -> Color.rgb(0x4f, 0xa3, 0xff)
+        "OBSERVING" -> Color.rgb(0x29, 0x79, 0xff)
         "THINKING" -> Color.rgb(0x9b, 0x5c, 0xff)
-        "ACTING" -> Color.rgb(0xff, 0x6b, 0x9d)
-        "DONE" -> Color.rgb(0x3d, 0xd9, 0x8f)
+        "ACTING" -> Color.rgb(0xff, 0x40, 0x81)
+        "DONE" -> Color.rgb(0x00, 0x9e, 0x5f)
         "ERROR" -> Color.rgb(0xff, 0x5f, 0x5f)
-        else -> Color.rgb(0xff, 0xd0, 0x6b)
+        else -> Color.rgb(0xd8, 0x8a, 0x00)
     }
 
     private fun dotColor(phase: String): Int = when (phase) {
         "THINKING" -> Color.rgb(0x9b, 0x5c, 0xff)
-        "ACTING" -> Color.rgb(0xff, 0x6b, 0x9d)
-        "DONE" -> Color.rgb(0x3d, 0xd9, 0x8f)
+        "ACTING" -> Color.rgb(0xff, 0x40, 0x81)
+        "DONE" -> Color.rgb(0x00, 0x9e, 0x5f)
         "ERROR" -> Color.rgb(0xff, 0x5f, 0x5f)
-        else -> Color.rgb(0x4f, 0xa3, 0xff)
+        else -> Color.rgb(0x29, 0x79, 0xff)
+    }
+
+    private fun hideKeyboard() {
+        // 隐藏软键盘并恢复窗口原有的不可聚焦模式（可拖动、不抢占系统焦点）
+        setInputMode(false)
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        val focused = hintInput
+        if (focused != null) imm?.hideSoftInputFromWindow(focused.windowToken, 0)
+    }
+
+    /**
+     * 任务完成：清空面板所有内容，仅显示打勾动效 + 完成文字，并更新通知。
+     * @param message 完成提示文字
+     */
+    fun showDone(message: String) {
+        handler.post {
+            stopDotPulse()
+            // 隐藏常规内容（保留 header，使 × 关闭按钮始终可用）
+            dot?.visibility = View.GONE
+            marquee?.visibility = View.GONE
+            stepText?.visibility = View.GONE
+            progressBar?.visibility = View.GONE
+            interactPanel?.visibility = View.GONE
+            // 显示打勾面板（淡入 + 轻微缩放）
+            doneText?.text = message
+            showPanelWithAnim(donePanel)
+            successMark?.start()
+            updateNotification("任务完成：$message", "Happy Agent")
+        }
     }
 
     private fun removeWindow() {
@@ -313,7 +905,12 @@ class FloatingWindowService : Service() {
     }
 
     override fun onDestroy() {
+        // 清理拖动物理动画与回调
+        isFlinging = false
+        flingScroller?.forceFinished(true)
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
         removeWindow()
+        scope.cancel()
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -322,6 +919,11 @@ class FloatingWindowService : Service() {
 
     companion object {
         const val ACTION_STOP = "com.phoneagent.floating.STOP"
+        private const val NOTIFY_ID = 1001
+
+        /** 悬浮窗交互动作回调（由 MainViewModel 注册，转发到 AgentEngine） */
+        @Volatile
+        var onInteraction: ((action: String, payload: String) -> Unit)? = null
 
         @Volatile
         var instance: FloatingWindowService? = null
@@ -332,7 +934,18 @@ class FloatingWindowService : Service() {
         }
 
         fun stop(context: Context) {
-            context.startService(Intent(context, FloatingWindowService::class.java).setAction(ACTION_STOP))
+            // 直接 stopService：后台调用不抛异常，onDestroy 中会 removeWindow 清理悬浮窗
+            runCatching { context.stopService(Intent(context, FloatingWindowService::class.java)) }
+        }
+
+        /** 任务完成后：悬浮窗清空内容显示打勾动效 */
+        fun showDone(message: String) {
+            instance?.showDone(message)
+        }
+
+        /** 显示交互面板（批准/澄清/指导） */
+        fun interaction(type: String?, title: String?, content: String?, options: List<String>? = null) {
+            instance?.showInteraction(type, title, content, options)
         }
 
         fun update(
@@ -342,10 +955,28 @@ class FloatingWindowService : Service() {
             step: Int,
             total: Int,
             phase: String,
-            queryLabel: String? = null,
-            queryContent: String? = null,
         ) {
-            instance?.updateStatus(status, task, reasoning, step, total, phase, queryLabel, queryContent)
+            instance?.updateStatus(status, task, reasoning, step, total, phase)
+        }
+
+        /** 实时更新 AI 思考（发送/返回内容）到悬浮窗并同步通知 */
+        fun updateThinking(sent: String? = null, delta: String? = null) {
+            instance?.updateThinking(sent, delta)
+        }
+
+        /** 审核结果推送到悬浮窗思考面板展示 */
+        fun updateReviewText(text: String?) {
+            instance?.updateReview(text)
+        }
+
+        /**
+         * 截图时隐藏悬浮窗 / 截图后恢复，避免悬浮窗出现在 AI 读屏画面中。
+         * 返回是否有悬浮窗服务实例在运行（无实例时调用方无需等待重绘）。
+         */
+        fun setVisible(visible: Boolean): Boolean {
+            val svc = instance ?: return false
+            svc.handler.post { svc.root?.visibility = if (visible) View.VISIBLE else View.GONE }
+            return true
         }
     }
 }

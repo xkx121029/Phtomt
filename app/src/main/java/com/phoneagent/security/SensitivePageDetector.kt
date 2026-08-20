@@ -44,9 +44,10 @@ object DataSanitizer {
 
     fun sanitize(text: String): String {
         var out = text
+        // 先脱敏最长的身份证号（18 位），避免其 16~19 位数字被银行卡正则先行匹配而残留
+        out = idRegex.replace(out) { it.value.take(6) + "********" + it.value.takeLast(4) }
         out = phoneRegex.replace(out) { it.value.take(3) + "****" + it.value.takeLast(4) }
         out = bankRegex.replace(out) { it.value.take(4) + "****" + it.value.takeLast(4) }
-        out = idRegex.replace(out) { it.value.take(6) + "********" + it.value.takeLast(4) }
         return out
     }
 }

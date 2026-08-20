@@ -14,7 +14,9 @@ import kotlin.coroutines.resume
  * 通过无障碍服务执行具体的屏幕动作。
  * 点击/滑动使用手势，返回键/主页/最近任务使用全局按键，文本输入使用 ACTION_SET_TEXT。
  */
-class ActionExecutor(private val service: AgentAccessibilityService) {
+class ActionExecutor(
+    private val service: AgentAccessibilityService,
+) {
 
     sealed class Result {
         data class Success(val description: String = "") : Result()
@@ -84,6 +86,33 @@ class ActionExecutor(private val service: AgentAccessibilityService) {
             Result.Success("已启动 $packageName")
         } catch (e: Exception) {
             Result.Failure("启动应用失败：${e.message}")
+        }
+    }
+
+    /** 深链直达：用 ACTION_VIEW 打开 uri（网页/地图/系统页或应用私有 scheme），直接调出目标页面 */
+    fun openUri(uri: String): Result {
+        val u = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("深链为空")
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u)).apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return try {
+            service.startActivity(intent)
+            Result.Success("已打开 $u")
+        } catch (e: Exception) {
+            Result.Failure("深链打开失败：${e.message}")
+        }
+    }
+
+    /** 用系统 Intent Action 直达指定设置页（如 Wi-Fi/蓝牙/显示） */
+    fun openSettingsAction(action: String): Result {
+        return try {
+            val intent = android.content.Intent(action).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.startActivity(intent)
+            Result.Success("已直达系统设置页")
+        } catch (e: Exception) {
+            Result.Failure("打开设置页失败：${e.message}")
         }
     }
 

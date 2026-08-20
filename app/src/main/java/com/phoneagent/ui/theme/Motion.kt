@@ -5,6 +5,9 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.SpringSpec
 
 /**
  * Motion tokens based on emilkowalski/skills design engineering principles.
@@ -104,3 +107,22 @@ object SpringConfigs {
     const val ContentStiffness = 300f
     const val ContentDampingRatio = 0.9f
 }
+
+/** 列表交错动画：相邻元素入场的延迟间隔（毫秒） */
+const val StaggerIntervalMs = 45
+
+/**
+ * 列表项入场动画的弹簧规格。
+ * 轻微回弹（阻尼 0.82）+ 适度刚度，比 tween 更有“响应感”，
+ * 且符合 skills 规范：弹簧仅用于入场这类离散状态切换，按钮按压不用。
+ */
+fun <T> contentSpringSpec(): SpringSpec<T> = spring(
+    dampingRatio = 0.82f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
+/**
+ * 计算列表第 [index] 项的入场延迟。
+ * 使用 index * StaggerIntervalMs，形成逐项错开的“级联”入场效果。
+ */
+fun staggerDelayMs(index: Int): Int = index * StaggerIntervalMs

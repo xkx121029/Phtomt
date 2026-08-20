@@ -20,7 +20,12 @@ data class ChatRequest(
     val response_format: ResponseFormat? = null,
     /** 深度思考参数（智谱 thinking），复杂任务（规划/重规划）时使用 */
     val thinking: ThinkingSpec? = null,
+    /** 流式输出时是否返回用量统计（include_usage，部分厂商支持） */
+    val stream_options: StreamOptions? = null,
 )
+
+@Serializable
+data class StreamOptions(val include_usage: Boolean = true)
 
 @Serializable
 data class ResponseFormat(val type: String, val json_schema: JsonSchemaSpec? = null)

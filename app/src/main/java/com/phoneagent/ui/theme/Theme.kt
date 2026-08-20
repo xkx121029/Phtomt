@@ -13,15 +13,39 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 /**
+ * 形状令牌（Material 3 Expressive 圆角体系）
+ * 由内到外分级：胶囊 < 瓦片 < 列表项 < 卡片 < 大容器。
+ * 所有页面 / 组件统一引用，杜绝魔法数字，保证全项目视觉一致。
+ */
+object AppRadii {
+    /** 状态胶囊 / 小徽标 */
+    val Chip = 10.dp
+    /** 内嵌小背景 / 紧凑控件（输入区、筛选条） */
+    val Inline = 12.dp
+    /** 图标瓦片 / 输入框 / 气泡 */
+    val Tile = 14.dp
+    /** 聊天气泡 / 中等圆角 */
+    val Bubble = 18.dp
+    /** 列表项 / 小卡片 */
+    val Item = 20.dp
+    /** 分组卡片 / 大面板 */
+    val Card = 24.dp
+    /** 品牌 Hero / 超大容器 */
+    val Hero = 28.dp
+    /** 覆盖层 / 对话框 / 手机外壳 */
+    val Overlay = 32.dp
+}
+
+/**
  * Material 3 Expressive 风格的圆角定义
  * 小卡片用 small/medium，大容器用 large
  */
 val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(4.dp),
     small = RoundedCornerShape(8.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(20.dp),
-    extraLarge = RoundedCornerShape(28.dp),
+    medium = RoundedCornerShape(AppRadii.Tile),
+    large = RoundedCornerShape(AppRadii.Item),
+    extraLarge = RoundedCornerShape(AppRadii.Hero),
 )
 
 private val LightColors = lightColorScheme(
@@ -134,3 +158,38 @@ fun PhoneAgentTheme(
 @Composable
 private fun isSystemDark(): Boolean =
     androidx.compose.foundation.isSystemInDarkTheme()
+
+// ========== 主题感知色（深/浅主题自动适配） ==========
+/** 手机外壳主体色 */
+@Composable
+fun phoneShellColor(darkTheme: Boolean = isSystemDark()): Color =
+    if (darkTheme) PhoneShellDark else PhoneShellLight
+
+/** 手机外壳边框色 */
+@Composable
+fun phoneShellBorderColor(darkTheme: Boolean = isSystemDark()): Color =
+    if (darkTheme) PhoneShellBorderDark else PhoneShellBorderLight
+
+/** 摄像头挖孔（激活态） */
+@Composable
+fun phoneCameraHoleColor(active: Boolean, darkTheme: Boolean = isSystemDark()): Color =
+    if (active) {
+        if (darkTheme) PhoneCameraHoleDark else PhoneCameraHoleLight
+    } else {
+        if (darkTheme) PhoneCameraHoleIdleDark else PhoneCameraHoleLight
+    }
+
+/** 空状态图标色 */
+@Composable
+fun emptyStateIconColor(darkTheme: Boolean = isSystemDark()): Color =
+    if (darkTheme) EmptyStateIconDark else EmptyStateIconLight
+
+/** 空状态文字色 */
+@Composable
+fun emptyStateTextColor(darkTheme: Boolean = isSystemDark()): Color =
+    if (darkTheme) EmptyStateTextDark else EmptyStateTextLight
+
+/** 运行指示灯色 */
+@Composable
+fun runningIndicatorColor(darkTheme: Boolean = isSystemDark()): Color =
+    if (darkTheme) RunningIndicatorDark else RunningIndicatorLight

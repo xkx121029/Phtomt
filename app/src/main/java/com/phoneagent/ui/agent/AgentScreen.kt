@@ -1,6 +1,14 @@
 package com.phoneagent.ui.agent
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
@@ -42,7 +52,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.model.AgentState
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.delay
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.phoneagent.screen.ScreenSharingService
+import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.theme.emptyStateIconColor
+import com.phoneagent.ui.theme.emptyStateTextColor
+import com.phoneagent.ui.theme.phoneCameraHoleColor
+import com.phoneagent.ui.theme.phoneShellBorderColor
+import com.phoneagent.ui.theme.phoneShellColor
+import com.phoneagent.ui.theme.runningIndicatorColor
 
 @Composable
 fun AgentScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -53,25 +85,31 @@ fun AgentScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val overlayGranted by vm.overlayGranted.collectAsState()
     val planPhase by vm.planPhase.collectAsState()
     val planStream by vm.planStream.collectAsState()
+    val settings by vm.settingsFlow.collectAsState()
     var task by rememberSaveable { mutableStateOf("") }
     val buzz = com.phoneagent.ui.components.rememberHapticClick()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
+            .verticalScroll(rememberScrollState()),
     ) {
-        Spacer(Modifier.height(24.dp))
-        Text("Agent", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            "描述任务，AI 将逐步接管手机执行",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        AppTopBar(
+            title = "Agent",
+            subtitle = "描述任务，AI 将逐步接管手机执行",
         )
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(8.dp))
         AgentRunCard(agent, vm)
+
+        Spacer(Modifier.height(12.dp))
+        AgentReviewToggle(
+            checked = settings.enableReview,
+            onToggle = { v ->
+                buzz()
+                vm.saveSettings(settings.copy(enableReview = v))
+            },
+        )
 
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(
@@ -79,7 +117,7 @@ fun AgentScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             onValueChange = { task = it },
             label = { Text("你想让 AI 完成什么？") },
             placeholder = { Text("例如：打开设置，把字体调大") },
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(AppRadii.Tile),
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 96.dp),
@@ -134,6 +172,33 @@ fun AgentScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     }
 }
 
+/** Agent 页的"审核AI"运行开关：独立审核者复核每个动作是否有页面证据 */
+@Composable
+private fun AgentReviewToggle(checked: Boolean, onToggle: (Boolean) -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("审核AI", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "每个动作由独立审核者复核是否有页面证据，防止点到不存在的控件",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = checked, onCheckedChange = onToggle)
+        }
+    }
+}
+
 @Composable
 private fun rememberTranslated(text: String, vm: MainViewModel): String {
     var translated by remember(text) { mutableStateOf<String?>(null) }
@@ -166,7 +231,22 @@ private fun PlanPanel(
 ) {
     var manualAnswer by rememberSaveable { mutableStateOf("") }
     val pBuzz = com.phoneagent.ui.components.rememberHapticClick()
-    when (phase) {
+    val reduceMotion = motionSettings().reduceMotion
+    // 规划阶段切换动画：淡入 + 轻微纵向位移（减少动画时仅淡入）
+    AnimatedContent(
+        targetState = phase,
+        transitionSpec = {
+            if (reduceMotion) {
+                fadeIn(tween(DurationFast, easing = EaseOut)) togetherWith fadeOut(tween(DurationFast, easing = EaseOut))
+            } else {
+                val dy = 14
+                (fadeIn(tween(DurationFast, easing = EaseOut)) + slideInVertically(tween(DurationFast, easing = EaseOut)) { it / dy }) togetherWith
+                    (fadeOut(tween(DurationFast, easing = EaseOut)) + slideOutVertically(tween(DurationFast, easing = EaseOut)) { -it / dy })
+            }
+        },
+        label = "plan-phase",
+    ) { p ->
+        when (p) {
         is com.phoneagent.agent.PlanPhase.Planning -> {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(18.dp)) {
@@ -193,15 +273,15 @@ private fun PlanPanel(
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("需要向你确认", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
                     Spacer(Modifier.height(8.dp))
-                    val q = rememberTranslated(phase.clarification.question, vm)
+                    val q = rememberTranslated(p.clarification.question, vm)
                     Text(q, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onTertiaryContainer)
                     Spacer(Modifier.height(12.dp))
-                    phase.clarification.options.forEach { opt ->
+                    p.clarification.options.forEach { opt ->
                         val optLabel = rememberTranslated(opt.label, vm)
                         val optDesc = rememberTranslated(opt.description, vm)
                         Surface(
                             onClick = { vm.answerClarification(opt) },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(AppRadii.Tile),
                             color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         ) {
@@ -240,9 +320,9 @@ private fun PlanPanel(
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("执行计划", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
-                    Text("预计 ${phase.plan.estimatedTimeSeconds}s · 置信度 ${(phase.plan.confidence * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("预计 ${p.plan.estimatedTimeSeconds}s · 置信度 ${(p.plan.confidence * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(12.dp))
-                    phase.plan.steps.forEachIndexed { i, s ->
+                    p.plan.steps.forEachIndexed { i, s ->
                         Row(modifier = Modifier.padding(vertical = 4.dp)) {
                             Text("${i + 1}.", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
@@ -278,12 +358,13 @@ private fun PlanPanel(
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("规划失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                     Spacer(Modifier.height(6.dp))
-                    val errMsg = rememberTranslated(phase.message, vm)
+                    val errMsg = rememberTranslated(p.message, vm)
                     Text(errMsg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
         }
         is com.phoneagent.agent.PlanPhase.Idle -> {}
+        }
     }
 }
 
@@ -405,6 +486,91 @@ private fun AgentRunCard(state: AgentState, vm: MainViewModel) {
                 msg.ifBlank { "等待任务下发…" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // 内置手机场景：任务运行时实时展示 AI 正在操作的画面，供用户观看
+            PhonePreviewArea(active = state.isRunning)
+        }
+    }
+}
+
+@Composable
+private fun PhonePreviewArea(active: Boolean) {
+    if (!active) return
+    var frame by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(active) {
+        while (true) {
+            runCatching { ScreenSharingService.instance?.previewFrame() }
+                .getOrNull()?.let { frame = it }
+            delay(500)
+        }
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(AppRadii.Chip))
+                    .background(if (active) runningIndicatorColor() else emptyStateIconColor())
+            )
+            Text(
+                if (active) "AI 实时操作预览" else "手机场景预览",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        // 内置手机外壳 + 实时画面
+        val shellShape = RoundedCornerShape(AppRadii.Overlay)
+        Box(
+            modifier = Modifier
+                .widthIn(max = 200.dp)
+                .aspectRatio(9f / 16f)
+                .clip(shellShape)
+                .background(phoneShellColor())
+                .border(2.dp, phoneShellBorderColor(), shellShape),
+        ) {
+            val shot = frame
+            if (shot != null && !shot.isRecycled) {
+                Image(
+                    bitmap = shot.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(7.dp)
+                        .clip(RoundedCornerShape(AppRadii.Bubble)),
+                )
+            } else {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Text(
+                        "暂无画面",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = emptyStateTextColor(),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "开启屏幕共享授权后\n可实时观看 AI 操作",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = emptyStateTextColor(),
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                }
+            }
+            // 顶部摄像头点缀（手机特征）
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+                    .size(6.dp)
+                    .clip(RoundedCornerShape(AppRadii.Chip))
+                    .background(phoneCameraHoleColor(active = frame != null))
             )
         }
     }
