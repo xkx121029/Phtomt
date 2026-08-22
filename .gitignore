@@ -17,6 +17,7 @@ captures/
 *.ipr
 .vscode/
 .trae/
+.kotlin/
 .DS_Store
 
 # Keystore

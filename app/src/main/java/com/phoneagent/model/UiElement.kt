@@ -38,6 +38,8 @@ data class UiElement(
     val editable: Boolean = false,
     /** View id 资源名（如 "button_send"） */
     val viewId: String? = null,
+    /** 端侧本地标定的语义 id（如 "dlg_allow"、"search_box"），供 AI 直接按 target.id 选择 */
+    val semanticId: String? = null,
     /** 所属应用包名 */
     val packageName: String? = null,
     val isEnabled: Boolean = true,

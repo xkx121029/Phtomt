@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
-enum class SettingsPage { HOME, AI_MODELS, AGENT, AD_SKIP, VISUAL }
+enum class SettingsPage { HOME, AI_MODELS, AGENT, AD_SKIP, VISUAL, LONG_RUN }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -83,6 +83,7 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
             SettingsPage.AD_SKIP -> SettingsAdSkip(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
             SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
+            SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = { page = SettingsPage.HOME })
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SmartToy
@@ -81,6 +82,16 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
                 subtitle = "屏幕边缘光效标定",
                 summary = if (st.edgeLightingEnabled) "已开启" else "已关闭",
                 onClick = { onOpen(SettingsPage.VISUAL) },
+            )
+            GroupDivider()
+            SettingsEntry(
+                icon = Icons.Filled.Search,
+                iconTint = MaterialTheme.colorScheme.primary,
+                iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                title = "长线任务",
+                subtitle = "执行策略 / 断点续传 / 任务模板",
+                summary = "任务管理",
+                onClick = { onOpen(SettingsPage.LONG_RUN) },
             )
         }
         Spacer(Modifier.height(28.dp))

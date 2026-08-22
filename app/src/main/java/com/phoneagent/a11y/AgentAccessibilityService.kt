@@ -205,6 +205,14 @@ class AgentAccessibilityService : AccessibilityService() {
         settingsJob?.cancel()
         scope.cancel()
         instance = null
+        // 主动反馈（v2.2.1 八）：无障碍服务被系统杀掉时，提示用户重新开启
+        runCatching {
+            com.phoneagent.debug.ActiveNotifier.notify(
+                applicationContext, com.phoneagent.debug.ActiveNotifier.ID_A11Y_KILLED,
+                "无障碍服务已断开",
+                "AI 控制手机的通道被系统关闭了，请重新开启无障碍服务以继续自动操作。",
+            )
+        }
         super.onDestroy()
     }
 

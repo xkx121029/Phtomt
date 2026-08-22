@@ -57,7 +57,7 @@ class AiClient(
             "target": {
               "type": "object",
               "properties": {
-                "method": { "type": "string", "enum": ["id","label","coordinate"] },
+                "method": { "type": "string", "enum": ["id","label","hint","coordinate"] },
                 "value": { "type": "string" }
               },
               "required": ["method","value"],

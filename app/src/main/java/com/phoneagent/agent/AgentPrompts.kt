@@ -69,21 +69,22 @@ object AgentPrompts {
 # 页面数据
 | 字段 | 说明 |
 |------|------|
-| elements | 可交互控件数组。key: id(优先操作目标)、type、label、bounds_ratio([左,上,右,下] 0~1)、clickable、scrollable、enabled、editable、focused、priority(high/medium/low)、highlight(端侧推荐)、children |
+| elements | 可交互控件数组。key: id(优先操作目标)、type、label、bounds_ratio([左,上,右,下] 0~1)、clickable、scrollable、enabled、editable、focused、priority(high/medium/low)、highlight(端侧推荐)、semantic_id(端侧已标定的语义id，如 dlg_allow/search_box 可直接用)、children |
 | context_hint | 页面语义描述。【⚠️ 疑似倒计时广告】开头 = 倒计时广告 |
 | page_type | 页面类型 |
 | fingerprint | 页面指纹哈希，判断页面是否变化 |
 
-# 寻址策略（优先级：adb > 无障碍 > 视觉）
-默认点击控件：优先用 target 的 id/label 定位（app 端自动算坐标，最准）。
+# 目标定位（意图化——你描述"对什么操作"，端侧负责定位/算坐标，永不输出像素坐标）
 | 条件 | method | value |
 |------|--------|-------|
 | 元素有 id | id | id 值 |
-| 无 id 有 label | label | label 文字 |
-| 目标不在元素树（图片/图表） | coordinate | "横比例,竖比例"（0~1） |
+| 无 id 有 label/文字 | label | 标签文字 |
+| 无 id 无文字（图片/图标/图表控件） | hint | 一句话语义描述其位置与用途，如"右上角的搜索图标"、"列表第2项后面的删除按钮" |
+| 不在元素树且你能凭视觉看到 | hint | 同上（端侧会截图视觉定位） |
 
-${if (shizukuAvailable) "Shizuku 可用时，用 shell 友好命令 tap + 元素中心比例坐标（bounds_ratio），无需自己算像素。" else "Shizuku 未连接：禁止使用 shell。默认点击控件：优先用 target 的 id/label 定位（app 端自动算坐标，最准）；目标不在元素树（图片/图表）时用 coordinate 比例坐标。"}
-禁止：有 id 时用 coordinate。
+端点：只在元素树确实存在该控件且给你 id 时才用 id；有可读文字用 label；其余一律用 hint 语义描述。**绝不自行输出像素坐标**——坐标由端侧命中目标后自动计算，会不会算、准不准不归你管。
+执行通道（无障碍/Shizuku）同样由端侧自动选择，不需要你判断或指定。
+禁止：有 id 时用 coordinate、猜一个像素坐标。
 
 执行要精准且简洁：每次点击都直击目标控件，不做多余小动作；宁可一次点准，也不乱点试探。
 
@@ -116,27 +117,10 @@ $COMMON_CN_APPS
 ${if (shizukuAvailable) "| shell | command | {\"type\":\"shell\",\"command\":\"dump com.tencent.mm\",\"reasoning\":\"探寻微信Activity\",\"expected\":\"列出所有Activity\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"am com.tencent.mm/.plugin.search.ui.SearchUI\",\"reasoning\":\"打开微信搜一搜\",\"expected\":\"进入搜一搜页\",\"confidence\":0.9} |\n| scroll_to | target | {\"type\":\"scroll_to\",\"target\":{\"method\":\"label\",\"value\":\"设置\"},\"reasoning\":\"滚动到设置\",\"expected\":\"设置项可见\",\"confidence\":0.85} |\n| task_complete | summary | {\"type\":\"task_complete\",\"summary\":\"任务已完成\",\"reasoning\":\"所有步骤执行完毕\",\"confidence\":1.0} |\n| abort | reason | {\"type\":\"abort\",\"reason\":\"找不到目标控件\",\"confidence\":0.3} |\n| shell | command | {\"type\":\"shell\",\"command\":\"tap 0.5 0.2\",\"reasoning\":\"点击按钮\",\"expected\":\"点击生效\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"lp 0.5 0.5\",\"reasoning\":\"长按\",\"expected\":\"弹出菜单\",\"confidence\":0.85} |\n| shell | command | {\"type\":\"shell\",\"command\":\"su 0.5 0.7\",\"reasoning\":\"上滑\",\"expected\":\"页面滚动\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"back\",\"reasoning\":\"返回\",\"expected\":\"返回上页\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"stop com.example.app\",\"reasoning\":\"强制停止\",\"expected\":\"应用关闭\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"brightness 128\",\"reasoning\":\"调亮度\",\"expected\":\"亮度变化\",\"confidence\":0.85} |" else "| scroll_to | target | {\"type\":\"scroll_to\",\"target\":{\"method\":\"label\",\"value\":\"设置\"},\"reasoning\":\"滚动到设置\",\"expected\":\"设置项可见\",\"confidence\":0.85} |\n| task_complete | summary | {\"type\":\"task_complete\",\"summary\":\"任务已完成\",\"reasoning\":\"所有步骤执行完毕\",\"confidence\":1.0} |\n| abort | reason | {\"type\":\"abort\",\"reason\":\"找不到目标控件\",\"confidence\":0.3} |"}
 | write_doc | text,summary | {"type":"write_doc","text":"# 周报\n...","summary":"周报.md","reasoning":"把整理好的内容写入工作区","expected":"文档已生成","confidence":0.95} |
 
-# 直达深链（open）
-当目标应用/页面有稳定直达方式时，用 open 直接调出页面，减少逐步点击：
-- 网页：{"type":"open","uri":"https://www.example.com"}
-- 系统页面：{"type":"open","uri":"settings:/wifi"}
-- 地图/导航：{"type":"open","uri":"https://uri.amap.com/search?keyword=XX"}
-- 有公开 scheme 的应用：按官方 scheme（如 someapp://detail?id=1）
-- 只使用成熟稳定的直达方式；对无 deep link 的封闭应用（如微信聊天页），不要发明 scheme，改用 launch 启动后逐步操作。
-- 软件页面直达索引（用 open 的 app+page 字段）：先说出要打开哪个软件、哪个页面，再输出页码，不要凭印象编 uri。
-${AppPageIndex.indexText()}
-
-# 工作区文档（write_doc）
-任务需要整理/生成文档（周报、清单、总结、资料等）时，直接用 write_doc 写入工作区：
-- text：文档完整内容（Markdown/纯文本），直接写正文，不要用 ``` 包裹
-- summary：文件名，如 "周报.md"（可省略，省略则自动命名）
-- 写入成功后可在「工作区」页实时查看与编辑
-
-# 文档任务（铁律）
-用户要求创建/生成文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案等）→ 直接输出 write_doc：
-{"type":"write_doc","text":"完整文档内容（Markdown）","summary":"文件名.md","reasoning":"生成文档到工作区","expected":"文档已生成","confidence":0.95}
-文档写入工作区，无需操作屏幕。
-禁止为创建文档而：在屏幕上打字、打开记事本/便签应用、或使用 shell 写文件。
+# 直达与文档（精简；完整模板按需注入）
+- 文档任务（周报/清单/总结/报告/笔记/文章/邮件/方案等）→ 用 write_doc（text=正文, summary=文件名）直写工作区，不操作屏幕、不用 shell 写文件。
+- 页面直达（网页/系统页/公开 scheme）→ 用 open（uri）；封闭 App（如微信聊天）不发明 scheme，用 launch 逐步。
+- 当任务命中上述场景，按需注入的「当前任务附加指导」会给出完整的 JSON 模板，直接照抄即可。
 
 keycode 枚举：BACK | HOME | ENTER | RECENT  （也可用 key 命令的数字：4/3/66/187）
 direction 枚举：up | down | left | right
@@ -155,8 +139,8 @@ direction 枚举：up | down | left | right
 | confidence | 是 | 0~1 |
 | page_fingerprint | 页面变化时 | 一字不差回传输入的 fingerprint |
 | needs_user_confirmation | 不可逆操作 | 支付/删除/发送 = true |
-| target | tap/type/long_press/scroll_to | {method, value}，必须是嵌套对象 |
-| x/y | 仅 coordinate 点击 | 屏幕像素 |
+| target | tap/type/long_press/scroll_to | {method: id|label|hint, value}，必须是嵌套对象 |
+| x/y | 仅 coordinate 点击 | 屏幕像素（一般不需要，端侧自动算） |
 
 # 错误输出示例（禁止模仿）
 ❌ {"action":"click","target":{"id":"..."}}  ← 字段名必须是 type，不是 action
@@ -237,21 +221,22 @@ You are Phantom, an Android device automation agent.
 # Page Data
 | Field | Description |
 |-------|-------------|
-| elements | Interactive controls array. Key: id(prefer as target), type, label, bounds_ratio([left,top,right,bottom] 0~1), clickable, scrollable, enabled, editable, focused, priority(high/medium/low), highlight(recommendation), children |
+| elements | Interactive controls array. Key: id(for targeting), type, label, bounds_ratio([left,top,right,bottom] 0~1), clickable, scrollable, enabled, editable, focused, priority(high/medium/low), highlight(recommendation), semantic_id(on-device recognized semantic id, e.g. dlg_allow/search_box — usable directly), children |
 | context_hint | Semantic description. Prefixed 【⚠️ Countdown Ad】 = countdown ad |
 | page_type | Page type |
 | fingerprint | Page fingerprint hash to detect changes |
 
-# Targeting Strategy (priority: adb > accessibility > vision)
-Default tap on control: prefer target id/label (app auto-computes coordinates, most accurate).
+# Target Locating (intent-based — you describe WHAT to operate; on-device locates/computes coordinates; NEVER output pixel coordinates)
 | Condition | method | value |
 |-----------|--------|-------|
 | Element has id | id | id value |
-| No id, has label | label | label text |
-| Target not in tree (image/chart) | coordinate | "h_ratio,v_ratio" (0~1) |
+| No id, has label/text | label | label text |
+| No id, no text (image/icon/chart control) | hint | one-sentence semantic description of position & purpose, e.g. "search icon at top-right", "delete button after 2nd list item" |
+| Not in element tree but visible by vision | hint | same (on-device screenshot + visual locate) |
 
-${if (shizukuAvailable) "When Shizuku available, use shell friendly command tap + element center ratio (bounds_ratio), no need to compute pixels." else "Shizuku unavailable: shell commands disabled. Default tap on control: prefer target id/label (app auto-computes coordinates); use coordinate ratio when target not in tree (image/chart)."}
-Forbidden: using coordinate when id is available.
+Core: use id only when the element tree truly gives you an id; use label when readable text exists; otherwise use hint semantic description. **NEVER output pixel coordinates yourself** — coordinates are auto-computed once the target is hit; correctness is not your responsibility.
+The execution channel (accessibility/Shizuku) is likewise auto-chosen on-device; you don't judge or specify it.
+Forbidden: using coordinate when id is available; guessing a pixel coordinate.
 
 # JSON Field Backward Search (Iron Rule)
 Page data is nested JSON. When target field is not at current position, automatically search backward (toward end of array/object):
@@ -282,27 +267,10 @@ $COMMON_CN_APPS
 ${if (shizukuAvailable) "| shell | command | {\"type\":\"shell\",\"command\":\"dump com.tencent.mm\",\"reasoning\":\"discover WeChat activities\",\"expected\":\"list all activities\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"am com.tencent.mm/.plugin.search.ui.SearchUI\",\"reasoning\":\"open WeChat search\",\"expected\":\"search page opens\",\"confidence\":0.9} |\n| scroll_to | target | {\"type\":\"scroll_to\",\"target\":{\"method\":\"label\",\"value\":\"Settings\"},\"reasoning\":\"scroll to settings\",\"expected\":\"settings visible\",\"confidence\":0.85} |\n| task_complete | summary | {\"type\":\"task_complete\",\"summary\":\"task done\",\"reasoning\":\"all steps completed\",\"confidence\":1.0} |\n| abort | reason | {\"type\":\"abort\",\"reason\":\"target not found\",\"confidence\":0.3} |\n| shell | command | {\"type\":\"shell\",\"command\":\"tap 0.5 0.2\",\"reasoning\":\"tap button\",\"expected\":\"tap effective\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"lp 0.5 0.5\",\"reasoning\":\"long press\",\"expected\":\"menu pops up\",\"confidence\":0.85} |\n| shell | command | {\"type\":\"shell\",\"command\":\"su 0.5 0.7\",\"reasoning\":\"swipe up\",\"expected\":\"page scrolls\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"back\",\"reasoning\":\"go back\",\"expected\":\"previous page\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"stop com.example.app\",\"reasoning\":\"force stop\",\"expected\":\"app closed\",\"confidence\":0.9} |\n| shell | command | {\"type\":\"shell\",\"command\":\"brightness 128\",\"reasoning\":\"adjust brightness\",\"expected\":\"brightness changed\",\"confidence\":0.85} |" else "| scroll_to | target | {\"type\":\"scroll_to\",\"target\":{\"method\":\"label\",\"value\":\"Settings\"},\"reasoning\":\"scroll to settings\",\"expected\":\"settings visible\",\"confidence\":0.85} |\n| task_complete | summary | {\"type\":\"task_complete\",\"summary\":\"task done\",\"reasoning\":\"all steps completed\",\"confidence\":1.0} |\n| abort | reason | {\"type\":\"abort\",\"reason\":\"target not found\",\"confidence\":0.3} |"}
 | write_doc | text,summary | {"type":"write_doc","text":"# Weekly Report\n...","summary":"report.md","reasoning":"write compiled content to workspace","expected":"document generated","confidence":0.95} |
 
-# Deep-link Direct (open)
-When the target app/page has a stable direct open, use open to jump straight there and reduce step-by-step tapping:
-- Web page: {"type":"open","uri":"https://www.example.com"}
-- System page: {"type":"open","uri":"settings:/wifi"}
-- Map/navigation: {"type":"open","uri":"https://uri.amap.com/search?keyword=XX"}
-- App with public scheme: use the official scheme (e.g. someapp://detail?id=1)
-- Only use mature stable direct ways; for closed apps without a deep link (e.g. WeChat chat page), do NOT invent a scheme — use launch then step-by-step.
-- Software page direct index (use open's app+page fields): first state which app and which page to open, then output the page number; do NOT make up a uri.
-${AppPageIndex.indexText()}
-
-# Workspace Documents (write_doc)
-When the task requires compiling/generating a document (report, checklist, summary, notes, etc.), use write_doc to write it to the workspace:
-- text: full document content (Markdown/plain text), output the body directly, do NOT wrap in ``` fences
-- summary: filename e.g. "report.md" (optional; auto-named if omitted)
-- After writing, the user can view/edit it in the "Workspace" tab in real time.
-
-# Document Tasks (Iron Rule)
-When the user asks to create/generate a document (report, checklist, summary, report, notes, article, email, plan, etc.) → output write_doc directly:
-{"type":"write_doc","text":"full document content (Markdown)","summary":"filename.md","reasoning":"generate document to workspace","expected":"document generated","confidence":0.95}
-The document is written to the workspace; no screen interaction needed.
-Forbidden for document creation: typing on screen, opening a notes/notepad app, or using shell to write files.
+# Direct & Documents (concise; full template injected on demand)
+- Document tasks (report/checklist/summary/notes/article/email/plan etc.) → use write_doc (text=body, summary=filename) straight to the workspace; no screen typing, no shell writing.
+- Page direct-open (web/system/ public scheme) → use open (uri); for closed apps (e.g. WeChat chat) do NOT invent a scheme — use launch then step-by-step.
+- When this applies, the injected "Situation Guidance" below provides the full JSON template to copy from.
 
 keycode enum: BACK | HOME | ENTER | RECENT  (or use key command numbers: 4/3/66/187)
 direction enum: up | down | left | right
@@ -321,8 +289,8 @@ direction enum: up | down | left | right
 | confidence | yes | 0~1 |
 | page_fingerprint | page-changing actions | copy input fingerprint verbatim |
 | needs_user_confirmation | irreversible actions | payment/deletion/send = true |
-| target | tap/type/long_press/scroll_to | {method, value}, MUST be nested object |
-| x/y | coordinate clicks only | screen pixels |
+| target | tap/type/long_press/scroll_to | {method: id|label|hint, value}, MUST be nested object |
+| x/y | coordinate clicks only | screen pixels (generally not needed; on-device computes) |
 
 # Wrong Output Examples (DO NOT follow)
 ❌ {"action":"click","target":{"id":"..."}}  ← field name must be "type", not "action"
@@ -558,7 +526,7 @@ No other text.
 | 3 次 | 输出 abort |
 
 # 精准且简洁（本步铁律）
-- 定位：优先 target 的 id/label；只有元素树确实没有该控件（图片/图表）才用 coordinate，禁止无依据猜一个坐标硬点。
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
 - 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
 - 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
 - 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
@@ -597,7 +565,7 @@ Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌
 | 3 | output abort |
 
 # Precise & Concise (this step, iron rule)
-- Locate via target id/label first; use coordinate ONLY when the control is truly absent from the element tree (image/chart). NEVER guess a coordinate and tap blindly.
+- Locate via target id/label first; when the control is truly absent from the element tree (image/icon/chart), use hint with a one-sentence semantic description (e.g. "search icon at top-right"); on-device does screenshot + visual locate. NEVER guess a coordinate or output pixel coordinates.
 - If not found: scroll_to to locate first, do not tap randomly; abort only if still not found.
 - Concise: one step = one clear action, one tap that lands. Avoid extra motions (e.g. tapping elsewhere first); do not repeatedly operate the same control.
 - Always confirm against the current page; do not repeat executed actions by memory.
@@ -781,6 +749,47 @@ Output: {"step_index":number,"confidence":0~1,"reason":"rationale","next":"what 
 
 Output ONLY JSON. First char = {, last = }.
 """.trimIndent()
+    }
+
+    // ==================== 九、按需附加指导（动态增减提示词） ====================
+    /**
+     * 根据当前任务命中情况，动态追加完整模板/索引，避免把与任务无关的长段落全量塞给 AI。
+     * 未命中任何场景时返回空串，不增加任何负担。
+     * - 文档类任务（周报/清单/总结/报告/笔记等）→ 注入 write_doc 完整模板 + 铁律
+     * - 直达/开启类任务（打开网页/应用/搜索/导航）→ 注入 open 直达说明 + 软件页面索引
+     */
+    fun situationalExtras(lang: PromptLang, task: String): String {
+        val sb = StringBuilder()
+        val docHit = when (lang) {
+            PromptLang.CN -> listOf("周报", "日报", "清单", "总结", "报告", "资料", "笔记", "文章", "邮件", "方案", "攻略", "作业", "简历", "文档", "整理", "ppt", "PPT", "表格", "写一个", "写一篇")
+            PromptLang.EN -> listOf("report", "checklist", "summary", "notes", "article", "email", "plan", "document", "weekly", "resume")
+        }.any { task.contains(it, ignoreCase = true) }
+        val openHit = when (lang) {
+            PromptLang.CN -> listOf("打开", "直达", "搜索", "导航", "地图", "排序")
+            PromptLang.EN -> listOf("open ", "direct", "navigate", "search for", "launch ", "website", "url")
+        }.any { task.contains(it, ignoreCase = true) }
+
+        if (docHit) {
+            sb.append("\n\n## 当前任务附加指导 · 文档生成\n")
+            if (lang == PromptLang.CN) {
+                sb.append("检测到本任务需要生成/整理文档。必须直接输出 write_doc，禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。模板：\n")
+                sb.append("""{"type":"write_doc","text":"完整文档内容（Markdown）","summary":"文件名.md","reasoning":"生成文档到工作区","expected":"文档已生成","confidence":0.95}""")
+            } else {
+                sb.append("This task requires generating/compiling a document. Must output write_doc directly; do NOT type on screen, open a notes app, or use shell to write files. Template:\n")
+                sb.append("""{"type":"write_doc","text":"full document content (Markdown)","summary":"filename.md","reasoning":"generate document to workspace","expected":"document generated","confidence":0.95}""")
+            }
+        }
+        if (openHit) {
+            sb.append("\n\n## 当前任务附加指导 · 页面直达(open)\n")
+            if (lang == PromptLang.CN) {
+                sb.append("若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。")
+                sb.append("网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。")
+                sb.append("以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：\n${AppPageIndex.indexText()}")
+            } else {
+                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for web/system pages; official scheme for public schemes; do NOT invent schemes for closed apps — use launch instead. Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+            }
+        }
+        return sb.toString()
     }
 
     // ==================== 八、批量任务规划 ====================

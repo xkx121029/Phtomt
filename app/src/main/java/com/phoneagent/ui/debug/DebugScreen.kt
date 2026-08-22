@@ -1,14 +1,18 @@
 package com.phoneagent.ui.debug
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,6 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Insights
@@ -50,9 +55,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.model.AgentLog
 import com.phoneagent.model.AgentMetrics
 import com.phoneagent.model.ConversationMessage
+import com.phoneagent.debug.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.AppRadii
@@ -74,6 +85,7 @@ import kotlinx.coroutines.launch
 
 private enum class DebugTab(val label: String) {
     STEPS("任务"),
+    TIMELINE("时间线"),
     METRICS("指标"),
     CHAT("对话"),
     LOGS("日志"),
@@ -87,9 +99,15 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val logs by vm.logs.collectAsState()
     val history by vm.executionHistory.collectAsState()
     val traces by vm.traces.collectAsState()
+    val permissions by vm.permissions.collectAsState()
     var tab by remember { mutableStateOf(DebugTab.STEPS) }
+    /** 人话 / 原始 展示模式（v2.2.1）：人话模式在步骤卡顶部显示翻译摘要；原始模式显示完整技术数据 */
+    var humanMode by remember { mutableStateOf(true) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // 进入调试页时刷新能力/权限状态，保证「能力状态条」准确
+    LaunchedEffect(Unit) { runCatching { vm.refreshPermissions(context) } }
 
     // 用外挂视觉对本次任务所有截图画框的结果（step → 框选图）
     var annotatedMap by remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
@@ -126,6 +144,11 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             subtitle = "按任务的每步决策 · 发送/返回 · Token · 视觉与截图",
             trailingContent = {
                 IconButton(onClick = {
+                    android.widget.Toast.makeText(context, vm.exportDiagnosticReport(context), android.widget.Toast.LENGTH_LONG).show()
+                }) {
+                    Icon(Icons.Rounded.Description, contentDescription = "导出诊断报告(人话+原始)", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = {
                     android.widget.Toast.makeText(context, vm.exportLogsJsonAll(context), android.widget.Toast.LENGTH_LONG).show()
                 }) {
                     Icon(Icons.Rounded.FileDownload, contentDescription = "导出JSON(分任务)", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -136,6 +159,8 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             },
         )
 
+        Spacer(Modifier.height(8.dp))
+        CapabilityStrip(permissions)
         Spacer(Modifier.height(8.dp))
         StepShotPanel(vm.stepShot.collectAsState().value)
         // 用外挂视觉对本次任务所有截图画框
@@ -165,11 +190,30 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
         Spacer(Modifier.height(12.dp))
+        // 人话 / 原始 双语展示切换（v2.2.1）
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf(true to "人话", false to "原始").forEach { (human, label) ->
+                FilterChip(
+                    selected = humanMode == human,
+                    onClick = { humanMode = human },
+                    label = {
+                        Text("$label${if (human) "（每步一句）" else "（完整数据）"}")
+                    },
+                    leadingIcon = if (human) null else {
+                        {
+                            Icon(Icons.Rounded.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         SegmentedTabs(selected = tab, onSelect = { tab = it })
 
         Spacer(Modifier.height(16.dp))
         when (tab) {
-            DebugTab.STEPS -> StepsPanel(traces, annotatedMap)
+            DebugTab.STEPS -> StepsPanel(traces, annotatedMap, humanMode)
+            DebugTab.TIMELINE -> TimelinePanel(traces, logs)
             DebugTab.METRICS -> MetricsPanel(metrics)
             DebugTab.CHAT -> ChatPanel(conversation)
             DebugTab.LOGS -> LogPanel(logs)
@@ -221,54 +265,118 @@ private fun StepShotPanel(shot: com.phoneagent.model.StepShot) {
         shape = RoundedCornerShape(AppRadii.Item),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Row(modifier = Modifier.padding(14.dp)) {
-            if (shot.screenshot != null || shot.annotatedScreenshot != null) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("原截图", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    shot.screenshot?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = "原截图",
-                            modifier = Modifier
-                                .width(112.dp)
-                                .heightIn(max = 220.dp)
-                                .clip(RoundedCornerShape(AppRadii.Chip)),
-                        )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("识别截图", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    shot.annotatedScreenshot?.let {
-                        Image(
-                            bitmap = it.asImageBitmap(),
-                            contentDescription = "识别截图",
-                            modifier = Modifier
-                                .width(112.dp)
-                                .heightIn(max = 220.dp)
-                                .clip(RoundedCornerShape(AppRadii.Chip)),
-                        )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("最新一步", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                "最新一步 · 步骤 ${shot.step}${if (shot.verified) " · 已确认 ✅" else " · 待确认"}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (shot.screenshot != null && shot.annotatedScreenshot != null) {
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    "步骤 ${shot.step}${if (shot.verified) " · 已确认" else " · 待确认"}",
-                    style = MaterialTheme.typography.labelMedium,
+                    "← 原图 / 识别图 →（左右拖动对比）",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    shot.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                Spacer(Modifier.height(4.dp))
+                DragCompare(shot.screenshot!!, shot.annotatedScreenshot!!)
+            } else if (shot.screenshot != null) {
+                Spacer(Modifier.height(8.dp))
+                Image(
+                    bitmap = shot.screenshot!!.asImageBitmap(),
+                    contentDescription = "原截图",
+                    modifier = Modifier
+                        .width(160.dp)
+                        .heightIn(max = 240.dp)
+                        .clip(RoundedCornerShape(AppRadii.Chip)),
                 )
             }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                shot.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+/** 能力状态条（v2.2.1 面板一）：无障碍/悬浮窗/截屏/自启动/Shizuku 一键灰度查看 */
+@Composable
+private fun CapabilityStrip(permissions: List<com.phoneagent.model.PermissionItem>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        permissions.forEach { p ->
+            val ok = p.granted
+            Surface(
+                shape = RoundedCornerShape(AppRadii.Chip),
+                color = if (ok) Success.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+                modifier = Modifier.weight(1f),
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 7.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        p.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (ok) Success else MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.Bitmap) {
+    var frac by remember { mutableStateOf(0.5f) }
+    val aspect = if (bmpA.height > 0) bmpA.width.toFloat() / bmpA.height.toFloat() else 1f
+    val imgA = bmpA.asImageBitmap()
+    val imgB = bmpB.asImageBitmap()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspect)
+            .clip(RoundedCornerShape(AppRadii.Item))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, dragAmount ->
+                    change.consume()
+                    val w = this.size.width.toFloat()
+                    if (w > 0) frac = (frac + dragAmount / w).coerceIn(0f, 1f)
+                }
+            },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = size.width.toInt()
+            val h = size.height.toInt()
+            val cutW = (frac * w).toInt().coerceAtLeast(1)
+            // 左区：bmpA 左侧 frac 区域（保持原图比例，不拉伸）
+            drawImage(
+                image = imgA,
+                srcOffset = IntOffset(0, 0),
+                srcSize = IntSize((imgA.width * frac).toInt().coerceAtLeast(1), imgA.height),
+                dstOffset = IntOffset(0, 0),
+                dstSize = IntSize(cutW, h),
+            )
+            // 右区：bmpB 右侧 1-frac 区域
+            val srcLeft = (imgB.width * frac).toInt().coerceIn(0, (imgB.width - 1).coerceAtLeast(0))
+            drawImage(
+                image = imgB,
+                srcOffset = IntOffset(srcLeft, 0),
+                srcSize = IntSize((imgB.width - srcLeft).coerceAtLeast(1), imgB.height),
+                dstOffset = IntOffset(cutW, 0),
+                dstSize = IntSize((w - cutW).coerceAtLeast(1), h),
+            )
+            val cut = frac * size.width
+            drawLine(Color.White, Offset(cut, 0f), Offset(cut, size.height), strokeWidth = 3f)
+            drawCircle(Color.White, radius = 10f, center = Offset(cut, size.height / 2f))
         }
     }
 }
@@ -599,6 +707,7 @@ private fun EmptyHint(text: String) {
 private fun StepsPanel(
     traces: List<com.phoneagent.model.StepTrace>,
     annotatedMap: Map<Int, android.graphics.Bitmap>,
+    humanMode: Boolean,
 ) {
     if (traces.isEmpty()) {
         EmptyHint("暂无任务步骤：运行智能体后，每个决策步骤都会记录在这里")
@@ -611,7 +720,7 @@ private fun StepsPanel(
             val name = list.first().taskName ?: "任务 #$tid"
             item(key = "hdr$tid") { TaskHeader(name, list.size) }
             items(list, key = { "$tid:${it.step}" }) { tr ->
-                StepTraceCard(tr, annotatedMap[tr.step])
+                StepTraceCard(tr, annotatedMap[tr.step], humanMode)
             }
         }
     }
@@ -630,7 +739,7 @@ private fun TaskHeader(name: String, count: Int) {
 
 /** 单个决策步骤的详细卡：截图/发送/返回/Token/延迟/视觉模型/思考/AI图片描述 */
 @Composable
-private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android.graphics.Bitmap?) {
+private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android.graphics.Bitmap?, humanMode: Boolean) {
     var expanded by remember { mutableStateOf(false) }
     val img = annotated ?: tr.screenshot
     val visionColor = when (tr.visionSource) {
@@ -639,6 +748,9 @@ private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android
         "本地OCR" -> Warning
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // 人话摘要 + 置信度（v2.2.1 双语展示）
+    val humanSummary = remember(tr.receivedText) { HumanTranslator.summarizeDecision(tr.receivedText) }
+    val confidence = remember(tr.receivedText) { HumanTranslator.extractConfidence(tr.receivedText) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
@@ -654,6 +766,46 @@ private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android
                 Text(if (tr.thinking) "思考" else "未思考",
                     color = if (tr.thinking) Warning else MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium)
+            }
+            // 人话摘要区（默认展示；原始信息仍在下方折叠/展开可看）
+            if (humanMode && humanSummary.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "AI 决策：",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    humanSummary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium,
+                )
+                confidence?.let { c ->
+                    Spacer(Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(AppRadii.Chip))
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(c.toFloat())
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(AppRadii.Chip))
+                                .background(
+                                    when {
+                                        c >= 0.75 -> Success
+                                        c >= 0.6 -> Warning
+                                        else -> MaterialTheme.colorScheme.error
+                                    }
+                                ),
+                        )
+                    }
+                }
             }
             // 截图（框选后优先展示框选图）
             if (img != null) {
@@ -748,3 +900,147 @@ private fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagen
 
 private fun formatTime(t: Long): String =
     SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(t))
+
+// ========== 时间线：任务过程可视化（v2.2.1 第四章） ==========
+
+/** 任务时间线主视图：执行摘要 + 按任务的叙事步骤卡 */
+@Composable
+private fun TimelinePanel(
+    traces: List<com.phoneagent.model.StepTrace>,
+    logs: List<AgentLog>,
+) {
+    if (traces.isEmpty()) {
+        EmptyHint("暂无任务时间线：运行智能体后，这里会把每一步翻译成「看到→决定→做了→结果」")
+        return
+    }
+    val issueCount = logs.count { it.level == AgentLog.Level.ERROR || it.level == AgentLog.Level.WARN }
+    val lowConfSteps = traces.count {
+        (HumanTranslator.extractConfidence(it.receivedText) ?: 1.0) < 0.6
+    }
+    val totalLatency = traces.sumOf { it.latencyMs }
+    val groups = traces.groupBy { it.taskId }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item(key = "tls") { ExecutionSummaryCard(groups.size, traces.size, totalLatency, issueCount, lowConfSteps) }
+        groups.keys.sortedByDescending { it }.forEach { tid ->
+            val list = groups.getValue(tid).sortedBy { it.step }
+            val name = list.first().taskName ?: "任务 #$tid"
+            item(key = "tlhdr$tid") { TaskHeader(name, list.size) }
+            items(list, key = { "tl$tid:${it.step}" }) { tr ->
+                TimelineNarrativeCard(tr, logs.filter { it.taskId == tid })
+            }
+        }
+    }
+}
+
+/** 执行摘要卡片（v2.2.1 4.7）：任务完成后的一页概览 */
+@Composable
+private fun ExecutionSummaryCard(taskCount: Int, stepCount: Int, totalLatencyMs: Long, issueCount: Int, lowConfSteps: Int) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AppRadii.Item),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("📊 本次执行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text("· 共 $taskCount 个任务 · $stepCount 步 · 合计 ${totalLatencyMs}ms", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("· 遇到问题 $issueCount 处 · 低把握步 $lowConfSteps 步", style = MaterialTheme.typography.bodyMedium,
+                color = if (issueCount > 0 || lowConfSteps > 0) Warning else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 单步叙事卡：看到 → 决定 → 在做(第一人称) → 结果（四段式） */
+@Composable
+private fun TimelineNarrativeCard(tr: com.phoneagent.model.StepTrace, taskLogs: List<AgentLog>) {
+    var expanded by remember { mutableStateOf(false) }
+    val human = remember(tr.receivedText) { HumanTranslator.summarizeDecision(tr.receivedText) }
+    val seen = remember(tr.sentText) { HumanTranslator.extractSeen(tr.sentText) }
+    val thinking = remember(tr.receivedText) { HumanTranslator.extractReasoning(tr.receivedText) }
+    val conf = remember(tr.receivedText) { HumanTranslator.extractConfidence(tr.receivedText) }
+    val issues = taskLogs
+        .filter { it.level == AgentLog.Level.ERROR || it.level == AgentLog.Level.WARN }
+        .mapNotNull { HumanTranslator.translateError(it.message).takeIf { x -> x.isNotEmpty() && x != it.message } ?: it.message }
+        .distinct()
+        .take(2)
+    val lowConf = conf != null && conf < 0.6
+    val borderColor = when {
+        lowConf -> Warning
+        issues.isNotEmpty() -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AppRadii.Item),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // 头部：第 N 步 · 视觉 · 思考 · 耗时
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("第 ${tr.step} 步", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text("${tr.latencyMs}ms · ${tr.totalTokens}token", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tr.thinking) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("思考", color = Warning, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            if (lowConf) {
+                Spacer(Modifier.height(6.dp))
+                Text("⚠️ 这一步 AI 把握较低，可能容易出错", style = MaterialTheme.typography.labelMedium, color = Warning)
+            }
+            Spacer(Modifier.height(10.dp))
+            NarrativeRow("AI 看到了", seen)
+            if (human.isNotBlank()) NarrativeRow("AI 决定", human, accent = MaterialTheme.colorScheme.primary)
+            if (!thinking.isNullOrBlank()) NarrativeRow("💭 AI 在想", "「$thinking」", accent = MaterialTheme.colorScheme.tertiary)
+            if (issues.isNotEmpty()) {
+                NarrativeRow("遇到的麻烦", issues.joinToString("；"), accent = MaterialTheme.colorScheme.error)
+            } else {
+                NarrativeRow("结果", "已执行（详情见「任务」页原始数据）", accent = Success)
+            }
+            conf?.let { c ->
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(c.toFloat())
+                            .height(5.dp)
+                            .clip(RoundedCornerShape(AppRadii.Chip))
+                            .background(if (c >= 0.75) Success else if (c >= 0.6) Warning else MaterialTheme.colorScheme.error),
+                    )
+                }
+            }
+            // 展开原始信息
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("原始信息", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp).clickable { expanded = !expanded },
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                Text(tr.receivedText, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NarrativeRow(label: String, text: String, accent: Color = MaterialTheme.colorScheme.onSurface) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Text("$label：", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.widthIn(max = 90.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = accent, modifier = Modifier.weight(1f))
+    }
+}

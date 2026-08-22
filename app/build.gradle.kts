@@ -93,7 +93,7 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    implementation(libs.mlkit.text.chinese)
+    // 本地 OCR 已迁移至外挂视觉 Agent，主程序不再依赖 ML Kit（减少 APK 体积）
 
     debugImplementation(libs.androidx.ui.tooling)
 }

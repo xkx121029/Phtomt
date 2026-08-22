@@ -56,6 +56,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -82,11 +83,39 @@ class AgentEngine(
     private var job: Job? = null
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
-    /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
-    private val VISION_FALLBACK_THRESHOLD = 3
+    companion object {
+        /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
+        private const val VISION_FALLBACK_THRESHOLD = 3
 
-    /** 外挂视觉 Agent 单次识别的超时（ms）：端侧 3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
-    private val EXTERNAL_VISION_TIMEOUT = 20_000L
+        /** 外挂视觉 Agent 单次识别的超时（ms）：端侧 3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
+        private const val EXTERNAL_VISION_TIMEOUT = 20_000L
+
+        /** 决策链路最多保留的近期对话轮次（每轮 user+assistant 各算一条）。超过则截断早期历史，
+         *  让长线任务上下文长度保持恒定，避免历史无限累积拖慢/带偏 AI */
+        private const val MAX_DIALOG_TURNS = 6
+
+        /** 长线工作记忆保留的最近成功步骤条数（文档 v2.2 5.2 建议最近 3 步） */
+        private const val MAX_PROGRESS_NOTES = 3
+
+        /** 单步云端决策看门狗（文档 v2.2 5.5）：超过则视为云端卡住，本步改为等待、下一轮重试，避免长线任务卡死 */
+        private const val WATCHDOG_DECIDE_MS = 45_000L
+
+        /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
+        private const val MAX_LOGS = 800
+
+        /** 阶段切分粒度：每 [STAGE_SIZE] 步为一个阶段（文档 v2.2 5.1） */
+        private const val STAGE_SIZE = 6
+
+        /** 歧义检测 + 规划 */
+        const val PLANNING_TEMPERATURE = 0.3
+        /** 每步决策（正常） */
+        const val DECISION_TEMPERATURE = 0.1
+        /** 失败 3 次后重规划 */
+        const val REPLAN_TEMPERATURE = 0.5
+
+        /** 用户点「已手动处理」时发出的语义信号 */
+        const val SELF_DISMISS_HINT = "[[自处理]]已手动处理完成，请继续观察当前页面并重新决策下一步"
+    }
 
     private val cloudAgent = CloudAgent(aiClient)
     private val localDecision = LocalDecisionEngine()
@@ -123,6 +152,8 @@ class AgentEngine(
     val planStream: StateFlow<String> get() = _planStream.asStateFlow()
     private var pendingTask = ""
     private var activePlan: TaskPlan? = null
+    /** 若当前计划来自模板复用，记录其 id（用于健康状态回写） */
+    private var reusedTemplateId: String? = null
     private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** 当前任务 ID（每次 run 开始时生成，用于分任务日志/导出） */
@@ -135,6 +166,26 @@ class AgentEngine(
     private var currentTaskName: String? = null
     /** 连续拒绝 AI 提前"任务完成"的次数，防死循环 */
     private var earlyDoneRejections = 0
+
+    // ---- 长线任务工作记忆（v2.2 5.2）：已完成步骤的轻量摘要 ----
+    /** 最近成功步骤的摘要（保持数量恒定，随新步骤滚动） */
+    private val progressNotes = ArrayDeque<String>()
+    /** 已完成（已验证生效）的步骤总数 */
+    private var completedSteps = 0
+    /** 本次计划的预计总步数（无计划则为 0，表示未知） */
+    private var totalPlannedSteps = 0
+
+    // ---- 主动反馈状态（v2.2.1 八）----
+    /** 最近一次"步骤生效"的时间戳，用于检测长时间无进展 */
+    private var lastProgressAt = 0L
+    /** 5 分钟无进展提醒是否已发（每个任务一次） */
+    private var noProgressNotified = false
+    /** 连续由端侧决策的次数，用于"疑似死循环"检测 */
+    private var localDecisionStreak = 0
+    /** 死循环提醒是否已发（每个任务一次） */
+    private var localLoopNotified = false
+    /** 长时间无进展判定阈值 */
+    private val NO_PROGRESS_MS = 5L * 60L * 1000L
 
     /** 若文本为中文则原样返回；否则调用 AI 翻译成简体中文（带缓存） */
     suspend fun translateText(text: String): String {
@@ -177,19 +228,6 @@ class AgentEngine(
     private var consecutiveFailures = 0
     /** 最近一次 shell 命令输出（查询类命令回传给 AI 上下文） */
     private var lastShellOutput: String = ""
-
-    // 温度 v0.1 文档：按场景固定，不开放给用户自选
-    private companion object {
-        /** 歧义检测 + 规划 */
-        const val PLANNING_TEMPERATURE = 0.3
-        /** 每步决策（正常） */
-        const val DECISION_TEMPERATURE = 0.1
-        /** 失败 3 次后重规划 */
-        const val REPLAN_TEMPERATURE = 0.5
-
-        /** 用户点「已手动处理」时发出的语义信号：不退出任务，Agent 重新观察并继续 */
-        const val SELF_DISMISS_HINT = "[[自处理]]已手动处理完成，请继续观察当前页面并重新决策下一步"
-    }
 
     /** 若已授予悬浮窗权限则启动悬浮窗（App 在后台时 startForegroundService 可能受限，需兜底防崩溃） */
     private fun maybeStartFloating() {
@@ -247,7 +285,8 @@ class AgentEngine(
     }
 
     private fun log(level: AgentLog.Level, message: String, detail: String? = null) {
-        _logs.value = _logs.value + AgentLog(
+        // 环形缓冲（v2.2.1 LogCollector）：仅保留最近 [MAX_LOGS] 条，防长线任务内存无限增长
+        val next = _logs.value + AgentLog(
             timestamp = System.currentTimeMillis(),
             level = level,
             message = message,
@@ -255,6 +294,7 @@ class AgentEngine(
             taskId = currentTaskId,
             taskName = currentTaskName,
         )
+        _logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
     }
 
     /** 记录完整 API 请求/响应（用于调试页日志，可展开查看全文） */
@@ -311,6 +351,22 @@ class AgentEngine(
         _planPhase.value = PlanPhase.Planning
         log(AgentLog.Level.INFO, "开始规划任务：$task")
         scope.launch {
+            // 模板命中（v2.2 6.5）：目标相似且健康 → 直接复用历史脚本，零云端规划调用
+            val tmpl = runCatching { com.phoneagent.task.TaskStore.matchTemplate(appContext, task) }.getOrNull()
+            if (tmpl != null && tmpl.plan.steps.isNotEmpty()) {
+                activePlan = tmpl.plan
+                reusedTemplateId = tmpl.id
+                _planStream.value = "【模板复用】已匹配历史模板「${tmpl.goal}」，脚本 ${tmpl.plan.steps.size} 步，免规划"
+                runCatching { com.phoneagent.task.TaskStore.bumpExecution(appContext, tmpl.id) }
+                _planPhase.value = PlanPhase.AwaitingApproval(tmpl.plan)
+                val summary = tmpl.plan.steps.joinToString("\n") {
+                    "${it.description}" + if (it.intent.isNotBlank()) " → ${it.intent}" else ""
+                }.take(300)
+                pushFloating("等待批准", "OBSERVING")
+                showFloatingInteraction("approve", "执行计划（模板复用）", summary)
+                log(AgentLog.Level.INFO, "模板命中，免规划：${tmpl.goal}")
+                return@launch
+            }
             try {
                 val content = cloudPlanStream(task, null) { delta -> _planStream.value += delta }
                 _planPhase.value = parsePlanResponse(content)
@@ -569,6 +625,44 @@ class AgentEngine(
         return null
     }
 
+    /** 查询最近一次任务的检查点（供中断后展示/续传） */
+    suspend fun lastCheckpoint(): com.phoneagent.task.Checkpoint? =
+        runCatching { com.phoneagent.task.TaskStore.loadCheckpoint(appContext) }.getOrNull()
+
+    /**
+     * 断点续传（v2.2 5.3）：用最近一次检查点保存的任务与计划，重新启动该任务。
+     * 由于计划步骤为原子动作且具备幂等保护，重复执行副作用操作会被跳过，安全可复用。
+     */
+    fun resumeFromCheckpoint() {
+        scope.launch {
+            val ck = runCatching { com.phoneagent.task.TaskStore.loadCheckpoint(appContext) }.getOrNull()
+                ?: return@launch
+            val plan = ck.planJson
+                ?.let { runCatching { json.decodeFromString(com.phoneagent.model.TaskPlan.serializer(), it) }.getOrNull() }
+                ?: return@launch
+            if (plan.steps.isEmpty()) return@launch
+            pendingTask = ck.task
+            activePlan = plan
+            log(AgentLog.Level.INFO, "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步）")
+            com.phoneagent.debug.ActiveNotifier.notify(
+                appContext, com.phoneagent.debug.ActiveNotifier.ID_CHECKPOINT,
+                "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步。",
+            )
+            if (job?.isActive != true) {
+                job = scope.launch { run(ck.task, plan) }
+            }
+        }
+    }
+
+    /** 设置执行策略（v2.2 7，热切换一路生效） */
+    suspend fun setExecutionStrategy(s: com.phoneagent.task.ExecutionStrategy) {
+        runCatching { com.phoneagent.task.TaskStore.setStrategy(appContext, s) }
+    }
+
+    suspend fun currentStrategy(): com.phoneagent.task.ExecutionStrategy =
+        runCatching { com.phoneagent.task.TaskStore.getStrategy(appContext) }
+            .getOrDefault(com.phoneagent.task.ExecutionStrategy.AUTO)
+
     fun stop() {
         job?.cancel()
         job = null
@@ -607,7 +701,21 @@ class AgentEngine(
         // 每次任务开始生成独立任务 ID，用于分任务日志查看与导出
         currentTaskId = System.currentTimeMillis()
         currentTaskName = task.take(60)
+        // 新任务重置长线工作记忆
+        progressNotes.clear()
+        completedSteps = 0
+        totalPlannedSteps = plan?.steps?.size ?: 0
+        reusedTemplateId = null
+        // 重置主动反馈状态
+        lastProgressAt = System.currentTimeMillis()
+        noProgressNotified = false
+        localDecisionStreak = 0
+        localLoopNotified = false
+        // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
+        val strategy = runCatching { com.phoneagent.task.TaskStore.getStrategy(appContext) }
+            .getOrDefault(com.phoneagent.task.ExecutionStrategy.AUTO)
         log(AgentLog.Level.INFO, "任务开始：$task")
+        log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
@@ -767,6 +875,31 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             }
 
             if (action == null) { log(AgentLog.Level.ERROR, "决策为空，停止"); stop(); return }
+            // 端侧连续多次决策 → 疑似死循环，主动反馈一次（v2.2.1 八）
+            if (fromLocal) {
+                localDecisionStreak++
+                if (localDecisionStreak >= 5 && !localLoopNotified) {
+                    localLoopNotified = true
+                    log(AgentLog.Level.WARN, "连续 ${localDecisionStreak} 次端侧决策，可能死循环")
+                    com.phoneagent.debug.ActiveNotifier.notify(
+                        appContext, com.phoneagent.debug.ActiveNotifier.ID_LOCAL_LOOP,
+                        "任务可能卡住了", "AI 已在同一页面反复做出相同判断，正准备强制调整路线，避免原地打转。",
+                    )
+                }
+            } else {
+                localDecisionStreak = 0
+            }
+            // 长时间无进展 → 主动反馈一次（v2.2.1 八）
+            if (completedSteps > 0 && !noProgressNotified &&
+                System.currentTimeMillis() - lastProgressAt > NO_PROGRESS_MS
+            ) {
+                noProgressNotified = true
+                log(AgentLog.Level.WARN, "任务长时间无进展，提醒用户")
+                com.phoneagent.debug.ActiveNotifier.notify(
+                    appContext, com.phoneagent.debug.ActiveNotifier.ID_NO_PROGRESS,
+                    "AI 长时间没动静", "任务似乎卡住了，已延长检查时间；若仍未进展可用「已手动处理」接管。",
+                )
+            }
             // 规范化文档动作词汇（task_complete/abort → task_done 等）
             action = action.copy(type = ActionType.ALIAS[action.type] ?: action.type)
             addConversation(if (fromLocal) "local" else "assistant", action.toString())
@@ -800,6 +933,9 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 recordStep(step, action, "verified_success", "", "")
                 _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action.summary ?: "任务完成", isRunning = false)
                 AgentAccessibilityService.agentRunning = false
+                // 任务完成后的收尾：模板自动学习 + 检查点清空
+                runCatching { learnTemplate(task) }
+                runCatching { com.phoneagent.task.TaskStore.clearCheckpoint(appContext) }
                 // 任务完成后：悬浮窗清空内容显示打勾动效，不关闭
                 FloatingWindowService.showDone(action.summary ?: "任务完成")
                 return
@@ -822,6 +958,15 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 verified = v2.success
             }
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
+            // 步骤验证生效 → 记入长线工作记忆，供后续压缩历史后仍能感知进度
+            if (verified) recordProgress(step, action)
+            // 检查点持久化（v2.2 5.3）：每成功一步保存进度，中断后可查询/续传
+            if (verified) runCatching {
+                com.phoneagent.task.TaskStore.saveCheckpoint(
+                    appContext, currentTaskName ?: task, activePlan,
+                    completedSteps, totalPlannedSteps, currentTaskId,
+                )
+            }
             // 连续失败 ≥3 次才请求用户介入，避免单次动作失败频繁打断
             if (!verified && consecutiveFailures >= 3) {
                 recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint)
@@ -884,7 +1029,35 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = "达到最大步数限制")
         log(AgentLog.Level.WARN, "达到最大步数限制，自动停止")
         pushFloating("达到最大步数限制", "ERROR")
+        // 复用模板执行失败：回写健康状态，连续 3 次失效时主动反馈（v2.2.1 八）
+        reusedTemplateId?.let { tid ->
+            runCatching {
+                val t = com.phoneagent.task.TaskStore.loadTemplates(appContext).firstOrNull { it.id == tid }
+                com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, tid, success = false)
+                if ((t?.failedStreak ?: 0) + 1 >= 3) {
+                    com.phoneagent.debug.ActiveNotifier.notify(
+                        appContext, com.phoneagent.debug.ActiveNotifier.ID_TEMPLATE_FAILED,
+                        "任务模板已失效", "这个任务的脚本连续失败多次，自动改走云端重新规划，建议手动检查一下。",
+                    )
+                }
+            }
+        }
         stop()
+    }
+
+    /**
+     * 构造送往 AI 决策的消息列表，做长线任务的历史压缩：
+     * - 系统消息（role="system"）全部保留（铁律/技能/通道说明，数量少且关键）
+     * - 非系统对话只保留最近 [MAX_DIALOG_TURNS] 轮，早期轮次丢弃
+     * - 追加当前轮的 user 消息
+     * 每轮 user 消息已自带"第几步 + 上一步结果 + 当前页面 + 端侧已识别控件"，AI 无需完整旧历史即可决策当前位置，
+     * 因此截断能显著降低长线任务的 token 成本与理解压力，且不丢失关键上下文。
+     */
+    private fun chatHistory(messages: List<ChatMessageDto>, currentUserMsg: ChatMessageDto): List<ChatMessageDto> {
+        val system = messages.filter { it.role == "system" }
+        val dialog = messages.filter { it.role != "system" }
+        val recent = dialog.takeLast(MAX_DIALOG_TURNS * 2)
+        return system + recent + currentUserMsg
     }
 
     private suspend fun cloudDecide(
@@ -931,7 +1104,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 if (controls.isNotEmpty()) {
                     externalUsed = true
                     localRegions = controls
-                    desc = com.phoneagent.vision.LocalUiDetector.describe(controls)
+                    desc = com.phoneagent.vision.ControlFormat.describe(controls)
                 } else {
                     log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
                 }
@@ -947,16 +1120,25 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                     task = task,
                 ).getOrNull()
             }
-            // 3) LOCAL，或 AUTO 云端失败/未配置 → 本地 UI 控件识别兜底
-            if (desc.isNullOrBlank() && (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")) {
-                log(AgentLog.Level.INFO, "本地UI控件识别…")
-                localRegions = com.phoneagent.vision.LocalUiDetector.detect(
-                    screenshot = screenshot,
-                    elements = snapshot.elements,
-                    screenW = snapshot.screenWidth,
-                    screenH = snapshot.screenHeight,
+            // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
+            //    主程序不再内置 OCR，本地读图统一由外挂视觉 Agent 承担（v2.2 迁移）
+            if (desc.isNullOrBlank() && !externalUsed &&
+                (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
+            ) {
+                log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
+                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+                    context = appContext,
+                    bitmap = screenshot,
+                    timeoutMs = EXTERNAL_VISION_TIMEOUT,
                 )
-                desc = com.phoneagent.vision.LocalUiDetector.describe(localRegions)
+                if (controls.isNotEmpty()) {
+                    externalUsed = true
+                    localRegions = controls
+                    desc = com.phoneagent.vision.ControlFormat.describe(controls)
+                } else {
+                    log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
+                    desc = "（未识别到控件）"
+                }
             }
             if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
         }
@@ -969,7 +1151,10 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             lastStepResult = lastStepResultText(),
             consecutiveFailures = consecutiveFailures,
             contextHint = annotated.contextHint,
-        ) + planNote + "\n\n## 当前页面\n$pageText"
+        ) + planNote + "\n\n## 当前页面\n$pageText" +
+            com.phoneagent.perception.PageAnnotator.knownControlsText(annotated.elements) +
+            AgentPrompts.situationalExtras(currentLang, task) +
+            progressSummaryText()
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
         addConversation("user", userText, hasImage = screenshot != null)
 
@@ -980,16 +1165,29 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         val startNano = System.nanoTime()
         // 主模型不收截图（只收视觉描述后的文本），避免不支持图片的模型报错；
         // 流式生成，边生成边把返回内容实时显示到悬浮窗 + 通知
-        val result = aiClient.chatForAction(
-            baseUrl = settingsVal.apiBaseUrl,
-            apiKey = settingsVal.apiKey,
-            model = settingsVal.model,
-            messages = messages + userMsg,
-            screenshot = null,
-            // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
-            temperature = decisionTemperature(),
-            onDelta = { pushThinking(delta = it) },
-        )
+        // 看门狗：单步决策超时则本步改为等待、下一轮重试，避免长线任务因云端卡住而无限阻塞
+        val result: Result<com.phoneagent.ai.AiDecision>? = withTimeoutOrNull(WATCHDOG_DECIDE_MS) {
+            aiClient.chatForAction(
+                baseUrl = settingsVal.apiBaseUrl,
+                apiKey = settingsVal.apiKey,
+                model = settingsVal.model,
+                // 长线任务历史压缩：只带系统消息 + 最近几轮 + 当前轮，避免上下文无限累积
+                messages = chatHistory(messages, userMsg),
+                screenshot = null,
+                // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
+                temperature = decisionTemperature(),
+                onDelta = { pushThinking(delta = it) },
+            )
+        }
+        if (result == null) {
+            log(AgentLog.Level.WARN, "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死")
+            pushFloating("AI 决策超时，将自动重试", "THINKING")
+            com.phoneagent.debug.ActiveNotifier.notify(
+                appContext, com.phoneagent.debug.ActiveNotifier.ID_CLOUD_TIMEOUT,
+                "AI 卡顿了一下", "云端暂时联系不上，已自动改为稍后重试，任务不会被中断。",
+            )
+            return AgentAction(type = "wait", timeoutMs = 1200, reason = "AI 决策超时，等待后重试")
+        }
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
         val decision = result.getOrElse { err ->
             log(AgentLog.Level.ERROR, "AI 调用失败：${err.message}")
@@ -1004,14 +1202,14 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             val targetText = action.target?.value
             if (!targetText.isNullOrBlank()) {
                 val pos: Pair<Float, Float>? = when {
-                    // 外挂视觉优先：端侧 3B 定位不准时退回本地 OCR 的控件匹配
+                    // 外挂视觉优先：端侧 3B 定位不准时退回已识别控件的本地匹配
                     externalUsed -> {
                         log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
                         com.phoneagent.vision.ExternalVisionProvider.locate(
                             appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
-                        ) ?: com.phoneagent.vision.LocalUiDetector.locate(localRegions!!, targetText)
+                        ) ?: com.phoneagent.vision.ControlFormat.locate(localRegions!!, targetText)
                     }
-                    localRegions != null -> com.phoneagent.vision.LocalUiDetector.locate(localRegions, targetText)
+                    localRegions != null -> com.phoneagent.vision.ControlFormat.locate(localRegions, targetText)
                     cloudVision -> {
                         log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
                         aiClient.visionLocate(
@@ -1186,6 +1384,28 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
     private fun decisionTemperature(): Double =
         if (consecutiveFailures >= 3) REPLAN_TEMPERATURE else DECISION_TEMPERATURE
 
+    /**
+     * 判断动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等）。
+     * 依据动作类型 + 目标 label/理由 中的触发词。
+     */
+    private fun isFinalSubmit(action: AgentAction, type: String): Boolean {
+        if (type != ActionType.TAP && type != ActionType.CLICK &&
+            type != ActionType.LONG_PRESS && type != ActionType.LONG_CLICK &&
+            type != ActionType.TYPE_TEXT && type != ActionType.SHELL) return false
+        val target = action.target?.value ?: action.reason ?: action.reasoning
+            ?: action.text ?: action.command ?: ""
+        return listOf("发送", "提交", "下单", "立即支付", "去支付", "确认支付", "发布", "删除", "移除", "确认", "完成下单")
+            .any { target.contains(it, ignoreCase = true) }
+    }
+
+    /** 幂等判定：当前页面是否已出现"完成成功"证据（避免重复执行副作用后再次触发） */
+    private fun idempotencyDone(snapshot: ScreenSnapshot): Boolean {
+        val text = snapshot.toAiText()
+        if (text.isBlank()) return false
+        return listOf("发送成功", "提交成功", "下单成功", "支付成功", "发布成功", "删除成功", "办理成功", "操作成功", "交易成功", "已提交", "已完成")
+            .any { text.contains(it) }
+    }
+
     private suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.execution.VerifyResult {
         // 规范化文档动作词汇
         val type = ActionType.ALIAS[action.type] ?: action.type
@@ -1198,6 +1418,11 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         // SHELL 动作优先独立处理：Shizuku 可用时无需无障碍服务即可执行
         if (type == ActionType.SHELL) {
             return executeShellAction(action)
+        }
+
+        // 幂等保护（v2.2 5.4）：副作用意图（提交/发送/下单/支付/删除）已由页面证明完成 → 跳过，防重复副作用与误触
+        if (isFinalSubmit(action, type) && idempotencyDone(snapshot)) {
+            return com.phoneagent.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "")
         }
 
         val service = AgentAccessibilityService.instance ?: return com.phoneagent.execution.VerifyResult(false, "无障碍服务不可用", "", "")
@@ -1411,7 +1636,8 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 label.contains(t.value, ignoreCase = true)
             }
             "id" -> snapshot.elements.firstOrNull {
-                (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
+                it.semanticId == t.value ||
+                    (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
             }
             else -> null
         }
@@ -1527,14 +1753,13 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         val shot = ScreenSharingService.instance?.captureFrame()
         var annotated: Bitmap? = null
         if (shot != null) {
-            // 本地 UI 控件识别：框选控件并推断用途（融合元素树 + OCR），独立于视觉模式
-            val controls = com.phoneagent.vision.LocalUiDetector.detect(
-                screenshot = shot,
-                elements = snapshot.elements,
-                screenW = snapshot.screenWidth,
-                screenH = snapshot.screenHeight,
+            // 端侧控件识别已外移到外挂视觉 Agent；这里跨进程调用并画框（v2.2.1 截图标注）
+            val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+                context = appContext,
+                bitmap = shot,
+                timeoutMs = EXTERNAL_VISION_TIMEOUT,
             )
-            if (controls.isNotEmpty()) annotated = com.phoneagent.vision.LocalUiDetector.annotate(shot, controls)
+            if (controls.isNotEmpty()) annotated = com.phoneagent.vision.ControlFormat.drawBoxes(shot, controls)
         }
         _stepShot.value = StepShot(
             step = step,
@@ -1553,6 +1778,55 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             append(if (verified) "✅ 已生效" else "⚠️ 待确认")
             append(" · ${actionLabel(action.type)}")
             reason?.let { append("\n$it") }
+        }
+    }
+
+    /** 每步执行成功后，把该步摘要写入长线工作记忆（保持最近 [MAX_PROGRESS_NOTES] 条） */
+    private fun recordProgress(step: Int, action: AgentAction) {
+        completedSteps++
+        lastProgressAt = System.currentTimeMillis()
+        noProgressNotified = false
+        val label = actionLabel(action.type)
+        val reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason?.takeIf { it.isNotBlank() }
+        val note = if (reason != null) "第${step}步: $label（$reason）" else "第${step}步: $label"
+        if (progressNotes.size >= MAX_PROGRESS_NOTES) progressNotes.removeFirst()
+        progressNotes.addLast(note)
+    }
+
+    /** 渲染长线工作记忆摘要，注入每轮决策上下文（v2.2 5.2 固定部分：进度摘要） */
+    private fun progressSummaryText(): String {
+        if (completedSteps == 0) return ""
+        val total = if (totalPlannedSteps > 0) "/$totalPlannedSteps" else ""
+        val recent = progressNotes.joinToString("；")
+        // 阶段视图（v2.2 5.1）：按每 STAGE_SIZE 步一位阶段
+        val stage = if (totalPlannedSteps > 0) {
+            val totalStages = (totalPlannedSteps + STAGE_SIZE - 1) / STAGE_SIZE
+            val cur = ((completedSteps + STAGE_SIZE - 1) / STAGE_SIZE).coerceIn(1, totalStages)
+            " 阶段 $cur/$totalStages。"
+        } else ""
+        return "\n## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）\n已完成 ${completedSteps}${total} 步。${stage}最近操作：$recent"
+    }
+
+    /**
+     * 任务成功后自动学习模板（v2.2 6.3 auto 来源）：
+     * - 若当前计划来自模板复用 → 回写健康状态（失败归零）
+     * - 全新任务 → 把已成功的计划入库为模板，供下次零规划复用
+     */
+    private suspend fun learnTemplate(task: String) {
+        val plan = activePlan ?: return
+        if (plan.steps.isEmpty()) return
+        if (reusedTemplateId != null) {
+            com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, reusedTemplateId!!, success = true)
+        } else {
+            val id = "tpl_" + java.util.UUID.randomUUID().toString().take(8)
+            com.phoneagent.task.TaskStore.upsertTemplate(
+                appContext,
+                com.phoneagent.task.TaskTemplate(
+                    id = id, goal = task.take(120), plan = plan,
+                    executionCount = 1, successCount = 1, failedStreak = 0, enabled = true,
+                ),
+            )
+            log(AgentLog.Level.INFO, "已自动入库模板：$task")
         }
     }
 

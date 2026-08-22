@@ -308,6 +308,19 @@ class MainViewModel(
 
     fun stopAgent() = engine.stop()
 
+    // ---- 长线任务：执行策略 / 断点续传 / 模板库 ----
+    suspend fun currentStrategy(): com.phoneagent.task.ExecutionStrategy = engine.currentStrategy()
+    fun setExecutionStrategy(s: com.phoneagent.task.ExecutionStrategy) {
+        viewModelScope.launch { engine.setExecutionStrategy(s) }
+    }
+    fun resumeFromCheckpoint() = engine.resumeFromCheckpoint()
+    suspend fun lastCheckpoint(): com.phoneagent.task.Checkpoint? = engine.lastCheckpoint()
+    suspend fun loadTemplates(context: Context): List<com.phoneagent.task.TaskTemplate> =
+        runCatching { com.phoneagent.task.TaskStore.loadTemplates(context) }.getOrDefault(emptyList())
+    fun deleteTemplate(context: Context, id: String) {
+        viewModelScope.launch { runCatching { com.phoneagent.task.TaskStore.deleteTemplate(context, id) } }
+    }
+
     // ---- AI 标准化测试 ----
     val testConfig: StateFlow<TestConfig> = testEngine.config
     val testRunning: StateFlow<Boolean> = testEngine.running
@@ -483,6 +496,72 @@ class MainViewModel(
             "已批量导出 ${written.size} 个任务 JSON 到 下载/HappyPhoneAgent/"
         }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
     }
+
+    // ==================== 八、诊断报告（人话 + 原始 两区，v2.2.1） ====================
+    /** 导出诊断报告：人话摘要区 + 原始数据区，导出前自动脱敏。
+     *  @return 保存路径或错误信息（以 "ERR:" 开头） */
+    fun exportDiagnosticReport(context: Context): String {
+        return runCatching {
+            val sb = StringBuilder()
+            sb.appendLine("Happy Phone Agent 诊断报告")
+            sb.appendLine("导出时间：${formatNow()}")
+            sb.appendLine("═".repeat(48))
+
+            sb.appendLine("\n━━━ 一、人话摘要区（用户视角）━━━")
+            if (traces.value.isEmpty()) sb.appendLine("暂无已执行任务步骤。")
+            traces.value.groupBy { it.taskId }.forEach { (tid, list) ->
+                val sorted = list.sortedBy { it.step }
+                val name = sorted.first().taskName ?: "任务 #$tid"
+                sb.appendLine("\n■ 任务：$name（${sorted.size} 步）")
+                sorted.forEach { tr ->
+                    val human = com.phoneagent.debug.HumanTranslator.summarizeDecision(tr.receivedText)
+                    sb.appendLine("  · 第${tr.step}步 ${if (human.isNotBlank()) human else ""}${if (tr.visionModel.isNotBlank()) "（视觉:${tr.visionSource}）" else ""} · ${tr.latencyMs}ms · ${tr.totalTokens}token")
+                }
+            }
+            val issues = logs.value.filter { it.level == AgentLog.Level.ERROR || it.level == AgentLog.Level.WARN }
+            if (issues.isNotEmpty()) {
+                sb.appendLine("\n■ 遇到的问题（已翻译成人话）：")
+                issues.forEach { l ->
+                    val human = com.phoneagent.debug.HumanTranslator.translateError(l.message)
+                    sb.appendLine("  - ${human}")
+                }
+            }
+
+            sb.appendLine("\n\n━━━ 二、原始数据区（开发者视角，已脱敏）━━━")
+            sb.appendLine("\n-- 执行追踪 (Trace) --")
+            traces.value.groupBy { it.taskId }.forEach { (tid, list) ->
+                sb.appendLine("\n[任务 $tid] ${list.first().taskName ?: ""}")
+                list.sortedBy { it.step }.forEach { tr ->
+                    sb.appendLine("· 步骤 ${tr.step} | 视觉=${tr.visionSource}(${tr.visionModel}) | 思考=${tr.thinking} | token=${tr.totalTokens} | ${tr.latencyMs}ms")
+                    sb.appendLine("  SENT: ${com.phoneagent.security.DataSanitizer.sanitize(tr.sentText)}")
+                    sb.appendLine("  GOT:  ${com.phoneagent.security.DataSanitizer.sanitize(tr.receivedText)}")
+                }
+            }
+            sb.appendLine("\n-- 系统日志 (Logs，含 API) --")
+            logs.value.forEach { l ->
+                sb.appendLine("[${formatTs(l.timestamp)}][${l.level.name}] ${com.phoneagent.security.DataSanitizer.sanitize(l.message)}")
+                l.detail?.takeIf { it.isNotBlank() }?.let { sb.appendLine("    ${com.phoneagent.security.DataSanitizer.sanitize(it)}") }
+            }
+            sb.appendLine("\n-- 对话 (Conversation) --")
+            conversation.value.forEach { c -> sb.appendLine("[${c.role}] ${com.phoneagent.security.DataSanitizer.sanitize(c.content).take(500)}") }
+
+            val resolver = context.contentResolver
+            val fileName = "hpa_diagnostic_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
+            }
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return@runCatching "ERR:无法创建诊断文件"
+            resolver.openOutputStream(uri)?.use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
+                ?: return@runCatching "ERR:无法写入诊断文件"
+            "已导出诊断报告：下载/HappyPhoneAgent/$fileName"
+        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
+    }
+
+    private fun formatNow(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
 
     private fun levelTag(lvl: AgentLog.Level): String = when (lvl) {
         AgentLog.Level.ERROR -> "错误"
