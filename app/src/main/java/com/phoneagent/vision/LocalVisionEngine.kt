@@ -1,6 +1,10 @@
 package com.phoneagent.vision
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -81,6 +85,51 @@ object LocalVisionEngine {
             }
         }
     }
+
+    /**
+     * 在原截图上给每个识别区域绘制蓝色框选 + 顶部文字标签，生成"识别截图"。
+     * 供本地调试板块展示，辅助可视化 UI 元素框选（独立于视觉模式，始终可用）。
+     */
+    suspend fun annotate(screenshot: Bitmap, regions: List<TextRegion>): Bitmap =
+        withContext(Dispatchers.Default) {
+            val out = screenshot.copy(Bitmap.Config.ARGB_8888, true)
+            if (regions.isEmpty()) return@withContext out
+            val w = out.width
+            val h = out.height
+            val stroke = (w / 300).coerceIn(2, 6)
+            val accent = 0xFF3F9BFF.toInt()
+            val rectPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = accent
+                style = Paint.Style.STROKE
+                strokeWidth = stroke.toFloat()
+            }
+            val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = accent
+                style = Paint.Style.FILL
+            }
+            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                textSize = (w / 34f).coerceIn(12f, 26f)
+            }
+            val canvas = Canvas(out)
+            for (r in regions) {
+                val rect = RectF(
+                    r.bounds[0] * w,
+                    r.bounds[1] * h,
+                    r.bounds[2] * w,
+                    r.bounds[3] * h,
+                )
+                canvas.drawRect(rect, rectPaint)
+                // 顶部小标签：色块背景 + 白色文字（截断）
+                val label = r.text.take(12)
+                val tw = textPaint.measureText(label)
+                val lh = textPaint.textSize + stroke * 2f
+                val labelTop = (rect.top - lh).coerceAtLeast(0f)
+                canvas.drawRect(rect.left, labelTop, rect.left + tw + stroke * 4f, labelTop + lh, labelPaint)
+                canvas.drawText(label, rect.left + stroke * 2f, labelTop + textPaint.textSize + stroke, textPaint)
+            }
+            out
+        }
 
     /** 坐标格式化为 2 位小数 */
     private fun fmt(v: Float): String {

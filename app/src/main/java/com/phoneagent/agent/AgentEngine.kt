@@ -1,6 +1,7 @@
 package com.phoneagent.agent
 
 import android.accessibilityservice.AccessibilityService
+import android.graphics.Bitmap
 import com.phoneagent.a11y.ActionExecutor
 import com.phoneagent.a11y.AgentAccessibilityService
 import com.phoneagent.ai.AiClient
@@ -32,6 +33,7 @@ import com.phoneagent.model.ConversationMessage
 import com.phoneagent.model.PlanResponse
 import com.phoneagent.model.ScreenSnapshot
 import com.phoneagent.model.StepRecord
+import com.phoneagent.model.StepShot
 import com.phoneagent.model.TaskPlan
 import com.phoneagent.model.UiElement
 import com.phoneagent.network.CloudAgent
@@ -83,6 +85,9 @@ class AgentEngine(
     /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
     private val VISION_FALLBACK_THRESHOLD = 3
 
+    /** 外挂视觉 Agent 单次识别的超时（ms）：端侧 3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
+    private val EXTERNAL_VISION_TIMEOUT = 20_000L
+
     private val cloudAgent = CloudAgent(aiClient)
     private val localDecision = LocalDecisionEngine()
     private val memory = MemoryStore(appContext)
@@ -102,7 +107,13 @@ class AgentEngine(
     val metrics: StateFlow<AgentMetrics> get() = _metrics.asStateFlow()
 
     private val _executionHistory = MutableStateFlow<List<StepRecord>>(emptyList())
+    /** 当前任务最新一步的执行留档（截图+说明），新任务开始时清空 */
+    private val _stepShot = MutableStateFlow(StepShot())
     val executionHistory: StateFlow<List<StepRecord>> get() = _executionHistory.asStateFlow()
+    val stepShot: StateFlow<StepShot> get() = _stepShot.asStateFlow()
+    /** 每步 AI 决策的详细追踪（Debug「按任务分类」页面展示） */
+    private val _traces = MutableStateFlow<List<com.phoneagent.model.StepTrace>>(emptyList())
+    val traces: StateFlow<List<com.phoneagent.model.StepTrace>> get() = _traces.asStateFlow()
 
     // ---- 规划/澄清/批准流程 ----
     private val _planPhase = MutableStateFlow<PlanPhase>(PlanPhase.Idle)
@@ -270,11 +281,19 @@ class AgentEngine(
         _conversation.value = emptyList()
         _metrics.value = AgentMetrics()
         _executionHistory.value = emptyList()
+        _traces.value = emptyList()
     }
 
     /** 提交任务到队列并开始处理 */
     fun start(task: String) {
         if (task.isBlank()) return
+        // 预热：若启用外挂视觉，异步预加载端侧 3B 模型，避免首次决策阻塞在模型加载
+        scope.launch {
+            val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
+            if (ext) com.phoneagent.vision.ExternalVisionProvider.loadModel(appContext)
+        }
+        // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
+        _stepShot.value = StepShot()
         _taskQueue.value = _taskQueue.value + task
         log(AgentLog.Level.INFO, "任务已加入队列：$task")
         if (job?.isActive != true) {
@@ -553,6 +572,7 @@ class AgentEngine(
     fun stop() {
         job?.cancel()
         job = null
+        com.phoneagent.vision.ExternalVisionProvider.unbind(appContext)
         AgentAccessibilityService.agentRunning = false
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
         FloatingWindowService.stop(appContext)
@@ -830,6 +850,8 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
 
             log(AgentLog.Level.INFO, "执行动作：${action.type}（${if (verified) "已验证生效" else "待确认"}）")
             recordsIntoHistory(step, action, verify)
+            // 每步执行完：截图并写下执行说明，供本地调试板块展示（最新一步）
+            stepShotCapture(step, action, verified)
 
             // 记录上下文供多轮参考
             messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "执行了 ${action.type}" +
@@ -875,13 +897,32 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         val planNote = if (!planSteps.isNullOrBlank()) "\n\n## 已批准的执行计划\n$planSteps" else ""
         // 视觉链路：主模型不支持图片输入时，先用视觉模型描述截图，再让主模型基于文本决策。
         // visionMode: CLOUD=仅云端 | LOCAL=仅本地OCR | AUTO=优先云端、失败/未配置回退本地
+        // 外挂视觉（enableExternalVision）优先于云端/本地，仅在未启用或不可用时才走后续来源。
         val visionCfg = visionConfig(settingsVal)
         val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL"
-        var localRegions: List<com.phoneagent.vision.TextRegion>? = null
+        var localRegions: List<com.phoneagent.vision.DetectedControl>? = null
+        var externalUsed = false
         var pageText = safeText
-        if (screenshot != null && (cloudVision || settingsVal.visionMode == "LOCAL")) {
-            var desc: String? = null
-            if (cloudVision) {
+        var desc: String? = null
+        if (screenshot != null) {
+            // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）
+            if (settingsVal.enableExternalVision) {
+                log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
+                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+                    context = appContext,
+                    bitmap = screenshot,
+                    timeoutMs = EXTERNAL_VISION_TIMEOUT,
+                )
+                if (controls.isNotEmpty()) {
+                    externalUsed = true
+                    localRegions = controls
+                    desc = com.phoneagent.vision.LocalUiDetector.describe(controls)
+                } else {
+                    log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
+                }
+            }
+            // 2) 云端视觉
+            if (desc.isNullOrBlank() && cloudVision) {
                 log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
                 desc = aiClient.visionDescribe(
                     baseUrl = visionCfg?.baseUrl ?: "",
@@ -891,11 +932,16 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                     task = task,
                 ).getOrNull()
             }
-            // LOCAL，或 AUTO 云端失败/未配置 → 本地 OCR 兜底
+            // 3) LOCAL，或 AUTO 云端失败/未配置 → 本地 UI 控件识别兜底
             if (desc.isNullOrBlank() && (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")) {
-                log(AgentLog.Level.INFO, "本地OCR读图…")
-                localRegions = com.phoneagent.vision.LocalVisionEngine.analyze(screenshot)
-                desc = com.phoneagent.vision.LocalVisionEngine.toDescription(localRegions)
+                log(AgentLog.Level.INFO, "本地UI控件识别…")
+                localRegions = com.phoneagent.vision.LocalUiDetector.detect(
+                    screenshot = screenshot,
+                    elements = snapshot.elements,
+                    screenW = snapshot.screenWidth,
+                    screenH = snapshot.screenHeight,
+                )
+                desc = com.phoneagent.vision.LocalUiDetector.describe(localRegions)
             }
             if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
         }
@@ -938,12 +984,19 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
         recordMetrics(decision)
         var action = decision.action
-        // 视觉定位：根据 visionMode，用本地OCR或云端视觉模型给出点击比例坐标
-        if (screenshot != null && (cloudVision || localRegions != null)) {
+        // 视觉定位：根据视觉来源（外挂 > 本地OCR > 云端）给出点击比例坐标
+        if (screenshot != null && (cloudVision || localRegions != null || externalUsed)) {
             val targetText = action.target?.value
             if (!targetText.isNullOrBlank()) {
                 val pos: Pair<Float, Float>? = when {
-                    localRegions != null -> com.phoneagent.vision.LocalVisionEngine.locate(localRegions, targetText)
+                    // 外挂视觉优先：端侧 3B 定位不准时退回本地 OCR 的控件匹配
+                    externalUsed -> {
+                        log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
+                        com.phoneagent.vision.ExternalVisionProvider.locate(
+                            appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
+                        ) ?: com.phoneagent.vision.LocalUiDetector.locate(localRegions!!, targetText)
+                    }
+                    localRegions != null -> com.phoneagent.vision.LocalUiDetector.locate(localRegions, targetText)
                     cloudVision -> {
                         log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
                         aiClient.visionLocate(
@@ -961,6 +1014,29 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 }
             }
         }
+        // 记录本轮决策的详细追踪（Debug「按任务分类」展示）
+                val visionSrc = when {
+                    externalUsed -> "外挂3B"
+                    !desc.isNullOrBlank() && cloudVision -> "云端"
+                    !desc.isNullOrBlank() -> "本地OCR"
+                    else -> "无"
+                }
+                val visionModel = when {
+                    externalUsed -> "Qwen2.5-VL-3B (端侧)"
+                    visionSrc == "云端" -> visionCfg?.model ?: ""
+                    visionSrc == "本地OCR" -> "ML Kit 中文OCR"
+                    else -> ""
+                }
+                recordStepTrace(
+                    step = _state.value.stepCount,
+                    sent = userText,
+                    decision = decision,
+                    visionSource = visionSrc,
+                    visionModel = visionModel,
+                    visionDescription = desc.orEmpty(),
+                    screenshot = screenshot,
+                )
+
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
             action.type != ActionType.ABORT && needsReviewAction(action, snapshot)
         return if (reviewOn) {
@@ -1157,8 +1233,8 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             }
             ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot, action) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
-                if (x == null || y == null) com.phoneagent.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(snapshot, action) { executor.typeText(action.text ?: "", target).isSuccess() }
+                if ((x == null || y == null) && target == null) com.phoneagent.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
+                else verifier.executeAndVerify(snapshot, action) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> executeNoVerify(executor) { executor.launchApp(action.packageName ?: "").isSuccess() }
@@ -1387,6 +1463,33 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         )
     }
 
+    private fun recordStepTrace(
+        step: Int,
+        sent: String,
+        decision: com.phoneagent.ai.AiDecision,
+        visionSource: String,
+        visionModel: String,
+        visionDescription: String,
+        screenshot: android.graphics.Bitmap?,
+    ) {
+        _traces.value = _traces.value + com.phoneagent.model.StepTrace(
+            taskId = currentTaskId,
+            taskName = currentTaskName,
+            step = step,
+            sentText = sent,
+            receivedText = decision.rawContent,
+            promptTokens = decision.promptTokens,
+            completionTokens = decision.completionTokens,
+            totalTokens = decision.totalTokens,
+            latencyMs = decision.elapsedMs,
+            visionSource = visionSource,
+            visionModel = visionModel,
+            visionDescription = visionDescription,
+            thinking = decision.thinking,
+            screenshot = screenshot,
+        )
+    }
+
     private fun recordStep(step: Int, action: AgentAction, verification: String, before: String, after: String) {
         val rec = StepRecord(
             step = step,
@@ -1397,6 +1500,64 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             isConfirmed = verification == "verified_success",
         )
         _executionHistory.value = _executionHistory.value + rec
+    }
+
+    /**
+     * 每步执行完后留档最新一步：截屏 + 本地视觉模型框选 + 拼装执行说明。
+     * 保留在 [StepShot] 中，新任务开始时会由 [start] 清空覆盖。
+     * 框选标注独立于视觉模式，始终用本地视觉模型（OCR）执行，便于对照原图/识别图后续开发。
+     */
+    private suspend fun stepShotCapture(step: Int, action: AgentAction, verified: Boolean) {
+        val snapshot = observe()
+        val shot = ScreenSharingService.instance?.captureFrame()
+        var annotated: Bitmap? = null
+        if (shot != null) {
+            // 本地 UI 控件识别：框选控件并推断用途（融合元素树 + OCR），独立于视觉模式
+            val controls = com.phoneagent.vision.LocalUiDetector.detect(
+                screenshot = shot,
+                elements = snapshot.elements,
+                screenW = snapshot.screenWidth,
+                screenH = snapshot.screenHeight,
+            )
+            if (controls.isNotEmpty()) annotated = com.phoneagent.vision.LocalUiDetector.annotate(shot, controls)
+        }
+        _stepShot.value = StepShot(
+            step = step,
+            actionType = action.type,
+            description = actionDescription(action, verified),
+            verified = verified,
+            screenshot = shot,
+            annotatedScreenshot = annotated,
+        )
+    }
+
+    /** 将一步动作拼装成人类可读的执行说明（用 AI 的 reasoning/reason + 验证结果） */
+    private fun actionDescription(action: AgentAction, verified: Boolean): String {
+        val reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason?.takeIf { it.isNotBlank() }
+        return buildString {
+            append(if (verified) "✅ 已生效" else "⚠️ 待确认")
+            append(" · ${actionLabel(action.type)}")
+            reason?.let { append("\n$it") }
+        }
+    }
+
+    private fun actionLabel(type: String): String = when (type) {
+        ActionType.TAP, ActionType.CLICK -> "点按"
+        ActionType.LONG_PRESS, ActionType.LONG_CLICK -> "长按"
+        ActionType.SWIPE, ActionType.SWIPE_UP, ActionType.SWIPE_DOWN, ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT -> "滑动"
+        ActionType.TYPE_TEXT -> "输入文本"
+        ActionType.LAUNCH -> "启动应用"
+        ActionType.SHELL -> "执行Shell"
+        ActionType.WRITE_DOC -> "写入文档"
+        ActionType.OPEN -> "打开链接/Scheme"
+        ActionType.BACK -> "返回"
+        ActionType.HOME -> "回到桌面"
+        ActionType.RECENTS -> "最近任务"
+        ActionType.KEY -> "按键"
+        ActionType.WAIT -> "等待"
+        ActionType.SCROLL -> "滚动查找"
+        ActionType.TASK_DONE, ActionType.TASK_COMPLETE -> "任务完成"
+        else -> type
     }
 
     private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.execution.VerifyResult) {

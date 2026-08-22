@@ -14,4 +14,6 @@ data class AiDecision(
     val elapsedMs: Long = 0,
     /** 模型原始输出正文（供调试日志展示完整响应） */
     val rawContent: String = "",
+    /** 本次是否产出思考内容（reasoning_content 非空，用于调试页标记想了哪一步） */
+    val thinking: Boolean = false,
 )

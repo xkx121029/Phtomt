@@ -1,6 +1,7 @@
 package com.phoneagent.ui.debug
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,10 +46,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -65,8 +70,10 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private enum class DebugTab(val label: String) {
+    STEPS("任务"),
     METRICS("指标"),
     CHAT("对话"),
     LOGS("日志"),
@@ -79,8 +86,36 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val conversation by vm.conversation.collectAsState()
     val logs by vm.logs.collectAsState()
     val history by vm.executionHistory.collectAsState()
-    var tab by remember { mutableStateOf(DebugTab.METRICS) }
+    val traces by vm.traces.collectAsState()
+    var tab by remember { mutableStateOf(DebugTab.STEPS) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // 用外挂视觉对本次任务所有截图画框的结果（step → 框选图）
+    var annotatedMap by remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
+    var annotating by remember { mutableStateOf(false) }
+    var annotateMsg by remember { mutableStateOf<String?>(null) }
+
+    fun runExternalAnnotate() {
+        scope.launch {
+            annotating = true
+            annotateMsg = null
+            val out = mutableMapOf<Int, android.graphics.Bitmap>()
+            val tasks = traces.filter { it.taskId >= 0 }
+            var count = 0
+            tasks.forEach { t ->
+                val shot = t.screenshot ?: return@forEach
+                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(context, shot, 20_000)
+                if (controls.isNotEmpty()) count++
+                out[t.step] = drawBoxes(shot, controls)
+            }
+            annotatedMap = out
+            annotating = false
+            val connected = com.phoneagent.vision.ExternalVisionProvider.isConnected
+            annotateMsg = if (tasks.isEmpty()) "本任务暂无可画框的截图"
+            else "已用${if (connected) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
+        }
+    }
 
     Column(
         modifier = modifier
@@ -88,7 +123,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     ) {
         AppTopBar(
             title = "调试",
-            subtitle = "运行状态、AI 对话与性能指标",
+            subtitle = "按任务的每步决策 · 发送/返回 · Token · 视觉与截图",
             trailingContent = {
                 IconButton(onClick = {
                     android.widget.Toast.makeText(context, vm.exportLogsJsonAll(context), android.widget.Toast.LENGTH_LONG).show()
@@ -102,10 +137,39 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         )
 
         Spacer(Modifier.height(8.dp))
+        StepShotPanel(vm.stepShot.collectAsState().value)
+        // 用外挂视觉对本次任务所有截图画框
+        Surface(
+            shape = RoundedCornerShape(AppRadii.Chip),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Rounded.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("外挂视觉画框", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        annotateMsg ?: "对本次任务所有截图，用本地 3B 视觉一键画框（类型+用途+坐标）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                }
+                androidx.compose.material3.TextButton(onClick = { runExternalAnnotate() }, enabled = !annotating) {
+                    Text(if (annotating) "画框中…" else "一键画框")
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         SegmentedTabs(selected = tab, onSelect = { tab = it })
 
         Spacer(Modifier.height(16.dp))
         when (tab) {
+            DebugTab.STEPS -> StepsPanel(traces, annotatedMap)
             DebugTab.METRICS -> MetricsPanel(metrics)
             DebugTab.CHAT -> ChatPanel(conversation)
             DebugTab.LOGS -> LogPanel(logs)
@@ -144,6 +208,66 @@ private fun SegmentedTabs(selected: DebugTab, onSelect: (DebugTab) -> Unit) {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepShotPanel(shot: com.phoneagent.model.StepShot) {
+    if (shot.step == 0 && shot.screenshot == null) return
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AppRadii.Item),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Row(modifier = Modifier.padding(14.dp)) {
+            if (shot.screenshot != null || shot.annotatedScreenshot != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("原截图", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    shot.screenshot?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "原截图",
+                            modifier = Modifier
+                                .width(112.dp)
+                                .heightIn(max = 220.dp)
+                                .clip(RoundedCornerShape(AppRadii.Chip)),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("识别截图", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(4.dp))
+                    shot.annotatedScreenshot?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "识别截图",
+                            modifier = Modifier
+                                .width(112.dp)
+                                .heightIn(max = 220.dp)
+                                .clip(RoundedCornerShape(AppRadii.Chip)),
+                        )
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("最新一步", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "步骤 ${shot.step}${if (shot.verified) " · 已确认" else " · 待确认"}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    shot.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }
@@ -468,6 +592,158 @@ private fun EmptyHint(text: String) {
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+/** 「任务」页：按任务分组展示每一步决策的发送/返回/Token/延迟/视觉/思考/截图 */
+@Composable
+private fun StepsPanel(
+    traces: List<com.phoneagent.model.StepTrace>,
+    annotatedMap: Map<Int, android.graphics.Bitmap>,
+) {
+    if (traces.isEmpty()) {
+        EmptyHint("暂无任务步骤：运行智能体后，每个决策步骤都会记录在这里")
+        return
+    }
+    val groups = traces.groupBy { it.taskId }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        groups.keys.sortedByDescending { it }.forEach { tid ->
+            val list = groups.getValue(tid).sortedBy { it.step }
+            val name = list.first().taskName ?: "任务 #$tid"
+            item(key = "hdr$tid") { TaskHeader(name, list.size) }
+            items(list, key = { "$tid:${it.step}" }) { tr ->
+                StepTraceCard(tr, annotatedMap[tr.step])
+            }
+        }
+    }
+}
+
+/** 任务分组头：任务名 + 步数 */
+@Composable
+private fun TaskHeader(name: String, count: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.weight(1f))
+        Text("$count 步", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** 单个决策步骤的详细卡：截图/发送/返回/Token/延迟/视觉模型/思考/AI图片描述 */
+@Composable
+private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android.graphics.Bitmap?) {
+    var expanded by remember { mutableStateOf(false) }
+    val img = annotated ?: tr.screenshot
+    val visionColor = when (tr.visionSource) {
+        "外挂3B" -> Success
+        "云端" -> MaterialTheme.colorScheme.primary
+        "本地OCR" -> Warning
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AppRadii.Item),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // 头部：步骤 + 视觉来源 + 思考标记
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("步骤 ${tr.step}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text(tr.visionSource, color = visionColor, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text(if (tr.thinking) "思考" else "未思考",
+                    color = if (tr.thinking) Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+            // 截图（框选后优先展示框选图）
+            if (img != null) {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        bitmap = img.asImageBitmap(),
+                        contentDescription = "步骤截图",
+                        modifier = Modifier
+                            .width(112.dp)
+                            .heightIn(max = 220.dp)
+                            .clip(RoundedCornerShape(AppRadii.Chip)),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Token  ${tr.totalTokens}（入 ${tr.promptTokens} / 出 ${tr.completionTokens}）", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(3.dp))
+                        Text("耗时 ${tr.latencyMs} ms", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (tr.visionModel.isNotBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            Text("视觉：${tr.visionModel}", style = MaterialTheme.typography.labelMedium, color = visionColor)
+                        }
+                        if (annotated != null) {
+                            Spacer(Modifier.height(3.dp))
+                            Text("（已用外挂视觉画框）", style = MaterialTheme.typography.labelMedium, color = Success)
+                        }
+                    }
+                }
+            } else {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "（本步无截图：未开启「屏幕捕获」权限，AI 决策将无法拿到画面）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // AI 对图片的描述
+            if (tr.visionDescription.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text("AI 图片描述：", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                Text(tr.visionDescription, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            }
+            // 发送/返回（可展开）
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("发送 / 返回", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = "展开",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp).clickable { expanded = !expanded },
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                Text("═══ 发送给 AI ═══", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.secondary)
+                Text(tr.sentText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(6.dp))
+                Text("═══ AI 返回 ═══", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.primary)
+                Text(tr.receivedText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+/** 在截图上用外挂/OCR 识别的控件画框并标注用途、文字 */
+private fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagent.vision.DetectedControl>): android.graphics.Bitmap {
+    val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val canvas = android.graphics.Canvas(out)
+    val strokeW = (out.width / 220f).coerceIn(2f, 5f)
+    val paint = android.graphics.Paint().apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = strokeW
+        color = 0xFF00BFA5.toInt()
+    }
+    val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF00BFA5.toInt()
+        textSize = strokeW * 5f
+    }
+    controls.forEach { c ->
+        val b = c.bounds
+        if (b.size < 4) return@forEach
+        val l = b[0] * out.width; val t = b[1] * out.height
+        val r = b[2] * out.width; val bot = b[3] * out.height
+        canvas.drawRect(l, t, r, bot, paint)
+        val label = "${c.role}·${c.purpose}".take(18)
+        canvas.drawText(label, l + 2, (t - 2).coerceAtLeast(labelPaint.textSize), labelPaint)
+    }
+    return out
 }
 
 private fun formatTime(t: Long): String =

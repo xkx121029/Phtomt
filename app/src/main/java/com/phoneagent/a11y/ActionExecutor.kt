@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import com.phoneagent.model.ScreenSnapshot
 import com.phoneagent.model.UiElement
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -117,24 +118,42 @@ class ActionExecutor(
     }
 
     /**
-     * 输入文本：在可编辑元素上执行 ACTION_SET_TEXT。
-     * 若未指定元素，则在整个窗口树中查找第一个可编辑节点。
+     * 向输入框填充文本（整段覆写，ACTION_SET_TEXT）。
+     *
+     * 两层策略：
+     * 1. 若元素树中能找到目标坐标/控件处的可编辑节点 → 直接对其填充。
+     * 2. 若无障碍读不到输入框（如 WebView/自绘控件）：先点击坐标聚焦，
+     *    等待聚焦后再查可编辑节点并填充。
      */
-    fun typeText(text: String, target: UiElement?): Result {
-        val node = findEditableNode(target) ?: return Result.Failure("未找到可输入文本的输入框")
-        val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)) {
-            Result.Success("已输入文本")
-        } else {
-            Result.Failure("文本输入失败")
+    suspend fun typeText(text: String, target: UiElement?, x: Int? = null, y: Int? = null): Result {
+        val cx = x ?: target?.centerX
+        val cy = y ?: target?.centerY
+        // 策略1：直接命中元素树中的可编辑节点
+        findEditableNode(target, cx, cy)?.let { node ->
+            if (setText(node, text)) return Result.Success("已向输入框填充文本")
         }
+        // 策略2：点击坐标聚焦后填充（弥补元素树读不到输入框的场景）
+        if (cx != null && cy != null) {
+            click(cx, cy)
+            delay(350)
+            val root = service.rootInActiveWindow
+            findFirstEditable(root)?.let { node ->
+                if (setText(node, text)) return Result.Success("已聚焦输入框并填充文本")
+            }
+        }
+        return Result.Failure("未找到可输入文本的输入框")
     }
 
-    private fun findEditableNode(target: UiElement?): AccessibilityNodeInfo? {
+    private fun setText(node: AccessibilityNodeInfo, text: String): Boolean {
+        if (!node.isEditable) return false
+        val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
+    }
+
+    private fun findEditableNode(target: UiElement?, x: Int?, y: Int?): AccessibilityNodeInfo? {
         val root = service.rootInActiveWindow ?: return null
-        if (target != null) {
-            // 按坐标匹配可编辑节点
-            findNodeAt(root, target.centerX, target.centerY)?.let { return it }
+        if (x != null && y != null) {
+            findNodeAt(root, x, y)?.let { return it }
         }
         return findFirstEditable(root)
     }
@@ -153,7 +172,8 @@ class ActionExecutor(
         return null
     }
 
-    private fun findFirstEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    private fun findFirstEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
         if (node.isEditable && node.isVisibleToUser) return node
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->

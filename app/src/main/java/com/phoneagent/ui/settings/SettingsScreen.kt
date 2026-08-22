@@ -108,6 +108,7 @@ class SettingsState(initial: AppSettings.Settings) {
     var enableReview by mutableStateOf(initial.enableReview)
     var visionEnabled by mutableStateOf(initial.visionEnabled)
     var visionMode by mutableStateOf(initial.visionMode)
+    var enableExternalVision by mutableStateOf(initial.enableExternalVision)
     var enableChain by mutableStateOf(initial.enableChain)
     var chainOrder by mutableStateOf(initial.chainOrder)
     var edgeInsetTop by mutableIntStateOf(initial.edgeInsetTop)
@@ -172,6 +173,7 @@ class SettingsState(initial: AppSettings.Settings) {
         enableReview = enableReview,
         visionEnabled = visionEnabled,
         visionMode = visionMode,
+        enableExternalVision = enableExternalVision,
         enableChain = enableChain,
         chainOrder = chainOrder,
         edgeInsetTop = edgeInsetTop,

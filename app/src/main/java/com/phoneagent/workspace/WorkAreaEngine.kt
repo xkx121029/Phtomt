@@ -77,6 +77,11 @@ class WorkAreaEngine(
     private val _editingFile = MutableStateFlow<String?>(null)
     val editingFile: StateFlow<String?> get() = _editingFile.asStateFlow()
 
+    /** 当前编辑文档所在的目录（用于解析文档内相对图片路径）；无打开文档时回退工作区根目录 */
+    val editingDir: String
+        get() = _editingFile.value?.let { fn -> (File(rootDir, fn).parentFile ?: rootDir).absolutePath }
+            ?: rootDir.absolutePath
+
     /** 当前编辑文件的最新内容（AI 改写成功后自动更新） */
     private val _editingContent = MutableStateFlow("")
     val editingContent: StateFlow<String> get() = _editingContent.asStateFlow()

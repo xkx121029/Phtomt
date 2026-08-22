@@ -46,6 +46,9 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    var extStatus by remember { mutableStateOf<String?>(null) }
+    var extTesting by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -118,6 +121,34 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
                         )
                     }
+                }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow("外挂视觉 Agent", "调用本地视觉 APK（端侧 3B 模型）框选控件（类型+用途+坐标），优先于云端/本地；未安装或不可用时自动回落", st.enableExternalVision) { st.enableExternalVision = it }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            extTesting = true; extStatus = "连接测试中…"
+                            // 空白图也会触发完整 IPC：外挂服务收到后返回 OCR/3B 控件结果
+                            val bmp = android.graphics.Bitmap.createBitmap(320, 640, android.graphics.Bitmap.Config.ARGB_8888)
+                            val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(ctx, bmp, 15_000)
+                            val connected = com.phoneagent.vision.ExternalVisionProvider.isConnected
+                            extStatus = if (connected) {
+                                "外挂视觉服务已连接，跨进程识别返回 ${controls.size} 个控件"
+                            } else {
+                                "外挂视觉不可用：服务未安装或绑定失败"
+                            }
+                            extTesting = false
+                        }
+                    },
+                    enabled = !extTesting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (extTesting) "连接测试中…" else "测试外挂连接") }
+                extStatus?.let { s ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(s, style = MaterialTheme.typography.bodySmall,
+                        color = if (s.contains("已连接")) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(8.dp))
                 ToggleRow("附送屏幕截图", "每轮观察时附带当前屏幕截图辅助决策", st.attachScreenshot) { st.attachScreenshot = it }

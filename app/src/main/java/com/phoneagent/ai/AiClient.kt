@@ -123,14 +123,16 @@ class AiClient(
 
             val full = StringBuilder()
             var lastUsage: Usage? = null
+            var sawReasoning = false
             var status = -1
             var lastErr: String? = null
             for (attempt in 0 until MAX_RETRIES) {
                 if (attempt > 0) backoffSleep(status, attempt) ?: break
                 try {
-                    full.setLength(0)
-                    lastUsage = null
-                    var streamFailed = false
+                        full.setLength(0)
+                        lastUsage = null
+                        sawReasoning = false
+                        var streamFailed = false
                     client.newCall(request).execute().use { resp ->
                         status = resp.code
                         if (!resp.isSuccessful) {
@@ -150,6 +152,7 @@ class AiClient(
                                 val delta = chunk?.choices?.firstOrNull()?.delta
                                 val content = delta?.content.orEmpty()
                                 val reasoning = delta?.reasoning_content.orEmpty()
+                                if (reasoning.isNotEmpty()) sawReasoning = true
                                 // 思考内容优先展示（边思考边输出）
                                 val display = if (content.isNotEmpty()) content else reasoning
                                 if (display.isNotEmpty()) onDelta(display)
@@ -180,6 +183,7 @@ class AiClient(
                             totalTokens = 0,
                             elapsedMs = (System.nanoTime() - startNano) / 1_000_000,
                             rawContent = fbContent,
+                            thinking = false,
                         )
                     }
                     return@runCatching AiDecision(
@@ -189,6 +193,7 @@ class AiClient(
                         totalTokens = lastUsage?.totalTokens ?: 0,
                         elapsedMs = (System.nanoTime() - startNano) / 1_000_000,
                         rawContent = content,
+                        thinking = sawReasoning,
                     )
                 } catch (e: Exception) {
                     status = -1

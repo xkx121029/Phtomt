@@ -130,11 +130,16 @@ fun FileEditorScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(12.dp),
             ) {
-                Text(
-                    content.ifBlank { "（空文档）" },
-                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
+                if (content.isBlank()) {
+                    Text(
+                        "（空文档）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    // 文档以渲染后的 Markdown 预览展示，而非源码编辑视图；baseDir 用于解析文档内相对图片
+                    MarkdownPreview(content, baseDir = vm.workEditingDir(), modifier = Modifier.fillMaxWidth())
+                }
             }
         }
 

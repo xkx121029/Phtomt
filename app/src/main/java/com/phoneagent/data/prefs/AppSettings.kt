@@ -38,6 +38,8 @@ class AppSettings(private val context: Context) {
         val visionEnabled: Boolean = true,
         /** 视觉读图模式：CLOUD=仅云端 | LOCAL=仅本地OCR | AUTO=优先云端失败回退本地 */
         val visionMode: String = "AUTO",
+        /** 启用外挂视觉 Agent（本地视觉 APK，端侧 3B 模型）：启用后视觉链优先走外挂，不可用再回落云端/本地 */
+        val enableExternalVision: Boolean = true,
         // ---- 思考模型：规划/重规划等复杂任务时使用（如开启 thinking 的 glm-4.7-flash） ----
         val reasonBaseUrl: String = GlmDefaults.BASE_URL,
         val reasonModel: String = GlmDefaults.REASON_MODEL,
@@ -84,6 +86,7 @@ class AppSettings(private val context: Context) {
         val VISION_API_KEY = stringPreferencesKey("vision_api_key")
         val VISION_ENABLED = booleanPreferencesKey("vision_enabled")
         val VISION_MODE = stringPreferencesKey("vision_mode")
+        val EXTERNAL_VISION = booleanPreferencesKey("external_vision_enabled")
         val REASON_BASE_URL = stringPreferencesKey("reason_base_url")
         val REASON_MODEL = stringPreferencesKey("reason_model")
         val REASON_API_KEY = stringPreferencesKey("reason_api_key")
@@ -124,6 +127,7 @@ class AppSettings(private val context: Context) {
             reasonApiKey = prefs[Keys.REASON_API_KEY] ?: "",
             visionEnabled = prefs[Keys.VISION_ENABLED] ?: true,
             visionMode = prefs[Keys.VISION_MODE] ?: "AUTO",
+            enableExternalVision = prefs[Keys.EXTERNAL_VISION] ?: true,
             enableChain = prefs[Keys.ENABLE_CHAIN] ?: false,
             mainThinking = prefs[Keys.MAIN_THINKING] ?: false,
             chainOrder = (prefs[Keys.CHAIN_ORDER] ?: "main;vision;reason")
@@ -164,6 +168,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.REASON_API_KEY] = settings.reasonApiKey.trim()
             prefs[Keys.VISION_ENABLED] = settings.visionEnabled
             prefs[Keys.VISION_MODE] = settings.visionMode
+            prefs[Keys.EXTERNAL_VISION] = settings.enableExternalVision
             prefs[Keys.ENABLE_CHAIN] = settings.enableChain
             prefs[Keys.MAIN_THINKING] = settings.mainThinking
             prefs[Keys.CHAIN_ORDER] = settings.chainOrder.joinToString(";")

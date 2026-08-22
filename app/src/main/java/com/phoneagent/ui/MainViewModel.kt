@@ -67,6 +67,8 @@ class MainViewModel(
     val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
     val metrics: StateFlow<AgentMetrics> = engine.metrics
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
+    val stepShot: StateFlow<com.phoneagent.model.StepShot> = engine.stepShot
+    val traces: StateFlow<List<com.phoneagent.model.StepTrace>> = engine.traces
     val taskQueue: StateFlow<List<String>> = engine.taskQueue
     val needsUser: StateFlow<Boolean> = engine.needsUser
     val userHintRequest = engine.userHintRequest
@@ -354,6 +356,7 @@ class MainViewModel(
     val workEditError: StateFlow<String> = workAreaEngine.editError
 
     fun workOpenEditor(name: String) = workAreaEngine.openEditor(name)
+    fun workEditingDir(): String = workAreaEngine.editingDir
     fun workCloseEditor() = workAreaEngine.closeEditor()
     fun workEditDocument(instruction: String) = workAreaEngine.editDocument(instruction)
 

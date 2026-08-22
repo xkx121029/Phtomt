@@ -47,6 +47,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +78,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.BrandNavy
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -89,11 +94,25 @@ fun HomeScreen(
     val agent by vm.agentState.collectAsState()
     val permissions by vm.permissions.collectAsState()
     val screenshotActive by vm.screenshotActive.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    // 外挂视觉模型连接状态
+    var visualConn by remember { mutableStateOf<Boolean?>(null) }
+    var visualChecking by remember { mutableStateOf(false) }
+
+    fun testVisual() {
+        scope.launch {
+            visualChecking = true
+            visualConn = com.phoneagent.vision.ExternalVisionProvider.checkConnection(context)
+            visualChecking = false
+        }
+    }
 
     LaunchedEffect(Unit) {
         vm.refreshStatus(context)
         vm.refreshA11yState()
         vm.refreshPermissions(context)
+        testVisual()
     }
 
     Column(
@@ -168,6 +187,16 @@ fun HomeScreen(
                 )
             }
         }
+
+        // 外挂视觉模型调试
+        Spacer(Modifier.height(20.dp))
+        SectionHeader("视觉模型")
+        VisionModelCard(
+            connected = visualConn,
+            checking = visualChecking,
+            onTest = ::testVisual,
+        )
+        Spacer(Modifier.height(12.dp))
 
         // 快捷模块入口
         SectionHeader("快捷入口")
@@ -458,6 +487,64 @@ private fun StatusCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * 外挂视觉模型调试卡：显示端侧视觉 APK（3B 模型）是否已连接，
+ * 并可直接点击重新检测连接。整个 Agent 流程优先使用它框选控件。
+ */
+@Composable
+private fun VisionModelCard(
+    connected: Boolean?,
+    checking: Boolean,
+    onTest: () -> Unit,
+) {
+    val ready = connected == true
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Card),
+        color = if (ready) Success.copy(alpha = 0.08f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // 连接指示灯
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                ready -> Success
+                                connected == false -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            },
+                        ),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text("端侧视觉 Agent（3B）", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        when {
+                            checking -> "检测连接中…"
+                            ready -> "已连接，已接入 Agent 全流程"
+                            connected == false -> "未连接：外挂 APK 未安装或不可用"
+                            else -> "正在检测…"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                androidx.compose.material3.TextButton(onClick = onTest) {
+                    Text(if (checking) "检测中" else "重测")
+                }
+            }
+            Text(
+                "截图 → 外挂视觉框选控件（类型+用途+坐标）→ 按坐标决策与点击；不可用时自动回落云端/本地 OCR。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
