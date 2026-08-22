@@ -733,7 +733,11 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             // 无障碍读不到控件（元素树稀疏，如游戏/WebView/in-app 渲染界面）时，即使未开启截图开关也自动截图，
             // 交给视觉模型（glm-4.6v-flash）描述+坐标定位，弥补元素树缺失
             val treeSparse = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
-            val screenshot = if (settingsVal.attachScreenshot || (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")))
+            // 混合路由：开启外挂且（未开混合，或简单任务=元素树可读）→ 走端侧 3B 需要截图
+            val needExternal3b = settingsVal.enableExternalVision &&
+                (!settingsVal.smartVisionRoute || !treeSparse)
+            val screenshot = if (settingsVal.attachScreenshot || needExternal3b ||
+                (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")))
                 ScreenSharingService.instance?.captureFrame() else null
             log(AgentLog.Level.INFO, "第 $step 轮观察：${snapshot.elements.size} 个元素，页面类型=${annotated.pageType}" +
                 if (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")) "（元素稀疏，自动启用视觉模型）" else "")
@@ -898,15 +902,26 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         // 视觉链路：主模型不支持图片输入时，先用视觉模型描述截图，再让主模型基于文本决策。
         // visionMode: CLOUD=仅云端 | LOCAL=仅本地OCR | AUTO=优先云端、失败/未配置回退本地
         // 外挂视觉（enableExternalVision）优先于云端/本地，仅在未启用或不可用时才走后续来源。
+        // 混合路由（smartVisionRoute）：端侧 3B 只认「简单任务」（元素树可读）——框选快、省云端额度；
+        //  复杂任务（元素树稀疏，需强语义理解，如游戏/WebView/小程序）跳过 3B，直接走云端视觉。
         val visionCfg = visionConfig(settingsVal)
-        val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL"
+        // 页面是否复杂：元素树稀疏即视为复杂（无障碍读不到控件，需强视觉理解）
+        val complexPage = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
+        val hybrid = settingsVal.smartVisionRoute
+        // 端侧 3B 是否用于本步：开启外挂且（未开混合，或当前为简单任务）
+        val useOnDevice3b = settingsVal.enableExternalVision && (!hybrid || !complexPage)
+        // 云端视觉是否可用：配置就绪，且（未开混合 / 复杂任务 / 简单任务但没启用 3B 只能靠云端）
+        // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
+        val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL" &&
+            (!hybrid || complexPage || !settingsVal.enableExternalVision)
         var localRegions: List<com.phoneagent.vision.DetectedControl>? = null
         var externalUsed = false
         var pageText = safeText
         var desc: String? = null
         if (screenshot != null) {
-            // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）
-            if (settingsVal.enableExternalVision) {
+            // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）。
+            //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
+            if (useOnDevice3b) {
                 log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
                 val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
                     context = appContext,

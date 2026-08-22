@@ -125,6 +125,8 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                 Spacer(Modifier.height(8.dp))
                 ToggleRow("外挂视觉 Agent", "调用本地视觉 APK（端侧 3B 模型）框选控件（类型+用途+坐标），优先于云端/本地；未安装或不可用时自动回落", st.enableExternalVision) { st.enableExternalVision = it }
                 Spacer(Modifier.height(6.dp))
+                ToggleRow("混合路由", "智能分流：简单任务（元素树可读）用端侧 3B 框选快且省云端额度；复杂任务（元素树稀疏，如游戏/WebView）跳过 3B 直接走云端视觉。关闭则恢复：3B 恒优先于云端", st.smartVisionRoute) { st.smartVisionRoute = it }
+                Spacer(Modifier.height(6.dp))
                 OutlinedButton(
                     onClick = {
                         scope.launch {

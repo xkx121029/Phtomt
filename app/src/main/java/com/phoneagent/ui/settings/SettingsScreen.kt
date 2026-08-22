@@ -109,6 +109,7 @@ class SettingsState(initial: AppSettings.Settings) {
     var visionEnabled by mutableStateOf(initial.visionEnabled)
     var visionMode by mutableStateOf(initial.visionMode)
     var enableExternalVision by mutableStateOf(initial.enableExternalVision)
+    var smartVisionRoute by mutableStateOf(initial.smartVisionRoute)
     var enableChain by mutableStateOf(initial.enableChain)
     var chainOrder by mutableStateOf(initial.chainOrder)
     var edgeInsetTop by mutableIntStateOf(initial.edgeInsetTop)
@@ -174,6 +175,7 @@ class SettingsState(initial: AppSettings.Settings) {
         visionEnabled = visionEnabled,
         visionMode = visionMode,
         enableExternalVision = enableExternalVision,
+        smartVisionRoute = smartVisionRoute,
         enableChain = enableChain,
         chainOrder = chainOrder,
         edgeInsetTop = edgeInsetTop,
