@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FileDownload
@@ -403,8 +405,55 @@ private fun MetricsPanel(m: AgentMetrics) {
             }
         }
         item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                MetricCard("视觉识别", "${m.visionCount}次/均${m.avgVisionMs}ms", "", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                MetricCard("动作执行", "${m.execCount}次/均${m.avgExecMs}ms", "", Success, Modifier.weight(1f))
+            }
+        }
+        item {
+            MethodCard(m)
+        }
+        item {
             MetricCard("生成速度", String.format(Locale.US, "%.1f", m.tokensPerSec), "tok/s", MaterialTheme.colorScheme.tertiary, Modifier.fillMaxWidth())
         }
+    }
+}
+
+@Composable
+private fun MethodCard(m: AgentMetrics) {
+    // 各环节耗时占比（决策 + 视觉 + 执行），P2 观测性埋点聚合展示
+    val total = m.avgLatencyMs + m.avgVisionMs + m.avgExecMs
+    if (total <= 0) return
+    val decisionFrac = m.avgLatencyMs.toFloat() / total
+    val visionFrac = m.avgVisionMs.toFloat() / total
+    val execFrac = m.avgExecMs.toFloat() / total
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(AppRadii.Item),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("单步耗时构成（决策/视觉/执行）", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            // 横向占比条
+            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
+                Box(Modifier.weight(decisionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
+                Box(Modifier.weight(visionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.secondary))
+                Box(Modifier.weight(execFrac).fillMaxHeight().background(Success))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LegendDot(MaterialTheme.colorScheme.primary, "决策 ${m.avgLatencyMs}ms")
+                LegendDot(MaterialTheme.colorScheme.secondary, "视觉 ${m.avgVisionMs}ms")
+                LegendDot(Success, "执行 ${m.avgExecMs}ms")
+            }
+        }
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

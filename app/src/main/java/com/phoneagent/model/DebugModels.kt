@@ -100,4 +100,15 @@ data class AgentMetrics(
     /** 平均生成速度（tokens/秒） */
     val tokensPerSec: Double = 0.0,
     val requestCount: Int = 0,
-)
+    /** 视觉环节调用次数与总耗时（外挂3B/云端/本地识别 + 定位） */
+    val visionCount: Int = 0,
+    val visionTotalMs: Long = 0,
+    /** 执行环节执行次数与总耗时（无障碍点击/输入/滑动等） */
+    val execCount: Int = 0,
+    val execTotalMs: Long = 0,
+) {
+    /** 平均视觉耗时（毫秒） */
+    val avgVisionMs: Long get() = if (visionCount > 0) visionTotalMs / visionCount else 0
+    /** 平均执行耗时（毫秒） */
+    val avgExecMs: Long get() = if (execCount > 0) execTotalMs / execCount else 0
+}

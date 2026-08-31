@@ -31,7 +31,7 @@ data class Checkpoint(
     val updatedAt: Long,
 )
 
-/** 任务模板：goal=用户目标，plan=AI 生成的执行脚本 */
+/** 任务模板：goal=用户目标，plan=AI 生成的执行脚本（用户确认后入库） */
 @Serializable
 data class TaskTemplate(
     val id: String,
@@ -128,17 +128,11 @@ object TaskStore {
 
     /**
      * 模板匹配：按目标相似度（Jaccard，中文双字切分）找到可用模板。
-     * 要求：相似度 > [MIN_SIM]、enabled 且 failedStreak < 3（健康）。
+     * 纯相似度计算见 [TemplateMatcher]（可单测）。
      */
     suspend fun matchTemplate(context: Context, goal: String): TaskTemplate? {
         if (goal.isBlank()) return null
-        val g = biGrams(goal)
-        return loadTemplates(context)
-            .filter { it.enabled && it.failedStreak < 3 }
-            .map { it to jaccard(g, biGrams(it.goal)) }
-            .filter { it.second >= MIN_SIM }
-            .maxByOrNull { it.second }
-            ?.first
+        return TemplateMatcher.match(goal, loadTemplates(context))
     }
 
     /** 删除指定模板 */
@@ -148,7 +142,10 @@ object TaskStore {
     }
 
     /** 匹配命中后：increment 执行计数 */
-    suspend fun bumpExecution(context: Context, id: String) {
+    /** 是否为软件内置模板（id 以 preset_ 前缀；用户自定义模板为 tpl_ 前缀） */
+    fun isPresetId(id: String): Boolean = id.startsWith("preset_")
+
+        suspend fun bumpExecution(context: Context, id: String) {
         val list = loadTemplates(context)
         val t = list.firstOrNull { it.id == id } ?: return
         upsertTemplate(context, t.copy(executionCount = t.executionCount + 1))
@@ -179,21 +176,4 @@ object TaskStore {
                 context.taskStore.data.first()[KEY_STRATEGY] ?: ExecutionStrategy.AUTO.name,
             )
         }.getOrDefault(ExecutionStrategy.AUTO)
-
-    // ==================== 相似度 ====================
-
-    private const val MIN_SIM = 0.5
-
-    private fun biGrams(s: String): Set<String> {
-        val chars = s.filter { it.isLetterOrDigit() }
-        if (chars.length < 2) return setOf(chars)
-        return (0 until chars.length - 1).map { chars.substring(it, it + 2) }.toSet()
-    }
-
-    private fun jaccard(a: Set<String>, b: Set<String>): Double {
-        if (a.isEmpty() && b.isEmpty()) return 0.0
-        val inter = a.intersect(b).size
-        val union = a.union(b).size
-        return if (union == 0) 0.0 else inter.toDouble() / union.toDouble()
-    }
 }

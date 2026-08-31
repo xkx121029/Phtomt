@@ -75,18 +75,36 @@ class ActionExecutor(
     fun home() = globalAction(AccessibilityService.GLOBAL_ACTION_HOME)
     fun recents() = globalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
 
-    /** 启动应用（通过桌面 LAUNCHER intent） */
+    /** 启动应用（多种策略兜底，确保兼容不同 Android 版本） */
     fun launchApp(packageName: String): Result {
-        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-            addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-            setPackage(packageName)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
         return try {
-            service.startActivity(intent)
-            Result.Success("已启动 $packageName")
+            val pm = service.applicationContext.packageManager
+            // 策略1：精确查找 LAUNCHER activity
+            val query = pm.queryIntentActivities(
+                android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+                    addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+                    setPackage(packageName)
+                },
+                0,
+            )
+            if (query.isNotEmpty()) {
+                val ri = query[0]
+                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .setClassName(ri.activityInfo.packageName, ri.activityInfo.name)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                service.applicationContext.startActivity(intent)
+                return Result.Success("已启动 $packageName（activity=${ri.activityInfo.name}）")
+            }
+            // 策略2：使用 broadcast 启动（某些设备更可靠）
+            val broadcastIntent = android.content.Intent("android.intent.action.MAIN").apply {
+                setPackage(packageName)
+                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            service.applicationContext.sendBroadcast(broadcastIntent)
+            return Result.Success("已发送启动广播: $packageName")
         } catch (e: Exception) {
-            Result.Failure("启动应用失败：${e.message}")
+            Result.Failure("启动应用失败：${e.message} (pkg=$packageName)")
         }
     }
 
@@ -97,7 +115,7 @@ class ActionExecutor(
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return try {
-            service.startActivity(intent)
+            service.applicationContext.startActivity(intent)
             Result.Success("已打开 $u")
         } catch (e: Exception) {
             Result.Failure("深链打开失败：${e.message}")
@@ -110,7 +128,7 @@ class ActionExecutor(
             val intent = android.content.Intent(action).apply {
                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            service.startActivity(intent)
+            service.applicationContext.startActivity(intent)
             Result.Success("已直达系统设置页")
         } catch (e: Exception) {
             Result.Failure("打开设置页失败：${e.message}")

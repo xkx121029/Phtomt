@@ -38,6 +38,8 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            // ABI 精简：Release 仅保留 arm64-v8a，显著减小包体（约 -22MB，2026-08 实测）
+            ndk { abiFilters += listOf("arm64-v8a") }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -62,6 +64,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+    testOptions {
+        unitTests {
+            // android.util.Log 等返回默认值（0/null），使纯逻辑单测可在 JVM 运行
+            isReturnDefaultValues = true
+            all { it.testLogging { events("passed", "skipped", "failed") } }
         }
     }
 }
@@ -96,6 +105,11 @@ dependencies {
     // 本地 OCR 已迁移至外挂视觉 Agent，主程序不再依赖 ML Kit（减少 APK 体积）
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    // 单元测试
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 // 版本号自增仅在真正执行构建（assemble/bundle）时发生，避免配置阶段误增

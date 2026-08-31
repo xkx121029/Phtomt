@@ -10,7 +10,8 @@ data class AgentState(
     val phase: Phase = Phase.IDLE,
     val message: String = "",
     val stepCount: Int = 0,
-    val lastAction: AgentAction? = null,
+    /** AI 最近一次决策输出的意图 */
+    val lastAction: AgentIntent? = null,
     val hasAccessibility: Boolean = false,
     val hasScreenshot: Boolean = false,
 ) {

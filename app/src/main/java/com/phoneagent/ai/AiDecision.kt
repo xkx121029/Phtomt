@@ -1,12 +1,13 @@
 package com.phoneagent.ai
 
-import com.phoneagent.model.AgentAction
+import com.phoneagent.model.AgentIntent
 
 /**
- * AI 一次决策的结果：动作 + 性能指标。
+ * AI 一次决策的结果：意图 + 性能指标。
+ * AI 输出的是"意图"（做什么），具体执行命令由端侧转译层依据授权模式生成。
  */
 data class AiDecision(
-    val action: AgentAction,
+    val action: AgentIntent,
     val promptTokens: Int = 0,
     val completionTokens: Int = 0,
     val totalTokens: Int = 0,

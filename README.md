@@ -36,7 +36,7 @@
 | 网络 | OkHttp | 4.12.0 |
 | 序列化 | kotlinx-serialization | 1.7.3 |
 | 存储 | DataStore | 1.1.1 |
-| 本地 OCR | Google ML Kit Text Recognition | 中文支持 |
+| 本地 OCR | External Vision App（IPC/AIDL） | 外挂端侧 3B 模型 + ML Kit（已从主程序移除以减小包体） |
 | ADB 执行 | Shizuku | 高权限 Shell 通道 |
 | 最低 SDK | Android 8.0 (API 26) | — |
 | 目标 SDK | Android 15 (API 35) | — |
@@ -110,8 +110,9 @@ happy_phone agent/
 │       │   │   ├── TestModels.kt
 │       │   │   ├── TestPresets.kt
 │       │   │   └── RealScenes.kt
-│       │   ├── vision/           # 本地视觉 OCR 🆕
-│       │   │   └── LocalVisionEngine.kt
+│       │   ├── vision/           # 外挂视觉服务 IPC 🆕
+│       │   │   ├── ExternalVisionProvider.kt
+│       │   │   └── DetectedControl.kt
 │       │   ├── workspace/        # 工作区引擎 🆕
 │       │   │   └── WorkAreaEngine.kt
 │       │   └── ui/                # UI 界面
@@ -237,6 +238,24 @@ AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
 - 文件浏览和编辑
 - AI 辅助内容生成
 - 任务结果归档
+
+## 杂项文档索引
+
+项目根目录 `杂项/` 存放全部设计/复盘文档，按主题索引如下：
+
+| 文档 | 内容 |
+|------|------|
+| [项目完整流程说明.md](杂项/项目完整流程说明.md) | 全局架构总览：感知/决策/执行/视觉/持久化/展示六层 + 提示词体系 |
+| [HPAv2.0计划文档.md](杂项/HPAv2.0计划文档.md) | v2.0 开发计划与功能清单 |
+| [HPA中长线任务优化及agent逻辑优化文档.md](杂项/HPA中长线任务优化及agent逻辑优化文档.md) | 长线任务进度记忆、检查点、防死循环、模板机制设计 |
+| [HPA动作执行逻辑优化文档.md](杂项/HPA动作执行逻辑优化文档.md) | 意图 DSL（intent/target{by,value}）与执行层转译规范 |
+| [IntentTranslator转译层原理.md](杂项/IntentTranslator转译层原理.md) | 意图→动作矩阵转译、通道选择（Shizuku/无障碍/只读） |
+| [IntentTranslator_Bug分析.md](杂项/IntentTranslator_Bug分析.md) | 转译层历史 Bug 复盘与根因分析 |
+| [HPA项目提示词文档.md](杂项/HPA项目提示词文档.md) / [HPA提示词文档.md](杂项/HPA提示词文档.md) | AI 系统/规划/决策提示词与参数规范 |
+| [HPA项目AI提示词全集.md](杂项/HPA项目AI提示词全集.md) | 全部提示词汇总（中文/英文双版本） |
+| [HPA项目ai温度文档.md](杂项/HPA项目ai温度文档.md) | 各提示词 temperature 取值依据 |
+| [PHA调试页原始+翻译双语信息展示设计文档.md](杂项/PHA调试页原始 + 翻译双语信息展示设计文档.md) | 调试页人话/原始双语展示、诊断导出、主动通知设计 |
+| [HPS ai标准化测试.md](杂项/HPS ai标准化测试.md) / [HPS-agnes测试结果.md](杂项/HPS-agnes测试结果.md) | AI 提示词标准化测试方案与 AGNES 模型实测结果 |
 
 ## 配置说明
 

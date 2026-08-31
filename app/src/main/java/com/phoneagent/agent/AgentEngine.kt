@@ -14,12 +14,19 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import com.phoneagent.decision.LocalDecisionEngine
+import com.phoneagent.execution.AppNameResolver
+import com.phoneagent.execution.CapabilityManager
+import com.phoneagent.execution.IntentResolver
+import com.phoneagent.execution.IntentTranslator
 import com.phoneagent.execution.VerifiedClickExecutor
 import com.phoneagent.floating.FloatingWindowService
 import com.phoneagent.memory.AnomalyMemoryEngine
 import com.phoneagent.memory.MemoryStore
 import com.phoneagent.memory.ProfileLearner
 import com.phoneagent.model.AgentAction
+import com.phoneagent.model.ActionTarget
+import com.phoneagent.model.AgentIntent
+import com.phoneagent.model.IntentType
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -123,6 +130,15 @@ class AgentEngine(
     private val anomalyEngine = AnomalyMemoryEngine(memory)
     private val profileLearner = ProfileLearner(memory)
 
+    // ---- 意图化转译层（HPA动作执行逻辑优化文档 v2.1）：AI 输出意图，端侧按授权模式转译执行 ----
+    private val capabilityManager = CapabilityManager(appContext, shizukuManager)
+    private val appNameResolver = AppNameResolver(appContext)
+    private val intentResolver = IntentResolver()
+    private val intentTranslator = IntentTranslator(capabilityManager, appNameResolver, intentResolver)
+    /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
+    @Volatile
+    private var lastVisualCoordinate: Pair<Int, Int>? = null
+
     private val _state = MutableStateFlow(AgentState())
     val state: StateFlow<AgentState> get() = _state.asStateFlow()
 
@@ -154,6 +170,11 @@ class AgentEngine(
     private var activePlan: TaskPlan? = null
     /** 若当前计划来自模板复用，记录其 id（用于健康状态回写） */
     private var reusedTemplateId: String? = null
+    /** 任务完成后待用户确认入库的用户模板：task/plan（仅用户主动确认才写入模板库） */
+    private var pendingTemplateTask: String? = null
+    private var pendingTemplatePlan: TaskPlan? = null
+    /** 近最连续“命令不存在/参数无效”等结构性错误的次数；≥2 时强制 AI 改用无障碍动作并禁止继续 shell （防止一直编造不存在的命令） */
+    private var invalidCommandStreak = 0
     private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** 当前任务 ID（每次 run 开始时生成，用于分任务日志/导出） */
@@ -206,11 +227,7 @@ class AgentEngine(
     }
 
     /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
-    private fun isMostlyChinese(text: String): Boolean {
-        if (text.isEmpty()) return false
-        val cjk = text.count { it.code in 0x4E00..0x9FFF }
-        return cjk.toFloat() / text.length > 0.3f
-    }
+    private fun isMostlyChinese(text: String): Boolean = EngineRules.isMostlyChinese(text)
 
     // ---- 第 11 层：多任务队列 ----
     private val _taskQueue = MutableStateFlow<List<String>>(emptyList())
@@ -457,8 +474,8 @@ class AgentEngine(
         // 言行一致：规划时注入 Shizuku 可用性，让规划与执行统一（shell 直接启动而非点击图标）
         val execContext = if (shizukuManager?.isAvailable() == true) {
             when (lang) {
-                PromptLang.CN -> "\n\n# 执行环境（规划必须考虑）\nShizuku/ADB 已连接，屏幕 ${screenWidth()}x${screenHeight()}。启动应用用 launch/am（不要写成\"点击桌面图标\"）；点击页面内可见控件用 tap + target id/label（从元素树取控件名，执行层自动算坐标，不要写死比例坐标）。"
-                PromptLang.EN -> "\n\n# Execution Environment (plan must consider)\nShizuku/ADB connected, screen ${screenWidth()}x${screenHeight()}. Start apps with launch/am (NOT \"tap home icon\"); tap visible in-page controls with tap + target id/label (control name from element tree, coordinates auto-computed — do NOT hard-code ratio coordinates)."
+                PromptLang.CN -> "\n\n# 执行环境（规划必须考虑）\n端侧已接管执行方式（选用 Shizuku/无障碍），屏幕 ${screenWidth()}x${screenHeight()}。第一类动作写 open_app + 应用名；点击页面内可见控件写 tap + target（by_id/by_text/by_hint）；坐标与通道都无需你操心。"
+                PromptLang.EN -> "\n\n# Execution Environment (plan must consider)\nThe device handles execution (Shizuku/accessibility), screen ${screenWidth()}x${screenHeight()}. Write open_app + app name to open apps; tap in-page controls with tap + target (by_id/by_text/by_hint); coordinates and channel need no care."
             }
         } else ""
         val text = if (answer.isNullOrBlank()) "$prompt$execContext" else "$prompt$execContext\n\n用户已选择澄清项：$answer"
@@ -542,8 +559,7 @@ class AgentEngine(
     }
 
     /**
-     * 从 AI 响应中提取 JSON 对象。
-     *
+     * 从 AI 响应中提取 JSON 对象（纯逻辑实现见 [EngineRules.extractJsonObject]）。
      * 策略（按优先级）：
      * 1. 代码块包裹（```json ... ``` 或 ``` ... ```）
      * 2. 反向搜索：从末尾 '}' 向前匹配最外层完整 JSON 对象（推荐）
@@ -552,33 +568,7 @@ class AgentEngine(
      * 反向搜索优势：AI 可能在 JSON 前输出解释文字，从末尾反向搜索能精准定位
      * 实际输出的 JSON 对象，避免被前文干扰。
      */
-    private fun extractJsonObject(content: String): String {
-        val trimmed = content.trim()
-        // 1. 处理 ```json ... ``` 或 ``` ... ``` 代码块包裹
-        if (trimmed.startsWith("```")) {
-            val firstNewline = trimmed.indexOf("\n")
-            val lastFence = trimmed.lastIndexOf("```")
-            if (firstNewline > 0 && lastFence > firstNewline) {
-                return trimmed.substring(firstNewline + 1, lastFence).trim()
-            }
-        }
-        // 2. 处理中间出现代码块的情况（前有文字+```json ... ```）
-        val codeBlockStart = trimmed.indexOf("```json")
-        if (codeBlockStart >= 0) {
-            val afterMarker = trimmed.indexOf("\n", codeBlockStart)
-            val blockEnd = trimmed.indexOf("```", afterMarker)
-            if (afterMarker > 0 && blockEnd > afterMarker) {
-                return trimmed.substring(afterMarker + 1, blockEnd).trim()
-            }
-        }
-        // 3. 反向搜索：从末尾 '}' 向前匹配最外层完整 JSON 对象
-        val backwardResult = extractJsonBackward(trimmed)
-        if (backwardResult != null) return backwardResult
-        // 4. 兜底：提取第一个 { 到最后一个 }
-        val start = trimmed.indexOf('{')
-        val end = trimmed.lastIndexOf('}')
-        return if (start >= 0 && end > start) trimmed.substring(start, end + 1) else trimmed
-    }
+    private fun extractJsonObject(content: String): String = EngineRules.extractJsonObject(content)
 
     /**
      * 从字符串末尾反向搜索最外层完整 JSON 对象。
@@ -587,43 +577,7 @@ class AgentEngine(
      *
      * @return 提取到的 JSON 字符串，若未找到有效 JSON 则返回 null
      */
-    private fun extractJsonBackward(text: String): String? {
-        val lastBrace = text.lastIndexOf('}')
-        if (lastBrace < 0) return null
-
-        var depth = 0
-        var inString = false
-        var escape = false
-        // 从最后一个 '}' 向前扫描，匹配括号深度
-        for (i in lastBrace downTo 0) {
-            val c = text[i]
-            if (escape) {
-                escape = false
-                continue
-            }
-            if (c == '\\' && inString) {
-                escape = true
-                continue
-            }
-            if (c == '"') {
-                inString = !inString
-                continue
-            }
-            if (inString) continue
-            if (c == '}') {
-                depth++
-            } else if (c == '{') {
-                depth--
-                if (depth == 0) {
-                    // 找到匹配的 '{'，提取完整 JSON 对象
-                    val extracted = text.substring(i, lastBrace + 1).trim()
-                    // 基本校验：非空且以 { 开头 } 结尾
-                    return if (extracted.length >= 2) extracted else null
-                }
-            }
-        }
-        return null
-    }
+    private fun extractJsonBackward(text: String): String? = EngineRules.extractJsonBackward(text)
 
     /** 查询最近一次任务的检查点（供中断后展示/续传） */
     suspend fun lastCheckpoint(): com.phoneagent.task.Checkpoint? =
@@ -701,6 +655,15 @@ class AgentEngine(
         // 每次任务开始生成独立任务 ID，用于分任务日志查看与导出
         currentTaskId = System.currentTimeMillis()
         currentTaskName = task.take(60)
+        // 每次任务开始彻底清空 AI 上下文：对话历史、失败/提前完成/无效命令计数、“上一条 shell 输出”、
+        // 上一页截图快照与上一任务计划，避免上一个任务的指令/决策/命令串扰本任务（防止 AI 沿用不存在/失效的命令）
+        _conversation.value = emptyList()
+        consecutiveFailures = 0
+        earlyDoneRejections = 0
+        invalidCommandStreak = 0
+        lastShellOutput = ""
+        lastSnapshot = ScreenSnapshot()
+        activePlan = plan
         // 新任务重置长线工作记忆
         progressNotes.clear()
         completedSteps = 0
@@ -722,100 +685,11 @@ class AgentEngine(
         val messages = mutableListOf<ChatMessageDto>().apply {
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shizukuManager?.isAvailable() == true)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, settingsVal.hasVision)))))
-            // Shizuku 可用性动态注入：可用 → 预设命令清单；不可用 → 强约束禁止 shell
-            val shizukuReady = shizukuManager?.isAvailable() == true
-            if (shizukuReady) {
-                add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
-                    PromptLang.CN -> """
-Shizuku: 已连接。使用 type="shell" + 友好命令（见下方表格），无需记忆 ADB 语法。
-当前屏幕尺寸: ${screenWidth()}x${screenHeight()} 像素。
-
-# 友好命令（command 字段使用）
-| 命令 | 参数 | 说明 |
-|------|------|------|
-| tap | x y | 点击 |
-| lp | x y | 长按 1500ms |
-| dt | x y | 双击 |
-| sw | x1 y1 x2 y2 | 滑动 |
-| su | x y | 上滑 |
-| sd | x y | 下滑 |
-| sl | x y | 左滑 |
-| sr | x y | 右滑 |
-| back | — | 返回键 |
-| home | — | 主页键 |
-| recents | — | 最近任务 |
-| key | BACK/HOME/数字 | 按键事件 |
-| text | "文字" | 输入文字 |
-| am | 包名/.Activity | 启动 Activity |
-| stop | 包名 | 停止应用 |
-| dump | 包名 | 列出 Activity |
-| launch | 包名 | 启动应用 |
-| brightness | 0~255 | 屏幕亮度 |
-| screenshot | — | 截图到 /sdcard |
-| info | — | 当前 Activity |
-| wifi_on/wifi_off | — | WiFi 开关 |
-| clip | — | 剪贴板 |
-| raw | 完整ADB命令 | 直接透传（兜底） |
-
-# 坐标格式（重要）
-tap/lp/dt/su/sd/sl/sr 的坐标参数支持：
-- 比例：0.04 0.5（元素 bounds_ratio 直接使用，引擎自动换算像素）
-- 百分比：4% 50%
-- 像素：500 800（必须≤屏幕尺寸）
-推荐用比例或百分比，无需自行计算像素。
-
-输入中文: am broadcast -a ADB_INPUT_TEXT --es msg "中文"
-
-示例: {"type":"shell","command":"tap 0.5 0.2","reasoning":"点击顶部搜索框","expected":"搜索框获焦","confidence":0.9}""".trimIndent()
-                    PromptLang.EN -> """
-Shizuku: connected. Use type="shell" + friendly commands (table below). No need to memorize ADB syntax.
-Current screen size: ${screenWidth()}x${screenHeight()} pixels.
-
-# Friendly Commands (use in command field)
-| Command | Args | Description |
-|---------|------|-------------|
-| tap | x y | Tap |
-| lp | x y | Long press 1500ms |
-| dt | x y | Double tap |
-| sw | x1 y1 x2 y2 | Swipe |
-| su | x y | Swipe up |
-| sd | x y | Swipe down |
-| sl | x y | Swipe left |
-| sr | x y | Swipe right |
-| back | — | Back key |
-| home | — | Home key |
-| recents | — | Recents key |
-| key | BACK/HOME/number | Key event |
-| text | "text" | Input text |
-| am | pkg/.Activity | Start Activity |
-| stop | pkg | Force stop app |
-| dump | pkg | List activities |
-| launch | pkg | Launch app |
-| brightness | 0~255 | Screen brightness |
-| screenshot | — | Screenshot to /sdcard |
-| info | — | Current activity |
-| wifi_on/wifi_off | — | WiFi toggle |
-| clip | — | Clipboard |
-| raw | raw ADB | Passthrough |
-
-# Coordinate Format (important)
-tap/lp/dt/su/sd/sl/sr coordinates support:
-- Ratio: 0.04 0.5 (use bounds_ratio directly from element tree, engine auto-converts to pixels)
-- Percentage: 4% 50%
-- Pixel: 500 800 (must be ≤ screen size)
-Prefer ratio or percentage, no need to calculate pixels yourself.
-
-Type Chinese: am broadcast -a ADB_INPUT_TEXT --es msg "text"
-
-Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box","expected":"search focused","confidence":0.9}""".trimIndent()
-                }))))
-            } else {
-                // Shizuku 不可用：强约束禁止 shell，明确改用无障碍动作
-                add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
-                    PromptLang.CN -> "当前 Shizuku 未连接，type=\"shell\" 命令不可用。禁止输出任何 shell 动作。所有点击/滑动/按键/输入使用无障碍动作（tap/long_press/swipe/type/key/launch/scroll_to），用 target 的 id/label 定位控件。"
-                    PromptLang.EN -> "Shizuku is NOT connected, type=\"shell\" commands are unavailable. NEVER output any shell action. All taps/swipes/keypresses/text input must use accessibility actions (tap/long_press/swipe/type/key/launch/scroll_to) with target id/label."
-                }))))
-            }
+            // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
+                PromptLang.CN -> "执行通道（无障碍/Shizuku）由端侧自动选择，无需你指定。打开应用用 open_app（写应用名即可）；目标定位与坐标计算全部由端侧完成，你不输出像素坐标。"
+                PromptLang.EN -> "Execution channel (accessibility/Shizuku) is auto-selected on-device; you never specify it. Open apps with open_app (write the app name); target location and coordinate computing are all handled on-device — you never output pixel coordinates."
+            }))))
         }
 
         val maxSteps = settingsVal.maxSteps
@@ -862,19 +736,21 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 continue
             }
 
-            // 3. 端侧决策优先
-            val localAction = localDecision.decide(snapshot)
-            var action: AgentAction?
+            // 3. 端侧决策优先（输出的都是"意图"）
+            lastVisualCoordinate = null
+            val localIntent = localDecision.decide(snapshot)
+            var decidedIntent: AgentIntent?
             var fromLocal = false
-            if (localAction != null) {
-                action = localAction
+            if (localIntent != null) {
+                decidedIntent = localIntent
                 fromLocal = true
-                log(AgentLog.Level.AI, "端侧决策：${action.type}（${action.reason}）")
+                log(AgentLog.Level.AI, "端侧决策意图：${localIntent.intent}（${localIntent.reasoning ?: localIntent.reason}）")
             } else {
-                action = cloudDecide(task, snapshot, annotated, messages, screenshot, settingsVal)
+                decidedIntent = cloudDecide(task, snapshot, annotated, messages, screenshot, settingsVal)
             }
 
-            if (action == null) { log(AgentLog.Level.ERROR, "决策为空，停止"); stop(); return }
+            if (decidedIntent == null || decidedIntent.intent.isEmpty()) { log(AgentLog.Level.ERROR, "决策为空，停止"); stop(); return }
+            val intent = decidedIntent!!
             // 端侧连续多次决策 → 疑似死循环，主动反馈一次（v2.2.1 八）
             if (fromLocal) {
                 localDecisionStreak++
@@ -900,62 +776,93 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                     "AI 长时间没动静", "任务似乎卡住了，已延长检查时间；若仍未进展可用「已手动处理」接管。",
                 )
             }
-            // 规范化文档动作词汇（task_complete/abort → task_done 等）
-            action = action.copy(type = ActionType.ALIAS[action.type] ?: action.type)
-            addConversation(if (fromLocal) "local" else "assistant", action.toString())
-
-            // 4. 执行 + 验证
-            _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, lastAction = action, message = action.reason ?: "")
-            pushFloating(action.reasoning ?: action.reason ?: "正在执行", "ACTING")
-            // 规划步数常多于实际执行步数：仅当完成度明显不足时（已执行 < 规划步数的60%）才拦截，
-            // 避免虚高规划导致任务永远走不完；若实际已接近完成则尊重 AI 的 task_done 判断
-            val minDoneThreshold = if (activePlan != null && activePlan!!.steps.isNotEmpty())
-                maxOf(3, Math.ceil(activePlan!!.steps.size * 0.6).toInt())
-            else 3
-            if (action.type == ActionType.TASK_DONE && step < minDoneThreshold) {
-                // 要求 AI 重新决策，并注入纠偏提示
-                earlyDoneRejections++
-                if (earlyDoneRejections >= 3) {
-                    // 连续 3 次拒绝仍坚持完成 → 按完成处理，避免死循环
-                    log(AgentLog.Level.WARN, "AI 连续 3 次提前宣称完成，按完成处理避免死循环")
-                    earlyDoneRejections = 0
-                } else {
-                    log(AgentLog.Level.WARN, "AI 仅执行 $step 步即宣称完成（门槛 $minDoneThreshold 步），要求重新决策")
-                    messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
-                        text = "⚠️ 你当前仅执行了 $step 步（任务通常至少需要 $minDoneThreshold 步）。请确认目标是否真的达成：只有亲眼在当前页面看到任务结果的明确证据才能发 task_done；否则继续执行真正需要的关键步骤，不要凑数，也不要提前结束。"
-                    ))))
-                    continue
+            // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）
+            val translation = intentTranslator.translate(intent, snapshot, lastVisualCoordinate)
+            var action: AgentAction = AgentAction(type = "")
+            var verify = com.phoneagent.execution.VerifyResult(false, "", "", "")
+            var isStructuralError = false
+            var verified = false
+            when (translation) {
+                is IntentTranslator.TranslationResult.Command -> {
+                    action = translation.action
+                    addConversation(if (fromLocal) "local" else "assistant", intent.toString())
+                    log(com.phoneagent.model.AgentLog.Level.INFO, "意图转译为动作：intent=${intent.intent} → action.type=${action.type} pkg=${action.packageName} cmd=${action.command} target=${action.target}")
+                    _state.value = _state.value.copy(
+                        phase = AgentState.Phase.ACTING, lastAction = intent,
+                        message = action!!.reason ?: "",
+                    )
+                    pushFloating(action!!.reasoning ?: action!!.reason ?: "正在执行", "ACTING")
+                    // 规划步数常多于实际执行步数：仅当完成度明显不足时（已执行 < 规划步数的60%）才拦截
+                    val minDoneThreshold = if (activePlan != null && activePlan!!.steps.isNotEmpty())
+                        maxOf(3, Math.ceil(activePlan!!.steps.size * 0.6).toInt())
+                    else 3
+                    if (action!!.type == ActionType.TASK_DONE && step < minDoneThreshold) {
+                        // 要求 AI 重新决策，并注入纠偏提示
+                        earlyDoneRejections++
+                        if (earlyDoneRejections >= 3) {
+                            // 连续 3 次拒绝仍坚持完成 → 按完成处理，避免死循环
+                            log(AgentLog.Level.WARN, "AI 连续 3 次提前宣称完成，按完成处理避免死循环")
+                            earlyDoneRejections = 0
+                        } else {
+                            log(AgentLog.Level.WARN, "AI 仅执行 $step 步即宣称完成（门槛 $minDoneThreshold 步），要求重新决策")
+                            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                                text = "⚠️ 你当前仅执行了 $step 步（任务通常至少需要 $minDoneThreshold 步）。请确认目标是否真的达成：只有亲眼在当前页面看到任务结果的明确证据才能输出 finish；否则继续执行真正需要的关键步骤，不要凑数，也不要提前结束。"
+                            ))))
+                            continue
+                        }
+                    }
+                    if (action!!.type == ActionType.TASK_DONE) {
+                        log(AgentLog.Level.INFO, "任务完成：${action!!.summary ?: "-"}")
+                        recordStep(step, action!!, "verified_success", "", "")
+                        _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action!!.summary ?: "任务完成", isRunning = false)
+                        AgentAccessibilityService.agentRunning = false
+                        // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
+                        runCatching { learnTemplate(task) }
+                        runCatching { com.phoneagent.task.TaskStore.clearCheckpoint(appContext) }
+                        runCatching {
+                            val planSteps = activePlan?.steps?.size ?: 0
+                            if (reusedTemplateId == null && planSteps > 0) {
+                                pendingTemplateTask = task
+                                pendingTemplatePlan = activePlan
+                                requestConfirmSaveTemplate()
+                            } else {
+                                FloatingWindowService.showDone(action!!.summary ?: "任务完成")
+                            }
+                        }
+                        return
+                    }
+                    verify = executeWithVerify(action!!, snapshot)
+                    // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
+                    isStructuralError = verify.reason.contains("未知 shell 命令") ||
+                        verify.reason.contains("命令为空") ||
+                        verify.reason.contains("参数无效")
+                    verified = verify.success
+                    var times = 1
+                    while (!verified && times < 3 && !isStructuralError && coroutineContext.isActive) {
+                        times++
+                        log(AgentLog.Level.WARN, "动作未生效（第 $times 次重试）：${action!!.type}")
+                        repeat(3) { delay(300) }
+                        val v2 = executeWithVerify(action!!, observe())
+                        verified = v2.success
+                    }
                 }
-            }
-
-            if (action.type == ActionType.TASK_DONE) {
-                log(AgentLog.Level.INFO, "任务完成：${action.summary ?: "-"}")
-                recordStep(step, action, "verified_success", "", "")
-                _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action.summary ?: "任务完成", isRunning = false)
-                AgentAccessibilityService.agentRunning = false
-                // 任务完成后的收尾：模板自动学习 + 检查点清空
-                runCatching { learnTemplate(task) }
-                runCatching { com.phoneagent.task.TaskStore.clearCheckpoint(appContext) }
-                // 任务完成后：悬浮窗清空内容显示打勾动效，不关闭
-                FloatingWindowService.showDone(action.summary ?: "任务完成")
-                return
-            }
-
-            var verify = executeWithVerify(action, snapshot)
-
-            // 验证失败 → 重试最多 3 次，然后请求用户协作
-            // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
-            val isStructuralError = verify.reason.contains("未知 shell 命令") ||
-                verify.reason.contains("命令为空") ||
-                verify.reason.contains("参数无效")
-            var verified = verify.success
-            var times = 1
-            while (!verified && times < 3 && !isStructuralError && coroutineContext.isActive) {
-                times++
-                log(AgentLog.Level.WARN, "动作未生效（第 $times 次重试）：${action.type}")
-                repeat(3) { delay(300) }
-                val v2 = executeWithVerify(action, observe())
-                verified = v2.success
+                is IntentTranslator.TranslationResult.Failed -> {
+                    val reason = translation.reason
+                    log(AgentLog.Level.WARN, "意图转译失败：$reason")
+                    addConversation("assistant", intent.toString())
+                    _state.value = _state.value.copy(
+                        phase = AgentState.Phase.ACTING, lastAction = intent,
+                        message = "转译失败：$reason",
+                    )
+                    action = AgentAction(
+                        type = intent.intent, reasoning = intent.reasoning,
+                        reason = reason,
+                        target = intent.target?.let { ActionTarget(method = it.by, value = it.value) },
+                    )
+                    verify = com.phoneagent.execution.VerifyResult(false, reason, "", "")
+                    isStructuralError = true
+                    verified = false
+                }
             }
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
             // 步骤验证生效 → 记入长线工作记忆，供后续压缩历史后仍能感知进度
@@ -981,18 +888,27 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "用户提示：$hint 请据此重新决策下一步动作。" ))))
                 pushThinking(sent = "用户提示：$hint")
                 var guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
-                if (guided == null || guided.type == ActionType.TASK_DONE) {
+                if (guided == null || guided.intent == IntentType.FINISH || guided.intent == IntentType.GIVE_UP) {
                     // AI 调用失败或认为任务完成：重试一次
                     guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
                 }
-                if (guided != null && guided.type != ActionType.TASK_DONE) {
-                    // 直接执行引导后的动作，不重走决策（避免变卦 + 节省一次云调用）
-                    action = guided
-                    verify = executeWithVerify(action, observe())
-                    verified = verify.success
-                    if (!verified) {
-                        log(AgentLog.Level.WARN, "引导后动作仍未生效：${action.type}")
-                        // 不立即退出，继续下一轮重新观察
+                if (guided != null && guided.intent != IntentType.FINISH && guided.intent != IntentType.GIVE_UP) {
+                    // 直接执行引导后的意图（转译为命令），不重走决策（避免变卦 + 节省一次云调用）
+                    val gTranslate = intentTranslator.translate(guided, observe(), null)
+                    when (gTranslate) {
+                        is IntentTranslator.TranslationResult.Command -> {
+                            action = gTranslate.action
+                            verify = executeWithVerify(gTranslate.action, observe())
+                            verified = verify.success
+                            if (!verified) {
+                                log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
+                            }
+                        }
+                        is IntentTranslator.TranslationResult.Failed -> {
+                            verify = com.phoneagent.execution.VerifyResult(false, gTranslate.reason, "", "")
+                            verified = false
+                            log(AgentLog.Level.WARN, "引导后意图转译失败：${gTranslate.reason}")
+                        }
                     }
                 }
             }
@@ -1005,12 +921,20 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             // 记录上下文供多轮参考
             messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "执行了 ${action.type}" +
                 (action.reason?.let { "（$it）" } ?: "")))))
-            // 结构错误（未知命令等）：明确告知 AI 命令无效及可用命令清单，促使下一轮纠正
+            // 结构错误（未知命令等）：明确告知 AI 命令无效及可用命令清单，促使下一轮纠正；
+            // 连续 ≥2 次无效命令时升级：强制改用无障碍动作（id/label 定位），禁止继续 shell，避免 AI 一直编造不存在的命令
             if (!verified && isStructuralError) {
+                invalidCommandStreak++
                 val fix = if (action.type == ActionType.SHELL) {
-                    "\n\n你发出的 shell 命令无效：${verify.reason}\n请只使用以下友好命令：tap/lp/dt/sw/su/sd/sl/sr/key/back/home/recents/text/am/stop/dump/launch/brightness/screenshot/info/wifi_on/wifi_off/clip/raw。坐标用比例（0~1）或像素。不要编造不存在的命令。"
+                    if (invalidCommandStreak >= 2) {
+                        "\n\n你已经连续 ${invalidCommandStreak} 次发出不存在的 shell 命令（${verify.reason}）。" +
+                        "从这一步起【禁止再使用 type=\"shell\"】。改用无障碍动作 type=tap/long_press/type/scroll_to/launch + target.id 或 target.label（不需坐标，执行层会自动定位）。" +
+                        "只有显式列在表格里的命令才存在，其它一律不允许：tap/lp/dt/sw/su/sd/sl/sr/key/back/home/recents/text/am/stop/dump/launch/brightness/screenshot/info/wifi_on/wifi_off/clip。不要编造、不要臆测命令。"
+                    } else {
+                        "\n\n你发出的 shell 命令无效：${verify.reason}\n请只使用以下友好命令：tap/lp/dt/sw/su/sd/sl/sr/key/back/home/recents/text/am/stop/dump/launch/brightness/screenshot/info/wifi_on/wifi_off/clip。坐标用比例（0~1）或像素。不要编造不存在的命令。"
+                    }
                 } else {
-                    "\n\n动作「${action.type}」无效：${verify.reason}\n请重新决策，使用 tap/long_press/key/launch/scroll_to/shell/write_doc/task_done 中正确的动作与参数。"
+                    "\n\n意图「${action.type}」执行无效：${verify.reason}\n请重新决策，使用 open_app/open/tap/long_press/input/swipe/press/wait/scroll_to/write_doc/finish/give_up 中正确的意图与参数。目标优先用 by_id/by_text，找不到用 by_hint。"
                 }
                 messages.add(ChatMessageDto(role = "assistant", content = listOf(
                     ContentPart(type = "text", text = fix),
@@ -1067,7 +991,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         messages: MutableList<ChatMessageDto>,
         screenshot: android.graphics.Bitmap?,
         settingsVal: AppSettings.Settings,
-    ): AgentAction? {
+    ): AgentIntent? {
         // 数据脱敏后再发送
         val safeText = DataSanitizer.sanitize(snapshot.toAiText())
         val planSteps = activePlan?.steps?.mapIndexed { i, s -> "${i + 1}. ${s.description}" }?.joinToString("\n")
@@ -1096,11 +1020,13 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
             if (useOnDevice3b) {
                 log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
+                val t0 = System.nanoTime()
                 val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
                     context = appContext,
                     bitmap = screenshot,
                     timeoutMs = EXTERNAL_VISION_TIMEOUT,
                 )
+                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 if (controls.isNotEmpty()) {
                     externalUsed = true
                     localRegions = controls
@@ -1112,6 +1038,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             // 2) 云端视觉
             if (desc.isNullOrBlank() && cloudVision) {
                 log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
+                val t0 = System.nanoTime()
                 desc = aiClient.visionDescribe(
                     baseUrl = visionCfg?.baseUrl ?: "",
                     apiKey = visionCfg?.apiKey ?: "",
@@ -1119,6 +1046,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                     screenshot = screenshot,
                     task = task,
                 ).getOrNull()
+                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
             }
             // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
             //    主程序不再内置 OCR，本地读图统一由外挂视觉 Agent 承担（v2.2 迁移）
@@ -1126,11 +1054,13 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
             ) {
                 log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
+                val t0 = System.nanoTime()
                 val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
                     context = appContext,
                     bitmap = screenshot,
                     timeoutMs = EXTERNAL_VISION_TIMEOUT,
                 )
+                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 if (controls.isNotEmpty()) {
                     externalUsed = true
                     localRegions = controls
@@ -1186,7 +1116,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 appContext, com.phoneagent.debug.ActiveNotifier.ID_CLOUD_TIMEOUT,
                 "AI 卡顿了一下", "云端暂时联系不上，已自动改为稍后重试，任务不会被中断。",
             )
-            return AgentAction(type = "wait", timeoutMs = 1200, reason = "AI 决策超时，等待后重试")
+            return AgentIntent(intent = "wait", waitMs = 1200, reasoning = "AI 决策超时，等待后重试")
         }
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
         val decision = result.getOrElse { err ->
@@ -1196,34 +1126,45 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         }
         apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
         recordMetrics(decision)
-        var action = decision.action
-        // 视觉定位：根据视觉来源（外挂 > 本地OCR > 云端）给出点击比例坐标
-        if (screenshot != null && (cloudVision || localRegions != null || externalUsed)) {
-            val targetText = action.target?.value
+        var intent = decision.action
+        // 视觉定位：对 hint 目标（元素树拿不到）给出像素坐标，供转译层本次定位使用。
+        // by_id/by_text 由转译层在元素树中精确定位，无需这里算坐标。
+        lastVisualCoordinate = null
+        val tTarget = intent.target
+        if (tTarget != null && tTarget.by == "hint" && screenshot != null &&
+            (cloudVision || localRegions != null || externalUsed)
+        ) {
+            val targetText = tTarget.value
             if (!targetText.isNullOrBlank()) {
                 val pos: Pair<Float, Float>? = when {
                     // 外挂视觉优先：端侧 3B 定位不准时退回已识别控件的本地匹配
                     externalUsed -> {
                         log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
-                        com.phoneagent.vision.ExternalVisionProvider.locate(
+                        val t0 = System.nanoTime()
+                        val p = com.phoneagent.vision.ExternalVisionProvider.locate(
                             appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
                         ) ?: com.phoneagent.vision.ControlFormat.locate(localRegions!!, targetText)
+                        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                        p
                     }
                     localRegions != null -> com.phoneagent.vision.ControlFormat.locate(localRegions, targetText)
                     cloudVision -> {
                         log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
-                        aiClient.visionLocate(
+                        val t0 = System.nanoTime()
+                        val p = aiClient.visionLocate(
                             baseUrl = visionCfg?.baseUrl ?: "",
                             apiKey = visionCfg?.apiKey ?: "",
                             model = visionCfg?.model ?: "",
                             screenshot = screenshot,
                             targetText = targetText,
                         ).getOrNull()
+                        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                        p
                     }
                     else -> null
                 }
                 if (pos != null) {
-                    action = action.copy(target = com.phoneagent.model.ActionTarget(method = "coordinate", value = "${pos.first},${pos.second}"))
+                    lastVisualCoordinate = (pos.first * screenWidth()).toInt() to (pos.second * screenHeight()).toInt()
                 }
             }
         }
@@ -1251,35 +1192,35 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 )
 
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
-            action.type != ActionType.ABORT && needsReviewAction(action, snapshot)
+            intent.intent != IntentType.GIVE_UP && needsReviewIntent(intent, snapshot)
         return if (reviewOn) {
-            // 独立审核者复核：防止执行者脑补现状/点到不存在的控件（仅关键/无元素证据动作进入审核）
-            log(AgentLog.Level.INFO, "审核者复核动作…")
-            _state.value = _state.value.copy(message = "审核者复核动作…")
-            reviewAction(task, snapshot, annotated, action, settingsVal)
+            // 独立审核者复核：防止执行者脑补现状/点到不存在的控件（仅关键/无元素证据意图进入审核）
+            log(AgentLog.Level.INFO, "审核者复核意图…")
+            _state.value = _state.value.copy(message = "审核者复核意图…")
+            reviewAction(task, snapshot, annotated, intent, settingsVal)
         } else {
-            action
+            intent
         }
     }
 
-    /** 本地硬规则预筛：仅当动作确实需要独立审核（完成判断、目标无元素证据的点击/输入）才升审核；
+    /** 本地硬规则预筛：仅当意图确实需要独立审核（完成判断、目标无元素证据的点击/输入）才升审核；
      *  其余动作由执行层验证兜底，跳过二次调用以降低开销 */
-    private fun needsReviewAction(action: AgentAction, snapshot: ScreenSnapshot): Boolean = when (action.type) {
-        ActionType.TASK_DONE -> true
-        ActionType.TAP, ActionType.CLICK, ActionType.LONG_PRESS, ActionType.TYPE_TEXT, ActionType.SWIPE ->
-            resolveTarget(action, snapshot) == null
+    private fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean = when (intent.intent) {
+        IntentType.FINISH, IntentType.GIVE_UP -> true
+        IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT, IntentType.SWIPE ->
+            intent.target == null || intent.target.by == "hint"
         else -> false
     }
 
-    /** 用独立的审核者 AI 复核执行者动作是否基于当前页面证据；
-     *  审核者输出 {pass, why, freefix}，拒绝且给修正时用修正动作，否则沿用原动作（执行层兜底） */
+    /** 用独立的审核者 AI 复核执行者意图是否基于当前页面证据；
+     *  审核者输出 {pass, why, freefix}，拒绝且给修正时用修正意图，否则沿用原意图（执行层兜底） */
     private suspend fun reviewAction(
         task: String,
         snapshot: ScreenSnapshot,
         annotated: com.phoneagent.perception.AnnotatedPage,
-        action: AgentAction,
+        intent: AgentIntent,
         settingsVal: AppSettings.Settings,
-    ): AgentAction {
+    ): AgentIntent {
         // 审核者模型：非链路聚合时用主模型；开了思考能力/链路聚合时用思考模型（同模型复核）
         val cfg = reasoningConfig(settingsVal)
         val baseUrl = cfg?.baseUrl ?: settingsVal.apiBaseUrl
@@ -1290,8 +1231,8 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             appendLine("## 任务")
             appendLine(task)
             appendLine()
-            appendLine("## 执行者拟执行动作")
-            appendLine(action.toString())
+            appendLine("## 执行者拟执行意图")
+            appendLine(intent.toString())
             appendLine()
             appendLine("## 当前页面（真实证据）")
             appendLine("前台应用：${snapshot.packageName ?: "未知"}")
@@ -1307,31 +1248,31 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         val raw = aiClient.chat(
             baseUrl = baseUrl, apiKey = apiKey, model = model,
             messages = messages, temperature = 0.1,
-        ).getOrNull() ?: return action
+        ).getOrNull() ?: return intent
         val root = runCatching { json.parseToJsonElement(extractJsonObject(raw)).jsonObject }.getOrNull()
         if (root == null) {
-            FloatingWindowService.updateReviewText("审核结果解析失败，沿用执行者「${action.type}」")
-            return action
+            FloatingWindowService.updateReviewText("审核结果解析失败，沿用执行者「${intent.intent}」")
+            return intent
         }
         val pass = root["pass"]?.jsonPrimitive?.booleanOrNull ?: true
         if (pass) {
-            FloatingWindowService.updateReviewText("✓ 执行者「${action.type}」有页面依据，审核通过")
-            return action
+            FloatingWindowService.updateReviewText("✓ 执行者「${intent.intent}」有页面依据，审核通过")
+            return intent
         }
         val why = root["why"]?.jsonPrimitive?.content ?: "无理由"
-        FloatingWindowService.updateReviewText("✗ 执行者「${action.type}」被拒绝：$why")
+        FloatingWindowService.updateReviewText("✗ 执行者「${intent.intent}」被拒绝：$why")
         log(AgentLog.Level.WARN, "审核者拒绝：$why")
-        // 审核者给出有证据的修正动作时采用；否则沿用原动作（由执行层兜底失败并注入反馈）
+        // 审核者给出有证据的修正意图时采用；否则沿用原意图（由执行层兜底失败并注入反馈）
         val fix = root["freefix"]
         if (fix is kotlinx.serialization.json.JsonObject) {
-            val correction = runCatching { json.decodeFromString<AgentAction>(fix.toString()) }.getOrNull()
+            val correction = runCatching { json.decodeFromString<AgentIntent>(fix.toString()) }.getOrNull()
             if (correction != null) {
-                FloatingWindowService.updateReviewText("✗ 执行者「${action.type}」被拒绝：$why；采用修正「${correction.type}」")
-                log(AgentLog.Level.WARN, "采用审核者修正动作：${correction.type}")
+                FloatingWindowService.updateReviewText("✗ 执行者「${intent.intent}」被拒绝：$why；采用修正「${correction.intent}」")
+                log(AgentLog.Level.WARN, "采用审核者修正意图：${correction.intent}")
                 return correction
             }
         }
-        return action
+        return intent
     }
 
     /** 测试主模型连接是否可用（用于设置保存前的校验） */
@@ -1388,44 +1329,40 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
      * 判断动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等）。
      * 依据动作类型 + 目标 label/理由 中的触发词。
      */
-    private fun isFinalSubmit(action: AgentAction, type: String): Boolean {
-        if (type != ActionType.TAP && type != ActionType.CLICK &&
-            type != ActionType.LONG_PRESS && type != ActionType.LONG_CLICK &&
-            type != ActionType.TYPE_TEXT && type != ActionType.SHELL) return false
-        val target = action.target?.value ?: action.reason ?: action.reasoning
-            ?: action.text ?: action.command ?: ""
-        return listOf("发送", "提交", "下单", "立即支付", "去支付", "确认支付", "发布", "删除", "移除", "确认", "完成下单")
-            .any { target.contains(it, ignoreCase = true) }
-    }
+    private fun isFinalSubmit(action: AgentAction, type: String): Boolean = EngineRules.isFinalSubmit(action, type)
 
     /** 幂等判定：当前页面是否已出现"完成成功"证据（避免重复执行副作用后再次触发） */
-    private fun idempotencyDone(snapshot: ScreenSnapshot): Boolean {
-        val text = snapshot.toAiText()
-        if (text.isBlank()) return false
-        return listOf("发送成功", "提交成功", "下单成功", "支付成功", "发布成功", "删除成功", "办理成功", "操作成功", "交易成功", "已提交", "已完成")
-            .any { text.contains(it) }
-    }
+    private fun idempotencyDone(snapshot: ScreenSnapshot): Boolean = EngineRules.idempotencyDone(snapshot)
 
     private suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.execution.VerifyResult {
+        val execT0 = System.nanoTime()
         // 规范化文档动作词汇
         val type = ActionType.ALIAS[action.type] ?: action.type
 
         // 文档写入动作：不依赖屏幕/无障碍，直接把内容写入工作区
         if (type == ActionType.WRITE_DOC) {
-            return executeWriteDoc(action)
+            return executeWriteDoc(action).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
         }
 
         // SHELL 动作优先独立处理：Shizuku 可用时无需无障碍服务即可执行
         if (type == ActionType.SHELL) {
-            return executeShellAction(action)
+            return executeShellAction(action).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
         }
 
         // 幂等保护（v2.2 5.4）：副作用意图（提交/发送/下单/支付/删除）已由页面证明完成 → 跳过，防重复副作用与误触
         if (isFinalSubmit(action, type) && idempotencyDone(snapshot)) {
-            return com.phoneagent.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "")
+            return com.phoneagent.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "").also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
         }
 
-        val service = AgentAccessibilityService.instance ?: return com.phoneagent.execution.VerifyResult(false, "无障碍服务不可用", "", "")
+        val service = AgentAccessibilityService.instance ?: return com.phoneagent.execution.VerifyResult(false, "无障碍服务不可用", "", "").also {
+            recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+        }
         val executor = ActionExecutor(service)
         val verifier = VerifiedClickExecutor(executor)
 
@@ -1433,7 +1370,7 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         val target = resolveTarget(action, snapshot)
         val (x, y) = resolvePoint(action, target)
 
-        return when (type) {
+        val result = when (type) {
             ActionType.CLICK, ActionType.TAP -> {
                 if (x == null || y == null) com.phoneagent.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件", "", "")
                 else verifier.executeAndVerify(snapshot, action) { executor.click(x, y).isSuccess() }
@@ -1477,7 +1414,20 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 else verifier.executeAndVerify(snapshot, action) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
-            ActionType.LAUNCH -> executeNoVerify(executor) { executor.launchApp(action.packageName ?: "").isSuccess() }
+            ActionType.LAUNCH -> {
+                val targetPkg = action.packageName
+                if (targetPkg.isNullOrBlank()) return com.phoneagent.execution.VerifyResult(false, "launch 缺少包名", "", "").also {
+                    recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+                }
+                val launched = executor.launchApp(targetPkg).isSuccess()
+                if (!launched) return com.phoneagent.execution.VerifyResult(false, "启动应用失败: $targetPkg", "", "").also {
+                    recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+                }
+                // launch 动作不依赖包名检测（无障碍服务在某些版本上无法正确报告前台切换），
+                // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面
+                delay(800)
+                com.phoneagent.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
+            }
             ActionType.OPEN -> executeNoVerify(executor) {
                 // 优先直接深链 uri；否则按软件页面直达索引(app+page)解析直达方式
                 val uri = action.uri
@@ -1500,6 +1450,8 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             ActionType.REFRESH -> com.phoneagent.execution.VerifyResult(true, "刷新", "", "")
             else -> com.phoneagent.execution.VerifyResult(false, "未知动作", "", "")
         }
+        recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+        return result
     }
 
     /**
@@ -1659,17 +1611,9 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
         return null to null
     }
 
-    private fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> {
-        val vDist = distanceArg?.takeIf { it > 0 } ?: screenHeight()
-        val hDist = distanceArg?.takeIf { it > 0 } ?: screenWidth()
-        return when (direction) {
-            "up" -> x to (y - vDist).coerceAtLeast(0)
-            "down" -> x to (y + vDist).coerceAtMost(screenHeight())
-            "left" -> (x - hDist).coerceAtLeast(0) to y
-            "right" -> (x + hDist).coerceAtMost(screenWidth()) to y
-            else -> x to y
-        }
-    }
+    /** 计算滑动终点（纯逻辑，见 [EngineRules.swipeEndpoints]） */
+    private fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> =
+        EngineRules.swipeEndpoints(x, y, direction, distanceArg, screenWidth(), screenHeight())
 
     private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.execution.VerifyResult {
         return when (keycode.uppercase()) {
@@ -1701,6 +1645,24 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
             avgLatencyMs = avgLatency,
             tokensPerSec = tps,
             requestCount = requestCount,
+        )
+    }
+
+    /** 观测性埋点：视觉环节单次耗时聚合（外挂3B/云端/本地识别 + 定位） */
+    private fun recordVisionMs(elapsedMs: Long) {
+        val prev = _metrics.value
+        _metrics.value = prev.copy(
+            visionCount = prev.visionCount + 1,
+            visionTotalMs = prev.visionTotalMs + elapsedMs,
+        )
+    }
+
+    /** 观测性埋点：执行环节单次耗时聚合（无障碍点击/输入/滑动等） */
+    private fun recordExecMs(elapsedMs: Long) {
+        val prev = _metrics.value
+        _metrics.value = prev.copy(
+            execCount = prev.execCount + 1,
+            execTotalMs = prev.execTotalMs + elapsedMs,
         )
     }
 
@@ -1808,46 +1770,62 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
     }
 
     /**
-     * 任务成功后自动学习模板（v2.2 6.3 auto 来源）：
-     * - 若当前计划来自模板复用 → 回写健康状态（失败归零）
-     * - 全新任务 → 把已成功的计划入库为模板，供下次零规划复用
+     * 任务成功后的模板处理：
+     * - 复用了既有模板 → 回写健康状态（失败归零）
+     * - 全新计划 → 不自动入库，由 completion 流程调用 requestConfirmSaveTemplate() 请用户确认
      */
     private suspend fun learnTemplate(task: String) {
-        val plan = activePlan ?: return
-        if (plan.steps.isEmpty()) return
-        if (reusedTemplateId != null) {
-            com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, reusedTemplateId!!, success = true)
-        } else {
-            val id = "tpl_" + java.util.UUID.randomUUID().toString().take(8)
-            com.phoneagent.task.TaskStore.upsertTemplate(
-                appContext,
-                com.phoneagent.task.TaskTemplate(
-                    id = id, goal = task.take(120), plan = plan,
-                    executionCount = 1, successCount = 1, failedStreak = 0, enabled = true,
-                ),
-            )
-            log(AgentLog.Level.INFO, "已自动入库模板：$task")
+        reusedTemplateId?.let { tid ->
+            runCatching { com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, tid, success = true) }
         }
     }
 
-    private fun actionLabel(type: String): String = when (type) {
-        ActionType.TAP, ActionType.CLICK -> "点按"
-        ActionType.LONG_PRESS, ActionType.LONG_CLICK -> "长按"
-        ActionType.SWIPE, ActionType.SWIPE_UP, ActionType.SWIPE_DOWN, ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT -> "滑动"
-        ActionType.TYPE_TEXT -> "输入文本"
-        ActionType.LAUNCH -> "启动应用"
-        ActionType.SHELL -> "执行Shell"
-        ActionType.WRITE_DOC -> "写入文档"
-        ActionType.OPEN -> "打开链接/Scheme"
-        ActionType.BACK -> "返回"
-        ActionType.HOME -> "回到桌面"
-        ActionType.RECENTS -> "最近任务"
-        ActionType.KEY -> "按键"
-        ActionType.WAIT -> "等待"
-        ActionType.SCROLL -> "滚动查找"
-        ActionType.TASK_DONE, ActionType.TASK_COMPLETE -> "任务完成"
-        else -> type
+    /** 任务完成后，通过悬浮窗交互请用户确认是否保存为模板（不自动入库） */
+    private fun requestConfirmSaveTemplate() {
+        showFloatingInteraction(
+            type = "savetemplate",
+            title = "保存执行模板",
+            content = "本次任务已成功完成，是否将执行步骤保存为模板，供下次直接复用？",
+        )
     }
+
+    /**
+     * 用户在悬浮窗对"保存模板"确认的结果：
+     * - save=true → 将该次任务的执行计划写入用户模板库（用户主动确认后才入库）
+     * - save=false → 丢弃，不入库
+     */
+    fun confirmSaveTemplate(save: Boolean) {
+        val task = pendingTemplateTask ?: return
+        val plan = pendingTemplatePlan ?: return
+        pendingTemplateTask = null
+        pendingTemplatePlan = null
+        // 应答后即隐藏"保存模板"交互面板
+        clearFloatingQuery()
+        if (!save) {
+            // 用户选择不保存：直接显示完成动效
+            FloatingWindowService.showDone("任务完成")
+            return
+        }
+        scope.launch {
+            try {
+                val id = "tpl_" + java.util.UUID.randomUUID().toString().take(8)
+                com.phoneagent.task.TaskStore.upsertTemplate(
+                    appContext,
+                    com.phoneagent.task.TaskTemplate(
+                        id = id, goal = task.take(120), plan = plan,
+                        executionCount = 1, successCount = 1, failedStreak = 0, enabled = true,
+                    ),
+                )
+                log(AgentLog.Level.INFO, "用户确认，模板已入库：$task")
+                FloatingWindowService.showDone("任务完成且已保存模板")
+            } catch (e: Exception) {
+                log(AgentLog.Level.WARN, "模板入库失败：${e.message}")
+                FloatingWindowService.showDone("任务完成")
+            }
+        }
+    }
+
+    private fun actionLabel(type: String): String = EngineRules.actionLabel(type)
 
     private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.execution.VerifyResult) {
         recordStep(step, action, if (verify.success) "verified_success" else "unverified", verify.beforeFingerprint, verify.afterFingerprint)
@@ -1901,7 +1879,10 @@ Example: {"type":"shell","command":"tap 0.5 0.2","reasoning":"tap top search box
                 addCategory(android.content.Intent.CATEGORY_LAUNCHER)
             }
             pm.queryIntentActivities(launcher, 0)
-                .mapNotNull { it.loadLabel(pm).toString().trim().ifBlank { null } }
+                .mapNotNull { info ->
+                    val label = info.loadLabel(pm).toString().trim()
+                    if (label.isBlank()) null else "$label(${info.activityInfo.packageName})"
+                }
                 .distinct()
                 .sorted()
                 .take(60)

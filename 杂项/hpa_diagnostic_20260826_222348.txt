@@ -1,0 +1,465 @@
+Happy Phone Agent 诊断报告
+导出时间：2026-08-26 22:23:48
+════════════════════════════════════════════════
+
+━━━ 一、人话摘要区（用户视角）━━━
+
+■ 任务：打开微信（3 步）
+  · 第1步 {"intent":"open_app","app":"微信","reasoning":"启动微信应用","expected":"微信应用打开或显示登录页","confidence":0.95} · 707ms · 0token
+  · 第2步 {"intent":"open_app","app":"微信","reasoning":"重新启动微信以完成打开操作","expected":"微信应用启动或激活到前台","confidence":0.95} · 758ms · 0token
+  · 第3步 {"intent":"open_app","app":"微信","reasoning":"重新启动微信进入首页","expected":"微信首页或登录页","confidence":0.95} · 775ms · 0token
+
+■ 遇到的问题（已翻译成人话）：
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作 3 次未生效：launch，请求用户介入
+  - 任务执行异常：StandaloneCoroutine was cancelled
+  - 任务已停止
+
+
+━━━ 二、原始数据区（开发者视角，已脱敏）━━━
+
+-- 执行追踪 (Trace) --
+
+[任务 1787754206228] 打开微信
+· 步骤 1 | 视觉=无() | 思考=false | token=0 | 707ms
+  SENT: 【Execution Decision】
+
+Task: 打开微信
+Step: [1/1] 按计划执行下一步
+Last step result: none
+Consecutive failures: 0
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+  GOT:  {"intent":"open_app","app":"微信","reasoning":"启动微信应用","expected":"微信应用打开或显示登录页","confidence":0.95}
+· 步骤 2 | 视觉=无() | 思考=false | token=0 | 758ms
+  SENT: 【Execution Decision】
+
+Task: 打开微信
+Step: [2/2] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(启动微信应用)
+Consecutive failures: 1
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+  GOT:  {"intent":"open_app","app":"微信","reasoning":"重新启动微信以完成打开操作","expected":"微信应用启动或激活到前台","confidence":0.95}
+· 步骤 3 | 视觉=无() | 思考=false | token=0 | 775ms
+  SENT: 【Execution Decision】
+
+Task: 打开微信
+Step: [3/3] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(重新启动微信以完成打开操作)
+Consecutive failures: 2
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+  GOT:  {"intent":"open_app","app":"微信","reasoning":"重新启动微信进入首页","expected":"微信首页或登录页","confidence":0.95}
+
+-- 系统日志 (Logs，含 API) --
+[08-26 22:23:25.087][INFO] 开始规划任务：打开微信
+[08-26 22:23:25.120][INFO] 模板命中，免规划：打开微信
+[08-26 22:23:26.227][INFO] 计划已批准：2 步
+[08-26 22:23:26.230][INFO] 任务开始：打开微信
+[08-26 22:23:26.230][INFO] 执行策略=AUTO
+[08-26 22:23:26.497][INFO] 第 1 轮观察：8 个元素，页面类型=form
+[08-26 22:23:27.213][API] API 调用 · 708ms
+    ═══ 请求 ═══
+【Execution Decision】
+
+Task: 打开微信
+Step: [1/1] 按计划执行下一步
+Last step result: none
+Consecutive failures: 0
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+═══ 响应 ═══
+{"intent":"open_app","app":"微信","reasoning":"启动微信应用","expected":"微信应用打开或显示登录页","confidence":0.95}
+[08-26 22:23:27.339][INFO] 意图转译为动作：intent=open_app → action.type=launch pkg=com.tencent.mm cmd=null target=null
+[08-26 22:23:27.842][WARN] 动作未生效（第 2 次重试）：launch
+[08-26 22:23:29.301][WARN] 动作未生效（第 3 次重试）：launch
+[08-26 22:23:30.712][INFO] 执行动作：launch（待确认）
+[08-26 22:23:31.134][INFO] 第 2 轮观察：8 个元素，页面类型=form
+[08-26 22:23:31.899][API] API 调用 · 759ms
+    ═══ 请求 ═══
+【Execution Decision】
+
+Task: 打开微信
+Step: [2/2] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(启动微信应用)
+Consecutive failures: 1
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+═══ 响应 ═══
+{"intent":"open_app","app":"微信","reasoning":"重新启动微信以完成打开操作","expected":"微信应用启动或激活到前台","confidence":0.95}
+[08-26 22:23:32.003][INFO] 意图转译为动作：intent=open_app → action.type=launch pkg=com.tencent.mm cmd=null target=null
+[08-26 22:23:32.506][WARN] 动作未生效（第 2 次重试）：launch
+[08-26 22:23:34.145][WARN] 动作未生效（第 3 次重试）：launch
+[08-26 22:23:35.559][INFO] 执行动作：launch（待确认）
+[08-26 22:23:36.136][INFO] 第 3 轮观察：8 个元素，页面类型=form
+[08-26 22:23:36.914][API] API 调用 · 776ms
+    ═══ 请求 ═══
+【Execution Decision】
+
+Task: 打开微信
+Step: [3/3] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(重新启动微信以完成打开操作)
+Consecutive failures: 2
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
+- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
+- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Always confirm against the current page; do not repeat executed actions by memory.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
+
+# Which intent when
+- Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
+- Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
+- Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
+
+# Output
+Normal → single intent JSON.
+Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
+
+# Document Task Reminder
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+
+## 已批准的执行计划
+1. 调用系统启动应用指令，启动微信（包名 com.tencent.mm）
+2. 等待应用完全加载，若出现登录页则确认登录状态正常，若已登录则进入首页
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+═══ 响应 ═══
+{"intent":"open_app","app":"微信","reasoning":"重新启动微信进入首页","expected":"微信首页或登录页","confidence":0.95}
+[08-26 22:23:37.036][INFO] 意图转译为动作：intent=open_app → action.type=launch pkg=com.tencent.mm cmd=null target=null
+[08-26 22:23:37.540][WARN] 动作未生效（第 2 次重试）：launch
+[08-26 22:23:38.995][WARN] 动作未生效（第 3 次重试）：launch
+[08-26 22:23:40.410][ERROR] 动作 3 次未生效：launch，请求用户介入
+[08-26 22:23:43.608][ERROR] 任务执行异常：StandaloneCoroutine was cancelled
+[08-26 22:23:43.610][WARN] 任务已停止
+
+-- 对话 (Conversation) --
+[user] 【Execution Decision】
+
+Task: 打开微信
+Step: [1/1] 按计划执行下一步
+Last step result: none
+Consecutive failures: 0
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_id/by_text first; when
+[assistant] AgentIntent(intent=open_app, target=null, app=微信, text=null, direction=null, distancePx=null, key=null, durationMs=null, waitMs=null, summary=null, reason=null, uri=null, page=null, reasoning=启动微信应用, expected=微信应用打开或显示登录页, confidence=0.95, needsConfirmation=false, pageFingerprint=null)
+[user] 【Execution Decision】
+
+Task: 打开微信
+Step: [2/2] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(启动微信应用)
+Consecutive failures: 1
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via target by_
+[assistant] AgentIntent(intent=open_app, target=null, app=微信, text=null, direction=null, distancePx=null, key=null, durationMs=null, waitMs=null, summary=null, reason=null, uri=null, page=null, reasoning=重新启动微信以完成打开操作, expected=微信应用启动或激活到前台, confidence=0.95, needsConfirmation=false, pageFingerprint=null)
+[user] 【Execution Decision】
+
+Task: 打开微信
+Step: [3/3] 按计划执行下一步
+Last step result: ⚠️ 已发送但未确认: launch(重新启动微信以完成打开操作)
+Consecutive failures: 2
+Page hint: 页面类型：form；主要控件：打开微信
+
+# Execution State Tri-state
+Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+
+# Failure Handling
+| Consecutive failures | Action |
+|---------------------|--------|
+| 1~2 | retry differently (e.g. use a hint semantic description) |
+| 3 | give_up |
+
+# Precise & Concise (this step, iron rule)
+- Locate via tar
+[assistant] AgentIntent(intent=open_app, target=null, app=微信, text=null, direction=null, distancePx=null, key=null, durationMs=null, waitMs=null, summary=null, reason=null, uri=null, page=null, reasoning=重新启动微信进入首页, expected=微信首页或登录页, confidence=0.95, needsConfirmation=false, pageFingerprint=null)

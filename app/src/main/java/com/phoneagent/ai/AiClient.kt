@@ -3,7 +3,7 @@ package com.phoneagent.ai
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
-import com.phoneagent.model.AgentAction
+import com.phoneagent.model.AgentIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -48,43 +48,39 @@ class AiClient(
             return AiClient(http, json)
         }
 
-        /** AgentAction 的标准 JSON Schema，用于约束模型输出（对齐 HPA 提示词 v2.0 动作契约） */
+        /** AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL） */
         private val ACTION_SCHEMA = """
         {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["tap","long_press","swipe","type","key","wait","launch","scroll_to","task_complete","abort","shell","click","long_click","swipe_up","swipe_down","swipe_left","swipe_right","back","home","recents","scroll","task_done","refresh"] },
+            "intent": { "type": "string", "enum": ["open_app","open","tap","long_press","input","swipe","press","wait","scroll_to","write_doc","finish","give_up"] },
             "target": {
               "type": "object",
               "properties": {
-                "method": { "type": "string", "enum": ["id","label","hint","coordinate"] },
+                "by": { "type": "string", "enum": ["id","text","hint","coordinate"] },
                 "value": { "type": "string" }
               },
-              "required": ["method","value"],
+              "required": ["by","value"],
               "additionalProperties": false
             },
-            "x": { "type": "integer" },
-            "y": { "type": "integer" },
-            "endX": { "type": "integer" },
-            "endY": { "type": "integer" },
+            "app": { "type": "string" },
             "text": { "type": "string" },
-            "elementIndex": { "type": "integer" },
+            "direction": { "type": "string", "enum": ["up","down","left","right"] },
+            "distancePx": { "type": "integer" },
+            "key": { "type": "string" },
             "durationMs": { "type": "integer" },
+            "wait_ms": { "type": "integer" },
             "summary": { "type": "string" },
             "reason": { "type": "string" },
+            "uri": { "type": "string" },
+            "page": { "type": "integer" },
             "reasoning": { "type": "string" },
             "expected": { "type": "string" },
             "confidence": { "type": "number" },
-            "direction": { "type": "string", "enum": ["up","down","left","right"] },
-            "keycode": { "type": "string", "enum": ["BACK","HOME","ENTER","RECENT","RECENTS"] },
-            "packageName": { "type": "string" },
-            "distancePx": { "type": "integer" },
-            "pageFingerprint": { "type": "string" },
-            "needsUserConfirmation": { "type": "boolean" },
-            "command": { "type": "string" },
-            "timeout_ms": { "type": "integer" }
+            "needs_confirmation": { "type": "boolean" },
+            "page_fingerprint": { "type": "string" }
           },
-          "required": ["type"],
+          "required": ["intent"],
           "additionalProperties": false
         }
         """.trimIndent()
@@ -93,7 +89,7 @@ class AiClient(
     /**
      * 决策调用：流式生成，边生成边通过 [onDelta] 回调增量内容（用于悬浮窗/通知实时展示 AI 思考）。
      *
-     * 流式不强制 response_format（避免 stream+json 兼容问题），完整正文累积后用 [parseAgentAction] 解析；
+     * 流式不强制 response_format（避免 stream+json 兼容问题），完整正文累积后用 [parseAgentIntent] 解析；
      * 若流式返回空正文（兼容性问题），回退到非流式 + 结构化输出，保证决策可靠性。
      * 末块若携带 usage（stream_options.include_usage）则解析用于指标统计。
      */
@@ -177,7 +173,7 @@ class AiClient(
                             .build()
                         val fbContent = executeWithRetry(fallbackRequest)
                         return@runCatching AiDecision(
-                            action = parseAgentAction(fbContent),
+                            action = parseAgentIntent(fbContent),
                             promptTokens = 0,
                             completionTokens = 0,
                             totalTokens = 0,
@@ -187,7 +183,7 @@ class AiClient(
                         )
                     }
                     return@runCatching AiDecision(
-                        action = parseAgentAction(content),
+                        action = parseAgentIntent(content),
                         promptTokens = lastUsage?.promptTokens ?: 0,
                         completionTokens = lastUsage?.completionTokens ?: 0,
                         totalTokens = lastUsage?.totalTokens ?: 0,
@@ -515,11 +511,11 @@ class AiClient(
         ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, stream = true, thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions),
     )
 
-    /** 从模型输出中解析 AgentAction，带多级兜底解析 + 日志 */
-    private fun parseAgentAction(content: String): AgentAction {
+    /** 从模型输出中解析 AgentIntent，带多级兜底解析 + 日志 */
+    private fun parseAgentIntent(content: String): AgentIntent {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
-            return json.decodeFromString(AgentAction.serializer(), extractJson(content))
+            return json.decodeFromString(AgentIntent.serializer(), extractJson(content))
         } catch (e: Exception) {
             Log.w("AiClient", "Step1 parse failed: ${e.message}, content: ${content.take(200)}")
         }
@@ -527,18 +523,18 @@ class AiClient(
         val balanced = extractBalancedJson(content)
         if (balanced != null) {
             try {
-                return json.decodeFromString(AgentAction.serializer(), balanced)
+                return json.decodeFromString(AgentIntent.serializer(), balanced)
             } catch (e: Exception) {
                 Log.w("AiClient", "Step2 balanced parse failed: ${e.message}, balanced: ${balanced.take(200)}")
             }
         }
-        // Step 3：尝试 JSON 数组（动作合并）
+        // Step 3：尝试 JSON 数组（意图合并）
         val arrayStart = content.indexOf('[')
         val arrayEnd = content.lastIndexOf(']')
         if (arrayStart >= 0 && arrayEnd > arrayStart) {
             try {
                 val arr = json.decodeFromString(
-                    kotlinx.serialization.builtins.ListSerializer(AgentAction.serializer()),
+                    kotlinx.serialization.builtins.ListSerializer(AgentIntent.serializer()),
                     content.substring(arrayStart, arrayEnd + 1),
                 )
                 if (arr.isNotEmpty()) return arr.first()
@@ -546,12 +542,12 @@ class AiClient(
                 Log.w("AiClient", "Step3 array parse failed: ${e.message}")
             }
         }
-        // Step 4：全部失败 → 构造合法 abort
+        // Step 4：全部失败 → 构造合法 give_up（换为「放弃」，避免误报完成）
         Log.e("AiClient", "All parse steps failed. Raw content: ${content.take(300)}")
-        return AgentAction(
-            type = "task_done",
-            summary = "AI 输出无法解析为动作",
-            reason = "JSON parse failed",
+        return AgentIntent(
+            intent = "give_up",
+            reason = "AI 输出无法解析为意图",
+            reasoning = "解析失败",
         )
     }
 

@@ -138,7 +138,7 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             extStatus = if (connected) {
                                 "外挂视觉服务已连接，跨进程识别返回 ${controls.size} 个控件"
                             } else {
-                                "外挂视觉不可用：服务未安装或绑定失败"
+                                "外挂视觉不可用：服务未安装或绑定失败（可回首页视觉卡点击\"打开外挂\"检查）"
                             }
                             extTesting = false
                         }

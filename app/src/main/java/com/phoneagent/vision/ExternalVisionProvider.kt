@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.IBinder
@@ -41,6 +42,14 @@ object ExternalVisionProvider {
     private const val PKG = "com.phoneagent.ondevice"
     private const val SERVICE_CLS = "com.phoneagent.ondevice.service.VisionService"
 
+    // ---- IPC 超时统一常量（同一语义只定义一次，杜绝散落魔法数字） ----
+    private const val BIND_TIMEOUT_MS = 2_000L          // bindService 等待（主线程回抛）
+    private const val AWAIT_SERVICE_BASE_MS = 10_000L   // 服务绑定后等待连接（预热场景）
+    private const val DETECT_TIMEOUT_MS = 20_000L       // 控件识别（3B 推理）
+    private const val LOCATE_TIMEOUT_MS = 20_000L       // 目标定位（3B 推理）
+    private const val LOAD_MODEL_TIMEOUT_MS = 60_000L   // 模型预加载
+    private const val CONNECT_TIMEOUT_MS = 5_000L       // 连通性检查
+
     @Volatile
     private var service: IVisionService? = null
 
@@ -61,6 +70,28 @@ object ExternalVisionProvider {
 
     /** 外挂 APK 是否已安装且服务已连上 */
     val isConnected: Boolean get() = service != null
+
+    /** 外挂 APK 是否已安装（不要求服务已连上） */
+    fun isInstalled(context: Context): Boolean = runCatching {
+        context.packageManager.getPackageInfo(PKG, 0)
+    }.isSuccess
+
+    /**
+     * 打开外挂 APK 的启动界面（引导用户确认安装/检查服务时使用）。
+     * 返回是否成功发起打开。
+     */
+    fun launchApp(context: Context): Boolean {
+        if (!isInstalled(context)) return false
+        return runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_MAIN)
+                    .addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setPackage(PKG)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        }.getOrElse { false }
+    }
 
     /**
      * 在主线程发起绑定（幂等）。bindService 必须带 Looper 的线程调用，
@@ -83,7 +114,7 @@ object ExternalVisionProvider {
             Log.i(TAG, "bindService -> ${okFlag.get()}")
             latch.countDown()
         }
-        runCatching { if (!latch.await(2, TimeUnit.SECONDS)) Log.w(TAG, "bind 超时") }
+        runCatching { if (!latch.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS)) Log.w(TAG, "bind 超时（${BIND_TIMEOUT_MS}ms）") }
         return okFlag.get()
     }
 
@@ -102,7 +133,7 @@ object ExternalVisionProvider {
     suspend fun detectControls(
         context: Context,
         bitmap: Bitmap,
-        timeoutMs: Long = 20_000,
+        timeoutMs: Long = DETECT_TIMEOUT_MS,
     ): List<DetectedControl> = withContext(Dispatchers.Default) {
         if (!bindOnMain(context)) return@withContext emptyList()
         val svc = awaitService(timeoutMs) ?: return@withContext emptyList()
@@ -121,10 +152,10 @@ object ExternalVisionProvider {
      * 预加载外挂 3B 模型（幂等）。在主程序启动任务时预热调用，
      * 避免首次决策时阻塞在模型加载（可能数十秒）。未安装/不可用返回 false。
      */
-    suspend fun loadModel(context: Context, timeoutMs: Long = 60_000): Boolean =
+    suspend fun loadModel(context: Context, timeoutMs: Long = LOAD_MODEL_TIMEOUT_MS): Boolean =
         withContext(Dispatchers.Default) {
             if (!bindOnMain(context)) return@withContext false
-            val svc = awaitService(10_000) ?: return@withContext false
+            val svc = awaitService(AWAIT_SERVICE_BASE_MS) ?: return@withContext false
             withTimeoutOrNull(timeoutMs) {
                 runCatching { svc.loadModel() }.getOrDefault(false)
             } ?: false
@@ -134,7 +165,7 @@ object ExternalVisionProvider {
      * 连接检测：发起绑定并等待服务连上，返回是否已连通（不触发实际识别）。
      * 用于首页/设置页展示"外挂视觉是否已连接"。
      */
-    suspend fun checkConnection(context: Context, timeoutMs: Long = 5_000): Boolean =
+    suspend fun checkConnection(context: Context, timeoutMs: Long = CONNECT_TIMEOUT_MS): Boolean =
         withContext(Dispatchers.Default) {
             if (bindOnMain(context) && awaitService(timeoutMs) != null) true
             else false
@@ -147,7 +178,7 @@ object ExternalVisionProvider {
         context: Context,
         bitmap: Bitmap,
         targetText: String,
-        timeoutMs: Long = 20_000,
+        timeoutMs: Long = LOCATE_TIMEOUT_MS,
     ): Pair<Float, Float>? = withContext(Dispatchers.Default) {
         if (!bindOnMain(context)) return@withContext null
         val svc = awaitService(timeoutMs) ?: return@withContext null

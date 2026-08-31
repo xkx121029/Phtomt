@@ -73,6 +73,7 @@ class FloatingWindowService : Service() {
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
     private var taskTitle: TextView? = null
+    private var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
 
     // AI 思考实时面板：发送给 AI 的内容 + 流式返回的内容
     private var thinkingPanel: LinearLayout? = null
@@ -224,11 +225,11 @@ class FloatingWindowService : Service() {
             y = -statusBarHeight()
         }
         root = layout
-        // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓
-        layout.elevation = dp(16).toFloat()
+        // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
+        layout.elevation = dp(18).toFloat()
         layout.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, dp(20).toFloat())
+                outline.setRoundRect(0, 0, view.width, view.height, dp(FloatingUi.RADIUS_CARD.toInt()).toFloat())
             }
         }
         try {
@@ -241,17 +242,17 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // 白色液态玻璃背景：半透明白 + 折射高光 + 动态光斑 + 边缘色散 + 细边框
-        // 说明：系统 blurBehind 真模糊在部分设备上会把整个屏幕背景都模糊掉，影响使用，此处不使用；
-        // 改用较高不透明度的半透明白配合光斑/色散/高光/投影来模拟液态玻璃，兼顾质感与不干扰后台
+        // 液态玻璃背景：M3 柔和玻璃（半透明白 + 顶部高光 + 柔和光斑 + 内侧描边 + 细边框）。
+        // 说明：不用系统 blurBehind（部分设备会将整个屏幕背景模糊）——用较高透明度的半透明白
+        // 配合克制的光晕/色散/描边模拟玻璃，兼顾质感与不干扰后台。
         val bg = LiquidGlassDrawable(
-            cornerRadius = dp(20).toFloat(),
-            baseColor = 0xE6FFFFFF.toInt(),
-            strokeColor = 0x33FFFFFF.toInt(),
+            cornerRadius = dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
+            baseColor = FloatingUi.BASE,
+            strokeColor = FloatingUi.BASE_STROKE,
         )
         panel.background = bg
         glassBg = bg
-        panel.setPadding(dp(4), 0, dp(4), dp(4))
+        panel.setPadding(FloatingUi.PAD_L, 0, FloatingUi.PAD_L, FloatingUi.PAD_S)
 
         // 跑马灯（第一行，紧贴窗口/屏幕顶部边缘，作为顶部状态色带）
         marquee = MarqueeView(this).apply {
@@ -262,37 +263,41 @@ class FloatingWindowService : Service() {
         }
         panel.addView(marquee)
 
-        // 头部：状态点 + 标题 + 关闭（仅头部可拖动）
+        // 头部：状态点 + 任务标题 + 关闭（仅头部可拖动）
         header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setPadding(FloatingUi.PAD_S, FloatingUi.PAD, FloatingUi.PAD_S, FloatingUi.PAD_S)
             setOnTouchListener { _, event ->
                 onTouchDrag(event)
                 true
             }
         }
+        // 状态呼吸点：阶段色 + 呼吸脉冲，让任务状态“有生命”
         dot = View(this).apply {
             setBackgroundResource(0)
-            val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(0x29, 0x79, 0xff)) }
+            val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(FloatingUi.phaseColor("PENDING")) }
             background = d
-            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
+            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9))
         }
+        // 任务标题
         taskTitle = TextView(this).apply {
             text = "Happy Agent"
-            textSize = 13f
-            setTextColor(Color.rgb(0x1a, 0x1a, 0x2e))
+            textSize = 15f
+            setTextColor(FloatingUi.TEXT_PRIMARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(6), 0, 0, 0)
+            setPadding(FloatingUi.PAD, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
+        // 关闭按钮：圆形胶囊，按压有反馈
         val close = TextView(this).apply {
-            text = "×"
-            textSize = 18f
-            setTextColor(Color.rgb(0x88, 0x88, 0x99))
-            setPadding(dp(6), 0, 0, 0)
+            text = "✕"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(FloatingUi.TEXT_SECONDARY)
+            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, 0x0F000000.toInt())
+            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
             setOnClickListener {
-                // 关闭悬浮窗即同步停止任务，避免后台仍在执行
                 onInteraction?.invoke("close", "")
                 stopSelf(); removeWindow()
             }
@@ -302,14 +307,33 @@ class FloatingWindowService : Service() {
         header?.addView(close)
         panel.addView(header)
 
-        // 步骤 + 进度条
+        // 状态行：阶段徽章 + 步骤/状态文字
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, FloatingUi.PAD_S)
+        }
+        phaseChip = TextView(this).apply {
+            text = "待命"
+            textSize = 10f
+            setTextColor(FloatingUi.ACCENT_BLUE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = FloatingUi.capsule(
+                FloatingUi.RADIUS_CHIP / 2,
+                (FloatingUi.ACCENT_BLUE and 0x00FFFFFF) or 0x14000000,
+            )
+            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
+        }
         stepText = TextView(this).apply {
             text = "等待任务..."
-            textSize = 11f
-            setTextColor(Color.rgb(0x55, 0x5f, 0x6e))
-            setPadding(dp(8), dp(2), dp(8), 0)
+            textSize = 12f
+            setTextColor(FloatingUi.TEXT_SECONDARY)
+            setPadding(FloatingUi.PAD, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        panel.addView(stepText)
+        statusRow.addView(phaseChip)
+        statusRow.addView(stepText)
+        panel.addView(statusRow)
         // 进度条：用户反馈无用，始终保持隐藏（不占悬浮窗空间）
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -319,97 +343,132 @@ class FloatingWindowService : Service() {
         }
         panel.addView(progressBar)
 
-        // AI 思考面板：实时显示发送给 AI 的内容与流式返回的内容（默认隐藏，AI 开始思考时显示）
+        // AI 思考面板：圆角内嵌卡片，按 发送/返回/审核 分栏（默认隐藏，AI 开始思考时显示）
         thinkingPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            val divider = View(this@FloatingWindowService).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                setBackgroundColor(0x1A555555.toInt())
-            }
-            addView(divider)
+            background = FloatingUi.capsule(
+                FloatingUi.RADIUS_PANEL,
+                FloatingUi.PANEL,
+            )
+            setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
+        }
+        // 面板标题行：AI 徽章 + 动画指示点
+        val thinkHeaderRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val aiBadge = TextView(this).apply {
+            text = "AI"
+            textSize = 10f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = FloatingUi.capsule(999f, 0xFF7C4DFF.toInt())
+            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
         }
         val thinkingLabel = TextView(this).apply {
-            text = "AI 思考"
-            textSize = 10f
-            setTextColor(Color.rgb(0x9b, 0x5c, 0xff))
+            text = "  思考中"
+            textSize = 12f
+            setTextColor(FloatingUi.TEXT_PRIMARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(5), 0, dp(2))
         }
-        thinkingPanel?.addView(thinkingLabel)
+        thinkHeaderRow.addView(aiBadge)
+        thinkHeaderRow.addView(thinkingLabel)
+        thinkingPanel?.addView(thinkHeaderRow)
         // 内容可滚动，限制高度避免悬浮窗过大
         thinkingScroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150))
             isVerticalScrollBarEnabled = false
             isFillViewport = true
+            setPadding(0, FloatingUi.PAD, 0, 0)
+            clipToPadding = false
+            clipToOutline = false
         }
         val thinkCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val sentLabel = TextView(this).apply {
-            text = "→ 发送"
-            textSize = 10f
-            setTextColor(Color.rgb(0x88, 0x88, 0x99))
-            setPadding(0, dp(3), 0, 0)
+            text = "SENT"
+            textSize = 9f
+            setTextColor(FloatingUi.TEXT_TERTIARY)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(6), 0, 0)
         }
         thinkCol.addView(sentLabel)
         thinkingSentText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(Color.rgb(0x55, 0x5f, 0x6e))
-            setPadding(0, dp(2), 0, dp(4))
+            setTextColor(FloatingUi.TEXT_SECONDARY)
+            setPadding(0, dp(3), 0, dp(2))
         }
         thinkCol.addView(thinkingSentText)
         val retLabel = TextView(this).apply {
-            text = "← 返回"
-            textSize = 10f
-            setTextColor(Color.rgb(0x88, 0x88, 0x99))
-            setPadding(0, dp(4), 0, 0)
+            text = "RESPONSE"
+            textSize = 9f
+            setTextColor(FloatingUi.TEXT_TERTIARY)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, dp(6), 0, 0)
         }
         thinkCol.addView(retLabel)
         thinkingReturnText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(Color.rgb(0x33, 0x38, 0x45))
-            setPadding(0, dp(2), 0, dp(4))
+            setTextColor(FloatingUi.TEXT_PRIMARY)
+            setPadding(0, dp(3), 0, dp(2))
         }
         thinkCol.addView(thinkingReturnText)
         val reviewLabel = TextView(this).apply {
-            text = "审核者"
-            textSize = 11f
-            setTextColor(Color.rgb(0x8E, 0x35, 0xEF))
+            text = "REVIEW"
+            textSize = 9f
+            setTextColor(FloatingUi.ACCENT_PURPLE)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
         }
         thinkCol.addView(reviewLabel)
         reviewText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(Color.rgb(0x8E, 0x35, 0xEF))
-            setPadding(0, dp(2), 0, dp(4))
+            setTextColor(FloatingUi.ACCENT_PURPLE)
+            setPadding(0, dp(3), 0, dp(4))
         }
         thinkCol.addView(reviewText)
         thinkingScroll?.addView(thinkCol)
         thinkingPanel?.addView(thinkingScroll)
         panel.addView(thinkingPanel)
 
-        // 交互区域（批准/澄清/指导，默认隐藏）
+        // 交互区域（批准/澄清/指导，默认隐藏）：圆角内嵌卡
         interactPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            setPadding(dp(8), dp(6), dp(8), dp(4))
-            val divider = View(this@FloatingWindowService).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
-                setBackgroundColor(0x1A555555.toInt())
-            }
-            addView(divider)
+            background = FloatingUi.capsule(
+                FloatingUi.RADIUS_PANEL,
+                FloatingUi.PANEL,
+            )
+            setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
+        }
+        // 帮助徽章 + 标题
+        val interactHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val helpBadge = TextView(this).apply {
+            text = "助手"
+            textSize = 10f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = FloatingUi.capsule(999f, 0xFFF59E0B.toInt())
+            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
         }
         interactTitle = TextView(this).apply {
             text = "需要确认"
-            textSize = 11f
-            setTextColor(Color.rgb(0xd8, 0x8a, 0x00))
+            textSize = 13f
+            setTextColor(FloatingUi.TEXT_PRIMARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6), 0, 0)
+            setPadding(FloatingUi.PAD, 0, 0, 0)
         }
-        interactPanel?.addView(interactTitle)
+        interactHeader.addView(helpBadge)
+        interactHeader.addView(interactTitle)
+        interactPanel?.addView(interactHeader)
         // 内容可滚动（长文本）
         val contentScroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(0), 1f)
@@ -418,41 +477,38 @@ class FloatingWindowService : Service() {
         interactContent = TextView(this).apply {
             text = ""
             textSize = 12f
-            setTextColor(Color.rgb(0x33, 0x38, 0x45))
-            setPadding(0, dp(3), 0, dp(6))
+            setTextColor(FloatingUi.TEXT_PRIMARY)
+            setPadding(0, dp(8), 0, dp(6))
         }
         contentScroll.addView(interactContent)
         interactPanel?.addView(contentScroll)
         // 选项按钮容器
         interactButtons = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(0, FloatingUi.PAD, 0, 0)
         }
         interactPanel?.addView(interactButtons)
         // 指导输入框
         hintInput = EditText(this).apply {
             textSize = 12f
-            setTextColor(Color.rgb(0x22, 0x27, 0x33))
-            setHintTextColor(Color.rgb(0x99, 0x99, 0xaa))
+            setTextColor(FloatingUi.TEXT_PRIMARY)
+            setHintTextColor(FloatingUi.TEXT_TERTIARY)
             setHint("告诉 AI 该怎么做（或留空）")
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             minLines = 2
             maxLines = 3
             setBackgroundResource(0)
-            val underline = GradientDrawable().apply {
-                setColor(0x00FFFFFF.toInt())
-                setStroke(0, 0xFFFFFFFF.toInt())
-            }
-            background = GradientDrawable().apply {
-                cornerRadius = dp(8).toFloat()
-                setColor(0x22FFFFFF.toInt())
-                setStroke(dp(1), 0x33000000.toInt())
-            }
+            background = FloatingUi.capsule(
+                FloatingUi.RADIUS_INPUT,
+                0xFFF2F3F7.toInt(),
+            )
+            setPadding(FloatingUi.PAD_L, dp(10), FloatingUi.PAD_L, dp(10))
         }
         interactPanel?.addView(hintInput)
         hintBtnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
-            setPadding(0, dp(4), 0, 0)
+            setPadding(0, dp(10), 0, 0)
         }
         interactPanel?.addView(hintBtnRow)
         panel.addView(interactPanel)
@@ -462,35 +518,33 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            setPadding(0, dp(8), 0, dp(8))
+            background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, 0x0A00A877.toInt())
+            setPadding(0, dp(16), 0, dp(16))
         }
         successMark = SuccessMarkView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
         }
         donePanel?.addView(successMark)
         doneText = TextView(this).apply {
             text = "任务完成"
-            textSize = 13f
-            setTextColor(Color.rgb(0x00, 0x9e, 0x5f))
+            textSize = 14f
+            setTextColor(FloatingUi.phaseColor("DONE"))
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(4), 0, 0)
+            setPadding(0, dp(6), 0, 0)
         }
         donePanel?.addView(doneText)
-        // 完成后删除按钮：移除悬浮窗（避免只能清后台才能删除）
+        // 完成后删除按钮：胶囊实心主色
         val doneClose = Button(this).apply {
             text = "移除悬浮窗"
             textSize = 12f
             isAllCaps = false
-            setTextColor(Color.rgb(0x29, 0x79, 0xff))
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply {
-                topMargin = dp(8)
+            setTextColor(0xFFFFFFFF.toInt())
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply {
+                topMargin = dp(12)
             }
             layoutParams = lp
-            background = GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat()
-                setColor(0x11FFFFFF.toInt())
-                setStroke(dp(1), 0x222979FF.toInt())
-            }
+            background = FloatingUi.capsule(999f, FloatingUi.ACCENT_BLUE)
+            setPadding(FloatingUi.PAD_XL, 0, FloatingUi.PAD_XL, 0)
             setOnClickListener { stopSelf(); removeWindow() }
         }
         donePanel?.addView(doneClose)
@@ -631,12 +685,30 @@ class FloatingWindowService : Service() {
             marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
             taskTitle?.text = task
             stepText?.text = "第 $step 步 · $status"
+            // 阶段徽章：文字 + 阶段色
+            val ph = FloatingUi.phaseColor(phase)
+            phaseChip?.text = phaseLabel(phase)
+            phaseChip?.setTextColor(ph)
+            phaseChip?.background = FloatingUi.capsule(
+                FloatingUi.RADIUS_CHIP / 2,
+                (ph and 0x00FFFFFF) or 0x17000000,
+            )
             // 进度条已隐藏（用户反馈无用），仅显示步骤文字
             dot?.setBackgroundColor(dotColor(phase))
             startDotPulse()
             // 实时更新通知
             updateNotification(status, task, step)
         }
+    }
+
+    /** 阶段枚举 → 友好中文标签 */
+    private fun phaseLabel(phase: String): String = when (phase) {
+        "OBSERVING" -> "观察中"
+        "THINKING" -> "思考中"
+        "ACTING" -> "执行中"
+        "DONE" -> "已完成"
+        "ERROR" -> "出错"
+        else -> "待命"
     }
 
     /**
@@ -765,6 +837,11 @@ class FloatingWindowService : Service() {
                     addBtn(interactButtons, "批准并开始", true) { onInteraction?.invoke("approve", "") }
                     addBtn(interactButtons, "取消", false) { onInteraction?.invoke("cancel", "") }
                 }
+                "savetemplate" -> {
+                    // 任务完成：是否把执行步骤保存为模板（用户主动确认才入库）
+                    addBtn(interactButtons, "保存为模板", true) { onInteraction?.invoke("save_template", "yes") }
+                    addBtn(interactButtons, "不保存", false) { onInteraction?.invoke("save_template", "no") }
+                }
                 "clarify" -> {
                     // 选项按钮
                     options?.forEach { opt ->
@@ -831,44 +908,28 @@ class FloatingWindowService : Service() {
             isAllCaps = false
             val params = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(34),
-            ).apply { topMargin = dp(4) }
+                dp(40),
+            ).apply { topMargin = FloatingUi.PAD }
             layoutParams = params
             if (primary) {
-                setTextColor(Color.WHITE)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(10).toFloat()
-                    setColor(Color.rgb(0x29, 0x79, 0xff))
-                }
+                setTextColor(0xFFFFFFFF.toInt())
+                background = FloatingUi.capsule(999f, FloatingUi.ACCENT_BLUE)
             } else {
-                setTextColor(Color.rgb(0x29, 0x79, 0xff))
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(10).toFloat()
-                    setColor(0x11FFFFFF.toInt())
-                    setStroke(dp(1), 0x222979FF.toInt())
-                }
+                setTextColor(FloatingUi.ACCENT_BLUE)
+                background = FloatingUi.capsule(
+                    999f,
+                    0x0A000000.toInt(),
+                    (FloatingUi.ACCENT_BLUE and 0x00FFFFFF) or 0x14000000,
+                )
             }
             setOnClickListener { onClick() }
         }
         container?.addView(btn)
     }
 
-    private fun marqueeColor(phase: String): Int = when (phase) {
-        "OBSERVING" -> Color.rgb(0x29, 0x79, 0xff)
-        "THINKING" -> Color.rgb(0x9b, 0x5c, 0xff)
-        "ACTING" -> Color.rgb(0xff, 0x40, 0x81)
-        "DONE" -> Color.rgb(0x00, 0x9e, 0x5f)
-        "ERROR" -> Color.rgb(0xff, 0x5f, 0x5f)
-        else -> Color.rgb(0xd8, 0x8a, 0x00)
-    }
+    private fun marqueeColor(phase: String): Int = FloatingUi.phaseColor(phase)
 
-    private fun dotColor(phase: String): Int = when (phase) {
-        "THINKING" -> Color.rgb(0x9b, 0x5c, 0xff)
-        "ACTING" -> Color.rgb(0xff, 0x40, 0x81)
-        "DONE" -> Color.rgb(0x00, 0x9e, 0x5f)
-        "ERROR" -> Color.rgb(0xff, 0x5f, 0x5f)
-        else -> Color.rgb(0x29, 0x79, 0xff)
-    }
+    private fun dotColor(phase: String): Int = FloatingUi.phaseColor(phase)
 
     private fun hideKeyboard() {
         // 隐藏软键盘并恢复窗口原有的不可聚焦模式（可拖动、不抢占系统焦点）

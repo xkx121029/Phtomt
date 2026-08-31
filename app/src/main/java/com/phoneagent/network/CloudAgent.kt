@@ -3,7 +3,7 @@ package com.phoneagent.network
 import com.phoneagent.ai.AiClient
 import com.phoneagent.ai.ChatMessageDto
 import com.phoneagent.ai.ContentPart
-import com.phoneagent.model.AgentAction
+import com.phoneagent.model.AgentIntent
 import com.phoneagent.execution.VerifyResult
 
 /**
@@ -26,7 +26,7 @@ class CloudAgent(private val aiClient: AiClient) {
         messages: List<ChatMessageDto>,
         userHint: String,
         onDelta: (String) -> Unit = {},
-    ): Result<AgentAction> {
+    ): Result<AgentIntent> {
         val hintMsg = ChatMessageDto(
             role = "user",
             content = listOf(ContentPart(type = "text", text = "用户提示：$userHint\n请据此重新决策下一步动作。" )),

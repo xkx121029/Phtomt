@@ -13,7 +13,8 @@ okhttp = "4.12.0"
 koin = "4.0.0"
 coroutines = "1.9.0"
 shizuku = "13.1.5"
-mlkitTextChinese = "16.0.1"
+junit = "4.13.2"
+mockk = "1.13.13"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,7 +39,11 @@ koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compos
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
-mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextChinese" }
+
+# 单元测试
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

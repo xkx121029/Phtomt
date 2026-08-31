@@ -139,7 +139,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
         GroupCard {
             if (templates.isEmpty()) {
                 Text(
-                    "暂无模板。任务执行成功后会自动学习入库，下次相同目标零规划复用。",
+                    "暂无模板。软件内置了常用任务模板，任务完成后可经你确认把执行步骤保存为自定义模板，供下次复用。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(16.dp),
@@ -158,7 +158,18 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                             color = if (t.failedStreak >= 3) MaterialTheme.colorScheme.error
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        TextButton(onClick = { vm.deleteTemplate(context, t.id); refresh() }) { Text("删除") }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (com.phoneagent.task.TaskStore.isPresetId(t.id)) {
+                                Text(
+                                    "软件内置（只读）",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                )
+                            } else {
+                                TextButton(onClick = { vm.deleteTemplate(context, t.id); refresh() }) { Text("删除") }
+                            }
+                        }
                     }
                 }
             }

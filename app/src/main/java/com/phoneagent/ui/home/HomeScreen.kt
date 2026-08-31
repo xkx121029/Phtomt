@@ -78,6 +78,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.BrandNavy
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -195,6 +196,18 @@ fun HomeScreen(
             connected = visualConn,
             checking = visualChecking,
             onTest = ::testVisual,
+            onOpenExternal = {
+                if (!com.phoneagent.vision.ExternalVisionProvider.launchApp(context)) {
+                    android.widget.Toast.makeText(
+                        context,
+                        "未检测到外挂视觉 APK（com.phoneagent.ondevice），请先安装后重试",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                } else {
+                    // 已拉起外挂，稍后重新检测连接状态
+                    scope.launch { delay(600); testVisual() }
+                }
+            },
         )
         Spacer(Modifier.height(12.dp))
 
@@ -501,6 +514,7 @@ private fun VisionModelCard(
     connected: Boolean?,
     checking: Boolean,
     onTest: () -> Unit,
+    onOpenExternal: () -> Unit,
 ) {
     val ready = connected == true
     Surface(
@@ -539,6 +553,11 @@ private fun VisionModelCard(
                 }
                 androidx.compose.material3.TextButton(onClick = onTest) {
                     Text(if (checking) "检测中" else "重测")
+                }
+                if (!ready && !checking) {
+                    androidx.compose.material3.TextButton(onClick = onOpenExternal) {
+                        Text("打开外挂")
+                    }
                 }
             }
             Text(

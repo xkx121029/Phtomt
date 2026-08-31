@@ -96,6 +96,8 @@ class MainViewModel(
                 "clarify" -> answerClarification(com.phoneagent.model.ClarificationOption(id = payload, label = payload, description = payload))
                 "hint" -> provideUserHint(payload)
                 "dismiss" -> dismissUser()
+                // 任务完成：用户确认是否保存执行模板（主动确认才入库）
+                "save_template" -> engine.confirmSaveTemplate(payload == "yes")
                 // 关闭悬浮窗 → 同步停止正在运行的任务
                 "close" -> engine.stop()
             }
