@@ -1,7 +1,10 @@
 package com.phoneagent.agent
 
 import com.phoneagent.model.AgentAction
+import com.phoneagent.model.AgentIntent
+import com.phoneagent.model.AgentIntentTarget
 import com.phoneagent.model.ActionTarget
+import com.phoneagent.model.IntentType
 import com.phoneagent.model.ScreenSnapshot
 import com.phoneagent.model.UiElement
 import org.junit.Assert.assertEquals
@@ -150,5 +153,56 @@ class EngineRulesTest {
     @Test
     fun isMostlyChinese_空串_返回false() {
         assertFalse(EngineRules.isMostlyChinese(""))
+    }
+
+    // ---- decisionTemperature ----
+
+    @Test
+    fun decisionTemperature_失败少于3次_使用稳定温度() {
+        assertEquals(0.1, EngineRules.decisionTemperature(0), 1e-9)
+        assertEquals(0.1, EngineRules.decisionTemperature(2), 1e-9)
+    }
+
+    @Test
+    fun decisionTemperature_失败达到3次_使用重规划温度() {
+        assertEquals(0.5, EngineRules.decisionTemperature(3), 1e-9)
+        assertEquals(0.5, EngineRules.decisionTemperature(6), 1e-9)
+    }
+
+    // ---- needsReviewIntent ----
+
+    private fun intent(intent: String, target: AgentIntentTarget? = null) =
+        AgentIntent(intent = intent, target = target)
+
+    @Test
+    fun needsReviewIntent_完成或放弃_需审核() {
+        assertTrue(EngineRules.needsReviewIntent(intent(IntentType.FINISH), snapshotWith("x")))
+        assertTrue(EngineRules.needsReviewIntent(intent(IntentType.GIVE_UP), snapshotWith("x")))
+    }
+
+    @Test
+    fun needsReviewIntent_点击有元素证据_不需审核() {
+        val t = intent(IntentType.TAP, AgentIntentTarget(by = "text", value = "确认"))
+        assertFalse(EngineRules.needsReviewIntent(t, snapshotWith("x")))
+    }
+
+    @Test
+    fun needsReviewIntent_点击无目标或hint_需审核() {
+        assertTrue(EngineRules.needsReviewIntent(intent(IntentType.TAP), snapshotWith("x")))
+        assertTrue(EngineRules.needsReviewIntent(
+            intent(IntentType.INPUT, AgentIntentTarget(by = "hint", value = "搜索框")), snapshotWith("x")),
+        )
+    }
+
+    @Test
+    fun needsReviewIntent_滑动无目标_需审核() {
+        assertTrue(EngineRules.needsReviewIntent(intent(IntentType.SWIPE), snapshotWith("x")))
+    }
+
+    @Test
+    fun needsReviewIntent_打开应用等待等_不审核() {
+        assertFalse(EngineRules.needsReviewIntent(intent(IntentType.OPEN_APP), snapshotWith("x")))
+        assertFalse(EngineRules.needsReviewIntent(intent(IntentType.WAIT), snapshotWith("x")))
+        assertFalse(EngineRules.needsReviewIntent(intent(IntentType.WRITE_DOC), snapshotWith("x")))
     }
 }

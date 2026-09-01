@@ -2,8 +2,10 @@ package com.phoneagent.a11y
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
@@ -16,8 +18,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.Executor
+import kotlin.coroutines.resume
 
 /**
  * 无障碍服务：读取屏幕可交互元素，并执行点击/滑动等手势。
@@ -292,7 +298,53 @@ class AgentAccessibilityService : AccessibilityService() {
         return counter
     }
 
-    /** 依据控件类名归纳为语义化类型 */
+    /** 每步自动截图（不依赖 MediaProjection 屏幕共享）：改用无障碍服务的 takeScreenshot（API 30+）。
+     *  无需额外权限，复用已开启的无障碍通道；结果经 HardwareBuffer → Bitmap 拷贝，可安全复用。 */
+    fun canScreenshot(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 30) return false
+        val cap = serviceInfo?.capabilities ?: return false
+        return cap and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
+    }
+
+    @SuppressLint("NewApi") // takeScreenshot 系列 API30+，由 canScreenshot() 运行时守卫；此处抑制静态误报
+    suspend fun takeScreenshotBitmap(): Bitmap? {
+        if (!canScreenshot()) return null
+        return try {
+            suspendCancellableCoroutine { cont ->
+                val executor: Executor = Dispatchers.Main.asExecutor()
+                try {
+                    takeScreenshot(
+                        android.view.Display.DEFAULT_DISPLAY,
+                        executor,
+                        object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshot: ScreenshotResult) {
+                            val bmp = hardwareToBitmap(screenshot)
+                            if (cont.isActive) cont.resume(bmp)
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            if (cont.isActive) cont.resume(null)
+                        }
+                    })
+                } catch (e: Exception) {
+                    if (cont.isActive) cont.resume(null)
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 将无障碍截图结果（HardwareBuffer）转为可复用的 ARGB Bitmap 拷贝 */
+    @SuppressLint("NewApi")
+    private fun hardwareToBitmap(result: AccessibilityService.ScreenshotResult): Bitmap? {
+        val hb = runCatching { result.hardwareBuffer }.getOrNull() ?: return null
+        val wrapped = runCatching { Bitmap.wrapHardwareBuffer(hb, result.colorSpace) }.getOrNull()
+        hb.close()
+        val copied = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
+        if (wrapped != null && wrapped !== copied) runCatching { wrapped.recycle() }
+        return copied
+    }
     private fun classify(className: String): String = when {
         className.contains("Button") -> "Button"
         className.contains("ImageButton") -> "ImageButton"

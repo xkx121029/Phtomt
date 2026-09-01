@@ -1,7 +1,9 @@
 package com.phoneagent.agent
 
 import com.phoneagent.model.AgentAction
+import com.phoneagent.model.AgentIntent
 import com.phoneagent.model.ActionType
+import com.phoneagent.model.IntentType
 import com.phoneagent.model.ScreenSnapshot
 
 /**
@@ -149,5 +151,27 @@ object EngineRules {
         if (text.isEmpty()) return false
         val cjk = text.count { it.code in 0x4E00..0x9FFF }
         return cjk.toFloat() / text.length > 0.3f
+    }
+
+    // ---- 决策温度 ----
+
+    /** 每步决策（正常）温度：低温度保证稳定决策 */
+    const val DECISION_TEMPERATURE = 0.1
+    /** 失败 3 次后重规划温度：更高鼓励换思路 */
+    const val REPLAN_TEMPERATURE = 0.5
+
+    /** 决策温度：失败越频繁越鼓励换思路（失败 ≥3 次用重规划温度）。对应温度文档"阶梯上升"一节。 */
+    fun decisionTemperature(failures: Int): Double =
+        if (failures >= 3) REPLAN_TEMPERATURE else DECISION_TEMPERATURE
+
+    // ---- 意图审核预筛 ----
+
+    /** 本地硬规则预筛：仅当意图确实需要独立审核（完成/放弃、目标无元素证据的点击/输入/滑动）才升审核；
+     *  其余动作由执行层验证兜底，跳过二次调用以降低开销 */
+    fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean = when (intent.intent) {
+        IntentType.FINISH, IntentType.GIVE_UP -> true
+        IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT, IntentType.SWIPE ->
+            intent.target == null || intent.target.by == "hint"
+        else -> false
     }
 }

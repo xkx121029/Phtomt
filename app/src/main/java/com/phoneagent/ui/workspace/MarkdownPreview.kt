@@ -21,8 +21,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -248,10 +248,11 @@ private fun parseImage(line: String): Pair<String, String>? {
  */
 @Composable
 private fun MarkdownImage(src: String, alt: String, baseDir: String?) {
-    val state by produceState<Bitmap?>(null, src, baseDir) {
-        value = withContext(Dispatchers.IO) { decodeMdImage(src, baseDir) }
+    val state = remember(src, baseDir) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(src, baseDir) {
+        state.value = withContext(Dispatchers.IO) { decodeMdImage(src, baseDir) }
     }
-    val bmp = state
+    val bmp = state.value
     if (bmp != null) {
         Image(
             bitmap = bmp.asImageBitmap(),

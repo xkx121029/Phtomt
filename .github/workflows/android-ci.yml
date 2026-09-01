@@ -37,6 +37,9 @@ jobs:
       - name: Unit Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
+      - name: Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+
       - name: Assemble Debug
         run: ./gradlew :app:assembleDebug --stacktrace
 

@@ -430,17 +430,14 @@ class MainViewModel(
                 sb.appendLine()
             }
 
-            val resolver = context.contentResolver
             val fileName = "hpa_logs_${taskName?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "all"}_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                 put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
             }
-            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: return@runCatching "ERR:无法创建导出文件"
-            resolver.openOutputStream(uri)?.use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
-                ?: return@runCatching "ERR:无法写入导出文件"
+            if (!writeToDownloads(context, values, sb.toString().toByteArray(Charsets.UTF_8)))
+                return@runCatching "ERR:无法写入导出文件（需 Android 10 及以上）"
             "已导出到 下载/HappyPhoneAgent/$fileName"
         }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
     }
@@ -457,7 +454,6 @@ class MainViewModel(
             if (sys.isNotEmpty()) groups += Triple(-1L, "系统日志", sys)
             if (groups.isEmpty()) return@runCatching "ERR:没有可导出的日志"
 
-            val resolver = context.contentResolver
             val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
             val written = mutableListOf<String>()
             groups.forEach { (tid, name, list) ->
@@ -489,10 +485,8 @@ class MainViewModel(
                     put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
                     put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
                 }
-                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: return@runCatching "ERR:无法创建导出文件"
-                resolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
-                    ?: return@runCatching "ERR:无法写入导出文件"
+                if (!writeToDownloads(context, values, json.toByteArray(Charsets.UTF_8)))
+                    return@runCatching "ERR:无法写入导出文件（需 Android 10 及以上）"
                 written += fileName
             }
             "已批量导出 ${written.size} 个任务 JSON 到 下载/HappyPhoneAgent/"
@@ -547,23 +541,30 @@ class MainViewModel(
             sb.appendLine("\n-- 对话 (Conversation) --")
             conversation.value.forEach { c -> sb.appendLine("[${c.role}] ${com.phoneagent.security.DataSanitizer.sanitize(c.content).take(500)}") }
 
-            val resolver = context.contentResolver
             val fileName = "hpa_diagnostic_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
             val values = android.content.ContentValues().apply {
                 put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
                 put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
             }
-            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: return@runCatching "ERR:无法创建诊断文件"
-            resolver.openOutputStream(uri)?.use { it.write(sb.toString().toByteArray(Charsets.UTF_8)) }
-                ?: return@runCatching "ERR:无法写入诊断文件"
+            if (!writeToDownloads(context, values, sb.toString().toByteArray(Charsets.UTF_8)))
+                return@runCatching "ERR:无法写入诊断文件（需 Android 10 及以上）"
             "已导出诊断报告：下载/HappyPhoneAgent/$fileName"
         }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
     }
 
     private fun formatNow(): String =
         java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+
+    /** 把内容写入「下载/HappyPhoneAgent」目录。
+     *  MediaStore.Downloads.EXTERNAL_CONTENT_URI 仅 Android 10(API29)+ 可用；低版本设备返回 false，
+     *  避免在 API<29 上引用该字段导致崩溃（导出功能主面向 Android 10+）。 */
+    private fun writeToDownloads(context: Context, values: android.content.ContentValues, payload: ByteArray): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
+        val resolver = context.contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+        return resolver.openOutputStream(uri)?.use { it.write(payload) } != null
+    }
 
     private fun levelTag(lvl: AgentLog.Level): String = when (lvl) {
         AgentLog.Level.ERROR -> "错误"

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -493,7 +494,8 @@ private fun ChatPanel(messages: List<ConversationMessage>) {
         return
     }
     LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(messages, key = { "${it.timestamp}:${it.role}" }) { msg ->
+        // timestamp:role 可能重复（同一毫秒多条），叠加 index 保证 LazyColumn key 唯一，避免滚动时 key 冲突闪退
+        itemsIndexed(messages, key = { i, m -> "${m.timestamp}:${m.role}:$i" }) { _, msg ->
             ChatBubble(msg)
         }
     }
@@ -600,7 +602,8 @@ private fun LogPanel(logs: List<AgentLog>) {
             return@Column
         }
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(filtered, key = { "${it.timestamp}:${it.message}" }) { entry ->
+            // timestamp+message 可能完全一致（重试/环形回看），叠加 index 保证 key 唯一，避免滚动时 key 冲突闪退
+        itemsIndexed(filtered, key = { i, e -> "${e.timestamp}:${e.level}:${e.message}:$i" }) { _, entry ->
                 LogRow(entry)
             }
         }

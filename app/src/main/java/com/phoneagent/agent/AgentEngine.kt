@@ -46,7 +46,7 @@ import com.phoneagent.model.UiElement
 import com.phoneagent.network.CloudAgent
 import com.phoneagent.perception.PageAnnotator
 import com.phoneagent.perception.effectiveLabel
-import com.phoneagent.screen.ScreenSharingService
+import com.phoneagent.screen.ScreenCapture
 import com.phoneagent.security.DataSanitizer
 import com.phoneagent.security.SensitivePageDetector
 import kotlinx.coroutines.CoroutineScope
@@ -109,16 +109,22 @@ class AgentEngine(
 
         /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
         private const val MAX_LOGS = 800
+        /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
+        private const val MAX_TRACES = 300
+        /** 调试执行历史最多保留条数 */
+        private const val MAX_EXECUTION_HISTORY = 400
 
         /** 阶段切分粒度：每 [STAGE_SIZE] 步为一个阶段（文档 v2.2 5.1） */
         private const val STAGE_SIZE = 6
 
         /** 歧义检测 + 规划 */
         const val PLANNING_TEMPERATURE = 0.3
-        /** 每步决策（正常） */
-        const val DECISION_TEMPERATURE = 0.1
-        /** 失败 3 次后重规划 */
-        const val REPLAN_TEMPERATURE = 0.5
+        /** 每步决策（正常）温度：引用 EngineRules，单一事实来源 */
+        @Suppress("unused")
+        const val DECISION_TEMPERATURE = EngineRules.DECISION_TEMPERATURE
+        /** 失败 3 次后重规划温度：引用 EngineRules，单一事实来源 */
+        @Suppress("unused")
+        const val REPLAN_TEMPERATURE = EngineRules.REPLAN_TEMPERATURE
 
         /** 用户点「已手动处理」时发出的语义信号 */
         const val SELF_DISMISS_HINT = "[[自处理]]已手动处理完成，请继续观察当前页面并重新决策下一步"
@@ -339,6 +345,28 @@ class AgentEngine(
         _metrics.value = AgentMetrics()
         _executionHistory.value = emptyList()
         _traces.value = emptyList()
+        // 同步清空磁盘持久化，避免重启后旧调试记录被再次回载
+        com.phoneagent.debug.DebugRecordsStore.clear(appContext)
+    }
+
+    /** 把当前的日志/轨迹/执行历史/对话持久化到磁盘（重启后 Debug 页回载查看） */
+    private fun persistDebug() {
+        runCatching {
+            com.phoneagent.debug.DebugRecordsStore.save(
+                appContext, _logs.value, _traces.value, _executionHistory.value, _conversation.value,
+            )
+        }
+    }
+
+    init {
+        // 启动时回载上次的调试记录：日志/轨迹（含截图缩略图）/执行历史/对话，实现持久化
+        runCatching {
+            val p = com.phoneagent.debug.DebugRecordsStore.load(appContext) ?: return@runCatching
+            _logs.value = p.logs
+            _traces.value = p.traces
+            _executionHistory.value = p.history
+            _conversation.value = p.conversation
+        }
     }
 
     /** 提交任务到队列并开始处理 */
@@ -646,6 +674,8 @@ class AgentEngine(
             val task = _taskQueue.value.first()
             _taskQueue.value = _taskQueue.value.drop(1)
             run(task, null)
+            // 每个任务结束后持久化调试记录（日志/轨迹/历史/对话），App 重启后 Debug 页仍可查看
+            persistDebug()
         }
         AgentAccessibilityService.agentRunning = false
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
@@ -720,7 +750,7 @@ class AgentEngine(
                 (!settingsVal.smartVisionRoute || !treeSparse)
             val screenshot = if (settingsVal.attachScreenshot || needExternal3b ||
                 (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")))
-                ScreenSharingService.instance?.captureFrame() else null
+                com.phoneagent.screen.ScreenCapture.capture() else null
             log(AgentLog.Level.INFO, "第 $step 轮观察：${snapshot.elements.size} 个元素，页面类型=${annotated.pageType}" +
                 if (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")) "（元素稀疏，自动启用视觉模型）" else "")
 
@@ -1204,13 +1234,9 @@ class AgentEngine(
     }
 
     /** 本地硬规则预筛：仅当意图确实需要独立审核（完成判断、目标无元素证据的点击/输入）才升审核；
-     *  其余动作由执行层验证兜底，跳过二次调用以降低开销 */
-    private fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean = when (intent.intent) {
-        IntentType.FINISH, IntentType.GIVE_UP -> true
-        IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT, IntentType.SWIPE ->
-            intent.target == null || intent.target.by == "hint"
-        else -> false
-    }
+     *  其余动作由执行层验证兜底，跳过二次调用以降低开销（门槛逻辑下沉 EngineRules，便于单测） */
+    private fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean =
+        EngineRules.needsReviewIntent(intent, snapshot)
 
     /** 用独立的审核者 AI 复核执行者意图是否基于当前页面证据；
      *  审核者输出 {pass, why, freefix}，拒绝且给修正时用修正意图，否则沿用原意图（执行层兜底） */
@@ -1321,9 +1347,8 @@ class AgentEngine(
         return ReasoningConfig(baseUrl, model, apiKey)
     }
 
-    /** 每步决策温度：失败越频繁越鼓励换思路（对应温度文档第三节） */
-    private fun decisionTemperature(): Double =
-        if (consecutiveFailures >= 3) REPLAN_TEMPERATURE else DECISION_TEMPERATURE
+    /** 每步决策温度：失败越频繁越鼓励换思路（对应温度文档第三节，逻辑下沉 EngineRules） */
+    private fun decisionTemperature(): Double = EngineRules.decisionTemperature(consecutiveFailures)
 
     /**
      * 判断动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等）。
@@ -1689,8 +1714,11 @@ class AgentEngine(
             visionModel = visionModel,
             visionDescription = visionDescription,
             thinking = decision.thinking,
-            screenshot = screenshot,
+            // 截图入内存前缩略化（≤360px），配合 _traces 数量上限，避免多步全分辨率截图长期驻留导致 OOM 闪退
+            screenshot = com.phoneagent.debug.DebugRecordsStore.thumb(screenshot),
         )
+        // 数量上限：环形保留最近 N 条轨迹，防长线/多任务场景内存无限增长
+        if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
     }
 
     private fun recordStep(step: Int, action: AgentAction, verification: String, before: String, after: String) {
@@ -1703,6 +1731,10 @@ class AgentEngine(
             isConfirmed = verification == "verified_success",
         )
         _executionHistory.value = _executionHistory.value + rec
+        // 数量上限：环形保留最近 N 条执行历史，防长线/多任务内存无限增长
+        if (_executionHistory.value.size > MAX_EXECUTION_HISTORY) {
+            _executionHistory.value = _executionHistory.value.takeLast(MAX_EXECUTION_HISTORY)
+        }
     }
 
     /**
@@ -1712,7 +1744,7 @@ class AgentEngine(
      */
     private suspend fun stepShotCapture(step: Int, action: AgentAction, verified: Boolean) {
         val snapshot = observe()
-        val shot = ScreenSharingService.instance?.captureFrame()
+        val shot = com.phoneagent.screen.ScreenCapture.capture()
         var annotated: Bitmap? = null
         if (shot != null) {
             // 端侧控件识别已外移到外挂视觉 Agent；这里跨进程调用并画框（v2.2.1 截图标注）
@@ -1848,7 +1880,7 @@ class AgentEngine(
         )
         _state.value = _state.value.copy(
             hasAccessibility = a11y != null,
-            hasScreenshot = ScreenSharingService.instance?.captureFrame() != null,
+            hasScreenshot = com.phoneagent.screen.ScreenCapture.available(),
         )
         return snapshot
     }
