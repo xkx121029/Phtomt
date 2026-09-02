@@ -29,7 +29,16 @@ import com.phoneagent.memory.MemoryStore
 import com.phoneagent.memory.ProfileEntry
 import com.phoneagent.screen.ScreenSharingService
 import com.phoneagent.agent.PromptLang
+import com.phoneagent.mcp.McpServerConfig
+import com.phoneagent.mcp.McpManager
+import com.phoneagent.mcp.OkHttpMcpTransportFactory
+import com.phoneagent.prompt.PromptTemplate
+import com.phoneagent.prompt.PromptTemplateStore
 import com.phoneagent.shizuku.ShizukuManager
+import com.phoneagent.shizuku.adb.AdbStatus
+import com.phoneagent.shizuku.adb.ShizukuBootstrap
+import com.phoneagent.skill.Skill
+import com.phoneagent.skill.SkillRegistry
 import com.phoneagent.test.TestConfig
 import com.phoneagent.test.TestEngine
 import com.phoneagent.test.TestPreset
@@ -56,6 +65,10 @@ class MainViewModel(
     private val shizukuManager: ShizukuManager,
     private val workAreaEngine: WorkAreaEngine,
     private val memoryStore: MemoryStore,
+    private val skillRegistry: SkillRegistry,
+    private val mcpManager: McpManager,
+    private val promptTemplateStore: PromptTemplateStore,
+    private val shizukuBootstrap: ShizukuBootstrap,
 ) : ViewModel() {
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
@@ -577,4 +590,124 @@ class MainViewModel(
     private fun formatTs(t: Long): String =
         java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date(t))
 
+    // ==================== HPA 迭代 A7：Skill / MCP / 提示词 / 无线 ADB UI ====================
+
+    // ---- Skill 列表快照（UI 观察；每次变更后刷新） ----
+    private val _skills = MutableStateFlow<List<Skill>>(skillRegistry.all())
+    val skills: StateFlow<List<Skill>> = _skills.asStateFlow()
+
+    fun skillAll(): List<Skill> = skillRegistry.all()
+
+    private fun refreshSkills() { _skills.value = skillRegistry.all() }
+
+    /** 在新增时自动分配一个未占用的 id */
+    fun nextSkillId(prefix: String = "skill_user"): String {
+        var i = 1
+        while (skillRegistry.byId("${prefix}_$i") != null) i++
+        return "${prefix}_$i"
+    }
+
+    fun addSkill(skill: Skill) {
+        viewModelScope.launch { skillRegistry.add(skill); refreshSkills() }
+    }
+
+    fun updateSkill(skill: Skill) {
+        viewModelScope.launch { skillRegistry.edit(skill); refreshSkills() }
+    }
+
+    fun removeSkill(id: String) {
+        viewModelScope.launch { skillRegistry.remove(id); refreshSkills() }
+    }
+
+    /** 批量删除：返回成功删除数量 */
+    fun removeSkills(ids: Set<String>): Int {
+        val n = skillRegistry.removeAll(ids)
+        refreshSkills()
+        return n
+    }
+
+    fun setSkillEnabled(id: String, enabled: Boolean) {
+        viewModelScope.launch { skillRegistry.setEnabled(id, enabled); refreshSkills() }
+    }
+
+    /** 导入技能清单（JSON 文本），返回导入数量 */
+    fun importSkills(text: String): Int {
+        val report = skillRegistry.importJson(text)
+        refreshSkills()
+        return report.imported
+    }
+
+    fun exportSkills(): String = skillRegistry.exportJson()
+
+    // ---- MCP 服务器（当前可编辑列表快照；配置变更后重建 Manager） ----
+    private val _mcpServers = MutableStateFlow<List<McpServerConfig>>(mcpManager.enabledServers())
+    val mcpServers: StateFlow<List<McpServerConfig>> = _mcpServers.asStateFlow()
+
+    private val _mcpcManager = MutableStateFlow<McpManager>(mcpManager)
+    /** UI 侧使用的 MCP 管理器（随服务器配置重建） */
+    val uiMcpManager: StateFlow<McpManager> = _mcpcManager.asStateFlow()
+
+    fun addMcpServer(name: String, url: String, token: String = "") {
+        val newCfg = McpServerConfig(name = name, url = url, token = token)
+        val now = _mcpcManager.value.enabledServers().map { it } + newCfg
+        _mcpcManager.value = OkHttpMcpTransportFactory.managerOf(now)
+        _mcpServers.value = now
+    }
+
+    suspend fun checkMcpServer(server: String): String {
+        val r = _mcpcManager.value.check(server)
+        return if (r.ok) "连接正常，枚举到 ${r.tools.size} 个工具" else "连接失败：${r.message}"
+    }
+
+    suspend fun bindMcpServerSkills(server: String): Int {
+        val prefix = "mcp_${server.lowercase()}_"
+        val added = _mcpcManager.value.bindToolsToSkills(server, prefix, skillRegistry)
+        refreshSkills()
+        return added
+    }
+
+    // ---- 提示词模板库 ----
+    private val _templates = MutableStateFlow<List<PromptTemplate>>(promptTemplateStore.all())
+    val templates: StateFlow<List<PromptTemplate>> = _templates.asStateFlow()
+
+    fun saveTemplate(id: String, name: String, body: String) {
+        viewModelScope.launch {
+            promptTemplateStore.upsert(PromptTemplate(id, name, body, isBuiltIn = promptTemplateStore.byId(id)?.isBuiltIn ?: false))
+            _templates.value = promptTemplateStore.all()
+        }
+    }
+
+    fun deleteTemplate(id: String) {
+        viewModelScope.launch { promptTemplateStore.remove(id); _templates.value = promptTemplateStore.all() }
+    }
+
+    // ---- Shizuku / 无线 ADB 状态 ----
+    val adbStatus: StateFlow<AdbStatus> = shizukuBootstrap.status
+
+    fun ensureAdbReady(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(
+                when (val r = shizukuBootstrap.ensureReady()) {
+                    is ShizukuBootstrap.ReadyResult.Ready -> "执行通路已就绪（Shizuku 可用）"
+                    is ShizukuBootstrap.ReadyResult.Error -> r.message
+                }
+            )
+        }
+    }
+
+    /** 用界面输入的 6 位配对码完成无线 ADB 配对并拉起 Shizuku */
+    fun pairAdb(code: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            if (code.length != 6 || !code.all { it.isDigit() }) {
+                onResult("配对码须为 6 位数字")
+                return@launch
+            }
+            onResult(
+                when (val r = shizukuBootstrap.pairAndEnsureReady(code)) {
+                    is ShizukuBootstrap.ReadyResult.Ready -> "配对成功，Shizuku 已就绪"
+                    is ShizukuBootstrap.ReadyResult.Error -> r.message
+                }
+            )
+        }
+    }
 }

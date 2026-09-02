@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Science
@@ -266,7 +268,15 @@ fun HomeScreen(
                 onPress = { pressHaptic() },
                 onClick = { onOpenExtras(ExtrasPage.Test) },
             )
-            Spacer(Modifier.weight(1f))
+            QuickEntry(
+                modifier = Modifier.weight(1f).animateListItem(8),
+                icon = Icons.Rounded.Memory,
+                tint = MaterialTheme.colorScheme.tertiary,
+                title = "技能&能力",
+                subtitle = "Skill/MCP/ADB",
+                onPress = { pressHaptic() },
+                onClick = { onOpenExtras(ExtrasPage.Skill) },
+            )
         }
 
         // 权限雷达

@@ -38,6 +38,7 @@ class IntentTranslatorStrategyTest {
         index: Int,
         text: String,
         left: Int = 0, top: Int = 0, right: Int = 100, bottom: Int = 60,
+        semanticId: String? = null,
     ) = UiElement(
         index = index,
         className = "android.widget.Button",
@@ -47,6 +48,7 @@ class IntentTranslatorStrategyTest {
         y = (top + bottom) / 2,
         left = left, top = top, right = right, bottom = bottom,
         clickable = true,
+        semanticId = semanticId,
     )
 
     private fun snapshot(vararg elements: UiElement) = ScreenSnapshot(
@@ -120,5 +122,120 @@ class IntentTranslatorStrategyTest {
             s,
         )
         assertTrue(reason.contains("目标定位失败"))
+    }
+
+    // ---- 高层语义接口（端侧 semantic_id 定位，AI 不写命令/坐标） ----
+
+    @Test
+    fun refresh_命中语义按钮_转译为点击refresh_btn() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "刷新", semanticId = "refresh_btn"))
+        val action = command(AgentIntent(intent = IntentType.REFRESH), s)
+        assertEquals(ActionType.TAP, action.type)
+        assertEquals(0, action.elementIndex)
+        assertEquals("刷新", action.target?.value)
+    }
+
+    @Test
+    fun confirm_按优先级命中dlg_allow() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(
+            elem(0, "取消"),
+            elem(1, "允许", semanticId = "dlg_allow"),
+        )
+        val action = command(AgentIntent(intent = IntentType.CONFIRM), s)
+        assertEquals(ActionType.TAP, action.type)
+        assertEquals(1, action.elementIndex)
+    }
+
+    @Test
+    fun delete_不可逆_自动置confirm位() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "删除", semanticId = "delete_btn"))
+        val action = command(AgentIntent(intent = IntentType.DELETE), s)
+        assertEquals(ActionType.TAP, action.type)
+        assertTrue(action.needsUserConfirmation)
+    }
+
+    @Test
+    fun back_命中返回按钮_点击按钮() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "返回", semanticId = "back_btn"))
+        val action = command(AgentIntent(intent = IntentType.BACK), s)
+        assertEquals(ActionType.TAP, action.type)
+    }
+
+    @Test
+    fun back_无返回按钮_退化为系统返回键() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "标题"))
+        val action = command(AgentIntent(intent = IntentType.BACK), s)
+        assertEquals(ActionType.KEY, action.type)
+        assertEquals("BACK", action.keycode)
+    }
+
+    @Test
+    fun home_转译为系统HOME键() {
+        mode(Mode.SHIZUKU)
+        val action = command(AgentIntent(intent = IntentType.HOME), snapshot())
+        assertEquals(ActionType.KEY, action.type)
+        assertEquals("HOME", action.keycode)
+    }
+
+    @Test
+    fun 语义按钮缺失_转译失败() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "标题"))
+        val reason = failure(AgentIntent(intent = IntentType.SHARE), s)
+        assertTrue(reason.contains("语义控件"))
+    }
+
+    @Test
+    fun confirm_语义缺失_但有target_回退命中() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(elem(0, "确定"))
+        val action = command(
+            AgentIntent(intent = IntentType.CONFIRM, target = AgentIntentTarget("text", "确定")),
+            s,
+        )
+        assertEquals(ActionType.TAP, action.type)
+        assertEquals(0, action.elementIndex)
+    }
+
+    @Test
+    fun confirm_语义命中_优先于target() {
+        mode(Mode.ACCESSIBILITY)
+        val s = snapshot(
+            elem(0, "取消"),
+            elem(1, "允许", semanticId = "dlg_allow"),
+            elem(2, "确定"),
+        )
+        val action = command(
+            AgentIntent(intent = IntentType.CONFIRM, target = AgentIntentTarget("text", "确定")),
+            s,
+        )
+        // 语义优先：应命中 dlg_allow(index=1)，而非 target 指向的"确定"(index=2)
+        assertEquals(1, action.elementIndex)
+    }
+
+    @Test
+    fun 各剩余语义接口_命中对应按钮_统一转为tap() {
+        mode(Mode.ACCESSIBILITY)
+        val cases = mapOf(
+            IntentType.CLOSE to "close_btn",
+            IntentType.COPY to "copy_btn",
+            IntentType.DOWNLOAD to "download_btn",
+            IntentType.ADD to "add_btn",
+            IntentType.SWITCH to "switch_toggle",
+            IntentType.CLEAR_INPUT to "clear_input",
+            IntentType.SHARE to "share_btn",
+            IntentType.SEND to "send_btn",
+            IntentType.SEARCH to "search_box",
+        )
+        cases.forEach { (intent, sid) ->
+            val action = command(AgentIntent(intent = intent), snapshot(elem(0, sid, semanticId = sid)))
+            assertEquals("$intent 应转 tap", ActionType.TAP, action.type)
+            assertEquals("$intent 应命中语义按钮", 0, action.elementIndex)
+        }
     }
 }

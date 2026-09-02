@@ -269,6 +269,8 @@ class AgentAccessibilityService : AccessibilityService() {
                     type = classify(cls),
                     text = node.text?.toString(),
                     contentDescription = node.contentDescription?.toString(),
+                    isSelected = node.isSelected,
+                    currentValue = if (node.isEditable) node.text?.toString() else null,
                     x = bounds.centerX(),
                     y = bounds.centerY(),
                     left = bounds.left,

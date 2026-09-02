@@ -89,6 +89,23 @@ object IntentType {
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
 
+    // ---- 高层语义接口（Φ 端侧已识别的语义控件类，转译层本地映射为命令，AI 不写命令/坐标） ----
+    const val BACK = "back"               // 返回上一页（优先语义按钮，找不到走系统返回）
+    const val HOME = "home"               // 回到桌面/首页（系统 HOME）
+    const val REFRESH = "refresh"         // 刷新当前页
+    const val SEARCH = "search"           // 进入搜索（聚焦搜索框/点搜索入口）
+    const val SEND = "send"               // 发送（发消息/提交）
+    const val CONFIRM = "confirm"         // 确认当前（授权/确定/结算）
+    const val CLOSE = "close"             // 关闭弹窗/广告/标签
+    const val SHARE = "share"             // 分享
+    const val COLLECT = "collect"         // 收藏/加入收藏
+    const val COPY = "copy"               // 复制
+    const val DELETE = "delete"           // 删除（不可逆，自动 needs_confirmation）
+    const val DOWNLOAD = "download"       // 下载
+    const val ADD = "add"                 // 新增/添加
+    const val SWITCH = "switch"           // 切换开关状态
+    const val CLEAR_INPUT = "clear_input" // 清空输入框
+
     /** 意图 → 内部执行动作（AgentAction.type）的映射。供转译层把意图变成命令。 */
     val TO_ACTION: Map<String, String> = mapOf(
         OPEN_APP to ActionType.LAUNCH,

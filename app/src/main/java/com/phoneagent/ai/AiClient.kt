@@ -53,7 +53,7 @@ class AiClient(
         {
           "type": "object",
           "properties": {
-            "intent": { "type": "string", "enum": ["open_app","open","tap","long_press","input","swipe","press","wait","scroll_to","write_doc","finish","give_up"] },
+            "intent": { "type": "string", "enum": ["open_app","open","tap","long_press","input","swipe","press","wait","scroll_to","write_doc","finish","give_up","back","home","refresh","search","send","confirm","close","share","collect","copy","delete","download","add","switch","clear_input"] },
             "target": {
               "type": "object",
               "properties": {

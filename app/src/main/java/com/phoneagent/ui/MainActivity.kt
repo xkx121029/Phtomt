@@ -101,6 +101,8 @@ class MainActivity : ComponentActivity() {
 sealed class ExtrasPage {
     object Test : ExtrasPage()
     object Debug : ExtrasPage()
+    /** 技能与能力管理：Skill / MCP / 无线 ADB / 提示词（HPA 迭代 A7） */
+    object Skill : ExtrasPage()
     /** 文件列表页：独立展示工作区全部文件 */
     object FileList : ExtrasPage()
     /** 文档预览编辑页：文件全文 + 底部 AI 聊天框 */
@@ -114,6 +116,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             null -> listOf("__null__")
             is ExtrasPage.Test -> listOf("test")
             is ExtrasPage.Debug -> listOf("debug")
+            is ExtrasPage.Skill -> listOf("skill")
             is ExtrasPage.FileList -> listOf("filelist")
             is ExtrasPage.FileEditor -> listOf("file", page.fileName)
         }
@@ -123,6 +126,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             "__null__" -> null
             "test" -> ExtrasPage.Test
             "debug" -> ExtrasPage.Debug
+            "skill" -> ExtrasPage.Skill
             "filelist" -> ExtrasPage.FileList
             "file" -> ExtrasPage.FileEditor(list.getOrNull(1)?.toString() ?: "")
             else -> null
@@ -364,6 +368,7 @@ private fun ExtrasPageContent(
                 when (page) {
                     is ExtrasPage.Test -> "测试"
                     is ExtrasPage.Debug -> "调试"
+                    is ExtrasPage.Skill -> "技能与能力"
                     is ExtrasPage.FileList -> "全部文件"
                     is ExtrasPage.FileEditor -> page.fileName
                 },
@@ -377,6 +382,10 @@ private fun ExtrasPageContent(
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )
             ExtrasPage.Debug -> DebugScreen(
+                vm,
+                Modifier.weight(1f).padding(horizontal = 0.dp),
+            )
+            ExtrasPage.Skill -> com.phoneagent.ui.skill.SkillManagerScreen(
                 vm,
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )

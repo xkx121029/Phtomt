@@ -91,6 +91,9 @@ class AgentEngine(
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
     companion object {
+        /** 参数缺失追问的最大补全轮数：tap 缺 target / open_app 缺 app 时最多向 AI 追问几轮 */
+        private const val MAX_PARAM_REFILL = 3
+
         /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
         private const val VISION_FALLBACK_THRESHOLD = 3
 
@@ -806,8 +809,10 @@ class AgentEngine(
                     "AI 长时间没动静", "任务似乎卡住了，已延长检查时间；若仍未进展可用「已手动处理」接管。",
                 )
             }
-            // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）
-            val translation = intentTranslator.translate(intent, snapshot, lastVisualCoordinate)
+            // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）。
+            //    参数缺失（如 tap 没给 target、open_app 没给 app）时，端侧先向 AI 追问一次补全，再重转译，而非直接失败。
+            var translation = intentTranslator.translate(intent, snapshot, lastVisualCoordinate)
+            translation = fillMissingParam(translation, intent, snapshot, settingsVal)
             var action: AgentAction = AgentAction(type = "")
             var verify = com.phoneagent.execution.VerifyResult(false, "", "", "")
             var isStructuralError = false
@@ -893,6 +898,24 @@ class AgentEngine(
                     isStructuralError = true
                     verified = false
                 }
+                is IntentTranslator.TranslationResult.MissingParam -> {
+                    // 绝大多数情况下已被 fillMissingParam 补全成 Command/Failed；此处仅作 sealed 穷尽兜底，按失败处理
+                    val reason = translation.reason
+                    log(AgentLog.Level.WARN, "意图缺参未补全：$reason")
+                    addConversation("assistant", intent.toString())
+                    _state.value = _state.value.copy(
+                        phase = AgentState.Phase.ACTING, lastAction = intent,
+                        message = "转译失败：$reason",
+                    )
+                    action = AgentAction(
+                        type = intent.intent, reasoning = intent.reasoning,
+                        reason = reason,
+                        target = intent.target?.let { ActionTarget(method = it.by, value = it.value) },
+                    )
+                    verify = com.phoneagent.execution.VerifyResult(false, reason, "", "")
+                    isStructuralError = true
+                    verified = false
+                }
             }
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
             // 步骤验证生效 → 记入长线工作记忆，供后续压缩历史后仍能感知进度
@@ -938,6 +961,11 @@ class AgentEngine(
                             verify = com.phoneagent.execution.VerifyResult(false, gTranslate.reason, "", "")
                             verified = false
                             log(AgentLog.Level.WARN, "引导后意图转译失败：${gTranslate.reason}")
+                        }
+                        is IntentTranslator.TranslationResult.MissingParam -> {
+                            verify = com.phoneagent.execution.VerifyResult(false, gTranslate.reason, "", "")
+                            verified = false
+                            log(AgentLog.Level.WARN, "引导后意图缺参：${gTranslate.reason}")
                         }
                     }
                 }
@@ -1012,6 +1040,50 @@ class AgentEngine(
         val dialog = messages.filter { it.role != "system" }
         val recent = dialog.takeLast(MAX_DIALOG_TURNS * 2)
         return system + recent + currentUserMsg
+    }
+
+    /**
+     * 参数缺失补全：当转译结果因缺少必需参数 [IntentTranslator.TranslationResult.MissingParam]
+     * （如 tap 没给 target、open_app 没给 app）而失败时，端侧不直接放弃，而是向 AI 发起一条补充请求，
+     * 让它只补全所缺字段后返回完整意图，再重新转译。最多补 [MAX_PARAM_REFILL] 轮；
+     * 补全后仍缺参则降级为 [IntentTranslator.TranslationResult.Failed]，交给上层按失败处理。
+     */
+    private suspend fun fillMissingParam(
+        translation: IntentTranslator.TranslationResult,
+        intent: AgentIntent,
+        snapshot: ScreenSnapshot,
+        settingsVal: AppSettings.Settings,
+    ): IntentTranslator.TranslationResult {
+        val missing = translation as? IntentTranslator.TranslationResult.MissingParam ?: return translation
+        var cur = intent
+        var result: IntentTranslator.TranslationResult = missing
+        var missingField = missing.field
+        var missingReason = missing.reason
+        for (i in 0 until MAX_PARAM_REFILL) {
+            val ask = "你上一步输出的意图缺少「$missingField」参数：$missingReason\n" +
+                "请只输出补全后的完整意图 JSON（保留原 intent 及已有字段，仅补上缺失的 target 或 app 字段），不要任何解释。\n" +
+                "例如 tap 需补 target:{\"by\":\"text\",\"value\":\"控件文字\"}；open_app 需补 app:\"应用名\"。\n原意图：$cur"
+            val refilled = runCatching {
+                aiClient.chatForAction(
+                    baseUrl = settingsVal.apiBaseUrl, apiKey = settingsVal.apiKey, model = settingsVal.model,
+                    messages = listOf(
+                        ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = "你是手机智能体，负责把一句意图补全为合规 JSON 意图，只输出一个 JSON 对象。"))),
+                        ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = ask))),
+                    ),
+                    screenshot = null, temperature = 0.2,
+                ).getOrNull()?.action
+            }.getOrNull()
+            if (refilled == null) break
+            cur = refilled
+            result = intentTranslator.translate(refilled, snapshot, null)
+            if (result is IntentTranslator.TranslationResult.Command) return result
+            if (result is IntentTranslator.TranslationResult.Failed) return result
+            (result as? IntentTranslator.TranslationResult.MissingParam)?.let {
+                missingField = it.field
+                missingReason = it.reason
+            }
+        }
+        return IntentTranslator.TranslationResult.Failed(missingReason ?: "AI 补全参数后仍无法转译")
     }
 
     private suspend fun cloudDecide(

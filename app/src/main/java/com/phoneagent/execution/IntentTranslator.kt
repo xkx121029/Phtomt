@@ -46,7 +46,7 @@ private fun passthrough(
 }
 
 /** 目标定位结果整理：元素索引 + 像素坐标 + 动作目标（id/label） */
-private data class ResolvedIntentTarget(
+internal data class ResolvedIntentTarget(
     val elementIndex: Int?,
     val x: Int?,
     val y: Int?,
@@ -77,6 +77,27 @@ private fun targetFailReason(target: AgentIntentTarget?): String {
     return "目标定位失败: by=$by, value=$value"
 }
 
+/**
+ * 按优先级在元素树中查找端侧已标注的语义控件（semantic_id）。
+ * 命中则返回其索引与中心坐标；全部未命中返回 null（此时应降级为 tap+target 或换操作）。
+ */
+private fun resolveSemantic(semanticIds: List<String>, snapshot: ScreenSnapshot): ResolvedIntentTarget? {
+    val elems = snapshot.elements
+    for (id in semanticIds) {
+        val e = elems.firstOrNull { it.semanticId == id } ?: continue
+        return ResolvedIntentTarget(
+            elementIndex = e.index,
+            x = e.x,
+            y = e.y,
+            target = ActionTarget(method = "label", value = e.text?.takeIf { it.isNotBlank() } ?: id),
+        )
+    }
+    return null
+}
+
+private fun semanticFailReason(semanticId: String): String =
+    "当前页面未找到「$semanticId」语义控件，请改用 tap+target 精确定位或换一个可执行的操作"
+
 /** press 按键归一化：宽松匹配到 executeWithVerify 支持的字面量 */
 private fun normalizeKey(key: String?): String = when (key?.trim()?.uppercase()) {
     "BACK" -> "BACK"
@@ -89,6 +110,12 @@ private fun normalizeKey(key: String?): String = when (key?.trim()?.uppercase())
 /** 应用启动策略：应用名/包名 → 端侧解析包名，按通道决定启动命令 */
 internal class OpenAppStrategy(private val appNameResolver: AppNameResolver) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        if (intent.app == null) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "app",
+                reason = "AI 输出了 open_app 但未提供 app（应用名或包名）。请补全 app 字段，例如 {\"app\":\"美团\"} 或 {\"app\":\"com.sankuai.meituan\"}。",
+            )
+        }
         val pkg = appNameResolver.resolve(intent.app)
             ?: return IntentTranslator.TranslationResult.Failed(
                 "无法解析应用「${intent.app}」的包名（未匹配到已安装应用）。请确认该应用已安装，或直接在 app 字段填包名，例如 \"com.tencent.mm\"",
@@ -120,6 +147,13 @@ internal class TargetLocationStrategy(
     private val withDepth: (AgentAction, AgentIntent) -> AgentAction = { a, _ -> a },
 ) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        if (intent.target == null) {
+            // 缺 target：可追问补全（如"AI 只输出 tap 但没说点哪里"）
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "target",
+                reason = "AI 输出了 $type 但未提供 target（缺少操作目标控件）。请补全 target:{\"by\":\"text\",\"value\":\"控件文字\"}。",
+            )
+        }
         val r = resolveTarget(intent, ctx, intentResolver)
             ?: return IntentTranslator.TranslationResult.Failed(targetFailReason(intent.target))
         val action = ctx.base.copy(
@@ -137,6 +171,12 @@ internal class TargetLocationStrategy(
 /** 滚动查找策略：不要求目标已可见，以屏幕中心滚动查找，text 作为查找方向兜底 */
 internal class ScrollToStrategy(private val intentResolver: IntentResolver) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        if (intent.target == null) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "target",
+                reason = "AI 输出了 scroll_to 但未提供 target（缺少要滚动查找的目标）。请补全 target:{\"by\":\"text\",\"value\":\"控件文字\"}。",
+            )
+        }
         val r = intentResolver.resolve(intent.target, ctx.snapshot, null)
         val elem = r.element
         // 确定滚动方向：目标在下方则向上滚（swipe up），反之向下滚
@@ -155,6 +195,65 @@ internal class ScrollToStrategy(private val intentResolver: IntentResolver) : In
             ),
         )
     }
+}
+
+/**
+ * 高层语义接口策略：把"端侧已识别语义控件"的高级意图转译为对该控件的点击命令。
+ * AI 只需说"做什么"（refresh/confirm/close/share...），端侧按语义ID优先级定位并落地执行。
+ * @param semanticIds 语义ID按优先级列表（端侧 PageAnnotator 标注的 semantic_id）
+ * @param actionType 落地动作类型（默认点击语义控件）
+ * @param irreversible 不可逆操作（如删除）时自动置 needsUserConfirmation=true
+ * @param intentResolver 语义控件未命中但 AI 同时给出 target 时，回退到 target 一次定位（减少 AI 重试）
+ */
+internal class SemanticActionStrategy(
+    private val semanticIds: List<String>,
+    private val actionType: String,
+    private val irreversible: Boolean = false,
+    private val intentResolver: IntentResolver? = null,
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        // 语义优先；语义未命中且 AI 给了 target 时用 target 兜底；两者都无则转译失败
+        val semantic = resolveSemantic(semanticIds, ctx.snapshot)
+        val r = semantic
+            ?: intentResolver?.takeIf { intent.target != null }?.let { resolveTarget(intent, ctx, it) }
+            ?: return IntentTranslator.TranslationResult.Failed(semanticFailReason(semanticIds.first()))
+        var action = ctx.base.copy(
+            type = actionType,
+            elementIndex = r.elementIndex,
+            x = r.x,
+            y = r.y,
+            target = r.target,
+            reason = reasonOf(intent),
+        )
+        if (irreversible) action = action.copy(needsUserConfirmation = true)
+        return IntentTranslator.TranslationResult.Command(action)
+    }
+}
+
+/** 返回策略：优先点击语义返回按钮；找不到则退化为系统返回键（无需命中元素） */
+internal class BackStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val r = resolveSemantic(listOf("back_btn"), ctx.snapshot)
+        val action = if (r != null) {
+            ctx.base.copy(
+                type = ActionType.TAP,
+                elementIndex = r.elementIndex,
+                x = r.x, y = r.y, target = r.target,
+                reason = reasonOf(intent),
+            )
+        } else {
+            ctx.base.copy(type = ActionType.KEY, keycode = "BACK", reason = reasonOf(intent))
+        }
+        return IntentTranslator.TranslationResult.Command(action)
+    }
+}
+
+/** 回到桌面策略：系统性 HOME 键 */
+internal class HomeStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult =
+        IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(type = ActionType.KEY, keycode = "HOME", reason = reasonOf(intent)),
+        )
 }
 
 /**
@@ -178,6 +277,14 @@ class IntentTranslator(
         data class Command(val action: AgentAction) : TranslationResult()
         /** 转译失败：给出人话原因（不执行） */
         data class Failed(val reason: String) : TranslationResult()
+        /**
+         * 参数缺失：AI 输出的意图缺少执行所必需的参数（如 tap 无 target、open_app 无 app）。
+         * 与 [Failed] 的区别：这是"可追问补全"而非"页面问题"。调用方（如 AgentEngine）应向 AI
+         * 发起一次补充请求拿到缺失字段后重新转译，而不是直接放弃。
+         * @param field 缺失的意图字段名（如 target / app）
+         * @param reason 人话说明 + 引导 AI 补全的提示
+         */
+        data class MissingParam(val field: String, val reason: String) : TranslationResult()
     }
 
     /** 意图类型 → 转译策略 的分派表（集中注册，新增意图只在此登记） */
@@ -200,6 +307,22 @@ class IntentTranslator(
         // 收尾
         put(IntentType.FINISH, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.summary ?: "任务完成") })
         put(IntentType.GIVE_UP, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.reason ?: "已放弃任务") })
+        // ---- 高层语义接口（端侧 PageAnnotator 已标注 semantic_id，AI 只表达"做什么"，端侧定位）----
+        put(IntentType.BACK, BackStrategy())
+        put(IntentType.HOME, HomeStrategy())
+        put(IntentType.REFRESH, SemanticActionStrategy(listOf("refresh_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.SEARCH, SemanticActionStrategy(listOf("search_box", "search_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.SEND, SemanticActionStrategy(listOf("send_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.CONFIRM, SemanticActionStrategy(listOf("dlg_allow", "confirm_btn", "checkout_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.CLOSE, SemanticActionStrategy(listOf("close_btn", "dlg_dismiss", "ad_skip"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.SHARE, SemanticActionStrategy(listOf("share_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.COLLECT, SemanticActionStrategy(listOf("collect_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.COPY, SemanticActionStrategy(listOf("copy_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.DOWNLOAD, SemanticActionStrategy(listOf("download_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.ADD, SemanticActionStrategy(listOf("add_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))
+        put(IntentType.DELETE, SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, irreversible = true, intentResolver = intentResolver))
     }
 
     /**

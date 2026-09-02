@@ -19,6 +19,10 @@ data class UiElement(
     val text: String? = null,
     /** 内容描述（无障碍标签） */
     val contentDescription: String? = null,
+    /** 是否选中（Checkbox/Radio/Tab 等）；未知时为空 */
+    val isSelected: Boolean? = null,
+    /** 控件当前值（输入框内容/滑块值/渐进条进度）；可为空 */
+    val currentValue: String? = null,
     /** 元素中心点 x */
     val x: Int,
     /** 元素中心点 y */

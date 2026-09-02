@@ -134,11 +134,13 @@ class IntentTranslatorTest {
     }
 
     @Test
-    fun tap_无目标描述_转译失败() {
+    fun tap_无目标描述_转为缺参可追问() {
         mode(Mode.ACCESSIBILITY)
         val s = snapshot(elem(0, "首页"))
-        val reason = failure(AgentIntent(intent = IntentType.TAP), s)
-        assertTrue(reason.contains("目标定位失败"))
+        // 新语义：AI 只输出 tap 但缺 target → 返回 MissingParam（可追问补全），而非直接 Failed
+        val result = translator.translate(AgentIntent(intent = IntentType.TAP), s)
+        assertTrue("期望 MissingParam（缺 target 可追问），实际: $result", result is IntentTranslator.TranslationResult.MissingParam)
+        assertEquals("target", (result as IntentTranslator.TranslationResult.MissingParam).field)
     }
 
     @Test
