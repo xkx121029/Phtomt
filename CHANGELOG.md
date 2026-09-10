@@ -13,6 +13,30 @@
 
 ---
 
+## [v0.1.264] — 2026-09-10
+
+对应提交 `c01b589`。
+
+### 新增
+- **ADB 无线配对通知栏向导** `notify/AdbPairingNotifier.kt`（121 行）
+  - 搜索中 → 已发现设备 → 请求配对码（通知内联输入框）→ 配对中 → 成功/失败，全程通知栏驱动
+  - `RemoteInput` 内联输入：用户无需回到 App 即可输入 6 位配对码
+  - `POST_NOTIFICATIONS` 权限适配（Android 13+）
+- **AdbPairingReceiver** `shizuku/adb/AdbPairingReceiver.kt`（22 行）
+  - 接收通知内联配对码，委托给 `WirelessAdbPairingFlow.onPairingCode()`
+- **WirelessAdbPairingFlow** `shizuku/adb/WirelessAdbPairingFlow.kt`（118 行）
+  - Nsd 服务发现 → 配对码校验 → 网络配对 → Shizuku 拉起，完整状态机编排
+- `AndroidManifest`：注册 `AdbPairingReceiver`，新增 `POST_NOTIFICATIONS` 权限
+
+### 增强
+- `AdbWirelessTransport`：`discoverService()` 改为公开方法
+- `WirelessAdbModels`：`AdbPhase` 枚举扩展
+- `MainViewModel`：接入配对流状态
+- `SkillManagerScreen`：无线 ADB Tab 交互优化
+- `AppModule`：Koin 注册新模块
+
+---
+
 ## [v0.1.140] — 2026-09-02
 
 对应提交 `c132122`。
