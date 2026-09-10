@@ -9,7 +9,12 @@
 ## [Unreleased]
 
 ### 新增
-- 占位：下一版本变更写在这里
+- **Release APK 签名构建**
+  - 添加 `upload-keystore.jks`（自签名，有效期 10000 天）
+  - `app/build.gradle.kts` 支持从 `upload-signing.properties` 加载签名配置
+  - `upload-signing.properties` 加入 `.gitignore`（不提交到仓库）
+  - Release 配置：R8 混淆 + arm64-v8a 单 ABI，包体大幅缩减
+- **APK 上传 Release**：v0.1.265 release APK（约 10MB）发布到 Gitee / GitHub Release
 
 ---
 

@@ -23,6 +23,20 @@ android {
     namespace = "com.phoneagent"
     compileSdk = 35
 
+    // 签名配置：从 upload-signing.properties 读取（本地文件，不提交到仓库）
+    val signingPropsFile = file("upload-signing.properties")
+    if (signingPropsFile.exists()) {
+        val props = Properties().apply { signingPropsFile.inputStream().use { load(it) } }
+        signingConfigs {
+            create("release") {
+                storeFile = file(props["storeFile"] as? String ?: "upload-keystore.jks")
+                storePassword = props["storePassword"] as? String ?: ""
+                keyAlias = props["keyAlias"] as? String ?: ""
+                keyPassword = props["keyPassword"] as? String ?: ""
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.phoneagent"
         minSdk = 26
@@ -44,6 +58,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (signingConfigs.findByName("release") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             isMinifyEnabled = false

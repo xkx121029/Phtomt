@@ -25,6 +25,7 @@ captures/
 *.keystore
 debug.keystore
 debug.keystore.properties
+upload-signing.properties
 
 # Local properties
 local.properties
