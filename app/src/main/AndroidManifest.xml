@@ -64,6 +64,15 @@
             android:name=".edge.EdgeLightingService"
             android:exported="false" />
 
+        <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器 -->
+        <receiver
+            android:name=".shizuku.adb.AdbPairingReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

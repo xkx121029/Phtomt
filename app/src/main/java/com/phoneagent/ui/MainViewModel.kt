@@ -37,6 +37,7 @@ import com.phoneagent.prompt.PromptTemplateStore
 import com.phoneagent.shizuku.ShizukuManager
 import com.phoneagent.shizuku.adb.AdbStatus
 import com.phoneagent.shizuku.adb.ShizukuBootstrap
+import com.phoneagent.shizuku.adb.WirelessAdbPairingFlow
 import com.phoneagent.skill.Skill
 import com.phoneagent.skill.SkillRegistry
 import com.phoneagent.test.TestConfig
@@ -69,6 +70,7 @@ class MainViewModel(
     private val mcpManager: McpManager,
     private val promptTemplateStore: PromptTemplateStore,
     private val shizukuBootstrap: ShizukuBootstrap,
+    private val adbPairingFlow: WirelessAdbPairingFlow,
 ) : ViewModel() {
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
@@ -710,4 +712,15 @@ class MainViewModel(
             )
         }
     }
+
+    // ---- 无线 ADB「开始配对」通知栏向导（模拟 Shizuku） ----
+    val adbPairingMessage: String
+        get() = adbPairingFlow.message
+
+    val adbPairingMessageFlow: StateFlow<String> get() = adbPairingFlow.messageFlow
+
+    /** 点击「开始配对」：后台搜索无线调试服务，搜到后通过通知栏请求配对码 */
+    fun startAdbDiscovery() = adbPairingFlow.startDiscovery(viewModelScope)
+
+    fun cancelAdbPairing() = adbPairingFlow.cancel()
 }

@@ -1,9 +1,11 @@
 package com.phoneagent.shizuku.adb
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
@@ -13,6 +15,7 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.PBEKeySpec
+import kotlin.coroutines.resume
 
 /**
  * 真实无线 ADB（ADB over Wi-Fi / 无线调试）传输实现。
@@ -48,7 +51,7 @@ class AdbWirelessTransport(
             return AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, "配对码须为 6 位数字")
         }
         return try {
-            val info = discoverPairingService() ?: return AdbPairOutcome.Failure(
+            val info = discoverService() ?: return AdbPairOutcome.Failure(
                 AdbError.PAIRING_PORT_OFF, "未发现无线调试配对服务，请保持配对界面",
             )
             pairingHost = info.host
@@ -96,36 +99,54 @@ class AdbWirelessTransport(
 
     override fun shutdown() {
         connected = false
+        runCatching { nsdManager?.stopServiceDiscovery(discoveryListener) }
     }
 
-    /** 用 NsdManager 发现配对服务，返回 host/port/salt */
-    private fun discoverPairingService(): PairingServiceInfo? {
-        var found: NsdServiceInfo? = null
-        val latch = java.util.concurrent.CountDownLatch(1)
+    private var nsdManager: NsdManager? = null
+    private var discoveryListener: NsdManager.DiscoveryListener? = null
+
+    /**
+     * 异步发现无线调试配对服务（`_adb-tls-pairing._tcp`）。
+     * 供「开始配对」自动化流程使用：挂在主线程协程上，等到搜索到即返回。
+     *
+     * ⚠ NsdManager 需在带 Looper 的线程上调用（主线程）。超时/取消由调用方（withTimeout）兜底。
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun discoverService(): AdbPairingService? = suspendCancellableCoroutine { cont ->
         val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+        nsdManager = nsd
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {}
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                found = serviceInfo
-                latch.countDown()
+                val host = serviceInfo.host?.hostAddress ?: return
+                val salt = serviceInfo.serviceName?.toString()
+                if (cont.isActive) {
+                    cont.resume(AdbPairingService(host, serviceInfo.port, salt?.toByteArray()))
+                }
+                runCatching { nsd.stopServiceDiscovery(this) }
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
             override fun onDiscoveryStopped(serviceType: String) {}
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) { latch.countDown() }
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                if (cont.isActive) cont.resume(null)
+            }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
         }
-        nsd.discoverServices(PAIRING_SERVICE, NsdManager.PROTOCOL_DNS_SD, listener)
-        try { latch.await(5, java.util.concurrent.TimeUnit.SECONDS) } catch (_: InterruptedException) {}
-        runCatching { nsd.stopServiceDiscovery(listener) }
-        val info = found ?: return null
-        return PairingServiceInfo(
-            host = info.host?.hostAddress ?: "127.0.0.1",
-            port = info.port,
-            salt = info.serviceName?.toString()?.toByteArray(),
-        )
+        discoveryListener = listener
+        try {
+            nsd.discoverServices(PAIRING_SERVICE, NsdManager.PROTOCOL_DNS_SD, listener)
+        } catch (e: Exception) {
+            Log.e(TAG, "discover failed", e)
+            if (cont.isActive) cont.resume(null)
+            return@suspendCancellableCoroutine
+        }
+        cont.invokeOnCancellation {
+            runCatching { nsd.stopServiceDiscovery(listener) }
+        }
     }
 
-    private class PairingServiceInfo(val host: String, val port: Int, val salt: ByteArray?)
+    /** 兼容旧同步调用入口（新实现基于回调，路径与实际一致） */
+    private suspend fun discoverPairingService(): AdbPairingService? = discoverService()
 }
 
 /**

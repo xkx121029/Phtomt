@@ -56,3 +56,10 @@ data class AdbFailure(
         }
     }
 }
+
+/** mDNS 发现的无线调试配对服务（host + 配对端口 + 派生密钥用 salt） */
+data class AdbPairingService(
+    val host: String,
+    val port: Int,
+    val salt: ByteArray? = null,
+)

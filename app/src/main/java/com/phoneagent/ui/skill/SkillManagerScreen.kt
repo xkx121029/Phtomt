@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.AlertDialog
@@ -512,8 +513,8 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                 Text(
                     "若 Shizuku 未运行，可通过系统自带「无线调试」完成配对，本应用自动在后台拉起 Shizuku 服务。步骤：\n" +
                         "1. 手机设置 → 开发者选项 → 开启「无线调试」\n" +
-                        "2. 点击「使用配对码配对设备」，记下 6 位配对码与主机/端口\n" +
-                        "3. 在下框输入配对码，点「配对并启动」",
+                        "2. 点击「使用配对码配对设备」，记下 6 位配对码\n" +
+                        "3. 点「自动发现服务」搜到设备后，在通知栏输入配对码；或用「手动配对」直接输入",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -524,16 +525,32 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(
-                    enabled = code.length == 6,
-                    onClick = {
-                        vm.pairAdb(code) { msg = it }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("配对并启动")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            vm.startAdbDiscovery()
+                            msg = "已开始搜索无线调试服务，搜到后将在通知栏请求配对码…"
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("自动发现服务")
+                    }
+                    OutlinedButton(
+                        onClick = { vm.pairAdb(code) { msg = it } },
+                        enabled = code.length == 6,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("手动配对")
+                    }
+                }
+                // 向导当前说话（Search 结果也回显到这里）
+                val flowMsg by vm.adbPairingMessageFlow.collectAsState()
+                if (flowMsg.isNotBlank()) {
+                    StatusPill(flowMsg, MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth())
                 }
 
                 // 连接状态 + 错误提示

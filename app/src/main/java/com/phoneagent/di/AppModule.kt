@@ -11,6 +11,7 @@ import com.phoneagent.prompt.PromptTemplateStore
 import com.phoneagent.shizuku.ShizukuManager
 import com.phoneagent.shizuku.adb.AdbWirelessTransport
 import com.phoneagent.shizuku.adb.ShizukuBootstrap
+import com.phoneagent.shizuku.adb.WirelessAdbPairingFlow
 import com.phoneagent.skill.SkillCatalog
 import com.phoneagent.skill.SkillExecutionGateway
 import com.phoneagent.skill.SkillRegistry
@@ -40,10 +41,14 @@ private val appModule = module {
     single { PromptTemplateStore(PromptTemplateStore.defaults()) }
     // 执行网关：统一 Skill/MCP 解析入口
     single { SkillExecutionGateway(get(), get()) }
+    // 无线 ADB 传输（共享单例：ShizukuBootstrap 直连 / WirelessAdbPairingFlow 发现共用）
+    single { AdbWirelessTransport(androidContext()) }
     // Shizuku 双通路启动器：Shizuku 直连 / 无线 ADB 拉起
-    single { ShizukuBootstrap(get(), AdbWirelessTransport(androidContext())) }
+    single { ShizukuBootstrap(get(), get<AdbWirelessTransport>()) }
+    // 无线 ADB「开始配对」通知栏向导
+    single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
 
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 }
 
 fun initKoin(context: Context) {
