@@ -49,3 +49,105 @@ Desktop.ini
 # Project specific
 version.properties
 BUGS/
+# >>> gitea-auto-push >>>
+# 依赖 / 包管理器
+node_modules/
+.pnpm-store/
+.yarn/
+bower_components/
+vendor/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.eggs/
+*.egg-info/
+
+# 构建产物
+build/
+out/
+dist/
+output/
+.gradle/
+.dart_tool/
+target/
+Pods/
+.next/
+.nuxt/
+.vite/
+coverage/
+release/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jar
+*.aar
+!gradle/wrapper/gradle-wrapper.jar
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.obj
+*.a
+*.lib
+*.pdb
+*.rlib
+*.rmeta
+
+# 压缩包 / 归档（体积大，不进源码库）
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.iso
+
+# 大体积二进制 / 模型权重 / 内存快照 / 安装包
+*.gguf
+*.onnx
+*.tflite
+*.pt
+*.pb
+*.h5
+*.safetensors
+*.ckpt
+*.hprof
+*.msi
+*.jmod
+*.jsa
+*.asar
+*.pak
+*.po
+*.mo
+*.dmp
+*.sym
+
+# 随项目带来的运行时 / 反编译产物目录
+jdk-*/
+jdk*/
+dist-electron/
+apktool_out*/
+apk_extract*/
+
+# 日志 / 临时 / 系统
+*.log
+*.tmp
+*.temp
+.cache/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.iml
+.vs/
+*.suo
+*.user
+.vscode/
+# <<< gitea-auto-push <<<

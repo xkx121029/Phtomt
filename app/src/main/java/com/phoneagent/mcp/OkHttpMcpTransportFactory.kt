@@ -42,7 +42,7 @@ object OkHttpMcpTransportFactory {
     }
 
     /** 为单个服务器配置建立可直接调用的 [McpClient] */
-    fun clientOf(config: McpServerConfig): McpClient = McpClient(transportOf(config), config.name)
+    fun clientOf(config: McpServerConfig): McpClient = McpClient(transportOf(config), config.name, config)
 
     /** 便捷：为一批服务器建立 [McpManager]（生产 DI 用） */
     fun managerOf(servers: List<McpServerConfig>): McpManager =

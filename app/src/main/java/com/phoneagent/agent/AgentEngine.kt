@@ -85,6 +85,7 @@ class AgentEngine(
     private val appContext: android.content.Context,
     private val shizukuManager: com.phoneagent.shizuku.ShizukuManager? = null,
     private val workAreaEngine: com.phoneagent.workspace.WorkAreaEngine? = null,
+    private val mcpManager: com.phoneagent.mcp.McpManager? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
@@ -715,9 +716,15 @@ class AgentEngine(
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
+        // MCP 工具：结构化解说已配置的服务器工具（一次任务枚举一次，供系统提示注入）
+        val mcpToolsPrompt = mcpToolsPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shizukuManager?.isAvailable() == true)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, settingsVal.hasVision)))))
+            // MCP 工具：结构化解说已配置的服务器工具，并附使用规则（无工具则为空，不增加负担）
+            mcpToolsPrompt.takeIf { it.isNotBlank() }?.let { tools ->
+                add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = tools))))
+            }
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
                 PromptLang.CN -> "执行通道（无障碍/Shizuku）由端侧自动选择，无需你指定。打开应用用 open_app（写应用名即可）；目标定位与坐标计算全部由端侧完成，你不输出像素坐标。"
@@ -1385,6 +1392,41 @@ class AgentEngine(
             messages = messages,
             temperature = 0.1,
         )
+    }
+
+    /** 生成 MCP 工具的结构化解说文本（注入系统提示，供 AI 在需要时调用）。
+     *  无 MCP 服务器或枚举失败时返回空串，不增加任何负担。 */
+    private suspend fun mcpToolsPromptText(): String {
+        val mcp = mcpManager ?: return ""
+        val enabled = mcp.enabledServers()
+        if (enabled.isEmpty()) return ""
+        val sb = StringBuilder("\n## MCP 工具（端侧已接入，可选用）\n")
+        val lang = currentLang
+        for (cfg in enabled) {
+            val tools = runCatching { mcp.listTools(cfg.name) }.getOrNull() ?: continue
+            if (tools.isEmpty()) continue
+            sb.append("服务器「${cfg.name}」(${cfg.url})：\n")
+            tools.forEach { tool ->
+                sb.append("- ${cfg.name}/${tool.name}")
+                if (tool.isReadOnly) sb.append("（只读）")
+                if (tool.description.isNotBlank()) sb.append("：${tool.description}")
+                sb.append("\n")
+                if (tool.params.isNotEmpty()) {
+                    val params = tool.params.joinToString("; ") { p ->
+                        val required = if (p.required) "必填" else "可选"
+                        val opts = if (p.options.isNotEmpty()) "[${p.options.joinToString("/")}]" else ""
+                        "${p.name}(${p.type},$required$opts)${p.description.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}"
+                    }
+                    sb.append("    参数：$params\n")
+                }
+            }
+        }
+        if (lang == PromptLang.EN) {
+            sb.append("\nMCP usage rules: only call tools listed above; arguments must match their schema; results may be desensitized; on failure, treat as a normal step failure and report the reason in Chinese.")
+        } else {
+            sb.append("\nMCP 使用规则：只能调用上面列出的工具；参数必须匹配其类型与必填要求；返回结果可能已被脱敏；调用失败视为普通步骤失败，用中文说明原因，不要臆造调用结果。")
+        }
+        return sb.toString()
     }
 
     /** 视觉模型配置：仅在视觉模型启用时生效；视觉 API Key 为空则回退主模型 Key */

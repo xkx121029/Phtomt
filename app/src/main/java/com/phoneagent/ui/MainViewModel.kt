@@ -31,7 +31,10 @@ import com.phoneagent.screen.ScreenSharingService
 import com.phoneagent.agent.PromptLang
 import com.phoneagent.mcp.McpServerConfig
 import com.phoneagent.mcp.McpManager
-import com.phoneagent.mcp.OkHttpMcpTransportFactory
+import com.phoneagent.mcp.McpServerInfo
+import com.phoneagent.mcp.McpStore
+import com.phoneagent.mcp.McpMarketplace
+import com.phoneagent.mcp.McpMarketplaceEntry
 import com.phoneagent.prompt.PromptTemplate
 import com.phoneagent.prompt.PromptTemplateStore
 import com.phoneagent.shizuku.ShizukuManager
@@ -68,6 +71,7 @@ class MainViewModel(
     private val memoryStore: MemoryStore,
     private val skillRegistry: SkillRegistry,
     private val mcpManager: McpManager,
+    private val mcpStore: McpStore,
     private val promptTemplateStore: PromptTemplateStore,
     private val shizukuBootstrap: ShizukuBootstrap,
     private val adbPairingFlow: WirelessAdbPairingFlow,
@@ -115,6 +119,13 @@ class MainViewModel(
                 "save_template" -> engine.confirmSaveTemplate(payload == "yes")
                 // 关闭悬浮窗 → 同步停止正在运行的任务
                 "close" -> engine.stop()
+            }
+        }
+        // 启动时加载持久化的 MCP 服务器配置
+        viewModelScope.launch {
+            val saved = mcpStore.load()
+            if (saved.isNotEmpty() || mcpManager.servers.isNotEmpty()) {
+                mcpManager.replaceAll(saved)
             }
         }
     }
@@ -641,32 +652,53 @@ class MainViewModel(
 
     fun exportSkills(): String = skillRegistry.exportJson()
 
-    // ---- MCP 服务器（当前可编辑列表快照；配置变更后重建 Manager） ----
-    private val _mcpServers = MutableStateFlow<List<McpServerConfig>>(mcpManager.enabledServers())
-    val mcpServers: StateFlow<List<McpServerConfig>> = _mcpServers.asStateFlow()
+    // ---- MCP 服务器（观察可变管理器，配置变更后持久化） ----
+    val mcpServers: StateFlow<List<McpServerConfig>> = mcpManager.serversFlow
 
-    private val _mcpcManager = MutableStateFlow<McpManager>(mcpManager)
-    /** UI 侧使用的 MCP 管理器（随服务器配置重建） */
-    val uiMcpManager: StateFlow<McpManager> = _mcpcManager.asStateFlow()
+    /** 变更后把服务器列表持久化到本地 */
+    private fun persistMcpServers() {
+        viewModelScope.launch { mcpStore.save(mcpManager.servers) }
+    }
 
-    fun addMcpServer(name: String, url: String, token: String = "") {
-        val newCfg = McpServerConfig(name = name, url = url, token = token)
-        val now = _mcpcManager.value.enabledServers().map { it } + newCfg
-        _mcpcManager.value = OkHttpMcpTransportFactory.managerOf(now)
-        _mcpServers.value = now
+    /** 新增 MCP 服务器；返回空串=成功，否则返回校验失败原因 */
+    fun addMcpServer(name: String, url: String, token: String = ""): String {
+        val v = mcpManager.addServer(McpServerConfig(name = name.trim(), url = url.trim(), token = token.trim()))
+        if (!v.ok) return v.reason
+        persistMcpServers()
+        return ""
+    }
+
+    fun removeMcpServer(name: String) {
+        if (mcpManager.removeServer(name)) persistMcpServers()
+    }
+
+    fun setMcpEnabled(name: String, enabled: Boolean) {
+        if (mcpManager.setServerEnabled(name, enabled)) persistMcpServers()
     }
 
     suspend fun checkMcpServer(server: String): String {
-        val r = _mcpcManager.value.check(server)
+        val r = mcpManager.check(server)
         return if (r.ok) "连接正常，枚举到 ${r.tools.size} 个工具" else "连接失败：${r.message}"
     }
 
+    /** 握手 + 枚举，返回结构化服务器信息（能力/协议/工具/参数，供 UI 展示） */
+    suspend fun describeMcpServer(server: String): McpServerInfo? = mcpManager.describe(server)
+
+    /** 服务器最近一次请求/响应原文（需求 5：展示请求 JSON） */
+    fun mcpLastRequest(server: String): String = mcpManager.lastRequestJson(server)
+    fun mcpLastResponse(server: String): String = mcpManager.lastResponseJson(server)
+
     suspend fun bindMcpServerSkills(server: String): Int {
         val prefix = "mcp_${server.lowercase()}_"
-        val added = _mcpcManager.value.bindToolsToSkills(server, prefix, skillRegistry)
+        val added = mcpManager.bindToolsToSkills(server, prefix, skillRegistry)
         refreshSkills()
         return added
     }
+
+    /** 内置 MCP 市场条目（分类/搜索） */
+    val mcpMarketplace: List<McpMarketplaceEntry> get() = McpMarketplace.all()
+    fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = McpMarketplace.byCategory(category)
+    fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = McpMarketplace.search(keyword)
 
     // ---- 提示词模板库 ----
     private val _templates = MutableStateFlow<List<PromptTemplate>>(promptTemplateStore.all())
