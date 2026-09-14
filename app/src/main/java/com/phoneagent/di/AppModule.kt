@@ -30,7 +30,7 @@ private val appModule = module {
     single { ShizukuManager() }
     single { MemoryStore(androidContext()) }
     single { WorkAreaEngine(androidContext(), get(), get()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get(), get()) }
+    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get()) }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====

@@ -504,8 +504,8 @@ class AgentEngine(
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         val profile = memory.loadProfile().takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.key}:${it.value}" } ?: ""
         val prompt = AgentPrompts.planning(lang, task, profile, installedAppList())
-        // 言行一致：规划时注入 Shizuku 可用性，让规划与执行统一（shell 直接启动而非点击图标）
-        val execContext = if (shizukuManager?.isAvailable() == true) {
+        // 言行一致：规划时注入真实 shell 通道可用性（Shizuku 或无线 ADB），让规划与执行统一（shell 直接启动而非点击图标）
+        val execContext = if (shellChannelAvailable()) {
             when (lang) {
                 PromptLang.CN -> "\n\n# 执行环境（规划必须考虑）\n端侧已接管执行方式（选用 Shizuku/无障碍），屏幕 ${screenWidth()}x${screenHeight()}。第一类动作写 open_app + 应用名；点击页面内可见控件写 tap + target（by_id/by_text/by_hint）；坐标与通道都无需你操心。"
                 PromptLang.EN -> "\n\n# Execution Environment (plan must consider)\nThe device handles execution (Shizuku/accessibility), screen ${screenWidth()}x${screenHeight()}. Write open_app + app name to open apps; tap in-page controls with tap + target (by_id/by_text/by_hint); coordinates and channel need no care."
@@ -720,7 +720,7 @@ class AgentEngine(
         // MCP 工具：结构化解说已配置的服务器工具（一次任务枚举一次，供系统提示注入）
         val mcpToolsPrompt = mcpToolsPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shizukuManager?.isAvailable() == true)))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shellChannelAvailable())))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, settingsVal.hasVision)))))
             // MCP 工具：结构化解说已配置的服务器工具，并附使用规则（无工具则为空，不增加负担）
             mcpToolsPrompt.takeIf { it.isNotBlank() }?.let { tools ->
@@ -1630,19 +1630,37 @@ class AgentEngine(
 
     /**
      * 执行 shell 动作。
-     * - Shizuku 可用：直接通过 Shizuku 执行（不依赖无障碍服务），查询类命令输出回传 AI。
-     * - Shizuku 不可用：禁止执行 shell，把 AI 输出的友好命令翻译为等价的无障碍动作执行，
-     *   保证任务在无 Shizuku 权限时仍能推进，且绝不真正调用 shell。
+     * - 真实 shell 通道可用（Shizuku 或无线 ADB 已连接）：直接执行原 Shizuku 命令集
+     *   （ShellCommands 解析），查询类命令输出回传 AI。
+     * - 无真实 shell 通道：禁止执行 shell，把 AI 输出的友好命令翻译为等价的无障碍动作执行，
+     *   保证任务在无 Shizuku/ADB 权限时仍能推进，且绝不真正调用 shell。
      */
     private suspend fun executeShellAction(action: AgentAction): com.phoneagent.execution.VerifyResult {
         val cmd = action.command ?: return com.phoneagent.execution.VerifyResult(false, "shell 命令为空", "", "")
-        // Shizuku 不可用：硬性禁止 shell，翻译为无障碍动作
-        if (shizukuManager?.isAvailable() != true) {
+        // 无真实 shell 通道（Shizuku 与无线 ADB 均不可用）：硬性禁止 shell，翻译为无障碍动作
+        if (!shellChannelAvailable()) {
             return executeShellViaAccessibility(cmd)
         }
         val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
             ?: return com.phoneagent.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
-        val result = shizukuManager.executeShell(resolved)
+        return runRealShell(resolved)
+    }
+
+    /** 是否具备真实 shell 通道：Shizuku 可用，或已接入本地无线 ADB */
+    private suspend fun shellChannelAvailable(): Boolean =
+        shizukuManager?.isAvailable() == true || adbTransport?.isConnected() == true
+
+    /** 通过可用真实 shell 通道（优先 Shizuku，其次无线 ADB）执行命令并回传输出 */
+    private suspend fun runRealShell(resolved: String): com.phoneagent.execution.VerifyResult {
+        val result: com.phoneagent.shizuku.ShizukuManager.ShellResult = when {
+            shizukuManager?.isAvailable() == true -> shizukuManager.executeShell(resolved)
+            adbTransport?.isConnected() == true -> {
+                val out = adbTransport.executeShell(resolved)
+                if (out == null) com.phoneagent.shizuku.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+                else com.phoneagent.shizuku.ShizukuManager.ShellResult.Success(output = out)
+            }
+            else -> return com.phoneagent.execution.VerifyResult(false, "无可用 shell 通道", "", "")
+        }
         return when (result) {
             is com.phoneagent.shizuku.ShizukuManager.ShellResult.Success -> {
                 // 捕获输出：查询类命令回传 AI，指令类命令忽略
