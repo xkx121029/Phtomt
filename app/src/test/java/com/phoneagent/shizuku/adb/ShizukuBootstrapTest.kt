@@ -95,4 +95,29 @@ class ShizukuBootstrapTest {
         val r = bootstrap.ensureReady()
         assertTrue(r is ShizukuBootstrap.ReadyResult.Error)
     }
+
+    @Test
+    fun 未连接提示后可重新配对成功() = runTest {
+        // 首次 ensureReady：未连接、Shizuku 不可用 → 引导提示
+        val ready = AtomicBoolean(false)
+        val sm = shizukuManager { ready.get() }
+        val transport = mockk<AdbBootstrapTransport>().apply {
+            coEvery { isConnected() } returns false
+            coEvery { pair("123456") } coAnswers {
+                ready.set(true)
+                AdbPairOutcome.Success("abc")
+            }
+            coEvery { startShizukuService() } returns AdbStartOutcome.Success("started")
+        }
+        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 5, shizukuReadyTimeoutMs = 100)
+
+        val first = bootstrap.ensureReady()
+        assertTrue(first is ShizukuBootstrap.ReadyResult.Error)
+        assertTrue((first as ShizukuBootstrap.ReadyResult.Error).message.contains("无线 ADB 配对"))
+
+        // 用户补配后成功拉起（对应「断线→重新配对」场景）
+        val second = bootstrap.pairAndEnsureReady("123456")
+        assertTrue(second is ShizukuBootstrap.ReadyResult.Ready)
+        assertEquals(AdbPhase.READY, bootstrap.status.value.phase)
+    }
 }

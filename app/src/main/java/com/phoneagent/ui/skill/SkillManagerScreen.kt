@@ -844,7 +844,7 @@ private fun WirelessAdbTab(vm: MainViewModel) {
             }
         }
 
-        // 无线调试配对引导
+        // 无线调试配对引导（分步）
         AppCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -853,13 +853,39 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                     Text("无线调试配对（无需 Root）", style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    "若 Shizuku 未运行，可通过系统自带「无线调试」完成配对，本应用自动在后台拉起 Shizuku 服务。步骤：\n" +
-                        "1. 手机设置 → 开发者选项 → 开启「无线调试」\n" +
-                        "2. 点击「使用配对码配对设备」，记下 6 位配对码\n" +
-                        "3. 点「自动发现服务」搜到设备后，在通知栏输入配对码；或用「手动配对」直接输入",
+                    "按以下步骤操作，本应用将自动在后台拉起 Shizuku 服务。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+
+                // 分步引导（序号圆点 + 人话 + 状态色）
+                val stepStatuses = adbStepStatuses(adbStatus.phase, adbStatus.message)
+                listOf(
+                    "开启系统「无线调试」",
+                    "输入 6 位配对码",
+                    "配对并连接无线 ADB",
+                    "拉起 Shizuku 服务",
+                ).forEachIndexed { i, title ->
+                    AdbStepRow(i + 1, title, stepStatuses[i])
+                }
+
+                // 失败/断线时提供重新配对入口
+                if (adbStatus.phase == AdbPhase.FAILED || adbStatus.phase == AdbPhase.DISCONNECTED) {
+                    OutlinedButton(
+                        onClick = {
+                            vm.cancelAdbPairing()
+                            vm.startAdbDiscovery()
+                            code = ""
+                            msg = "已重新开始配对流程，请保持「使用配对码配对设备」界面…"
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("重新配对")
+                    }
+                }
+
                 OutlinedTextField(
                     value = code,
                     onValueChange = { c -> code = c.filter { it.isDigit() }.take(6) },
@@ -931,6 +957,72 @@ private fun adbPhaseText(phase: AdbPhase): String = when (phase) {
     AdbPhase.READY -> "就绪"
     AdbPhase.DISCONNECTED -> "已断开"
     AdbPhase.FAILED -> "失败"
+}
+
+/** 无线 ADB 分步引导：某一步的状态 */
+private enum class AdbStepStatus { DONE, ACTIVE, ERROR, PENDING }
+
+/** 由当前 [AdbPhase] 与错误消息推导 4 步引导状态 */
+private fun adbStepStatuses(phase: AdbPhase, message: String): List<AdbStepStatus> {
+    return when (phase) {
+        AdbPhase.READY -> listOf(AdbStepStatus.DONE, AdbStepStatus.DONE, AdbStepStatus.DONE, AdbStepStatus.DONE)
+        AdbPhase.WAITING_CODE -> listOf(AdbStepStatus.DONE, AdbStepStatus.ACTIVE, AdbStepStatus.PENDING, AdbStepStatus.PENDING)
+        AdbPhase.PAIRING, AdbPhase.PAIRED -> listOf(AdbStepStatus.DONE, AdbStepStatus.DONE, AdbStepStatus.ACTIVE, AdbStepStatus.PENDING)
+        AdbPhase.BOOTING -> listOf(AdbStepStatus.DONE, AdbStepStatus.DONE, AdbStepStatus.DONE, AdbStepStatus.ACTIVE)
+        AdbPhase.FAILED, AdbPhase.DISCONNECTED -> {
+            val errStep = when {
+                message.contains("配对") -> 3
+                message.contains("无线调试") -> 1
+                else -> 4
+            }
+            (1..4).map { i ->
+                when {
+                    i == errStep -> AdbStepStatus.ERROR
+                    i < errStep -> AdbStepStatus.DONE
+                    else -> AdbStepStatus.PENDING
+                }
+            }
+        }
+        else -> listOf(AdbStepStatus.PENDING, AdbStepStatus.PENDING, AdbStepStatus.PENDING, AdbStepStatus.PENDING)
+    }
+}
+
+/** 单步引导行：序号圆点 + 标题 + 状态色 */
+@Composable
+private fun AdbStepRow(index: Int, title: String, status: AdbStepStatus) {
+    val (bg, fg) = when (status) {
+        AdbStepStatus.DONE -> Success to Color.White
+        AdbStepStatus.ACTIVE -> MaterialTheme.colorScheme.primary to Color.White
+        AdbStepStatus.ERROR -> MaterialTheme.colorScheme.error to Color.White
+        AdbStepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant to MaterialTheme.colorScheme.surface
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(
+            modifier = Modifier.size(24.dp).background(bg, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                when (status) {
+                    AdbStepStatus.DONE -> "✓"
+                    AdbStepStatus.ERROR -> "!"
+                    else -> "$index"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = fg,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (status == AdbStepStatus.ACTIVE) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (status == AdbStepStatus.PENDING) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            )
+            if (status == AdbStepStatus.ACTIVE) {
+                Text("进行中…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
 }
 
 // ============ 提示词 Tab ============
