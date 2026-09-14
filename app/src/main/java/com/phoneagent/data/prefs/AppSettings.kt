@@ -63,6 +63,8 @@ class AppSettings(private val context: Context) {
         val edgeLightingEnabled: Boolean = true,
         /** 是否启用 Shizuku shell 命令执行 */
         val shizukuEnabled: Boolean = true,
+        /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
+        val executionChannel: String = "AUTO",
         /** 内置跳广告功能 */
         /** 悬浮窗跑马灯厚度（dp） */
         val marqueeHeight: Int = 26,
@@ -105,6 +107,7 @@ class AppSettings(private val context: Context) {
         val EDGE_LIGHTING_WIDTH = intPreferencesKey("edge_lighting_width")
         val EDGE_LIGHTING_ENABLED = booleanPreferencesKey("edge_lighting_enabled")
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
+        val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
         val AUTO_SKIP_ADS = booleanPreferencesKey("auto_skip_ads")
         val MARQUEE_HEIGHT = intPreferencesKey("marquee_height")
         val MARQUEE_COLORS = stringPreferencesKey("marquee_colors")
@@ -137,6 +140,7 @@ class AppSettings(private val context: Context) {
             chainOrder = (prefs[Keys.CHAIN_ORDER] ?: "main;vision;reason")
                 .split(";").map { it.trim() }.filter { it.isNotEmpty() },
             shizukuEnabled = prefs[Keys.SHIZUKU_ENABLED] ?: true,
+            executionChannel = prefs[Keys.EXECUTION_CHANNEL] ?: "AUTO",
             edgeInsetTop = prefs[Keys.EDGE_INSET_TOP] ?: 0,
             edgeInsetBottom = prefs[Keys.EDGE_INSET_BOTTOM] ?: 0,
             edgeInsetLeft = prefs[Keys.EDGE_INSET_LEFT] ?: 0,
@@ -178,6 +182,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.MAIN_THINKING] = settings.mainThinking
             prefs[Keys.CHAIN_ORDER] = settings.chainOrder.joinToString(";")
             prefs[Keys.SHIZUKU_ENABLED] = settings.shizukuEnabled
+            prefs[Keys.EXECUTION_CHANNEL] = settings.executionChannel
             prefs[Keys.EDGE_INSET_TOP] = settings.edgeInsetTop
             prefs[Keys.EDGE_INSET_BOTTOM] = settings.edgeInsetBottom
             prefs[Keys.EDGE_INSET_LEFT] = settings.edgeInsetLeft

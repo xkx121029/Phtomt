@@ -21,6 +21,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.workspace.WorkAreaEngine
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
+import kotlinx.coroutines.flow.first
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
@@ -46,8 +47,14 @@ private val appModule = module {
     single { SkillExecutionGateway(get(), get()) }
     // 无线 ADB 传输（共享单例：ShizukuBootstrap 直连 / WirelessAdbPairingFlow 发现共用）
     single { AdbWirelessTransport(androidContext()) }
-    // Shizuku 双通路启动器：Shizuku 直连 / 无线 ADB 拉起
-    single { ShizukuBootstrap(get(), get<AdbWirelessTransport>()) }
+    // 执行通路启动器：无线 ADB 为主、Shizuku 可选；通道偏好取自 AppSettings.executionChannel
+    single {
+        ShizukuBootstrap(
+            get(),
+            get<AdbWirelessTransport>(),
+            channelProvider = { get<AppSettings>().settings.first().executionChannel },
+        )
+    }
     // 无线 ADB「开始配对」通知栏向导
     single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
 

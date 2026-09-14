@@ -142,7 +142,7 @@ class AgentEngine(
     private val profileLearner = ProfileLearner(memory)
 
     // ---- 意图化转译层（HPA动作执行逻辑优化文档 v2.1）：AI 输出意图，端侧按授权模式转译执行 ----
-    private val capabilityManager = CapabilityManager(appContext, shizukuManager)
+    private val capabilityManager = CapabilityManager(appContext, shizukuManager) { adbTransport?.isConnectedNow() == true }
     private val appNameResolver = AppNameResolver(appContext)
     private val intentResolver = IntentResolver()
     private val intentTranslator = IntentTranslator(capabilityManager, appNameResolver, intentResolver)
@@ -1646,20 +1646,38 @@ class AgentEngine(
         return runRealShell(resolved)
     }
 
-    /** 是否具备真实 shell 通道：Shizuku 可用，或已接入本地无线 ADB */
-    private suspend fun shellChannelAvailable(): Boolean =
-        shizukuManager?.isAvailable() == true || adbTransport?.isConnected() == true
+    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku） */
+    private suspend fun shellChannelAvailable(): Boolean {
+        val channel = settings.settings.first().executionChannel
+        return when (channel) {
+            "ADB" -> adbTransport?.isConnected() == true
+            "SHIZUKU" -> shizukuManager?.isAvailable() == true
+            else -> adbTransport?.isConnected() == true || shizukuManager?.isAvailable() == true
+        }
+    }
 
-    /** 通过可用真实 shell 通道（优先 Shizuku，其次无线 ADB）执行命令并回传输出 */
+    /** 按执行通道偏好选择真实 shell 通道（AUTO 优先无线 ADB，其次 Shizuku）执行命令并回传输出 */
     private suspend fun runRealShell(resolved: String): com.phoneagent.execution.VerifyResult {
-        val result: com.phoneagent.shizuku.ShizukuManager.ShellResult = when {
-            shizukuManager?.isAvailable() == true -> shizukuManager.executeShell(resolved)
-            adbTransport?.isConnected() == true -> {
-                val out = adbTransport.executeShell(resolved)
-                if (out == null) com.phoneagent.shizuku.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
-                else com.phoneagent.shizuku.ShizukuManager.ShellResult.Success(output = out)
+        val channel = settings.settings.first().executionChannel
+        val adbShell: suspend (String) -> com.phoneagent.shizuku.ShizukuManager.ShellResult = { cmd ->
+            val out = adbTransport?.executeShell(cmd)
+            if (out == null) com.phoneagent.shizuku.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+            else com.phoneagent.shizuku.ShizukuManager.ShellResult.Success(output = out)
+        }
+        val result: com.phoneagent.shizuku.ShizukuManager.ShellResult = when (channel) {
+            "ADB" -> {
+                if (adbTransport?.isConnected() == true) adbShell(resolved)
+                else return com.phoneagent.execution.VerifyResult(false, "无线 ADB 未连接，无真实 shell 通道", "", "")
             }
-            else -> return com.phoneagent.execution.VerifyResult(false, "无可用 shell 通道", "", "")
+            "SHIZUKU" -> {
+                if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
+                else return com.phoneagent.execution.VerifyResult(false, "Shizuku 不可用，无真实 shell 通道", "", "")
+            }
+            else -> {
+                if (adbTransport?.isConnected() == true) adbShell(resolved)
+                else if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
+                else return com.phoneagent.execution.VerifyResult(false, "无可用 shell 通道", "", "")
+            }
         }
         return when (result) {
             is com.phoneagent.shizuku.ShizukuManager.ShellResult.Success -> {

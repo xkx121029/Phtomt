@@ -818,29 +818,39 @@ private fun WirelessAdbTab(vm: MainViewModel) {
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Shizuku 权限状态
-        val stateText = when (shizukuState) {
-            com.phoneagent.shizuku.ShizukuManager.State.READY -> "Shizuku 已就绪"
-            com.phoneagent.shizuku.ShizukuManager.State.PERMISSION_DENIED -> "Shizuku 已运行，但未授权"
-            com.phoneagent.shizuku.ShizukuManager.State.UNAVAILABLE -> "Shizuku 未运行"
+        // 执行通道状态：无线 ADB 为主、Shizuku 可选增强
+        val settings by vm.settingsFlow.collectAsState()
+        val channelText = when (settings.executionChannel) {
+            "ADB" -> "无线ADB优先"
+            "SHIZUKU" -> "Shizuku优先"
+            else -> "自动（无线ADB优先）"
         }
+        val adbReady = adbStatus.phase == AdbPhase.READY
+        val shizukuReady = shizukuState == com.phoneagent.shizuku.ShizukuManager.State.READY
         AppCard {
-            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.size(12.dp).background(
-                    if (shizukuState == com.phoneagent.shizuku.ShizukuManager.State.READY) Success
-                    else if (shizukuState == com.phoneagent.shizuku.ShizukuManager.State.PERMISSION_DENIED) Warning
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                    RoundedCornerShape(AppRadii.Chip),
-                ))
-                Column(Modifier.weight(1f)) {
-                    Text(stateText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "ADB 无线调试状态：${adbPhaseText(adbStatus.phase)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.size(12.dp).background(
+                        if (adbReady) Success
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        RoundedCornerShape(AppRadii.Chip),
+                    ))
+                    Column(Modifier.weight(1f)) {
+                        Text("执行通道（$channelText）", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "无线 ADB：${adbPhaseText(adbStatus.phase)} · Shizuku：${if (shizukuReady) "就绪" else "可选未启用"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = { msg = null; vm.ensureAdbReady { msg = it } }) { Text("检测通路") }
                 }
-                TextButton(onClick = { msg = null; vm.ensureAdbReady { msg = it } }) { Text("检测通路") }
+                Text(
+                    if (adbReady) "无线 ADB 已就绪，可直接执行 shell；Shizuku 为可选增强。"
+                    else "无线 ADB 为主执行通道；配对连接后即可执行 shell，Shizuku 启动失败不影响执行。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
@@ -853,7 +863,7 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                     Text("无线调试配对（无需 Root）", style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    "按以下步骤操作，本应用将自动在后台拉起 Shizuku 服务。",
+                    "按以下步骤配对后即可执行 shell；Shizuku 为可选增强，启动失败不影响执行。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -864,7 +874,7 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                     "开启系统「无线调试」",
                     "输入 6 位配对码",
                     "配对并连接无线 ADB",
-                    "拉起 Shizuku 服务",
+                    "可选拉起 Shizuku 增强",
                 ).forEachIndexed { i, title ->
                     AdbStepRow(i + 1, title, stepStatuses[i])
                 }

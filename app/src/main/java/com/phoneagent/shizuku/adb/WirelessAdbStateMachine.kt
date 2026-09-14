@@ -31,15 +31,20 @@ class WirelessAdbStateMachine {
     }
 
     fun onAdbConnected() {
-        status = AdbStatus(AdbPhase.PAIRED, "无线 ADB 已连接，正在拉起 Shizuku…")
+        status = AdbStatus(AdbPhase.PAIRED, "无线 ADB 已连接")
+    }
+
+    /** 无线 ADB 连接即具备 shell 能力（主通道就绪），无需等待 Shizuku */
+    fun onAdbReady() {
+        status = AdbStatus(AdbPhase.READY, "无线 ADB 已就绪，可直接执行 shell")
     }
 
     fun onBootStart() {
-        status = AdbStatus(AdbPhase.BOOTING, "正在后台启动 Shizuku 服务…")
+        status = AdbStatus(AdbPhase.BOOTING, "正在可选启动 Shizuku 服务…")
     }
 
     fun onBootSuccess() {
-        status = AdbStatus(AdbPhase.READY, "Shizuku 已通过无线 ADB 启动成功")
+        status = AdbStatus(AdbPhase.READY, "Shizuku 已通过无线 ADB 启动")
     }
 
     fun onAdbDisconnected() {
@@ -50,8 +55,9 @@ class WirelessAdbStateMachine {
         fail(AdbFailure(AdbError.PAIRING_FAILED, detail), userActionRequired = true)
     }
 
+    /** Shizuku 可选启动失败：无线 ADB 仍可用，回到 READY，不阻塞任务 */
     fun onBootFailed(detail: String = "") {
-        fail(AdbFailure(AdbError.SHIZUKU_START_FAILED, detail), userActionRequired = false)
+        status = AdbStatus(AdbPhase.READY, "Shizuku 可选启动失败，无线 ADB 仍可用")
     }
 
     fun onPairingPortOff() {

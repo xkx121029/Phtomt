@@ -10,6 +10,9 @@ interface AdbBootstrapTransport {
     /** 判定无线 ADB 是否已连接可用 */
     suspend fun isConnected(): Boolean
 
+    /** 同步判定无线 ADB 是否已连接（返回缓存的连接状态，供无协程的同步调用方使用） */
+    fun isConnectedNow(): Boolean
+
     /** 发起配对：code 为 6 位配对码；返回是否配对成功，失败抛出或返回含错误 */ 
     suspend fun pair(code: String): AdbPairOutcome
 

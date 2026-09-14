@@ -16,6 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +63,40 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        GroupCard {
+            GroupHeader("执行通道", "shell 执行通路的优先顺序（无线 ADB 为主，Shizuku 可选）")
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                val channels = listOf(
+                    "AUTO" to "自动",
+                    "ADB" to "无线ADB",
+                    "SHIZUKU" to "Shizuku",
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    channels.forEachIndexed { i, (key, label) ->
+                        SegmentedButton(
+                            selected = st.executionChannel == key,
+                            onClick = { st.executionChannel = key; save() },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = channels.size),
+                        ) {
+                            Text(label, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when (st.executionChannel) {
+                        "ADB" -> "仅用无线 ADB；未连接时无真实 shell，走无障碍执行。"
+                        "SHIZUKU" -> "仅用 Shizuku；不可用时用无线 ADB 拉起。"
+                        else -> "优先无线 ADB，其次 Shizuku，最后无障碍；Shizuku 启动失败不影响执行。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

@@ -72,28 +72,81 @@ class ShizukuBootstrapTest {
     }
 
     @Test
-    fun 启动失败返回错误() = runTest {
+    fun 无线ADB连接Shizuku不可用自动模式下就绪() = runTest {
+        // 主通道语义：AUTO 下无线 ADB 已连接，Shizuku 可选且未就绪，仍返回 Ready
+        val sm = shizukuManager { false }
+        val transport = mockk<AdbBootstrapTransport>().apply {
+            coEvery { isConnected() } returns true
+        }
+        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 2, shizukuReadyTimeoutMs = 40)
+        assertTrue(bootstrap.ensureReady() is ShizukuBootstrap.ReadyResult.Ready)
+        assertEquals(AdbPhase.READY, bootstrap.status.value.phase)
+    }
+
+    @Test
+    fun Shizuku优先模式启动失败返回错误() = runTest {
+        // SHIZUKU 模式：Shizuku 是唯一 shell 通路，启动失败仍返回错误
         val sm = shizukuManager { false }
         val transport = mockk<AdbBootstrapTransport>().apply {
             coEvery { isConnected() } returns true
             coEvery { startShizukuService() } returns AdbStartOutcome.Failure("no shizuku")
         }
-        val bootstrap = ShizukuBootstrap(sm, transport)
+        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 2, shizukuReadyTimeoutMs = 40) {
+            "SHIZUKU"
+        }
         val r = bootstrap.ensureReady()
         assertTrue(r is ShizukuBootstrap.ReadyResult.Error)
         assertEquals(AdbError.SHIZUKU_START_FAILED, (r as ShizukuBootstrap.ReadyResult.Error).error)
     }
 
     @Test
-    fun 启动后等待就绪超时() = runTest {
-        val sm = shizukuManager { false } // 一直不就绪
+    fun Shizuku优先模式等待就绪超时返回错误() = runTest {
+        // SHIZUKU 模式：启动后一直不就绪 → 超时错误
+        val sm = shizukuManager { false }
         val transport = mockk<AdbBootstrapTransport>().apply {
             coEvery { isConnected() } returns true
             coEvery { startShizukuService() } returns AdbStartOutcome.Success("ok")
         }
-        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 2, shizukuReadyTimeoutMs = 40)
+        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 2, shizukuReadyTimeoutMs = 40) {
+            "SHIZUKU"
+        }
+        assertTrue(bootstrap.ensureReady() is ShizukuBootstrap.ReadyResult.Error)
+    }
+
+    @Test
+    fun ADB优先模式仅用无线ADB() = runTest {
+        // ADB 模式：ADB 已连接、Shizuku 不可用 → Ready
+        val sm = shizukuManager { false }
+        val transport = mockk<AdbBootstrapTransport>().apply {
+            coEvery { isConnected() } returns true
+        }
+        val bootstrap = ShizukuBootstrap(sm, transport, waitShizukuDelayMs = 2, shizukuReadyTimeoutMs = 40) {
+            "ADB"
+        }
+        assertTrue(bootstrap.ensureReady() is ShizukuBootstrap.ReadyResult.Ready)
+    }
+
+    @Test
+    fun ADB优先模式未连接Shizuku可用仍引导配对() = runTest {
+        // ADB 模式：ADB 未连接，即便 Shizuku 可用也不走 Shizuku → 引导配对
+        val sm = shizukuManager { true }
+        val transport = mockk<AdbBootstrapTransport>().apply {
+            coEvery { isConnected() } returns false
+        }
+        val bootstrap = ShizukuBootstrap(sm, transport) { "ADB" }
         val r = bootstrap.ensureReady()
         assertTrue(r is ShizukuBootstrap.ReadyResult.Error)
+        assertEquals(AdbError.WIRELESS_DEBUG_DISABLED, (r as ShizukuBootstrap.ReadyResult.Error).error)
+    }
+
+    @Test
+    fun Shizuku优先模式直连可用就绪() = runTest {
+        val sm = shizukuManager { true }
+        val transport = mockk<AdbBootstrapTransport>().apply {
+            coEvery { isConnected() } returns false
+        }
+        val bootstrap = ShizukuBootstrap(sm, transport) { "SHIZUKU" }
+        assertTrue(bootstrap.ensureReady() is ShizukuBootstrap.ReadyResult.Ready)
     }
 
     @Test

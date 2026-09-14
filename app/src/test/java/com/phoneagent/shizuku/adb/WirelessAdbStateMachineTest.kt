@@ -60,10 +60,34 @@ class WirelessAdbStateMachineTest {
     }
 
     @Test
+    fun 无线ADB连接即就绪可直接执行shell() {
+        val m = WirelessAdbStateMachine()
+        m.onAdbConnected()
+        m.onAdbReady()
+        assertTrue(m.isReady())
+        assertEquals(AdbPhase.READY, m.current().phase)
+        assertFalse(m.isFailed())
+    }
+
+    @Test
+    fun Shizuku可选启动失败回到就绪不阻塞() {
+        val m = WirelessAdbStateMachine()
+        m.onAdbConnected()
+        m.onAdbReady()
+        m.onBootFailed("Shizuku 未安装")
+        // Shizuku 可选：失败回到 READY，不置 FAILED
+        assertTrue(m.isReady())
+        assertEquals(AdbPhase.READY, m.current().phase)
+        assertFalse(m.isFailed())
+        assertFalse(m.current().isUserActionRequired)
+    }
+
+    @Test
     fun 启动失败不要求用户操作() {
         val m = WirelessAdbStateMachine()
         m.onBootFailed("超时")
-        assertTrue(m.isFailed())
+        // 无线 ADB 通路下 Shizuku 启动失败仍视为可用（回 READY），不要求用户操作
+        assertTrue(m.isReady())
         assertFalse(m.current().isUserActionRequired)
     }
 }

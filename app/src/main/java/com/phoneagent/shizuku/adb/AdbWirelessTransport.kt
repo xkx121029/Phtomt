@@ -45,7 +45,13 @@ class AdbWirelessTransport(
 
     private var session: AdbTcpSession? = null
 
+    /** 同步缓存的连接状态（供 CapabilityManager 等无协程调用方使用） */
+    @Volatile
+    private var connectedNow = false
+
     override suspend fun isConnected(): Boolean = session?.isConnected() ?: false
+
+    override fun isConnectedNow(): Boolean = connectedNow
 
     override suspend fun pair(code: String): AdbPairOutcome {
         if (code.length != 6 || !code.all { it.isDigit() }) {
@@ -73,7 +79,12 @@ class AdbWirelessTransport(
         val main = discoverMainPort() ?: return false
         val s = AdbTcpSession(TcpAdbSocket(), timeouts, keyStore)
         val ok = s.connect(host, main.port)
-        if (ok) session = s else s.close()
+        if (ok) {
+            session = s
+            connectedNow = true
+        } else {
+            s.close()
+        }
         return ok
     }
 
@@ -104,6 +115,7 @@ class AdbWirelessTransport(
     override fun shutdown() {
         session?.close()
         session = null
+        connectedNow = false
         runCatching { nsdManager?.stopServiceDiscovery(discoveryListener) }
     }
 

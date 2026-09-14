@@ -121,6 +121,7 @@ class SettingsState(initial: AppSettings.Settings) {
     var edgeLightingWidth by mutableIntStateOf(initial.edgeLightingWidth)
     var edgeLightingEnabled by mutableStateOf(initial.edgeLightingEnabled)
     var autoSkipAds by mutableStateOf(initial.autoSkipAds)
+    var executionChannel by mutableStateOf(initial.executionChannel)
     var marqueeHeight by mutableIntStateOf(initial.marqueeHeight)
     var marqueeColors by mutableStateOf(initial.marqueeColors)
     var calibrationExpanded by mutableStateOf(false)
@@ -153,6 +154,7 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeLightingWidth = s.edgeLightingWidth
         edgeLightingEnabled = s.edgeLightingEnabled
         autoSkipAds = s.autoSkipAds
+        executionChannel = s.executionChannel
         marqueeHeight = s.marqueeHeight
         marqueeColors = s.marqueeColors
     }
@@ -187,6 +189,7 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeLightingWidth = edgeLightingWidth,
         edgeLightingEnabled = edgeLightingEnabled,
         autoSkipAds = autoSkipAds,
+        executionChannel = executionChannel,
         marqueeHeight = marqueeHeight,
         marqueeColors = marqueeColors,
     )

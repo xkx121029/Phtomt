@@ -722,14 +722,14 @@ class MainViewModel(
         viewModelScope.launch {
             onResult(
                 when (val r = shizukuBootstrap.ensureReady()) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "执行通路已就绪（Shizuku 可用）"
+                    is ShizukuBootstrap.ReadyResult.Ready -> "执行通路已就绪（无线 ADB / Shizuku）"
                     is ShizukuBootstrap.ReadyResult.Error -> r.message
                 }
             )
         }
     }
 
-    /** 用界面输入的 6 位配对码完成无线 ADB 配对并拉起 Shizuku */
+    /** 用界面输入的 6 位配对码完成无线 ADB 配对并建立执行通路 */
     fun pairAdb(code: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             if (code.length != 6 || !code.all { it.isDigit() }) {
@@ -738,7 +738,7 @@ class MainViewModel(
             }
             onResult(
                 when (val r = shizukuBootstrap.pairAndEnsureReady(code)) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "配对成功，Shizuku 已就绪"
+                    is ShizukuBootstrap.ReadyResult.Ready -> "配对成功，无线 ADB 执行通路已就绪"
                     is ShizukuBootstrap.ReadyResult.Error -> r.message
                 }
             )
