@@ -152,7 +152,6 @@ desktop.ini
 .vscode/
 # <<< gitea-auto-push <<<
 
-
 # >>> gitea-sync >>>
 # 依赖 / 包管理器
 node_modules/
@@ -255,8 +254,3 @@ desktop.ini
 *.user
 .vscode/
 # <<< gitea-sync <<<
-
-
-
-
-
