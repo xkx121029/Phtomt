@@ -95,6 +95,12 @@ class AdbWirelessTransport(
         return AdbStartOutcome.Success(output)
     }
 
+    /** 通过已建立的 ADB 连接执行真实 shell 命令并回读输出（复用原 Shizuku 命令通道） */
+    override suspend fun executeShell(command: String): String? {
+        val s = session ?: return null
+        return s.execShell(command).takeIf { it.isNotBlank() }
+    }
+
     override fun shutdown() {
         session?.close()
         session = null

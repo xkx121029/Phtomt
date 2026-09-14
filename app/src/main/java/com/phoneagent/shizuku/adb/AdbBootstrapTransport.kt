@@ -16,6 +16,12 @@ interface AdbBootstrapTransport {
     /** 用已建立的 ADB 连接拉起目标应用内的 Shizuku 服务；返回启动输出 */
     suspend fun startShizukuService(): AdbStartOutcome
 
+    /**
+     * 通过已建立的 ADB 连接执行真实 shell 命令并回读输出（复用原 Shizuku 命令通道）。
+     * 未连接或执行失败返回 null；成功返回输出文本。
+     */
+    suspend fun executeShell(command: String): String?
+
     /** 关闭底层连接，释放资源 */
     fun shutdown()
 }

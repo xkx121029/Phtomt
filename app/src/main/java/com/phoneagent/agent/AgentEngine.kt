@@ -84,6 +84,7 @@ class AgentEngine(
     private val aiClient: AiClient,
     private val appContext: android.content.Context,
     private val shizukuManager: com.phoneagent.shizuku.ShizukuManager? = null,
+    private val adbTransport: com.phoneagent.shizuku.adb.AdbBootstrapTransport? = null,
     private val workAreaEngine: com.phoneagent.workspace.WorkAreaEngine? = null,
     private val mcpManager: com.phoneagent.mcp.McpManager? = null,
 ) {
