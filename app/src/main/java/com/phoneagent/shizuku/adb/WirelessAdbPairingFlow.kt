@@ -26,13 +26,13 @@ class WirelessAdbPairingFlow(
     private val context: Context,
     private val transport: AdbWirelessTransport,
     private val bootstrap: ShizukuBootstrap,
+    private val timeouts: AdbTimeouts = AdbTimeouts(),
 ) {
     companion object {
         @Volatile
         var active: WirelessAdbPairingFlow? = null
     }
 
-    private val discoverTimeoutMs = 20_000L
     private var discoverJob: Job? = null
 
     @Volatile
@@ -63,7 +63,7 @@ class WirelessAdbPairingFlow(
 
         discoverJob = callerScope.launch {
             // 在 callerScope（主线程）执行，NsdManager 才算合法
-            val svc = withTimeoutOrNull(discoverTimeoutMs) { transport.discoverService() }
+            val svc = withTimeoutOrNull(timeouts.discoverMs) { transport.discoverService() }
             if (svc == null) {
                 discovering = false
                 setMsg("未找到无线调试服务，请保持「使用配对码配对设备」界面")

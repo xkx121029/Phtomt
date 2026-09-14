@@ -749,7 +749,24 @@ class AgentEngine(
             pushFloating("正在观察屏幕", "OBSERVING")
 
             // 1. 观察 + 标注
-            val snapshot = observe()
+            var snapshot = observe()
+            // 广告过滤（任务 7）：识别到"控件含广告信息 + 跳过/关闭/× 按钮"的广告时，
+            // 直接点击关闭广告并跳过本轮 AI 决策；无按钮时剔除广告信息，保证广告不回传给 AI
+            val adFilter = com.phoneagent.adskip.AdContentFilter.filter(snapshot)
+            if (adFilter.isAd) {
+                if (adFilter.target != null) {
+                    log(AgentLog.Level.INFO, adFilter.reason)
+                    pushFloating("检测到广告，自动关闭", "ACTION")
+                    AgentAccessibilityService.instance?.let { service ->
+                        com.phoneagent.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
+                    }
+                    delay(700)
+                    continue
+                } else {
+                    log(AgentLog.Level.INFO, adFilter.reason)
+                    snapshot = adFilter.cleanSnapshot
+                }
+            }
             lastSnapshot = snapshot
             val annotated = PageAnnotator.annotate(snapshot)
             // 无障碍读不到控件（元素树稀疏，如游戏/WebView/in-app 渲染界面）时，即使未开启截图开关也自动截图，

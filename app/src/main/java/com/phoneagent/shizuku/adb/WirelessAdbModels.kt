@@ -63,3 +63,14 @@ data class AdbPairingService(
     val port: Int,
     val salt: ByteArray? = null,
 )
+
+/**
+ * 无线 ADB 各阶段可配置超时（健壮性优化）。
+ * 构造参数均带默认值，便于测试注入短超时。
+ */
+data class AdbTimeouts(
+    val discoverMs: Long = 20_000L,   // mDNS 发现超时
+    val connectMs: Long = 6_000L,     // TCP 连接超时
+    val authMs: Long = 8_000L,        // AUTH/握手超时
+    val shellReadMs: Long = 15_000L,  // shell 输出等待超时
+)

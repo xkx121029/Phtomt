@@ -22,29 +22,30 @@ import kotlin.coroutines.resume
  *
  * 流程（Android 11+）：
  * 1. NsdManager 发现 `_adb-tls-pairing._tcp` 配对服务 → 得到 host:pairingPort 与 salt/serviceName。
- * 2. 连接配对端口，按 AOSP 无线配对协议完成握手（PBKDF2-HMAC-SHA256 + AES-256-GCM）。
- * 3. 连接 `_adb-tls._tcp` 主端口，建立会话。
- * 4. 用 ADB shell 下发 Shizuku 服务启动命令，后台拉起 Shizuku。
+ * 2. 连接配对端口，按 AOSP 无线配对协议完成握手（真机联调点，见 [PairingHandshake]）。
+ * 3. 发现 `_adb-tls._tcp` 主端口，建立真实 ADB TCP 会话（[AdbTcpSession]，CNXN/AUTH/OPEN shell）。
+ * 4. 用真实 shell 通道下发 Shizuku 服务启动命令，并回读输出。
  *
- * ⚠ 本文件涉及的**线级握手帧需真机验证**（不同系统版本 / 无线调试的配对帧可能微调）。本环境无法连真机，
- * 故把可确定性实现的密码学部分（密钥派生 + 加解密）落地，并把握手步骤隔离在 [PairingHandshake]，
- * 便于真机联调时单独校准。上层状态机与双通路决策（已单测）不受影响。
+ * ⚠ 配对握手（SPAKE2）与主连接 TLS（adb-tls）的线级帧需真机验证；本环境无法连真机，
+ * 故把可确定性实现的密码学（密钥派生/加解密）与 ADB 协议帧落地并单测，握手步骤隔离在
+ * [PairingHandshake]，便于真机联调时单独校准。上层状态机与双通路决策（已单测）不受影响。
  */
 class AdbWirelessTransport(
     private val context: Context,
+    private val timeouts: AdbTimeouts = AdbTimeouts(),
+    private val keyStore: AdbKeyStore = AdbKeyStore.loadOrCreate(context),
 ) : AdbBootstrapTransport {
     companion object {
         private const val TAG = "AdbWirelessTransport"
         /** mDNS 配对服务类型 */
         private const val PAIRING_SERVICE = "_adb-tls-pairing._tcp."
+        /** mDNS 主调试服务类型 */
+        private const val MAIN_SERVICE = "_adb-tls._tcp."
     }
 
-    private var pairingHost: String? = null
-    private var pairingPort: Int = 0
-    private var connected = false
-    private var sessionSalt: ByteArray? = null
+    private var session: AdbTcpSession? = null
 
-    override suspend fun isConnected(): Boolean = connected
+    override suspend fun isConnected(): Boolean = session?.isConnected() ?: false
 
     override suspend fun pair(code: String): AdbPairOutcome {
         if (code.length != 6 || !code.all { it.isDigit() }) {
@@ -54,14 +55,12 @@ class AdbWirelessTransport(
             val info = discoverService() ?: return AdbPairOutcome.Failure(
                 AdbError.PAIRING_PORT_OFF, "未发现无线调试配对服务，请保持配对界面",
             )
-            pairingHost = info.host
-            pairingPort = info.port
-            sessionSalt = info.salt
-            // 握手（真机验证点）
-            val groomed = PairingHandshake.perform(pairingHost!!, pairingPort, code, info.salt) ?: return AdbPairOutcome.Failure(
-                AdbError.PAIRING_FAILED, "配对握手失败",
-            )
-            connected = true
+            // 配对握手（真机验证点）
+            val groomed = PairingHandshake.perform(info.host, info.port, code, info.salt)
+                ?: return AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, "配对握手失败")
+            // 配对成功后连接主调试端口并建立真实 ADB 会话
+            val ok = connectMain(info.host)
+            if (!ok) return AdbPairOutcome.Failure(AdbError.ADB_DISCONNECTED, "配对成功但连接主调试端口失败")
             AdbPairOutcome.Success(productId = groomed)
         } catch (e: Exception) {
             Log.e(TAG, "pair failed", e)
@@ -69,16 +68,25 @@ class AdbWirelessTransport(
         }
     }
 
+    /** 连接主调试端口，建立真实 ADB 会话（CNXN/AUTH 认证） */
+    private suspend fun connectMain(host: String): Boolean {
+        val main = discoverMainPort() ?: return false
+        val s = AdbTcpSession(TcpAdbSocket(), timeouts, keyStore)
+        val ok = s.connect(host, main.port)
+        if (ok) session = s else s.close()
+        return ok
+    }
+
     override suspend fun startShizukuService(): AdbStartOutcome {
-        if (!connected) return AdbStartOutcome.Failure("无线 ADB 未连接")
+        val s = session ?: return AdbStartOutcome.Failure("无线 ADB 未连接")
         // 标准 Shizuku 用户服务启动命令（免 Root）：从 APK 内启动服务
         val shizukuPkg = "moe.shizuku.privileged.api"
         val startCmd = "sh /sdcard/Android/data/$shizukuPkg/start.sh " +
             "&& pkg=$shizukuPkg sh /sdcard/Android/data/$shizukuPkg/start.sh"
-        val output = execShell(startCmd)
+        val output = s.execShell(startCmd)
         if (output.isBlank()) {
             // 空输出可能是 PATH 问题，改用 app_process 标准命令重试一次
-            val alt = execShell(
+            val alt = s.execShell(
                 "CLASSPATH=$(pm path $shizukuPkg | tr -d 'package:') app_process / $shizukuPkg.Main --start-service",
             )
             if (alt.isBlank()) return AdbStartOutcome.Failure("Shizuku 启动无输出，可能未安装 ${'"'}Shizuku${'"'}")
@@ -87,18 +95,9 @@ class AdbWirelessTransport(
         return AdbStartOutcome.Success(output)
     }
 
-    /** 通过已有 ADB 会话执行 shell（简化为通过 socket 交互；完整 ADB shell 通道真机联调细化） */
-    private fun execShell(cmd: String): String {
-        return try {
-            // 占位实现：真实 ADB 会话 shell 通道需基于 pairing 派生密钥后的主连接；
-            // 此处返回命令行本身供上层判定「已下发」，并由 ShizukuBootstrap 等待 binder 就绪兜底。
-            Log.d(TAG, "shell>> $cmd")
-            cmd
-        } catch (_: Exception) { "" }
-    }
-
     override fun shutdown() {
-        connected = false
+        session?.close()
+        session = null
         runCatching { nsdManager?.stopServiceDiscovery(discoveryListener) }
     }
 
@@ -112,7 +111,14 @@ class AdbWirelessTransport(
      * ⚠ NsdManager 需在带 Looper 的线程上调用（主线程）。超时/取消由调用方（withTimeout）兜底。
      */
     @SuppressLint("MissingPermission")
-    suspend fun discoverService(): AdbPairingService? = suspendCancellableCoroutine { cont ->
+    suspend fun discoverService(): AdbPairingService? = discoverByType(PAIRING_SERVICE)
+
+    /** 发现主调试端口服务（`_adb-tls._tcp`） */
+    @SuppressLint("MissingPermission")
+    private suspend fun discoverMainPort(): AdbPairingService? = discoverByType(MAIN_SERVICE)
+
+    @SuppressLint("MissingPermission")
+    private suspend fun discoverByType(serviceType: String): AdbPairingService? = suspendCancellableCoroutine { cont ->
         val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
         nsdManager = nsd
         val listener = object : NsdManager.DiscoveryListener {
@@ -134,7 +140,7 @@ class AdbWirelessTransport(
         }
         discoveryListener = listener
         try {
-            nsd.discoverServices(PAIRING_SERVICE, NsdManager.PROTOCOL_DNS_SD, listener)
+            nsd.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
         } catch (e: Exception) {
             Log.e(TAG, "discover failed", e)
             if (cont.isActive) cont.resume(null)
@@ -144,15 +150,15 @@ class AdbWirelessTransport(
             runCatching { nsd.stopServiceDiscovery(listener) }
         }
     }
-
-    /** 兼容旧同步调用入口（新实现基于回调，路径与实际一致） */
-    private suspend fun discoverPairingService(): AdbPairingService? = discoverService()
 }
 
 /**
  * AOSP 无线配对握手（真机验证点）。
- * 密码学实现：密钥 = PBKDF2-HMAC-SHA256(code, salt, 1000, 32)；数据用 AES-256-GCM 加解密。
- * 线级帧随系统版本微调，联调时以此结构为准逐字节校准。
+ *
+ * Android 11+ 的无线调试配对使用 SPAKE2（P-256）派生会话密钥后以 AES-256-GCM 交换 ADB 公钥。
+ * 本实现先落地可确定验证的密码学（PBKDF2 密钥派生 + AES-256-GCM 加解密），并把线级帧步骤
+ * 显式拆分为 [perform] 的三个阶段；SPAKE2 点乘与最终密钥交换需真机联调时按此结构逐字节校准。
+ * 上层状态机与双通路决策（已单测）不受影响。
  */
 object PairingHandshake {
 
@@ -163,14 +169,14 @@ object PairingHandshake {
                 val input = DataInputStream(socket.getInputStream())
                 val output = DataOutputStream(socket.getOutputStream())
 
-                // 1. 向设备广播 6 位配对码
+                // 阶段 1：向设备广播 6 位配对码（真机联调点：帧类型/长度编码）
                 val codeBytes = code.toByteArray()
                 output.writeByte(0x01)
                 output.writeByte(codeBytes.size)
                 output.write(codeBytes)
                 output.flush()
 
-                // 2. 接收设备下发的 32 字节 salt（若无则由本地 salt 兜底）
+                // 阶段 2：接收设备下发的 32 字节 salt（若无则由本地 salt 兜底）
                 val recvSalt: ByteArray = runCatching {
                     val type = input.readByte().toInt() and 0xff
                     val len = input.readByte().toInt() and 0xff
@@ -178,10 +184,8 @@ object PairingHandshake {
                     ByteArray(32)
                 }.getOrElse { salt?.takeIf { it.size == 32 } ?: ByteArray(32) }
 
-                // 3. 派生密钥：PBKDF2-HMAC-SHA256(code, salt, 1000, 32)
+                // 阶段 3：派生密钥并回填摘要完成握手（真机联调点：SPAKE2 最终密钥交换）
                 val derived = deriveKey(code, recvSalt)
-
-                // 4. 回填派生密钥摘要以完成一次握手（真机联调以服务端 AUTH 帧结尾）
                 output.writeByte(0x10)
                 output.writeByte(derived.size)
                 output.write(derived)

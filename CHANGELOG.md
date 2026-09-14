@@ -6,7 +6,7 @@
 
 ---
 
-## [Unreleased]
+## [v0.1.265] — 2026-09-13
 
 ### 新增
 - **Release APK 签名构建**
@@ -15,6 +15,39 @@
   - `upload-signing.properties` 加入 `.gitignore`（不提交到仓库）
   - Release 配置：R8 混淆 + arm64-v8a 单 ABI，包体大幅缩减
 - **APK 上传 Release**：v0.1.265 release APK（约 10MB）发布到 Gitee / GitHub Release
+
+### 新增
+- **MCP 验证与使用规则** `app/src/main/java/com/phoneagent/mcp/McpRules.kt`
+  - 服务器名（非空、无空格）、URL（须 http/https 且含有效主机）校验
+  - 协议版本白名单（`2025-03-26`）、工具名合法性、参数必填/类型校验
+- **MCP 服务器持久化** `app/src/main/java/com/phoneagent/mcp/McpStore.kt`
+  - 基于 DataStore 存取服务器配置列表，配置变更后自动落盘
+- **内置 MCP 市场** `app/src/main/java/com/phoneagent/mcp/McpMarketplace.kt`
+  - 免费第三方源预设（经典工具类：filesystem/sqlite/github/notion；公共开放 API：天气/汇率/新闻/币价）
+  - 支持分类筛选、关键词搜索、一键"选用"回填新增表单
+- **MCP 信息解析增强** `app/src/main/java/com/phoneagent/mcp/McpClient.kt`
+  - `describe()`：initialize 握手 + tools/list 枚举，返回 capabilities / serverInfo / 工具及结构化参数
+  - `parseParamsFromSchema()`：从 JSON Schema 提取 type / required / enum / default / description
+  - 记录最近一次请求/响应原文（JSON-RPC），供 UI 展示
+- **MCP 信息结构化注入 Agent 提示词** `app/src/main/java/com/phoneagent/agent/AgentEngine.kt`
+  - `mcpToolsPromptText()`：把已启用服务器的工具、参数、使用规则动态注入系统提示，无工具则不增加负担
+- **MCP 模块 UI** `app/src/main/java/com/phoneagent/ui/skill/SkillManagerScreen.kt`
+  - McpTab：市场选用、新增表单（含可选 Token）、请求信息 JSON 预览
+  - 服务器卡片：启停开关、测试有效性、绑定为技能、删除、详情展开（协议版本/服务器元信息/能力/工具及参数）
+  - 详情区展示最近请求/响应 JSON（等宽字体预览）
+- **Agent 运行时广告过滤** `app/src/main/java/com/phoneagent/adskip/AdContentFilter.kt`
+  - 识别"控件内含广告信息 + 跳过/关闭/× 按钮"的广告，直接返回可点击关闭按钮
+  - 剔除广告相关元素，保证广告信息不回传给 AI
+- **完整技能编辑器** `SkillEditorDialog` 全屏化
+  - 支持名称 / ID（新建自动生成、编辑只读）/ 分类 / 说明 / 兼容旧命令意图
+  - 结构化参数编辑：参数名 / 标签 / 类型（text·number·boolean·select）/ 必填 / 候选项 / 默认值 / 说明，可动态增删
+
+### 增强
+- `McpManager`：改为可变服务器列表（StateFlow 观察），新增 add/remove/setEnabled/replaceAll/describe/bindToolsToSkills
+- `MainViewModel`：MCP 服务器观察、增删、启停、持久化、描述、请求/响应原文获取、市场条目查询
+- `AppModule`：Koin 依赖注入接入 `McpStore`
+- `AgentEngine`：决策循环集成广告过滤——识别到广告直接点击关闭并跳过本轮 AI 决策；无关闭按钮时以干净快照喂给 AI
+- `AppModule` / `AgentEngine`：MCP 工具清单在任务开始时一次枚举并注入系统提示
 
 ---
 
