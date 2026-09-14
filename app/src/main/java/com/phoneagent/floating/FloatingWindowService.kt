@@ -711,6 +711,14 @@ class FloatingWindowService : Service() {
         else -> "待命"
     }
 
+    /** 清空思考显示区：流式请求中断自动重试前调用，避免重放内容与旧文本重复累积 */
+    fun resetThinking() {
+        handler.post {
+            thinkingReturnText?.text = ""
+            thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
     /**
      * 实时更新 AI 思考面板：显示发送给 AI 的内容与流式返回的内容，并同步更新通知。
      * @param sent 发送给 AI 的文本（首次传入；后续传 null 保持已显示内容）
@@ -1023,6 +1031,11 @@ class FloatingWindowService : Service() {
         /** 实时更新 AI 思考（发送/返回内容）到悬浮窗并同步通知 */
         fun updateThinking(sent: String? = null, delta: String? = null) {
             instance?.updateThinking(sent, delta)
+        }
+
+        /** 清空思考显示区（流式重试前调用，避免重放内容重复累积） */
+        fun resetThinking() {
+            instance?.resetThinking()
         }
 
         /** 审核结果推送到悬浮窗思考面板展示 */

@@ -118,6 +118,8 @@ class AgentEngine(
         private const val MAX_TRACES = 300
         /** 调试执行历史最多保留条数 */
         private const val MAX_EXECUTION_HISTORY = 400
+        /** 对话历史（决策 prompt）最多保留条数：长线任务每步决策都 append，需上限防内存膨胀 */
+        private const val MAX_CONVERSATION = 200
 
         /** 阶段切分粒度：每 [STAGE_SIZE] 步为一个阶段（文档 v2.2 5.1） */
         private const val STAGE_SIZE = 6
@@ -329,7 +331,8 @@ class AgentEngine(
     private fun apiLog(request: String, response: String, latencyMs: Long) {
         val summary = "API 调用 · ${latencyMs}ms"
         val detail = "═══ 请求 ═══\n$request\n\n═══ 响应 ═══\n$response"
-        _logs.value = _logs.value + AgentLog(
+        // 环形缓冲：与 log() 一致，携带完整请求/响应大文本，必须同样截断防长任务内存膨胀
+        val next = _logs.value + AgentLog(
             timestamp = System.currentTimeMillis(),
             level = AgentLog.Level.API,
             message = summary,
@@ -337,11 +340,13 @@ class AgentEngine(
             taskId = currentTaskId,
             taskName = currentTaskName,
         )
+        _logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
     }
 
     private fun addConversation(role: String, content: String, hasImage: Boolean = false) {
-        _conversation.value = _conversation.value +
-            ConversationMessage(role, content, System.currentTimeMillis(), hasImage)
+        // 环形缓冲：长线任务每步决策都 append 完整 prompt，需上限防内存膨胀
+        val next = _conversation.value + ConversationMessage(role, content, System.currentTimeMillis(), hasImage)
+        _conversation.value = if (next.size > MAX_CONVERSATION) next.takeLast(MAX_CONVERSATION) else next
     }
 
     fun clearDebug() {
@@ -527,6 +532,7 @@ class AgentEngine(
             // 温度 v0.1 文档：歧义检测+规划合并 = 0.3
             temperature = PLANNING_TEMPERATURE,
             // 边思考边把增量内容实时显示到悬浮窗 + 通知
+            onRetry = { FloatingWindowService.resetThinking() },
             onDelta = { d ->
                 onDelta(d)
                 pushThinking(delta = d)
@@ -1203,13 +1209,13 @@ class AgentEngine(
             lang = currentLang,
             task = task,
             stepIndex = _state.value.stepCount,
-            totalSteps = (_state.value.stepCount).coerceAtLeast(1),
+            totalSteps = totalPlannedSteps.coerceAtLeast(1),
             currentStep = if (!planSteps.isNullOrBlank()) "按计划执行下一步" else "根据当前页面执行下一步",
             lastStepResult = lastStepResultText(),
             consecutiveFailures = consecutiveFailures,
-            contextHint = annotated.contextHint,
+            contextHint = DataSanitizer.sanitize(annotated.contextHint),
         ) + planNote + "\n\n## 当前页面\n$pageText" +
-            com.phoneagent.perception.PageAnnotator.knownControlsText(annotated.elements) +
+            DataSanitizer.sanitize(com.phoneagent.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task) +
             progressSummaryText()
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
@@ -1233,6 +1239,7 @@ class AgentEngine(
                 screenshot = null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
+                onRetry = { FloatingWindowService.resetThinking() },
                 onDelta = { pushThinking(delta = it) },
             )
         }
@@ -1548,22 +1555,22 @@ class AgentEngine(
             ActionType.SWIPE_UP -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py - screenHeight()).coerceAtLeast(0)).isSuccess() }
+                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py - screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_DOWN -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py + screenHeight()).coerceAtMost(screenHeight())).isSuccess() }
+                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py + screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_LEFT -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px - screenWidth()).coerceAtLeast(0), py).isSuccess() }
+                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px - screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
             }
             ActionType.SWIPE_RIGHT -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px + screenWidth()).coerceAtMost(screenWidth()), py).isSuccess() }
+                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px + screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
             }
             ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot, action) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {

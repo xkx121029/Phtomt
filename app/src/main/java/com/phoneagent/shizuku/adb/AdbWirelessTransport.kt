@@ -5,10 +5,13 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
@@ -41,6 +44,27 @@ class AdbWirelessTransport(
         private const val PAIRING_SERVICE = "_adb-tls-pairing._tcp."
         /** mDNS 主调试服务类型 */
         private const val MAIN_SERVICE = "_adb-tls._tcp."
+
+        /**
+         * 自获取本机 IPv4 地址（优先私有段外网地址，跳过回环/链路本地）。
+         * 无线调试服务部署在本机，用本机 IP 作为连接目标，避免 mDNS 上报 host 与真实 Wi-Fi IP 不一致。
+         * 无需额外权限（仅遍历网卡接口）。
+         */
+        @SuppressLint("MissingPermission")
+        fun localIpv4Address(): String? {
+            val interfaces = runCatching { NetworkInterface.getNetworkInterfaces() }.getOrNull() ?: return null
+            for (nif in interfaces) {
+                for (addr in nif.inetAddresses) {
+                    val ip = addr.hostAddress ?: continue
+                    if (addr.isLoopbackAddress) continue
+                    val clean = ip.substringBefore('%')
+                    if (clean.contains('.') && !addr.isLinkLocalAddress) {
+                        return clean
+                    }
+                }
+            }
+            return null
+        }
     }
 
     private var session: AdbTcpSession? = null
@@ -124,12 +148,26 @@ class AdbWirelessTransport(
 
     /**
      * 异步发现无线调试配对服务（`_adb-tls-pairing._tcp`）。
-     * 供「开始配对」自动化流程使用：挂在主线程协程上，等到搜索到即返回。
-     *
-     * ⚠ NsdManager 需在带 Looper 的线程上调用（主线程）。超时/取消由调用方（withTimeout）兜底。
+     * 优先用原始 mDNS 组播（对本机 adbd 自发现可靠，放在 IO 线程），失败退回 NsdManager。
+     * 无线调试部署在本机，故以本机 IP 作为连接目标主机，端口与 salt 取 mDNS 上报值。
      */
     @SuppressLint("MissingPermission")
-    suspend fun discoverService(): AdbPairingService? = discoverByType(PAIRING_SERVICE)
+    suspend fun discoverService(): AdbPairingService? {
+        val local = localIpv4Address()
+        // 1) 原始 mDNS 自发现（可靠性兜底，不受 NsdManager 自发现限制）
+        val mdns = withContext(Dispatchers.IO) {
+            MdnsAdbResolver.resolvePairing(
+                PAIRING_SERVICE, local ?: "", minOf(timeouts.discoverMs, 5000L),
+            )
+        }
+        if (mdns != null) return mdns
+        // 2) 退回 NsdManager
+        val svc = discoverByType(PAIRING_SERVICE) ?: return null
+        // 本机 IP 优先作目标主机；取不到则退回 mDNS 上报的 host
+        return if (local != null && local != svc.host) {
+            AdbPairingService(host = local, port = svc.port, salt = svc.salt)
+        } else svc
+    }
 
     /** 发现主调试端口服务（`_adb-tls._tcp`） */
     @SuppressLint("MissingPermission")
@@ -142,10 +180,11 @@ class AdbWirelessTransport(
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {}
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                val host = serviceInfo.host?.hostAddress ?: return
+                // host 在发现阶段常未解析（null）；配对端口立即可读，host 由调用方用本机 IP 补齐，
+                // 因此不再因 host 为空而放弃 resume（否则会一直等不到导致「搜索不到」）
                 val salt = serviceInfo.serviceName?.toString()
                 if (cont.isActive) {
-                    cont.resume(AdbPairingService(host, serviceInfo.port, salt?.toByteArray()))
+                    cont.resume(AdbPairingService(serviceInfo.host?.hostAddress.orEmpty(), serviceInfo.port, salt?.toByteArray()))
                 }
                 runCatching { nsd.stopServiceDiscovery(this) }
             }

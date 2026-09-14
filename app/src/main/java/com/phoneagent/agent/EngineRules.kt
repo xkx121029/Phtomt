@@ -45,12 +45,15 @@ object EngineRules {
     ): Pair<Int, Int> {
         val vDist = distanceArg?.takeIf { it > 0 } ?: screenH
         val hDist = distanceArg?.takeIf { it > 0 } ?: screenW
+        // 起点与终点统一收敛到屏幕内（有效像素 0..size-1），避免越界 1px 或负坐标
+        val sx = x.coerceIn(0, screenW - 1)
+        val sy = y.coerceIn(0, screenH - 1)
         return when (direction) {
-            "up" -> x to (y - vDist).coerceAtLeast(0)
-            "down" -> x to (y + vDist).coerceAtMost(screenH)
-            "left" -> (x - hDist).coerceAtLeast(0) to y
-            "right" -> (x + hDist).coerceAtMost(screenW) to y
-            else -> x to y
+            "up" -> sx to (sy - vDist).coerceIn(0, screenH - 1)
+            "down" -> sx to (sy + vDist).coerceIn(0, screenH - 1)
+            "left" -> (sx - hDist).coerceIn(0, screenW - 1) to sy
+            "right" -> (sx + hDist).coerceIn(0, screenW - 1) to sy
+            else -> sx to sy
         }
     }
 

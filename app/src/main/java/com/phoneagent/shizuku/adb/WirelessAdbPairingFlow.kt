@@ -58,7 +58,8 @@ class WirelessAdbPairingFlow(
         }
         discovering = true
         active = this
-        setMsg("正在搜索无线调试服务…")
+        val ip = AdbWirelessTransport.localIpv4Address()
+        setMsg(if (ip != null) "本机 IP $ip，正在搜索无线配对服务…" else "正在搜索无线配对服务…")
         com.phoneagent.notify.AdbPairingNotifier.notifyDiscovering(context)
 
         discoverJob = callerScope.launch {

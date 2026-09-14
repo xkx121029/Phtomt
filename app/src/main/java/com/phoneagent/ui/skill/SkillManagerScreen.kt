@@ -75,6 +75,7 @@ import com.phoneagent.mcp.McpTool
 import com.phoneagent.prompt.PromptTemplate
 import com.phoneagent.shizuku.adb.AdbError
 import com.phoneagent.shizuku.adb.AdbPhase
+import com.phoneagent.shizuku.adb.AdbWirelessTransport
 import com.phoneagent.skill.Skill
 import com.phoneagent.skill.SkillParam
 import com.phoneagent.skill.SkillSource
@@ -827,6 +828,7 @@ private fun WirelessAdbTab(vm: MainViewModel) {
         }
         val adbReady = adbStatus.phase == AdbPhase.READY
         val shizukuReady = shizukuState == com.phoneagent.shizuku.ShizukuManager.State.READY
+        val localIp = remember { AdbWirelessTransport.localIpv4Address() }
         AppCard {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -845,6 +847,11 @@ private fun WirelessAdbTab(vm: MainViewModel) {
                     }
                     TextButton(onClick = { msg = null; vm.ensureAdbReady { msg = it } }) { Text("检测通路") }
                 }
+                Text(
+                    if (localIp != null) "本机 IP：$localIp" else "未能获取本机 IP",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 Text(
                     if (adbReady) "无线 ADB 已就绪，可直接执行 shell；Shizuku 为可选增强。"
                     else "无线 ADB 为主执行通道；配对连接后即可执行 shell，Shizuku 启动失败不影响执行。",

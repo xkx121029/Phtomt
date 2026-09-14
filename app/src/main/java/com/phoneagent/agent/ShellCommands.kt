@@ -57,23 +57,23 @@ object ShellCommands {
             "su", "swipe_up" -> {
                 val (x, y) = parseCoord(args, w, h) ?: return null
                 val dist = (h * 0.25f).toInt().coerceAtLeast(100)
-                "input swipe $x $y $x ${y - dist} 400"
+                "input swipe $x $y $x ${(y - dist).coerceIn(0, h - 1)} 400"
             }
             "sd", "swipe_down" -> {
                 val (x, y) = parseCoord(args, w, h) ?: return null
                 val dist = (h * 0.25f).toInt().coerceAtLeast(100)
-                "input swipe $x $y $x ${y + dist} 400"
+                "input swipe $x $y $x ${(y + dist).coerceIn(0, h - 1)} 400"
             }
             "sl", "swipe_left" -> {
                 val (x, y) = parseCoord(args, w, h) ?: return null
                 val dist = (w * 0.25f).toInt().coerceAtLeast(100)
-                "input swipe $x $y ${x - dist} $y 400"
+                "input swipe $x $y ${(x - dist).coerceIn(0, w - 1)} $y 400"
             }
 
             "sr", "swipe_right" -> {
                 val (x, y) = parseCoord(args, w, h) ?: return null
                 val dist = (w * 0.25f).toInt().coerceAtLeast(100)
-                "input swipe $x $y ${x + dist} $y 400"
+                "input swipe $x $y ${(x + dist).coerceIn(0, w - 1)} $y 400"
             }
 
             // ====== 按键 ======
@@ -202,11 +202,11 @@ object ShellCommands {
         if (s.isEmpty()) return null
         if (s.endsWith("%")) {
             val pct = s.dropLast(1).toFloatOrNull() ?: return null
-            return (pct / 100f * dim).toInt().coerceIn(0, dim)
+            return (pct / 100f * dim).toInt().coerceIn(0, dim - 1)
         }
         val f = s.toFloatOrNull() ?: return null
         // 严格小于 1 才视为比例；等于 1 视为像素坐标（避免 x=1 的像素点被误判成全屏比例）
-        return if (f < 1.0f) (f * dim).toInt().coerceIn(0, dim) else f.toInt().coerceIn(0, dim)
+        return if (f < 1.0f) (f * dim).toInt().coerceIn(0, dim - 1) else f.toInt().coerceIn(0, dim - 1)
     }
 
     /** 转义 input text 中的特殊字符 */

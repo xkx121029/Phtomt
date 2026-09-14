@@ -101,6 +101,8 @@ class AiClient(
         screenshot: Bitmap?,
         temperature: Double,
         onDelta: (String) -> Unit = {},
+        /** 流式中断准备重试时回调：上层可借此重置展示（如清空思考面板），避免重放内容重复累积 */
+        onRetry: (() -> Unit)? = null,
     ): Result<AiDecision> = withContext(Dispatchers.IO) {
         runCatching {
             val startNano = System.nanoTime()
@@ -123,7 +125,10 @@ class AiClient(
             var status = -1
             var lastErr: String? = null
             for (attempt in 0 until MAX_RETRIES) {
-                if (attempt > 0) backoffSleep(status, attempt) ?: break
+                if (attempt > 0) {
+                    onRetry?.invoke()
+                    backoffSleep(status, attempt) ?: break
+                }
                 try {
                         full.setLength(0)
                         lastUsage = null
@@ -442,6 +447,8 @@ class AiClient(
         messages: List<ChatMessageDto>,
         temperature: Double,
         onDelta: (String) -> Unit,
+        /** 流式中断准备重试时回调：上层可借此重置展示，避免重放内容重复累积 */
+        onRetry: (() -> Unit)? = null,
         thinking: Boolean = false,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -456,7 +463,10 @@ class AiClient(
             var status = -1
             var lastErr: String? = null
             for (attempt in 0 until MAX_RETRIES) {
-                if (attempt > 0) backoffSleep(status, attempt) ?: break
+                if (attempt > 0) {
+                    onRetry?.invoke()
+                    backoffSleep(status, attempt) ?: break
+                }
                 try {
                     // 每次尝试独立累积，避免流中断重试后新旧内容拼接导致重复
                     full.setLength(0)
