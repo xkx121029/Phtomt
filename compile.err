@@ -1,0 +1,184 @@
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:22:34 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:22:34 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:22:49 Unresolved reference 'McpServerConfig'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:26:30 Unresolved reference 'McpServerConfig'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:27:72 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:27:72 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:16 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:16 Not enough information to infer type argument for 'R'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:28 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:35 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:35 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:83 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:28:83 Argument type mismatch: actual type is 'kotlin.collections.List<T#2 (type parameter of fun <T> emptyList(): List<T>)>', but 'it(T#1 (type parameter of fun <R, T : R> Result<T>.getOrElse(onFailure: (@ParameterName(...) Throwable) -> R): R
+    [R|Contract description]
+     <
+        CallsInPlace(onFailure, AT_MOST_ONCE)
+    >) & Any & kotlin.collections.List<ERROR CLASS: Symbol not found for McpServerConfig>)' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:32:36 Unresolved reference 'McpServerConfig'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:33:24 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/McpStore.kt:33:24 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:11:18 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:11:36 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:14:47 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:18:21 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:18:52 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:18:52 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:20:27 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:23:50 Unresolved reference 'body'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:25:19 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:26:32 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:27:23 Unresolved reference 'isBuiltIn'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:29:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:29:21 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:29:36 Unresolved reference 'copy'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:29:50 Unresolved reference 'body'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:32:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:32:17 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:38:15 Unresolved reference 'isBuiltIn'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:43:28 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:45:24 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:45:26 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:45:35 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:48:40 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:50:106 Argument type mismatch: actual type is 'kotlin.collections.List<T>', but 'kotlin.collections.List<ERROR CLASS: Symbol not found for PromptTemplate>' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:50:119 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:57:39 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:59:23 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:64:107 Serializer has not been found for type 'ERROR CLASS: Symbol not found for PromptTemplate'. To use context serializer as fallback, explicitly annotate type or property with @Contextual
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:64:107 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:68:30 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:68:48 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:69:13 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:69:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:70:13 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:71:13 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/PromptTemplateStore.kt:72:13 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/data/store/TaskStore.kt:135:16 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:131:42 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:134:40 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:243:58 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:610:62 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:619:62 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1343:9 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1490:49 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1496:77 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1499:70 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1651:24 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1715:22 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1717:28 Function 'component1()' is ambiguous for this expression: 
+fun <T> Array<out T>.component1(): T
+fun BooleanArray.component1(): Boolean
+fun ByteArray.component1(): Byte
+fun CharArray.component1(): Char
+fun DoubleArray.component1(): Double
+fun FloatArray.component1(): Float
+fun IntArray.component1(): Int
+fun LongArray.component1(): Long
+fun ShortArray.component1(): Short
+fun <T> List<T>.component1(): T
+fun <K, V> Map.Entry<K, V>.component1(): K
+fun UByteArray.component1(): UByte
+fun UIntArray.component1(): UInt
+fun ULongArray.component1(): ULong
+fun UShortArray.component1(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1717:28 Function 'component2()' is ambiguous for this expression: 
+fun <T> Array<out T>.component2(): T
+fun BooleanArray.component2(): Boolean
+fun ByteArray.component2(): Byte
+fun CharArray.component2(): Char
+fun DoubleArray.component2(): Double
+fun FloatArray.component2(): Float
+fun IntArray.component2(): Int
+fun LongArray.component2(): Long
+fun ShortArray.component2(): Short
+fun <T> List<T>.component2(): T
+fun <K, V> Map.Entry<K, V>.component2(): V
+fun UByteArray.component2(): UByte
+fun UIntArray.component2(): UInt
+fun ULongArray.component2(): ULong
+fun UShortArray.component2(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1727:26 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1727:26 Function 'component1()' is ambiguous for this expression: 
+fun <T> Array<out T>.component1(): T
+fun BooleanArray.component1(): Boolean
+fun ByteArray.component1(): Byte
+fun CharArray.component1(): Char
+fun DoubleArray.component1(): Double
+fun FloatArray.component1(): Float
+fun IntArray.component1(): Int
+fun LongArray.component1(): Long
+fun ShortArray.component1(): Short
+fun <T> List<T>.component1(): T
+fun <K, V> Map.Entry<K, V>.component1(): K
+fun UByteArray.component1(): UByte
+fun UIntArray.component1(): UInt
+fun ULongArray.component1(): ULong
+fun UShortArray.component1(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1727:26 Function 'component2()' is ambiguous for this expression: 
+fun <T> Array<out T>.component2(): T
+fun BooleanArray.component2(): Boolean
+fun ByteArray.component2(): Byte
+fun CharArray.component2(): Char
+fun DoubleArray.component2(): Double
+fun FloatArray.component2(): Float
+fun IntArray.component2(): Int
+fun LongArray.component2(): Long
+fun ShortArray.component2(): Short
+fun <T> List<T>.component2(): T
+fun <K, V> Map.Entry<K, V>.component2(): V
+fun UByteArray.component2(): UByte
+fun UIntArray.component2(): UInt
+fun ULongArray.component2(): ULong
+fun UShortArray.component2(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1743:25 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1745:43 No 'get' operator method providing array access.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1745:49 No 'get' operator method providing array access.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1745:55 No 'get' operator method providing array access.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1745:61 No 'get' operator method providing array access.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:1816:9 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/AgentEngine.kt:2035:53 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:15:45 Unresolved reference 'TaskTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:15:61 Unresolved reference 'TaskTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:19:14 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:19:14 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+fun <T> Iterable<T>.filter(predicate: (T) -> Boolean): List<T>
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:19:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:19:26 Unresolved reference 'enabled'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:19:40 Unresolved reference 'failedStreak'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:14 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:14 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:14 Not enough information to infer type argument for 'R'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:18 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:23 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:23 Not enough information to infer type argument for 'A'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:20:48 Unresolved reference 'goal'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:21:14 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:21:14 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:21:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:21:26 Unresolved reference 'second'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:22:14 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:22:14 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:22:14 Not enough information to infer type argument for 'R'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:22:26 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:22:31 Unresolved reference 'second'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/feature/task/TemplateMatcher.kt:23:15 Function invocation 'first()' expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/ui/MainViewModel.kt:128:23 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/ui/MainViewModel.kt:128:23 Unresolved reference. None of the following candidates is applicable because of a receiver type mismatch:
+fun <T> Collection<T>.isNotEmpty(): Boolean
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/ui/MainViewModel.kt:707:113 Unresolved reference 'isBuiltIn'.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 6s

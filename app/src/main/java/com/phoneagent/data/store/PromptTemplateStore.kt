@@ -1,5 +1,6 @@
 package com.phoneagent.data.store
 
+import com.phoneagent.engine.prompt.PromptTemplate
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
