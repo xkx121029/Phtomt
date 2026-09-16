@@ -1,0 +1,906 @@
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:31:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:36:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:41:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:60:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:65:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:72:24 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:72:24 Function 'component1()' is ambiguous for this expression: 
+fun <T> Array<out T>.component1(): T
+fun BooleanArray.component1(): Boolean
+fun ByteArray.component1(): Byte
+fun CharArray.component1(): Char
+fun DoubleArray.component1(): Double
+fun FloatArray.component1(): Float
+fun IntArray.component1(): Int
+fun LongArray.component1(): Long
+fun ShortArray.component1(): Short
+fun <T> List<T>.component1(): T
+fun <K, V> Map.Entry<K, V>.component1(): K
+fun UByteArray.component1(): UByte
+fun UIntArray.component1(): UInt
+fun ULongArray.component1(): ULong
+fun UShortArray.component1(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:72:24 Function 'component2()' is ambiguous for this expression: 
+fun <T> Array<out T>.component2(): T
+fun BooleanArray.component2(): Boolean
+fun ByteArray.component2(): Byte
+fun CharArray.component2(): Char
+fun DoubleArray.component2(): Double
+fun FloatArray.component2(): Float
+fun IntArray.component2(): Int
+fun LongArray.component2(): Long
+fun ShortArray.component2(): Short
+fun <T> List<T>.component2(): T
+fun <K, V> Map.Entry<K, V>.component2(): V
+fun UByteArray.component2(): UByte
+fun UIntArray.component2(): UInt
+fun ULongArray.component2(): ULong
+fun UShortArray.component2(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:79:24 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:79:24 Function 'component1()' is ambiguous for this expression: 
+fun <T> Array<out T>.component1(): T
+fun BooleanArray.component1(): Boolean
+fun ByteArray.component1(): Byte
+fun CharArray.component1(): Char
+fun DoubleArray.component1(): Double
+fun FloatArray.component1(): Float
+fun IntArray.component1(): Int
+fun LongArray.component1(): Long
+fun ShortArray.component1(): Short
+fun <T> List<T>.component1(): T
+fun <K, V> Map.Entry<K, V>.component1(): K
+fun UByteArray.component1(): UByte
+fun UIntArray.component1(): UInt
+fun ULongArray.component1(): ULong
+fun UShortArray.component1(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:79:24 Function 'component2()' is ambiguous for this expression: 
+fun <T> Array<out T>.component2(): T
+fun BooleanArray.component2(): Boolean
+fun ByteArray.component2(): Byte
+fun CharArray.component2(): Char
+fun DoubleArray.component2(): Double
+fun FloatArray.component2(): Float
+fun IntArray.component2(): Int
+fun LongArray.component2(): Long
+fun ShortArray.component2(): Short
+fun <T> List<T>.component2(): T
+fun <K, V> Map.Entry<K, V>.component2(): V
+fun UByteArray.component2(): UByte
+fun UIntArray.component2(): UInt
+fun ULongArray.component2(): ULong
+fun UShortArray.component2(): UShort.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:87:34 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:94:28 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:95:30 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:96:30 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:101:31 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:108:37 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:115:19 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:123:19 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:132:19 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:139:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:146:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:151:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:156:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:163:27 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:164:27 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:169:27 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:170:27 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:180:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:181:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:187:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:192:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:193:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:200:20 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:205:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:206:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/EngineRulesTest.kt:207:21 Unresolved reference 'EngineRules'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:18:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:19:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:24:45 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:25:52 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:30:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:31:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:36:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:44:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:51:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:56:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:61:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:66:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:72:45 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:78:39 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:85:58 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:90:58 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:95:62 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:102:53 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:107:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:113:57 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:118:58 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:124:57 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:129:57 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:136:42 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:137:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:138:44 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:139:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:144:43 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:149:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:154:42 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:155:42 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:156:44 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:161:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:168:50 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:173:39 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:178:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:185:52 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:190:54 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:195:60 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:200:67 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:205:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:206:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:211:65 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:212:41 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:219:52 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:224:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:231:42 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:236:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:241:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:248:34 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:253:35 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:258:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:265:46 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:271:50 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:276:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/agent/ShellCommandsTest.kt:281:20 Unresolved reference 'ShellCommands'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:20:34 Unresolved reference 'LocalDecisionEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:24:18 Unresolved reference 'LocalDecisionEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:59:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:71:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:82:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:95:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:108:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:119:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:133:29 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:144:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:158:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:171:42 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:173:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:185:30 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:186:30 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:188:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:190:28 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/decision/LocalDecisionEngineTest.kt:191:27 Unresolved reference 'decide'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:16:28 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:51:25 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:52:27 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:53:28 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:54:28 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:63:25 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:64:27 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:71:25 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:72:27 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:79:29 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:80:29 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:81:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:88:29 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:89:29 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:96:30 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:97:27 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:104:22 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:105:22 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:113:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:114:29 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:115:29 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:122:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:123:30 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:124:29 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:131:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:132:28 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:133:28 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:140:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:141:22 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:142:22 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:149:22 Unresolved reference 'element'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:150:22 Unresolved reference 'x'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentResolverTest.kt:151:22 Unresolved reference 'y'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:24:45 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:25:43 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:26:38 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:30:29 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:30:29 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:31:27 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:31:27 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:32:22 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:32:75 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:35:33 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:35:39 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:35:59 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:62:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:63:54 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:64:27 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:64:71 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:68:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:69:40 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:70:27 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorStrategyTest.kt:70:70 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:25:45 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:26:43 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:27:38 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:31:29 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:31:29 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:32:27 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:32:27 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:33:22 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:33:75 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:36:33 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:36:39 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:36:59 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:62:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:63:54 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:64:27 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:64:71 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:68:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:69:40 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:70:27 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:70:70 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:78:57 Argument type mismatch: actual type is 'kotlin.String', but 'java.io.File' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:88:57 Argument type mismatch: actual type is 'kotlin.String', but 'java.io.File' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:97:61 Null cannot be a value of a non-null type 'java.io.File'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:141:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:142:75 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:143:43 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:143:92 Unresolved reference 'field'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:260:33 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:261:30 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:262:31 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/IntentTranslatorTest.kt:262:74 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:103:32 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:104:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:104:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:104:28 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:104:52 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:105:26 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:105:61 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:105:88 Argument type mismatch: actual type is 'kotlin.Boolean', but 'kotlin.Boolean' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:105:95 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:135:17 'when' expression must be exhaustive. Add an 'else' branch.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:136:24 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:136:72 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:137:24 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:137:81 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:138:24 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:138:88 Unresolved reference 'field'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/LongRunModelTest.kt:138:100 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:132:37 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:133:24 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:135:20 'when' expression must be exhaustive. Add an 'else' branch.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:136:16 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:136:64 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:137:16 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:137:73 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:138:16 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:138:80 Unresolved reference 'field'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:138:92 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:167:22 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:167:45 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:167:66 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:167:72 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:168:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:168:19 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:168:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:168:45 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:169:18 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:169:38 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:170:34 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:171:23 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:171:63 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:171:106 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:179:17 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:179:38 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:180:8 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:181:37 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:181:64 Argument type mismatch: actual type is 'kotlin.Boolean', but 'kotlin.Boolean' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:182:39 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:183:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:183:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:183:35 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:183:59 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:184:26 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/RealModelDecisionTest.kt:184:79 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:28:44 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:28:76 Unresolved reference 'AppNameResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:28:94 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:29:9 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:29:51 Unresolved reference 'IntentResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:76:37 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:81:38 Unresolved reference 'translate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:82:20 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:82:88 Unresolved reference 'action'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:83:20 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:84:70 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:85:20 Unresolved reference 'IntentTranslator'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:86:73 Unresolved reference 'field'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:86:85 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:94:25 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:95:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:95:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:95:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:96:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:117:25 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:118:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:118:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:118:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:119:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:140:25 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:141:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:141:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:141:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:142:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:161:25 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:162:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:162:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:162:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:163:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:181:25 Unresolved reference 'CapabilityManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:182:9 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:182:15 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:182:21 Unresolved reference 'currentMode'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/execution/SimulatedTaskRunTest.kt:183:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:28:8 Unresolved reference 'McpTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:30:25 Unresolved reference 'McpTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:31:13 'call' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:40:22 Unresolved reference 'McpClient'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:61:22 Unresolved reference 'McpClient'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:64:35 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:64:45 Unresolved reference 'name'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:78:22 Unresolved reference 'McpClient'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:90:21 Unresolved reference 'McpClient'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:96:26 Unresolved reference 'McpTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:97:13 'call' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:98:23 Unresolved reference 'McpException'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:98:23 Type mismatch: inferred type is 'ERROR CLASS: Unresolved name: McpException', but 'kotlin.Throwable' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:101:21 Unresolved reference 'McpClient'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:120:23 Unresolved reference 'McpManager'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:121:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:121:20 Unresolved reference 'McpServerConfig'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:122:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/mcp/McpClientTest.kt:137:53 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:24:24 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:26:17 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:27:33 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:28:30 Unresolved reference 'name'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:29:30 Unresolved reference 'visibleText'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:30:27 Unresolved reference 'index'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:31:49 Unresolved reference 'extra'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:33:27 Unresolved reference 'extra'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:43:24 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:45:31 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:45:43 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:54:24 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:56:31 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:56:43 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:57:31 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:57:43 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:58:31 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:58:43 Unresolved reference 'id'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:67:17 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:67:17 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:68:30 Unresolved reference 'isSelected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:69:29 Unresolved reference 'currentValue'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:70:41 Unresolved reference 'comment'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:71:41 Unresolved reference 'extra'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:78:20 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:78:48 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:82:28 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:82:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:88:17 Unresolved reference 'ControlTreeBuilder'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:88:17 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:90:22 Unresolved reference 'isSelected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/ControlTreeBuilderTest.kt:91:22 Unresolved reference 'toAiLine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:52:22 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:52:51 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:53:22 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:53:61 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:67:22 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:67:51 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:74:25 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:74:54 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:75:25 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:75:64 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:82:25 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:82:54 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:83:25 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:83:64 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:90:22 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:90:61 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:97:25 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:97:54 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:98:22 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:98:61 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:104:26 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:105:26 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:111:26 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/perception/PageFingerprintTest.kt:112:26 Unresolved reference 'PageFingerprint'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:13:20 Unresolved reference 'PromptVars'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:15:19 Unresolved reference 'PromptTemplateEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:25:19 Unresolved reference 'PromptTemplateEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:25:64 Unresolved reference 'PromptVars'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:31:20 Unresolved reference 'PromptTemplateEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:32:23 Unresolved reference 'PromptTemplateEngine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:37:21 Unresolved reference 'PromptTemplateStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:37:41 Unresolved reference 'PromptTemplateStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:40:22 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:43:20 Unresolved reference 'not' for operator '!'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:45:22 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:53:17 Unresolved reference 'PromptTemplateStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:53:37 Unresolved reference 'PromptTemplateStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:54:18 Unresolved reference 'PromptTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/prompt/PromptTemplateEngineTest.kt:58:17 Unresolved reference 'PromptTemplateStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:13:18 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:14:21 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:26:18 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:27:21 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:39:18 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbKeyStoreTest.kt:40:21 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:17:21 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:17:40 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:17:62 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:18:21 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:20:22 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:20:52 Unresolved reference 'command'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:21:22 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:21:49 Unresolved reference 'arg0'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:22:34 Unresolved reference 'arg1'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:23:42 Unresolved reference 'payload'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:31:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:36:21 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:36:40 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:37:21 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:39:33 Unresolved reference 'payload'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:40:31 Unresolved reference 'arg0'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:41:31 Unresolved reference 'arg1'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbProtocolTest.kt:48:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:20:71 Unresolved reference 'AdbSocket'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:24:9 'connect' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:25:9 'input' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:26:9 'output' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:27:9 'isConnected' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:28:9 'close' overrides nothing.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:31:29 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:31:43 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:31:67 Unresolved reference 'AdbKeyStore'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:33:28 Unresolved reference 'AdbTimeouts'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:39:25 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:39:44 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:39:66 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:40:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:40:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:40:61 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:40:82 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:40:103 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:43:23 Unresolved reference 'AdbTcpSession'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:53:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:53:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:53:61 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:53:82 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:53:103 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:55:23 Unresolved reference 'AdbTcpSession'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:63:25 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:63:44 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:63:66 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:64:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:64:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:64:61 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:64:82 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:64:103 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:65:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:65:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:66:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:66:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:69:23 Unresolved reference 'AdbTcpSession'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:78:25 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:78:44 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:78:66 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:79:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:79:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:79:61 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:79:82 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:79:103 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:81:20 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:81:39 Unresolved reference 'AdbProtocol'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:84:23 Unresolved reference 'AdbTcpSession'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/AdbTcpSessionTest.kt:93:23 Unresolved reference 'AdbTcpSession'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:84:19 Unresolved reference 'MdnsAdbResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:86:35 Unresolved reference 'port'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:92:19 Unresolved reference 'MdnsAdbResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:94:35 Unresolved reference 'port'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:95:27 Unresolved reference 'salt'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:96:53 Unresolved reference 'salt'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/MdnsAdbResolverTest.kt:111:20 Unresolved reference 'MdnsAdbResolver'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:23:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:23:64 Argument type mismatch: actual type is 'kotlin.Boolean', but 'kotlin.Boolean' was expected.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:24:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:25:47 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:26:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:32:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:32:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:32:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:32:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:33:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:33:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:33:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:35:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:37:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:38:26 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:38:62 Unresolved reference 'message'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:45:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:45:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:45:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:45:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:46:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:46:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:46:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:47:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:47:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:47:23 Unresolved reference 'pair'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:49:17 Unresolved reference 'AdbPairOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:51:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:51:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:51:23 Unresolved reference 'startShizukuService'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:51:55 Unresolved reference 'AdbStartOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:53:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:55:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:56:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:62:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:62:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:62:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:62:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:63:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:63:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:63:23 Unresolved reference 'pair'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:63:48 Unresolved reference 'AdbPairOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:63:71 Unresolved reference 'AdbError'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:65:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:67:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:68:22 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:69:22 Unresolved reference 'AdbError'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:69:49 Unresolved reference 'error'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:70:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:78:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:78:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:78:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:78:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:79:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:79:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:79:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:81:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:82:47 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:83:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:90:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:90:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:90:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:90:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:91:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:91:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:91:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:92:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:92:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:92:23 Unresolved reference 'startShizukuService'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:92:55 Unresolved reference 'AdbStartOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:94:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:98:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:99:22 Unresolved reference 'AdbError'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:99:59 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:99:95 Unresolved reference 'error'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:106:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:106:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:106:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:106:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:107:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:107:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:107:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:108:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:108:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:108:23 Unresolved reference 'startShizukuService'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:108:55 Unresolved reference 'AdbStartOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:110:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:113:47 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:120:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:120:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:120:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:120:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:121:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:121:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:121:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:123:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:126:47 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:133:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:133:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:133:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:133:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:134:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:134:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:134:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:136:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:138:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:139:22 Unresolved reference 'AdbError'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:139:62 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:139:98 Unresolved reference 'error'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:145:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:145:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:145:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:145:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:146:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:146:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:146:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:148:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:149:47 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:157:31 Unresolved reference 'AdbBootstrapTransport'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:157:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:157:56 Not enough information to infer type argument for 'T'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:157:62 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:158:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:158:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:158:23 Unresolved reference 'isConnected'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:159:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:159:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:159:23 Unresolved reference 'pair'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:161:17 Unresolved reference 'AdbPairOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:163:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:163:21 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:163:23 Unresolved reference 'startShizukuService'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:163:55 Unresolved reference 'AdbStartOutcome'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:165:25 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:168:29 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:169:30 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:169:66 Unresolved reference 'message'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:173:30 Unresolved reference 'ShizukuBootstrap'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/ShizukuBootstrapTest.kt:174:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:12:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:13:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:16:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:19:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:22:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:26:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:30:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:35:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:43:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:52:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:58:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:64:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:68:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:74:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:80:22 Unresolved reference 'AdbPhase'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/shizuku/adb/WirelessAdbStateMachineTest.kt:87:17 Unresolved reference 'WirelessAdbStateMachine'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:13:21 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:19:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:19:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:20:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:21:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:22:28 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:22:65 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:29:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:29:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:31:18 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:32:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:32:62 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:37:18 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:38:37 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:38:74 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:39:31 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:44:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:44:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:45:22 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:45:67 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:46:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:47:22 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:47:29 Unresolved reference 'SkillParam'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:48:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:48:37 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:49:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:50:23 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:51:32 Unresolved reference 'target'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:52:41 Unresolved reference 'target'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:53:32 Unresolved reference 'args'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:58:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:58:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:59:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:59:37 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:59:71 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:60:35 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:61:23 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:62:22 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:67:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:67:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:69:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:69:37 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:70:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:75:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:75:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:76:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:76:53 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:77:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:82:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:82:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:83:17 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:83:51 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:84:25 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:85:45 Unresolved reference 'SkillCompat'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillCompatTest.kt:85:82 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:16:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:16:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:17:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:18:33 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:19:25 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:20:28 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:20:67 Unresolved reference 'intent'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:27:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:27:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:28:22 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:28:60 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:29:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:29:66 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:29:73 Unresolved reference 'SkillParam'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:32:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:33:33 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:34:25 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:35:22 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:36:31 Unresolved reference 'server'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:37:33 Unresolved reference 'tool'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:38:29 Unresolved reference 'args'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:43:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:43:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:44:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:45:33 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:45:60 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:46:25 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:47:26 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:47:64 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:52:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:52:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:53:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:54:33 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:54:67 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:55:25 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:56:26 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:56:64 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:61:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:61:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:62:22 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:62:60 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:63:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:64:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:65:33 Unresolved reference 'SkillInvocation'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:65:54 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:66:25 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:67:26 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:67:64 Unresolved reference 'reason'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:72:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:72:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:73:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:85:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:85:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillExecutionGatewayTest.kt:86:23 Unresolved reference 'SkillExecutionGateway'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:12:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:12:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:14:36 Unresolved reference 'size'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:15:37 Overload resolution ambiguity between candidates:
+fun <T> Array<out T>.all(predicate: (T) -> Boolean): Boolean
+fun BooleanArray.all(predicate: (Boolean) -> Boolean): Boolean
+fun ByteArray.all(predicate: (Byte) -> Boolean): Boolean
+fun CharArray.all(predicate: (Char) -> Boolean): Boolean
+fun DoubleArray.all(predicate: (Double) -> Boolean): Boolean
+fun FloatArray.all(predicate: (Float) -> Boolean): Boolean
+fun IntArray.all(predicate: (Int) -> Boolean): Boolean
+fun LongArray.all(predicate: (Long) -> Boolean): Boolean
+fun ShortArray.all(predicate: (Short) -> Boolean): Boolean
+fun <T> Iterable<T>.all(predicate: (T) -> Boolean): Boolean
+fun <K, V> Map<out K, V>.all(predicate: (Map.Entry<K, V>) -> Boolean): Boolean
+fun UByteArray.all(predicate: (UByte) -> Boolean): Boolean
+fun UIntArray.all(predicate: (UInt) -> Boolean): Boolean
+fun ULongArray.all(predicate: (ULong) -> Boolean): Boolean
+fun UShortArray.all(predicate: (UShort) -> Boolean): Boolean
+fun <T> Sequence<T>.all(predicate: (T) -> Boolean): Boolean
+fun CharSequence.all(predicate: (Char) -> Boolean): Boolean
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:15:41 Unresolved reference 'isBuiltIn'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:15:43 Unresolved reference 'it'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:22:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:22:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:23:21 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:23:61 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:24:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:36:26 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:36:33 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:37:13 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:37:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:37:51 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:37:74 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:38:13 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:38:51 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:38:74 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:50:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:50:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:51:20 Unresolved reference 'not' for operator '!'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:52:24 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:52:70 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:59:17 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:59:31 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:60:15 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:60:55 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:61:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:62:22 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:62:29 Unresolved reference 'SkillParam'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:63:15 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:63:55 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:64:19 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:68:17 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:68:31 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:79:24 Unresolved reference 'SkillRegistry'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:79:38 Unresolved reference 'SkillCatalog'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:80:18 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:80:25 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:81:13 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:81:13 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:81:52 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:81:75 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:82:13 Unresolved reference 'Skill'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:82:52 Unresolved reference 'SkillSource'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:82:75 Unresolved reference 'McpSkillTarget'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/skill/SkillRegistryTest.kt:87:35 Overload resolution ambiguity between candidates:
+fun <T> Array<out T>.isNotEmpty(): Boolean
+fun BooleanArray.isNotEmpty(): Boolean
+fun ByteArray.isNotEmpty(): Boolean
+fun CharArray.isNotEmpty(): Boolean
+fun DoubleArray.isNotEmpty(): Boolean
+fun FloatArray.isNotEmpty(): Boolean
+fun IntArray.isNotEmpty(): Boolean
+fun LongArray.isNotEmpty(): Boolean
+fun ShortArray.isNotEmpty(): Boolean
+fun <T> Collection<T>.isNotEmpty(): Boolean
+fun <K, V> Map<out K, V>.isNotEmpty(): Boolean
+fun CharSequence.isNotEmpty(): Boolean
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:20:9 Unresolved reference 'TaskTemplate'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:32:21 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:38:34 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:43:21 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:51:27 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:56:27 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:61:27 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:61:51 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:61:63 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:69:19 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:69:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:77:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:77:57 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:83:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:83:56 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:89:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:89:53 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:96:19 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:96:54 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:96:61 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:103:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:103:46 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:104:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:104:49 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:109:20 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:109:50 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:115:19 Unresolved reference 'TemplateMatcher'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:115:53 Cannot infer type for this parameter. Please specify it explicitly.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:117:48 Unresolved reference 'executionCount'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:118:44 Unresolved reference 'successCount'.
+e: file:///D:/xkx/xkx_appproj/happy_phone%20agent/app/src/test/java/com/phoneagent/task/TemplateMatcherTest.kt:119:29 Unresolved reference 'failedStreak'.
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileDebugUnitTestKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 15s
