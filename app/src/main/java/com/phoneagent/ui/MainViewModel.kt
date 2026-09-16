@@ -47,6 +47,7 @@ import com.phoneagent.test.TestConfig
 import com.phoneagent.test.TestEngine
 import com.phoneagent.test.TestPreset
 import com.phoneagent.test.TestRunSummary
+import com.phoneagent.ui.components.formatLogTimestamp
 import com.phoneagent.workspace.WorkAreaEngine
 import com.phoneagent.workspace.WorkDisplay
 import com.phoneagent.workspace.EditChatMessage
@@ -451,7 +452,7 @@ class MainViewModel(
             sb.appendLine("任务：${taskName ?: "全部"}  ·  共 ${entries.size} 条")
             sb.appendLine("═".repeat(48))
             entries.forEach { e ->
-                sb.append("[${levelTag(e.level)}] ${formatTs(e.timestamp)} ${e.message}")
+                sb.append("[${levelTag(e.level)}] ${formatLogTimestamp(e.timestamp)} ${e.message}")
                 e.detail?.let { sb.appendLine("\n$it") }
                 sb.appendLine()
             }
@@ -496,7 +497,7 @@ class MainViewModel(
                             add(
                                 kotlinx.serialization.json.buildJsonObject {
                                     put("ts", l.timestamp)
-                                    put("time", formatTs(l.timestamp))
+                                    put("time", formatLogTimestamp(l.timestamp))
                                     put("level", l.level.name)
                                     put("message", l.message)
                                     l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", it) }
@@ -561,7 +562,7 @@ class MainViewModel(
             }
             sb.appendLine("\n-- 系统日志 (Logs，含 API) --")
             logs.value.forEach { l ->
-                sb.appendLine("[${formatTs(l.timestamp)}][${l.level.name}] ${com.phoneagent.security.DataSanitizer.sanitize(l.message)}")
+                sb.appendLine("[${formatLogTimestamp(l.timestamp)}][${l.level.name}] ${com.phoneagent.security.DataSanitizer.sanitize(l.message)}")
                 l.detail?.takeIf { it.isNotBlank() }?.let { sb.appendLine("    ${com.phoneagent.security.DataSanitizer.sanitize(it)}") }
             }
             sb.appendLine("\n-- 对话 (Conversation) --")
@@ -599,9 +600,6 @@ class MainViewModel(
         AgentLog.Level.INFO -> "信息"
         AgentLog.Level.API -> "API"
     }
-
-    private fun formatTs(t: Long): String =
-        java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date(t))
 
     // ==================== HPA 迭代 A7：Skill / MCP / 提示词 / 无线 ADB UI ====================
 

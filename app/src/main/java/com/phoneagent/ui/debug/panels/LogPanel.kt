@@ -77,8 +77,8 @@ import com.phoneagent.model.ConversationMessage
 import com.phoneagent.debug.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.formatClock
 import com.phoneagent.ui.debug.DebugEmptyHint
-import com.phoneagent.ui.debug.formatTime
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
@@ -199,7 +199,7 @@ private fun LogRow(entry: AgentLog) {
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                formatTime(entry.timestamp),
+                formatClock(entry.timestamp),
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

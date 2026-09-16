@@ -66,6 +66,8 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.components.formatFileTime
+import com.phoneagent.ui.components.formatSize
 import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
@@ -75,9 +77,6 @@ import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.workspace.WorkDisplay
 import com.phoneagent.workspace.WorkFile
 import com.phoneagent.workspace.WorkLog
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** 文件入口卡片：显示文件数量与最新文件，点击进入独立文件列表页 */
 @Composable
@@ -178,7 +177,7 @@ fun FileRow(
                     fontWeight = FontWeight.Medium,
                 )
                 Text(
-                    "${formatSize(file.sizeBytes)} · ${formatTime(file.modifiedAt)}",
+                    "${formatSize(file.sizeBytes)} · ${formatFileTime(file.modifiedAt)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -201,19 +200,4 @@ fun FileRow(
             }
         }
     }
-}
-
-private fun formatSize(bytes: Long): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
-    else -> "${"%.1f".format(bytes / 1024.0 / 1024.0)} MB"
-}
-
-private fun formatTime(millis: Long): String {
-    val now = System.currentTimeMillis()
-    val fmt = if (now - millis < 24 * 3600 * 1000L)
-        SimpleDateFormat("HH:mm", Locale.getDefault())
-    else
-        SimpleDateFormat("MM-dd", Locale.getDefault())
-    return fmt.format(Date(millis))
 }
