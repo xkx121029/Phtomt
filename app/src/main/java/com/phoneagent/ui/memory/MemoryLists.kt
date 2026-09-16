@@ -65,6 +65,7 @@ import com.phoneagent.memory.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
+import com.phoneagent.ui.components.SectionCard
 import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
@@ -120,7 +121,7 @@ internal fun AnomalyList(anomalies: List<AnomalyMemoryEntry>, onClear: () -> Uni
     SectionCard(
         title = "异常经验",
         count = anomalies.size,
-        color = MemoryAnomaly,
+        countColor = MemoryAnomaly,
         onClear = onClear,
     ) {
         if (anomalies.isEmpty()) {
@@ -157,7 +158,7 @@ internal fun ProfileList(profiles: List<ProfileEntry>, onClear: () -> Unit) {
     SectionCard(
         title = "用户画像",
         count = profiles.size,
-        color = MemoryProfile,
+        countColor = MemoryProfile,
         onClear = onClear,
     ) {
         if (profiles.isEmpty()) {
@@ -182,47 +183,6 @@ internal fun ProfileList(profiles: List<ProfileEntry>, onClear: () -> Unit) {
                     )
                 }
             }
-        }
-    }
-}
-
-/** 分区卡片：标题 + 计数 + 清空按钮 */
-@Composable
-private fun SectionCard(
-    title: String,
-    count: Int,
-    color: Color,
-    onClear: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "$count",
-                    style = MaterialTheme.typography.labelMedium.copy(color = color),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(AppRadii.Chip))
-                        .background(color.copy(alpha = 0.15f))
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                if (count > 0) {
-                    androidx.compose.material3.TextButton(onClick = onClear) {
-                        Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("清空")
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            content()
         }
     }
 }

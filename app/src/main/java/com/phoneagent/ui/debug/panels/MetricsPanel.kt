@@ -77,6 +77,7 @@ import com.phoneagent.model.ConversationMessage
 import com.phoneagent.debug.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.StatTile
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
@@ -91,33 +92,33 @@ internal fun MetricsPanel(m: AgentMetrics) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("请求", "${m.requestCount}", "次", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                MetricCard("总 Tokens", "${m.totalTokens}", "", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+                StatTile("请求", "${m.requestCount}", MaterialTheme.colorScheme.primary, Modifier.weight(1f), unit = "次")
+                StatTile("总 Tokens", "${m.totalTokens}", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("本轮耗时", "${m.lastLatencyMs}", "ms", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                MetricCard("平均耗时", "${m.avgLatencyMs}", "ms", Success, Modifier.weight(1f))
+                StatTile("本轮耗时", "${m.lastLatencyMs}", MaterialTheme.colorScheme.secondary, Modifier.weight(1f), unit = "ms")
+                StatTile("平均耗时", "${m.avgLatencyMs}", Success, Modifier.weight(1f), unit = "ms")
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("输入 Tokens", "${m.promptTokens}", "", Warning, Modifier.weight(1f))
-                MetricCard("输出 Tokens", "${m.completionTokens}", "", MaterialTheme.colorScheme.error, Modifier.weight(1f))
+                StatTile("输入 Tokens", "${m.promptTokens}", Warning, Modifier.weight(1f))
+                StatTile("输出 Tokens", "${m.completionTokens}", MaterialTheme.colorScheme.error, Modifier.weight(1f))
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                MetricCard("视觉识别", "${m.visionCount}次/均${m.avgVisionMs}ms", "", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                MetricCard("动作执行", "${m.execCount}次/均${m.avgExecMs}ms", "", Success, Modifier.weight(1f))
+                StatTile("视觉识别", "${m.visionCount}次/均${m.avgVisionMs}ms", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                StatTile("动作执行", "${m.execCount}次/均${m.avgExecMs}ms", Success, Modifier.weight(1f))
             }
         }
         item {
             MethodCard(m)
         }
         item {
-            MetricCard("生成速度", String.format(Locale.US, "%.1f", m.tokensPerSec), "tok/s", MaterialTheme.colorScheme.tertiary, Modifier.fillMaxWidth())
+            StatTile("生成速度", String.format(Locale.US, "%.1f", m.tokensPerSec), MaterialTheme.colorScheme.tertiary, Modifier.fillMaxWidth(), unit = "tok/s")
         }
     }
 }
@@ -157,30 +158,5 @@ private fun LegendDot(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(color))
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun MetricCard(title: String, value: String, unit: String, accent: Color, modifier: Modifier = Modifier) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(AppRadii.Item),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(value, style = MaterialTheme.typography.headlineMedium, color = accent, fontWeight = FontWeight.Bold)
-                if (unit.isNotBlank()) {
-                    Spacer(Modifier.width(4.dp))
-                    Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
-                }
-            }
-        }
     }
 }
