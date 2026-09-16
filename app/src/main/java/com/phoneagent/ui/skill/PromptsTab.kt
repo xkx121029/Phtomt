@@ -89,45 +89,78 @@ import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
 
-/**
- * 技能与能力管理页（HPA 迭代 A7）。
- * Tab 栏布局：技能 / MCP / 无线 ADB / 提示词。
- * - 技能：Skill 卡片列表 + 批量增删 + 新建/编辑/详情
- * - MCP：配置服务器 + 有效性测试 + 绑定为 Skill
- * - 无线 ADB：Shizuku 状态 + 无线调试配对引导（配对码输入/连接状态/错误提示）
- * - 提示词：自定义可变提示词模板
- */
+// ============ 提示词 Tab ============
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    var tab by remember { mutableStateOf(SkillTab.SKILLS) }
-    Column(modifier = modifier.fillMaxSize()) {
-        AppTopBar(
-            title = "技能与能力",
-            subtitle = "Skill · MCP · 无线 ADB · 提示词",
+internal fun PromptsTab(vm: MainViewModel) {
+    val templates by vm.templates.collectAsState()
+    var editing by remember { mutableStateOf<PromptTemplate?>(null) }
+
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "可变提示词模板。正文支持 {task}{skills}{mcpTools}{controls}{currentApp}{lastResult}{goal}{auditRejection}{situational} 等占位符，空模板将回退内置默认。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            SkillTab.entries.forEachIndexed { index, t ->
-                SegmentedButton(
-                    selected = tab == t,
-                    onClick = { tab = t },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = SkillTab.entries.size),
-                ) { Text(t.label) }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+            items(templates, key = { it.id }) { t ->
+                AppItemCard(onClick = { editing = t }) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(t.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                t.body.ifBlank { "（空模板 → 使用内置默认）" },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (t.isBuiltIn) StatusPill("内置", MaterialTheme.colorScheme.onSurfaceVariant) else IconButton(onClick = { editing = t }) { Icon(Icons.Filled.Edit, contentDescription = "编辑") }
+                    }
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        when (tab) {
-            SkillTab.SKILLS -> SkillsTab(vm)
-            SkillTab.MCP -> McpTab(vm)
-            SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
-            SkillTab.PROMPTS -> PromptsTab(vm)
-        }
+    }
+
+    editing?.let { t ->
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("编辑提示词：${t.name}") },
+            text = {
+                PromptEditor(template = t, onSave = { body ->
+                    vm.saveTemplate(t.id, t.name, body)
+                    editing = null
+                })
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { editing = null }) { Text("关闭") }
+            },
+        )
     }
 }
 
-private enum class SkillTab(val label: String) {
-    SKILLS("技能"),
-    MCP("MCP"),
-    WIRELESS_ADB("无线ADB"),
-    PROMPTS("提示词"),
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PromptEditor(template: PromptTemplate, onSave: (String) -> Unit) {
+    var body by remember { mutableStateOf(template.body) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = body,
+            onValueChange = { body = it },
+            label = { Text("模板正文") },
+            modifier = Modifier.fillMaxWidth().height(200.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { onSave(body) }) { Text("恢复默认") }
+            Spacer(Modifier.weight(1f))
+            Button(onClick = { onSave(body) }) { Text("保存") }
+        }
+    }
 }
