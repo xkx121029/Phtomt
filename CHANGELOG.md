@@ -6,6 +6,69 @@
 
 ---
 
+## [v0.1.310] — 2026-09-16
+
+对应提交 `74efefb`（重构区间 `2e906f3..74efefb`）。
+
+本轮为纯结构调整：行为零变化（UI 参数、控制流、提示词、导出文案均未改动），目标是「文件职责单一、包名即层级」。
+
+### 重构
+
+- **UI 超大页面瘦身**：7 个 Compose 页面（537~1119 行）拆为约 30 个职责单一文件，根页面只保留入口与 Tab 定义
+  - `ui/skill/SkillManagerScreen.kt` 1119 → 133 行：拆出 `SkillsTab` / `SkillEditorDialog` / `McpTab` / `WirelessAdbTab` / `PromptsTab`
+  - `ui/debug/DebugScreen.kt` 1098 → 234 行：拆出 `DebugTabs` / `CapabilityStrip` / `DebugFormatters` + `panels/`（StepShot / Metrics / Chat / Log / History / Steps / Timeline）
+  - `ui/workspace/WorkAreaScreen.kt` 688 → 171 行：拆出 `WorkFilesEntry` / `WorkGenerateCard` / `WorkPreviewCard` / `WorkLogStream` / `WorkDisplayPanel`
+  - `ui/memory/MemoryGraphScreen.kt` → 184 行：拆出 `MemoryGraphCanvas` / `MemoryStats` / `MemoryLists`
+  - `ui/home/HomeScreen.kt` 580 → 298 行：拆出 `HomeHero` / `PermissionRadarCard` / `HomeCards`
+  - `ui/agent/AgentScreen.kt` 577 → 121 行：拆出 `AgentText` / `PlanPanel` / `AgentCards`
+  - `ui/test/TestScreen.kt` 556 → 332 行：拆出 `TestPresetCard` / `TestResultViews`
+- **UI 重复实现收敛**
+  - `EmptyHint` 三份 → 统一到 `ui/components/Components.kt`（Debug 侧改名 `DebugEmptyHint`，规避同包顶层重名）
+  - `MetricCard` / `StatCard` 结构同构 → 合并为 `StatTile(title, value, unit, accent)`
+  - 手搓 `Card(shape = …)` → 收敛到 `Components.kt` 的 `SectionCard(title, count, countColor, onClear)`
+  - 新增 `ui/components/Formatters.kt`：`formatClock` / `formatFileTime` / `formatSize` 三处同构实现归一
+  - `ui/theme/Theme.kt` 新增 `AppSpacing`（4 / 8 / 12 / 16dp），替换页面内硬编码间距
+  - `ui/agent/AgentScreen.kt` 的 `isMostlyChinese` 副本删除，改调 `domain.rules.EngineRules.isMostlyChinese`
+- **全量搬包重分层**：148 个主源文件 `package` 与所在目录 100% 对齐，顶层包即未来 Gradle 模块边界
+  - `core/`：`ai`(4) · `security`(1) · `text`(1，HumanTranslator) · `notify`(3)
+  - `domain/`：`model`(9) · `rules`(3，EngineRules / ShellCommands / LocalDecisionEngine)
+  - `data/`：`prefs`(1) · `store`(5，原 `memory` / `task` / `debug` / `mcp` / `prompt` 五处持久化收敛) · `export`(1)
+  - `device/`：`a11y`(2) · `shell`(14，原 `shizuku` + `shizuku/adb` 扁平化) · `screen`(2) · `vision`(2)
+  - `engine/`：根(2，AgentEngine / AgentPrompts) · `execution`(5) · `perception`(3) · `network`(1) · `prompt`(1)
+  - `overlay/`：原 `floating` 全部 5 个
+  - `feature/`：`task`(1) · `skill`(5) · `mcp`(6) · `workspace`(1) · `adskip`(2) · `edge`(2) · `test`(4)
+  - `ui/`：原结构 + 新增 `ui/model`（PermissionRadar）
+- **日志导出逻辑外迁**：新增 `data/export/LogExporter.kt`
+  - 自 `MainViewModel` 迁出约 160 行文件导出实现（文本日志 / 分任务 JSON / 诊断报告）
+  - `MainViewModel` 仅保留 3 个薄委托方法，UI 调用点零改动
+  - 导出文案、字段、排版逐字保留；落盘参数抽为 `downloadValues()` 统一
+  - `formatLogTimestamp` 随之迁入数据层，避免 `data → ui` 反向依赖
+
+### 移除
+
+- `engine/AgentPrompt.kt`（原 `agent/AgentPrompt.kt`）：全项目零引用死代码
+- `app/build.gradle.kts`：未使用的 `androidx.navigation.compose` 依赖（全项目零引用）
+
+### 测试
+
+- 新增 `data/export/LogExporterTest.kt`（10 个用例）：空日志、指定任务无匹配、系统日志归组、多任务批量、诊断报告翻译 + 脱敏路径
+- 测试源集补齐跨包 import（23 个测试类）
+
+### 兼容性
+
+- `AndroidManifest.xml` 5 处组件路径同步：`.device.a11y.AgentAccessibilityService` / `.device.screen.ScreenSharingService` / `.overlay.FloatingWindowService` / `.feature.edge.EdgeLightingService` / `.device.shell.AdbPairingReceiver`
+- 跨仓库与跨组件的不透明标识符一律未改：`com.phoneagent.floating.STOP`、`com.phoneagent.edge.*`、`com.phoneagent.action.RECEIVE_PAIRING_CODE`、`com.phoneagent.agent_progress_overlay`，以及外挂 APK 契约包名 `com.phoneagent.ondevice`
+- `proguard-rules.pro` 使用 `com.phoneagent.**` 通配符，keep 规则不受搬包影响
+- `res/xml/accessibility_service_config.xml` 的 `settingsActivity` 指向 `com.phoneagent.ui.MainActivity`，`ui/` 位置未变
+
+### 基础设施
+
+- 单测基线不下滑：24 suites / 242 tests / 0 failed / 3 skipped（重构前 232 tests）
+- `:app:lintDebug` / `:app:assembleDebug` / `:app:assembleRelease` 全部通过
+- 打 tag `refactor-baseline` 锚定搬包前状态
+
+---
+
 ## [v0.1.265] — 2026-09-13
 
 ### 新增
