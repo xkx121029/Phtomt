@@ -106,6 +106,16 @@ object IntentType {
     const val SWITCH = "switch"           // 切换开关状态
     const val CLEAR_INPUT = "clear_input" // 清空输入框
 
+    /**
+     * 全部合法意图（转译层能识别的意图全集）。
+     * 供判分/白名单校验使用：AI 输出的 intent 不在此集合内即为非法意图。
+     */
+    val ALL: Set<String> = setOf(
+        OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, FINISH, GIVE_UP,
+        BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
+        SWITCH, CLEAR_INPUT,
+    )
+
     /** 意图 → 内部执行动作（AgentAction.type）的映射。供转译层把意图变成命令。 */
     val TO_ACTION: Map<String, String> = mapOf(
         OPEN_APP to ActionType.LAUNCH,
