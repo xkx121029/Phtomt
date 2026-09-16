@@ -1,10 +1,10 @@
 package com.phoneagent.mcp
 
-import com.phoneagent.skill.McpSkillTarget
-import com.phoneagent.skill.Skill
-import com.phoneagent.skill.SkillParam
-import com.phoneagent.skill.SkillRegistry
-import com.phoneagent.skill.SkillSource
+import com.phoneagent.feature.skill.McpSkillTarget
+import com.phoneagent.feature.skill.Skill
+import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillRegistry
+import com.phoneagent.feature.skill.SkillSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -1,8 +1,8 @@
 package com.phoneagent.execution
 
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.serialization.json.Json

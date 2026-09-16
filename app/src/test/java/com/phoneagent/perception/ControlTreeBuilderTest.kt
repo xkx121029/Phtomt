@@ -1,7 +1,7 @@
 package com.phoneagent.perception
 
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

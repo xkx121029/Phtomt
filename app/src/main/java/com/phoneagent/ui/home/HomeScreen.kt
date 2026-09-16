@@ -64,9 +64,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.model.PermissionItem
-import com.phoneagent.model.PermissionKind
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.ui.model.PermissionItem
+import com.phoneagent.ui.model.PermissionKind
 import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
@@ -106,7 +106,7 @@ fun HomeScreen(
     fun testVisual() {
         scope.launch {
             visualChecking = true
-            visualConn = com.phoneagent.vision.ExternalVisionProvider.checkConnection(context)
+            visualConn = com.phoneagent.device.vision.ExternalVisionProvider.checkConnection(context)
             visualChecking = false
         }
     }
@@ -199,7 +199,7 @@ fun HomeScreen(
             checking = visualChecking,
             onTest = ::testVisual,
             onOpenExternal = {
-                if (!com.phoneagent.vision.ExternalVisionProvider.launchApp(context)) {
+                if (!com.phoneagent.device.vision.ExternalVisionProvider.launchApp(context)) {
                     android.widget.Toast.makeText(
                         context,
                         "未检测到外挂视觉 APK（com.phoneagent.ondevice），请先安装后重试",

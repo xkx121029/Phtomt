@@ -1,4 +1,4 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -11,9 +11,9 @@ import androidx.core.app.RemoteInput
  */
 class AdbPairingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != com.phoneagent.notify.AdbPairingNotifier.ACTION_RECEIVE_CODE) return
+        if (intent.action != com.phoneagent.core.notify.AdbPairingNotifier.ACTION_RECEIVE_CODE) return
         val code = RemoteInput.getResultsFromIntent(intent)
-            ?.getCharSequence(com.phoneagent.notify.AdbPairingNotifier.EXTRA_RESULT)
+            ?.getCharSequence(com.phoneagent.core.notify.AdbPairingNotifier.EXTRA_RESULT)
             ?.toString()
             ?.trim()
         if (code.isNullOrEmpty()) return

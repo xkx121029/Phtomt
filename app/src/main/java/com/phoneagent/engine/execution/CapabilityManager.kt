@@ -1,8 +1,8 @@
 package com.phoneagent.execution
 
 import android.content.Context
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.shizuku.ShizukuManager
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.device.shell.ShizukuManager
 
 /**
  * 当前授权模式检测与缓存（对应 HPA动作执行逻辑优化文档 v2.1 四、转译层 4.2）。

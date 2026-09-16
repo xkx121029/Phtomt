@@ -71,10 +71,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.debug.HumanTranslator
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.debug.DebugEmptyHint
@@ -90,7 +90,7 @@ import kotlinx.coroutines.launch
 /** 「任务」页：按任务分组展示每一步决策的发送/返回/Token/延迟/视觉/思考/截图 */
 @Composable
 internal fun StepsPanel(
-    traces: List<com.phoneagent.model.StepTrace>,
+    traces: List<com.phoneagent.domain.model.StepTrace>,
     annotatedMap: Map<Int, android.graphics.Bitmap>,
     humanMode: Boolean,
 ) {
@@ -124,7 +124,7 @@ internal fun TaskHeader(name: String, count: Int) {
 
 /** 单个决策步骤的详细卡：截图/发送/返回/Token/延迟/视觉模型/思考/AI图片描述 */
 @Composable
-private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android.graphics.Bitmap?, humanMode: Boolean) {
+private fun StepTraceCard(tr: com.phoneagent.domain.model.StepTrace, annotated: android.graphics.Bitmap?, humanMode: Boolean) {
     var expanded by remember { mutableStateOf(false) }
     val img = annotated ?: tr.screenshot
     val visionColor = when (tr.visionSource) {
@@ -258,7 +258,7 @@ private fun StepTraceCard(tr: com.phoneagent.model.StepTrace, annotated: android
 }
 
 /** 在截图上用外挂/OCR 识别的控件画框并标注用途、文字 */
-internal fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagent.vision.DetectedControl>): android.graphics.Bitmap {
+internal fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagent.device.vision.DetectedControl>): android.graphics.Bitmap {
     val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
     val canvas = android.graphics.Canvas(out)
     val strokeW = (out.width / 220f).coerceIn(2f, 5f)

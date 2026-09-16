@@ -1,4 +1,4 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
 import android.annotation.SuppressLint
 import android.content.Context

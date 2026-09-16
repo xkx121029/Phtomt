@@ -60,8 +60,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.phoneagent.memory.AnomalyMemoryEntry
-import com.phoneagent.memory.ProfileEntry
+import com.phoneagent.data.store.AnomalyMemoryEntry
+import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale

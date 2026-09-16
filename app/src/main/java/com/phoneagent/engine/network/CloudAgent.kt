@@ -1,10 +1,10 @@
 package com.phoneagent.network
 
-import com.phoneagent.ai.AiClient
-import com.phoneagent.ai.ChatMessageDto
-import com.phoneagent.ai.ContentPart
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.execution.VerifyResult
+import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ChatMessageDto
+import com.phoneagent.core.ai.ContentPart
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.engine.execution.VerifyResult
 
 /**
  * 云端 Agent 接口补充：执行验证 / 用户指导。

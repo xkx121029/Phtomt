@@ -1,10 +1,10 @@
 package com.phoneagent.agent
 
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.ActionType
-import com.phoneagent.model.IntentType
-import com.phoneagent.model.ScreenSnapshot
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.model.ScreenSnapshot
 
 /**
  * AgentEngine 纯逻辑规则集（无 Android / Activity 依赖，可单测）。

@@ -1,8 +1,8 @@
 package com.phoneagent.adskip
 
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
-import com.phoneagent.perception.effectiveLabel
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.perception.effectiveLabel
 
 /**
  * 广告内容过滤结果。

@@ -50,7 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentState
+import com.phoneagent.domain.model.AgentState
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
@@ -67,7 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import com.phoneagent.screen.ScreenSharingService
+import com.phoneagent.device.screen.ScreenSharingService
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.emptyStateIconColor
 import com.phoneagent.ui.theme.emptyStateTextColor

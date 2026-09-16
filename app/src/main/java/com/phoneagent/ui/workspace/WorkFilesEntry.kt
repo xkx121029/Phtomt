@@ -74,9 +74,9 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.contentSpringSpec
-import com.phoneagent.workspace.WorkDisplay
-import com.phoneagent.workspace.WorkFile
-import com.phoneagent.workspace.WorkLog
+import com.phoneagent.feature.workspace.WorkDisplay
+import com.phoneagent.feature.workspace.WorkFile
+import com.phoneagent.feature.workspace.WorkLog
 
 /** 文件入口卡片：显示文件数量与最新文件，点击进入独立文件列表页 */
 @Composable

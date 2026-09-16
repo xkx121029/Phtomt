@@ -1,8 +1,8 @@
 package com.phoneagent.execution
 
-import com.phoneagent.model.AgentIntentTarget
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

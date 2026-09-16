@@ -1,14 +1,14 @@
 package com.phoneagent.execution
 
 import android.util.Log
-import com.phoneagent.execution.CapabilityManager.Mode
-import com.phoneagent.model.ActionTarget
-import com.phoneagent.model.ActionType
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.AgentIntentTarget
-import com.phoneagent.model.IntentType
-import com.phoneagent.model.ScreenSnapshot
+import com.phoneagent.engine.execution.CapabilityManager.Mode
+import com.phoneagent.domain.model.ActionTarget
+import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.model.ScreenSnapshot
 
 private const val TAG = "IntentTranslator"
 

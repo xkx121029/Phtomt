@@ -5,8 +5,8 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume

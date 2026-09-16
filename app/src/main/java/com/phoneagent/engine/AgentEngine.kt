@@ -2,53 +2,53 @@ package com.phoneagent.agent
 
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
-import com.phoneagent.a11y.ActionExecutor
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.ai.AiClient
-import com.phoneagent.ai.ChatMessageDto
-import com.phoneagent.ai.ContentPart
-import com.phoneagent.ai.GlmDefaults
+import com.phoneagent.device.a11y.ActionExecutor
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ChatMessageDto
+import com.phoneagent.core.ai.ContentPart
+import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.data.prefs.AppSettings
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import com.phoneagent.decision.LocalDecisionEngine
-import com.phoneagent.execution.AppNameResolver
-import com.phoneagent.execution.CapabilityManager
-import com.phoneagent.execution.IntentResolver
-import com.phoneagent.execution.IntentTranslator
-import com.phoneagent.execution.VerifiedClickExecutor
-import com.phoneagent.floating.FloatingWindowService
-import com.phoneagent.memory.AnomalyMemoryEngine
-import com.phoneagent.memory.MemoryStore
-import com.phoneagent.memory.ProfileLearner
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.ActionTarget
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.IntentType
+import com.phoneagent.domain.rules.LocalDecisionEngine
+import com.phoneagent.engine.execution.AppNameResolver
+import com.phoneagent.engine.execution.CapabilityManager
+import com.phoneagent.engine.execution.IntentResolver
+import com.phoneagent.engine.execution.IntentTranslator
+import com.phoneagent.engine.execution.VerifiedClickExecutor
+import com.phoneagent.overlay.FloatingWindowService
+import com.phoneagent.data.store.AnomalyMemoryEngine
+import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.data.store.ProfileLearner
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.ActionTarget
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.IntentType
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.AgentState
-import com.phoneagent.model.ActionType
-import com.phoneagent.model.Clarification
-import com.phoneagent.model.ClarificationOption
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.model.PlanResponse
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.StepRecord
-import com.phoneagent.model.StepShot
-import com.phoneagent.model.TaskPlan
-import com.phoneagent.model.UiElement
-import com.phoneagent.network.CloudAgent
-import com.phoneagent.perception.PageAnnotator
-import com.phoneagent.perception.effectiveLabel
-import com.phoneagent.screen.ScreenCapture
-import com.phoneagent.security.DataSanitizer
-import com.phoneagent.security.SensitivePageDetector
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.model.Clarification
+import com.phoneagent.domain.model.ClarificationOption
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.domain.model.PlanResponse
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.domain.model.StepShot
+import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.network.CloudAgent
+import com.phoneagent.engine.perception.PageAnnotator
+import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.device.screen.ScreenCapture
+import com.phoneagent.core.security.DataSanitizer
+import com.phoneagent.core.security.SensitivePageDetector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -83,10 +83,10 @@ class AgentEngine(
     private val settings: AppSettings,
     private val aiClient: AiClient,
     private val appContext: android.content.Context,
-    private val shizukuManager: com.phoneagent.shizuku.ShizukuManager? = null,
-    private val adbTransport: com.phoneagent.shizuku.adb.AdbBootstrapTransport? = null,
-    private val workAreaEngine: com.phoneagent.workspace.WorkAreaEngine? = null,
-    private val mcpManager: com.phoneagent.mcp.McpManager? = null,
+    private val shizukuManager: com.phoneagent.device.shell.ShizukuManager? = null,
+    private val adbTransport: com.phoneagent.device.shell.AdbBootstrapTransport? = null,
+    private val workAreaEngine: com.phoneagent.feature.workspace.WorkAreaEngine? = null,
+    private val mcpManager: com.phoneagent.feature.mcp.McpManager? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
@@ -170,8 +170,8 @@ class AgentEngine(
     val executionHistory: StateFlow<List<StepRecord>> get() = _executionHistory.asStateFlow()
     val stepShot: StateFlow<StepShot> get() = _stepShot.asStateFlow()
     /** 每步 AI 决策的详细追踪（Debug「按任务分类」页面展示） */
-    private val _traces = MutableStateFlow<List<com.phoneagent.model.StepTrace>>(emptyList())
-    val traces: StateFlow<List<com.phoneagent.model.StepTrace>> get() = _traces.asStateFlow()
+    private val _traces = MutableStateFlow<List<com.phoneagent.domain.model.StepTrace>>(emptyList())
+    val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> get() = _traces.asStateFlow()
 
     // ---- 规划/澄清/批准流程 ----
     private val _planPhase = MutableStateFlow<PlanPhase>(PlanPhase.Idle)
@@ -356,13 +356,13 @@ class AgentEngine(
         _executionHistory.value = emptyList()
         _traces.value = emptyList()
         // 同步清空磁盘持久化，避免重启后旧调试记录被再次回载
-        com.phoneagent.debug.DebugRecordsStore.clear(appContext)
+        com.phoneagent.data.store.DebugRecordsStore.clear(appContext)
     }
 
     /** 把当前的日志/轨迹/执行历史/对话持久化到磁盘（重启后 Debug 页回载查看） */
     private fun persistDebug() {
         runCatching {
-            com.phoneagent.debug.DebugRecordsStore.save(
+            com.phoneagent.data.store.DebugRecordsStore.save(
                 appContext, _logs.value, _traces.value, _executionHistory.value, _conversation.value,
             )
         }
@@ -371,7 +371,7 @@ class AgentEngine(
     init {
         // 启动时回载上次的调试记录：日志/轨迹（含截图缩略图）/执行历史/对话，实现持久化
         runCatching {
-            val p = com.phoneagent.debug.DebugRecordsStore.load(appContext) ?: return@runCatching
+            val p = com.phoneagent.data.store.DebugRecordsStore.load(appContext) ?: return@runCatching
             _logs.value = p.logs
             _traces.value = p.traces
             _executionHistory.value = p.history
@@ -385,7 +385,7 @@ class AgentEngine(
         // 预热：若启用外挂视觉，异步预加载端侧 3B 模型，避免首次决策阻塞在模型加载
         scope.launch {
             val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
-            if (ext) com.phoneagent.vision.ExternalVisionProvider.loadModel(appContext)
+            if (ext) com.phoneagent.device.vision.ExternalVisionProvider.loadModel(appContext)
         }
         // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
         _stepShot.value = StepShot()
@@ -407,12 +407,12 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "开始规划任务：$task")
         scope.launch {
             // 模板命中（v2.2 6.5）：目标相似且健康 → 直接复用历史脚本，零云端规划调用
-            val tmpl = runCatching { com.phoneagent.task.TaskStore.matchTemplate(appContext, task) }.getOrNull()
+            val tmpl = runCatching { com.phoneagent.data.store.TaskStore.matchTemplate(appContext, task) }.getOrNull()
             if (tmpl != null && tmpl.plan.steps.isNotEmpty()) {
                 activePlan = tmpl.plan
                 reusedTemplateId = tmpl.id
                 _planStream.value = "【模板复用】已匹配历史模板「${tmpl.goal}」，脚本 ${tmpl.plan.steps.size} 步，免规划"
-                runCatching { com.phoneagent.task.TaskStore.bumpExecution(appContext, tmpl.id) }
+                runCatching { com.phoneagent.data.store.TaskStore.bumpExecution(appContext, tmpl.id) }
                 _planPhase.value = PlanPhase.AwaitingApproval(tmpl.plan)
                 val summary = tmpl.plan.steps.joinToString("\n") {
                     "${it.description}" + if (it.intent.isNotBlank()) " → ${it.intent}" else ""
@@ -568,7 +568,7 @@ class AgentEngine(
                 val opts = clarObj?.get("options") as? kotlinx.serialization.json.JsonArray
                 val options = opts?.mapNotNull { opt ->
                     val o = opt as? JsonObject ?: return@mapNotNull null
-                    com.phoneagent.model.ClarificationOption(
+                    com.phoneagent.domain.model.ClarificationOption(
                         id = o["id"]?.jsonPrimitive?.contentOrNull ?: "",
                         label = o["label"]?.jsonPrimitive?.contentOrNull ?: "",
                         description = o["description"]?.jsonPrimitive?.contentOrNull ?: "",
@@ -576,15 +576,15 @@ class AgentEngine(
                     )
                 } ?: emptyList()
                 log(AgentLog.Level.AI, "需要澄清：$question")
-                PlanPhase.Clarifying(com.phoneagent.model.Clarification(question = question, options = options))
+                PlanPhase.Clarifying(com.phoneagent.domain.model.Clarification(question = question, options = options))
             } else {
                 val planObj = root["plan"]?.jsonObject
                 if (planObj != null) {
                     val stepsRaw = planObj["steps"] as? kotlinx.serialization.json.JsonArray
-                    val steps = if (stepsRaw != null) com.phoneagent.model.parseTaskSteps(stepsRaw) else emptyList()
+                    val steps = if (stepsRaw != null) com.phoneagent.domain.model.parseTaskSteps(stepsRaw) else emptyList()
                     val estimatedTime = planObj["estimated_time_seconds"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
                     val confidence = planObj["confidence"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
-                    val plan = com.phoneagent.model.TaskPlan(steps = steps, estimatedTimeSeconds = estimatedTime, confidence = confidence)
+                    val plan = com.phoneagent.domain.model.TaskPlan(steps = steps, estimatedTimeSeconds = estimatedTime, confidence = confidence)
                     activePlan = plan
                     log(AgentLog.Level.AI, "规划完成：${plan.steps.size} 步")
                     PlanPhase.AwaitingApproval(plan)
@@ -619,8 +619,8 @@ class AgentEngine(
     private fun extractJsonBackward(text: String): String? = EngineRules.extractJsonBackward(text)
 
     /** 查询最近一次任务的检查点（供中断后展示/续传） */
-    suspend fun lastCheckpoint(): com.phoneagent.task.Checkpoint? =
-        runCatching { com.phoneagent.task.TaskStore.loadCheckpoint(appContext) }.getOrNull()
+    suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? =
+        runCatching { com.phoneagent.data.store.TaskStore.loadCheckpoint(appContext) }.getOrNull()
 
     /**
      * 断点续传（v2.2 5.3）：用最近一次检查点保存的任务与计划，重新启动该任务。
@@ -628,17 +628,17 @@ class AgentEngine(
      */
     fun resumeFromCheckpoint() {
         scope.launch {
-            val ck = runCatching { com.phoneagent.task.TaskStore.loadCheckpoint(appContext) }.getOrNull()
+            val ck = runCatching { com.phoneagent.data.store.TaskStore.loadCheckpoint(appContext) }.getOrNull()
                 ?: return@launch
             val plan = ck.planJson
-                ?.let { runCatching { json.decodeFromString(com.phoneagent.model.TaskPlan.serializer(), it) }.getOrNull() }
+                ?.let { runCatching { json.decodeFromString(com.phoneagent.domain.model.TaskPlan.serializer(), it) }.getOrNull() }
                 ?: return@launch
             if (plan.steps.isEmpty()) return@launch
             pendingTask = ck.task
             activePlan = plan
             log(AgentLog.Level.INFO, "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步）")
-            com.phoneagent.debug.ActiveNotifier.notify(
-                appContext, com.phoneagent.debug.ActiveNotifier.ID_CHECKPOINT,
+            com.phoneagent.core.notify.ActiveNotifier.notify(
+                appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CHECKPOINT,
                 "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步。",
             )
             if (job?.isActive != true) {
@@ -648,18 +648,18 @@ class AgentEngine(
     }
 
     /** 设置执行策略（v2.2 7，热切换一路生效） */
-    suspend fun setExecutionStrategy(s: com.phoneagent.task.ExecutionStrategy) {
-        runCatching { com.phoneagent.task.TaskStore.setStrategy(appContext, s) }
+    suspend fun setExecutionStrategy(s: com.phoneagent.data.store.ExecutionStrategy) {
+        runCatching { com.phoneagent.data.store.TaskStore.setStrategy(appContext, s) }
     }
 
-    suspend fun currentStrategy(): com.phoneagent.task.ExecutionStrategy =
-        runCatching { com.phoneagent.task.TaskStore.getStrategy(appContext) }
-            .getOrDefault(com.phoneagent.task.ExecutionStrategy.AUTO)
+    suspend fun currentStrategy(): com.phoneagent.data.store.ExecutionStrategy =
+        runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
+            .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
 
     fun stop() {
         job?.cancel()
         job = null
-        com.phoneagent.vision.ExternalVisionProvider.unbind(appContext)
+        com.phoneagent.device.vision.ExternalVisionProvider.unbind(appContext)
         AgentAccessibilityService.agentRunning = false
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
         FloatingWindowService.stop(appContext)
@@ -716,8 +716,8 @@ class AgentEngine(
         localDecisionStreak = 0
         localLoopNotified = false
         // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
-        val strategy = runCatching { com.phoneagent.task.TaskStore.getStrategy(appContext) }
-            .getOrDefault(com.phoneagent.task.ExecutionStrategy.AUTO)
+        val strategy = runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
+            .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
         log(AgentLog.Level.INFO, "任务开始：$task")
         log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
         val settingsVal = settings.settings.first()
@@ -759,13 +759,13 @@ class AgentEngine(
             var snapshot = observe()
             // 广告过滤（任务 7）：识别到"控件含广告信息 + 跳过/关闭/× 按钮"的广告时，
             // 直接点击关闭广告并跳过本轮 AI 决策；无按钮时剔除广告信息，保证广告不回传给 AI
-            val adFilter = com.phoneagent.adskip.AdContentFilter.filter(snapshot)
+            val adFilter = com.phoneagent.feature.adskip.AdContentFilter.filter(snapshot)
             if (adFilter.isAd) {
                 if (adFilter.target != null) {
                     log(AgentLog.Level.INFO, adFilter.reason)
                     pushFloating("检测到广告，自动关闭", "ACTION")
                     AgentAccessibilityService.instance?.let { service ->
-                        com.phoneagent.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
+                        com.phoneagent.device.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
                     }
                     delay(700)
                     continue
@@ -784,7 +784,7 @@ class AgentEngine(
                 (!settingsVal.smartVisionRoute || !treeSparse)
             val screenshot = if (settingsVal.attachScreenshot || needExternal3b ||
                 (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")))
-                com.phoneagent.screen.ScreenCapture.capture() else null
+                com.phoneagent.device.screen.ScreenCapture.capture() else null
             log(AgentLog.Level.INFO, "第 $step 轮观察：${snapshot.elements.size} 个元素，页面类型=${annotated.pageType}" +
                 if (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")) "（元素稀疏，自动启用视觉模型）" else "")
 
@@ -821,8 +821,8 @@ class AgentEngine(
                 if (localDecisionStreak >= 5 && !localLoopNotified) {
                     localLoopNotified = true
                     log(AgentLog.Level.WARN, "连续 ${localDecisionStreak} 次端侧决策，可能死循环")
-                    com.phoneagent.debug.ActiveNotifier.notify(
-                        appContext, com.phoneagent.debug.ActiveNotifier.ID_LOCAL_LOOP,
+                    com.phoneagent.core.notify.ActiveNotifier.notify(
+                        appContext, com.phoneagent.core.notify.ActiveNotifier.ID_LOCAL_LOOP,
                         "任务可能卡住了", "AI 已在同一页面反复做出相同判断，正准备强制调整路线，避免原地打转。",
                     )
                 }
@@ -835,8 +835,8 @@ class AgentEngine(
             ) {
                 noProgressNotified = true
                 log(AgentLog.Level.WARN, "任务长时间无进展，提醒用户")
-                com.phoneagent.debug.ActiveNotifier.notify(
-                    appContext, com.phoneagent.debug.ActiveNotifier.ID_NO_PROGRESS,
+                com.phoneagent.core.notify.ActiveNotifier.notify(
+                    appContext, com.phoneagent.core.notify.ActiveNotifier.ID_NO_PROGRESS,
                     "AI 长时间没动静", "任务似乎卡住了，已延长检查时间；若仍未进展可用「已手动处理」接管。",
                 )
             }
@@ -845,14 +845,14 @@ class AgentEngine(
             var translation = intentTranslator.translate(intent, snapshot, lastVisualCoordinate)
             translation = fillMissingParam(translation, intent, snapshot, settingsVal)
             var action: AgentAction = AgentAction(type = "")
-            var verify = com.phoneagent.execution.VerifyResult(false, "", "", "")
+            var verify = com.phoneagent.engine.execution.VerifyResult(false, "", "", "")
             var isStructuralError = false
             var verified = false
             when (translation) {
                 is IntentTranslator.TranslationResult.Command -> {
                     action = translation.action
                     addConversation(if (fromLocal) "local" else "assistant", intent.toString())
-                    log(com.phoneagent.model.AgentLog.Level.INFO, "意图转译为动作：intent=${intent.intent} → action.type=${action.type} pkg=${action.packageName} cmd=${action.command} target=${action.target}")
+                    log(com.phoneagent.domain.model.AgentLog.Level.INFO, "意图转译为动作：intent=${intent.intent} → action.type=${action.type} pkg=${action.packageName} cmd=${action.command} target=${action.target}")
                     _state.value = _state.value.copy(
                         phase = AgentState.Phase.ACTING, lastAction = intent,
                         message = action!!.reason ?: "",
@@ -884,7 +884,7 @@ class AgentEngine(
                         AgentAccessibilityService.agentRunning = false
                         // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
                         runCatching { learnTemplate(task) }
-                        runCatching { com.phoneagent.task.TaskStore.clearCheckpoint(appContext) }
+                        runCatching { com.phoneagent.data.store.TaskStore.clearCheckpoint(appContext) }
                         runCatching {
                             val planSteps = activePlan?.steps?.size ?: 0
                             if (reusedTemplateId == null && planSteps > 0) {
@@ -925,7 +925,7 @@ class AgentEngine(
                         reason = reason,
                         target = intent.target?.let { ActionTarget(method = it.by, value = it.value) },
                     )
-                    verify = com.phoneagent.execution.VerifyResult(false, reason, "", "")
+                    verify = com.phoneagent.engine.execution.VerifyResult(false, reason, "", "")
                     isStructuralError = true
                     verified = false
                 }
@@ -943,7 +943,7 @@ class AgentEngine(
                         reason = reason,
                         target = intent.target?.let { ActionTarget(method = it.by, value = it.value) },
                     )
-                    verify = com.phoneagent.execution.VerifyResult(false, reason, "", "")
+                    verify = com.phoneagent.engine.execution.VerifyResult(false, reason, "", "")
                     isStructuralError = true
                     verified = false
                 }
@@ -953,7 +953,7 @@ class AgentEngine(
             if (verified) recordProgress(step, action)
             // 检查点持久化（v2.2 5.3）：每成功一步保存进度，中断后可查询/续传
             if (verified) runCatching {
-                com.phoneagent.task.TaskStore.saveCheckpoint(
+                com.phoneagent.data.store.TaskStore.saveCheckpoint(
                     appContext, currentTaskName ?: task, activePlan,
                     completedSteps, totalPlannedSteps, currentTaskId,
                 )
@@ -989,12 +989,12 @@ class AgentEngine(
                             }
                         }
                         is IntentTranslator.TranslationResult.Failed -> {
-                            verify = com.phoneagent.execution.VerifyResult(false, gTranslate.reason, "", "")
+                            verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
                             verified = false
                             log(AgentLog.Level.WARN, "引导后意图转译失败：${gTranslate.reason}")
                         }
                         is IntentTranslator.TranslationResult.MissingParam -> {
-                            verify = com.phoneagent.execution.VerifyResult(false, gTranslate.reason, "", "")
+                            verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
                             verified = false
                             log(AgentLog.Level.WARN, "引导后意图缺参：${gTranslate.reason}")
                         }
@@ -1045,11 +1045,11 @@ class AgentEngine(
         // 复用模板执行失败：回写健康状态，连续 3 次失效时主动反馈（v2.2.1 八）
         reusedTemplateId?.let { tid ->
             runCatching {
-                val t = com.phoneagent.task.TaskStore.loadTemplates(appContext).firstOrNull { it.id == tid }
-                com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, tid, success = false)
+                val t = com.phoneagent.data.store.TaskStore.loadTemplates(appContext).firstOrNull { it.id == tid }
+                com.phoneagent.data.store.TaskStore.updateTemplateHealth(appContext, tid, success = false)
                 if ((t?.failedStreak ?: 0) + 1 >= 3) {
-                    com.phoneagent.debug.ActiveNotifier.notify(
-                        appContext, com.phoneagent.debug.ActiveNotifier.ID_TEMPLATE_FAILED,
+                    com.phoneagent.core.notify.ActiveNotifier.notify(
+                        appContext, com.phoneagent.core.notify.ActiveNotifier.ID_TEMPLATE_FAILED,
                         "任务模板已失效", "这个任务的脚本连续失败多次，自动改走云端重新规划，建议手动检查一下。",
                     )
                 }
@@ -1120,7 +1120,7 @@ class AgentEngine(
     private suspend fun cloudDecide(
         task: String,
         snapshot: ScreenSnapshot,
-        annotated: com.phoneagent.perception.AnnotatedPage,
+        annotated: com.phoneagent.engine.perception.AnnotatedPage,
         messages: MutableList<ChatMessageDto>,
         screenshot: android.graphics.Bitmap?,
         settingsVal: AppSettings.Settings,
@@ -1144,7 +1144,7 @@ class AgentEngine(
         // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
         val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL" &&
             (!hybrid || complexPage || !settingsVal.enableExternalVision)
-        var localRegions: List<com.phoneagent.vision.DetectedControl>? = null
+        var localRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
         var externalUsed = false
         var pageText = safeText
         var desc: String? = null
@@ -1154,7 +1154,7 @@ class AgentEngine(
             if (useOnDevice3b) {
                 log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
                 val t0 = System.nanoTime()
-                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
                     context = appContext,
                     bitmap = screenshot,
                     timeoutMs = EXTERNAL_VISION_TIMEOUT,
@@ -1163,7 +1163,7 @@ class AgentEngine(
                 if (controls.isNotEmpty()) {
                     externalUsed = true
                     localRegions = controls
-                    desc = com.phoneagent.vision.ControlFormat.describe(controls)
+                    desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                 } else {
                     log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
                 }
@@ -1188,7 +1188,7 @@ class AgentEngine(
             ) {
                 log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
                 val t0 = System.nanoTime()
-                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
                     context = appContext,
                     bitmap = screenshot,
                     timeoutMs = EXTERNAL_VISION_TIMEOUT,
@@ -1197,7 +1197,7 @@ class AgentEngine(
                 if (controls.isNotEmpty()) {
                     externalUsed = true
                     localRegions = controls
-                    desc = com.phoneagent.vision.ControlFormat.describe(controls)
+                    desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                 } else {
                     log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
                     desc = "（未识别到控件）"
@@ -1215,7 +1215,7 @@ class AgentEngine(
             consecutiveFailures = consecutiveFailures,
             contextHint = DataSanitizer.sanitize(annotated.contextHint),
         ) + planNote + "\n\n## 当前页面\n$pageText" +
-            DataSanitizer.sanitize(com.phoneagent.perception.PageAnnotator.knownControlsText(annotated.elements)) +
+            DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task) +
             progressSummaryText()
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
@@ -1229,7 +1229,7 @@ class AgentEngine(
         // 主模型不收截图（只收视觉描述后的文本），避免不支持图片的模型报错；
         // 流式生成，边生成边把返回内容实时显示到悬浮窗 + 通知
         // 看门狗：单步决策超时则本步改为等待、下一轮重试，避免长线任务因云端卡住而无限阻塞
-        val result: Result<com.phoneagent.ai.AiDecision>? = withTimeoutOrNull(WATCHDOG_DECIDE_MS) {
+        val result: Result<com.phoneagent.core.ai.AiDecision>? = withTimeoutOrNull(WATCHDOG_DECIDE_MS) {
             aiClient.chatForAction(
                 baseUrl = settingsVal.apiBaseUrl,
                 apiKey = settingsVal.apiKey,
@@ -1246,8 +1246,8 @@ class AgentEngine(
         if (result == null) {
             log(AgentLog.Level.WARN, "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死")
             pushFloating("AI 决策超时，将自动重试", "THINKING")
-            com.phoneagent.debug.ActiveNotifier.notify(
-                appContext, com.phoneagent.debug.ActiveNotifier.ID_CLOUD_TIMEOUT,
+            com.phoneagent.core.notify.ActiveNotifier.notify(
+                appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CLOUD_TIMEOUT,
                 "AI 卡顿了一下", "云端暂时联系不上，已自动改为稍后重试，任务不会被中断。",
             )
             return AgentIntent(intent = "wait", waitMs = 1200, reasoning = "AI 决策超时，等待后重试")
@@ -1275,13 +1275,13 @@ class AgentEngine(
                     externalUsed -> {
                         log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
                         val t0 = System.nanoTime()
-                        val p = com.phoneagent.vision.ExternalVisionProvider.locate(
+                        val p = com.phoneagent.device.vision.ExternalVisionProvider.locate(
                             appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
-                        ) ?: com.phoneagent.vision.ControlFormat.locate(localRegions!!, targetText)
+                        ) ?: com.phoneagent.device.vision.ControlFormat.locate(localRegions!!, targetText)
                         recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                         p
                     }
-                    localRegions != null -> com.phoneagent.vision.ControlFormat.locate(localRegions, targetText)
+                    localRegions != null -> com.phoneagent.device.vision.ControlFormat.locate(localRegions, targetText)
                     cloudVision -> {
                         log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
                         val t0 = System.nanoTime()
@@ -1347,7 +1347,7 @@ class AgentEngine(
     private suspend fun reviewAction(
         task: String,
         snapshot: ScreenSnapshot,
-        annotated: com.phoneagent.perception.AnnotatedPage,
+        annotated: com.phoneagent.engine.perception.AnnotatedPage,
         intent: AgentIntent,
         settingsVal: AppSettings.Settings,
     ): AgentIntent {
@@ -1498,7 +1498,7 @@ class AgentEngine(
     /** 幂等判定：当前页面是否已出现"完成成功"证据（避免重复执行副作用后再次触发） */
     private fun idempotencyDone(snapshot: ScreenSnapshot): Boolean = EngineRules.idempotencyDone(snapshot)
 
-    private suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.execution.VerifyResult {
+    private suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         val execT0 = System.nanoTime()
         // 规范化文档动作词汇
         val type = ActionType.ALIAS[action.type] ?: action.type
@@ -1519,12 +1519,12 @@ class AgentEngine(
 
         // 幂等保护（v2.2 5.4）：副作用意图（提交/发送/下单/支付/删除）已由页面证明完成 → 跳过，防重复副作用与误触
         if (isFinalSubmit(action, type) && idempotencyDone(snapshot)) {
-            return com.phoneagent.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "").also {
+            return com.phoneagent.engine.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "").also {
                 recordExecMs((System.nanoTime() - execT0) / 1_000_000)
             }
         }
 
-        val service = AgentAccessibilityService.instance ?: return com.phoneagent.execution.VerifyResult(false, "无障碍服务不可用", "", "").also {
+        val service = AgentAccessibilityService.instance ?: return com.phoneagent.engine.execution.VerifyResult(false, "无障碍服务不可用", "", "").also {
             recordExecMs((System.nanoTime() - execT0) / 1_000_000)
         }
         val executor = ActionExecutor(service)
@@ -1536,11 +1536,11 @@ class AgentEngine(
 
         val result = when (type) {
             ActionType.CLICK, ActionType.TAP -> {
-                if (x == null || y == null) com.phoneagent.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件", "", "")
+                if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件", "", "")
                 else verifier.executeAndVerify(snapshot, action) { executor.click(x, y).isSuccess() }
             }
             ActionType.LONG_CLICK, ActionType.LONG_PRESS -> {
-                if (x == null || y == null) com.phoneagent.execution.VerifyResult(false, "无法定位动作目标", "", "")
+                if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "无法定位动作目标", "", "")
                 else verifier.executeAndVerify(snapshot, action) { executor.longClick(x, y).isSuccess() }
             }
             ActionType.SWIPE -> {
@@ -1574,23 +1574,23 @@ class AgentEngine(
             }
             ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot, action) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
-                if ((x == null || y == null) && target == null) com.phoneagent.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
+                if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
                 else verifier.executeAndVerify(snapshot, action) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
                 val targetPkg = action.packageName
-                if (targetPkg.isNullOrBlank()) return com.phoneagent.execution.VerifyResult(false, "launch 缺少包名", "", "").also {
+                if (targetPkg.isNullOrBlank()) return com.phoneagent.engine.execution.VerifyResult(false, "launch 缺少包名", "", "").also {
                     recordExecMs((System.nanoTime() - execT0) / 1_000_000)
                 }
                 val launched = executor.launchApp(targetPkg).isSuccess()
-                if (!launched) return com.phoneagent.execution.VerifyResult(false, "启动应用失败: $targetPkg", "", "").also {
+                if (!launched) return com.phoneagent.engine.execution.VerifyResult(false, "启动应用失败: $targetPkg", "", "").also {
                     recordExecMs((System.nanoTime() - execT0) / 1_000_000)
                 }
                 // launch 动作不依赖包名检测（无障碍服务在某些版本上无法正确报告前台切换），
                 // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面
                 delay(800)
-                com.phoneagent.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
+                com.phoneagent.engine.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
             }
             ActionType.OPEN -> executeNoVerify(executor) {
                 // 优先直接深链 uri；否则按软件页面直达索引(app+page)解析直达方式
@@ -1598,21 +1598,21 @@ class AgentEngine(
                 if (!uri.isNullOrBlank()) {
                     executor.openUri(uri).isSuccess()
                 } else {
-                    val entry = com.phoneagent.model.AppPageIndex.resolve(action.app, action.page)
+                    val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
                     when {
                         entry?.uri != null -> executor.openUri(entry.uri)
                         entry?.intentAction != null -> executor.openSettingsAction(entry.intentAction)
                         entry?.packageName != null -> executor.launchApp(entry.packageName)
-                        else -> com.phoneagent.a11y.ActionExecutor.Result.Failure("未在软件页面索引中找到 ${action.app ?: "未知软件"} 页面${action.page ?: ""}")
+                        else -> com.phoneagent.device.a11y.ActionExecutor.Result.Failure("未在软件页面索引中找到 ${action.app ?: "未知软件"} 页面${action.page ?: ""}")
                     }.isSuccess()
                 }
             }
             ActionType.BACK -> executeNoVerify(executor) { executor.back().isSuccess() }
             ActionType.HOME -> executeNoVerify(executor) { executor.home().isSuccess() }
             ActionType.RECENTS -> executeNoVerify(executor) { executor.recents().isSuccess() }
-            ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.execution.VerifyResult(true, "等待完成", "", "") }
-            ActionType.REFRESH -> com.phoneagent.execution.VerifyResult(true, "刷新", "", "")
-            else -> com.phoneagent.execution.VerifyResult(false, "未知动作", "", "")
+            ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.engine.execution.VerifyResult(true, "等待完成", "", "") }
+            ActionType.REFRESH -> com.phoneagent.engine.execution.VerifyResult(true, "刷新", "", "")
+            else -> com.phoneagent.engine.execution.VerifyResult(false, "未知动作", "", "")
         }
         recordExecMs((System.nanoTime() - execT0) / 1_000_000)
         return result
@@ -1622,16 +1622,16 @@ class AgentEngine(
      * 执行文档写入动作：直接把生成内容写入工作区，供用户在工作区页查看。
      * @return 写成功的 VerifyResult；工作区未启用时返回失败
      */
-    private suspend fun executeWriteDoc(action: AgentAction): com.phoneagent.execution.VerifyResult {
-        val engine = workAreaEngine ?: return com.phoneagent.execution.VerifyResult(false, "工作区未启用", "", "")
-        val content = action.text ?: return com.phoneagent.execution.VerifyResult(false, "文档内容为空", "", "")
+    private suspend fun executeWriteDoc(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
+        val engine = workAreaEngine ?: return com.phoneagent.engine.execution.VerifyResult(false, "工作区未启用", "", "")
+        val content = action.text ?: return com.phoneagent.engine.execution.VerifyResult(false, "文档内容为空", "", "")
         val fileName = action.summary ?: ""
         // 直接写入工作区（内容已由 AI 决策产出，无需再次生成）
         val written = engine.writeDocument(content, fileName)
         return if (written.isBlank()) {
-            com.phoneagent.execution.VerifyResult(false, engine.error.value.ifBlank { "文档写入失败" }, "", "")
+            com.phoneagent.engine.execution.VerifyResult(false, engine.error.value.ifBlank { "文档写入失败" }, "", "")
         } else {
-            com.phoneagent.execution.VerifyResult(true, "文档已写入工作区：$written", "", "")
+            com.phoneagent.engine.execution.VerifyResult(true, "文档已写入工作区：$written", "", "")
         }
     }
 
@@ -1642,14 +1642,14 @@ class AgentEngine(
      * - 无真实 shell 通道：禁止执行 shell，把 AI 输出的友好命令翻译为等价的无障碍动作执行，
      *   保证任务在无 Shizuku/ADB 权限时仍能推进，且绝不真正调用 shell。
      */
-    private suspend fun executeShellAction(action: AgentAction): com.phoneagent.execution.VerifyResult {
-        val cmd = action.command ?: return com.phoneagent.execution.VerifyResult(false, "shell 命令为空", "", "")
+    private suspend fun executeShellAction(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
+        val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(false, "shell 命令为空", "", "")
         // 无真实 shell 通道（Shizuku 与无线 ADB 均不可用）：硬性禁止 shell，翻译为无障碍动作
         if (!shellChannelAvailable()) {
             return executeShellViaAccessibility(cmd)
         }
         val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
-            ?: return com.phoneagent.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
+            ?: return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
         return runRealShell(resolved)
     }
 
@@ -1664,38 +1664,38 @@ class AgentEngine(
     }
 
     /** 按执行通道偏好选择真实 shell 通道（AUTO 优先无线 ADB，其次 Shizuku）执行命令并回传输出 */
-    private suspend fun runRealShell(resolved: String): com.phoneagent.execution.VerifyResult {
+    private suspend fun runRealShell(resolved: String): com.phoneagent.engine.execution.VerifyResult {
         val channel = settings.settings.first().executionChannel
-        val adbShell: suspend (String) -> com.phoneagent.shizuku.ShizukuManager.ShellResult = { cmd ->
+        val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { cmd ->
             val out = adbTransport?.executeShell(cmd)
-            if (out == null) com.phoneagent.shizuku.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
-            else com.phoneagent.shizuku.ShizukuManager.ShellResult.Success(output = out)
+            if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
         }
-        val result: com.phoneagent.shizuku.ShizukuManager.ShellResult = when (channel) {
+        val result: com.phoneagent.device.shell.ShizukuManager.ShellResult = when (channel) {
             "ADB" -> {
                 if (adbTransport?.isConnected() == true) adbShell(resolved)
-                else return com.phoneagent.execution.VerifyResult(false, "无线 ADB 未连接，无真实 shell 通道", "", "")
+                else return com.phoneagent.engine.execution.VerifyResult(false, "无线 ADB 未连接，无真实 shell 通道", "", "")
             }
             "SHIZUKU" -> {
                 if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
-                else return com.phoneagent.execution.VerifyResult(false, "Shizuku 不可用，无真实 shell 通道", "", "")
+                else return com.phoneagent.engine.execution.VerifyResult(false, "Shizuku 不可用，无真实 shell 通道", "", "")
             }
             else -> {
                 if (adbTransport?.isConnected() == true) adbShell(resolved)
                 else if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
-                else return com.phoneagent.execution.VerifyResult(false, "无可用 shell 通道", "", "")
+                else return com.phoneagent.engine.execution.VerifyResult(false, "无可用 shell 通道", "", "")
             }
         }
         return when (result) {
-            is com.phoneagent.shizuku.ShizukuManager.ShellResult.Success -> {
+            is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success -> {
                 // 捕获输出：查询类命令回传 AI，指令类命令忽略
                 lastShellOutput = result.output.trim().take(1200)
                 delay(300)
-                com.phoneagent.execution.VerifyResult(true, "shell 执行成功", "", "")
+                com.phoneagent.engine.execution.VerifyResult(true, "shell 执行成功", "", "")
             }
-            is com.phoneagent.shizuku.ShizukuManager.ShellResult.Failure -> {
+            is com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure -> {
                 lastShellOutput = ""
-                com.phoneagent.execution.VerifyResult(false, result.reason, "", "")
+                com.phoneagent.engine.execution.VerifyResult(false, result.reason, "", "")
             }
         }
     }
@@ -1704,26 +1704,26 @@ class AgentEngine(
      * Shizuku 不可用时：禁止执行 shell。将 AI 输出的友好命令（tap/lp/sw/back/key/text/launch 等）
      * 翻译为等价的无障碍动作执行；无法翻译的命令返回失败，促使 AI 改用无障碍动作重决策。
      */
-    private suspend fun executeShellViaAccessibility(cmd: String): com.phoneagent.execution.VerifyResult {
+    private suspend fun executeShellViaAccessibility(cmd: String): com.phoneagent.engine.execution.VerifyResult {
         val service = AgentAccessibilityService.instance
-            ?: return com.phoneagent.execution.VerifyResult(false, "Shizuku 不可用且无障碍服务不可用", "", "")
+            ?: return com.phoneagent.engine.execution.VerifyResult(false, "Shizuku 不可用且无障碍服务不可用", "", "")
         val executor = ActionExecutor(service)
         val w = screenWidth()
         val h = screenHeight()
-        val fail = { reason: String -> com.phoneagent.execution.VerifyResult(false, reason, "", "") }
+        val fail = { reason: String -> com.phoneagent.engine.execution.VerifyResult(false, reason, "", "") }
 
         val parsed = ShellCommands.parse(cmd)
             ?: return fail("Shizuku 不可用，命令无法转为无障碍动作: $cmd")
         val (name, args) = parsed
 
         // 结果包装：成功提示已用无障碍代替 shell
-        fun wrap(r: ActionExecutor.Result): com.phoneagent.execution.VerifyResult = when (r) {
-            is ActionExecutor.Result.Success -> com.phoneagent.execution.VerifyResult(true, "已用无障碍代替 shell 执行: $cmd", "", "")
-            is ActionExecutor.Result.Failure -> com.phoneagent.execution.VerifyResult(false, r.reason, "", "")
+        fun wrap(r: ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult = when (r) {
+            is ActionExecutor.Result.Success -> com.phoneagent.engine.execution.VerifyResult(true, "已用无障碍代替 shell 执行: $cmd", "", "")
+            is ActionExecutor.Result.Failure -> com.phoneagent.engine.execution.VerifyResult(false, r.reason, "", "")
         }
 
         // 坐标类动作统一处理
-        suspend fun coordOp(block: suspend (Int, Int) -> ActionExecutor.Result): com.phoneagent.execution.VerifyResult {
+        suspend fun coordOp(block: suspend (Int, Int) -> ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult {
             val (x, y) = ShellCommands.coord(args, w, h) ?: return fail("Shizuku 不可用，坐标无效: $cmd")
             return wrap(block(x, y))
         }
@@ -1815,23 +1815,23 @@ class AgentEngine(
     private fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> =
         EngineRules.swipeEndpoints(x, y, direction, distanceArg, screenWidth(), screenHeight())
 
-    private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.execution.VerifyResult {
+    private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.engine.execution.VerifyResult {
         return when (keycode.uppercase()) {
             "BACK" -> executeNoVerify(executor) { executor.back().isSuccess() }
             "HOME" -> executeNoVerify(executor) { executor.home().isSuccess() }
             "RECENT", "RECENTS" -> executeNoVerify(executor) { executor.recents().isSuccess() }
-            "ENTER" -> com.phoneagent.execution.VerifyResult(true, "回车（假定键盘已确认）", "", "")
-            else -> com.phoneagent.execution.VerifyResult(false, "未知按键 $keycode", "", "")
+            "ENTER" -> com.phoneagent.engine.execution.VerifyResult(true, "回车（假定键盘已确认）", "", "")
+            else -> com.phoneagent.engine.execution.VerifyResult(false, "未知按键 $keycode", "", "")
         }
     }
 
-    private suspend fun executeNoVerify(executor: ActionExecutor, block: suspend () -> Boolean): com.phoneagent.execution.VerifyResult {
+    private suspend fun executeNoVerify(executor: ActionExecutor, block: suspend () -> Boolean): com.phoneagent.engine.execution.VerifyResult {
         val ok = block()
         delay(500)
-        return com.phoneagent.execution.VerifyResult(ok, if (ok) "已执行" else "执行失败", "", "")
+        return com.phoneagent.engine.execution.VerifyResult(ok, if (ok) "已执行" else "执行失败", "", "")
     }
 
-    private fun recordMetrics(decision: com.phoneagent.ai.AiDecision) {
+    private fun recordMetrics(decision: com.phoneagent.core.ai.AiDecision) {
         val prev = _metrics.value
         val requestCount = prev.requestCount + 1
         val latencySum = prev.avgLatencyMs * prev.requestCount + decision.elapsedMs
@@ -1869,13 +1869,13 @@ class AgentEngine(
     private fun recordStepTrace(
         step: Int,
         sent: String,
-        decision: com.phoneagent.ai.AiDecision,
+        decision: com.phoneagent.core.ai.AiDecision,
         visionSource: String,
         visionModel: String,
         visionDescription: String,
         screenshot: android.graphics.Bitmap?,
     ) {
-        _traces.value = _traces.value + com.phoneagent.model.StepTrace(
+        _traces.value = _traces.value + com.phoneagent.domain.model.StepTrace(
             taskId = currentTaskId,
             taskName = currentTaskName,
             step = step,
@@ -1890,7 +1890,7 @@ class AgentEngine(
             visionDescription = visionDescription,
             thinking = decision.thinking,
             // 截图入内存前缩略化（≤360px），配合 _traces 数量上限，避免多步全分辨率截图长期驻留导致 OOM 闪退
-            screenshot = com.phoneagent.debug.DebugRecordsStore.thumb(screenshot),
+            screenshot = com.phoneagent.data.store.DebugRecordsStore.thumb(screenshot),
         )
         // 数量上限：环形保留最近 N 条轨迹，防长线/多任务场景内存无限增长
         if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
@@ -1919,16 +1919,16 @@ class AgentEngine(
      */
     private suspend fun stepShotCapture(step: Int, action: AgentAction, verified: Boolean) {
         val snapshot = observe()
-        val shot = com.phoneagent.screen.ScreenCapture.capture()
+        val shot = com.phoneagent.device.screen.ScreenCapture.capture()
         var annotated: Bitmap? = null
         if (shot != null) {
             // 端侧控件识别已外移到外挂视觉 Agent；这里跨进程调用并画框（v2.2.1 截图标注）
-            val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(
+            val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
                 context = appContext,
                 bitmap = shot,
                 timeoutMs = EXTERNAL_VISION_TIMEOUT,
             )
-            if (controls.isNotEmpty()) annotated = com.phoneagent.vision.ControlFormat.drawBoxes(shot, controls)
+            if (controls.isNotEmpty()) annotated = com.phoneagent.device.vision.ControlFormat.drawBoxes(shot, controls)
         }
         _stepShot.value = StepShot(
             step = step,
@@ -1983,7 +1983,7 @@ class AgentEngine(
      */
     private suspend fun learnTemplate(task: String) {
         reusedTemplateId?.let { tid ->
-            runCatching { com.phoneagent.task.TaskStore.updateTemplateHealth(appContext, tid, success = true) }
+            runCatching { com.phoneagent.data.store.TaskStore.updateTemplateHealth(appContext, tid, success = true) }
         }
     }
 
@@ -2016,9 +2016,9 @@ class AgentEngine(
         scope.launch {
             try {
                 val id = "tpl_" + java.util.UUID.randomUUID().toString().take(8)
-                com.phoneagent.task.TaskStore.upsertTemplate(
+                com.phoneagent.data.store.TaskStore.upsertTemplate(
                     appContext,
-                    com.phoneagent.task.TaskTemplate(
+                    com.phoneagent.data.store.TaskTemplate(
                         id = id, goal = task.take(120), plan = plan,
                         executionCount = 1, successCount = 1, failedStreak = 0, enabled = true,
                     ),
@@ -2034,7 +2034,7 @@ class AgentEngine(
 
     private fun actionLabel(type: String): String = EngineRules.actionLabel(type)
 
-    private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.execution.VerifyResult) {
+    private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.engine.execution.VerifyResult) {
         recordStep(step, action, if (verify.success) "verified_success" else "unverified", verify.beforeFingerprint, verify.afterFingerprint)
     }
 
@@ -2055,7 +2055,7 @@ class AgentEngine(
         )
         _state.value = _state.value.copy(
             hasAccessibility = a11y != null,
-            hasScreenshot = com.phoneagent.screen.ScreenCapture.available(),
+            hasScreenshot = com.phoneagent.device.screen.ScreenCapture.available(),
         )
         return snapshot
     }

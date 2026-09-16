@@ -71,10 +71,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.debug.HumanTranslator
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.StatTile

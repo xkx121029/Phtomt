@@ -15,7 +15,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.edge.EdgeLightingService
+import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
 import kotlinx.coroutines.launch
 

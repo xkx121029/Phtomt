@@ -1,6 +1,6 @@
 package com.phoneagent.ai
 
-import com.phoneagent.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntent
 
 /**
  * AI 一次决策的结果：意图 + 性能指标。

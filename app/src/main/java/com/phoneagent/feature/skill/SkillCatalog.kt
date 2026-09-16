@@ -1,6 +1,6 @@
 package com.phoneagent.skill
 
-import com.phoneagent.model.IntentType
+import com.phoneagent.domain.model.IntentType
 
 /**
  * 内置 Skill 目录：把原硬编码命令（意图）升级为内置 Skill。

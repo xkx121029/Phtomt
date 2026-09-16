@@ -71,10 +71,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.debug.HumanTranslator
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.debug.panels.ChatPanel
@@ -134,13 +134,13 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             var count = 0
             tasks.forEach { t ->
                 val shot = t.screenshot ?: return@forEach
-                val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(context, shot, 20_000)
+                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(context, shot, 20_000)
                 if (controls.isNotEmpty()) count++
                 out[t.step] = drawBoxes(shot, controls)
             }
             annotatedMap = out
             annotating = false
-            val connected = com.phoneagent.vision.ExternalVisionProvider.isConnected
+            val connected = com.phoneagent.device.vision.ExternalVisionProvider.isConnected
             annotateMsg = if (tasks.isEmpty()) "本任务暂无可画框的截图"
             else "已用${if (connected) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
         }

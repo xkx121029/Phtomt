@@ -1,7 +1,7 @@
 package com.phoneagent.perception
 
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 
 /**
  * 页面标注结果：页面类型推断、语义上下文提示、控件优先级标注。

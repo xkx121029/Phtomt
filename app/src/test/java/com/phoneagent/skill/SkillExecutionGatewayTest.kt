@@ -1,10 +1,10 @@
 package com.phoneagent.skill
 
-import com.phoneagent.mcp.McpManager
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.IntentType
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.feature.mcp.McpManager
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

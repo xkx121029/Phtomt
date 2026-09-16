@@ -3,7 +3,7 @@ package com.phoneagent.ai
 import android.graphics.Bitmap
 import android.util.Base64
 import android.util.Log
-import com.phoneagent.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json

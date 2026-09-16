@@ -71,10 +71,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.debug.HumanTranslator
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.debug.DebugEmptyHint
@@ -92,7 +92,7 @@ import kotlinx.coroutines.launch
 /** 任务时间线主视图：执行摘要 + 按任务的叙事步骤卡 */
 @Composable
 internal fun TimelinePanel(
-    traces: List<com.phoneagent.model.StepTrace>,
+    traces: List<com.phoneagent.domain.model.StepTrace>,
     logs: List<AgentLog>,
 ) {
     if (traces.isEmpty()) {
@@ -139,7 +139,7 @@ private fun ExecutionSummaryCard(taskCount: Int, stepCount: Int, totalLatencyMs:
 
 /** 单步叙事卡：看到 → 决定 → 在做(第一人称) → 结果（四段式） */
 @Composable
-private fun TimelineNarrativeCard(tr: com.phoneagent.model.StepTrace, taskLogs: List<AgentLog>) {
+private fun TimelineNarrativeCard(tr: com.phoneagent.domain.model.StepTrace, taskLogs: List<AgentLog>) {
     var expanded by remember { mutableStateOf(false) }
     val human = remember(tr.receivedText) { HumanTranslator.summarizeDecision(tr.receivedText) }
     val seen = remember(tr.sentText) { HumanTranslator.extractSeen(tr.sentText) }

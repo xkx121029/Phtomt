@@ -34,7 +34,7 @@
         </activity>
 
         <service
-            android:name=".a11y.AgentAccessibilityService"
+            android:name=".device.a11y.AgentAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:label="@string/a11y_service_label">
@@ -47,12 +47,12 @@
         </service>
 
         <service
-            android:name=".screen.ScreenSharingService"
+            android:name=".device.screen.ScreenSharingService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
         <service
-            android:name=".floating.FloatingWindowService"
+            android:name=".overlay.FloatingWindowService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -61,12 +61,12 @@
         </service>
 
         <service
-            android:name=".edge.EdgeLightingService"
+            android:name=".feature.edge.EdgeLightingService"
             android:exported="false" />
 
         <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器 -->
         <receiver
-            android:name=".shizuku.adb.AdbPairingReceiver"
+            android:name=".device.shell.AdbPairingReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />

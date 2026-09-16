@@ -71,10 +71,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.debug.HumanTranslator
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.AppRadii
@@ -88,7 +88,7 @@ import kotlinx.coroutines.launch
 
 /** 能力状态条（v2.2.1 面板一）：无障碍/悬浮窗/截屏/自启动/Shizuku 一键灰度查看 */
 @Composable
-internal fun CapabilityStrip(permissions: List<com.phoneagent.model.PermissionItem>) {
+internal fun CapabilityStrip(permissions: List<com.phoneagent.ui.model.PermissionItem>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),

@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.task.ExecutionStrategy
+import com.phoneagent.data.store.ExecutionStrategy
 import com.phoneagent.ui.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -39,8 +39,8 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     var strategy by remember { mutableStateOf(ExecutionStrategy.AUTO) }
-    var checkpoint: com.phoneagent.task.Checkpoint? by remember { mutableStateOf(null) }
-    var templates by remember { mutableStateOf(emptyList<com.phoneagent.task.TaskTemplate>()) }
+    var checkpoint: com.phoneagent.data.store.Checkpoint? by remember { mutableStateOf(null) }
+    var templates by remember { mutableStateOf(emptyList<com.phoneagent.data.store.TaskTemplate>()) }
 
     // 进入页面时加载当前状态
     LaunchedEffect(Unit) {
@@ -159,7 +159,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (com.phoneagent.task.TaskStore.isPresetId(t.id)) {
+                            if (com.phoneagent.data.store.TaskStore.isPresetId(t.id)) {
                                 Text(
                                     "软件内置（只读）",
                                     style = MaterialTheme.typography.labelSmall,

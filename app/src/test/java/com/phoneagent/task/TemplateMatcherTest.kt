@@ -1,6 +1,6 @@
 package com.phoneagent.task
 
-import com.phoneagent.model.TaskPlan
+import com.phoneagent.domain.model.TaskPlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

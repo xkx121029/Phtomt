@@ -1,10 +1,10 @@
 package com.phoneagent.test
 
-import com.phoneagent.agent.AgentPrompts
-import com.phoneagent.agent.PromptLang
-import com.phoneagent.ai.AiClient
-import com.phoneagent.ai.ChatMessageDto
-import com.phoneagent.ai.ContentPart
+import com.phoneagent.engine.AgentPrompts
+import com.phoneagent.engine.PromptLang
+import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ChatMessageDto
+import com.phoneagent.core.ai.ContentPart
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

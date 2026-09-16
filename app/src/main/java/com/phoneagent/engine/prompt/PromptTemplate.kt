@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
  * 可自定义提示词模板。
  *
  * 模板正文支持 `{占位符}` 变量注入（见 [PromptVars]），由 [PromptTemplateEngine] 渲染。
- * 空模板 → 回退内置默认（兼容现有 [com.phoneagent.agent.AgentPrompts] 行为）。
+ * 空模板 → 回退内置默认（兼容现有 [com.phoneagent.engine.AgentPrompts] 行为）。
  */
 @Serializable
 data class PromptTemplate(

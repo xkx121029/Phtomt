@@ -1,8 +1,8 @@
 package com.phoneagent.skill
 
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.AgentIntentTarget
-import com.phoneagent.model.IntentType
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.IntentType
 
 /**
  * Skill 兼容转译层（Shim）。

@@ -1,6 +1,6 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
-import com.phoneagent.shizuku.ShizukuManager
+import com.phoneagent.device.shell.ShizukuManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

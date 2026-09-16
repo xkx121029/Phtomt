@@ -1,4 +1,4 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
 /** 驱动 [AdbStatus] 流转的纯状态机。事件驱动，无 IO，便于单元测试。 */
 class WirelessAdbStateMachine {

@@ -1,4 +1,4 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +60,7 @@ class WirelessAdbPairingFlow(
         active = this
         val ip = AdbWirelessTransport.localIpv4Address()
         setMsg(if (ip != null) "本机 IP $ip，正在搜索无线配对服务…" else "正在搜索无线配对服务…")
-        com.phoneagent.notify.AdbPairingNotifier.notifyDiscovering(context)
+        com.phoneagent.core.notify.AdbPairingNotifier.notifyDiscovering(context)
 
         discoverJob = callerScope.launch {
             // 在 callerScope（主线程）执行，NsdManager 才算合法
@@ -68,12 +68,12 @@ class WirelessAdbPairingFlow(
             if (svc == null) {
                 discovering = false
                 setMsg("未找到无线调试服务，请保持「使用配对码配对设备」界面")
-                com.phoneagent.notify.AdbPairingNotifier.notifyError(context, _message.value)
+                com.phoneagent.core.notify.AdbPairingNotifier.notifyError(context, _message.value)
                 return@launch
             }
             setMsg("已发现设备 ${svc.host}:${svc.port}，请在通知中输入配对码")
-            com.phoneagent.notify.AdbPairingNotifier.notifyFound(context)
-            com.phoneagent.notify.AdbPairingNotifier.notifyRequestCode(context)
+            com.phoneagent.core.notify.AdbPairingNotifier.notifyFound(context)
+            com.phoneagent.core.notify.AdbPairingNotifier.notifyRequestCode(context)
             // 通知输入走回调；此处仅保留发现标记超时复位
             delay(60_000)
             discovering = false
@@ -84,7 +84,7 @@ class WirelessAdbPairingFlow(
     fun onPairingCode(code: String) {
         discoverJob?.cancel()
         discovering = false
-        com.phoneagent.notify.AdbPairingNotifier.notifyPairing(context, "已收到配对码，正在配对并拉起 Shizuku…")
+        com.phoneagent.core.notify.AdbPairingNotifier.notifyPairing(context, "已收到配对码，正在配对并拉起 Shizuku…")
         kotlin.concurrent.thread {
             val r = runCatching {
                 kotlinx.coroutines.runBlocking { bootstrap.pairAndEnsureReady(code) }
@@ -99,9 +99,9 @@ class WirelessAdbPairingFlow(
             )
             when (r) {
                 is ShizukuBootstrap.ReadyResult.Ready ->
-                    com.phoneagent.notify.AdbPairingNotifier.notifySuccess(context, _message.value)
+                    com.phoneagent.core.notify.AdbPairingNotifier.notifySuccess(context, _message.value)
                 is ShizukuBootstrap.ReadyResult.Error ->
-                    com.phoneagent.notify.AdbPairingNotifier.notifyError(context, _message.value)
+                    com.phoneagent.core.notify.AdbPairingNotifier.notifyError(context, _message.value)
             }
         }
     }
@@ -109,11 +109,11 @@ class WirelessAdbPairingFlow(
     fun cancel() {
         discoverJob?.cancel()
         discovering = false
-        com.phoneagent.notify.AdbPairingNotifier.cancel(context)
+        com.phoneagent.core.notify.AdbPairingNotifier.cancel(context)
     }
 
     private fun post(msg: String) {
         lastMessage = msg
-        com.phoneagent.notify.AdbPairingNotifier.notifySuccess(context, msg)
+        com.phoneagent.core.notify.AdbPairingNotifier.notifySuccess(context, msg)
     }
 }

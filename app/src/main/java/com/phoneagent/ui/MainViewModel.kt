@@ -12,47 +12,47 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.agent.AgentEngine
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.engine.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.model.AgentLog
+import com.phoneagent.domain.model.AgentLog
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.put
-import com.phoneagent.model.AgentMetrics
-import com.phoneagent.model.AgentState
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.model.PermissionItem
-import com.phoneagent.model.PermissionKind
-import com.phoneagent.model.StepRecord
-import com.phoneagent.memory.AnomalyMemoryEntry
-import com.phoneagent.memory.MemoryStore
-import com.phoneagent.memory.ProfileEntry
-import com.phoneagent.screen.ScreenSharingService
-import com.phoneagent.agent.PromptLang
-import com.phoneagent.mcp.McpServerConfig
-import com.phoneagent.mcp.McpManager
-import com.phoneagent.mcp.McpServerInfo
-import com.phoneagent.mcp.McpStore
-import com.phoneagent.mcp.McpMarketplace
-import com.phoneagent.mcp.McpMarketplaceEntry
-import com.phoneagent.prompt.PromptTemplate
-import com.phoneagent.prompt.PromptTemplateStore
-import com.phoneagent.shizuku.ShizukuManager
-import com.phoneagent.shizuku.adb.AdbStatus
-import com.phoneagent.shizuku.adb.ShizukuBootstrap
-import com.phoneagent.shizuku.adb.WirelessAdbPairingFlow
-import com.phoneagent.skill.Skill
-import com.phoneagent.skill.SkillRegistry
-import com.phoneagent.test.TestConfig
-import com.phoneagent.test.TestEngine
-import com.phoneagent.test.TestPreset
-import com.phoneagent.test.TestRunSummary
+import com.phoneagent.domain.model.AgentMetrics
+import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.ui.model.PermissionItem
+import com.phoneagent.ui.model.PermissionKind
+import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.data.store.AnomalyMemoryEntry
+import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.data.store.ProfileEntry
+import com.phoneagent.device.screen.ScreenSharingService
+import com.phoneagent.engine.PromptLang
+import com.phoneagent.feature.mcp.McpServerConfig
+import com.phoneagent.feature.mcp.McpManager
+import com.phoneagent.feature.mcp.McpServerInfo
+import com.phoneagent.data.store.McpStore
+import com.phoneagent.feature.mcp.McpMarketplace
+import com.phoneagent.feature.mcp.McpMarketplaceEntry
+import com.phoneagent.engine.prompt.PromptTemplate
+import com.phoneagent.data.store.PromptTemplateStore
+import com.phoneagent.device.shell.ShizukuManager
+import com.phoneagent.device.shell.AdbStatus
+import com.phoneagent.device.shell.ShizukuBootstrap
+import com.phoneagent.device.shell.WirelessAdbPairingFlow
+import com.phoneagent.feature.skill.Skill
+import com.phoneagent.feature.skill.SkillRegistry
+import com.phoneagent.feature.test.TestConfig
+import com.phoneagent.feature.test.TestEngine
+import com.phoneagent.feature.test.TestPreset
+import com.phoneagent.feature.test.TestRunSummary
 import com.phoneagent.ui.components.formatLogTimestamp
-import com.phoneagent.workspace.WorkAreaEngine
-import com.phoneagent.workspace.WorkDisplay
-import com.phoneagent.workspace.EditChatMessage
-import com.phoneagent.workspace.WorkFile
-import com.phoneagent.workspace.WorkLog
+import com.phoneagent.feature.workspace.WorkAreaEngine
+import com.phoneagent.feature.workspace.WorkDisplay
+import com.phoneagent.feature.workspace.EditChatMessage
+import com.phoneagent.feature.workspace.WorkFile
+import com.phoneagent.feature.workspace.WorkLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -87,12 +87,12 @@ class MainViewModel(
     val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
     val metrics: StateFlow<AgentMetrics> = engine.metrics
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
-    val stepShot: StateFlow<com.phoneagent.model.StepShot> = engine.stepShot
-    val traces: StateFlow<List<com.phoneagent.model.StepTrace>> = engine.traces
+    val stepShot: StateFlow<com.phoneagent.domain.model.StepShot> = engine.stepShot
+    val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> = engine.traces
     val taskQueue: StateFlow<List<String>> = engine.taskQueue
     val needsUser: StateFlow<Boolean> = engine.needsUser
     val userHintRequest = engine.userHintRequest
-    val planPhase: StateFlow<com.phoneagent.agent.PlanPhase> = engine.planPhase
+    val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> = engine.planPhase
     val planStream: StateFlow<String> = engine.planStream
 
     /** 将显示给用户的文本自动翻译成简体中文（AI 翻译，带缓存） */
@@ -103,17 +103,17 @@ class MainViewModel(
         engine.testConnection(baseUrl, apiKey, model)
 
     fun startPlanning(task: String) = engine.startPlanning(task)
-    fun answerClarification(option: com.phoneagent.model.ClarificationOption) = engine.answerClarification(option)
+    fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
     fun approvePlan() = engine.approvePlan()
     fun cancelPlanning() = engine.cancelPlanning()
 
     // ---- 悬浮窗交互桥接：气泡窗按钮动作转发到引擎 ----
     init {
-        com.phoneagent.floating.FloatingWindowService.onInteraction = { action, payload ->
+        com.phoneagent.overlay.FloatingWindowService.onInteraction = { action, payload ->
             when (action) {
                 "approve" -> approvePlan()
                 "cancel" -> cancelPlanning()
-                "clarify" -> answerClarification(com.phoneagent.model.ClarificationOption(id = payload, label = payload, description = payload))
+                "clarify" -> answerClarification(com.phoneagent.domain.model.ClarificationOption(id = payload, label = payload, description = payload))
                 "hint" -> provideUserHint(payload)
                 "dismiss" -> dismissUser()
                 // 任务完成：用户确认是否保存执行模板（主动确认才入库）
@@ -132,7 +132,7 @@ class MainViewModel(
     }
 
     override fun onCleared() {
-        com.phoneagent.floating.FloatingWindowService.onInteraction = null
+        com.phoneagent.overlay.FloatingWindowService.onInteraction = null
         engine.stop()
         super.onCleared()
     }
@@ -338,16 +338,16 @@ class MainViewModel(
     fun stopAgent() = engine.stop()
 
     // ---- 长线任务：执行策略 / 断点续传 / 模板库 ----
-    suspend fun currentStrategy(): com.phoneagent.task.ExecutionStrategy = engine.currentStrategy()
-    fun setExecutionStrategy(s: com.phoneagent.task.ExecutionStrategy) {
+    suspend fun currentStrategy(): com.phoneagent.data.store.ExecutionStrategy = engine.currentStrategy()
+    fun setExecutionStrategy(s: com.phoneagent.data.store.ExecutionStrategy) {
         viewModelScope.launch { engine.setExecutionStrategy(s) }
     }
     fun resumeFromCheckpoint() = engine.resumeFromCheckpoint()
-    suspend fun lastCheckpoint(): com.phoneagent.task.Checkpoint? = engine.lastCheckpoint()
-    suspend fun loadTemplates(context: Context): List<com.phoneagent.task.TaskTemplate> =
-        runCatching { com.phoneagent.task.TaskStore.loadTemplates(context) }.getOrDefault(emptyList())
+    suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? = engine.lastCheckpoint()
+    suspend fun loadTemplates(context: Context): List<com.phoneagent.data.store.TaskTemplate> =
+        runCatching { com.phoneagent.data.store.TaskStore.loadTemplates(context) }.getOrDefault(emptyList())
     fun deleteTemplate(context: Context, id: String) {
-        viewModelScope.launch { runCatching { com.phoneagent.task.TaskStore.deleteTemplate(context, id) } }
+        viewModelScope.launch { runCatching { com.phoneagent.data.store.TaskStore.deleteTemplate(context, id) } }
     }
 
     // ---- AI 标准化测试 ----
@@ -537,7 +537,7 @@ class MainViewModel(
                 val name = sorted.first().taskName ?: "任务 #$tid"
                 sb.appendLine("\n■ 任务：$name（${sorted.size} 步）")
                 sorted.forEach { tr ->
-                    val human = com.phoneagent.debug.HumanTranslator.summarizeDecision(tr.receivedText)
+                    val human = com.phoneagent.core.text.HumanTranslator.summarizeDecision(tr.receivedText)
                     sb.appendLine("  · 第${tr.step}步 ${if (human.isNotBlank()) human else ""}${if (tr.visionModel.isNotBlank()) "（视觉:${tr.visionSource}）" else ""} · ${tr.latencyMs}ms · ${tr.totalTokens}token")
                 }
             }
@@ -545,7 +545,7 @@ class MainViewModel(
             if (issues.isNotEmpty()) {
                 sb.appendLine("\n■ 遇到的问题（已翻译成人话）：")
                 issues.forEach { l ->
-                    val human = com.phoneagent.debug.HumanTranslator.translateError(l.message)
+                    val human = com.phoneagent.core.text.HumanTranslator.translateError(l.message)
                     sb.appendLine("  - ${human}")
                 }
             }
@@ -556,17 +556,17 @@ class MainViewModel(
                 sb.appendLine("\n[任务 $tid] ${list.first().taskName ?: ""}")
                 list.sortedBy { it.step }.forEach { tr ->
                     sb.appendLine("· 步骤 ${tr.step} | 视觉=${tr.visionSource}(${tr.visionModel}) | 思考=${tr.thinking} | token=${tr.totalTokens} | ${tr.latencyMs}ms")
-                    sb.appendLine("  SENT: ${com.phoneagent.security.DataSanitizer.sanitize(tr.sentText)}")
-                    sb.appendLine("  GOT:  ${com.phoneagent.security.DataSanitizer.sanitize(tr.receivedText)}")
+                    sb.appendLine("  SENT: ${com.phoneagent.core.security.DataSanitizer.sanitize(tr.sentText)}")
+                    sb.appendLine("  GOT:  ${com.phoneagent.core.security.DataSanitizer.sanitize(tr.receivedText)}")
                 }
             }
             sb.appendLine("\n-- 系统日志 (Logs，含 API) --")
             logs.value.forEach { l ->
-                sb.appendLine("[${formatLogTimestamp(l.timestamp)}][${l.level.name}] ${com.phoneagent.security.DataSanitizer.sanitize(l.message)}")
-                l.detail?.takeIf { it.isNotBlank() }?.let { sb.appendLine("    ${com.phoneagent.security.DataSanitizer.sanitize(it)}") }
+                sb.appendLine("[${formatLogTimestamp(l.timestamp)}][${l.level.name}] ${com.phoneagent.core.security.DataSanitizer.sanitize(l.message)}")
+                l.detail?.takeIf { it.isNotBlank() }?.let { sb.appendLine("    ${com.phoneagent.core.security.DataSanitizer.sanitize(it)}") }
             }
             sb.appendLine("\n-- 对话 (Conversation) --")
-            conversation.value.forEach { c -> sb.appendLine("[${c.role}] ${com.phoneagent.security.DataSanitizer.sanitize(c.content).take(500)}") }
+            conversation.value.forEach { c -> sb.appendLine("[${c.role}] ${com.phoneagent.core.security.DataSanitizer.sanitize(c.content).take(500)}") }
 
             val fileName = "hpa_diagnostic_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
             val values = android.content.ContentValues().apply {

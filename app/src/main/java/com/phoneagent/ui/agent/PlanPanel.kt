@@ -50,7 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.model.AgentState
+import com.phoneagent.domain.model.AgentState
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
@@ -67,7 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import com.phoneagent.screen.ScreenSharingService
+import com.phoneagent.device.screen.ScreenSharingService
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.emptyStateIconColor
 import com.phoneagent.ui.theme.emptyStateTextColor
@@ -79,7 +79,7 @@ import com.phoneagent.ui.theme.runningIndicatorColor
 @Composable
 internal fun PlanPanel(
     vm: MainViewModel,
-    phase: com.phoneagent.agent.PlanPhase,
+    phase: com.phoneagent.engine.PlanPhase,
     isRunning: Boolean,
     streamText: String = "",
 ) {
@@ -101,7 +101,7 @@ internal fun PlanPanel(
         label = "plan-phase",
     ) { p ->
         when (p) {
-        is com.phoneagent.agent.PlanPhase.Planning -> {
+        is com.phoneagent.engine.PlanPhase.Planning -> {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,7 +122,7 @@ internal fun PlanPanel(
                 }
             }
         }
-        is com.phoneagent.agent.PlanPhase.Clarifying -> {
+        is com.phoneagent.engine.PlanPhase.Clarifying -> {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("需要向你确认", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
@@ -159,7 +159,7 @@ internal fun PlanPanel(
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
-                            vm.answerClarification(com.phoneagent.model.ClarificationOption(id = "manual", label = manualAnswer))
+                            vm.answerClarification(com.phoneagent.domain.model.ClarificationOption(id = "manual", label = manualAnswer))
                             manualAnswer = ""
                         },
                         enabled = manualAnswer.isNotBlank(),
@@ -169,7 +169,7 @@ internal fun PlanPanel(
                 }
             }
         }
-        is com.phoneagent.agent.PlanPhase.AwaitingApproval -> {
+        is com.phoneagent.engine.PlanPhase.AwaitingApproval -> {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("执行计划", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -196,7 +196,7 @@ internal fun PlanPanel(
                 }
             }
         }
-        is com.phoneagent.agent.PlanPhase.Approved -> {
+        is com.phoneagent.engine.PlanPhase.Approved -> {
             if (isRunning) {
                 Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.fillMaxWidth()) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(18.dp)) {
@@ -207,7 +207,7 @@ internal fun PlanPanel(
                 }
             }
         }
-        is com.phoneagent.agent.PlanPhase.Error -> {
+        is com.phoneagent.engine.PlanPhase.Error -> {
             Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text("规划失败", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -217,7 +217,7 @@ internal fun PlanPanel(
                 }
             }
         }
-        is com.phoneagent.agent.PlanPhase.Idle -> {}
+        is com.phoneagent.engine.PlanPhase.Idle -> {}
         }
     }
 }

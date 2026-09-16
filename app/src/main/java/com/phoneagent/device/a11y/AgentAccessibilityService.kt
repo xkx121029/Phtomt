@@ -10,10 +10,10 @@ import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.phoneagent.adskip.AdSkipperCore
+import com.phoneagent.feature.adskip.AdSkipperCore
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -213,8 +213,8 @@ class AgentAccessibilityService : AccessibilityService() {
         instance = null
         // 主动反馈（v2.2.1 八）：无障碍服务被系统杀掉时，提示用户重新开启
         runCatching {
-            com.phoneagent.debug.ActiveNotifier.notify(
-                applicationContext, com.phoneagent.debug.ActiveNotifier.ID_A11Y_KILLED,
+            com.phoneagent.core.notify.ActiveNotifier.notify(
+                applicationContext, com.phoneagent.core.notify.ActiveNotifier.ID_A11Y_KILLED,
                 "无障碍服务已断开",
                 "AI 控制手机的通道被系统关闭了，请重新开启无障碍服务以继续自动操作。",
             )

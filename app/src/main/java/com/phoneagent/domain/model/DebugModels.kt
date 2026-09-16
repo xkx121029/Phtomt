@@ -54,7 +54,7 @@ data class StepTrace(
     /** 该步决策用的截图 */
     val screenshot: android.graphics.Bitmap? = null,
     /** 用外挂视觉画框后的结果带控件列表（临时，用于 Debug 画框展示） */
-    val boxes: List<com.phoneagent.vision.DetectedControl> = emptyList(),
+    val boxes: List<com.phoneagent.device.vision.DetectedControl> = emptyList(),
     val annotated: android.graphics.Bitmap? = null,
 )
 

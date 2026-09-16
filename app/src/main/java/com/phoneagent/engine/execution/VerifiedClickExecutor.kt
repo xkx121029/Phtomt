@@ -1,9 +1,9 @@
 package com.phoneagent.execution
 
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.perception.PageFingerprint
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.engine.perception.PageFingerprint
 import kotlinx.coroutines.delay
 
 /**
@@ -26,7 +26,7 @@ data class VerifyResult(
  * 指纹变化 → 成功；不变 → 失败（可升级重试）。
  */
 class VerifiedClickExecutor(
-    private val inner: com.phoneagent.a11y.ActionExecutor,
+    private val inner: com.phoneagent.device.a11y.ActionExecutor,
 ) {
 
     /** 执行动作并验证页面是否发生变化 */

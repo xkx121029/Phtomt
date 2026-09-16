@@ -1,6 +1,6 @@
 package com.phoneagent.mcp
 
-import com.phoneagent.skill.SkillRegistry
+import com.phoneagent.feature.skill.SkillRegistry
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray

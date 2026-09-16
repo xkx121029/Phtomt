@@ -69,16 +69,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.phoneagent.mcp.McpMarketplace
-import com.phoneagent.mcp.McpServerInfo
-import com.phoneagent.mcp.McpTool
-import com.phoneagent.prompt.PromptTemplate
-import com.phoneagent.shizuku.adb.AdbError
-import com.phoneagent.shizuku.adb.AdbPhase
-import com.phoneagent.shizuku.adb.AdbWirelessTransport
-import com.phoneagent.skill.Skill
-import com.phoneagent.skill.SkillParam
-import com.phoneagent.skill.SkillSource
+import com.phoneagent.feature.mcp.McpMarketplace
+import com.phoneagent.feature.mcp.McpServerInfo
+import com.phoneagent.feature.mcp.McpTool
+import com.phoneagent.engine.prompt.PromptTemplate
+import com.phoneagent.device.shell.AdbError
+import com.phoneagent.device.shell.AdbPhase
+import com.phoneagent.device.shell.AdbWirelessTransport
+import com.phoneagent.feature.skill.Skill
+import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillSource
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
@@ -110,7 +110,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
             else -> "自动（无线ADB优先）"
         }
         val adbReady = adbStatus.phase == AdbPhase.READY
-        val shizukuReady = shizukuState == com.phoneagent.shizuku.ShizukuManager.State.READY
+        val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
         val localIp = remember { AdbWirelessTransport.localIpv4Address() }
         AppCard {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

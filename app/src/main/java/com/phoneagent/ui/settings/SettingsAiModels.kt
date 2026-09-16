@@ -133,8 +133,8 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             extTesting = true; extStatus = "连接测试中…"
                             // 空白图也会触发完整 IPC：外挂服务收到后返回 OCR/3B 控件结果
                             val bmp = android.graphics.Bitmap.createBitmap(320, 640, android.graphics.Bitmap.Config.ARGB_8888)
-                            val controls = com.phoneagent.vision.ExternalVisionProvider.detectControls(ctx, bmp, 15_000)
-                            val connected = com.phoneagent.vision.ExternalVisionProvider.isConnected
+                            val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(ctx, bmp, 15_000)
+                            val connected = com.phoneagent.device.vision.ExternalVisionProvider.isConnected
                             extStatus = if (connected) {
                                 "外挂视觉服务已连接，跨进程识别返回 ${controls.size} 个控件"
                             } else {

@@ -59,11 +59,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.phoneagent.agent.PromptLang
-import com.phoneagent.test.TestGroup
-import com.phoneagent.test.TestPreset
-import com.phoneagent.test.TestResult
-import com.phoneagent.test.TestStatus
+import com.phoneagent.engine.PromptLang
+import com.phoneagent.feature.test.TestGroup
+import com.phoneagent.feature.test.TestPreset
+import com.phoneagent.feature.test.TestResult
+import com.phoneagent.feature.test.TestStatus
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader

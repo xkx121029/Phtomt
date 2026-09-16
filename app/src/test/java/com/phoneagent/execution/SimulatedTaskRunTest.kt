@@ -1,13 +1,13 @@
 package com.phoneagent.execution
 
-import com.phoneagent.execution.CapabilityManager.Mode
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.AgentIntentTarget
-import com.phoneagent.model.ActionType
-import com.phoneagent.model.IntentType
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.engine.execution.CapabilityManager.Mode
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals

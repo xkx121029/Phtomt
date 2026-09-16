@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * AI 决策后输出的"意图" DSL（对应 HPA动作执行逻辑优化文档 v2.1）。
  *
  * AI 只描述"做什么"与"对什么做"，不关心"怎么做"（选通道/算坐标/转命令）。
- * 具体执行方式由端侧 [com.phoneagent.execution.IntentTranslator] 依据当前授权模式
+ * 具体执行方式由端侧 [com.phoneagent.engine.execution.IntentTranslator] 依据当前授权模式
  * （SHIZUKU / ACCESSIBILITY / READONLY）转译为具体命令后执行。
  *
  * 序列化字段与 AI 的 JSON 输出保持一致，便于直接反序列化。

@@ -1,11 +1,11 @@
 package com.phoneagent.workspace
 
 import android.content.Context
-import com.phoneagent.ai.AiClient
-import com.phoneagent.ai.ChatMessageDto
-import com.phoneagent.ai.ContentPart
+import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ChatMessageDto
+import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.agent.PromptLang
+import com.phoneagent.engine.PromptLang
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
-import com.phoneagent.workspace.EditChatMessage
+import com.phoneagent.feature.workspace.EditChatMessage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

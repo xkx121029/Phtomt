@@ -1,8 +1,8 @@
 package com.phoneagent.screen
 
 import android.graphics.Bitmap
-import com.phoneagent.a11y.AgentAccessibilityService
-import com.phoneagent.floating.FloatingWindowService
+import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.overlay.FloatingWindowService
 
 /**
  * 屏幕截图统一入口。

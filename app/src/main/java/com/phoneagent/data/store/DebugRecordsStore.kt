@@ -3,11 +3,11 @@ package com.phoneagent.debug
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import com.phoneagent.model.AgentAction
-import com.phoneagent.model.AgentLog
-import com.phoneagent.model.ConversationMessage
-import com.phoneagent.model.StepRecord
-import com.phoneagent.model.StepTrace
+import com.phoneagent.domain.model.AgentAction
+import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.ConversationMessage
+import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.domain.model.StepTrace
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File

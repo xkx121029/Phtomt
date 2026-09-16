@@ -1,6 +1,6 @@
 package com.phoneagent.perception
 
-import com.phoneagent.model.ScreenSnapshot
+import com.phoneagent.domain.model.ScreenSnapshot
 import java.security.MessageDigest
 
 /**
@@ -16,7 +16,7 @@ object PageFingerprint {
         val sb = StringBuilder()
         sb.append(snapshot.packageName ?: "").append('|')
         // 按坐标排序，保证稳定
-        val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.model.UiElement> { it.left }.thenBy { it.top })
+        val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.domain.model.UiElement> { it.left }.thenBy { it.top })
         for (e in sorted) {
             sb.append(e.viewId ?: "").append(':')
             sb.append(e.type).append(':')
@@ -30,7 +30,7 @@ object PageFingerprint {
     /** 计算有意义的指纹：忽略状态栏时间等动态变化（仅标签与坐标，不含 viewId 中可能变化的序号） */
     fun computeMeaningful(snapshot: ScreenSnapshot): String {
         val sb = StringBuilder()
-        val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.model.UiElement> { it.left }.thenBy { it.top })
+        val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.domain.model.UiElement> { it.left }.thenBy { it.top })
         for (e in sorted) {
             sb.append(e.type).append(':')
             sb.append(e.effectiveLabel() ?: "").append(':')

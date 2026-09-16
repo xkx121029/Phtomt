@@ -1,7 +1,7 @@
 package com.phoneagent.skill
 
-import com.phoneagent.mcp.McpManager
-import com.phoneagent.model.ScreenSnapshot
+import com.phoneagent.feature.mcp.McpManager
+import com.phoneagent.domain.model.ScreenSnapshot
 
 /**
  * Skill/MCP 执行网关：把一次技能调用解析并归一化为可执行结果。
@@ -21,7 +21,7 @@ class SkillExecutionGateway(
 ) {
     sealed class Dispatch {
         /** 翻译回旧命令意图，等待智能体按其原有通道执行 */
-        data class Legacy(val intent: com.phoneagent.model.AgentIntent, val skill: Skill) : Dispatch()
+        data class Legacy(val intent: com.phoneagent.domain.model.AgentIntent, val skill: Skill) : Dispatch()
         /** 交由 MCP 客户端实时调用 */
         data class McpInvoke(
             val server: String,
@@ -54,14 +54,14 @@ class SkillExecutionGateway(
         resolve(SkillInvocation(skillId = name, args = args))
 
     /** 判定一条意图是否可归类为内置技能（向后兼容展示用） */
-    fun skillForLegacy(intent: com.phoneagent.model.AgentIntent): Skill? =
+    fun skillForLegacy(intent: com.phoneagent.domain.model.AgentIntent): Skill? =
         SkillCompat.skillForLegacyIntent(intent)
 
     /** 从快照生成结构化控件 JSON 文本（供提示词注入） */
     fun controlsJson(snapshot: ScreenSnapshot?, includeAll: Boolean = false): String {
         if (snapshot == null) return "[]"
-        val controls = com.phoneagent.perception.ControlTreeBuilder.build(snapshot, includeAll)
-        return com.phoneagent.perception.ControlTreeBuilder.toAiText(controls)
+        val controls = com.phoneagent.engine.perception.ControlTreeBuilder.build(snapshot, includeAll)
+        return com.phoneagent.engine.perception.ControlTreeBuilder.toAiText(controls)
     }
 
     /** 可用技能清单摘要（供提示词注入） */

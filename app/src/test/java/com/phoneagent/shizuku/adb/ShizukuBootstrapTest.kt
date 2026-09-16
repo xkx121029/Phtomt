@@ -1,6 +1,6 @@
 package com.phoneagent.shizuku.adb
 
-import com.phoneagent.shizuku.ShizukuManager
+import com.phoneagent.device.shell.ShizukuManager
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk

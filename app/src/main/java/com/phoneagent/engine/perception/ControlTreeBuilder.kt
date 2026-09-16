@@ -1,9 +1,9 @@
 package com.phoneagent.perception
 
-import com.phoneagent.model.ControlExtra
-import com.phoneagent.model.ControlNode
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
+import com.phoneagent.domain.model.ControlExtra
+import com.phoneagent.domain.model.ControlNode
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 
 /**
  * 控件树构建器：把感知层采集到的元素树（[ScreenSnapshot.elements]）转成

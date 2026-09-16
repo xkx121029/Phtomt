@@ -1,6 +1,6 @@
 package com.phoneagent.security
 
-import com.phoneagent.model.ScreenSnapshot
+import com.phoneagent.domain.model.ScreenSnapshot
 
 /**
  * 敏感页面检测：银行 / 支付密码 / 金融确认页 → 只读模式，拒绝执行任何动作。

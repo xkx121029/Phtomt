@@ -1,6 +1,6 @@
 package com.phoneagent.agent
 
-import com.phoneagent.model.AppPageIndex
+import com.phoneagent.domain.model.AppPageIndex
 
 /**
  * 提示词语言。用户可在设置中手动切换。

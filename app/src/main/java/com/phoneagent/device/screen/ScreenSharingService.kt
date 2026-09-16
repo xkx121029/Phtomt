@@ -22,7 +22,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.phoneagent.floating.FloatingWindowService
+import com.phoneagent.overlay.FloatingWindowService
 import com.phoneagent.ui.MainActivity
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume

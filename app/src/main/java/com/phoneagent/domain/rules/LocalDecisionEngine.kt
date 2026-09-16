@@ -1,12 +1,12 @@
 package com.phoneagent.decision
 
-import com.phoneagent.model.AgentIntent
-import com.phoneagent.model.AgentIntentTarget
-import com.phoneagent.model.IntentType
-import com.phoneagent.model.ScreenSnapshot
-import com.phoneagent.model.UiElement
-import com.phoneagent.perception.PageAnnotator
-import com.phoneagent.perception.effectiveLabel
+import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.perception.PageAnnotator
+import com.phoneagent.engine.perception.effectiveLabel
 
 /**
  * 端侧决策引擎：对弹窗/加载/异常/完成四类场景直接给出意图，不消耗云端调用。

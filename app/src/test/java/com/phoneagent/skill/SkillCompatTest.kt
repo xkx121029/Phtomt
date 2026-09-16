@@ -1,6 +1,6 @@
 package com.phoneagent.skill
 
-import com.phoneagent.model.IntentType
+import com.phoneagent.domain.model.IntentType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,7 +9,7 @@ class SkillCompatTest {
 
     @Test
     fun 旧命令意图解析为内置技能() {
-        val intent = com.phoneagent.model.AgentIntent(intent = IntentType.OPEN_APP, app = "微信")
+        val intent = com.phoneagent.domain.model.AgentIntent(intent = IntentType.OPEN_APP, app = "微信")
         val skill = SkillCompat.skillForLegacyIntent(intent)
         assertEquals("skill_open_app", skill?.id)
     }

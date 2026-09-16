@@ -1,13 +1,13 @@
-package com.phoneagent.shizuku.adb
+package com.phoneagent.device.shell.adb
 
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_AUTH
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_CLSE
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_CNXN
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_OKAY
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_OPEN
-import com.phoneagent.shizuku.adb.AdbProtocol.CMD_WRTE
-import com.phoneagent.shizuku.adb.AdbProtocol.MAXDATA
-import com.phoneagent.shizuku.adb.AdbProtocol.VERSION
+import com.phoneagent.device.shell.AdbProtocol.CMD_AUTH
+import com.phoneagent.device.shell.AdbProtocol.CMD_CLSE
+import com.phoneagent.device.shell.AdbProtocol.CMD_CNXN
+import com.phoneagent.device.shell.AdbProtocol.CMD_OKAY
+import com.phoneagent.device.shell.AdbProtocol.CMD_OPEN
+import com.phoneagent.device.shell.AdbProtocol.CMD_WRTE
+import com.phoneagent.device.shell.AdbProtocol.MAXDATA
+import com.phoneagent.device.shell.AdbProtocol.VERSION
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
