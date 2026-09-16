@@ -1,4 +1,4 @@
-package com.phoneagent.feature.skill.SkillModels
+package com.phoneagent.feature.skill
 
 import kotlinx.serialization.Serializable
 

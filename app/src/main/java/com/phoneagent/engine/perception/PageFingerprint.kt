@@ -1,4 +1,4 @@
-package com.phoneagent.engine.perception.PageFingerprint
+package com.phoneagent.engine.perception
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import java.security.MessageDigest

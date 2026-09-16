@@ -1,4 +1,4 @@
-package com.phoneagent.ui.theme.Color
+package com.phoneagent.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

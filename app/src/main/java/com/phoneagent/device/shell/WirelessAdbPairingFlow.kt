@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.WirelessAdbPairingFlow
+package com.phoneagent.device.shell
 
 import android.content.Context
 import kotlinx.coroutines.CoroutineScope

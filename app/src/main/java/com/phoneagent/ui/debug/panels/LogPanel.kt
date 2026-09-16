@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug.panels.LogPanel
+package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke

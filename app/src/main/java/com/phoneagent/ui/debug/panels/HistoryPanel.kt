@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug.panels.HistoryPanel
+package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke

@@ -1,4 +1,4 @@
-package com.phoneagent.feature.mcp.McpRules
+package com.phoneagent.feature.mcp
 
 /**
  * MCP 验证与使用规则引擎（纯 Kotlin，便于单元测试）。

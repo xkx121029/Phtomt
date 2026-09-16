@@ -1,4 +1,4 @@
-package com.phoneagent.PhoneAgentApp
+package com.phoneagent
 
 import android.app.Application
 import com.phoneagent.di.initKoin

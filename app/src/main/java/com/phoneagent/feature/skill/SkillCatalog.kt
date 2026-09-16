@@ -1,4 +1,4 @@
-package com.phoneagent.feature.skill.SkillCatalog
+package com.phoneagent.feature.skill
 
 import com.phoneagent.domain.model.IntentType
 

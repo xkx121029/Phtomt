@@ -1,4 +1,4 @@
-package com.phoneagent.engine.network.CloudAgent
+package com.phoneagent.engine.network
 
 import com.phoneagent.core.ai.AiClient
 import com.phoneagent.core.ai.ChatMessageDto

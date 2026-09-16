@@ -1,4 +1,4 @@
-package com.phoneagent.ui.test.TestResultViews
+package com.phoneagent.ui.test
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween

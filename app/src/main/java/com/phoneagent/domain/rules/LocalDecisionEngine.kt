@@ -1,4 +1,4 @@
-package com.phoneagent.domain.rules.LocalDecisionEngine
+package com.phoneagent.domain.rules
 
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget

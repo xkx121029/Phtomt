@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.AdbPairingReceiver
+package com.phoneagent.device.shell
 
 import android.content.BroadcastReceiver
 import android.content.Context

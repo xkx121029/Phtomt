@@ -1,4 +1,4 @@
-package com.phoneagent.overlay.FloatingUi
+package com.phoneagent.overlay
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable

@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution.CapabilityManager
+package com.phoneagent.engine.execution
 
 import android.content.Context
 import com.phoneagent.device.a11y.AgentAccessibilityService

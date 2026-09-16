@@ -1,4 +1,4 @@
-package com.phoneagent.data.store.MemoryStore
+package com.phoneagent.data.store
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace.WorkDisplayPanel
+package com.phoneagent.ui.workspace
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState

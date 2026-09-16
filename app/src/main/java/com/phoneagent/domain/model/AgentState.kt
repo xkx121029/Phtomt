@@ -1,4 +1,4 @@
-package com.phoneagent.domain.model.AgentState
+package com.phoneagent.domain.model
 
 /**
  * Agent 运行状态，用于 UI 展示与日志。

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.memory.MemoryGraphScreen
+package com.phoneagent.ui.memory
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween

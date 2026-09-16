@@ -1,4 +1,4 @@
-package com.phoneagent.ui.components.Formatters
+package com.phoneagent.ui.components
 
 import java.text.SimpleDateFormat
 import java.util.Date

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings.SettingsLongRun
+package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row

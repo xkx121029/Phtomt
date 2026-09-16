@@ -1,4 +1,4 @@
-package com.phoneagent.core.security.SensitivePageDetector
+package com.phoneagent.core.security
 
 import com.phoneagent.domain.model.ScreenSnapshot
 

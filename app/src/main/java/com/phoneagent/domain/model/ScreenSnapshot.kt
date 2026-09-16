@@ -1,4 +1,4 @@
-package com.phoneagent.domain.model.ScreenSnapshot
+package com.phoneagent.domain.model
 
 import kotlinx.serialization.Serializable
 

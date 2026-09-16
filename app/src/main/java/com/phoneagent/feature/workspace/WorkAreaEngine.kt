@@ -1,4 +1,4 @@
-package com.phoneagent.feature.workspace.WorkAreaEngine
+package com.phoneagent.feature.workspace
 
 import android.content.Context
 import com.phoneagent.core.ai.AiClient

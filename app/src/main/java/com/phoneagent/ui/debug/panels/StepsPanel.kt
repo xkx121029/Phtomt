@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug.panels.StepsPanel
+package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke

@@ -1,4 +1,4 @@
-package com.phoneagent.feature.mcp.McpManager
+package com.phoneagent.feature.mcp
 
 import com.phoneagent.feature.skill.McpSkillTarget
 import com.phoneagent.feature.skill.Skill

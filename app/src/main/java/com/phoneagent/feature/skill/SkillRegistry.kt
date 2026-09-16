@@ -1,4 +1,4 @@
-package com.phoneagent.feature.skill.SkillRegistry
+package com.phoneagent.feature.skill
 
 import kotlinx.serialization.json.Json
 

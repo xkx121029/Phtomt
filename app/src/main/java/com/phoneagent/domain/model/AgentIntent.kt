@@ -1,4 +1,4 @@
-package com.phoneagent.domain.model.AgentIntent
+package com.phoneagent.domain.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

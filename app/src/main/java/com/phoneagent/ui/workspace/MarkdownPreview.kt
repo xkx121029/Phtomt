@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace.MarkdownPreview
+package com.phoneagent.ui.workspace
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

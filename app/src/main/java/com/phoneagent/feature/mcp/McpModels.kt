@@ -1,4 +1,4 @@
-package com.phoneagent.feature.mcp.McpModels
+package com.phoneagent.feature.mcp
 
 import kotlinx.serialization.Serializable
 

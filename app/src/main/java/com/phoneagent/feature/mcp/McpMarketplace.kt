@@ -1,4 +1,4 @@
-package com.phoneagent.feature.mcp.McpMarketplace
+package com.phoneagent.feature.mcp
 
 /**
  * 内置 MCP 市场：预设一批常用 MCP 服务器的快捷配置。

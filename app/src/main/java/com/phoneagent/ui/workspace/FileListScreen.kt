@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace.FileListScreen
+package com.phoneagent.ui.workspace
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues

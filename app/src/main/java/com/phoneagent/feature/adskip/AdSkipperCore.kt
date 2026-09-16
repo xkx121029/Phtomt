@@ -1,4 +1,4 @@
-package com.phoneagent.feature.adskip.AdSkipperCore
+package com.phoneagent.feature.adskip
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement

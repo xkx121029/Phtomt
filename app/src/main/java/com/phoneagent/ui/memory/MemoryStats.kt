@@ -1,4 +1,4 @@
-package com.phoneagent.ui.memory.MemoryStats
+package com.phoneagent.ui.memory
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.agent.AgentCards
+package com.phoneagent.ui.agent
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween

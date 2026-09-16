@@ -1,4 +1,4 @@
-package com.phoneagent.core.ai.AiDecision
+package com.phoneagent.core.ai
 
 import com.phoneagent.domain.model.AgentIntent
 

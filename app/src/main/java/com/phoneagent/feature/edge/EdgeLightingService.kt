@@ -1,4 +1,4 @@
-package com.phoneagent.feature.edge.EdgeLightingService
+package com.phoneagent.feature.edge
 
 import android.app.Service
 import android.content.Context

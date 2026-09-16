@@ -1,4 +1,4 @@
-package com.phoneagent.device.vision.DetectedControl
+package com.phoneagent.device.vision
 
 import android.graphics.Bitmap
 import android.graphics.Canvas

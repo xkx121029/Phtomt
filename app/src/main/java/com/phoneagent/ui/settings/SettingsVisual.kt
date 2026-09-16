@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings.SettingsVisual
+package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

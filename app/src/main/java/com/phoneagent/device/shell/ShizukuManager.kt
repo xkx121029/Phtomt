@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.ShizukuManager
+package com.phoneagent.device.shell
 
 import android.content.pm.PackageManager
 import kotlinx.coroutines.flow.MutableStateFlow

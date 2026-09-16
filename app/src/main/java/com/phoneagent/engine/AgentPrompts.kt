@@ -1,4 +1,4 @@
-package com.phoneagent.engine.AgentPrompts
+package com.phoneagent.engine
 
 import com.phoneagent.domain.model.AppPageIndex
 

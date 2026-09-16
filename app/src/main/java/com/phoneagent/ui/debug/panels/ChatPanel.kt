@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug.panels.ChatPanel
+package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke

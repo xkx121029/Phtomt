@@ -1,4 +1,4 @@
-package com.phoneagent.core.text.HumanTranslator
+package com.phoneagent.core.text
 
 /**
  * 端侧"人话翻译器"（v2.2.1 5.1）：把技术术语硬编码映射成普通人能懂的表述。

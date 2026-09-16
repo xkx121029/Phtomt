@@ -1,4 +1,4 @@
-package com.phoneagent.domain.model.ControlNode
+package com.phoneagent.domain.model
 
 import kotlinx.serialization.Serializable
 

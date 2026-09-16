@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings.SettingsAiModels
+package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

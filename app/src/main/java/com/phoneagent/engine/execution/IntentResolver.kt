@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution.IntentResolver
+package com.phoneagent.engine.execution
 
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.ScreenSnapshot

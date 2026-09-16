@@ -1,4 +1,4 @@
-package com.phoneagent.ui.theme.Theme
+package com.phoneagent.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme

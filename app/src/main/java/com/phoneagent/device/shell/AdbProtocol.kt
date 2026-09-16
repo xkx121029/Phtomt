@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.AdbProtocol
+package com.phoneagent.device.shell
 
 import java.io.DataInputStream
 import java.io.EOFException

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.components.Components
+package com.phoneagent.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring

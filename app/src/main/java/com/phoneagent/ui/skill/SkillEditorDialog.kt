@@ -1,4 +1,4 @@
-package com.phoneagent.ui.skill.SkillEditorDialog
+package com.phoneagent.ui.skill
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

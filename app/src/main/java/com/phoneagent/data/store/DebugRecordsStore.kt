@@ -1,4 +1,4 @@
-package com.phoneagent.data.store.DebugRecordsStore
+package com.phoneagent.data.store
 
 import android.content.Context
 import android.graphics.Bitmap

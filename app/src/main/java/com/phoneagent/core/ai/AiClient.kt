@@ -1,4 +1,4 @@
-package com.phoneagent.core.ai.AiClient
+package com.phoneagent.core.ai
 
 import android.graphics.Bitmap
 import android.util.Base64

@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution.VerifiedClickExecutor
+package com.phoneagent.engine.execution
 
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.domain.model.AgentAction

@@ -1,4 +1,4 @@
-package com.phoneagent.device.a11y.AgentAccessibilityService
+package com.phoneagent.device.a11y
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo

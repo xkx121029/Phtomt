@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug.DebugScreen
+package com.phoneagent.ui.debug
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke

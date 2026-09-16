@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution.AppNameResolver
+package com.phoneagent.engine.execution
 
 import android.content.Context
 import android.content.Intent

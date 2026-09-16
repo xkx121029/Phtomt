@@ -1,4 +1,4 @@
-package com.phoneagent.ui.MainViewModel
+package com.phoneagent.ui
 
 import android.app.Activity
 import android.Manifest

@@ -1,4 +1,4 @@
-package com.phoneagent.device.screen.ScreenSharingService
+package com.phoneagent.device.screen
 
 import android.app.Notification
 import android.app.NotificationChannel
