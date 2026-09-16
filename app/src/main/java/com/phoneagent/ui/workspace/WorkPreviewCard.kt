@@ -64,7 +64,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
-import com.phoneagent.ui.components.EmptyHint
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.components.liquidGlass
@@ -80,105 +79,65 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/**
- * 工作区：给 AI 一个可写文件的目录，生成 Markdown/纯文本文档。
- * 用户可实时跟随 AI 操作（流式内容预览 + 操作日志）。
- * 文件列表独立为 [FileListScreen]（点入口卡片进入），文件预览编辑为 [FileEditorScreen]。
- *
- * 布局层级：Header → 生成卡片 → 实时预览 → 文件入口 → 操作日志。
- */
 @Composable
-fun WorkAreaScreen(
-    vm: MainViewModel,
-    modifier: Modifier = Modifier,
-    onOpenFileList: () -> Unit = {},
-    onOpenEditor: (String) -> Unit = {},
-) {
-    val files by vm.workFiles.collectAsState()
-    val generating by vm.workGenerating.collectAsState()
-    val preview by vm.workPreview.collectAsState()
-    val logs by vm.workLogs.collectAsState()
-    val error by vm.workError.collectAsState()
-    val display by vm.workDisplay.collectAsState()
-
-    var task by rememberSaveable { mutableStateOf("") }
-    var fileName by rememberSaveable { mutableStateOf("") }
-    val buzz = rememberHapticClick()
-
-    LaunchedEffect(Unit) { vm.workRefreshFiles() }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+internal fun PreviewCard(vm: MainViewModel, content: String, generating: Boolean) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Card),
+        color = Color.Transparent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(alpha = 0.6f, cornerRadius = AppRadii.Card)
+            .animateListItem(2),
     ) {
-        // ---- 页头 ----
-        AppTopBar(
-            title = "工作区",
-            subtitle = "让 AI 编写文档，实时跟随生成过程",
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // ---- 生成输入区 ----
-        GenerateCard(
-            task = task,
-            fileName = fileName,
-            generating = generating,
-            error = error,
-            onTask = { task = it },
-            onFileName = { fileName = it },
-            onGenerate = { buzz(); vm.workGenerate(task, fileName) },
-            onStop = { vm.workStop() },
-        )
-
-        // ---- 实时预览区（跟随 AI 生成） ----
-        if (preview.isNotBlank()) {
-            Spacer(Modifier.height(16.dp))
-            PreviewCard(vm, preview, generating)
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        // ---- 文件入口卡片（独立文件列表页） ----
-        FilesEntryCard(files, onClick = onOpenFileList)
-
-        // ---- 操作日志 ----
-        Spacer(Modifier.height(20.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(
-                "操作日志 · ${logs.size}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.weight(1f))
-            if (logs.isNotEmpty()) {
-                Text(
-                    "清空",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clickable { vm.workClearLogs() }
-                        .padding(6.dp),
-                )
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AnimatedVisibility(
+                    visible = generating,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "正在生成…",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                val active = com.phoneagent.ui.workspace.rememberActiveFile(vm)
+                if (active != null) {
+                    Text(
+                        active,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-        }
-        if (logs.isEmpty()) {
-            EmptyHint(
-                icon = Icons.Rounded.History,
-                title = "暂无操作记录",
-                desc = "AI 生成文档时的每一步操作都会记录在这里。",
+            Spacer(Modifier.height(10.dp))
+            Text(
+                content,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainerLow,
+                        RoundedCornerShape(AppRadii.Tile),
+                    )
+                    .padding(12.dp),
             )
-        } else {
-            LogStream(logs)
         }
-
-        Spacer(Modifier.height(28.dp))
     }
+}
 
-    // AI 编辑完文件后，直接展示内容给用户
-    val cur = display
-    if (cur != null) {
-        WorkDisplayPanel(cur, onDismiss = { vm.workDismissDisplay() })
-    }
+@Composable
+private fun rememberActiveFile(vm: MainViewModel): String? {
+    val active by vm.workActiveFile.collectAsState()
+    return active
 }

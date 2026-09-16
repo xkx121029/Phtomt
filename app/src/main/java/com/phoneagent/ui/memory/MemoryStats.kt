@@ -81,104 +81,29 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-/**
- * AI 记忆图谱：
- * 把积累的记忆（异常经验 + 用户画像）以图谱形式展示。
- * 中心为根节点，外围为分类节点，最外层为具体记忆条目，节点间用连线连接。
- */
+/** 统计概览 */
 @Composable
-fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    val anomalies by vm.memoryAnomalies.collectAsState()
-    val profiles by vm.memoryProfile.collectAsState()
-    val loading by vm.memoryLoading.collectAsState()
-
-    LaunchedEffect(Unit) { vm.refreshMemory() }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+internal fun StatsRow(anomalyCount: Int, profileCount: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        // 标题 + 操作
-        AppTopBar(
-            title = "记忆图谱",
-            subtitle = "AI 积累的异常经验与用户画像",
-            leadingIcon = Icons.Filled.Memory,
-            trailingContent = {
-                PressableScale(onClick = { vm.refreshMemory() }) {
-                    Icon(
-                        Icons.Filled.Refresh,
-                        contentDescription = "刷新",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(8.dp).size(20.dp),
-                    )
-                }
-            },
-        )
+        StatCard("异常经验", anomalyCount.toString(), MemoryAnomaly, Modifier.weight(1f))
+        StatCard("用户画像", profileCount.toString(), MemoryProfile, Modifier.weight(1f))
+    }
+}
 
-        Spacer(Modifier.height(4.dp))
-
-        if (loading) {
-            // 骨架屏加载：标题 + 图谱占位 + 统计占位
-            Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                Box(
-                    modifier = Modifier
-                        .height(24.dp)
-                        .fillMaxWidth(0.5f)
-                        .skeleton(),
-                )
-                Spacer(Modifier.height(16.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .clip(RoundedCornerShape(AppRadii.Card))
-                        .skeleton(),
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp)
-                            .clip(RoundedCornerShape(AppRadii.Item))
-                            .skeleton(),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(56.dp)
-                            .clip(RoundedCornerShape(AppRadii.Item))
-                            .skeleton(),
-                    )
-                }
-            }
-            return@Column
+@Composable
+private fun StatCard(title: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Item),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(6.dp))
+            Text(value, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, color = color))
         }
-
-        if (anomalies.isEmpty() && profiles.isEmpty()) {
-            EmptyMemoryCard(onRefresh = { vm.refreshMemory() })
-            return@Column
-        }
-
-        // 图谱画布
-        val graphData = remember(anomalies, profiles) { buildGraphNodes(anomalies, profiles) }
-        GraphCanvas(nodes = graphData)
-
-        Spacer(Modifier.height(16.dp))
-
-        // 统计概览
-        StatsRow(anomalies.size, profiles.size)
-
-        Spacer(Modifier.height(16.dp))
-
-        // 明细列表
-        AnomalyList(anomalies, onClear = { vm.clearAnomalyMemory() })
-        ProfileList(profiles, onClear = { vm.clearProfileMemory() })
-
-        Spacer(Modifier.height(28.dp))
     }
 }
