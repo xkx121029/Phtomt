@@ -78,7 +78,8 @@ class EngineRulesTest {
     fun swipeEndpoints_向下滑动_钳制到屏高() {
         val (ex, ey) = EngineRules.swipeEndpoints(100, 2300, "down", 200, 1080, 2400)
         assertEquals(100, ex)
-        assertEquals(2400, ey)
+        // 终点钳制到有效像素上界 size-1（2026-09-14 修复：原为 coerceAtMost(size)，会越界 1px）
+        assertEquals(2399, ey)
     }
 
     @Test

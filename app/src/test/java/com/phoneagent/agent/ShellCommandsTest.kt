@@ -68,7 +68,8 @@ class ShellCommandsTest {
 
     @Test
     fun resolve_tap越界坐标_钳制到屏幕() {
-        assertEquals("input tap 1080 2400", ShellCommands.resolve("tap 5000 9999"))
+        // 越界坐标钳制到有效像素上界 size-1（2026-09-14 修复：原为 coerceIn(0,dim)，会越界 1px）
+        assertEquals("input tap 1079 2399", ShellCommands.resolve("tap 5000 9999"))
     }
 
     @Test
