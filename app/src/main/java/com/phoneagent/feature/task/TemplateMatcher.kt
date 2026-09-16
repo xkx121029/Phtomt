@@ -1,5 +1,7 @@
 package com.phoneagent.feature.task
 
+import com.phoneagent.data.store.TaskTemplate
+
 /**
  * 模板匹配纯逻辑（无 Android / DataStore 依赖，可 JVM 单元测试）。
  *
