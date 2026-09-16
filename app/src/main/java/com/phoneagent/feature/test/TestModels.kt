@@ -3,6 +3,10 @@ package com.phoneagent.feature.test
 /**
  * 智能体 AI 标准化测试（Prompt 回归）的数据模型。
  * 参照《HPS ai标准化测试.md》：预设方案 → 用例 → 逐条校验 → 结果汇总。
+ *
+ * 判分口径对齐「转译层」（[com.phoneagent.engine.execution.IntentTranslator]）的输入契约：
+ * AI 只输出 `intent` 意图（禁止旧的 type/action 字段），目标用嵌套 `target:{by,value}` 描述
+ * （by = id | text | hint | coordinate，禁止旧的 method 字段），不可逆操作用 `needs_confirmation`。
  */
 
 /** 测试分组（对应标准化文档的 A~E 组） */
@@ -30,16 +34,20 @@ data class TestCase(
     val userPrompt: String,
     /** 页面来源：accessibility 或 screenshot */
     val source: String = "accessibility",
-    /** 期望动作类型（命中任一即通过） */
-    val expectedAction: Set<String> = emptySet(),
-    /** 禁止出现的动作类型 */
-    val forbiddenAction: Set<String> = emptySet(),
-    /** 期望 target.method（组B） */
-    val expectedMethod: String? = null,
-    /** 不应使用的 target.method（组B） */
-    val forbiddenMethod: String? = null,
+    /** 期望的意图（命中任一即通过） */
+    val expectedIntent: Set<String> = emptySet(),
+    /** 禁止出现的意图 */
+    val forbiddenIntent: Set<String> = emptySet(),
+    /** 期望 target.by（组B：id / text / hint / coordinate） */
+    val expectedBy: String? = null,
+    /** 不应使用的 target.by（组B） */
+    val forbiddenBy: String? = null,
     /** 动作合并期望：true=必须返回数组，false=禁止返回数组 */
     val expectArray: Boolean? = null,
+    /** 是否严格校验统一必填字段（intent / reasoning / expected / confidence），组A 格式检查用 */
+    val requireAllFields: Boolean = false,
+    /** 是否要求不可逆操作携带 needs_confirmation=true */
+    val requireConfirmation: Boolean = false,
     /** 期望 confidence 等附加校验描述（用于展示） */
     val checkHint: String = "",
 )
@@ -49,8 +57,8 @@ data class TestResult(
     val case: TestCase,
     val passed: Boolean,
     val rawOutput: String,
-    /** 解析出的动作类型（数组则取数组第一个） */
-    val actionType: String?,
+    /** 解析出的意图（数组则取数组第一个） */
+    val intentType: String?,
     val errors: List<String>,
     val latencyMs: Long,
 )

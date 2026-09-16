@@ -18,57 +18,14 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * 智能体 AI 标准化测试引擎。
  * 支持中英文双语提示词测试，包含标准预设方案与真实场景库。
+ *
+ * 判分口径与「转译层」[com.phoneagent.engine.execution.IntentTranslator] 的输入契约一致：
+ * 只认 `intent` 意图 + 嵌套 `target:{by,value}`；沿用旧的 type/action、target.method
+ * 或扁平 by/value 一律判错（这些写法转译层无法识别）。
  */
 class TestEngine(private val aiClient: AiClient) {
 
     private val json = Json { ignoreUnknownKeys = true }
-
-    /**
-     * 针对 agnes 优化的英文 system 提示词。
-     * 明确要求字段名为 "type"（非 "action"），强化嵌套 target 结构约束，
-     * 并强化倒计时广告等关键场景的决策规则。
-     */
-    private val AGNES_SYSTEM = """
-You are Phantom, an Android automation agent being regression-tested.
-# Output rules (highest priority)
-1. Output ONLY a single JSON. First char MUST be { or [, last MUST be } or ].
-2. NEVER output markdown modifiers or any extra text.
-# Action object (mandatory field name: "type", NOT "action")
-Every action is a JSON object. The field name MUST be "type", NOT "action":
-- "type": one of tap | long_press | swipe | type | key | wait | launch | scroll_to | abort | task_complete
-- "target": {"method": "id"|"label"|"coordinate", "value": "..."} (MUST be nested object)
-- "confidence": a number between 0 and 1
-- "reasoning": a short reason
-- "needs_user_confirmation": true ONLY for irreversible actions (payment, delete, send).
-# Wrong output (DO NOT follow)
-- {"action":"click","target":{"id":"..."}}  ← field name must be "type", not "action"
-- {"method":"id","value":"..."} ← missing "target" wrapper
-- {"element_id":"node_abc"} ← must use target.method / target.value
-# Targeting
-- accessibility source -> method "id" (prefer) or "label". NEVER "coordinate".
-- screenshot source -> method "coordinate" only.
-# Page snapshot format (real device)
-You receive a # Page snapshot with:
-- page_type: search_page | form | content_list | dialog_overlay | ad_with_countdown | generic ...
-- context_hint: semantic description; if it contains "⚠️ Countdown Ad", the page is covered by a countdown ad.
-- fingerprint: stable hash to detect page changes.
-- elements: one line per control, e.g. [#3] android.widget.Button(Button) label="确认" center=(360,700) bounds=(40,640)-(680,760) clickable=true scrollable=false editable=false priority=high.
-  - id: prefer clicking by the control's label when no id is given.
-  - priority: high = recommended target (input field / primary button).
-  - editable=true means a text field (use type action after focusing it).
-# Countdown ad (Iron Rule)
-- If context_hint contains "⚠️ Countdown Ad" -> action MUST be "wait", NEVER "tap" or "click". ABSOLUTELY FORBIDDEN to tap "Skip".
-# Action merging (JSON array)
-You may output a JSON ARRAY of at most 2 actions ONLY when BOTH hold:
-1. page source is accessibility, AND
-2. the first action will NOT navigate away or change page structure.
-When you output an array, EVERY element MUST be a complete, valid action JSON object.
-NEVER mix plain strings or numbers into the array.
-NEVER use an array when source is screenshot.
-NEVER use an array when the first action navigates to a new page.
-# Output form
-Prefer a single JSON object unless merging is required.
-""".trimIndent()
 
     private val _config = MutableStateFlow(
         TestConfig(
@@ -112,12 +69,11 @@ Prefer a single JSON object unless merging is required.
 
     /**
      * 根据当前语言返回对应的测试系统提示词。
-     * 英文使用优化版 AGNES_SYSTEM（含反例和铁律），中文使用 AgentPrompts 的 systemCN。
+     * 两种语言都直接取 [AgentPrompts] 的真实线上提示词，保证"测什么就上什么"，
+     * 不再维护一份容易与线上协议漂移的测试专用副本。
      */
-    private fun getSystemPrompt(lang: PromptLang): String = when (lang) {
-        PromptLang.CN -> AgentPrompts.system(PromptLang.CN, "", hasVision = false, shizukuAvailable = false)
-        PromptLang.EN -> AGNES_SYSTEM
-    }
+    private fun getSystemPrompt(lang: PromptLang): String =
+        AgentPrompts.system(lang, "", hasVision = false, shizukuAvailable = false)
 
     /** 获取当前语言的中文标签 */
     fun getLanguageLabel(lang: PromptLang): String = when (lang) {
