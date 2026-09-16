@@ -1,0 +1,1090 @@
+﻿{
+    "PhonePreviewArea":  [
+                             "com.phoneagent.ui.agent"
+                         ],
+    "PlanPhase":  [
+                      "com.phoneagent.engine"
+                  ],
+    "LabeledField":  [
+                         "com.phoneagent.ui.settings"
+                     ],
+    "TranslationContext":  [
+                               "com.phoneagent.engine.execution"
+                           ],
+    "MarqueeColorPicker":  [
+                               "com.phoneagent.ui.settings"
+                           ],
+    "HomeScreen":  [
+                       "com.phoneagent.ui.home"
+                   ],
+    "TestReal":  [
+                     "com.phoneagent.ui.theme"
+                 ],
+    "StepRecord":  [
+                       "com.phoneagent.domain.model"
+                   ],
+    "StatTile":  [
+                     "com.phoneagent.ui.components"
+                 ],
+    "TimelinePanel":  [
+                          "com.phoneagent.ui.debug.panels"
+                      ],
+    "MemoryProfileSoft":  [
+                              "com.phoneagent.ui.theme"
+                          ],
+    "TestDecision":  [
+                         "com.phoneagent.ui.theme"
+                     ],
+    "IconMint":  [
+                     "com.phoneagent.ui.theme"
+                 ],
+    "SectionCard":  [
+                        "com.phoneagent.ui.components"
+                    ],
+    "ChatMessageDto":  [
+                           "com.phoneagent.core.ai"
+                       ],
+    "EmptyStateTextLight":  [
+                                "com.phoneagent.ui.theme"
+                            ],
+    "AdbKeyStore":  [
+                        "com.phoneagent.device.shell"
+                    ],
+    "McpSkillTarget":  [
+                           "com.phoneagent.feature.skill"
+                       ],
+    "OpenAppStrategy":  [
+                            "com.phoneagent.engine.execution"
+                        ],
+    "WorkAreaEngine":  [
+                           "com.phoneagent.feature.workspace"
+                       ],
+    "TaskPlan":  [
+                     "com.phoneagent.domain.model"
+                 ],
+    "SurfaceDark":  [
+                        "com.phoneagent.ui.theme"
+                    ],
+    "LightSuccessContainer":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "ExpandableCard":  [
+                           "com.phoneagent.ui.settings"
+                       ],
+    "TaskQueueCard":  [
+                          "com.phoneagent.ui.agent"
+                      ],
+    "TestTargeting":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "ActionType":  [
+                       "com.phoneagent.domain.model"
+                   ],
+    "BackStrategy":  [
+                         "com.phoneagent.engine.execution"
+                     ],
+    "PhoneCameraHoleLight":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "PromptTemplateEngine":  [
+                                 "com.phoneagent.engine.prompt"
+                             ],
+    "IntentTranslator":  [
+                             "com.phoneagent.engine.execution"
+                         ],
+    "AdbPairingNotifier":  [
+                               "com.phoneagent.core.notify"
+                           ],
+    "McpTool":  [
+                    "com.phoneagent.feature.mcp"
+                ],
+    "PhoneShellLight":  [
+                            "com.phoneagent.ui.theme"
+                        ],
+    "CalibrationSlider":  [
+                              "com.phoneagent.ui.settings"
+                          ],
+    "ImageUrl":  [
+                     "com.phoneagent.core.ai"
+                 ],
+    "TestResultCard":  [
+                           "com.phoneagent.ui.test"
+                       ],
+    "WirelessAdbPairingFlow":  [
+                                   "com.phoneagent.device.shell"
+                               ],
+    "VerifyResult":  [
+                         "com.phoneagent.engine.execution"
+                     ],
+    "WirelessAdbStateMachine":  [
+                                    "com.phoneagent.device.shell"
+                                ],
+    "LightOnWarningContainer":  [
+                                    "com.phoneagent.ui.theme"
+                                ],
+    "StreamChoice":  [
+                         "com.phoneagent.core.ai"
+                     ],
+    "McpServerInfo":  [
+                          "com.phoneagent.feature.mcp"
+                      ],
+    "parseTaskSteps":  [
+                           "com.phoneagent.domain.model"
+                       ],
+    "SnackbarData":  [
+                         "com.phoneagent.ui.components"
+                     ],
+    "TestScreen":  [
+                       "com.phoneagent.ui.test"
+                   ],
+    "DurationNormal":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "McpCallResult":  [
+                          "com.phoneagent.feature.mcp"
+                      ],
+    "AgentReviewToggle":  [
+                              "com.phoneagent.ui.agent"
+                          ],
+    "ThinkingSpec":  [
+                         "com.phoneagent.core.ai"
+                     ],
+    "ResultSummary":  [
+                          "com.phoneagent.ui.test"
+                      ],
+    "AdFilterResult":  [
+                           "com.phoneagent.feature.adskip"
+                       ],
+    "EaseDrawer":  [
+                       "com.phoneagent.ui.theme"
+                   ],
+    "SnackbarState":  [
+                          "com.phoneagent.ui.components"
+                      ],
+    "EmptyMemoryCard":  [
+                            "com.phoneagent.ui.memory"
+                        ],
+    "OverlayPermissionBanner":  [
+                                    "com.phoneagent.ui.agent"
+                                ],
+    "TaskHeader":  [
+                       "com.phoneagent.ui.debug.panels"
+                   ],
+    "Checkpoint":  [
+                       "com.phoneagent.data.store"
+                   ],
+    "SettingsAiModels":  [
+                             "com.phoneagent.ui.settings"
+                         ],
+    "WarningContainer":  [
+                             "com.phoneagent.ui.theme"
+                         ],
+    "EmptyHint":  [
+                      "com.phoneagent.ui.components"
+                  ],
+    "SettingsEntry":  [
+                          "com.phoneagent.ui.settings"
+                      ],
+    "AppShapes":  [
+                      "com.phoneagent.ui.theme"
+                  ],
+    "CyanContainer":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "AgentLog":  [
+                     "com.phoneagent.domain.model"
+                 ],
+    "OnSurfaceDark":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "AdContentFilter":  [
+                            "com.phoneagent.feature.adskip"
+                        ],
+    "formatSize":  [
+                       "com.phoneagent.ui.components"
+                   ],
+    "DebugScreen":  [
+                        "com.phoneagent.ui.debug"
+                    ],
+    "ActiveNotifier":  [
+                           "com.phoneagent.core.notify"
+                       ],
+    "ResponseFormat":  [
+                           "com.phoneagent.core.ai"
+                       ],
+    "PresetCard":  [
+                       "com.phoneagent.ui.test"
+                   ],
+    "PhoneCameraHoleDark":  [
+                                "com.phoneagent.ui.theme"
+                            ],
+    "AppNameResolver":  [
+                            "com.phoneagent.engine.execution"
+                        ],
+    "AnomalyList":  [
+                        "com.phoneagent.ui.memory"
+                    ],
+    "SkillRegistry":  [
+                          "com.phoneagent.feature.skill"
+                      ],
+    "SuccessMarkView":  [
+                            "com.phoneagent.overlay"
+                        ],
+    "SkillsTab":  [
+                      "com.phoneagent.ui.skill"
+                  ],
+    "Skill":  [
+                  "com.phoneagent.feature.skill"
+              ],
+    "RunningIndicatorLight":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "ScreenCapture":  [
+                          "com.phoneagent.device.screen"
+                      ],
+    "TcpAdbSocket":  [
+                         "com.phoneagent.device.shell"
+                     ],
+    "SuccessContainer":  [
+                             "com.phoneagent.ui.theme"
+                         ],
+    "formatClock":  [
+                        "com.phoneagent.ui.components"
+                    ],
+    "AgentPrompts":  [
+                         "com.phoneagent.engine"
+                     ],
+    "ApiError":  [
+                     "com.phoneagent.core.ai"
+                 ],
+    "ChatPanel":  [
+                      "com.phoneagent.ui.debug.panels"
+                  ],
+    "PlanResponse":  [
+                         "com.phoneagent.domain.model"
+                     ],
+    "OnAccentContainer":  [
+                              "com.phoneagent.ui.theme"
+                          ],
+    "TestCase":  [
+                     "com.phoneagent.feature.test"
+                 ],
+    "AppRadii":  [
+                     "com.phoneagent.ui.theme"
+                 ],
+    "SpringConfigs":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "EaseFastOut":  [
+                        "com.phoneagent.ui.theme"
+                    ],
+    "DurationSlow":  [
+                         "com.phoneagent.ui.theme"
+                     ],
+    "AdbPairingService":  [
+                              "com.phoneagent.device.shell"
+                          ],
+    "ConversationMessage":  [
+                                "com.phoneagent.domain.model"
+                            ],
+    "LogStream":  [
+                      "com.phoneagent.ui.workspace"
+                  ],
+    "ScreenSnapshot":  [
+                           "com.phoneagent.domain.model"
+                       ],
+    "LogPanel":  [
+                     "com.phoneagent.ui.debug.panels"
+                 ],
+    "ProfileEntry":  [
+                         "com.phoneagent.data.store"
+                     ],
+    "TargetLocationStrategy":  [
+                                   "com.phoneagent.engine.execution"
+                               ],
+    "PhoneAgentTheme":  [
+                            "com.phoneagent.ui.theme"
+                        ],
+    "TestRegression":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "PageFingerprint":  [
+                            "com.phoneagent.engine.perception"
+                        ],
+    "AccentContainer":  [
+                            "com.phoneagent.ui.theme"
+                        ],
+    "TestMerge":  [
+                      "com.phoneagent.ui.theme"
+                  ],
+    "ModelCard":  [
+                      "com.phoneagent.ui.settings"
+                  ],
+    "WorkDisplay":  [
+                        "com.phoneagent.feature.workspace"
+                    ],
+    "OnErrorContainer":  [
+                             "com.phoneagent.ui.theme"
+                         ],
+    "HttpMcpTransport":  [
+                             "com.phoneagent.feature.mcp"
+                         ],
+    "EdgeLightingView":  [
+                             "com.phoneagent.feature.edge"
+                         ],
+    "DebugEmptyHint":  [
+                           "com.phoneagent.ui.debug"
+                       ],
+    "MemoryRoot":  [
+                       "com.phoneagent.ui.theme"
+                   ],
+    "AgentAction":  [
+                        "com.phoneagent.domain.model"
+                    ],
+    "AdbProtocol":  [
+                        "com.phoneagent.device.shell"
+                    ],
+    "EmptyStateTextDark":  [
+                               "com.phoneagent.ui.theme"
+                           ],
+    "Success":  [
+                    "com.phoneagent.ui.theme"
+                ],
+    "StepsPanel":  [
+                       "com.phoneagent.ui.debug.panels"
+                   ],
+    "MemoryAnomaly":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "McpCheckResult":  [
+                           "com.phoneagent.feature.mcp"
+                       ],
+    "FilesEntryCard":  [
+                           "com.phoneagent.ui.workspace"
+                       ],
+    "LiquidGlassCard":  [
+                            "com.phoneagent.ui.components"
+                        ],
+    "PhoneCameraHoleIdleDark":  [
+                                    "com.phoneagent.ui.theme"
+                                ],
+    "FileRow":  [
+                    "com.phoneagent.ui.workspace"
+                ],
+    "MemoryAnomalySoft":  [
+                              "com.phoneagent.ui.theme"
+                          ],
+    "AppIconTile":  [
+                        "com.phoneagent.ui.components"
+                    ],
+    "LiquidGlassDrawable":  [
+                                "com.phoneagent.overlay"
+                            ],
+    "MotionSettings":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "StreamOptions":  [
+                          "com.phoneagent.core.ai"
+                      ],
+    "PermissionRadar":  [
+                            "com.phoneagent.ui.home"
+                        ],
+    "PermissionItem":  [
+                           "com.phoneagent.ui.model"
+                       ],
+    "TaskStore":  [
+                      "com.phoneagent.data.store"
+                  ],
+    "SensitivePageDetector":  [
+                                  "com.phoneagent.core.security"
+                              ],
+    "OnSurfaceLight":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "IntentResolver":  [
+                           "com.phoneagent.engine.execution"
+                       ],
+    "McpMarketplaceEntry":  [
+                                "com.phoneagent.feature.mcp"
+                            ],
+    "VisionModelCard":  [
+                            "com.phoneagent.ui.home"
+                        ],
+    "StreamDelta":  [
+                        "com.phoneagent.core.ai"
+                    ],
+    "AppSpacing":  [
+                       "com.phoneagent.ui.theme"
+                   ],
+    "PairingHandshake":  [
+                             "com.phoneagent.device.shell"
+                         ],
+    "SkillEditorDialog":  [
+                              "com.phoneagent.ui.skill"
+                          ],
+    "phoneCameraHoleColor":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "TestPreset":  [
+                       "com.phoneagent.feature.test"
+                   ],
+    "GroupHeader":  [
+                        "com.phoneagent.ui.settings"
+                    ],
+    "DataSanitizer":  [
+                          "com.phoneagent.core.security"
+                      ],
+    "ClarificationOption":  [
+                                "com.phoneagent.domain.model"
+                            ],
+    "emptyStateTextColor":  [
+                                "com.phoneagent.ui.theme"
+                            ],
+    "AgentMetrics":  [
+                         "com.phoneagent.domain.model"
+                     ],
+    "PromptTemplateStore":  [
+                                "com.phoneagent.data.store"
+                            ],
+    "OnWarningContainer":  [
+                               "com.phoneagent.ui.theme"
+                           ],
+    "PromptTemplate":  [
+                           "com.phoneagent.engine.prompt"
+                       ],
+    "TaskStep":  [
+                     "com.phoneagent.domain.model"
+                 ],
+    "WorkDisplayPanel":  [
+                             "com.phoneagent.ui.workspace"
+                         ],
+    "PhoneShellBorderLight":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "RecoveryResult":  [
+                           "com.phoneagent.domain.model"
+                       ],
+    "AnomalyMemoryEntry":  [
+                               "com.phoneagent.data.store"
+                           ],
+    "MarqueeView":  [
+                        "com.phoneagent.overlay"
+                    ],
+    "MemoryStore":  [
+                        "com.phoneagent.data.store"
+                    ],
+    "rememberTranslated":  [
+                               "com.phoneagent.ui.agent"
+                           ],
+    "PhoneAgentApp":  [
+                          "com.phoneagent"
+                      ],
+    "ChatRequest":  [
+                        "com.phoneagent.core.ai"
+                    ],
+    "AdbSocket":  [
+                      "com.phoneagent.device.shell"
+                  ],
+    "StatusCard":  [
+                       "com.phoneagent.ui.home"
+                   ],
+    "SettingsAgent":  [
+                          "com.phoneagent.ui.settings"
+                      ],
+    "BrandHero":  [
+                      "com.phoneagent.ui.home"
+                  ],
+    "GroupDivider":  [
+                         "com.phoneagent.ui.settings"
+                     ],
+    "BrandNavy":  [
+                      "com.phoneagent.ui.theme"
+                  ],
+    "DebugRecordsStore":  [
+                              "com.phoneagent.data.store"
+                          ],
+    "ApiTestItemResult":  [
+                              "com.phoneagent.ui.settings"
+                          ],
+    "AppTypography":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "SettingsTopBar":  [
+                           "com.phoneagent.ui.settings"
+                       ],
+    "McpTab":  [
+                   "com.phoneagent.ui.skill"
+               ],
+    "ShizukuBootstrap":  [
+                             "com.phoneagent.device.shell"
+                         ],
+    "MdnsAdbResolver":  [
+                            "com.phoneagent.device.shell"
+                        ],
+    "EdgeLightingService":  [
+                                "com.phoneagent.feature.edge"
+                            ],
+    "MarkdownPreview":  [
+                            "com.phoneagent.ui.workspace"
+                        ],
+    "rememberHapticClick":  [
+                                "com.phoneagent.ui.components"
+                            ],
+    "MemoryGraphScreen":  [
+                              "com.phoneagent.ui.memory"
+                          ],
+    "McpClient":  [
+                      "com.phoneagent.feature.mcp"
+                  ],
+    "buildGraphNodes":  [
+                            "com.phoneagent.ui.memory"
+                        ],
+    "SurfaceLight":  [
+                         "com.phoneagent.ui.theme"
+                     ],
+    "SemanticActionStrategy":  [
+                                   "com.phoneagent.engine.execution"
+                               ],
+    "GraphCanvas":  [
+                        "com.phoneagent.ui.memory"
+                    ],
+    "McpServerConfig":  [
+                            "com.phoneagent.feature.mcp"
+                        ],
+    "ControlExtra":  [
+                         "com.phoneagent.domain.model"
+                     ],
+    "SkillManagerScreen":  [
+                               "com.phoneagent.ui.skill"
+                           ],
+    "Accent":  [
+                   "com.phoneagent.ui.theme"
+               ],
+    "AppItemCard":  [
+                        "com.phoneagent.ui.components"
+                    ],
+    "AdbWirelessTransport":  [
+                                 "com.phoneagent.device.shell"
+                             ],
+    "OnSuccessContainer":  [
+                               "com.phoneagent.ui.theme"
+                           ],
+    "SkillCard":  [
+                      "com.phoneagent.ui.skill"
+                  ],
+    "SkillInvocation":  [
+                            "com.phoneagent.feature.skill"
+                        ],
+    "ProfileList":  [
+                        "com.phoneagent.ui.memory"
+                    ],
+    "RealScenes":  [
+                       "com.phoneagent.feature.test"
+                   ],
+    "AdbTcpSession":  [
+                          "com.phoneagent.device.shell"
+                      ],
+    "buildApiTestTargets":  [
+                                "com.phoneagent.ui.settings"
+                            ],
+    "StepTrace":  [
+                      "com.phoneagent.domain.model"
+                  ],
+    "DarkOnWarningContainer":  [
+                                   "com.phoneagent.ui.theme"
+                               ],
+    "drawBoxes":  [
+                      "com.phoneagent.ui.debug.panels"
+                  ],
+    "StreamChunk":  [
+                        "com.phoneagent.core.ai"
+                    ],
+    "staggerDelayMs":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "MainViewModel":  [
+                          "com.phoneagent.ui"
+                      ],
+    "PromptVars":  [
+                       "com.phoneagent.engine.prompt"
+                   ],
+    "SkillParam":  [
+                       "com.phoneagent.feature.skill",
+                       "com.phoneagent.ui.skill"
+                   ],
+    "StatsRow":  [
+                     "com.phoneagent.ui.memory"
+                 ],
+    "LocalDecisionEngine":  [
+                                "com.phoneagent.domain.rules"
+                            ],
+    "FloatingUi":  [
+                       "com.phoneagent.overlay"
+                   ],
+    "SegmentedTabs":  [
+                          "com.phoneagent.ui.debug"
+                      ],
+    "ResolvedIntentTarget":  [
+                                 "com.phoneagent.engine.execution"
+                             ],
+    "phoneShellBorderColor":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "rememberHapticPress":  [
+                                "com.phoneagent.ui.components"
+                            ],
+    "HistoryPanel":  [
+                         "com.phoneagent.ui.debug.panels"
+                     ],
+    "MainActivity":  [
+                         "com.phoneagent.ui"
+                     ],
+    "ApiTestTarget":  [
+                          "com.phoneagent.ui.settings"
+                      ],
+    "Cyan":  [
+                 "com.phoneagent.ui.theme"
+             ],
+    "ControlNode":  [
+                        "com.phoneagent.domain.model"
+                    ],
+    "ExtrasPage":  [
+                       "com.phoneagent.ui"
+                   ],
+    "AgentState":  [
+                       "com.phoneagent.domain.model"
+                   ],
+    "IntentType":  [
+                       "com.phoneagent.domain.model"
+                   ],
+    "createHttpMcpClient":  [
+                                "com.phoneagent.feature.mcp"
+                            ],
+    "PhoneShellDark":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "SettingsVisual":  [
+                           "com.phoneagent.ui.settings"
+                       ],
+    "emptyStateIconColor":  [
+                                "com.phoneagent.ui.theme"
+                            ],
+    "runningIndicatorColor":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "RunningIndicatorDark":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "PromptsTab":  [
+                       "com.phoneagent.ui.skill"
+                   ],
+    "DetectedControl":  [
+                            "com.phoneagent.device.vision"
+                        ],
+    "TestPresets":  [
+                        "com.phoneagent.feature.test"
+                    ],
+    "SettingsAdSkip":  [
+                           "com.phoneagent.ui.settings"
+                       ],
+    "SkillCompat":  [
+                        "com.phoneagent.feature.skill"
+                    ],
+    "LightWarningContainer":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "ErrorContainer":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "DarkOnSuccessContainer":  [
+                                   "com.phoneagent.ui.theme"
+                               ],
+    "AgentIntent":  [
+                        "com.phoneagent.domain.model"
+                    ],
+    "formatLogTimestamp":  [
+                               "com.phoneagent.ui.components"
+                           ],
+    "EmptyStateIconLight":  [
+                                "com.phoneagent.ui.theme"
+                            ],
+    "StepShotPanel":  [
+                          "com.phoneagent.ui.debug.panels"
+                      ],
+    "Usage":  [
+                  "com.phoneagent.core.ai"
+              ],
+    "AdbFailure":  [
+                       "com.phoneagent.device.shell"
+                   ],
+    "Error":  [
+                  "com.phoneagent.ui.theme"
+              ],
+    "AppTopBar":  [
+                      "com.phoneagent.ui.components"
+                  ],
+    "AppCardRadius":  [
+                          "com.phoneagent.ui.components"
+                      ],
+    "TaskProgressNotifier":  [
+                                 "com.phoneagent.core.notify"
+                             ],
+    "AdbPairOutcome":  [
+                           "com.phoneagent.device.shell"
+                       ],
+    "AppSnackbar":  [
+                        "com.phoneagent.ui.components"
+                    ],
+    "QuickEntry":  [
+                       "com.phoneagent.ui.home"
+                   ],
+    "WorkAreaScreen":  [
+                           "com.phoneagent.ui.workspace"
+                       ],
+    "FileEditorScreen":  [
+                             "com.phoneagent.ui.workspace"
+                         ],
+    "SettingsState":  [
+                          "com.phoneagent.ui.settings"
+                      ],
+    "EaseOutSlowIn":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "MemoryProfile":  [
+                          "com.phoneagent.ui.theme"
+                      ],
+    "McpException":  [
+                         "com.phoneagent.feature.mcp"
+                     ],
+    "WorkFile":  [
+                     "com.phoneagent.feature.workspace"
+                 ],
+    "AgentScreen":  [
+                        "com.phoneagent.ui.agent"
+                    ],
+    "IconIris":  [
+                     "com.phoneagent.ui.theme"
+                 ],
+    "ProvideMotionSettings":  [
+                                  "com.phoneagent.ui.theme"
+                              ],
+    "SkeletonCard":  [
+                         "com.phoneagent.ui.components"
+                     ],
+    "LightOnSuccessContainer":  [
+                                    "com.phoneagent.ui.theme"
+                                ],
+    "AnnotatedPage":  [
+                          "com.phoneagent.engine.perception"
+                      ],
+    "McpMarketplace":  [
+                           "com.phoneagent.feature.mcp"
+                       ],
+    "CapabilityStrip":  [
+                            "com.phoneagent.ui.debug"
+                        ],
+    "TestFormat":  [
+                       "com.phoneagent.ui.theme"
+                   ],
+    "ExecutionResult":  [
+                            "com.phoneagent.domain.model"
+                        ],
+    "OkHttpMcpTransportFactory":  [
+                                      "com.phoneagent.feature.mcp"
+                                  ],
+    "AiDecision":  [
+                       "com.phoneagent.core.ai"
+                   ],
+    "TestConfig":  [
+                       "com.phoneagent.feature.test"
+                   ],
+    "HumanTranslator":  [
+                            "com.phoneagent.core.text"
+                        ],
+    "GenerateCard":  [
+                         "com.phoneagent.ui.workspace"
+                     ],
+    "ScrollToStrategy":  [
+                             "com.phoneagent.engine.execution"
+                         ],
+    "MetricsPanel":  [
+                         "com.phoneagent.ui.debug.panels"
+                     ],
+    "SettingsScreen":  [
+                           "com.phoneagent.ui.settings"
+                       ],
+    "ParamDraft":  [
+                       "com.phoneagent.ui.skill"
+                   ],
+    "AgentRunCard":  [
+                         "com.phoneagent.ui.agent"
+                     ],
+    "McpParam":  [
+                     "com.phoneagent.feature.mcp"
+                 ],
+    "TaskTemplate":  [
+                         "com.phoneagent.data.store"
+                     ],
+    "SectionHeader":  [
+                          "com.phoneagent.ui.components"
+                      ],
+    "ExternalVisionProvider":  [
+                                   "com.phoneagent.device.vision"
+                               ],
+    "FloatingWindowService":  [
+                                  "com.phoneagent.overlay"
+                              ],
+    "ActionTarget":  [
+                         "com.phoneagent.domain.model"
+                     ],
+    "AppPageIndex":  [
+                         "com.phoneagent.domain.model"
+                     ],
+    "EaseOut":  [
+                    "com.phoneagent.ui.theme"
+                ],
+    "DurationInstant":  [
+                            "com.phoneagent.ui.theme"
+                        ],
+    "CollaborationCard":  [
+                              "com.phoneagent.ui.agent"
+                          ],
+    "SkillManifest":  [
+                          "com.phoneagent.feature.skill"
+                      ],
+    "GlmDefaults":  [
+                        "com.phoneagent.core.ai"
+                    ],
+    "BrandNavyLight":  [
+                           "com.phoneagent.ui.theme"
+                       ],
+    "phoneShellColor":  [
+                            "com.phoneagent.ui.theme"
+                        ],
+    "CapabilityManager":  [
+                              "com.phoneagent.engine.execution"
+                          ],
+    "PressableScale":  [
+                           "com.phoneagent.ui.components"
+                       ],
+    "AgentEngine":  [
+                        "com.phoneagent.engine"
+                    ],
+    "McpManager":  [
+                       "com.phoneagent.feature.mcp"
+                   ],
+    "marqueeDefaultColors":  [
+                                 "com.phoneagent.ui.settings"
+                             ],
+    "initKoin":  [
+                     "com.phoneagent.di"
+                 ],
+    "AdbStatus":  [
+                      "com.phoneagent.device.shell"
+                  ],
+    "Choice":  [
+                   "com.phoneagent.core.ai"
+               ],
+    "DarkWarningContainer":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "CloudAgent":  [
+                       "com.phoneagent.engine.network"
+                   ],
+    "PhoneShellBorderDark":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "DurationFast":  [
+                         "com.phoneagent.ui.theme"
+                     ],
+    "WorkLog":  [
+                    "com.phoneagent.feature.workspace"
+                ],
+    "ChatResponse":  [
+                         "com.phoneagent.core.ai"
+                     ],
+    "GraphNode":  [
+                      "com.phoneagent.ui.memory"
+                  ],
+    "Warning":  [
+                    "com.phoneagent.ui.theme"
+                ],
+    "DarkSuccessContainer":  [
+                                 "com.phoneagent.ui.theme"
+                             ],
+    "DurationEmphasis":  [
+                             "com.phoneagent.ui.theme"
+                         ],
+    "McpValidation":  [
+                          "com.phoneagent.feature.mcp"
+                      ],
+    "ActionExecutor":  [
+                           "com.phoneagent.device.a11y"
+                       ],
+    "GroupCard":  [
+                      "com.phoneagent.ui.settings"
+                  ],
+    "SkillCatalog":  [
+                         "com.phoneagent.feature.skill"
+                     ],
+    "SettingsHome":  [
+                         "com.phoneagent.ui.settings"
+                     ],
+    "AdbPairingReceiver":  [
+                               "com.phoneagent.device.shell"
+                           ],
+    "EmptyStateIconDark":  [
+                               "com.phoneagent.ui.theme"
+                           ],
+    "ToggleRow":  [
+                      "com.phoneagent.ui.settings"
+                  ],
+    "AdbTimeouts":  [
+                        "com.phoneagent.device.shell"
+                    ],
+    "JsonSchemaSpec":  [
+                           "com.phoneagent.core.ai"
+                       ],
+    "TestRunSummary":  [
+                           "com.phoneagent.feature.test"
+                       ],
+    "AdSkipperCore":  [
+                          "com.phoneagent.feature.adskip"
+                      ],
+    "AgentIntentTarget":  [
+                              "com.phoneagent.domain.model"
+                          ],
+    "ControlTreeBuilder":  [
+                               "com.phoneagent.engine.perception"
+                           ],
+    "rememberHapticCommit":  [
+                                 "com.phoneagent.ui.components"
+                             ],
+    "PlanPanel":  [
+                      "com.phoneagent.ui.agent"
+                  ],
+    "ProfileLearner":  [
+                           "com.phoneagent.data.store"
+                       ],
+    "PreviewCard":  [
+                        "com.phoneagent.ui.workspace"
+                    ],
+    "EaseInOut":  [
+                      "com.phoneagent.ui.theme"
+                  ],
+    "AgentAccessibilityService":  [
+                                      "com.phoneagent.device.a11y"
+                                  ],
+    "UiElement":  [
+                      "com.phoneagent.domain.model",
+                      "com.phoneagent.engine.perception"
+                  ],
+    "formatFileTime":  [
+                           "com.phoneagent.ui.components"
+                       ],
+    "StaggerIntervalMs":  [
+                              "com.phoneagent.ui.theme"
+                          ],
+    "TemplateMatcher":  [
+                            "com.phoneagent.feature.task"
+                        ],
+    "Clarification":  [
+                          "com.phoneagent.domain.model"
+                      ],
+    "RunningBanner":  [
+                          "com.phoneagent.ui.home"
+                      ],
+    "AiClient":  [
+                     "com.phoneagent.core.ai"
+                 ],
+    "McpRules":  [
+                     "com.phoneagent.feature.mcp"
+                 ],
+    "ShellCommands":  [
+                          "com.phoneagent.domain.rules"
+                      ],
+    "ScreenSharingService":  [
+                                 "com.phoneagent.device.screen"
+                             ],
+    "TestEngine":  [
+                       "com.phoneagent.feature.test"
+                   ],
+    "SkillTargetRef":  [
+                           "com.phoneagent.feature.skill"
+                       ],
+    "AdbBootstrapTransport":  [
+                                  "com.phoneagent.device.shell"
+                              ],
+    "ResponseMessage":  [
+                            "com.phoneagent.core.ai"
+                        ],
+    "SettingsLongRun":  [
+                            "com.phoneagent.ui.settings"
+                        ],
+    "McpTransport":  [
+                         "com.phoneagent.feature.mcp"
+                     ],
+    "ShizukuManager":  [
+                           "com.phoneagent.device.shell"
+                       ],
+    "HomeStrategy":  [
+                         "com.phoneagent.engine.execution"
+                     ],
+    "SkillExecutionGateway":  [
+                                  "com.phoneagent.feature.skill"
+                              ],
+    "AnomalyMemoryEngine":  [
+                                "com.phoneagent.data.store"
+                            ],
+    "PageAnnotator":  [
+                          "com.phoneagent.engine.perception"
+                      ],
+    "ControlFormat":  [
+                          "com.phoneagent.device.vision"
+                      ],
+    "ScreenTransitions":  [
+                              "com.phoneagent.ui.theme"
+                          ],
+    "ContentPart":  [
+                        "com.phoneagent.core.ai"
+                    ],
+    "VerifiedClickExecutor":  [
+                                  "com.phoneagent.engine.execution"
+                              ],
+    "AppSettings":  [
+                        "com.phoneagent.data.prefs"
+                    ],
+    "EngineRules":  [
+                        "com.phoneagent.domain.rules"
+                    ],
+    "AdbStartOutcome":  [
+                            "com.phoneagent.device.shell"
+                        ],
+    "McpStore":  [
+                     "com.phoneagent.data.store"
+                 ],
+    "EditChatMessage":  [
+                            "com.phoneagent.feature.workspace"
+                        ],
+    "Modifier":  [
+                     "com.phoneagent.ui.components"
+                 ],
+    "StepShot":  [
+                     "com.phoneagent.domain.model"
+                 ],
+    "FileListScreen":  [
+                           "com.phoneagent.ui.workspace"
+                       ],
+    "WirelessAdbTab":  [
+                           "com.phoneagent.ui.skill"
+                       ],
+    "TestResult":  [
+                       "com.phoneagent.feature.test"
+                   ],
+    "StatusPill":  [
+                       "com.phoneagent.ui.components"
+                   ],
+    "AppCard":  [
+                    "com.phoneagent.ui.components"
+                ]
+}
