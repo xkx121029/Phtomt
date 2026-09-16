@@ -1,4 +1,4 @@
-package com.phoneagent.ai
+package com.phoneagent.core.ai.GlmDefaults
 
 /**
  * 智谱 GLM 模型默认配置。

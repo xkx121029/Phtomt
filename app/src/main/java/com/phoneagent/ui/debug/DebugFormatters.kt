@@ -1,4 +1,4 @@
-package com.phoneagent.ui.debug
+package com.phoneagent.ui.debug.DebugFormatters
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column

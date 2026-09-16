@@ -1,4 +1,4 @@
-package com.phoneagent.model
+package com.phoneagent.domain.model.UiElement
 
 import kotlinx.serialization.Serializable
 

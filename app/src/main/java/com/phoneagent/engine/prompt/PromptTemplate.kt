@@ -1,4 +1,4 @@
-package com.phoneagent.prompt
+package com.phoneagent.engine.prompt.PromptTemplate
 
 import kotlinx.serialization.Serializable
 

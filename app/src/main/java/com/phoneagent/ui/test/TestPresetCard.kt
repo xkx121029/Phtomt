@@ -1,4 +1,4 @@
-package com.phoneagent.ui.test
+package com.phoneagent.ui.test.TestPresetCard
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween

@@ -1,4 +1,4 @@
-package com.phoneagent.prompt
+package com.phoneagent.data.store.PromptTemplateStore
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json

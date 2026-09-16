@@ -1,4 +1,4 @@
-package com.phoneagent.model
+package com.phoneagent.ui.model.PermissionRadar
 
 /** 权限雷达条目类型 */
 enum class PermissionKind {

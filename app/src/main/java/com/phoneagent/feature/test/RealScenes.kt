@@ -1,4 +1,4 @@
-package com.phoneagent.test
+package com.phoneagent.feature.test.RealScenes
 
 /**
  * 真实环境场景库：用贴近真实手机 UI 的页面快照测试 agnes 模型。

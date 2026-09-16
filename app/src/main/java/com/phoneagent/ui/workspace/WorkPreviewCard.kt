@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace
+package com.phoneagent.ui.workspace.WorkPreviewCard
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState

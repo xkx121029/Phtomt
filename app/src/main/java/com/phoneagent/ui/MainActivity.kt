@@ -1,4 +1,4 @@
-package com.phoneagent.ui
+package com.phoneagent.ui.MainActivity
 
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle

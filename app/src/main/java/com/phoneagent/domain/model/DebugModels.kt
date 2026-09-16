@@ -1,4 +1,4 @@
-package com.phoneagent.model
+package com.phoneagent.domain.model.DebugModels
 
 import android.graphics.Bitmap
 

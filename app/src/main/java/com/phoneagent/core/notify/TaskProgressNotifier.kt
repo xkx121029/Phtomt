@@ -1,4 +1,4 @@
-package com.phoneagent.notify
+package com.phoneagent.core.notify.TaskProgressNotifier
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

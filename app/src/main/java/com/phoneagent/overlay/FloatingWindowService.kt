@@ -1,4 +1,4 @@
-package com.phoneagent.floating
+package com.phoneagent.overlay.FloatingWindowService
 
 import android.animation.ValueAnimator
 import android.app.Notification

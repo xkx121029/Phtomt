@@ -1,4 +1,4 @@
-package com.phoneagent.di
+package com.phoneagent.di.AppModule
 
 import android.content.Context
 import com.phoneagent.engine.AgentEngine

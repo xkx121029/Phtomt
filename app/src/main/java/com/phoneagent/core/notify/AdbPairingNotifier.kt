@@ -1,4 +1,4 @@
-package com.phoneagent.notify
+package com.phoneagent.core.notify.AdbPairingNotifier
 
 import android.Manifest
 import android.app.NotificationChannel

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace
+package com.phoneagent.ui.workspace.WorkLogStream
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState

@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.AdbWirelessTransport
 
 import android.annotation.SuppressLint
 import android.content.Context

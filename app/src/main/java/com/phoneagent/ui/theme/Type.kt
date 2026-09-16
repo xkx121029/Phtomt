@@ -1,4 +1,4 @@
-package com.phoneagent.ui.theme
+package com.phoneagent.ui.theme.Type
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

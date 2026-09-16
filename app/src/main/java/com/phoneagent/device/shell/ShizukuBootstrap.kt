@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.ShizukuBootstrap
 
 import com.phoneagent.device.shell.ShizukuManager
 import kotlinx.coroutines.delay

@@ -1,4 +1,4 @@
-package com.phoneagent.model
+package com.phoneagent.domain.model.PhantomModels
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray

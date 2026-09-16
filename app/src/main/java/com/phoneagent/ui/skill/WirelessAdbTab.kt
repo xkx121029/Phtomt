@@ -1,4 +1,4 @@
-package com.phoneagent.ui.skill
+package com.phoneagent.ui.skill.WirelessAdbTab
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background

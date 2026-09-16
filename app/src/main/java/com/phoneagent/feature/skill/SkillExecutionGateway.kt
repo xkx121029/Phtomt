@@ -1,4 +1,4 @@
-package com.phoneagent.skill
+package com.phoneagent.feature.skill.SkillExecutionGateway
 
 import com.phoneagent.feature.mcp.McpManager
 import com.phoneagent.domain.model.ScreenSnapshot

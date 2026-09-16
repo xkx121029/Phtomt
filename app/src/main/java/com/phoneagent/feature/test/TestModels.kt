@@ -1,4 +1,4 @@
-package com.phoneagent.test
+package com.phoneagent.feature.test.TestModels
 
 /**
  * 智能体 AI 标准化测试（Prompt 回归）的数据模型。

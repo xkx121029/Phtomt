@@ -1,4 +1,4 @@
-package com.phoneagent.test
+package com.phoneagent.feature.test.TestPresets
 
 /**
  * 内置预设测试方案（英文提示词），参照《HPS ai标准化测试.md》。

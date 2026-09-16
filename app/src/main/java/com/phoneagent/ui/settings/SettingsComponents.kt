@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings.SettingsComponents
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically

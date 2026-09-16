@@ -1,4 +1,4 @@
-package com.phoneagent.ui.components
+package com.phoneagent.ui.components.Haptic
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember

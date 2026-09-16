@@ -1,4 +1,4 @@
-package com.phoneagent.agent
+package com.phoneagent.domain.rules.EngineRules
 
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent

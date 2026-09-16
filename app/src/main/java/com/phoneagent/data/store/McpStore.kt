@@ -1,4 +1,4 @@
-package com.phoneagent.mcp
+package com.phoneagent.data.store.McpStore
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit

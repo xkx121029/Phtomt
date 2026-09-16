@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.WirelessAdbModels
 
 /**
  * 无线调试（ADB over Wi-Fi）拉取 Shizuku 相关的数据模型。

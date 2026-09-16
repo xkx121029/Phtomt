@@ -1,4 +1,4 @@
-package com.phoneagent.perception
+package com.phoneagent.engine.perception.PageAnnotator
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement

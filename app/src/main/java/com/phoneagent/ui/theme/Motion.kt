@@ -1,4 +1,4 @@
-package com.phoneagent.ui.theme
+package com.phoneagent.ui.theme.Motion
 
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing

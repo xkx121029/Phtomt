@@ -1,4 +1,4 @@
-package com.phoneagent.ai
+package com.phoneagent.core.ai.ChatModels
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

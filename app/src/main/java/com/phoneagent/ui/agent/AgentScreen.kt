@@ -1,4 +1,4 @@
-package com.phoneagent.ui.agent
+package com.phoneagent.ui.agent.AgentScreen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace
+package com.phoneagent.ui.workspace.FileEditorScreen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

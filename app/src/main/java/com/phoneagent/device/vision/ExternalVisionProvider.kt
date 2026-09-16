@@ -1,4 +1,4 @@
-package com.phoneagent.vision
+package com.phoneagent.device.vision.ExternalVisionProvider
 
 import android.content.ComponentName
 import android.content.Context

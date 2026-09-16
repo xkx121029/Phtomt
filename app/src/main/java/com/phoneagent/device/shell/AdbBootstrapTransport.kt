@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.AdbBootstrapTransport
 
 /**
  * 无线 ADB 传输层接口。真实设备实现承接 mDNS 发现、配对握手、ADB 连接与

@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.AdbKeyStore
 
 import android.content.Context
 import java.io.File

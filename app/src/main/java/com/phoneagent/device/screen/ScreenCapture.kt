@@ -1,4 +1,4 @@
-package com.phoneagent.screen
+package com.phoneagent.device.screen.ScreenCapture
 
 import android.graphics.Bitmap
 import com.phoneagent.device.a11y.AgentAccessibilityService

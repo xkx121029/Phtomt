@@ -1,4 +1,4 @@
-package com.phoneagent.data.prefs
+package com.phoneagent.data.prefs.AppSettings
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey

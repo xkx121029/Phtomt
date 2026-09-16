@@ -1,4 +1,4 @@
-package com.phoneagent.floating
+package com.phoneagent.overlay.SuccessMarkView
 
 import android.content.Context
 import android.graphics.Canvas

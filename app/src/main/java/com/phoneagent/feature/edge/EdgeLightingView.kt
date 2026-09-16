@@ -1,4 +1,4 @@
-package com.phoneagent.edge
+package com.phoneagent.feature.edge.EdgeLightingView
 
 import android.content.Context
 import android.graphics.BlurMaskFilter

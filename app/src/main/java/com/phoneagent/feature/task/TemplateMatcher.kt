@@ -1,4 +1,4 @@
-package com.phoneagent.task
+package com.phoneagent.feature.task.TemplateMatcher
 
 /**
  * 模板匹配纯逻辑（无 Android / DataStore 依赖，可 JVM 单元测试）。

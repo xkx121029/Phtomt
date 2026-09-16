@@ -1,4 +1,4 @@
-package com.phoneagent.model
+package com.phoneagent.domain.model.AppPageIndex
 
 import android.provider.Settings
 

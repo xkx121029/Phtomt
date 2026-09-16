@@ -1,4 +1,4 @@
-package com.phoneagent.adskip
+package com.phoneagent.feature.adskip.AdContentFilter
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement

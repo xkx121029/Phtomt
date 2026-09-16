@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.MdnsAdbResolver
 
 import android.annotation.SuppressLint
 import java.io.ByteArrayOutputStream

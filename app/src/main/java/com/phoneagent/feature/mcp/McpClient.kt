@@ -1,4 +1,4 @@
-package com.phoneagent.mcp
+package com.phoneagent.feature.mcp.McpClient
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray

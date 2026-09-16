@@ -1,4 +1,4 @@
-package com.phoneagent.ui.theme
+package com.phoneagent.ui.theme.MotionHelpers
 
 import android.content.Context
 import androidx.compose.animation.core.AnimationSpec

@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.AdbTcpSession
 
 import com.phoneagent.device.shell.AdbProtocol.CMD_AUTH
 import com.phoneagent.device.shell.AdbProtocol.CMD_CLSE

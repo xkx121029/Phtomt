@@ -1,4 +1,4 @@
-package com.phoneagent.device.shell.adb
+package com.phoneagent.device.shell.AdbSocket
 
 import java.io.DataInputStream
 import java.io.DataOutputStream

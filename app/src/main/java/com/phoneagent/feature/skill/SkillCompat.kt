@@ -1,4 +1,4 @@
-package com.phoneagent.skill
+package com.phoneagent.feature.skill.SkillCompat
 
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget

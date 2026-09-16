@@ -1,4 +1,4 @@
-package com.phoneagent.agent
+package com.phoneagent.domain.rules.ShellCommands
 
 /**
  * AI 友好命令解析器。

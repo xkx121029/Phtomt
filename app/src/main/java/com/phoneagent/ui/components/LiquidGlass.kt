@@ -1,4 +1,4 @@
-package com.phoneagent.ui.components
+package com.phoneagent.ui.components.LiquidGlass
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.border

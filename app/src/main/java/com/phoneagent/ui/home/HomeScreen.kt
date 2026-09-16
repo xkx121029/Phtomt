@@ -1,4 +1,4 @@
-package com.phoneagent.ui.home
+package com.phoneagent.ui.home.HomeScreen
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode

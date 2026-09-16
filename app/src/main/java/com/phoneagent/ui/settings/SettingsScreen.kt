@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings.SettingsScreen
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
