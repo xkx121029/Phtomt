@@ -7,6 +7,7 @@ import com.phoneagent.feature.skill.SkillCatalog
 import com.phoneagent.feature.skill.SkillCompat
 import com.phoneagent.feature.skill.SkillInvocation
 import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillRegistry
 import com.phoneagent.feature.skill.SkillSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

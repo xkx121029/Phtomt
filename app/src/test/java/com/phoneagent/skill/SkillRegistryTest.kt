@@ -4,6 +4,7 @@ import com.phoneagent.feature.skill.McpSkillTarget
 import com.phoneagent.feature.skill.Skill
 import com.phoneagent.feature.skill.SkillCatalog
 import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillRegistry
 import com.phoneagent.feature.skill.SkillSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
