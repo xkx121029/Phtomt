@@ -4,6 +4,7 @@ import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.domain.rules.LocalDecisionEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

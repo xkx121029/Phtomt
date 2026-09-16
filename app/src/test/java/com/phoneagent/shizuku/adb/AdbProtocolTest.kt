@@ -1,5 +1,6 @@
 package com.phoneagent.shizuku.adb
 
+import com.phoneagent.device.shell.AdbProtocol
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
 import java.util.zip.CRC32

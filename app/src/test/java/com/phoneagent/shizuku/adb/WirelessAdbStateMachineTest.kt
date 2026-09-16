@@ -1,5 +1,7 @@
 package com.phoneagent.shizuku.adb
 
+import com.phoneagent.device.shell.AdbPhase
+import com.phoneagent.device.shell.WirelessAdbStateMachine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

@@ -3,6 +3,7 @@ package com.phoneagent.execution
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.execution.IntentResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

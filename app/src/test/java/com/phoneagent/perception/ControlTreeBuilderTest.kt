@@ -2,6 +2,7 @@ package com.phoneagent.perception
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.perception.ControlTreeBuilder
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue

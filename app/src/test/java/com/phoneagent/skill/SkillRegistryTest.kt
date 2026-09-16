@@ -1,5 +1,10 @@
 package com.phoneagent.skill
 
+import com.phoneagent.feature.skill.McpSkillTarget
+import com.phoneagent.feature.skill.Skill
+import com.phoneagent.feature.skill.SkillCatalog
+import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue

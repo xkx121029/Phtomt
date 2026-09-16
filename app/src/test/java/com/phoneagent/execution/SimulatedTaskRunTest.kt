@@ -1,5 +1,7 @@
 package com.phoneagent.execution
 
+import com.phoneagent.engine.execution.AppNameResolver
+import com.phoneagent.engine.execution.CapabilityManager
 import com.phoneagent.engine.execution.CapabilityManager.Mode
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
@@ -8,6 +10,8 @@ import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.engine.execution.IntentResolver
+import com.phoneagent.engine.execution.IntentTranslator
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals

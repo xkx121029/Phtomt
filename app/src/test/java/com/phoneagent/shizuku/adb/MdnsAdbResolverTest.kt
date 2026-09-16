@@ -1,5 +1,6 @@
 package com.phoneagent.shizuku.adb
 
+import com.phoneagent.device.shell.MdnsAdbResolver
 import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

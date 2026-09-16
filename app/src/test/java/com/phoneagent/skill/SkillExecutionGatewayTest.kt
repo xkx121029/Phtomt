@@ -5,6 +5,13 @@ import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.feature.skill.McpSkillTarget
+import com.phoneagent.feature.skill.Skill
+import com.phoneagent.feature.skill.SkillCatalog
+import com.phoneagent.feature.skill.SkillExecutionGateway
+import com.phoneagent.feature.skill.SkillInvocation
+import com.phoneagent.feature.skill.SkillParam
+import com.phoneagent.feature.skill.SkillSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

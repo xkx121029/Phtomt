@@ -1,5 +1,11 @@
 package com.phoneagent.shizuku.adb
 
+import com.phoneagent.device.shell.AdbBootstrapTransport
+import com.phoneagent.device.shell.AdbError
+import com.phoneagent.device.shell.AdbPairOutcome
+import com.phoneagent.device.shell.AdbPhase
+import com.phoneagent.device.shell.AdbStartOutcome
+import com.phoneagent.device.shell.ShizukuBootstrap
 import com.phoneagent.device.shell.ShizukuManager
 import io.mockk.coEvery
 import io.mockk.every

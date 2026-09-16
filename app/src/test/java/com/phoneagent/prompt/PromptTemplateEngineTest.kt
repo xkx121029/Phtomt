@@ -1,5 +1,9 @@
 package com.phoneagent.prompt
 
+import com.phoneagent.data.store.PromptTemplateStore
+import com.phoneagent.engine.prompt.PromptTemplate
+import com.phoneagent.engine.prompt.PromptTemplateEngine
+import com.phoneagent.engine.prompt.PromptVars
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

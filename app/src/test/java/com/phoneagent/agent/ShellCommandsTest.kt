@@ -1,5 +1,6 @@
 package com.phoneagent.agent
 
+import com.phoneagent.domain.rules.ShellCommands
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

@@ -1,5 +1,6 @@
 package com.phoneagent.shizuku.adb
 
+import com.phoneagent.device.shell.AdbKeyStore
 import java.security.Signature
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse

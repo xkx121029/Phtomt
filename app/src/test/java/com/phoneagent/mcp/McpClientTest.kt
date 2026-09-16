@@ -1,5 +1,9 @@
 package com.phoneagent.mcp
 
+import com.phoneagent.feature.mcp.McpClient
+import com.phoneagent.feature.mcp.McpException
+import com.phoneagent.feature.mcp.McpServerConfig
+import com.phoneagent.feature.mcp.McpTransport
 import com.phoneagent.feature.skill.SkillRegistry
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
