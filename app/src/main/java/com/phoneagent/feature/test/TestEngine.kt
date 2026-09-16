@@ -5,6 +5,7 @@ import com.phoneagent.engine.PromptLang
 import com.phoneagent.core.ai.AiClient
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
+import com.phoneagent.domain.model.IntentType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -153,8 +154,8 @@ class TestEngine(private val aiClient: AiClient) {
 
         var element: JsonElement? = null
         var isArray = false
-        var actionType: String? = null
-        var method: String? = null
+        var intentType: String? = null
+        var by: String? = null
 
         if (trimmed.isEmpty()) {
             errors += "空输出"
@@ -171,36 +172,72 @@ class TestEngine(private val aiClient: AiClient) {
             isArray = element is JsonArray
             val first = if (isArray) (element as JsonArray).firstOrNull() else element
             if (first is JsonObject) {
-                // 兼容 agnes 的 action 字段与 phantom 的 type 字段
-                actionType = first["type"]?.jsonPrimitive?.contentOrNull
-                    ?: first["action"]?.jsonPrimitive?.contentOrNull
-                val target = (first["target"] as? JsonObject)
-                method = target?.get("method")?.jsonPrimitive?.contentOrNull
-                if (actionType == null) errors += "缺少动作字段 (type/action)"
-                val confStr = first["confidence"]?.jsonPrimitive?.contentOrNull
-                if (confStr != null) {
-                    val v = confStr.toDoubleOrNull()
-                    if (v != null && (v < 0.0 || v > 1.0)) errors += "confidence 超出 0~1"
+                // 字段名铁律：只认 intent；沿用旧的 type/action 即转译层无法识别
+                intentType = first["intent"]?.jsonPrimitive?.contentOrNull
+                if (intentType == null) {
+                    errors += if (first["type"] != null || first["action"] != null) {
+                        "使用了旧字段 type/action（新协议必须用 intent）"
+                    } else {
+                        "缺少意图字段 (intent)"
+                    }
+                } else if (intentType !in IntentType.ALL) {
+                    errors += "未知意图=$intentType（不在转译层意图表内）"
+                }
+
+                // 统一必填字段（组A 严格校验）
+                if (case.requireAllFields) {
+                    if (first["reasoning"]?.jsonPrimitive?.contentOrNull.isNullOrBlank()) errors += "缺少 reasoning"
+                    if (first["expected"]?.jsonPrimitive?.contentOrNull.isNullOrBlank()) errors += "缺少 expected"
+                    if (first["confidence"]?.jsonPrimitive?.contentOrNull.isNullOrBlank()) errors += "缺少 confidence"
+                }
+                val conf = first["confidence"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()
+                if (conf != null && (conf < 0.0 || conf > 1.0)) errors += "confidence 超出 0~1"
+
+                // target 结构铁律：必须是嵌套对象且用 by/value
+                val targetRaw = first["target"]
+                when {
+                    targetRaw == null -> {
+                        if (first["by"] != null) errors += "target 必须是嵌套对象（禁止扁平 by/value）"
+                        if (case.expectedBy != null || case.forbiddenBy != null) errors += "缺少 target"
+                    }
+                    targetRaw !is JsonObject -> errors += "target 必须是嵌套对象"
+                    else -> {
+                        by = targetRaw["by"]?.jsonPrimitive?.contentOrNull
+                        val value = targetRaw["value"]?.jsonPrimitive?.contentOrNull
+                        if (targetRaw["method"] != null) errors += "target 使用了旧字段 method（新协议必须用 by）"
+                        when {
+                            by == null -> errors += "target 缺少 by"
+                            by !in LEGAL_TARGET_BY -> errors += "target.by 非法=$by"
+                            value.isNullOrBlank() -> errors += "target 缺少 value"
+                            by == "coordinate" && !isRatioCoordinate(value) ->
+                                errors += "by=coordinate 的 value 必须是 0~1 比例坐标 x,y"
+                        }
+                    }
+                }
+
+                // 不可逆操作的确认标志（旧字段 needs_user_confirmation 不再认）
+                if (case.requireConfirmation && first["needs_confirmation"]?.jsonPrimitive?.contentOrNull != "true") {
+                    errors += "不可逆操作必须设 needs_confirmation=true"
                 }
             } else {
                 errors += "响应不是 JSON 对象/数组"
             }
         }
 
-        // 动作类型校验
-        if (actionType != null) {
-            if (case.expectedAction.isNotEmpty() && actionType !in case.expectedAction) {
-                errors += "动作=$actionType 不在期望集合 ${case.expectedAction}"
+        // 意图校验
+        if (intentType != null) {
+            if (case.expectedIntent.isNotEmpty() && intentType !in case.expectedIntent) {
+                errors += "意图=$intentType 不在期望集合 ${case.expectedIntent}"
             }
-            if (actionType in case.forbiddenAction) errors += "出现禁止动作=$actionType"
+            if (intentType in case.forbiddenIntent) errors += "出现禁止意图=$intentType"
         }
         // 寻址方式校验
-        if (method != null) {
-            if (case.expectedMethod != null && method != case.expectedMethod) {
-                errors += "method=$method 应为 ${case.expectedMethod}"
+        if (by != null) {
+            if (case.expectedBy != null && by != case.expectedBy) {
+                errors += "target.by=$by 应为 ${case.expectedBy}"
             }
-            if (case.forbiddenMethod != null && method == case.forbiddenMethod) {
-                errors += "使用了禁止 method=$method"
+            if (case.forbiddenBy != null && by == case.forbiddenBy) {
+                errors += "使用了禁止 target.by=$by"
             }
         }
         // 动作合并校验
@@ -211,9 +248,21 @@ class TestEngine(private val aiClient: AiClient) {
             case = case,
             passed = errors.isEmpty(),
             rawOutput = raw,
-            actionType = actionType,
+            intentType = intentType,
             errors = errors,
             latencyMs = latencyMs,
         )
+    }
+
+    companion object {
+        /** 转译层可识别的 target.by 取值 */
+        private val LEGAL_TARGET_BY = setOf("id", "text", "hint", "coordinate")
+
+        /** by=coordinate 的 value 必须形如 "0.5,0.2" 的比例坐标（0~1） */
+        private fun isRatioCoordinate(value: String): Boolean {
+            val parts = value.split(",").map { it.trim() }
+            if (parts.size != 2) return false
+            return parts.all { p -> p.toDoubleOrNull()?.let { it in 0.0..1.0 } == true }
+        }
     }
 }
