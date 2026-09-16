@@ -16,14 +16,13 @@ import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.AgentLog
-import kotlinx.serialization.json.add
-import kotlinx.serialization.json.put
 import com.phoneagent.domain.model.AgentMetrics
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.ui.model.PermissionItem
 import com.phoneagent.ui.model.PermissionKind
 import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.data.store.ProfileEntry
@@ -47,7 +46,6 @@ import com.phoneagent.feature.test.TestConfig
 import com.phoneagent.feature.test.TestEngine
 import com.phoneagent.feature.test.TestPreset
 import com.phoneagent.feature.test.TestRunSummary
-import com.phoneagent.ui.components.formatLogTimestamp
 import com.phoneagent.feature.workspace.WorkAreaEngine
 import com.phoneagent.feature.workspace.WorkDisplay
 import com.phoneagent.feature.workspace.EditChatMessage
@@ -438,168 +436,22 @@ class MainViewModel(
         }
     }
 
-    // ---- 日志导出 ----
+    // ---- 日志导出（实现已外迁至 data/export/LogExporter.kt，此处保留薄委托给 UI 调用） ----
     /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。
      *  @return 成功返回保存路径，失败返回错误信息（以 "ERR:" 开头） */
-    fun exportLogs(context: Context, taskId: Long, taskName: String?): String {
-        return runCatching {
-            val entries = if (taskId < 0) logs.value else logs.value.filter { it.taskId == taskId }
-            if (entries.isEmpty()) return@runCatching "ERR:没有可导出的日志"
-
-            val sb = StringBuilder()
-            sb.appendLine("Happy Phone Agent 运行日志")
-            sb.appendLine("导出时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
-            sb.appendLine("任务：${taskName ?: "全部"}  ·  共 ${entries.size} 条")
-            sb.appendLine("═".repeat(48))
-            entries.forEach { e ->
-                sb.append("[${levelTag(e.level)}] ${formatLogTimestamp(e.timestamp)} ${e.message}")
-                e.detail?.let { sb.appendLine("\n$it") }
-                sb.appendLine()
-            }
-
-            val fileName = "hpa_logs_${taskName?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "all"}_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
-            val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
-            }
-            if (!writeToDownloads(context, values, sb.toString().toByteArray(Charsets.UTF_8)))
-                return@runCatching "ERR:无法写入导出文件（需 Android 10 及以上）"
-            "已导出到 下载/HappyPhoneAgent/$fileName"
-        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
-    }
+    fun exportLogs(context: Context, taskId: Long, taskName: String?): String =
+        LogExporter.exportLogs(context, logs.value, taskId, taskName)
 
     /** 分任务批量导出：每个任务导出一个独立 JSON 文件，保存到「下载」目录（Android 10+ 无需存储权限）。
      *  @return 成功返回保存汇总，失败返回错误信息（以 "ERR:" 开头） */
-    fun exportLogsJsonAll(context: Context): String {
-        return runCatching {
-            val all = logs.value
-            val byTask = all.filter { it.taskId >= 0 }.groupBy { it.taskId }
-            val groups = mutableListOf<Triple<Long, String?, List<AgentLog>>>()
-            byTask.values.forEach { g -> groups += Triple(g.first().taskId, g.first().taskName, g) }
-            val sys = all.filter { it.taskId < 0 }
-            if (sys.isNotEmpty()) groups += Triple(-1L, "系统日志", sys)
-            if (groups.isEmpty()) return@runCatching "ERR:没有可导出的日志"
-
-            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-            val written = mutableListOf<String>()
-            groups.forEach { (tid, name, list) ->
-                val safeName = name?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "task"
-                val fileName = if (tid < 0) "hpa_logs_system_$stamp.json" else "hpa_logs_${tid}_${safeName}_$stamp.json"
-                val jsonObj = kotlinx.serialization.json.buildJsonObject {
-                    put("app", "Happy Phone Agent")
-                    put("exported_at", java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
-                    put("task_id", tid)
-                    put("task_name", name ?: "")
-                    put("log_count", list.size)
-                    put("logs", kotlinx.serialization.json.buildJsonArray {
-                        list.forEach { l ->
-                            add(
-                                kotlinx.serialization.json.buildJsonObject {
-                                    put("ts", l.timestamp)
-                                    put("time", formatLogTimestamp(l.timestamp))
-                                    put("level", l.level.name)
-                                    put("message", l.message)
-                                    l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", it) }
-                                }
-                            )
-                        }
-                    })
-                }
-                val json = jsonObj.toString()
-                val values = android.content.ContentValues().apply {
-                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
-                }
-                if (!writeToDownloads(context, values, json.toByteArray(Charsets.UTF_8)))
-                    return@runCatching "ERR:无法写入导出文件（需 Android 10 及以上）"
-                written += fileName
-            }
-            "已批量导出 ${written.size} 个任务 JSON 到 下载/HappyPhoneAgent/"
-        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
-    }
+    fun exportLogsJsonAll(context: Context): String =
+        LogExporter.exportLogsJsonAll(context, logs.value)
 
     // ==================== 八、诊断报告（人话 + 原始 两区，v2.2.1） ====================
     /** 导出诊断报告：人话摘要区 + 原始数据区，导出前自动脱敏。
      *  @return 保存路径或错误信息（以 "ERR:" 开头） */
-    fun exportDiagnosticReport(context: Context): String {
-        return runCatching {
-            val sb = StringBuilder()
-            sb.appendLine("Happy Phone Agent 诊断报告")
-            sb.appendLine("导出时间：${formatNow()}")
-            sb.appendLine("═".repeat(48))
-
-            sb.appendLine("\n━━━ 一、人话摘要区（用户视角）━━━")
-            if (traces.value.isEmpty()) sb.appendLine("暂无已执行任务步骤。")
-            traces.value.groupBy { it.taskId }.forEach { (tid, list) ->
-                val sorted = list.sortedBy { it.step }
-                val name = sorted.first().taskName ?: "任务 #$tid"
-                sb.appendLine("\n■ 任务：$name（${sorted.size} 步）")
-                sorted.forEach { tr ->
-                    val human = com.phoneagent.core.text.HumanTranslator.summarizeDecision(tr.receivedText)
-                    sb.appendLine("  · 第${tr.step}步 ${if (human.isNotBlank()) human else ""}${if (tr.visionModel.isNotBlank()) "（视觉:${tr.visionSource}）" else ""} · ${tr.latencyMs}ms · ${tr.totalTokens}token")
-                }
-            }
-            val issues = logs.value.filter { it.level == AgentLog.Level.ERROR || it.level == AgentLog.Level.WARN }
-            if (issues.isNotEmpty()) {
-                sb.appendLine("\n■ 遇到的问题（已翻译成人话）：")
-                issues.forEach { l ->
-                    val human = com.phoneagent.core.text.HumanTranslator.translateError(l.message)
-                    sb.appendLine("  - ${human}")
-                }
-            }
-
-            sb.appendLine("\n\n━━━ 二、原始数据区（开发者视角，已脱敏）━━━")
-            sb.appendLine("\n-- 执行追踪 (Trace) --")
-            traces.value.groupBy { it.taskId }.forEach { (tid, list) ->
-                sb.appendLine("\n[任务 $tid] ${list.first().taskName ?: ""}")
-                list.sortedBy { it.step }.forEach { tr ->
-                    sb.appendLine("· 步骤 ${tr.step} | 视觉=${tr.visionSource}(${tr.visionModel}) | 思考=${tr.thinking} | token=${tr.totalTokens} | ${tr.latencyMs}ms")
-                    sb.appendLine("  SENT: ${com.phoneagent.core.security.DataSanitizer.sanitize(tr.sentText)}")
-                    sb.appendLine("  GOT:  ${com.phoneagent.core.security.DataSanitizer.sanitize(tr.receivedText)}")
-                }
-            }
-            sb.appendLine("\n-- 系统日志 (Logs，含 API) --")
-            logs.value.forEach { l ->
-                sb.appendLine("[${formatLogTimestamp(l.timestamp)}][${l.level.name}] ${com.phoneagent.core.security.DataSanitizer.sanitize(l.message)}")
-                l.detail?.takeIf { it.isNotBlank() }?.let { sb.appendLine("    ${com.phoneagent.core.security.DataSanitizer.sanitize(it)}") }
-            }
-            sb.appendLine("\n-- 对话 (Conversation) --")
-            conversation.value.forEach { c -> sb.appendLine("[${c.role}] ${com.phoneagent.core.security.DataSanitizer.sanitize(c.content).take(500)}") }
-
-            val fileName = "hpa_diagnostic_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt"
-            val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/HappyPhoneAgent")
-            }
-            if (!writeToDownloads(context, values, sb.toString().toByteArray(Charsets.UTF_8)))
-                return@runCatching "ERR:无法写入诊断文件（需 Android 10 及以上）"
-            "已导出诊断报告：下载/HappyPhoneAgent/$fileName"
-        }.getOrElse { "ERR:${it.message ?: "导出失败"}" }
-    }
-
-    private fun formatNow(): String =
-        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-
-    /** 把内容写入「下载/HappyPhoneAgent」目录。
-     *  MediaStore.Downloads.EXTERNAL_CONTENT_URI 仅 Android 10(API29)+ 可用；低版本设备返回 false，
-     *  避免在 API<29 上引用该字段导致崩溃（导出功能主面向 Android 10+）。 */
-    private fun writeToDownloads(context: Context, values: android.content.ContentValues, payload: ByteArray): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
-        val resolver = context.contentResolver
-        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
-        return resolver.openOutputStream(uri)?.use { it.write(payload) } != null
-    }
-
-    private fun levelTag(lvl: AgentLog.Level): String = when (lvl) {
-        AgentLog.Level.ERROR -> "错误"
-        AgentLog.Level.WARN -> "警告"
-        AgentLog.Level.AI -> "AI"
-        AgentLog.Level.INFO -> "信息"
-        AgentLog.Level.API -> "API"
-    }
+    fun exportDiagnosticReport(context: Context): String =
+        LogExporter.exportDiagnosticReport(context, traces.value, logs.value, conversation.value)
 
     // ==================== HPA 迭代 A7：Skill / MCP / 提示词 / 无线 ADB UI ====================
 
