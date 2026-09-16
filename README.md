@@ -48,95 +48,126 @@ happy_phone agent/
 ├── app/
 │   └── src/main/
 │       ├── java/com/phoneagent/
-│       │   ├── a11y/              # 无障碍服务 & 执行器
-│       │   │   ├── AgentAccessibilityService.kt
-│       │   │   └── ActionExecutor.kt
-│       │   ├── adskip/            # 跳广告引擎 🆕
-│       │   │   └── AdSkipperCore.kt
-│       │   ├── agent/             # Agent 引擎 & 提示词
-│       │   │   ├── AgentEngine.kt
-│       │   │   ├── AgentPrompts.kt
-│       │   │   ├── AgentPrompt.kt
-│       │   │   └── ShellCommands.kt      # AI 友好命令解析器 🆕
-│       │   ├── ai/                # AI 客户端 & 模型配置
-│       │   │   ├── AiClient.kt
-│       │   │   ├── AiDecision.kt
-│       │   │   ├── ChatModels.kt
-│       │   │   └── GlmDefaults.kt
-│       │   ├── data/prefs/        # DataStore 持久化
-│       │   │   └── AppSettings.kt
-│       │   ├── decision/          # 端侧决策引擎
-│       │   │   └── LocalDecisionEngine.kt
-│       │   ├── di/                # Koin 依赖注入
-│       │   │   └── AppModule.kt
-│       │   ├── edge/              # 边缘光效 🆕
-│       │   │   ├── EdgeLightingService.kt
-│       │   │   └── EdgeLightingView.kt
-│       │   ├── execution/         # 带验证执行器
-│       │   │   └── VerifiedClickExecutor.kt
-│       │   ├── floating/          # 悬浮窗服务
+│       │   ├── PhoneAgentApp.kt            # Application 入口（Koin 初始化）
+│       │   ├── core/                       # 跨层基础设施（零业务语义）
+│       │   │   ├── ai/
+│       │   │   │   ├── AiClient.kt         # OpenAI 兼容客户端（流式 + 结构化输出）
+│       │   │   │   ├── AiDecision.kt
+│       │   │   │   ├── ChatModels.kt
+│       │   │   │   └── GlmDefaults.kt
+│       │   │   ├── security/
+│       │   │   │   └── SensitivePageDetector.kt   # 敏感页检测 + DataSanitizer 脱敏
+│       │   │   ├── text/
+│       │   │   │   └── HumanTranslator.kt         # 动作 / 错误 / 置信度 → 人话
+│       │   │   └── notify/
+│       │   │       ├── TaskProgressNotifier.kt    # 任务进度通知
+│       │   │       ├── AdbPairingNotifier.kt      # 无线配对通知栏向导
+│       │   │       └── ActiveNotifier.kt          # 主动反馈通知（卡顿 / 死循环 / 模板失效等 6 类）
+│       │   ├── domain/                     # 纯领域模型与规则
+│       │   │   ├── model/
+│       │   │   │   ├── AgentAction.kt / AgentIntent.kt / AgentState.kt
+│       │   │   │   ├── AppPageIndex.kt            # App 页面直达索引
+│       │   │   │   ├── ControlNode.kt / ScreenSnapshot.kt / UiElement.kt
+│       │   │   │   └── DebugModels.kt / PhantomModels.kt
+│       │   │   └── rules/
+│       │   │       ├── EngineRules.kt             # 硬约束规则引擎（拦截危险动作 / 只读横切）
+│       │   │       ├── ShellCommands.kt           # AI 友好命令解析器
+│       │   │       └── LocalDecisionEngine.kt     # 端侧决策引擎
+│       │   ├── data/                       # 持久化与数据源
+│       │   │   ├── prefs/
+│       │   │   │   └── AppSettings.kt             # DataStore 配置
+│       │   │   ├── store/                         # 五处持久化统一收敛
+│       │   │   │   ├── MemoryStore.kt
+│       │   │   │   ├── TaskStore.kt               # 检查点 + 任务模板库
+│       │   │   │   ├── DebugRecordsStore.kt       # 日志 / 轨迹 / 历史 / 对话落盘
+│       │   │   │   ├── McpStore.kt
+│       │   │   │   └── PromptTemplateStore.kt
+│       │   │   └── export/
+│       │   │       └── LogExporter.kt             # 日志 / 诊断报告导出
+│       │   ├── device/                     # 设备能力接入
+│       │   │   ├── a11y/
+│       │   │   │   ├── AgentAccessibilityService.kt
+│       │   │   │   └── ActionExecutor.kt          # 动作执行 + 语义 ID 定位
+│       │   │   ├── shell/                         # 无线 ADB（主）/ Shizuku（可选）
+│       │   │   │   ├── ShizukuManager.kt / ShizukuBootstrap.kt
+│       │   │   │   ├── AdbProtocol.kt / AdbSocket.kt / AdbTcpSession.kt
+│       │   │   │   ├── AdbKeyStore.kt / AdbWirelessTransport.kt
+│       │   │   │   ├── AdbBootstrapTransport.kt / MdnsAdbResolver.kt
+│       │   │   │   ├── WirelessAdbModels.kt / WirelessAdbStateMachine.kt
+│       │   │   │   ├── WirelessAdbPairingFlow.kt
+│       │   │   │   └── AdbPairingReceiver.kt      # 通知内联配对码接收
+│       │   │   ├── screen/
+│       │   │   │   ├── ScreenCapture.kt           # 统一截图入口
+│       │   │   │   └── ScreenSharingService.kt    # MediaProjection 回退
+│       │   │   └── vision/
+│       │   │       ├── ExternalVisionProvider.kt  # 外挂视觉服务 IPC 调用方
+│       │   │       └── DetectedControl.kt
+│       │   ├── engine/                     # Agent 编排
+│       │   │   ├── AgentEngine.kt                 # ReAct 主循环
+│       │   │   ├── AgentPrompts.kt                # 系统 / 规划 / 决策提示词
+│       │   │   ├── execution/
+│       │   │   │   ├── IntentTranslator.kt        # 意图 → 端侧动作转译层
+│       │   │   │   ├── IntentResolver.kt
+│       │   │   │   ├── AppNameResolver.kt
+│       │   │   │   ├── CapabilityManager.kt
+│       │   │   │   └── VerifiedClickExecutor.kt   # 带验证的点击执行器
+│       │   │   ├── perception/
+│       │   │   │   ├── PageAnnotator.kt           # 语义 ID 标注
+│       │   │   │   ├── ControlTreeBuilder.kt
+│       │   │   │   └── PageFingerprint.kt
+│       │   │   ├── network/
+│       │   │   │   └── CloudAgent.kt
+│       │   │   └── prompt/
+│       │   │       └── PromptTemplate.kt          # 模板 + 变量引擎
+│       │   ├── overlay/                    # 悬浮窗
 │       │   │   ├── FloatingWindowService.kt
-│       │   │   ├── LiquidGlassDrawable.kt  # 液态玻璃绘制 🆕
+│       │   │   ├── FloatingUi.kt
+│       │   │   ├── LiquidGlassDrawable.kt         # 液态玻璃绘制
 │       │   │   ├── MarqueeView.kt
-│       │   │   └── SuccessMarkView.kt      # 成功标记视图 🆕
-│       │   ├── memory/            # 记忆存储 & 异常学习
-│       │   │   └── MemoryStore.kt
-│       │   ├── model/             # 数据模型
-│       │   │   ├── AgentAction.kt
-│       │   │   ├── AgentState.kt
-│       │   │   ├── AgentLog.kt
-│       │   │   ├── AppPageIndex.kt        # App 页面直达索引 🆕
-│       │   │   ├── DebugModels.kt
-│       │   │   ├── PermissionRadar.kt
-│       │   │   ├── PhantomModels.kt
-│       │   │   ├── ScreenSnapshot.kt
-│       │   │   └── UiElement.kt
-│       │   ├── network/           # 云端 Agent 通信
-│       │   │   └── CloudAgent.kt
-│       │   ├── notify/            # 系统通知进度 🆕
-│       │   │   └── TaskProgressNotifier.kt
-│       │   ├── perception/        # 页面标注 & 指纹
-│       │   │   ├── PageAnnotator.kt
-│       │   │   └── PageFingerprint.kt
-│       │   ├── screen/            # 屏幕截图服务
-│       │   │   └── ScreenSharingService.kt
-│       │   ├── security/          # 安全检测 & 脱敏
-│       │   │   ├── SensitivePageDetector.kt
-│       │   │   └── DataSanitizer.kt
-│       │   ├── shizuku/          # Shizuku ADB 通道 🆕
-│       │   │   └── ShizukuManager.kt
-│       │   ├── test/              # 测试引擎 & 场景
-│       │   │   ├── TestEngine.kt
-│       │   │   ├── TestModels.kt
-│       │   │   ├── TestPresets.kt
-│       │   │   └── RealScenes.kt
-│       │   ├── vision/           # 外挂视觉服务 IPC 🆕
-│       │   │   ├── ExternalVisionProvider.kt
-│       │   │   └── DetectedControl.kt
-│       │   ├── workspace/        # 工作区引擎 🆕
-│       │   │   └── WorkAreaEngine.kt
-│       │   └── ui/                # UI 界面
-│       │       ├── MainActivity.kt
-│       │       ├── MainViewModel.kt
-│       │       ├── agent/AgentScreen.kt
-│       │       ├── components/
-│       │       ├── debug/DebugScreen.kt
-│       │       ├── home/HomeScreen.kt
-│       │       ├── memory/MemoryGraphScreen.kt   # 记忆图谱 🆕
-│       │       ├── settings/             # 设置模块拆分
-│       │       │   ├── SettingsScreen.kt
-│       │       │   ├── SettingsAdSkip.kt        # 跳广告设置 🆕
-│       │       │   ├── SettingsAgent.kt         # Agent 设置 🆕
-│       │       │   ├── SettingsAiModels.kt       # AI 模型设置 🆕
-│       │       │   ├── SettingsComponents.kt   # 组件设置 🆕
-│       │       │   ├── SettingsHome.kt          # 主页设置 🆕
-│       │       │   └── SettingsVisual.kt        # 视觉设置 🆕
-│       │       ├── test/TestScreen.kt
-│       │       ├── workspace/            # 工作区 UI 🆕
-│       │       │   ├── WorkAreaScreen.kt
-│       │       │   ├── FileListScreen.kt
-│       │       │   └── FileEditorScreen.kt
-│       │       └── theme/
+│       │   │   └── SuccessMarkView.kt            # 任务完成打勾动画
+│       │   ├── feature/                    # 功能域
+│       │   │   ├── task/
+│       │   │   │   └── TemplateMatcher.kt         # 任务模板匹配
+│       │   │   ├── skill/
+│       │   │   │   ├── SkillModels.kt / SkillCatalog.kt / SkillRegistry.kt
+│       │   │   │   ├── SkillExecutionGateway.kt
+│       │   │   │   └── SkillCompat.kt
+│       │   │   ├── mcp/
+│       │   │   │   ├── McpClient.kt / McpManager.kt
+│       │   │   │   ├── McpModels.kt / McpRules.kt
+│       │   │   │   ├── McpMarketplace.kt
+│       │   │   │   └── OkHttpMcpTransportFactory.kt
+│       │   │   ├── workspace/
+│       │   │   │   └── WorkAreaEngine.kt          # 工作区引擎
+│       │   │   ├── adskip/
+│       │   │   │   ├── AdSkipperCore.kt
+│       │   │   │   └── AdContentFilter.kt         # 运行时广告过滤
+│       │   │   ├── edge/
+│       │   │   │   ├── EdgeLightingService.kt
+│       │   │   │   └── EdgeLightingView.kt
+│       │   │   └── test/
+│       │   │       ├── TestEngine.kt / TestModels.kt
+│       │   │       ├── TestPresets.kt
+│       │   │       └── RealScenes.kt
+│       │   ├── ui/                         # 界面层（页面 = 入口 + 单一职责拆分文件）
+│       │   │   ├── MainActivity.kt
+│       │   │   ├── MainViewModel.kt
+│       │   │   ├── model/
+│       │   │   │   └── PermissionRadar.kt         # 权限雷达展示模型
+│       │   │   ├── theme/                         # Color / Type / Theme / Motion
+│       │   │   ├── components/                     # Components / Formatters / LiquidGlass / Haptic
+│       │   │   ├── home/                          # HomeScreen + HomeHero / HomeCards / PermissionRadarCard
+│       │   │   ├── agent/                         # AgentScreen + AgentText / PlanPanel / AgentCards
+│       │   │   ├── workspace/                     # WorkAreaScreen + 生成 / 预览 / 文件 / 日志 / 展示 面板
+│       │   │   ├── memory/                        # MemoryGraphScreen + Canvas / Stats / Lists
+│       │   │   ├── debug/
+│       │   │   │   ├── DebugScreen.kt / DebugTabs.kt / CapabilityStrip.kt
+│       │   │   │   └── panels/                   # StepShot / Metrics / Chat / Log / History / Steps / Timeline
+│       │   │   ├── skill/                         # SkillManagerScreen + Skills / Mcp / WirelessAdb / Prompts Tab
+│       │   │   ├── settings/                      # SettingsScreen + 8 个分项设置页
+│       │   │   └── test/                          # TestScreen + TestPresetCard / TestResultViews
+│       │   └── di/
+│       │       └── AppModule.kt                   # Koin 依赖注入
 │       └── res/                    # 资源文件
 ├── gradle/
 │   ├── libs.versions.toml          # 版本目录
