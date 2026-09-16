@@ -37,6 +37,21 @@ object AppRadii {
 }
 
 /**
+ * 间距令牌（与悬浮窗原生 View 侧 `FloatingUi.PAD_*` 保持同一套 4/8/12/16 体系）。
+ * 共享组件统一引用，避免 16.dp / 12.dp 等魔法数字散落各处。
+ */
+object AppSpacing {
+    /** 极小间距：图标与文字、徽章内边距 */
+    val Xs = 4.dp
+    /** 小间距：并列元素之间 */
+    val Sm = 8.dp
+    /** 中间距：卡片内元素分行 */
+    val Md = 12.dp
+    /** 标准间距：卡片内边距 / 屏幕左右留白 */
+    val Lg = 16.dp
+}
+
+/**
  * Material 3 Expressive 风格的圆角定义
  * 小卡片用 small/medium，大容器用 large
  */

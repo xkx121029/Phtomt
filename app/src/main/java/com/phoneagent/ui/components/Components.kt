@@ -530,14 +530,99 @@ fun EmptyHint(icon: ImageVector, title: String, desc: String) {
                 modifier = Modifier.size(24.dp),
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(AppSpacing.Xs))
         Text(
             desc,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+/** 统计瓦片：标题 + 数值（可选单位）+ 强调色 */
+@Composable
+fun StatTile(
+    title: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    unit: String = "",
+) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Item),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(AppSpacing.Xs + 2.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = accent,
+                    ),
+                )
+                if (unit.isNotBlank()) {
+                    Spacer(Modifier.width(AppSpacing.Xs))
+                    Text(
+                        text = unit,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = AppSpacing.Xs),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 分区卡片：标题 + 计数徽章 + 可选清空操作 + 内容 */
+@Composable
+fun SectionCard(
+    title: String,
+    count: Int,
+    countColor: Color,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Card),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm),
+    ) {
+        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Spacer(Modifier.width(AppSpacing.Sm))
+                Text(
+                    text = "$count",
+                    style = MaterialTheme.typography.labelMedium.copy(color = countColor),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .background(countColor.copy(alpha = 0.15f))
+                        .padding(horizontal = AppSpacing.Sm, vertical = 2.dp),
+                )
+                Spacer(Modifier.weight(1f))
+                if (count > 0) {
+                    TextButton(onClick = onClear) {
+                        Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(AppSpacing.Xs))
+                        Text("清空")
+                    }
+                }
+            }
+            Spacer(Modifier.height(AppSpacing.Sm))
+            content()
+        }
     }
 }
