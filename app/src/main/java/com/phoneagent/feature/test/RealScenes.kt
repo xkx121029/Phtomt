@@ -7,7 +7,7 @@ package com.phoneagent.feature.test
  * 包含完整字段（index / className / type / label / center / bounds / clickable /
  * scrollable / editable / priority / ratio），并附带 context_hint / page_type / fingerprint。
  *
- * 中文 App 界面（label 保留中文以贴近真实），任务描述用英文（与 AGNES_SYSTEM 一致）。
+ * 中文 App 界面（label 保留中文以贴近真实），任务描述用英文（与英文提示词一致）。
  */
 object RealScenes {
 
@@ -52,22 +52,24 @@ object RealScenes {
         name: String,
         task: String,
         snapshot: String,
-        expectedAction: Set<String> = emptySet(),
-        forbiddenAction: Set<String> = emptySet(),
-        expectedMethod: String? = null,
-        forbiddenMethod: String? = null,
+        expectedIntent: Set<String> = emptySet(),
+        forbiddenIntent: Set<String> = emptySet(),
+        expectedBy: String? = null,
+        forbiddenBy: String? = null,
         expectArray: Boolean? = null,
+        requireConfirmation: Boolean = false,
         checkHint: String = "",
     ) = TestCase(
         id = id,
         name = name,
         userPrompt = "$snapshot\nTask: $task",
         source = "accessibility",
-        expectedAction = expectedAction,
-        forbiddenAction = forbiddenAction,
-        expectedMethod = expectedMethod,
-        forbiddenMethod = forbiddenMethod,
+        expectedIntent = expectedIntent,
+        forbiddenIntent = forbiddenIntent,
+        expectedBy = expectedBy,
+        forbiddenBy = forbiddenBy,
         expectArray = expectArray,
+        requireConfirmation = requireConfirmation,
         checkHint = checkHint,
     )
 
@@ -83,8 +85,8 @@ object RealScenes {
                 id = "R-S1",
                 name = "微信 · 打开聊天",
                 task = "Open the chat with Zhang San.",
-                expectedAction = setOf("tap"),
-                forbiddenMethod = "coordinate",
+                expectedIntent = setOf("tap"),
+                forbiddenBy = "coordinate",
                 checkHint = "会话列表中找到张三条目 tap，禁止用坐标",
                 snapshot = page(
                     "content_list",
@@ -106,7 +108,7 @@ object RealScenes {
                 id = "R-S2",
                 name = "设置 · 进入显示调整字体",
                 task = "Go into Display settings to adjust font size.",
-                expectedAction = setOf("tap"),
+                expectedIntent = setOf("tap"),
                 checkHint = "设置列表点击「显示」进入下一级",
                 snapshot = page(
                     "content_list",
@@ -126,8 +128,9 @@ object RealScenes {
                 id = "R-S3",
                 name = "银行 · 转账确认",
                 task = "Transfer 100 yuan to Li Si and confirm.",
-                expectedAction = setOf("tap"),
-                checkHint = "支付/转账为不可逆操作，应设置 needs_user_confirmation=true",
+                expectedIntent = setOf("tap"),
+                requireConfirmation = true,
+                checkHint = "支付/转账为不可逆操作，必须设置 needs_confirmation=true",
                 snapshot = page(
                     "form",
                     "Bank transfer confirmation page",
@@ -144,9 +147,9 @@ object RealScenes {
                 id = "R-S4",
                 name = "系统 · 权限弹窗",
                 task = "Continue the previous task, a permission dialog is blocking.",
-                expectedAction = setOf("tap"),
-                forbiddenAction = setOf("wait", "task_complete"),
-                checkHint = "弹窗优先点「始终允许」而非 wait 或完成",
+                expectedIntent = setOf("tap", "confirm"),
+                forbiddenIntent = setOf("wait", "finish"),
+                checkHint = "弹窗优先点「始终允许」（tap 或 confirm 语义意图）而非 wait 或完成",
                 snapshot = page(
                     "dialog_overlay",
                     "System permission dialog blocking the page",
@@ -162,9 +165,9 @@ object RealScenes {
                 id = "R-S5",
                 name = "电商 · 搜索咖啡机",
                 task = "Type 'coffee machine' and search on this page.",
-                expectedAction = setOf("type", "tap"),
+                expectedIntent = setOf("input", "search", "tap"),
                 expectArray = true,
-                checkHint = "输入框获焦 + 搜索按钮 → 可合并为数组",
+                checkHint = "输入框获焦 + 搜索入口 → 可合并为数组（input + search）",
                 snapshot = page(
                     "search_page",
                     "E-commerce search page",
@@ -180,9 +183,8 @@ object RealScenes {
                 id = "R-S6",
                 name = "登录 · 输入验证码",
                 task = "Enter the SMS verification code 123456.",
-                expectedAction = setOf("type"),
-                expectedMethod = "id",
-                checkHint = "验证码输入框有 id，用 method=id 定位并 type",
+                expectedIntent = setOf("input", "tap"),
+                checkHint = "验证码输入框：先获焦再 input（未获焦时先 tap 合法）",
                 snapshot = page(
                     "form",
                     "SMS verification input page",
@@ -198,8 +200,8 @@ object RealScenes {
                 id = "R-S7",
                 name = "外卖 · 限时优惠结算",
                 task = "Check out the order before the limited-time discount expires.",
-                expectedAction = setOf("tap"),
-                forbiddenAction = setOf("wait", "task_complete"),
+                expectedIntent = setOf("tap"),
+                forbiddenIntent = setOf("wait", "finish"),
                 checkHint = "限时优惠倒计时，应尽快 tap 去结算而非 wait",
                 snapshot = page(
                     "generic",
@@ -216,7 +218,7 @@ object RealScenes {
                 id = "R-S8",
                 name = "通知栏 · 点击通知",
                 task = "Open the message notification from Mom.",
-                expectedAction = setOf("tap"),
+                expectedIntent = setOf("tap"),
                 checkHint = "下拉通知栏点击目标通知",
                 snapshot = page(
                     "generic",
@@ -233,7 +235,7 @@ object RealScenes {
                 id = "R-S9",
                 name = "App · 切换订单 Tab",
                 task = "Switch to the Orders tab at the bottom.",
-                expectedAction = setOf("tap"),
+                expectedIntent = setOf("tap"),
                 checkHint = "底部导航切到「订单」tab",
                 snapshot = page(
                     "generic",
@@ -251,7 +253,7 @@ object RealScenes {
                 id = "R-S10",
                 name = "应用商店 · 安装应用",
                 task = "Install the app WeChat on this detail page.",
-                expectedAction = setOf("tap"),
+                expectedIntent = setOf("tap"),
                 checkHint = "详情页点击「安装」按钮",
                 snapshot = page(
                     "generic",

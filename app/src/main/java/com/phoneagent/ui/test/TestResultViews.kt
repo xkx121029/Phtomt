@@ -178,10 +178,10 @@ internal fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifie
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
-            if (result.actionType != null) {
+            if (result.intentType != null) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "动作：${result.actionType}",
+                        "意图：${result.intentType}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 4.dp),
