@@ -257,6 +257,47 @@ internal class HomeStrategy : IntentTranslationStrategy {
 }
 
 /**
+ * Termux 命令行取数策略：把"取网页 / 接口正文"这类**图形界面做不到或很笨拙**的事，
+ * 落到 Termux 的 curl 上。
+ *
+ * 这是"把 Termux 命令纳入转译层"的落点：新增能力对 AI 的暴露面仅是一个意图名 + uri 字段，
+ * AI 依旧只表达"做什么"（要哪个地址的内容），命令由端侧拼装、通道由端侧决定，
+ * AI 既不写命令也不选通道（与铁律 9 一致）。
+ */
+internal class TermuxFetchStrategy(
+    private val termuxAvailable: () -> Boolean,
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val uri = intent.uri?.trim().orEmpty()
+        if (uri.isBlank()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "uri",
+                reason = "AI 输出了 fetch 但未提供 uri（要获取的网页/接口地址）。请补全 uri，例如 {\"uri\":\"https://example.com\"}。",
+            )
+        }
+        if (!uri.startsWith("http://") && !uri.startsWith("https://")) {
+            return IntentTranslator.TranslationResult.Failed("fetch 仅支持 http/https 地址：$uri")
+        }
+        if (!termuxAvailable()) {
+            return IntentTranslator.TranslationResult.Failed(
+                "本机未安装或未授权 Termux，无法用命令行取数；请改用 UI 意图在当前页面完成。",
+            )
+        }
+        // 白名单过滤地址字符，杜绝把引号 / 反引号 / 命令替换符拼进命令
+        val safe = uri.filter { it.isLetterOrDigit() || it in ":/?&=#%._-+~@[]!()*,;" }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.SHELL,
+                // raw 前缀：跳过 AI 友好命令解析，原样交给通道执行
+                // （执行层按命令名判定 curl 属 Termux 工具链，自动走 Termux 通道）
+                command = "raw curl -sL --max-time 20 -- \"$safe\"",
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+}
+
+/**
  * 意图转译器（对应 HPA动作执行逻辑优化文档 v2.1 四、IntentTranslator）。
  *
  * 策略化拆分：把 AI 的"意图"（做什么）转译为端侧可执行的"命令"（怎么做）。
@@ -269,6 +310,8 @@ class IntentTranslator(
     private val capabilityManager: CapabilityManager,
     private val appNameResolver: AppNameResolver,
     private val intentResolver: IntentResolver,
+    /** 当前是否具备 Termux 命令行通道（普通应用权限）；由调用方注入，转译层据此决定 fetch 能否落地 */
+    private val termuxAvailable: () -> Boolean = { false },
 ) {
 
     /** 转译结果 */
@@ -304,6 +347,8 @@ class IntentTranslator(
         put(IntentType.OPEN_APP, OpenAppStrategy(appNameResolver))
         // 文档写入
         put(IntentType.WRITE_DOC, passthrough(ActionType.WRITE_DOC) { i, a -> a.copy(text = i.text, summary = i.summary) })
+        // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
+        put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 收尾
         put(IntentType.FINISH, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.summary ?: "任务完成") })
         put(IntentType.GIVE_UP, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.reason ?: "已放弃任务") })

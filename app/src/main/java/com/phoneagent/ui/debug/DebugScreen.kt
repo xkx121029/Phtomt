@@ -28,16 +28,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FileDownload
-import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Insights
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -93,6 +83,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 internal enum class DebugTab(val label: String) {
     STEPS("任务"),
@@ -157,15 +148,15 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 IconButton(onClick = {
                     android.widget.Toast.makeText(context, vm.exportDiagnosticReport(context), android.widget.Toast.LENGTH_LONG).show()
                 }) {
-                    Icon(Icons.Rounded.Description, contentDescription = "导出诊断报告(人话+原始)", tint = MaterialTheme.colorScheme.primary)
+                    Icon(AppIcons.Description, contentDescription = "导出诊断报告(人话+原始)", tint = MaterialTheme.colorScheme.primary)
                 }
                 IconButton(onClick = {
                     android.widget.Toast.makeText(context, vm.exportLogsJsonAll(context), android.widget.Toast.LENGTH_LONG).show()
                 }) {
-                    Icon(Icons.Rounded.FileDownload, contentDescription = "导出JSON(分任务)", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(AppIcons.FileDownload, contentDescription = "导出JSON(分任务)", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { vm.clearDebug() }) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(AppIcons.Delete, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
         )
@@ -185,7 +176,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(Icons.Rounded.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                Icon(AppIcons.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
                 Column(Modifier.weight(1f)) {
                     Text("外挂视觉画框", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(
@@ -212,7 +203,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     },
                     leadingIcon = if (human) null else {
                         {
-                            Icon(Icons.Rounded.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(AppIcons.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
                     },
                 )

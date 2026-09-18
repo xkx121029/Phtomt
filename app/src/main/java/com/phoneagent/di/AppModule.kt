@@ -18,7 +18,8 @@ import com.phoneagent.feature.skill.SkillExecutionGateway
 import com.phoneagent.feature.skill.SkillRegistry
 import com.phoneagent.feature.test.TestEngine
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.feature.workspace.WorkAreaEngine
+import com.phoneagent.feature.document.DocumentEngine
+import com.phoneagent.device.shell.TermuxBridge
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import kotlinx.coroutines.flow.first
@@ -30,8 +31,9 @@ private val appModule = module {
     single { AiClient.create() }
     single { ShizukuManager() }
     single { MemoryStore(androidContext()) }
-    single { WorkAreaEngine(androidContext(), get(), get()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get()) }
+    single { DocumentEngine(androidContext()) }
+    single { TermuxBridge(androidContext()) }
+    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get()) }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====
@@ -58,7 +60,7 @@ private val appModule = module {
     // 无线 ADB「开始配对」通知栏向导
     single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
 
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 }
 
 fun initKoin(context: Context) {

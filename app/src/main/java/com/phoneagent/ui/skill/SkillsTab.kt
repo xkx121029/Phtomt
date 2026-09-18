@@ -19,22 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Storefront
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -88,6 +72,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 // ============ 技能 Tab ============
 
@@ -108,7 +93,7 @@ internal fun SkillsTab(vm: MainViewModel) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Button(onClick = { showCreate = true }, modifier = Modifier.weight(1f)) {
-            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(4.dp))
             Text("新增技能")
         }
@@ -132,7 +117,7 @@ internal fun SkillsTab(vm: MainViewModel) {
                     selected.clear()
                 },
             ) {
-                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("删除所选")
             }
@@ -156,7 +141,7 @@ internal fun SkillsTab(vm: MainViewModel) {
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("skills", json))
                     android.widget.Toast.makeText(context, "已导出 ${vm.skillAll().count { !it.isBuiltIn }} 个技能到剪贴板", android.widget.Toast.LENGTH_SHORT).show()
                 }) {
-                    Icon(Icons.Filled.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(AppIcons.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("导出")
                 }
@@ -171,7 +156,7 @@ internal fun SkillsTab(vm: MainViewModel) {
                         android.widget.Toast.makeText(context, "已导入 $n 个技能", android.widget.Toast.LENGTH_SHORT).show()
                     }
                 }) {
-                    Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(AppIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("导入")
                 }
@@ -228,7 +213,7 @@ internal fun SkillCard(
                 Checkbox(checked = checked, onCheckedChange = onCheckedChange)
             } else {
                 Icon(
-                    if (skill.source == SkillSource.MCP) Icons.Rounded.Terminal else Icons.Rounded.Bolt,
+                    if (skill.source == SkillSource.MCP) AppIcons.Terminal else AppIcons.Bolt,
                     contentDescription = null,
                     tint = if (skill.source == SkillSource.MCP) { MaterialTheme.colorScheme.secondary } else { MaterialTheme.colorScheme.primary },
                     modifier = Modifier.size(22.dp),
@@ -267,7 +252,7 @@ internal fun SkillCard(
                 Switch(checked = skill.enabled, onCheckedChange = { onToggleEnabled() })
             } else {
                 IconButton(onClick = { onOpen() }) {
-                    Icon(Icons.Filled.Edit, contentDescription = "编辑")
+                    Icon(AppIcons.Edit, contentDescription = "编辑")
                 }
             }
         }

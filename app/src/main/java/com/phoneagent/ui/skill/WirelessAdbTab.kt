@@ -19,22 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Storefront
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -54,6 +38,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,12 +48,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -76,6 +64,7 @@ import com.phoneagent.engine.prompt.PromptTemplate
 import com.phoneagent.device.shell.AdbError
 import com.phoneagent.device.shell.AdbPhase
 import com.phoneagent.device.shell.AdbWirelessTransport
+import com.phoneagent.device.shell.TermuxBridge
 import com.phoneagent.feature.skill.Skill
 import com.phoneagent.feature.skill.SkillParam
 import com.phoneagent.feature.skill.SkillSource
@@ -88,6 +77,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 // ============ 无线 ADB Tab ============
 
@@ -107,10 +97,12 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
         val channelText = when (settings.executionChannel) {
             "ADB" -> "无线ADB优先"
             "SHIZUKU" -> "Shizuku优先"
-            else -> "自动（无线ADB优先）"
+            "TERMUX" -> "Termux优先"
+            else -> "自动（无线ADB→Shizuku→Termux）"
         }
         val adbReady = adbStatus.phase == AdbPhase.READY
         val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
+        val termuxStatus by vm.termuxStatus.collectAsState()
         val localIp = remember { AdbWirelessTransport.localIpv4Address() }
         AppCard {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -123,7 +115,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                     Column(Modifier.weight(1f)) {
                         Text("执行通道（$channelText）", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "无线 ADB：${adbPhaseText(adbStatus.phase)} · Shizuku：${if (shizukuReady) "就绪" else "可选未启用"}",
+                            "无线 ADB：${adbPhaseText(adbStatus.phase)} · Shizuku：${if (shizukuReady) "就绪" else "可选未启用"} · Termux：${if (termuxStatus.ready) "就绪" else "可选未启用"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -148,7 +140,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
         AppCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(AppIcons.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
                     Text("无线调试配对（无需 Root）", style = MaterialTheme.typography.titleMedium)
                 }
@@ -180,7 +172,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(Icons.Filled.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(AppIcons.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("重新配对")
                     }
@@ -201,7 +193,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(AppIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("自动发现服务")
                     }
@@ -210,7 +202,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                         enabled = code.length == 6,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Icon(Icons.Filled.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(AppIcons.Wifi, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
                         Text("手动配对")
                     }
@@ -224,7 +216,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                 // 连接状态 + 错误提示
                 if (adbStatus.isUserActionRequired || adbStatus.phase == AdbPhase.FAILED) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Icon(AppIcons.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(6.dp))
                         Text(
                             adbStatus.message.ifBlank { AdbError.UNKNOWN.name },
@@ -234,7 +226,7 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
                     }
                 } else if (adbStatus.phase != AdbPhase.UNPAIRED) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Success)
+                        Icon(AppIcons.CheckCircle, contentDescription = null, tint = Success)
                         Spacer(Modifier.width(6.dp))
                         Text(adbStatus.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -242,8 +234,123 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
             }
         }
 
+        // Termux 执行通道（普通应用权限的 Linux 环境）
+        TermuxChannelCard(vm)
+
         if (msg != null) {
             StatusPill(msg!!, if (msg!!.contains("就绪") || msg!!.contains("成功")) Success else MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/**
+ * Termux 执行通道卡片：三项前置条件（已安装 / 已授权 / 已开启 allow-external-apps）+ 分步引导。
+ *
+ * 与无线 ADB / Shizuku 的关键差异：Termux 是**普通应用权限**的 Linux 环境，
+ * 只能跑 curl / python / 文本处理等工具链命令，不能执行 am / pm / settings 等系统命令。
+ * 该边界同时声明给 AI（见提示词的执行通道能力段），避免它拿 Termux 去执行系统操作。
+ */
+@Composable
+private fun TermuxChannelCard(vm: MainViewModel) {
+    val context = LocalContext.current
+    val status by vm.termuxStatus.collectAsState()
+    var msg by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { vm.refreshTermuxStatus() }
+
+    // RUN_COMMAND 权限由 Termux 声明，需运行时授予；Termux 未安装时无法授予
+    val permLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        msg = if (granted) "已授予 Termux 执行权限，建议再点一次「实跑探测」确认" else "授权被拒绝，Termux 通道不可用"
+        vm.refreshTermuxStatus()
+    }
+
+    AppCard {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier.size(12.dp).background(
+                        if (status.ready) Success else MaterialTheme.colorScheme.onSurfaceVariant,
+                        RoundedCornerShape(AppRadii.Chip),
+                    ),
+                )
+                Column(Modifier.weight(1f)) {
+                    Text("Termux 执行通道", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "普通应用权限的 Linux 环境：可跑 curl / python / 文本处理，不能执行系统命令",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { msg = null; vm.refreshTermuxStatus() }) { Text("重新检测") }
+            }
+
+            AdbStepRow(1, "已安装 Termux", if (status.installed) AdbStepStatus.DONE else AdbStepStatus.PENDING)
+            AdbStepRow(2, "已授予执行权限", if (status.permissionGranted) AdbStepStatus.DONE else AdbStepStatus.PENDING)
+            AdbStepRow(3, "已开启 allow-external-apps", if (status.ready) AdbStepStatus.DONE else AdbStepStatus.PENDING)
+
+            when {
+                !status.installed -> OutlinedButton(
+                    onClick = {
+                        val intent = android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://f-droid.org/packages/com.termux/"),
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        runCatching { context.startActivity(intent) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(AppIcons.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("前往 F-Droid 安装 Termux")
+                }
+
+                !status.permissionGranted -> Button(
+                    onClick = { msg = null; permLauncher.launch(TermuxBridge.RUN_COMMAND_PERMISSION) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(AppIcons.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("授予执行权限")
+                }
+
+                else -> Button(
+                    onClick = { msg = null; vm.probeTermux() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(AppIcons.Play, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("实跑探测")
+                }
+            }
+
+            if (status.installed && status.permissionGranted && !status.ready) {
+                Text(
+                    "若探测失败，请在 Termux 里执行一次：echo \"allow-external-apps=true\" >> ~/.termux/termux.properties && termux-reload-settings",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (status.message.isNotBlank()) {
+                StatusPill(
+                    status.message,
+                    if (status.ready) Success else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (msg != null) {
+                StatusPill(
+                    msg!!,
+                    if (msg!!.contains("已授予")) Success else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

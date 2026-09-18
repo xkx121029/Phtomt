@@ -13,6 +13,15 @@
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Termux 执行通道：该权限由 Termux 声明（dangerous 级），授予后本 App 才能向
+         com.termux.app.RunCommandService 下发命令；未安装 Termux 时该权限无法授予，不影响安装 -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- 包可见性：Termux 执行通道需要探测 com.termux 是否安装 -->
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
+
     <application
         android:name=".PhoneAgentApp"
         android:allowBackup="true"
@@ -70,6 +79,15 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Termux 执行通道：接收 Termux 通过 PendingIntent 回传的命令结果（自收自发，无需 exported） -->
+        <receiver
+            android:name=".device.shell.TermuxResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.phoneagent.action.TERMUX_RESULT" />
             </intent-filter>
         </receiver>
 

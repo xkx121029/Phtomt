@@ -90,7 +90,8 @@ object AgentPrompts {
 | press | 系统按键 | key(BACK/HOME/ENTER/RECENT) |
 | wait | 等待 | wait_ms |
 | scroll_to | 滚动查找目标 | target |
-| write_doc | 生成文档到工作区 | text(正文),summary(文件名) |
+| write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
+| fetch | 取网页/接口正文（需本机有 Termux） | uri |
 | finish | 任务完成 | summary(你看到的证据) |
 | give_up | 放弃 | reason(原因) |
 
@@ -129,7 +130,7 @@ object AgentPrompts {
 {"intent":"input","target":{"by":"id","value":"node_search"},"text":"黄焖鸡米饭","reasoning":"输入搜索词","expected":"搜索框显示文字","confidence":0.95}
 
 # 独占路由规则（铁律级别，违反 = 任务失败）
-1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直写工作区，独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
+1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
 2. 打开网页/系统页/公开 scheme → 优先用 open 深链一键直达（uri 或 app+page 索引）；封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
 3. 支付/删除/发送等不可逆操作 → 必须设置 "needs_confirmation": true，等待端侧确认后再执行。
 
@@ -241,7 +242,8 @@ You are Phantom, an Android device automation agent.
 | press | System key | key(BACK/HOME/ENTER/RECENT) |
 | wait | Wait | wait_ms |
 | scroll_to | Scroll to find target | target |
-| write_doc | Generate document to workspace | text(body),summary(filename) |
+| write_doc | Generate document (previewed on the Agent page) | text(body),summary(filename) |
+| fetch | Fetch web/API body text (requires Termux on device) | uri |
 | finish | Task complete | summary(evidence you saw) |
 | give_up | Give up | reason |
 
@@ -280,7 +282,7 @@ In principle you should not output pixel coordinates — coordinates are compute
 {"intent":"input","target":{"by":"id","value":"node_search"},"text":"braised chicken rice","reasoning":"enter search term","expected":"field filled","confidence":0.95}
 
 # Exclusive Routing Rules (Iron Rule, violation = task failure)
-1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to write directly to the workspace, exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
+1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to produce the document body directly (it will be previewed to the user on the Agent page), exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
 2. Opening web/system pages or public schemes → prefer open to jump there directly (uri or app+page index); for closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through.
 3. Irreversible operations (payment/deletion/send) → MUST set "needs_confirmation": true and wait for on-device confirmation before executing.
 
@@ -385,12 +387,12 @@ Output ONLY JSON.
 # 环境与意图
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
-- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档到工作区)、finish(完成)、give_up(放弃)。
+- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档，结果在 Agent 页预览)、fetch(取网页/接口正文，需本机有 Termux)、finish(完成)、give_up(放弃)。
 - 高层语义意图（补充，端侧自动定位对应按钮）：back、home、refresh、search、send、confirm、close、share、collect、copy、delete、download、add、switch、clear_input。
 - 端侧负责定位目标与计算坐标，无需你指定通道或坐标。
 
 # 文档类任务
-任务需要生成/整理文档（周报、清单、总结、报告、资料、笔记、文章等）时，计划应包含一步「生成文档并保存到工作区」，不要规划打开记事本/便签或在屏幕上打字。
+任务需要生成/整理文档（周报、清单、总结、报告、资料、笔记、文章等）时，计划应包含一步「生成文档（结果在 Agent 页预览）」，不要规划打开记事本/便签或在屏幕上打字。
 
 # 歧义检测条件
 - 目标 App 不明确 / 多个候选且差异显著 / 选择标准模糊 / 时间数量预算缺失且任务依赖 / 计划依赖"某应用已安装"但列表中缺失
@@ -435,12 +437,12 @@ You are a deep planner. Break the user task into atomic steps that the device ex
 # Environment & Intents
 - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
 - Common Chinese apps: $COMMON_CN_APPS
-- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document to workspace), finish, give_up.
+- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document, previewed on the Agent page), fetch(retrieve web/API body text, requires Termux on device), finish, give_up.
 - High-level semantic intents (extra; the device auto-finds the button): back, home, refresh, search, send, confirm, close, share, collect, copy, delete, download, add, switch, clear_input.
 - Device handles target location and coordinate computing. Never specify a channel or coordinate.
 
 # Document-Type Tasks
-If the task requires generating/compiling a document (report, checklist, summary, notes, article, etc.), the plan should include one step "generate document and save to workspace". Do NOT plan to open a notes/notepad app or type on screen.
+If the task requires generating/compiling a document (report, checklist, summary, notes, article, etc.), the plan should include one step "generate document (previewed on the Agent page)". Do NOT plan to open a notes/notepad app or type on screen.
 
 # Ambiguity Detection Conditions
 - Target app unclear / multiple candidates with distinct outcomes / vague criteria / missing time-quantity-budget the task depends on / plan depends on an app not in the installed list.
@@ -537,7 +539,7 @@ No other text.
 合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
 
 # 文档任务提醒
-若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整正文交给端侧（结果会在 Agent 页预览给用户），不要操作屏幕。
 
 只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
 """.trimIndent()
@@ -576,7 +578,7 @@ Normal → single intent JSON.
 Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
 
 # Document Task Reminder
-If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full content to the workspace; do NOT interact with the screen.
+If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full body (it will be previewed to the user on the Agent page); do NOT interact with the screen.
 
 Output ONLY JSON. No ```json markers. No text before/after JSON.
 """.trimIndent()
@@ -752,8 +754,13 @@ Output ONLY JSON. First char = {, last = }.
      * 未命中任何场景时返回空串，不增加任何负担。
      * - 文档类任务（周报/清单/总结/报告/笔记等）→ 注入 write_doc 完整模板 + 铁律
      * - 直达/开启类任务（打开网页/应用/搜索/导航）→ 注入 open 直达说明 + 软件页面索引
+     * - 取数类任务（网页/接口/汇率/天气等）且本机有 Termux 通道 → 注入 fetch 用法 + 边界
      */
-    fun situationalExtras(lang: PromptLang, task: String): String {
+    fun situationalExtras(
+        lang: PromptLang,
+        task: String,
+        termuxAvailable: Boolean = false,
+    ): String {
         val sb = StringBuilder()
         val docHit = when (lang) {
             PromptLang.CN -> listOf("周报", "日报", "清单", "总结", "报告", "资料", "笔记", "文章", "邮件", "方案", "攻略", "作业", "简历", "文档", "整理", "ppt", "PPT", "表格", "写一个", "写一篇")
@@ -763,15 +770,26 @@ Output ONLY JSON. First char = {, last = }.
             PromptLang.CN -> listOf("打开", "直达", "搜索", "导航", "地图", "排序")
             PromptLang.EN -> listOf("open ", "direct", "navigate", "search for", "launch ", "website", "url")
         }.any { task.contains(it, ignoreCase = true) }
+        // 仅当「任务要从网络取内容」且「本机确有 Termux 命令行通道」时，才注入 fetch 能力说明
+        val fetchHit = termuxAvailable && when (lang) {
+            PromptLang.CN -> listOf(
+                "网页", "网址", "链接", "接口", "api", "API", "抓取", "爬", "解析", "json", "JSON",
+                "汇率", "天气", "股价", "股票", "新闻", "请求", "页面内容", "网页内容",
+            )
+            PromptLang.EN -> listOf(
+                "webpage", "url", "link", "api", "fetch", "scrape", "parse", "json",
+                "exchange rate", "weather", "stock", "news", "request",
+            )
+        }.any { task.contains(it, ignoreCase = true) }
 
         if (docHit) {
             sb.append("\n\n## 当前任务附加指导 · 文档生成\n")
             if (lang == PromptLang.CN) {
                 sb.append("检测到本任务需要生成/整理文档。必须直接输出 write_doc，禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。模板：\n")
-                sb.append("""{"intent":"write_doc","text":"完整文档内容（Markdown）","summary":"文件名.md","reasoning":"生成文档到工作区","expected":"文档已生成","confidence":0.95}""")
+                sb.append("""{"intent":"write_doc","text":"完整文档内容（Markdown）","summary":"文件名.md","reasoning":"生成文档并在 Agent 页预览","expected":"文档已生成","confidence":0.95}""")
             } else {
                 sb.append("This task requires generating/compiling a document. Must output write_doc directly; do NOT type on screen, open a notes app, or use shell to write files. Template:\n")
-                sb.append("""{"intent":"write_doc","text":"full document content (Markdown)","summary":"filename.md","reasoning":"generate document to workspace","expected":"document generated","confidence":0.95}""")
+                sb.append("""{"intent":"write_doc","text":"full document content (Markdown)","summary":"filename.md","reasoning":"generate document, preview on the Agent page","expected":"document generated","confidence":0.95}""")
             }
         }
         if (openHit) {
@@ -782,6 +800,20 @@ Output ONLY JSON. First char = {, last = }.
                 sb.append("以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：\n${AppPageIndex.indexText()}")
             } else {
                 sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for web/system pages; official scheme for public schemes; do NOT invent schemes for closed apps — use open_app instead. Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+            }
+        }
+        if (fetchHit) {
+            sb.append("\n\n## 当前任务附加指导 · 命令行取数(fetch)\n")
+            if (lang == PromptLang.CN) {
+                sb.append("本机已装并授权 Termux（普通应用权限的 Linux 环境），可让端侧直接取回网页/接口正文，比在界面上翻页查找更可靠。\n")
+                sb.append("""用法：{"intent":"fetch","uri":"https://example.com","reasoning":"取该页正文","expected":"返回正文文本","confidence":0.9}""")
+                sb.append("\n取回的内容会作为上一步命令输出回传给你，可据此继续（例如用 write_doc 汇总成文档）。\n")
+                sb.append("边界（重要）：你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
+            } else {
+                sb.append("Termux is installed and authorized on this device (a plain-app-permission Linux environment), so the device can fetch web/API body text directly — more reliable than paging through the UI.\n")
+                sb.append("""Usage: {"intent":"fetch","uri":"https://example.com","reasoning":"get the page body","expected":"body text returned","confidence":0.9}""")
+                sb.append("\nThe retrieved content is returned to you as the previous step's command output; continue from there (e.g. summarize it with write_doc).\n")
+                sb.append("Boundary (important): you only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
             }
         }
         return sb.toString()

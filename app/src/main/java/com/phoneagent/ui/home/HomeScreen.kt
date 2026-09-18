@@ -27,20 +27,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Key
-import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -82,6 +68,7 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 @Composable
 fun HomeScreen(
@@ -155,7 +142,7 @@ fun HomeScreen(
                 onClick = { AgentAccessibilityService.openSettings(context) },
             ) {
                 StatusCard(
-                    icon = Icons.Rounded.TouchApp,
+                    icon = AppIcons.TouchApp,
                     title = if (a11y) "无障碍服务" else "未开启",
                     subtitle = if (a11y) "已连接，可读取与操作" else "点击前往开启",
                     iconColor = if (a11y) Success else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -170,7 +157,7 @@ fun HomeScreen(
                 onClick = onRequestScreenshot,
             ) {
                 StatusCard(
-                    icon = Icons.Rounded.CameraAlt,
+                    icon = AppIcons.Camera,
                     title = "屏幕捕获",
                     subtitle = if (screenshotActive) "运行中，支持视觉理解" else "点击授权截屏",
                     iconColor = if (screenshotActive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -179,10 +166,10 @@ fun HomeScreen(
             }
             PressableScale(
                 modifier = Modifier.weight(1f).animateListItem(2),
-                onClick = { onNavigate(4) },
+                onClick = { onNavigate(3) },
             ) {
                 StatusCard(
-                    icon = Icons.Rounded.Key,
+                    icon = AppIcons.Key,
                     title = if (settings.apiKey.isNotBlank()) "AI 已配置" else "未配置",
                     subtitle = settings.model,
                     iconColor = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -219,37 +206,28 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(3),
-                icon = Icons.Filled.Bolt,
+                icon = AppIcons.Bolt,
                 tint = MaterialTheme.colorScheme.primary,
                 title = "Agent",
                 subtitle = "下达执行任务",
                 onPress = { pressHaptic() },
-                onClick = { onNavigate(1) },
-            )
-            QuickEntry(
-                modifier = Modifier.weight(1f).animateListItem(4),
-                icon = Icons.Filled.Folder,
-                tint = MaterialTheme.colorScheme.secondary,
-                title = "工作区",
-                subtitle = "AI 编写文档",
-                onPress = { pressHaptic() },
-                onClick = { onNavigate(2) },
+                onClick = { onNavigate(0) },
             )
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(5),
-                icon = Icons.Filled.Settings,
+                icon = AppIcons.Settings,
                 tint = MaterialTheme.colorScheme.tertiary,
                 title = "设置",
                 subtitle = "模型与权限配置",
                 onPress = { pressHaptic() },
-                onClick = { onNavigate(4) },
+                onClick = { onNavigate(3) },
             )
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(6),
-                icon = Icons.Rounded.Code,
+                icon = AppIcons.Code,
                 tint = MaterialTheme.colorScheme.secondary,
                 title = "调试",
                 subtitle = "日志与指标",
@@ -261,7 +239,7 @@ fun HomeScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(7),
-                icon = Icons.Rounded.Science,
+                icon = AppIcons.Science,
                 tint = MaterialTheme.colorScheme.primary,
                 title = "测试",
                 subtitle = "模型回归校验",
@@ -270,7 +248,7 @@ fun HomeScreen(
             )
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(8),
-                icon = Icons.Rounded.Memory,
+                icon = AppIcons.Memory,
                 tint = MaterialTheme.colorScheme.tertiary,
                 title = "技能&能力",
                 subtitle = "Skill/MCP/ADB",

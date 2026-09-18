@@ -22,16 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Cancel
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.Translate
-import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,7 +66,7 @@ import com.phoneagent.ui.theme.TestReal
 import com.phoneagent.ui.theme.TestRegression
 import com.phoneagent.ui.theme.TestTargeting
 import com.phoneagent.ui.theme.Warning
-import androidx.compose.material.icons.rounded.SendToMobile
+import com.phoneagent.ui.icons.AppIcons
 
 /**
  * AI 测试工作台：集成标准预设测试 + 真实场景测试，支持中英文提示词切换。
@@ -104,7 +94,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     ) {
         // ===== 标题 + 语言切换 =====
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Science, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Icon(AppIcons.Science, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
             Spacer(Modifier.width(10.dp))
             Text("AI 测试工作台", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             // 语言切换
@@ -124,7 +114,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Rounded.Translate, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+            Icon(AppIcons.Translate, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
             Text(
                 "当前：${vm.getLanguageLabel(testLang)}",
                 style = MaterialTheme.typography.labelSmall,
@@ -136,7 +126,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
         // ===== 分类筛选 + 操作按钮 =====
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.FilterList, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(AppIcons.FilterList, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             // 分类筛选
             val categories = listOf(null to "全部", "standard" to "标准测试", "real" to "真实场景")
             for ((cat, label) in categories) {
@@ -164,7 +154,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 modifier = Modifier.height(32.dp),
                 contentPadding = ButtonDefaults.TextButtonContentPadding,
             ) {
-                Icon(Icons.Rounded.Code, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(AppIcons.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("提示词", style = MaterialTheme.typography.labelSmall)
             }
@@ -174,7 +164,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 modifier = Modifier.height(32.dp),
                 contentPadding = ButtonDefaults.TextButtonContentPadding,
             ) {
-                Icon(Icons.Rounded.Report, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(AppIcons.Report, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("配置", style = MaterialTheme.typography.labelSmall)
             }
@@ -321,7 +311,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 onClick = { vm.resetTest() },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(AppIcons.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("清除结果")
             }

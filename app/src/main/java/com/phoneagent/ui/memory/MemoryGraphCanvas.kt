@@ -22,11 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -65,7 +60,6 @@ import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
-import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
@@ -167,7 +161,7 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
             .fillMaxWidth()
             .height(320.dp)
             .clip(RoundedCornerShape(AppRadii.Card))
-            .liquidGlass(alpha = 0.6f, cornerRadius = AppRadii.Card)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .pointerInput(Unit) {
                 detectTapGestures { tapOffset ->
                     val w = size.width.toFloat()

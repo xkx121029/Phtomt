@@ -85,7 +85,8 @@ object IntentType {
     const val PRESS = "press"             // 按键（key）
     const val WAIT = "wait"               // 等待（wait_ms）
     const val SCROLL_TO = "scroll_to"     // 滚动查找（target）
-    const val WRITE_DOC = "write_doc"     // 写入文档到工作区（text=正文, summary=文件名）
+    const val WRITE_DOC = "write_doc"     // 生成文档（text=正文, summary=文件名），结果在 Agent 页预览
+    const val FETCH = "fetch"             // 获取网页/接口正文（uri），经转译层落到 Termux 命令行取数
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
 
@@ -111,7 +112,7 @@ object IntentType {
      * 供判分/白名单校验使用：AI 输出的 intent 不在此集合内即为非法意图。
      */
     val ALL: Set<String> = setOf(
-        OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, FINISH, GIVE_UP,
+        OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, FETCH, FINISH, GIVE_UP,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
     )
@@ -128,6 +129,7 @@ object IntentType {
         WAIT to ActionType.WAIT,
         SCROLL_TO to ActionType.SCROLL,
         WRITE_DOC to ActionType.WRITE_DOC,
+        FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,
     )

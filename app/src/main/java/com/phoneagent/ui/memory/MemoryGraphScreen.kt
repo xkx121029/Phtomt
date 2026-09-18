@@ -22,11 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -65,7 +60,6 @@ import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
-import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
@@ -80,6 +74,7 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import com.phoneagent.ui.icons.AppIcons
 
 /**
  * AI 记忆图谱：
@@ -103,11 +98,11 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         AppTopBar(
             title = "记忆图谱",
             subtitle = "AI 积累的异常经验与用户画像",
-            leadingIcon = Icons.Filled.Memory,
+            leadingIcon = AppIcons.Memory,
             trailingContent = {
                 PressableScale(onClick = { vm.refreshMemory() }) {
                     Icon(
-                        Icons.Filled.Refresh,
+                        AppIcons.Refresh,
                         contentDescription = "刷新",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(8.dp).size(20.dp),

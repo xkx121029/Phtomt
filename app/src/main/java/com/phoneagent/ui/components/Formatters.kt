@@ -7,9 +7,8 @@ import java.util.Locale
 /**
  * UI 层共享格式化工具（纯 Kotlin，无 Compose 依赖，可单测）。
  *
- * 收敛自原先分散在三处的同构实现：
+ * 收敛自原先分散在 UI 层的同构实现：
  * - `ui.debug.formatTime`（日志面板时钟）
- * - `ui.workspace.formatTime / formatSize`（文件列表）
  *
  * 注：日志导出用的 "MM-dd HH:mm:ss.SSS" 时间戳随导出逻辑一并迁到 `data.export.LogExporter`，
  * 此处不再保留（数据层不反向依赖 UI 层）。

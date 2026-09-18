@@ -35,12 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -61,14 +55,12 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.SnackbarState
-import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.debug.DebugScreen
 import com.phoneagent.ui.home.HomeScreen
 import com.phoneagent.ui.memory.MemoryGraphScreen
@@ -78,10 +70,8 @@ import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
 import com.phoneagent.ui.theme.motionSettings
-import com.phoneagent.ui.workspace.FileEditorScreen
-import com.phoneagent.ui.workspace.FileListScreen
-import com.phoneagent.ui.workspace.WorkAreaScreen
 import org.koin.androidx.compose.koinViewModel
+import com.phoneagent.ui.icons.AppIcons
 
 class MainActivity : ComponentActivity() {
 
@@ -97,16 +87,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** 全屏二级页（从主页/工作区进入，非底部 Tab） */
+/** 全屏二级页（从主页进入，非底部 Tab） */
 sealed class ExtrasPage {
     object Test : ExtrasPage()
     object Debug : ExtrasPage()
     /** 技能与能力管理：Skill / MCP / 无线 ADB / 提示词（HPA 迭代 A7） */
     object Skill : ExtrasPage()
-    /** 文件列表页：独立展示工作区全部文件 */
-    object FileList : ExtrasPage()
-    /** 文档预览编辑页：文件全文 + 底部 AI 聊天框 */
-    data class FileEditor(val fileName: String) : ExtrasPage()
 }
 
 /** ExtrasPage 状态保存：跨进程重建后恢复当前二级页 */
@@ -117,8 +103,6 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             is ExtrasPage.Test -> listOf("test")
             is ExtrasPage.Debug -> listOf("debug")
             is ExtrasPage.Skill -> listOf("skill")
-            is ExtrasPage.FileList -> listOf("filelist")
-            is ExtrasPage.FileEditor -> listOf("file", page.fileName)
         }
     },
     restore = { list ->
@@ -127,8 +111,6 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             "test" -> ExtrasPage.Test
             "debug" -> ExtrasPage.Debug
             "skill" -> ExtrasPage.Skill
-            "filelist" -> ExtrasPage.FileList
-            "file" -> ExtrasPage.FileEditor(list.getOrNull(1)?.toString() ?: "")
             else -> null
         }
     },
@@ -142,11 +124,10 @@ private fun ActivityContent(vm: MainViewModel) {
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
     val tabs = listOf(
-        TabItem("主页", Icons.Filled.Home),
-        TabItem("Agent", Icons.Filled.Bolt),
-        TabItem("工作区", Icons.Filled.Folder),
-        TabItem("记忆", Icons.Filled.Memory),
-        TabItem("设置", Icons.Filled.Settings),
+        TabItem("Agent", AppIcons.Bolt),
+        TabItem("主页", AppIcons.Home),
+        TabItem("记忆", AppIcons.Memory),
+        TabItem("设置", AppIcons.Settings),
     )
     val activity = androidx.compose.ui.platform.LocalContext.current as ComponentActivity
     val motion = motionSettings()
@@ -213,11 +194,10 @@ private fun ActivityContent(vm: MainViewModel) {
     }
 
     // 全局返回手势返回上一层：
-    // 1) 二级页（测试/调试/文件列表/文档编辑）→ 关闭二级页回到当前 Tab；
-    // 2) 非主页 Tab → 回到主页 Tab；
-    // 3) 主页 → 保持系统默认行为（退出应用）
+    // 1) 二级页（测试/调试/技能与能力）→ 关闭二级页回到当前 Tab；
+    // 2) 非 Agent Tab → 回到 Agent（主界面）；
+    // 3) Agent → 保持系统默认行为（退出应用）
     BackHandler(enabled = extrasPage != null) {
-        if (extrasPage is ExtrasPage.FileEditor) vm.workCloseEditor()
         extrasPage = null
     }
     BackHandler(enabled = extrasPage == null && selected != 0) {
@@ -229,13 +209,8 @@ private fun ActivityContent(vm: MainViewModel) {
         bottomBar = {
             // 全屏二级页时不显示底部导航
             if (extrasPage == null) {
-                // 液态玻璃导航栏 - 色散折射 + 半透明层
                 NavigationBar(
-                    modifier = Modifier.liquidGlass(
-                        alpha = 0.75f,
-                        cornerRadius = 0.dp,
-                    ),
-                    containerColor = Color.Transparent,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
                 ) {
                     tabs.forEachIndexed { index, tab ->
@@ -296,10 +271,6 @@ private fun ActivityContent(vm: MainViewModel) {
                         vm = vm,
                         modifier = Modifier.fillMaxSize(),
                         onBack = { extrasPage = null },
-                        onOpenEditor = { name ->
-                            vm.workOpenEditor(name)
-                            extrasPage = ExtrasPage.FileEditor(name)
-                        },
                     )
                     return@Box
                 }
@@ -311,7 +282,8 @@ private fun ActivityContent(vm: MainViewModel) {
                 ) { screenIndex ->
                     val contentMod = Modifier.fillMaxSize()
                     when (screenIndex) {
-                        0 -> HomeScreen(
+                        0 -> AgentScreen(vm, contentMod)
+                        1 -> HomeScreen(
                             vm, contentMod,
                             onRequestScreenshot = {
                                 val mpm = activity.getSystemService(MediaProjectionManager::class.java)
@@ -320,17 +292,8 @@ private fun ActivityContent(vm: MainViewModel) {
                             onNavigate = { selected = it },
                             onOpenExtras = { extrasPage = it },
                         )
-                        1 -> AgentScreen(vm, contentMod)
-                        2 -> WorkAreaScreen(
-                            vm, contentMod,
-                            onOpenFileList = { extrasPage = ExtrasPage.FileList },
-                            onOpenEditor = { name ->
-                                vm.workOpenEditor(name)
-                                extrasPage = ExtrasPage.FileEditor(name)
-                            },
-                        )
-                        3 -> MemoryGraphScreen(vm, contentMod)
-                        4 -> SettingsScreen(vm, contentMod)
+                        2 -> MemoryGraphScreen(vm, contentMod)
+                        3 -> SettingsScreen(vm, contentMod)
                     }
                 }
 
@@ -353,7 +316,6 @@ private fun ExtrasPageContent(
     vm: MainViewModel,
     modifier: Modifier,
     onBack: () -> Unit,
-    onOpenEditor: (String) -> Unit,
 ) {
     androidx.compose.foundation.layout.Column(
         modifier = modifier.fillMaxSize(),
@@ -369,8 +331,6 @@ private fun ExtrasPageContent(
                     is ExtrasPage.Test -> "测试"
                     is ExtrasPage.Debug -> "调试"
                     is ExtrasPage.Skill -> "技能与能力"
-                    is ExtrasPage.FileList -> "全部文件"
-                    is ExtrasPage.FileEditor -> page.fileName
                 },
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 12.dp),
@@ -389,22 +349,11 @@ private fun ExtrasPageContent(
                 vm,
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )
-            ExtrasPage.FileList -> FileListScreen(
-                vm,
-                Modifier.weight(1f),
-                onOpenEditor = onOpenEditor,
-            )
-            is ExtrasPage.FileEditor -> FileEditorScreen(
-                vm,
-                page.fileName,
-                Modifier.weight(1f),
-            )
         }
         // 底部大圆角返回主页按钮
         Spacer(Modifier.height(4.dp))
         Button(
             onClick = {
-                if (page is ExtrasPage.FileEditor) vm.workCloseEditor()
                 onBack()
             },
             colors = ButtonDefaults.buttonColors(
@@ -417,7 +366,7 @@ private fun ExtrasPageContent(
                 .padding(horizontal = 20.dp, vertical = 10.dp)
                 .height(56.dp),
         ) {
-            Icon(Icons.Filled.Home, contentDescription = null)
+            Icon(AppIcons.Home, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text(
                 "返回主页",

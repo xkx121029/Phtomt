@@ -20,12 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.ArrowDropUp
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Reorder
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -56,6 +50,7 @@ import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.icons.AppIcons
 
 // ========== 共享数据模型 ==========
 
@@ -119,7 +114,7 @@ internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
                 .clickable { buzz(); onBack() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", modifier = Modifier.size(20.dp))
+            Icon(AppIcons.ArrowBack, contentDescription = "返回", modifier = Modifier.size(20.dp))
         }
         Text(
             title,
@@ -216,7 +211,7 @@ internal fun SettingsEntry(
             )
         }
         Icon(
-            Icons.Filled.ChevronRight,
+            AppIcons.ChevronRight,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(20.dp),
@@ -300,7 +295,7 @@ internal fun ExpandableCard(
                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 )
                 Icon(
-                    imageVector = if (isExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                    imageVector = if (isExpanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
                     contentDescription = if (isExpanded) "收起" else "展开",
                     tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -333,7 +328,7 @@ internal fun <T> ReorderableColumn(
             var dragAcc by remember(item) { mutableStateOf(0f) }
             val handle: @Composable () -> Unit = {
                 Icon(
-                    imageVector = Icons.Filled.Reorder,
+                    imageVector = AppIcons.Reorder,
                     contentDescription = "长按拖动排序",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier

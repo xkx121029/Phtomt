@@ -11,7 +11,7 @@
 - 🤖 **AI 驱动决策** — 集成主流大语言模型，支持流式思考和智能规划
 - 👁️ **视觉理解** — 云端视觉模型 + 本地 ML Kit OCR 双引擎，识别页面控件语义和截图文字
 - 🔗 **多模型链路聚合** — 主模型（决策）+ 视觉模型（截图描述/坐标定位）+ 思考模型（规划/重规划）可按需组合
-- 🖱️ **双通道执行** — 无障碍服务（基础）+ Shizuku ADB Shell（高权限）双通道执行
+- 🖱️ **多通道执行** — 无障碍服务（基础）+ 无线 ADB / Shizuku（高权限）+ Termux（命令行工具链）
 - 🔧 **AI 友好命令解析** — ShellCommands 将 AI 短命令（如 `tap 500 800`）翻译为 ADB 命令，支持比例/百分比/像素坐标
 - 🛡️ **内置跳广告** — AdSkipperCore 自动识别并关闭青少年模式弹窗、跳过按钮、倒计时广告
 - 📍 **常用 App 直达** — AppPageIndex 为系统设置、高德地图等常用 App 提供深链直达
@@ -88,8 +88,9 @@ happy_phone agent/
 │       │   │   ├── a11y/
 │       │   │   │   ├── AgentAccessibilityService.kt
 │       │   │   │   └── ActionExecutor.kt          # 动作执行 + 语义 ID 定位
-│       │   │   ├── shell/                         # 无线 ADB（主）/ Shizuku（可选）
+│       │   │   ├── shell/                         # 无线 ADB（主）/ Shizuku / Termux（命令行）
 │       │   │   │   ├── ShizukuManager.kt / ShizukuBootstrap.kt
+│       │   │   │   ├── TermuxBridge.kt            # Termux 通道 + 结果回传接收器
 │       │   │   │   ├── AdbProtocol.kt / AdbSocket.kt / AdbTcpSession.kt
 │       │   │   │   ├── AdbKeyStore.kt / AdbWirelessTransport.kt
 │       │   │   │   ├── AdbBootstrapTransport.kt / MdnsAdbResolver.kt
@@ -137,8 +138,8 @@ happy_phone agent/
 │       │   │   │   ├── McpModels.kt / McpRules.kt
 │       │   │   │   ├── McpMarketplace.kt
 │       │   │   │   └── OkHttpMcpTransportFactory.kt
-│       │   │   ├── workspace/
-│       │   │   │   └── WorkAreaEngine.kt          # 工作区引擎
+│       │   │   ├── document/
+│       │   │   │   └── DocumentEngine.kt         # 文档结果落盘 + 推给 Agent 页预览
 │       │   │   ├── adskip/
 │       │   │   │   ├── AdSkipperCore.kt
 │       │   │   │   └── AdContentFilter.kt         # 运行时广告过滤
@@ -155,10 +156,9 @@ happy_phone agent/
 │       │   │   ├── model/
 │       │   │   │   └── PermissionRadar.kt         # 权限雷达展示模型
 │       │   │   ├── theme/                         # Color / Type / Theme / Motion
-│       │   │   ├── components/                     # Components / Formatters / LiquidGlass / Haptic
+│       │   │   ├── components/                     # Components / Formatters / Haptic / Markdown
 │       │   │   ├── home/                          # HomeScreen + HomeHero / HomeCards / PermissionRadarCard
-│       │   │   ├── agent/                         # AgentScreen + AgentText / PlanPanel / AgentCards
-│       │   │   ├── workspace/                     # WorkAreaScreen + 生成 / 预览 / 文件 / 日志 / 展示 面板
+│       │   │   ├── agent/                         # AgentScreen + 时间线模型/映射 + 列表项 / 计划项 / 步骤 / 实时态 / 输入区
 │       │   │   ├── memory/                        # MemoryGraphScreen + Canvas / Stats / Lists
 │       │   │   ├── debug/
 │       │   │   │   ├── DebugScreen.kt / DebugTabs.kt / CapabilityStrip.kt
@@ -208,7 +208,7 @@ cd happy_phone-agent
 1. 安装 APK 到手机
 2. 打开 App，授予以下权限：
    - **无障碍服务** — 读取屏幕元素并执行操作
-   - **悬浮窗** — 显示实时进度覆盖层
+   - **悬浮窗**（可选） — 显示实时进度覆盖层，可在设置里关闭，关闭后不影响任务执行
    - **屏幕录制** — 用于截图视觉模型
    - **通知权限** — 显示前台服务通知
    - **自启动** — 保持后台服务运行
@@ -242,6 +242,25 @@ AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
 - 支持执行任意 ADB 命令（通过 ShellCommands 转换）
 - 未安装 Shizuku 时自动回退到无障碍服务通道
 
+### TermuxBridge — Termux 命令行通道
+
+把 shell 命令交给 Termux 执行并回读输出，为 App 补上一条 **Linux 工具链**通道：
+
+- 目标组件 `com.termux/.app.RunCommandService`（action `com.termux.RUN_COMMAND`）
+- 结果经 **PendingIntent 回传**（Termux 官方源码指出：结果目录文件方式在 `allow-external-apps` 未开时会永久挂起）
+- 前置条件三项：已安装 Termux / 已授予 `com.termux.permission.RUN_COMMAND` / Termux 侧 `allow-external-apps=true`
+- 执行通道四态：`AUTO`（无线 ADB → Shizuku → Termux）/ `ADB` / `SHIZUKU` / `TERMUX`
+
+**能力边界（与 ADB / Shizuku 的本质区别）**
+
+| 通道 | 权限级别 | 能做什么 |
+|------|---------|---------|
+| 无线 ADB / Shizuku | shell（adb）权限 | `am` / `pm` / `settings` 等系统命令 |
+| Termux | **普通应用权限** | curl/wget/python/文本处理/沙箱内文件操作，**不能**执行系统命令 |
+
+**`fetch` 意图**：把 Termux 的命令行能力纳入[意图转译层](file:///d:/xkx/xkx_appproj/happy_phone%20agent/app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt)——AI 只给 `uri`，
+命令（`curl -sL --max-time 20`）由端侧拼装，走 Termux 执行并把正文回传 AI，用于"图形界面做不到"的取数场景。
+
 ### AdSkipperCore — 内置跳广告
 
 独立于 Agent 运行的后台广告拦截引擎：
@@ -263,12 +282,11 @@ AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
 - 返回归一化坐标（cx, cy）供视觉定位使用
 - 离线运行，无网络延迟
 
-### WorkAreaEngine — 工作区
+### DocumentEngine — 文档结果
 
-文件管理和 AI 辅助编辑工作区：
-- 文件浏览和编辑
-- AI 辅助内容生成
-- 任务结果归档
+承接 AI 的 `write_doc` 能力，只做两件事：
+- 把文档正文落盘到应用私有目录（`documents/`）
+- 把最近一次结果推成状态流，由 Agent 页任务流内嵌 Markdown 预览（可展开/收起/关闭）
 
 ## 杂项文档索引
 

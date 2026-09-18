@@ -14,6 +14,8 @@ data class AgentState(
     val lastAction: AgentIntent? = null,
     val hasAccessibility: Boolean = false,
     val hasScreenshot: Boolean = false,
+    /** 本次任务开始的时间戳（0 = 尚未开始）；用于回显"已工作 N 秒" */
+    val startedAtMillis: Long = 0,
 ) {
     enum class Phase {
         IDLE, OBSERVING, THINKING, ACTING, DONE, ERROR

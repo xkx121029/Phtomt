@@ -28,9 +28,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -64,6 +61,7 @@ import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.staggerDelayMs
 import kotlinx.coroutines.delay
+import com.phoneagent.ui.icons.AppIcons
 
 /**
  * Button press feedback — scale(0.97) on press with critically-damped spring.
@@ -497,7 +495,7 @@ fun AppSnackbar(
                     } else {
                         PressableScale(onClick = { state.dismiss() }) {
                             Icon(
-                                imageVector = Icons.Filled.Close,
+                                imageVector = AppIcons.Close,
                                 contentDescription = "关闭",
                                 tint = textColor.copy(alpha = 0.6f),
                                 modifier = Modifier.size(18.dp),
@@ -617,7 +615,7 @@ fun SectionCard(
                 Spacer(Modifier.weight(1f))
                 if (count > 0) {
                     TextButton(onClick = onClear) {
-                        Icon(Icons.Filled.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(AppIcons.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(AppSpacing.Xs))
                         Text("清空")
                     }

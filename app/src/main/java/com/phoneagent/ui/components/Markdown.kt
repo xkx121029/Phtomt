@@ -1,4 +1,4 @@
-package com.phoneagent.ui.workspace
+package com.phoneagent.ui.components
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

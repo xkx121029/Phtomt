@@ -28,16 +28,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.FileDownload
-import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.ChatBubbleOutline
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Insights
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -87,6 +77,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 @Composable
 internal fun LogPanel(logs: List<AgentLog>) {
@@ -117,7 +108,7 @@ internal fun LogPanel(logs: List<AgentLog>) {
             value = keyword,
             onValueChange = { keyword = it },
             singleLine = true,
-            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+            leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
             placeholder = { Text("搜索日志内容…") },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -212,7 +203,7 @@ private fun LogRow(entry: AgentLog) {
             )
             if (hasDetail) {
                 Icon(
-                    imageVector = if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
+                    imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
                     contentDescription = if (expanded) "收起" else "展开",
                     tint = color,
                     modifier = Modifier

@@ -6,6 +6,187 @@
 
 ---
 
+## [v0.1.319] — 2026-09-18
+
+修复「Agent 一直卡在观察屏幕」：观察这一步里藏着两处没有上限的阻塞调用，卡住时界面既不动也不报错。
+
+### 修复
+
+- **视觉分析没有看门狗**：视觉链路（截图 → 端侧 3B / 云端视觉）全部发生在 `cloudDecide` 里，
+  而状态切到「正在思考下一步」是在视觉分析**之后** —— 于是视觉一慢，界面就一直停在「观察屏幕」
+  - 云端视觉 `visionDescribe/visionLocate` 走 OkHttp 同步请求（读超时 120s，且带 2~5 次重试）
+  - 端侧 3B `detectControls` 单次 20s，同一步原本可能被调用**两次**（第 1 步失败后第 3 步又重试同一服务、同一张图）
+  - 新增 `withVisionWatchdog(WATCHDOG_VISION_MS = 25s)`：视觉调用放到独立协程 await，
+    超时立刻放弃视觉描述、只用无障碍元素树继续决策；`visionLocate`（hint 目标定位）同样纳入（20s）
+  - 这一步开始前先把状态切到「正在识别屏幕内容」，用户能看见 AI 在做什么，而不是干等「观察屏幕」
+- **同一步不重复调用外挂视觉**：`triedOnDevice3b` 记录本步是否已经找过外挂，避免第 3 步兜底再白等 20s
+- **无障碍截图可能永不回调**：`takeScreenshot` 若被系统限流/内部错误，协程会永久挂起
+  （悬浮窗已隐藏、循环停在观察阶段）→ 加 `SCREENSHOT_TIMEOUT_MS = 2.5s` 超时兜底，超时按「无截图」继续
+
+### 说明
+
+- 看门狗超时是**降级**而非失败：本步没有视觉描述，仍按元素树决策，任务不会中断。
+
+---
+
+## [v0.1.318] — 2026-09-18
+
+补齐意图回显覆盖：此前有一整类意图在 Agent 页是隐形的。
+
+### 修复
+
+- **端侧决策的意图在 Agent 页完全不可见**（真实缺口，非罕见路径）
+  - `localDecision.decide()` 命中时走直通分支（`fromLocal = true`），**不经过 `cloudDecide`**，因而不写 `StepTrace`
+  - 而任务流以 trace 为骨架（`AgentTimelineMapper.buildRuns` 首行即 `if (traces.isEmpty()) return emptyList()`），
+    于是这一步只留下 `StepRecord`、却挂不上列表 —— 用户体感是"AI 没动，页面自己变了"
+  - 新增 `recordLocalStepTrace()`：端侧决策同样留档，以 `visionSource = "端侧决策"` 标注来源（`LOCAL_DECISION_SOURCE`）
+
+### 新增
+
+- **失败原因回显**：`StepRecord` 新增 `detail`（执行 / 转译结果说明），三处 `recordStep` 调用点均传入 `verify.detail`
+  - 步骤卡片在「未生效」之外补上「原因：…」（红色），成功时弱化为执行层说明
+  - 与 `shellOutput` 内容相同时不重复展示
+- 卡片新增「端侧」徽标，区分"AI 想的"与"端侧规则直接做的"
+
+### 变更
+
+- **状态徽标平滑过渡**：`未生效 / 已生效` 改用 `AnimatedContent` + 淡入淡出切换，不再是瞬间跳变
+
+---
+
+## [v0.1.317] — 2026-09-18
+
+参考 Aether 的回显手法，重做「进行中」状态的观感：把过程与结果在视觉上分开。
+
+### 变更
+
+- **进行中状态去卡片化**（`LiveStatusItem`）：不再铺卡片底色与边框，改为「一行弱化文字 + 1dp 细分线」
+  - 借鉴点：Aether 的 `AgentWorkingStatusHeader` 用次要色文字 + 一条 1dp 细分线，让「还在进行的过程」不与「已完成的结果卡片」争夺视觉权重
+  - 步骤卡（结果）保持卡片形态不变，两者层次因此拉开
+- **新增「已工作 N 秒」**：`AgentState` 新增 `startedAtMillis`（任务启动时写入），经 `LiveStatus` 透出，UI 用 `produceState` 每秒刷新
+  - 不足 1 秒不显示；超过 1 分钟显示「N 分 N 秒」
+- **思考中改用微光扫过文字**（`ShimmerStatusText`）：取代原先的常驻脉冲圆点
+  - 借鉴点：Aether 的 `ShimmerStatusText` 用 `Brush.linearGradient` 扫过文字表达"正在生成"，行程随文字长度伸缩、扫完停顿再重来
+  - 仅在 `THINKING` 阶段启用；`reduceMotion` 时降级为静态文字（其余阶段本就是弱化静态文字）
+
+### 移除
+
+- `LiveStatusItem` 的脉冲圆点与按阶段取色的 `dotColor`（"正在活动"的语义已由微光承担）
+- 连带清理失效 import（`CircleShape` / `EaseInOut` / `tween`）
+
+### 说明
+
+- 未逐行照搬 Aether（GPL-3.0）：只借鉴「过程弱化、结果成卡」的层次处理与微光手法，颜色、间距、动效参数全部走本项目已有令牌（`onSurfaceRaised` / `outlineSoft` / `AppSpacing`）
+
+---
+
+## [v0.1.316] — 2026-09-18
+
+Agent 页回显增强：把 AI 正在生成的内容、以及命令的真实执行证据都展示到任务流里，并重排步骤卡片的信息层级。
+
+### 新增
+
+- **实时思考回显**：AI 决策的流式输出此前只推给悬浮窗，现在同步累积到 `AgentEngine.decisionStream` 并在 Agent 页展示
+  - `AgentTimelineItem.LiveStatus` 新增 `streaming` 字段，实时状态卡下方贴出正在生成的内容（取尾部 10 行，像终端 tail）
+  - 重试时同步清零（避免两遍文本叠加）；决策完成后清空，正文已落 `StepTrace` 的「原始数据」可回看
+  - `AgentScreen` 对 `decisionStream` 做 150ms 节流，避免逐字重建 LazyColumn
+- **命令输出回显**：`StepRecord` 新增 `shellOutput`，`AgentEngine` 以 `pendingShellOutput` 把本步输出精确关联到本步记录
+  - 步骤卡片新增「命令与输出」块：上为实际执行的命令（`action.command`），下为 stdout / stderr；失败时显示可读原因
+  - 此前 `lastShellOutput` 只回传给 AI，用户完全看不到 AI 跑了什么、拿到了什么
+
+### 变更
+
+- **步骤卡片信息层级重排**（`StepCallItem`）：一级「动作人话 + 生效状态」→ 二级「依据」→ 三级「命令与输出」→ 四级「元信息 + 原始数据」
+  - 置信度从顶行 `StatusPill` 下移进元信息行（`耗时 · tokens · 置信度`），顶行只留"做了什么、成没成"
+
+---
+
+## [v0.1.315] — 2026-09-18
+
+界面精简：Agent 升为主界面，App 内去掉玻璃材质，悬浮窗降为可选能力。
+
+### 变更
+
+- **主界面改为 Agent**：底部导航顺序调整为 Agent / 主页 / 记忆 / 设置，启动后默认进入 Agent
+  - `HomeScreen` 保留为第二个 Tab，其快捷入口下标同步（Agent → 0）
+  - 全局返回手势：非 Agent Tab 一律回到 Agent（原为回主页）
+- **悬浮窗降为可选能力**（不再当作缺失权限来提示）
+  - 设置页「运行参数」新增「启用桌面悬浮窗」开关（`floatingWindowEnabled`，默认开）
+  - `AgentEngine.maybeStartFloating` 同时校验「开关开启 + 已授权」
+  - Agent 页移除三处悬浮窗引导：任务流顶部 Notice、空态警告卡片、顶栏菜单的权限状态与「去授权」按钮
+  - `AgentTimelineItem.NoticeKind` 只保留 `ACCESSIBILITY`（真正的硬前置）；顶栏菜单现只展示待执行队列
+
+### 移除
+
+- **App 内玻璃材质**：底部导航栏与记忆图谱容器的 `liquidGlass` 改为实色 / 半透明底
+  - 删除 `ui/components/LiquidGlass.kt`（`liquidGlass` / `LiquidGlassCard` / `liquidGlassSurface`，改后全项目零引用）
+  - `overlay/LiquidGlassDrawable.kt` **保留**：桌面悬浮窗视觉不变
+- 连带清理无用 import（`LocalContext` / `liquidGlass` / `Color` 等）
+
+### 说明
+
+- 悬浮窗与边缘光效是两个独立开关：关闭悬浮窗不影响边缘光效（后者仍需悬浮窗权限，因为它是系统悬浮层绘制）
+
+---
+
+## [v0.1.314] — 2026-09-18
+
+接入 Termux 作为执行通道，并把它"图形界面做不到"的命令行能力纳入意图转译层。
+
+### 新增
+
+- **`device/shell/TermuxBridge.kt`**：Termux 执行通道
+  - 目标组件 `com.termux/.app.RunCommandService`（action `com.termux.RUN_COMMAND`），结果走 **PendingIntent 回传**（Termux 官方源码注释指出：结果目录文件方式在 `allow-external-apps` 未开时会永久挂起）
+  - 暴露 `isInstalled()` / `hasRunCommandPermission()` / `isAvailable()` / `probe()` / `executeShell()`
+  - 回传 Bundle 按键名子串防御性解析，兼容 Termux 版本间的 key 差异
+- **`TermuxResultReceiver` + `TermuxResultRelay`**：结果回传接收器与挂起请求登记表（自收自发，`exported=false`）
+- **`fetch` 意图（纳入转译层）**：AI 只说"取哪个地址的正文"，命令由端侧拼装
+  - `IntentType.FETCH` + `TermuxFetchStrategy`：`uri` → `raw curl -sL --max-time 20 -- <url>`，地址字符白名单过滤
+  - Termux 不可用时转译层直接给出可读失败，引导 AI 改走 UI 意图
+- **执行通道四态**：`AUTO` / `ADB` / `SHIZUKU` / `TERMUX`；AUTO 顺序为 无线 ADB → Shizuku → Termux（第三顺位兜底）
+- **能力页 Termux 卡片**：三项前置条件（已安装 / 已授权 / 已开启 allow-external-apps）+ 分步引导与实跑探测
+
+### 变更
+
+- `executeShellAction` 新增 Termux 工具链判定：`curl`/`python`/`jq` 等命令在 adb shell 中通常不存在，按命令名直接走 Termux，不受通道偏好影响
+- 抽出 `finishShellResult`，shell 输出回传逻辑单点收口（原 `runRealShell` 尾部内联）
+- 提示词（中英同步）：意图表与规划提示词新增 `fetch`；`situationalExtras` 在"任务需从网络取数 + 本机有 Termux"时按需注入 fetch 用法与边界，其余任务不增加任何篇幅
+
+### 说明
+
+- Termux 是**普通应用权限**的 Linux 环境，与无线 ADB / Shizuku 的系统级 shell 不同：可跑 curl/python/文本处理，**不能**执行 `am` / `pm` / `settings`
+- 前置条件：Termux 侧 `~/.termux/termux.properties` 设 `allow-external-apps=true`，并授予本 App `com.termux.permission.RUN_COMMAND` 权限
+- 本环境无法跑 Gradle / 无真机，需真机验证 Termux 回传链路（`probe()` 返回 `__HPA_TERMUX_OK__` 即通）
+
+---
+
+## [v0.1.313] — 2026-09-18
+
+砍掉工作区模块，AI 的 `write_doc` 能力保留，生成结果改为在 Agent 页任务流内嵌预览。
+
+### 新增
+
+- **`feature/document/DocumentEngine.kt`**：承接原 `WorkAreaEngine` 中真正需要的那部分
+  - 只做两件事：文档正文落盘到私有目录 `documents/`；把最近一次结果推成 `StateFlow<DocResult>`
+  - 暴露 `writeDocument(content, fileName)` / `result` / `dismiss()` / `error`
+- **Agent 页文档预览**：`AgentTimelineItem.DocPreview` + `AgentTimelineMapper` 新增 `doc` 入参
+  - `AgentItems.kt` 新增 `DocPreviewItem`：文件名 + 默认展开的 Markdown 正文（限高 420dp 内滚、可展开/收起/关闭）
+  - `AgentScreen` 的 `when(item)` 穷尽分支同步补齐
+
+### 移除
+
+- **工作区 UI 全量删除**：底部「工作区」Tab、`ExtrasPage.FileList` / `FileEditor` 二级页及其返回栏、`ui/workspace/` 8 个文件（WorkAreaScreen / FileListScreen / FileEditorScreen / WorkDisplayPanel / WorkFilesEntry / WorkGenerateCard / WorkLogStream / WorkPreviewCard）
+- **`feature/workspace/WorkAreaEngine.kt`**：文件列表、编辑器、流式生成、AI 改写、操作日志等纯 UI 状态一并删除
+- 主页「工作区」快捷入口；Tab 下标重排为 主页 0 / Agent 1 / 记忆 2 / 设置 3
+
+### 变更
+
+- `AgentEngine.executeWriteDoc`：落盘后提示语改为「文档已生成，可在 Agent 页查看」；`run()` 开头新增 `documentEngine?.dismiss()`，新任务不带上一份文档残留
+- 提示词（中英同步）：意图表、独占路由铁律、规划/决策提示词中的「工作区」措辞统一改为「生成文档，结果在 Agent 页预览」
+- 同步更新 README 目录树与模块说明、`杂项/项目完整流程说明.md` 的包表与 UI 结构图
+
+---
+
 ## [v0.1.310] — 2026-09-16
 
 对应提交 `74efefb`（重构区间 `2e906f3..74efefb`）。

@@ -123,7 +123,7 @@ object RealScenes {
                     Ui(6, "android.widget.LinearLayout", "MenuItem", "更多设置", Pair(360, 1100), "(40,1040)-(680,1160)", clickable = true),
                 ),
             ),
-            // R-S3 银行转账（不可逆）→ needs_user_confirmation
+            // R-S3 银行转账（不可逆）→ needs_confirmation
             tc(
                 id = "R-S3",
                 name = "银行 · 转账确认",

@@ -105,7 +105,7 @@ object ActionType {
     /** Shizuku ADB shell 命令 */
     const val SHELL = "shell"
 
-    /** 写入文档到工作区（text=内容，summary=文件名，可选） */
+    /** 生成文档（text=内容，summary=文件名，可选），结果在 Agent 页预览 */
     const val WRITE_DOC = "write_doc"
 
     /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */

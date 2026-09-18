@@ -22,6 +22,7 @@ import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 
@@ -38,6 +39,9 @@ class AgentAccessibilityService : AccessibilityService() {
         @Volatile
         var instance: AgentAccessibilityService? = null
             private set
+
+        /** 无障碍截图最长等待时间：系统限流/内部错误时不回调，超时即放弃，避免 Agent 卡在“观察屏幕” */
+        private const val SCREENSHOT_TIMEOUT_MS = 2500L
 
         /** Agent 是否正在执行任务：为 true 时内置跳广告暂停，避免与 Agent 的广告处理冲突 */
         @Volatile
@@ -311,29 +315,33 @@ class AgentAccessibilityService : AccessibilityService() {
     @SuppressLint("NewApi") // takeScreenshot 系列 API30+，由 canScreenshot() 运行时守卫；此处抑制静态误报
     suspend fun takeScreenshotBitmap(): Bitmap? {
         if (!canScreenshot()) return null
-        return try {
-            suspendCancellableCoroutine { cont ->
-                val executor: Executor = Dispatchers.Main.asExecutor()
-                try {
-                    takeScreenshot(
-                        android.view.Display.DEFAULT_DISPLAY,
-                        executor,
-                        object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            val bmp = hardwareToBitmap(screenshot)
-                            if (cont.isActive) cont.resume(bmp)
-                        }
+        // 必须限时：系统限流（间隔过短）/内部错误/个别机型回调丢失时，回调可能不来，
+        // 协程会永久挂起（此时悬浮窗已隐藏），表现为 Agent 一直卡在“观察屏幕”这一步，故加超时兜底
+        return withTimeoutOrNull(SCREENSHOT_TIMEOUT_MS) {
+            try {
+                suspendCancellableCoroutine { cont ->
+                    val executor: Executor = Dispatchers.Main.asExecutor()
+                    try {
+                        takeScreenshot(
+                            android.view.Display.DEFAULT_DISPLAY,
+                            executor,
+                            object : TakeScreenshotCallback {
+                            override fun onSuccess(screenshot: ScreenshotResult) {
+                                val bmp = hardwareToBitmap(screenshot)
+                                if (cont.isActive) cont.resume(bmp)
+                            }
 
-                        override fun onFailure(errorCode: Int) {
-                            if (cont.isActive) cont.resume(null)
-                        }
-                    })
-                } catch (e: Exception) {
-                    if (cont.isActive) cont.resume(null)
+                            override fun onFailure(errorCode: Int) {
+                                if (cont.isActive) cont.resume(null)
+                            }
+                        })
+                    } catch (e: Exception) {
+                        if (cont.isActive) cont.resume(null)
+                    }
                 }
+            } catch (e: Exception) {
+                null
             }
-        } catch (e: Exception) {
-            null
         }
     }
 

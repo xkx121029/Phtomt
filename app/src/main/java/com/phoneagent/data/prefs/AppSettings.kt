@@ -61,6 +61,8 @@ class AppSettings(private val context: Context) {
         /** 屏幕边缘跑马光效光带粗细（dp，基准 20） */
         val edgeLightingWidth: Int = 20,
         val edgeLightingEnabled: Boolean = true,
+        /** 是否启用桌面悬浮窗（可选能力：关闭后任务进度只在 App 内展示，不影响任务执行） */
+        val floatingWindowEnabled: Boolean = true,
         /** 是否启用 Shizuku shell 命令执行 */
         val shizukuEnabled: Boolean = true,
         /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
@@ -106,6 +108,7 @@ class AppSettings(private val context: Context) {
         val CORNER_RADIUS = intPreferencesKey("corner_radius")
         val EDGE_LIGHTING_WIDTH = intPreferencesKey("edge_lighting_width")
         val EDGE_LIGHTING_ENABLED = booleanPreferencesKey("edge_lighting_enabled")
+        val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
         val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
         val AUTO_SKIP_ADS = booleanPreferencesKey("auto_skip_ads")
@@ -148,6 +151,7 @@ class AppSettings(private val context: Context) {
             cornerRadius = prefs[Keys.CORNER_RADIUS] ?: 0,
             edgeLightingWidth = prefs[Keys.EDGE_LIGHTING_WIDTH] ?: 20,
             edgeLightingEnabled = prefs[Keys.EDGE_LIGHTING_ENABLED] ?: true,
+            floatingWindowEnabled = prefs[Keys.FLOATING_WINDOW_ENABLED] ?: true,
             autoSkipAds = prefs[Keys.AUTO_SKIP_ADS] ?: true,
             marqueeHeight = prefs[Keys.MARQUEE_HEIGHT] ?: 26,
             marqueeColors = (prefs[Keys.MARQUEE_COLORS]
@@ -190,6 +194,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CORNER_RADIUS] = settings.cornerRadius
             prefs[Keys.EDGE_LIGHTING_WIDTH] = settings.edgeLightingWidth
             prefs[Keys.EDGE_LIGHTING_ENABLED] = settings.edgeLightingEnabled
+            prefs[Keys.FLOATING_WINDOW_ENABLED] = settings.floatingWindowEnabled
             prefs[Keys.AUTO_SKIP_ADS] = settings.autoSkipAds
             prefs[Keys.MARQUEE_HEIGHT] = settings.marqueeHeight
             prefs[Keys.MARQUEE_COLORS] = settings.marqueeColors.joinToString(";") { it.toString(16) }

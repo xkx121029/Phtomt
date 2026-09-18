@@ -22,16 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Cancel
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.Translate
-import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,7 +66,7 @@ import com.phoneagent.ui.theme.TestReal
 import com.phoneagent.ui.theme.TestRegression
 import com.phoneagent.ui.theme.TestTargeting
 import com.phoneagent.ui.theme.Warning
-import androidx.compose.material.icons.rounded.SendToMobile
+import com.phoneagent.ui.icons.AppIcons
 
 @Composable
 internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, enabled: Boolean, onRunTest: () -> Unit, onUseAsTask: () -> Unit) {
@@ -141,7 +131,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
                                 modifier = Modifier.height(36.dp),
                                 contentPadding = ButtonDefaults.TextButtonContentPadding,
                             ) {
-                                Icon(Icons.Rounded.SendToMobile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(AppIcons.SendToMobile, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text("任务", style = MaterialTheme.typography.labelMedium)
                             }
@@ -152,7 +142,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
                             modifier = Modifier.height(36.dp),
                             contentPadding = ButtonDefaults.TextButtonContentPadding,
                         ) {
-                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(AppIcons.Play, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("测试", style = MaterialTheme.typography.labelMedium)
                         }

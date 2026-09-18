@@ -22,11 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -66,7 +61,6 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionCard
-import com.phoneagent.ui.components.liquidGlass
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
@@ -81,6 +75,7 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
+import com.phoneagent.ui.icons.AppIcons
 
 /** 空记忆态 */
 @Composable
@@ -95,7 +90,7 @@ internal fun EmptyMemoryCard(onRefresh: () -> Unit) {
             modifier = Modifier.padding(24.dp),
         ) {
             Icon(
-                Icons.Filled.Memory, contentDescription = null,
+                AppIcons.Memory, contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(40.dp),
             )
@@ -170,7 +165,7 @@ internal fun ProfileList(profiles: List<ProfileEntry>, onClear: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             ) {
                 Icon(
-                    Icons.Filled.Person, contentDescription = null,
+                    AppIcons.Person, contentDescription = null,
                     tint = MemoryProfile, modifier = Modifier.size(16.dp),
                 )
                 Spacer(Modifier.width(10.dp))

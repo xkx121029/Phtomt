@@ -37,6 +37,8 @@ import com.phoneagent.feature.mcp.McpMarketplaceEntry
 import com.phoneagent.engine.prompt.PromptTemplate
 import com.phoneagent.data.store.PromptTemplateStore
 import com.phoneagent.device.shell.ShizukuManager
+import com.phoneagent.device.shell.TermuxBridge
+import com.phoneagent.device.shell.TermuxStatus
 import com.phoneagent.device.shell.AdbStatus
 import com.phoneagent.device.shell.ShizukuBootstrap
 import com.phoneagent.device.shell.WirelessAdbPairingFlow
@@ -46,11 +48,8 @@ import com.phoneagent.feature.test.TestConfig
 import com.phoneagent.feature.test.TestEngine
 import com.phoneagent.feature.test.TestPreset
 import com.phoneagent.feature.test.TestRunSummary
-import com.phoneagent.feature.workspace.WorkAreaEngine
-import com.phoneagent.feature.workspace.WorkDisplay
-import com.phoneagent.feature.workspace.EditChatMessage
-import com.phoneagent.feature.workspace.WorkFile
-import com.phoneagent.feature.workspace.WorkLog
+import com.phoneagent.feature.document.DocumentEngine
+import com.phoneagent.feature.document.DocResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -66,7 +65,8 @@ class MainViewModel(
     private val engine: AgentEngine,
     private val testEngine: TestEngine,
     private val shizukuManager: ShizukuManager,
-    private val workAreaEngine: WorkAreaEngine,
+    private val termuxBridge: TermuxBridge,
+    private val documentEngine: DocumentEngine,
     private val memoryStore: MemoryStore,
     private val skillRegistry: SkillRegistry,
     private val mcpManager: McpManager,
@@ -92,6 +92,9 @@ class MainViewModel(
     val userHintRequest = engine.userHintRequest
     val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> = engine.planPhase
     val planStream: StateFlow<String> = engine.planStream
+
+    /** AI 正在生成的决策内容（流式回显到 Agent 页，空串表示当前无输出） */
+    val decisionStream: StateFlow<String> = engine.decisionStream
 
     /** 将显示给用户的文本自动翻译成简体中文（AI 翻译，带缓存） */
     suspend fun translate(text: String): String = engine.translateText(text)
@@ -153,6 +156,42 @@ class MainViewModel(
 
     fun requestShizukuPermission(onResult: (Boolean) -> Unit) {
         shizukuManager.requestPermission(onResult)
+    }
+
+    // ---- Termux 执行通道（普通应用权限的 Linux 环境，非系统 shell） ----
+    private val _termuxStatus = MutableStateFlow(TermuxStatus())
+    val termuxStatus: StateFlow<TermuxStatus> get() = _termuxStatus.asStateFlow()
+
+    /** 刷新 Termux 安装 / 授权状态（不实跑，开销小，进页面时调用） */
+    fun refreshTermuxStatus() {
+        _termuxStatus.value = TermuxStatus(
+            installed = termuxBridge.isInstalled(),
+            permissionGranted = termuxBridge.hasRunCommandPermission(),
+            probed = false,
+            ready = false,
+            message = "",
+        )
+    }
+
+    /**
+     * 实跑一次探测命令，确认 `allow-external-apps=true` 等 Termux 侧配置真的到位。
+     * 安装与授权都正常但探测失败时，通常是 Termux 里没开 allow-external-apps。
+     */
+    fun probeTermux() {
+        viewModelScope.launch {
+            val result = termuxBridge.probe()
+            val ok = result is ShizukuManager.ShellResult.Success
+            _termuxStatus.value = TermuxStatus(
+                installed = termuxBridge.isInstalled(),
+                permissionGranted = termuxBridge.hasRunCommandPermission(),
+                probed = true,
+                ready = ok,
+                message = when (result) {
+                    is ShizukuManager.ShellResult.Success -> result.output.ifBlank { "探测通过" }
+                    is ShizukuManager.ShellResult.Failure -> result.reason
+                },
+            )
+        }
     }
 
     fun refreshOverlayPermission(context: Context) {
@@ -369,36 +408,10 @@ class MainViewModel(
 
     fun resetTest() = testEngine.reset()
 
-    // ---- 工作区：AI 文档生成 ----
-    val workFiles: StateFlow<List<WorkFile>> = workAreaEngine.files
-    val workGenerating: StateFlow<Boolean> = workAreaEngine.isGenerating
-    val workActiveFile: StateFlow<String?> = workAreaEngine.activeFile
-    val workPreview: StateFlow<String> = workAreaEngine.previewContent
-    val workLogs: StateFlow<List<WorkLog>> = workAreaEngine.logs
-    val workError: StateFlow<String> = workAreaEngine.error
-    val workDisplay: StateFlow<WorkDisplay?> = workAreaEngine.display
+    // ---- 文档结果：AI 生成的文档直接在 Agent 页任务流里预览 ----
+    val docResult: StateFlow<DocResult?> = documentEngine.result
 
-    fun workRefreshFiles() = workAreaEngine.refreshFiles()
-    fun workReadFile(name: String): String = workAreaEngine.readFile(name)
-    fun workDeleteFile(name: String) = workAreaEngine.deleteFile(name)
-    fun workGenerate(task: String, fileName: String = "") = workAreaEngine.generateDocument(task, fileName)
-    fun workStop() = workAreaEngine.stop()
-    fun workClearLogs() = workAreaEngine.clearLogs()
-    fun workShowFile(name: String) = workAreaEngine.showFile(name)
-    fun workDismissDisplay() = workAreaEngine.dismissDisplay()
-
-    // ---- 工作区：文档预览编辑（AI 改写） ----
-    val workEditingFile: StateFlow<String?> = workAreaEngine.editingFile
-    val workEditingContent: StateFlow<String> = workAreaEngine.editingContent
-    val workEditBusy: StateFlow<Boolean> = workAreaEngine.editBusy
-    val workEditChat: StateFlow<List<EditChatMessage>> = workAreaEngine.editChat
-    val workEditStream: StateFlow<String> = workAreaEngine.editStream
-    val workEditError: StateFlow<String> = workAreaEngine.editError
-
-    fun workOpenEditor(name: String) = workAreaEngine.openEditor(name)
-    fun workEditingDir(): String = workAreaEngine.editingDir
-    fun workCloseEditor() = workAreaEngine.closeEditor()
-    fun workEditDocument(instruction: String) = workAreaEngine.editDocument(instruction)
+    fun dismissDoc() = documentEngine.dismiss()
 
     // ---- AI 记忆图谱 ----
     private val _memoryAnomalies = MutableStateFlow<List<AnomalyMemoryEntry>>(emptyList())

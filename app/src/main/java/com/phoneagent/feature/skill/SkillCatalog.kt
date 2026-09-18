@@ -110,7 +110,7 @@ object SkillCatalog {
             IntentType.WRITE_DOC, Skill(
                 id = "skill_write_doc", name = "写入文档", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "创作", legacyIntent = IntentType.WRITE_DOC,
-                description = "把正文 text 写入工作区文档，文件名可选（summary）。",
+                description = "把正文 text 生成文档，文件名可选（summary），结果在 Agent 页预览。",
                 params = listOf(
                     SkillParam("text", "正文内容", "text", required = true),
                     SkillParam("summary", "文件名", "text", description = "可选，默认自动命名"),

@@ -68,6 +68,14 @@ data class StepRecord(
     val afterFingerprint: String = "",
     val durationMs: Long = 0,
     val isConfirmed: Boolean = false,
+    /** 该步 shell 命令的执行输出（成功为 stdout/stderr，失败为可读原因）；供 Agent 页向用户回显 */
+    val shellOutput: String = "",
+    /**
+     * 执行/转译的结果说明（成功为执行层说明，失败为可读原因）。
+     * 与 [shellOutput] 的区别：这里是"这一步为什么成/不成"，覆盖所有动作类型，
+     * 让「未生效」不再是一句没有解释的结论。
+     */
+    val detail: String = "",
 )
 
 /** 执行结果 */

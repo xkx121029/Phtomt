@@ -1,13 +1,19 @@
 package com.phoneagent.ui.theme
 
+import android.provider.Settings
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -63,82 +69,95 @@ val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(AppRadii.Hero),
 )
 
-private val LightColors = lightColorScheme(
-    primary = Accent,
-    onPrimary = Color.White,
-    primaryContainer = AccentContainer,
-    onPrimaryContainer = OnAccentContainer,
-    secondary = Cyan,
-    onSecondary = Color(0xFF003731),
-    secondaryContainer = CyanContainer,
-    onSecondaryContainer = Color(0xFF003731),
-    tertiary = IconIris,
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFEADDFF),
-    onTertiaryContainer = Color(0xFF21005D),
-    background = SurfaceLight,
-    onBackground = OnSurfaceLight,
-    surface = SurfaceLight,
-    onSurface = OnSurfaceLight,
-    surfaceVariant = Color(0xFFE9EBF3),
-    onSurfaceVariant = Color(0xFF4A4F63),
-    surfaceContainerHighest = Color(0xFFE6E8F0),
-    surfaceContainerHigh = Color(0xFFECEEF4),
-    surfaceContainer = Color(0xFFF3F4F8),
-    surfaceContainerLow = Color(0xFFF8F9FC),
-    surfaceContainerLowest = Color.White,
-    outline = Color(0xFF7A7F94),
-    outlineVariant = Color(0xFFCACBD7),
-    error = Error,
-    onError = Color.White,
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
-)
-
-private val DarkColors = darkColorScheme(
-    primary = Accent,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFF343E7A),
-    onPrimaryContainer = AccentContainer,
-    secondary = Cyan,
-    onSecondary = Color(0xFF003731),
-    secondaryContainer = Color(0xFF005449),
-    onSecondaryContainer = Color(0xFF9CFFF1),
-    tertiary = IconIris,
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFF4F378B),
-    onTertiaryContainer = Color(0xFFEADDFF),
-    background = SurfaceDark,
-    onBackground = OnSurfaceDark,
-    surface = SurfaceDark,
-    onSurface = OnSurfaceDark,
-    surfaceVariant = Color(0xFF1E2230),
-    onSurfaceVariant = Color(0xFFB9BDCE),
-    surfaceContainerHighest = Color(0xFF2A2E3D),
-    surfaceContainerHigh = Color(0xFF222633),
-    surfaceContainer = Color(0xFF181C27),
-    surfaceContainerLow = Color(0xFF141722),
-    surfaceContainerLowest = Color(0xFF0B0F19),
-    outline = Color(0xFF8A8FA3),
-    outlineVariant = Color(0xFF444654),
-    error = Error,
-    onError = Color.White,
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-)
-
 /**
- * 语义化颜色扩展 - 用于状态指示
+ * 把语义色令牌映射成 M3 ColorScheme。
+ *
+ * 五级容器色调不写死十六进制，而是从 `surfaceBase` 出发做色调位移：
+ * 浅色向黑下沉、深色向白抬升，保证换配色时整套层级自动跟随。
  */
-val LightSuccessContainer = Color(0xFFB8F3DA)
-val LightOnSuccessContainer = Color(0xFF00210F)
-val DarkSuccessContainer = Color(0xFF005D34)
-val DarkOnSuccessContainer = Color(0xFF76F5B4)
+private fun lightSchemeOf(c: AppColors): ColorScheme {
+    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.Black, t)
+    return lightColorScheme(
+        primary = c.brand,
+        onPrimary = c.onBrand,
+        primaryContainer = c.brandContainer,
+        onPrimaryContainer = c.onBrandContainer,
+        inversePrimary = c.brandContainer,
+        secondary = c.accentWarm,
+        onSecondary = c.onAccentWarm,
+        secondaryContainer = c.accentWarmContainer,
+        onSecondaryContainer = c.onAccentWarmContainer,
+        tertiary = c.accentCool,
+        onTertiary = c.onAccentCool,
+        tertiaryContainer = c.accentCoolContainer,
+        onTertiaryContainer = c.onAccentCoolContainer,
+        background = c.surfaceBase,
+        onBackground = c.onSurfaceBase,
+        surface = c.surfaceBase,
+        onSurface = c.onSurfaceBase,
+        surfaceVariant = c.surfaceRaised,
+        onSurfaceVariant = c.onSurfaceRaised,
+        surfaceTint = c.brand,
+        surfaceBright = tone(-0.02f),
+        surfaceDim = tone(0.10f),
+        surfaceContainerLowest = c.surfaceBase,
+        surfaceContainerLow = tone(0.03f),
+        surfaceContainer = tone(0.06f),
+        surfaceContainerHigh = tone(0.09f),
+        surfaceContainerHighest = tone(0.12f),
+        inverseSurface = c.onSurfaceBase,
+        inverseOnSurface = c.surfaceBase,
+        outline = c.outlineStrong,
+        outlineVariant = c.outlineSoft,
+        error = c.error,
+        onError = c.onError,
+        errorContainer = c.errorContainer,
+        onErrorContainer = c.onErrorContainer,
+        scrim = Color(0xFF000000),
+    )
+}
 
-val LightWarningContainer = Color(0xFFFFF0D4)
-val LightOnWarningContainer = Color(0xFF281800)
-val DarkWarningContainer = Color(0xFF573900)
-val DarkOnWarningContainer = Color(0xFFFFE08A)
+private fun darkSchemeOf(c: AppColors): ColorScheme {
+    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.White, t)
+    return darkColorScheme(
+        primary = c.brand,
+        onPrimary = c.onBrand,
+        primaryContainer = c.brandContainer,
+        onPrimaryContainer = c.onBrandContainer,
+        inversePrimary = c.brandContainer,
+        secondary = c.accentWarm,
+        onSecondary = c.onAccentWarm,
+        secondaryContainer = c.accentWarmContainer,
+        onSecondaryContainer = c.onAccentWarmContainer,
+        tertiary = c.accentCool,
+        onTertiary = c.onAccentCool,
+        tertiaryContainer = c.accentCoolContainer,
+        onTertiaryContainer = c.onAccentCoolContainer,
+        background = c.surfaceBase,
+        onBackground = c.onSurfaceBase,
+        surface = c.surfaceBase,
+        onSurface = c.onSurfaceBase,
+        surfaceVariant = c.surfaceRaised,
+        onSurfaceVariant = c.onSurfaceRaised,
+        surfaceTint = c.brand,
+        surfaceBright = tone(0.14f),
+        surfaceDim = c.surfaceBase,
+        surfaceContainerLowest = c.surfaceSunken,
+        surfaceContainerLow = tone(0.03f),
+        surfaceContainer = tone(0.06f),
+        surfaceContainerHigh = tone(0.09f),
+        surfaceContainerHighest = tone(0.12f),
+        inverseSurface = c.onSurfaceBase,
+        inverseOnSurface = c.surfaceBase,
+        outline = c.outlineStrong,
+        outlineVariant = c.outlineSoft,
+        error = c.error,
+        onError = c.onError,
+        errorContainer = c.errorContainer,
+        onErrorContainer = c.onErrorContainer,
+        scrim = Color(0xFF000000),
+    )
+}
 
 @Composable
 fun PhoneAgentTheme(
@@ -146,7 +165,16 @@ fun PhoneAgentTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (darkTheme) DarkColors else LightColors
+    val highContrast = rememberHighContrast()
+    val palette = when {
+        darkTheme && highContrast -> DarkContrastAppColors
+        darkTheme -> DarkAppColors
+        highContrast -> LightContrastAppColors
+        else -> LightAppColors
+    }
+    val colorScheme = remember(palette, darkTheme) {
+        if (darkTheme) darkSchemeOf(palette) else lightSchemeOf(palette)
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -159,13 +187,15 @@ fun PhoneAgentTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AppTypography,
-        shapes = AppShapes,
-    ) {
-        ProvideMotionSettings {
-            content()
+    CompositionLocalProvider(LocalAppColors provides palette) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = AppTypography,
+            shapes = AppShapes,
+        ) {
+            ProvideMotionSettings {
+                content()
+            }
         }
     }
 }
@@ -174,37 +204,48 @@ fun PhoneAgentTheme(
 private fun isSystemDark(): Boolean =
     androidx.compose.foundation.isSystemInDarkTheme()
 
+/**
+ * 系统「高对比度文字」无障碍开关。
+ * 在每次进入组合时读取一次；开关变化通常伴随 Activity 重建，无需额外监听。
+ */
+@Composable
+private fun rememberHighContrast(): Boolean {
+    val context = LocalContext.current
+    return remember(context) {
+        // AccessibilityManager 无公开的高对比度文字查询接口，改读系统安全设置项
+        Settings.Secure.getInt(context.contentResolver, "high_text_contrast_enabled", 0) == 1
+    }
+}
+
 // ========== 主题感知色（深/浅主题自动适配） ==========
 /** 手机外壳主体色 */
 @Composable
 fun phoneShellColor(darkTheme: Boolean = isSystemDark()): Color =
-    if (darkTheme) PhoneShellDark else PhoneShellLight
+    (if (darkTheme) DarkAppColors else LightAppColors).phoneShell
 
 /** 手机外壳边框色 */
 @Composable
 fun phoneShellBorderColor(darkTheme: Boolean = isSystemDark()): Color =
-    if (darkTheme) PhoneShellBorderDark else PhoneShellBorderLight
+    (if (darkTheme) DarkAppColors else LightAppColors).phoneShellBorder
 
 /** 摄像头挖孔（激活态） */
 @Composable
-fun phoneCameraHoleColor(active: Boolean, darkTheme: Boolean = isSystemDark()): Color =
-    if (active) {
-        if (darkTheme) PhoneCameraHoleDark else PhoneCameraHoleLight
-    } else {
-        if (darkTheme) PhoneCameraHoleIdleDark else PhoneCameraHoleLight
-    }
+fun phoneCameraHoleColor(active: Boolean, darkTheme: Boolean = isSystemDark()): Color {
+    val palette = if (darkTheme) DarkAppColors else LightAppColors
+    return if (active) palette.phoneCameraHole else palette.phoneCameraHoleIdle
+}
 
 /** 空状态图标色 */
 @Composable
 fun emptyStateIconColor(darkTheme: Boolean = isSystemDark()): Color =
-    if (darkTheme) EmptyStateIconDark else EmptyStateIconLight
+    (if (darkTheme) DarkAppColors else LightAppColors).emptyStateIcon
 
 /** 空状态文字色 */
 @Composable
 fun emptyStateTextColor(darkTheme: Boolean = isSystemDark()): Color =
-    if (darkTheme) EmptyStateTextDark else EmptyStateTextLight
+    (if (darkTheme) DarkAppColors else LightAppColors).emptyStateText
 
 /** 运行指示灯色 */
 @Composable
 fun runningIndicatorColor(darkTheme: Boolean = isSystemDark()): Color =
-    if (darkTheme) RunningIndicatorDark else RunningIndicatorLight
+    (if (darkTheme) DarkAppColors else LightAppColors).runningIndicator

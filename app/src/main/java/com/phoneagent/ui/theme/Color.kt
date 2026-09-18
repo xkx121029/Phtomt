@@ -1,83 +1,314 @@
 package com.phoneagent.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// 品牌色：深海军蓝 + 电光蓝紫，取自应用图标的主色调
-val BrandNavy = Color(0xFF0B0F19)
-val BrandNavyLight = Color(0xFF2A3250)
+/**
+ * 语义颜色令牌。
+ *
+ * 设计取向「玄青 · 流萤」：以玄青（墨玉绿）为品牌主色，琥珀为暖色辅色，雾蓝为冷色辅色，
+ * 底色偏暖纸白 / 深墨绿黑，避开常见的蓝紫渐变科技感套路。
+ *
+ * 为什么用 data class + CompositionLocal，而不是全局可变状态：
+ * 全局 `var` 在重组之外被改写时无法触发订阅者刷新，且多窗口 / 预览场景会互相污染。
+ * CompositionLocal 随组合树传递，天然支持多主题并存与 Compose 预览。
+ */
+@Immutable
+data class AppColors(
+    /** 品牌主色（玄青） */
+    val brand: Color,
+    val onBrand: Color,
+    val brandContainer: Color,
+    val onBrandContainer: Color,
+    /** 暖色辅色（琥珀） */
+    val accentWarm: Color,
+    val onAccentWarm: Color,
+    val accentWarmContainer: Color,
+    val onAccentWarmContainer: Color,
+    /** 冷色辅色（雾蓝） */
+    val accentCool: Color,
+    val onAccentCool: Color,
+    val accentCoolContainer: Color,
+    val onAccentCoolContainer: Color,
+    /** 页面底色 */
+    val surfaceBase: Color,
+    val onSurfaceBase: Color,
+    /** 抬升容器（卡片、列表项） */
+    val surfaceRaised: Color,
+    val onSurfaceRaised: Color,
+    /** 下沉容器（输入框、代码块底） */
+    val surfaceSunken: Color,
+    /** 强描边（分隔线、聚焦边框） */
+    val outlineStrong: Color,
+    /** 弱描边（卡片边界） */
+    val outlineSoft: Color,
+    val error: Color,
+    val onError: Color,
+    val errorContainer: Color,
+    val onErrorContainer: Color,
+    val success: Color,
+    val onSuccess: Color,
+    val successContainer: Color,
+    val onSuccessContainer: Color,
+    val warning: Color,
+    val onWarning: Color,
+    val warningContainer: Color,
+    val onWarningContainer: Color,
+    /** Agent / 用户消息气泡底色 */
+    val messageBubbleAgent: Color,
+    val onMessageBubbleAgent: Color,
+    val messageBubbleUser: Color,
+    val onMessageBubbleUser: Color,
+    /** 顶栏渐隐遮罩起始色（与 surfaceBase 一致以保证无缝衔接，单列令牌便于后续微调） */
+    val topFadeTop: Color,
+    /** 步骤轨道：未开始 / 进行中 / 已完成 */
+    val railIdle: Color,
+    val railActive: Color,
+    val railDone: Color,
+    /** 状态栏色条（覆盖系统状态栏区域，避免内容顶到屏幕边缘） */
+    val statusBarScrim: Color,
+    /** 手机预览外壳 */
+    val phoneShell: Color,
+    val phoneShellBorder: Color,
+    val phoneCameraHole: Color,
+    val phoneCameraHoleIdle: Color,
+    /** 空状态 */
+    val emptyStateIcon: Color,
+    val emptyStateText: Color,
+    /** 运行指示灯 */
+    val runningIndicator: Color,
+)
 
-// 主色（蓝紫）
-val Accent = Color(0xFF6C7CFF)
-val AccentContainer = Color(0xFFE0E4FF)
-val OnAccentContainer = Color(0xFF1A2150)
+/** 浅色（默认）：暖纸白底 + 玄青主色 */
+val LightAppColors = AppColors(
+    brand = Color(0xFF0E7C66),
+    onBrand = Color(0xFFFFFFFF),
+    brandContainer = Color(0xFFCFEDE3),
+    onBrandContainer = Color(0xFF033A2F),
+    accentWarm = Color(0xFFB4632A),
+    onAccentWarm = Color(0xFFFFFFFF),
+    accentWarmContainer = Color(0xFFF7E3D2),
+    onAccentWarmContainer = Color(0xFF4A2410),
+    accentCool = Color(0xFF4A7C9B),
+    onAccentCool = Color(0xFFFFFFFF),
+    accentCoolContainer = Color(0xFFDCEAF3),
+    onAccentCoolContainer = Color(0xFF17384C),
+    surfaceBase = Color(0xFFF7F6F3),
+    onSurfaceBase = Color(0xFF1A1D1B),
+    surfaceRaised = Color(0xFFEDEFEA),
+    onSurfaceRaised = Color(0xFF4B514C),
+    surfaceSunken = Color(0xFFE3E6E0),
+    outlineStrong = Color(0xFF6E756E),
+    outlineSoft = Color(0xFFC9CEC6),
+    error = Color(0xFFC4463C),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFBDAD5),
+    onErrorContainer = Color(0xFF4A0F09),
+    success = Color(0xFF1F7A55),
+    onSuccess = Color(0xFFFFFFFF),
+    successContainer = Color(0xFFD2EDDF),
+    onSuccessContainer = Color(0xFF08321F),
+    warning = Color(0xFF9A6B12),
+    onWarning = Color(0xFFFFFFFF),
+    warningContainer = Color(0xFFF6E6C4),
+    onWarningContainer = Color(0xFF38270A),
+    messageBubbleAgent = Color(0xFFE6F4EF),
+    onMessageBubbleAgent = Color(0xFF10312A),
+    messageBubbleUser = Color(0xFF0E7C66),
+    onMessageBubbleUser = Color(0xFFFFFFFF),
+    topFadeTop = Color(0xFFF7F6F3),
+    railIdle = Color(0xFFC9CEC6),
+    railActive = Color(0xFF0E7C66),
+    railDone = Color(0xFF7FBFA9),
+    statusBarScrim = Color(0xFFFFFFFF),
+    phoneShell = Color(0xFFE8EAE6),
+    phoneShellBorder = Color(0xFFC8CCC4),
+    phoneCameraHole = Color(0xFFB9BEB6),
+    phoneCameraHoleIdle = Color(0xFFA9AEA6),
+    emptyStateIcon = Color(0xFFB4BAB3),
+    emptyStateText = Color(0xFF838A83),
+    runningIndicator = Color(0xFF1F7A55),
+)
 
-// 辅助色（青）
-val Cyan = Color(0xFF2DD4BF)
-val CyanContainer = Color(0xFFC9F7F0)
+/** 深色：深墨底 + 流萤青主色 */
+val DarkAppColors = AppColors(
+    brand = Color(0xFF5FD9B4),
+    onBrand = Color(0xFF04302A),
+    brandContainer = Color(0xFF17453A),
+    onBrandContainer = Color(0xFFA8EBD6),
+    accentWarm = Color(0xFFF0A868),
+    onAccentWarm = Color(0xFF3A1F09),
+    accentWarmContainer = Color(0xFF4E3117),
+    onAccentWarmContainer = Color(0xFFF8DCBE),
+    accentCool = Color(0xFF84B6D4),
+    onAccentCool = Color(0xFF0E2A3A),
+    accentCoolContainer = Color(0xFF1E3B4C),
+    onAccentCoolContainer = Color(0xFFCBE4F2),
+    surfaceBase = Color(0xFF121513),
+    onSurfaceBase = Color(0xFFE8EAE6),
+    surfaceRaised = Color(0xFF1B1F1C),
+    onSurfaceRaised = Color(0xFFB7BDB6),
+    surfaceSunken = Color(0xFF0C0F0D),
+    outlineStrong = Color(0xFF8B928A),
+    outlineSoft = Color(0xFF3A403A),
+    error = Color(0xFFFF9A90),
+    onError = Color(0xFF4A0F09),
+    errorContainer = Color(0xFF6E1F17),
+    onErrorContainer = Color(0xFFFFDAD5),
+    success = Color(0xFF6FD3A2),
+    onSuccess = Color(0xFF05301F),
+    successContainer = Color(0xFF17452F),
+    onSuccessContainer = Color(0xFFC4EFD8),
+    warning = Color(0xFFE8B75E),
+    onWarning = Color(0xFF3A2708),
+    warningContainer = Color(0xFF4E370F),
+    onWarningContainer = Color(0xFFF7E2B6),
+    messageBubbleAgent = Color(0xFF1E332C),
+    onMessageBubbleAgent = Color(0xFFDCEBE4),
+    messageBubbleUser = Color(0xFF1B4A3F),
+    onMessageBubbleUser = Color(0xFFCFF3E8),
+    topFadeTop = Color(0xFF121513),
+    railIdle = Color(0xFF3A403A),
+    railActive = Color(0xFF5FD9B4),
+    railDone = Color(0xFF3E7A66),
+    statusBarScrim = Color(0xF2121513),
+    phoneShell = Color(0xFF161A17),
+    phoneShellBorder = Color(0xFF2A2F2A),
+    phoneCameraHole = Color(0xFF3A403A),
+    phoneCameraHoleIdle = Color(0xFF252A26),
+    emptyStateIcon = Color(0xFF6A716B),
+    emptyStateText = Color(0xFF6A716B),
+    runningIndicator = Color(0xFF4CC38A),
+)
 
-// 中性色
-val SurfaceLight = Color(0xFFF8F9FC)
-val SurfaceDark = Color(0xFF0B0F19)
-val OnSurfaceLight = Color(0xFF1A1D29)
-val OnSurfaceDark = Color(0xFFE6E8F0)
+/** 浅色高对比度：纯白底 + 加深主色与描边，服务于「高对比度文字」无障碍开关 */
+val LightContrastAppColors = LightAppColors.copy(
+    brand = Color(0xFF0A5A4A),
+    brandContainer = Color(0xFFBCE5D8),
+    onBrandContainer = Color(0xFF022A21),
+    accentWarm = Color(0xFF8A4A1E),
+    accentWarmContainer = Color(0xFFF2DBC6),
+    onAccentWarmContainer = Color(0xFF331706),
+    accentCool = Color(0xFF35617D),
+    accentCoolContainer = Color(0xFFCFE3EF),
+    onAccentCoolContainer = Color(0xFF0B2433),
+    surfaceBase = Color(0xFFFFFFFF),
+    onSurfaceBase = Color(0xFF0B0D0C),
+    surfaceRaised = Color(0xFFF2F4F0),
+    onSurfaceRaised = Color(0xFF333833),
+    surfaceSunken = Color(0xFFE8EBE5),
+    outlineStrong = Color(0xFF3F443F),
+    outlineSoft = Color(0xFFA9AFA8),
+    error = Color(0xFFA82F26),
+    errorContainer = Color(0xFFF7CDC7),
+    onErrorContainer = Color(0xFF3A0B06),
+    success = Color(0xFF12603F),
+    successContainer = Color(0xFFC4E8D5),
+    onSuccessContainer = Color(0xFF042417),
+    warning = Color(0xFF7A5309),
+    warningContainer = Color(0xFFF2DDAE),
+    onWarningContainer = Color(0xFF2A1C05),
+    messageBubbleAgent = Color(0xFFDCF0E9),
+    onMessageBubbleAgent = Color(0xFF08110E),
+    messageBubbleUser = Color(0xFF0A5A4A),
+    topFadeTop = Color(0xFFFFFFFF),
+    railIdle = Color(0xFF9DA39C),
+    railActive = Color(0xFF0A5A4A),
+    railDone = Color(0xFF1F6E58),
+    statusBarScrim = Color(0xFFFFFFFF),
+    phoneShell = Color(0xFFDCE0DA),
+    phoneShellBorder = Color(0xFF9AA097),
+    phoneCameraHole = Color(0xFF8E948C),
+    phoneCameraHoleIdle = Color(0xFF8E948C),
+    emptyStateIcon = Color(0xFF6A716B),
+    emptyStateText = Color(0xFF4A504A),
+    runningIndicator = Color(0xFF12603F),
+)
 
-// 功能色
-val Success = Color(0xFF2E9E6B)
-val Warning = Color(0xFFE8A33D)
-val Error = Color(0xFFE5484D)
+/** 深色高对比度：纯黑底 + 提亮主色与描边 */
+val DarkContrastAppColors = DarkAppColors.copy(
+    brand = Color(0xFF7FEFCB),
+    onBrand = Color(0xFF00251E),
+    brandContainer = Color(0xFF1F5C4C),
+    onBrandContainer = Color(0xFFD3F7EB),
+    accentWarm = Color(0xFFFFBE80),
+    accentWarmContainer = Color(0xFF5E3B1B),
+    onAccentWarmContainer = Color(0xFFFFE6CC),
+    accentCool = Color(0xFFA3CFE7),
+    accentCoolContainer = Color(0xFF27495C),
+    onAccentCoolContainer = Color(0xFFDCEEF9),
+    surfaceBase = Color(0xFF0A0C0A),
+    onSurfaceBase = Color(0xFFFFFFFF),
+    surfaceRaised = Color(0xFF171B18),
+    onSurfaceRaised = Color(0xFFD6DCD5),
+    surfaceSunken = Color(0xFF050705),
+    outlineStrong = Color(0xFFB6BCB5),
+    outlineSoft = Color(0xFF5A615A),
+    error = Color(0xFFFFB3AA),
+    errorContainer = Color(0xFF7E2A21),
+    onErrorContainer = Color(0xFFFFE2DE),
+    success = Color(0xFF8AE3B4),
+    successContainer = Color(0xFF1C5238),
+    onSuccessContainer = Color(0xFFD6F6E5),
+    warning = Color(0xFFF5CA7E),
+    warningContainer = Color(0xFF5C421A),
+    onWarningContainer = Color(0xFFFBEBCB),
+    messageBubbleAgent = Color(0xFF202F29),
+    onMessageBubbleAgent = Color(0xFFEAF4EF),
+    messageBubbleUser = Color(0xFF23584A),
+    onMessageBubbleUser = Color(0xFFDEF6EC),
+    topFadeTop = Color(0xFF0A0C0A),
+    railIdle = Color(0xFF5A615A),
+    railActive = Color(0xFF7FEFCB),
+    railDone = Color(0xFF4F9B82),
+    statusBarScrim = Color(0xF20A0C0A),
+    phoneShell = Color(0xFF121613),
+    phoneShellBorder = Color(0xFF3C423C),
+    phoneCameraHole = Color(0xFF4A504A),
+    phoneCameraHoleIdle = Color(0xFF2E332F),
+    emptyStateIcon = Color(0xFF868D86),
+    emptyStateText = Color(0xFF868D86),
+    runningIndicator = Color(0xFF6FD3A2),
+)
 
-// 图标点缀（用于品牌区）
-val IconIris = Color(0xFF8B5CF6)
-val IconMint = Color(0xFF3DDC97)
+/** 当前主题色令牌。读取方式：`AppTheme.colors.brand` */
+val LocalAppColors = staticCompositionLocalOf { LightAppColors }
 
-// ========== 语义状态色令牌（深/浅主题通用，取代各页面重复定义） ==========
-/** 成功态色板：主色 + 容器底 + 容器前景 */
-val SuccessContainer = Color(0xFFE6F6EE)
-val OnSuccessContainer = Color(0xFF14532D)
-/** 警告态色板 */
-val WarningContainer = Color(0xFFFFF3DD)
-val OnWarningContainer = Color(0xFF5C3A00)
-/** 错误态色板（沿用 Material 语义） */
-val ErrorContainer = Color(0xFFFFE3E0)
-val OnErrorContainer = Color(0xFF8C1D18)
+/** 主题色令牌读取入口，避免各处直接触碰 CompositionLocal。 */
+object AppTheme {
+    val colors: AppColors
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAppColors.current
+}
+
+// ========== 兼容旧调用点的具名颜色（值已对齐新配色，不再新增引用） ==========
+/** 品牌深色（图标点缀、雷达图中心） */
+val BrandNavy = Color(0xFF0A2E27)
+/** 品牌主色（玄青） */
+val Accent = LightAppColors.brand
+/** 状态色：成功 / 警告 / 错误 */
+val Success = LightAppColors.success
+val Warning = LightAppColors.warning
+val Error = LightAppColors.error
 
 // ========== 记忆图谱配色（与品牌色系对齐） ==========
 /** 图谱中心根节点 */
-val MemoryRoot = Accent
-/** 异常经验分类（暖橙，接近 Warning 色系） */
-val MemoryAnomaly = Color(0xFFF07B3E)
-val MemoryAnomalySoft = Color(0xFFF7B48C)
-/** 用户画像分类（鸢尾紫，对齐 tertiary） */
-val MemoryProfile = IconIris
-val MemoryProfileSoft = Color(0xFFC6AEF0)
+val MemoryRoot = LightAppColors.brand
+/** 异常经验分类（暖琥珀） */
+val MemoryAnomaly = Color(0xFFD97A2B)
+val MemoryAnomalySoft = Color(0xFFF0BC8C)
+/** 用户画像分类（雾蓝） */
+val MemoryProfile = Color(0xFF4A7C9B)
+val MemoryProfileSoft = Color(0xFFA9CBDD)
 
-// ========== 测试分组配色（对齐主题品牌色，保留分组辨识度） ==========
-val TestReal = IconIris            // 真实场景
-val TestFormat = Accent            // 格式合规
-val TestTargeting = Cyan           // 目标定位
-val TestDecision = Warning         // 决策
-val TestMerge = Color(0xFFE05C8A)  // 链路聚合（玫红）
-val TestRegression = Success       // 回归基准
-
-// ========== 手机预览外壳配色（深/浅主题适配） ==========
-/** 手机外壳主体色 */
-val PhoneShellLight = Color(0xFFE8EAF0)
-val PhoneShellDark = Color(0xFF10141B)
-/** 手机外壳边框 */
-val PhoneShellBorderLight = Color(0xFFC8CCD6)
-val PhoneShellBorderDark = Color(0xFF2A2F3A)
-/** 摄像头挖孔 */
-val PhoneCameraHoleLight = Color(0xFFBFC3CF)
-val PhoneCameraHoleDark = Color(0xFF3A4250)
-/** 摄像头挖孔暗态 */
-val PhoneCameraHoleIdleDark = Color(0xFF252A33)
-
-// ========== 空状态配色 ==========
-val EmptyStateIconLight = Color(0xFFB7BCCC)
-val EmptyStateIconDark = Color(0xFF6A7385)
-val EmptyStateTextLight = Color(0xFF8A94A6)
-val EmptyStateTextDark = Color(0xFF6A7385)
-
-// ========== 运行指示配色 ==========
-val RunningIndicatorLight = Color(0xFF2E7D32)
-val RunningIndicatorDark = Color(0xFF4CAF50)
+// ========== 测试分组配色（保留分组辨识度，色相全部落在新色系内） ==========
+val TestReal = Color(0xFF4A7C9B)        // 真实场景（雾蓝）
+val TestFormat = Color(0xFF0E7C66)      // 格式合规（玄青）
+val TestTargeting = Color(0xFF2A9E96)   // 目标定位（青绿）
+val TestDecision = Color(0xFF9A6B12)    // 决策（暗金）
+val TestMerge = Color(0xFFA24E6E)       // 链路聚合（绛紫）
+val TestRegression = Color(0xFF1F7A55)  // 回归基准（松绿）

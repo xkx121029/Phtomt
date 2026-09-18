@@ -55,6 +55,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +89,8 @@ class AgentEngine(
     private val appContext: android.content.Context,
     private val shizukuManager: com.phoneagent.device.shell.ShizukuManager? = null,
     private val adbTransport: com.phoneagent.device.shell.AdbBootstrapTransport? = null,
-    private val workAreaEngine: com.phoneagent.feature.workspace.WorkAreaEngine? = null,
+    private val termuxBridge: com.phoneagent.device.shell.TermuxBridge? = null,
+    private val documentEngine: com.phoneagent.feature.document.DocumentEngine? = null,
     private val mcpManager: com.phoneagent.feature.mcp.McpManager? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -114,8 +117,24 @@ class AgentEngine(
         /** 单步云端决策看门狗（文档 v2.2 5.5）：超过则视为云端卡住，本步改为等待、下一轮重试，避免长线任务卡死 */
         private const val WATCHDOG_DECIDE_MS = 45_000L
 
+        /** 单步视觉分析看门狗：云端视觉（OkHttp 读超时 120s）与端侧 3B（单次 20s）都可能长时间阻塞，
+         *  没有它界面会一直停在“观察屏幕”（视觉分析发生在决策状态切换之前），看起来像卡死 */
+        private const val WATCHDOG_VISION_MS = 25_000L
+
         /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
         private const val MAX_LOGS = 800
+
+        /** 端侧决策来源标注（写入 StepTrace.visionSource，便于区分端侧/云端决策） */
+        private const val LOCAL_DECISION_SOURCE = "端侧决策"
+
+        /**
+         * Termux 工具链命令白名单：这些命令在 adb shell 中通常不存在（Android 只带 toybox），
+         * 故命中时一律交给 Termux 通道执行，不受执行通道偏好影响。
+         */
+        private val TERMUX_TOOL_COMMANDS = setOf(
+            "curl", "wget", "python", "python3", "pip", "pip3", "jq", "sed", "awk",
+            "grep", "tr", "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
+        )
         /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
         private const val MAX_TRACES = 300
         /** 调试执行历史最多保留条数 */
@@ -149,7 +168,11 @@ class AgentEngine(
     private val capabilityManager = CapabilityManager(appContext, shizukuManager) { adbTransport?.isConnectedNow() == true }
     private val appNameResolver = AppNameResolver(appContext)
     private val intentResolver = IntentResolver()
-    private val intentTranslator = IntentTranslator(capabilityManager, appNameResolver, intentResolver)
+    private val intentTranslator = IntentTranslator(
+        capabilityManager, appNameResolver, intentResolver,
+        // Termux 命令行通道可用性：转译层据此决定 fetch 这类"命令行取数"意图能否落地
+        termuxAvailable = { termuxBridge?.isAvailable() == true },
+    )
     /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
     @Volatile
     private var lastVisualCoordinate: Pair<Int, Int>? = null
@@ -261,9 +284,21 @@ class AgentEngine(
     /** 最近一次 shell 命令输出（查询类命令回传给 AI 上下文） */
     private var lastShellOutput: String = ""
 
-    /** 若已授予悬浮窗权限则启动悬浮窗（App 在后台时 startForegroundService 可能受限，需兜底防崩溃） */
-    private fun maybeStartFloating() {
-        if (android.provider.Settings.canDrawOverlays(appContext)) {
+    /** 本步 shell 输出的暂存：由 [finishShellResult] 写入、由 [recordStep] 消费进 StepRecord，供 Agent 页回显 */
+    private var pendingShellOutput: String = ""
+
+    /** 当前决策的流式输出（AI 正在生成的内容），用于在 Agent 页实时回显"AI 此刻在说什么" */
+    private val _decisionStream = MutableStateFlow("")
+    val decisionStream: StateFlow<String> = _decisionStream.asStateFlow()
+
+    /**
+     * 启动悬浮窗：仅在「设置里开启悬浮窗」且「已授权悬浮窗权限」时启动。
+     * 悬浮窗是可选能力——关闭或未授权时任务照常执行，进度只在 App 内展示。
+     * （App 在后台时 startForegroundService 可能受限，需兜底防崩溃）
+     */
+    private suspend fun maybeStartFloating() {
+        val enabled = settings.settings.first().floatingWindowEnabled
+        if (enabled && android.provider.Settings.canDrawOverlays(appContext)) {
             runCatching { FloatingWindowService.start(appContext) }
         }
     }
@@ -712,6 +747,8 @@ class AgentEngine(
         completedSteps = 0
         totalPlannedSteps = plan?.steps?.size ?: 0
         reusedTemplateId = null
+        // 新任务清掉上一份文档预览，避免旧结果被误认为本次任务的产出
+        documentEngine?.dismiss()
         // 重置主动反馈状态
         lastProgressAt = System.currentTimeMillis()
         noProgressNotified = false
@@ -744,7 +781,12 @@ class AgentEngine(
         val maxSteps = settingsVal.maxSteps
         var step = 0
         AgentAccessibilityService.agentRunning = true
-        _state.value = AgentState(isRunning = true, task = task, phase = AgentState.Phase.OBSERVING)
+        _state.value = AgentState(
+            isRunning = true,
+            task = task,
+            phase = AgentState.Phase.OBSERVING,
+            startedAtMillis = System.currentTimeMillis(),
+        )
         maybeStartFloating()
         pushFloating("开始执行", "OBSERVING")
         while (maxSteps <= 0 || step < maxSteps) {
@@ -811,6 +853,9 @@ class AgentEngine(
                 decidedIntent = localIntent
                 fromLocal = true
                 log(AgentLog.Level.AI, "端侧决策意图：${localIntent.intent}（${localIntent.reasoning ?: localIntent.reason}）")
+                // 端侧决策不经过 cloudDecide，必须在此补一条 trace：
+                // Agent 页任务流以 trace 为骨架，漏了这一步界面上就完全看不到（像"页面自己变了"）
+                recordLocalStepTrace(step, localIntent)
             } else {
                 decidedIntent = cloudDecide(task, snapshot, annotated, messages, screenshot, settingsVal)
             }
@@ -881,7 +926,7 @@ class AgentEngine(
                     }
                     if (action!!.type == ActionType.TASK_DONE) {
                         log(AgentLog.Level.INFO, "任务完成：${action!!.summary ?: "-"}")
-                        recordStep(step, action!!, "verified_success", "", "")
+                        recordStep(step, action!!, "verified_success", "", "", verify.reason)
                         _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action!!.summary ?: "任务完成", isRunning = false)
                         AgentAccessibilityService.agentRunning = false
                         // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
@@ -962,7 +1007,7 @@ class AgentEngine(
             }
             // 连续失败 ≥3 次才请求用户介入，避免单次动作失败频繁打断
             if (!verified && consecutiveFailures >= 3) {
-                recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint)
+                recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
                 log(AgentLog.Level.ERROR, "动作 3 次未生效：${action.type}，请求用户介入")
                 pushFloating("需要指导", "ERROR")
                 showFloatingInteraction("guide", "需要你的协助", "动作「${action.type}」连续未能改变页面。请在窗内手动接管处理，或告诉 AI 该怎么做。")
@@ -1119,6 +1164,25 @@ class AgentEngine(
         return IntentTranslator.TranslationResult.Failed(missingReason ?: "AI 补全参数后仍无法转译")
     }
 
+    /**
+     * 给“阻塞式”视觉调用套上看门狗。
+     *
+     * 云端视觉走 OkHttp 同步请求（读超时 120s），端侧 3B 走 AIDL 同步调用，
+     * 直接 `withTimeoutOrNull { 阻塞调用 }` 无法打断（超时不会立即返回，仍要等阻塞调用结束），
+     * 所以把它们放到独立协程里 await：超时后立刻返回 null，主循环继续往下走，
+     * 被放弃的请求在后台自行结束（结果丢弃）。
+     */
+    private suspend fun <T> withVisionWatchdog(timeoutMs: Long, block: suspend () -> T): T? {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val deferred = scope.async { runCatching { block() }.getOrNull() }
+        return try {
+            withTimeoutOrNull(timeoutMs) { deferred.await() }
+        } finally {
+            if (!deferred.isCompleted) deferred.cancel()
+            scope.cancel()
+        }
+    }
+
     private suspend fun cloudDecide(
         task: String,
         snapshot: ScreenSnapshot,
@@ -1151,61 +1215,77 @@ class AgentEngine(
         var pageText = safeText
         var desc: String? = null
         if (screenshot != null) {
-            // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）。
-            //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
-            if (useOnDevice3b) {
-                log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
-                val t0 = System.nanoTime()
-                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
-                    context = appContext,
-                    bitmap = screenshot,
-                    timeoutMs = EXTERNAL_VISION_TIMEOUT,
-                )
-                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
-                if (controls.isNotEmpty()) {
-                    externalUsed = true
-                    localRegions = controls
-                    desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
-                } else {
-                    log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
+            val shot = screenshot
+            // 观察已结束、视觉分析还没开始时先切状态：视觉链路（端侧 3B / 云端视觉）可能耗时数十秒，
+            // 之前界面一直停在“观察屏幕”，用户会以为卡死
+            _state.value = _state.value.copy(phase = AgentState.Phase.THINKING, message = "正在识别屏幕内容...")
+            pushFloating("正在识别屏幕内容", "THINKING")
+            // 看门狗：视觉链路全是阻塞式调用（云端 OkHttp 读超时 120s、端侧 3B 单次 20s 且同一步可能调用两次），
+            // 超时即放弃视觉描述，仅用无障碍元素树继续决策，保证主循环不被打死
+            val triedOnDevice3b = useOnDevice3b
+            val visionDone = withVisionWatchdog(WATCHDOG_VISION_MS) {
+                // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）。
+                //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
+                if (useOnDevice3b) {
+                    log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
+                    val t0 = System.nanoTime()
+                    val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
+                        context = appContext,
+                        bitmap = shot,
+                        timeoutMs = EXTERNAL_VISION_TIMEOUT,
+                    )
+                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    if (controls.isNotEmpty()) {
+                        externalUsed = true
+                        localRegions = controls
+                        desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
+                    } else {
+                        log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
+                    }
                 }
-            }
-            // 2) 云端视觉
-            if (desc.isNullOrBlank() && cloudVision) {
-                log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
-                val t0 = System.nanoTime()
-                desc = aiClient.visionDescribe(
-                    baseUrl = visionCfg?.baseUrl ?: "",
-                    apiKey = visionCfg?.apiKey ?: "",
-                    model = visionCfg?.model ?: "",
-                    screenshot = screenshot,
-                    task = task,
-                ).getOrNull()
-                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
-            }
-            // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
-            //    主程序不再内置 OCR，本地读图统一由外挂视觉 Agent 承担（v2.2 迁移）
-            if (desc.isNullOrBlank() && !externalUsed &&
-                (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
-            ) {
-                log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
-                val t0 = System.nanoTime()
-                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
-                    context = appContext,
-                    bitmap = screenshot,
-                    timeoutMs = EXTERNAL_VISION_TIMEOUT,
-                )
-                recordVisionMs((System.nanoTime() - t0) / 1_000_000)
-                if (controls.isNotEmpty()) {
-                    externalUsed = true
-                    localRegions = controls
-                    desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
-                } else {
-                    log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
-                    desc = "（未识别到控件）"
+                // 2) 云端视觉
+                if (desc.isNullOrBlank() && cloudVision) {
+                    log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
+                    val t0 = System.nanoTime()
+                    desc = aiClient.visionDescribe(
+                        baseUrl = visionCfg?.baseUrl ?: "",
+                        apiKey = visionCfg?.apiKey ?: "",
+                        model = visionCfg?.model ?: "",
+                        screenshot = shot,
+                        task = task,
+                    ).getOrNull()
+                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 }
+                // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
+                //    主程序不再内置 OCR，本地读图统一由外挂视觉 Agent 承担（v2.2 迁移）
+                //    同一步第 1 步已经找过外挂且没结果时不再重复调用（同一张图、同一服务，重试只是白等 20s）
+                if (desc.isNullOrBlank() && !externalUsed && !triedOnDevice3b &&
+                    (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
+                ) {
+                    log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
+                    val t0 = System.nanoTime()
+                    val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
+                        context = appContext,
+                        bitmap = shot,
+                        timeoutMs = EXTERNAL_VISION_TIMEOUT,
+                    )
+                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    if (controls.isNotEmpty()) {
+                        externalUsed = true
+                        localRegions = controls
+                        desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
+                    } else {
+                        log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
+                        desc = "（未识别到控件）"
+                    }
+                }
+                if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
+                true
             }
-            if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
+            if (visionDone == null) {
+                log(AgentLog.Level.WARN, "视觉分析超过 ${WATCHDOG_VISION_MS / 1000}s 未返回，本步放弃视觉描述，改用无障碍元素树继续决策")
+                desc = null
+            }
         }
         val userText = AgentPrompts.decision(
             lang = currentLang,
@@ -1218,7 +1298,7 @@ class AgentEngine(
             contextHint = DataSanitizer.sanitize(annotated.contextHint),
         ) + planNote + "\n\n## 当前页面\n$pageText" +
             DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
-            AgentPrompts.situationalExtras(currentLang, task) +
+            AgentPrompts.situationalExtras(currentLang, task, termuxBridge?.isAvailable() == true) +
             progressSummaryText()
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
         addConversation("user", userText, hasImage = screenshot != null)
@@ -1241,8 +1321,16 @@ class AgentEngine(
                 screenshot = null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
-                onRetry = { FloatingWindowService.resetThinking() },
-                onDelta = { pushThinking(delta = it) },
+                onRetry = {
+                    FloatingWindowService.resetThinking()
+                    // 重试会重放文本，流式回显同步清零，避免界面叠加两遍
+                    _decisionStream.value = ""
+                },
+                onDelta = {
+                    pushThinking(delta = it)
+                    // 同步累积到 Agent 页的流式回显（悬浮窗与 App 内看到同一份内容）
+                    _decisionStream.value += it
+                },
             )
         }
         if (result == null) {
@@ -1260,6 +1348,8 @@ class AgentEngine(
             _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = err.message ?: "AI 调用失败")
             return null
         }
+        // 决策已完成：正文已落 trace（可在步骤卡的"原始数据"里回看），清空流式回显避免与下一步混淆
+        _decisionStream.value = ""
         apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
         recordMetrics(decision)
         var intent = decision.action
@@ -1272,7 +1362,10 @@ class AgentEngine(
         ) {
             val targetText = tTarget.value
             if (!targetText.isNullOrBlank()) {
-                val pos: Pair<Float, Float>? = when {
+                // 定位同样是阻塞式视觉调用（端侧 AIDL / 云端 OkHttp），套同一只看门狗：
+                // 超时即放弃坐标（转译层会提示降级重定位），不让它拖死主循环
+                val pos: Pair<Float, Float>? = withVisionWatchdog(EXTERNAL_VISION_TIMEOUT) {
+                    when {
                     // 外挂视觉优先：端侧 3B 定位不准时退回已识别控件的本地匹配
                     externalUsed -> {
                         log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
@@ -1298,6 +1391,7 @@ class AgentEngine(
                         p
                     }
                     else -> null
+                    }
                 }
                 if (pos != null) {
                     lastVisualCoordinate = (pos.first * screenWidth()).toInt() to (pos.second * screenHeight()).toInt()
@@ -1505,7 +1599,7 @@ class AgentEngine(
         // 规范化文档动作词汇
         val type = ActionType.ALIAS[action.type] ?: action.type
 
-        // 文档写入动作：不依赖屏幕/无障碍，直接把内容写入工作区
+        // 文档写入动作：不依赖屏幕/无障碍，直接把内容落盘（结果在 Agent 页预览）
         if (type == ActionType.WRITE_DOC) {
             return executeWriteDoc(action).also {
                 recordExecMs((System.nanoTime() - execT0) / 1_000_000)
@@ -1621,19 +1715,19 @@ class AgentEngine(
     }
 
     /**
-     * 执行文档写入动作：直接把生成内容写入工作区，供用户在工作区页查看。
-     * @return 写成功的 VerifyResult；工作区未启用时返回失败
+     * 执行文档写入动作：把 AI 产出的正文落盘，结果随后在 Agent 页任务流里预览。
+     * @return 写成功的 VerifyResult；文档通道未启用时返回失败
      */
     private suspend fun executeWriteDoc(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
-        val engine = workAreaEngine ?: return com.phoneagent.engine.execution.VerifyResult(false, "工作区未启用", "", "")
+        val engine = documentEngine ?: return com.phoneagent.engine.execution.VerifyResult(false, "文档通道未启用", "", "")
         val content = action.text ?: return com.phoneagent.engine.execution.VerifyResult(false, "文档内容为空", "", "")
         val fileName = action.summary ?: ""
-        // 直接写入工作区（内容已由 AI 决策产出，无需再次生成）
+        // 直接落盘（内容已由 AI 决策产出，无需再次生成）
         val written = engine.writeDocument(content, fileName)
         return if (written.isBlank()) {
             com.phoneagent.engine.execution.VerifyResult(false, engine.error.value.ifBlank { "文档写入失败" }, "", "")
         } else {
-            com.phoneagent.engine.execution.VerifyResult(true, "文档已写入工作区：$written", "", "")
+            com.phoneagent.engine.execution.VerifyResult(true, "文档已生成，可在 Agent 页查看：$written", "", "")
         }
     }
 
@@ -1646,7 +1740,20 @@ class AgentEngine(
      */
     private suspend fun executeShellAction(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
         val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(false, "shell 命令为空", "", "")
-        // 无真实 shell 通道（Shizuku 与无线 ADB 均不可用）：硬性禁止 shell，翻译为无障碍动作
+        // Termux 工具链命令（curl / python / jq 等）：adb shell 里没有这些工具，
+        // 按命令名判定直接交给 Termux，不受 executionChannel 偏好影响
+        if (isTermuxToolCommand(cmd)) {
+            val bridge = termuxBridge
+            if (bridge == null || !bridge.isAvailable()) {
+                return com.phoneagent.engine.execution.VerifyResult(
+                    false, "该命令需要 Termux 通道（curl/python 等工具），但 Termux 未安装或未授权", "", "",
+                )
+            }
+            val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
+                ?: return com.phoneagent.engine.execution.VerifyResult(false, "命令无法解析: $cmd", "", "")
+            return finishShellResult(bridge.executeShell(resolved))
+        }
+        // 无真实 shell 通道：硬性禁止 shell，翻译为无障碍动作
         if (!shellChannelAvailable()) {
             return executeShellViaAccessibility(cmd)
         }
@@ -1655,17 +1762,26 @@ class AgentEngine(
         return runRealShell(resolved)
     }
 
-    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku） */
+    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB→Shizuku→Termux | ADB=仅无线ADB | SHIZUKU=仅Shizuku | TERMUX=仅Termux） */
     private suspend fun shellChannelAvailable(): Boolean {
         val channel = settings.settings.first().executionChannel
         return when (channel) {
             "ADB" -> adbTransport?.isConnected() == true
             "SHIZUKU" -> shizukuManager?.isAvailable() == true
-            else -> adbTransport?.isConnected() == true || shizukuManager?.isAvailable() == true
+            "TERMUX" -> termuxBridge?.isAvailable() == true
+            // AUTO：无线 ADB → Shizuku → Termux（普通应用权限，仅作第三顺位兜底）
+            else -> adbTransport?.isConnected() == true ||
+                shizukuManager?.isAvailable() == true ||
+                termuxBridge?.isAvailable() == true
         }
     }
 
-    /** 按执行通道偏好选择真实 shell 通道（AUTO 优先无线 ADB，其次 Shizuku）执行命令并回传输出 */
+    /**
+     * 按执行通道偏好选择真实 shell 通道执行命令并回传输出。
+     * AUTO 顺序：无线 ADB → Shizuku → Termux。
+     * 注意 Termux 是**普通应用权限**的 Linux 环境，只适合 curl/python/文本处理等工具链命令，
+     * 系统命令（am/pm/settings）会失败——该边界在提示词里对 AI 显式声明。
+     */
     private suspend fun runRealShell(resolved: String): com.phoneagent.engine.execution.VerifyResult {
         val channel = settings.settings.first().executionChannel
         val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { cmd ->
@@ -1682,23 +1798,52 @@ class AgentEngine(
                 if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
                 else return com.phoneagent.engine.execution.VerifyResult(false, "Shizuku 不可用，无真实 shell 通道", "", "")
             }
+            "TERMUX" -> {
+                if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(resolved)
+                else return com.phoneagent.engine.execution.VerifyResult(
+                    false, "Termux 不可用（未安装或未授予 RUN_COMMAND 权限）", "", "",
+                )
+            }
             else -> {
                 if (adbTransport?.isConnected() == true) adbShell(resolved)
                 else if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
+                else if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(resolved)
                 else return com.phoneagent.engine.execution.VerifyResult(false, "无可用 shell 通道", "", "")
             }
         }
-        return when (result) {
-            is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success -> {
-                // 捕获输出：查询类命令回传 AI，指令类命令忽略
-                lastShellOutput = result.output.trim().take(1200)
-                delay(300)
-                com.phoneagent.engine.execution.VerifyResult(true, "shell 执行成功", "", "")
-            }
-            is com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure -> {
-                lastShellOutput = ""
-                com.phoneagent.engine.execution.VerifyResult(false, result.reason, "", "")
-            }
+        return finishShellResult(result)
+    }
+
+    /**
+     * 判断是否为 Termux 工具链命令（curl / python / jq 等）。
+     * 取首个 token 的命令名并去掉绝对路径；`a && b` 这类组合只看首段。
+     */
+    private fun isTermuxToolCommand(cmd: String): Boolean {
+        val body = cmd.trim().removePrefix("raw ").trim()
+        if (body.isBlank()) return false
+        val head = body.split(Regex("[\\s;&|]+")).firstOrNull()
+            ?.substringAfterLast('/')
+            ?.lowercase()
+            .orEmpty()
+        return head in TERMUX_TOOL_COMMANDS
+    }
+
+    /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
+    private suspend fun finishShellResult(
+        result: com.phoneagent.device.shell.ShizukuManager.ShellResult,
+    ): com.phoneagent.engine.execution.VerifyResult = when (result) {
+        is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success -> {
+            // 捕获输出：查询类命令回传 AI，指令类命令忽略
+            lastShellOutput = result.output.trim().take(1200)
+            pendingShellOutput = lastShellOutput
+            delay(300)
+            com.phoneagent.engine.execution.VerifyResult(true, "shell 执行成功", "", "")
+        }
+        is com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure -> {
+            lastShellOutput = ""
+            // 失败原因同样回显给用户：不然页面上只看到"未生效"，不知道为什么
+            pendingShellOutput = result.reason
+            com.phoneagent.engine.execution.VerifyResult(false, result.reason, "", "")
         }
     }
 
@@ -1898,7 +2043,43 @@ class AgentEngine(
         if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
     }
 
-    private fun recordStep(step: Int, action: AgentAction, verification: String, before: String, after: String) {
+    /**
+     * 端侧（本地）决策的步骤留档。
+     *
+     * 为什么必须留档：Agent 页任务流以 trace 为骨架（[AgentTimelineMapper.buildRuns]），
+     * 端侧决策走的是 `localDecision.decide()` 直通分支、不经过 cloudDecide，
+     * 若不在决策处补一条 trace，这一步在界面上完全不可见——用户的体感是"AI 没动，页面自己变了"。
+     *
+     * 与云端留档的差异：没有发给模型的上下文、没有 token 与延迟，用 [LOCAL_DECISION_SOURCE] 标注来源。
+     */
+    private fun recordLocalStepTrace(step: Int, intent: AgentIntent) {
+        _traces.value = _traces.value + com.phoneagent.domain.model.StepTrace(
+            taskId = currentTaskId,
+            taskName = currentTaskName,
+            step = step,
+            sentText = "",
+            receivedText = intent.toString(),
+            promptTokens = 0,
+            completionTokens = 0,
+            totalTokens = 0,
+            latencyMs = 0,
+            // 复用"视觉来源"字段标注决策来源，便于在调试页区分端侧/云端
+            visionSource = LOCAL_DECISION_SOURCE,
+            visionModel = "",
+            visionDescription = "",
+            thinking = false,
+        )
+        if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
+    }
+
+    private fun recordStep(
+        step: Int,
+        action: AgentAction,
+        verification: String,
+        before: String,
+        after: String,
+        detail: String = "",
+    ) {
         val rec = StepRecord(
             step = step,
             action = action,
@@ -1906,6 +2087,9 @@ class AgentEngine(
             beforeFingerprint = before,
             afterFingerprint = after,
             isConfirmed = verification == "verified_success",
+            // 消费本步暂存的 shell 输出（非 shell 步为空），并立即清空避免串到下一步
+            shellOutput = pendingShellOutput.also { pendingShellOutput = "" },
+            detail = detail,
         )
         _executionHistory.value = _executionHistory.value + rec
         // 数量上限：环形保留最近 N 条执行历史，防长线/多任务内存无限增长
@@ -2037,7 +2221,7 @@ class AgentEngine(
     private fun actionLabel(type: String): String = EngineRules.actionLabel(type)
 
     private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.engine.execution.VerifyResult) {
-        recordStep(step, action, if (verify.success) "verified_success" else "unverified", verify.beforeFingerprint, verify.afterFingerprint)
+        recordStep(step, action, if (verify.success) "verified_success" else "unverified", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
     }
 
     private suspend fun awaitUserHint(): String {

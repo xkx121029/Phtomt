@@ -27,20 +27,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Devices
-import androidx.compose.material.icons.rounded.Hub
-import androidx.compose.material.icons.rounded.Key
-import androidx.compose.material.icons.rounded.Memory
-import androidx.compose.material.icons.rounded.Science
-import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -82,6 +68,7 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.icons.AppIcons
 
 /** 品牌 Hero：渐变品牌瓦片 + 主标题/副标题 */
 @Composable
@@ -96,7 +83,7 @@ internal fun BrandHero(modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Rounded.AutoAwesome,
+                AppIcons.AutoAwesome,
                 contentDescription = null,
                 tint = Color.White,
                 modifier = Modifier.size(30.dp),

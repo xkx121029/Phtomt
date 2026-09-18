@@ -63,18 +63,28 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     }
                 }
                 Spacer(Modifier.height(4.dp))
+                ToggleRow(
+                    "启用桌面悬浮窗",
+                    "关闭后任务进度只在 App 内展示；悬浮窗为可选能力，不影响任务执行",
+                    st.floatingWindowEnabled,
+                ) { enabled ->
+                    st.floatingWindowEnabled = enabled
+                    save()
+                }
+                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         GroupCard {
-            GroupHeader("执行通道", "shell 执行通路的优先顺序（无线 ADB 为主，Shizuku 可选）")
+            GroupHeader("执行通道", "shell 执行通路的优先顺序（无线 ADB 为主，Shizuku / Termux 可选）")
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 val channels = listOf(
                     "AUTO" to "自动",
                     "ADB" to "无线ADB",
                     "SHIZUKU" to "Shizuku",
+                    "TERMUX" to "Termux",
                 )
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     channels.forEachIndexed { i, (key, label) ->
@@ -92,7 +102,8 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     when (st.executionChannel) {
                         "ADB" -> "仅用无线 ADB；未连接时无真实 shell，走无障碍执行。"
                         "SHIZUKU" -> "仅用 Shizuku；不可用时用无线 ADB 拉起。"
-                        else -> "优先无线 ADB，其次 Shizuku，最后无障碍；Shizuku 启动失败不影响执行。"
+                        "TERMUX" -> "仅用 Termux（普通应用权限）：可跑 curl / python / 文本处理，不能执行系统命令。"
+                        else -> "优先无线 ADB，其次 Shizuku，最后 Termux；都不可用则走无障碍执行。"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

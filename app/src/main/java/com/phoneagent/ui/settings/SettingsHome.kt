@@ -10,12 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SmartToy
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.icons.AppIcons
 
 /** 设置主页（一级导航） */
 @Composable
@@ -45,7 +40,7 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
 
         GroupCard {
             SettingsEntry(
-                icon = Icons.Filled.SmartToy,
+                icon = AppIcons.SmartToy,
                 iconTint = MaterialTheme.colorScheme.primary,
                 iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
                 title = "AI 模型配置",
@@ -55,7 +50,7 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
             )
             GroupDivider()
             SettingsEntry(
-                icon = Icons.Filled.PlayArrow,
+                icon = AppIcons.Play,
                 iconTint = MaterialTheme.colorScheme.tertiary,
                 iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
                 title = "Agent 运行",
@@ -65,7 +60,7 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
             )
             GroupDivider()
             SettingsEntry(
-                icon = Icons.Filled.Close,
+                icon = AppIcons.Close,
                 iconTint = MaterialTheme.colorScheme.error,
                 iconBackground = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
                 title = "跳广告",
@@ -75,7 +70,7 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
             )
             GroupDivider()
             SettingsEntry(
-                icon = Icons.Filled.Star,
+                icon = AppIcons.Star,
                 iconTint = MaterialTheme.colorScheme.secondary,
                 iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),
                 title = "视觉效果",
@@ -85,7 +80,7 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
             )
             GroupDivider()
             SettingsEntry(
-                icon = Icons.Filled.Search,
+                icon = AppIcons.Search,
                 iconTint = MaterialTheme.colorScheme.primary,
                 iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
                 title = "长线任务",
