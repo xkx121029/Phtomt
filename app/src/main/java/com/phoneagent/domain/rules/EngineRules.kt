@@ -66,6 +66,8 @@ object EngineRules {
         ActionType.LAUNCH -> "启动应用"
         ActionType.SHELL -> "执行Shell"
         ActionType.WRITE_DOC -> "写入文档"
+        ActionType.REMEMBER -> "记住信息"
+        ActionType.MCP_CALL -> "调用技能"
         ActionType.OPEN -> "打开链接/Scheme"
         ActionType.BACK -> "返回"
         ActionType.HOME -> "回到桌面"

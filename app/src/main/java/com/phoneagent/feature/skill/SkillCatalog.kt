@@ -118,6 +118,30 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.REMEMBER, Skill(
+                id = "skill_remember", name = "记住信息", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "记忆", legacyIntent = IntentType.REMEMBER,
+                description = "把有长期价值的信息写入本地记忆库（不操作屏幕、不碰设备）。",
+                params = listOf(
+                    SkillParam("text", "要记住的内容", "text", required = true, description = "一句话，如「用户偏好简洁界面」"),
+                    SkillParam(
+                        "summary", "分类", "select", defaultValue = "general",
+                        options = listOf("preference", "fact", "habit", "tip", "general"),
+                    ),
+                ),
+            ),
+        )
+        put(
+            IntentType.FETCH, Skill(
+                id = "skill_fetch", name = "取网页正文", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "取数", legacyIntent = IntentType.FETCH,
+                description = "用命令行取网页/接口正文（需本机已安装并授权 Termux）。",
+                params = listOf(
+                    SkillParam("uri", "网页/接口地址", "text", required = true, description = "http:// 或 https://"),
+                ),
+            ),
+        )
+        put(
             IntentType.FINISH, Skill(
                 id = "skill_finish", name = "完成", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "控制", legacyIntent = IntentType.FINISH,

@@ -95,6 +95,8 @@ class AgentEngine(
     private val termuxBridge: com.phoneagent.device.shell.TermuxBridge? = null,
     private val documentEngine: com.phoneagent.feature.document.DocumentEngine? = null,
     private val mcpManager: com.phoneagent.feature.mcp.McpManager? = null,
+    /** 技能执行网关：把 AI 输出的"技能名/技能 id"归一化为意图或 MCP 调用（见 [SkillCompat.normalize]） */
+    private val skillGateway: com.phoneagent.feature.skill.SkillExecutionGateway? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
@@ -165,6 +167,15 @@ class AgentEngine(
 
         /** 记忆提炼的超时：独立于主流程，超时直接放弃，不阻塞任务收尾 */
         private const val DISTILL_TIMEOUT_MS = 12_000L
+
+        /** MCP 技能单次调用的超时：远端服务不可达时不能让主循环干等 */
+        private const val MCP_CALL_TIMEOUT_MS = 20_000L
+
+        /** MCP 技能返回值注入 AI 上下文的最大字符数（与 shell 输出一致，防长文撑爆上下文） */
+        private const val MAX_MCP_OUTPUT = 1200
+
+        /** 连续「技能调用被拒」（未知/停用/缺参）次数上限：达到即收尾，避免 AI 反复白试 */
+        private const val MAX_SKILL_ERROR_STREAK = 3
     }
 
     private val cloudAgent = CloudAgent(aiClient)
@@ -245,6 +256,8 @@ class AgentEngine(
     private var pendingTemplatePlan: TaskPlan? = null
     /** 近最连续“命令不存在/参数无效”等结构性错误的次数；≥2 时强制 AI 改用无障碍动作并禁止继续 shell （防止一直编造不存在的命令） */
     private var invalidCommandStreak = 0
+    /** 连续「技能调用被拒」次数（未知技能 / 已停用 / 缺必填参数）；达到上限即收尾，避免 AI 反复白试 */
+    private var skillErrorStreak = 0
     private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** 当前任务 ID（每次 run 开始时生成，用于分任务日志/导出） */
@@ -778,6 +791,7 @@ class AgentEngine(
         consecutiveFailures = 0
         earlyDoneRejections = 0
         invalidCommandStreak = 0
+        skillErrorStreak = 0
         lastShellOutput = ""
         lastSnapshot = ScreenSnapshot()
         activePlan = plan
@@ -805,15 +819,11 @@ class AgentEngine(
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
-        // MCP 工具：结构化解说已配置的服务器工具（一次任务枚举一次，供系统提示注入）
-        val mcpToolsPrompt = mcpToolsPromptText()
+        // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
+        val skillsPrompt = skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shellChannelAvailable())))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shellChannelAvailable(), skills = skillsPrompt)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, settingsVal.hasVision)))))
-            // MCP 工具：结构化解说已配置的服务器工具，并附使用规则（无工具则为空，不增加负担）
-            mcpToolsPrompt.takeIf { it.isNotBlank() }?.let { tools ->
-                add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = tools))))
-            }
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
                 PromptLang.CN -> "执行通道（无障碍/Shizuku）由端侧自动选择，无需你指定。打开应用用 open_app（写应用名即可）；目标定位与坐标计算全部由端侧完成，你不输出像素坐标。"
@@ -904,7 +914,7 @@ class AgentEngine(
             }
 
             if (decidedIntent == null || decidedIntent.intent.isEmpty()) { log(AgentLog.Level.ERROR, "决策为空，停止"); stop(); return }
-            val intent = decidedIntent!!
+            var intent: AgentIntent = decidedIntent
             // 端侧连续多次决策 → 疑似死循环，主动反馈一次（v2.2.1 八）
             if (fromLocal) {
                 localDecisionStreak++
@@ -929,6 +939,37 @@ class AgentEngine(
                     appContext, com.phoneagent.core.notify.ActiveNotifier.ID_NO_PROGRESS,
                     "AI 长时间没动静", "任务似乎卡住了，已延长检查时间；若仍未进展可用「已手动处理」接管。",
                 )
+            }
+            // 3.5 技能归一化：AI 的 intent 字段可以填技能名 / 技能 id（含 MCP 技能）。
+            //     内置技能 → 归一化为等价意图，继续走原转译链路（原逻辑一字不改）；
+            //     MCP 技能 → 就地调用，把返回结果作为"上一步结果"回注上下文后进入下一轮，不产生设备动作；
+            //     未知 / 已停用 / 缺参 → 把中文原因回注给 AI 纠正，连续多次仍不改正即收尾，避免死循环。
+            val normalized = skillGateway?.normalize(intent)
+            if (normalized != null) {
+                when (normalized) {
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Intent -> {
+                        skillErrorStreak = 0
+                        intent = normalized.intent
+                    }
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Mcp -> {
+                        skillErrorStreak = 0
+                        invokeMcpSkill(step, normalized, messages)
+                        continue
+                    }
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Error -> {
+                        skillErrorStreak++
+                        log(AgentLog.Level.WARN, "技能调用被拒绝（第 $skillErrorStreak 次）：${normalized.reason}")
+                        if (skillErrorStreak >= MAX_SKILL_ERROR_STREAK) {
+                            _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = normalized.reason)
+                            pushFloating("技能不可用，已停止", "ERROR")
+                            log(AgentLog.Level.ERROR, "连续 $skillErrorStreak 次技能调用被拒绝，停止任务：${normalized.reason}")
+                            stop()
+                            return
+                        }
+                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${normalized.reason}"))))
+                        continue
+                    }
+                }
             }
             // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）。
             //    参数缺失（如 tap 没给 target、open_app 没给 app）时，端侧先向 AI 追问一次补全，再重转译，而非直接失败。
@@ -1575,39 +1616,81 @@ class AgentEngine(
         )
     }
 
-    /** 生成 MCP 工具的结构化解说文本（注入系统提示，供 AI 在需要时调用）。
-     *  无 MCP 服务器或枚举失败时返回空串，不增加任何负担。 */
-    private suspend fun mcpToolsPromptText(): String {
-        val mcp = mcpManager ?: return ""
-        val enabled = mcp.enabledServers()
-        if (enabled.isEmpty()) return ""
-        val sb = StringBuilder("\n## MCP 工具（端侧已接入，可选用）\n")
-        val lang = currentLang
-        for (cfg in enabled) {
-            val tools = runCatching { mcp.listTools(cfg.name) }.getOrNull() ?: continue
-            if (tools.isEmpty()) continue
-            sb.append("服务器「${cfg.name}」(${cfg.url})：\n")
-            tools.forEach { tool ->
-                sb.append("- ${cfg.name}/${tool.name}")
-                if (tool.isReadOnly) sb.append("（只读）")
-                if (tool.description.isNotBlank()) sb.append("：${tool.description}")
-                sb.append("\n")
-                if (tool.params.isNotEmpty()) {
-                    val params = tool.params.joinToString("; ") { p ->
-                        val required = if (p.required) "必填" else "可选"
-                        val opts = if (p.options.isNotEmpty()) "[${p.options.joinToString("/")}]" else ""
-                        "${p.name}(${p.type},$required$opts)${p.description.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""}"
-                    }
-                    sb.append("    参数：$params\n")
-                }
-            }
-        }
-        if (lang == PromptLang.EN) {
-            sb.append("\nMCP usage rules: only call tools listed above; arguments must match their schema; results may be desensitized; on failure, treat as a normal step failure and report the reason in Chinese.")
+    /**
+     * 生成注入系统提示的技能区块：**只列出真正可被调用的技能**。
+     *
+     * 与旧实现（罗列所有服务器工具）的区别：MCP 工具必须先绑定为技能才可调用，
+     * 因此这里只列注册表里 source=MCP 且已启用的技能——提示词与可执行能力严格一一对应，
+     * AI 不会去调一个端侧根本不认识的工具。无技能/无服务器时返回空串，不增加负担。
+     */
+    private fun skillPromptText(): String {
+        val gateway = skillGateway ?: return ""
+        val mcpLines = gateway.enabledMcpSkills().map { gateway.mcpSkillLine(it) }
+        val disabled = gateway.disabledSkills().map { it.name }
+        if (mcpLines.isEmpty() && disabled.isEmpty() && !gateway.hasEnabledMcpServer()) return ""
+        return AgentPrompts.skillSection(
+            lang = currentLang,
+            mcpLines = mcpLines,
+            disabledNames = disabled,
+            hasMcpServer = gateway.hasEnabledMcpServer(),
+        )
+    }
+
+    /**
+     * 执行一次 MCP 技能调用：就地调用远端工具，并把返回内容作为"上一步结果"注入下一轮决策上下文。
+     *
+     * 与 remember 同类——端侧代办、不触碰设备，因此不截图、不走执行通道、不做生效重试；
+     * 本步只留档一条 StepRecord（Agent 页可见），随后进入下一轮由 AI 依据返回内容继续决策。
+     */
+    private suspend fun invokeMcpSkill(
+        step: Int,
+        mcp: com.phoneagent.feature.skill.SkillCompat.Normalized.Mcp,
+        messages: MutableList<ChatMessageDto>,
+    ) {
+        val gateway = skillGateway ?: return
+        val label = mcp.skill.name
+        val target = "${mcp.target.server}/${mcp.target.tool}"
+        log(AgentLog.Level.INFO, "调用 MCP 技能：$label（$target）参数=${mcp.args}")
+        _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "调用技能：$label")
+        pushFloating("调用技能：$label", "ACTING")
+        // 远端服务不可达时不能让主循环干等：与单步决策同一思路，超时即按失败回注，让 AI 自己改路线
+        val result = withTimeoutOrNull(MCP_CALL_TIMEOUT_MS) { gateway.invokeMcp(mcp.target, mcp.args) }
+            ?: com.phoneagent.feature.mcp.McpCallResult(
+                isError = true,
+                content = "MCP 调用超时（${MCP_CALL_TIMEOUT_MS / 1000}s）：$target",
+            )
+        val text = result.content.trim().take(MAX_MCP_OUTPUT)
+        val action = AgentAction(
+            type = ActionType.MCP_CALL,
+            reasoning = mcp.skill.description.take(60).ifBlank { label },
+            reason = "MCP 技能：$label",
+            confidence = 0.9,
+        )
+        recordStep(
+            step = step,
+            action = action,
+            verification = if (result.isError) "unverified" else "verified_success",
+            before = "",
+            after = "",
+            detail = if (result.isError) text.ifBlank { "MCP 调用失败" } else "MCP 返回：${text.ifBlank { "（空）" }}",
+        )
+        // 回注下一轮决策上下文：调用结果即"上一步结果"，AI 据此判断目标是否达成
+        val injected = if (result.isError) {
+            "技能「$label」调用失败：${text.ifBlank { "（无返回内容）" }}"
         } else {
-            sb.append("\nMCP 使用规则：只能调用上面列出的工具；参数必须匹配其类型与必填要求；返回结果可能已被脱敏；调用失败视为普通步骤失败，用中文说明原因，不要臆造调用结果。")
+            "技能「$label」返回内容：\n${text.ifBlank { "（空结果）" }}"
         }
-        return sb.toString()
+        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
+        addConversation("assistant", injected)
+        if (result.isError) {
+            log(AgentLog.Level.WARN, "MCP 技能调用失败：$label → $text")
+            pushFloating("技能调用失败：$label", "ERROR")
+        } else {
+            log(AgentLog.Level.INFO, "MCP 技能返回：${text.take(200)}")
+            pushFloating("技能已返回：$label", "THINKING")
+            recordProgress(step, action)
+        }
+        delay(200)
     }
 
     /** 视觉模型配置：仅在视觉模型启用时生效；视觉 API Key 为空则回退主模型 Key */

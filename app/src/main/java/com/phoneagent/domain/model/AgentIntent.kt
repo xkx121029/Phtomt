@@ -42,6 +42,12 @@ data class AgentIntent(
     val uri: String? = null,
     /** open：软件页面直达索引序号（配合 app） */
     val page: Int? = null,
+    /**
+     * 技能调用参数：技能名 / 技能 id（或 MCP 技能 id）时，具体参数放入此对象（param 名 → 值）。
+     * 用于把"调用技能"统一归一化成等价意图或 MCP 调用。普通意图场景不填。
+     */
+    @SerialName("args")
+    val args: Map<String, String>? = null,
     // ---- 统一字段（决策与进度展示通用） ----
     /** 给用户看的跑马灯文字（≤20 字） */
     val reasoning: String? = null,

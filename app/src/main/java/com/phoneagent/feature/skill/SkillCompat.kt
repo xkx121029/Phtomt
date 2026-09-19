@@ -35,6 +35,66 @@ object SkillCompat {
         SkillCatalog.byLegacyIntent(intent.intent)
 
     /**
+     * AI 一条意图的归一化结果：把"技能调用"收口为可执行映射。
+     */
+    sealed class Normalized {
+        /** 已归一化为标准意图（内置技能 → 等价旧意图），交回原有转译链路执行 */
+        data class Intent(val intent: AgentIntent) : Normalized()
+        /** MCP 技能：由 MCP 客户端就地调用，不产生设备动作 */
+        data class Mcp(val skill: Skill, val target: McpSkillTarget, val args: Map<String, String>) : Normalized()
+        /** 拒绝执行，附中文原因（未知技能 / 已停用 / 缺必填参数） */
+        data class Error(val reason: String) : Normalized()
+    }
+
+    /**
+     * 把 AI 输出的一条意图归一化为"可执行映射"。AI 的 intent 字段有三种写法，端侧在此统一收口：
+     *
+     * 1. 标准意图名（tap / open_app …）→ 原样放行；若其对应内置技能已被用户停用则拒绝；
+     * 2. 内置技能 id / 技能名（skill_open_app / 打开应用）→ 归一化为等价的旧意图，
+     *    其余字段（target/app/text/…）原样保留，因此后续转译逻辑一字不改；
+     * 3. MCP 技能 id → 交 MCP 客户端就地调用，参数取 `intent.args`。
+     *
+     * 归一化的意义：技能页的启停开关从此对运行时真正生效，AI 也能用技能名表达"做什么"。
+     */
+    fun normalize(intent: AgentIntent, registry: SkillRegistry): Normalized {
+        val name = intent.intent
+        val skill = registry.byId(name) ?: registry.byName(name) ?: registry.byLegacyIntent(name)
+        // 没有对应技能的合法意图（如端侧决策直出的意图）原样放行；非法名字则明确拒绝，不让它落到"未知意图"
+        if (skill == null) {
+            return if (name in IntentType.ALL) Normalized.Intent(intent)
+            else Normalized.Error("未知意图或技能「$name」：请改用系统提示中列出的意图或已启用技能。")
+        }
+        if (!skill.enabled) {
+            return Normalized.Error("技能「${skill.name}」已停用，无法调用；请换用其他方式，或让用户在「技能与能力」页启用后重试。")
+        }
+        return when (skill.source) {
+            SkillSource.MCP -> {
+                val target = skill.mcp
+                    ?: return Normalized.Error("MCP 技能「${skill.name}」缺少调用目标配置。")
+                val args = intent.args ?: emptyMap()
+                val missing = skill.params.filter { it.required && args[it.name].isNullOrBlank() }
+                if (missing.isNotEmpty()) {
+                    val names = missing.joinToString("、") { "「${it.label.ifBlank { it.name }}」" }
+                    Normalized.Error(
+                        "技能「${skill.name}」缺少必填参数：$names。" +
+                            "请用 args 对象补全，例如 {\"intent\":\"${skill.id}\",\"args\":{...}}。",
+                    )
+                } else {
+                    Normalized.Mcp(skill, target, args)
+                }
+            }
+            SkillSource.INTENT -> {
+                val legacy = skill.legacyIntent ?: skill.id.removePrefix("skill_")
+                if (legacy !in IntentType.ALL) {
+                    Normalized.Error("技能「${skill.name}」未映射到可执行的意图（$legacy）。")
+                } else {
+                    Normalized.Intent(intent.copy(intent = legacy))
+                }
+            }
+        }
+    }
+
+    /**
      * 解析一条 [SkillInvocation]（AI 按技能名调用）为可执行映射。
      * @param registry Skill 注册表（含内置/自定义/MCP）
      */
@@ -97,6 +157,8 @@ object SkillCompat {
             IntentType.WAIT -> agent.copy(waitMs = args["wait_ms"]?.toLongOrNull())
             IntentType.SCROLL_TO -> agent
             IntentType.WRITE_DOC -> agent.copy(text = args["text"], summary = args["summary"])
+            IntentType.REMEMBER -> agent.copy(text = args["text"], summary = args["summary"])
+            IntentType.FETCH -> agent.copy(uri = args["uri"])
             IntentType.FINISH -> agent.copy(summary = args["summary"])
             IntentType.GIVE_UP -> agent.copy(reason = args["reason"])
             // 高层语义接口（无需参数/可选 target）

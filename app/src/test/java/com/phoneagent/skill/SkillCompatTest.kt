@@ -92,4 +92,101 @@ class SkillCompatTest {
         assertTrue(r is SkillCompat.Resolution.LegacyIntent)
         assertEquals(IntentType.BACK, (r as SkillCompat.Resolution.LegacyIntent).intent.intent)
     }
+
+    // ---- 归一化：AI 输出的 intent 字段可能是技能 id / 技能名 / 标准意图名 ----
+
+    @Test
+    fun 归一化_标准意图名原样放行() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val intent = com.phoneagent.domain.model.AgentIntent(intent = IntentType.TAP, text = "确认")
+        val n = SkillCompat.normalize(intent, registry)
+        assertTrue(n is SkillCompat.Normalized.Intent)
+        assertEquals(IntentType.TAP, (n as SkillCompat.Normalized.Intent).intent.intent)
+        assertEquals("确认", n.intent.text)
+    }
+
+    @Test
+    fun 归一化_技能id翻回等价意图并保留其它字段() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val intent = com.phoneagent.domain.model.AgentIntent(intent = "skill_open_app", app = "微信")
+        val n = SkillCompat.normalize(intent, registry)
+        assertTrue(n is SkillCompat.Normalized.Intent)
+        val i = (n as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.OPEN_APP, i.intent)
+        assertEquals("微信", i.app)
+    }
+
+    @Test
+    fun 归一化_技能中文名同样可调用() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val intent = com.phoneagent.domain.model.AgentIntent(intent = "打开应用", app = "支付宝")
+        val n = SkillCompat.normalize(intent, registry)
+        assertTrue(n is SkillCompat.Normalized.Intent)
+        assertEquals(IntentType.OPEN_APP, (n as SkillCompat.Normalized.Intent).intent.intent)
+    }
+
+    @Test
+    fun 归一化_新增内置技能remember与fetch可映射() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val remember = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_remember", text = "用户偏好简洁界面"),
+            registry,
+        )
+        assertTrue(remember is SkillCompat.Normalized.Intent)
+        assertEquals(IntentType.REMEMBER, (remember as SkillCompat.Normalized.Intent).intent.intent)
+        assertEquals("用户偏好简洁界面", remember.intent.text)
+
+        val fetch = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_fetch", uri = "https://example.com"),
+            registry,
+        )
+        assertTrue(fetch is SkillCompat.Normalized.Intent)
+        assertEquals(IntentType.FETCH, (fetch as SkillCompat.Normalized.Intent).intent.intent)
+        assertEquals("https://example.com", fetch.intent.uri)
+    }
+
+    @Test
+    fun 归一化_未知名字拒绝并给中文原因() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val n = SkillCompat.normalize(com.phoneagent.domain.model.AgentIntent(intent = "不存在的技能"), registry)
+        assertTrue(n is SkillCompat.Normalized.Error)
+        assertTrue((n as SkillCompat.Normalized.Error).reason.contains("未知意图或技能"))
+    }
+
+    @Test
+    fun 归一化_已停用技能拒绝() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.setEnabled("skill_tap", false)
+        val n = SkillCompat.normalize(com.phoneagent.domain.model.AgentIntent(intent = "skill_tap"), registry)
+        assertTrue(n is SkillCompat.Normalized.Error)
+        assertTrue((n as SkillCompat.Normalized.Error).reason.contains("已停用"))
+    }
+
+    @Test
+    fun 归一化_MCP技能分流并把args带出() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(Skill(id = "m_query", name = "查余额", source = SkillSource.MCP,
+            mcp = McpSkillTarget("bank", "query_balance", "{\"account\":\"{{acct}}\"}"),
+            params = listOf(SkillParam("acct", "账号", "text", true))))
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "m_query", args = mapOf("acct" to "6222")),
+            registry,
+        )
+        assertTrue(n is SkillCompat.Normalized.Mcp)
+        val m = n as SkillCompat.Normalized.Mcp
+        assertEquals("bank", m.target.server)
+        assertEquals("query_balance", m.target.tool)
+        assertEquals("6222", m.args["acct"])
+    }
+
+    @Test
+    fun 归一化_MCP技能缺必填参数拒绝() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(Skill(id = "m_query", name = "查余额", source = SkillSource.MCP,
+            mcp = McpSkillTarget("bank", "query_balance"),
+            params = listOf(SkillParam("acct", "账号", "text", true))))
+        val n = SkillCompat.normalize(com.phoneagent.domain.model.AgentIntent(intent = "m_query"), registry)
+        assertTrue(n is SkillCompat.Normalized.Error)
+        assertTrue((n as SkillCompat.Normalized.Error).reason.contains("缺少必填参数"))
+    }
 }

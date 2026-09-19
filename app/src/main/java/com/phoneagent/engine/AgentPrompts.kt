@@ -37,13 +37,80 @@ object AgentPrompts {
         "爱奇艺=iQIYI(com.qiyi.video)、优酷=Youku(com.youku.phone)、钉钉=DingTalk(com.alibaba.android.rimet)、企业微信=WeCom(com.tencent.wework)"
 
     // ==================== 一、系统 Prompt ====================
-    fun system(lang: PromptLang, custom: String, hasVision: Boolean, shizukuAvailable: Boolean): String =
-        custom.ifBlank {
+    /**
+     * @param skills 技能区块（见 [skillSection]），追加在系统提示末尾；为空则不加，不增加 AI 负担
+     */
+    fun system(
+        lang: PromptLang,
+        custom: String,
+        hasVision: Boolean,
+        shizukuAvailable: Boolean,
+        skills: String = "",
+    ): String {
+        val base = custom.ifBlank {
             when (lang) {
                 PromptLang.CN -> systemCN(hasVision, shizukuAvailable)
                 PromptLang.EN -> systemEN(hasVision, shizukuAvailable)
             }
         }
+        return if (skills.isBlank()) base else "$base\n\n$skills"
+    }
+
+    /**
+     * 技能区块：告诉 AI「技能名/id 也能表达做什么」以及「哪些 MCP 技能可以调用、怎么传参」。
+     *
+     * 内置技能与上表意图一一对应，故不重复罗列（只说明等价关系），避免提示词翻倍、AI 理解负担上升；
+     * 真正需要额外说明的是 MCP 技能（参数名 AI 猜不到）与"已停用技能"（避免 AI 白试一轮）。
+     *
+     * @param mcpLines 已启用 MCP 技能的一行式说明（由 [com.phoneagent.feature.skill.SkillExecutionGateway.mcpSkillLine] 生成）
+     * @param disabledNames 已被用户停用的技能名
+     * @param hasMcpServer 是否已配置并启用 MCP 服务器（用于提示"已配置但未绑定技能"）
+     */
+    fun skillSection(
+        lang: PromptLang,
+        mcpLines: List<String>,
+        disabledNames: List<String>,
+        hasMcpServer: Boolean,
+    ): String {
+        val sb = StringBuilder()
+        when (lang) {
+            PromptLang.CN -> {
+                sb.append("# 技能（Skill）\n")
+                sb.append("- 上面表里的能力既可用意图名调用，也可用技能 id 或技能名调用（如 skill_open_app / 打开应用），两者完全等价。\n")
+                sb.append("- 被停用的技能不可调用，改用其它方式完成，或让用户在「技能与能力」页启用。\n")
+                if (mcpLines.isNotEmpty()) {
+                    sb.append("- 调用 MCP 技能：intent 填技能 id，参数放进 args 对象，例如：\n")
+                    sb.append("  {\"intent\":\"mcp_filesystem_read_file\",\"args\":{\"path\":\"/sdcard/a.txt\"},\"reasoning\":\"读取文件\",\"expected\":\"拿到文件内容\",\"confidence\":0.9}\n")
+                    sb.append("| 技能 id | 名称 | 说明 | 参数 |\n|---|---|---|---|\n")
+                    mcpLines.forEach { sb.append("| $it |\n") }
+                    sb.append("MCP 调用结果会作为上一步结果回给你；调用失败按普通步骤失败处理，用中文说明原因，禁止臆造返回内容。\n")
+                } else if (hasMcpServer) {
+                    sb.append("- 已配置 MCP 服务器但尚未绑定技能：当前没有任何 MCP 技能可调用（需先在「技能与能力 → MCP」页点「绑定为技能」）。\n")
+                }
+                if (disabledNames.isNotEmpty()) {
+                    sb.append("- 已停用（不可调用）：${disabledNames.joinToString("、")}\n")
+                }
+            }
+            PromptLang.EN -> {
+                sb.append("# Skills\n")
+                sb.append("- Every capability in the table above can also be invoked by skill id or skill name (e.g. skill_open_app), fully equivalent.\n")
+                sb.append("- Disabled skills are not callable: use another way, or ask the user to enable them on the Skills page.\n")
+                if (mcpLines.isNotEmpty()) {
+                    sb.append("- To call an MCP skill: put the skill id in `intent` and the arguments in an `args` object, e.g.\n")
+                    sb.append("  {\"intent\":\"mcp_filesystem_read_file\",\"args\":{\"path\":\"/sdcard/a.txt\"},\"reasoning\":\"read file\",\"expected\":\"file content\",\"confidence\":0.9}\n")
+                    sb.append("| skill id | name | description | params |\n|---|---|---|---|\n")
+                    mcpLines.forEach { sb.append("| $it |\n") }
+                    sb.append("MCP results are returned to you as the previous step result; a failed call is a normal step failure — explain the reason in Chinese and never invent the result.\n")
+                } else if (hasMcpServer) {
+                    sb.append("- MCP servers are configured but no tool is bound as a skill yet, so no MCP skill is callable (bind them on the MCP page first).\n")
+                }
+                if (disabledNames.isNotEmpty()) {
+                    sb.append("- Disabled (not callable): ${disabledNames.joinToString(", ")}\n")
+                }
+            }
+        }
+        return sb.toString().trimEnd()
+    }
 
     private fun systemCN(hasVision: Boolean, shizukuAvailable: Boolean): String = """
 你是 Phantom，一个 Android 手机操控 Agent。

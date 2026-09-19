@@ -111,6 +111,9 @@ object ActionType {
     /** 记住长期信息（text=内容, summary=分类），纯本地写库、不操作设备 */
     const val REMEMBER = "remember"
 
+    /** 调用 MCP 技能（不操作设备，直接向 MCP 服务器发 JSON-RPC 请求） */
+    const val MCP_CALL = "mcp_call"
+
     /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */
     const val OPEN = "open"
 

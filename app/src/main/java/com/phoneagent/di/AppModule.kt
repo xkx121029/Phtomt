@@ -33,7 +33,7 @@ private val appModule = module {
     single { MemoryStore(androidContext()) }
     single { DocumentEngine(androidContext()) }
     single { TermuxBridge(androidContext()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get()) }
+    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get(), get()) }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====

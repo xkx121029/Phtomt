@@ -92,4 +92,15 @@ class SkillRegistryTest {
         assertTrue(registry.custom().isEmpty())
         assertTrue(registry.all().isNotEmpty()) // 内置仍在
     }
+
+    /**
+     * 目录与意图全集必须一一对应：AI 看到的"可用技能"和转译层能执行的意图不能有缺口，
+     * 否则会出现"技能页有、AI 调不动"或"意图合法、技能页查不到"的错位。
+     */
+    @Test
+    fun 内置目录与意图全集一一对应() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val missing = com.phoneagent.domain.model.IntentType.ALL.filter { registry.byLegacyIntent(it) == null }
+        assertTrue("以下意图缺少对应内置技能：$missing", missing.isEmpty())
+    }
 }
