@@ -8,6 +8,7 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
+import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -67,6 +68,7 @@ class AgentTimelineMapperTest {
         expandedRuns: Set<Long> = emptySet(),
         foldRunThreshold: Int = 8,
         fold: LiveStatusFold = LiveStatusFold(),
+        memoryEvents: List<MemoryEvent> = emptyList(),
     ) = AgentTimelineMapper.build(
         submittedTask = submittedTask,
         state = state,
@@ -81,6 +83,7 @@ class AgentTimelineMapperTest {
         expandedRuns = expandedRuns,
         foldRunThreshold = foldRunThreshold,
         fold = fold,
+        memoryEvents = memoryEvents,
     )
 
     private fun running(message: String, stepCount: Int = 1) = AgentState(
@@ -90,6 +93,59 @@ class AgentTimelineMapperTest {
         message = message,
         stepCount = stepCount,
     )
+
+    private fun memoryEvent(
+        id: Long,
+        step: Int,
+        runKey: String = "r1",
+        content: String = "用户喜欢简洁界面",
+    ) = MemoryEvent(
+        id = id,
+        content = content,
+        category = "preference",
+        updated = false,
+        runKey = runKey,
+        step = step,
+    )
+
+    @Test
+    fun `记忆卡片紧跟产生它的那一步`() {
+        val items = build(
+            traces = listOf(trace(1, 1), trace(1, 2)),
+            history = listOf(record(1, verified = true), record(2, verified = true)),
+            memoryEvents = listOf(memoryEvent(id = 7, step = 1)),
+        )
+        val stepIdx = items.indexOfFirst { it is AgentTimelineItem.StepCall && it.step == 1 }
+        val memIdx = items.indexOfFirst { it is AgentTimelineItem.MemoryAdded }
+        assertTrue("应产出记忆卡片", memIdx >= 0)
+        assertEquals("记忆卡片应紧跟第 1 步", stepIdx + 1, memIdx)
+    }
+
+    @Test
+    fun `步号对不上的记忆追加且只出现一次`() {
+        val items = build(
+            traces = listOf(trace(1, 1)),
+            history = listOf(record(1, verified = true)),
+            // 任务结束提炼用的是 completedSteps，可能不对应任何一步
+            memoryEvents = listOf(memoryEvent(id = 9, step = 99)),
+        )
+        assertEquals(1, items.count { it is AgentTimelineItem.MemoryAdded })
+    }
+
+    @Test
+    fun `多条记忆卡片的 key 互不冲突`() {
+        val items = build(
+            traces = listOf(trace(1, 1)),
+            history = listOf(record(1, verified = true)),
+            memoryEvents = listOf(
+                memoryEvent(id = 1, step = 1, content = "第一条记忆"),
+                memoryEvent(id = 2, step = 1, content = "第二条记忆"),
+            ),
+        )
+        val memKeys = items.filterIsInstance<AgentTimelineItem.MemoryAdded>().map { it.key }
+        assertEquals("两条记忆都应产出", 2, memKeys.size)
+        assertEquals("key 不应重复（重复会导致 LazyColumn 闪退）", memKeys.size, memKeys.toSet().size)
+    }
 
     @Test
     fun `同一步的追踪与执行记录只产出一条步骤项`() {

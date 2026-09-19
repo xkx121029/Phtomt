@@ -146,6 +146,22 @@ internal sealed interface AgentTimelineItem {
     }
 
     /**
+     * AI 在本次任务中写入/更新了一条记忆（remember 意图或任务结束提炼）。
+     * [updated] 为 true 表示与已有记忆合并更新，而不是新增。
+     * 只承载"本轮刚发生"的写入，供用户当场看到并撤销。
+     */
+    data class MemoryAdded(
+        val id: Long,
+        val content: String,
+        val category: String,
+        val updated: Boolean,
+        val runKey: String,
+        val step: Int,
+    ) : AgentTimelineItem {
+        override val key: String get() = "mem#$runKey#$id#$step"
+    }
+
+    /**
      * 提示类型。
      * 只有「无障碍未开启」会阻断 AI 读页面，属于真问题；
      * 悬浮窗是可选能力，不在此提示（改由设置页开关控制）。

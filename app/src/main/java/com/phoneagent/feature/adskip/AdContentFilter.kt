@@ -8,7 +8,7 @@ import com.phoneagent.engine.perception.effectiveLabel
  * 广告内容过滤结果。
  *
  * @property isAd 当前页面是否识别到广告类内容
- * @property target 需要点击的广告关闭/跳过按钮；null 表示无需点击（可能是广告但无按钮，或按钮已由 AdSkipperCore 处理）
+ * @property target 需要点击的广告关闭/跳过按钮；null 表示无需点击（可能是广告但无按钮）
  * @property cleanSnapshot 剔除广告内容后的快照，供 Agent 决策使用（保证广告信息不回传给 AI）
  * @property reason 人话说明，供日志与悬浮窗展示
  */
@@ -27,8 +27,8 @@ data class AdFilterResult(
  * 2. 直接返回可点击的关闭按钮（由调用方点击），并剔除广告相关元素，
  *    保证广告相关信息【绝不回传给 AI】，避免 AI 被广告弹窗误导而偏离任务。
  *
- * 与内置 [AdSkipperCore] 的区别：AdSkipperCore 在 Agent 空闲时事件驱动独立跳广告；
- * 本过滤器在 Agent 执行中由 AgentEngine 主动调用，与任务决策链路深度耦合。
+ * 只在 Agent 任务执行中由 AgentEngine 主动调用，与任务决策链路深度耦合；
+ * 不做"Agent 空闲时自动帮用户跳广告"这类日常使用场景（该能力已移除）。
  */
 object AdContentFilter {
 

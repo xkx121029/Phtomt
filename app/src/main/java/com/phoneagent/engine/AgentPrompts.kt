@@ -91,6 +91,7 @@ object AgentPrompts {
 | wait | 等待 | wait_ms |
 | scroll_to | 滚动查找目标 | target |
 | write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
+| remember | 记住长期信息（不操作屏幕，仅写入记忆） | text(要记住的一句话),summary(分类 preference/fact/habit/tip) |
 | fetch | 取网页/接口正文（需本机有 Termux） | uri |
 | finish | 任务完成 | summary(你看到的证据) |
 | give_up | 放弃 | reason(原因) |
@@ -243,6 +244,7 @@ You are Phantom, an Android device automation agent.
 | wait | Wait | wait_ms |
 | scroll_to | Scroll to find target | target |
 | write_doc | Generate document (previewed on the Agent page) | text(body),summary(filename) |
+| remember | Remember long-term info (no screen interaction, memory write only) | text(one sentence),summary(category preference/fact/habit/tip) |
 | fetch | Fetch web/API body text (requires Termux on device) | uri |
 | finish | Task complete | summary(evidence you saw) |
 | give_up | Give up | reason |
@@ -387,7 +389,7 @@ Output ONLY JSON.
 # 环境与意图
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
-- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档，结果在 Agent 页预览)、fetch(取网页/接口正文，需本机有 Termux)、finish(完成)、give_up(放弃)。
+- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档，结果在 Agent 页预览)、remember(记住长期信息，如用户偏好/固定操作路径)、fetch(取网页/接口正文，需本机有 Termux)、finish(完成)、give_up(放弃)。
 - 高层语义意图（补充，端侧自动定位对应按钮）：back、home、refresh、search、send、confirm、close、share、collect、copy、delete、download、add、switch、clear_input。
 - 端侧负责定位目标与计算坐标，无需你指定通道或坐标。
 
@@ -437,7 +439,7 @@ You are a deep planner. Break the user task into atomic steps that the device ex
 # Environment & Intents
 - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
 - Common Chinese apps: $COMMON_CN_APPS
-- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document, previewed on the Agent page), fetch(retrieve web/API body text, requires Termux on device), finish, give_up.
+- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document, previewed on the Agent page), remember(remember long-term info such as user preference / fixed navigation path), fetch(retrieve web/API body text, requires Termux on device), finish, give_up.
 - High-level semantic intents (extra; the device auto-finds the button): back, home, refresh, search, send, confirm, close, share, collect, copy, delete, download, add, switch, clear_input.
 - Device handles target location and coordinate computing. Never specify a channel or coordinate.
 
@@ -494,6 +496,17 @@ No other text.
 """.trimIndent()
     }
 
+    /**
+     * 记忆段的注入文本：没有记忆时返回空串，整段不出现，不给 AI 增加负担。
+     */
+    private fun memoryBlock(lang: PromptLang, memory: String): String {
+        if (memory.isBlank()) return ""
+        return when (lang) {
+            PromptLang.CN -> "\n记忆（供参考，与当前页面冲突时以页面为准）：\n$memory"
+            PromptLang.EN -> "\nMemory (reference only; the current page wins on conflict):\n$memory"
+        }
+    }
+
     fun decision(
         lang: PromptLang,
         task: String,
@@ -503,6 +516,8 @@ No other text.
         lastStepResult: String,
         consecutiveFailures: Int,
         contextHint: String,
+        /** 记忆简报（见 MemoryBrief），空串表示无记忆可注入 */
+        memory: String = "",
     ): String = when (lang) {
         PromptLang.CN -> """
 【执行决策】
@@ -511,7 +526,7 @@ No other text.
 步骤：[$stepIndex/$totalSteps] $currentStep
 上一步结果：${lastStepResult.ifBlank { "无" }}
 连续失败：$consecutiveFailures
-页面提示：$contextHint
+页面提示：$contextHint${memoryBlock(lang, memory)}
 
 # 执行状态三态
 上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
@@ -541,6 +556,10 @@ No other text.
 # 文档任务提醒
 若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整正文交给端侧（结果会在 Agent 页预览给用户），不要操作屏幕。
 
+# 记忆提醒
+发现**有长期价值**的信息（用户偏好、常用设置、该应用的固定操作路径、踩过的坑）→ 输出 remember（text=要记住的一句话，summary=分类 preference/fact/habit/tip）。
+只记真正值得长期保留的；禁止每步都记，禁止记临时页面内容。
+
 只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
 """.trimIndent()
         PromptLang.EN -> """
@@ -550,7 +569,7 @@ Task: $task
 Step: [$stepIndex/$totalSteps] $currentStep
 Last step result: ${lastStepResult.ifBlank { "none" }}
 Consecutive failures: $consecutiveFailures
-Page hint: $contextHint
+Page hint: $contextHint${memoryBlock(lang, memory)}
 
 # Execution State Tri-state
 Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
@@ -580,6 +599,68 @@ Merge conditions met (input+search / dismiss dialog+click / short wait+click / i
 # Document Task Reminder
 If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full body (it will be previewed to the user on the Agent page); do NOT interact with the screen.
 
+# Memory Reminder
+When you find information with **long-term value** (user preference, common setting, this app's fixed navigation path, a pitfall you hit) → output remember (text = one sentence to remember, summary = category preference/fact/habit/tip).
+Only record what is truly worth keeping; never remember on every step, never record temporary page content.
+
+Output ONLY JSON. No ```json markers. No text before/after JSON.
+""".trimIndent()
+    }
+
+    // ==================== 三·五、记忆提炼 ====================
+    /**
+     * 任务结束后的记忆提炼：独立于主决策上下文，只回传任务与执行摘要，不喂原始提示词。
+     * 要求极简输出，宁缺勿滥——没有值得长期保留的就返回空数组。
+     */
+    fun memoryDistill(lang: PromptLang, task: String, outcome: String, stepsSummary: String): String = when (lang) {
+        PromptLang.CN -> """
+【记忆提炼】
+
+刚完成的任务：$task
+结果：$outcome
+执行过程摘要：
+${stepsSummary.ifBlank { "无" }}
+
+# 任务
+从中提炼**值得长期保留**的信息，供以后的任务复用。可提炼的类型：
+- preference：用户的偏好（界面风格、常用选项、习惯做法）
+- fact：关于用户或设备的稳定事实（常用应用、账号类型、常用地址）
+- habit：反复出现的操作习惯（常用下单方式、固定路线）
+- tip：这个应用的固定操作路径或踩过的坑（某功能藏在哪、哪个弹窗要先关）
+
+# 铁律
+1. 只提炼**跨任务仍然成立**的信息。临时状态（本次的搜索词、当前页面内容、一次性数量）一律不要。
+2. 宁缺勿滥：没有值得长期保留的就返回空数组，不要为了凑数编造。
+3. 每条一句话，具体、可执行，不要空泛（❌"用户喜欢购物" ✅"用户常在美团点黄焖鸡米饭"）。
+4. 最多 3 条。不要重复任务名本身。
+
+# 输出
+{"memories":[{"content":"一句话","category":"preference|fact|habit|tip","confidence":0~1}]}
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+""".trimIndent()
+        PromptLang.EN -> """
+【Memory Distillation】
+
+Task just finished: $task
+Outcome: $outcome
+Execution summary:
+${stepsSummary.ifBlank { "none" }}
+
+# Job
+Distill information worth keeping **long-term** so future tasks can reuse it. Types:
+- preference: user preferences (UI style, usual options, habits)
+- fact: stable facts about the user or device (frequently used apps, account type, usual address)
+- habit: recurring operational habits (usual ordering method, fixed route)
+- tip: this app's fixed navigation path or pitfalls (where a feature hides, which dialog to dismiss first)
+
+# Iron Rules
+1. Only distill information that **still holds across tasks**. Never include temporary state (this run's search term, current page content, one-off quantities).
+2. Prefer nothing over noise: return an empty array when nothing is worth keeping. Never fabricate to fill the list.
+3. One sentence each, concrete and actionable, not vague (bad: "user likes shopping"; good: "user often orders braised chicken rice on Meituan").
+4. At most 3 items. Do not restate the task name itself.
+
+# Output
+{"memories":[{"content":"one sentence","category":"preference|fact|habit|tip","confidence":0~1}]}
 Output ONLY JSON. No ```json markers. No text before/after JSON.
 """.trimIndent()
     }

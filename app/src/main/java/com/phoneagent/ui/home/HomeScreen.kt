@@ -166,7 +166,8 @@ fun HomeScreen(
             }
             PressableScale(
                 modifier = Modifier.weight(1f).animateListItem(2),
-                onClick = { onNavigate(3) },
+                // 设置 Tab 索引（去掉记忆 Tab 后为 2）
+                onClick = { onNavigate(2) },
             ) {
                 StatusCard(
                     icon = AppIcons.Key,
@@ -223,7 +224,8 @@ fun HomeScreen(
                 title = "设置",
                 subtitle = "模型与权限配置",
                 onPress = { pressHaptic() },
-                onClick = { onNavigate(3) },
+                // 设置 Tab 索引（去掉记忆 Tab 后为 2）
+                onClick = { onNavigate(2) },
             )
             QuickEntry(
                 modifier = Modifier.weight(1f).animateListItem(6),

@@ -32,8 +32,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
@@ -93,6 +96,8 @@ sealed class ExtrasPage {
     object Debug : ExtrasPage()
     /** 技能与能力管理：Skill / MCP / 无线 ADB / 提示词（HPA 迭代 A7） */
     object Skill : ExtrasPage()
+    /** 记忆：原底部 Tab 已并入 Agent 页，改由顶栏入口打开 */
+    object Memory : ExtrasPage()
 }
 
 /** ExtrasPage 状态保存：跨进程重建后恢复当前二级页 */
@@ -103,6 +108,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             is ExtrasPage.Test -> listOf("test")
             is ExtrasPage.Debug -> listOf("debug")
             is ExtrasPage.Skill -> listOf("skill")
+            is ExtrasPage.Memory -> listOf("memory")
         }
     },
     restore = { list ->
@@ -111,6 +117,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             "test" -> ExtrasPage.Test
             "debug" -> ExtrasPage.Debug
             "skill" -> ExtrasPage.Skill
+            "memory" -> ExtrasPage.Memory
             else -> null
         }
     },
@@ -118,15 +125,16 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
 
 private data class TabItem(val label: String, val icon: ImageVector)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ActivityContent(vm: MainViewModel) {
     var selected by rememberSaveable { mutableStateOf(0) }
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
+    // 记忆已并入 Agent 页（顶栏入口 + 任务流内嵌卡片），不再占底部 Tab
     val tabs = listOf(
         TabItem("Agent", AppIcons.Bolt),
         TabItem("主页", AppIcons.Home),
-        TabItem("记忆", AppIcons.Memory),
         TabItem("设置", AppIcons.Settings),
     )
     val activity = androidx.compose.ui.platform.LocalContext.current as ComponentActivity
@@ -207,8 +215,17 @@ private fun ActivityContent(vm: MainViewModel) {
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
+            // 键盘弹出时收起底部导航栏：Scaffold 会把导航栏高度算进底部内边距，
+            // 输入区再按绝对值叠加 IME 避让，就会与键盘之间空出一整条导航栏
+            // （表现为"点输入框后上移太高"）。让导航栏给键盘让位即可消除这段空隙。
+            //
+            // 判定必须用 IME 实际占位高度，而不是 WindowInsets.isImeVisible：
+            // 前者与输入区的 imePadding() 同源，只要输入区被抬起，导航栏在同一帧必定让位；
+            // 可见位在部分机型/ROM 上不可靠（键盘已弹出却仍为 false），
+            // 那样导航栏不会收起，底部内边距仍是"导航栏 + IME"，空隙照旧。
+            val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             // 全屏二级页时不显示底部导航
-            if (extrasPage == null) {
+            if (extrasPage == null && !keyboardUp) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
@@ -282,7 +299,10 @@ private fun ActivityContent(vm: MainViewModel) {
                 ) { screenIndex ->
                     val contentMod = Modifier.fillMaxSize()
                     when (screenIndex) {
-                        0 -> AgentScreen(vm, contentMod)
+                        0 -> AgentScreen(
+                            vm, contentMod,
+                            onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                        )
                         1 -> HomeScreen(
                             vm, contentMod,
                             onRequestScreenshot = {
@@ -292,8 +312,7 @@ private fun ActivityContent(vm: MainViewModel) {
                             onNavigate = { selected = it },
                             onOpenExtras = { extrasPage = it },
                         )
-                        2 -> MemoryGraphScreen(vm, contentMod)
-                        3 -> SettingsScreen(vm, contentMod)
+                        2 -> SettingsScreen(vm, contentMod)
                     }
                 }
 
@@ -331,6 +350,7 @@ private fun ExtrasPageContent(
                     is ExtrasPage.Test -> "测试"
                     is ExtrasPage.Debug -> "调试"
                     is ExtrasPage.Skill -> "技能与能力"
+                    is ExtrasPage.Memory -> "记忆"
                 },
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(horizontal = 12.dp),
@@ -346,6 +366,10 @@ private fun ExtrasPageContent(
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )
             ExtrasPage.Skill -> com.phoneagent.ui.skill.SkillManagerScreen(
+                vm,
+                Modifier.weight(1f).padding(horizontal = 0.dp),
+            )
+            ExtrasPage.Memory -> MemoryGraphScreen(
                 vm,
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )

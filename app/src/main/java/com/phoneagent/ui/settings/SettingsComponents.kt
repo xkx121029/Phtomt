@@ -47,9 +47,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
 
 // ========== 共享数据模型 ==========
@@ -93,6 +95,23 @@ internal fun buildApiTestTargets(st: SettingsState): List<ApiTestTarget> {
         }
     }
     return targets
+}
+
+/**
+ * 套用服务商预设：填好 API 地址与主模型，并在该服务商确实提供对应模型时同步视觉/思考模型。
+ * 未提供视觉模型的服务商（如 DeepSeek）不动原有视觉配置，保留用户既有的云端视觉或本地 OCR 选择。
+ */
+internal fun applyProviderPreset(st: SettingsState, preset: ProviderPreset) {
+    st.baseUrl = preset.baseUrl
+    st.model = preset.model
+    if (preset.visionModel.isNotBlank()) {
+        st.visionBaseUrl = preset.baseUrl
+        st.visionModel = preset.visionModel
+    }
+    if (preset.reasonModel.isNotBlank()) {
+        st.reasonBaseUrl = preset.baseUrl
+        st.reasonModel = preset.reasonModel
+    }
 }
 
 // ========== 共享 UI 组件 ==========
@@ -140,7 +159,7 @@ internal fun GroupCard(content: @Composable () -> Unit) {
 /** 分组标题 */
 @Composable
 internal fun GroupHeader(title: String, subtitle: String? = null) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+    Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = 14.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(2.dp))
@@ -175,11 +194,15 @@ internal fun SettingsEntry(
     summary: String?,
     onClick: () -> Unit,
 ) {
+    val buzz = rememberHapticClick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .clickable {
+                buzz()
+                onClick()
+            }
+            .padding(horizontal = AppSpacing.Lg, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -233,20 +256,22 @@ internal fun LabeledField(label: String, content: @Composable () -> Unit) {
     }
 }
 
-/** 开关行 */
+/** 开关行；副标题为空时不占位 */
 @Composable
-internal fun ToggleRow(title: String, subtitle: String, value: Boolean, onChange: (Boolean) -> Unit) {
+internal fun ToggleRow(title: String, subtitle: String? = null, value: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Switch(checked = value, onCheckedChange = onChange)
     }

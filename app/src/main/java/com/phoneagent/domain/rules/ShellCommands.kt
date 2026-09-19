@@ -8,6 +8,32 @@ package com.phoneagent.domain.rules
  */
 object ShellCommands {
 
+    /**
+     * 从已解析的 ADB 命令里反查点击坐标，供点击光标定位使用。
+     *
+     * 覆盖两种"点"的形态：
+     * - `input tap x y`（点击 / 双击，双击取第一个点）
+     * - `input swipe x y x y 1500`（长按：起终点相同）
+     *
+     * 方向滑动（起终点不同）与其它命令返回 null——那些不是"点"，不该显示点击光标。
+     */
+    fun parseTapPoint(cmd: String): Pair<Int, Int>? {
+        Regex("""input\s+tap\s+(\d+)\s+(\d+)""").find(cmd)?.let { m ->
+            val x = m.groupValues[1].toIntOrNull() ?: return null
+            val y = m.groupValues[2].toIntOrNull() ?: return null
+            return x to y
+        }
+        Regex("""input\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+""").find(cmd)?.let { m ->
+            val x1 = m.groupValues[1].toIntOrNull() ?: return null
+            val y1 = m.groupValues[2].toIntOrNull() ?: return null
+            val x2 = m.groupValues[3].toIntOrNull() ?: return null
+            val y2 = m.groupValues[4].toIntOrNull() ?: return null
+            // 仅同点 swipe（长按）算"点"；真正滑动不显示点击光标
+            return if (x1 == x2 && y1 == y2) x1 to y1 else null
+        }
+        return null
+    }
+
     /** 尝试解析命令，返回实际 ADB 命令字符串；无法解析时返回 null。
      *  坐标参数支持三种格式：
      *  - 比例：0.04 0.5 （0~1，乘以屏幕宽高）

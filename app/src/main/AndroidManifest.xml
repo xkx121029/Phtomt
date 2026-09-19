@@ -73,6 +73,11 @@
             android:name=".feature.edge.EdgeLightingService"
             android:exported="false" />
 
+        <!-- 点击光标覆盖层：任务执行时显示圆润指针，指示 AI 正在点哪里 -->
+        <service
+            android:name=".overlay.CursorOverlayService"
+            android:exported="false" />
+
         <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器 -->
         <receiver
             android:name=".device.shell.AdbPairingReceiver"

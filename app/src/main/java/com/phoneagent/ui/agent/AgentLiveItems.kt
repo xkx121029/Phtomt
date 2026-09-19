@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -207,8 +208,9 @@ internal fun NeedsUserItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.errorContainer)
+            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -257,8 +259,9 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.successContainer)
+            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -307,8 +310,9 @@ internal fun FailedItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.errorContainer)
+            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

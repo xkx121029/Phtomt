@@ -99,6 +99,16 @@ class FloatingWindowService : Service() {
     private var hintInput: EditText? = null
     private var hintBtnRow: LinearLayout? = null
 
+    /**
+     * 底部选项卡：AI 需要答疑（澄清歧义）或协助（动作未生效/敏感页保护）时，
+     * 从屏幕底边独立拉起一个面板承载选项与输入，而不是挤在顶部悬浮窗里。
+     */
+    private var sheetRoot: LinearLayout? = null
+    private var sheetParams: WindowManager.LayoutParams? = null
+
+    /** 截图隐藏前底部选项卡是否可见，用于截图后原样恢复 */
+    private var sheetVisibleBeforeHide = false
+
     private val handler = Handler(Looper.getMainLooper())
     private var notificationManager: NotificationManager? = null
     private val channelId = "floating_window"
@@ -123,6 +133,7 @@ class FloatingWindowService : Service() {
                 marquee?.let { m ->
                     m.layoutParams = m.layoutParams.apply { height = dp(marqueeHeightDp) + statusBarHeight() }
                     m.setColors(marqueeColors)
+                    m.setTopInset(statusBarHeight())
                     m.requestLayout()
                 }
             }
@@ -190,10 +201,36 @@ class FloatingWindowService : Service() {
         return START_STICKY
     }
 
-    /** 获取系统状态栏高度（px）；无状态栏时返回 0 */
+    /**
+     * 状态栏高度（像素）。
+     *
+     * 该值直接决定悬浮窗的初始 y（`y = -statusBarHeight()`），也就是跑马灯色带能不能贴到屏幕物理顶边。
+     * 因此不能用「查系统资源名」这一种方式：`getIdentifier("status_bar_height", ...)` 在相当一部分
+     * ROM / 高版本系统上取不到，返回 0 —— 于是 y 变成 0，色带就落在状态栏下方。
+     *
+     * 取值顺序：WindowInsets（API 30+，最可靠）→ 系统资源名 → 经验兜底值。
+     */
     private fun statusBarHeight(): Int {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // 同时算上刘海/挖孔：有 cutout 的机型上，屏幕物理顶到可视内容之间的实际距离
+            // 比状态栏更高，只取 statusBars 会偏小，色带就差那么一截贴不到顶
+            val inset = runCatching {
+                windowManager?.currentWindowMetrics?.windowInsets
+                    ?.getInsetsIgnoringVisibility(
+                        android.view.WindowInsets.Type.statusBars() or
+                            android.view.WindowInsets.Type.displayCutout(),
+                    )
+                    ?.top
+            }.getOrNull()
+            if (inset != null && inset > 0) return inset
+        }
         val id = resources.getIdentifier("status_bar_height", "dimen", "android")
-        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+        if (id > 0) {
+            val h = resources.getDimensionPixelSize(id)
+            if (h > 0) return h
+        }
+        // 兜底：宁可多覆盖一点，也不能返回 0 —— 返回 0 会让色带整条掉到状态栏下方
+        return dp(24)
     }
 
     private fun showWindow() {
@@ -217,12 +254,16 @@ class FloatingWindowService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 初始位置：水平居中、贴屏幕上边缘，跑马灯覆盖状态栏区域。
-            // FLAG_LAYOUT_NO_LIMITS 允许 overlay 窗口延伸到屏幕物理边界/系统栏区域，
-            // 使 y=0 对应物理屏顶，跑马灯即可覆盖状态栏
             x = (screenW - dp(300)) / 2
             // y 取负状态栏高度：窗口顶在物理屏顶之上，跑马灯色带从屏幕物理顶开始，
             // 覆盖状态栏区域（状态栏透明/半透明时色带透出，图标浮于其上）
             y = -statusBarHeight()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                // 关键：API 30+ 默认 fitInsetsTypes = systemBars()，会把窗口内容整体推到状态栏下方，
+                // 这是与 FLAG_LAYOUT_NO_LIMITS 无关的另一套机制（inset 适配），
+                // 所以只靠负 y 未必贴得到顶。清空后窗口坐标系才真正从物理屏顶开始。
+                fitInsetsTypes = 0
+            }
         }
         root = layout
         // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
@@ -235,6 +276,80 @@ class FloatingWindowService : Service() {
         try {
             windowManager?.addView(layout, params)
         } catch (_: Exception) {}
+        showSheetWindow()
+    }
+
+    /**
+     * 创建底部选项卡窗口（常驻、初始不可见）。
+     *
+     * 与顶部窗口相反，这里**不清空 fitInsetsTypes**：默认避开系统栏，
+     * gravity=BOTTOM 时面板正好落在导航栏上方，不会被导航栏压住。
+     * 窗口可触摸、可聚焦（需要点选项与输入文字），但 GONE 时不会干扰任何操作。
+     */
+    private fun showSheetWindow() {
+        if (sheetRoot != null) return
+        val wm = windowManager ?: return
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+            // 左右留白，让面板呈卡片状而不是铺满整屏
+            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD))
+            visibility = View.GONE
+        }
+        // 交互面板在此挂载（它已在 buildPanel 中构建完成，但未加入顶部窗口）
+        interactPanel?.let { container.addView(it) }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            // 输入框获得焦点时让窗口随软键盘上移，避免面板被键盘盖住
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        }
+        try {
+            wm.addView(container, lp)
+            sheetRoot = container
+            sheetParams = lp
+        } catch (_: Exception) {
+            // 无悬浮窗权限时静默失败，任务照常执行
+        }
+    }
+
+    /** 从底边滑入选项卡 */
+    private fun showSheet() {
+        val container = sheetRoot ?: return
+        if (container.visibility == View.VISIBLE) return
+        container.visibility = View.VISIBLE
+        container.post {
+            val h = container.height.toFloat()
+            container.translationY = h
+            container.animate()
+                .translationY(0f)
+                .setDuration(260)
+                .setInterpolator(android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                .start()
+        }
+    }
+
+    /** 滑出并隐藏选项卡 */
+    private fun hideSheet() {
+        val container = sheetRoot ?: return
+        if (container.visibility != View.VISIBLE) return
+        container.animate()
+            .translationY(container.height.toFloat())
+            .setDuration(200)
+            .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+            .withEndAction {
+                container.visibility = View.GONE
+                container.translationY = 0f
+            }
+            .start()
     }
 
     private fun buildPanel(): LinearLayout {
@@ -260,6 +375,8 @@ class FloatingWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(marqueeHeightDp) + statusBarHeight())
             // 渐变颜色可在设置中调节（修改后实时生效）
             setColors(marqueeColors)
+            // 文字要避开状态栏：色带从屏幕顶铺下来，但文字画在状态栏下方
+            setTopInset(statusBarHeight())
         }
         panel.addView(marquee)
 
@@ -511,7 +628,8 @@ class FloatingWindowService : Service() {
             setPadding(0, dp(10), 0, 0)
         }
         interactPanel?.addView(hintBtnRow)
-        panel.addView(interactPanel)
+        // 交互面板不再挂进顶部窗口：它由底部选项卡承载（见 showSheetWindow），
+        // 顶部只保留任务状态与跑马灯，两边职责不重叠
 
         // 完成面板：打勾动效 + 完成文字（默认隐藏，任务完成后显示）
         donePanel = LinearLayout(this).apply {
@@ -826,10 +944,33 @@ class FloatingWindowService : Service() {
     fun showInteraction(type: String?, title: String?, content: String?, options: List<String>? = null) {
         handler.post {
             if (type == null) {
-                interactPanel?.visibility = View.GONE
+                hideSheet()
                 hideKeyboard()
                 return@post
             }
+            // 答疑/协助（澄清、guide）走底部选项卡滑入；顶部不再渲染这些交互按钮
+            val useSheet = type == "clarify" || type == "guide"
+            if (useSheet) {
+                // 类型变更时清空上次残留的选项/按钮/输入，再按当前类型重建
+                interactButtons?.removeAllViews()
+                hintInput?.visibility = View.GONE
+                hintBtnRow?.removeAllViews()
+                interactTitle?.text = title ?: "需要确认"
+                interactContent?.text = content ?: ""
+                when (type) {
+                    "clarify" -> {
+                        options?.forEach { opt ->
+                            addBtn(interactButtons, opt, false) { onInteraction?.invoke("clarify", opt) }
+                        }
+                        addBtn(interactButtons, "✏️ 我想自己说", false) { showHintInput() }
+                    }
+                    "guide" -> showHintInput()
+                }
+                showSheet()
+                return@post
+            }
+            // 其余类型（approve / savetemplate / done）保留顶部渲染
+            interactPanel?.visibility = View.GONE
             showPanelWithAnim(interactPanel)
             interactTitle?.text = title ?: "需要确认"
             interactContent?.text = content ?: ""
@@ -893,8 +1034,10 @@ class FloatingWindowService : Service() {
     /** 切换悬浮窗输入模式：输入时窗口移除 NOT_FOCUSABLE 并加 FLAG_ALT_FOCUSABLE_IM 以弹出软键盘，
      *  输入结束恢复 NOT_FOCUSABLE，保证窗口始终可拖动且不抢占系统焦点 */
     private fun setInputMode(enabled: Boolean) {
-        val p = params ?: return
-        val rootView = root ?: return
+        // 输入框现在在底部选项卡里，焦点模式切换的是选项卡窗口；
+        // 顶部窗口始终保持 NOT_FOCUSABLE（不抢输入焦点，也不影响拖动）
+        val p = sheetParams ?: return
+        val rootView = sheetRoot ?: return
         p.flags = if (enabled) {
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
@@ -959,7 +1102,8 @@ class FloatingWindowService : Service() {
             marquee?.visibility = View.GONE
             stepText?.visibility = View.GONE
             progressBar?.visibility = View.GONE
-            interactPanel?.visibility = View.GONE
+            // 完成时收起底部选项卡（若还开着）
+            hideSheet()
             // 显示打勾面板（淡入 + 轻微缩放）
             doneText?.text = message
             showPanelWithAnim(donePanel)
@@ -971,6 +1115,10 @@ class FloatingWindowService : Service() {
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
+        // 底部选项卡是独立窗口，需一并移除
+        sheetRoot?.let { runCatching { windowManager?.removeView(it) } }
+        sheetRoot = null
+        sheetParams = null
     }
 
     override fun onDestroy() {
@@ -1049,7 +1197,18 @@ class FloatingWindowService : Service() {
          */
         fun setVisible(visible: Boolean): Boolean {
             val svc = instance ?: return false
-            svc.handler.post { svc.root?.visibility = if (visible) View.VISIBLE else View.GONE }
+            svc.handler.post {
+                svc.root?.visibility = if (visible) View.VISIBLE else View.GONE
+                // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
+                // 截图前先记下它本来是否可见，截完按原样恢复
+                if (!visible) {
+                    svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
+                    svc.sheetRoot?.visibility = View.GONE
+                } else if (svc.sheetVisibleBeforeHide) {
+                    svc.sheetRoot?.visibility = View.VISIBLE
+                    svc.sheetVisibleBeforeHide = false
+                }
+            }
             return true
         }
     }

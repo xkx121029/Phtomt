@@ -55,6 +55,8 @@ internal fun AgentHeaderBar(
     runningTask: String,
     queue: List<String>,
     modifier: Modifier = Modifier,
+    /** 打开全屏记忆页（原底部「记忆」Tab 已并入 Agent 页） */
+    onOpenMemory: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -73,6 +75,15 @@ internal fun AgentHeaderBar(
                         StatusPill(text = "运行中", color = runningIndicatorColor())
                         Spacer(Modifier.width(AppSpacing.Sm))
                     }
+                    PressableScale(onClick = onOpenMemory) {
+                        Icon(
+                            imageVector = AppIcons.Memory,
+                            contentDescription = "记忆",
+                            tint = colors.onSurfaceRaised,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(AppSpacing.Md))
                     PressableScale(onClick = { menuOpen = !menuOpen }) {
                         Icon(
                             imageVector = AppIcons.More,
@@ -87,8 +98,10 @@ internal fun AgentHeaderBar(
 
         AnimatedVisibility(
             visible = menuOpen,
-            enter = fadeIn(tween(DurationFast, easing = EaseOut)) + expandVertically(tween(DurationFast, easing = EaseOut)),
-            exit = fadeOut(tween(DurationFast, easing = EaseOut)) + shrinkVertically(tween(DurationFast, easing = EaseOut)),
+            enter = fadeIn(tween(DurationFast, easing = EaseOut)) +
+                expandVertically(tween(DurationFast, easing = EaseOut), expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
+                shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
         ) {
             Column(
                 modifier = Modifier

@@ -108,6 +108,9 @@ object ActionType {
     /** 生成文档（text=内容，summary=文件名，可选），结果在 Agent 页预览 */
     const val WRITE_DOC = "write_doc"
 
+    /** 记住长期信息（text=内容, summary=分类），纯本地写库、不操作设备 */
+    const val REMEMBER = "remember"
+
     /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */
     const val OPEN = "open"
 

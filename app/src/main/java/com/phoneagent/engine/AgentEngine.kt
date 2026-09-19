@@ -11,6 +11,8 @@ import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.data.prefs.AppSettings
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import com.phoneagent.domain.rules.EngineRules
@@ -22,6 +24,7 @@ import com.phoneagent.engine.execution.IntentResolver
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifiedClickExecutor
 import com.phoneagent.overlay.FloatingWindowService
+import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.AnomalyMemoryEngine
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.data.store.ProfileLearner
@@ -156,6 +159,12 @@ class AgentEngine(
 
         /** 用户点「已手动处理」时发出的语义信号 */
         const val SELF_DISMISS_HINT = "[[自处理]]已手动处理完成，请继续观察当前页面并重新决策下一步"
+
+        /** 任务内记忆事件流的保留上限（只用于界面提示，超出丢弃最早的） */
+        private const val MAX_MEMORY_EVENTS = 20
+
+        /** 记忆提炼的超时：独立于主流程，超时直接放弃，不阻塞任务收尾 */
+        private const val DISTILL_TIMEOUT_MS = 12_000L
     }
 
     private val cloudAgent = CloudAgent(aiClient)
@@ -179,6 +188,29 @@ class AgentEngine(
 
     private val _state = MutableStateFlow(AgentState())
     val state: StateFlow<AgentState> get() = _state.asStateFlow()
+
+    /**
+     * 本次任务内 AI 写入记忆的事件流（内存态，供 Agent 页实时插卡）。
+     * 不读 DataStore：卡片要在写入瞬间出现，且撤销后立即消失。
+     */
+    private val _memoryEvents = MutableStateFlow<List<MemoryEvent>>(emptyList())
+    val memoryEvents: StateFlow<List<MemoryEvent>> get() = _memoryEvents.asStateFlow()
+
+    /** 同一任务只提炼一次记忆，避免重试/收尾分支重复写入 */
+    @Volatile
+    private var lastDistilledTaskId = -1L
+
+    /** 本任务已加载的记忆简报缓存：每任务读一次库，逐步骤复用，不每步 IO；null 表示尚未加载 */
+    @Volatile
+    private var memoryBriefCache: String? = null
+
+    /** 异常经验查询的页面指纹缓存：同一页面不重复查库 */
+    @Volatile
+    private var anomalyHintFingerprint: String = ""
+
+    /** 当前页面命中的异常经验条目（未命中为 null），供该步结束时回写使用效果 */
+    @Volatile
+    private var currentAnomalyEntry: com.phoneagent.data.store.AnomalyMemoryEntry? = null
 
     private val _logs = MutableStateFlow<List<AgentLog>>(emptyList())
     val logs: StateFlow<List<AgentLog>> get() = _logs.asStateFlow()
@@ -300,6 +332,11 @@ class AgentEngine(
         val enabled = settings.settings.first().floatingWindowEnabled
         if (enabled && android.provider.Settings.canDrawOverlays(appContext)) {
             runCatching { FloatingWindowService.start(appContext) }
+        }
+        // 点击光标覆盖层：与悬浮窗同为可选视觉反馈，同样受悬浮窗权限约束
+        val settingsVal = settings.settings.first()
+        if (settingsVal.cursorOverlayEnabled && android.provider.Settings.canDrawOverlays(appContext)) {
+            runCatching { com.phoneagent.overlay.CursorOverlayService.show(appContext, settingsVal.cursorClickSync) }
         }
     }
 
@@ -529,6 +566,7 @@ class AgentEngine(
                         AgentAccessibilityService.agentRunning = false
                         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.ERROR, message = "执行异常：${e.message}")
                         FloatingWindowService.stop(appContext)
+                        runCatching { com.phoneagent.overlay.CursorOverlayService.hide(appContext) }
                     }
             }
         }
@@ -700,6 +738,7 @@ class AgentEngine(
         AgentAccessibilityService.agentRunning = false
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
         FloatingWindowService.stop(appContext)
+        runCatching { com.phoneagent.overlay.CursorOverlayService.hide(appContext) }
         log(AgentLog.Level.WARN, "任务已停止")
     }
 
@@ -754,6 +793,10 @@ class AgentEngine(
         noProgressNotified = false
         localDecisionStreak = 0
         localLoopNotified = false
+        // 清空上一任务的记忆事件流（本任务产生的记忆卡片只发生在本次执行期间）
+        _memoryEvents.value = emptyList()
+        lastDistilledTaskId = -1L
+        memoryBriefCache = null
         // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
         val strategy = runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
             .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
@@ -942,7 +985,15 @@ class AgentEngine(
                                 FloatingWindowService.showDone(action!!.summary ?: "任务完成")
                             }
                         }
+                        // 记忆提炼放最后：完成提示先给到用户，提炼再慢也不影响「已完成」的观感
+                        // （独立调用一次模型，不写 conversation，因此不污染主决策上下文）
+                        runCatching { distillMemories(task, action!!.summary ?: "任务完成") }
                         return
+                    }
+                    // 记忆写入：纯本地写库，不操作屏幕，不走通道/不截图/不重试
+                    if (action!!.type == ActionType.REMEMBER) {
+                        handleRemember(task, step, action!!)
+                        continue
                     }
                     verify = executeWithVerify(action!!, snapshot)
                     // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
@@ -996,6 +1047,11 @@ class AgentEngine(
                 }
             }
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
+            // 异常经验命中后回写使用效果（成功/失败计数），供后续按命中率判断是否还值得复用
+            currentAnomalyEntry?.let { entry ->
+                runCatching { anomalyEngine.recordUse(entry, verified) }
+                currentAnomalyEntry = null
+            }
             // 步骤验证生效 → 记入长线工作记忆，供后续压缩历史后仍能感知进度
             if (verified) recordProgress(step, action)
             // 检查点持久化（v2.2 5.3）：每成功一步保存进度，中断后可查询/续传
@@ -1102,6 +1158,8 @@ class AgentEngine(
                 }
             }
         }
+        // 未完成的任务同样提炼一次记忆：失败路径里的经验（哪个入口走不通）往往更值得留
+        runCatching { distillMemories(task, "未完成（达到最大步数限制）") }
         stop()
     }
 
@@ -1296,6 +1354,8 @@ class AgentEngine(
             lastStepResult = lastStepResultText(),
             consecutiveFailures = consecutiveFailures,
             contextHint = DataSanitizer.sanitize(annotated.contextHint),
+            // 记忆注入：让 AI 每一步都能看到已知偏好与既往经验，而不是只在规划阶段看得到
+            memory = memoryBrief(snapshot),
         ) + planNote + "\n\n## 当前页面\n$pageText" +
             DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task, termuxBridge?.isAvailable() == true) +
@@ -1751,6 +1811,7 @@ class AgentEngine(
             }
             val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
                 ?: return com.phoneagent.engine.execution.VerifyResult(false, "命令无法解析: $cmd", "", "")
+            triggerCursorForShell(resolved)
             return finishShellResult(bridge.executeShell(resolved))
         }
         // 无真实 shell 通道：硬性禁止 shell，翻译为无障碍动作
@@ -1759,7 +1820,17 @@ class AgentEngine(
         }
         val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
             ?: return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
+        triggerCursorForShell(resolved)
         return runRealShell(resolved)
+    }
+
+    /**
+     * shell 点击也要让用户看到光标：从解析后的完整命令里提取点击坐标，
+     * 触发光标飞向该点。非点击命令（swipe 方向滑、文本处理等）静默跳过。
+     */
+    private suspend fun triggerCursorForShell(resolved: String) {
+        val point = ShellCommands.parseTapPoint(resolved) ?: return
+        com.phoneagent.overlay.CursorOverlayService.point(point.first, point.second)
     }
 
     /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB→Shizuku→Termux | ADB=仅无线ADB | SHIZUKU=仅Shizuku | TERMUX=仅Termux） */
@@ -2072,6 +2143,151 @@ class AgentEngine(
         if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
     }
 
+    // ==================== 记忆读写 ====================
+
+    /**
+     * 处理 AI 的记忆写入意图：落库 + 推入事件流（Agent 页当场插卡）。
+     * 纯本地写库，不操作屏幕，因此不截图、不走执行通道、不重试。
+     */
+    private suspend fun handleRemember(task: String, step: Int, action: AgentAction) {
+        val content = action.text.orEmpty().trim()
+        if (content.isEmpty()) return
+        val upsert = runCatching {
+            memory.upsertAiMemory(
+                content = content,
+                category = action.summary.orEmpty(),
+                sourceTask = task,
+                source = "agent",
+                confidence = action.confidence ?: 0.7,
+            )
+        }.getOrNull()
+        log(AgentLog.Level.INFO, "写入记忆：$content")
+        recordStep(step, action, "verified_success", "", "", "已写入记忆")
+        if (upsert == null) return
+        emitMemoryEvent(upsert, "r$currentTaskId", step)
+        // 记忆变了 → 作废简报缓存，让后续步骤立刻用上刚记下的信息
+        memoryBriefCache = null
+        pushFloating("记住了：${content.take(20)}", "THINKING")
+    }
+
+    /** 记忆写入事件入流（内存态，供 Agent 页实时插卡；环形保留最近 N 条） */
+    private fun emitMemoryEvent(upsert: AiMemoryUpsert, runKey: String, step: Int) {
+        val event = MemoryEvent(
+            id = upsert.entry.id,
+            content = upsert.entry.content,
+            category = upsert.entry.category,
+            updated = upsert is AiMemoryUpsert.Updated,
+            runKey = runKey,
+            step = step,
+            createdAt = System.currentTimeMillis(),
+        )
+        _memoryEvents.value = (_memoryEvents.value + event).takeLast(MAX_MEMORY_EVENTS)
+    }
+
+    /** 撤销一条刚写入的记忆：删库 + 从事件流移除（卡片随之消失） */
+    suspend fun dismissMemoryEvent(id: Long) {
+        runCatching { memory.deleteAiMemory(id) }
+        _memoryEvents.value = _memoryEvents.value.filterNot { it.id == id }
+        memoryBriefCache = null
+    }
+
+    /**
+     * 本步要注入的记忆简报。
+     * 画像 + AI 记忆每任务只读一次库并缓存（记忆被写入后缓存作废）；
+     * 异常经验随页面变化，按页面指纹单独缓存，换页才重新查。
+     */
+    private suspend fun memoryBrief(snapshot: ScreenSnapshot): String {
+        val base = memoryBriefCache ?: runCatching {
+            MemoryBrief.build(profile = memory.loadProfile(), memories = memory.loadAiMemories())
+        }.getOrDefault("").also { memoryBriefCache = it }
+        val hint = anomalyHint(snapshot)
+        if (hint.isBlank()) return base
+        val line = "异常经验：${hint.take(60)}"
+        return if (base.isBlank()) line else "$base\n$line"
+    }
+
+    /**
+     * 当前页面命中的异常经验（一句话）。同一页面指纹只查一次库；
+     * 命中的条目暂存到 [currentAnomalyEntry]，供该步结束时回写使用效果。
+     */
+    private suspend fun anomalyHint(snapshot: ScreenSnapshot): String {
+        val fp = runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }
+            .getOrDefault("")
+        if (fp.isBlank()) return ""
+        if (fp == anomalyHintFingerprint) return currentAnomalyEntry?.userSolution.orEmpty()
+        anomalyHintFingerprint = fp
+        val labels = snapshot.elements.mapNotNull { it.effectiveLabel() }.take(30)
+        val hit = runCatching { anomalyEngine.findSolution(fp, labels) }.getOrNull()
+        currentAnomalyEntry = hit
+        return hit?.userSolution.orEmpty()
+    }
+
+    /**
+     * 任务结束后的记忆提炼：独立调用一次模型，**不写 conversation、不进 chatHistory**，
+     * 因此不污染主决策上下文。同一任务只跑一次；结果经内容去重合并写入，重复不会堆成多条。
+     */
+    private suspend fun distillMemories(task: String, outcome: String) {
+        if (currentTaskId == lastDistilledTaskId) return
+        lastDistilledTaskId = currentTaskId
+        val settingsVal = runCatching { settings.settings.first() }.getOrNull() ?: return
+        if (settingsVal.apiKey.isBlank()) return
+        val stepsSummary = runCatching {
+            _executionHistory.value.takeLast(12).joinToString("\n") { rec ->
+                val verb = com.phoneagent.core.text.HumanTranslator.actionVerb(rec.action?.type.orEmpty())
+                val target = rec.action?.target?.value
+                    ?: rec.action?.text?.take(30)
+                    ?: rec.action?.summary?.take(30)
+                    ?: ""
+                "- $verb$target"
+            }.take(1500)
+        }.getOrDefault("")
+        val prompt = AgentPrompts.memoryDistill(currentLang, task, outcome, stepsSummary)
+        val reply = withTimeoutOrNull(DISTILL_TIMEOUT_MS) {
+            aiClient.chat(
+                baseUrl = settingsVal.apiBaseUrl,
+                apiKey = settingsVal.apiKey,
+                model = settingsVal.model,
+                messages = listOf(
+                    ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = prompt))),
+                ),
+                temperature = 0.2,
+            ).getOrNull()
+        } ?: return
+        val items = parseDistilledMemories(reply)
+        if (items.isEmpty()) return
+        items.forEach { item ->
+            val upsert = runCatching {
+                memory.upsertAiMemory(item.content, item.category, task, "distill", item.confidence)
+            }.getOrNull() ?: return@forEach
+            emitMemoryEvent(upsert, "r$currentTaskId", completedSteps)
+        }
+        memoryBriefCache = null
+        log(AgentLog.Level.INFO, "记忆提炼完成：新增/更新 ${items.size} 条")
+    }
+
+    /** 提炼结果条目 */
+    private data class DistilledMemory(val content: String, val category: String, val confidence: Double)
+
+    /** 解析提炼输出 {"memories":[{content,category,confidence}]}，最多取 3 条 */
+    private fun parseDistilledMemories(raw: String): List<DistilledMemory> {
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start < 0 || end <= start) return emptyList()
+        return runCatching {
+            val root = json.parseToJsonElement(raw.substring(start, end + 1)).jsonObject
+            val arr = root["memories"]?.jsonArray ?: return emptyList()
+            arr.take(3).mapNotNull { el ->
+                val obj = el.jsonObject
+                val content = obj["content"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                if (content.isEmpty()) null else DistilledMemory(
+                    content = content,
+                    category = obj["category"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
+                    confidence = obj["confidence"]?.jsonPrimitive?.doubleOrNull ?: 0.7,
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
     private fun recordStep(
         step: Int,
         action: AgentAction,
@@ -2285,6 +2501,20 @@ class AgentEngine(
 }
 
 private fun ActionExecutor.Result.isSuccess(): Boolean = this is ActionExecutor.Result.Success
+
+/**
+ * 一次记忆写入事件（引擎内存态），供 Agent 页在任务流里实时插入记忆卡片。
+ * [updated] 为 true 表示这条与已有记忆合并更新，而不是新增。
+ */
+data class MemoryEvent(
+    val id: Long,
+    val content: String,
+    val category: String,
+    val updated: Boolean,
+    val runKey: String,
+    val step: Int,
+    val createdAt: Long = System.currentTimeMillis(),
+)
 
 /** 规划流程阶段 */
 sealed class PlanPhase {

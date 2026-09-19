@@ -35,6 +35,7 @@ object HumanTranslator {
         "abort" to "放弃任务",
         "shell" to "执行命令",
         "write_doc" to "生成文档",
+        "remember" to "记住",
     )
 
     /** 异常技术描述 → 人话 */

@@ -107,18 +107,15 @@ internal fun PlanStreamingItem(
 }
 
 /**
- * 歧义澄清：选项 + 「我想自己说」。
- * 交互与原 PlanPanel 一一对应：选项点选走 [onAnswer]，手写答案用 id="manual"。
+ * 歧义澄清：任务流里只留一条记录（问题原文）。
+ * 真正的选项与输入在底部协助浮层（[AgentAssistSheet]）里，避免同屏两套入口。
  */
 @Composable
 internal fun PlanClarifyItem(
     item: AgentTimelineItem.PlanClarify,
     vm: MainViewModel,
-    onAnswer: (ClarificationOption) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val buzz = rememberHapticClick()
-    var manual by rememberSaveable(item.key) { mutableStateOf("") }
     val question = rememberTranslated(item.clarification.question, vm)
 
     Column(
@@ -148,58 +145,13 @@ internal fun PlanClarifyItem(
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onAccentCoolContainer,
         )
-        Spacer(Modifier.height(AppSpacing.Md))
-
-        item.clarification.options.forEach { option ->
-            val label = rememberTranslated(option.label, vm)
-            val desc = rememberTranslated(option.description, vm)
-            PressableScale(
-                onPress = buzz,
-                onClick = { onAnswer(option) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = AppSpacing.Xs)
-                    .clip(RoundedCornerShape(AppRadii.Tile))
-                    .background(colors.surfaceBase)
-                    .padding(AppSpacing.Md),
-            ) {
-                Column {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (desc.isNotBlank()) {
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurfaceRaised,
-                        )
-                    }
-                }
-            }
-        }
-
+        // 选项与输入统一交给底部协助浮层，这里只留一条记录——
+        // 同屏出现两套入口（卡片里一套、浮层里一套）会让用户不知道该点哪个
         Spacer(Modifier.height(AppSpacing.Sm))
-        OutlinedTextField(
-            value = manual,
-            onValueChange = { manual = it },
-            label = { Text("我想自己说") },
-            placeholder = { Text("用自己的话描述清楚需求") },
-            shape = RoundedCornerShape(AppRadii.Tile),
-            minLines = 2,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(AppSpacing.Sm))
-        AgentActionButton(
-            text = "提交我的回答",
-            enabled = manual.isNotBlank(),
-            onClick = {
-                onAnswer(ClarificationOption(id = "manual", label = manual))
-                manual = ""
-            },
-            modifier = Modifier.fillMaxWidth(),
+        Text(
+            text = "请在下方的协助浮层中选择，或直接说出你的答案",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onAccentCoolContainer.copy(alpha = 0.82f),
         )
     }
 }
@@ -216,9 +168,9 @@ internal fun PlanApprovalItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
+            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

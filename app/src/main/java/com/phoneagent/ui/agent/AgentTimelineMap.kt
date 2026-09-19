@@ -6,6 +6,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.feature.document.DocResult
 
@@ -49,8 +50,12 @@ internal object AgentTimelineMapper {
         fold: LiveStatusFold = LiveStatusFold(),
         doc: DocResult? = null,
         decisionStream: String = "",
+        /** 本次任务内 AI 写入的记忆事件（引擎内存态），实时插卡 */
+        memoryEvents: List<MemoryEvent> = emptyList(),
     ): List<AgentTimelineItem> {
         val items = ArrayList<AgentTimelineItem>()
+        // 已挂到具体步骤上的记忆事件 id，避免末尾兜底时重复插入
+        val consumedMemoryIds = HashSet<Long>()
 
         // 1) 无障碍是硬前置：未开启时 AI 读不到控件，必须在任务流顶部说明
         if (!a11yEnabled) {
@@ -82,6 +87,11 @@ internal object AgentTimelineMapper {
             }
             run.steps.forEach { step ->
                 items += stepItem(run.runKey, step)
+                // 该步写入的记忆：紧跟步骤卡，用户能立刻看到 AI 记住了什么
+                memoryEvents.filter { it.runKey == run.runKey && it.step == step.step }.forEach { ev ->
+                    consumedMemoryIds += ev.id
+                    items += memoryItem(ev, run.runKey, step.step)
+                }
                 step.trace?.visionDescription?.takeIf { it.isNotBlank() }?.let { desc ->
                     items += AgentTimelineItem.AssistantNote(
                         text = desc.take(VISION_MAX),
@@ -91,6 +101,11 @@ internal object AgentTimelineMapper {
                     )
                 }
             }
+        }
+
+        // 2.5) 没挂上具体步骤的记忆（如任务结束后的提炼）：统一跟在历史任务之后
+        memoryEvents.filterNot { it.id in consumedMemoryIds }.forEach { ev ->
+            items += memoryItem(ev, ev.runKey, ev.step)
         }
 
         // 3) 需要协助：动作连续未生效 / 敏感页只读保护
@@ -168,6 +183,17 @@ internal object AgentTimelineMapper {
         // 稳定 key 兜底：历史上 ChatPanel 出现过 key 冲突导致闪退
         return items.distinctBy { it.key }
     }
+
+    /** 记忆事件 → 列表项 */
+    private fun memoryItem(ev: MemoryEvent, runKey: String, step: Int): AgentTimelineItem.MemoryAdded =
+        AgentTimelineItem.MemoryAdded(
+            id = ev.id,
+            content = ev.content,
+            category = ev.category,
+            updated = ev.updated,
+            runKey = runKey,
+            step = step,
+        )
 
     /** 相位中文名（消息为空时的兜底文案，不编造内容） */
     private fun phaseLabel(phase: AgentState.Phase): String = when (phase) {

@@ -414,6 +414,17 @@ class MainViewModel(
     fun dismissDoc() = documentEngine.dismiss()
 
     // ---- AI 记忆图谱 ----
+    /** 本次任务内 AI 写入的记忆事件（引擎内存态），Agent 页据此实时插卡 */
+    val memoryEvents: StateFlow<List<com.phoneagent.engine.MemoryEvent>> get() = engine.memoryEvents
+
+    /** 撤销一条刚写入的记忆：删库 + 从任务流移除卡片 */
+    fun undoMemory(id: Long) {
+        viewModelScope.launch {
+            engine.dismissMemoryEvent(id)
+            refreshMemory()
+        }
+    }
+
     private val _memoryAnomalies = MutableStateFlow<List<AnomalyMemoryEntry>>(emptyList())
     val memoryAnomalies: StateFlow<List<AnomalyMemoryEntry>> get() = _memoryAnomalies.asStateFlow()
 

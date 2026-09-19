@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppTheme
@@ -25,19 +26,26 @@ import com.phoneagent.ui.theme.AppTheme
  *
  * 注意：本组件只画背景，不加任何 pointerInput，不会拦截滚动手势。
  *
+ * [alpha] 由调用方按滚动位置驱动：**没有滚动时应当为 0**，
+ * 否则遮罩会白白吃掉内容首项的可视区（它只该在内容真的被截断时才存在）。
+ *
  * @param height 渐隐高度。太矮（<48dp）会显得像阴影，太高会吞掉可读内容。
  * @param topColor 起始色，默认取当前主题的页面底色，保证与顶栏无缝衔接。
+ * @param alpha 整体不透明度（0 = 完全不画）。
  */
 @Composable
 fun TopFadeScrim(
     modifier: Modifier = Modifier,
     height: Dp = 56.dp,
     topColor: Color = AppTheme.colors.topFadeTop,
+    alpha: Float = 1f,
 ) {
+    if (alpha <= 0.01f) return
     Box(
         modifier
             .fillMaxWidth()
             .height(height)
+            .graphicsLayer { this.alpha = alpha }
             .background(
                 Brush.verticalGradient(
                     colorStops = arrayOf(

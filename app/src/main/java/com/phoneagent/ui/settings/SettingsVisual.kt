@@ -40,6 +40,23 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
 
         GroupCard {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                ToggleRow("点击光标", "执行任务时显示圆润指针，指示 AI 正在点哪里", st.cursorOverlayEnabled) {
+                    st.cursorOverlayEnabled = it
+                    save()
+                }
+                if (st.cursorOverlayEnabled) {
+                    Spacer(Modifier.height(8.dp))
+                    ToggleRow(
+                        "光标先到位再点击",
+                        "开启后每步会等光标飞到目标再点击，更直观但每步会慢一些",
+                        st.cursorClickSync,
+                    ) {
+                        st.cursorClickSync = it
+                        save()
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+
                 ToggleRow("启用跑马光效", "任务执行时显示屏幕边缘彩色光效", st.edgeLightingEnabled) {
                     st.edgeLightingEnabled = it
                     save()

@@ -67,14 +67,16 @@ class AppSettings(private val context: Context) {
         val shizukuEnabled: Boolean = true,
         /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
         val executionChannel: String = "AUTO",
-        /** 内置跳广告功能 */
         /** 悬浮窗跑马灯厚度（dp） */
         val marqueeHeight: Int = 26,
         /** 悬浮窗跑马灯渐变颜色（ARGB 列表，按顺序组成渐变） */
         val marqueeColors: List<Long> = listOf(0xFF4FA3FF, 0xFF9B5CFF, 0xFFFF6B9D),
-        val autoSkipAds: Boolean = true,
         /** 执行审核：用独立的审核者 AI 复核执行者每一步动作是否基于当前页面证据，防止脑补（非链路聚合时用同主模型） */
         val enableReview: Boolean = true,
+        /** 运行时显示点击光标：让用户看到 AI 正在点哪里 */
+        val cursorOverlayEnabled: Boolean = true,
+        /** 光标先到位再执行点击（默认关闭=并行，避免每步额外等待） */
+        val cursorClickSync: Boolean = false,
     )
 
     private object Keys {
@@ -111,10 +113,11 @@ class AppSettings(private val context: Context) {
         val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
         val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
-        val AUTO_SKIP_ADS = booleanPreferencesKey("auto_skip_ads")
         val MARQUEE_HEIGHT = intPreferencesKey("marquee_height")
         val MARQUEE_COLORS = stringPreferencesKey("marquee_colors")
         val ENABLE_REVIEW = booleanPreferencesKey("enable_review")
+        val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
+        val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -152,12 +155,13 @@ class AppSettings(private val context: Context) {
             edgeLightingWidth = prefs[Keys.EDGE_LIGHTING_WIDTH] ?: 20,
             edgeLightingEnabled = prefs[Keys.EDGE_LIGHTING_ENABLED] ?: true,
             floatingWindowEnabled = prefs[Keys.FLOATING_WINDOW_ENABLED] ?: true,
-            autoSkipAds = prefs[Keys.AUTO_SKIP_ADS] ?: true,
             marqueeHeight = prefs[Keys.MARQUEE_HEIGHT] ?: 26,
             marqueeColors = (prefs[Keys.MARQUEE_COLORS]
                 ?: "FF4FA3FF;FF9B5CFF;FF6B9D").split(";")
                 .mapNotNull { it.trim().toLongOrNull(16) },
             enableReview = prefs[Keys.ENABLE_REVIEW] ?: true,
+            cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
+            cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
         )
     }
 
@@ -195,10 +199,11 @@ class AppSettings(private val context: Context) {
             prefs[Keys.EDGE_LIGHTING_WIDTH] = settings.edgeLightingWidth
             prefs[Keys.EDGE_LIGHTING_ENABLED] = settings.edgeLightingEnabled
             prefs[Keys.FLOATING_WINDOW_ENABLED] = settings.floatingWindowEnabled
-            prefs[Keys.AUTO_SKIP_ADS] = settings.autoSkipAds
             prefs[Keys.MARQUEE_HEIGHT] = settings.marqueeHeight
             prefs[Keys.MARQUEE_COLORS] = settings.marqueeColors.joinToString(";") { it.toString(16) }
             prefs[Keys.ENABLE_REVIEW] = settings.enableReview
+            prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
+            prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
         }
     }
 }

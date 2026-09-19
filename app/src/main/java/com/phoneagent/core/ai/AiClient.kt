@@ -114,7 +114,7 @@ class AiClient(
             } else messages
             val streamBody = buildStreamRequestBody(finalMessages, model, temperature, thinking = false, streamOptions = StreamOptions())
             val request = Request.Builder()
-                .url("$baseUrl/chat/completions")
+                .url(chatCompletionsUrl(baseUrl))
                 .header("Authorization", "Bearer $apiKey")
                 .post(streamBody)
                 .build()
@@ -138,8 +138,7 @@ class AiClient(
                         status = resp.code
                         if (!resp.isSuccessful) {
                             val body = resp.body?.string().orEmpty()
-                            lastErr = runCatching { json.decodeFromString<ChatResponse>(body).error?.message }
-                                .getOrNull() ?: "HTTP ${resp.code}"
+                            lastErr = httpErrorText(resp, body)
                             streamFailed = true
                             return@use
                         }
@@ -172,7 +171,7 @@ class AiClient(
                         lastErr = null
                         val fallbackBody = buildRequestBody(messages, screenshot, model, temperature)
                         val fallbackRequest = Request.Builder()
-                            .url("$baseUrl/chat/completions")
+                            .url(chatCompletionsUrl(baseUrl))
                             .header("Authorization", "Bearer $apiKey")
                             .post(fallbackBody)
                             .build()
@@ -218,7 +217,7 @@ class AiClient(
         runCatching {
             val requestBody = buildTextRequestBody(messages, model, temperature)
             val request = Request.Builder()
-                .url("$baseUrl/chat/completions")
+                .url(chatCompletionsUrl(baseUrl))
                 .header("Authorization", "Bearer $apiKey")
                 .post(requestBody)
                 .build()
@@ -241,7 +240,7 @@ class AiClient(
         runCatching {
             val requestBody = buildRawRequestBody(messages, model, temperature)
             val request = Request.Builder()
-                .url("$baseUrl/chat/completions")
+                .url(chatCompletionsUrl(baseUrl))
                 .header("Authorization", "Bearer $apiKey")
                 .post(requestBody)
                 .build()
@@ -329,7 +328,7 @@ class AiClient(
     ): String {
         val requestBody = buildCompatRequestBody(messages, model, temperature, responseFormat)
         val request = Request.Builder()
-            .url("$baseUrl/chat/completions")
+            .url(chatCompletionsUrl(baseUrl))
             .header("Authorization", "Bearer $apiKey")
             .post(requestBody)
             .build()
@@ -352,16 +351,25 @@ class AiClient(
                     status = resp.code
                     val body = resp.body?.string().orEmpty()
                     if (!resp.isSuccessful) {
-                        lastErr = runCatching { json.decodeFromString<ChatResponse>(body).error?.message }
-                            .getOrNull() ?: "HTTP ${resp.code}"
+                        lastErr = httpErrorText(resp, body)
                         failed = true
                         return@use
                     }
-                    val parsed = json.decodeFromString<ChatResponse>(body)
-                    parsed.error?.let { apiErr -> lastErr = apiErr.message; failed = true; return@use }
+                    val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull()
+                    if (parsed == null) {
+                        // 200 但正文不是预期 JSON（网关改写 / HTML 提示页）：保留原始返回，避免只剩解析异常
+                        lastErr = httpErrorText(resp, body)
+                        failed = true
+                        return@use
+                    }
+                    if (parsed.error != null) {
+                        lastErr = httpErrorText(resp, body)
+                        failed = true
+                        return@use
+                    }
                     val content = parsed.choices.firstOrNull()?.message?.content?.trim()
                     if (content != null) return content
-                    lastErr = "AI 返回空内容"
+                    lastErr = "AI 返回空内容\n返回内容：${body.trim().ifEmpty { "（响应体为空）" }}"
                     failed = true
                 }
                 if (failed) continue
@@ -372,6 +380,27 @@ class AiClient(
             }
         }
         error(lastErr ?: "AI 未返回内容")
+    }
+
+    /**
+     * 规范化对话补全端点，兼容各服务商填法差异，避免 404：
+     * - 末尾多余斜杠（`https://api.deepseek.com/v1/`）
+     * - 误把完整端点填进「API 地址」（`https://api.deepseek.com/v1/chat/completions`）
+     * - 不带版本段（`https://api.deepseek.com`，DeepSeek 原生支持）
+     */
+    private fun chatCompletionsUrl(baseUrl: String): String {
+        val base = baseUrl.trim().trimEnd('/')
+        return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
+    }
+
+    /**
+     * 组装完整错误信息：状态码 + 请求地址 + 服务端原始返回正文。
+     * 不再只截取 error.message —— 各服务商字段不一（有的把原因放在 error.type / code / 顶层 message），
+     * 只取 message 会丢掉诊断依据，甚至完全取不到（非 JSON 响应如网关 HTML 错误页）。
+     */
+    private fun httpErrorText(resp: okhttp3.Response, body: String): String {
+        val detail = body.trim().ifEmpty { "（响应体为空）" }
+        return "HTTP ${resp.code}（${resp.request.url}）\n返回内容：$detail"
     }
 
     /**
@@ -454,7 +483,7 @@ class AiClient(
         runCatching {
             val requestBody = buildStreamRequestBody(messages, model, temperature, thinking)
             val request = Request.Builder()
-                .url("$baseUrl/chat/completions")
+                .url(chatCompletionsUrl(baseUrl))
                 .header("Authorization", "Bearer $apiKey")
                 .post(requestBody)
                 .build()
@@ -475,8 +504,7 @@ class AiClient(
                         status = resp.code
                         if (!resp.isSuccessful) {
                             val body = resp.body?.string().orEmpty()
-                            lastErr = runCatching { json.decodeFromString<ChatResponse>(body).error?.message }
-                                .getOrNull() ?: "HTTP ${resp.code}"
+                            lastErr = httpErrorText(resp, body)
                             streamFailed = true
                             return@use
                         }

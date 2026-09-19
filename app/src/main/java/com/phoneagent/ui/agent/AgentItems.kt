@@ -154,8 +154,10 @@ internal fun AssistantNoteItem(
             )
             AnimatedVisibility(
                 visible = expanded,
-                enter = fadeIn(tween(DurationFast, easing = EaseOut)) + expandVertically(tween(DurationFast, easing = EaseOut)),
-                exit = fadeOut(tween(DurationFast, easing = EaseOut)) + shrinkVertically(tween(DurationFast, easing = EaseOut)),
+                enter = fadeIn(tween(DurationFast, easing = EaseOut)) +
+                    expandVertically(tween(DurationFast, easing = EaseOut), expandFrom = Alignment.Bottom),
+                exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
+                    shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
             ) {
                 Column {
                     Spacer(Modifier.height(AppSpacing.Sm))

@@ -25,18 +25,23 @@ class ActionExecutor(
     }
 
     /** 点击屏幕坐标 */
-    suspend fun click(x: Int, y: Int): Result =
-        dispatchGesture(GestureDescription.Builder().run {
+    suspend fun click(x: Int, y: Int): Result {
+        // 让用户看到光标飞向点击点（并行/同步由设置驱动态控制闭环内）
+        com.phoneagent.overlay.CursorOverlayService.point(x, y)
+        return dispatchGesture(GestureDescription.Builder().run {
             addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(x.toFloat(), y.toFloat()) }, 0, 60))
             build()
         })
+    }
 
     /** 长按 */
-    suspend fun longClick(x: Int, y: Int): Result =
-        dispatchGesture(GestureDescription.Builder().run {
+    suspend fun longClick(x: Int, y: Int): Result {
+        com.phoneagent.overlay.CursorOverlayService.point(x, y)
+        return dispatchGesture(GestureDescription.Builder().run {
             addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(x.toFloat(), y.toFloat()) }, 0, 800))
             build()
         })
+    }
 
     /** 滑动 */
     suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result =

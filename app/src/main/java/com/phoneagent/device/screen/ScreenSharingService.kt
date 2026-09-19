@@ -190,6 +190,8 @@ class ScreenSharingService : Service() {
      */
     fun captureFrame(): Bitmap? = synchronized(captureLock) {
         val hasOverlay = FloatingWindowService.setVisible(false)
+        // 点击光标与悬浮窗同进同出，否则圆点会被截进画面污染 AI 读屏
+        val hasCursor = com.phoneagent.overlay.CursorOverlayService.setVisible(false)
         try {
             if (hasOverlay) waitForCleanFrame(frameSeq, 250)
             synchronized(frameLock) {
@@ -198,6 +200,7 @@ class ScreenSharingService : Service() {
             }
         } finally {
             FloatingWindowService.setVisible(true)
+            if (hasCursor) com.phoneagent.overlay.CursorOverlayService.setVisible(true)
         }
     }
 

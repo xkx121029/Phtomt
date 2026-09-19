@@ -23,12 +23,14 @@ object ScreenCapture {
     suspend fun capture(): Bitmap? {
         val a11y = AgentAccessibilityService.instance
         if (a11y?.canScreenshot() == true) {
-            // 无障碍截图路径需自行隐藏悬浮窗
+            // 无障碍截图路径需自行隐藏悬浮窗 + 点击光标（避免它们被截进画面污染 AI 读屏）
             val had = FloatingWindowService.setVisible(false)
+            val hadCursor = com.phoneagent.overlay.CursorOverlayService.setVisible(false)
             return try {
                 a11y.takeScreenshotBitmap()
             } finally {
                 runCatching { if (had) FloatingWindowService.setVisible(true) }
+                runCatching { if (hadCursor) com.phoneagent.overlay.CursorOverlayService.setVisible(true) }
             }
         }
         // MediaProjection 路径自带头部隐藏悬浮窗 + 等新帧 + 恢复

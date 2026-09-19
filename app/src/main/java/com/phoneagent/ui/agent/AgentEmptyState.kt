@@ -87,6 +87,7 @@ internal fun AgentEmptyState(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(AppRadii.Item))
                     .background(colors.warningContainer)
+                    .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
                     .padding(AppSpacing.Lg),
             ) {
                 Text(

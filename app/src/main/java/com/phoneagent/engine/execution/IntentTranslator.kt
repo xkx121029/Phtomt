@@ -257,6 +257,33 @@ internal class HomeStrategy : IntentTranslationStrategy {
 }
 
 /**
+ * 记忆写入策略：AI 表达"这条信息值得长期记住"，端侧落到本地记忆库。
+ *
+ * 与 WAIT / WRITE_DOC 同类——不触碰设备、不需要通道与坐标，故在只读模式下同样放行。
+ * 内容放在 text、分类放在 summary，无需新增意图字段（序列化天然兼容）。
+ */
+internal class RememberStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val content = intent.text?.trim().orEmpty()
+        if (content.isBlank()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "text",
+                reason = "AI 输出了 remember 但未提供 text（要记住的内容）。请补全 text，" +
+                    "例如 {\"text\":\"用户偏好简洁的界面\",\"summary\":\"preference\"}。",
+            )
+        }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.REMEMBER,
+                text = content,
+                summary = intent.summary?.trim()?.takeIf { it.isNotBlank() } ?: "general",
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+}
+
+/**
  * Termux 命令行取数策略：把"取网页 / 接口正文"这类**图形界面做不到或很笨拙**的事，
  * 落到 Termux 的 curl 上。
  *
@@ -347,6 +374,8 @@ class IntentTranslator(
         put(IntentType.OPEN_APP, OpenAppStrategy(appNameResolver))
         // 文档写入
         put(IntentType.WRITE_DOC, passthrough(ActionType.WRITE_DOC) { i, a -> a.copy(text = i.text, summary = i.summary) })
+        // 记忆写入（本地写库，不触碰设备）
+        put(IntentType.REMEMBER, RememberStrategy())
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 收尾
@@ -404,11 +433,14 @@ class IntentTranslator(
         return applyReadOnly(result, mode)
     }
 
-    /** 只读模式横切约束：除等待/文档写入外，拒绝自动执行（AI 仍在分析，只是手换成用户） */
+    /** 只读模式横切约束：除等待/文档写入/记忆写入外，拒绝自动执行（AI 仍在分析，只是手换成用户） */
     private fun applyReadOnly(result: TranslationResult, mode: Mode): TranslationResult = when {
         result !is TranslationResult.Command -> result
         mode != Mode.READONLY -> result
-        result.action.type == ActionType.WAIT || result.action.type == ActionType.WRITE_DOC -> result
+        // WAIT / WRITE_DOC / REMEMBER 都不触碰设备（等待、本地生成文档、本地写记忆库），只读模式下同样放行
+        result.action.type == ActionType.WAIT ||
+            result.action.type == ActionType.WRITE_DOC ||
+            result.action.type == ActionType.REMEMBER -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )

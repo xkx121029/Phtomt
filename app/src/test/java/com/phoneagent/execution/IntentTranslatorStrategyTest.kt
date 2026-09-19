@@ -82,6 +82,33 @@ class IntentTranslatorStrategyTest {
     }
 
     @Test
+    fun remember_转译为记忆写入动作() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(intent = IntentType.REMEMBER, text = "用户喜欢简洁界面", summary = "preference"),
+            snapshot(),
+        )
+        assertEquals(ActionType.REMEMBER, action.type)
+        assertEquals("用户喜欢简洁界面", action.text)
+        assertEquals("preference", action.summary)
+    }
+
+    @Test
+    fun remember_只读模式也放行() {
+        mode(Mode.READONLY)
+        // remember 纯本地写库、不触碰设备，只读模式不应拒绝（与 wait/write_doc 同列）
+        val action = command(AgentIntent(intent = IntentType.REMEMBER, text = "常去菜市场买菜"), snapshot())
+        assertEquals(ActionType.REMEMBER, action.type)
+    }
+
+    @Test
+    fun remember_缺内容_返回缺参而非失败() {
+        mode(Mode.SHIZUKU)
+        val result = translator.translate(AgentIntent(intent = IntentType.REMEMBER), snapshot())
+        assertTrue("缺 text 应返回 MissingParam", result is IntentTranslator.TranslationResult.MissingParam)
+    }
+
+    @Test
     fun finish_未给摘要_默认任务完成() {
         mode(Mode.SHIZUKU)
         val action = command(AgentIntent(intent = IntentType.FINISH), snapshot())

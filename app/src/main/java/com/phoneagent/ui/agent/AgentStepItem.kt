@@ -7,6 +7,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -106,8 +108,11 @@ internal fun StepCallItem(item: AgentTimelineItem.StepCall) {
                     else -> ""
                 },
                 transitionSpec = {
-                    fadeIn(tween(DurationFast, easing = EaseOut)) togetherWith
-                        fadeOut(tween(DurationFast, easing = EaseOut))
+                    // 徽标切换也走"由下向上"，与新条目出现的方向保持一致
+                    (slideInVertically(tween(DurationFast, easing = EaseOut)) { it / 2 } +
+                        fadeIn(tween(DurationFast, easing = EaseOut))) togetherWith
+                        (slideOutVertically(tween(DurationFast, easing = EaseOut)) { -it / 2 } +
+                            fadeOut(tween(DurationFast, easing = EaseOut)))
                 },
                 label = "step-status-pill",
             ) { statusLabel ->
@@ -191,8 +196,10 @@ internal fun StepCallItem(item: AgentTimelineItem.StepCall) {
 
         AnimatedVisibility(
             visible = expanded,
-            enter = fadeIn(tween(DurationFast, easing = EaseOut)) + expandVertically(tween(DurationFast, easing = EaseOut)),
-            exit = fadeOut(tween(DurationFast, easing = EaseOut)) + shrinkVertically(tween(DurationFast, easing = EaseOut)),
+            enter = fadeIn(tween(DurationFast, easing = EaseOut)) +
+                expandVertically(tween(DurationFast, easing = EaseOut), expandFrom = Alignment.Bottom),
+            exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
+                shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
         ) {
             Column {
                 RawBlock(

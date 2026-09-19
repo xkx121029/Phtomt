@@ -116,6 +116,9 @@ fun PressableScale(
  * 弹簧带轻微回弹（内容入场），符合 skills 规范——弹簧仅用于入场这类
  * 离散状态切换。系统开启“减少动画”时自动退化为短促透明度渐显。
  *
+ * 出现方向全站统一为**由下向上**（位移 24dp → 0，不做缩放）：
+ * 同一屏里混用横向滑入、缩放、纵向位移会让界面显得散，方向一致才是"协调"。
+ *
  * @param index 列表中的序号，决定入场延迟
  * @param visible 是否播放（false 时原样返回）
  */
@@ -134,7 +137,7 @@ fun Modifier.animateListItem(
         entered = true
     }
 
-    // 减少动画时：纯透明度渐显，不做位移/缩放
+    // 减少动画时：纯透明度渐显，不做位移
     val spec = if (settings.reduceMotion) {
         tween<Float>(durationMillis = DurationNormal)
     } else {
@@ -151,16 +154,10 @@ fun Modifier.animateListItem(
         animationSpec = spec,
         label = "list-item-offset",
     )
-    val itemScale by animateFloatAsState(
-        targetValue = if (entered) 1f else 0.97f,
-        animationSpec = spec,
-        label = "list-item-scale",
-    )
+    // 出现方向全站统一为"由下向上"：不做缩放，避免纵向位移与缩放松缩两种观感互相打架
     return this.graphicsLayer {
         alpha = itemAlpha
         translationY = itemOffsetY
-        scaleX = itemScale
-        scaleY = itemScale
     }
 }
 
