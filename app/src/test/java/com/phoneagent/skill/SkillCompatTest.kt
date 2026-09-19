@@ -189,4 +189,91 @@ class SkillCompatTest {
         assertTrue(n is SkillCompat.Normalized.Error)
         assertTrue((n as SkillCompat.Normalized.Error).reason.contains("缺少必填参数"))
     }
+
+    // ---- 技能声明的参数必须真正驱动执行：args 回填到意图字段，否则技能只是个名字（空壳） ----
+
+    @Test
+    fun 归一化_技能args回填到意图字段() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val swipe = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_swipe", args = mapOf("direction" to "up")),
+            registry,
+        )
+        assertTrue(swipe is SkillCompat.Normalized.Intent)
+        val si = (swipe as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.SWIPE, si.intent)
+        assertEquals("up", si.direction)
+
+        val openApp = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_open_app", args = mapOf("app" to "美团")),
+            registry,
+        )
+        assertEquals("美团", (openApp as SkillCompat.Normalized.Intent).intent.app)
+
+        val press = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_press", args = mapOf("key" to "BACK")),
+            registry,
+        )
+        assertEquals("BACK", (press as SkillCompat.Normalized.Intent).intent.key)
+
+        val wait = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_wait", args = mapOf("wait_ms" to "1500")),
+            registry,
+        )
+        assertEquals(1500L, (wait as SkillCompat.Normalized.Intent).intent.waitMs)
+
+        val remember = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_remember", args = mapOf("text" to "偏好简洁界面", "summary" to "preference")),
+            registry,
+        )
+        val ri = (remember as SkillCompat.Normalized.Intent).intent
+        assertEquals("偏好简洁界面", ri.text)
+        assertEquals("preference", ri.summary)
+    }
+
+    @Test
+    fun 归一化_技能args的target按写法解析() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        fun targetOf(raw: String) = (SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_tap", args = mapOf("target" to raw)),
+            registry,
+        ) as SkillCompat.Normalized.Intent).intent.target
+
+        assertEquals("id", targetOf("ctl_3")?.by)
+        assertEquals("ctl_3", targetOf("ctl_3")?.value)
+        assertEquals("text", targetOf("确认")?.by)
+        assertEquals("确认", targetOf("确认")?.value)
+        // by: 显式写法不应越界崩溃（此前 substring(3, 2) 会抛 StringIndexOutOfBounds）
+        assertEquals("id", targetOf("by:id:ctl_9")?.by)
+        assertEquals("ctl_9", targetOf("by:id:ctl_9")?.value)
+    }
+
+    @Test
+    fun 归一化_扁平字段优先于缺失的args() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        // args 里没给的字段不能被清空
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(
+                intent = "skill_open_app", app = "支付宝", args = mapOf("summary" to "无关参数"),
+            ),
+            registry,
+        )
+        val i = (n as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.OPEN_APP, i.intent)
+        assertEquals("支付宝", i.app)
+    }
+
+    @Test
+    fun 归一化_高层语义技能可用args传target兜底() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        assertTrue("高层语义技能应声明可选 target 参数", registry.byId("skill_share")!!.params.any { it.name == "target" })
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_share", args = mapOf("target" to "ctl_7")),
+            registry,
+        )
+        val i = (n as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.SHARE, i.intent)
+        assertEquals("id", i.target?.by)
+        assertEquals("ctl_7", i.target?.value)
+    }
 }

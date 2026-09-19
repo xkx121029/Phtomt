@@ -77,6 +77,8 @@ object AgentPrompts {
             PromptLang.CN -> {
                 sb.append("# 技能（Skill）\n")
                 sb.append("- 上面表里的能力既可用意图名调用，也可用技能 id 或技能名调用（如 skill_open_app / 打开应用），两者完全等价。\n")
+                sb.append("- 用技能名调用时，参数可放进 args 对象，也可直接写成意图的扁平字段，两种写法等价：\n")
+                sb.append("  {\"intent\":\"skill_swipe\",\"args\":{\"direction\":\"up\"}} 与 {\"intent\":\"swipe\",\"direction\":\"up\"} 效果相同。\n")
                 sb.append("- 被停用的技能不可调用，改用其它方式完成，或让用户在「技能与能力」页启用。\n")
                 if (mcpLines.isNotEmpty()) {
                     sb.append("- 调用 MCP 技能：intent 填技能 id，参数放进 args 对象，例如：\n")
@@ -94,6 +96,8 @@ object AgentPrompts {
             PromptLang.EN -> {
                 sb.append("# Skills\n")
                 sb.append("- Every capability in the table above can also be invoked by skill id or skill name (e.g. skill_open_app), fully equivalent.\n")
+                sb.append("- When invoking by skill name, parameters may go in an `args` object or directly as the intent's flat fields; both are equivalent:\n")
+                sb.append("  {\"intent\":\"skill_swipe\",\"args\":{\"direction\":\"up\"}} equals {\"intent\":\"swipe\",\"direction\":\"up\"}.\n")
                 sb.append("- Disabled skills are not callable: use another way, or ask the user to enable them on the Skills page.\n")
                 if (mcpLines.isNotEmpty()) {
                     sb.append("- To call an MCP skill: put the skill id in `intent` and the arguments in an `args` object, e.g.\n")

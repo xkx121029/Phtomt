@@ -88,10 +88,42 @@ object SkillCompat {
                 if (legacy !in IntentType.ALL) {
                     Normalized.Error("技能「${skill.name}」未映射到可执行的意图（$legacy）。")
                 } else {
-                    Normalized.Intent(intent.copy(intent = legacy))
+                    Normalized.Intent(applyArgs(intent.copy(intent = legacy), skill, intent.args))
                 }
             }
         }
+    }
+
+    /**
+     * 把技能声明的参数（`args`）回填到意图字段上，让「按技能参数接口调用」真正生效。
+     *
+     * 背景：内置技能的 `params` 是它在技能页展示的正式接口，但意图本身用的是扁平字段
+     * （app / target / text / direction / key / wait_ms …）。若只重写意图名而不读 `args`，
+     * 这些参数就被静默丢弃 —— 技能只剩一个名字，等于空壳（如 `skill_swipe` 收到 direction=up
+     * 却滑不动）。此处按参数名回填，使两种写法都可用：
+     *
+     * - `{"intent":"skill_swipe","args":{"direction":"up"}}`（技能参数接口）
+     * - `{"intent":"swipe","direction":"up"}`（意图扁平字段）
+     *
+     * 只覆盖 `args` 里**真正给出**的字段，AI 直接写在扁平字段上的值不受影响。
+     */
+    private fun applyArgs(intent: AgentIntent, skill: Skill, args: Map<String, String>?): AgentIntent {
+        if (args.isNullOrEmpty()) return intent
+        val fromArgs = toIntent(skill, args) ?: return intent
+        fun given(key: String) = !args[key].isNullOrBlank()
+        return intent.copy(
+            target = if (given("target")) fromArgs.target else intent.target,
+            app = if (given("app")) fromArgs.app else intent.app,
+            uri = if (given("uri")) fromArgs.uri else intent.uri,
+            page = if (given("page")) fromArgs.page else intent.page,
+            text = if (given("text")) fromArgs.text else intent.text,
+            summary = if (given("summary")) fromArgs.summary else intent.summary,
+            reason = if (given("reason")) fromArgs.reason else intent.reason,
+            direction = if (given("direction")) fromArgs.direction else intent.direction,
+            key = if (given("key")) fromArgs.key else intent.key,
+            waitMs = if (given("wait_ms")) fromArgs.waitMs else intent.waitMs,
+            durationMs = if (given("duration_ms")) fromArgs.durationMs else intent.durationMs,
+        )
     }
 
     /**
@@ -170,14 +202,22 @@ object SkillCompat {
         }
     }
 
-    /** 把参数里的 target 文本解析为 [AgentIntentTarget]；形如 "ctl_3" → by=id；"文字" → by=text */
-    fun parseTarget(raw: String): AgentIntentTarget = when {
-        raw.trim().startsWith("ctl_") -> AgentIntentTarget(by = "id", value = raw.trim())
-        raw.contains(":") && raw.startsWith("by:") -> {
-            val idx = raw.indexOf(":")
-            val by = raw.substring(3, idx).trim()
-            AgentIntentTarget(by = by, value = raw.substring(idx + 1).trim())
+    /**
+     * 把参数里的 target 文本解析为 [AgentIntentTarget]。
+     * 支持三种写法：`ctl_3` → by=id；`by:text:确认` → 显式指定 by；其余 → by=text。
+     */
+    fun parseTarget(raw: String): AgentIntentTarget {
+        val s = raw.trim()
+        if (s.startsWith("ctl_")) return AgentIntentTarget(by = "id", value = s)
+        if (s.startsWith("by:")) {
+            // 分隔符要跳过前缀本身的冒号，否则 substring(3, 2) 会越界崩溃
+            val idx = s.indexOf(':', 3)
+            if (idx > 3) {
+                val by = s.substring(3, idx).trim()
+                val value = s.substring(idx + 1).trim()
+                if (by.isNotBlank() && value.isNotBlank()) return AgentIntentTarget(by = by, value = value)
+            }
         }
-        else -> AgentIntentTarget(by = "text", value = raw.trim())
+        return AgentIntentTarget(by = "text", value = s)
     }
 }

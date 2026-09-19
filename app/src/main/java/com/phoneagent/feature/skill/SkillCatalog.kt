@@ -10,6 +10,17 @@ import com.phoneagent.domain.model.IntentType
  */
 object SkillCatalog {
 
+    /**
+     * 高层语义技能的通用可选参数。
+     *
+     * 这些技能的落地方式是"点端侧标注好的语义控件"，正常无需参数；但页面未标注出对应语义控件时，
+     * 转译层支持用 AI 给的 target 兜底定位一次（见 SemanticActionStrategy）。此前技能声明里没有这个
+     * 参数，AI 便无从提供 —— 接口是空的，能力也就在这条路上不可达。故统一声明为可选参数。
+     */
+    private val optionalTarget = listOf(
+        SkillParam("target", "目标（可选）", "text", description = "语义控件未命中时兜底定位，如 ctl_3 或控件文字"),
+    )
+
     /** 意图名 → 技能定义（name/description/category/params）。 */
     private val catalog: Map<String, Skill> = buildMap {
         put(
@@ -174,24 +185,28 @@ object SkillCatalog {
             IntentType.REFRESH, Skill(
                 id = "skill_refresh", name = "刷新", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "导航", legacyIntent = IntentType.REFRESH, description = "刷新当前页面。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.SEARCH, Skill(
                 id = "skill_search", name = "搜索", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.SEARCH, description = "进入搜索：聚焦搜索框或点搜索入口。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.SEND, Skill(
                 id = "skill_send", name = "发送", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.SEND, description = "发送消息/提交。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.CONFIRM, Skill(
                 id = "skill_confirm", name = "确认", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.CONFIRM, description = "确认当前操作（授权/确定/结算）。",
+                params = optionalTarget,
             ),
         )
         put(
@@ -199,24 +214,28 @@ object SkillCatalog {
                 id = "skill_close", name = "关闭", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.CLOSE,
                 description = "关闭当前弹窗/广告/标签或广告页。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.SHARE, Skill(
                 id = "skill_share", name = "分享", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.SHARE, description = "分享当前内容。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.COLLECT, Skill(
                 id = "skill_collect", name = "收藏", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.COLLECT, description = "收藏当前内容。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.COPY, Skill(
                 id = "skill_copy", name = "复制", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.COPY, description = "复制目标内容。",
+                params = optionalTarget,
             ),
         )
         put(
@@ -224,30 +243,35 @@ object SkillCatalog {
                 id = "skill_delete", name = "删除", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.DELETE,
                 description = "删除目标（不可逆，自动触发用户确认）。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.DOWNLOAD, Skill(
                 id = "skill_download", name = "下载", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.DOWNLOAD, description = "下载当前目标。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.ADD, Skill(
                 id = "skill_add", name = "新增", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.ADD, description = "新增/添加一项。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.SWITCH, Skill(
                 id = "skill_switch", name = "切换开关", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.SWITCH, description = "切换开关状态。",
+                params = optionalTarget,
             ),
         )
         put(
             IntentType.CLEAR_INPUT, Skill(
                 id = "skill_clear_input", name = "清空输入", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.CLEAR_INPUT, description = "清空输入框内容。",
+                params = optionalTarget,
             ),
         )
     }
