@@ -6,6 +6,38 @@
 
 ---
 
+## [v0.1.327] — 2026-09-19
+
+让技能声明的参数真正驱动执行：此前内置技能只是「一个名字」，技能页展示的参数（app / target /
+direction / key / wait_ms …）在运行时被静默丢弃，等于空壳。
+
+### 修复
+
+- **技能参数被丢弃**（`SkillCompat.normalize`）
+  - 归一化只重写了意图名，完全没读 `args` → `{"intent":"skill_swipe","args":{"direction":"up"}}`
+    归一化出的意图里 `direction` 仍是 `null`，转译后滑不动；`skill_press` 丢 `key` 后变成空按键
+  - 现新增 `applyArgs()`：把 `args` 里**真正给出**的字段回填到意图字段（app / target / uri / page /
+    text / summary / reason / direction / key / wait_ms / duration_ms），AI 直接写在扁平字段上的值不受影响
+  - 两种写法从此等价：`{"intent":"skill_swipe","args":{"direction":"up"}}` 与 `{"intent":"swipe","direction":"up"}`
+- **`target` 写成 `by:` 前缀会崩溃**（`SkillCompat.parseTarget`）
+  - `raw.startsWith("by:")` 时用 `indexOf(":")` 拿到的是前缀自身的冒号（下标 2），
+    再 `substring(3, 2)` 直接抛 `StringIndexOutOfBoundsException`
+  - 现改为 `indexOf(':', 3)` 并校验 by/value 非空，非法时回退 `by=text`
+
+### 新增
+
+- **高层语义技能补上可选 `target` 参数**：刷新/搜索/发送/确认/关闭/分享/收藏/复制/删除/下载/新增/
+  切换开关/清空输入共 13 个技能，其转译策略本就支持「语义控件未命中时用 AI 给的 target 兜底定位」，
+  但技能声明里没有这个参数，AI 无从提供 —— 现统一声明为可选参数，接口与能力对齐
+- 提示词技能区块补充说明：用技能名调用时 `args` 与扁平字段两种写法等价（中英双语）
+
+### 测试
+
+- 新增 4 条用例：`args` 回填到意图字段（swipe/open_app/press/wait/remember）、`target` 三种写法解析
+  （含 `by:` 不再崩溃）、`args` 缺失时不清空扁平字段、高层语义技能可用 `args` 传 target
+
+---
+
 ## [v0.1.326] — 2026-09-19
 
 打通「技能（Skill）」到执行链路的最后一环：此前技能体系只有声明与 UI，AI 提示词里没有技能清单、
