@@ -32,10 +32,17 @@
         android:theme="@style/Theme.PhoneAgent"
         tools:targetApi="34">
 
+        <!-- windowSoftInputMode 必须显式声明为 adjustResize：
+             不声明时系统按 adjustUnspecified 自行选择，非滚动容器（Compose 根视图不是 ScrollView）
+             可能被判成 adjustPan —— 系统把整个窗口内容往上平移，而输入区自己又用 imePadding()
+             避让 IME，两者叠加就会把输入区顶到比键盘顶更高，中间空出一块。
+             edge-to-edge（enableEdgeToEdge + targetSdk 35）下 adjustResize 不会压缩窗口，
+             IME 只通过 WindowInsets.ime 上报，由页面内的 imePadding() 决定输入区位置。 -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.PhoneAgent">
+            android:theme="@style/Theme.PhoneAgent"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

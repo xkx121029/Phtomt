@@ -212,18 +212,19 @@ private fun ActivityContent(vm: MainViewModel) {
         selected = 0
     }
 
+    // 键盘是否弹出：必须在内容层读一次，不能写在 Scaffold 的 bottomBar 里。
+    // bottomBar 是 SubcomposeLayout 的子组合，在它内部读 insets 不保证随键盘弹出而重组，
+    // 一旦读到旧值（false），导航栏就不让位：Scaffold 的底部内边距仍带着导航栏高度，
+    // 输入区再整段避让 IME，两者相加 → 输入区浮在键盘上方一整条导航栏的高度，中间空出一块。
+    //
+    // 判定用 IME 实际占位高度，而不是 WindowInsets.isImeVisible：
+    // 前者与输入区的 imePadding() 同源，只要输入区被抬起，导航栏在同一帧必定让位；
+    // 可见位在部分机型/ROM 上不可靠（键盘已弹出却仍为 false）。
+    val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            // 键盘弹出时收起底部导航栏：Scaffold 会把导航栏高度算进底部内边距，
-            // 输入区再按绝对值叠加 IME 避让，就会与键盘之间空出一整条导航栏
-            // （表现为"点输入框后上移太高"）。让导航栏给键盘让位即可消除这段空隙。
-            //
-            // 判定必须用 IME 实际占位高度，而不是 WindowInsets.isImeVisible：
-            // 前者与输入区的 imePadding() 同源，只要输入区被抬起，导航栏在同一帧必定让位；
-            // 可见位在部分机型/ROM 上不可靠（键盘已弹出却仍为 false），
-            // 那样导航栏不会收起，底部内边距仍是"导航栏 + IME"，空隙照旧。
-            val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
             // 全屏二级页时不显示底部导航
             if (extrasPage == null && !keyboardUp) {
                 NavigationBar(
