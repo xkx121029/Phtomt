@@ -43,22 +43,26 @@ class CursorOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_HIDE -> {
-                removeOverlay()
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            else -> {
-                syncMode = intent?.getBooleanExtra("sync", false) ?: false
-                showOverlay()
-            }
+        if (intent?.action == ACTION_HIDE) {
+            wanted = false
+            removeOverlay()
+            stopSelf()
+            return START_NOT_STICKY
         }
-        return START_STICKY
+        syncMode = intent?.getBooleanExtra("sync", false) ?: false
+        showOverlay()
+        // 不用 STICKY：服务被杀后系统会用 null intent 重建它，而那时并没有任务在执行，
+        // 重建即挂出光标，屏幕上就会多出一个没有任务支撑的光标
+        return START_NOT_STICKY
     }
 
     private fun showOverlay() {
         if (pointerView != null) return
+        // 任务已经结束（show 的启动请求与 hide 抢跑，请求姗姗来迟）时不要再补挂光标
+        if (!wanted) {
+            stopSelf()
+            return
+        }
         // 每次挂载都从"未落位"开始，首个点击点直接定位而不是从上一任务的位置飞过来
         placedOnce = false
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -134,11 +138,19 @@ class CursorOverlayService : Service() {
         @Volatile
         private var syncMode = false
 
+        /**
+         * 是否处于「任务执行中」。由 [show] / [hide] 驱动，是光标唯一的可见性凭据：
+         * 进程里没有任务时它始终为 false，任何路径（服务被重建、启动请求迟到）都挂不出光标。
+         */
+        @Volatile
+        private var wanted = false
+
         /** 同步模式等待移动段的上限：正常 260ms，留足余量 */
         private const val MOVE_WAIT_TIMEOUT_MS = 700L
 
         /** 任务开始：挂上覆盖层（幂等）。[sync] = 光标先到位再点击 */
         fun show(context: Context, sync: Boolean) {
+            wanted = true
             syncMode = sync
             val intent = Intent(context, CursorOverlayService::class.java).apply {
                 putExtra("sync", sync)
@@ -146,12 +158,25 @@ class CursorOverlayService : Service() {
             runCatching { context.startService(intent) }
         }
 
-        /** 任务结束：移除覆盖层 */
-        fun hide(context: Context) {
-            val intent = Intent(context, CursorOverlayService::class.java).apply {
-                action = ACTION_HIDE
+        /**
+         * 任务结束：撤下覆盖层（幂等，无任务时什么也不做）。
+         *
+         * 服务实例就在本进程里，直接在主线程撤下视图并停掉服务，
+         * 不走 `startService(ACTION_HIDE)`：任务大多在 App 处于后台时执行，
+         * 而后台启动服务可能被系统拒绝（异常被吞掉），光标就会一直留在屏幕上。
+         */
+        fun hide() {
+            wanted = false
+            syncMode = false
+            val service = instance ?: return
+            service.mainHandler.post {
+                // 撤下前再确认一次：撤下请求是异步执行的，这期间用户可能已经发起了新任务，
+                // 此时不能把新任务刚挂上的光标一起撤掉
+                if (instance === service && !wanted) {
+                    service.removeOverlay()
+                    service.stopSelf()
+                }
             }
-            runCatching { context.startService(intent) }
         }
 
         /**

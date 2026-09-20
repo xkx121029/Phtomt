@@ -582,7 +582,7 @@ class AgentEngine(
                         AgentAccessibilityService.agentRunning = false
                         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.ERROR, message = "执行异常：${e.message}")
                         FloatingWindowService.stop(appContext)
-                        runCatching { com.phoneagent.overlay.CursorOverlayService.hide(appContext) }
+                        runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
                     }
             }
         }
@@ -757,7 +757,7 @@ class AgentEngine(
         AgentAccessibilityService.agentRunning = false
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
         FloatingWindowService.stop(appContext)
-        runCatching { com.phoneagent.overlay.CursorOverlayService.hide(appContext) }
+        runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
         log(AgentLog.Level.WARN, "任务已停止")
     }
 
@@ -808,6 +808,14 @@ class AgentEngine(
         } finally {
             val mem = owned
             if (mem != null) finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
+            // 无论成功 / 失败 / 用户停止 / 异常，任务一结束就撤下点击光标。
+            // 光标是「任务正在执行」的视觉反馈，任务结束后它仍停在最后一次点击的位置，
+            // 屏幕上就凭空多出一个不属于任何操作的光标。
+            // 归属判定同 [finishTaskMemory]：停止协程后 finally 是异步跑的，
+            // 用户若立刻发起新任务，旧任务的收尾不能把新任务的光标一并撤掉
+            if (mem == null || mem.taskId == currentTaskId) {
+                runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
+            }
         }
     }
 
