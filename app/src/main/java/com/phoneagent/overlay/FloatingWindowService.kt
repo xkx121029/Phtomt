@@ -292,12 +292,27 @@ class FloatingWindowService : Service() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
-            // 左右留白，让面板呈卡片状而不是铺满整屏
-            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD))
             visibility = View.GONE
         }
-        // 交互面板在此挂载（它已在 buildPanel 中构建完成，但未加入顶部窗口）
-        interactPanel?.let { container.addView(it) }
+        // 交互面板在此挂载（它已在 buildPanel 中构建完成，但未加入顶部窗口）。
+        //
+        // 左右留白与底边留白放在**面板自己的外边距**上，而不是容器的内边距上：
+        // 容器是窗口的根视图，它的内边距在面板隐藏时仍会把窗口撑出一段高度，
+        // 零内容却依然可触摸 —— 那一条透明窗口会持续吃掉屏幕底部的操作。
+        // 面板隐藏时容器高度为 0，窗口才真正不占地方。
+        interactPanel?.let {
+            container.addView(
+                it,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    marginStart = dp(FloatingUi.PAD_XL)
+                    marginEnd = dp(FloatingUi.PAD_XL)
+                    bottomMargin = dp(FloatingUi.PAD)
+                },
+            )
+        }
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -348,6 +363,10 @@ class FloatingWindowService : Service() {
             .withEndAction {
                 container.visibility = View.GONE
                 container.translationY = 0f
+                // 面板本身也要收起：容器是窗口根视图，即使它自己 GONE，窗口根仍会被测量，
+                // 面板留在 VISIBLE 会继续把窗口撑出同样高度 —— 一层看不见却可触摸的窗口
+                // 会持续吃掉这块屏幕区域的操作。
+                interactPanel?.visibility = View.GONE
             }
             .start()
     }
@@ -587,8 +606,15 @@ class FloatingWindowService : Service() {
         interactHeader.addView(interactTitle)
         interactPanel?.addView(interactHeader)
         // 内容可滚动（长文本）
+        //
+        // 这里**不能**用「高度 0 + weight 1」那种"占满剩余空间"的写法：选项卡窗口是
+        // WRAP_CONTENT，LinearLayout 在 AT_MOST 下会把「沿高度方向的剩余空间」全分给权重子视图，
+        // 而剩余空间就是整块屏幕 —— 面板于是被撑到整屏高，整个窗口变成一张盖住全屏的
+        // 透明可触摸层：屏幕上千点什么都落到这层上（用户侧表现就是"整个手机都点不动"，
+        // 而顶部跑马灯是另一个窗口，照旧在滚）。
+        // 改成固定限高：短文案不留大片空白，超长文案在卡片内部滚动。
         val contentScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(0), 1f)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(140))
             isVerticalScrollBarEnabled = false
         }
         interactContent = TextView(this).apply {
@@ -948,37 +974,21 @@ class FloatingWindowService : Service() {
                 hideKeyboard()
                 return@post
             }
-            // 答疑/协助（澄清、guide）走底部选项卡滑入；顶部不再渲染这些交互按钮
-            val useSheet = type == "clarify" || type == "guide"
-            if (useSheet) {
-                // 类型变更时清空上次残留的选项/按钮/输入，再按当前类型重建
-                interactButtons?.removeAllViews()
-                hintInput?.visibility = View.GONE
-                hintBtnRow?.removeAllViews()
-                interactTitle?.text = title ?: "需要确认"
-                interactContent?.text = content ?: ""
-                when (type) {
-                    "clarify" -> {
-                        options?.forEach { opt ->
-                            addBtn(interactButtons, opt, false) { onInteraction?.invoke("clarify", opt) }
-                        }
-                        addBtn(interactButtons, "✏️ 我想自己说", false) { showHintInput() }
-                    }
-                    "guide" -> showHintInput()
-                }
-                showSheet()
-                return@post
-            }
-            // 其余类型（approve / savetemplate / done）保留顶部渲染
-            interactPanel?.visibility = View.GONE
-            showPanelWithAnim(interactPanel)
-            interactTitle?.text = title ?: "需要确认"
-            interactContent?.text = content ?: ""
-
-            // 清空选项与按钮
+            // 所有交互（批准 / 保存模板 / 澄清 / 指导）都渲染在同一个 interactPanel 里，
+            // 而 interactPanel 挂在底部选项卡窗口上，顶部窗口只保留状态与跑马灯。
+            // 所以这里必须做三件事，缺一样用户就操作不了：
+            //   1) 面板置 VISIBLE —— 它的初值/重置值都是 GONE，只让它滑出容器是看不见的；
+            //   2) 按类型重建按钮；
+            //   3) showSheet() 让选项卡容器滑出来 —— 容器默认 GONE，
+            //      之前 approve / savetemplate 走的是"顶部渲染"分支（面板早已不挂在顶部窗口），
+            //      面板永远不可见，于是需要批准时用户点什么都没反应、任务一直挂着。
             interactButtons?.removeAllViews()
             hintInput?.visibility = View.GONE
             hintBtnRow?.removeAllViews()
+            interactTitle?.text = title ?: "需要确认"
+            interactContent?.text = content ?: ""
+            // 不叠加缩放动画：入场方向统一为「自下而上」，滑动由容器承担
+            interactPanel?.visibility = View.VISIBLE
 
             when (type) {
                 "approve" -> {
@@ -1004,6 +1014,7 @@ class FloatingWindowService : Service() {
                     showHintInput()
                 }
             }
+            showSheet()
         }
     }
 
