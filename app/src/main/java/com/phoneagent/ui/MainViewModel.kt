@@ -26,6 +26,7 @@ import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.data.store.ProfileEntry
+import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.device.screen.ScreenSharingService
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.feature.mcp.McpServerConfig
@@ -431,6 +432,9 @@ class MainViewModel(
     private val _memoryProfile = MutableStateFlow<List<ProfileEntry>>(emptyList())
     val memoryProfile: StateFlow<List<ProfileEntry>> get() = _memoryProfile.asStateFlow()
 
+    private val _memoryTaskMemories = MutableStateFlow<List<TaskMemoryEntry>>(emptyList())
+    val memoryTaskMemories: StateFlow<List<TaskMemoryEntry>> get() = _memoryTaskMemories.asStateFlow()
+
     private val _memoryLoading = MutableStateFlow(false)
     val memoryLoading: StateFlow<Boolean> get() = _memoryLoading.asStateFlow()
 
@@ -440,6 +444,7 @@ class MainViewModel(
             _memoryLoading.value = true
             _memoryAnomalies.value = memoryStore.loadAnomalies()
             _memoryProfile.value = memoryStore.loadProfile()
+            _memoryTaskMemories.value = memoryStore.loadTaskMemories()
             _memoryLoading.value = false
         }
     }
@@ -456,6 +461,23 @@ class MainViewModel(
     fun clearProfileMemory() {
         viewModelScope.launch {
             memoryStore.saveProfile(emptyList())
+            refreshMemory()
+        }
+    }
+
+    // ---- 任务记忆（任务执行中的工作记忆）----
+    /** 删除单条任务记忆 */
+    fun deleteTaskMemory(id: Long) {
+        viewModelScope.launch {
+            memoryStore.deleteTaskMemory(id)
+            refreshMemory()
+        }
+    }
+
+    /** 清空任务记忆 */
+    fun clearTaskMemories() {
+        viewModelScope.launch {
+            memoryStore.clearTaskMemories()
             refreshMemory()
         }
     }

@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -51,16 +52,19 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.ProfileEntry
+import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionCard
+import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
@@ -69,6 +73,8 @@ import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
 import com.phoneagent.ui.theme.MemoryProfileSoft
 import com.phoneagent.ui.theme.MemoryRoot
+import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.Warning
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -179,5 +185,94 @@ internal fun ProfileList(profiles: List<ProfileEntry>, onClear: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** 任务记忆状态徽标配色：进行中用品牌色，终态按结果区分 */
+@Composable
+private fun taskMemoryStatusColor(status: String): Color = when (status) {
+    TaskMemoryEntry.STATUS_SUCCESS -> Success
+    TaskMemoryEntry.STATUS_FAILED -> MaterialTheme.colorScheme.error
+    TaskMemoryEntry.STATUS_ABORTED -> Warning
+    else -> Accent
+}
+
+/** 任务记忆明细：按任务展示目标 / 用户要求 / 已验证做法 */
+@Composable
+internal fun TaskMemoryList(
+    items: List<TaskMemoryEntry>,
+    onDelete: (Long) -> Unit,
+    onClear: () -> Unit,
+) {
+    SectionCard(
+        title = "任务记忆",
+        count = items.size,
+        countColor = MemoryRoot,
+        onClear = onClear,
+    ) {
+        if (items.isEmpty()) {
+            Text("暂无任务记忆", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        items.forEach { m ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(AppRadii.Tile))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(AppRadii.Tile))
+                    .padding(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        m.taskName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    StatusPill(text = m.statusLabel(), color = taskMemoryStatusColor(m.status))
+                    PressableScale(onClick = { onDelete(m.id) }) {
+                        Icon(
+                            AppIcons.DeleteOutline, contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(6.dp).size(16.dp),
+                        )
+                    }
+                }
+                if (m.completedSteps > 0) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "已验证 ${m.completedSteps} 步",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TaskMemorySection("目标", listOf(m.goal))
+                if (m.requirements.isNotEmpty()) TaskMemorySection("用户要求", m.requirements)
+                if (m.methods.isNotEmpty()) TaskMemorySection("完成方法", m.methods)
+            }
+        }
+    }
+}
+
+/** 任务记忆的一个小节：标题 + 逐条内容。每条限 2 行，避免一条长要求把整张卡撑满 */
+@Composable
+private fun TaskMemorySection(label: String, lines: List<String>) {
+    Spacer(Modifier.height(8.dp))
+    Text(
+        label,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(2.dp))
+    lines.forEachIndexed { i, line ->
+        Text(
+            if (lines.size > 1) "${i + 1}. $line" else line,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }

@@ -85,6 +85,7 @@ import com.phoneagent.ui.icons.AppIcons
 fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val anomalies by vm.memoryAnomalies.collectAsState()
     val profiles by vm.memoryProfile.collectAsState()
+    val taskMemories by vm.memoryTaskMemories.collectAsState()
     val loading by vm.memoryLoading.collectAsState()
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
@@ -97,7 +98,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         // 标题 + 操作
         AppTopBar(
             title = "记忆图谱",
-            subtitle = "AI 积累的异常经验与用户画像",
+            subtitle = "任务记忆、异常经验与用户画像",
             leadingIcon = AppIcons.Memory,
             trailingContent = {
                 PressableScale(onClick = { vm.refreshMemory() }) {
@@ -154,7 +155,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             return@Column
         }
 
-        if (anomalies.isEmpty() && profiles.isEmpty()) {
+        if (anomalies.isEmpty() && profiles.isEmpty() && taskMemories.isEmpty()) {
             EmptyMemoryCard(onRefresh = { vm.refreshMemory() })
             return@Column
         }
@@ -166,11 +167,16 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         Spacer(Modifier.height(16.dp))
 
         // 统计概览
-        StatsRow(anomalies.size, profiles.size)
+        StatsRow(taskMemories.size, anomalies.size, profiles.size)
 
         Spacer(Modifier.height(16.dp))
 
-        // 明细列表
+        // 明细列表：任务记忆最前（与当前任务最相关），随后是异常经验、用户画像
+        TaskMemoryList(
+            items = taskMemories,
+            onDelete = { vm.deleteTaskMemory(it) },
+            onClear = { vm.clearTaskMemories() },
+        )
         AnomalyList(anomalies, onClear = { vm.clearAnomalyMemory() })
         ProfileList(profiles, onClear = { vm.clearProfileMemory() })
 

@@ -48,4 +48,16 @@ object AiMemoryDedupe {
         if (na == nb) return true
         return similarity(a, b) >= SIMILARITY_THRESHOLD
     }
+
+    /**
+     * 两条文本去掉空白与标点后是否完全一致。
+     *
+     * 供「用户要求」这类**语义有序清单**使用：用户中途补充的指令即使与任务原文措辞相近
+     * （"帮我在美团点一份黄焖鸡" vs "帮我再点一份黄焖鸡"，bigram 相似度恰好 0.5 会被
+     * [isSame] 判为重复），也是新增的一条要求，不能用模糊相似度静默丢掉。
+     */
+    fun isExact(a: String, b: String): Boolean {
+        val na = normalize(a)
+        return na.isNotEmpty() && na == normalize(b)
+    }
 }

@@ -62,10 +62,98 @@ data class AiMemoryEntry(
 )
 
 /**
+ * 任务记忆条目：一次任务执行期间持续维护的「目标 / 用户要求 / 已验证做法」。
+ *
+ * 与 AI 记忆（跨任务沉淀经验）不同，它只描述当前这一次任务：
+ * 决策历史会被压缩（只留最近几轮）、进度队列会滚动丢弃，长线任务跑到后半程容易忘记最初目标，
+ * 任务记忆就是那个「不随上下文压缩而丢失」的锚点，每轮决策都完整注入。
+ */
+@Serializable
+data class TaskMemoryEntry(
+    val id: Long = 0L,
+    /** 任务 ID（引擎按开始时间生成），落库后据此匹配同一次任务 */
+    val taskId: Long,
+    val taskName: String,
+    /** 既定目标：任务原文 */
+    val goal: String,
+    /** 用户要求：任务描述原文 + 执行中用户通过悬浮窗补充的指导 */
+    val requirements: List<String> = emptyList(),
+    /** 已验证有效的做法（步骤摘要，新的在后） */
+    val methods: List<String> = emptyList(),
+    val status: String = STATUS_RUNNING,
+    val completedSteps: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+) {
+    companion object {
+        const val STATUS_RUNNING = "running"
+        const val STATUS_SUCCESS = "success"
+        const val STATUS_FAILED = "failed"
+        const val STATUS_ABORTED = "aborted"
+
+        /** 用户要求上限：超出丢弃最旧的，防长线任务把决策上下文撑爆 */
+        private const val MAX_REQUIREMENTS = 8
+
+        /** 已验证做法上限：同上，只留最近的成功经验 */
+        private const val MAX_METHODS = 10
+    }
+
+    /** 界面用中文状态文案 */
+    fun statusLabel(): String = when (status) {
+        STATUS_SUCCESS -> "已完成"
+        STATUS_FAILED -> "未完成"
+        STATUS_ABORTED -> "已中断"
+        else -> "进行中"
+    }
+
+    /**
+     * 追加一条用户要求；只有去掉空白标点后完全重复才跳过。
+     *
+     * 这里刻意不用 [AiMemoryDedupe.isSame] 的模糊去重：要求清单的首条就是任务原文，
+     * 用户中途补充的指令往往与原文措辞相近（"帮我在美团点一份黄焖鸡" → "帮我再点一份黄焖鸡"，
+     * 相似度恰好 0.5 会被判为重复），但它是**新的一条要求**，静默丢掉就等于没记住用户需求。
+     * 条数上限已能防膨胀，宁可留下近似项也不要漏掉指令。
+     *
+     * 返回新对象而不是就地修改：引擎里是「内存快照 + 异步落库」，就地修改会让落库内容与快照对不上。
+     */
+    fun withRequirement(text: String): TaskMemoryEntry {
+        val t = text.trim()
+        if (t.isEmpty() || requirements.any { AiMemoryDedupe.isExact(it, t) }) return this
+        return copy(
+            requirements = (requirements + t).takeLast(MAX_REQUIREMENTS),
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    /**
+     * 追加一条已验证有效的做法（模糊去重，字段语义见 [withRequirement]）。
+     * 做法清单是「去重后的有效做法」而非逐步流水账，同一类操作换个说法出现应当合并，
+     * 故这里保留 [AiMemoryDedupe.isSame]。
+     */
+    fun withMethod(text: String): TaskMemoryEntry {
+        val t = text.trim()
+        if (t.isEmpty() || methods.any { AiMemoryDedupe.isSame(it, t) }) return this
+        return copy(
+            methods = (methods + t).takeLast(MAX_METHODS),
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    /** 任务收尾：写回状态与已完成步数 */
+    fun withStatus(status: String, steps: Int): TaskMemoryEntry =
+        copy(status = status, completedSteps = steps, updatedAt = System.currentTimeMillis())
+}
+
+/**
  * 记忆系统：异常经验记忆 + 用户画像，基于 DataStore 持久化。
  * 对应文档“第 10 层 记忆系统”。
  */
 class MemoryStore(private val context: Context) {
+
+    private companion object {
+        /** 任务记忆总量上限：记忆页是给人看的列表，超出按时间淘汰 */
+        const val MAX_TASK_MEMORIES = 30
+    }
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -75,6 +163,7 @@ class MemoryStore(private val context: Context) {
     private val anomaliesKey = stringPreferencesKey("anomaly_memory")
     private val profileKey = stringPreferencesKey("user_profile")
     private val aiMemoryKey = stringPreferencesKey("ai_memory")
+    private val taskMemoryKey = stringPreferencesKey("task_memory")
 
     suspend fun loadAnomalies(): List<AnomalyMemoryEntry> {
         val raw = context.memoryStore.data.first()[anomaliesKey] ?: return emptyList()
@@ -167,6 +256,67 @@ class MemoryStore(private val context: Context) {
             if (entry.id in idSet) entry.copy(useCount = entry.useCount + 1, lastUsedAt = now) else entry
         }
         saveAiMemories(list)
+    }
+
+    // ---- 任务记忆（任务执行中的工作记忆）----
+
+    suspend fun loadTaskMemories(): List<TaskMemoryEntry> {
+        val raw = context.memoryStore.data.first()[taskMemoryKey] ?: return emptyList()
+        return runCatching { json.decodeFromString<List<TaskMemoryEntry>>(raw) }.getOrDefault(emptyList())
+    }
+
+    suspend fun saveTaskMemories(list: List<TaskMemoryEntry>) {
+        context.memoryStore.edit { it[taskMemoryKey] = json.encodeToString(ListSerializer(TaskMemoryEntry.serializer()), list) }
+    }
+
+    /**
+     * 写入一条任务记忆：同 [TaskMemoryEntry.taskId] 视为同一次任务，命中则就地替换（保留原 id 与创建时间）。
+     * id 由本方法统一分配，调用方无需关心。
+     */
+    suspend fun upsertTaskMemory(entry: TaskMemoryEntry): TaskMemoryEntry {
+        val list = loadTaskMemories().toMutableList()
+        val idx = list.indexOfFirst { it.taskId == entry.taskId }
+        val result: TaskMemoryEntry
+        if (idx >= 0) {
+            val existing = list[idx]
+            // 乱序保护：引擎是「内存快照 + fire-and-forget 落库」，旧快照可能后到，
+            // 直接写入会把已经记录的新进度覆盖回去，故迟到的写入一律丢弃。
+            if (entry.updatedAt < existing.updatedAt) return existing
+            result = entry.copy(id = existing.id, createdAt = existing.createdAt)
+            list[idx] = result
+        } else {
+            result = entry.copy(id = (list.maxOfOrNull { it.id } ?: 0L) + 1)
+            list.add(result)
+        }
+        saveTaskMemories(trimTaskMemories(list))
+        return result
+    }
+
+    /** 删除单条任务记忆，返回是否删掉了东西 */
+    suspend fun deleteTaskMemory(id: Long): Boolean {
+        val list = loadTaskMemories()
+        val rest = list.filterNot { it.id == id }
+        if (rest.size == list.size) return false
+        saveTaskMemories(rest)
+        return true
+    }
+
+    suspend fun clearTaskMemories() {
+        saveTaskMemories(emptyList())
+    }
+
+    /**
+     * 库容量兜底：优先淘汰已结束的任务，进行中的留到最后 ——
+     * 否则正在跑的任务会被自己累积的历史记录挤掉，记忆页上「当前任务」反而消失。
+     */
+    private fun trimTaskMemories(list: List<TaskMemoryEntry>): List<TaskMemoryEntry> {
+        if (list.size <= MAX_TASK_MEMORIES) return list
+        val overflow = list.size - MAX_TASK_MEMORIES
+        val victims = (
+            list.filter { it.status != TaskMemoryEntry.STATUS_RUNNING }.sortedBy { it.updatedAt } +
+                list.filter { it.status == TaskMemoryEntry.STATUS_RUNNING }.sortedBy { it.updatedAt }
+            ).take(overflow).map { it.taskId }.toSet()
+        return list.filterNot { it.taskId in victims }
     }
 }
 

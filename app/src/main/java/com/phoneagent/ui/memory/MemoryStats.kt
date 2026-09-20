@@ -9,14 +9,21 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.StatTile
 import com.phoneagent.ui.theme.MemoryAnomaly
 import com.phoneagent.ui.theme.MemoryProfile
+import com.phoneagent.ui.theme.MemoryRoot
 
 /** 统计概览 */
 @Composable
-internal fun StatsRow(anomalyCount: Int, profileCount: Int) {
+internal fun StatsRow(taskCount: Int, anomalyCount: Int, profileCount: Int) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
+        StatTile(
+            title = "任务记忆",
+            value = taskCount.toString(),
+            accent = MemoryRoot,
+            modifier = Modifier.weight(1f),
+        )
         StatTile(
             title = "异常经验",
             value = anomalyCount.toString(),
