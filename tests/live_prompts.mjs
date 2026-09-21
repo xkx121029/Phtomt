@@ -13,7 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const KT_PATH = join(here, '..', 'app', 'src', 'main', 'java', 'com', 'phoneagent', 'engine', 'AgentPrompts.kt');
+/** 可以用 HPA_PROMPTS_KT 指向别的副本（如 git 里的历史版本），用于同口径对比改造前后的字符量 */
+export const KT_PATH = process.env.HPA_PROMPTS_KT
+  || join(here, '..', 'app', 'src', 'main', 'java', 'com', 'phoneagent', 'engine', 'AgentPrompts.kt');
 
 /** 取第 n（0 起）对三引号 raw string 的内容 */
 function rawStrings(src, from, count) {
