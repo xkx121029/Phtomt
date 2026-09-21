@@ -1431,7 +1431,7 @@ class AgentEngine(
                         "\n\n你发出的 shell 命令无效：${verify.reason}\n请只使用以下友好命令：tap/lp/dt/sw/su/sd/sl/sr/key/back/home/recents/text/am/stop/dump/launch/brightness/screenshot/info/wifi_on/wifi_off/clip。坐标用比例（0~1）或像素。不要编造不存在的命令。"
                     }
                 } else {
-                    "\n\n意图「${action.type}」执行无效：${verify.reason}\n请重新决策，使用 open_app/open/tap/long_press/input/swipe/press/wait/scroll_to/write_doc/finish/give_up 中正确的意图与参数。目标优先用 by_id/by_text，找不到用 by_hint。"
+                    "\n\n意图「${action.type}」执行无效：${verify.reason}\n请重新决策，使用 open_app/open/tap/long_press/input/swipe/press/wait/scroll_to/write_doc/browse_open/browse_read/browse_click/browse_input/browse_scroll/browse_back/finish/give_up 中正确的意图与参数。目标优先用 by_id/by_text，找不到用 by_hint；网页内的元素改用 browse_click + {\"by\":\"text\",\"value\":\"元素文字\"}。"
                 }
                 messages.add(ChatMessageDto(role = "assistant", content = listOf(
                     ContentPart(type = "text", text = fix),
@@ -2623,7 +2623,7 @@ class AgentEngine(
         } else {
             consecutiveFailures++
             log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
-            pushFloating("浏览器：$label 失败", "WARN")
+            pushFloating("浏览器：$label 未成功", "THINKING")
         }
         delay(200)
     }
