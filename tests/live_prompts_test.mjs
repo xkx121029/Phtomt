@@ -197,6 +197,41 @@ async function testDecision(lang) {
     report('decision', 'D07', '网页元素用 browse_click 而非 tap 猜坐标', ok,
       `intent=${a?.intent} target=${JSON.stringify(a?.target)}\n      raw=${raw.slice(0, 200)}`);
   }
+
+  // 1-8 browse_read 的正文是 Markdown：链接已内联，AI 要直接从 [文字](网址) 里取文字当 target
+  {
+    const md = L === 'CN'
+      ? '内置浏览器（browse_read）结果：标题=汇率搜索结果\n正文：\n## 美元对人民币汇率\n\n今日中间价 **7.12**，较昨日上涨 0.3%。\n\n- [下一页](https://e.com/serp?p=2)\n- [上一页](https://e.com/serp?p=0)'
+      : 'built-in browser (browse_read) result: title=rate search results\nbody:\n## USD to CNY\n\nToday **7.12**, up 0.3%.\n\n- [Next](https://e.com/serp?p=2)\n- [Previous](https://e.com/serp?p=0)';
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? '翻到刚才汇率搜索结果的下一页' : 'Go to the next page of the exchange-rate results',
+      total: 4, step: L === 'CN' ? '点击网页上的「下一页」' : 'click "Next" on the web page',
+      hint: L === 'CN' ? '内置浏览器' : 'built-in browser', page: PAGE_BROWSER, last: md,
+    }));
+    const a = first(json);
+    const want = L === 'CN' ? /下一页/ : /next/i;
+    const t = a?.target || {};
+    const byText = t.by === 'text' || t.by === 'label';
+    const ok = !!a && a.intent === 'browse_click' && byText && want.test(String(t.value || t.text || ''));
+    report('decision', 'D08', '从内联链接文字取 browse_click 目标', ok,
+      `intent=${a?.intent} target=${JSON.stringify(a?.target)}\n      raw=${raw.slice(0, 220)}`);
+  }
+
+  // 1-9 拿网页正文整理成文档：必须 write_doc 出完整正文，不得去屏幕上打字
+  {
+    const md = L === 'CN'
+      ? '内置浏览器（browse_read）结果：标题=美元汇率\n正文：\n## 美元对人民币汇率\n\n今日中间价 **7.12**，较昨日上涨 0.3%。'
+      : 'built-in browser (browse_read) result: title=USD rate\nbody:\n## USD to CNY\n\nToday **7.12**, up 0.3%.';
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? '把刚才抓到的网页正文整理成一份 Markdown 文档' : 'Turn the page content you just read into a Markdown document',
+      total: 3, step: L === 'CN' ? '整理成文档' : 'compile the document',
+      hint: L === 'CN' ? 'Agent 页' : 'Agent page', page: PAGE_MEITUAN, last: md,
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'write_doc' && typeof a.text === 'string' && a.text.trim().length > 0;
+    report('decision', 'D09', '网页正文整理成文档走 write_doc', ok,
+      `intent=${a?.intent} textLen=${a?.text?.length}\n      raw=${raw.slice(0, 220)}`);
+  }
 }
 
 // ==================== 2. 规划 ====================
