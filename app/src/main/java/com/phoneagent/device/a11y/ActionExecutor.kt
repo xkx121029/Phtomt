@@ -113,18 +113,51 @@ class ActionExecutor(
         }
     }
 
-    /** 深链直达：用 ACTION_VIEW 打开 uri（网页/地图/系统页或应用私有 scheme），直接调出目标页面 */
-    fun openUri(uri: String): Result {
-        val u = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("深链为空")
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u)).apply {
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    /**
+     * 用系统应用打开链接/文件（ACTION_VIEW）——"交给系统软件打开"的统一出口。
+     *
+     * 三类目标都由 [OpenTarget] 归一化后交给系统：
+     * 1. 网址（http/https）→ 系统浏览器；
+     * 2. 本地文件（`/sdcard/x.ppt`、`file://…`）→ 转 `content://` + 按扩展名补 MIME，
+     *    否则文档软件不会被列为候选（详见 [OpenTarget]）；
+     * 3. App 私有 scheme / 系统页 → 原样直发。
+     *
+     * @param pkg 指定用哪个应用打开（已解析的包名）；为空时**优先系统自带应用**，
+     *            没有任何系统应用可处理才交回系统默认/选择器
+     */
+    fun openUri(uri: String, pkg: String? = null): Result {
+        val raw = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("打开目标为空")
+        val data = android.net.Uri.parse(OpenTarget.normalize(raw))
+        val base = android.content.Intent(android.content.Intent.ACTION_VIEW, data).apply {
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+            OpenTarget.mimeOf(raw)?.let { setDataAndType(data, it) }
         }
+        val target = pkg?.trim()?.takeIf { it.isNotBlank() } ?: systemHandlerOf(base)
         return try {
-            service.applicationContext.startActivity(intent)
-            Result.Success("已打开 $u")
+            service.applicationContext.startActivity(if (target != null) android.content.Intent(base).setPackage(target) else base)
+            Result.Success(if (target != null) "已用 $target 打开 $raw" else "已打开 $raw")
         } catch (e: Exception) {
-            Result.Failure("深链打开失败：${e.message}")
+            // 没有任何应用能处理这个链接/文件（如本机没装文档阅读器）——给出可执行的中文原因
+            Result.Failure("没有应用能打开 $raw（${e.javaClass.simpleName}）：本机可能缺少能处理该类型的应用")
         }
+    }
+
+    /**
+     * 未指定应用时优先挑**系统自带**应用（用户偏好：打开软件优先用系统软件）。
+     * 查不到系统应用（或 Android 11+ 未授予包可见性）返回 null，交回系统的默认应用/选择器。
+     */
+    private fun systemHandlerOf(intent: android.content.Intent): String? {
+        val pm = service.applicationContext.packageManager
+        val hits = runCatching {
+            pm.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+        }.getOrDefault(emptyList())
+        return hits.firstOrNull { ri ->
+            val app = ri.activityInfo?.applicationInfo ?: return@firstOrNull false
+            app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
+        }?.activityInfo?.packageName
     }
 
     /** 用系统 Intent Action 直达指定设置页（如 Wi-Fi/蓝牙/显示） */

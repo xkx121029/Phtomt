@@ -2113,7 +2113,8 @@ class AgentEngine(
                 // 优先直接深链 uri；否则按软件页面直达索引(app+page)解析直达方式
                 val uri = action.uri
                 if (!uri.isNullOrBlank()) {
-                    executor.openUri(uri).isSuccess()
+                    // uri 非空时 app 字段的语义 = "用哪个应用打开"（应用名/包名；解析不出则交回系统默认）
+                    executor.openUri(uri, action.app?.let { appNameResolver.resolve(it) }).isSuccess()
                 } else {
                     val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
                     when {

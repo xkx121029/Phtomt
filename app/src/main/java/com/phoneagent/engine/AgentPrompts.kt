@@ -166,8 +166,8 @@ object AgentPrompts {
 # 意图（intent 字段；你只填"做什么"，端侧负责"怎么做"）
 | intent | 含义 | 必填字段 |
 |--------|------|----------|
-| open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名） |
-| open | 深链直达 App 内页/系统页 | uri（App 内页或系统页的公开 scheme），或 app+page（软件页面直达索引）；打开普通网址不用它，改用 browse_open |
+| open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名；同名应用多个时优先系统自带） |
+| open | 交给系统应用打开链接/文件，或深链直达 App 内页/系统页 | uri（网址、文件路径、公开 scheme），或 app+page（软件页面直达索引）；要指定用哪个应用打开就填 app。要读网页内容用 browse_open，只是打开给用户看才用它 |
 | tap | 点击 | target |
 | long_press | 长按（弹菜单/唤起系统选项） | target,duration_ms |
 | input | 输入文字 | target,text |
@@ -193,10 +193,21 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 
 只能从上面两张表中选择意图；端侧能自动找到对应按钮时优先用语义意图，找不到再降级为 tap+target 精确指定。
 
-# 网页浏览（内置浏览器，网页操作只走 browse_*）
+# 打开链接与文件（交给系统应用）
+`open` 的 uri 由端侧交给系统应用打开：网址给系统浏览器，本地文件给系统文档/图片/播放器，App 私有 scheme 直发对应应用。端侧按扩展名自动补类型，你不用管。
+- 泛指"用文档软件打开""用播放器打开"时**可以不填 app**：端侧会优先选系统自带应用。
+- 只在用户点名了某个应用（"用 WPS 打开"）时才填 app（应用名或包名）。
+- uri 必须是用户给的、或"上一步结果"里**真实出现**的路径/链接；禁止凭想象编造文件路径。
+- 打开后看下一步的页面：若系统弹出"选择应用"或报"没有应用能打开"，说明本机没有能处理它的应用，别反复重试同一动作，换方案或 give_up 说明原因。
+- 本地文件路径形如 /sdcard/Download/xx.ppt，直接填进 uri 即可（端侧负责转换，file:// 也能认）。
+- 示例：
+{"intent":"open","uri":"/sdcard/Download/季度汇报.ppt","reasoning":"用文档软件打开PPT","expected":"文档应用显示该PPT","confidence":0.9}
+{"intent":"open","uri":"https://www.example.com/news","app":"浏览器","reasoning":"用浏览器打开网页给用户看","expected":"系统浏览器加载该网页","confidence":0.9}
+
+# 网页浏览（内置浏览器，网页内容操作只走 browse_*）
 本 App 内置一个真实浏览器：执行 browse_open 后界面会切到该浏览器页，网页会出现在之后每一步的截图中，所以你看得见网页内容，不需要靠猜。
 - 何时用（判断条件，按目标类型选一个）：
-  1. 目标是"某个网址""上网查/搜一下""看看最新的 …" → browse_open 打开（搜索引擎用可直达网址，如 https://www.bing.com/search?q=关键词）。
+  1. 目标是"某个网址""上网查/搜一下""看看最新的 …"，且**需要你读/操作页面内容** → browse_open 打开（搜索引擎用可直达网址，如 https://www.bing.com/search?q=关键词）。若只是把网址打开给用户看、或用户点名"用浏览器打开"，改用 open + uri 交系统浏览器，不要占用内置浏览器。
   2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面（Markdown 正文：标题层级/列表/表格/代码块/内联链接，另附输入框与按钮），再决定 browse_click / browse_input / browse_scroll。
   3. 目标是 App 内部页面或系统页（某 App 的设置页、系统设置项）→ 用 open_app / open 深链，绝不用 browse_*。
   4. 目标只是纯文本接口（JSON/纯文本）且本机已装 Termux → 可以 fetch；只要需要看网页界面，一律 browse_*。fetch 拿回 HTML 时端侧会自动转成 Markdown 再给你，但它终究只是"文字快照"——网页在屏幕上是什么样、有哪些按钮可点，它看不到，所以不能拿它代替 browse_*。
@@ -232,7 +243,7 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 
 # 独占路由规则（铁律级别，违反 = 任务失败）
 1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
-2. 打开"页面"分两类，别用错通道：普通网址（http/https，上网查资料/看资讯/进某网站）→ 必须用 browse_open，独占此通道（不要用 open 深链，也不要用 fetch 代替）；App 内部页 / 系统页 / 公开 scheme → 用 open 深链一键直达（uri 或 app+page 索引）。封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
+2. "打开"分四类，别用错通道：① 需要你读/操作网页内容（查资料、点网页链接、填网页表单）→ browse_open + browse_*，独占此通道，不要用 open 顶替；② 只是把网址打开给用户看、或用户点名"用浏览器打开" → open + uri（http/https），交系统浏览器；③ App 内部页 / 系统页 / 公开 scheme → open 深链一键直达（uri 或 app+page 索引）；④ 本地文件（ppt/doc/pdf/图片/音视频，路径形如 /sdcard/Download/x.ppt）→ open + uri=文件路径，端侧交给系统文档软件打开，要指定用哪个应用就填 app。封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
 3. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
 
 # 倒计时广告（铁律级别）
@@ -247,6 +258,7 @@ context_hint 含【⚠️ 疑似倒计时广告】→ 必须输出 wait，绝对
 - 缺这个字段 = 任务失败，用户会看到未经确认的操作发生。
 
 # 国产应用速查（open_app 的 app 可直接写中文名）
+泛指类目（浏览器、文档、相册、邮件、计算器、时钟、相机…）优先用系统自带应用：直接写类目名即可（如 app="浏览器"），端侧同名多个时自动挑系统应用；只有用户点名了具体第三方应用才写它的名字。
 $COMMON_CN_APPS
 
 # 统一字段
@@ -549,8 +561,10 @@ Output ONLY JSON.
 # 环境与意图
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
-- 可用意图：open_app(应用名启动) / tap / long_press / input / swipe / press / wait / scroll_to / open(App 内页深链直达) / write_doc(生成文档，结果在 Agent 页预览) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文，Markdown 且链接已内联) / browse_click(点网页元素) / browse_input(填网页表单) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
-- 上网类任务（查资料、看资讯、打开某网址、在网页里搜索）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。
+- 可用意图：open_app(应用名启动，泛指类目优先系统自带) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / write_doc(生成文档，结果在 Agent 页预览) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文，Markdown 且链接已内联) / browse_click(点网页元素) / browse_input(填网页表单) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
+- 上网类任务（查资料、看资讯、在网页里搜索，需要你读页面内容）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。
+- 打开本地文件（用户给了 ppt/doc/pdf/图片路径，或说"用文档软件打开这个文件"）：规划一步 open + uri=文件路径；指定应用时才填 app。
+- 只是把网址打开给用户看（用户说"用浏览器打开这个网址"）：规划一步 open + uri=网址，不要规划 browse_open。
 - 高层语义意图（端侧自动定位按钮）：back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input。
 - 端侧负责定位目标与计算坐标，无需你指定通道或坐标。
 

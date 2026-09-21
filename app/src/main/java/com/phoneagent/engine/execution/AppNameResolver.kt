@@ -12,6 +12,11 @@ import android.util.Log
  * 2. 查询系统已安装应用列表，精确匹配应用名（忽略大小写）
  * 3. 精确匹配失败时，模糊匹配（去掉空格/特殊字符后做子串匹配）
  * 4. 均失败时，列出已安装应用供 AI 参考
+ *
+ * **同名候选一律优先系统自带应用**：用户偏好「打开软件优先用系统软件」，而 AI 说"打开浏览器"
+ * 这类**泛指类目**时，同一台机器上往往同时装着系统浏览器与第三方浏览器（如 Chrome/夸克），
+ * 按安装顺序取第一个会让结果随机。因此候选命中多个时先挑系统应用，没有系统应用才用第三方
+ * （如"微信"这类无系统版的第三方应用不受影响）。
  */
 class AppNameResolver(private val context: Context) {
 
@@ -30,20 +35,24 @@ class AppNameResolver(private val context: Context) {
         // 查询已安装应用列表
         val installed = queryInstalledApps()
 
-        // 精确匹配（忽略大小写）
-        installed.firstOrNull { it.appName.equals(name, ignoreCase = true) }?.let {
-            Log.d(TAG, "  -> 精确匹配: '$name' => ${it.packageName}")
-            return it.packageName
+        // 精确匹配（忽略大小写）；同名多个（如"浏览器"）优先系统自带
+        pickPreferredPackage(
+            installed.filter { it.appName.equals(name, ignoreCase = true) }.map { it.packageName to it.isSystem },
+        )?.let {
+            Log.d(TAG, "  -> 精确匹配: '$name' => $it")
+            return it
         }
 
-        // 模糊匹配：去掉空格和特殊字符后做子串匹配
+        // 模糊匹配：去掉空格和特殊字符后做子串匹配；同样优先系统自带
         val cleanName = name.replace("\\s+".toRegex(), "").lowercase()
-        installed.firstOrNull { app ->
-            val cleanLabel = app.appName.replace("\\s+".toRegex(), "").lowercase()
-            cleanLabel.contains(cleanName) || cleanName.contains(cleanLabel)
-        }?.let {
-            Log.d(TAG, "  -> 模糊匹配: '$name' => ${it.packageName}")
-            return it.packageName
+        pickPreferredPackage(
+            installed.filter { app ->
+                val cleanLabel = app.appName.replace("\\s+".toRegex(), "").lowercase()
+                cleanLabel.contains(cleanName) || cleanName.contains(cleanLabel)
+            }.map { it.packageName to it.isSystem },
+        )?.let {
+            Log.d(TAG, "  -> 模糊匹配: '$name' => $it")
+            return it
         }
 
         // 提示：列出所有已安装应用的名称和包名，供 AI 参考
@@ -60,13 +69,23 @@ class AppNameResolver(private val context: Context) {
             pm.queryIntentActivities(launcher, 0)
                 .mapNotNull {
                     val label = it.loadLabel(pm).toString().trim().ifBlank { null } ?: return@mapNotNull null
-                    InstalledApp(label, it.activityInfo.packageName)
+                    val info = it.activityInfo?.applicationInfo
+                    val system = info != null &&
+                        info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
+                    InstalledApp(label, it.activityInfo.packageName, system)
                 }
                 .distinctBy { it.packageName }
         }.getOrDefault(emptyList())
     }
 
-    private data class InstalledApp(val appName: String, val packageName: String)
+    private data class InstalledApp(val appName: String, val packageName: String, val isSystem: Boolean)
 }
+
+/**
+ * 候选挑选：优先系统自带应用，没有系统应用才取第一个候选。
+ * 抽成纯函数是为了可单测——[AppNameResolver] 本身依赖 PackageManager 无法在纯 JVM 里跑。
+ */
+internal fun pickPreferredPackage(candidates: List<Pair<String, Boolean>>): String? =
+    candidates.firstOrNull { it.second }?.first ?: candidates.firstOrNull()?.first
 
 private const val TAG = "AppNameResolver"
