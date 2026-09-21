@@ -4,7 +4,7 @@
  * 与 tests/ 下早期脚本的区别：本脚本不内嵌提示词副本，而是通过 live_prompts.mjs
  * 从 AgentPrompts.kt 实时提取当前生效的提示词，因此测的就是软件运行时真正用的文本。
  *
- * 覆盖：系统提示词（格式/寻址/广告/支付/文档）、规划（无歧义/歧义）、重规划、批量规划、验证、记忆提炼。
+ * 覆盖：系统提示词（格式/寻址/广告/支付/文档/上网）、规划（无歧义/歧义）、重规划、批量规划、验证、记忆提炼。
  * 用法: node tests/live_prompts_test.mjs [cn|en|all]
  */
 
@@ -70,11 +70,13 @@ const PAGE_MEITUAN = `{"context_hint":"美团首页","page_type":"home","fingerp
 const PAGE_AD = `{"context_hint":"【⚠️ 疑似倒计时广告】开屏广告，剩余 4 秒，右上角有跳过按钮","page_type":"ad","fingerprint":"fp_ad_splash","elements":[{"id":"ad_skip","type":"TextView","label":"跳过 4","clickable":true,"bounds_ratio":[0.85,0.03,0.98,0.08]},{"id":"ad_root","type":"View","label":"","clickable":true,"bounds_ratio":[0,0,1,1]}]}`;
 const PAGE_PAY = `{"context_hint":"确认订单页，底部有确认支付按钮","page_type":"order","fingerprint":"fp_order_confirm","elements":[{"id":"btn_pay","type":"Button","label":"确认支付 23.00","clickable":true,"bounds_ratio":[0.1,0.9,0.9,0.98]},{"id":"btn_cancel","type":"Button","label":"取消","clickable":true,"bounds_ratio":[0.1,0.95,0.4,0.99]}]}`;
 const PAGE_ICON = `{"context_hint":"某应用首页，顶部只有图标没有文字","page_type":"home","fingerprint":"fp_icon_only","elements":[{"id":"","type":"View","label":"","clickable":false,"bounds_ratio":[0,0,1,0.06]},{"id":"","type":"ImageView","label":"","clickable":true,"bounds_ratio":[0.86,0.02,0.94,0.06]},{"id":"","type":"ImageView","label":"","clickable":true,"bounds_ratio":[0.06,0.02,0.14,0.06]}]}`;
+// 内置浏览器页：WebView 在元素树里只有一个节点，网页控件读不到，必须靠 browse_* 操作
+const PAGE_BROWSER = `{"context_hint":"内置浏览器：搜索结果页（美元人民币汇率）","page_type":"browser","fingerprint":"fp_browser_serp","elements":[{"id":"","type":"WebView","label":"网页内容","clickable":true,"bounds_ratio":[0,0.09,1,0.93]}]}`;
 
 function decide(lang, extra) {
   const ctx = {
-    CN: `【执行决策】\n\n任务：${extra.task}\n步骤：[1/${extra.total}] ${extra.step}\n上一步结果：无\n连续失败：0\n页面提示：${extra.hint}\n\n## 当前页面\n${extra.page}`,
-    EN: `【Execution Decision】\n\nTask: ${extra.task}\nStep: [1/${extra.total}] ${extra.step}\nLast step result: none\nConsecutive failures: 0\nPage hint: ${extra.hint}\n\n## Current Page\n${extra.page}`,
+    CN: `【执行决策】\n\n任务：${extra.task}\n步骤：[1/${extra.total}] ${extra.step}\n上一步结果：${extra.last || '无'}\n连续失败：0\n页面提示：${extra.hint}\n\n## 当前页面\n${extra.page}`,
+    EN: `【Execution Decision】\n\nTask: ${extra.task}\nStep: [1/${extra.total}] ${extra.step}\nLast step result: ${extra.last || 'none'}\nConsecutive failures: 0\nPage hint: ${extra.hint}\n\n## Current Page\n${extra.page}`,
   };
   return ctx[lang];
 }
@@ -165,6 +167,35 @@ async function testDecision(lang) {
     const ok = !!a && ['tap', 'long_press', 'open', 'open_app', 'scroll_to', 'search'].includes(a.intent)
       && (a.intent !== 'tap' || (a.target && a.target.by !== 'coordinate'));
     report('decision', 'D05', '图标类控件不用猜坐标', ok, `intent=${a?.intent} target=${JSON.stringify(a?.target)}\n      raw=${raw.slice(0, 200)}`);
+  }
+
+  // 1-6 上网查资料：必须走内置浏览器 browse_open，不得用 open 深链或 fetch 顶替
+  {
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? '帮我查一下今天美元对人民币的汇率' : "Look up today's USD to CNY exchange rate",
+      total: 3, step: L === 'CN' ? '打开网页查询汇率' : 'open a web page to check the rate',
+      hint: L === 'CN' ? 'Happy Agent 主页' : 'Happy Agent home', page: PAGE_MEITUAN,
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'browse_open' && typeof a.uri === 'string' && /^https?:\/\//i.test(a.uri);
+    report('decision', 'D06', '上网任务走 browse_open 且带 http(s) uri', ok,
+      `intent=${a?.intent} uri=${a?.uri}\n      raw=${raw.slice(0, 200)}`);
+  }
+
+  // 1-7 网页内的元素：必须 browse_click 按文字点，不得改用 tap 猜坐标
+  {
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? '翻到刚才汇率搜索结果的下一页' : 'Go to the next page of the exchange-rate results',
+      total: 4, step: L === 'CN' ? '点击网页上的「下一页」' : 'click "Next" on the web page',
+      hint: L === 'CN' ? '内置浏览器' : 'built-in browser', page: PAGE_BROWSER,
+      last: L === 'CN'
+        ? '内置浏览器（browse_read）结果：标题=汇率搜索结果；可点链接：下一页、上一页'
+        : 'built-in browser (browse_read) result: title=rate search results; links: Next, Previous',
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'browse_click' && !!a.target && a.target.by !== 'coordinate';
+    report('decision', 'D07', '网页元素用 browse_click 而非 tap 猜坐标', ok,
+      `intent=${a?.intent} target=${JSON.stringify(a?.target)}\n      raw=${raw.slice(0, 200)}`);
   }
 }
 
