@@ -57,6 +57,9 @@ object HtmlToMarkdown {
     /**
      * 整块丢弃（含子树）：脚本样式、嵌入物、表单控件、导航噪声。
      * `head` 也在其中——它只有元信息，正文转换前会先把 title/base/canonical/og:url 抽走。
+     *
+     * **`html` 与 `body` 绝不在此表**：它们是正文的容器，丢它们等于丢整篇（曾被误列入，
+     * 导致整页转出空 Markdown，[BrowserScripts.READ] 从 `body` 起步会当场空手而归）。
      */
     const val DROP_RULE =
         "script style noscript template svg canvas iframe object embed audio video map area " +
@@ -327,8 +330,9 @@ object HtmlToMarkdown {
                 continue
             }
             if (!tag.endTag && tag.name in DROP_TAGS) {
-                captureMeta(html, tag, meta)
-                i = skipSubtree(html, tag)
+                val end = skipSubtree(html, tag)
+                captureMeta(html, tag, end, meta)
+                i = end
                 continue
             }
             out.append(html, lt, tag.end)
@@ -337,8 +341,16 @@ object HtmlToMarkdown {
         return out.toString()
     }
 
-    /** 从被丢弃的 head 子树里抢救元信息：title / base href / canonical / og:url */
-    private fun captureMeta(html: String, tag: Tag, meta: Meta) {
+    /**
+     * 从被丢弃的子树里抢救元信息：title / base href / canonical / og:url。
+     * `head` 整棵会被丢掉，所以它的元信息必须在丢之前扫一遍——`<title>` 只可能出现在里面，
+     * 不扫这一遍就永远拿不到网页标题。
+     */
+    private fun captureMeta(html: String, tag: Tag, end: Int, meta: Meta) {
+        if (tag.name == "head") {
+            captureHead(html, tag.end, end, meta)
+            return
+        }
         when (tag.name) {
             "title" -> if (meta.title == null) {
                 val e = indexOfEndTag(html, "title", tag.end)
@@ -356,6 +368,27 @@ object HtmlToMarkdown {
                 val prop = (tag.attrs["property"] ?: tag.attrs["name"]).orEmpty().lowercase()
                 if (meta.ogUrl.isNullOrBlank() && prop == "og:url") meta.ogUrl = tag.attrs["content"]
             }
+        }
+    }
+
+    /** 扫一遍即将被丢弃的 head 子树，逐个标签交给 [captureMeta]（`head` 自身不再递归） */
+    private fun captureHead(html: String, from: Int, end: Int, meta: Meta) {
+        var i = from
+        while (i < end) {
+            val lt = html.indexOf('<', i)
+            if (lt < 0 || lt >= end) return
+            if (html.startsWith("<!--", lt)) {
+                val e = html.indexOf("-->", lt + 4)
+                i = if (e < 0 || e >= end) end else e + 3
+                continue
+            }
+            val t = parseTag(html, lt)
+            if (t == null) {
+                i = lt + 1
+                continue
+            }
+            if (!t.endTag && t.name != "head") captureMeta(html, t, end, meta)
+            i = if (t.end >= lt + 1) t.end else lt + 1
         }
     }
 
@@ -746,7 +779,8 @@ object HtmlToMarkdown {
                 pre.append(decodeEntities(s))
                 return
             }
-            b.appendText(s)
+            // 正文同样要解实体：HTML 解析器早把 `&amp;` 还原成 `&`，这里等价还原
+            b.appendText(decodeEntities(s))
         }
 
         private fun closeCell() {
