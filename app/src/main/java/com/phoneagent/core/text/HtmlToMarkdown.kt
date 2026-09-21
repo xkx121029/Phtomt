@@ -60,7 +60,7 @@ object HtmlToMarkdown {
      */
     const val DROP_RULE =
         "script style noscript template svg canvas iframe object embed audio video map area " +
-            "meta link base head input select option textarea button label nav footer aside"
+            "meta link base head title input select option textarea button label nav footer aside"
 
     /** 块级标签：进入/离开都要断开当前行内片段（"透明分段"，不产标记） */
     const val BLOCK_RULE =
@@ -392,7 +392,11 @@ object HtmlToMarkdown {
                 i = if (e < 0) window else e + 1
                 continue
             }
-            val t = parseTag(html, lt) ?: run { i = lt + 1; null } ?: continue
+            val t = parseTag(html, lt)
+            if (t == null) {
+                i = lt + 1
+                continue
+            }
             if (t.name == name) {
                 if (t.endTag) depth-- else if (!t.selfClosing) depth++
             }
@@ -546,8 +550,15 @@ object HtmlToMarkdown {
                 if (b.truncated) stop = true
             }
             // EOF 收尾：栈内未闭合元素按序关闭，保证输出结构完整
-            while (stack.isNotEmpty()) closeFrame(stack.removeAt(stack.size - 1))
+            while (stack.isNotEmpty()) popTop()
             b.flushList()
+        }
+
+        /** 关闭栈顶：**先 closeFrame 再出栈**——closeFrame 要靠栈找到所属列表项/引用深度 */
+        private fun popTop() {
+            val f = stack[stack.size - 1]
+            closeFrame(f)
+            stack.removeAt(stack.size - 1)
         }
 
         // ---------- 开始标签 ----------
@@ -667,7 +678,7 @@ object HtmlToMarkdown {
                 }
             }
             if (idx < 0) return
-            while (stack.size > idx) closeFrame(stack.removeAt(stack.size - 1))
+            while (stack.size > idx) popTop()
         }
 
         private fun closeFrame(f: Frame) {
@@ -710,7 +721,7 @@ object HtmlToMarkdown {
         private fun closeNearest(tags: Set<String>) {
             for (k in stack.indices.reversed()) {
                 if (stack[k].tag in tags) {
-                    while (stack.size > k) closeFrame(stack.removeAt(stack.size - 1))
+                    while (stack.size > k) popTop()
                     return
                 }
             }
