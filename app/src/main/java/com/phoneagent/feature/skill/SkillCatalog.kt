@@ -161,7 +161,7 @@ object SkillCatalog {
             IntentType.FETCH, Skill(
                 id = "skill_fetch", name = "取网页正文", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "取数", legacyIntent = IntentType.FETCH,
-                description = "用命令行取网页/接口正文（需本机已安装并授权 Termux）。",
+                description = "用命令行取网页/接口正文（需本机已安装并授权 Termux）；接口 JSON/纯文本原样返回，返回 HTML 时自动转成 Markdown 再回传。",
                 params = listOf(
                     SkillParam("uri", "网页/接口地址", "text", required = true, description = "http:// 或 https://"),
                 ),
@@ -182,7 +182,7 @@ object SkillCatalog {
             IntentType.BROWSE_READ, Skill(
                 id = "skill_browse_read", name = "抓取网页内容", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "浏览器", legacyIntent = IntentType.BROWSE_READ,
-                description = "抓取内置浏览器当前网页的结构化内容（标题/网址/正文/可点链接/表单），结果作为「上一步结果」回给你。无需参数。",
+                description = "抓取内置浏览器当前网页的正文与表单按钮；正文以 Markdown 返回（标题层级/列表/表格/代码块齐全，链接内联成 [文字](网址)），结果作为「上一步结果」回给你。无需参数。",
             ),
         )
         put(

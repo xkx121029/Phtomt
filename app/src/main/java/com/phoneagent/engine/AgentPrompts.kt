@@ -1081,12 +1081,12 @@ Output ONLY JSON. First char = {, last = }.
                 sb.append("本机已装并授权 Termux（普通应用权限的 Linux 环境），可让端侧直接取回正文：接口 JSON/纯文本原样返回，返回 HTML 时端侧自动转成 Markdown，比在界面上翻页查找更可靠。\n")
                 sb.append("""用法：{"intent":"fetch","uri":"https://example.com","reasoning":"取该页正文","expected":"返回正文文本","confidence":0.9}""")
                 sb.append("\n取回的内容会作为上一步命令输出回传给你，可据此继续（例如用 write_doc 汇总成文档）。\n")
-                sb.append("边界（重要）：目标是纯文本接口（JSON/纯文本）或只需静态正文时用它；要看网页界面、要点网页上的按钮链接，一律用 browse_*，不要用 fetch 代替。你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
+                sb.append("边界（重要）：目标是纯文本接口（JSON/纯文本）时用它；网页界面、网页正文一律走 browse_*（fetch 遇到 HTML 只是兜底自动转 Markdown，不是你选它的理由）。你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
             } else {
                 sb.append("Termux is installed and authorized on this device (a plain-app-permission Linux environment), so the device can fetch bodies directly — JSON/plain-text APIs come back as-is and HTML responses are converted to Markdown on-device, which is more reliable than paging through the UI.\n")
                 sb.append("""Usage: {"intent":"fetch","uri":"https://example.com","reasoning":"get the page body","expected":"body text returned","confidence":0.9}""")
                 sb.append("\nThe retrieved content is returned to you as the previous step's command output; continue from there (e.g. summarize it with write_doc).\n")
-                sb.append("Boundary (important): use it when the target really is a plain-text API (JSON/plain text) or when you only need the static body; to see a web UI or click links/buttons on a page, always use browse_* instead of fetch. You only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
+                sb.append("Boundary (important): use it when the target really is a plain-text API (JSON/plain text); web UIs and web page bodies always go through browse_* (fetch converting HTML is only a fallback, never a reason to pick it). You only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
             }
         }
         return sb.toString()
