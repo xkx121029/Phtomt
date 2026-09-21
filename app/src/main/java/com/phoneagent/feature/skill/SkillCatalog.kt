@@ -27,7 +27,7 @@ object SkillCatalog {
             IntentType.OPEN_APP, Skill(
                 id = "skill_open_app", name = "打开应用", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "导航", legacyIntent = IntentType.OPEN_APP,
-                description = "打开指定应用。参数 app 为应用中文名或包名，如「美团」或 com.sankuai.meituan。",
+                description = "打开指定应用。参数 app 为应用中文名或包名，如「美团」或 com.sankuai.meituan；泛指类目（浏览器/文档/相册等）同名多个时端侧优先系统自带应用。",
                 params = listOf(
                     SkillParam("app", "应用名/包名", "text", required = true, description = "要打开的应用中文名或包名"),
                 ),
@@ -35,12 +35,12 @@ object SkillCatalog {
         )
         put(
             IntentType.OPEN, Skill(
-                id = "skill_open_deeplink", name = "深链直达", source = SkillSource.INTENT, isBuiltIn = true,
+                id = "skill_open_deeplink", name = "打开链接/文件", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "导航", legacyIntent = IntentType.OPEN,
-                description = "通过深链或协议直达目标应用页面。参数 uri 为 https 链接或应用私有 scheme；或 app+page 走页面直达索引。",
+                description = "把链接/文件交给系统应用打开（网址给系统浏览器，本地文件 /sdcard/x.ppt 给系统文档应用，端侧按扩展名补类型），或用深链直达应用页面。参数 uri 为网址、文件路径或应用私有 scheme；或 app+page 走页面直达索引。要指定用哪个应用打开就填 app。",
                 params = listOf(
-                    SkillParam("uri", "深链", "text", defaultValue = "", description = "https:// 或 scheme://"),
-                    SkillParam("app", "应用名", "text", description = "目标应用名（配合 page）"),
+                    SkillParam("uri", "链接/文件路径", "text", defaultValue = "", description = "https:// 网址、/sdcard/x.ppt 本地文件路径或 scheme://"),
+                    SkillParam("app", "应用名", "text", description = "指定用哪个应用打开（可配合 page 走页面索引）"),
                     SkillParam("page", "页面序号", "number", description = "软件页面直达索引序号"),
                 ),
             ),
