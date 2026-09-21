@@ -48,8 +48,8 @@ object BrowserBridge {
     private const val LOAD_TIMEOUT_MS = 25_000L
     /** 单条注入脚本的执行超时 */
     private const val JS_TIMEOUT_MS = 8_000L
-    /** 回注给 AI 的内容上限（与 MCP/shell 输出同一量级，避免挤爆决策上下文） */
-    const val MAX_RESULT_CHARS = 2000
+    /** 回注给 AI 的内容上限（与 shell 输出同一量级：网页正文转 Markdown 后需要更多空间） */
+    const val MAX_RESULT_CHARS = 4000
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -286,27 +286,28 @@ object BrowserBridge {
     private fun JsonObject.items(key: String): List<JsonObject> =
         runCatching { this[key]?.jsonArray?.mapNotNull { it as? JsonObject } }.getOrNull().orEmpty()
 
-    /** 把抓到的页面结构整理成紧凑的中文块，直接作为"上一步结果"喂给 AI */
+    /**
+     * 把抓到的页面整理成紧凑的中文块，直接作为"上一步结果"喂给 AI。
+     *
+     * 正文是 **Markdown**（标题层级/列表/表格/代码块/内联链接），链接已内联为 `[文字](网址)`，
+     * 因此不再单独给"可点链接"清单——AI 要 `browse_click` 时直接取正文里的链接文字。
+     * 输入框与按钮仍单独列出：它们是浏览通道特有的**可操作面**（fetch 链路没有），
+     * AI 靠它们决定 `browse_input` 的 target 与 `browse_click` 的文字。
+     */
     private fun formatPage(o: JsonObject): String {
         val sb = StringBuilder()
         sb.append("标题：").append(o.str("title").ifBlank { "(无标题)" }).append('\n')
         sb.append("网址：").append(o.str("url")).append('\n')
         sb.append("滚动：").append(o["scroll"]?.jsonObject?.str("y")).append('/')
             .append(o["scroll"]?.jsonObject?.str("height")).append('\n')
-        val text = o.str("text").trim()
-        sb.append("正文").append(if (text.length >= 3000) "（已截断）" else "").append("：\n")
-            .append(text.ifBlank { "(页面没有可读正文)" }).append('\n')
-        val heads = runCatching { o["headings"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } }
-            .getOrNull().orEmpty()
-        if (heads.isNotEmpty()) sb.append("小标题：").append(heads.joinToString(" | ")).append('\n')
-        val links = o.items("links")
-        if (links.isNotEmpty()) {
-            sb.append("可点链接：\n")
-            links.take(15).forEachIndexed { i, l ->
-                sb.append("  ").append(i + 1).append(") ").append(l.str("text"))
-                    .append(" → ").append(l.str("href")).append('\n')
-            }
-        }
+        val md = o.str("markdown").trim()
+        sb.append("正文（Markdown）").append(if (o.str("truncated") == "true") "（已截断）" else "").append("：\n")
+        // 给输入框/按钮留出尾部空间，正文预算 = 总预算 - 已用长度 - 预留
+        val bodyBudget = (MAX_RESULT_CHARS - sb.length - TAIL_RESERVE).coerceAtLeast(200)
+        sb.append(
+            if (md.isBlank()) "(页面没有可读正文)"
+            else com.phoneagent.core.text.HtmlToMarkdown.takeBlocks(md, bodyBudget),
+        ).append('\n')
         val inputs = o.items("inputs")
         if (inputs.isNotEmpty()) {
             sb.append("输入框：\n")
@@ -322,6 +323,9 @@ object BrowserBridge {
         if (buttons.isNotEmpty()) sb.append("按钮：").append(buttons.joinToString(" | ")).append('\n')
         return sb.toString().trimEnd().take(MAX_RESULT_CHARS)
     }
+
+    /** 输入框/按钮清单的预留长度：保证它们不会被正文挤掉 */
+    private const val TAIL_RESERVE = 400
 }
 
 /**
