@@ -35,7 +35,8 @@ async function callAgnes(messages, temperature = 0.1, retry = 2) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
-      body: JSON.stringify({ model: MODEL, messages, temperature, max_tokens: 4096 }),
+      // 4096 常把 write_doc 这类长正文截断，导致 JSON 不完整而误判为提示词回归
+      body: JSON.stringify({ model: MODEL, messages, temperature, max_tokens: 8192 }),
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -84,6 +85,20 @@ async function ask(system, user, temperature = 0.1) {
   const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: user }] : [{ role: 'user', content: user }];
   const raw = await callAgnes(messages, temperature);
   return { raw, json: parseJson(raw) };
+}
+
+/**
+ * 纯 user 消息的提示词（规划/重规划/批量/验证/记忆提炼在软件里就是这么调的）。
+ * 模型偶发输出格式错乱属于模型噪声而非提示词缺陷，解析失败时重试一次再判定。
+ */
+async function askJson(user, temperature = 0.2, attempts = 2) {
+  let raw = '';
+  for (let i = 0; i < attempts; i++) {
+    raw = await callAgnes([{ role: 'user', content: user }], temperature);
+    const json = parseJson(raw);
+    if (json) return { raw, json };
+  }
+  return { raw, json: null };
 }
 
 // ==================== 1. 系统提示词 · 决策格式与寻址 ====================
@@ -162,8 +177,7 @@ async function testPlanning(lang) {
   {
     const task = L === 'CN' ? '打开美团搜索无线耳机并把第一个商品加入购物车' : 'Open Meituan, search wireless earbuds, add the first item to cart';
     const apps = L === 'CN' ? '微信、美团、支付宝、高德地图' : 'WeChat, Meituan, Alipay, Amap';
-    const raw = await callAgnes([{ role: 'user', content: build('planning', L, { task, installedApps: apps, profile: L === 'CN' ? '无' : 'none' }) }], 0.2);
-    const j = parseJson(raw);
+    const { raw, json: j } = await askJson(build('planning', L, { task, installedApps: apps, profile: L === 'CN' ? '无' : 'none' }), 0.2);
     const steps = j?.plan?.steps || [];
     const ok = !!j && j.needs_clarification === false && steps.length >= 3 && steps.length <= 8
       && steps.every((s) => s.description && s.intent);
@@ -175,8 +189,7 @@ async function testPlanning(lang) {
   {
     const task = L === 'CN' ? '帮我把那个东西弄一下' : 'Just handle that thing for me';
     const apps = L === 'CN' ? '微信、美团、支付宝' : 'WeChat, Meituan, Alipay';
-    const raw = await callAgnes([{ role: 'user', content: build('planning', L, { task, installedApps: apps, profile: L === 'CN' ? '无' : 'none' }) }], 0.2);
-    const j = parseJson(raw);
+    const { raw, json: j } = await askJson(build('planning', L, { task, installedApps: apps, profile: L === 'CN' ? '无' : 'none' }), 0.2);
     const opts = j?.clarification?.options || [];
     const ok = !!j && j.needs_clarification === true && opts.length >= 2 && opts.length <= 5
       && j.clarification.question;
@@ -189,12 +202,11 @@ async function testPlanning(lang) {
 async function testReplan(lang) {
   console.log(`\n===== 3. 重规划 · ${lang} =====`);
   const L = lang === 'CN' ? 'CN' : 'EN';
-  const raw = await callAgnes([{ role: 'user', content: build('replan', L, {
+  const { raw, json: j } = await askJson(build('replan', L, {
     task: L === 'CN' ? '在美团点一份黄焖鸡米饭' : 'order braised chicken rice on Meituan',
     blockReason: L === 'CN' ? '连续 3 次都没能在首页找到搜索框，点击的坐标落到空白处' : 'failed 3 times to find the search box; taps landed on blank area',
     history: L === 'CN' ? '1. 打开美团（成功，已进入首页）' : '1. open Meituan (succeeded, home page shown)',
-  }) }], 0.5);
-  const j = parseJson(raw);
+  }), 0.5);
   const steps = j?.steps || [];
   const text = JSON.stringify(steps);
   const repeatsDone = /打开美团|open Meituan|launch Meituan/i.test(text);
@@ -209,10 +221,9 @@ async function testBatch(lang) {
   console.log(`\n===== 4. 批量规划 · ${lang} =====`);
   const L = lang === 'CN' ? 'CN' : 'EN';
   const task = L === 'CN' ? '帮我给张三发一条微信说晚点到，然后在美团点一份黄焖鸡米饭' : 'Message Zhang San on WeChat that I will be late, then order braised chicken rice on Meituan';
-  const raw = await callAgnes([{ role: 'user', content: build('batchPlanning', L, {
+  const { raw, json: j } = await askJson(build('batchPlanning', L, {
     task, installedApps: L === 'CN' ? '微信、美团、支付宝' : 'WeChat, Meituan, Alipay',
-  }) }], 0.2);
-  const j = parseJson(raw);
+  }), 0.2);
   const tasks = j?.tasks || [];
   const ok = !!j && j.is_batch === true && tasks.length >= 2
     && tasks.every((t) => t.description && Array.isArray(t.steps) && t.steps.length >= 1);
@@ -226,24 +237,22 @@ async function testHelpers(lang) {
   const L = lang === 'CN' ? 'CN' : 'EN';
 
   {
-    const raw = await callAgnes([{ role: 'user', content: build('verify', L, {
+    const { raw, json: j } = await askJson(build('verify', L, {
       actionDesc: L === 'CN' ? '点击"搜索商品"框' : 'tap the "Search products" box',
       expected: L === 'CN' ? '键盘弹出且输入框获得焦点' : 'keyboard appears and the field is focused',
-    }) }], 0.1);
-    const j = parseJson(raw);
+    }), 0.1);
     const ok = !!j && typeof j.success === 'boolean' && typeof j.reason === 'string';
     report('helper', 'H01', '执行验证输出 success/reason', ok, `json=${raw.slice(0, 160)}`);
   }
 
   {
-    const raw = await callAgnes([{ role: 'user', content: build('memoryDistill', L, {
+    const { raw, json: j } = await askJson(build('memoryDistill', L, {
       task: L === 'CN' ? '在美团点一份黄焖鸡米饭' : 'order braised chicken rice on Meituan',
       outcome: L === 'CN' ? '已完成，订单提交成功' : 'completed, order submitted',
       stepsSummary: L === 'CN'
         ? '1. 打开美团 ✅\n2. 搜索"黄焖鸡米饭" ✅\n3. 选第一家店下单 ✅'
         : '1. open Meituan ✅\n2. search "braised chicken rice" ✅\n3. order from the first shop ✅',
-    }) }], 0.1);
-    const j = parseJson(raw);
+    }), 0.1);
     const mems = j?.memories;
     const ok = !!j && Array.isArray(mems) && mems.length <= 3
       && mems.every((m) => m.content && ['preference', 'fact', 'habit', 'tip'].includes(m.category));
