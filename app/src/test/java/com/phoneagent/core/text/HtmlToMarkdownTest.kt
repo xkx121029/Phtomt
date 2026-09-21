@@ -71,6 +71,17 @@ class HtmlToMarkdownTest {
     }
 
     @Test
+    fun `行内标记前的空格不被吞掉`() {
+        val html = "<p>你好 <strong>加粗</strong> 与 <a href=\"https://e.com/x\">链接</a> 以及</p>"
+        val md = HtmlToMarkdown.convert(html).markdown
+        assertEquals("你好 **加粗** 与 [链接](https://e.com/x) 以及", md)
+        // 图片与换行同样是"空白该落地"的证据，不能把空格丢在标记前面
+        assertEquals("看图 ![图](https://e.com/a.png)", HtmlToMarkdown.convert("<p>看图 <img src=\"https://e.com/a.png\" alt=\"图\"></p>").markdown)
+        // 反向护栏：原文没有空白时绝不擅自加空格（CJK 之间尤其）
+        assertEquals("你好**加粗**", HtmlToMarkdown.convert("<p>你好<strong>加粗</strong></p>").markdown)
+    }
+
+    @Test
     fun `无序列表与有序列表及起始序号`() {
         val ul = HtmlToMarkdown.convert("<ul><li>甲</li><li>乙</li></ul>").markdown
         assertEquals("- 甲\n- 乙", ul)
