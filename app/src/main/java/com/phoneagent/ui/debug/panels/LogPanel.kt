@@ -7,6 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,6 +72,7 @@ import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.formatClock
 import com.phoneagent.ui.debug.DebugEmptyHint
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -85,11 +88,8 @@ internal fun LogPanel(logs: List<AgentLog>) {
     var keyword by remember { mutableStateOf("") }
     var activeLevels by remember { mutableStateOf(AgentLog.Level.entries.toSet()) }
 
-    LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1)
-    }
     if (logs.isEmpty()) {
-        DebugEmptyHint("暂无日志")
+        DebugEmptyHint("暂无日志：运行智能体后，这里会按级别滚动记录")
         return
     }
 
@@ -102,18 +102,28 @@ internal fun LogPanel(logs: List<AgentLog>) {
         levelOk && kwOk
     }
 
+    // 自动跟随到底部：按「筛选后」的条数定位，原来用 logs.size 会在筛选状态下滚到越界位置
+    LaunchedEffect(filtered.size) {
+        if (filtered.isNotEmpty()) listState.animateScrollToItem(filtered.size - 1)
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // 筛选栏：关键词 + 级别
         OutlinedTextField(
             value = keyword,
             onValueChange = { keyword = it },
             singleLine = true,
+            shape = RoundedCornerShape(AppRadii.Inline),
             leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
             placeholder = { Text("搜索日志内容…") },
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(AppSpacing.Sm))
+        // 五个级别标签在窄屏上会挤在一起，允许横向滚动
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        ) {
             AgentLog.Level.entries.forEach { lvl ->
                 FilterChip(
                     selected = lvl in activeLevels,
@@ -128,20 +138,24 @@ internal fun LogPanel(logs: List<AgentLog>) {
                 )
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
         Text(
-            "共 ${filtered.size} 条",
+            "共 ${filtered.size} 条" + if (filtered.size != logs.size) "（全部 ${logs.size} 条）" else "",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(AppSpacing.Sm))
         if (filtered.isEmpty()) {
-            DebugEmptyHint("无匹配日志")
+            DebugEmptyHint("无匹配日志", Modifier.fillMaxWidth().heightIn(min = 160.dp))
             return@Column
         }
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             // timestamp+message 可能完全一致（重试/环形回看），叠加 index 保证 key 唯一，避免滚动时 key 冲突闪退
-        itemsIndexed(filtered, key = { i, e -> "${e.timestamp}:${e.level}:${e.message}:$i" }) { _, entry ->
+            itemsIndexed(filtered, key = { i, e -> "${e.timestamp}:${e.level}:${e.message}:$i" }) { _, entry ->
                 LogRow(entry)
             }
         }
@@ -149,6 +163,15 @@ internal fun LogPanel(logs: List<AgentLog>) {
 }
 
 private fun levelLabel(lvl: AgentLog.Level): String = when (lvl) {
+    AgentLog.Level.ERROR -> "错误"
+    AgentLog.Level.WARN -> "警告"
+    AgentLog.Level.AI -> "AI"
+    AgentLog.Level.INFO -> "信息"
+    AgentLog.Level.API -> "接口"
+}
+
+/** 日志行左侧的级别缩写（列表内空间有限，保留三字母短标签） */
+private fun levelTag(lvl: AgentLog.Level): String = when (lvl) {
     AgentLog.Level.ERROR -> "ERR"
     AgentLog.Level.WARN -> "WRN"
     AgentLog.Level.AI -> "AI"
@@ -168,7 +191,8 @@ private fun levelColor(lvl: AgentLog.Level): Color = when (lvl) {
 @Composable
 private fun LogRow(entry: AgentLog) {
     val color = levelColor(entry.level)
-    val tag = levelLabel(entry.level)
+    // 行内仍用三字母级别缩写（中文标签太长会把消息挤到换行），筛选条上用中文
+    val tag = levelTag(entry.level)
     var expanded by remember { mutableStateOf(false) }
     val hasDetail = entry.detail?.isNotBlank() == true
 

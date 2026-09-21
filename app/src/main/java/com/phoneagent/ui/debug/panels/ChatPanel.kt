@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -85,7 +86,7 @@ internal fun ChatPanel(messages: List<ConversationMessage>) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
     if (messages.isEmpty()) {
-        DebugEmptyHint("暂无对话，运行智能体后显示")
+        DebugEmptyHint("暂无对话：运行智能体后，这里显示与模型的完整往返")
         return
     }
     LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -103,11 +104,22 @@ private fun ChatBubble(msg: ConversationMessage) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
-        Box(
+        // 气泡内容必须是纵向容器：原来用 Box，截图提示行会叠在消息文字上方互相压字
+        Column(
             modifier = Modifier
                 .widthIn(max = 300.dp)
                 .background(
-                    color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+                    color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = RoundedCornerShape(
+                        topStart = AppRadii.Bubble,
+                        topEnd = AppRadii.Bubble,
+                        bottomStart = if (isUser) AppRadii.Bubble else AppRadii.Chip,
+                        bottomEnd = if (isUser) AppRadii.Chip else AppRadii.Bubble,
+                    ),
+                )
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(
                         topStart = AppRadii.Bubble,
                         topEnd = AppRadii.Bubble,

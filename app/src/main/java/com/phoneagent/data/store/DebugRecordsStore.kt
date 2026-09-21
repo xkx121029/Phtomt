@@ -47,6 +47,8 @@ object DebugRecordsStore {
     data class LeanStepRecord(
         val step: Int, val action: AgentAction?, val sendResult: String, val verificationResult: String,
         val beforeFingerprint: String, val afterFingerprint: String, val durationMs: Long, val isConfirmed: Boolean,
+        // 任务归属：旧存档没有这两个字段，给默认值保证向下兼容（旧记录的 -1 会被归到「无归属」）
+        val taskId: Long = -1, val taskName: String? = null,
     )
 
     @Serializable
@@ -110,6 +112,7 @@ object DebugRecordsStore {
                     LeanStepRecord(
                         it.step, it.action, it.sendResult, it.verificationResult,
                         it.beforeFingerprint, it.afterFingerprint, it.durationMs, it.isConfirmed,
+                        it.taskId, it.taskName,
                     )
                 },
                 conversation = conversation.map { LeanMessage(it.role, it.content, it.timestamp, it.hasImage) },
@@ -140,7 +143,7 @@ object DebugRecordsStore {
             traces = traces,
             history = bundle.history.map {
                 StepRecord(
-                    it.step, it.action, it.sendResult, it.verificationResult,
+                    it.step, it.taskId, it.taskName, it.action, it.sendResult, it.verificationResult,
                     it.beforeFingerprint, it.afterFingerprint, it.durationMs, it.isConfirmed,
                 )
             },

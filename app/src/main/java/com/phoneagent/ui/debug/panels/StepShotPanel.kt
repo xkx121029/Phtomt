@@ -82,11 +82,12 @@ internal fun StepShotPanel(shot: com.phoneagent.domain.model.StepShot) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
-                "最新一步 · 步骤 ${shot.step}${if (shot.verified) " · 已确认 ✅" else " · 待确认"}",
+                "最新一步 · 步骤 ${shot.step}${if (shot.verified) " · 已确认" else " · 待确认"}",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -120,50 +121,91 @@ internal fun StepShotPanel(shot: com.phoneagent.domain.model.StepShot) {
     }
 }
 
+/**
+ * 原图 / 识别图 左右拖动对比。
+ *
+ * 高度上限固定：原先用 fillMaxWidth().aspectRatio(原图比例)，手机竖屏截图比例为 0.45 左右，
+ * 铺满整宽后算出的高度有 700dp+（一整屏都是这张图，下面的说明和后续步骤全被顶出屏幕）。
+ * 改为「先定高、再由比例反推宽度」并居中，既保持原比例不拉伸，也不再霸屏。
+ */
+internal val CompareHeight = 300.dp
+
 @Composable
-private fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.Bitmap) {
+internal fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.Bitmap) {
     var frac by remember { mutableStateOf(0.5f) }
     val aspect = if (bmpA.height > 0) bmpA.width.toFloat() / bmpA.height.toFloat() else 1f
     val imgA = bmpA.asImageBitmap()
     val imgB = bmpB.asImageBitmap()
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(aspect)
-            .clip(RoundedCornerShape(AppRadii.Item))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures { change, dragAmount ->
-                    change.consume()
-                    val w = this.size.width.toFloat()
-                    if (w > 0) frac = (frac + dragAmount / w).coerceIn(0f, 1f)
-                }
-            },
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = size.width.toInt()
-            val h = size.height.toInt()
-            val cutW = (frac * w).toInt().coerceAtLeast(1)
-            // 左区：bmpA 左侧 frac 区域（保持原图比例，不拉伸）
-            drawImage(
-                image = imgA,
-                srcOffset = IntOffset(0, 0),
-                srcSize = IntSize((imgA.width * frac).toInt().coerceAtLeast(1), imgA.height),
-                dstOffset = IntOffset(0, 0),
-                dstSize = IntSize(cutW, h),
-            )
-            // 右区：bmpB 右侧 1-frac 区域
-            val srcLeft = (imgB.width * frac).toInt().coerceIn(0, (imgB.width - 1).coerceAtLeast(0))
-            drawImage(
-                image = imgB,
-                srcOffset = IntOffset(srcLeft, 0),
-                srcSize = IntSize((imgB.width - srcLeft).coerceAtLeast(1), imgB.height),
-                dstOffset = IntOffset(cutW, 0),
-                dstSize = IntSize((w - cutW).coerceAtLeast(1), h),
-            )
-            val cut = frac * size.width
-            drawLine(Color.White, Offset(cut, 0f), Offset(cut, size.height), strokeWidth = 3f)
-            drawCircle(Color.White, radius = 10f, center = Offset(cut, size.height / 2f))
+        Box(
+            modifier = Modifier
+                .height(CompareHeight)
+                // 宽度由高度乘以原图比例反推：比例必须严格等于原图，否则拖动对比时两侧会横向拉伸变形
+                .aspectRatio(aspect)
+                .clip(RoundedCornerShape(AppRadii.Item))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures { change, dragAmount ->
+                        change.consume()
+                        val w = this.size.width.toFloat()
+                        if (w > 0) frac = (frac + dragAmount / w).coerceIn(0f, 1f)
+                    }
+                },
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width.toInt()
+                val h = size.height.toInt()
+                val cutW = (frac * w).toInt().coerceAtLeast(1)
+                // 左区：bmpA 左侧 frac 区域（保持原图比例，不拉伸）
+                drawImage(
+                    image = imgA,
+                    srcOffset = IntOffset(0, 0),
+                    srcSize = IntSize((imgA.width * frac).toInt().coerceAtLeast(1), imgA.height),
+                    dstOffset = IntOffset(0, 0),
+                    dstSize = IntSize(cutW, h),
+                )
+                // 右区：bmpB 右侧 1-frac 区域
+                val srcLeft = (imgB.width * frac).toInt().coerceIn(0, (imgB.width - 1).coerceAtLeast(0))
+                drawImage(
+                    image = imgB,
+                    srcOffset = IntOffset(srcLeft, 0),
+                    srcSize = IntSize((imgB.width - srcLeft).coerceAtLeast(1), imgB.height),
+                    dstOffset = IntOffset(cutW, 0),
+                    dstSize = IntSize((w - cutW).coerceAtLeast(1), h),
+                )
+                val cut = frac * size.width
+                drawLine(Color.White, Offset(cut, 0f), Offset(cut, size.height), strokeWidth = 3f)
+                drawCircle(Color.White, radius = 10f, center = Offset(cut, size.height / 2f))
+            }
         }
     }
+}
+
+/** 在截图上用外挂/OCR 识别的控件画框并标注用途、文字（原在「任务」页，随页面合并移到这里） */
+internal fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagent.device.vision.DetectedControl>): android.graphics.Bitmap {
+    val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+    val canvas = android.graphics.Canvas(out)
+    val strokeW = (out.width / 220f).coerceIn(2f, 5f)
+    val paint = android.graphics.Paint().apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = strokeW
+        color = 0xFF00BFA5.toInt()
+    }
+    val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF00BFA5.toInt()
+        textSize = strokeW * 5f
+    }
+    controls.forEach { c ->
+        val b = c.bounds
+        if (b.size < 4) return@forEach
+        val l = b[0] * out.width; val t = b[1] * out.height
+        val r = b[2] * out.width; val bot = b[3] * out.height
+        canvas.drawRect(l, t, r, bot, paint)
+        val label = "${c.role}·${c.purpose}".take(18)
+        canvas.drawText(label, l + 2, (t - 2).coerceAtLeast(labelPaint.textSize), labelPaint)
+    }
+    return out
 }

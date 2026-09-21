@@ -59,6 +59,14 @@ fun parseTaskSteps(json: kotlinx.serialization.json.JsonArray): List<TaskStep> {
 /** 步骤执行记录（执行历史） */
 data class StepRecord(
     val step: Int,
+    /**
+     * 所属任务 ID（-1 表示无归属）。
+     * 调试页「执行流」按一次次执行组织数据，必须靠 taskId 把执行层记录（本类）
+     * 与决策层记录（StepTrace）归到同一次执行里；旧数据没有该字段时回退为 -1。
+     */
+    val taskId: Long = -1,
+    /** 所属任务描述 */
+    val taskName: String? = null,
     val action: AgentAction? = null,
     /** 发送结果：sent / send_failed */
     val sendResult: String = "sent",

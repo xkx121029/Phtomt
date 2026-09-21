@@ -69,6 +69,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.StatTile
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -79,7 +80,10 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun MetricsPanel(m: AgentMetrics) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+    ) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 StatTile("请求", "${m.requestCount}", MaterialTheme.colorScheme.primary, Modifier.weight(1f), unit = "次")
@@ -118,18 +122,20 @@ private fun MethodCard(m: AgentMetrics) {
     // 各环节耗时占比（决策 + 视觉 + 执行），P2 观测性埋点聚合展示
     val total = m.avgLatencyMs + m.avgVisionMs + m.avgExecMs
     if (total <= 0) return
-    val decisionFrac = m.avgLatencyMs.toFloat() / total
-    val visionFrac = m.avgVisionMs.toFloat() / total
-    val execFrac = m.avgExecMs.toFloat() / total
+    // 某一环节耗时为 0 时权重不能直接传 0（Row 的 weight 要求大于 0），统一给一个极小值兜底
+    val decisionFrac = (m.avgLatencyMs.toFloat() / total).coerceAtLeast(0.001f)
+    val visionFrac = (m.avgVisionMs.toFloat() / total).coerceAtLeast(0.001f)
+    val execFrac = (m.avgExecMs.toFloat() / total).coerceAtLeast(0.001f)
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("单步耗时构成（决策/视觉/执行）", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             // 横向占比条
-            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp))) {
+            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(AppRadii.Chip))) {
                 Box(Modifier.weight(decisionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
                 Box(Modifier.weight(visionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.secondary))
                 Box(Modifier.weight(execFrac).fillMaxHeight().background(Success))

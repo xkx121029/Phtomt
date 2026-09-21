@@ -2686,6 +2686,10 @@ class AgentEngine(
     ) {
         val rec = StepRecord(
             step = step,
+            // 执行层记录与决策层记录（StepTrace）用同一个 taskId 归属到同一次执行，
+            // 调试页「执行流」才能把「这一步怎么决定的」和「这一步怎么执行的」并到一张卡里
+            taskId = currentTaskId,
+            taskName = currentTaskName,
             action = action,
             verificationResult = verification,
             beforeFingerprint = before,

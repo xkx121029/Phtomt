@@ -51,10 +51,11 @@ internal fun DebugEmptyHint(text: String, modifier: Modifier = Modifier.fillMaxS
 
 /** 决策把握度条：任务页与时间线页共用（原先两处各抄了一份同样的绘制逻辑） */
 @Composable
-internal fun ConfidenceBar(confidence: Float) {
+internal fun ConfidenceBar(confidence: Double) {
+    val ratio = confidence.toFloat()
     val tone = when {
-        confidence >= 0.75f -> Success
-        confidence >= 0.6f -> Warning
+        ratio >= 0.75f -> Success
+        ratio >= 0.6f -> Warning
         else -> MaterialTheme.colorScheme.error
     }
     Box(
@@ -66,7 +67,7 @@ internal fun ConfidenceBar(confidence: Float) {
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(confidence)
+                .fillMaxWidth(ratio)
                 .height(5.dp)
                 .clip(RoundedCornerShape(AppRadii.Chip))
                 .background(tone),

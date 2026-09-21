@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -21,30 +22,36 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.ContentTransform
 import androidx.compose.foundation.background
-import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,21 +64,30 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.SnackbarState
+import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
 import com.phoneagent.ui.home.HomeScreen
 import com.phoneagent.ui.memory.MemoryGraphScreen
 import com.phoneagent.ui.settings.SettingsScreen
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
+import com.phoneagent.ui.theme.SpringConfigs
 import com.phoneagent.ui.theme.motionSettings
 import org.koin.androidx.compose.koinViewModel
 import com.phoneagent.ui.icons.AppIcons
@@ -222,47 +238,25 @@ private fun ActivityContent(vm: MainViewModel) {
     // 可见位在部分机型/ROM 上不可靠（键盘已弹出却仍为 false）。
     val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
+    // 系统手势导航条高度：悬浮导航栏要靠它让开底部系统区域。
+    // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
+    val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         bottomBar = {
             // 全屏二级页时不显示底部导航
             if (extrasPage == null && !keyboardUp) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp,
-                ) {
-                    tabs.forEachIndexed { index, tab ->
-                        NavigationBarItem(
-                            selected = selected == index,
-                            onClick = { selected = index },
-                            icon = {
-                                // 选中图标轻微放大（弹簧回弹），未选中恢复正常
-                                val iconScale by animateFloatAsState(
-                                    targetValue = if (selected == index) 1.14f else 1f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.6f,
-                                        stiffness = Spring.StiffnessMediumLow,
-                                    ),
-                                    label = "nav-icon-scale",
-                                )
-                                Icon(
-                                    tab.icon,
-                                    contentDescription = tab.label,
-                                    modifier = Modifier.scale(iconScale),
-                                )
-                            },
-                            label = { Text(tab.label) },
-                            // Material 3 Expressive：选中态使用主色胶囊指示器 + 主色文字
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
-                    }
-                }
+                FloatingNavBar(
+                    tabs = tabs,
+                    selected = selected,
+                    onSelect = { selected = it },
+                    modifier = Modifier.padding(
+                        start = AppSpacing.Lg,
+                        end = AppSpacing.Lg,
+                        bottom = systemNavInset + AppSpacing.Md,
+                    ),
+                )
             }
         },
     ) { padding ->
@@ -318,14 +312,153 @@ private fun ActivityContent(vm: MainViewModel) {
                 }
 
                 // 全局 Snackbar 覆盖层
+                // 内容区已被 Scaffold 让出底部悬浮导航栏的高度，这里只留一点呼吸间距
                 AppSnackbar(
                     state = snackbarState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 80.dp),
+                        .padding(bottom = AppSpacing.Md),
                 )
             }
         }
+    }
+}
+
+/**
+ * 底部导航：大圆角长方形悬浮条。
+ *
+ * 与全站卡片语言同源——surfaceContainerHigh 底 + 1dp 细边框 + 大圆角 + 投影，
+ * 左右留白、底部让开系统导航区后悬浮，不再通栏贴底。
+ * 选中态沿用 Material 3 Expressive 的主色胶囊指示器与图标弹簧放大。
+ */
+@Composable
+private fun FloatingNavBar(
+    tabs: List<TabItem>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(AppRadii.Hero)
+    Surface(
+        modifier = modifier
+            .shadow(elevation = 10.dp, shape = shape, clip = false)
+            .clip(shape)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                shape = shape,
+            ),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .padding(horizontal = AppSpacing.Sm)
+                .selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                FloatingNavItem(
+                    tab = tab,
+                    selected = selected == index,
+                    onClick = { onSelect(index) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/** 悬浮导航栏的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪） */
+@Composable
+private fun FloatingNavItem(
+    tab: TabItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hapticPress = rememberHapticPress()
+    // 与 PressableScale 同一套手感：反馈发生在 pointer-down，而不是抬手时
+    LaunchedEffect(pressed) { if (pressed) hapticPress() }
+
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(
+            dampingRatio = SpringConfigs.ButtonDampingRatio,
+            stiffness = SpringConfigs.ButtonStiffness,
+        ),
+        label = "nav-item-press",
+    )
+    // 选中图标轻微放大（弹簧回弹），未选中恢复正常
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.14f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.6f,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "nav-icon-scale",
+    )
+    // 选中态：主色胶囊指示器 + 主色文字
+    val indicatorColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = tween(DurationNormal, easing = EaseOut),
+        label = "nav-indicator",
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(DurationNormal, easing = EaseOut),
+        label = "nav-icon-color",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(DurationNormal, easing = EaseOut),
+        label = "nav-label-color",
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .scale(pressScale)
+            .selectable(
+                selected = selected,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick,
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 56.dp, height = 30.dp)
+                .background(color = indicatorColor, shape = RoundedCornerShape(15.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = tab.icon,
+                contentDescription = tab.label,
+                tint = iconColor,
+                modifier = Modifier
+                    .size(22.dp)
+                    .scale(iconScale),
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = tab.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = labelColor,
+            maxLines = 1,
+        )
     }
 }
 
