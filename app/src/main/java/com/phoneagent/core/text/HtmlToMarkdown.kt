@@ -553,6 +553,9 @@ object HtmlToMarkdown {
     private const val K_MARK = 10
     private const val K_SKIP = 11
 
+    /** 被隐藏的子树：结构性跳过，且其内文本一律不产出 */
+    private const val K_MUTE = 12
+
     private class Frame(
         val tag: String,
         val kind: Int,
@@ -570,7 +573,15 @@ object HtmlToMarkdown {
         private var preLang: String? = null
         private var rows: ArrayList<ArrayList<String>>? = null
         private var row: ArrayList<String>? = null
+        /** 单元格内被"块化"的文本（`<td><p>x</p></td>` 的 p 会走 emit，得先收在这里） */
+        private val cellBufs = ArrayList<StringBuilder>(4)
         private var stop = false
+
+        /** 当前是否身处表格单元格内（含嵌套表格的外层单元格） */
+        private fun inCell(): Boolean = cellBufs.isNotEmpty()
+
+        /** 被隐藏子树的深度：>0 时任何文本都不产出 */
+        private var mute = 0
 
         fun run(tokens: List<Tok>) {
             for (t in tokens) {
@@ -605,7 +616,7 @@ object HtmlToMarkdown {
                     "img" -> image(t)
                     "hr" -> {
                         flushInline()
-                        b.emit("---")
+                        emitBlock("---")
                     }
                     else -> {}
                 }
@@ -614,6 +625,12 @@ object HtmlToMarkdown {
             // 深度兜底：超限时只占位不展开，保证结束标签配平
             if (stack.size >= MAX_DEPTH) {
                 stack.add(Frame(name, K_SKIP))
+                return
+            }
+            // 被属性/类名藏起来的元素（JS 侧还多看一层计算样式）：整棵子树既不进结构也不进正文
+            if (hiddenTag(t)) {
+                mute++
+                stack.add(Frame(name, K_MUTE))
                 return
             }
             // pre 内部：只认 <code class="language-x"> 取语言串，其余标签一律不加标记
@@ -673,7 +690,10 @@ object HtmlToMarkdown {
                     row = ArrayList()
                     stack.add(Frame(name, K_ROW))
                 }
-                "td", "th" -> stack.add(Frame(name, K_CELL))
+                "td", "th" -> {
+                    cellBufs.add(StringBuilder())
+                    stack.add(Frame(name, K_CELL))
+                }
                 "a" -> {
                     val url = absolute(t.attrs["href"])
                     if (url == null) b.push("", "") else b.push("[", "]($url)")
@@ -743,6 +763,10 @@ object HtmlToMarkdown {
                 K_CELL -> closeCell()
                 K_ROW -> closeRow()
                 K_MARK -> b.pop()
+                K_MUTE -> {
+                    mute--
+                    b.resetInline()
+                }
                 else -> {
                     // 表题内容已进 cur，出栈时清掉，避免被算进第一个单元格
                     if (f.tag == "caption") b.resetInline()
@@ -750,24 +774,32 @@ object HtmlToMarkdown {
             }
         }
 
-        /** 隐式闭合：`li`/`td`/`tr` 关同类；块级开始标签关最近的 `p` */
+        /**
+         * 隐式闭合：`li`/`td`/`tr` 关同类；块级开始标签关最近的 `p`。
+         *
+         * [stopAt] 是关键：只有"同级"才隐式闭合。`<li>父<ul><li>子</li></ul></li>` 里内层 `li`
+         * 不能把外层的 `li`（还有刚压进来的内层 `ul`）一起弹掉，所以在遇到列表/表格/引用这类
+         * 容器帧时就该停手。
+         */
         private fun implicitClose(name: String) {
             when (name) {
-                "li" -> closeNearest(setOf("li"))
-                "td", "th" -> closeNearest(setOf("td", "th"))
-                "tr" -> closeNearest(setOf("tr"))
+                "li" -> closeNearest(setOf("li"), STOP_CONTAINER)
+                "td", "th" -> closeNearest(setOf("td", "th"), STOP_ROW)
+                "tr" -> closeNearest(setOf("tr"), STOP_TABLE)
                 "dt", "dd" -> closeNearest(setOf("dt", "dd"))
                 else -> {}
             }
-            if (name in BLOCK_CLOSES_P) closeNearest(setOf("p"))
+            if (name in BLOCK_CLOSES_P) closeNearest(setOf("p"), STOP_CONTAINER)
         }
 
-        private fun closeNearest(tags: Set<String>) {
+        private fun closeNearest(tags: Set<String>, stopAt: Set<Int> = emptySet()) {
             for (k in stack.indices.reversed()) {
-                if (stack[k].tag in tags) {
+                val f = stack[k]
+                if (f.tag in tags) {
                     while (stack.size > k) popTop()
                     return
                 }
+                if (f.kind in stopAt) return
             }
         }
 
