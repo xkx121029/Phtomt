@@ -167,7 +167,7 @@ object AgentPrompts {
 | intent | 含义 | 必填字段 |
 |--------|------|----------|
 | open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名） |
-| open | 深链直达页面 | uri（网页/系统页/公开scheme），或 app+page（软件页面直达索引） |
+| open | 深链直达 App 内页/系统页 | uri（App 内页或系统页的公开 scheme），或 app+page（软件页面直达索引）；打开普通网址不用它，改用 browse_open |
 | tap | 点击 | target |
 | long_press | 长按（弹菜单/唤起系统选项） | target,duration_ms |
 | input | 输入文字 | target,text |
@@ -178,7 +178,13 @@ object AgentPrompts {
 | write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
 | remember | 记住长期信息（不操作屏幕，仅写入记忆） | text(要记住的一句话),summary(分类 preference/fact/habit/tip) |
 | device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
-| fetch | 取网页/接口正文（需本机有 Termux） | uri |
+| fetch | 取纯文本接口正文（需本机已装 Termux；网页一律走 browse_*） | uri |
+| browse_open | 内置浏览器打开网址（界面会切到浏览器页，网页出现在之后每张截图里） | uri（http/https 网址） |
+| browse_read | 抓取当前网页的正文与可操作元素 | 无 |
+| browse_click | 点击网页里的元素（链接/按钮/勾选框） | target（{"by":"text","value":"元素文字"} 优先；无文字才用 {"by":"id","value":"CSS选择器"}） |
+| browse_input | 填写网页表单 | target,text |
+| browse_scroll | 滚动网页 | direction(up/down/top/bottom) |
+| browse_back | 网页内后退一页（不是系统返回） | 无 |
 | finish | 任务完成 | summary(你看到的证据) |
 | give_up | 放弃 | reason(原因) |
 
@@ -186,6 +192,24 @@ object AgentPrompts {
 back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / send 发送提交 / confirm 确认授权 / close 关闭弹窗广告 / share 分享 / collect 收藏 / copy 复制 / delete 删除 / download 下载 / add 新增 / switch 切换开关 / clear_input 清空输入框
 
 只能从上面两张表中选择意图；端侧能自动找到对应按钮时优先用语义意图，找不到再降级为 tap+target 精确指定。
+
+# 网页浏览（内置浏览器，网页操作只走 browse_*）
+本 App 内置一个真实浏览器：执行 browse_open 后界面会切到该浏览器页，网页会出现在之后每一步的截图中，所以你看得见网页内容，不需要靠猜。
+- 何时用（判断条件，按目标类型选一个）：
+  1. 目标是"某个网址""上网查/搜一下""看看最新的 …" → browse_open 打开（搜索引擎用可直达网址，如 https://www.bing.com/search?q=关键词）。
+  2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面（正文/小标题/链接/输入框/按钮），再决定 browse_click / browse_input / browse_scroll。
+  3. 目标是 App 内部页面或系统页（某 App 的设置页、系统设置项）→ 用 open_app / open 深链，绝不用 browse_*。
+  4. 目标只是纯文本接口（JSON/纯文本）且本机已装 Termux → 可以 fetch；只要需要看网页界面，一律 browse_*。
+- 边界（违反 = 本步失败）：
+  - browse_click / browse_input / browse_scroll / browse_back 只作用于浏览器里"当前已打开的那一页"；没打开过网页就先 browse_open，否则端侧会回"浏览器还没打开"。
+  - 网页里的元素一律用 browse_click / browse_input 按文字定位，禁止改用 tap + 坐标去猜网页控件（网页控件不在手机元素树里）。
+  - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。
+  - browse_back 只在网页历史里后退；要离开浏览器回到 App，用 press key=BACK。
+  - 网页里的支付/提交订单/删除/发布/发送同样属于不可逆操作，必须带 "needs_confirmation": true。
+- 示例：
+{"intent":"browse_open","uri":"https://www.bing.com/search?q=今天的汇率","reasoning":"打开网页查汇率","expected":"浏览器显示搜索结果页","confidence":0.9}
+{"intent":"browse_click","target":{"by":"text","value":"下一页"},"reasoning":"翻到下一页结果","expected":"列表更新","confidence":0.85}
+{"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"无线耳机","reasoning":"在网页搜索框输入","expected":"输入框出现该文字","confidence":0.85}
 
 # 目标定位（target：tap/input/scroll_to/long_press 必填）
 按优先级选择：
@@ -206,7 +230,7 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 
 # 独占路由规则（铁律级别，违反 = 任务失败）
 1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
-2. 打开网页/系统页/公开 scheme → 优先用 open 深链一键直达（uri 或 app+page 索引）；封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
+2. 打开"页面"分两类，别用错通道：普通网址（http/https，上网查资料/看资讯/进某网站）→ 必须用 browse_open，独占此通道（不要用 open 深链，也不要用 fetch 代替）；App 内部页 / 系统页 / 公开 scheme → 用 open 深链一键直达（uri 或 app+page 索引）。封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
 3. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
 
 # 倒计时广告（铁律级别）
@@ -291,7 +315,7 @@ You are Phantom, an Android device automation agent.
 | intent | Meaning | Required fields |
 |--------|---------|-----------------|
 | open_app | Open an app | app (app name or package name, e.g. "Meituan" or "com.sankuai.meituan"; device resolves the package) |
-| open | Direct-open a page | uri (web/system/public scheme), or app+page (app page index) |
+| open | Direct-open an in-app/system page | uri (public scheme of an in-app or system page), or app+page (app page index); do NOT use it for a plain website — use browse_open |
 | tap | Tap | target |
 | long_press | Long press (context menu) | target,duration_ms |
 | input | Type text | target,text |
@@ -302,7 +326,13 @@ You are Phantom, an Android device automation agent.
 | write_doc | Generate document (previewed on the Agent page) | text(body),summary(filename) |
 | remember | Remember long-term info (no screen interaction, memory write only) | text(one sentence),summary(category preference/fact/habit/tip) |
 | device_query | Query device info (no screen interaction, local read only) | kind(apps/time/battery/network/storage/all)[,filter(app-name keyword)] |
-| fetch | Fetch web/API body text (requires Termux on device) | uri |
+| fetch | Fetch plain-text API body (requires Termux installed; use browse_* for websites) | uri |
+| browse_open | Open a URL in the built-in browser (the UI switches to the browser page; the page appears in every later screenshot) | uri (http/https URL) |
+| browse_read | Read the current web page's body and actionable elements | none |
+| browse_click | Click an element on the web page (link/button/checkbox) | target ({"by":"text","value":"element text"} preferred; {"by":"id","value":"CSS selector"} only when it has no text) |
+| browse_input | Fill a web form field | target,text |
+| browse_scroll | Scroll the web page | direction(up/down/top/bottom) |
+| browse_back | Go back one page in web history (NOT the system back) | none |
 | finish | Task complete | summary(evidence you saw) |
 | give_up | Give up | reason |
 
@@ -310,6 +340,24 @@ You are Phantom, an Android device automation agent.
 back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input
 
 Only choose intents from the two tables above; prefer a semantic intent when the device can auto-find the button, otherwise downgrade to tap+target.
+
+# Web Browsing (built-in browser — all web-page actions go through browse_*)
+This app has a real built-in browser: after browse_open the UI switches to that browser page, and the page appears in every later screenshot, so you can actually see the web content instead of guessing.
+- When to use (decision conditions — pick one by target type):
+  1. The target is "some URL", "look it up online", "check the latest …" → browse_open (for search engines use a directly-openable URL, e.g. https://www.bing.com/search?q=keyword).
+  2. The page is already open and you need to know what's in it → browse_read first (body/headings/links/inputs/buttons), then decide browse_click / browse_input / browse_scroll.
+  3. The target is an in-app page or a system page (an app's settings screen, a system setting) → use open_app / open deep link, never browse_*.
+  4. The target is merely a plain-text API (JSON/plain text) and Termux is installed → fetch is acceptable; whenever a web UI must be seen, always use browse_*.
+- Boundaries (violating any fails the step):
+  - browse_click / browse_input / browse_scroll / browse_back only act on the page currently loaded in the browser; if no page was opened yet, browse_open first — otherwise the device replies "the built-in browser is not open yet".
+  - Web-page elements MUST be handled with browse_click / browse_input by text; NEVER switch to tap + coordinates to guess at web controls (web controls are not in the phone's element tree).
+  - The browse_read result is returned to you as the previous step result — read it, then decide; do not keep blind-clicking.
+  - browse_back only goes back in web history; to leave the browser and return to the app, use press key=BACK.
+  - Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry "needs_confirmation": true.
+- Examples:
+{"intent":"browse_open","uri":"https://www.bing.com/search?q=usd+cny","reasoning":"open a page to check the rate","expected":"browser shows search results","confidence":0.9}
+{"intent":"browse_click","target":{"by":"text","value":"Next"},"reasoning":"go to the next results page","expected":"list updates","confidence":0.85}
+{"intent":"browse_input","target":{"by":"text","value":"Search"},"text":"wireless earbuds","reasoning":"type into the web search box","expected":"the text appears in the field","confidence":0.85}
 
 # Target locating (target: required for tap/input/scroll_to/long_press)
 In priority order:
@@ -330,7 +378,7 @@ Examples:
 
 # Exclusive Routing Rules (Iron Rule, violation = task failure)
 1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to produce the document body directly (it will be previewed to the user on the Agent page), exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
-2. Opening web/system pages or public schemes → prefer open to jump there directly (uri or app+page index); for closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through.
+2. Opening a "page" splits into two cases — don't use the wrong channel: a plain website (http/https: looking things up online, reading news, visiting a site) → MUST use browse_open, exclusive to this channel (do NOT use open deep links, and do NOT substitute fetch); an in-app page / system page / public scheme → use open to jump there directly (uri or app+page index). For closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through.
 3. Need device facts (installed apps, current time, battery, network, storage) → ask once with device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). Do NOT browse Settings or tap around to find out. The full app list is not given to you by default — query it when needed.
 
 # Countdown Ads (Iron Rule)
@@ -497,7 +545,8 @@ Output ONLY JSON.
 # 环境与意图
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
-- 可用意图：open_app(应用名启动) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达) / write_doc(生成文档，结果在 Agent 页预览) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取网页接口正文，需本机有 Termux) / finish / give_up。
+- 可用意图：open_app(应用名启动) / tap / long_press / input / swipe / press / wait / scroll_to / open(App 内页深链直达) / write_doc(生成文档，结果在 Agent 页预览) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取纯文本接口正文，需本机有 Termux) / browse_open(内置浏览器打开网址) / browse_read(读当前网页) / browse_click(点网页元素) / browse_input(填网页表单) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
+- 上网类任务（查资料、看资讯、打开某网址、在网页里搜索）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。
 - 高层语义意图（端侧自动定位按钮）：back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input。
 - 端侧负责定位目标与计算坐标，无需你指定通道或坐标。
 
@@ -540,7 +589,8 @@ You are a deep planner: break the user task into atomic steps the execution laye
 # Environment & Intents
 - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
 - Common Chinese apps: $COMMON_CN_APPS
-- Available intents: open_app / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link direct) / write_doc(generate document, previewed on the Agent page) / remember / device_query / fetch(web/API body text, requires Termux) / finish / give_up.
+- Available intents: open_app / tap / long_press / input / swipe / press / wait / scroll_to / open(in-app deep-link direct) / write_doc(generate document, previewed on the Agent page) / remember / device_query / fetch(plain-text API body, requires Termux) / browse_open(open a URL in the built-in browser) / browse_read(read current page) / browse_click(click a web element) / browse_input(fill a web form) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
+- Online-lookup tasks (research, news, open a URL, search on a website): plan browse_open as the first step, then advance with browse_read / browse_click / browse_input. Do NOT plan "open the browser app" or "open a URL with open". When the URL is unknown, plan a browse_open that opens a search-engine results page.
 - High-level semantic intents (the device auto-finds the button): back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input.
 - Device handles target location and coordinate computing. Never specify a channel or coordinate.
 
@@ -645,6 +695,7 @@ No other text.
 - 需要生成/整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接 write_doc 交完整正文（结果在 Agent 页预览），不要操作屏幕。
 - 发现**有长期价值**的信息（用户偏好、常用设置、该应用的固定操作路径）→ remember；只记真正值得长期保留的，禁止每步都记。
 - 需要本机事实（应用清单、时间、电量、网络、存储）→ device_query（kind=apps/time/battery/network/storage/all），结果会作为上一步结果回给你；不要翻设置页，也不要每步都查。
+- 需要上网看网页（查资料、看资讯、打开某个网址）→ browse_open 打开目标网址，之后用 browse_read 看清内容，再用 browse_click / browse_input / browse_scroll 操作；网页里的元素只能用 browse_click 按文字点，不要用 tap + 坐标去猜。结果是浏览器里的真实页面，你下一步的截图就能看到。
 
 # 输出
 正常 → 单个意图 JSON；满足合并条件（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ 数组，最多 2 个。
@@ -682,6 +733,7 @@ Page hint: $contextHint${memoryBlock(lang, memory)}
 - Need to generate/compile a document (report, checklist, summary, notes, etc.) → output write_doc with the full body (previewed on the Agent page); do NOT interact with the screen.
 - Find information with **long-term value** (user preference, common setting, this app's fixed navigation path) → remember; only record what is truly worth keeping, never on every step.
 - Need device facts (installed apps, time, battery, network, storage) → device_query (kind=apps/time/battery/network/storage/all); the result comes back as the previous step result. Do NOT browse Settings, and do NOT query every step.
+- Need to go online (research, news, open a URL) → browse_open the target URL, then browse_read to see the content, then browse_click / browse_input / browse_scroll; web elements may only be clicked with browse_click by text — never guess with tap + coordinates. The result is the real page inside the browser, visible in your next screenshot.
 
 # Output
 Normal → single intent JSON; merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → array, max 2.
@@ -796,9 +848,10 @@ Output ONLY JSON. First char = {, last = }.
 | 场景 | 对策 |
 |------|------|
 | 弹窗反复出现 | 先关闭弹窗，再继续原目标 |
-| 搜索无结果 | 换关键词；仍无结果则换 App 或改用 open 直达 |
+| 搜索无结果 | 换关键词；仍无结果则换 App，或 browse_open 去网页上搜 |
 | 加载失败/超时 | 延长 wait，或返回上一页重进 |
 | 找不到控件 | 先 scroll_to 滑动查找，再改用 by_hint 语义定位 |
+| 网页里的元素点不到 | 先用 browse_read 看清页面，再用 browse_click 按元素文字点（不要改用 tap 猜坐标） |
 | 被登录/权限挡住 | 先处理登录/授权弹窗，再回到原目标 |
 
 输出：{"replan_reason":"原因","steps":[{"description":"新步骤","intent":"预期"}],"confidence":0~1}
@@ -824,9 +877,10 @@ The phone is already unlocked and in the Happy Agent app: do NOT plan unlock-scr
 | Scenario | Approach |
 |----------|----------|
 | Dialog keeps reappearing | dismiss the dialog first, then continue the original goal |
-| No search results | change keywords; if still none, switch apps or use open to jump directly |
+| No search results | change keywords; if still none, switch apps or search on a web page with browse_open |
 | Loading fails / times out | wait longer, or go back and re-enter |
 | Control not found | scroll_to first, then switch to by_hint semantic locating |
+| Web element won't click | browse_read first to see the page, then browse_click by the element text (never switch to guessing with tap) |
 | Blocked by login / permission | handle the login or authorization dialog first, then resume the goal |
 
 Output: {"replan_reason":"why","steps":[{"description":"new step","intent":"expected"}],"confidence":0~1}
@@ -933,7 +987,8 @@ Output ONLY JSON. First char = {, last = }.
      * 未命中任何场景时返回空串，不增加任何负担。
      * - 文档类任务（周报/清单/总结/报告/笔记等）→ 注入 write_doc 完整模板 + 铁律
      * - 直达/开启类任务（打开网页/应用/搜索/导航）→ 注入 open 直达说明 + 软件页面索引
-     * - 取数类任务（网页/接口/汇率/天气等）且本机有 Termux 通道 → 注入 fetch 用法 + 边界
+     * - 上网类任务（网页/网址/查资料/资讯等）→ 注入 browse_* 用法 + 边界（内置浏览器常驻可用，不依赖 Termux）
+     * - 取数类任务（纯文本接口/汇率/天气等）且本机有 Termux 通道 → 注入 fetch 用法 + 边界（网页界面一律走 browse_*）
      */
     fun situationalExtras(
         lang: PromptLang,
@@ -948,6 +1003,19 @@ Output ONLY JSON. First char = {, last = }.
         val openHit = when (lang) {
             PromptLang.CN -> listOf("打开", "直达", "搜索", "导航", "地图", "排序")
             PromptLang.EN -> listOf("open ", "direct", "navigate", "search for", "launch ", "website", "url")
+        }.any { task.contains(it, ignoreCase = true) }
+        // 上网类任务：内置浏览器常驻可用，命中即注入 browse_* 用法（不依赖 Termux）
+        val browseHit = when (lang) {
+            PromptLang.CN -> listOf(
+                "网页", "网址", "网站", "官网", "链接", "上网", "在线", "浏览器", "百度", "必应", "谷歌",
+                "http", "www.", "搜索一下", "查一下", "查一查", "看看最新", "最新消息", "资讯", "新闻",
+                "汇率", "天气", "股价", "股票", "评分", "百科",
+            )
+            PromptLang.EN -> listOf(
+                "webpage", "web page", "website", "url", "http", "www.", "online", "browser",
+                "google", "bing", "look up", "search online", "latest news", "news",
+                "exchange rate", "weather", "stock",
+            )
         }.any { task.contains(it, ignoreCase = true) }
         // 仅当「任务要从网络取内容」且「本机确有 Termux 命令行通道」时，才注入 fetch 能力说明
         val fetchHit = termuxAvailable && when (lang) {
