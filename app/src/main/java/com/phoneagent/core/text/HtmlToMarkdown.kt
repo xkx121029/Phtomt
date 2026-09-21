@@ -1061,15 +1061,29 @@ object HtmlToMarkdown {
         fun resetInline() {
             cur.setLength(0)
             marks.clear()
+            pendSpace = false
         }
 
         fun raw(s: String) {
+            flushPend()
             cur.append(s)
         }
 
         fun push(open: String, close: String) {
+            flushPend()
             marks.add(Mark(open, close, cur.length))
             cur.append(open)
+        }
+
+        /**
+         * 把"待定空格"落盘：文本以空白结尾时不能立刻加空格（下一个可能还是空白），
+         * 但遇到行内标记 / 图片 / 换行这类非文本片段就说明空白确实该保留了。
+         * 少了这一步 `你好<strong>加粗</strong>` 会输出 `你好**加粗**` —— 相邻两字被粘成一个词。
+         */
+        private fun flushPend() {
+            if (!pendSpace) return
+            pendSpace = false
+            if (cur.isNotEmpty() && cur.last() != '\n') cur.append(' ')
         }
 
         fun pop() {
@@ -1080,6 +1094,8 @@ object HtmlToMarkdown {
 
         /** `<br>`：列表内退化成空格（保缩进），普通段落里换行 */
         fun br() {
+            // 换行本身就是"空白该落地"的证明，先把它结清再处理换行
+            flushPend()
             if (inList > 0) {
                 if (cur.isNotEmpty() && cur.last() != ' ') cur.append(' ')
                 return
@@ -1090,19 +1106,19 @@ object HtmlToMarkdown {
 
         /** 空白折叠 + CJK 规则 + 转义 */
         fun appendText(s: String) {
-            var pendingSpace = false
             var i = 0
             val n = s.length
             while (i < n) {
                 val ch = s[i]
                 if (ch.isWhitespace() || ch == '\u00A0' || ch == '\u200B') {
-                    pendingSpace = true
+                    // 空白不立刻落盘：可能后面还有空白，且紧邻的是行内标记时要等标记先决定
+                    pendSpace = true
                     i++
                     continue
                 }
-                if (pendingSpace) {
+                if (pendSpace) {
                     if (cur.isNotEmpty() && cur.last() != '\n' && needsSpace(cur.last(), ch)) cur.append(' ')
-                    pendingSpace = false
+                    pendSpace = false
                 }
                 appendChar(ch, s, i)
                 i++
