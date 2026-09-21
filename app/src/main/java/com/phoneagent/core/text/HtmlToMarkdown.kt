@@ -1043,6 +1043,9 @@ object HtmlToMarkdown {
         /** 当前行内片段 */
         private val cur = StringBuilder(256)
 
+        /** 上一段文本以空白结尾：等下一个非空白出现时再决定插不插空格 */
+        private var pendSpace = false
+
         /** 已产出字符数（含尚未落盘的列表缓冲） */
         private var emitted = 0
         var truncated = false
