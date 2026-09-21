@@ -651,42 +651,32 @@ Last step result: ${lastStepResult.ifBlank { "none" }}
 Consecutive failures: $consecutiveFailures
 Page hint: $contextHint${memoryBlock(lang, memory)}
 
-# Execution State Tri-state
-Last step result format: ✅ verified success / ⚠️ sent but unverified / ❌ failed
+# Last Step Result (tri-state)
+✅ verified success → proceed to the next step.
+⚠️ sent but unverified (action sent, page not yet reflecting it) → this step first confirm the result (wait or read the page); do NOT resend the same action.
+❌ failed → retry differently.
 
 # Failure Handling
-| Consecutive failures | Action |
-|---------------------|--------|
-| 1~2 | retry differently (e.g. use a hint semantic description) |
-| 3 | give_up |
+1~2 times: change approach (better by_hint description / semantic intent / scroll_to); 3 times: give_up and state where you are stuck.
 
-# Precise & Concise (this step, iron rule)
-- Locate via target by_id/by_text first; when the control is truly absent from the element tree (image/icon/chart), use by_hint with a one-sentence semantic description; on-device does screenshot + visual locate. NEVER guess a coordinate to hard-tap (coordinates only via the by=coordinate fallback).
-- If not found: use scroll_to to locate first, do not tap randomly; give_up only if still not found.
-- Concise: one step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+# This Step (iron rule)
+- One step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
+- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree; if the target app isn't open yet, open_app first and wait for its UI.
+- Locate via by_id/by_text first; use by_hint with a one-sentence description only for images/icons/charts; if not found, use scroll_to first, give_up only if still not found; NEVER guess a coordinate.
 - Always confirm against the current page; do not repeat executed actions by memory.
-- Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree. If the target app isn't open yet, open_app first and wait for its UI.
 
 # Which intent when
 - Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
 - Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
 - Page LOADING / countdown ad / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
 
+# Always-Available Intents
+- Need to generate/compile a document (report, checklist, summary, notes, etc.) → output write_doc with the full body (previewed on the Agent page); do NOT interact with the screen.
+- Find information with **long-term value** (user preference, common setting, this app's fixed navigation path) → remember; only record what is truly worth keeping, never on every step.
+- Need device facts (installed apps, time, battery, network, storage) → device_query (kind=apps/time/battery/network/storage/all); the result comes back as the previous step result. Do NOT browse Settings, and do NOT query every step.
+
 # Output
-Normal → single intent JSON.
-Merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → JSON array, max 2.
-
-# Document Task Reminder
-If this step/task requires generating or compiling a document (report, checklist, summary, notes, article, etc.) → output write_doc with the full body (it will be previewed to the user on the Agent page); do NOT interact with the screen.
-
-# Memory Reminder
-When you find information with **long-term value** (user preference, common setting, this app's fixed navigation path, a pitfall you hit) → output remember (text = one sentence to remember, summary = category preference/fact/habit/tip).
-Only record what is truly worth keeping; never remember on every step, never record temporary page content.
-
-# Device Fact Reminder
-Need device facts (installed apps, current date/time, battery, network, storage) → output device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). The result comes back as the previous step result.
-Do NOT browse Settings, open the app drawer, or guess to learn these; and do NOT query every step — only when truly needed.
-
+Normal → single intent JSON; merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → array, max 2.
 Output ONLY JSON. No ```json markers. No text before/after JSON.
 """.trimIndent()
     }
