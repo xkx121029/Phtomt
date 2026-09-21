@@ -10,7 +10,7 @@ import org.junit.Test
  * 「用系统应用打开链接/文件」目标归一化单测（[OpenTarget]）。
  *
  * 覆盖三件事：
- * 1. **本地路径 → 文档提供者 content://**：API 24+ 直接交 `file://` 会抛 `FileUriExposedException`，
+ * 1. **本地路径 → 文档提供者 content:// 形式**：API 24+ 直接交 `file://` 会抛 `FileUriExposedException`，
  *    必须换成 `content://com.android.externalstorage.documents/document/<卷>%3A<路径>`；
  * 2. **非本地目标原样放行**：网址/私有 scheme/content:// 不能被改写；
  * 3. **扩展名 → MIME**：给不出准确类型时文档软件不会进候选，认不出则返回 null（绝不硬编错类型）。
@@ -106,8 +106,15 @@ class OpenTargetTest {
 
     @Test
     fun `类型推断_忽略查询串与锚点`() {
-        assertEquals("application/pdf", OpenTarget.mimeOf("https://x.com/get?file=a.pdf&v=2"))
+        // 扩展名在路径里：查询串/锚点先剥掉，取最后一段路径的扩展名
+        assertEquals("application/pdf", OpenTarget.mimeOf("https://x.com/download/a.pdf?v=2"))
         assertEquals("text/plain", OpenTarget.mimeOf("https://x.com/read/a.txt#L10"))
+    }
+
+    @Test
+    fun `类型推断_扩展名只在查询串里时返回null`() {
+        // 路径本身没有扩展名（?file=a.pdf 只是参数），不能拿参数当文件名
+        assertNull(OpenTarget.mimeOf("https://x.com/get?file=a.pdf"))
     }
 
     @Test
