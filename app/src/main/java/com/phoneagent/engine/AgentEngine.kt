@@ -1289,6 +1289,12 @@ class AgentEngine(
                         handleDeviceQuery(step, action!!, messages)
                         continue
                     }
+                    // 内置浏览器：AI 上网时由端侧 WebView 落地（打开网页/抓正文/点元素/填表单/滚动/后退），
+                    // 网页内容同样作为"上一步结果"回注下一轮；不走无障碍通道、不依赖 Shizuku/Termux
+                    if (action!!.type == ActionType.BROWSE) {
+                        handleBrowse(step, action!!, messages)
+                        continue
+                    }
                     verify = safeExecute(action!!, snapshot)
                     // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
                     isStructuralError = verify.reason.contains("未知 shell 命令") ||
@@ -2556,6 +2562,81 @@ class AgentEngine(
         recordProgress(step, action)
         pushFloating("已查到本机信息", "THINKING")
         delay(200)
+    }
+
+    /**
+     * 处理 AI 的 browse_* 意图：交给内置浏览器（WebView 可见页）执行，结果作为"上一步结果"回注。
+     *
+     * 与 remember / device_query / MCP 技能同类——端侧代办、不操控用户设备、不需要通道与坐标，
+     * 因此不截图留档、不做生效重试；失败原因一律回注给 AI 让它自己纠正（比如先 browse_open）。
+     */
+    private suspend fun handleBrowse(step: Int, action: AgentAction, messages: MutableList<ChatMessageDto>) {
+        val op = action.op.orEmpty()
+        val label = browseOpLabel(op)
+        log(
+            AgentLog.Level.INFO,
+            "内置浏览器：$op uri=${action.uri ?: "-"} target=${action.target?.value ?: "-"} text=${action.text ?: "-"}",
+        )
+        _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "浏览器：$label")
+        pushFloating("浏览器：$label", "ACTING")
+        val result = runCatching {
+            when (op) {
+                IntentType.BROWSE_OPEN -> com.phoneagent.feature.browser.BrowserBridge.open(action.uri.orEmpty())
+                IntentType.BROWSE_READ -> com.phoneagent.feature.browser.BrowserBridge.read()
+                IntentType.BROWSE_CLICK -> com.phoneagent.feature.browser.BrowserBridge.click(
+                    action.target?.method ?: "text", action.target?.value.orEmpty(),
+                )
+                IntentType.BROWSE_INPUT -> com.phoneagent.feature.browser.BrowserBridge.input(
+                    action.target?.method ?: "text", action.target?.value.orEmpty(), action.text.orEmpty(),
+                )
+                IntentType.BROWSE_SCROLL -> com.phoneagent.feature.browser.BrowserBridge.scroll(action.direction ?: "down")
+                IntentType.BROWSE_BACK -> com.phoneagent.feature.browser.BrowserBridge.back()
+                else -> com.phoneagent.feature.browser.BrowseResult(false, "未知的浏览器操作：$op")
+            }
+        }.getOrElse {
+            com.phoneagent.feature.browser.BrowseResult(
+                false,
+                "浏览器操作异常：${it.message ?: it::class.simpleName}",
+            )
+        }
+        val text = result.text.trim().take(com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS)
+        recordStep(
+            step = step,
+            action = action,
+            verification = if (result.ok) "verified_success" else "unverified",
+            before = "",
+            after = "",
+            detail = if (result.ok) text.take(300) else "失败：${text.take(300)}",
+        )
+        val injected = if (result.ok) {
+            "内置浏览器（$op）结果：\n$text"
+        } else {
+            "内置浏览器（$op）失败：$text\n请按提示调整：" +
+                "需要打开网页就先用 browse_open；需要知道当前页有什么链接/输入框/按钮就先 browse_read。"
+        }
+        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
+        addConversation("assistant", injected)
+        if (result.ok) {
+            consecutiveFailures = 0
+            recordProgress(step, action)
+            pushFloating("浏览器：$label 完成", "THINKING")
+        } else {
+            consecutiveFailures++
+            log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
+            pushFloating("浏览器：$label 失败", "WARN")
+        }
+        delay(200)
+    }
+
+    /** 浏览器子操作的中文标签：用于悬浮窗与调试面板，让用户看得懂 AI 在做什么 */
+    private fun browseOpLabel(op: String): String = when (op) {
+        IntentType.BROWSE_OPEN -> "打开网页"
+        IntentType.BROWSE_READ -> "抓取网页内容"
+        IntentType.BROWSE_CLICK -> "点击网页元素"
+        IntentType.BROWSE_INPUT -> "填写网页表单"
+        IntentType.BROWSE_SCROLL -> "滚动网页"
+        IntentType.BROWSE_BACK -> "网页后退"
+        else -> op
     }
 
     /** 记忆写入事件入流（内存态，供 Agent 页实时插卡；环形保留最近 N 条） */
