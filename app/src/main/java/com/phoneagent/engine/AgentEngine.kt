@@ -2185,7 +2185,7 @@ class AgentEngine(
             val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
                 ?: return com.phoneagent.engine.execution.VerifyResult(false, "命令无法解析: $cmd", "", "")
             triggerCursorForShell(resolved)
-            return finishShellResult(bridge.executeShell(resolved))
+            return finishShellResult(bridge.executeShell(resolved), action.uri)
         }
         // 无真实 shell 通道：硬性禁止 shell，翻译为无障碍动作
         if (!shellChannelAvailable()) {
@@ -2194,7 +2194,7 @@ class AgentEngine(
         val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
             ?: return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
         triggerCursorForShell(resolved)
-        return runRealShell(resolved)
+        return runRealShell(resolved, action.uri)
     }
 
     /**
@@ -2226,7 +2226,10 @@ class AgentEngine(
      * 注意 Termux 是**普通应用权限**的 Linux 环境，只适合 curl/python/文本处理等工具链命令，
      * 系统命令（am/pm/settings）会失败——该边界在提示词里对 AI 显式声明。
      */
-    private suspend fun runRealShell(resolved: String): com.phoneagent.engine.execution.VerifyResult {
+    private suspend fun runRealShell(
+        resolved: String,
+        baseUrl: String? = null,
+    ): com.phoneagent.engine.execution.VerifyResult {
         val channel = settings.settings.first().executionChannel
         val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { cmd ->
             val out = adbTransport?.executeShell(cmd)
@@ -2255,7 +2258,7 @@ class AgentEngine(
                 else return com.phoneagent.engine.execution.VerifyResult(false, "无可用 shell 通道", "", "")
             }
         }
-        return finishShellResult(result)
+        return finishShellResult(result, baseUrl)
     }
 
     /**
@@ -2275,10 +2278,11 @@ class AgentEngine(
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
     private suspend fun finishShellResult(
         result: com.phoneagent.device.shell.ShizukuManager.ShellResult,
+        baseUrl: String? = null,
     ): com.phoneagent.engine.execution.VerifyResult = when (result) {
         is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success -> {
             // 捕获输出：查询类命令回传 AI，指令类命令忽略
-            lastShellOutput = result.output.trim().take(1200)
+            lastShellOutput = renderShellOutput(result.output.trim(), baseUrl)
             pendingShellOutput = lastShellOutput
             delay(300)
             com.phoneagent.engine.execution.VerifyResult(true, "shell 执行成功", "", "")
@@ -2289,6 +2293,25 @@ class AgentEngine(
             pendingShellOutput = result.reason
             com.phoneagent.engine.execution.VerifyResult(false, result.reason, "", "")
         }
+    }
+
+    /**
+     * shell 输出整理成给 AI 读的文本。
+     *
+     * **顺序很关键：先嗅探 + 转 Markdown，再按预算截断**。反过来的话（先 take 再转），
+     * 4000 字符的 HTML 前缀常常停在 `<head>`/`<nav>` 中段，转换器要么拿不到正文、
+     * 要么把 `<div class="` 残片当成正文，等于白转。
+     */
+    private fun renderShellOutput(raw: String, baseUrl: String?): String {
+        if (raw.isEmpty()) return raw
+        // 不是 HTML（JSON / 纯文本 / dumpsys 的 XML）一律原样回传，绝不瞎转
+        if (!com.phoneagent.core.text.HtmlToMarkdown.isHtml(raw)) return raw.take(SHELL_OUTPUT_BUDGET)
+        val r = com.phoneagent.core.text.HtmlToMarkdown.convert(
+            raw, baseUrl, SHELL_OUTPUT_BUDGET - SHELL_MD_HEADER_RESERVE,
+        )
+        if (r.markdown.isBlank()) return raw.take(SHELL_OUTPUT_BUDGET)
+        val title = if (r.title.isNotBlank()) "网页标题：${r.title}\n" else ""
+        return title + "网页正文（已自动转为 Markdown）：\n" + r.markdown
     }
 
     /**

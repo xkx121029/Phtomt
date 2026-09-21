@@ -177,7 +177,7 @@ object BrowserBridge {
         BrowseResult(true, "已在内置浏览器打开网页（下一步的截图中就能看到它）：\n标题：$title\n网址：$url")
     }
 
-    /** browse_read：抓取当前网页的结构化内容（标题/正文/链接/输入框/按钮） */
+    /** browse_read：抓取当前网页 —— 正文以 Markdown 返回（链接内联），另附输入框与按钮清单 */
     suspend fun read(): BrowseResult = lock.withLock {
         withPage { wv ->
             val obj = eval(wv, BrowserScripts.READ)
