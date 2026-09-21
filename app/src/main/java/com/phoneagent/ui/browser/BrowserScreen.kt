@@ -1,0 +1,212 @@
+package com.phoneagent.ui.browser
+
+import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.phoneagent.feature.browser.BrowserBridge
+import com.phoneagent.feature.browser.BrowserScripts
+import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+
+/**
+ * 内置浏览器页（全屏二级页）。
+ *
+ * 它同时承担两件事：
+ * 1. 用户在主页点「浏览器」进来时，是一个干净的浏览窗口；
+ * 2. AI 执行 browse_* 时，引擎把 App 切到这一页 —— 于是每步截图里就是真实网页，
+ *    AI 能"亲眼看到"页面（[BrowserBridge] 说明里的可见性边界）。
+ *
+ * 网页读写全部交给 [BrowserBridge] 通过 DOM 脚本完成，本页只负责：承载 WebView、
+ * 把加载进度/标题回传给桥、以及在最上方给出一条"当前在哪一页"的地址条。
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun BrowserScreen(modifier: Modifier = Modifier) {
+    var title by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    var progress by remember { mutableFloatStateOf(0f) }
+    var hasPage by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        AddressStrip(title = title, url = url)
+        if (progress in 0.01f..0.99f) {
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        } else {
+            Spacer(Modifier.height(2.dp))
+        }
+        Box(Modifier.fillMaxSize()) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                        // 不开多窗口：target=_blank 的链接由页面钩子改成同窗打开（见 BrowserScripts.UNBLANK），
+                        // 否则 WebView 会静默吞掉这类点击，AI 看起来就是"点了没反应"
+                        settings.setSupportMultipleWindows(false)
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView?, u: String?, favicon: Bitmap?) {
+                                BrowserBridge.onPageStarted()
+                                url = u.orEmpty()
+                                hasPage = true
+                            }
+
+                            override fun onPageFinished(view: WebView?, u: String?) {
+                                BrowserBridge.onPageFinished(u.orEmpty())
+                                view?.evaluateJavascript(BrowserScripts.UNBLANK, null)
+                            }
+                        }
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                progress = newProgress / 100f
+                            }
+
+                            override fun onReceivedTitle(view: WebView?, t: String?) {
+                                title = t.orEmpty()
+                                BrowserBridge.onTitle(t.orEmpty())
+                            }
+                        }
+                        BrowserBridge.attach(this)
+                        // 引擎预置的网址优先；Activity 重建时退回上一次的网页，避免网页凭空消失
+                        val pending = BrowserBridge.takePendingUrl()
+                        if (pending.isNotBlank()) {
+                            url = pending
+                            loadUrl(pending)
+                        } else if (BrowserBridge.lastUrl().isNotBlank()) {
+                            loadUrl(BrowserBridge.lastUrl())
+                        }
+                    }
+                },
+                onRelease = { wv ->
+                    BrowserBridge.detach(wv)
+                    wv.destroy()
+                },
+            )
+            if (!hasPage) {
+                EmptyHint(Modifier.align(Alignment.Center))
+            }
+        }
+    }
+}
+
+/** 地址条：当前网页标题 + 网址，让用户（和截图）一眼知道现在在哪一页 */
+@Composable
+private fun AddressStrip(title: String, url: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(AppRadii.Item),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = AppIcons.Globe,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Sm))
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    text = title.ifBlank { "内置浏览器" },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (url.isNotBlank()) {
+                    Text(
+                        text = url,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyHint(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.padding(AppSpacing.Lg),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(AppRadii.Card),
+    ) {
+        Column(
+            modifier = Modifier
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(AppRadii.Card),
+                )
+                .clip(RoundedCornerShape(AppRadii.Card))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(AppSpacing.Lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        ) {
+            Text(
+                text = "还没有打开网页",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "AI 执行「打开网页」时会自动出现在这里；你也可以把它当作一个干净的浏览窗口。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}

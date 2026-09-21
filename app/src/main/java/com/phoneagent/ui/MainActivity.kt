@@ -1,7 +1,9 @@
 package com.phoneagent.ui
 
+import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,15 +96,27 @@ import com.phoneagent.ui.icons.AppIcons
 
 class MainActivity : ComponentActivity() {
 
+    /**
+     * 外部打开二级页的信号：AI 执行 browse_* 时，引擎从后台把 App 切到「浏览器」页。
+     * 已在栈上时走 [onNewIntent]（启动 Intent 带 SINGLE_TOP|CLEAR_TOP），这里自增即触发切页。
+     */
+    private val pageSignal = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             PhoneAgentTheme {
                 val vm: MainViewModel = koinViewModel()
-                ActivityContent(vm)
+                ActivityContent(vm, pageSignal)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pageSignal.value++
     }
 }
 
@@ -114,6 +128,8 @@ sealed class ExtrasPage {
     object Skill : ExtrasPage()
     /** 记忆：原底部 Tab 已并入 Agent 页，改由顶栏入口打开 */
     object Memory : ExtrasPage()
+    /** 内置浏览器：AI 上网/操作网页的落点，用户也可直接当浏览窗口用 */
+    object Browser : ExtrasPage()
 }
 
 /** ExtrasPage 状态保存：跨进程重建后恢复当前二级页 */
@@ -125,6 +141,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             is ExtrasPage.Debug -> listOf("debug")
             is ExtrasPage.Skill -> listOf("skill")
             is ExtrasPage.Memory -> listOf("memory")
+            is ExtrasPage.Browser -> listOf("browser")
         }
     },
     restore = { list ->
@@ -134,6 +151,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             "debug" -> ExtrasPage.Debug
             "skill" -> ExtrasPage.Skill
             "memory" -> ExtrasPage.Memory
+            "browser" -> ExtrasPage.Browser
             else -> null
         }
     },
@@ -143,7 +161,7 @@ private data class TabItem(val label: String, val icon: ImageVector)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ActivityContent(vm: MainViewModel) {
+private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>) {
     var selected by rememberSaveable { mutableStateOf(0) }
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
@@ -215,6 +233,17 @@ private fun ActivityContent(vm: MainViewModel) {
     LaunchedEffect(Unit) {
         vm.refreshStatus(activity)
         vm.refreshA11yState()
+    }
+
+    // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）。
+    // 首次组合（onCreate）与已在栈上被复用（onNewIntent）都走这里，保证两条路径的落点一致。
+    val browseSignal by pageSignal.collectAsState()
+    LaunchedEffect(browseSignal) {
+        val intent = activity.intent
+        if (intent?.getBooleanExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE, false) == true) {
+            intent.removeExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE)
+            extrasPage = ExtrasPage.Browser
+        }
     }
 
     // 全局返回手势返回上一层：
@@ -490,6 +519,9 @@ private fun ExtrasPageContent(
             )
             ExtrasPage.Memory -> MemoryGraphScreen(
                 vm,
+                Modifier.weight(1f).padding(horizontal = 0.dp),
+            )
+            ExtrasPage.Browser -> com.phoneagent.ui.browser.BrowserScreen(
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )
         }
