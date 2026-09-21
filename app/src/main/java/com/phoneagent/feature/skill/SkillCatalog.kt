@@ -167,6 +167,66 @@ object SkillCatalog {
                 ),
             ),
         )
+        // ---- 内置浏览器（WebView 可见页，AI 能亲眼看到网页）----
+        put(
+            IntentType.BROWSE_OPEN, Skill(
+                id = "skill_browse_open", name = "打开网页", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_OPEN,
+                description = "在 App 内置浏览器打开网址，页面会切到前台，AI 每步截图中能看到网页。只要打开网页就用它（不用 open 深链、不用 fetch）。",
+                params = listOf(
+                    SkillParam("uri", "网址", "text", required = true, description = "http:// 或 https:// 开头的完整网址"),
+                ),
+            ),
+        )
+        put(
+            IntentType.BROWSE_READ, Skill(
+                id = "skill_browse_read", name = "抓取网页内容", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_READ,
+                description = "抓取内置浏览器当前网页的结构化内容（标题/网址/正文/可点链接/表单），结果作为「上一步结果」回给你。无需参数。",
+            ),
+        )
+        put(
+            IntentType.BROWSE_CLICK, Skill(
+                id = "skill_browse_click", name = "点击网页元素", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_CLICK,
+                description = "点击当前网页里的元素。target 优先写元素文字（by=text），元素无文字时写 CSS 选择器（by=id，如 #login）。",
+                params = listOf(
+                    SkillParam("target", "目标元素", "text", required = true, description = "元素文字（优先）或 CSS 选择器"),
+                ),
+            ),
+        )
+        put(
+            IntentType.BROWSE_INPUT, Skill(
+                id = "skill_browse_input", name = "网页表单输入", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_INPUT,
+                description = "向当前网页的输入框填字（如搜索框、登录表单）。target 定输入框，text 是要填的字。",
+                params = listOf(
+                    SkillParam("target", "输入框", "text", required = true, description = "输入框提示文字/名称，或 CSS 选择器"),
+                    SkillParam("text", "要填的字", "text", required = true),
+                ),
+            ),
+        )
+        put(
+            IntentType.BROWSE_SCROLL, Skill(
+                id = "skill_browse_scroll", name = "网页滚动", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_SCROLL,
+                description = "滚动内置浏览器的网页（长文/长列表查找内容时用）。",
+                params = listOf(
+                    SkillParam(
+                        "direction", "方向", "select", required = true, defaultValue = "down",
+                        options = listOf("up", "down", "top", "bottom"),
+                        description = "up=上翻 down=下翻 top=回到顶部 bottom=到底部",
+                    ),
+                ),
+            ),
+        )
+        put(
+            IntentType.BROWSE_BACK, Skill(
+                id = "skill_browse_back", name = "网页后退", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "浏览器", legacyIntent = IntentType.BROWSE_BACK,
+                description = "在内置浏览器里后退到上一个网页（不是系统返回，不会退出浏览器）。",
+            ),
+        )
         put(
             IntentType.FINISH, Skill(
                 id = "skill_finish", name = "完成", source = SkillSource.INTENT, isBuiltIn = true,

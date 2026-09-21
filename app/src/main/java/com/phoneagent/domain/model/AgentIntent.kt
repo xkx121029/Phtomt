@@ -38,7 +38,7 @@ data class AgentIntent(
     val summary: String? = null,
     /** give_up：放弃原因 */
     val reason: String? = null,
-    /** open：深链/协议直达 uri */
+    /** open：深链/协议直达 uri；browse_open：要在内置浏览器打开的网址 */
     val uri: String? = null,
     /** open：软件页面直达索引序号（配合 app） */
     val page: Int? = null,
@@ -102,6 +102,14 @@ object IntentType {
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
 
+    // ---- 内置浏览器（端侧 WebView 可见页，AI 能亲眼看到网页；不依赖 Termux、不操控用户设备） ----
+    const val BROWSE_OPEN = "browse_open"     // 在内置浏览器打开网址（uri）
+    const val BROWSE_READ = "browse_read"     // 抓取当前网页内容（标题/正文/链接/表单），结果回注决策
+    const val BROWSE_CLICK = "browse_click"   // 点击网页元素（target：文字优先，或 CSS 选择器）
+    const val BROWSE_INPUT = "browse_input"   // 网页表单输入（target, text）
+    const val BROWSE_SCROLL = "browse_scroll" // 网页滚动（direction：up/down/top/bottom）
+    const val BROWSE_BACK = "browse_back"     // 网页内后退（不是系统返回，不会退出浏览器）
+
     // ---- 高层语义接口（Φ 端侧已识别的语义控件类，转译层本地映射为命令，AI 不写命令/坐标） ----
     const val BACK = "back"               // 返回上一页（优先语义按钮，找不到走系统返回）
     const val HOME = "home"               // 回到桌面/首页（系统 HOME）
@@ -126,6 +134,7 @@ object IntentType {
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
         FETCH, FINISH, GIVE_UP,
+        BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
     )
@@ -146,5 +155,12 @@ object IntentType {
         FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,
+        // 6 个浏览意图共用一条动作类型，具体子操作由 action.op 携带（AI 不写 op，端侧按意图名生成）
+        BROWSE_OPEN to ActionType.BROWSE,
+        BROWSE_READ to ActionType.BROWSE,
+        BROWSE_CLICK to ActionType.BROWSE,
+        BROWSE_INPUT to ActionType.BROWSE,
+        BROWSE_SCROLL to ActionType.BROWSE,
+        BROWSE_BACK to ActionType.BROWSE,
     )
 }

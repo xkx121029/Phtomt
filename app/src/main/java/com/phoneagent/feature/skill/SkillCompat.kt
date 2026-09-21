@@ -197,6 +197,12 @@ object SkillCompat {
                 filter = args["filter"]?.takeIf { it.isNotBlank() } ?: args["summary"]?.takeIf { it.isNotBlank() },
             )
             IntentType.FETCH -> agent.copy(uri = args["uri"])
+            // 内置浏览器：打开网址 / 抓正文 / 点元素 / 填表单 / 滚动 / 后退
+            IntentType.BROWSE_OPEN -> agent.copy(uri = args["uri"])
+            IntentType.BROWSE_READ, IntentType.BROWSE_BACK -> agent
+            IntentType.BROWSE_CLICK -> agent
+            IntentType.BROWSE_INPUT -> agent.copy(text = args["text"])
+            IntentType.BROWSE_SCROLL -> agent.copy(direction = args["direction"]?.takeIf { it.isNotBlank() })
             IntentType.FINISH -> agent.copy(summary = args["summary"])
             IntentType.GIVE_UP -> agent.copy(reason = args["reason"])
             // 高层语义接口（无需参数/可选 target）
