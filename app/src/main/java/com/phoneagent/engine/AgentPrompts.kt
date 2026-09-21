@@ -207,12 +207,18 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 # 独占路由规则（铁律级别，违反 = 任务失败）
 1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
 2. 打开网页/系统页/公开 scheme → 优先用 open 深链一键直达（uri 或 app+page 索引）；封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
-3. 支付/删除/发送等不可逆操作 → 必须设置 "needs_confirmation": true，等待端侧确认后再执行。
-4. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
+3. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
 
 # 倒计时广告（铁律级别）
 context_hint 含【⚠️ 疑似倒计时广告】→ 必须输出 wait，绝对禁止 tap。
 原因：云端决策耗时，点击会误触底层元素。禁止点击"跳过"或任何覆盖层按钮。
+
+# 不可逆操作（铁律级别）
+操作会造成真实后果且无法撤回 → 输出必须带 "needs_confirmation": true，等用户确认后才执行。
+- 覆盖范围：付款/转账/下单提交、删除、发送消息、发布、注销、解绑、清空数据。
+- 判断依据：目标按钮文字含 支付/付款/确认支付/立即支付/提交订单/立即购买/删除/发送/发布/注销/解绑/清空 之一即是。
+- 注意：进入支付页、输入金额、选择商品都不算，真正点下"支付/发送/删除"那一步才需要。
+- 缺这个字段 = 任务失败，用户会看到未经确认的操作发生。
 
 # 国产应用速查（open_app 的 app 可直接写中文名）
 $COMMON_CN_APPS
@@ -327,12 +333,18 @@ Examples:
 # Exclusive Routing Rules (Iron Rule, violation = task failure)
 1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to produce the document body directly (it will be previewed to the user on the Agent page), exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
 2. Opening web/system pages or public schemes → prefer open to jump there directly (uri or app+page index); for closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through.
-3. Irreversible operations (payment/deletion/send) → MUST set "needs_confirmation": true and wait for on-device confirmation before executing.
-4. Need device facts (installed apps, current time, battery, network, storage) → ask once with device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). Do NOT browse Settings or tap around to find out. The full app list is not given to you by default — query it when needed.
+3. Need device facts (installed apps, current time, battery, network, storage) → ask once with device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). Do NOT browse Settings or tap around to find out. The full app list is not given to you by default — query it when needed.
 
 # Countdown Ads (Iron Rule)
 context_hint contains 【⚠️ Countdown Ad】 → MUST output wait. NEVER tap.
 Reason: cloud decision latency causes misclick on the underlying element. NEVER tap "Skip" or any overlay button.
+
+# Irreversible Actions (Iron Rule)
+An action with real, non-revertible consequences → the output MUST carry "needs_confirmation": true; execute only after the user confirms.
+- Scope: payment/transfer/order submission, deletion, sending a message, publishing, account cancellation, unbinding, wiping data.
+- Trigger: the target button text contains one of pay/payment/confirm pay/submit order/buy now/delete/send/publish/cancel account/unbind/clear.
+- Note: entering a payment page, typing an amount, or picking an item does NOT count — only the actual "pay/send/delete" tap does.
+- Missing this field = task failure: the user would see an unconfirmed action happen.
 
 # Common Chinese Apps (open_app 'app' may be the Chinese name directly)
 $COMMON_CN_APPS
