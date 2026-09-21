@@ -64,7 +64,7 @@ internal object BrowserScripts {
     var out = [], listBuf = [], listDepth = 0, cur = [], marks = [];
     var lists = [], items = [];
     var preBuf = null, preLang = '';
-    var rows = null, row = null, cellOpen = false;
+    var rows = null, row = null, cellOpen = false, cellExtras = [];
     var quoteDepth = 0, truncated = false;
 
     // ===== 基础工具 =====
@@ -139,6 +139,11 @@ internal object BrowserScripts {
       if (out.length) out.push('\n\n');
       out.push(b);
     }
+    // 单元格内的"落块"（`<td><p>x</p></td>` 的 p）不能直接 emit，否则文字会被甩到表格外面
+    function emitBlock(block){
+      if (!cellExtras.length) { emit(block); return; }
+      cellExtras[cellExtras.length - 1].push(String(block));
+    }
     function quotePrefix(){ return rep('> ', quoteDepth); }
     function itemPrefix(it){
       var L = it.list;
@@ -151,6 +156,8 @@ internal object BrowserScripts {
       var t = curText().replace(/^\s+/, '').replace(/\s+${'$'}/, '');
       resetInline();
       if (!t) return;
+      // 单元格内不加列表/引用前缀：那些前缀属于正文，不属于单元格
+      if (cellExtras.length) { emitBlock(t); return; }
       emit((prefix === undefined || prefix === null ? prefixOf() : prefix) + t);
     }
     function prefixOf(){
@@ -167,17 +174,19 @@ internal object BrowserScripts {
 
     // ===== 表格：GFM 管道表（忽略 colspan/rowspan，列数以首行单元格数为准）=====
     function cellText(s){ return String(s || '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').slice(0, 120); }
-    function openCell(){ if (cellOpen) closeCell(); cellOpen = true; resetInline(); }
+    function openCell(){ if (cellOpen) closeCell(); cellOpen = true; cellExtras.push([]); resetInline(); }
     function closeCell(){
       if (!cellOpen) return;
       cellOpen = false;
+      var extra = cellExtras.length ? cellExtras.pop().join(' ') : '';
       var t = curText().replace(/^\s+/, '').replace(/\s+${'$'}/, '');
       resetInline();
-      if (row) row.push(t);
+      if (row) row.push(extra ? (t ? extra + ' ' + t : extra) : t);
     }
     function closeRow(){
       if (cellOpen) closeCell();
-      if (row && row.length && rows) rows.push(row);
+      // 全空行没有信息量，不进表格
+      if (row && row.length && rows && row.some(function(c){ return String(c).replace(/\s/g, ''); })) rows.push(row);
       row = null;
     }
     function closeTable(){
@@ -199,7 +208,7 @@ internal object BrowserScripts {
         buf.push('\n| ...（表格过长，仅保留前 30 行） |');
         for (var c3 = 1; c3 < cols; c3++) buf.push('  |');
       }
-      emit(buf.join(''));
+      emitBlock(buf.join(''));
     }
 
     // ===== 代码块：pre 原样收集（textContent 而非 innerText，避免行号装饰）=====
@@ -213,7 +222,7 @@ internal object BrowserScripts {
       if (!body.replace(/\s/g, '')) return;
       var fence = FENCE;
       while (body.indexOf(fence) >= 0) fence += '`';
-      emit(fence + lang + '\n' + body + '\n' + fence);
+      emitBlock(fence + lang + '\n' + body + '\n' + fence);
     }
 
     // ===== 链接绝对化：绝对/协议相对/根相对/相对；丢 javascript: 与 data: =====
@@ -289,7 +298,7 @@ internal object BrowserScripts {
       } else if (tag === 'br') {
         brk();
       } else if (tag === 'hr') {
-        emit('---');
+        emitBlock('---');
       }
 
       var kids = el.childNodes;

@@ -158,6 +158,13 @@ class HtmlToMarkdownTest {
         assertTrue(md, md.contains("a\\|b"))
     }
 
+    @Test
+    fun `单元格内的块级文本不甩出表格`() {
+        val html = "<table><tr><td><p>甲</p></td><td><div>乙</div></td></tr></table>"
+        val md = HtmlToMarkdown.convert(html).markdown
+        assertEquals("| 甲 | 乙 |\n| --- | --- |", md)
+    }
+
     // ==================== 六、噪声与实体 ====================
 
     @Test
@@ -204,33 +211,39 @@ class HtmlToMarkdownTest {
     @Test
     fun `截断只切块边界且不切半个链接`() {
         val note = HtmlToMarkdown.TRUNCATED_NOTE
-        val multi = "第一段内容\n\n第二段内容\n\n第三段内容"
-        val cut = HtmlToMarkdown.takeBlocks(multi, 20)
-        assertEquals("第一段内容\n\n$note", cut)
+        val multi = "AAAA\n\nBBBB\n\nCCCC"
+        assertEquals("AAAA\n\n$note", HtmlToMarkdown.takeBlocks(multi, 20))
 
         // 落点若在 `[文字](网址)` 中间，必须整条回退，绝不产出半个链接
-        val link = "前文一段\n\n[很长的链接文字](https://example.com/very/long/path/here)"
+        val link = "[点击这里](https://example.com/very/long/path)"
         val linkCut = HtmlToMarkdown.takeBlocks(link, 24)
         assertFalse(linkCut, linkCut.contains("]("))
-        assertTrue(linkCut, linkCut.endsWith(note))
+        assertFalse(linkCut, linkCut.contains("["))
+        assertEquals(note, linkCut)
     }
 
     @Test
     fun `浏览器脚本内嵌的规则表与本侧常量同源`() {
         val read = BrowserScripts.READ
-        // 四张表 + 转义字符表 + 围栏字面量，全部由本侧常量插值生成
+        fun table(key: String): String = read.lineSequence().first { it.contains("var $key =") }
+        val drop = table("DROP")
+        val block = table("BLOCK")
+        val hidden = table("HIDDEN_CLASS")
+        // 四张表 + 转义字符表 + 围栏字面量，全部由本侧常量插值生成（改一处即两处生效）
         HtmlToMarkdown.DROP_RULE.split(' ').filter { it.isNotBlank() }.forEach {
-            assertTrue("丢弃表缺 $it", read.contains(HtmlToMarkdown.jsStr(it) + ":1"))
+            assertTrue("丢弃表缺 $it", drop.contains(HtmlToMarkdown.jsStr(it) + ":1"))
         }
-        assertTrue(read, read.contains(HtmlToMarkdown.jsStr("strong") + "," + HtmlToMarkdown.jsStr("**")))
-        assertTrue(read, read.contains(HtmlToMarkdown.jsStr("mark") + "," + HtmlToMarkdown.jsStr("==")))
-        assertTrue(read, read.contains(HtmlToMarkdown.jsStr(HtmlToMarkdown.FENCE)))
-        assertTrue(read, read.contains(HtmlToMarkdown.jsArr(HtmlToMarkdown.ESCAPE_RULE)))
+        HtmlToMarkdown.BLOCK_RULE.split(' ').filter { it.isNotBlank() }.forEach {
+            assertTrue("块级表缺 $it", block.contains(HtmlToMarkdown.jsStr(it) + ":1"))
+        }
         HtmlToMarkdown.HIDDEN_CLASS_RULE.split(' ').filter { it.isNotBlank() }.forEach {
-            assertTrue("隐藏类名表缺 $it", read.contains(HtmlToMarkdown.jsStr(it) + ":1"))
+            assertTrue("隐藏类名表缺 $it", hidden.contains(HtmlToMarkdown.jsStr(it) + ":1"))
         }
+        assertTrue(read, read.contains(HtmlToMarkdown.jsMarkPairs(HtmlToMarkdown.MARK_RULE)))
+        assertTrue(read, read.contains(HtmlToMarkdown.jsArr(HtmlToMarkdown.ESCAPE_RULE)))
+        assertTrue(read, read.contains(HtmlToMarkdown.jsStr(HtmlToMarkdown.FENCE)))
         // 回归护栏：html/body 是正文容器，一旦被列进丢弃表，整页会转出空 Markdown
-        assertFalse(read, read.contains(HtmlToMarkdown.jsStr("body") + ":1"))
-        assertFalse(read, read.contains(HtmlToMarkdown.jsStr("html") + ":1"))
+        assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("body") + ":1"))
+        assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("html") + ":1"))
     }
 }

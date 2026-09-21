@@ -262,15 +262,20 @@ object HtmlToMarkdown {
         return body + "\n\n" + TRUNCATED_NOTE
     }
 
-    /** 落点修复：末尾处在 `](...)` 或行内标记中间时向前回退到安全位置 */
+    /** 落点修复：末尾处在 `](...)`、未配平的 `[` 或行内标记中间时向前回退到安全位置 */
     private fun repairCut(s: String): String {
+        var res = s
         val open = s.lastIndexOf("](")
         if (open >= 0 && s.indexOf(')', open) < 0) {
             val b = maxOf(s.lastIndexOf('\n', open), s.lastIndexOf(' ', open))
-            return if (b > 0) s.substring(0, b) else s.substring(0, open)
+            res = if (b > 0) s.substring(0, b) else s.substring(0, open)
         }
         // 尾部零散的强调符会让 Markdown 渲染错乱，一并去掉
-        return s.trimEnd('*', '`', '~', '=')
+        res = res.trimEnd('*', '`', '~', '=')
+        // 剩下的孤立 `[` 同样别留给 AI（半个链接语法比没有更误导）
+        val lb = res.lastIndexOf('[')
+        if (lb >= 0 && res.count { it == '[' } > res.count { it == ']' }) res = res.substring(0, lb)
+        return res
     }
 
     // ==================== 第一段：stripNoise ====================
@@ -556,6 +561,11 @@ object HtmlToMarkdown {
     /** 被隐藏的子树：结构性跳过，且其内文本一律不产出 */
     private const val K_MUTE = 12
 
+    /** 隐式闭合时的"容器边界"：碰到就先停手，保证只闭合同级元素 */
+    private val STOP_CONTAINER = setOf(K_LIST, K_TABLE, K_QUOTE)
+    private val STOP_ROW = setOf(K_ROW, K_TABLE)
+    private val STOP_TABLE = setOf(K_TABLE)
+
     private class Frame(
         val tag: String,
         val kind: Int,
@@ -806,6 +816,7 @@ object HtmlToMarkdown {
         // ---------- 文本与表格 ----------
 
         private fun text(s: String) {
+            if (mute > 0) return
             val pre = preBuf
             if (pre != null) {
                 pre.append(decodeEntities(s))
@@ -815,16 +826,39 @@ object HtmlToMarkdown {
             b.appendText(decodeEntities(s))
         }
 
+        /**
+         * 单元格内的块：
+         * `<td><p>x</p></td>` 的 `<p>` 离开时会走"落块"，直接 emit 会把单元格文字甩到表格外面
+         * （顺序还会乱），所以单元格内一律先把块收进当前单元格缓冲，`</td>` 时再并入。
+         */
+        private fun emitBlock(block: String) {
+            if (!inCell()) {
+                b.emit(block)
+                return
+            }
+            val buf = cellBufs[cellBufs.size - 1]
+            if (buf.isNotEmpty()) buf.append(' ')
+            buf.append(block)
+        }
+
         private fun closeCell() {
-            val t = b.curText().trim()
+            val extra = if (cellBufs.isEmpty()) null else cellBufs.removeAt(cellBufs.size - 1)
+            val cur = b.curText().trim()
             b.resetInline()
+            val head = extra?.toString()?.trim().orEmpty()
+            val t = when {
+                head.isEmpty() -> cur
+                cur.isEmpty() -> head
+                else -> head + " " + cur
+            }
             row?.add(t)
         }
 
         private fun closeRow() {
             val r = row ?: return
             row = null
-            if (r.isNotEmpty()) rows?.add(r)
+            // 全空行没有信息量（隐藏子树里的空表格也靠这条挡住），不进表格
+            if (r.isNotEmpty() && r.any { it.isNotBlank() }) rows?.add(r)
         }
 
         private fun closeTable() {
@@ -851,7 +885,7 @@ object HtmlToMarkdown {
                 sb.append('\n').append('|').append(" ...（表格过长，仅保留前 ").append(MAX_TABLE_ROWS).append(" 行） |")
                 for (c in 1 until cols) sb.append("  |")
             }
-            b.emit(sb.toString())
+            emitBlock(sb.toString())
         }
 
         private fun cellText(s: String?): String =
@@ -867,7 +901,23 @@ object HtmlToMarkdown {
             // 正文内含围栏时加长围栏，避免提前闭合代码块
             var fence = FENCE
             while (body.contains(fence)) fence += "`"
-            b.emit(fence + lang + "\n" + body + "\n" + fence)
+            emitBlock(fence + lang + "\n" + body + "\n" + fence)
+        }
+
+        /** 属性层面的隐藏判定（与浏览器侧的 [HIDDEN_CLASS_RULE] + `hidden`/`aria-hidden`/内联样式一致） */
+        private fun hiddenTag(t: Tag): Boolean {
+            val a = t.attrs
+            if (a.containsKey("hidden")) return true
+            if (a["aria-hidden"]?.trim()?.equals("true", ignoreCase = true) == true) return true
+            if (a["type"]?.trim()?.equals("hidden", ignoreCase = true) == true) return true
+            val style = a["style"].orEmpty().filterNot { it.isWhitespace() }.lowercase()
+            if (style.contains("display:none") || style.contains("visibility:hidden") ||
+                style.contains("opacity:0")
+            ) {
+                return true
+            }
+            val cls = a["class"].orEmpty().lowercase().split(' ', '\t', '\n')
+            return cls.any { it.isNotBlank() && it in HIDDEN_CLASSES }
         }
 
         // ---------- 行内收口与前缀 ----------
@@ -876,6 +926,11 @@ object HtmlToMarkdown {
             val txt = b.curText().trim()
             b.resetInline()
             if (txt.isEmpty()) return
+            // 单元格内不加列表/引用前缀：那些前缀属于正文，不属于单元格
+            if (inCell()) {
+                emitBlock(txt)
+                return
+            }
             val prefix = prefixOverride ?: prefixOf()
             b.emit(prefix + txt)
         }
