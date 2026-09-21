@@ -10,6 +10,28 @@ enum class PromptLang(val label: String) {
     EN("English"),
 }
 
+/** 注入给 AI 的环境事实（端侧采集，已是本地化后的可读结论） */
+data class EnvFacts(
+    /** 日期时间，如「2026-09-20 周六 15:04」 */
+    val dateTime: String = "",
+    /** 网络，如「Wi-Fi」 */
+    val network: String = "",
+    /** 电量，如「62%（充电中）」 */
+    val battery: String = "",
+    /** 前台应用，如「微信(com.tencent.mm)」 */
+    val foreground: String = "",
+    /** 已安装可启动应用数量 */
+    val installedCount: Int = 0,
+)
+
+/** 会话承接用的上一轮任务要点（端侧从任务记忆里抽取） */
+data class PreviousTask(
+    val goal: String,
+    val statusLabel: String,
+    /** 任务结论（完成说明），未完成时为空 */
+    val conclusion: String = "",
+)
+
 /**
  * HPA 动作执行逻辑优化文档 v2.1 意图化 DSL 的双语 Prompt 库。
  *
@@ -163,6 +185,7 @@ object AgentPrompts {
 | scroll_to | 滚动查找目标 | target |
 | write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
 | remember | 记住长期信息（不操作屏幕，仅写入记忆） | text(要记住的一句话),summary(分类 preference/fact/habit/tip) |
+| device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
 | fetch | 取网页/接口正文（需本机有 Termux） | uri |
 | finish | 任务完成 | summary(你看到的证据) |
 | give_up | 放弃 | reason(原因) |
@@ -205,6 +228,7 @@ object AgentPrompts {
 1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
 2. 打开网页/系统页/公开 scheme → 优先用 open 深链一键直达（uri 或 app+page 索引）；封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。
 3. 支付/删除/发送等不可逆操作 → 必须设置 "needs_confirmation": true，等待端侧确认后再执行。
+4. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
 
 # JSON 字段向后搜寻（铁律级别）
 页面数据为嵌套 JSON。当目标字段不在当前位置时，自动向后（向数组/对象末尾方向）搜寻：
@@ -316,6 +340,7 @@ You are Phantom, an Android device automation agent.
 | scroll_to | Scroll to find target | target |
 | write_doc | Generate document (previewed on the Agent page) | text(body),summary(filename) |
 | remember | Remember long-term info (no screen interaction, memory write only) | text(one sentence),summary(category preference/fact/habit/tip) |
+| device_query | Query device info (no screen interaction, local read only) | kind(apps/time/battery/network/storage/all)[,filter(app-name keyword)] |
 | fetch | Fetch web/API body text (requires Termux on device) | uri |
 | finish | Task complete | summary(evidence you saw) |
 | give_up | Give up | reason |
@@ -358,6 +383,7 @@ In principle you should not output pixel coordinates — coordinates are compute
 1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to produce the document body directly (it will be previewed to the user on the Agent page), exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
 2. Opening web/system pages or public schemes → prefer open to jump there directly (uri or app+page index); for closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through.
 3. Irreversible operations (payment/deletion/send) → MUST set "needs_confirmation": true and wait for on-device confirmation before executing.
+4. Need device facts (installed apps, current time, battery, network, storage) → ask once with device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). Do NOT browse Settings or tap around to find out. The full app list is not given to you by default — query it when needed.
 
 # JSON Field Backward Search (Iron Rule)
 Page data is nested JSON. When the target field is not at the current position, automatically search backward (toward the end of array/object):
@@ -432,6 +458,79 @@ Output ONLY JSON.
             else "Vision: disabled. Rely entirely on element-tree id/label/coordinates and text."
     }
 
+    // ==================== 环境上下文（每步/规划都会注入） ====================
+
+    /**
+     * 环境上下文：告诉 AI「现在几点、在哪个应用、网络电量如何、装了多少应用」。
+     *
+     * 这些是页面元素树里读不到的事实（日期决定"明天"是哪天，前台应用决定它面前这一页属于谁），
+     * 缺了它们 AI 只能靠猜。完整应用清单刻意不给——体积大、绝大多数步骤用不上，
+     * 需要时由 AI 自己用 device_query 查（见 [systemCN] 独占路由规则 4）。
+     */
+    fun environment(lang: PromptLang, env: EnvFacts): String = when (lang) {
+        PromptLang.CN -> buildString {
+            append("\n\n# 环境上下文（端侧实时采集）")
+            if (env.dateTime.isNotBlank()) append("\n- 当前时间：${env.dateTime}")
+            if (env.foreground.isNotBlank()) append("\n- 前台应用：${env.foreground}")
+            val net = env.network.ifBlank { "未知" }
+            val bat = env.battery.ifBlank { "未知" }
+            append("\n- 网络：$net；电量：$bat")
+            append("\n- 已安装应用：${env.installedCount} 个（清单未提供，需要时输出 device_query 查 kind=apps）")
+        }
+        PromptLang.EN -> buildString {
+            append("\n\n# Environment (collected on-device, live)")
+            if (env.dateTime.isNotBlank()) append("\n- Current time: ${env.dateTime}")
+            if (env.foreground.isNotBlank()) append("\n- Foreground app: ${env.foreground}")
+            val net = env.network.ifBlank { "unknown" }
+            val bat = env.battery.ifBlank { "unknown" }
+            append("\n- Network: $net; battery: $bat")
+            append("\n- Installed apps: ${env.installedCount} (list not provided; query it with device_query kind=apps when needed)")
+        }
+    }
+
+    // ==================== 会话承接（连续对话的上一轮任务） ====================
+
+    /**
+     * 会话承接块：把最近几轮任务的目标与结论摆给 AI，让"再改一下"这类追问有据可依。
+     *
+     * 只在确有历史任务时注入；[followUp] 为真（用户这轮用了指代词）时额外强调"本轮说的是上一轮"。
+     */
+    fun sessionContext(lang: PromptLang, previous: List<PreviousTask>, followUp: Boolean): String {
+        if (previous.isEmpty()) return ""
+        val sb = StringBuilder()
+        when (lang) {
+            PromptLang.CN -> {
+                sb.append("\n\n# 会话承接（本会话中更早的任务，仅供理解用户意图，无关时忽略）")
+                previous.forEachIndexed { i, p ->
+                    val head = if (i == 0) "上一轮任务" else "更早的任务${i}"
+                    sb.append("\n- $head：${p.goal.take(120)} —— ${p.statusLabel}")
+                    if (p.conclusion.isNotBlank()) sb.append("；结论：${p.conclusion.take(120)}")
+                }
+                if (followUp) {
+                    sb.append("\n⚠️ 本轮输入含指代词（再/接着/刚才/这个等），判定为对上一轮任务的追问：")
+                    sb.append("必须以「上一轮任务」为目标主体规划与执行，承接它的目标与已完成结果，不要重复已完成的部分。")
+                } else {
+                    sb.append("\n本轮是新一轮输入：与上面的任务有关就承接其目标与结果，无关就当作独立任务。")
+                }
+            }
+            PromptLang.EN -> {
+                sb.append("\n\n# Conversation Carry-over (earlier tasks in this session; only for understanding intent, ignore if unrelated)")
+                previous.forEachIndexed { i, p ->
+                    val head = if (i == 0) "Previous task" else "Earlier task $i"
+                    sb.append("\n- $head: ${p.goal.take(120)} — ${p.statusLabel}")
+                    if (p.conclusion.isNotBlank()) sb.append("; outcome: ${p.conclusion.take(120)}")
+                }
+                if (followUp) {
+                    sb.append("\n⚠️ This input references the previous task (再/接着/刚才/这个…), so treat it as a follow-up:")
+                    sb.append(" plan and execute against the previous task's goal, carry over its results, and do not redo what is already done.")
+                } else {
+                    sb.append("\nThis is a new input: carry over the goal/results above when related, otherwise treat it as independent.")
+                }
+            }
+        }
+        return sb.toString()
+    }
+
     // ==================== 二、歧义检测 + 规划 ====================
     fun planning(lang: PromptLang, task: String, profile: String, installedApps: String): String = when (lang) {
         PromptLang.CN -> """
@@ -460,7 +559,7 @@ Output ONLY JSON.
 # 环境与意图
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
-- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档，结果在 Agent 页预览)、remember(记住长期信息，如用户偏好/固定操作路径)、fetch(取网页/接口正文，需本机有 Termux)、finish(完成)、give_up(放弃)。
+- 可依赖的意图：open_app(应用名启动)、tap/long_press(控件)、input(输入文本)、swipe(滑动)、press(按键)、wait(等待)、scroll_to(滑动查找)、open(深链直达)、write_doc(生成文档，结果在 Agent 页预览)、remember(记住长期信息，如用户偏好/固定操作路径)、device_query(查询应用清单/时间/电量/网络/存储)、fetch(取网页/接口正文，需本机有 Termux)、finish(完成)、give_up(放弃)。
 - 高层语义意图（补充，端侧自动定位对应按钮）：back、home、refresh、search、send、confirm、close、share、collect、copy、delete、download、add、switch、clear_input。
 - 端侧负责定位目标与计算坐标，无需你指定通道或坐标。
 
@@ -510,7 +609,7 @@ You are a deep planner. Break the user task into atomic steps that the device ex
 # Environment & Intents
 - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
 - Common Chinese apps: $COMMON_CN_APPS
-- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document, previewed on the Agent page), remember(remember long-term info such as user preference / fixed navigation path), fetch(retrieve web/API body text, requires Termux on device), finish, give_up.
+- Available intents: open_app(app name), tap/long_press(control), input(text), swipe, press(key), wait, scroll_to(scroll to find), open(deep-link direct), write_doc(generate document, previewed on the Agent page), remember(remember long-term info such as user preference / fixed navigation path), device_query(query installed apps/time/battery/network/storage), fetch(retrieve web/API body text, requires Termux on device), finish, give_up.
 - High-level semantic intents (extra; the device auto-finds the button): back, home, refresh, search, send, confirm, close, share, collect, copy, delete, download, add, switch, clear_input.
 - Device handles target location and coordinate computing. Never specify a channel or coordinate.
 
@@ -631,6 +730,10 @@ No other text.
 发现**有长期价值**的信息（用户偏好、常用设置、该应用的固定操作路径、踩过的坑）→ 输出 remember（text=要记住的一句话，summary=分类 preference/fact/habit/tip）。
 只记真正值得长期保留的；禁止每步都记，禁止记临时页面内容。
 
+# 本机信息提醒
+需要本机事实（装了什么应用、当前时间/日期、电量、网络、存储）→ 输出 device_query（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），结果会作为上一步结果回给你。
+不要为了知道这些去翻设置页、点开应用列表或猜测；也不要每步都查，只在真正需要时查一次。
+
 只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
 """.trimIndent()
         PromptLang.EN -> """
@@ -673,6 +776,10 @@ If this step/task requires generating or compiling a document (report, checklist
 # Memory Reminder
 When you find information with **long-term value** (user preference, common setting, this app's fixed navigation path, a pitfall you hit) → output remember (text = one sentence to remember, summary = category preference/fact/habit/tip).
 Only record what is truly worth keeping; never remember on every step, never record temporary page content.
+
+# Device Fact Reminder
+Need device facts (installed apps, current date/time, battery, network, storage) → output device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). The result comes back as the previous step result.
+Do NOT browse Settings, open the app drawer, or guess to learn these; and do NOT query every step — only when truly needed.
 
 Output ONLY JSON. No ```json markers. No text before/after JSON.
 """.trimIndent()

@@ -1,0 +1,145 @@
+/* ===========================================================================
+   长文排版：给 Markdown 渲染结果用（文档、更新日志、关于页）
+   =========================================================================== */
+
+.prose {
+  font-size: 1rem;
+  line-height: 1.82;
+  color: var(--ink-2);
+  max-width: 72ch;
+}
+
+.prose > * + * {
+  margin-top: 1.1em;
+}
+
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5 {
+  color: var(--ink);
+  scroll-margin-top: 96px;
+}
+
+.prose h2 {
+  margin-top: 2.2em;
+  font-size: 1.32rem;
+  letter-spacing: -0.02em;
+}
+
+.prose h3 {
+  margin-top: 1.9em;
+  font-size: 1.1rem;
+}
+
+.prose h4,
+.prose h5 {
+  margin-top: 1.6em;
+  font-size: 1rem;
+}
+
+.prose h2:first-child,
+.prose h3:first-child {
+  margin-top: 0;
+}
+
+.prose strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.prose a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent);
+  transition: text-decoration-color var(--dur-ui) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .prose a:hover {
+    text-decoration-color: var(--brand);
+  }
+}
+
+.prose ul,
+.prose ol {
+  margin: 1.1em 0;
+  padding-left: 1.35em;
+}
+
+.prose li + li {
+  margin-top: 0.5em;
+}
+
+.prose li::marker {
+  color: var(--ink-3);
+}
+
+.prose ul li::marker {
+  font-size: 0.85em;
+}
+
+.prose blockquote {
+  margin: 1.4em 0;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--brand);
+  color: var(--ink-2);
+  font-style: normal;
+}
+
+.prose hr {
+  margin: 2.2em 0;
+}
+
+.prose pre.code {
+  margin: 1.4em 0;
+  max-width: 100%;
+}
+
+.prose .table-wrap {
+  margin: 1.4em 0;
+}
+
+.prose > p:first-child {
+  margin-top: 0;
+}
+
+/* 目录（文档详情页右侧） */
+.toc {
+  position: sticky;
+  top: 96px;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  font-size: var(--t-sm);
+}
+
+.toc a {
+  display: block;
+  padding: 5px 0 5px 12px;
+  border-left: 1px solid var(--line);
+  color: var(--ink-3);
+  line-height: 1.5;
+  transition:
+    color var(--dur-ui) ease,
+    border-color var(--dur-ui) ease;
+}
+
+.toc a[data-level="3"] {
+  padding-left: 24px;
+  font-size: var(--t-xs);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .toc a:hover {
+    color: var(--ink);
+    border-color: var(--line-2);
+  }
+}
+
+.toc a.is-active {
+  color: var(--brand);
+  border-color: var(--brand);
+}

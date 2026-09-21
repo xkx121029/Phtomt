@@ -1,0 +1,34 @@
+{
+  "name": "phtomt-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Happy Phone Agent (Phtomt) 官方网站 —— Vue3 SPA + Express 内容 API",
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "snapshot": "node scripts/snapshot.mjs",
+    "build:static": "npm run snapshot && cross-env STATIC_EXPORT=1 vite build",
+    "start": "node server/index.js",
+    "seed": "node scripts/seed.mjs",
+    "seed:apk": "node scripts/seed.mjs --apk"
+  },
+  "dependencies": {
+    "compression": "^1.7.5",
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "vite": "^6.0.7",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

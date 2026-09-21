@@ -17,12 +17,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.text.InputType
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
@@ -48,18 +50,18 @@ import com.phoneagent.ui.MainActivity
 /**
  * 悬浮窗服务：任务执行时在屏幕上显示实时进度面板，支持用户在窗内直接交互。
  *
- * 视觉：白色液态玻璃（半透明白 + 折射高光 + 边缘色散 + 圆角 + 细边框）。
- * 尺寸：宽度固定，高度随内容自适应（WRAP_CONTENT），随步骤/提问内容实时变化。
+ * 视觉：白色液态玻璃（半透明白 + 顶部折射高光 + 圆角 + 细边框，克制的三层）。
+ * 尺寸：宽度固定，高度随内容自适应（WRAP_CONTENT）——默认只占"跑马灯 + 头部 + 状态行"
+ *       三行；AI 详情默认折叠，用户点开才占位，避免长任务时窗口越撑越大。
  * 交互：等待批准（批准/取消）、歧义澄清（选项按钮）、需要指导（输入框+按钮）、
  *       这些操作全部可在悬浮窗内完成，通过 [onInteraction] 静态回调转发到引擎。
- * 拖动：仅头部区域可拖动，带液态物理反馈（拿起放大 + 速度倾斜 + 松手弹性回弹 + 惯性滑行）。
+ * 拖动：仅头部区域可拖动；轻点头部展开/收起 AI 详情，拖动后靠近屏幕左右边缘会自动贴边。
  */
 class FloatingWindowService : Service() {
 
     private var windowManager: WindowManager? = null
     private var root: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
-    private var glassBg: LiquidGlassDrawable? = null
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val appSettings: AppSettings by inject()
@@ -75,6 +77,18 @@ class FloatingWindowService : Service() {
     private var taskTitle: TextView? = null
     private var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
 
+    /** 头部「详情/收起」按钮：控制 AI 详情区是否占位 */
+    private var expandChip: TextView? = null
+
+    /**
+     * AI 详情是否展开。
+     *
+     * 详情区（发送/返回/审核）最高 112dp，常驻会把窗口撑成一块"屏幕补丁"，
+     * 遮挡后面的内容；默认折叠，只保留跑马灯 + 头部 + 状态行三行。
+     * 该状态在任务内保持（用户展开后，后续步骤不会被自动收起），任务结束才复位。
+     */
+    private var thinkingExpanded = false
+
     // AI 思考实时面板：发送给 AI 的内容 + 流式返回的内容
     private var thinkingPanel: LinearLayout? = null
     private var thinkingScroll: ScrollView? = null
@@ -82,6 +96,9 @@ class FloatingWindowService : Service() {
     private var thinkingReturnText: TextView? = null
     private var reviewText: TextView? = null
     private var lastSentShown = ""
+
+    /** 上次推送 AI 思考通知的时间：流式输出每秒数次，逐条 notify 是跨进程调用，必须节流 */
+    private var lastThinkNotifyAt = 0L
 
     // 头部（可拖动区域）
     private var header: LinearLayout? = null
@@ -241,10 +258,10 @@ class FloatingWindowService : Service() {
         val point = android.graphics.Point()
         runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
         val screenW = if (point.x > 0) point.x else dp(360)
-        val screenH = if (point.y > 0) point.y else dp(640)
+        val winW = dp(FloatingUi.WIDTH)
         // 宽度固定，高度随内容自适应
         params = WindowManager.LayoutParams(
-            dp(300), WindowManager.LayoutParams.WRAP_CONTENT,
+            winW, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -254,7 +271,7 @@ class FloatingWindowService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 初始位置：水平居中、贴屏幕上边缘，跑马灯覆盖状态栏区域。
-            x = (screenW - dp(300)) / 2
+            x = (screenW - winW) / 2
             // y 取负状态栏高度：窗口顶在物理屏顶之上，跑马灯色带从屏幕物理顶开始，
             // 覆盖状态栏区域（状态栏透明/半透明时色带透出，图标浮于其上）
             y = -statusBarHeight()
@@ -267,7 +284,7 @@ class FloatingWindowService : Service() {
         }
         root = layout
         // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
-        layout.elevation = dp(18).toFloat()
+        layout.elevation = dp(FloatingUi.ELEVATION).toFloat()
         layout.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setRoundRect(0, 0, view.width, view.height, dp(FloatingUi.RADIUS_CARD.toInt()).toFloat())
@@ -376,16 +393,15 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // 液态玻璃背景：M3 柔和玻璃（半透明白 + 顶部高光 + 柔和光斑 + 内侧描边 + 细边框）。
+        // 液态玻璃背景：M3 柔和玻璃（半透明白 + 顶部折射高光 + 左上柔光 + 细边框）。
         // 说明：不用系统 blurBehind（部分设备会将整个屏幕背景模糊）——用较高透明度的半透明白
-        // 配合克制的光晕/色散/描边模拟玻璃，兼顾质感与不干扰后台。
+        // 配合克制的光晕/描边模拟玻璃，兼顾质感与不干扰后台。
         val bg = LiquidGlassDrawable(
             cornerRadius = dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
             baseColor = FloatingUi.BASE,
             strokeColor = FloatingUi.BASE_STROKE,
         )
         panel.background = bg
-        glassBg = bg
         panel.setPadding(FloatingUi.PAD_L, 0, FloatingUi.PAD_L, FloatingUi.PAD_S)
 
         // 跑马灯（第一行，紧贴窗口/屏幕顶部边缘，作为顶部状态色带）
@@ -399,7 +415,7 @@ class FloatingWindowService : Service() {
         }
         panel.addView(marquee)
 
-        // 头部：状态点 + 任务标题 + 关闭（仅头部可拖动）
+        // 头部：状态点 + 任务标题 + 详情开关 + 关闭（仅头部可拖动；轻点头部也可切换详情）
         header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -438,8 +454,23 @@ class FloatingWindowService : Service() {
                 stopSelf(); removeWindow()
             }
         }
+        // 详情开关：折叠态只显示三行，AI 的发送/返回/审核内容按需展开
+        expandChip = TextView(this).apply {
+            text = "详情"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(FloatingUi.TEXT_SECONDARY)
+            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, 0x0F000000.toInt())
+            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(26),
+            ).apply { marginEnd = FloatingUi.PAD_S }
+            setOnClickListener { toggleThinking() }
+        }
         header?.addView(dot)
         header?.addView(taskTitle)
+        header?.addView(expandChip)
         header?.addView(close)
         panel.addView(header)
 
@@ -479,7 +510,8 @@ class FloatingWindowService : Service() {
         }
         panel.addView(progressBar)
 
-        // AI 思考面板：圆角内嵌卡片，按 发送/返回/审核 分栏（默认隐藏，AI 开始思考时显示）
+        // AI 详情面板：圆角内嵌卡片，按 发送/返回/审核 分栏
+        // 默认 GONE（折叠）：只在用户点「详情」或点头部时占位，避免窗口常驻撑高
         thinkingPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -489,32 +521,9 @@ class FloatingWindowService : Service() {
             )
             setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
         }
-        // 面板标题行：AI 徽章 + 动画指示点
-        val thinkHeaderRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val aiBadge = TextView(this).apply {
-            text = "AI"
-            textSize = 10f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(999f, 0xFF7C4DFF.toInt())
-            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
-        }
-        val thinkingLabel = TextView(this).apply {
-            text = "  思考中"
-            textSize = 12f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-        thinkHeaderRow.addView(aiBadge)
-        thinkHeaderRow.addView(thinkingLabel)
-        thinkingPanel?.addView(thinkHeaderRow)
-        // 内容可滚动，限制高度避免悬浮窗过大
+        // 内容可滚动，限制高度避免悬浮窗过大（折叠时整块不占位）
         thinkingScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(FloatingUi.THINKING_H))
             isVerticalScrollBarEnabled = false
             isFillViewport = true
             setPadding(0, FloatingUi.PAD, 0, 0)
@@ -523,8 +532,8 @@ class FloatingWindowService : Service() {
         }
         val thinkCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val sentLabel = TextView(this).apply {
-            text = "SENT"
-            textSize = 9f
+            text = "发送给 AI"
+            textSize = 10f
             setTextColor(FloatingUi.TEXT_TERTIARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
@@ -538,8 +547,8 @@ class FloatingWindowService : Service() {
         }
         thinkCol.addView(thinkingSentText)
         val retLabel = TextView(this).apply {
-            text = "RESPONSE"
-            textSize = 9f
+            text = "AI 返回"
+            textSize = 10f
             setTextColor(FloatingUi.TEXT_TERTIARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
@@ -553,8 +562,8 @@ class FloatingWindowService : Service() {
         }
         thinkCol.addView(thinkingReturnText)
         val reviewLabel = TextView(this).apply {
-            text = "REVIEW"
-            textSize = 9f
+            text = "审核结论"
+            textSize = 10f
             setTextColor(FloatingUi.ACCENT_PURPLE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
@@ -697,11 +706,16 @@ class FloatingWindowService : Service() {
         return panel
     }
 
-    // ==================== 拖动（仅头部）：液态物理效果 ====================
+    // ==================== 拖动（仅头部）：点击展开 / 拖动移位 / 松手归位 ====================
     private var startX = 0
     private var startY = 0
     private var startTouchX = 0f
     private var startTouchY = 0f
+
+    /** 本次手势是否已越过触摸阈值（用于区分"轻点"与"拖动"） */
+    private var dragging = false
+
+    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
 
     private fun onTouchDrag(event: MotionEvent): Boolean {
         val p = params ?: return false
@@ -714,26 +728,23 @@ class FloatingWindowService : Service() {
                 flingScroller?.forceFinished(true)
                 startX = p.x; startY = p.y
                 startTouchX = event.rawX; startTouchY = event.rawY
+                dragging = false
                 vtracker.clear()
                 vtracker.addMovement(event)
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - startTouchX
                 val dy = event.rawY - startTouchY
+                // 越过阈值才算拖动：否则手指的微小抖动会把"轻点"变成位移，
+                // 窗口跟着抖一下、点击展开也永远触发不了
+                if (!dragging && (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop)) {
+                    dragging = true
+                }
+                if (!dragging) return true
                 p.x = (startX + dx).toInt()
                 p.y = (startY + dy).toInt()
                 // 拖动期间悬浮窗可能被销毁（removeWindow），root 为空时跳过更新，避免 NPE
-                root?.let { r ->
-                    // 只更新窗口位置，不再对窗口施加缩放/旋转变形，
-                    // 避免旋转+缩放导致视觉中心偏移而在拖动中“乱晃”
-                    windowManager?.updateViewLayout(r, p)
-                    // 动态光斑：玻璃反光跟随手指位置，随手势流动，模拟真实玻璃质感
-                    if (r.width > 0 && r.height > 0) {
-                        val gx = ((event.rawX - p.x) / r.width).coerceIn(0f, 1f)
-                        val gy = ((event.rawY - p.y) / r.height).coerceIn(0f, 1f)
-                        glassBg?.setGlint(gx, gy)
-                    }
-                }
+                root?.let { r -> windowManager?.updateViewLayout(r, p) }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 vtracker.computeCurrentVelocity(1000)
@@ -741,30 +752,70 @@ class FloatingWindowService : Service() {
                 val vy = vtracker.yVelocity
                 velocityTracker?.recycle()
                 velocityTracker = null
-                // 恢复初始状态（不再有缩放/倾斜变形，直接归位即可）
-                glassBg?.setGlint(null, null)
-                root?.apply {
-                    scaleX = 1f
-                    scaleY = 1f
-                    rotation = 0f
-                }
-                // 惯性滑行：松手速度足够时沿当前方向自然滑行
-                if (kotlin.math.abs(vx) + kotlin.math.abs(vy) > 900f) {
-                    startFling(p.x, p.y, vx, vy)
+                if (!dragging) {
+                    // 轻点头部：切换 AI 详情展开/收起
+                    toggleThinking()
+                } else {
+                    settlePosition(vx, vy)
                 }
             }
         }
         return true
     }
 
-    /** 松手弹性回弹：光斑已由 setGlint(null) 复位，这里补一个轻微缩放过冲模拟液态回弹 */
-    private fun startSettle() {
-        root?.animate()
-            ?.scaleX(1f)
-            ?.scaleY(1f)
-            ?.setDuration(180)
-            ?.setInterpolator(android.view.animation.OvershootInterpolator(0.6f))
-            ?.start()
+    /**
+     * 松手后的归位：先做「边缘吸附 / 越界回收」，都不需要时才让惯性滑行。
+     *
+     * 窗口用 FLAG_LAYOUT_NO_LIMITS，本身可以被拖到屏幕外——不收拾就会出现
+     * "窗口拖丢了、任务还在跑却看不到状态"的情况；靠近左右边缘时吸附贴边，
+     * 也让悬浮窗更像系统组件而不是随手丢在屏幕中间的补丁。
+     */
+    private fun settlePosition(vx: Float, vy: Float) {
+        val p = params ?: return
+        val r = root ?: return
+        val point = android.graphics.Point()
+        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
+        val screenW = if (point.x > 0) point.x else dp(360)
+        val screenH = if (point.y > 0) point.y else dp(640)
+        val winW = dp(FloatingUi.WIDTH)
+        val winH = if (r.height > 0) r.height else dp(120)
+        val gap = dp(FloatingUi.EDGE_GAP)
+        val snapZone = dp(FloatingUi.SNAP_ZONE)
+        val targetX = when {
+            p.x <= snapZone -> gap
+            p.x + winW >= screenW - snapZone -> (screenW - winW - gap).coerceAtLeast(gap)
+            else -> null
+        }
+        // 纵向：顶部最多到物理屏顶（跑马灯仍需贴顶），底部至少留一角可抓
+        val minY = -statusBarHeight()
+        val maxY = (screenH - winH - dp(24)).coerceAtLeast(minY)
+        val targetY = p.y.coerceIn(minY, maxY)
+        if (targetX != null || targetY != p.y) {
+            animateTo(targetX ?: p.x, targetY)
+            return
+        }
+        if (kotlin.math.abs(vx) + kotlin.math.abs(vy) > 900f) {
+            startFling(p.x, p.y, vx, vy)
+        }
+    }
+
+    /** 位置动画：吸附/回收用，起快收缓，避免窗口"跳"过去 */
+    private fun animateTo(targetX: Int, targetY: Int) {
+        val p = params ?: return
+        val r = root ?: return
+        val sx = p.x
+        val sy = p.y
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 220
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { anim ->
+                val t = anim.animatedValue as Float
+                p.x = sx + ((targetX - sx) * t).toInt()
+                p.y = sy + ((targetY - sy) * t).toInt()
+                runCatching { windowManager?.updateViewLayout(r, p) }
+            }
+            start()
+        }
     }
 
     /** 惯性滑行：用 OverScroller 沿松手速度衰减滑动，平滑停止 */
@@ -773,14 +824,18 @@ class FloatingWindowService : Service() {
         runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
         val screenW = if (point.x > 0) point.x else dp(360)
         val screenH = if (point.y > 0) point.y else dp(640)
-        val winW = dp(300)
+        val winW = dp(FloatingUi.WIDTH)
+        val rootH = root?.height ?: 0
+        val winH = if (rootH > 0) rootH else dp(120)
+        val gap = dp(FloatingUi.EDGE_GAP)
         flingScroller?.forceFinished(true)
         flingScroller = OverScroller(this).apply {
             fling(
                 startX, startY,
                 vx.toInt(), vy.toInt(),
-                -winW + 40, screenW - 40,      // x：允许大部分滑出屏幕但保留一角便于抓回
-                0, screenH - 120,               // y：不允许飞出顶部，底部保留可抓取区域
+                gap, (screenW - winW - gap).coerceAtLeast(gap),   // x：始终保留完整窗口在屏内
+                -statusBarHeight(),                                // y：跑马灯仍可贴顶
+                (screenH - winH - dp(24)).coerceAtLeast(-statusBarHeight()),
             )
         }
         isFlinging = true
@@ -864,7 +919,12 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 实时更新 AI 思考面板：显示发送给 AI 的内容与流式返回的内容，并同步更新通知。
+     * 实时更新 AI 详情面板：显示发送给 AI 的内容与流式返回的内容，并同步更新通知。
+     *
+     * 折叠状态下**只累积内容、不显示面板** —— 详情区有 112dp 高，若每来一段流式文本
+     * 就自动弹出来，窗口会在任务执行中反复变高变大，正是"遮挡屏幕"的来源。
+     * 用户点开「详情」后内容即刻可见，因为文本一直在后台累积。
+     *
      * @param sent 发送给 AI 的文本（首次传入；后续传 null 保持已显示内容）
      * @param delta 流式返回的增量文本（null 表示不更新返回区）
      */
@@ -873,22 +933,30 @@ class FloatingWindowService : Service() {
             val hasSent = !sent.isNullOrBlank()
             val hasDelta = !delta.isNullOrBlank()
             if (!hasSent && !hasDelta) return@post
-            // 有内容即显示思考面板（首次）
-            thinkingPanel?.visibility = View.VISIBLE
             if (hasSent && sent != lastSentShown) {
                 lastSentShown = sent
                 thinkingSentText?.text = sent!!.take(600) + if (sent!!.length > 600) "…" else ""
             }
             if (hasDelta) {
                 val cur = thinkingReturnText?.text?.toString().orEmpty()
-                // 限制展示长度，避免悬浮窗内容无限增长（完整内容由 AI 客户端保留用于解析）
+                // 限制展示长度，避免内容无限增长（完整内容由 AI 客户端保留用于解析）
                 thinkingReturnText?.text = (cur + delta).take(3000)
-                thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
+                // 只有展开时才需要滚动到底：折叠状态下滚动位置没人看，做了也是白做
+                if (thinkingExpanded) {
+                    thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
+                }
+                notifyThinkingThrottled()
             }
-            // 同步更新通知，展示最新 AI 思考
-            val task = taskTitle?.text?.toString() ?: "Happy Agent"
-            updateNotification("AI 思考中", task, 0, thinkingReturnText?.text?.toString().orEmpty())
         }
+    }
+
+    /** 同步 AI 思考到通知栏（节流）：流式增量每秒数次，逐条 notify 是跨进程调用，代价高 */
+    private fun notifyThinkingThrottled() {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastThinkNotifyAt < NOTIFY_THROTTLE_MS) return
+        lastThinkNotifyAt = now
+        val task = taskTitle?.text?.toString() ?: "Happy Agent"
+        updateNotification("AI 思考中", task, 0, thinkingReturnText?.text?.toString().orEmpty())
     }
 
     /**
@@ -922,7 +990,7 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 恢复常规面板视图：隐藏完成面板，重新显示步骤/进度/头部/交互区。
+     * 恢复常规面板视图：隐藏完成面板，重新显示步骤/进度/头部。
      * 用于新任务开始时清除上一个任务完成态的残留。
      */
     private fun resetPanel() {
@@ -933,30 +1001,47 @@ class FloatingWindowService : Service() {
         stepText?.visibility = View.VISIBLE
         progressBar?.visibility = View.GONE
         interactPanel?.visibility = View.GONE
-        thinkingPanel?.visibility = View.GONE
+        // 详情区按用户的展开状态恢复：折叠时保持 GONE，否则窗口会在每步更新后突然变高
+        thinkingPanel?.visibility = if (thinkingExpanded) View.VISIBLE else View.GONE
         thinkingSentText?.text = ""
         thinkingReturnText?.text = ""
         reviewText?.text = ""
         lastSentShown = ""
+        lastThinkNotifyAt = 0L
         header?.visibility = View.VISIBLE
     }
 
+    /** 切换 AI 详情区的展开/收起（点头部或点「详情」按钮） */
+    private fun toggleThinking() {
+        thinkingExpanded = !thinkingExpanded
+        thinkingPanel?.visibility = if (thinkingExpanded) View.VISIBLE else View.GONE
+        expandChip?.text = if (thinkingExpanded) "收起" else "详情"
+        if (thinkingExpanded) {
+            thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    /** 复位为折叠态（新任务/任务结束时调用，避免上一个任务的展开状态带过来） */
+    private fun collapseThinking() {
+        thinkingExpanded = false
+        thinkingPanel?.visibility = View.GONE
+        expandChip?.text = "详情"
+    }
+
     /**
-     * 面板淡入动画：透明度 + 轻微缩放（DecelerateInterpolator，起快收缓）。
-     * 用于完成面板、交互面板的显示，避免生硬的瞬时切换。
+     * 面板入场动画：透明度 + 自下而上 12dp 位移（DecelerateInterpolator，起快收缓）。
+     * 刻意不做缩放：缩放与位移动画叠加时视觉重心会漂移，且入场方向应统一为自下而上。
      */
     private fun showPanelWithAnim(view: View?) {
         view ?: return
         view.alpha = 0f
-        view.scaleX = 0.94f
-        view.scaleY = 0.94f
+        view.translationY = dp(12).toFloat()
         view.visibility = View.VISIBLE
         view.animate()
             .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
+            .translationY(0f)
             .setDuration(180)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .setInterpolator(DecelerateInterpolator())
             .start()
     }
 
@@ -1113,9 +1198,11 @@ class FloatingWindowService : Service() {
             marquee?.visibility = View.GONE
             stepText?.visibility = View.GONE
             progressBar?.visibility = View.GONE
-            // 完成时收起底部选项卡（若还开着）
+            // 完成时收起 AI 详情与底部选项卡（若还开着）；详情同时复位为折叠，
+            // 下一个任务从最小的三行窗口开始
+            collapseThinking()
             hideSheet()
-            // 显示打勾面板（淡入 + 轻微缩放）
+            // 显示打勾面板（淡入 + 自下而上位移动画）
             doneText?.text = message
             showPanelWithAnim(donePanel)
             successMark?.start()
@@ -1148,6 +1235,9 @@ class FloatingWindowService : Service() {
     companion object {
         const val ACTION_STOP = "com.phoneagent.floating.STOP"
         private const val NOTIFY_ID = 1001
+
+        /** AI 思考写通知的最小间隔：流式增量每秒数次，逐条 notify 是跨进程调用 */
+        private const val NOTIFY_THROTTLE_MS = 700L
 
         /** 悬浮窗交互动作回调（由 MainViewModel 注册，转发到 AgentEngine） */
         @Volatile

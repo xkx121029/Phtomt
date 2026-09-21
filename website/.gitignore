@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-static/
+.env
+*.log
+.DS_Store
+# 运行时上传的 APK 与统计文件不入库（种子 APK 由 scripts/seed.mjs 从构建产物复制）
+public/apk/*.apk
+server/data/stats.json
+server/data/audit.json

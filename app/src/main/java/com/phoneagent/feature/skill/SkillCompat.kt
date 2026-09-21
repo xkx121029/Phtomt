@@ -123,6 +123,8 @@ object SkillCompat {
             key = if (given("key")) fromArgs.key else intent.key,
             waitMs = if (given("wait_ms")) fromArgs.waitMs else intent.waitMs,
             durationMs = if (given("duration_ms")) fromArgs.durationMs else intent.durationMs,
+            kind = if (given("kind")) fromArgs.kind else intent.kind,
+            filter = if (given("filter")) fromArgs.filter else intent.filter,
         )
     }
 
@@ -190,6 +192,10 @@ object SkillCompat {
             IntentType.SCROLL_TO -> agent
             IntentType.WRITE_DOC -> agent.copy(text = args["text"], summary = args["summary"])
             IntentType.REMEMBER -> agent.copy(text = args["text"], summary = args["summary"])
+            IntentType.DEVICE_QUERY -> agent.copy(
+                kind = args["kind"]?.takeIf { it.isNotBlank() } ?: args["text"]?.takeIf { it.isNotBlank() },
+                filter = args["filter"]?.takeIf { it.isNotBlank() } ?: args["summary"]?.takeIf { it.isNotBlank() },
+            )
             IntentType.FETCH -> agent.copy(uri = args["uri"])
             IntentType.FINISH -> agent.copy(summary = args["summary"])
             IntentType.GIVE_UP -> agent.copy(reason = args["reason"])

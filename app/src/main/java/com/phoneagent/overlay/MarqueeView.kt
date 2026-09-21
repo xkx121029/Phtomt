@@ -61,6 +61,15 @@ class MarqueeView @JvmOverloads constructor(
     private val scrollSpeed = 60f // px/s
 
     /**
+     * 是否处于"可动画"状态（已附着且可见）。
+     *
+     * 悬浮窗在截图时会被整体置为 GONE，任务结束后也会隐藏；GONE 的视图每帧
+     * 继续请求重绘毫无意义 —— 还会持续把 Choreographer 帧回调与遍历拉起来。
+     * 不可见时停帧、恢复可见时从当前相位继续。
+     */
+    private var canAnimate = false
+
+    /**
      * 内容安全区顶部偏移（状态栏高度，px）。
      * 色带背景要从屏幕物理顶边铺下来（含状态栏区域），但**文字必须画在状态栏下方**，
      * 否则会被状态栏图标压住。两者靠这个偏移区分开。
@@ -124,9 +133,35 @@ class MarqueeView @JvmOverloads constructor(
         }
         if (!scrolling) {
             scrolling = true
-            lastTime = System.nanoTime()
-            postInvalidateOnAnimation()
+            resumeFrames()
         }
+    }
+
+    /** 续上帧循环：重置计时基准，避免停帧期间积累的时间差让文字瞬移 */
+    private fun resumeFrames() {
+        if (!canAnimate || !scrolling) return
+        lastTime = System.nanoTime()
+        postInvalidateOnAnimation()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        canAnimate = true
+        // 走 ensureRunning 而不是 resumeFrames：停帧时我们已把 scrolling 置回 false，
+        // 直接 resume 会因为判空而什么都不做，文字就此停住不再滚动
+        ensureRunning()
+    }
+
+    override fun onDetachedFromWindow() {
+        canAnimate = false
+        super.onDetachedFromWindow()
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        // 悬浮窗截图隐藏 / 任务结束隐藏都会走到这里：不可见即停帧，恢复可见再续上
+        canAnimate = visibility == View.VISIBLE && isAttachedToWindow
+        if (canAnimate) ensureRunning() else scrolling = false
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -163,7 +198,8 @@ class MarqueeView @JvmOverloads constructor(
         // 两段循环：主段滚出时，次段正好接上，形成无缝字幕
         canvas.drawText(text, offset, centerY(), paint)
         canvas.drawText(text, offset + textWidth + gap, centerY(), paint)
-        postInvalidateOnAnimation()
+        // 不可见时不再续帧（见 canAnimate 说明）
+        if (canAnimate) postInvalidateOnAnimation() else scrolling = false
     }
 
     private fun centerY(): Float {

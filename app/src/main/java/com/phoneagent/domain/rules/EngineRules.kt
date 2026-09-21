@@ -2,6 +2,7 @@ package com.phoneagent.domain.rules
 
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
@@ -13,6 +14,22 @@ import com.phoneagent.domain.model.ScreenSnapshot
  * 下沉到此类，便于单元测试与复用。v2.3 从 AgentEngine 迁移过来。
  */
 object EngineRules {
+
+    /**
+     * 任务退出后是否需要兜底复位运行状态。
+     *
+     * 两道守卫，缺一不可：
+     * 1. 归属：非空 [taskId] 与 [currentTaskId] 不一致时**不复位**。`stop()` 取消协程后
+     *    收尾是异步跑的，用户若立刻发起新任务，旧任务的收尾不能把新任务的运行状态一并复位
+     *    （否则界面会被打回空闲、悬浮窗也会被关掉）。[taskId] 为 null 表示无归属信息（任务记忆尚未建立），
+     *    此时只靠终态守卫兜底。
+     * 2. 终态：[AgentState.Phase.DONE] 是任务正常完成的终态，兜底复位不能把它洗成「空闲」，
+     *    否则任务完成提示会被抹掉。其余状态（含 ERROR）都允许复位，把运行标志清干净。
+     */
+    fun shouldFallbackReset(taskId: Long?, currentTaskId: Long, phase: AgentState.Phase): Boolean {
+        if (taskId != null && taskId != currentTaskId) return false
+        return phase != AgentState.Phase.DONE
+    }
 
     /** 生效判定：动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等） */
     fun isFinalSubmit(action: AgentAction, type: String): Boolean {
@@ -67,6 +84,7 @@ object EngineRules {
         ActionType.SHELL -> "执行Shell"
         ActionType.WRITE_DOC -> "写入文档"
         ActionType.REMEMBER -> "记住信息"
+        ActionType.DEVICE_QUERY -> "查询本机信息"
         ActionType.MCP_CALL -> "调用技能"
         ActionType.OPEN -> "打开链接/Scheme"
         ActionType.BACK -> "返回"

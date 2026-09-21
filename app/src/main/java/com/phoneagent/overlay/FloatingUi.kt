@@ -19,6 +19,13 @@ object FloatingUi {
     const val PAD_L = 12
     const val PAD_XL = 16
 
+    // 尺寸与位置（dp）：集中在令牌里，避免同一个魔法数字散落在窗口定位、惯性滑行、吸附各处
+    const val WIDTH = 300          // 悬浮窗固定宽度
+    const val ELEVATION = 12       // 投影高度（M3 柔和浮起，不用夸张阴影）
+    const val EDGE_GAP = 8         // 贴边后与屏幕边缘的留白
+    const val SNAP_ZONE = 28       // 松手时进入该距离内即吸附到边缘
+    const val THINKING_H = 112     // AI 详情展开区高度（折叠时该区域完全不占位）
+
     // 圆角（dp）
     const val RADIUS_CARD = 28f       // 外层悬浮窗圆角
     const val RADIUS_PANEL = 18f      // 内层卡片圆角

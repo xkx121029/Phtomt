@@ -74,6 +74,12 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "支持 http://、内网地址与 localhost（如 http://192.168.1.5:8000/v1），不写协议时自动补全",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.height(8.dp))
                 // 快捷预设：点一下自动填好地址与模型，填完仍可手改
                 Text("快捷预设", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)

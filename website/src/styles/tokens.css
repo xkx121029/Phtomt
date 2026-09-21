@@ -1,0 +1,136 @@
+/* ===========================================================================
+   设计令牌：玄青 · 流萤
+   与 App 端 ui/theme/Color.kt 同源——官网不是另一个品牌，是同一个东西的另一面。
+   主色玄青（墨玉绿），暖辅琥珀，冷辅雾蓝；底色暖纸白 / 深墨绿黑。
+   刻意避开蓝紫渐变的「科技感」套路。
+   =========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* 面 */
+  --paper: #f7f6f3;
+  --paper-raised: #ffffff;
+  --paper-sunken: #eceee8;
+  /* 带绿调的浅面：交替区块用它，比 --paper-sunken 的灰更有归属感 */
+  --paper-tint: #f0f4ef;
+  --veil: rgba(247, 246, 243, 0.82);
+
+  /* 墨 */
+  --ink: #141715;
+  --ink-2: #4b514c;
+  --ink-3: #7b827b;
+
+  /* 线 */
+  --line: #d7dbd3;
+  --line-2: #b7bdb4;
+
+  /* 品牌 */
+  --brand: #0e7c66;
+  --brand-strong: #0a5a4a;
+  --brand-ink: #033a2f;
+  --brand-wash: #dcefe8;
+  --brand-veil: rgba(14, 124, 102, 0.08);
+  /* 深墨绿：浅色主题里做深色锚点块的地，比纯黑有温度 */
+  --brand-deep: #063a2e;
+  --brand-deep-2: #0a4c3c;
+  /* 光晕：径向渐变里的品牌色，浓度要低，只在暗处显形 */
+  --brand-glow: rgba(14, 124, 102, 0.22);
+
+  --amber: #a85a24;
+  --amber-wash: #f7e3d2;
+  --mist: #3f7292;
+  --mist-wash: #dceaf3;
+
+  --ok: #1f7a55;
+  --ok-wash: #d2eddf;
+  --warn: #8a5f10;
+  --warn-wash: #f6e6c4;
+  --danger: #b23c33;
+  --danger-wash: #fbdad5;
+
+  /* 层次：靠描边撑结构，投影只用来表达「浮起」 */
+  --shadow-1: 0 1px 2px rgba(20, 23, 21, 0.05);
+  --shadow-2: 0 8px 24px -12px rgba(20, 23, 21, 0.22);
+  --shadow-3: 0 32px 72px -32px rgba(20, 23, 21, 0.34);
+
+  /* 动效：曲线取自 emil-design-eng，内置 ease 太软，撑不住交互的「脆」 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 140ms;
+  --dur-ui: 180ms;
+  --dur-enter: 280ms;
+
+  /* 圆角 */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --r-2xl: 36px;
+  --r-pill: 999px;
+
+  /* 字体：全站无衬线，等宽只留给代码 */
+  --font: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
+    "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Mono",
+    Consolas, "Liberation Mono", monospace;
+
+  /* 版心 */
+  --page: 1180px;
+  --gutter: 24px;
+
+  /* 字号：标题收紧字距，正文留足行高 */
+  --t-display: clamp(2.8rem, 1.4rem + 5vw, 5.2rem);
+  --t-h1: clamp(2rem, 1.4rem + 2.2vw, 3rem);
+  --t-h2: clamp(1.5rem, 1.2rem + 1.1vw, 2.05rem);
+  --t-h3: 1.2rem;
+  --t-body: 1rem;
+  --t-sm: 0.875rem;
+  --t-xs: 0.78rem;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #121513;
+  --paper-raised: #1a1e1b;
+  --paper-sunken: #0b0e0c;
+  /* 深色下「带绿调的浅面」是相对更深的一层，靠色相区分而非明度 */
+  --paper-tint: #0e1411;
+  --veil: rgba(18, 21, 19, 0.82);
+
+  --ink: #e9ebe6;
+  --ink-2: #b4bab3;
+  --ink-3: #80877f;
+
+  --line: #2b302b;
+  --line-2: #3f453f;
+
+  --brand: #5fd9b4;
+  --brand-strong: #7fefcb;
+  --brand-ink: #04302a;
+  --brand-wash: #16382f;
+  --brand-veil: rgba(95, 217, 180, 0.1);
+  /* 深色主题下深色锚点块要更暗，才能从 --paper 上「沉」下去 */
+  --brand-deep: #06231c;
+  --brand-deep-2: #0b3529;
+  --brand-glow: rgba(95, 217, 180, 0.18);
+
+  --amber: #f0a868;
+  --amber-wash: #3f2a15;
+  --mist: #84b6d4;
+  --mist-wash: #1e3543;
+
+  --ok: #6fd3a2;
+  --ok-wash: #17452f;
+  --warn: #e8b75e;
+  --warn-wash: #4a370f;
+  --danger: #ff9a90;
+  --danger-wash: #55201a;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 32px 72px -32px rgba(0, 0, 0, 0.8);
+}

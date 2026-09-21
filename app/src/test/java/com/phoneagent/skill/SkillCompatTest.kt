@@ -276,4 +276,43 @@ class SkillCompatTest {
         assertEquals("id", i.target?.by)
         assertEquals("ctl_7", i.target?.value)
     }
+
+    @Test
+    fun 归一化_查询本机信息技能回填kind与filter() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val byName = SkillCompat.resolveByName(
+            "查询本机信息", mapOf("kind" to "apps", "filter" to "相机"), registry,
+        )
+        assertTrue(byName is SkillCompat.Resolution.LegacyIntent)
+        val i = (byName as SkillCompat.Resolution.LegacyIntent).intent
+        assertEquals(IntentType.DEVICE_QUERY, i.intent)
+        assertEquals("apps", i.kind)
+        assertEquals("相机", i.filter)
+
+        // 走 args 归一化路径同样要落到 kind/filter，否则技能只是个名字
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(
+                intent = "skill_device_query", args = mapOf("kind" to "battery", "filter" to "电量"),
+            ),
+            registry,
+        )
+        assertTrue(n is SkillCompat.Normalized.Intent)
+        val ni = (n as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.DEVICE_QUERY, ni.intent)
+        assertEquals("battery", ni.kind)
+        assertEquals("电量", ni.filter)
+    }
+
+    @Test
+    fun 归一化_标准意图名device_query原样放行() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = IntentType.DEVICE_QUERY, kind = "network"),
+            registry,
+        )
+        assertTrue(n is SkillCompat.Normalized.Intent)
+        val i = (n as SkillCompat.Normalized.Intent).intent
+        assertEquals(IntentType.DEVICE_QUERY, i.intent)
+        assertEquals("network", i.kind)
+    }
 }

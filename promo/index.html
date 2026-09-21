@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Happy Phone Agent — 逻辑宣传片</title>
+<style>
+/* ===========================================================================
+   设计令牌与官网同源（玄青 · 流萤）：墨玉绿主色、暖琥珀辅色。
+   刻意避开蓝紫渐变的「科技感」套路——用发丝线、等宽标签、克制的几何图形撑结构。
+   结构：20 幕 × 9 秒 = 180 秒，一页只说一件事。
+   =========================================================================== */
+:root{
+  color-scheme:dark;
+  --bg:#0f1311;
+  --panel:rgba(233,235,230,.035);
+  --panel-2:rgba(233,235,230,.06);
+  --line:rgba(233,235,230,.13);
+  --line-2:rgba(233,235,230,.24);
+  --ink:#e9ebe6;
+  --ink-2:#a7ada6;
+  --ink-3:#6f766f;
+  --jade:#5fd9b4;
+  --jade-dim:rgba(95,217,180,.14);
+  --amber:#f0a868;
+  --amber-dim:rgba(240,168,104,.14);
+  --mist:#84b6d4;
+  --mist-dim:rgba(132,182,212,.14);
+  --red:#ff9a90;
+  --red-dim:rgba(255,154,144,.12);
+  --mono:ui-monospace,"SFMono-Regular","JetBrains Mono","Cascadia Mono",Consolas,monospace;
+  --sans:"PingFang SC","HarmonyOS Sans SC","MiSans","Source Han Sans SC","Noto Sans SC",-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  --ease:cubic-bezier(.23,1,.32,1);
+  --ease-io:cubic-bezier(.77,0,.175,1);
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f7f6f3;
+  --panel:rgba(20,23,21,.025);
+  --panel-2:rgba(20,23,21,.05);
+  --line:rgba(20,23,21,.14);
+  --line-2:rgba(20,23,21,.26);
+  --ink:#141715;
+  --ink-2:#4b514c;
+  --ink-3:#8b918a;
+  --jade:#0e7c66;
+  --jade-dim:rgba(14,124,102,.10);
+  --amber:#a85a24;
+  --amber-dim:rgba(168,90,36,.10);
+  --mist:#3f7292;
+  --mist-dim:rgba(63,114,146,.10);
+  --red:#b23c33;
+  --red-dim:rgba(178,60,51,.09);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#070908;color:var(--ink);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+
+/* ---------- 舞台：1600×900 设计稿等比缩放 ---------- */
+.frame{position:fixed;inset:0 0 84px 0;display:grid;place-items:center;overflow:hidden}
+.stage{position:relative;width:1600px;height:900px;transform-origin:center center;background:var(--bg);overflow:hidden}
+.stage > .bgLayer{position:absolute;inset:0;pointer-events:none}
+.hairgrid{
+  background-image:linear-gradient(to right,var(--line) 1px,transparent 1px),
+    linear-gradient(to bottom,var(--line) 1px,transparent 1px);
+  background-size:80px 80px;opacity:.32;
+  mask-image:radial-gradient(115% 95% at 50% 42%,#000 30%,transparent 88%);
+}
+
+/* ---------- 场景容器：9 秒一页 ---------- */
+.reel{position:absolute;inset:0}
+.scene{
+  position:absolute;inset:0;padding:96px 104px 104px;display:flex;flex-direction:column;
+  opacity:0;visibility:hidden;transition:opacity .38s var(--ease-io),visibility .38s;
+}
+.scene.is-on{opacity:1;visibility:visible}
+
+/* ---------- 入场动效：只做自下而上的位移渐显 ---------- */
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes growx{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.rise,.fade,.growx{
+  animation-duration:.6s;animation-timing-function:var(--ease);animation-fill-mode:both;
+  animation-delay:calc(var(--d,0ms) - var(--elapsed,0ms));
+}
+.rise{animation-name:rise}
+.fade{animation-name:fade;animation-duration:.9s}
+.growx{animation-name:growx;transform-origin:left center;animation-duration:.72s}
+.stage.is-paused .scene.is-on *{animation-play-state:paused}
+
+/* ---------- 文字层级 ---------- */
+.kicker{
+  display:flex;align-items:center;gap:12px;
+  font:500 13px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3);
+}
+.kicker::before{content:"";width:20px;height:1px;background:var(--jade);flex:none}
+.big{margin:0;font-size:104px;line-height:1.04;letter-spacing:-.045em;font-weight:600}
+.big.sm{font-size:74px;letter-spacing:-.035em}
+.big.xs{font-size:62px;letter-spacing:-.032em}
+.sub{margin:0;font-size:27px;line-height:1.6;color:var(--ink-2);letter-spacing:-.01em}
+.note{font-family:var(--mono);font-size:15px;letter-spacing:.06em;color:var(--ink-3)}
+.jade{color:var(--jade)}
+.mist{color:var(--mist)}
+
+/* ---------- 页面骨架 ---------- */
+.page{display:flex;flex-direction:column;gap:44px;margin:auto 0;width:100%}
+.page.mid{align-items:center;text-align:center}
+.page.mid .kicker{justify-content:center}
+.page.mid .kicker::before{display:none}
+
+/* 胶囊标签 */
+.pills{display:flex;flex-wrap:wrap;gap:14px}
+.page.mid .pills{justify-content:center}
+.pill{
+  display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:999px;
+  background:var(--panel);padding:13px 24px;font-size:23px;color:var(--ink-2);letter-spacing:-.01em;
+}
+.pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.5;flex:none}
+.pill.on{border-color:var(--jade);background:var(--jade-dim);color:var(--jade)}
+.pill.amber{border-color:var(--amber);background:var(--amber-dim);color:var(--amber)}
+.pill.mist{border-color:var(--mist);background:var(--mist-dim);color:var(--mist)}
+.pill.sm{font-size:17px;padding:10px 18px;font-family:var(--mono)}
+
+/* 横向链条 */
+.flow{display:flex;align-items:stretch}
+.flow .n{
+  flex:1;border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:22px 16px;display:flex;flex-direction:column;gap:10px;justify-content:center;text-align:center;
+}
+.flow .n b{font-size:25px;font-weight:600;letter-spacing:-.015em}
+.flow .n i{font:400 12px/1 var(--mono);color:var(--ink-3);font-style:normal;letter-spacing:.16em}
+.flow .sep{flex:none;width:52px;display:grid;place-items:center}
+.flow .sep span{width:100%;height:1px;background:var(--line-2);position:relative}
+.flow .sep span::after{
+  content:"";position:absolute;right:0;top:-3px;width:6px;height:6px;
+  border-right:1px solid var(--line-2);border-top:1px solid var(--line-2);transform:rotate(45deg);
+}
+
+/* 竖排行 */
+.stack{display:flex;flex-direction:column}
+.stack .r{display:flex;align-items:center;gap:22px;padding:19px 0;border-bottom:1px solid var(--line);font-size:26px;letter-spacing:-.01em}
+.stack .r:last-child{border-bottom:none}
+.stack .r i{font:400 14px/1 var(--mono);color:var(--ink-3);font-style:normal;width:38px;flex:none}
+.stack .r .rt{margin-left:auto;font-family:var(--mono);font-size:16px;color:var(--ink-3)}
+.stack .r .rt.jade{color:var(--jade)}
+.stack.sm .r{font-size:21px;padding:14px 0}
+.stack.sm .r i{width:32px}
+
+/* 指标卡：放硬阈值、超时、容量这类数字 */
+.specs{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.specs.two{grid-template-columns:repeat(2,1fr)}
+.spec{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:26px 28px;display:flex;flex-direction:column;gap:14px}
+.spec .k{font:500 13px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3)}
+.spec .v{
+  display:flex;align-items:baseline;gap:9px;font-size:56px;font-weight:600;line-height:1;
+  letter-spacing:-.04em;color:var(--jade);font-variant-numeric:tabular-nums;
+}
+.spec .v span{font-size:22px;font-weight:500;color:var(--ink-2);letter-spacing:0}
+.spec .d{font-size:16px;line-height:1.7;color:var(--ink-3)}
+
+/* 两栏面板 */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:30px}
+
+/* 等宽清单 */
+.mlist{
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:18px 24px;font-family:var(--mono);font-size:15px;line-height:2.1;color:var(--ink-2);
+}
+.mlist b{color:var(--ink-2);font-weight:400}
+.mlist .c{color:var(--ink-3)}
+.mlist .id{color:var(--jade)}
+
+/* 输入框 */
+.quote{
+  display:inline-flex;align-items:center;gap:18px;border:1px solid var(--line-2);border-radius:14px;
+  background:var(--panel-2);padding:26px 34px;font-size:31px;letter-spacing:-.015em;
+}
+.quote .mark{font:500 13px/1 var(--mono);letter-spacing:.2em;color:var(--ink-3);flex:none}
+.quote .text{
+  white-space:nowrap;overflow:hidden;clip-path:inset(0 100% 0 0);
+  animation:type 1.5s steps(16,end) both;animation-delay:calc(1200ms - var(--elapsed,0ms));
+}
+@keyframes type{to{clip-path:inset(0 0 0 0)}}
+.quote .caret{
+  width:2px;height:32px;background:var(--jade);flex:none;opacity:0;
+  animation:blink 1s steps(1) infinite;animation-delay:calc(1100ms - var(--elapsed,0ms));
+}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+/* 代码块 */
+.codeblock{
+  border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:20px 24px;
+  font-family:var(--mono);font-size:16px;line-height:2;color:var(--ink-2);
+}
+.codeblock .k{color:var(--mist)}
+.codeblock .v{color:var(--jade)}
+.codeblock .n{color:var(--amber)}
+.codeblock .c{color:var(--ink-3)}
+
+/* 指纹比对 */
+.fp{display:grid;grid-template-columns:1fr 110px 1fr;align-items:center}
+.fp .box{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:22px 26px;display:flex;flex-direction:column;gap:12px}
+.fp .box.hl{border-color:var(--jade);background:var(--jade-dim)}
+.fp .box .k{font:500 13px/1 var(--mono);letter-spacing:.18em;color:var(--ink-3);text-transform:uppercase}
+.fp .box .h{font-family:var(--mono);font-size:17px;line-height:1.6;color:var(--ink-2);word-break:break-all}
+.fp .box.hl .h{color:var(--jade)}
+.fp .mid{display:grid;place-items:center}
+
+/* 六层进度轨 */
+.rail{display:flex;gap:10px;width:100%}
+.rail i{height:2px;flex:1;background:var(--line)}
+.rail i.on{background:var(--jade)}
+
+/* ---------- 舞台内 HUD ---------- */
+.hud{
+  position:absolute;left:104px;right:104px;top:44px;display:flex;align-items:center;justify-content:space-between;
+  font:500 12px/1 var(--mono);letter-spacing:.24em;text-transform:uppercase;color:var(--ink-3);
+}
+.hud-l{display:flex;align-items:center;gap:12px}
+.hud-dot{width:6px;height:6px;border-radius:50%;background:var(--jade);animation:pulse 2.4s var(--ease-io) infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.hud-r{display:flex;align-items:center;gap:20px}
+.hud-progress{position:relative;width:200px;height:1px;background:var(--line)}
+.hud-progress i{position:absolute;inset:0 auto 0 0;width:0;background:var(--jade)}
+
+.stage-bar{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--line);overflow:hidden}
+.stage-bar i{display:block;height:100%;width:0;background:var(--jade)}
+
+/* ---------- 外部控制条 ---------- */
+.controls{
+  position:fixed;left:0;right:0;bottom:0;height:84px;display:flex;align-items:center;gap:20px;padding:0 28px;
+  background:#070908;border-top:1px solid rgba(255,255,255,.07);
+  font-family:var(--mono);font-size:13px;color:#8b918a;letter-spacing:.06em;
+}
+.controls button{
+  appearance:none;border:1px solid rgba(255,255,255,.14);background:transparent;color:#e9ebe6;
+  height:38px;min-width:38px;padding:0 15px;border-radius:10px;cursor:pointer;
+  font:500 13px/1 var(--mono);letter-spacing:.08em;
+  transition:border-color .18s var(--ease),background .18s var(--ease);
+}
+.controls button:hover{border-color:rgba(255,255,255,.34);background:rgba(255,255,255,.05)}
+.controls .track{position:relative;flex:1;height:26px;display:flex;align-items:center;cursor:pointer}
+.controls .track .rail{position:absolute;left:0;right:0;height:3px;border-radius:2px;background:rgba(255,255,255,.13)}
+.controls .track .fill{position:absolute;left:0;height:3px;border-radius:2px;background:#5fd9b4;width:0}
+.controls .track .tick{position:absolute;top:50%;width:1px;height:9px;margin-top:-4.5px;background:rgba(255,255,255,.22)}
+.controls .track .head{
+  position:absolute;left:0;width:11px;height:11px;border-radius:50%;background:#5fd9b4;margin-left:-5.5px;
+  box-shadow:0 0 0 4px rgba(95,217,180,.16);
+}
+.controls .tc{font-variant-numeric:tabular-nums;color:#e9ebe6;letter-spacing:.02em}
+.controls .chap{min-width:170px;color:#8b918a}
+@media (max-width:980px){ .controls .chap{display:none} }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="stage" id="stage">
+    <canvas class="bgLayer" id="field"></canvas>
+    <div class="bgLayer hairgrid"></div>
+
+    <div class="hud">
+      <div class="hud-l"><span class="hud-dot"></span>HAPPY PHONE AGENT</div>
+      <div class="hud-r">
+        <span id="hudChap">01 / 40</span>
+        <span id="hudName">开场</span>
+        <span class="hud-progress"><i id="hudFill"></i></span>
+      </div>
+    </div>
+
+    <div class="reel" id="reel">
+
+      <!-- 01 -->
+      <section class="scene" data-start="0" data-dur="7" data-name="开场">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">HAPPY PHONE AGENT</div>
+          <h2 class="big rise" style="--d:380ms">让手机<br>自己动手</h2>
+          <p class="note rise" style="--d:1200ms">ANDROID · KOTLIN · JETPACK COMPOSE · MIT</p>
+        </div>
+      </section>
+
+      <!-- 02 -->
+      <section class="scene" data-start="7" data-dur="7" data-name="一天几个 App">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">EVERY DAY</div>
+          <h2 class="big sm rise" style="--d:340ms">一天里，你要点开多少个 App</h2>
+          <div class="pills">
+            <span class="pill rise" style="--d:800ms">微信</span>
+            <span class="pill rise" style="--d:980ms">日历</span>
+            <span class="pill rise" style="--d:1160ms">外卖</span>
+            <span class="pill rise" style="--d:1340ms">银行</span>
+            <span class="pill rise" style="--d:1520ms">相册</span>
+            <span class="pill rise" style="--d:1700ms">地图</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 03 -->
+      <section class="scene" data-start="14" data-dur="7" data-name="同样的路">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">THE SAME PATH</div>
+          <h2 class="big sm rise" style="--d:340ms">每个 App 里，都要走一遍同样的路</h2>
+          <div class="pills">
+            <span class="pill rise" style="--d:800ms">打开</span>
+            <span class="pill rise" style="--d:980ms">找入口</span>
+            <span class="pill rise" style="--d:1160ms">关弹窗</span>
+            <span class="pill rise" style="--d:1340ms">跳过广告</span>
+            <span class="pill rise" style="--d:1520ms">复制粘贴</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 04 -->
+      <section class="scene" data-start="21" data-dur="7" data-name="亲手做">
+        <div class="page mid">
+          <h2 class="big rise" style="--d:300ms">每一步<br>都要你亲手做</h2>
+        </div>
+      </section>
+
+      <!-- 05 -->
+      <section class="scene" data-start="28" data-dur="7" data-name="它本来就会">
+        <div class="page mid">
+          <h2 class="big rise" style="--d:300ms">可手机本身<br>一直有能力自己做</h2>
+          <p class="sub rise" style="--d:1200ms">它只是从来没人告诉它，你要什么</p>
+        </div>
+      </section>
+
+      <!-- 06 -->
+      <section class="scene" data-start="35" data-dur="7" data-name="一句话">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">INSTEAD</div>
+          <h2 class="big sm rise" style="--d:340ms">你其实只想说一句话</h2>
+        </div>
+      </section>
+
+      <!-- 07 -->
+      <section class="scene" data-start="42" data-dur="7" data-name="说出口的那句话">
+        <div class="page mid">
+          <div class="quote fade" style="--d:400ms">
+            <span class="mark">你说</span>
+            <span class="text">打开微信，给张三发一句「你好」</span>
+            <span class="caret"></span>
+          </div>
+          <p class="note rise" style="--d:2600ms">App、对象、动作，一句话里全说清了</p>
+        </div>
+      </section>
+
+      <!-- 08 -->
+      <section class="scene" data-start="49" data-dur="7" data-name="拆成三步">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">PLAN</div>
+          <h2 class="big sm rise" style="--d:340ms">先把这句话，拆成三步</h2>
+        </div>
+      </section>
+
+      <!-- 09 -->
+      <section class="scene" data-start="56" data-dur="7" data-name="三步">
+        <div class="page">
+          <div class="flow">
+            <div class="n rise" style="--d:600ms"><i>STEP 01</i><b>启动微信</b></div>
+            <div class="sep growx" style="--d:1050ms"><span></span></div>
+            <div class="n rise" style="--d:1130ms"><i>STEP 02</i><b>找到会话</b></div>
+            <div class="sep growx" style="--d:1580ms"><span></span></div>
+            <div class="n rise" style="--d:1660ms"><i>STEP 03</i><b>输入并发送</b></div>
+          </div>
+          <p class="note rise" style="--d:2400ms">规划步数动态收敛到 3~8 步：能三步做完，就不写五步</p>
+        </div>
+      </section>
+
+      <!-- 10 -->
+      <section class="scene" data-start="63" data-dur="7" data-name="先给你看">
+        <div class="page mid">
+          <h2 class="big rise" style="--d:300ms">动手之前<br>先给你看</h2>
+          <div class="pills">
+            <span class="pill on rise" style="--d:1100ms">批准</span>
+            <span class="pill rise" style="--d:1400ms">重新规划</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 11 -->
+      <section class="scene" data-start="70" data-dur="7" data-name="拿不准就问">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">AMBIGUITY</div>
+          <h2 class="big sm rise" style="--d:340ms">有两个张三？</h2>
+          <p class="sub rise" style="--d:1100ms">它会停下来问你，而不是替你挑一个</p>
+          <div class="pills">
+            <span class="pill amber rise" style="--d:2000ms">等你选完，再继续</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 12 -->
+      <section class="scene" data-start="77" data-dur="7" data-name="穿过六层">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">SIX LAYERS</div>
+          <h2 class="big xs rise" style="--d:340ms">一次任务，穿过六层</h2>
+          <div class="pills">
+            <span class="pill sm rise" style="--d:700ms">01 感知</span>
+            <span class="pill sm rise" style="--d:880ms">02 决策</span>
+            <span class="pill sm rise" style="--d:1060ms">03 转译</span>
+            <span class="pill sm rise" style="--d:1240ms">04 执行</span>
+            <span class="pill sm rise" style="--d:1420ms">05 验证</span>
+            <span class="pill sm rise" style="--d:1600ms">06 记忆</span>
+          </div>
+          <div class="rail">
+            <i class="on growx" style="--d:700ms"></i>
+            <i class="on growx" style="--d:930ms"></i>
+            <i class="on growx" style="--d:1160ms"></i>
+            <i class="on growx" style="--d:1390ms"></i>
+            <i class="on growx" style="--d:1620ms"></i>
+            <i class="on growx" style="--d:1850ms"></i>
+          </div>
+        </div>
+      </section>
+
+      <!-- 13 -->
+      <section class="scene" data-start="84" data-dur="7" data-name="感知">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">01 · PERCEIVE</div>
+          <h2 class="big sm rise" style="--d:340ms">先把屏幕，读成结构</h2>
+        </div>
+      </section>
+
+      <!-- 14 -->
+      <section class="scene" data-start="91" data-dur="7" data-name="元素树">
+        <div class="page">
+          <div class="mlist">
+            <div class="rise" style="--d:700ms">TextView "微信" <span class="c">bounds=[0,180][400,240]</span></div>
+            <div class="rise" style="--d:920ms">EditText hint="搜索" <span class="id">#search_box</span></div>
+            <div class="rise" style="--d:1140ms">Button "发送" <span class="id">#send_btn</span></div>
+            <div class="rise" style="--d:1360ms">Button "允许" <span class="id">#dlg_allow</span></div>
+            <div class="rise" style="--d:1580ms">ImageView <span class="c">— 读不到，交给视觉</span></div>
+          </div>
+          <p class="note rise" style="--d:2300ms">无障碍服务每步重读一次，绝不沿用上一页的坐标</p>
+        </div>
+      </section>
+
+      <!-- 15 -->
+      <section class="scene" data-start="98" data-dur="7" data-name="语义 ID">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">26 SEMANTIC IDS</div>
+          <h2 class="big xs rise" style="--d:340ms">26 类常见控件，被标注成语义 ID</h2>
+          <div class="pills">
+            <span class="pill sm rise" style="--d:700ms">dlg_allow</span>
+            <span class="pill sm rise" style="--d:860ms">ad_skip</span>
+            <span class="pill sm rise" style="--d:1020ms">search_box</span>
+            <span class="pill sm rise" style="--d:1180ms">send_btn</span>
+            <span class="pill sm rise" style="--d:1340ms">confirm_btn</span>
+            <span class="pill sm rise" style="--d:1500ms">close_btn</span>
+            <span class="pill sm rise" style="--d:1660ms">back_btn</span>
+            <span class="pill sm rise" style="--d:1820ms">switch_toggle</span>
+          </div>
+          <p class="note rise" style="--d:2300ms">标注在端侧完成，AI 拿到的是 ID，不是让你去猜坐标</p>
+        </div>
+      </section>
+
+      <!-- 16 -->
+      <section class="scene" data-start="105" data-dur="7" data-name="元素树稀疏时">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">SPARSE TREE</div>
+          <h2 class="big xs rise" style="--d:340ms">元素树读不出东西的时候</h2>
+          <div class="stack">
+            <div class="r rise" style="--d:800ms"><i>≤3</i>元素数小于等于三 → 判定为复杂页面<span class="rt jade">强制走云端视觉</span></div>
+            <div class="r rise" style="--d:1250ms"><i>&gt;3</i>元素树可读 → 判定为简单页面<span class="rt">交给端侧 3B</span></div>
+          </div>
+          <p class="note rise" style="--d:2100ms">稀疏度本身就是路由依据，不需要再单独判断一次</p>
+        </div>
+      </section>
+
+      <!-- 17 -->
+      <section class="scene" data-start="112" data-dur="7" data-name="视觉路由">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">VISION ROUTING</div>
+          <h2 class="big xs rise" style="--d:340ms">视觉能力有三个档位</h2>
+          <div class="flow" style="gap:20px">
+            <div class="n rise" style="--d:800ms"><i>CLOUD</i><b>只走云端视觉</b></div>
+            <div class="n rise" style="--d:1050ms"><i>LOCAL</i><b>只走端侧识别</b></div>
+            <div class="n rise" style="--d:1300ms"><i>AUTO</i><b>云端失败自动回退</b></div>
+          </div>
+          <p class="note rise" style="--d:2000ms">LOCAL 档位不依赖 API Key；稀疏元素树会强制覆盖 LOCAL</p>
+        </div>
+      </section>
+
+      <!-- 18 -->
+      <section class="scene" data-start="119" data-dur="7" data-name="端侧模型约束">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">ON-DEVICE 3B</div>
+          <h2 class="big xs rise" style="--d:340ms">端侧模型跑得动，但不能跑飞</h2>
+          <div class="specs two">
+            <div class="spec rise" style="--d:800ms">
+              <span class="k">推理硬超时</span>
+              <span class="v">120<span>秒</span></span>
+              <span class="d">图像编码或生成阶段超时就中断，返回 __ERR_TIMEOUT__，Kotlin 侧自动回退本地识别</span>
+            </div>
+            <div class="spec rise" style="--d:1300ms">
+              <span class="k">并发保护</span>
+              <span class="v">1<span>把互斥锁</span></span>
+              <span class="d">模型预热与正式识别串行执行，避免并发访问非线程安全的上下文导致数据竞争</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 19 -->
+      <section class="scene" data-start="126" data-dur="7" data-name="决策">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">02 · DECIDE</div>
+          <h2 class="big sm rise" style="--d:340ms">高频的坑，本地就填掉</h2>
+        </div>
+      </section>
+
+      <!-- 20 -->
+      <section class="scene" data-start="133" data-dur="7" data-name="本地清单">
+        <div class="page">
+          <div class="pills">
+            <span class="pill on rise" style="--d:600ms">弹窗 → 点允许</span>
+            <span class="pill on rise" style="--d:800ms">开屏广告 → 点跳过</span>
+            <span class="pill on rise" style="--d:1000ms">加载中 → 等一下</span>
+            <span class="pill on rise" style="--d:1200ms">报错页 → 点重试</span>
+          </div>
+          <p class="sub rise" style="--d:1700ms">这些都不消耗云端额度</p>
+          <p class="note rise" style="--d:2300ms">端侧先判一轮，只有真需要决策的场景才上云</p>
+        </div>
+      </section>
+
+      <!-- 21 -->
+      <section class="scene" data-start="140" data-dur="7" data-name="上下文预算">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">CONTEXT BUDGET</div>
+          <h2 class="big xs rise" style="--d:340ms">每一轮，模型看到的就这些</h2>
+          <div class="stack sm">
+            <div class="r rise" style="--d:750ms"><i>01</i>当前页面元素树与语义 ID<span class="rt">每步重读</span></div>
+            <div class="r rise" style="--d:1000ms"><i>02</i>已走过的步骤与失败原因<span class="rt">含原因前缀</span></div>
+            <div class="r rise" style="--d:1250ms"><i>03</i>任务记忆：目标 + 你的原话<span class="rt">独立存储</span></div>
+            <div class="r rise" style="--d:1500ms"><i>04</i>上一步 shell 输出<span class="rt">截断 1200 字符</span></div>
+          </div>
+          <p class="note rise" style="--d:2200ms">装不下的截断，装得下的一字不改</p>
+        </div>
+      </section>
+
+      <!-- 22 -->
+      <section class="scene" data-start="147" data-dur="7" data-name="转译">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">03 · TRANSLATE</div>
+          <h2 class="big sm rise" style="--d:340ms">AI 说要什么，端侧决定怎么做</h2>
+        </div>
+      </section>
+
+      <!-- 23 -->
+      <section class="scene" data-start="154" data-dur="7" data-name="意图与动作">
+        <div class="page">
+          <div class="two">
+            <div class="codeblock rise" style="--d:600ms">
+              <div class="c">// 模型输出：意图</div>
+              <div>{ <span class="k">"intent"</span>: <span class="v">"tap"</span>,</div>
+              <div>&nbsp;&nbsp;<span class="k">"target"</span>: { <span class="k">"by"</span>: <span class="v">"id"</span>, <span class="k">"value"</span>: <span class="v">"send_btn"</span> } }</div>
+            </div>
+            <div class="codeblock rise" style="--d:1250ms">
+              <div class="c">// 端侧输出：动作</div>
+              <div>{ <span class="k">"type"</span>: <span class="v">"tap"</span>,</div>
+              <div>&nbsp;&nbsp;<span class="k">"x"</span>: <span class="n">982</span>, <span class="k">"y"</span>: <span class="n">1740</span> }</div>
+            </div>
+          </div>
+          <p class="note rise" style="--d:2100ms">AI 永远不输出命令，也不输出坐标</p>
+        </div>
+      </section>
+
+      <!-- 24 -->
+      <section class="scene" data-start="161" data-dur="7" data-name="15 个语义意图">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">15 INTENTS</div>
+          <h2 class="big xs rise" style="--d:340ms">AI 只被允许说这 15 个动作</h2>
+          <div class="pills">
+            <span class="pill sm rise" style="--d:700ms">back</span>
+            <span class="pill sm rise" style="--d:830ms">home</span>
+            <span class="pill sm rise" style="--d:960ms">refresh</span>
+            <span class="pill sm rise" style="--d:1090ms">search</span>
+            <span class="pill sm rise" style="--d:1220ms">send</span>
+            <span class="pill sm rise" style="--d:1350ms">confirm</span>
+            <span class="pill sm rise" style="--d:1480ms">close</span>
+            <span class="pill sm rise" style="--d:1610ms">share</span>
+            <span class="pill sm rise" style="--d:1740ms">collect</span>
+            <span class="pill sm rise" style="--d:1870ms">copy</span>
+            <span class="pill sm rise" style="--d:2000ms">delete</span>
+            <span class="pill sm rise" style="--d:2130ms">download</span>
+            <span class="pill sm rise" style="--d:2260ms">add</span>
+            <span class="pill sm rise" style="--d:2390ms">switch</span>
+            <span class="pill sm rise" style="--d:2520ms">clear_input</span>
+          </div>
+          <p class="note rise" style="--d:3000ms">端侧把它们实时转译成已有的点击 / 按键动作</p>
+        </div>
+      </section>
+
+      <!-- 25 -->
+      <section class="scene" data-start="168" data-dur="7" data-name="冷启动清理">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">COLD START</div>
+          <h2 class="big xs rise" style="--d:340ms">每次任务开始，先把这些清空</h2>
+          <div class="stack sm">
+            <div class="r rise" style="--d:650ms">对话消息</div>
+            <div class="r rise" style="--d:800ms">失败计数</div>
+            <div class="r rise" style="--d:950ms">无效命令计数</div>
+            <div class="r rise" style="--d:1100ms">上一条 shell 输出</div>
+            <div class="r rise" style="--d:1250ms">上一页截图</div>
+            <div class="r rise" style="--d:1400ms">上一任务计划</div>
+            <div class="r rise" style="--d:1550ms">工作记忆</div>
+          </div>
+          <p class="note rise" style="--d:2200ms">上一条任务的经验，不该污染这一条</p>
+        </div>
+      </section>
+
+      <!-- 26 -->
+      <section class="scene" data-start="175" data-dur="7" data-name="怎么找到控件">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">TARGET</div>
+          <h2 class="big xs rise" style="--d:340ms">怎么找到那个控件</h2>
+          <div class="stack">
+            <div class="r rise" style="--d:800ms"><i>01</i>语义 ID 精确匹配<span class="rt jade">by = id</span></div>
+            <div class="r rise" style="--d:1150ms"><i>02</i>控件文字包含匹配<span class="rt">by = text</span></div>
+            <div class="r rise" style="--d:1500ms"><i>03</i>元素树读不到，才用视觉坐标<span class="rt">by = vision</span></div>
+          </div>
+          <p class="note rise" style="--d:2200ms">找不到就先滚动查找，仍然找不到就中止，不硬猜</p>
+        </div>
+      </section>
+
+      <!-- 27 -->
+      <section class="scene" data-start="182" data-dur="7" data-name="权限决定通道">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">AUTH</div>
+          <h2 class="big xs rise" style="--d:340ms">权限不同，通道不同</h2>
+          <div class="flow" style="gap:20px">
+            <div class="n rise" style="--d:800ms"><i>最高权限</i><b>无线 ADB / Shizuku</b></div>
+            <div class="n rise" style="--d:1100ms"><i>基础权限</i><b>无障碍服务</b></div>
+            <div class="n rise" style="--d:1400ms"><i>没有权限</i><b>只读，不动手</b></div>
+          </div>
+          <p class="note rise" style="--d:2100ms">默认无线 ADB 优先；Shizuku 作为可选增强，拉起失败不阻塞任务</p>
+        </div>
+      </section>
+
+      <!-- 28 -->
+      <section class="scene" data-start="189" data-dur="7" data-name="执行">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">04 · ACT</div>
+          <h2 class="big xs rise" style="--d:340ms">一条命令，先走能走的那条</h2>
+          <div class="flow">
+            <div class="n rise" style="--d:800ms"><i>PRIMARY</i><b>shell 命令</b></div>
+            <div class="sep growx" style="--d:1150ms"><span></span></div>
+            <div class="n rise" style="--d:1230ms"><i>FALLBACK</i><b>无障碍手势</b></div>
+            <div class="sep growx" style="--d:1580ms"><span></span></div>
+            <div class="n rise" style="--d:1660ms"><i>TOOLCHAIN</i><b>Termux 命令</b></div>
+          </div>
+          <p class="note rise" style="--d:2300ms">权限降级时自动换下一条，任务不中断</p>
+        </div>
+      </section>
+
+      <!-- 29 -->
+      <section class="scene" data-start="196" data-dur="7" data-name="无效重试短路">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">ERROR SHORTCUT</div>
+          <h2 class="big xs rise" style="--d:340ms">有些错，不值得再试三次</h2>
+          <div class="stack">
+            <div class="r rise" style="--d:800ms"><i>01</i>未知的 shell 命令<span class="rt">立即失败</span></div>
+            <div class="r rise" style="--d:1150ms"><i>02</i>空命令<span class="rt">立即失败</span></div>
+            <div class="r rise" style="--d:1500ms"><i>03</i>参数非法<span class="rt">立即失败</span></div>
+          </div>
+          <p class="note rise" style="--d:2200ms">这类结构化错误直接跳过三次无效重试，把原因和可用命令清单注入下一轮决策</p>
+        </div>
+      </section>
+
+      <!-- 30 -->
+      <section class="scene" data-start="203" data-dur="7" data-name="技能调用边界">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">MCP SKILLS</div>
+          <h2 class="big xs rise" style="--d:340ms">调用外部技能，也有硬边界</h2>
+          <div class="specs">
+            <div class="spec rise" style="--d:800ms">
+              <span class="k">单次超时</span>
+              <span class="v">20<span>秒</span></span>
+              <span class="d">超时即放弃本次调用</span>
+            </div>
+            <div class="spec rise" style="--d:1100ms">
+              <span class="k">输出截断</span>
+              <span class="v">1200<span>字符</span></span>
+              <span class="d">防止大段返回值撑爆上下文</span>
+            </div>
+            <div class="spec rise" style="--d:1400ms">
+              <span class="k">拒绝熔断</span>
+              <span class="v">3<span>次</span></span>
+              <span class="d">连续被拒就停止任务，防死循环</span>
+            </div>
+          </div>
+          <p class="note rise" style="--d:2100ms">调用结果作为「上一步结果」注入下一轮决策</p>
+        </div>
+      </section>
+
+      <!-- 31 -->
+      <section class="scene" data-start="210" data-dur="7" data-name="验证">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">05 · VERIFY</div>
+          <h2 class="big xs rise" style="--d:340ms">做完之后，还要验一遍</h2>
+          <div class="fp">
+            <div class="box rise" style="--d:800ms"><span class="k">BEFORE</span><span class="h">7c1a 4e93 b8f2 05d6</span></div>
+            <div class="mid"><span class="pill sm mist rise" style="--d:1700ms">比对</span></div>
+            <div class="box hl rise" style="--d:1250ms"><span class="k">AFTER</span><span class="h">a30f 91b7 4c88 e2a1</span></div>
+          </div>
+          <p class="note rise" style="--d:2200ms">页面指纹变了，才算真的生效</p>
+        </div>
+      </section>
+
+      <!-- 32 -->
+      <section class="scene" data-start="217" data-dur="7" data-name="交回给你">
+        <div class="page mid">
+          <h2 class="big rise" style="--d:300ms">三次都没生效<br>就不硬试了</h2>
+          <p class="sub rise" style="--d:1200ms">把方向盘交回给你，处理完点一下，它接着走</p>
+        </div>
+      </section>
+
+      <!-- 33 -->
+      <section class="scene" data-start="224" data-dur="7" data-name="收尾门槛">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">DONE CRITERIA</div>
+          <h2 class="big xs rise" style="--d:340ms">「做完了」不是随便说的</h2>
+          <div class="stack sm">
+            <div class="r rise" style="--d:750ms">至少真实执行过<span class="rt jade">3 步</span></div>
+            <div class="r rise" style="--d:1050ms">至少走完规划步数的<span class="rt jade">60%</span></div>
+            <div class="r rise" style="--d:1350ms">当前页面上有明确的完成证据<span class="rt">写进总结</span></div>
+          </div>
+          <p class="note rise" style="--d:2100ms">连续三次过早收尾，才强制结束，防死循环</p>
+        </div>
+      </section>
+
+      <!-- 34 -->
+      <section class="scene" data-start="231" data-dur="7" data-name="记忆">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">06 · REMEMBER</div>
+          <h2 class="big sm rise" style="--d:340ms">同一个坑，不踩第二次</h2>
+        </div>
+      </section>
+
+      <!-- 35 -->
+      <section class="scene" data-start="238" data-dur="7" data-name="复用">
+        <div class="page">
+          <div class="flow" style="gap:20px">
+            <div class="n rise" style="--d:600ms"><i>FIRST</i><b>遇到 → 摸索</b></div>
+            <div class="n rise" style="--d:950ms"><i>THEN</i><b>沉淀成记忆</b></div>
+            <div class="n rise" style="--d:1300ms"><i>NEXT</i><b>直接复用</b></div>
+          </div>
+          <p class="note rise" style="--d:2000ms">记忆里存的是页面指纹 + 标签 + 解法，命中就不再问模型</p>
+        </div>
+      </section>
+
+      <!-- 36 -->
+      <section class="scene" data-start="245" data-dur="7" data-name="记忆的归属">
+        <div class="page">
+          <div class="kicker rise" style="--d:160ms">TASK MEMORY</div>
+          <h2 class="big xs rise" style="--d:340ms">记忆要认得出自己属于谁</h2>
+          <div class="specs">
+            <div class="spec rise" style="--d:800ms">
+              <span class="k">归属判定</span>
+              <span class="v">1<span>个 taskId</span></span>
+              <span class="d">旧任务的收尾不会把新任务标成未完成</span>
+            </div>
+            <div class="spec rise" style="--d:1100ms">
+              <span class="k">容量上限</span>
+              <span class="v">30<span>条</span></span>
+              <span class="d">超出后淘汰最旧的一条</span>
+            </div>
+            <div class="spec rise" style="--d:1400ms">
+              <span class="k">去重规则</span>
+              <span class="v">0<span>模糊合并</span></span>
+              <span class="d">你的要求按精确重复判断，绝不做相似度合并</span>
+            </div>
+          </div>
+          <p class="note rise" style="--d:2100ms">记忆不是进度条，它保住的是目标和你的原话</p>
+        </div>
+      </section>
+
+      <!-- 37 -->
+      <section class="scene" data-start="252" data-dur="7" data-name="安全">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">SAFETY</div>
+          <h2 class="big sm rise" style="--d:340ms">有些页面，只许看</h2>
+          <p class="sub rise" style="--d:1200ms">敏感页自动切成只读，一个动作也不做</p>
+        </div>
+      </section>
+
+      <!-- 38 -->
+      <section class="scene" data-start="259" data-dur="7" data-name="脱敏">
+        <div class="page">
+          <div class="stack">
+            <div class="r rise" style="--d:700ms"><i>—</i>支付 / 银行 / 密码页<span class="rt">切 READONLY</span></div>
+            <div class="r rise" style="--d:980ms"><i>—</i>手机号<span class="rt">138****6688</span></div>
+            <div class="r rise" style="--d:1260ms"><i>—</i>身份证号<span class="rt">3301**********1234</span></div>
+            <div class="r rise" style="--d:1540ms"><i>—</i>银行卡号<span class="rt">**** **** 9021</span></div>
+          </div>
+          <p class="note rise" style="--d:2300ms">送进模型之前，敏感字段就已经被替换掉</p>
+        </div>
+      </section>
+
+      <!-- 39 -->
+      <section class="scene" data-start="266" data-dur="7" data-name="三条原则">
+        <div class="page mid">
+          <div class="kicker rise" style="--d:160ms">THREE RULES</div>
+          <h2 class="big sm rise" style="--d:340ms">于是它敢替你动手</h2>
+          <div class="pills">
+            <span class="pill on rise" style="--d:1100ms">意图与执行分离</span>
+            <span class="pill on rise" style="--d:1400ms">端侧决策优先</span>
+            <span class="pill on rise" style="--d:1700ms">每一步都经过验证</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 40 -->
+      <section class="scene" data-start="273" data-dur="7" data-name="落版">
+        <div class="page mid">
+          <h2 class="big rise" style="--d:300ms">让手机自己动手</h2>
+          <p class="note rise" style="--d:1100ms">HAPPY PHONE AGENT · ANDROID · MIT LICENSE</p>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="stage-bar"><i id="stageFill"></i></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btnPlay" title="播放 / 暂停（空格）">暂停</button>
+  <button id="btnReplay" title="重播（R）">重播</button>
+  <div class="track" id="track">
+    <div class="rail"></div>
+    <div class="fill" id="trackFill"></div>
+    <div class="head" id="trackHead"></div>
+  </div>
+  <span class="tc" id="tc">00:00 / 03:00</span>
+  <span class="chap" id="chap">01 开场</span>
+  <button id="btnPrev" title="上一幕（←）">◀</button>
+  <button id="btnNext" title="下一幕（→）">▶</button>
+  <button id="btnTheme" title="深浅色">浅色</button>
+  <button id="btnFull" title="全屏">全屏</button>
+</div>
+
+<script>
+(function () {
+  'use strict'
+
+  var stage = document.getElementById('stage')
+  var reel = document.getElementById('reel')
+  var scenes = Array.prototype.slice.call(reel.querySelectorAll('.scene'))
+
+  var btnPlay = document.getElementById('btnPlay')
+  var btnReplay = document.getElementById('btnReplay')
+  var btnPrev = document.getElementById('btnPrev')
+  var btnNext = document.getElementById('btnNext')
+  var btnTheme = document.getElementById('btnTheme')
+  var btnFull = document.getElementById('btnFull')
+  var track = document.getElementById('track')
+  var trackFill = document.getElementById('trackFill')
+  var trackHead = document.getElementById('trackHead')
+  var tc = document.getElementById('tc')
+  var chap = document.getElementById('chap')
+  var hudChap = document.getElementById('hudChap')
+  var hudName = document.getElementById('hudName')
+  var hudFill = document.getElementById('hudFill')
+  var stageFill = document.getElementById('stageFill')
+
+  var marks = scenes.map(function (el) {
+    var s = parseFloat(el.dataset.start) * 1000
+    var d = parseFloat(el.dataset.dur) * 1000
+    return { el: el, start: s, dur: d, end: s + d, name: el.dataset.name }
+  })
+  var TOTAL = marks.length ? marks[marks.length - 1].end : 180000
+
+  /* 进度条上的分幕刻度 */
+  marks.forEach(function (m, i) {
+    if (i === 0) return
+    var tk = document.createElement('i')
+    tk.className = 'tick'
+    tk.style.left = (m.start / TOTAL) * 100 + '%'
+    track.appendChild(tk)
+  })
+
+  var time = 0
+  var playing = true
+  var active = -1
+  var lastFrame = 0
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n }
+  function fmt(ms) {
+    var s = Math.max(0, Math.round(ms / 1000))
+    return pad2(Math.floor(s / 60)) + ':' + pad2(s % 60)
+  }
+  function sceneAt(t) {
+    for (var i = marks.length - 1; i >= 0; i--) if (t >= marks[i].start) return i
+    return 0
+  }
+
+  /* 激活某幕：把该幕已流逝时间写进 --elapsed，
+     入场动画的 animation-delay = 自身延迟 - 已流逝时间，
+     于是拖拽/跳幕都落在正确的中间状态，而不是从头重播。 */
+  function activate(i) {
+    if (i === active) return
+    if (active >= 0) marks[active].el.classList.remove('is-on')
+    active = i
+    var m = marks[i]
+    m.el.style.setProperty('--elapsed', Math.max(0, time - m.start) + 'ms')
+    void m.el.offsetWidth
+    m.el.classList.add('is-on')
+
+    hudChap.textContent = pad2(i + 1) + ' / ' + pad2(marks.length)
+    hudName.textContent = m.name
+    chap.textContent = pad2(i + 1) + ' ' + m.name
+  }
+
+  function paint() {
+    var p = time / TOTAL
+    trackFill.style.width = p * 100 + '%'
+    trackHead.style.left = p * 100 + '%'
+    hudFill.style.width = p * 100 + '%'
+    stageFill.style.width = p * 100 + '%'
+    tc.textContent = fmt(time) + ' / ' + fmt(TOTAL)
+  }
+
+  function seek(t) {
+    time = Math.min(TOTAL, Math.max(0, t))
+    activate(sceneAt(time))
+    paint()
+  }
+
+  function setPlaying(v) {
+    playing = v
+    btnPlay.textContent = v ? '暂停' : '播放'
+    stage.classList.toggle('is-paused', !v)
+    if (v && time >= TOTAL) { time = 0; active = -1; activate(0) }
+  }
+
+  function tick(now) {
+    if (!lastFrame) lastFrame = now
+    var dt = now - lastFrame
+    lastFrame = now
+    if (playing) {
+      time += dt
+      if (time >= TOTAL) { time = TOTAL; setPlaying(false) }
+      activate(sceneAt(time))
+      paint()
+    }
+    field.step(dt, time)
+    requestAnimationFrame(tick)
+  }
+
+  /* ---------------- 交互 ---------------- */
+  btnPlay.addEventListener('click', function () { setPlaying(!playing) })
+  btnReplay.addEventListener('click', function () { active = -1; seek(0); setPlaying(true) })
+  btnPrev.addEventListener('click', function () {
+    var i = sceneAt(time)
+    if (i === active && time - marks[i].start > 800) { seek(marks[i].start); return }
+    seek(marks[Math.max(0, i - 1)].start)
+  })
+  btnNext.addEventListener('click', function () {
+    seek(marks[Math.min(marks.length - 1, sceneAt(time) + 1)].start)
+  })
+
+  function seekFromEvent(e) {
+    var r = track.getBoundingClientRect()
+    var x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left
+    seek((x / r.width) * TOTAL)
+  }
+  var dragging = false
+  var wasPlaying = false
+  track.addEventListener('pointerdown', function (e) {
+    dragging = true
+    wasPlaying = playing
+    setPlaying(false)
+    seekFromEvent(e)
+    track.setPointerCapture(e.pointerId)
+  })
+  track.addEventListener('pointermove', function (e) { if (dragging) seekFromEvent(e) })
+  track.addEventListener('pointerup', function () { dragging = false; if (wasPlaying) setPlaying(true) })
+
+  btnTheme.addEventListener('click', function () {
+    var dark = document.documentElement.dataset.theme === 'dark'
+    document.documentElement.dataset.theme = dark ? 'light' : 'dark'
+    btnTheme.textContent = dark ? '深色' : '浅色'
+    field.readColors()
+  })
+  btnFull.addEventListener('click', function () {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else document.documentElement.requestFullscreen()
+  })
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing) }
+    else if (e.code === 'ArrowLeft') btnPrev.click()
+    else if (e.code === 'ArrowRight') btnNext.click()
+    else if (e.key === 'r' || e.key === 'R') btnReplay.click()
+    else if (e.key === 'f' || e.key === 'F') btnFull.click()
+  })
+  stage.addEventListener('click', function (e) {
+    if (e.target.closest('button')) return
+    setPlaying(!playing)
+  })
+
+  /* ---------------- 舞台等比缩放 ---------------- */
+  function fit() {
+    var s = Math.min(window.innerWidth / 1600, (window.innerHeight - 84) / 900)
+    stage.style.transform = 'scale(' + s + ')'
+  }
+  window.addEventListener('resize', fit)
+
+  /* ---------------- 背景信号场 ----------------
+     隐喻取自产品本身：屏幕上的可交互控件被逐个点亮。
+     一条随总时间轴扫过的「观察光束」，代表 Agent 正在读取当前页面。 */
+  var field = (function () {
+    var canvas = document.getElementById('field')
+    var ctx = canvas.getContext('2d')
+    var W = 1600, H = 900, GAP = 32
+    var cols = Math.ceil(W / GAP) + 1
+    var rows = Math.ceil(H / GAP) + 1
+    var dots = []
+    var colors = { base: '#6f766f', active: '#5fd9b4' }
+    var reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) dots.push({ x: x * GAP, y: y * GAP, a: 0 })
+    }
+    function readColors() {
+      var cs = getComputedStyle(document.documentElement)
+      colors.base = cs.getPropertyValue('--ink-3').trim() || '#6f766f'
+      colors.active = cs.getPropertyValue('--jade').trim() || '#5fd9b4'
+    }
+    readColors()
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2)
+    canvas.width = W * dpr
+    canvas.height = H * dpr
+    canvas.style.width = W + 'px'
+    canvas.style.height = H + 'px'
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    var phase = 0
+    function step(dt, t) {
+      if (reduced) return
+      phase += dt * 0.00034
+      var scan = ((t % 9000) / 9000) * (W + 700) - 350
+
+      ctx.clearRect(0, 0, W, H)
+      for (var i = 0; i < dots.length; i++) {
+        var d = dots[i]
+        var ambient = 0.05 * (0.5 + 0.5 * Math.sin((d.x + d.y) * 0.0055 - phase))
+        var beam = Math.max(0, 1 - Math.abs(d.x - scan) / 240)
+        var target = Math.max(ambient, beam * beam * 0.5)
+        d.a += (target - d.a) * 0.09
+        if (d.a < 0.006) continue
+        ctx.beginPath()
+        ctx.arc(d.x, d.y, 0.9 + d.a * 1.5, 0, Math.PI * 2)
+        ctx.fillStyle = d.a > 0.3 ? colors.active : colors.base
+        ctx.globalAlpha = 0.10 + d.a * 0.42
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    if (reduced) {
+      for (var k = 0; k < dots.length; k++) {
+        ctx.beginPath()
+        ctx.arc(dots[k].x, dots[k].y, 1, 0, Math.PI * 2)
+        ctx.fillStyle = colors.base
+        ctx.globalAlpha = 0.18
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+    }
+
+    return { step: step, readColors: readColors }
+  })()
+
+  /* ---------------- 启动 ---------------- */
+  fit()
+  seek(0)
+  setPlaying(true)
+  requestAnimationFrame(tick)
+})()
+</script>
+</body>
+</html>

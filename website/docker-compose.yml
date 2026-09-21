@@ -1,0 +1,29 @@
+services:
+  site:
+    build: .
+    image: phtomt-site:latest
+    container_name: phtomt-site
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-5180}:5180"
+
+    environment:
+      # 留空则每次启动随机生成口令并打印到 docker logs
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # 部署到公网务必换成长随机串：令牌签名用它做盐
+      ADMIN_SECRET: ${ADMIN_SECRET:-change-me-to-a-long-random-string}
+      ADMIN_TOKEN_TTL: ${ADMIN_TOKEN_TTL:-72}
+      # 对外地址，下载链接与 sitemap 靠它拼绝对路径
+      SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:5180}
+      MAX_APK_MB: ${MAX_APK_MB:-200}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+
+    volumes:
+      # 内容与 APK 都落在这两个卷里，重建容器不会丢
+      - site-data:/app/server/data
+      - site-apk:/app/public/apk
+
+volumes:
+  site-data:
+  site-apk:

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Happy Phone Agent — 让手机自己动手</title>
+    <meta
+      name="description"
+      content="Happy Phone Agent（Phtomt）是一款运行在 Android 上的 AI 智能体：用自然语言描述目标，它自己观察屏幕、规划步骤、动手执行。"
+    />
+    <meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121513" media="(prefers-color-scheme: dark)" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      // 主题在首帧前落定，避免深色用户看到一瞬白屏。
+      try {
+        var saved = localStorage.getItem('phtomt-theme')
+        var theme = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        document.documentElement.dataset.theme = theme
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

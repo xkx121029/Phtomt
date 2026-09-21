@@ -3,6 +3,7 @@ package com.phoneagent.agent
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
@@ -206,5 +207,33 @@ class EngineRulesTest {
         assertFalse(EngineRules.needsReviewIntent(intent(IntentType.OPEN_APP), snapshotWith("x")))
         assertFalse(EngineRules.needsReviewIntent(intent(IntentType.WAIT), snapshotWith("x")))
         assertFalse(EngineRules.needsReviewIntent(intent(IntentType.WRITE_DOC), snapshotWith("x")))
+    }
+
+    // ---- shouldFallbackReset ----
+
+    @Test
+    fun shouldFallbackReset_任务id一致且非终态_允许复位() {
+        assertTrue(EngineRules.shouldFallbackReset(100L, 100L, AgentState.Phase.ERROR))
+        assertTrue(EngineRules.shouldFallbackReset(100L, 100L, AgentState.Phase.ACTING))
+    }
+
+    @Test
+    fun shouldFallbackReset_已完成终态_不复位() {
+        // DONE 是正常完成的终态，兜底复位不能把「任务完成」洗成「空闲」
+        assertFalse(EngineRules.shouldFallbackReset(100L, 100L, AgentState.Phase.DONE))
+    }
+
+    @Test
+    fun shouldFallbackReset_任务id不一致_不复位() {
+        // stop() 后收尾是异步跑的：旧任务（id=100）的收尾不能复位用户刚发起的新任务（id=200）
+        assertFalse(EngineRules.shouldFallbackReset(100L, 200L, AgentState.Phase.ERROR))
+        assertFalse(EngineRules.shouldFallbackReset(100L, 200L, AgentState.Phase.ACTING))
+    }
+
+    @Test
+    fun shouldFallbackReset_无归属id_只靠终态守卫() {
+        // taskId 为 null 表示任务记忆尚未建立（无归属信息），此时只按终态判定
+        assertTrue(EngineRules.shouldFallbackReset(null, 200L, AgentState.Phase.ERROR))
+        assertFalse(EngineRules.shouldFallbackReset(null, 200L, AgentState.Phase.DONE))
     }
 }

@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-static
+dist-check
+.env
+.env.*
+!.env.example
+*.log
+.git
+.github
+.trae

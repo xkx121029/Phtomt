@@ -22,6 +22,9 @@
         <package android:name="com.termux" />
     </queries>
 
+    <!-- 明文 HTTP：API 地址允许指向自建/内网服务（http://192.168.1.5:8000、http://nas.local、
+         http://localhost:11434 等）。targetSdk 28 起系统默认禁止明文流量，不放开时 OkHttp 会直接抛
+         "CLEARTEXT communication to xxx not permitted by network security policy"。 -->
     <application
         android:name=".PhoneAgentApp"
         android:allowBackup="true"
@@ -30,6 +33,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PhoneAgent"
+        android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
         <!-- windowSoftInputMode 必须显式声明为 adjustResize：

@@ -80,6 +80,8 @@ data class TaskMemoryEntry(
     val requirements: List<String> = emptyList(),
     /** 已验证有效的做法（步骤摘要，新的在后） */
     val methods: List<String> = emptyList(),
+    /** 任务结论：完成时是 AI 给出的完成说明，失败/中断时为空。供下一轮对话承接时参考 */
+    val conclusion: String = "",
     val status: String = STATUS_RUNNING,
     val completedSteps: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
@@ -139,9 +141,14 @@ data class TaskMemoryEntry(
         )
     }
 
-    /** 任务收尾：写回状态与已完成步数 */
-    fun withStatus(status: String, steps: Int): TaskMemoryEntry =
-        copy(status = status, completedSteps = steps, updatedAt = System.currentTimeMillis())
+    /** 任务收尾：写回状态、已完成步数与结论（结论为空时保留上一次的，避免被空串冲掉） */
+    fun withStatus(status: String, steps: Int, conclusion: String = ""): TaskMemoryEntry =
+        copy(
+            status = status,
+            completedSteps = steps,
+            conclusion = conclusion.trim().ifBlank { this.conclusion },
+            updatedAt = System.currentTimeMillis(),
+        )
 }
 
 /**

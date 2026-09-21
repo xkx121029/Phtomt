@@ -48,6 +48,52 @@ class AiClient(
             return AiClient(http, json)
         }
 
+        /** 内网/本机常见后缀：mDNS、企业内网与家用路由器命名，未写协议时按 http 处理。 */
+        private val LOCAL_HOST_SUFFIXES = listOf(
+            ".local", ".localhost", ".lan", ".home", ".internal", ".intranet", ".corp", ".localdomain",
+        )
+
+        /**
+         * 规范化 API 基地址：补协议、去末尾斜杠。
+         *
+         * 自建推理服务（Ollama、LM Studio、one-api、vLLM 等）常被填成 `192.168.1.5:8000/v1`
+         * 或 `localhost:11434/v1`；而 OkHttp 的 `Request.url()` 要求带完整协议头，缺协议会直接抛异常。
+         * 因此未写协议时按主机推断：本机/内网补 `http://`，公网域名补 `https://`；
+         * 已写 `http://` 的地址原样保留 —— 明文流量是否放行由清单的 usesCleartextTraffic 决定。
+         */
+        internal fun normalizeBaseUrl(raw: String): String {
+            val base = raw.trim().trimEnd('/')
+            if (base.isEmpty()) return base
+            if (base.startsWith("http://", true) || base.startsWith("https://", true)) return base
+            return if (isLocalHost(base)) "http://$base" else "https://$base"
+        }
+
+        /** 从 URL 取出主机名，判断是否属于「本机/内网」：localhost、私有网段、单段主机名、内网后缀。 */
+        private fun isLocalHost(url: String): Boolean {
+            val authority = url.substringBefore('/').substringAfter('@')
+            val host = (
+                if (authority.startsWith("[")) authority.substringAfter('[').substringBefore(']')
+                else authority.substringBefore(':')
+                ).lowercase()
+            if (host.isEmpty()) return false
+            // IPv6 字面量：仅回环 / 链路本地 / ULA 视为内网
+            if (host.contains(':')) {
+                return host == "::1" || host.startsWith("fe80:") ||
+                    host.startsWith("fc") || host.startsWith("fd")
+            }
+            if (!host.contains('.')) return true    // 单段主机名，如 nas、myserver
+            privateIpv4(host)?.let { return it }
+            return LOCAL_HOST_SUFFIXES.any { host.endsWith(it) }
+        }
+
+        /** 私有 IPv4 判定；非 IPv4 字面量返回 null，交由域名分支处理。 */
+        private fun privateIpv4(host: String): Boolean? {
+            val nums = host.split('.').map { it.toIntOrNull() ?: return null }
+            if (nums.size != 4 || nums.any { it !in 0..255 }) return null
+            val (a, b) = nums[0] to nums[1]
+            return a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && b in 16..31)
+        }
+
         /** AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL） */
         private val ACTION_SCHEMA = """
         {
@@ -387,9 +433,10 @@ class AiClient(
      * - 末尾多余斜杠（`https://api.deepseek.com/v1/`）
      * - 误把完整端点填进「API 地址」（`https://api.deepseek.com/v1/chat/completions`）
      * - 不带版本段（`https://api.deepseek.com`，DeepSeek 原生支持）
+     * - 未写协议（`192.168.1.5:8000/v1`、`localhost:11434/v1`，见 [normalizeBaseUrl]）
      */
     private fun chatCompletionsUrl(baseUrl: String): String {
-        val base = baseUrl.trim().trimEnd('/')
+        val base = normalizeBaseUrl(baseUrl)
         return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
     }
 

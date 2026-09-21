@@ -109,6 +109,41 @@ class IntentTranslatorStrategyTest {
     }
 
     @Test
+    fun device_query_转译为端侧查询动作() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(intent = IntentType.DEVICE_QUERY, kind = "apps", filter = "相机"),
+            snapshot(),
+        )
+        assertEquals(ActionType.DEVICE_QUERY, action.type)
+        assertEquals("apps", action.text)
+        assertEquals("相机", action.summary)
+    }
+
+    @Test
+    fun device_query_缺kind默认全部() {
+        mode(Mode.SHIZUKU)
+        val action = command(AgentIntent(intent = IntentType.DEVICE_QUERY), snapshot())
+        assertEquals(ActionType.DEVICE_QUERY, action.type)
+        assertEquals("all", action.text)
+    }
+
+    @Test
+    fun device_query_非法kind_转译失败() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(AgentIntent(intent = IntentType.DEVICE_QUERY, kind = "contacts"), snapshot())
+        assertTrue("应提示可选类别，实际: $reason", reason.contains("不支持 kind=contacts"))
+    }
+
+    @Test
+    fun device_query_只读模式也放行() {
+        mode(Mode.READONLY)
+        // 纯本地读取、不触碰设备，只读模式不应拒绝（与 remember/wait 同列）
+        val action = command(AgentIntent(intent = IntentType.DEVICE_QUERY, kind = "battery"), snapshot())
+        assertEquals(ActionType.DEVICE_QUERY, action.type)
+    }
+
+    @Test
     fun finish_未给摘要_默认任务完成() {
         mode(Mode.SHIZUKU)
         val action = command(AgentIntent(intent = IntentType.FINISH), snapshot())

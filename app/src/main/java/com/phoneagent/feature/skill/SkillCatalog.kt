@@ -143,6 +143,21 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.DEVICE_QUERY, Skill(
+                id = "skill_device_query", name = "查询本机信息", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "取数", legacyIntent = IntentType.DEVICE_QUERY,
+                description = "查询本机信息（不操作屏幕、不碰设备）：装了哪些应用、当前时间、电量、网络、存储。",
+                params = listOf(
+                    SkillParam(
+                        "kind", "查询内容", "select", required = true, defaultValue = "all",
+                        options = listOf("apps", "time", "battery", "network", "storage", "all"),
+                        description = "apps=应用清单 time=时间 battery=电量 network=网络 storage=存储 all=全部",
+                    ),
+                    SkillParam("filter", "过滤关键词", "text", description = "仅 kind=apps 时生效，如「相机」"),
+                ),
+            ),
+        )
+        put(
             IntentType.FETCH, Skill(
                 id = "skill_fetch", name = "取网页正文", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "取数", legacyIntent = IntentType.FETCH,

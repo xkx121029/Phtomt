@@ -284,6 +284,38 @@ internal class RememberStrategy : IntentTranslationStrategy {
 }
 
 /**
+ * 本机信息查询策略：AI 想知道"装了哪些应用 / 现在几点 / 电量网络如何 / 存储还剩多少"时，
+ * 不必靠猜，也不必用一连串点击去翻设置页。
+ *
+ * 与 REMEMBER 同类——纯本地读取、不触碰设备、不需要通道与坐标，故只读模式下同样放行。
+ * 类别放 kind、过滤词放 filter；可选值由端侧白名单收口，AI 写错即失败并回报可选值。
+ */
+internal class DeviceQueryStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val kind = intent.kind?.trim()?.lowercase().orEmpty().ifBlank { KIND_ALL }
+        if (kind !in DEVICE_QUERY_KINDS) {
+            return IntentTranslator.TranslationResult.Failed(
+                "device_query 不支持 kind=$kind；可选值：${DEVICE_QUERY_KINDS.joinToString("/")}。",
+            )
+        }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.DEVICE_QUERY,
+                text = kind,
+                summary = intent.filter?.trim()?.take(40),
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+
+    companion object {
+        const val KIND_ALL = "all"
+        /** 可查询的信息类别：应用清单 / 时间 / 电量 / 网络 / 存储 / 全部 */
+        val DEVICE_QUERY_KINDS = setOf("apps", "time", "battery", "network", "storage", KIND_ALL)
+    }
+}
+
+/**
  * Termux 命令行取数策略：把"取网页 / 接口正文"这类**图形界面做不到或很笨拙**的事，
  * 落到 Termux 的 curl 上。
  *
@@ -376,6 +408,8 @@ class IntentTranslator(
         put(IntentType.WRITE_DOC, passthrough(ActionType.WRITE_DOC) { i, a -> a.copy(text = i.text, summary = i.summary) })
         // 记忆写入（本地写库，不触碰设备）
         put(IntentType.REMEMBER, RememberStrategy())
+
+        put(IntentType.DEVICE_QUERY, DeviceQueryStrategy())
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 收尾
@@ -437,10 +471,12 @@ class IntentTranslator(
     private fun applyReadOnly(result: TranslationResult, mode: Mode): TranslationResult = when {
         result !is TranslationResult.Command -> result
         mode != Mode.READONLY -> result
-        // WAIT / WRITE_DOC / REMEMBER 都不触碰设备（等待、本地生成文档、本地写记忆库），只读模式下同样放行
+        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY 都不触碰设备
+        // （等待、本地生成文档、本地写记忆库、本地读设备信息），只读模式下同样放行
         result.action.type == ActionType.WAIT ||
             result.action.type == ActionType.WRITE_DOC ||
-            result.action.type == ActionType.REMEMBER -> result
+            result.action.type == ActionType.REMEMBER ||
+            result.action.type == ActionType.DEVICE_QUERY -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )
