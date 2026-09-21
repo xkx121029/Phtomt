@@ -178,9 +178,9 @@ object AgentPrompts {
 | write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
 | remember | 记住长期信息（不操作屏幕，仅写入记忆） | text(要记住的一句话),summary(分类 preference/fact/habit/tip) |
 | device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
-| fetch | 取纯文本接口正文（需本机已装 Termux；网页一律走 browse_*） | uri |
+| fetch | 取正文（需本机已装 Termux）；返回 HTML 时端侧自动转成 Markdown 再回传；网页界面一律走 browse_* | uri |
 | browse_open | 内置浏览器打开网址（界面会切到浏览器页，网页出现在之后每张截图里） | uri（http/https 网址） |
-| browse_read | 抓取当前网页的正文与可操作元素 | 无 |
+| browse_read | 抓取当前网页正文（Markdown，链接已内联）与可操作元素 | 无 |
 | browse_click | 点击网页里的元素（链接/按钮/勾选框） | target（{"by":"text","value":"元素文字"} 优先；无文字才用 {"by":"id","value":"CSS选择器"}） |
 | browse_input | 填写网页表单 | target,text |
 | browse_scroll | 滚动网页 | direction(up/down/top/bottom) |
@@ -197,13 +197,15 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 本 App 内置一个真实浏览器：执行 browse_open 后界面会切到该浏览器页，网页会出现在之后每一步的截图中，所以你看得见网页内容，不需要靠猜。
 - 何时用（判断条件，按目标类型选一个）：
   1. 目标是"某个网址""上网查/搜一下""看看最新的 …" → browse_open 打开（搜索引擎用可直达网址，如 https://www.bing.com/search?q=关键词）。
-  2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面（正文/小标题/链接/输入框/按钮），再决定 browse_click / browse_input / browse_scroll。
+  2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面（Markdown 正文：标题层级/列表/表格/代码块/内联链接，另附输入框与按钮），再决定 browse_click / browse_input / browse_scroll。
   3. 目标是 App 内部页面或系统页（某 App 的设置页、系统设置项）→ 用 open_app / open 深链，绝不用 browse_*。
-  4. 目标只是纯文本接口（JSON/纯文本）且本机已装 Termux → 可以 fetch；只要需要看网页界面，一律 browse_*。
+  4. 目标只是纯文本接口（JSON/纯文本）且本机已装 Termux → 可以 fetch；只要需要看网页界面，一律 browse_*。fetch 拿回 HTML 时端侧会自动转成 Markdown 再给你，但它终究只是"文字快照"——网页在屏幕上是什么样、有哪些按钮可点，它看不到，所以不能拿它代替 browse_*。
 - 边界（违反 = 本步失败）：
   - browse_click / browse_input / browse_scroll / browse_back 只作用于浏览器里"当前已打开的那一页"；没打开过网页就先 browse_open，否则端侧会回"浏览器还没打开"。
   - 网页里的元素一律用 browse_click / browse_input 按文字定位，禁止改用 tap + 坐标去猜网页控件（网页控件不在手机元素树里）。
   - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。
+  - browse_read 的正文是 Markdown：链接已经内联写成 [文字](网址)，你要点它就把方括号里的文字原样交给 browse_click；不再单独给"可点链接清单"，别等它。
+  - 表格转成了扁平化的管道表：原网页里的跨列/跨行单元格（colspan/rowspan）会被忽略，列可能错位，别拿错位的数值直接下结论。
   - browse_back 只在网页历史里后退；要离开浏览器回到 App，用 press key=BACK。
   - 网页里的支付/提交订单/删除/发布/发送同样属于不可逆操作，必须带 "needs_confirmation": true。
 - 示例：
