@@ -777,13 +777,21 @@ Output ONLY JSON. First char = {, last = }.
 已执行步骤及结果：$history
 当前手机已解锁并停留在 Happy Agent（快乐手机助手）应用中：不要规划解锁手机、点亮屏幕、回桌面步骤。
 
-# 重规划策略
-| 场景 | 策略 |
+# 重规划原则
+1. 只重排"还没完成的部分"：从卡住的那一步之后重新规划，已经成功完成的步骤不要重复安排。
+2. 新步骤必须直接针对"卡住原因"：换一条能绕过该障碍的路径，而不是把原步骤再写一遍。
+3. 目标不变：用户要的结果不变，只换实现路径。
+4. 数量 2~6 步，宁少勿多；每步仍是可执行动作 + 可验证预期。
+5. 确实无法绕过（如目标应用未安装、账号无法登录）→ steps 返回空数组，并在 replan_reason 里说明原因。
+
+# 常见场景对策
+| 场景 | 对策 |
 |------|------|
-| 弹窗反复出现 | 加"先关闭弹窗" |
-| 搜索无结果 | 换关键词或换 App |
-| 加载失败 | 加"等待更长时间"或"返回重试" |
-| 找不到控件 | 加"滑动页面寻找" |
+| 弹窗反复出现 | 先关闭弹窗，再继续原目标 |
+| 搜索无结果 | 换关键词；仍无结果则换 App 或改用 open 直达 |
+| 加载失败/超时 | 延长 wait，或返回上一页重进 |
+| 找不到控件 | 先 scroll_to 滑动查找，再改用 by_hint 语义定位 |
+| 被登录/权限挡住 | 先处理登录/授权弹窗，再回到原目标 |
 
 输出：{"replan_reason":"原因","steps":[{"description":"新步骤","intent":"预期"}],"confidence":0~1}
 
@@ -797,13 +805,21 @@ Stuck reason: $blockReason
 Executed steps and results: $history
 The phone is already unlocked and in the Happy Agent app: do NOT plan unlock-screen, wake-screen, or go-home steps.
 
-# Replan Strategy
-| Scenario | Strategy |
+# Replan Principles
+1. Only re-plan the REMAINING work: start from the step after where you got stuck; do NOT repeat steps that already completed successfully.
+2. New steps must address the stuck reason directly: find a route around the obstacle instead of restating the same step.
+3. Keep the goal unchanged: the user's desired result stays the same; only the route changes.
+4. 2~6 steps, fewer is better; every step is still an executable action with a verifiable expectation.
+5. If it truly cannot be worked around (target app not installed, account cannot log in) → return an empty steps array and explain it in replan_reason.
+
+# Common Scenarios
+| Scenario | Approach |
 |----------|----------|
-| Dialog repeats | "dismiss dialog first" |
-| No search results | change keyword or app |
-| Loading fails | "wait longer" or "back and retry" |
-| Control not found | "scroll to find" |
+| Dialog keeps reappearing | dismiss the dialog first, then continue the original goal |
+| No search results | change keywords; if still none, switch apps or use open to jump directly |
+| Loading fails / times out | wait longer, or go back and re-enter |
+| Control not found | scroll_to first, then switch to by_hint semantic locating |
+| Blocked by login / permission | handle the login or authorization dialog first, then resume the goal |
 
 Output: {"replan_reason":"why","steps":[{"description":"new step","intent":"expected"}],"confidence":0~1}
 
@@ -984,6 +1000,11 @@ Output ONLY JSON. First char = {, last = }.
 
 判断是否含多个独立子任务（连接词："然后""还有""顺便""另外""同时"）。
 
+# 判定与拆分
+1. 子任务彼此独立（动作不同、互不依赖）才算批量；同一目标的连续动作属于一条步骤序列，不算多个子任务。
+2. 顺序按用户表述顺序；每个子任务拆 3~8 步，每步是可执行动作 + 可验证预期。
+3. 某子任务的目标 App 未安装 → 在该子任务的 description 里说明，步骤给出 give_up。
+
 # 输出
 多个：{"is_batch":true,"tasks":[{"id":"task_1","description":"描述","steps":[{"description":"步骤","intent":"预期"}],"estimated_time_seconds":秒}]}
 单个：{"is_batch":false,"task":{"description":"描述","steps":[{"description":"步骤","intent":"预期"}],"estimated_time_seconds":秒}}
@@ -997,6 +1018,11 @@ User input: $task
 Installed apps: ${installedApps.ifBlank { "unknown" }}
 
 Determine if input contains multiple independent sub-tasks (connectors: "then", "also", "besides", "additionally", "meanwhile").
+
+# Detection & Splitting
+1. Only independent sub-tasks (different actions, no dependency) count as a batch; consecutive actions toward the same goal are one step sequence, not multiple sub-tasks.
+2. Order follows the user's phrasing; each sub-task gets 3~8 steps, each an executable action with a verifiable expectation.
+3. If a sub-task's target app is not installed → say so in that sub-task's description and emit a give_up step.
 
 # Output
 Multiple: {"is_batch":true,"tasks":[{"id":"task_1","description":"desc","steps":[{"description":"step","intent":"expected"}],"estimated_time_seconds":sec}]}
