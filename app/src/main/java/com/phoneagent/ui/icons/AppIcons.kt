@@ -22,6 +22,7 @@ import com.composables.icons.lucide.FileText
 import com.composables.icons.lucide.FlaskConical
 import com.composables.icons.lucide.Folder
 import com.composables.icons.lucide.FolderOpen
+import com.composables.icons.lucide.Globe
 import com.composables.icons.lucide.GripVertical
 import com.composables.icons.lucide.History
 import com.composables.icons.lucide.House
@@ -154,6 +155,9 @@ object AppIcons {
     val Camera: ImageVector get() = Lucide.Camera
     /** 无线 ADB（原 Icons.Filled.Wifi） */
     val Wifi: ImageVector get() = Lucide.Wifi
+
+    /** 内置浏览器（AI 上网、操作网页） */
+    val Globe: ImageVector get() = Lucide.Globe
     /** 投送到设备（原 Icons.Rounded.SendToMobile） */
     val SendToMobile: ImageVector get() = Lucide.SmartphoneNfc
     /** 翻译 / 双语（原 Icons.Rounded.Translate） */
