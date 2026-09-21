@@ -177,6 +177,8 @@ class HtmlToMarkdownTest {
             |<nav>导航区</nav><footer>页脚区</footer><aside>侧栏区</aside>
             |<div hidden>藏起来</div>
             |<div class="sr-only">也藏起来</div>
+            |<span aria-hidden="true">无障碍隐藏</span>
+            |<span style="display: none">样式隐藏</span>
             |<p>真正文</p>
             |</body></html>
         """.trimMargin()
@@ -192,6 +194,8 @@ class HtmlToMarkdownTest {
         assertFalse(r.markdown, r.markdown.contains("侧栏区"))
         assertFalse(r.markdown, r.markdown.contains("藏起来"))
         assertFalse(r.markdown, r.markdown.contains("也藏起来"))
+        assertFalse(r.markdown, r.markdown.contains("无障碍隐藏"))
+        assertFalse(r.markdown, r.markdown.contains("样式隐藏"))
     }
 
     @Test
@@ -211,8 +215,8 @@ class HtmlToMarkdownTest {
     @Test
     fun `截断只切块边界且不切半个链接`() {
         val note = HtmlToMarkdown.TRUNCATED_NOTE
-        val multi = "AAAA\n\nBBBB\n\nCCCC"
-        assertEquals("AAAA\n\n$note", HtmlToMarkdown.takeBlocks(multi, 20))
+        val multi = "AAAAAAAA\n\nBBBBBBBB\n\nCCCCCCCC"
+        assertEquals("AAAAAAAA\n\n$note", HtmlToMarkdown.takeBlocks(multi, 20))
 
         // 落点若在 `[文字](网址)` 中间，必须整条回退，绝不产出半个链接
         val link = "[点击这里](https://example.com/very/long/path)"
