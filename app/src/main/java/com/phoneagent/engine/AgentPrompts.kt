@@ -1018,7 +1018,21 @@ Output ONLY JSON. First char = {, last = }.
             PromptLang.CN -> listOf("周报", "日报", "清单", "总结", "报告", "资料", "笔记", "文章", "邮件", "方案", "攻略", "作业", "简历", "文档", "整理", "ppt", "PPT", "表格", "写一个", "写一篇")
             PromptLang.EN -> listOf("report", "checklist", "summary", "notes", "article", "email", "plan", "document", "weekly", "resume")
         }.any { task.contains(it, ignoreCase = true) }
-        val openHit = when (lang) {
+        // 「打开已有链接/文件」：任务里有具体文件扩展名或本地路径，或点名"用某应用打开"。
+        // 它与「生成文档」是相反方向（打开已有文件 vs 产出新文档），命中时会压掉 docHit，
+        // 否则 write_doc 模板会盖过 open，AI 会去"写"一份文档而不是打开用户给的那个文件。
+        val openTargetHit = when (lang) {
+            PromptLang.CN -> listOf(
+                ".ppt", ".pptx", ".doc", ".docx", ".pdf", ".xls", ".xlsx", ".csv", ".txt",
+                "/sdcard", "/storage", "file://", "用浏览器打开", "用文档", "用 wps", "用wps",
+                "打开这个文件", "打开该文件", "打开这个链接", "打开该链接", "打开该网址",
+            )
+            PromptLang.EN -> listOf(
+                ".ppt", ".pptx", ".doc", ".docx", ".pdf", ".xls", ".xlsx", ".csv", ".txt",
+                "/sdcard", "/storage", "file://", "open in browser", "open with",
+            )
+        }.any { task.contains(it, ignoreCase = true) }
+        val openHit = openTargetHit || when (lang) {
             PromptLang.CN -> listOf("打开", "直达", "搜索", "导航", "地图", "排序")
             PromptLang.EN -> listOf("open ", "direct", "navigate", "search for", "launch ", "website", "url")
         }.any { task.contains(it, ignoreCase = true) }
@@ -1047,7 +1061,7 @@ Output ONLY JSON. First char = {, last = }.
             )
         }.any { task.contains(it, ignoreCase = true) }
 
-        if (docHit) {
+        if (docHit && !openTargetHit) {
             sb.append("\n\n## 当前任务附加指导 · 文档生成\n")
             if (lang == PromptLang.CN) {
                 sb.append("检测到本任务需要生成/整理文档。必须直接输出 write_doc，禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。模板：\n")
@@ -1061,10 +1075,17 @@ Output ONLY JSON. First char = {, last = }.
             sb.append("\n\n## 当前任务附加指导 · 页面直达(open)\n")
             if (lang == PromptLang.CN) {
                 sb.append("若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。")
-                sb.append("App 内页/系统页用 uri，公开 scheme 用官方 scheme（普通网址不归 open 管，改用 browse_open）；封闭 App（如微信聊天）不发明 scheme，改用 open_app 逐步。")
+                sb.append("App 内页/系统页用 uri，公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 open_app 逐步。")
+                sb.append("要把链接/文件交给系统应用打开也用它：网址给系统浏览器，本地文件（/sdcard/…、file://…）给系统文档/图片/播放器，端侧自动补类型；泛指不必填 app（端侧优先系统自带应用），用户点名了具体应用才填 app。")
+                sb.append("""模板：{"intent":"open","uri":"/sdcard/Download/季度汇报.ppt","reasoning":"用文档软件打开PPT","expected":"文档应用显示该PPT","confidence":0.9}""")
+                sb.append("\n要读网页内容仍用 browse_*（见上网与网页操作）；uri 必须是用户给的或上一步结果里真实出现的，禁止编造路径。")
                 sb.append("以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：\n${AppPageIndex.indexText()}")
             } else {
-                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for in-app/system pages; official scheme for public schemes (plain websites are NOT open's job — use browse_open instead); do NOT invent schemes for closed apps — use open_app instead. Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for in-app/system pages; official scheme for public schemes; do NOT invent schemes for closed apps — use open_app instead.")
+                sb.append("Use it as well to hand a link/file to a system app: URLs go to the system browser, local files (/sdcard/…, file://…) to the system document/image/player app; the device fills in the MIME type. Leave app empty for generic targets (the device prefers system apps); set app only when the user named a specific app.")
+                sb.append("""Template: {"intent":"open","uri":"/sdcard/Download/report.ppt","reasoning":"open the PPT with a document app","expected":"document app shows the PPT","confidence":0.9}""")
+                sb.append("\nReading page content still goes through browse_* (see the browsing section); uri MUST be given by the user or appear in the last step result — never invent a path.")
+                sb.append("Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
             }
         }
         if (browseHit) {
@@ -1075,6 +1096,7 @@ Output ONLY JSON. First char = {, last = }.
                 sb.append("\n网址不明确就用搜索引擎直达页，例如 https://www.bing.com/search?q=关键词（关键词做 URL 编码）。\n")
                 sb.append("""看清当前网页：{"intent":"browse_read","reasoning":"读取网页内容","expected":"返回 Markdown 正文与可点元素","confidence":0.9}""")
                 sb.append("""\n操作网页：{"intent":"browse_click","target":{"by":"text","value":"下一页"}} / {"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"关键词"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
+                sb.append("\n分流（先判断再动手）：要你读/操作网页内容（查资料、点网页链接、填网页表单）才用 browse_*；只是把网址打开给用户看、或用户点名\"用浏览器打开\"时，改用 open + uri 交系统浏览器，别占用内置浏览器。")
                 sb.append("\n边界（重要）：网页元素只能用 browse_click 按元素文字点，禁止用 tap + 坐标去猜；browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要离开浏览器回 App 用 press key=BACK。")
                 sb.append("browse_read 返回的正文是 Markdown（标题层级/列表/表格/代码块齐全），链接已内联成 [文字](网址)，要点它就把方括号里的文字交给 browse_click；表格被拍平成管道表，跨列跨行单元格会丢，列可能错位，别拿错位数值下结论。")
                 sb.append("网页里的支付/提交订单/删除/发布/发送同属不可逆操作，必须带 \"needs_confirmation\": true。")
