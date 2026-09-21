@@ -355,6 +355,9 @@ internal class TermuxFetchStrategy(
                 // raw 前缀：跳过 AI 友好命令解析，原样交给通道执行
                 // （执行层按命令名判定 curl 属 Termux 工具链，自动走 Termux 通道）
                 command = "raw curl -sL --max-time 20 -- \"$safe\"",
+                // 带上原始网址：执行层拿 curl 回来的 HTML 转 Markdown 时，要用它把相对链接绝对化
+                // （translate() 构造的 base 不含 uri，这里必须显式补）
+                uri = uri,
                 reason = reasonOf(intent),
             ),
         )

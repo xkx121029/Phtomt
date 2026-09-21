@@ -144,6 +144,14 @@ class AgentEngine(
         )
         /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
         private const val MAX_TRACES = 300
+        /**
+         * shell 输出回注 AI 的字符预算。
+         * 与内置浏览器的 [com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS] 同量级：
+         * 网页 `curl` 回来要先转成 Markdown 再回传，原来的 1200 只够看到 `<head>` 开头。
+         */
+        private const val SHELL_OUTPUT_BUDGET = 4000
+        /** 转 Markdown 时给"网页标题 / 网页正文（已自动转为 Markdown）"两行表头留的余量 */
+        private const val SHELL_MD_HEADER_RESERVE = 300
         /** 调试执行历史最多保留条数 */
         private const val MAX_EXECUTION_HISTORY = 400
         /** 对话历史（决策 prompt）最多保留条数：长线任务每步决策都 append，需上限防内存膨胀 */
@@ -2635,7 +2643,7 @@ class AgentEngine(
             "内置浏览器（$op）结果：\n$text"
         } else {
             "内置浏览器（$op）失败：$text\n请按提示调整：" +
-                "需要打开网页就先用 browse_open；需要知道当前页有什么链接/输入框/按钮就先 browse_read。"
+                "需要打开网页就先用 browse_open；需要知道当前页有什么可以点、可以填什么就先 browse_read（正文里的链接文字、输入框、按钮都在里面）。"
         }
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
         addConversation("assistant", injected)
