@@ -72,6 +72,8 @@ const PAGE_PAY = `{"context_hint":"确认订单页，底部有确认支付按钮
 const PAGE_ICON = `{"context_hint":"某应用首页，顶部只有图标没有文字","page_type":"home","fingerprint":"fp_icon_only","elements":[{"id":"","type":"View","label":"","clickable":false,"bounds_ratio":[0,0,1,0.06]},{"id":"","type":"ImageView","label":"","clickable":true,"bounds_ratio":[0.86,0.02,0.94,0.06]},{"id":"","type":"ImageView","label":"","clickable":true,"bounds_ratio":[0.06,0.02,0.14,0.06]}]}`;
 // 内置浏览器页：WebView 在元素树里只有一个节点，网页控件读不到，必须靠 browse_* 操作
 const PAGE_BROWSER = `{"context_hint":"内置浏览器：搜索结果页（美元人民币汇率）","page_type":"browser","fingerprint":"fp_browser_serp","elements":[{"id":"","type":"WebView","label":"网页内容","clickable":true,"bounds_ratio":[0,0.09,1,0.93]}]}`;
+// 系统桌面：与"打开某应用"的步骤配套，避免页面提示与元素树互相矛盾
+const PAGE_HOME = `{"context_hint":"系统桌面","page_type":"launcher","fingerprint":"fp_launcher","elements":[{"id":"node_dock","type":"View","label":"","clickable":true,"bounds_ratio":[0,0.88,1,0.98]}]}`;
 
 function decide(lang, extra) {
   const ctx = {
@@ -266,7 +268,7 @@ async function testDecision(lang) {
     const { raw, json } = await ask(sys(L), decide(L, {
       task: L === 'CN' ? '帮我打开浏览器' : 'Open the browser app for me',
       total: 2, step: L === 'CN' ? '打开浏览器应用' : 'launch the browser app',
-      hint: L === 'CN' ? '桌面' : 'home screen', page: PAGE_MEITUAN,
+      hint: L === 'CN' ? '系统桌面' : 'home screen', page: PAGE_HOME,
     }));
     const a = first(json);
     const ok = !!a && a.intent === 'open_app' && /浏览器|browser/i.test(String(a.app || ''));

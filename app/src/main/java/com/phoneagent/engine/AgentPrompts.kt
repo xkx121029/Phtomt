@@ -212,6 +212,7 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
   3. 目标是 App 内部页面或系统页（某 App 的设置页、系统设置项）→ 用 open_app / open 深链，绝不用 browse_*。
   4. 目标只是纯文本接口（JSON/纯文本）且本机已装 Termux → 可以 fetch；只要需要看网页界面，一律 browse_*。fetch 拿回 HTML 时端侧会自动转成 Markdown 再给你，但它终究只是"文字快照"——网页在屏幕上是什么样、有哪些按钮可点，它看不到，所以不能拿它代替 browse_*。
 - 边界（违反 = 本步失败）：
+  - 上网查资料/搜东西时**直接 browse_open 一个搜索引擎结果页**（如 https://www.bing.com/search?q=关键词），禁止先 open_app 打开"浏览器"应用再去点它的搜索框——打开应用不等于打开网页，只会白白多两步。
   - browse_click / browse_input / browse_scroll / browse_back 只作用于浏览器里"当前已打开的那一页"；没打开过网页就先 browse_open，否则端侧会回"浏览器还没打开"。
   - 网页里的元素一律用 browse_click / browse_input 按文字定位，禁止改用 tap + 坐标去猜网页控件（网页控件不在手机元素树里）。
   - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。
@@ -258,7 +259,7 @@ context_hint 含【⚠️ 疑似倒计时广告】→ 必须输出 wait，绝对
 - 缺这个字段 = 任务失败，用户会看到未经确认的操作发生。
 
 # 国产应用速查（open_app 的 app 可直接写中文名）
-泛指类目（浏览器、文档、相册、邮件、计算器、时钟、相机…）优先用系统自带应用：直接写类目名即可（如 app="浏览器"），端侧同名多个时自动挑系统应用；只有用户点名了具体第三方应用才写它的名字。
+泛指类目（浏览器、文档、相册、邮件、计算器、时钟、相机…）优先用系统自带应用：直接写类目名即可（如 app="浏览器"），端侧同名多个时自动挑系统应用；只有用户点名了具体第三方应用才写它的名字。注意这只用于"打开某个应用本身"；上网查资料/看网页一律 browse_open（见网页浏览）。
 $COMMON_CN_APPS
 
 # 统一字段
@@ -374,6 +375,7 @@ This app has a real built-in browser: after browse_open the UI switches to that 
   3. The target is an in-app page or a system page (an app's settings screen, a system setting) → use open_app / open deep link, never browse_*.
   4. The target is merely a plain-text API (JSON/plain text) and Termux is installed → fetch is acceptable; whenever a web UI must be seen, always use browse_*. When fetch gets HTML, the device converts it to Markdown for you, but it is still only a text snapshot — it cannot show what the page looks like or which buttons exist, so never use it as a substitute for browse_*.
 - Boundaries (violating any fails the step):
+  - For research/searching, browse_open a search-engine results URL directly (e.g. https://www.bing.com/search?q=keyword); NEVER open_app the "browser" first and then hunt for its search box — launching an app is not opening a web page, it just wastes two steps.
   - browse_click / browse_input / browse_scroll / browse_back only act on the page currently loaded in the browser; if no page was opened yet, browse_open first — otherwise the device replies "the built-in browser is not open yet".
   - Web-page elements MUST be handled with browse_click / browse_input by text; NEVER switch to tap + coordinates to guess at web controls (web controls are not in the phone's element tree).
   - The browse_read result is returned to you as the previous step result — read it, then decide; do not keep blind-clicking.
@@ -420,7 +422,7 @@ An action with real, non-revertible consequences → the output MUST carry "need
 - Missing this field = task failure: the user would see an unconfirmed action happen.
 
 # Common Chinese Apps (open_app 'app' may be the Chinese name directly)
-For a generic category (browser, document viewer, gallery, mail, calculator, clock, camera…) prefer the built-in system app: just write the category name (e.g. app="浏览器" for browser) and the device picks the system app when several share the name; write a specific third-party app's name only when the user named it.
+For a generic category (browser, document viewer, gallery, mail, calculator, clock, camera…) prefer the built-in system app: just write the category name (e.g. app="浏览器" for browser) and the device picks the system app when several share the name; write a specific third-party app's name only when the user named it. This applies only to "launch an app itself" — for research/viewing a web page always use browse_open (see Web Browsing).
 $COMMON_CN_APPS
 
 # Common Fields
