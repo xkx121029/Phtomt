@@ -43,8 +43,10 @@ function constText(src, name) {
   const m = new RegExp(`val\\s+${name}\\s*=`).exec(src);
   if (!m) throw new Error(`常量未找到: ${name}`);
   const semi = src.indexOf('"', m.index);
-  const end = src.indexOf('\n\n', semi);
-  const body = src.slice(semi, end < 0 ? src.length : end);
+  // 常量段以空行结束；必须兼容 CRLF，否则会一路吃到文件末尾，把整份文件的其他字符串也算进来
+  const blank = /\r?\n\r?\n/.exec(src.slice(semi));
+  const end = blank ? semi + blank.index : src.length;
+  const body = src.slice(semi, end);
   return [...body.matchAll(/"([^"]*)"/g)].map((x) => x[1]).join('');
 }
 
