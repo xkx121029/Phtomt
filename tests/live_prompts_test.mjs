@@ -81,7 +81,8 @@ function decide(lang, extra) {
 const sys = (lang) => (lang === 'CN' ? P.systemCN : P.systemEN);
 
 async function ask(system, user, temperature = 0.1) {
-  const raw = await callAgnes([{ role: 'system', content: system }, { role: 'user', content: user }], temperature);
+  const messages = system ? [{ role: 'system', content: system }, { role: 'user', content: user }] : [{ role: 'user', content: user }];
+  const raw = await callAgnes(messages, temperature);
   return { raw, json: parseJson(raw) };
 }
 
@@ -160,7 +161,7 @@ async function testPlanning(lang) {
   // 2-1 目标明确：不应提澄清，3~8 步
   {
     const task = L === 'CN' ? '打开美团搜索无线耳机并把第一个商品加入购物车' : 'Open Meituan, search wireless earbuds, add the first item to cart';
-    const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+    const raw = await callAgnes([{ role: 'user', content: L === 'CN'
       ? `【模式：歧义检测 + 深度任务规划】\n\n用户任务：${task}\n用户偏好（仅相关部分）：无\n已安装应用：微信、美团、支付宝、高德地图\n\n# 当前设备状态（无需解锁）\n手机已解锁，当前停留在本应用「Happy Agent（快乐手机助手）」页面。`
       : `【Mode: Ambiguity Detection + Deep Task Planning】\n\nUser task: ${task}\nUser preferences (relevant only): none\nInstalled apps: WeChat, Meituan, Alipay, Amap\n\n# Current Device State (no unlock needed)\nThe phone is already unlocked and currently in this app "Happy Agent".` }], 0.2);
     const j = parseJson(raw);
@@ -174,7 +175,7 @@ async function testPlanning(lang) {
   // 2-2 目标含糊：应触发澄清，选项 2~5 且含 manual
   {
     const task = L === 'CN' ? '帮我把那个东西弄一下' : 'Just handle that thing for me';
-    const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+    const raw = await callAgnes([{ role: 'user', content: L === 'CN'
       ? `【模式：歧义检测 + 深度任务规划】\n\n用户任务：${task}\n用户偏好（仅相关部分）：无\n已安装应用：微信、美团、支付宝\n\n# 当前设备状态（无需解锁）\n手机已解锁，当前停留在本应用「Happy Agent（快乐手机助手）」页面。`
       : `【Mode: Ambiguity Detection + Deep Task Planning】\n\nUser task: ${task}\nUser preferences (relevant only): none\nInstalled apps: WeChat, Meituan, Alipay\n\n# Current Device State (no unlock needed)\nThe phone is already unlocked and currently in this app "Happy Agent".` }], 0.2);
     const j = parseJson(raw);
@@ -190,7 +191,7 @@ async function testPlanning(lang) {
 async function testReplan(lang) {
   console.log(`\n===== 3. 重规划 · ${lang} =====`);
   const L = lang === 'CN' ? 'CN' : 'EN';
-  const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+  const raw = await callAgnes([{ role: 'user', content: L === 'CN'
     ? `【重新规划】\n\n用户任务：在美团点一份黄焖鸡米饭\n卡住原因：连续 3 次都没能在首页找到搜索框，点击的坐标落到空白处\n已执行步骤及结果：1. 打开美团（成功，已进入首页）\n当前手机已解锁并停留在 Happy Agent（快乐手机助手）应用中。`
     : `【Replan】\n\nUser task: order braised chicken rice on Meituan\nStuck reason: failed 3 times to find the search box on the home page; taps landed on blank area\nExecuted steps and results: 1. open Meituan (succeeded, home page shown)\nThe phone is already unlocked and in the Happy Agent app.` }], 0.5);
   const j = parseJson(raw);
@@ -208,7 +209,7 @@ async function testBatch(lang) {
   console.log(`\n===== 4. 批量规划 · ${lang} =====`);
   const L = lang === 'CN' ? 'CN' : 'EN';
   const task = L === 'CN' ? '帮我给张三发一条微信说晚点到，然后在美团点一份黄焖鸡米饭' : 'Message Zhang San on WeChat that I will be late, then order braised chicken rice on Meituan';
-  const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+  const raw = await callAgnes([{ role: 'user', content: L === 'CN'
     ? `【批量任务规划】\n\n用户输入：${task}\n已安装应用：微信、美团、支付宝`
     : `【Batch Task Planning】\n\nUser input: ${task}\nInstalled apps: WeChat, Meituan, Alipay` }], 0.2);
   const j = parseJson(raw);
@@ -225,7 +226,7 @@ async function testHelpers(lang) {
   const L = lang === 'CN' ? 'CN' : 'EN';
 
   {
-    const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+    const raw = await callAgnes([{ role: 'user', content: L === 'CN'
       ? `【执行验证】\n\n上一个动作：点击"搜索商品"框\n预期结果：键盘弹出且输入框获得焦点\n\n当前页面：{"elements":[{"id":"node_search","label":"搜索商品","focused":true}],"context_hint":"美团首页"}`
       : `【Execution Verification】\n\nPrevious action: tap the "Search products" box\nExpected: keyboard appears and the field is focused\n\nCurrent page: {"elements":[{"id":"node_search","label":"Search products","focused":true}],"context_hint":"Meituan home"}` }], 0.1);
     const j = parseJson(raw);
@@ -234,7 +235,7 @@ async function testHelpers(lang) {
   }
 
   {
-    const raw = await callAgnes([{ role: 'system', content: sys(L) }, { role: 'user', content: L === 'CN'
+    const raw = await callAgnes([{ role: 'user', content: L === 'CN'
       ? `【记忆提炼】\n\n刚完成的任务：在美团点一份黄焖鸡米饭\n结果：已完成，订单提交成功\n执行过程摘要：\n1. 打开美团 ✅\n2. 搜索"黄焖鸡米饭" ✅\n3. 选第一家店下单 ✅`
       : `【Memory Distillation】\n\nTask just finished: order braised chicken rice on Meituan\nOutcome: completed, order submitted\nExecution summary:\n1. open Meituan ✅\n2. search "braised chicken rice" ✅\n3. order from the first shop ✅` }], 0.1);
     const j = parseJson(raw);
