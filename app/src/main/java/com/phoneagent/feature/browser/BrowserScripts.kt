@@ -65,7 +65,7 @@ internal object BrowserScripts {
     var lists = [], items = [];
     var preBuf = null, preLang = '';
     var rows = null, row = null, cellOpen = false, cellExtras = [];
-    var quoteDepth = 0, truncated = false;
+    var quoteDepth = 0, truncated = false, pendSpace = false;
 
     // ===== 基础工具 =====
     function rep(s, n){ var r = ''; for (var i = 0; i < n; i++) r += s; return r; }
@@ -82,7 +82,16 @@ internal object BrowserScripts {
       return false;
     }
     function curText(){ return cur.join(''); }
-    function resetInline(){ cur.length = 0; marks.length = 0; }
+    function resetInline(){ cur.length = 0; marks.length = 0; pendSpace = false; }
+
+    // 待定空格：文本以空白结尾时不能立刻加空格（后面可能还有空白），但遇到行内标记 / 图片 /
+    // 换行这类非文本片段就说明空白确实该保留。少了它 `你好<strong>加粗</strong>` 会输出
+    // `你好**加粗**`，相邻两字被粘成一个词（与 Kotlin 侧逐条一致）
+    function flushPend(){
+      if (!pendSpace) return;
+      pendSpace = false;
+      if (cur.length && cur[cur.length - 1] !== '\n') cur.push(' ');
+    }
 
     // ===== 行内：空白折叠 + CJK 不插空格 + 转义（与 Kotlin 侧逐条一致）=====
     function pushChar(ch, s, i){
@@ -95,24 +104,25 @@ internal object BrowserScripts {
       cur.push(ch);
     }
     function pushText(s){
-      var pend = false;
       for (var i = 0; i < s.length; i++){
         var ch = s.charAt(i);
-        if (/\s/.test(ch) || ch === '\u00a0' || ch === '\u200b') { pend = true; continue; }
-        if (pend) {
+        if (/\s/.test(ch) || ch === '\u00a0' || ch === '\u200b') { pendSpace = true; continue; }
+        if (pendSpace) {
           if (cur.length && cur[cur.length - 1] !== '\n' && needSpace(cur[cur.length - 1], ch)) cur.push(' ');
-          pend = false;
+          pendSpace = false;
         }
         pushChar(ch, s, i);
       }
     }
-    function markOpen(o, c){ marks.push({o:o, c:c, a:cur.length}); cur.push(o); }
+    function markOpen(o, c){ flushPend(); marks.push({o:o, c:c, a:cur.length}); cur.push(o); }
     function markClose(){
       if (!marks.length) return;
       var m = marks.pop();
       if (cur.length > m.a + m.o.length) cur.push(m.c); else cur.length = m.a;
     }
+    function rawInline(s){ flushPend(); cur.push(s); }
     function brk(){
+      flushPend();
       if (preBuf) { preBuf.push('\n'); return; }
       if (listDepth > 0) { if (cur.length && cur[cur.length - 1] !== ' ') cur.push(' '); return; }
       while (cur.length && cur[cur.length - 1] === ' ') cur.pop();
@@ -257,7 +267,7 @@ internal object BrowserScripts {
       var u = abs(el.getAttribute('src'));
       if (!u) return;
       var alt = String(el.getAttribute('alt') || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-      cur.push('![' + alt + '](' + u + ')');
+      rawInline('![' + alt + '](' + u + ')');
     }
 
     function walk(el, depth){
