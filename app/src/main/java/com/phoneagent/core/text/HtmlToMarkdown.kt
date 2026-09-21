@@ -76,9 +76,9 @@ object HtmlToMarkdown {
     /** 自闭合（无子树）标签 */
     const val VOID_RULE = "area base br col embed hr img input link meta param source track wbr"
 
-    /** 行内标记：标签 → Markdown 包裹符（`**`/`*`/`~~`/`==`/`` ` ``） */
+    /** 行内标记：`标签:Markdown 包裹符`（用冒号分隔，因为包裹符本身含 `=`） */
     const val MARK_RULE =
-        "strong=** b=** em=* i=* del=~~ s=~~ strike=~~ mark== code=` kbd=` samp=`"
+        "strong:** b:** em:* i:* del:~~ s:~~ strike:~~ mark:== code:` kbd:` samp:`"
 
     /** 文本中需要加反斜杠转义的字符 */
     const val ESCAPE_RULE = "\\ ` * _ [ ]"
@@ -101,8 +101,8 @@ object HtmlToMarkdown {
 
     private fun marksOf(rule: String): Map<String, String> =
         rule.split(' ')
-            .filter { it.isNotBlank() && it.contains('=') }
-            .associate { it.substringBefore('=') to it.substringAfter('=') }
+            .filter { it.isNotBlank() && it.contains(':') }
+            .associate { it.substringBefore(':') to it.substringAfter(':') }
 
     private val MARK_TAGS = marksOf(MARK_RULE)
 
@@ -131,12 +131,12 @@ object HtmlToMarkdown {
     fun jsArr(rule: String): String =
         "[" + rule.split(' ').filter { it.isNotBlank() }.joinToString(",") { jsStr(it) } + "]"
 
-    /** 生成 JS 的 `[['strong','**'],...]` 查表数组（沿用 [MARK_RULE] 的 `tag=包裹符` 记法） */
+    /** 生成 JS 的 `[['strong','**'],...]` 查表数组（沿用 [MARK_RULE] 的 `tag:包裹符` 记法） */
     fun jsMarkPairs(rule: String): String =
         "[" + rule.split(' ')
-            .filter { it.isNotBlank() && it.contains('=') }
+            .filter { it.isNotBlank() && it.contains(':') }
             .joinToString(",") {
-                "[" + jsStr(it.substringBefore('=')) + "," + jsStr(it.substringAfter('=')) + "]"
+                "[" + jsStr(it.substringBefore(':')) + "," + jsStr(it.substringAfter(':')) + "]"
             } + "]"
 
     /** 生成 JS 单引号字符串字面量（转义反斜杠 / 单引号 / 换行） */
@@ -567,7 +567,8 @@ object HtmlToMarkdown {
             val name = t.name
             if (name in VOID_TAGS) {
                 when (name) {
-                    "br" -> b.br()
+                    // pre 里的 <br> 是真实换行，不能折叠成空格
+                    "br" -> preBuf?.append('\n') ?: b.br()
                     "img" -> image(t)
                     "hr" -> {
                         flushInline()
@@ -579,6 +580,12 @@ object HtmlToMarkdown {
             }
             // 深度兜底：超限时只占位不展开，保证结束标签配平
             if (stack.size >= MAX_DEPTH) {
+                stack.add(Frame(name, K_SKIP))
+                return
+            }
+            // pre 内部：只认 <code class="language-x"> 取语言串，其余标签一律不加标记
+            if (preBuf != null) {
+                if (name == "code" && preLang == null) preLang = codeLang(t)
                 stack.add(Frame(name, K_SKIP))
                 return
             }
@@ -605,8 +612,6 @@ object HtmlToMarkdown {
                     b.inList++
                 }
                 "li" -> {
-                    // 上一个 li 漏写 </li> 时先收口，避免两条内容粘在一行
-                    closeNearest(setOf("li"))
                     flushInline()
                     stack.add(Frame(name, K_ITEM, level = nearestList()?.level ?: 0))
                 }
@@ -626,25 +631,21 @@ object HtmlToMarkdown {
                     row = null
                     stack.add(Frame(name, K_TABLE))
                 }
+                // 表题不进管道表（否则会被当成第一个单元格），整段丢弃
                 "caption" -> {
                     flushInline()
                     stack.add(Frame(name, K_SKIP))
                 }
                 "tr" -> {
-                    closeRow()
                     row = ArrayList()
                     stack.add(Frame(name, K_ROW))
                 }
-                "td", "th" -> {
-                    closeCell()
-                    stack.add(Frame(name, K_CELL))
-                }
+                "td", "th" -> stack.add(Frame(name, K_CELL))
                 "a" -> {
                     val url = absolute(t.attrs["href"])
                     if (url == null) b.push("", "") else b.push("[", "]($url)")
                     stack.add(Frame(name, K_MARK))
                 }
-                "img" -> image(t)
                 else -> {
                     val mark = MARK_TAGS[name]
                     if (mark != null) {
@@ -657,6 +658,13 @@ object HtmlToMarkdown {
                 }
             }
         }
+
+        private fun codeLang(t: Tag): String =
+            t.attrs["class"].orEmpty().split(' ', '\t', '\n')
+                .firstOrNull { it.startsWith("language-") }
+                ?.removePrefix("language-")
+                ?.take(16)
+                .orEmpty()
 
         private fun orderedStart(t: Tag): Int =
             t.attrs["start"]?.trim()?.toIntOrNull()?.takeIf { it in 1..99_999 } ?: 1
@@ -702,7 +710,10 @@ object HtmlToMarkdown {
                 K_CELL -> closeCell()
                 K_ROW -> closeRow()
                 K_MARK -> b.pop()
-                else -> {}
+                else -> {
+                    // 表题内容已进 cur，出栈时清掉，避免被算进第一个单元格
+                    if (f.tag == "caption") b.resetInline()
+                }
             }
         }
 
@@ -1013,8 +1024,9 @@ object HtmlToMarkdown {
         // ---------- 块 ----------
 
         fun emit(block: String) {
-            val b = block.trim()
-            if (b.isEmpty()) return
+            // 只去尾部空白：行首缩进是列表层级的一部分（嵌套 li 靠它保层级）
+            val b = block.trimEnd()
+            if (b.isBlank()) return
             if (inList > 0) {
                 if (listBuf.isNotEmpty()) listBuf.append('\n')
                 listBuf.append(b)
