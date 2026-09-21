@@ -68,17 +68,33 @@ const SAMPLE = {
   stuckStep: '点击搜索框',
 };
 
-function render(text, consts) {
+function render(text, consts, vars = {}) {
+  const v = { ...SAMPLE, ...vars };
   return text
     .replace(/\$([A-Z_][A-Z0-9_]*)/g, (m, name) => (name in consts ? consts[name] : m))
     .replace(/\$\{(?:[^{}]|\{[^{}]*\})*\}/g, (m) => {
       const inner = m.slice(2, -1).trim();
-      const key = Object.keys(SAMPLE).find((k) => inner === k || inner.startsWith(k + '.'));
-      if (key) return SAMPLE[key];
+      const key = Object.keys(v).find((k) => inner === k || inner.startsWith(k + '.'));
+      if (key) return v[key];
       const quoted = /"([^"]*)"/.exec(inner);
       return quoted ? quoted[1] : `[${inner.split('.')[0]}]`;
     })
-    .replace(/\$([A-Za-z_]\w*)/g, (m, name) => (name in SAMPLE ? SAMPLE[name] : m));
+    .replace(/\$([A-Za-z_]\w*)/g, (m, name) => (name in v ? v[name] : m));
+}
+
+/**
+ * 用自定义变量渲染某个提示词函数（lang: 'CN' | 'EN'）。
+ * 与软件运行时同一份文本，只是把 $task/$installedApps 等换成测试用例的输入。
+ * build('planning', 'CN', { task: '...' })
+ */
+export function build(name, lang = 'CN', vars = {}) {
+  const src = readFileSync(KT_PATH, 'utf8');
+  const consts = { COMMON_CN_APPS: constText(src, 'COMMON_CN_APPS') };
+  const anchor = name === 'system' ? 'systemCN' : name;
+  const raws = rawStrings(src, fnStart(src, anchor), 2);
+  const raw = raws[lang === 'EN' ? 1 : 0];
+  if (raw === undefined) throw new Error(`提示词未找到: ${name}/${lang}`);
+  return render(raw, consts, vars).trim();
 }
 
 export function loadPrompts() {
