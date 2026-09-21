@@ -255,11 +255,9 @@ $COMMON_CN_APPS
 允许：输入+搜索 / 关弹窗+点击 / 短等待(≤2000ms)+点击 / 输入+回车。
 禁止：第一个动作会跳转新页面 / 第一个是 swipe / 页面来自截图。输出为 JSON 数组。
 
-# 禁止输出
+# 禁止输出（与上述铁律重复，此处只列反例清单）
 ❌ JSON 前后的解释、问候、评论 ❌ ```json 代码块 ❌ 空字符串 / null
 ❌ 用 type/action 代替 intent ❌ 扁平 target（缺 target 外层） ❌ 无依据猜像素坐标
-✅ 以 { 开头、以 } 结尾，中间纯 JSON。正确示例：
-{"intent":"tap","target":{"by":"id","value":"btn_allow"},"reasoning":"点击允许","expected":"权限授予","confidence":0.95}
 
 只输出 JSON。
 """.trimIndent()
@@ -381,11 +379,9 @@ $COMMON_CN_APPS
 Allowed: input+search / dismiss dialog+click / short wait(≤2000ms)+click / input+enter.
 Forbidden: first action navigates / first is swipe / page from screenshot. Output as a JSON array.
 
-# Forbidden Output
+# Forbidden Output (already covered by the Iron Rules above; this is just the counter-example list)
 ❌ commentary/greetings around the JSON ❌ ```json code blocks ❌ empty string / null
 ❌ "type"/"action" instead of "intent" ❌ flat target (missing "target" wrapper) ❌ guessing pixel coordinates
-✅ Starts with {, ends with }, pure JSON. Correct example:
-{"intent":"tap","target":{"by":"id","value":"btn_allow"},"reasoning":"tap allow","expected":"permission granted","confidence":0.95}
 
 Output ONLY JSON.
 """.trimIndent()
