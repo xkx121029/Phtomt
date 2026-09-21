@@ -258,6 +258,16 @@ fun HomeScreen(
                 onClick = { onOpenExtras(ExtrasPage.Skill) },
             )
         }
+        Spacer(Modifier.height(12.dp))
+        QuickEntry(
+            modifier = Modifier.fillMaxWidth().animateListItem(9),
+            icon = AppIcons.Globe,
+            tint = MaterialTheme.colorScheme.secondary,
+            title = "浏览器",
+            subtitle = "AI 上网、操作网页的落点",
+            onPress = { pressHaptic() },
+            onClick = { onOpenExtras(ExtrasPage.Browser) },
+        )
 
         // 权限雷达
         SectionHeader("权限雷达")
