@@ -67,8 +67,10 @@ import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.debug.DebugEmptyHint
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -84,21 +86,73 @@ internal fun StepsPanel(
     traces: List<com.phoneagent.domain.model.StepTrace>,
     annotatedMap: Map<Int, android.graphics.Bitmap>,
     humanMode: Boolean,
+    onHumanModeChange: (Boolean) -> Unit,
+    stepShot: com.phoneagent.domain.model.StepShot,
 ) {
-    if (traces.isEmpty()) {
-        DebugEmptyHint("暂无任务步骤：运行智能体后，每个决策步骤都会记录在这里")
-        return
-    }
-    val groups = traces.groupBy { it.taskId }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        groups.keys.sortedByDescending { it }.forEach { tid ->
-            val list = groups.getValue(tid).sortedBy { it.step }
-            val name = list.first().taskName ?: "任务 #$tid"
-            item(key = "hdr$tid") { TaskHeader(name, list.size) }
-            items(list, key = { "$tid:${it.step}" }) { tr ->
-                StepTraceCard(tr, annotatedMap[tr.step], humanMode)
+    // 最新一步截图、人话/原始切换都只作用于本页，收进面板顶部随列表滚动，
+    // 不再常驻全页顶部去挤压其它 Tab 的内容高度。
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+    ) {
+        item(key = "steps-tools") {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
+                HumanModeSwitch(humanMode, onHumanModeChange)
+                StepShotPanel(stepShot)
             }
         }
+        if (traces.isEmpty()) {
+            item(key = "steps-empty") {
+                DebugEmptyHint(
+                    "暂无任务步骤：运行智能体后，每个决策步骤都会记录在这里",
+                    Modifier.fillMaxWidth().heightIn(min = 200.dp),
+                )
+            }
+        } else {
+            val groups = traces.groupBy { it.taskId }
+            groups.keys.sortedByDescending { it }.forEach { tid ->
+                val list = groups.getValue(tid).sortedBy { it.step }
+                val name = list.first().taskName ?: "任务 #$tid"
+                item(key = "hdr$tid") { TaskHeader(name, list.size) }
+                itemsIndexed(list, key = { _, tr -> "$tid:${tr.step}" }) { i, tr ->
+                    StepTraceCard(
+                        tr = tr,
+                        annotated = annotatedMap[tr.step],
+                        humanMode = humanMode,
+                        // 长列表里逐项延迟会越滚越慢，限定前 6 项参与级联
+                        modifier = Modifier.animateListItem(index = i.coerceAtMost(6)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 人话 / 原始 展示切换（v2.2.1）：只影响「任务」页，故挂在面板内部而非全页顶部 */
+@Composable
+private fun HumanModeSwitch(humanMode: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+    ) {
+        FilterChip(
+            selected = humanMode,
+            onClick = { onChange(true) },
+            label = { Text("人话") },
+        )
+        FilterChip(
+            selected = !humanMode,
+            onClick = { onChange(false) },
+            label = { Text("原始") },
+            leadingIcon = { Icon(AppIcons.Terminal, contentDescription = null, modifier = Modifier.size(16.dp)) },
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            if (humanMode) "每步一句摘要" else "完整发送 / 返回数据",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -115,7 +169,12 @@ internal fun TaskHeader(name: String, count: Int) {
 
 /** 单个决策步骤的详细卡：截图/发送/返回/Token/延迟/视觉模型/思考/AI图片描述 */
 @Composable
-private fun StepTraceCard(tr: com.phoneagent.domain.model.StepTrace, annotated: android.graphics.Bitmap?, humanMode: Boolean) {
+private fun StepTraceCard(
+    tr: com.phoneagent.domain.model.StepTrace,
+    annotated: android.graphics.Bitmap?,
+    humanMode: Boolean,
+    modifier: Modifier = Modifier,
+) {
     var expanded by remember { mutableStateOf(false) }
     val img = annotated ?: tr.screenshot
     val visionColor = when (tr.visionSource) {
@@ -128,9 +187,11 @@ private fun StepTraceCard(tr: com.phoneagent.domain.model.StepTrace, annotated: 
     val humanSummary = remember(tr.receivedText) { HumanTranslator.summarizeDecision(tr.receivedText) }
     val confidence = remember(tr.receivedText) { HumanTranslator.extractConfidence(tr.receivedText) }
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        // 与全局列表项一致：20dp 圆角 + 1dp 细边，深浅主题都能看出层次
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             // 头部：步骤 + 视觉来源 + 思考标记
@@ -160,27 +221,7 @@ private fun StepTraceCard(tr: com.phoneagent.domain.model.StepTrace, annotated: 
                 )
                 confidence?.let { c ->
                     Spacer(Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(AppRadii.Chip))
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f)),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(c.toFloat())
-                                .height(5.dp)
-                                .clip(RoundedCornerShape(AppRadii.Chip))
-                                .background(
-                                    when {
-                                        c >= 0.75 -> Success
-                                        c >= 0.6 -> Warning
-                                        else -> MaterialTheme.colorScheme.error
-                                    }
-                                ),
-                        )
-                    }
+                    ConfidenceBar(c)
                 }
             }
             // 截图（框选后优先展示框选图）
@@ -231,7 +272,7 @@ private fun StepTraceCard(tr: com.phoneagent.domain.model.StepTrace, annotated: 
                 Text("发送 / 返回", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                 Icon(
                     imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                    contentDescription = "展开",
+                    contentDescription = if (expanded) "收起发送与返回" else "展开发送与返回",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp).clickable { expanded = !expanded },
                 )

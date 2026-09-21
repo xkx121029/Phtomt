@@ -1,6 +1,12 @@
 package com.phoneagent.ui.debug
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -30,8 +36,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +85,10 @@ import com.phoneagent.ui.debug.panels.StepsPanel
 import com.phoneagent.ui.debug.panels.TimelinePanel
 import com.phoneagent.ui.debug.panels.drawBoxes
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.DurationInstant
+import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -105,6 +118,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var tab by remember { mutableStateOf(DebugTab.STEPS) }
     /** 人话 / 原始 展示模式（v2.2.1）：人话模式在步骤卡顶部显示翻译摘要；原始模式显示完整技术数据 */
     var humanMode by remember { mutableStateOf(true) }
+    var actionsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -114,12 +128,13 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     // 用外挂视觉对本次任务所有截图画框的结果（step → 框选图）
     var annotatedMap by remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
     var annotating by remember { mutableStateOf(false) }
-    var annotateMsg by remember { mutableStateOf<String?>(null) }
+
+    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
 
     fun runExternalAnnotate() {
         scope.launch {
             annotating = true
-            annotateMsg = null
+            toast("正在用外挂视觉画框…")
             val out = mutableMapOf<Int, android.graphics.Bitmap>()
             val tasks = traces.filter { it.taskId >= 0 }
             var count = 0
@@ -132,8 +147,10 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             annotatedMap = out
             annotating = false
             val connected = com.phoneagent.device.vision.ExternalVisionProvider.isConnected
-            annotateMsg = if (tasks.isEmpty()) "本任务暂无可画框的截图"
-            else "已用${if (connected) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
+            toast(
+                if (tasks.isEmpty()) "本任务暂无可画框的截图"
+                else "已用${if (connected) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
+            )
         }
     }
 
@@ -143,83 +160,110 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     ) {
         AppTopBar(
             title = "调试",
-            subtitle = "按任务的每步决策 · 发送/返回 · Token · 视觉与截图",
+            subtitle = "每一步的决策 · 发送与返回 · Token · 视觉与截图",
             trailingContent = {
-                IconButton(onClick = {
-                    android.widget.Toast.makeText(context, vm.exportDiagnosticReport(context), android.widget.Toast.LENGTH_LONG).show()
-                }) {
-                    Icon(AppIcons.Description, contentDescription = "导出诊断报告(人话+原始)", tint = MaterialTheme.colorScheme.primary)
-                }
-                IconButton(onClick = {
-                    android.widget.Toast.makeText(context, vm.exportLogsJsonAll(context), android.widget.Toast.LENGTH_LONG).show()
-                }) {
-                    Icon(AppIcons.FileDownload, contentDescription = "导出JSON(分任务)", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(onClick = { vm.clearDebug() }) {
-                    Icon(AppIcons.Delete, contentDescription = "清空", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                // 导出 / 清空 / 画框统一收进内嵌菜单，页头只留一个入口，避免三四个图标并排堆叠
+                Box {
+                    IconButton(onClick = { actionsOpen = true }) {
+                        Icon(
+                            AppIcons.More,
+                            contentDescription = "更多操作",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    DebugActionsMenu(
+                        expanded = actionsOpen,
+                        onDismiss = { actionsOpen = false },
+                        annotating = annotating,
+                        onAnnotate = { actionsOpen = false; runExternalAnnotate() },
+                        onExportReport = { actionsOpen = false; toast(vm.exportDiagnosticReport(context)) },
+                        onExportJson = { actionsOpen = false; toast(vm.exportLogsJsonAll(context)) },
+                        onClear = { actionsOpen = false; vm.clearDebug() },
+                    )
                 }
             },
         )
 
-        Spacer(Modifier.height(8.dp))
-        CapabilityStrip(permissions)
-        Spacer(Modifier.height(8.dp))
-        StepShotPanel(vm.stepShot.collectAsState().value)
-        // 用外挂视觉对本次任务所有截图画框
-        Surface(
-            shape = RoundedCornerShape(AppRadii.Chip),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(AppIcons.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("外挂视觉画框", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        annotateMsg ?: "对本次任务所有截图，用本地 3B 视觉一键画框（类型+用途+坐标）",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                }
-                androidx.compose.material3.TextButton(onClick = { runExternalAnnotate() }, enabled = !annotating) {
-                    Text(if (annotating) "画框中…" else "一键画框")
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        // 人话 / 原始 双语展示切换（v2.2.1）
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf(true to "人话", false to "原始").forEach { (human, label) ->
-                FilterChip(
-                    selected = humanMode == human,
-                    onClick = { humanMode = human },
-                    label = {
-                        Text("$label${if (human) "（每步一句）" else "（完整数据）"}")
-                    },
-                    leadingIcon = if (human) null else {
-                        {
-                            Icon(AppIcons.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(10.dp))
-        SegmentedTabs(selected = tab, onSelect = { tab = it })
+        // 能力状态条：无障碍 / 悬浮窗 / 截屏 / 自启动 / Shizuku
+        CapabilityStrip(permissions, Modifier.padding(horizontal = AppSpacing.Lg))
+        Spacer(Modifier.height(AppSpacing.Md))
+        SegmentedTabs(selected = tab, onSelect = { tab = it }, modifier = Modifier.padding(horizontal = AppSpacing.Lg))
+        Spacer(Modifier.height(AppSpacing.Md))
 
-        Spacer(Modifier.height(16.dp))
-        when (tab) {
-            DebugTab.STEPS -> StepsPanel(traces, annotatedMap, humanMode)
-            DebugTab.TIMELINE -> TimelinePanel(traces, logs)
-            DebugTab.METRICS -> MetricsPanel(metrics)
-            DebugTab.CHAT -> ChatPanel(conversation)
-            DebugTab.LOGS -> LogPanel(logs)
-            DebugTab.HISTORY -> HistoryPanel(history)
+        // 面板切换只做「自下而上的淡入」，不做横向滑动；面板统一 16dp 左右留白（原来卡片是贴边的）
+        AnimatedContent(
+            targetState = tab,
+            transitionSpec = {
+                (
+                    fadeIn(tween(DurationFast, easing = EaseOut)) +
+                        slideInVertically(tween(DurationFast, easing = EaseOut)) { it / 8 }
+                    ).togetherWith(fadeOut(tween(DurationInstant, easing = EaseOut)))
+            },
+            modifier = Modifier.weight(1f),
+            label = "debug-panel",
+        ) { current ->
+            Box(modifier = Modifier.fillMaxSize().padding(horizontal = AppSpacing.Lg)) {
+                when (current) {
+                    DebugTab.STEPS -> StepsPanel(
+                        traces = traces,
+                        annotatedMap = annotatedMap,
+                        humanMode = humanMode,
+                        onHumanModeChange = { humanMode = it },
+                        stepShot = vm.stepShot.collectAsState().value,
+                    )
+                    DebugTab.TIMELINE -> TimelinePanel(traces, logs)
+                    DebugTab.METRICS -> MetricsPanel(metrics)
+                    DebugTab.CHAT -> ChatPanel(conversation)
+                    DebugTab.LOGS -> LogPanel(logs)
+                    DebugTab.HISTORY -> HistoryPanel(history)
+                }
+            }
         }
     }
+}
+
+/** 调试页「更多」：把导出与清空收进内嵌菜单，页头只留一个入口 */
+@Composable
+private fun DebugActionsMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    annotating: Boolean,
+    onAnnotate: () -> Unit,
+    onExportReport: () -> Unit,
+    onExportJson: () -> Unit,
+    onClear: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DebugActionItem(
+            icon = AppIcons.Insights,
+            label = if (annotating) "画框中…" else "用外挂视觉画框",
+            enabled = !annotating,
+            onClick = onAnnotate,
+        )
+        DebugActionItem(AppIcons.Description, "导出诊断报告（人话+原始）", onClick = onExportReport)
+        DebugActionItem(AppIcons.FileDownload, "导出 JSON（分任务）", onClick = onExportJson)
+        HorizontalDivider(Modifier.padding(vertical = AppSpacing.Xs))
+        DebugActionItem(AppIcons.Delete, "清空调试数据", danger = true, onClick = onClear)
+    }
+}
+
+@Composable
+private fun DebugActionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    danger: Boolean = false,
+) {
+    val tint = when {
+        !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        danger -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    DropdownMenuItem(
+        text = { Text(label, style = MaterialTheme.typography.bodyMedium, color = tint) },
+        leadingIcon = { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp)) },
+        enabled = enabled,
+        onClick = onClick,
+    )
 }

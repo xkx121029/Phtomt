@@ -1,12 +1,15 @@
 package com.phoneagent.ui.debug
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +71,9 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -77,34 +83,52 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun SegmentedTabs(selected: DebugTab, onSelect: (DebugTab) -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Hero),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
+internal fun SegmentedTabs(
+    selected: DebugTab,
+    onSelect: (DebugTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 六个 Tab 等分宽度在窄屏 / 大字号下会把「时间线」这类三字标签挤断，
+    // 改为「最小宽度 + 可横向滚动」的胶囊组：正常屏幕一屏放得下，极端情况下可滑动。
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(modifier = Modifier.padding(4.dp)) {
-            DebugTab.entries.forEach { t ->
-                val isSelected = selected == t
-                Surface(
-                    shape = RoundedCornerShape(AppRadii.Item),
-                    color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(2.dp),
+        DebugTab.entries.forEach { t ->
+            val isSelected = selected == t
+            // 选中态跟随底部导航的语言：主色容器胶囊 + 主色文字
+            val container by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                animationSpec = tween(DurationFast, easing = EaseOut),
+                label = "tab-container",
+            )
+            val content by animateColorAsState(
+                targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(DurationFast, easing = EaseOut),
+                label = "tab-content",
+            )
+            Surface(
+                onClick = { onSelect(t) },
+                shape = RoundedCornerShape(AppRadii.Tile),
+                color = container,
+                border = if (isSelected) null
+                else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.widthIn(min = 56.dp),
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        modifier = Modifier.padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            t.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.clickable { onSelect(t) },
-                        )
-                    }
+                    Text(
+                        t.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        color = content,
+                        maxLines = 1,
+                    )
                 }
             }
         }

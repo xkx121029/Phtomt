@@ -340,23 +340,8 @@ private fun ExtrasPageContent(
     androidx.compose.foundation.layout.Column(
         modifier = modifier.fillMaxSize(),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-        ) {
-            Text(
-                when (page) {
-                    is ExtrasPage.Test -> "测试"
-                    is ExtrasPage.Debug -> "调试"
-                    is ExtrasPage.Skill -> "技能与能力"
-                    is ExtrasPage.Memory -> "记忆"
-                },
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 12.dp),
-            )
-        }
+        // 各二级页都自带页头标题（测试页「AI 测试工作台」、调试/技能/记忆页 AppTopBar），
+        // 这里再渲染一行页名会与页面自身标题重复（调试页同屏出现两个「调试」），故移除。
         when (page) {
             ExtrasPage.Test -> com.phoneagent.ui.test.TestScreen(
                 vm,

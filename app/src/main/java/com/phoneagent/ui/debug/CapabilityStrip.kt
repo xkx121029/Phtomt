@@ -5,8 +5,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +71,7 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import android.widget.Toast
@@ -78,28 +82,43 @@ import kotlinx.coroutines.launch
 
 /** 能力状态条（v2.2.1 面板一）：无障碍/悬浮窗/截屏/自启动/Shizuku 一键灰度查看 */
 @Composable
-internal fun CapabilityStrip(permissions: List<com.phoneagent.ui.model.PermissionItem>) {
+internal fun CapabilityStrip(
+    permissions: List<com.phoneagent.ui.model.PermissionItem>,
+    modifier: Modifier = Modifier,
+) {
+    // 五项等分会让「无障碍」这类四字标签被裁掉，改成按内容宽度的胶囊 + 可横向滚动
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
         permissions.forEach { p ->
             val ok = p.granted
+            val tone = if (ok) Success else MaterialTheme.colorScheme.error
             Surface(
                 shape = RoundedCornerShape(AppRadii.Chip),
-                color = if (ok) Success.copy(alpha = 0.14f)
-                        else MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
-                modifier = Modifier.weight(1f),
+                color = tone.copy(alpha = 0.10f),
+                border = BorderStroke(1.dp, tone.copy(alpha = 0.28f)),
             ) {
-                Box(
-                    modifier = Modifier.padding(vertical = 7.dp),
-                    contentAlignment = Alignment.Center,
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
+                    // 状态点：已授权=实心绿点，未授权=空心红点，比整块底色更克制
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(if (ok) tone else Color.Transparent)
+                            .border(1.dp, tone, CircleShape),
+                    )
                     Text(
                         p.title,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (ok) Success else MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = tone,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                     )
                 }
