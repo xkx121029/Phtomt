@@ -451,7 +451,7 @@ Output ONLY JSON.
      *
      * 这些是页面元素树里读不到的事实（日期决定"明天"是哪天，前台应用决定它面前这一页属于谁），
      * 缺了它们 AI 只能靠猜。完整应用清单刻意不给——体积大、绝大多数步骤用不上，
-     * 需要时由 AI 自己用 device_query 查（见 [systemCN] 独占路由规则 4）。
+     * 需要时由 AI 自己用 device_query 查（见 [systemCN] 独占路由规则 3）。
      */
     fun environment(lang: PromptLang, env: EnvFacts): String = when (lang) {
         PromptLang.CN -> buildString {
@@ -1043,24 +1043,44 @@ Output ONLY JSON. First char = {, last = }.
             sb.append("\n\n## 当前任务附加指导 · 页面直达(open)\n")
             if (lang == PromptLang.CN) {
                 sb.append("若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。")
-                sb.append("网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 open_app 逐步。")
+                sb.append("App 内页/系统页用 uri，公开 scheme 用官方 scheme（普通网址不归 open 管，改用 browse_open）；封闭 App（如微信聊天）不发明 scheme，改用 open_app 逐步。")
                 sb.append("以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：\n${AppPageIndex.indexText()}")
             } else {
-                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for web/system pages; official scheme for public schemes; do NOT invent schemes for closed apps — use open_app instead. Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for in-app/system pages; official scheme for public schemes (plain websites are NOT open's job — use browse_open instead); do NOT invent schemes for closed apps — use open_app instead. Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+            }
+        }
+        if (browseHit) {
+            sb.append("\n\n## 当前任务附加指导 · 上网与网页操作(browse_*)\n")
+            if (lang == PromptLang.CN) {
+                sb.append("本 App 内置浏览器，可直接打开并操纵网页；网页会出现在之后每一步的截图里，所以你看得见网页内容，不用猜。\n")
+                sb.append("""打开网址：{"intent":"browse_open","uri":"https://example.com","reasoning":"打开该网页","expected":"浏览器显示该页面","confidence":0.9}""")
+                sb.append("\n网址不明确就用搜索引擎直达页，例如 https://www.bing.com/search?q=关键词（关键词做 URL 编码）。\n")
+                sb.append("""看清当前网页：{"intent":"browse_read","reasoning":"读取网页内容","expected":"返回正文与可点元素","confidence":0.9}""")
+                sb.append("""\n操作网页：{"intent":"browse_click","target":{"by":"text","value":"下一页"}} / {"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"关键词"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
+                sb.append("\n边界（重要）：网页元素只能用 browse_click 按元素文字点，禁止用 tap + 坐标去猜；browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要离开浏览器回 App 用 press key=BACK。")
+                sb.append("网页里的支付/提交订单/删除/发布/发送同属不可逆操作，必须带 \"needs_confirmation\": true。")
+            } else {
+                sb.append("This app has a built-in browser that can open and drive web pages; the page appears in every later screenshot, so you can actually see the content instead of guessing.\n")
+                sb.append("""Open a URL: {"intent":"browse_open","uri":"https://example.com","reasoning":"open that page","expected":"browser shows the page","confidence":0.9}""")
+                sb.append("\nWhen the URL is unknown use a search-engine results URL, e.g. https://www.bing.com/search?q=keyword (URL-encode the keyword).\n")
+                sb.append("""Read the current page: {"intent":"browse_read","reasoning":"read the page content","expected":"body and actionable elements returned","confidence":0.9}""")
+                sb.append("""\nAct on the page: {"intent":"browse_click","target":{"by":"text","value":"Next"}} / {"intent":"browse_input","target":{"by":"text","value":"Search"},"text":"keyword"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
+                sb.append("\nBoundary (important): web elements may ONLY be clicked with browse_click by element text — never guess with tap + coordinates; browse_click / browse_input / browse_scroll / browse_back all require a page already loaded in the browser, otherwise browse_open first; to leave the browser and return to the app use press key=BACK.")
+                sb.append("Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry \"needs_confirmation\": true.")
             }
         }
         if (fetchHit) {
             sb.append("\n\n## 当前任务附加指导 · 命令行取数(fetch)\n")
             if (lang == PromptLang.CN) {
-                sb.append("本机已装并授权 Termux（普通应用权限的 Linux 环境），可让端侧直接取回网页/接口正文，比在界面上翻页查找更可靠。\n")
+                sb.append("本机已装并授权 Termux（普通应用权限的 Linux 环境），可让端侧直接取回纯文本接口正文，比在界面上翻页查找更可靠。\n")
                 sb.append("""用法：{"intent":"fetch","uri":"https://example.com","reasoning":"取该页正文","expected":"返回正文文本","confidence":0.9}""")
                 sb.append("\n取回的内容会作为上一步命令输出回传给你，可据此继续（例如用 write_doc 汇总成文档）。\n")
-                sb.append("边界（重要）：你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
+                sb.append("边界（重要）：只有「目标是纯文本接口（JSON/纯文本）」才用它；要看网页界面、要点网页上的按钮链接，一律用 browse_*，不要用 fetch 代替。你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
             } else {
-                sb.append("Termux is installed and authorized on this device (a plain-app-permission Linux environment), so the device can fetch web/API body text directly — more reliable than paging through the UI.\n")
+                sb.append("Termux is installed and authorized on this device (a plain-app-permission Linux environment), so the device can fetch plain-text API bodies directly — more reliable than paging through the UI.\n")
                 sb.append("""Usage: {"intent":"fetch","uri":"https://example.com","reasoning":"get the page body","expected":"body text returned","confidence":0.9}""")
                 sb.append("\nThe retrieved content is returned to you as the previous step's command output; continue from there (e.g. summarize it with write_doc).\n")
-                sb.append("Boundary (important): you only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
+                sb.append("Boundary (important): use it ONLY when the target really is a plain-text API (JSON/plain text); to see a web UI or click links/buttons on a page, always use browse_* instead of fetch. You only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
             }
         }
         return sb.toString()
