@@ -232,6 +232,47 @@ async function testDecision(lang) {
     report('decision', 'D09', '网页正文整理成文档走 write_doc', ok,
       `intent=${a?.intent} textLen=${a?.text?.length}\n      raw=${raw.slice(0, 220)}`);
   }
+
+  // 1-10 只是把网址打开给用户看：必须 open + uri 交系统浏览器，不得占用内置浏览器
+  {
+    const url = 'https://www.example.com/news';
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? `用浏览器帮我打开这个网址 ${url}` : `Open this URL in a browser for me: ${url}`,
+      total: 2, step: L === 'CN' ? '用系统浏览器打开该网址' : 'open the URL in the system browser',
+      hint: L === 'CN' ? 'Happy Agent 主页' : 'Happy Agent home', page: PAGE_MEITUAN,
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'open' && typeof a.uri === 'string' && /^https?:\/\//i.test(a.uri);
+    report('decision', 'D10', '给用户看的网址走 open 交系统浏览器（不用 browse_open）', ok,
+      `intent=${a?.intent} uri=${a?.uri}\n      raw=${raw.slice(0, 200)}`);
+  }
+
+  // 1-11 用文档软件打开本地 ppt：必须 open + 文件路径，不得走 write_doc 去"写"文档
+  {
+    const file = '/sdcard/Download/季度汇报.ppt';
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? `用文档软件打开这个文件 ${file}` : `Open this file with a document app: ${file}`,
+      total: 2, step: L === 'CN' ? '交给系统文档应用打开' : 'hand it to the system document app',
+      hint: L === 'CN' ? 'Happy Agent 主页' : 'Happy Agent home', page: PAGE_MEITUAN,
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'open' && typeof a.uri === 'string' && /\.ppt/i.test(a.uri);
+    report('decision', 'D11', '打开本地文件走 open + 文件路径（不用 write_doc）', ok,
+      `intent=${a?.intent} uri=${a?.uri}\n      raw=${raw.slice(0, 200)}`);
+  }
+
+  // 1-12 泛指类目"打开浏览器"：是开应用（端侧优先系统自带），不是打开网页
+  {
+    const { raw, json } = await ask(sys(L), decide(L, {
+      task: L === 'CN' ? '帮我打开浏览器' : 'Open the browser app for me',
+      total: 2, step: L === 'CN' ? '打开浏览器应用' : 'launch the browser app',
+      hint: L === 'CN' ? '桌面' : 'home screen', page: PAGE_MEITUAN,
+    }));
+    const a = first(json);
+    const ok = !!a && a.intent === 'open_app' && /浏览器|browser/i.test(String(a.app || ''));
+    report('decision', 'D12', '泛指类目开应用走 open_app（交给系统自带）', ok,
+      `intent=${a?.intent} app=${a?.app}\n      raw=${raw.slice(0, 200)}`);
+  }
 }
 
 // ==================== 2. 规划 ====================
