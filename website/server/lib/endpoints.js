@@ -56,7 +56,7 @@ export const ADMIN_ENDPOINTS = [
   { method: 'GET', path: '/api/admin/apk', desc: '磁盘上的 APK 文件清单' },
   { method: 'POST', path: '/api/admin/apk', desc: '上传 APK（multipart，字段名 file）' },
   { method: 'DELETE', path: '/api/admin/apk/:file', desc: '删除 APK 文件' },
-  { method: 'GET', path: '/api/admin/content/:name', desc: '读取原始集合（site / features / releases / changelog / docs / faq）' },
+  { method: 'GET', path: '/api/admin/content/:name', desc: '读取原始集合（site / features / releases / changelog / docs / faq / scenarios / roadmap）' },
   { method: 'PUT', path: '/api/admin/content/:name', desc: '整包写入原始集合' },
   { method: 'PUT', path: '/api/admin/site', desc: '整包更新站点元信息' },
   { method: 'PATCH', path: '/api/admin/site', desc: '局部更新站点元信息（深合并）' },
@@ -79,5 +79,9 @@ export const ADMIN_ENDPOINTS = [
   { method: 'POST', path: '/api/admin/faq', desc: '新增 FAQ' },
   { method: 'PUT', path: '/api/admin/faq/:id', desc: '更新 FAQ' },
   { method: 'DELETE', path: '/api/admin/faq/:id', desc: '删除 FAQ' },
+  { method: 'PUT', path: '/api/admin/scenarios', desc: '整包替换场景示例' },
+  { method: 'POST', path: '/api/admin/scenarios', desc: '新增场景' },
+  { method: 'PUT', path: '/api/admin/scenarios/:id', desc: '更新场景' },
+  { method: 'DELETE', path: '/api/admin/scenarios/:id', desc: '删除场景' },
   { method: 'POST', path: '/api/admin/import/changelog', desc: '从 CHANGELOG.md 文本导入更新日志' }
 ]

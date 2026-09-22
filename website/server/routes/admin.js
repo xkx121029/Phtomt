@@ -49,6 +49,7 @@ adminRouter.get('/overview', requireAdmin, (_req, res) => {
       changelog: store.read('changelog').length,
       docs: store.read('docs').length,
       faq: store.read('faq').length,
+      scenarios: store.read('scenarios').length,
       features: store.read('features').length,
       apkFiles: apkFiles.length
     },
@@ -68,7 +69,10 @@ adminRouter.get('/audit', requireAdmin, (_req, res) => {
 
 // ---------- 原始集合读写（后台「高级」页与脚本化更新都用它） ----------
 
-const WRITABLE = ['site', 'features', 'releases', 'changelog', 'docs', 'faq']
+const WRITABLE = ['site', 'features', 'releases', 'changelog', 'docs', 'faq', 'scenarios', 'roadmap']
+
+/** 形状是对象的集合。其余一律按数组校验——写错形状会让整个集合读不出来 */
+const OBJECT_COLLECTIONS = ['site', 'roadmap']
 
 adminRouter.get('/content/:name', requireAdmin, (req, res) => {
   if (!WRITABLE.includes(req.params.name)) {
@@ -84,8 +88,9 @@ adminRouter.put('/content/:name', requireAdmin, (req, res) => {
   }
   const value = req.body
   const isArray = Array.isArray(value)
-  if (name === 'site' ? isArray : !isArray) {
-    return fail(res, 400, 'bad_shape', name === 'site' ? 'site 必须是对象' : `${name} 必须是数组`)
+  const wantObject = OBJECT_COLLECTIONS.includes(name)
+  if (wantObject ? isArray : !isArray) {
+    return fail(res, 400, 'bad_shape', wantObject ? `${name} 必须是对象` : `${name} 必须是数组`)
   }
   store.write(name, value)
   audit(req, 'replace', name, `整包替换，共 ${isArray ? value.length : Object.keys(value).length} 项`)
@@ -168,6 +173,8 @@ const idOf = (key) => Object.assign((item) => item?.[key], { key })
 adminRouter.use('/features', listRouter('features', idOf('id'), '特性'))
 adminRouter.use('/docs', listRouter('docs', idOf('slug'), '文档'))
 adminRouter.use('/faq', listRouter('faq', idOf('id'), 'FAQ'))
+adminRouter.use('/scenarios', listRouter('scenarios', idOf('id'), '场景'))
+// roadmap 是对象（含 phases 嵌套），没有单条增删的语义，只走 /content/roadmap 整包读写
 
 // ---------- 版本 ----------
 
