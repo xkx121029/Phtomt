@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.ScreenTransitions
 import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.launch
@@ -96,7 +98,8 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
         },
         label = "settings-page",
-        modifier = modifier,
+        // 悬浮导航栏浮在内容之上：设置页整块让出净空，末行不会被压在条下面
+        modifier = modifier.padding(bottom = LocalBottomNavClearance.current),
     ) { p ->
         when (p) {
             SettingsPage.HOME -> SettingsHome(st, onOpen = { page = it })

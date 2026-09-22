@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.components.AppSnackbar
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.SnackbarState
 import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
@@ -296,67 +297,70 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                     .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                     .background(MaterialTheme.colorScheme.surface),
             )
-            CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
-                val currentExtras = extrasPage
-                if (currentExtras != null) {
-                    // 全屏二级页：返回栏 + 对应页面
-                    ExtrasPageContent(
-                        page = currentExtras,
-                        vm = vm,
-                        modifier = Modifier.fillMaxSize(),
-                        onBack = { extrasPage = null },
-                    )
-                } else {
-                    AnimatedContent(
-                        targetState = selected,
-                        transitionSpec = transitionSpec,
-                        label = "screen-switch",
-                    ) { screenIndex ->
-                        val contentMod = Modifier.fillMaxSize()
-                        when (screenIndex) {
-                            0 -> AgentScreen(
-                                vm, contentMod,
-                                onOpenMemory = { extrasPage = ExtrasPage.Memory },
-                            )
+            // 内容与悬浮导航栏同层：内容铺满到屏幕底，导航栏画在它上面
+            Box(Modifier.fillMaxSize()) {
+                CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
+                    val currentExtras = extrasPage
+                    if (currentExtras != null) {
+                        // 全屏二级页：返回栏 + 对应页面
+                        ExtrasPageContent(
+                            page = currentExtras,
+                            vm = vm,
+                            modifier = Modifier.fillMaxSize(),
+                            onBack = { extrasPage = null },
+                        )
+                    } else {
+                        AnimatedContent(
+                            targetState = selected,
+                            transitionSpec = transitionSpec,
+                            label = "screen-switch",
+                        ) { screenIndex ->
+                            val contentMod = Modifier.fillMaxSize()
+                            when (screenIndex) {
+                                0 -> AgentScreen(
+                                    vm, contentMod,
+                                    onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                                )
 
-                            1 -> HomeScreen(
-                                vm, contentMod,
-                                onRequestScreenshot = {
-                                    val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                    screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                                },
-                                onNavigate = { selected = it },
-                                onOpenExtras = { extrasPage = it },
-                            )
+                                1 -> HomeScreen(
+                                    vm, contentMod,
+                                    onRequestScreenshot = {
+                                        val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                        screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                    },
+                                    onNavigate = { selected = it },
+                                    onOpenExtras = { extrasPage = it },
+                                )
 
-                            2 -> SettingsScreen(vm, contentMod)
+                                2 -> SettingsScreen(vm, contentMod)
+                            }
                         }
-                    }
 
-                    // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
-                    AppSnackbar(
-                        state = snackbarState,
+                        // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
+                        AppSnackbar(
+                            state = snackbarState,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = navClearance + AppSpacing.Md),
+                        )
+                    }
+                }
+
+                // 悬浮导航栏本身：画在内容之上，内容从它下面穿过去（不再由内容层整段让位）
+                if (navBarVisible) {
+                    FloatingNavBar(
+                        tabs = tabs,
+                        selected = selected,
+                        onSelect = { selected = it },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = navClearance + AppSpacing.Md),
+                            .padding(
+                                start = AppSpacing.Lg,
+                                end = AppSpacing.Lg,
+                                bottom = systemNavInset + AppSpacing.Md,
+                            ),
                     )
                 }
-            }
-
-            // 悬浮导航栏本身：画在内容之上，内容从它下面穿过去（不再由内容层整段让位）
-            if (navBarVisible) {
-                FloatingNavBar(
-                    tabs = tabs,
-                    selected = selected,
-                    onSelect = { selected = it },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(
-                            start = AppSpacing.Lg,
-                            end = AppSpacing.Lg,
-                            bottom = systemNavInset + AppSpacing.Md,
-                        ),
-                )
             }
         }
     }
@@ -397,7 +401,7 @@ private fun FloatingNavBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
+                .height(NavBarHeight)
                 .padding(horizontal = AppSpacing.Sm)
                 .selectableGroup(),
             verticalAlignment = Alignment.CenterVertically,

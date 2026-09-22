@@ -57,6 +57,7 @@ import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.AppItemCard
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.components.StatusPill
@@ -109,7 +110,9 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
+            .padding(bottom = LocalBottomNavClearance.current),
     ) {
         // 品牌 Hero 区
         Spacer(Modifier.height(12.dp))

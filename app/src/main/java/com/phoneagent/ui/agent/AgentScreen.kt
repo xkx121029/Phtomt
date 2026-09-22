@@ -47,6 +47,7 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.TopFadeScrim
 import com.phoneagent.ui.components.animateListItem
@@ -235,7 +236,12 @@ fun AgentScreen(
             .fillMaxSize()
             .background(colors.surfaceBase),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 让出悬浮导航栏的净空：它现在浮在内容之上，不再由 Scaffold 统一预留
+                .padding(bottom = LocalBottomNavClearance.current),
+        ) {
             AgentHeaderBar(
                 running = agent.isRunning,
                 runningTask = agent.task,
