@@ -126,6 +126,30 @@ class FloatingWindowService : Service() {
     /** 截图隐藏前底部选项卡是否可见，用于截图后原样恢复 */
     private var sheetVisibleBeforeHide = false
 
+    /**
+     * 任务执行期间系统状态栏是否已被隐藏（由 AgentEngine 经 [setStatusBarHidden] 驱动）。
+     *
+     * 色带背景本来就铺到屏幕物理顶（窗口 y 取负状态栏高度），只是被系统状态栏窗口压在下面；
+     * 状态栏一旦隐藏，物理顶那一截自然露出来，**窗口与色带高度都不用动**，
+     * 唯一要跟着变的是文字安全区——否则文字还留在状态栏原来的位置，会整段掉到色带之外。
+     */
+    // 初值取 companion 里的静态标志：任务可能在悬浮窗启动之前就把状态栏隐藏了（服务晚一步起来时
+    // 仍要按「已隐藏」来布局，否则文字安全区会多留一个状态栏高度）
+    private var statusBarHidden = statusBarHiddenFlag
+
+    /** 跑马灯文字的安全区顶部偏移：状态栏隐藏后无需再为状态栏让位 */
+    private fun marqueeContentInset(): Int = if (statusBarHidden) 0 else statusBarHeight()
+
+    /** 状态栏隐藏状态变化：只调文字安全区，色带与窗口位置保持不动 */
+    private fun applyStatusBarHidden(hidden: Boolean) {
+        if (statusBarHidden == hidden) return
+        statusBarHidden = hidden
+        marquee?.let { m ->
+            m.setTopInset(marqueeContentInset())
+            m.requestLayout()
+        }
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private var notificationManager: NotificationManager? = null
     private val channelId = "floating_window"
@@ -150,7 +174,7 @@ class FloatingWindowService : Service() {
                 marquee?.let { m ->
                     m.layoutParams = m.layoutParams.apply { height = dp(marqueeHeightDp) + statusBarHeight() }
                     m.setColors(marqueeColors)
-                    m.setTopInset(statusBarHeight())
+                    m.setTopInset(marqueeContentInset())
                     m.requestLayout()
                 }
             }
@@ -411,7 +435,8 @@ class FloatingWindowService : Service() {
             // 渐变颜色可在设置中调节（修改后实时生效）
             setColors(marqueeColors)
             // 文字要避开状态栏：色带从屏幕顶铺下来，但文字画在状态栏下方
-            setTopInset(statusBarHeight())
+            // （任务期间隐藏了状态栏时，安全区归零，避免文字掉到色带之外）
+            setTopInset(marqueeContentInset())
         }
         panel.addView(marquee)
 
@@ -1246,6 +1271,23 @@ class FloatingWindowService : Service() {
         @Volatile
         var instance: FloatingWindowService? = null
             private set
+
+        /**
+         * 任务执行期间系统状态栏是否已隐藏（由 AgentEngine 维护）。
+         * 放在 companion 上：服务可能晚于任务启动，静态标志保证实例起来时能读到正确状态。
+         */
+        @Volatile
+        private var statusBarHiddenFlag = false
+
+        /**
+         * 通知浮窗：任务期间的系统状态栏已隐藏 / 已恢复。
+         * 跑马灯色带本身不动（它一直铺到物理顶），只是把文字安全区在「避让状态栏」与「贴顶」之间切换。
+         */
+        fun setStatusBarHidden(hidden: Boolean) {
+            statusBarHiddenFlag = hidden
+            val svc = instance ?: return
+            svc.handler.post { svc.applyStatusBarHidden(hidden) }
+        }
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FloatingWindowService::class.java))

@@ -147,6 +147,7 @@ class SettingsState(initial: AppSettings.Settings) {
     var marqueeColors by mutableStateOf(initial.marqueeColors)
     var cursorOverlayEnabled by mutableStateOf(initial.cursorOverlayEnabled)
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
+    var hideStatusBarDuringTask by mutableStateOf(initial.hideStatusBarDuringTask)
     var calibrationExpanded by mutableStateOf(false)
 
     fun applyFrom(s: AppSettings.Settings) {
@@ -185,6 +186,7 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = s.marqueeColors
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
+        hideStatusBarDuringTask = s.hideStatusBarDuringTask
     }
 
     fun toSettings() = AppSettings.Settings(
@@ -222,5 +224,6 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = marqueeColors,
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
+        hideStatusBarDuringTask = hideStatusBarDuringTask,
     )
 }

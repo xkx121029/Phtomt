@@ -945,6 +945,9 @@ class AgentEngine(
         // 由 runInner 在创建任务记忆时把引用带出来，作为「本次任务的记忆」的唯一凭据
         var owned: TaskMemoryEntry? = null
         try {
+            // 任务开始：按设置临时隐藏系统状态栏（让跑马灯贴到物理屏顶）；
+            // 失败只是「没隐藏」，不影响任务本身
+            hideStatusBarForTask()
             runInner(task, plan) { owned = it }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // 用户停止 / 协程取消属于正常控制流，必须原样抛出：
@@ -956,6 +959,9 @@ class AgentEngine(
             log(AgentLog.Level.ERROR, "任务异常终止：${e.message}", e.stackTraceToString().take(1200))
             safeResetRuntime(owned?.taskId, "任务异常终止：${e.message ?: e.javaClass.simpleName}")
         } finally {
+            // 状态栏是系统级状态，必须在取消/异常下也恢复：stop() 取消协程后，普通 suspend 调用会
+            // 直接抛 CancellationException 而不执行，状态栏就会一直隐藏着
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restoreStatusBarAfterTask() }
             val mem = owned
             if (mem != null) finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
             // 无论成功 / 失败 / 用户停止 / 异常，任务一结束就撤下点击光标。
@@ -2268,6 +2274,99 @@ class AgentEngine(
             }
         }
         return finishShellResult(result, baseUrl)
+    }
+
+    /**
+     * 按执行通道偏好直接执行一条端侧 shell 并返回原始结果（**不写进 AI 上下文**）。
+     *
+     * 与 [runRealShell] 共用同一套通道选择，但产物不进「上一步 shell 输出」，
+     * 因此适合任务开始/结束时由端侧自己发起的系统命令（如隐藏状态栏）——
+     * 这类命令的返回值对 AI 没有意义，不该占用决策上下文。
+     * AUTO 顺序：无线 ADB → Shizuku → Termux。
+     */
+    private suspend fun execShellViaChannel(cmd: String): com.phoneagent.device.shell.ShizukuManager.ShellResult {
+        val channel = settings.settings.first().executionChannel
+        val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { c ->
+            val out = adbTransport?.executeShell(c)
+            if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
+        }
+        return when (channel) {
+            "ADB" -> if (adbTransport?.isConnected() == true) adbShell(cmd)
+            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 未连接")
+            "SHIZUKU" -> if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(cmd)
+            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("Shizuku 不可用")
+            "TERMUX" -> if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(cmd)
+            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("Termux 不可用")
+            else -> when {
+                adbTransport?.isConnected() == true -> adbShell(cmd)
+                shizukuManager?.isAvailable() == true -> shizukuManager.executeShell(cmd)
+                termuxBridge?.isAvailable() == true -> termuxBridge.executeShell(cmd)
+                else -> com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无可用 shell 通道")
+            }
+        }
+    }
+
+    /** 本任务是否真的改动过 `policy_control`——收尾要不要恢复由它决定（原值本身可能是空的） */
+    private var statusBarHiddenByTask = false
+
+    /** 隐藏状态栏之前 `policy_control` 的原值，空串表示原本没有这项设置 */
+    private var savedPolicyControl = ""
+
+    /**
+     * 任务开始：按设置临时隐藏系统状态栏，让悬浮窗跑马灯不再被状态栏压住。
+     *
+     * 走的是全局策略 `policy_control`，只有真实 shell 通道（无线 ADB / Shizuku）才改得动。
+     * 这一步纯属观感增强，**任何失败都只是「没隐藏」**，绝不能让任务起不来，
+     * 因此全程吞异常、只记日志。
+     */
+    private suspend fun hideStatusBarForTask() {
+        runCatching {
+            if (!settings.settings.first().hideStatusBarDuringTask) return@runCatching
+            if (!shellChannelAvailable()) {
+                log(AgentLog.Level.INFO, "无 shell 通道，跳过隐藏状态栏")
+                return@runCatching
+            }
+            // 先记原值：用户或系统可能本来就设过 policy_control，恢复时不能一律抹成 null
+            val raw = (execShellViaChannel("settings get global policy_control")
+                as? com.phoneagent.device.shell.ShizukuManager.ShellResult.Success)?.output?.trim()
+            // 上一次任务若被系统杀掉而来不及恢复，这里读到的就是残留的沉浸值；
+            // 它不能当作「用户原本的设置」写回去，否则状态栏会被永久固化在隐藏状态
+            val saved = if (raw.isNullOrBlank() || raw == "null" || raw.startsWith("immersive")) "" else raw
+            val put = execShellViaChannel("settings put global policy_control immersive.status=*")
+            if (put is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success) {
+                savedPolicyControl = saved
+                statusBarHiddenByTask = true
+                FloatingWindowService.setStatusBarHidden(true)
+                log(AgentLog.Level.INFO, "任务期间已隐藏状态栏（原值=${saved.ifEmpty { "null" }}）")
+            } else {
+                statusBarHiddenByTask = false
+                log(
+                    AgentLog.Level.WARN,
+                    "隐藏状态栏失败：${(put as? com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure)?.reason}",
+                )
+            }
+        }
+    }
+
+    /**
+     * 任务结束：把状态栏恢复成任务开始前的样子。
+     *
+     * 原值为空 / `null`（说明本来就没有这项设置）时删除该项，否则原样写回，
+     * 避免把用户自己的沉浸式配置一并清掉。同样吞异常：恢复失败不该影响任务收尾。
+     */
+    private suspend fun restoreStatusBarAfterTask() {
+        if (!statusBarHiddenByTask) return
+        statusBarHiddenByTask = false
+        val saved = savedPolicyControl
+        savedPolicyControl = ""
+        runCatching {
+            val cmd = if (saved.isBlank()) "settings delete global policy_control"
+            else "settings put global policy_control $saved"
+            execShellViaChannel(cmd)
+            FloatingWindowService.setStatusBarHidden(false)
+            log(AgentLog.Level.INFO, "已恢复状态栏（原值=$saved）")
+        }
     }
 
     /**

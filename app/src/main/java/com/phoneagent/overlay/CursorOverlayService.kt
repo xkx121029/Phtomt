@@ -87,6 +87,13 @@ class CursorOverlayService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            // 关键（与 FloatingWindowService 同源修复）：API 30+ 默认 fitInsetsTypes = systemBars()，
+            // 会把窗口内容整体推到状态栏下方——窗口内画在 (x,y) 的像素实际落在物理屏 y+状态栏高度 处，
+            // 表现为「光标总比 AI 的真实点击点偏低一截（≈状态栏高度）」。清空后坐标系才从物理屏顶开始，
+            // 与 dispatchGesture / Shizuku input tap 使用的物理屏幕坐标一致。
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                fitInsetsTypes = 0
+            }
         }
         try {
             windowManager?.addView(view, params)

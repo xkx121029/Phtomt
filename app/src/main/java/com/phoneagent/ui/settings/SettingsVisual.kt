@@ -182,6 +182,15 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
+                ToggleRow(
+                    "任务执行时隐藏状态栏",
+                    "状态栏窗口压在跑马灯之上，不隐藏的话色带只会从状态栏下缘露出来。开启后经 Shell 通道临时改系统策略隐藏状态栏，任务结束自动恢复（需无线ADB/Shizuku，部分机型可能无效）",
+                    st.hideStatusBarDuringTask,
+                ) {
+                    st.hideStatusBarDuringTask = it
+                    save()
+                }
+                Spacer(Modifier.height(10.dp))
                 CalibrationSlider("厚度", st.marqueeHeight, 8f..120f) {
                     st.marqueeHeight = it
                     save()

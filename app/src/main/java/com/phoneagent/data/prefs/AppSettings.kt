@@ -77,6 +77,8 @@ class AppSettings(private val context: Context) {
         val cursorOverlayEnabled: Boolean = true,
         /** 光标先到位再执行点击（默认关闭=并行，避免每步额外等待） */
         val cursorClickSync: Boolean = false,
+        /** 任务执行期间隐藏系统状态栏：跑马灯不再被状态栏压住，直接露出到屏幕物理顶；任务结束自动恢复 */
+        val hideStatusBarDuringTask: Boolean = true,
     )
 
     private object Keys {
@@ -118,6 +120,7 @@ class AppSettings(private val context: Context) {
         val ENABLE_REVIEW = booleanPreferencesKey("enable_review")
         val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
+        val HIDE_STATUS_BAR = booleanPreferencesKey("hide_status_bar_during_task")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -162,6 +165,7 @@ class AppSettings(private val context: Context) {
             enableReview = prefs[Keys.ENABLE_REVIEW] ?: true,
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
+            hideStatusBarDuringTask = prefs[Keys.HIDE_STATUS_BAR] ?: true,
         )
     }
 
@@ -204,6 +208,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.ENABLE_REVIEW] = settings.enableReview
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
+            prefs[Keys.HIDE_STATUS_BAR] = settings.hideStatusBarDuringTask
         }
     }
 }
