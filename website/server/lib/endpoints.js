@@ -27,7 +27,7 @@ export const PUBLIC_ENDPOINTS = [
   { method: 'GET', path: '/api/site', desc: '站点元信息 + 最新版本 + 下载统计' },
   { method: 'GET', path: '/api/bootstrap', desc: '首屏聚合：站点 / 特性 / 版本 / 更新 / FAQ / 文档索引' },
   { method: 'GET', path: '/api/features', desc: '功能特性列表' },
-  { method: 'GET', path: '/api/releases', desc: '版本列表，支持 ?channel=stable|beta|all &limit=' },
+  { method: 'GET', path: '/api/releases', desc: '版本列表，支持 ?channel=stable|beta|nightly|dev|all &limit=' },
   { method: 'GET', path: '/api/releases/latest', desc: '最新可下载版本，支持 ?channel=' },
   { method: 'GET', path: '/api/releases/:version', desc: '指定版本详情' },
   { method: 'GET', path: '/api/changelog', desc: '更新日志，支持 ?limit= 或 ?page=&size=' },

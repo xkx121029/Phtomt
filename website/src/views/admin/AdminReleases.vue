@@ -224,6 +224,7 @@ onMounted(async () => {
                 <option value="stable">稳定版</option>
                 <option value="beta">测试版</option>
                 <option value="nightly">每日构建</option>
+                <option value="dev">开发版</option>
               </select>
             </label>
 

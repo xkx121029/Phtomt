@@ -49,7 +49,8 @@ export function isExternalDownload(release) {
 export const CHANNEL_LABEL = {
   stable: '稳定版',
   beta: '测试版',
-  nightly: '每日构建'
+  nightly: '每日构建',
+  dev: '开发版'
 }
 
 export function channelLabel(channel) {
