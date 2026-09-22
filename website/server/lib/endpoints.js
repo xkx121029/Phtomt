@@ -11,12 +11,14 @@ export const SITE_ROUTES = [
   { path: '/', name: 'home', title: '首页', group: '主要' },
   { path: '/features', name: 'features', title: '功能特性', group: '主要' },
   { path: '/how-it-works', name: 'how', title: '工作原理', group: '主要' },
+  { path: '/scenarios', name: 'scenarios', title: '场景示例', group: '主要' },
   { path: '/download', name: 'download', title: '下载', group: '主要' },
   { path: '/changelog', name: 'changelog', title: '更新日志', group: '内容' },
   { path: '/changelog/:version', name: 'changelog-detail', title: '版本详情', group: '内容' },
   { path: '/docs', name: 'docs', title: '文档中心', group: '内容' },
   { path: '/docs/:slug', name: 'docs-detail', title: '文档详情', group: '内容' },
   { path: '/faq', name: 'faq', title: '常见问题', group: '内容' },
+  { path: '/roadmap', name: 'roadmap', title: '路线图', group: '内容' },
   { path: '/about', name: 'about', title: '关于项目', group: '其他' },
   { path: '/admin', name: 'admin', title: '管理后台', group: '其他' }
 ]
@@ -35,6 +37,8 @@ export const PUBLIC_ENDPOINTS = [
   { method: 'GET', path: '/api/docs', desc: '文档索引（不含正文）' },
   { method: 'GET', path: '/api/docs/:slug', desc: '单篇文档（含 Markdown 正文）' },
   { method: 'GET', path: '/api/faq', desc: '常见问题，支持 ?group=' },
+  { method: 'GET', path: '/api/scenarios', desc: '场景示例，支持 ?category=' },
+  { method: 'GET', path: '/api/roadmap', desc: '路线图：阶段与条目' },
   { method: 'GET', path: '/api/stats', desc: '下载统计：总量 / 分版本 / 近 14 天' },
   { method: 'GET', path: '/api/routes', desc: '站点路由表与端点清单' },
   { method: 'GET', path: '/api/openapi', desc: 'OpenAPI 3.1 规范（机器可读）' },

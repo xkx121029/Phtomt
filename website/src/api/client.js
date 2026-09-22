@@ -153,5 +153,10 @@ export const content = {
   docs: () => read('/api/docs', (s) => s.docs),
   doc: (slug) => read(`/api/docs/${encodeURIComponent(slug)}`, (s) => s.docs.find((d) => d.slug === slug)),
   faq: () => read('/api/faq', (s) => s.faq),
+  scenarios: (category = '') =>
+    read(`/api/scenarios${category ? `?category=${encodeURIComponent(category)}` : ''}`, (s) =>
+      category ? (s.scenarios || []).filter((x) => x.category === category) : s.scenarios || []
+    ),
+  roadmap: () => read('/api/roadmap', (s) => s.roadmap || { updatedAt: null, note: '', phases: [] }),
   stats: () => read('/api/stats', (s) => s.site?.stats || null)
 }

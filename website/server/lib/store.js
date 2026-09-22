@@ -17,6 +17,8 @@ const COLLECTIONS = {
   changelog: { file: 'changelog.json', kind: 'array' },
   docs: { file: 'docs.json', kind: 'array' },
   faq: { file: 'faq.json', kind: 'array' },
+  scenarios: { file: 'scenarios.json', kind: 'array' },
+  roadmap: { file: 'roadmap.json', kind: 'object' },
   stats: { file: 'stats.json', kind: 'object' },
   audit: { file: 'audit.json', kind: 'array' }
 }
@@ -28,6 +30,8 @@ const EMPTY = {
   changelog: () => [],
   docs: () => [],
   faq: () => [],
+  scenarios: () => [],
+  roadmap: () => ({ updatedAt: null, note: '', phases: [] }),
   stats: () => ({ totalDownloads: 0, byVersion: {}, byDay: {}, lastDownloadAt: null }),
   audit: () => []
 }

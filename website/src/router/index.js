@@ -28,6 +28,12 @@ export const routes = [
     meta: { title: '工作原理', group: '主要' }
   },
   {
+    path: '/scenarios',
+    name: 'scenarios',
+    component: () => import('../views/ScenariosView.vue'),
+    meta: { title: '场景示例', group: '主要' }
+  },
+  {
     path: '/download',
     name: 'download',
     component: () => import('../views/DownloadView.vue'),
@@ -62,6 +68,12 @@ export const routes = [
     name: 'faq',
     component: () => import('../views/FaqView.vue'),
     meta: { title: '常见问题', group: '内容' }
+  },
+  {
+    path: '/roadmap',
+    name: 'roadmap',
+    component: () => import('../views/RoadmapView.vue'),
+    meta: { title: '路线图', group: '内容' }
   },
   {
     path: '/about',

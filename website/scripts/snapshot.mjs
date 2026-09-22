@@ -56,6 +56,8 @@ const releasesRaw = readJSON('releases', [])
 const changelog = readJSON('changelog', [])
 const docs = readJSON('docs', [])
 const faq = readJSON('faq', [])
+const scenarios = readJSON('scenarios', [])
+const roadmap = readJSON('roadmap', { updatedAt: null, note: '', phases: [] })
 const stats = readJSON('stats', { totalDownloads: 0, byVersion: {}, byDay: {} })
 
 let bundledApk = 0
@@ -114,6 +116,8 @@ const snapshot = {
   changelog: [...changelog].sort((a, b) => compareVersion(b.version, a.version)),
   docs: [...docs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
   faq: [...faq].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+  scenarios: [...scenarios].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+  roadmap,
   routes,
   bootstrap: {
     site: siteWithLatest,
@@ -133,7 +137,7 @@ fs.writeFileSync(
 )
 
 console.log(`  ✓ 快照已写入 src/data/fallback.js`)
-console.log(`    版本 ${releases.length} · 更新日志 ${changelog.length} · 文档 ${docs.length} · FAQ ${faq.length} · 打包 APK ${bundledApk}`)
+console.log(`    版本 ${releases.length} · 更新日志 ${changelog.length} · 文档 ${docs.length} · FAQ ${faq.length} · 场景 ${scenarios.length} · 打包 APK ${bundledApk}`)
 if (!bundledApk) {
   console.log('    （public/apk 下没有 APK，静态站下载按钮会指向 GitHub Releases）')
 }

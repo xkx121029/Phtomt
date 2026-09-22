@@ -49,7 +49,8 @@ publicRouter.get('/health', (_req, res) => {
       changelog: store.read('changelog').length,
       docs: store.read('docs').length,
       faq: store.read('faq').length,
-      features: store.read('features').length
+      features: store.read('features').length,
+      scenarios: store.read('scenarios').length
     }
   })
 })
@@ -144,6 +145,22 @@ publicRouter.get('/faq', (req, res) => {
       .filter((f) => (group ? f.group === group : true))
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   )
+})
+
+publicRouter.get('/scenarios', (req, res) => {
+  const list = store.read('scenarios')
+  const { category } = req.query
+  res.json(
+    [...list]
+      .filter((s) => (category ? s.category === category : true))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  )
+})
+
+publicRouter.get('/roadmap', (_req, res) => {
+  const roadmap = store.read('roadmap')
+  // 阶段顺序由数据里的 phases 数组决定，服务端不重排——「暂不计划」放最后是有意的
+  res.json(roadmap)
 })
 
 publicRouter.get('/stats', (_req, res) => {
