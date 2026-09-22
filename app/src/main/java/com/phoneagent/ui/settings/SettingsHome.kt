@@ -32,7 +32,9 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = AppSpacing.Lg),
+            .padding(horizontal = AppSpacing.Lg)
+            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
+            .padding(bottom = LocalBottomNavClearance.current),
     ) {
         Spacer(Modifier.height(AppSpacing.Sm))
         Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)

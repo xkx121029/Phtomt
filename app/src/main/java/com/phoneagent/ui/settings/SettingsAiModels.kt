@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
 import kotlinx.coroutines.launch

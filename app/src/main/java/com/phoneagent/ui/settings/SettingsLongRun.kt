@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.data.store.ExecutionStrategy
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import kotlinx.coroutines.launch
 
 /** 长线任务设置页：执行策略热切换 + 断点续传 + 任务模板库 */
