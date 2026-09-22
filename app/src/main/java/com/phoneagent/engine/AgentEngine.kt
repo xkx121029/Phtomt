@@ -187,6 +187,9 @@ class AgentEngine(
         /** 连续「技能调用被拒」（未知/停用/缺参）次数上限：达到即收尾，避免 AI 反复白试 */
         private const val MAX_SKILL_ERROR_STREAK = 3
 
+        /** 侧边栏保留的历史任务会话条数上限（只留任务级元数据，逐步明细另有环形上限） */
+        private const val MAX_TASK_SESSIONS = 30
+
         /** 会话承接：最多回看几轮更早的任务（越靠前越近） */
         private const val MAX_PREVIOUS_TASKS = 3
 
@@ -229,6 +232,13 @@ class AgentEngine(
      */
     private val _memoryEvents = MutableStateFlow<List<MemoryEvent>>(emptyList())
     val memoryEvents: StateFlow<List<MemoryEvent>> get() = _memoryEvents.asStateFlow()
+
+    /**
+     * 任务会话归档（Agent 页侧边栏数据源），最新一次任务排在最前。
+     * 任务开始时插入一条「进行中」记录，结束时按 taskId 就地收尾为终态。
+     */
+    private val _taskSessions = MutableStateFlow<List<TaskSession>>(emptyList())
+    val taskSessions: StateFlow<List<TaskSession>> get() = _taskSessions.asStateFlow()
 
     /** 同一任务只提炼一次记忆，避免重试/收尾分支重复写入 */
     @Volatile
@@ -944,6 +954,7 @@ class AgentEngine(
     private suspend fun run(task: String, plan: TaskPlan? = null) {
         // 由 runInner 在创建任务记忆时把引用带出来，作为「本次任务的记忆」的唯一凭据
         var owned: TaskMemoryEntry? = null
+        var cancelled = false
         try {
             // 任务开始：按设置临时隐藏系统状态栏（让跑马灯贴到物理屏顶）；
             // 失败只是「没隐藏」，不影响任务本身
@@ -952,6 +963,7 @@ class AgentEngine(
         } catch (e: kotlinx.coroutines.CancellationException) {
             // 用户停止 / 协程取消属于正常控制流，必须原样抛出：
             // 吞掉它会让 stop() 再也打不断任务，还会把「已停止」误报成「执行异常」
+            cancelled = true
             throw e
         } catch (e: Throwable) {
             // runInner 内的未捕获异常在此收敛，不让它穿透到 processQueue ——
@@ -964,6 +976,9 @@ class AgentEngine(
             kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restoreStatusBarAfterTask() }
             val mem = owned
             if (mem != null) finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
+            // 归档本次任务会话（侧边栏数据源）。与上面同理按 taskId 归属，
+            // 且不能有挂起调用：协程已被取消时挂起点会直接抛出，收尾就丢了
+            mem?.taskId?.let { settleTaskSession(it, cancelled) }
             // 无论成功 / 失败 / 用户停止 / 异常，任务一结束就撤下点击光标。
             // 光标是「任务正在执行」的视觉反馈，任务结束后它仍停在最后一次点击的位置，
             // 屏幕上就凭空多出一个不属于任何操作的光标。
@@ -1009,6 +1024,15 @@ class AgentEngine(
         currentTaskMemory = taskMemory
         onMemoryCreated(taskMemory)
         scope.launch { runCatching { memory.upsertTaskMemory(taskMemory) } }
+        // 侧边栏：任务一开跑就先占一条「进行中」会话，用户随时能在任务列表里看到它
+        startTaskSession(
+            TaskSession(
+                taskId = currentTaskId,
+                title = task,
+                plan = plan,
+                status = TaskSession.Status.RUNNING,
+            ),
+        )
         reusedTemplateId = null
         // 新任务清掉上一份文档预览，避免旧结果被误认为本次任务的产出
         documentEngine?.dismiss()
@@ -2782,6 +2806,58 @@ class AgentEngine(
             createdAt = System.currentTimeMillis(),
         )
         _memoryEvents.value = (_memoryEvents.value + event).takeLast(MAX_MEMORY_EVENTS)
+        // 同步挂到本次任务会话上：新任务开始会清空 _memoryEvents，旧任务的记忆卡片
+        // 若不在此刻归到会话里，切回旧任务时就再也看不到了
+        updateTaskSession(runKey.removePrefix("r").toLongOrNull() ?: return) { cur ->
+            cur.copy(memoryEvents = cur.memoryEvents + event)
+        }
+    }
+
+    // ==================== 任务会话归档（Agent 页侧边栏） ====================
+
+    /** 任务开始：插入一条「进行中」会话，最新在前 */
+    private fun startTaskSession(session: TaskSession) {
+        val next = (listOf(session) + _taskSessions.value.filterNot { it.taskId == session.taskId })
+        _taskSessions.value = if (next.size > MAX_TASK_SESSIONS) next.take(MAX_TASK_SESSIONS) else next
+    }
+
+    /**
+     * 任务结束：按 taskId 就地收尾会话。
+     *
+     * 必须按 taskId 而非"当前任务"归属：`stop()` 取消协程后 finally 是异步执行的，
+     * 用户若立刻发起新任务，旧任务的收尾会把新任务的会话误标成已结束。
+     */
+    private fun settleTaskSession(taskId: Long, cancelled: Boolean) {
+        val phase = _state.value.phase
+        val status = when {
+            phase == AgentState.Phase.DONE -> TaskSession.Status.DONE
+            cancelled -> TaskSession.Status.ABORTED
+            else -> TaskSession.Status.FAILED
+        }
+        val records = _executionHistory.value.filter { it.taskId == taskId }
+        updateTaskSession(taskId) { cur ->
+            cur.copy(
+                endedAt = System.currentTimeMillis(),
+                status = status,
+                summary = _state.value.message.orEmpty(),
+                steps = maxOf(cur.steps, records.size),
+                okSteps = maxOf(cur.okSteps, records.count { it.isConfirmed }),
+            )
+        }
+        persistDebug()
+    }
+
+    /** 就地改写一条会话（不存在则忽略） */
+    private fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) {
+        val current = _taskSessions.value
+        val idx = current.indexOfFirst { it.taskId == taskId }
+        if (idx < 0) return
+        _taskSessions.value = current.toMutableList().also { it[idx] = transform(it[idx]) }
+    }
+
+    /** 回载/清空会话归档（由持久化层调用） */
+    private fun replaceTaskSessions(list: List<TaskSession>) {
+        _taskSessions.value = list.take(MAX_TASK_SESSIONS)
     }
 
     /** 撤销一条刚写入的记忆：删库 + 从事件流移除（卡片随之消失） */
