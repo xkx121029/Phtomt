@@ -124,6 +124,10 @@ class MainViewModel(
                 "save_template" -> engine.confirmSaveTemplate(payload == "yes")
                 // 关闭悬浮窗 → 同步停止正在运行的任务
                 "close" -> engine.stop()
+                // 收起悬浮窗（只留悬浮球）→ 搁置任务，AI 在下一轮前挂起；
+                // 点悬浮球唤出 → 解除搁置，从当前步继续
+                "hide" -> engine.pauseTask()
+                "resume" -> engine.resumeTask()
             }
         }
         // 启动时加载持久化的 MCP 服务器配置

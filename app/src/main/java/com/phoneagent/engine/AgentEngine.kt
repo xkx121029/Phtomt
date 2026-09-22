@@ -387,6 +387,15 @@ class AgentEngine(
      */
     private val userHintMailbox = Channel<String>(Channel.CONFLATED)
 
+    /**
+     * 任务是否被用户「搁置」（悬浮窗上的隐藏按钮）。
+     *
+     * 搁置不等于停止：主循环在每轮开始前挂在 [awaitResume] 上，用户点悬浮球唤出后从当前步继续。
+     * 这一层是必须的——只把面板藏起来的话，AI 依旧在屏幕上点来点去，那不叫"搁置"。
+     */
+    @Volatile
+    private var taskPaused = false
+
     private var lastSnapshot: ScreenSnapshot = ScreenSnapshot()
     private var currentLang = PromptLang.CN
     private var consecutiveFailures = 0
@@ -890,11 +899,43 @@ class AgentEngine(
         // 没有进行中的任务时 finishTaskMemory 内部直接返回，不会凭空写库
         finishTaskMemory(TaskMemoryEntry.STATUS_ABORTED)
         runCatching { com.phoneagent.device.vision.ExternalVisionProvider.unbind(appContext) }
+        // 停止即彻底结束：搁置标志必须一并清掉，否则下一个任务会带着上一个任务的搁置态起不来
+        taskPaused = false
         // 先把状态落到 IDLE 再走统一复位：safeResetRuntime 带 DONE 终态守卫，
         // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
         safeResetRuntime(null, null)
         log(AgentLog.Level.WARN, "任务已停止")
+    }
+
+    /**
+     * 用户搁置任务（悬浮窗上的「隐藏」按钮）：收起面板的同时把执行挂起。
+     *
+     * 立即生效是做不到的——AI 可能正卡在一次模型请求或动作里，所以闸门放在下一轮开头（[awaitResume]），
+     * 当前这一步会正常走完，之后不再观察/截图/决策。
+     */
+    fun pauseTask() {
+        if (taskPaused) return
+        taskPaused = true
+        log(AgentLog.Level.INFO, "任务已搁置：等待用户唤出悬浮窗")
+    }
+
+    /** 用户唤出悬浮窗：解除搁置，任务从当前步继续 */
+    fun resumeTask() {
+        if (!taskPaused) return
+        taskPaused = false
+        log(AgentLog.Level.INFO, "用户已唤出悬浮窗，任务继续执行")
+    }
+
+    /**
+     * 搁置闸门：每轮开头调用，搁置期间只挂起、不干活。
+     *
+     * 用轮询而不是 CompletableDeferred：闸门会被反复经过，Deferred 需要额外的"谁来重建"约定，
+     * 一旦漏建就会永久挂死；300ms 的轮询代价可以忽略，且协程取消（stop）能直接打断它。
+     */
+    private suspend fun awaitResume() {
+        if (!taskPaused) return
+        while (taskPaused && coroutineContext.isActive) delay(300)
     }
 
     /** 用户协作者：提供下一步指导 */
@@ -970,6 +1011,8 @@ class AgentEngine(
         var owned: TaskMemoryEntry? = null
         var cancelled = false
         try {
+            // 新任务一律从「未搁置」开始：上一个任务的搁置标志不能带过来，否则任务起来就挂住
+            taskPaused = false
             // 任务开始：按设置临时隐藏系统状态栏（让跑马灯贴到物理屏顶）；
             // 失败只是「没隐藏」，不影响任务本身
             hideStatusBarForTask()
@@ -1094,8 +1137,11 @@ class AgentEngine(
         maybeStartFloating()
         pushFloating("开始执行", "OBSERVING")
         while (maxSteps <= 0 || step < maxSteps) {
-            step++
+            // 用户搁置：先挂起，唤出后才进入本轮。放在 step++ 之前，
+            // 搁置期间不会白耗步数（否则搁久了会把规划步数耗尽，任务直接收尾）
+            awaitResume()
             if (!coroutineContext.isActive) return
+            step++
             _state.value = _state.value.copy(
                 phase = AgentState.Phase.OBSERVING,
                 stepCount = step,

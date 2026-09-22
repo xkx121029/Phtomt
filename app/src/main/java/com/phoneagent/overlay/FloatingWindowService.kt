@@ -450,6 +450,88 @@ class FloatingWindowService : Service() {
     }
 
     /**
+     * 创建悬浮球（常驻、初始不可见）：用户收起面板后屏幕上唯一可点的入口。
+     *
+     * 只做一件事——点它把整套面板唤回来，所以刻意做成一个小圆形实色按钮，
+     * 不抢视线，也不挡住用户正在操作的界面。
+     */
+    private fun showMiniBall() {
+        if (miniRoot != null) return
+        val wm = windowManager ?: return
+        val ball = TextView(this).apply {
+            text = "AI"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(FloatingUi.ON_BRAND)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = FloatingUi.capsule(999f, FloatingUi.BRAND)
+            elevation = dp(6).toFloat()
+            setOnClickListener {
+                showFromUser()
+                onInteraction?.invoke("resume", "")
+            }
+        }
+        val point = android.graphics.Point()
+        runCatching { wm.defaultDisplay.getRealSize(point) }
+        val screenW = if (point.x > 0) point.x else dp(360)
+        val size = dp(MINI_BALL_SIZE)
+        val lp = WindowManager.LayoutParams(
+            size, size,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            // 右上角、顶栏下方：既不压状态栏，也不容易挡住用户正在看的内容
+            x = screenW - size - dp(FloatingUi.PAD_L)
+            y = topBarBottom() + dp(FloatingUi.PAD)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+        }
+        try {
+            wm.addView(ball, lp)
+            miniRoot = ball
+        } catch (_: Exception) {
+            // 无悬浮窗权限：球建不出来，但卡片上的「隐藏」不会因此崩掉
+        }
+    }
+
+    /**
+     * 用户点「隐藏」：收起卡片/顶栏，只留悬浮球（任务搁置交由引擎处理）。
+     *
+     * 底部选项卡刻意不动：它承载的是"AI 正在等用户回答/确认"这类不能让用户错过的问题，
+     * 收起状态面板不应顺手把它藏掉——藏了以后 AI 仍在等输入，面板又回不来，任务就永久挂住了。
+     */
+    private fun hideForUser() {
+        userHidden = true
+        root?.visibility = View.GONE
+        marquee?.visibility = View.GONE
+        showMiniBall()
+        miniRoot?.visibility = View.VISIBLE
+    }
+
+    /** 用户点悬浮球：原样唤出面板（任务由引擎继续执行） */
+    private fun showFromUser() {
+        if (!userHidden) return
+        userHidden = false
+        root?.visibility = View.VISIBLE
+        marquee?.visibility = View.VISIBLE
+        miniRoot?.visibility = View.GONE
+    }
+
+    /**
+     * 收起状态下的"防复现"闸门：状态更新每步都会跑 [resetPanel]，而它会把面板重新置为可见；
+     * 每次更新之后按收起状态再压回去，面板才不会自己冒出来。
+     */
+    private fun applyUserHidden() {
+        if (!userHidden) return
+        root?.visibility = View.GONE
+        marquee?.visibility = View.GONE
+    }
+
+    /**
      * 创建底部选项卡窗口（常驻、初始不可见）。
      *
      * 与顶部窗口相反，这里**不清空 fitInsetsTypes**：默认避开系统栏，
@@ -1044,6 +1126,9 @@ class FloatingWindowService : Service() {
         handler.post {
             // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
             resetPanel()
+            // 顶栏底色随阶段变化：观察/思考/执行/完成/出错各一套色调
+            currentPhase = phase
+            marquee?.setColors(FloatingUi.phaseGradient(marqueeColors, phase))
             marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
             taskTitle?.text = task
             stepText?.text = "第 $step 步 · $status"
@@ -1057,6 +1142,8 @@ class FloatingWindowService : Service() {
             startDotPulse()
             // 实时更新通知
             updateNotification(status, task, step)
+            // 用户收起面板期间：状态照常更新到各控件上，但面板不能自己冒回来
+            applyUserHidden()
         }
     }
 
@@ -1348,6 +1435,9 @@ class FloatingWindowService : Service() {
      */
     fun showDone(message: String) {
         handler.post {
+            // 用户收起面板时任务恰好收尾：把面板放回来，否则屏幕上只有一个悬浮球，
+            // 用户看不到"任务完成"，还得自己去点一下才知道
+            showFromUser()
             stopDotPulse()
             // 隐藏常规内容（保留 header，使 × 关闭按钮始终可用）
             dot?.visibility = View.GONE
@@ -1373,6 +1463,9 @@ class FloatingWindowService : Service() {
         marquee?.let { runCatching { windowManager?.removeView(it) } }
         marquee = null
         barParams = null
+        // 悬浮球同样是独立窗口：移除后屏幕上不留任何入口（任务已结束，不需要再唤出）
+        miniRoot?.let { runCatching { windowManager?.removeView(it) } }
+        miniRoot = null
         // 底部选项卡是独立窗口，需一并移除
         sheetRoot?.let { runCatching { windowManager?.removeView(it) } }
         sheetRoot = null
@@ -1398,6 +1491,9 @@ class FloatingWindowService : Service() {
 
         /** AI 思考写通知的最小间隔：流式增量每秒数次，逐条 notify 是跨进程调用 */
         private const val NOTIFY_THROTTLE_MS = 700L
+
+        /** 悬浮球直径（dp）：小到不挡操作，大到手指点得到 */
+        private const val MINI_BALL_SIZE = 44
 
         /** 悬浮窗交互动作回调（由 MainViewModel 注册，转发到 AgentEngine） */
         @Volatile
@@ -1485,6 +1581,14 @@ class FloatingWindowService : Service() {
                 } else if (svc.barVisibleBeforeHide) {
                     svc.marquee?.visibility = View.VISIBLE
                     svc.barVisibleBeforeHide = false
+                }
+                // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
+                if (!visible) {
+                    svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
+                    svc.miniRoot?.visibility = View.GONE
+                } else if (svc.miniVisibleBeforeHide) {
+                    svc.miniRoot?.visibility = View.VISIBLE
+                    svc.miniVisibleBeforeHide = false
                 }
                 // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
                 // 截图前先记下它本来是否可见，截完按原样恢复
