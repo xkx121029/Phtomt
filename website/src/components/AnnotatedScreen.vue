@@ -149,7 +149,7 @@ onBeforeUnmount(() => {
     <!-- 权限弹窗：演示 Agent 触发系统授权后如何定位按钮 -->
     <Transition name="dlg">
       <div v-if="dialog" class="app__dlg">
-        <div class="app__dlg-card">
+        <div class="app__dlg-card glass">
           <p class="app__dlg-title">允许「Happy Agent」控制你的手机？</p>
           <p class="app__dlg-desc">用于读取屏幕上的控件，并代你完成点按与输入。</p>
           <div class="app__dlg-actions">
@@ -419,11 +419,13 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(2px);
 }
 
+/* 卡片压在模糊蒙层之上，背后确实有东西可模糊——玻璃在这里才成立。
+   配方取自 base.css 的 .glass，这里只补形状与描边。 */
 .app__dlg-card {
   width: 100%;
   padding: 1.25em 1.15em 1.1em;
+  border: 1px solid var(--glass-line);
   border-radius: var(--r-xl);
-  background: var(--paper-raised);
   box-shadow: var(--shadow-3);
   text-align: center;
 }

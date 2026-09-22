@@ -505,6 +505,37 @@ tr:last-child td {
 
 /* ---------- 材质 ---------- */
 
+/* 玻璃（亚克力 / 磨砂）：全站唯一的配方出处，不要在别处再手写一遍。
+   只给真正浮在内容之上、背后有东西会穿过去的固定 chrome 用——
+   吸顶导航、移动端抽屉、压在模糊蒙层上的卡片。
+   平铺卡片背后没有可模糊的对象，上玻璃只会退化成一层灰蒙蒙的半透明，把层次搅乱。 */
+.glass {
+  background: var(--glass-tint);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+}
+
+/* 顶部受光高光：给贴边的横条一点「有厚度」的暗示。
+   单独一层伪元素，才能跟着 --glass-sheen 一起淡入——写进 background 没有可过渡的
+   属性，会「啪」地跳出来。40% 处就收干净，正文落在这一层之下不会被洗白。
+   用它的元素必须是定位元素（fixed / relative / sticky）。 */
+.glass--sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 40%);
+  transition: opacity var(--dur-ui) ease;
+}
+
+/* 不支持背景模糊：退回接近不透明的底色。留着半透明会让滚动内容糊在字后面 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--glass-fallback);
+  }
+}
+
 /* 极细噪点：铺在任何色块上都能去掉「塑料感」。
    用 SVG feTurbulence 现生成，比引一张图片省一次请求，也不用管倍图。 */
 .grain::after {

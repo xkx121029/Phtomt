@@ -51,7 +51,7 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <header :class="['head', { 'head--solid': scrolled }]">
+  <header :class="['head', 'glass--sheen', { glass: scrolled }]">
     <div class="page head__inner">
       <RouterLink to="/" class="brand" aria-label="回到首页">
         <AppLogo :size="26" class="brand__mark" />
@@ -116,7 +116,7 @@ watch(() => route.fullPath, () => {
   <Teleport to="body">
     <Transition name="sheet">
       <div v-if="menuOpen" class="sheet" @click.self="menuOpen = false">
-        <div class="sheet__panel" role="dialog" aria-label="导航">
+        <div class="sheet__panel glass glass--sheen" role="dialog" aria-label="导航">
           <div class="sheet__grip" aria-hidden="true"></div>
           <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
             {{ item.label }}
@@ -143,37 +143,15 @@ watch(() => route.fullPath, () => {
     backdrop-filter var(--dur-ui) ease;
 }
 
-/* 只在滚动后才给底色：停在顶部时让点阵背景透上来，画面才连成一片 */
-.head--solid {
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+/* 只在滚动后才上玻璃：停在顶部时让点阵背景透上来，画面才连成一片。
+   配方（底色 / 模糊 / 描边）都在 base.css 的 .glass 里，这里只决定「什么时候用」。 */
+.head.glass {
   border-bottom-color: var(--glass-line);
 }
 
-/* 顶部受光高光：单独一层伪元素，才能跟着 --glass-sheen 一起淡入，
-   直接写进 background 会因为没有可动画的过渡而「啪」地跳出来。
-   40% 处就收干净，正文与导航落在这一层之下，不会被洗白。 */
-.head::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+/* 停在顶部时不留高光：此时导航是透明的，一条亮带会凭空浮在点阵背景上 */
+.head:not(.glass)::after {
   opacity: 0;
-  background: linear-gradient(180deg, var(--glass-sheen), transparent 40%);
-  transition: opacity var(--dur-ui) ease;
-}
-
-.head--solid::after {
-  opacity: 1;
-}
-
-/* 不支持背景模糊：退回接近不透明的底色。留着半透明会让滚动内容糊在导航字后面 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .head--solid,
-  .sheet__panel {
-    background: var(--glass-fallback);
-  }
 }
 
 .head__inner {
@@ -292,13 +270,12 @@ watch(() => route.fullPath, () => {
   background: rgba(10, 12, 10, 0.36);
 }
 
-/* 抽屉压在页面之上，背后确实有内容可模糊，是玻璃该出现的地方 */
+/* 抽屉压在页面之上，背后确实有内容可模糊，是玻璃该出现的地方。
+   玻璃配方来自 base.css 的 .glass，这里只管形状与描边。 */
 .sheet__panel {
+  position: relative;
   width: 100%;
   padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
   border-top: 1px solid var(--glass-line);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   display: grid;
