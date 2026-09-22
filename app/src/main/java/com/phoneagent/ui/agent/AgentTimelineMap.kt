@@ -79,15 +79,21 @@ internal object AgentTimelineMapper {
             )
         }
 
-        // 2) 焦点任务的标题 —— 实时看引擎状态里的任务名，历史回看用归档标题
-        val focusTitle = focusRun?.taskName?.takeIf { it.isNotBlank() }
-            ?: archived?.title.orEmpty()
-            ?: if (isLive) "" else "历史任务"
+        // 2) 焦点任务的标题 —— 实时看引擎状态里的任务名，历史回看用归档标题。
+        //    规划尚未产出执行时，标题由下面的「待批准规划」分支负责渲染，这里不重复出
+        val pendingPlanFlow = planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
+            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Error
+        val focusTitle = when {
+            focusRun != null -> focusRun.taskName
+            archived != null -> archived.title.ifBlank { "历史任务" }
+            isLive && !pendingPlanFlow -> state.task.ifBlank { submittedTask }
+            else -> ""
+        }
         if (focusTitle.isNotBlank()) {
             items += AgentTimelineItem.UserTask(
                 text = focusTitle,
                 queued = false,
-                ownerKey = focusRun?.runKey ?: "r$focusTaskId",
+                ownerKey = focusRun?.runKey ?: archived?.let { "r${it.taskId}" } ?: "live#task",
             )
         }
 

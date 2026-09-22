@@ -13,6 +13,10 @@ import android.view.View
 /**
  * 顶部状态色带跑马灯：彩色渐变底 + 单行状态文字向左匀速滚动。
  *
+ * 它是**独立全宽顶栏窗口的根视图**（不再挂在任务卡片里）：窗口紧贴屏幕物理顶边、铺满整宽，
+ * 任务期间常驻，承担"系统状态栏"的角色（任务期间系统状态栏被隐藏）。
+ * 底色是不透明实色——浮窗压在别的 App 上，半透明白会让文字随时失去对比度。
+ *
  * 几个刻意为之的地方（都是踩过的坑）：
  *
  * 1. **文字用相位色纯色，不再叠渐变 shader**。
@@ -69,20 +73,6 @@ class MarqueeView @JvmOverloads constructor(
      */
     private var canAnimate = false
 
-    /**
-     * 内容安全区顶部偏移（状态栏高度，px）。
-     * 色带背景要从屏幕物理顶边铺下来（含状态栏区域），但**文字必须画在状态栏下方**，
-     * 否则会被状态栏图标压住。两者靠这个偏移区分开。
-     */
-    private var contentTopInset = 0
-
-    /** 设置内容安全区顶部偏移；由悬浮窗在创建/尺寸变化时传入 */
-    fun setTopInset(px: Int) {
-        if (contentTopInset == px) return
-        contentTopInset = px
-        invalidate()
-    }
-
     /** 单帧最大推进时长：视图不可见一段时间后恢复，不该让文字瞬移一大段 */
     private val maxFrameSeconds = 0.1f
 
@@ -115,7 +105,7 @@ class MarqueeView @JvmOverloads constructor(
         if (width <= 0 || gradientColors.isEmpty()) return
         val soft = gradientColors.map { c ->
             Color.argb(
-                0xB0,
+                0xFF,
                 (Color.red(c) + 3 * 255) / 4,
                 (Color.green(c) + 3 * 255) / 4,
                 (Color.blue(c) + 3 * 255) / 4,
@@ -204,9 +194,7 @@ class MarqueeView @JvmOverloads constructor(
 
     private fun centerY(): Float {
         val fm = paint.fontMetrics
-        // 只在"状态栏以下"的可用高度里居中：色带含状态栏区域，文字不能一起居中去被压住
-        val top = contentTopInset.toFloat().coerceAtMost(height - 1f)
-        return top + (height - top - fm.ascent - fm.descent) / 2f
+        return (height - fm.ascent - fm.descent) / 2f
     }
 
     private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity

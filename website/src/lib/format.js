@@ -1,4 +1,5 @@
 import { isStaticBuild } from '../api/client.js'
+import { channelLabels, sectionTones } from './siteMeta.js'
 
 export function formatDate(input) {
   if (!input) return '—'
@@ -46,30 +47,14 @@ export function isExternalDownload(release) {
   return !release?.apk
 }
 
-export const CHANNEL_LABEL = {
-  stable: '稳定版',
-  beta: '测试版',
-  nightly: '每日构建',
-  dev: '开发版'
-}
-
+/**
+ * 通道显示名与日志分类配色都来自站点元信息（见 lib/siteMeta.js），
+ * 后台改数据即生效，不需要动这里的代码。未知取值原样透出，不硬编一个错的名字。
+ */
 export function channelLabel(channel) {
-  return CHANNEL_LABEL[channel] || channel || '稳定版'
-}
-
-/** 变更条目的分类色：新增/优化/修复 各给一个语义色，其余用中性 */
-export const SECTION_TONE = {
-  新增: 'ok',
-  优化: 'brand',
-  变更: 'brand',
-  修复: 'amber',
-  性能: 'brand',
-  测试: 'mist',
-  文档: 'mist',
-  移除: 'danger',
-  安全: 'danger'
+  return channelLabels[channel] || channel || channelLabels.stable
 }
 
 export function sectionTone(type) {
-  return SECTION_TONE[type] || 'plain'
+  return sectionTones[type] || 'plain'
 }

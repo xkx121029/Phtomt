@@ -122,16 +122,6 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "live#failed"
     }
 
-    /** 历史任务折叠摘要（点击展开） */
-    data class RunDigest(
-        val runKey: String,
-        val task: String,
-        val steps: Int,
-        val okSteps: Int,
-    ) : AgentTimelineItem {
-        override val key: String get() = "digest#$runKey"
-    }
-
     /** 内嵌提示（缺权限等） */
     data class Notice(val kind: NoticeKind, val text: String) : AgentTimelineItem {
         override val key: String get() = "notice#${kind.name.lowercase()}"

@@ -1,4 +1,5 @@
 import { snapshot } from '../data/fallback.js'
+import { applySiteMeta } from '../lib/siteMeta.js'
 
 /**
  * API 客户端。
@@ -111,9 +112,19 @@ async function read(path, pick) {
   }
 }
 
+/** 聚合响应里站点信息挂在某个字段下时，取出并入注册表后原样返回整包 */
+function applySiteMetaOf(key) {
+  return (payload) => {
+    applySiteMeta(payload?.[key])
+    return payload
+  }
+}
+
 export const content = {
-  bootstrap: () => read('/api/bootstrap', (s) => s.bootstrap),
-  site: () => read('/api/site', (s) => s.site),
+  // 首屏与站点元信息是「通道显示名 / 日志配色」两张表的唯一来源，
+  // 读到就顺手并入本地注册表，视图里 channelLabel() 即可直接用
+  bootstrap: () => read('/api/bootstrap', (s) => s.bootstrap).then(applySiteMetaOf('site')),
+  site: () => read('/api/site', (s) => s.site).then(applySiteMeta),
   features: () => read('/api/features', (s) => s.features),
   releases: (channel = 'all') =>
     read(`/api/releases?channel=${encodeURIComponent(channel)}`, (s) => s.releases),

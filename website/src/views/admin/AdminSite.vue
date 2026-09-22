@@ -43,7 +43,9 @@ const form = reactive({
   links: Object.fromEntries(LINKS.map((f) => [f.key, ''])),
   requirements: Object.fromEntries(REQS.map((f) => [f.key, ''])),
   techStack: '',
-  channels: ''
+  channels: '',
+  channelLabels: '',
+  sectionTones: ''
 })
 
 const meta = ref(null)
@@ -69,6 +71,8 @@ function fill(site) {
   for (const f of REQS) form.requirements[f.key] = site.requirements?.[f.key] ?? ''
   form.techStack = JSON.stringify(site.techStack ?? [], null, 2)
   form.channels = JSON.stringify(site.channels ?? [], null, 2)
+  form.channelLabels = JSON.stringify(site.channelLabels ?? {}, null, 2)
+  form.sectionTones = JSON.stringify(site.sectionTones ?? {}, null, 2)
 }
 
 function parseJSON(text, label) {
@@ -78,6 +82,18 @@ function parseJSON(text, label) {
     return value
   } catch {
     throw new Error(`${label} 不是合法的 JSON 数组`)
+  }
+}
+
+/** 对象型字段：空文本按「未填写」处理，交给服务端保留原值 */
+function parseObject(text, label) {
+  if (!text.trim()) return undefined
+  try {
+    const value = JSON.parse(text)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('not object')
+    return value
+  } catch {
+    throw new Error(`${label} 不是合法的 JSON 对象`)
   }
 }
 
@@ -97,7 +113,9 @@ async function save() {
         targetApi: Number(form.requirements.targetApi) || undefined
       },
       techStack: parseJSON(form.techStack, '技术栈'),
-      channels: parseJSON(form.channels, '执行通道')
+      channels: parseJSON(form.channels, '执行通道'),
+      channelLabels: parseObject(form.channelLabels, '发布通道显示名'),
+      sectionTones: parseObject(form.sectionTones, '日志分类配色')
     }
     const next = await api.patch('/api/admin/site', payload, true)
     meta.value = next
@@ -221,6 +239,25 @@ onMounted(reload)
           <label class="field">
             <span>执行通道</span>
             <textarea v-model="form.channels" class="textarea textarea--tall" spellcheck="false" />
+          </label>
+        </div>
+
+        <!-- 展示用映射表：加渠道 / 换分类配色都改这里，不需要重新构建站点 -->
+        <div class="two">
+          <label class="field">
+            <span>
+              发布通道显示名
+              <span class="muted small">键=通道 id，值=页面上显示的名字</span>
+            </span>
+            <textarea v-model="form.channelLabels" class="textarea textarea--tall" spellcheck="false" />
+          </label>
+
+          <label class="field">
+            <span>
+              日志分类配色
+              <span class="muted small">键=更新日志的小节名，值=ok / brand / amber / mist / danger</span>
+            </span>
+            <textarea v-model="form.sectionTones" class="textarea textarea--tall" spellcheck="false" />
           </label>
         </div>
       </section>

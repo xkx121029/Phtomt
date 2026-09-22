@@ -71,6 +71,7 @@ class FloatingWindowService : Service() {
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
+    /** 顶部状态栏跑马灯：它同时是顶栏窗口的根视图（见 [showTopBar]） */
     private var marquee: MarqueeView? = null
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
@@ -127,26 +128,53 @@ class FloatingWindowService : Service() {
     private var sheetVisibleBeforeHide = false
 
     /**
+     * 顶部状态栏的窗口参数（窗口根视图就是 [marquee]）。
+     *
+     * 顶栏刻意不放进任务卡片：卡片只有 300dp 宽、还能被拖走，跑马灯挂在里面既贴不到屏幕左右边缘，
+     * 也会被用户一拖就带走；拆成独立的全宽窗口，才能真正做到"贴屏幕顶 + 铺满整宽 + 任务期间常驻"。
+     */
+    private var barParams: WindowManager.LayoutParams? = null
+
+    /** 截图隐藏前顶栏是否可见，用于截图后原样恢复 */
+    private var barVisibleBeforeHide = false
+
+    /**
      * 任务执行期间系统状态栏是否已被隐藏（由 AgentEngine 经 [setStatusBarHidden] 驱动）。
      *
-     * 色带背景本来就铺到屏幕物理顶（窗口 y 取负状态栏高度），只是被系统状态栏窗口压在下面；
-     * 状态栏一旦隐藏，物理顶那一截自然露出来，**窗口与色带高度都不用动**，
-     * 唯一要跟着变的是文字安全区——否则文字还留在状态栏原来的位置，会整段掉到色带之外。
+     * 顶栏是独立窗口，它的落点直接由这个状态决定（见 [topBarY]）：隐藏时贴物理屏顶，
+     * 未隐藏时退到状态栏下方。卡片（任务面板）的上边界也跟着走。
      */
     // 初值取 companion 里的静态标志：任务可能在悬浮窗启动之前就把状态栏隐藏了（服务晚一步起来时
-    // 仍要按「已隐藏」来布局，否则文字安全区会多留一个状态栏高度）
+    // 仍要按「已隐藏」来布局，否则顶栏会被压到状态栏下方）
     private var statusBarHidden = statusBarHiddenFlag
 
-    /** 跑马灯文字的安全区顶部偏移：状态栏隐藏后无需再为状态栏让位 */
-    private fun marqueeContentInset(): Int = if (statusBarHidden) 0 else statusBarHeight()
+    /**
+     * 顶栏窗口（独立全宽跑马灯）的落点 y：状态栏被隐藏时贴物理屏顶，否则退到状态栏下方。
+     *
+     * 「贴顶」是用户反复提的诉求，但系统状态栏窗口的层级**永远**压在 TYPE_APPLICATION_OVERLAY 之上：
+     * 状态栏没被隐藏时把顶栏放在 y=0，只会被状态栏整条盖住（表现就是"上方还是没到屏幕边缘"）。
+     * 所以贴顶的前提是状态栏真的隐藏了；没隐藏时退到状态栏下方，至少不遮系统图标。
+     */
+    private fun topBarY(): Int = if (statusBarHidden) 0 else statusBarHeight()
 
-    /** 状态栏隐藏状态变化：只调文字安全区，色带与窗口位置保持不动 */
+    /** 顶栏底边：任务卡片可拖动的上边界，避免卡片被顶栏压住 */
+    private fun topBarBottom(): Int = topBarY() + dp(marqueeHeightDp)
+
+    /** 状态栏隐藏状态变化：顶栏与卡片一起重新落位 */
     private fun applyStatusBarHidden(hidden: Boolean) {
         if (statusBarHidden == hidden) return
         statusBarHidden = hidden
-        marquee?.let { m ->
-            m.setTopInset(marqueeContentInset())
-            m.requestLayout()
+        barParams?.let { p ->
+            p.y = topBarY()
+            runCatching { barRoot?.let { b -> windowManager?.updateViewLayout(b, p) } }
+            barRoot?.post { correctTopBarY(0) }
+        }
+        // 卡片上边界随顶栏下移：原本贴在顶栏底边的卡片不能被顶栏盖住
+        val p = params ?: return
+        val minY = topBarBottom()
+        if (p.y < minY) {
+            p.y = minY
+            runCatching { root?.let { r -> windowManager?.updateViewLayout(r, p) } }
         }
     }
 
@@ -171,12 +199,30 @@ class FloatingWindowService : Service() {
             appSettings.settings.collect { s ->
                 marqueeHeightDp = s.marqueeHeight
                 marqueeColors = s.marqueeColors.map { it.toInt() }
-                marquee?.let { m ->
-                    m.layoutParams = m.layoutParams.apply { height = dp(marqueeHeightDp) + statusBarHeight() }
-                    m.setColors(marqueeColors)
-                    m.setTopInset(marqueeContentInset())
-                    m.requestLayout()
-                }
+                applyMarqueeSettings()
+            }
+        }
+    }
+
+    /**
+     * 把「跑马灯厚度 / 颜色」设置应用到顶栏窗口。
+     *
+     * 尺寸变化必须走 updateViewLayout：顶栏是独立窗口，改视图自身的 LayoutParams 不会让窗口重新测量；
+     * 厚度变了还要顺带把卡片推到新的顶栏下沿之下，否则卡片会被变厚的顶栏压住。
+     */
+    private fun applyMarqueeSettings() {
+        val m = marquee ?: return
+        m.setColors(marqueeColors)
+        m.requestLayout()
+        val p = barParams ?: return
+        val newHeight = dp(marqueeHeightDp)
+        if (p.height != newHeight) {
+            p.height = newHeight
+            runCatching { windowManager?.updateViewLayout(m, p) }
+            val cardParams = params
+            if (cardParams != null && cardParams.y < topBarBottom()) {
+                cardParams.y = topBarBottom()
+                runCatching { root?.let { r -> windowManager?.updateViewLayout(r, cardParams) } }
             }
         }
     }
@@ -294,20 +340,18 @@ class FloatingWindowService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 初始位置：水平居中、贴屏幕上边缘，跑马灯覆盖状态栏区域。
+            // 初始位置：水平居中，纵向落在顶栏下沿之下（顶栏是独立窗口，卡片不再承担色带）
             x = (screenW - winW) / 2
-            // y 取负状态栏高度：窗口顶在物理屏顶之上，跑马灯色带从屏幕物理顶开始，
-            // 覆盖状态栏区域（状态栏透明/半透明时色带透出，图标浮于其上）
-            y = -statusBarHeight()
+            y = topBarBottom() + dp(FloatingUi.PAD)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 // 关键：API 30+ 默认 fitInsetsTypes = systemBars()，会把窗口内容整体推到状态栏下方，
-                // 这是与 FLAG_LAYOUT_NO_LIMITS 无关的另一套机制（inset 适配），
-                // 所以只靠负 y 未必贴得到顶。清空后窗口坐标系才真正从物理屏顶开始。
+                // 这是与 FLAG_LAYOUT_NO_LIMITS 无关的另一套机制（inset 适配）。
+                // 清空后窗口坐标系才真正从物理屏顶开始，负 y / 顶栏贴顶才有意义。
                 fitInsetsTypes = 0
             }
         }
         root = layout
-        // 真实投影：让玻璃浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
+        // 真实投影：让卡片浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
         layout.elevation = dp(FloatingUi.ELEVATION).toFloat()
         layout.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
@@ -317,7 +361,67 @@ class FloatingWindowService : Service() {
         try {
             windowManager?.addView(layout, params)
         } catch (_: Exception) {}
+        showTopBar()
         showSheetWindow()
+    }
+
+    /**
+     * 创建顶部状态栏窗口（独立全宽跑马灯），任务期间常驻。
+     *
+     * 三个关键点：
+     * 1. **窗口宽度 MATCH_PARENT**：色带铺满整宽，这才是"顶栏"而不是卡片上的一条装饰；
+     * 2. **FLAG_NOT_TOUCHABLE**：它只负责显示，绝不吃掉任何触摸——顶栏横跨整屏，可触摸就完了；
+     * 3. **fitInsetsTypes = 0**：清掉系统栏 inset 适配，配合 [topBarY] 的 y 才能真正贴到物理屏顶。
+     */
+    private fun showTopBar() {
+        if (marquee != null) return
+        val wm = windowManager ?: return
+        val bar = MarqueeView(this).apply { setColors(marqueeColors) }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            dp(marqueeHeightDp),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = topBarY()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+        }
+        try {
+            wm.addView(bar, lp)
+            marquee = bar
+            barParams = lp
+            // 各 ROM 对 overlay 窗口的 y 处理不一致（有的会把窗口下移一个状态栏），
+            // 加窗后按实测屏幕坐标做一次校正——这是唯一跨 ROM 可靠的贴顶手段
+            bar.post { correctTopBarY(0) }
+        } catch (_: Exception) {
+            // 无悬浮窗权限：顶栏建不出来，任务卡片照常工作
+        }
+    }
+
+    /**
+     * 按实测屏幕坐标校正顶栏 y。
+     *
+     * `getLocationOnScreen` 给出的是窗口**真实**落点：与期望值（[topBarY]）有差就反向补偿。
+     * 校正次数封顶，避免个别 ROM 上取到的坐标永远对不上时陷入"改一次、量一次"的死循环。
+     */
+    private fun correctTopBarY(attempt: Int) {
+        val bar = marquee ?: return
+        val p = barParams ?: return
+        if (attempt >= 3) return
+        val loc = IntArray(2)
+        runCatching { bar.getLocationOnScreen(loc) }
+        val delta = loc[1] - topBarY()
+        if (kotlin.math.abs(delta) <= 1) return
+        p.y -= delta
+        runCatching { windowManager?.updateViewLayout(bar, p) }
+        bar.post { correctTopBarY(attempt + 1) }
     }
 
     /**
@@ -417,28 +521,17 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // 液态玻璃背景：M3 柔和玻璃（半透明白 + 顶部折射高光 + 左上柔光 + 细边框）。
-        // 说明：不用系统 blurBehind（部分设备会将整个屏幕背景模糊）——用较高透明度的半透明白
-        // 配合克制的光晕/描边模拟玻璃，兼顾质感与不干扰后台。
-        val bg = LiquidGlassDrawable(
-            cornerRadius = dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
-            baseColor = FloatingUi.BASE,
-            strokeColor = FloatingUi.BASE_STROKE,
+        // 卡片底色：应用主题色实色（玄青），不用半透明/玻璃质感。
+        // 浮窗是压在别的 App 上的一小块，透出的底图会让文字随时失去对比度；
+        // 实色 + 白色文字反而是最克制、最"看得清"的方案。
+        panel.background = FloatingUi.capsule(
+            dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
+            FloatingUi.BRAND,
         )
-        panel.background = bg
-        panel.setPadding(FloatingUi.PAD_L, 0, FloatingUi.PAD_L, FloatingUi.PAD_S)
+        panel.setPadding(FloatingUi.PAD_L, FloatingUi.PAD_S, FloatingUi.PAD_L, FloatingUi.PAD_S)
 
-        // 跑马灯（第一行，紧贴窗口/屏幕顶部边缘，作为顶部状态色带）
-        marquee = MarqueeView(this).apply {
-            // 高度 = 状态栏覆盖 + 用户可见厚度：窗口顶在物理屏顶之上，色带必然覆盖状态栏到顶
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(marqueeHeightDp) + statusBarHeight())
-            // 渐变颜色可在设置中调节（修改后实时生效）
-            setColors(marqueeColors)
-            // 文字要避开状态栏：色带从屏幕顶铺下来，但文字画在状态栏下方
-            // （任务期间隐藏了状态栏时，安全区归零，避免文字掉到色带之外）
-            setTopInset(marqueeContentInset())
-        }
-        panel.addView(marquee)
+        // 顶部跑马灯已拆成独立的全宽顶栏窗口（见 showTopBar），卡片里不再有色带：
+        // 卡片只有 300dp 宽，色带挂在里面永远贴不到屏幕两侧与物理顶边
 
         // 头部：状态点 + 任务标题 + 详情开关 + 关闭（仅头部可拖动；轻点头部也可切换详情）
         header = LinearLayout(this).apply {
@@ -461,7 +554,7 @@ class FloatingWindowService : Service() {
         taskTitle = TextView(this).apply {
             text = "Happy Agent"
             textSize = 15f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
+            setTextColor(FloatingUi.ON_BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(FloatingUi.PAD, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -471,8 +564,8 @@ class FloatingWindowService : Service() {
             text = "✕"
             textSize = 12f
             gravity = Gravity.CENTER
-            setTextColor(FloatingUi.TEXT_SECONDARY)
-            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, 0x0F000000.toInt())
+            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
             setOnClickListener {
                 onInteraction?.invoke("close", "")
@@ -484,8 +577,8 @@ class FloatingWindowService : Service() {
             text = "详情"
             textSize = 11f
             gravity = Gravity.CENTER
-            setTextColor(FloatingUi.TEXT_SECONDARY)
-            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, 0x0F000000.toInt())
+            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -508,18 +601,19 @@ class FloatingWindowService : Service() {
         phaseChip = TextView(this).apply {
             text = "待命"
             textSize = 10f
-            setTextColor(FloatingUi.ACCENT_BLUE)
+            // 主题色底上用实心阶段色胶囊 + 白字：半透明的淡色底在深色卡片上读不出层次
+            setTextColor(FloatingUi.ON_BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             background = FloatingUi.capsule(
                 FloatingUi.RADIUS_CHIP / 2,
-                (FloatingUi.ACCENT_BLUE and 0x00FFFFFF) or 0x14000000,
+                FloatingUi.phaseColor("PENDING"),
             )
             setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
         }
         stepText = TextView(this).apply {
             text = "等待任务..."
             textSize = 12f
-            setTextColor(FloatingUi.TEXT_SECONDARY)
+            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
             setPadding(FloatingUi.PAD, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -589,7 +683,7 @@ class FloatingWindowService : Service() {
         val reviewLabel = TextView(this).apply {
             text = "审核结论"
             textSize = 10f
-            setTextColor(FloatingUi.ACCENT_PURPLE)
+            setTextColor(FloatingUi.BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
         }
@@ -597,7 +691,7 @@ class FloatingWindowService : Service() {
         reviewText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(FloatingUi.ACCENT_PURPLE)
+            setTextColor(FloatingUi.BRAND)
             setPadding(0, dp(3), 0, dp(4))
         }
         thinkCol.addView(reviewText)
@@ -626,7 +720,7 @@ class FloatingWindowService : Service() {
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(999f, 0xFFF59E0B.toInt())
+            background = FloatingUi.capsule(999f, FloatingUi.ACCENT_WARM)
             setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
         }
         interactTitle = TextView(this).apply {
@@ -677,7 +771,7 @@ class FloatingWindowService : Service() {
             setBackgroundResource(0)
             background = FloatingUi.capsule(
                 FloatingUi.RADIUS_INPUT,
-                0xFFF2F3F7.toInt(),
+                FloatingUi.PANEL_SUNKEN,
             )
             setPadding(FloatingUi.PAD_L, dp(10), FloatingUi.PAD_L, dp(10))
         }
@@ -696,7 +790,7 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, 0x0A00A877.toInt())
+            background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, FloatingUi.PANEL)
             setPadding(0, dp(16), 0, dp(16))
         }
         successMark = SuccessMarkView(this).apply {
@@ -721,7 +815,7 @@ class FloatingWindowService : Service() {
                 topMargin = dp(12)
             }
             layoutParams = lp
-            background = FloatingUi.capsule(999f, FloatingUi.ACCENT_BLUE)
+            background = FloatingUi.capsule(999f, FloatingUi.BRAND)
             setPadding(FloatingUi.PAD_XL, 0, FloatingUi.PAD_XL, 0)
             setOnClickListener { stopSelf(); removeWindow() }
         }
@@ -811,8 +905,8 @@ class FloatingWindowService : Service() {
             p.x + winW >= screenW - snapZone -> (screenW - winW - gap).coerceAtLeast(gap)
             else -> null
         }
-        // 纵向：顶部最多到物理屏顶（跑马灯仍需贴顶），底部至少留一角可抓
-        val minY = -statusBarHeight()
+        // 纵向：顶部最多贴到顶栏下沿（卡片不该被顶栏压住），底部至少留一角可抓
+        val minY = topBarBottom()
         val maxY = (screenH - winH - dp(24)).coerceAtLeast(minY)
         val targetY = p.y.coerceIn(minY, maxY)
         if (targetX != null || targetY != p.y) {
@@ -859,8 +953,8 @@ class FloatingWindowService : Service() {
                 startX, startY,
                 vx.toInt(), vy.toInt(),
                 gap, (screenW - winW - gap).coerceAtLeast(gap),   // x：始终保留完整窗口在屏内
-                -statusBarHeight(),                                // y：跑马灯仍可贴顶
-                (screenH - winH - dp(24)).coerceAtLeast(-statusBarHeight()),
+                topBarBottom(),                                    // y：顶部不越过顶栏
+                (screenH - winH - dp(24)).coerceAtLeast(topBarBottom()),
             )
         }
         isFlinging = true
@@ -909,14 +1003,11 @@ class FloatingWindowService : Service() {
             marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
             taskTitle?.text = task
             stepText?.text = "第 $step 步 · $status"
-            // 阶段徽章：文字 + 阶段色
+            // 阶段徽章：实心阶段色胶囊 + 白字（卡片是实色主题色，徽章也必须实色才压得住）
             val ph = FloatingUi.phaseColor(phase)
             phaseChip?.text = phaseLabel(phase)
-            phaseChip?.setTextColor(ph)
-            phaseChip?.background = FloatingUi.capsule(
-                FloatingUi.RADIUS_CHIP / 2,
-                (ph and 0x00FFFFFF) or 0x17000000,
-            )
+            phaseChip?.setTextColor(FloatingUi.ON_BRAND)
+            phaseChip?.background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP / 2, ph)
             // 进度条已隐藏（用户反馈无用），仅显示步骤文字
             dot?.setBackgroundColor(dotColor(phase))
             startDotPulse()
@@ -1184,15 +1275,11 @@ class FloatingWindowService : Service() {
             ).apply { topMargin = FloatingUi.PAD }
             layoutParams = params
             if (primary) {
-                setTextColor(0xFFFFFFFF.toInt())
-                background = FloatingUi.capsule(999f, FloatingUi.ACCENT_BLUE)
+                setTextColor(FloatingUi.ON_BRAND)
+                background = FloatingUi.capsule(999f, FloatingUi.BRAND)
             } else {
-                setTextColor(FloatingUi.ACCENT_BLUE)
-                background = FloatingUi.capsule(
-                    999f,
-                    0x0A000000.toInt(),
-                    (FloatingUi.ACCENT_BLUE and 0x00FFFFFF) or 0x14000000,
-                )
+                setTextColor(FloatingUi.BRAND)
+                background = FloatingUi.capsule(999f, FloatingUi.PANEL_STATE)
             }
             setOnClickListener { onClick() }
         }
@@ -1238,6 +1325,10 @@ class FloatingWindowService : Service() {
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
+        // 顶栏是独立窗口，需一并移除（否则任务结束后全宽色带会常驻在屏幕顶部）
+        marquee?.let { runCatching { windowManager?.removeView(it) } }
+        marquee = null
+        barParams = null
         // 底部选项卡是独立窗口，需一并移除
         sheetRoot?.let { runCatching { windowManager?.removeView(it) } }
         sheetRoot = null
@@ -1342,6 +1433,15 @@ class FloatingWindowService : Service() {
             val svc = instance ?: return false
             svc.handler.post {
                 svc.root?.visibility = if (visible) View.VISIBLE else View.GONE
+                // 顶栏是独立窗口，截图时同样要藏起来（它横跨整屏顶部，一定会被截进画面）；
+                // 同样先记下本来的可见状态，截完按原样恢复（任务完成后顶栏本来是隐藏的）
+                if (!visible) {
+                    svc.barVisibleBeforeHide = svc.marquee?.visibility == View.VISIBLE
+                    svc.marquee?.visibility = View.GONE
+                } else if (svc.barVisibleBeforeHide) {
+                    svc.marquee?.visibility = View.VISIBLE
+                    svc.barVisibleBeforeHide = false
+                }
                 // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
                 // 截图前先记下它本来是否可见，截完按原样恢复
                 if (!visible) {

@@ -179,65 +179,6 @@ private fun sourceHint(source: AgentTimelineItem.NoteSource): String = when (sou
     AgentTimelineItem.NoteSource.VISION -> "截图识别结果，非 AI 自述"
 }
 
-/** 历史任务折叠摘要：步数多且不是最新任务时折成一条，点开才铺开每一步 */
-@Composable
-internal fun RunDigestItem(
-    item: AgentTimelineItem.RunDigest,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    val buzz = rememberHapticClick()
-    PressableScale(
-        onPress = buzz,
-        onClick = { buzz(); onToggle() },
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
-            .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
-            .padding(AppSpacing.Lg),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AppIconTile(
-                icon = AppIcons.History,
-                tint = colors.onSurfaceRaised,
-                background = colors.surfaceSunken,
-                tileSize = 36.dp,
-                iconSize = 18.dp,
-            )
-            Spacer(Modifier.width(AppSpacing.Md))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.task.ifBlank { "历史任务" },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "共 ${item.steps} 步 · ${item.okSteps} 步已生效",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceRaised,
-                )
-            }
-            Spacer(Modifier.width(AppSpacing.Sm))
-            StatusPill(
-                text = if (expanded) "收起" else "展开",
-                color = colors.brand,
-            )
-            Spacer(Modifier.width(AppSpacing.Xs))
-            Icon(
-                imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                contentDescription = null,
-                tint = colors.onSurfaceRaised,
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
-}
-
 /** 列表项之间的统一纵向间距（供 AgentScreen 的 LazyColumn 使用） */
 internal val AgentItemSpacing = 10.dp
 

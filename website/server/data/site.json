@@ -47,6 +47,23 @@
       "version": "1.1.1"
     }
   ],
+  "channelLabels": {
+    "stable": "稳定版",
+    "beta": "测试版",
+    "nightly": "每日构建",
+    "dev": "开发版"
+  },
+  "sectionTones": {
+    "新增": "ok",
+    "优化": "brand",
+    "变更": "brand",
+    "修复": "amber",
+    "性能": "brand",
+    "测试": "mist",
+    "文档": "mist",
+    "移除": "danger",
+    "安全": "danger"
+  },
   "channels": [
     {
       "id": "accessibility",

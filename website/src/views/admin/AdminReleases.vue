@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ApiError, api } from '../../api/client.js'
+import { ApiError, api, content } from '../../api/client.js'
 import { formatDate, channelLabel } from '../../lib/format.js'
+import { channelLabels } from '../../lib/siteMeta.js'
 import { useCollection } from './useCollection.js'
 
 const { items, loading, busy, error, notice, load, create, update, remove } = useCollection('releases', 'version')
@@ -143,7 +144,8 @@ function copySha(text) {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadFiles()])
+  // 渠道下拉的可选项来自站点元信息 site.channelLabels（content.site 会把它并入注册表）
+  await Promise.all([load(), loadFiles(), content.site().catch(() => {})])
   if (sorted.value.length) pick(sorted.value[0])
   else startCreate()
 })
@@ -221,10 +223,7 @@ onMounted(async () => {
             <label class="field">
               <span>渠道</span>
               <select v-model="form.channel" class="select">
-                <option value="stable">稳定版</option>
-                <option value="beta">测试版</option>
-                <option value="nightly">每日构建</option>
-                <option value="dev">开发版</option>
+                <option v-for="(name, id) in channelLabels" :key="id" :value="id">{{ name }}</option>
               </select>
             </label>
 

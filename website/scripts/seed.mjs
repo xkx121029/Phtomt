@@ -225,6 +225,26 @@ const site = {
     { name: 'OkHttp', version: '4.12.0' },
     { name: 'DataStore', version: '1.1.1' }
   ],
+  // 发布通道 id → 页面显示名。放数据里而不是前端常量：加一个渠道只要 PATCH 站点元信息，
+  // 不用改代码、不用重新构建镜像。前端在没有这两张表时会用内置兜底值。
+  channelLabels: {
+    stable: '稳定版',
+    beta: '测试版',
+    nightly: '每日构建',
+    dev: '开发版'
+  },
+  // 更新日志小节名 → 配色 token（ok / brand / amber / mist / danger）
+  sectionTones: {
+    新增: 'ok',
+    优化: 'brand',
+    变更: 'brand',
+    修复: 'amber',
+    性能: 'brand',
+    测试: 'mist',
+    文档: 'mist',
+    移除: 'danger',
+    安全: 'danger'
+  },
   channels: [
     {
       id: 'accessibility',
