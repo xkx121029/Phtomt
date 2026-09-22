@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
 
