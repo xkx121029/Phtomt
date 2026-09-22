@@ -318,12 +318,16 @@ textarea {
   padding: 0;
 }
 
-/* 只有真的能点的卡片才抬起来——静态卡片跟着鼠标浮起是在骗人 */
+/* 只有真的能点的卡片才抬起来——静态卡片跟着鼠标浮起是在骗人。
+   抬高时必须连内顶高光一起写上：box-shadow 是整体覆盖的，只写 --shadow-2 会让卡片
+   在悬停瞬间「塌」下去——高光没了，亚克力的厚度就没了。 */
 @media (hover: hover) and (pointer: fine) {
   a.card:hover,
   button.card:hover,
   .card--lift:hover {
-    box-shadow: var(--shadow-2);
+    box-shadow:
+      inset 0 1px 0 var(--glass-sheen),
+      var(--shadow-2);
     border-color: var(--line-2);
   }
 }
