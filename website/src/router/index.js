@@ -93,6 +93,8 @@ export const routes = [
       { path: 'changelog', name: 'admin-changelog', component: () => import('../views/admin/AdminChangelog.vue'), meta: { title: '更新日志', admin: true } },
       { path: 'docs', name: 'admin-docs', component: () => import('../views/admin/AdminDocs.vue'), meta: { title: '文档', admin: true } },
       { path: 'faq', name: 'admin-faq', component: () => import('../views/admin/AdminFaq.vue'), meta: { title: '常见问题', admin: true } },
+      { path: 'scenarios', name: 'admin-scenarios', component: () => import('../views/admin/AdminScenarios.vue'), meta: { title: '场景示例', admin: true } },
+      { path: 'roadmap', name: 'admin-roadmap', component: () => import('../views/admin/AdminRoadmap.vue'), meta: { title: '路线图', admin: true } },
       { path: 'audit', name: 'admin-audit', component: () => import('../views/admin/AdminAudit.vue'), meta: { title: '操作留痕', admin: true } }
     ]
   },

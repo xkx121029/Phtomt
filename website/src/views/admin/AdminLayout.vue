@@ -15,6 +15,8 @@ const NAV = [
   { to: '/admin/features', label: '功能特性' },
   { to: '/admin/docs', label: '文档' },
   { to: '/admin/faq', label: '常见问题' },
+  { to: '/admin/scenarios', label: '场景示例' },
+  { to: '/admin/roadmap', label: '路线图' },
   { to: '/admin/site', label: '站点信息' },
   { to: '/admin/audit', label: '操作留痕' }
 ]
