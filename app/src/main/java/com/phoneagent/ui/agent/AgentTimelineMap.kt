@@ -124,7 +124,8 @@ internal object AgentTimelineMapper {
         }
 
         if (!isLive) {
-            // 6) 历史任务的终态：归档只留了结论，不回放当时的实时状态
+            // 6) 历史任务的终态：归档只留了结论，不回放当时的实时状态。
+            //    归档缺失（超出归档上限的老任务）时不硬造一个「失败」——那是在冤枉任务
             when (archived?.status) {
                 TaskSession.Status.DONE -> items += AgentTimelineItem.Done(
                     okSteps = focusRun?.steps?.count { it.verified } ?: archived.okSteps,
@@ -135,10 +136,13 @@ internal object AgentTimelineMapper {
                     note = archived.summary.take(80),
                 )
 
-                TaskSession.Status.RUNNING -> Unit
-                else -> items += AgentTimelineItem.Failed(
-                    archived?.summary?.takeIf { it.isNotBlank() } ?: "任务未完成",
-                )
+                TaskSession.Status.ABORTED ->
+                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { "任务已停止" })
+
+                TaskSession.Status.FAILED ->
+                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { "任务未完成" })
+
+                TaskSession.Status.RUNNING, null -> Unit
             }
             return items.distinctBy { it.key }
         }

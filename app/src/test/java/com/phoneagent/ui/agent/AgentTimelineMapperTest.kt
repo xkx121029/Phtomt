@@ -10,6 +10,7 @@ import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
+import com.phoneagent.engine.TaskSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,7 +19,9 @@ import org.junit.Test
  * 任务流映射层单测。
  *
  * 覆盖的都是"历史上真出过问题"的点：同一步被拆成两条、key 冲突导致列表闪退、
- * 中间状态刷屏、结束态与实时状态同时出现、旧任务无限铺开。
+ * 中间状态刷屏、结束态与实时状态同时出现。
+ * 现在任务流一次只铺开一个任务（默认最新，可由侧边栏指定回看某一次），
+ * 因此"旧任务不再无限铺开"改为由「聚焦」相关用例覆盖。
  */
 class AgentTimelineMapperTest {
 
@@ -42,8 +45,10 @@ class AgentTimelineMapperTest {
         step: Int,
         verified: Boolean,
         type: String = ActionType.TAP,
+        taskId: Long = -1,
     ) = StepRecord(
         step = step,
+        taskId = taskId,
         action = AgentAction(
             type = type,
             target = ActionTarget(method = "id", value = "search_box"),
@@ -65,10 +70,10 @@ class AgentTimelineMapperTest {
         needsUser: Boolean = false,
         needsUserReason: String = "",
         a11yEnabled: Boolean = true,
-        expandedRuns: Set<Long> = emptySet(),
-        foldRunThreshold: Int = 8,
         fold: LiveStatusFold = LiveStatusFold(),
         memoryEvents: List<MemoryEvent> = emptyList(),
+        focusTaskId: Long? = null,
+        archived: TaskSession? = null,
     ) = AgentTimelineMapper.build(
         submittedTask = submittedTask,
         state = state,
@@ -80,10 +85,10 @@ class AgentTimelineMapperTest {
         needsUser = needsUser,
         needsUserReason = needsUserReason,
         a11yEnabled = a11yEnabled,
-        expandedRuns = expandedRuns,
-        foldRunThreshold = foldRunThreshold,
         fold = fold,
         memoryEvents = memoryEvents,
+        focusTaskId = focusTaskId,
+        archived = archived,
     )
 
     private fun running(message: String, stepCount: Int = 1) = AgentState(
@@ -224,31 +229,77 @@ class AgentTimelineMapperTest {
     }
 
     @Test
-    fun `超过阈值的旧任务折叠为一条摘要`() {
-        val oldTraces = (1..9).map { trace(taskId = 1, step = it) }
-        val oldHistory = (1..9).map { record(step = it, verified = it <= 5) }
+    fun `默认只铺开最新一次任务`() {
         val items = build(
-            traces = oldTraces + trace(taskId = 2, step = 1),
-            history = oldHistory + record(step = 1, verified = true),
+            traces = (1..9).map { trace(taskId = 1, step = it) } + trace(taskId = 2, step = 1),
+            history = (1..9).map { record(step = it, verified = it <= 5, taskId = 1) } +
+                record(step = 1, verified = true, taskId = 2),
         )
-        val digest = items.filterIsInstance<AgentTimelineItem.RunDigest>().single()
-        assertEquals("r1", digest.runKey)
-        assertEquals(9, digest.steps)
-        assertEquals(5, digest.okSteps)
-        // 旧任务的每一步都不再铺开；新任务照常展开
-        assertTrue(items.filterIsInstance<AgentTimelineItem.StepCall>().all { it.runKey == "r2" })
+        val calls = items.filterIsInstance<AgentTimelineItem.StepCall>()
+        assertEquals("只应铺开最新一次", listOf("r2"), calls.map { it.runKey }.distinct())
+        assertEquals("任务2", items.filterIsInstance<AgentTimelineItem.UserTask>().single().text)
     }
 
     @Test
-    fun `展开的旧任务不再折叠`() {
-        val oldTraces = (1..9).map { trace(taskId = 1, step = it) }
+    fun `指定任务时只看那一次且不摆实时状态`() {
         val items = build(
-            traces = oldTraces + trace(taskId = 2, step = 1),
-            history = (1..9).map { record(step = it, verified = true) } + record(step = 1, verified = true),
-            expandedRuns = setOf(1L),
+            state = running("正在点击搜索框"),
+            traces = (1..3).map { trace(taskId = 1, step = it) } + trace(taskId = 2, step = 1),
+            history = (1..3).map { record(step = it, verified = true, taskId = 1) } +
+                record(step = 1, verified = true, taskId = 2),
+            focusTaskId = 1L,
         )
-        assertTrue(items.none { it is AgentTimelineItem.RunDigest })
-        assertEquals(9, items.filterIsInstance<AgentTimelineItem.StepCall>().count { it.runKey == "r1" })
+        val calls = items.filterIsInstance<AgentTimelineItem.StepCall>()
+        assertEquals(listOf(1, 2, 3), calls.map { it.step })
+        assertEquals(listOf("r1"), calls.map { it.runKey }.distinct())
+        assertEquals("任务1", items.filterIsInstance<AgentTimelineItem.UserTask>().single().text)
+        // 回看历史时不回放当时的实时状态，也不混入排队任务
+        assertTrue(items.none { it is AgentTimelineItem.LiveStatus })
+        // 没有归档就不硬造终态（超出归档上限的老任务容易被误判成失败）
+        assertTrue(items.none { it is AgentTimelineItem.Failed })
+    }
+
+    @Test
+    fun `选中的就是最新任务时仍按实时渲染`() {
+        val items = build(
+            state = running("正在点击搜索框"),
+            traces = listOf(trace(taskId = 2, step = 1)),
+            history = listOf(record(step = 1, verified = true, taskId = 2)),
+            focusTaskId = 2L,
+        )
+        assertTrue(items.any { it is AgentTimelineItem.LiveStatus })
+    }
+
+    @Test
+    fun `回看历史任务用归档的标题与终态`() {
+        val archived = TaskSession(
+            taskId = 7L,
+            title = "把字体调大",
+            status = TaskSession.Status.DONE,
+            summary = "字体已调到最大",
+            steps = 3,
+            okSteps = 2,
+        )
+        val items = build(focusTaskId = 7L, archived = archived)
+        assertEquals("把字体调大", items.filterIsInstance<AgentTimelineItem.UserTask>().single().text)
+        val done = items.filterIsInstance<AgentTimelineItem.Done>().single()
+        assertEquals(2, done.okSteps)
+        assertEquals(3, done.totalSteps)
+        assertEquals("字体已调到最大", done.note)
+    }
+
+    @Test
+    fun `归档为已停止时回看显示失败原因`() {
+        val archived = TaskSession(
+            taskId = 7L,
+            title = "把字体调大",
+            status = TaskSession.Status.ABORTED,
+            summary = "用户手动停止",
+        )
+        val items = build(focusTaskId = 7L, archived = archived)
+        val failed = items.filterIsInstance<AgentTimelineItem.Failed>().single()
+        assertEquals("用户手动停止", failed.message)
+        assertTrue(items.none { it is AgentTimelineItem.Done })
     }
 
     @Test
