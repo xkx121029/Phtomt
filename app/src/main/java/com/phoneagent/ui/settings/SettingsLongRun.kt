@@ -61,7 +61,9 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
+            .padding(bottom = LocalBottomNavClearance.current),
     ) {
         Spacer(Modifier.height(8.dp))
         SettingsTopBar("长线任务", onBack = onBack)

@@ -37,7 +37,9 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 20.dp)
+            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
+            .padding(bottom = LocalBottomNavClearance.current),
     ) {
         SettingsTopBar("Agent 运行", onBack)
         Spacer(Modifier.height(16.dp))
