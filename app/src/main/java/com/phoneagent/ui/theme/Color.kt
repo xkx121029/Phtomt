@@ -131,7 +131,6 @@ val LightAppColors = AppColors(
     onMessageBubbleAgent = Color(0xFF10312A),
     messageBubbleUser = Color(0xFF0E7C66),
     onMessageBubbleUser = Color(0xFFFFFFFF),
-    topFadeTop = Color(0xFFF7F6F3),
     railIdle = Color(0xFFC9CEC6),
     railActive = Color(0xFF0E7C66),
     railDone = Color(0xFF7FBFA9),
@@ -143,6 +142,10 @@ val LightAppColors = AppColors(
     emptyStateIcon = Color(0xFFB4BAB3),
     emptyStateText = Color(0xFF838A83),
     runningIndicator = Color(0xFF1F7A55),
+    glassTint = Color(0xC7F7F6F3),
+    glassFallback = Color(0xF7F7F6F3),
+    glassBorder = Color(0x260E7C66),
+    glassSheen = Color(0x59FFFFFF),
 )
 
 /** 深色：深墨底 + 流萤青主色 */
@@ -182,7 +185,6 @@ val DarkAppColors = AppColors(
     onMessageBubbleAgent = Color(0xFFDCEBE4),
     messageBubbleUser = Color(0xFF1B4A3F),
     onMessageBubbleUser = Color(0xFFCFF3E8),
-    topFadeTop = Color(0xFF121513),
     railIdle = Color(0xFF3A403A),
     railActive = Color(0xFF5FD9B4),
     railDone = Color(0xFF3E7A66),
@@ -194,6 +196,10 @@ val DarkAppColors = AppColors(
     emptyStateIcon = Color(0xFF6A716B),
     emptyStateText = Color(0xFF6A716B),
     runningIndicator = Color(0xFF4CC38A),
+    glassTint = Color(0xAD141816),
+    glassFallback = Color(0xF7141816),
+    glassBorder = Color(0x3D5FD9B4),
+    glassSheen = Color(0x14FFFFFF),
 )
 
 /** 浅色高对比度：纯白底 + 加深主色与描边，服务于「高对比度文字」无障碍开关 */
@@ -226,7 +232,6 @@ val LightContrastAppColors = LightAppColors.copy(
     messageBubbleAgent = Color(0xFFDCF0E9),
     onMessageBubbleAgent = Color(0xFF08110E),
     messageBubbleUser = Color(0xFF0A5A4A),
-    topFadeTop = Color(0xFFFFFFFF),
     railIdle = Color(0xFF9DA39C),
     railActive = Color(0xFF0A5A4A),
     railDone = Color(0xFF1F6E58),
@@ -238,6 +243,11 @@ val LightContrastAppColors = LightAppColors.copy(
     emptyStateIcon = Color(0xFF6A716B),
     emptyStateText = Color(0xFF4A504A),
     runningIndicator = Color(0xFF12603F),
+    // 高对比度无障碍：玻璃一律退化为近乎不透明，透明度不再参与可读性
+    glassTint = Color(0xF2FFFFFF),
+    glassFallback = Color(0xFFFFFFFF),
+    glassBorder = Color(0x663F443F),
+    glassSheen = Color(0x00FFFFFF),
 )
 
 /** 深色高对比度：纯黑底 + 提亮主色与描边 */
@@ -272,7 +282,6 @@ val DarkContrastAppColors = DarkAppColors.copy(
     onMessageBubbleAgent = Color(0xFFEAF4EF),
     messageBubbleUser = Color(0xFF23584A),
     onMessageBubbleUser = Color(0xFFDEF6EC),
-    topFadeTop = Color(0xFF0A0C0A),
     railIdle = Color(0xFF5A615A),
     railActive = Color(0xFF7FEFCB),
     railDone = Color(0xFF4F9B82),
@@ -284,6 +293,11 @@ val DarkContrastAppColors = DarkAppColors.copy(
     emptyStateIcon = Color(0xFF868D86),
     emptyStateText = Color(0xFF868D86),
     runningIndicator = Color(0xFF6FD3A2),
+    // 高对比度无障碍：同上，玻璃退化为近乎不透明
+    glassTint = Color(0xF20A0C0A),
+    glassFallback = Color(0xFF0A0C0A),
+    glassBorder = Color(0x66B6BCB5),
+    glassSheen = Color(0x00FFFFFF),
 )
 
 /** 当前主题色令牌。读取方式：`AppTheme.colors.brand` */
