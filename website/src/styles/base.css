@@ -245,13 +245,35 @@ textarea {
 
 /* ---------- 卡片 ---------- */
 
+/* 卡片一律亚克力：半透明底色 + 背景模糊，再加一道内顶高光暗示「有厚度」。
+   页面底色是平铺的，模糊本身贡献有限；真正把材质读出来的是那层高光加半透明底色。
+   底色用 --card-tint（--paper-raised 那一档），不是 --glass-tint，理由见 tokens.css。 */
 .card {
   position: relative;
-  background: var(--paper-raised);
+  background: var(--card-tint);
+  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: 22px;
-  box-shadow: var(--shadow-1);
+  box-shadow:
+    inset 0 1px 0 var(--glass-sheen),
+    var(--shadow-1);
+}
+
+/* 不支持背景模糊：退回接近不透明的底色，留着半透明会让滚动内容糊在字后面。
+   这块必须紧跟 .card 且在几个修饰类之前，否则会把 --sunken / --ink / --bare 的底色一起盖掉。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card {
+    background: var(--card-fallback);
+  }
+}
+
+/* 悬停跟随鼠标的微倾斜：角度由 useCardTilt 写进行内 transform，这里只管过渡。
+   用 .card.tilt 抬一级权重——卡片上的 .reveal 也声明了 transform 过渡，那是入场用的长时长，
+   不压过它的话倾斜会变成慢动作。 */
+.card.tilt {
+  transition: transform 180ms var(--ease-out);
 }
 
 .card--flat {

@@ -180,12 +180,18 @@ onMounted(async () => {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-ui) ease;
 }
 
+/* 桌面端悬停即展开，省掉一次点击；移动端没有 hover，仍走按钮的点击切换（aria-expanded 照旧）。
+   不再给头部叠悬停底色：卡片已经是亚克力，再加一层 --paper-sunken 会把材质糊掉，
+   展开本身就是足够的反馈。 */
 @media (hover: hover) and (pointer: fine) {
-  .item__head:hover {
-    background: var(--paper-sunken);
+  .item:hover .item__body {
+    grid-template-rows: 1fr;
+  }
+
+  .item:hover .item__caret {
+    transform: rotate(180deg);
   }
 }
 

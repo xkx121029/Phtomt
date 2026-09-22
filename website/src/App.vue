@@ -3,10 +3,14 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import SiteHeader from './components/SiteHeader.vue'
 import SiteFooter from './components/SiteFooter.vue'
+import { useCardTilt } from './composables/useCardTilt.js'
 
 const route = useRoute()
 // 管理后台自带一套外壳，不套官网的页头页脚
 const isAdmin = computed(() => route.matched.some((r) => r.meta?.admin))
+
+// 卡片悬停微倾斜：文档级代理，路由切换后新渲染的卡片也照样覆盖
+useCardTilt()
 </script>
 
 <template>

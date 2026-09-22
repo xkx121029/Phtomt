@@ -192,12 +192,20 @@ onMounted(async () => {
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--dur-ui) ease;
 }
 
+/* 与能力清单同一套交互：桌面端悬停即展开，移动端没有 hover、仍走点击。
+   图标在悬停时给到和 .qa--open 完全一致的状态，否则悬停与点开会是两副样子。
+   不再叠悬停底色：卡片已经是亚克力，再压一层 --paper-sunken 会把材质糊掉。 */
 @media (hover: hover) and (pointer: fine) {
-  .qa__q:hover {
-    background: var(--paper-sunken);
+  .qa:hover .qa__body {
+    grid-template-rows: 1fr;
+  }
+
+  .qa:hover .qa__icon {
+    transform: rotate(135deg);
+    background: var(--brand-wash);
+    color: var(--brand);
   }
 }
 
