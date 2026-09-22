@@ -85,16 +85,20 @@ onMounted(async () => {
               </button>
 
               <div class="item__body">
-                <ol class="steps">
-                  <li v-for="(step, i) in item.steps || []" :key="i" class="steps__item">
-                    <span class="steps__index mono">{{ String(i + 1).padStart(2, '0') }}</span>
-                    <span class="steps__text">
-                      <strong class="steps__name">{{ step.title }}</strong>
-                      <span class="steps__detail">{{ step.detail }}</span>
-                    </span>
-                  </li>
-                </ol>
-                <p v-if="item.note" class="note">{{ item.note }}</p>
+                <!-- 折叠靠 .item__body 的单行 0fr，这一层必须独占那一行：
+                     把步骤和备注一起塞进来，备注会落到隐式行上、收起时照样露在外面 -->
+                <div class="item__inner">
+                  <ol class="steps">
+                    <li v-for="(step, i) in item.steps || []" :key="i" class="steps__item">
+                      <span class="steps__index mono">{{ String(i + 1).padStart(2, '0') }}</span>
+                      <span class="steps__text">
+                        <strong class="steps__name">{{ step.title }}</strong>
+                        <span class="steps__detail">{{ step.detail }}</span>
+                      </span>
+                    </li>
+                  </ol>
+                  <p v-if="item.note" class="note">{{ item.note }}</p>
+                </div>
               </div>
             </article>
           </div>
@@ -275,18 +279,23 @@ onMounted(async () => {
   grid-template-rows: 1fr;
 }
 
+/* overflow: hidden 同时把 grid 项的自动最小尺寸压成 0，否则 0fr 收不拢 */
+.item__inner {
+  overflow: hidden;
+  padding: 0 22px 22px;
+}
+
 .steps {
   display: grid;
   gap: 14px;
   margin: 0;
-  padding: 0 22px 20px;
+  padding: 0;
   list-style: none;
 }
 
 .steps__item {
   display: flex;
   gap: 12px;
-  overflow: hidden;
 }
 
 .steps__index {
@@ -313,7 +322,7 @@ onMounted(async () => {
 }
 
 .note {
-  margin: 0 22px 20px;
+  margin: 18px 0 0;
   padding: 10px 14px;
   border-radius: var(--r-sm);
   background: var(--paper-sunken);
