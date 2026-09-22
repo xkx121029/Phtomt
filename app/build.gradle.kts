@@ -106,6 +106,8 @@ dependencies {
     implementation(libs.androidx.material3)
     // 图标体系已整体迁移至 Lucide（见 ui/icons/AppIcons.kt），material-icons-extended 不再被引用
     implementation(libs.lucide.icons)
+    // 毛玻璃（背景模糊）：仅用于真正浮在滚动内容之上的固定 chrome
+    implementation(libs.haze)
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.serialization.json)

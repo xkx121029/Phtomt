@@ -62,6 +62,16 @@ import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.staggerDelayMs
 import kotlinx.coroutines.delay
 import com.phoneagent.ui.icons.AppIcons
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/**
+ * 底部悬浮导航栏给页面留出的净空高度。
+ *
+ * 导航栏是浮在内容之上的圆角条（不再由 Scaffold 整段预留底部空间），
+ * 因此各页要自己把底部元素/滚动内容垫高这么多，否则最后一条会被压在条下面。
+ * 导航栏隐藏时（全屏二级页、键盘弹出）由宿主提供 0，页面按原样铺满。
+ */
+val LocalBottomNavClearance = staticCompositionLocalOf { 0.dp }
 
 /**
  * Button press feedback — scale(0.97) on press with critically-damped spring.

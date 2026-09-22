@@ -271,23 +271,16 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
     val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    // 底部悬浮导航栏的净空 = 条本体 + 与屏幕的呼吸间距 + 系统手势区。
+    // 键盘弹出或进全屏二级页时导航栏不显示，净空归零，页面按原样铺满。
+    val navBarVisible = extrasPage == null && !keyboardUp
+    val navClearance = if (navBarVisible) NavBarHeight + AppSpacing.Md + systemNavInset else 0.dp
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
-        bottomBar = {
-            // 全屏二级页时不显示底部导航
-            if (extrasPage == null && !keyboardUp) {
-                FloatingNavBar(
-                    tabs = tabs,
-                    selected = selected,
-                    onSelect = { selected = it },
-                    modifier = Modifier.padding(
-                        start = AppSpacing.Lg,
-                        end = AppSpacing.Lg,
-                        bottom = systemNavInset + AppSpacing.Md,
-                    ),
-                )
-            }
-        },
+        // 不再用 bottomBar 整段预留底部：导航栏改为浮在内容之上，
+        // 否则条下方会留下一条看不见的矩形预留带，看着像把内容截断了。
+        // 各页自己按 LocalBottomNavClearance 垫出净空。
     ) { padding ->
         // 统一白色状态栏边条：所有页面顶部先铺一条与状态栏等高的白色/浅色背景，
         // 内容整体下移，避免与系统状态栏图标重叠（edge-to-edge 下状态栏区域透明）
@@ -304,8 +297,9 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                     .background(MaterialTheme.colorScheme.surface),
             )
             Box(Modifier.fillMaxSize()) {
-                val currentExtras = extrasPage
-                if (currentExtras != null) {
+                CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
+                    val currentExtras = extrasPage
+                    if (currentExtras != null) {
                     // 全屏二级页：返回栏 + 对应页面
                     ExtrasPageContent(
                         page = currentExtras,
