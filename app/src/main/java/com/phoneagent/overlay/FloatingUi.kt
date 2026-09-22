@@ -74,4 +74,21 @@ object FloatingUi {
             setColor(color)
             if (stroke != null) setStroke(strokeW, stroke)
         }
+
+    /**
+     * 按执行阶段推导跑马灯底色：以用户自定义配色为底，向阶段色混合。
+     *
+     * 为什么不直接换成阶段色：设置里让用户配了跑马灯颜色，直接覆盖等于把那个设置变成死的。
+     * 混合既保住用户的配色意图，又能一眼看出"观察/思考/执行/完成/出错"。
+     */
+    fun phaseGradient(base: List<Int>, phase: String, t: Float = 0.6f): List<Int> =
+        base.map { blend(it, phaseColor(phase), t) }
+
+    /** 线性混色：t=0 取 a，t=1 取 b（只混 RGB，结果一律不透明） */
+    private fun blend(a: Int, b: Int, t: Float): Int = Color.argb(
+        255,
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt(),
+    )
 }

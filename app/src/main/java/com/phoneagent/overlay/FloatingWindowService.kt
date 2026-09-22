@@ -73,6 +73,8 @@ class FloatingWindowService : Service() {
     // 跑马灯厚度（dp）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
     private var marqueeHeightDp = 26
     private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
+    /** 当前执行阶段：跑马灯底色随它变化（观察/思考/执行/完成/出错各一套色调） */
+    private var currentPhase = "PENDING"
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
@@ -142,6 +144,22 @@ class FloatingWindowService : Service() {
 
     /** 截图隐藏前顶栏是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
+
+    /**
+     * 用户是否主动收起了整套面板（点卡片上的「隐藏」）。
+     *
+     * 收起后屏幕上只留一个悬浮球，任务同时被搁置（挂起由引擎负责）；点悬浮球唤出后原样恢复。
+     * 这个标志必须挡住后续所有"把面板显示出来"的路径（尤其是每步都会跑的 [resetPanel]），
+     * 否则下一步状态一刷新，面板就又自己冒出来了。
+     */
+    private var userHidden = false
+
+    /** 悬浮球窗口：面板收起后留在屏幕上唯一可点的入口 */
+    private var miniRoot: TextView? = null
+    private var miniParams: WindowManager.LayoutParams? = null
+
+    /** 截图隐藏前悬浮球是否可见，用于截图后原样恢复 */
+    private var miniVisibleBeforeHide = false
 
     /**
      * 任务执行期间系统状态栏是否已被隐藏（由 AgentEngine 经 [setStatusBarHidden] 驱动）。
@@ -217,7 +235,7 @@ class FloatingWindowService : Service() {
      */
     private fun applyMarqueeSettings() {
         val m = marquee ?: return
-        m.setColors(marqueeColors)
+        m.setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
         m.requestLayout()
         val p = barParams ?: return
         val newHeight = dp(marqueeHeightDp)
@@ -381,7 +399,9 @@ class FloatingWindowService : Service() {
     private fun showTopBar() {
         if (marquee != null) return
         val wm = windowManager ?: return
-        val bar = MarqueeView(this).apply { setColors(marqueeColors) }
+        val bar = MarqueeView(this).apply {
+            setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
+        }
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             dp(marqueeHeightDp),
@@ -594,6 +614,25 @@ class FloatingWindowService : Service() {
         header?.addView(dot)
         header?.addView(taskTitle)
         header?.addView(expandChip)
+        // 隐藏按钮：收起整套面板、只留一个悬浮球，同时把任务搁置（引擎在下一轮开始前挂起）；
+        // 用户点悬浮球即可原样唤出并继续执行
+        val hideChip = TextView(this).apply {
+            text = "隐藏"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(26),
+            ).apply { marginEnd = FloatingUi.PAD_S }
+            setOnClickListener {
+                hideForUser()
+                onInteraction?.invoke("hide", "")
+            }
+        }
+        header?.addView(hideChip)
         header?.addView(close)
         panel.addView(header)
 
