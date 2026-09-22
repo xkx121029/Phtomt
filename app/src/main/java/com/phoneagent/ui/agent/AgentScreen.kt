@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -313,10 +314,12 @@ fun AgentScreen(
                             start = AppSpacing.Lg,
                             end = AppSpacing.Lg,
                             top = AppSpacing.Xs,
-                            bottom = AppSpacing.Sm,
                         ),
                     )
                 }
+
+                // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来
+                Spacer(Modifier.height(AppSpacing.Sm))
             }
         }
 
