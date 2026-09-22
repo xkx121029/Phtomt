@@ -227,9 +227,7 @@ fun AgentScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase)
-            // 让出悬浮导航栏的净空：它现在浮在内容之上，不再由 Scaffold 统一预留
-            .padding(bottom = LocalBottomNavClearance.current),
+            .background(colors.surfaceBase),
     ) {
         // 顶栏与底部输入区改为浮在任务流之上的毛玻璃层：
         // 任务流真正从它们下方穿过，模糊才有东西可模糊。
@@ -252,7 +250,11 @@ fun AgentScreen(
                     start = AppSpacing.Lg,
                     end = if (railVisible) 22.dp else AppSpacing.Lg,
                     top = with(density) { headerHeight.toDp() } + AppSpacing.Sm,
-                    bottom = with(density) { dockHeight.toDp() } + AppSpacing.Lg,
+                    // 末项要能滚到输入区之上；输入区本身又浮在悬浮导航栏之上，
+                    // 所以导航栏的净空也算进来，任务流才真正铺到屏幕底、从两层面板下穿过
+                    bottom = with(density) { dockHeight.toDp() } +
+                        AppSpacing.Lg +
+                        LocalBottomNavClearance.current,
                 ),
             ) {
                 if (showEmpty) {
@@ -323,8 +325,10 @@ fun AgentScreen(
             }
         }
 
-        // 底部玻璃浮层：贴底、只圆上面两角。imePadding 放在玻璃外层，
-        // 键盘弹出时整块玻璃一起上移，而不是玻璃留在原地、内容从它下面钻出来
+        // 底部玻璃浮层：只圆上面两角。imePadding 放在玻璃外层，
+        // 键盘弹出时整块玻璃一起上移，而不是玻璃留在原地、内容从它下面钻出来。
+        // 净空padding放在 onSizeChanged 之外，让 dockHeight 只反映玻璃本体高度，
+        // 否则列表会按「玻璃 + 净空」再加一次净空，末项被顶得过高
         GlassSurface(
             hazeState = glass,
             shape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card),
@@ -332,6 +336,7 @@ fun AgentScreen(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .imePadding()
+                .padding(bottom = LocalBottomNavClearance.current)
                 .onSizeChanged { dockHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
