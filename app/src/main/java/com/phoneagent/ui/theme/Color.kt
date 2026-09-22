@@ -62,8 +62,6 @@ data class AppColors(
     val onMessageBubbleAgent: Color,
     val messageBubbleUser: Color,
     val onMessageBubbleUser: Color,
-    /** 顶栏渐隐遮罩起始色（与 surfaceBase 一致以保证无缝衔接，单列令牌便于后续微调） */
-    val topFadeTop: Color,
     /** 步骤轨道：未开始 / 进行中 / 已完成 */
     val railIdle: Color,
     val railActive: Color,
@@ -80,6 +78,20 @@ data class AppColors(
     val emptyStateText: Color,
     /** 运行指示灯 */
     val runningIndicator: Color,
+    /**
+     * 毛玻璃质感令牌（仅用于真正浮在滚动内容之上的固定 chrome，平铺卡片一律不用）。
+     *
+     * 四个值分工明确，缺一不可：
+     * - [glassTint] 叠在模糊结果之上，决定磨砂的浓淡；
+     * - [glassFallback] 是平台不支持背景模糊时的替身，必须接近不透明，
+     *   否则未模糊的内容会直接糊在文字后面；
+     * - [glassBorder] 带品牌色相的发丝线，替代通用的白色描边；
+     * - [glassSheen] 顶部受光高光，给亚克力一点"有厚度"的暗示。
+     */
+    val glassTint: Color,
+    val glassFallback: Color,
+    val glassBorder: Color,
+    val glassSheen: Color,
 )
 
 /** 浅色（默认）：暖纸白底 + 玄青主色 */
