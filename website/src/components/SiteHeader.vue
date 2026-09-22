@@ -13,6 +13,7 @@ const site = ref({})
 const NAV = [
   { to: '/features', label: '功能' },
   { to: '/how-it-works', label: '原理' },
+  { to: '/scenarios', label: '场景' },
   { to: '/download', label: '下载' },
   { to: '/changelog', label: '更新' },
   { to: '/docs', label: '文档' },
@@ -121,6 +122,7 @@ watch(() => route.fullPath, () => {
           <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
             {{ item.label }}
           </RouterLink>
+          <RouterLink to="/roadmap" class="sheet__link">路线图</RouterLink>
           <RouterLink to="/about" class="sheet__link">关于项目</RouterLink>
           <RouterLink to="/download" class="btn btn--primary sheet__cta">下载 APK</RouterLink>
         </div>

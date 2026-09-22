@@ -12,6 +12,7 @@ const COLUMNS = [
     links: [
       { to: '/features', label: '功能特性' },
       { to: '/how-it-works', label: '工作原理' },
+      { to: '/scenarios', label: '场景示例' },
       { to: '/download', label: '下载安装' },
       { to: '/changelog', label: '更新日志' }
     ]
@@ -29,6 +30,7 @@ const COLUMNS = [
     title: '其他',
     links: [
       { to: '/faq', label: '常见问题' },
+      { to: '/roadmap', label: '路线图' },
       { to: '/about', label: '关于项目' }
     ]
   }
@@ -103,6 +105,18 @@ onMounted(async () => {
 
       <div class="foot__bottom">
         <span class="small muted">© {{ year }} Happy Phone Agent · Phtomt</span>
+        <div class="foot__legal">
+          <RouterLink to="/docs/privacy" class="foot__legal-link">隐私政策</RouterLink>
+          <RouterLink to="/docs/disclaimer" class="foot__legal-link">免责声明</RouterLink>
+          <a
+            v-if="site.links?.github"
+            :href="`${site.links.github}/blob/main/LICENSE`"
+            class="foot__legal-link"
+            target="_blank"
+            rel="noopener noreferrer"
+            >MIT 协议</a
+          >
+        </div>
       </div>
     </div>
   </footer>
@@ -178,6 +192,26 @@ onMounted(async () => {
   margin-top: 48px;
   padding-top: 20px;
   border-top: 1px solid var(--line);
+}
+
+/* 合规链接放底栏而不是「其他」列：它们是随时可查的常驻条目，
+   和导航性质不同，混在栏目里会把栏目撑长、也显得像功能入口 */
+.foot__legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.foot__legal-link {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  transition: color var(--dur-ui) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .foot__legal-link:hover {
+    color: var(--brand);
+  }
 }
 
 @media (max-width: 860px) {
