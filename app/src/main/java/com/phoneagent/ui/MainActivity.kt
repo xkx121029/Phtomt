@@ -296,10 +296,9 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                     .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                     .background(MaterialTheme.colorScheme.surface),
             )
-            Box(Modifier.fillMaxSize()) {
-                CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
-                    val currentExtras = extrasPage
-                    if (currentExtras != null) {
+            CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
+                val currentExtras = extrasPage
+                if (currentExtras != null) {
                     // 全屏二级页：返回栏 + 对应页面
                     ExtrasPageContent(
                         page = currentExtras,
@@ -307,45 +306,64 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                         modifier = Modifier.fillMaxSize(),
                         onBack = { extrasPage = null },
                     )
-                    return@Box
-                }
+                } else {
+                    AnimatedContent(
+                        targetState = selected,
+                        transitionSpec = transitionSpec,
+                        label = "screen-switch",
+                    ) { screenIndex ->
+                        val contentMod = Modifier.fillMaxSize()
+                        when (screenIndex) {
+                            0 -> AgentScreen(
+                                vm, contentMod,
+                                onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                            )
 
-                AnimatedContent(
-                    targetState = selected,
-                    transitionSpec = transitionSpec,
-                    label = "screen-switch",
-                ) { screenIndex ->
-                    val contentMod = Modifier.fillMaxSize()
-                    when (screenIndex) {
-                        0 -> AgentScreen(
-                            vm, contentMod,
-                            onOpenMemory = { extrasPage = ExtrasPage.Memory },
-                        )
-                        1 -> HomeScreen(
-                            vm, contentMod,
-                            onRequestScreenshot = {
-                                val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                            },
-                            onNavigate = { selected = it },
-                            onOpenExtras = { extrasPage = it },
-                        )
-                        2 -> SettingsScreen(vm, contentMod)
+                            1 -> HomeScreen(
+                                vm, contentMod,
+                                onRequestScreenshot = {
+                                    val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                    screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                },
+                                onNavigate = { selected = it },
+                                onOpenExtras = { extrasPage = it },
+                            )
+
+                            2 -> SettingsScreen(vm, contentMod)
+                        }
                     }
-                }
 
-                // 全局 Snackbar 覆盖层
-                // 内容区已被 Scaffold 让出底部悬浮导航栏的高度，这里只留一点呼吸间距
-                AppSnackbar(
-                    state = snackbarState,
+                    // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
+                    AppSnackbar(
+                        state = snackbarState,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = navClearance + AppSpacing.Md),
+                    )
+                }
+            }
+
+            // 悬浮导航栏本身：画在内容之上，内容从它下面穿过去（不再由内容层整段让位）
+            if (navBarVisible) {
+                FloatingNavBar(
+                    tabs = tabs,
+                    selected = selected,
+                    onSelect = { selected = it },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = AppSpacing.Md),
+                        .padding(
+                            start = AppSpacing.Lg,
+                            end = AppSpacing.Lg,
+                            bottom = systemNavInset + AppSpacing.Md,
+                        ),
                 )
             }
         }
     }
 }
+
+/** 悬浮导航栏本体高度。页面净空与条自身布局共用同一常量，避免两边改漏 */
+private val NavBarHeight = 64.dp
 
 /**
  * 底部导航：大圆角长方形悬浮条。
