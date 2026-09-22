@@ -8,6 +8,7 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
+import com.phoneagent.engine.TaskSession
 import com.phoneagent.feature.document.DocResult
 
 /**
@@ -17,6 +18,10 @@ import com.phoneagent.feature.document.DocResult
  * AgentState（相位/消息/步数）、PlanPhase + planStream（规划流程）、taskQueue。
  * **刻意不用 AgentEngine.conversation**：那里 user 角色存的是发给模型的完整决策 prompt，
  * 渲染成气泡等于把内部提示词泄露到界面，且每次任务开始都会被清空。
+ *
+ * 一次只铺开**一个任务**：默认跟随实时任务（最新一次执行 + 正在进行的规划），
+ * 也可用 [focusTaskId] 指定回看某次历史任务（配 [archived] 取标题/计划/摘要/记忆）。
+ * 更早的任务不再混进当前任务流，改由侧边栏按任务列出、点谁看谁。
  */
 internal object AgentTimelineMapper {
 
@@ -45,103 +50,126 @@ internal object AgentTimelineMapper {
         needsUser: Boolean,
         needsUserReason: String,
         a11yEnabled: Boolean,
-        expandedRuns: Set<Long> = emptySet(),
-        foldRunThreshold: Int = 8,
         fold: LiveStatusFold = LiveStatusFold(),
         doc: DocResult? = null,
         decisionStream: String = "",
         /** 本次任务内 AI 写入的记忆事件（引擎内存态），实时插卡 */
         memoryEvents: List<MemoryEvent> = emptyList(),
+        /** 只看这一次任务；null = 跟随实时（最新一次执行 + 尚未产生执行的规划流程） */
+        focusTaskId: Long? = null,
+        /** 焦点任务是历史会话时，引擎归档的标题 / 计划 / 摘要 / 记忆 */
+        archived: TaskSession? = null,
     ): List<AgentTimelineItem> {
         val items = ArrayList<AgentTimelineItem>()
         // 已挂到具体步骤上的记忆事件 id，避免末尾兜底时重复插入
         val consumedMemoryIds = HashSet<Long>()
+        val runs = buildRuns(traces, history)
+        val newestId = runs.lastOrNull()?.taskId
+        // 焦点就是「正在跑的那一次」：这时才渲染实时状态、结束态、待批准的计划等活的流程数据
+        val isLive = focusTaskId == null || focusTaskId == newestId
+        val focusRun = if (focusTaskId == null) newestId?.let { id -> runs.first { it.taskId == id } }
+        else runs.firstOrNull { it.taskId == focusTaskId }
+        val events = if (isLive) memoryEvents else archived?.memoryEvents.orEmpty()
 
-        // 1) 无障碍是硬前置：未开启时 AI 读不到控件，必须在任务流顶部说明
-        if (!a11yEnabled) {
+        // 1) 无障碍是硬前置：未开启时 AI 读不到控件，必须在任务流顶部说明（历史回看不提示）
+        if (isLive && !a11yEnabled) {
             items += AgentTimelineItem.Notice(
                 AgentTimelineItem.NoticeKind.ACCESSIBILITY,
                 "无障碍服务未开启，AI 无法读取页面控件",
             )
         }
 
-        // 2) 历史任务分区（按 taskId 升序，最新一个永远展开）
-        val runs = buildRuns(traces, history)
-        val newest = runs.lastOrNull()
-        runs.forEach { run ->
-            val isNewest = newest != null && run.taskId == newest.taskId
-            val folded = !isNewest && run.steps.size > foldRunThreshold && run.taskId !in expandedRuns
-            if (folded) {
-                items += AgentTimelineItem.RunDigest(
-                    runKey = run.runKey,
-                    task = run.taskName,
-                    steps = run.steps.size,
-                    okSteps = run.steps.count { it.verified },
-                )
-                return@forEach
-            }
-            items += AgentTimelineItem.UserTask(run.taskName, queued = false, ownerKey = run.runKey)
-            // 已批准的计划只挂在最新任务上（批准后 planPhase 会一直停在 Approved）
-            if (isNewest && planPhase is PlanPhase.Approved) {
-                planPhase.plan?.let { items += AgentTimelineItem.PlanApproved(it) }
-            }
-            run.steps.forEach { step ->
-                items += stepItem(run.runKey, step)
-                // 该步写入的记忆：紧跟步骤卡，用户能立刻看到 AI 记住了什么
-                memoryEvents.filter { it.runKey == run.runKey && it.step == step.step }.forEach { ev ->
-                    consumedMemoryIds += ev.id
-                    items += memoryItem(ev, run.runKey, step.step)
-                }
-                step.trace?.visionDescription?.takeIf { it.isNotBlank() }?.let { desc ->
-                    items += AgentTimelineItem.AssistantNote(
-                        text = desc.take(VISION_MAX),
-                        source = AgentTimelineItem.NoteSource.VISION,
-                        runKey = run.runKey,
-                        step = step.step,
-                    )
-                }
-            }
-        }
-
-        // 2.5) 没挂上具体步骤的记忆（如任务结束后的提炼）：统一跟在历史任务之后
-        memoryEvents.filterNot { it.id in consumedMemoryIds }.forEach { ev ->
-            items += memoryItem(ev, ev.runKey, ev.step)
-        }
-
-        // 3) 需要协助：动作连续未生效 / 敏感页只读保护
-        if (needsUser) {
-            items += AgentTimelineItem.NeedsUser(
-                reason = needsUserReason.takeIf { it.isNotBlank() } ?: "Agent 已暂停，等待你接管或指示",
-                step = newest?.steps?.lastOrNull()?.step ?: state.stepCount,
+        // 2) 焦点任务的标题 —— 实时看引擎状态里的任务名，历史回看用归档标题
+        val focusTitle = focusRun?.taskName?.takeIf { it.isNotBlank() }
+            ?: archived?.title.orEmpty()
+            ?: if (isLive) "" else "历史任务"
+        if (focusTitle.isNotBlank()) {
+            items += AgentTimelineItem.UserTask(
+                text = focusTitle,
+                queued = false,
+                ownerKey = focusRun?.runKey ?: "r$focusTaskId",
             )
         }
 
-        // 4) 实时中间状态：恒定一条，只展示最新（ERROR 交给 Failed 项）
+        // 3) 已批准的计划：实时的取当前 PlanPhase，历史的取归档里存的那一份
+        val focusPlan = if (isLive) (planPhase as? PlanPhase.Approved)?.plan else archived?.plan
+        focusPlan?.let { items += AgentTimelineItem.PlanApproved(it) }
+
+        // 4) 本次任务的每一步（决策 + 执行合并），以及挂在步骤上的记忆卡片
+        focusRun?.steps?.forEach { step ->
+            items += stepItem(focusRun.runKey, step)
+            events.filter { it.runKey == focusRun.runKey && it.step == step.step }.forEach { ev ->
+                consumedMemoryIds += ev.id
+                items += memoryItem(ev, focusRun.runKey, step.step)
+            }
+            step.trace?.visionDescription?.takeIf { it.isNotBlank() }?.let { desc ->
+                items += AgentTimelineItem.AssistantNote(
+                    text = desc.take(VISION_MAX),
+                    source = AgentTimelineItem.NoteSource.VISION,
+                    runKey = focusRun.runKey,
+                    step = step.step,
+                )
+            }
+        }
+
+        // 5) 没挂上具体步骤的记忆（如任务结束后的提炼）：统一跟在步骤之后；历史回看时给出归档标题兜底
+        events.filterNot { it.id in consumedMemoryIds }.forEach { ev ->
+            items += memoryItem(ev, ev.runKey, ev.step)
+        }
+
+        if (!isLive) {
+            // 6) 历史任务的终态：归档只留了结论，不回放当时的实时状态
+            when (archived?.status) {
+                TaskSession.Status.DONE -> items += AgentTimelineItem.Done(
+                    okSteps = focusRun?.steps?.count { it.verified } ?: archived.okSteps,
+                    totalSteps = focusPlan?.steps?.size ?: archived.steps,
+                    tokens = focusRun?.steps?.sumOf { it.tokens } ?: 0,
+                    avgLatencyMs = focusRun?.steps?.takeIf { it.isNotEmpty() }
+                        ?.let { list -> list.sumOf { it.durationMs } / list.size } ?: 0L,
+                    note = archived.summary.take(80),
+                )
+
+                TaskSession.Status.RUNNING -> Unit
+                else -> items += AgentTimelineItem.Failed(
+                    archived?.summary?.takeIf { it.isNotBlank() } ?: "任务未完成",
+                )
+            }
+            return items.distinctBy { it.key }
+        }
+
+        // 7) 需要协助：动作连续未生效 / 敏感页只读保护
+        if (needsUser) {
+            items += AgentTimelineItem.NeedsUser(
+                reason = needsUserReason.takeIf { it.isNotBlank() } ?: "Agent 已暂停，等待你接管或指示",
+                step = focusRun?.steps?.lastOrNull()?.step ?: state.stepCount,
+            )
+        }
+
+        // 8) 实时中间状态：恒定一条，只展示最新（ERROR 交给 Failed 项）
         if (state.isRunning && state.phase != AgentState.Phase.ERROR) {
             items += AgentTimelineItem.LiveStatus(
                 phase = state.phase,
                 message = state.message.ifBlank { phaseLabel(state.phase) },
-                foldedCount = fold.observe(newest?.runKey ?: "", state.message),
+                foldedCount = fold.observe(focusRun?.runKey ?: "", state.message),
                 // AI 正在生成的正文（限长，尾部滚动展示即可）
                 streaming = decisionStream.takeLast(STREAM_MAX),
                 startedAtMillis = state.startedAtMillis,
             )
         }
 
-        // 5) 结束态：完成摘要 / 失败原因
+        // 9) 结束态：完成摘要 / 失败原因
         when (state.phase) {
             AgentState.Phase.DONE -> {
-                val run = newest
                 val planned = (planPhase as? PlanPhase.Approved)?.plan?.steps?.size ?: 0
                 items += AgentTimelineItem.Done(
-                    okSteps = run?.steps?.count { it.verified } ?: 0,
-                    totalSteps = if (planned > 0) planned else (run?.steps?.size ?: state.stepCount),
-                    tokens = run?.steps?.sumOf { it.tokens } ?: 0,
-                    avgLatencyMs = run?.steps?.takeIf { it.isNotEmpty() }
+                    okSteps = focusRun?.steps?.count { it.verified } ?: 0,
+                    totalSteps = if (planned > 0) planned else (focusRun?.steps?.size ?: state.stepCount),
+                    tokens = focusRun?.steps?.sumOf { it.tokens } ?: 0,
+                    avgLatencyMs = focusRun?.steps?.takeIf { it.isNotEmpty() }
                         ?.let { list -> list.sumOf { it.durationMs } / list.size } ?: 0L,
                     note = state.message.take(80),
                 )
-                runLevelNote(run, state.message)?.let { items += it }
+                runLevelNote(focusRun, state.message)?.let { items += it }
             }
 
             AgentState.Phase.ERROR -> {
@@ -151,7 +179,7 @@ internal object AgentTimelineMapper {
             else -> Unit
         }
 
-        // 6) 待批准的规划（新任务尚未产生 traces）
+        // 10) 待批准的规划（新任务尚未产生 traces）
         if (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
             planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Error
         ) {
@@ -170,12 +198,12 @@ internal object AgentTimelineMapper {
             }
         }
 
-        // 7) 排队等待执行的任务
+        // 11) 排队等待执行的任务（属于实时任务流，回看历史时不混入）
         queue.forEachIndexed { index, text ->
             items += AgentTimelineItem.UserTask(text, queued = true, ownerKey = "q$index")
         }
 
-        // 8) AI 生成的文档结果：直接在任务流里预览（原工作区页面已移除）
+        // 12) AI 生成的文档结果：直接在任务流里预览（原工作区页面已移除）
         doc?.takeIf { it.content.isNotBlank() }?.let {
             items += AgentTimelineItem.DocPreview(fileName = it.fileName, content = it.content)
         }
@@ -275,33 +303,34 @@ internal object AgentTimelineMapper {
     }
 
     /**
-     * 按 taskId 分组，并把执行记录按 step 并入（一一对应，缺一方时用另一方）。
+     * 按 taskId 分组，把决策追踪与执行记录按 (taskId, step) 并成一次次执行。
      *
-     * StepRecord 没有 taskId，故按 step 建立先进先出队列逐个消费：
-     * 第 1 个任务的第 3 步取走第 1 条 step=3 的记录，第 2 个任务的第 3 步取走第 2 条，
-     * 不依赖下标、不会把旧任务的记录错挂到新任务上。
+     * 两侧都带 taskId（执行记录早期版本没有，恒为 -1），因此一一对应不再依赖消费顺序；
+     * 只有那些无归属的旧记录按 step 建先进先出队列，补给缺执行结果的任务，
+     * 避免这些步骤只剩「怎么决定的」而没有「执行成没成」。
      */
     private fun buildRuns(traces: List<StepTrace>, history: List<StepRecord>): List<RunData> {
-        if (traces.isEmpty()) return emptyList()
-        val recordQueue = HashMap<Int, ArrayDeque<StepRecord>>()
-        history.forEach { recordQueue.getOrPut(it.step) { ArrayDeque() }.addLast(it) }
+        val traceGroups = traces.groupBy { it.taskId }
+        val recordGroups = history.groupBy { it.taskId }
+        val legacy = HashMap<Int, ArrayDeque<StepRecord>>()
+        recordGroups[-1]?.forEach { legacy.getOrPut(it.step) { ArrayDeque() }.addLast(it) }
 
-        val grouped = LinkedHashMap<Long, MutableList<StepTrace>>()
-        traces.sortedBy { it.taskId }.forEach { grouped.getOrPut(it.taskId) { mutableListOf() }.add(it) }
-
-        return grouped.map { (taskId, list) ->
-            val ordered = list.sortedBy { it.step }
-            val steps = ordered.map { trace ->
+        return (traceGroups.keys + recordGroups.keys.filter { it >= 0 }).sorted().map { taskId ->
+            val ts = traceGroups[taskId].orEmpty().sortedBy { it.step }
+            val rs = recordGroups[taskId].orEmpty().associateBy { it.step }
+            val steps = (ts.map { it.step } + rs.keys).distinct().sorted().map { s ->
                 MergedStep(
-                    step = trace.step,
-                    trace = trace,
-                    record = recordQueue[trace.step]?.removeFirstOrNull(),
+                    step = s,
+                    trace = ts.firstOrNull { it.step == s },
+                    record = rs[s] ?: legacy[s]?.removeFirstOrNull(),
                 )
             }
             RunData(
                 taskId = taskId,
                 runKey = "r$taskId",
-                taskName = ordered.firstNotNullOfOrNull { it.taskName?.takeIf { n -> n.isNotBlank() } }.orEmpty(),
+                taskName = ts.firstNotNullOfOrNull { it.taskName?.takeIf { n -> n.isNotBlank() } }
+                    ?: rs.values.firstNotNullOfOrNull { it.taskName?.takeIf { n -> n.isNotBlank() } }
+                    ?: if (taskId < 0) "无归属步骤" else "",
                 steps = steps,
             )
         }
