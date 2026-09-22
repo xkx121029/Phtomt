@@ -75,7 +75,7 @@ watch(page, () => {
     <section class="section section--tight">
       <div class="page layout">
         <!-- 版本索引 -->
-        <aside class="index">
+        <aside class="index glass">
           <p class="index__label">版本索引</p>
           <ol class="index__list">
             <li v-for="entry in all" :key="entry.version">
@@ -162,6 +162,8 @@ watch(page, () => {
   align-items: start;
 }
 
+/* 桌面端索引在左栏里，背后是纯色版心，.glass 的底色与模糊在这里自然不显形；
+   窄屏它会收成一条吸顶胶囊，正文从背后滚过去，玻璃才真正成立。 */
 .index {
   position: sticky;
   top: 88px;
@@ -365,23 +367,48 @@ watch(page, () => {
 }
 
 @media (max-width: 900px) {
+  /* 单列后改回普通流：sticky 的包含块变成整个 .layout（够高），索引才粘得住；
+     留在 grid 里它只会在自己那一行内失效 */
   .layout {
-    grid-template-columns: 1fr;
+    display: block;
   }
 
+  /* 索引收成一条吸顶胶囊。底色与模糊由 .glass 提供，这里只管形状与位置 */
   .index {
-    position: static;
+    top: 74px;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 22px;
+    padding: 7px 12px;
+    border: 1px solid var(--glass-line);
+    border-radius: var(--r-pill);
+  }
+
+  .index__label {
+    margin-bottom: 0;
+    flex: none;
   }
 
   .index__list {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
     max-height: none;
     gap: 6px;
+    padding: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .index__list::-webkit-scrollbar {
+    display: none;
   }
 
   .index__item {
     width: auto;
+    white-space: nowrap;
     border: 1px solid var(--line);
     border-radius: var(--r-pill);
     padding: 4px 10px;
