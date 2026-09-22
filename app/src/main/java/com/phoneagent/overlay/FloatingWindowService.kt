@@ -171,8 +171,8 @@ class FloatingWindowService : Service() {
         statusBarHidden = hidden
         barParams?.let { p ->
             p.y = topBarY()
-            runCatching { barRoot?.let { b -> windowManager?.updateViewLayout(b, p) } }
-            barRoot?.post { correctTopBarY(0) }
+            runCatching { marquee?.let { b -> windowManager?.updateViewLayout(b, p) } }
+            marquee?.post { correctTopBarY(0) }
         }
         // 卡片上边界随顶栏下移：原本贴在顶栏底边的卡片不能被顶栏盖住
         val p = params ?: return

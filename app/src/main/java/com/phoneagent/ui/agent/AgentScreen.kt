@@ -11,13 +11,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -30,14 +38,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.TopFadeScrim
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -72,11 +86,18 @@ fun AgentScreen(
     val settings by vm.settingsFlow.collectAsState()
     val doc by vm.docResult.collectAsState()
     val memoryEvents by vm.memoryEvents.collectAsState()
+    val sessions by vm.taskSessions.collectAsState()
 
     var draft by rememberSaveable { mutableStateOf("") }
     var submittedTask by rememberSaveable { mutableStateOf("") }
     var previewVisible by rememberSaveable { mutableStateOf(false) }
-    var expandedRuns by remember { mutableStateOf(emptySet<Long>()) }
+    var drawerOpen by remember { mutableStateOf(false) }
+    // 侧边栏里选中的任务；-1 = 跟随实时（最新一次执行 + 正在进行的规划）。
+    // 新建任务时一律复位到这里，保证「新建任务打开的是新任务」而不是接着看旧的。
+    var selectedTaskId by rememberSaveable { mutableStateOf(-1L) }
+
+    val viewingTaskId = selectedTaskId.takeIf { it > 0 }
+    val archivedSession = viewingTaskId?.let { id -> sessions.firstOrNull { it.taskId == id } }
 
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()

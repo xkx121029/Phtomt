@@ -8,11 +8,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +57,10 @@ internal fun AgentHeaderBar(
     runningTask: String,
     queue: List<String>,
     modifier: Modifier = Modifier,
+    /** 归档的任务会话数，作为「任务」按钮上的角标（0 不显示角标） */
+    taskCount: Int = 0,
+    /** 打开任务侧边栏（历史任务列表 + 新建任务入口） */
+    onOpenTasks: () -> Unit = {},
     /** 打开全屏记忆页（原底部「记忆」Tab 已并入 Agent 页） */
     onOpenMemory: () -> Unit = {},
 ) {
@@ -75,6 +81,33 @@ internal fun AgentHeaderBar(
                         StatusPill(text = "运行中", color = runningIndicatorColor())
                         Spacer(Modifier.width(AppSpacing.Sm))
                     }
+                    PressableScale(onClick = onOpenTasks) {
+                        Box(contentAlignment = Alignment.TopEnd) {
+                            Icon(
+                                imageVector = AppIcons.History,
+                                contentDescription = "任务列表",
+                                tint = colors.onSurfaceRaised,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            // 有历史任务才带角标：空的时候一个点都没有，不制造无意义的装饰
+                            if (taskCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = 6.dp, y = (-4).dp)
+                                        .clip(RoundedCornerShape(AppRadii.Chip))
+                                        .background(colors.brand)
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                ) {
+                                    Text(
+                                        text = if (taskCount > 9) "9+" else "$taskCount",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.onBrand,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(AppSpacing.Md))
                     PressableScale(onClick = onOpenMemory) {
                         Icon(
                             imageVector = AppIcons.Memory,
