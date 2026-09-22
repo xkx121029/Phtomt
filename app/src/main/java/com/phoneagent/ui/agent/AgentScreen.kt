@@ -118,7 +118,7 @@ fun AgentScreen(
 
     val items = remember(
         submittedTask, agent, planPhase, planText, decisionText, traces, history,
-        queue, needsUser, a11yEnabled, expandedRuns, fold, doc, memoryEvents,
+        queue, needsUser, a11yEnabled, fold, doc, memoryEvents, selectedTaskId, archivedSession,
     ) {
         AgentTimelineMapper.build(
             submittedTask = submittedTask,
@@ -131,11 +131,12 @@ fun AgentScreen(
             needsUser = needsUser,
             needsUserReason = if (needsUser) agent.message else "",
             a11yEnabled = a11yEnabled,
-            expandedRuns = expandedRuns,
             fold = fold,
             doc = doc,
             decisionStream = decisionText,
             memoryEvents = memoryEvents,
+            focusTaskId = viewingTaskId,
+            archived = archivedSession,
         )
     }
 
@@ -173,16 +174,22 @@ fun AgentScreen(
     var shownAssist by remember { mutableStateOf(assist) }
     LaunchedEffect(assist) { if (assist != null) shownAssist = assist }
 
-    // 任务流为空（无任何执行痕迹）时展示起步空态
-    val showEmpty = !agent.isRunning && !needsUser && traces.isEmpty() &&
+    // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态
+    val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && traces.isEmpty() &&
         queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null
+    // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示
+    val planningTitle = submittedTask.takeIf {
+        it.isNotBlank() && (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
+            planPhase is PlanPhase.AwaitingApproval)
+    }
 
     val latestRunKey = traces.maxOfOrNull { it.taskId }?.let { "r$it" }
     val latestSteps = items.filterIsInstance<AgentTimelineItem.StepCall>()
         .filter { it.runKey == latestRunKey }
     val plannedSteps = (planPhase as? PlanPhase.Approved)?.plan?.steps?.size ?: 0
     val totalSteps = maxOf(plannedSteps, agent.stepCount, latestSteps.size)
-    val railVisible = !showEmpty && totalSteps >= 2
+    // 进度轨只在实时视图出现：历史任务回放时的"当前步"没有意义，摆一条会误导
+    val railVisible = viewingTaskId == null && !showEmpty && totalSteps >= 2
     val confidence = latestSteps.lastOrNull()?.confidence
         ?: (planPhase as? PlanPhase.Approved)?.plan?.confidence
     val showStrip = agent.isRunning || needsUser || agent.phase == AgentState.Phase.ERROR
@@ -233,8 +240,23 @@ fun AgentScreen(
                 running = agent.isRunning,
                 runningTask = agent.task,
                 queue = queue,
+                taskCount = sessions.size,
+                onOpenTasks = { drawerOpen = true },
                 onOpenMemory = onOpenMemory,
             )
+
+            // 回看历史任务时的提示条：明确当前主区域不是实时任务，并给一键回到当前任务的出口
+            if (viewingTaskId != null) {
+                HistoryViewBanner(
+                    title = archivedSession?.title.orEmpty(),
+                    onBack = { selectedTaskId = -1L },
+                    modifier = Modifier.padding(
+                        start = AppSpacing.Lg,
+                        end = AppSpacing.Lg,
+                        top = AppSpacing.Xs,
+                    ),
+                )
+            }
 
             Box(
                 modifier = Modifier
@@ -264,17 +286,6 @@ fun AgentScreen(
                             AgentTimelineItemView(
                                 item = item,
                                 vm = vm,
-                                expandedRuns = expandedRuns,
-                                onToggleRun = { runKey ->
-                                    val taskId = runKey.removePrefix("r").toLongOrNull()
-                                    if (taskId != null) {
-                                        expandedRuns = if (taskId in expandedRuns) {
-                                            expandedRuns - taskId
-                                        } else {
-                                            expandedRuns + taskId
-                                        }
-                                    }
-                                },
                                 onFocusComposer = { focusRequester.requestFocus() },
                             )
                         }
@@ -337,6 +348,8 @@ fun AgentScreen(
                         when (mode) {
                             ComposerMode.NEW_TASK -> {
                                 submittedTask = text
+                                // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
+                                selectedTaskId = -1L
                                 vm.startPlanning(text)
                             }
 
@@ -399,6 +412,77 @@ fun AgentScreen(
         if (previewVisible) {
             AgentPreviewPanel(onDismiss = { previewVisible = false })
         }
+
+        // 任务侧边栏常驻组合（关闭时是一层空 Box，不吃触摸），这样打开时才播得进入场动画
+        AgentTaskDrawer(
+            open = drawerOpen,
+            sessions = sessions,
+            pendingTitle = planningTitle,
+            viewingTaskId = viewingTaskId,
+            onSelect = { taskId ->
+                selectedTaskId = taskId ?: -1L
+                drawerOpen = false
+            },
+            onNewTask = {
+                selectedTaskId = -1L
+                drawerOpen = false
+                focusRequester.requestFocus()
+            },
+            onDismiss = { drawerOpen = false },
+        )
+    }
+}
+
+/**
+ * 回看历史任务的提示条：说清当前看的是哪一次、给一个回到实时的出口。
+ * 不做"只读"字样——历史视图本身就不带任何可点操作，多说一句反而像在甩锅。
+ */
+@Composable
+private fun HistoryViewBanner(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Inline))
+            .background(colors.brandContainer)
+            .padding(start = AppSpacing.Md, end = AppSpacing.Xs, top = AppSpacing.Xs, bottom = AppSpacing.Xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = AppIcons.History,
+            contentDescription = null,
+            tint = colors.onBrandContainer,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(AppSpacing.Sm))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "正在回看历史任务",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.onBrandContainer,
+            )
+            if (title.isNotBlank()) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onBrandContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        PressableScale(onClick = onBack) {
+            Text(
+                text = "返回当前任务",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.onBrandContainer,
+                modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+            )
+        }
     }
 }
 
@@ -415,8 +499,6 @@ private data class AssistSpec(
 private fun AgentTimelineItemView(
     item: AgentTimelineItem,
     vm: MainViewModel,
-    expandedRuns: Set<Long>,
-    onToggleRun: (String) -> Unit,
     onFocusComposer: () -> Unit,
 ) {
     when (item) {
@@ -438,12 +520,6 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.NeedsUser -> NeedsUserItem(item, onFocusComposer = onFocusComposer)
         is AgentTimelineItem.Done -> DoneItem(item)
         is AgentTimelineItem.Failed -> FailedItem(item.message, vm)
-        is AgentTimelineItem.RunDigest -> RunDigestItem(
-            item = item,
-            expanded = (item.runKey.removePrefix("r").toLongOrNull() ?: -1L) in expandedRuns,
-            onToggle = { onToggleRun(item.runKey) },
-        )
-
         is AgentTimelineItem.Notice -> NoticeItem(item)
         is AgentTimelineItem.DocPreview -> DocPreviewItem(item, onDismiss = { vm.dismissDoc() })
         is AgentTimelineItem.MemoryAdded -> MemoryCardItem(item, onUndo = { vm.undoMemory(it) })
