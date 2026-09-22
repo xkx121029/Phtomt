@@ -450,7 +450,7 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 创建悬浮球（常驻、初始不可见）：用户收起面板后屏幕上唯一可点的入口。
+     * 创建悬浮球（只在用户点「隐藏」时才建，建好后长期复用）：收起面板后屏幕上唯一可点的入口。
      *
      * 只做一件事——点它把整套面板唤回来，所以刻意做成一个小圆形实色按钮，
      * 不抢视线，也不挡住用户正在操作的界面。
@@ -505,11 +505,14 @@ class FloatingWindowService : Service() {
      * 收起状态面板不应顺手把它藏掉——藏了以后 AI 仍在等输入，面板又回不来，任务就永久挂住了。
      */
     private fun hideForUser() {
+        // 先确保悬浮球建得出来：球建不出来（无悬浮窗权限）还把面板收起，
+        // 用户就再也叫不回来了——这种情况宁可不收起
+        showMiniBall()
+        val ball = miniRoot ?: return
         userHidden = true
         root?.visibility = View.GONE
         marquee?.visibility = View.GONE
-        showMiniBall()
-        miniRoot?.visibility = View.VISIBLE
+        ball.visibility = View.VISIBLE
     }
 
     /** 用户点悬浮球：原样唤出面板（任务由引擎继续执行） */
