@@ -8,6 +8,9 @@ import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.engine.MemoryEvent
+import com.phoneagent.engine.TaskSession
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -55,11 +58,30 @@ object DebugRecordsStore {
     data class LeanMessage(val role: String, val content: String, val timestamp: Long, val hasImage: Boolean)
 
     @Serializable
+    data class LeanMemoryEvent(
+        val id: Long, val content: String, val category: String,
+        val updated: Boolean, val runKey: String, val step: Int,
+        val createdAt: Long = 0L,
+    )
+
+    /** 任务会话归档的落盘形态（Agent 页侧边栏的历史任务要跨重启保留） */
+    @Serializable
+    data class LeanSession(
+        val taskId: Long, val title: String, val startedAt: Long, val endedAt: Long,
+        val status: String, val summary: String, val steps: Int, val okSteps: Int,
+        /** 已批准计划的 JSON 原文；空串表示该任务没有计划（如从队列直接执行） */
+        val planJson: String = "",
+        val memoryEvents: List<LeanMemoryEvent> = emptyList(),
+    )
+
+    @Serializable
     data class Bundle(
         val logs: List<LeanLog> = emptyList(),
         val traces: List<LeanTrace> = emptyList(),
         val history: List<LeanStepRecord> = emptyList(),
         val conversation: List<LeanMessage> = emptyList(),
+        // 旧存档没有该字段，给默认值保证向下兼容
+        val sessions: List<LeanSession> = emptyList(),
     )
 
     /** 回载结果，供 AgentEngine 一次性写回内存 StateFlow */
@@ -68,6 +90,7 @@ object DebugRecordsStore {
         val traces: List<StepTrace>,
         val history: List<StepRecord>,
         val conversation: List<ConversationMessage>,
+        val sessions: List<TaskSession>,
     )
 
     private fun dir(ctx: Context): File = File(ctx.filesDir, DIR_NAME).apply { mkdirs() }
@@ -87,6 +110,7 @@ object DebugRecordsStore {
         traces: List<StepTrace>,
         history: List<StepRecord>,
         conversation: List<ConversationMessage>,
+        sessions: List<TaskSession> = emptyList(),
     ) {
         runCatching {
             val dir = dir(ctx)
@@ -116,6 +140,17 @@ object DebugRecordsStore {
                     )
                 },
                 conversation = conversation.map { LeanMessage(it.role, it.content, it.timestamp, it.hasImage) },
+                sessions = sessions.map { s ->
+                    LeanSession(
+                        taskId = s.taskId, title = s.title, startedAt = s.startedAt, endedAt = s.endedAt,
+                        status = s.status.name, summary = s.summary, steps = s.steps, okSteps = s.okSteps,
+                        // 计划本身是结构化数据，这里原样存 JSON 文本，回载时再解回来
+                        planJson = s.plan?.let { runCatching { json.encodeToString(TaskPlan.serializer(), it) }.getOrNull() }.orEmpty(),
+                        memoryEvents = s.memoryEvents.map {
+                            LeanMemoryEvent(it.id, it.content, it.category, it.updated, it.runKey, it.step, it.createdAt)
+                        },
+                    )
+                },
             )
             File(dir, BUNDLE_FILE).writeText(json.encodeToString(Bundle.serializer(), bundle))
         }
@@ -148,6 +183,20 @@ object DebugRecordsStore {
                 )
             },
             conversation = bundle.conversation.map { ConversationMessage(it.role, it.content, it.timestamp, it.hasImage) },
+            sessions = bundle.sessions.map { s ->
+                TaskSession(
+                    taskId = s.taskId, title = s.title, startedAt = s.startedAt, endedAt = s.endedAt,
+                    // 状态名认不出来（改过枚举）时退回「已结束」，不让旧存档直接崩掉侧边栏
+                    status = runCatching { TaskSession.Status.valueOf(s.status) }
+                        .getOrDefault(TaskSession.Status.ABORTED),
+                    summary = s.summary, steps = s.steps, okSteps = s.okSteps,
+                    plan = s.planJson.takeIf { it.isNotBlank() }
+                        ?.let { runCatching { json.decodeFromString(TaskPlan.serializer(), it) }.getOrNull() },
+                    memoryEvents = s.memoryEvents.map {
+                        MemoryEvent(it.id, it.content, it.category, it.updated, it.runKey, it.step, it.createdAt)
+                    },
+                )
+            },
         )
     }.getOrNull()
 

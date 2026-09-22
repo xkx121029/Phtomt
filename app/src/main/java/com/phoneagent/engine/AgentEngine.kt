@@ -550,15 +550,18 @@ class AgentEngine(
         _metrics.value = AgentMetrics()
         _executionHistory.value = emptyList()
         _traces.value = emptyList()
+        // 任务会话归档同步清空：明细都没了，侧边栏再留着任务条目只会点出空页面
+        replaceTaskSessions(emptyList())
         // 同步清空磁盘持久化，避免重启后旧调试记录被再次回载
         com.phoneagent.data.store.DebugRecordsStore.clear(appContext)
     }
 
-    /** 把当前的日志/轨迹/执行历史/对话持久化到磁盘（重启后 Debug 页回载查看） */
+    /** 把当前的日志/轨迹/执行历史/对话（含任务会话归档）持久化到磁盘（重启后 Debug 页/侧边栏回载查看） */
     private fun persistDebug() {
         runCatching {
             com.phoneagent.data.store.DebugRecordsStore.save(
                 appContext, _logs.value, _traces.value, _executionHistory.value, _conversation.value,
+                _taskSessions.value,
             )
         }
     }
@@ -571,6 +574,17 @@ class AgentEngine(
             _traces.value = p.traces
             _executionHistory.value = p.history
             _conversation.value = p.conversation
+            // 存档里还挂着「进行中」的，说明上次是没走完收尾就被杀进程了，回载时直接判为已中断，
+            // 否则侧边栏会永远显示一个不会结束的任务
+            replaceTaskSessions(
+                p.sessions.map {
+                    if (it.status == TaskSession.Status.RUNNING) {
+                        it.copy(status = TaskSession.Status.ABORTED, summary = it.summary.ifBlank { "应用重启，任务已中断" })
+                    } else {
+                        it
+                    }
+                },
+            )
         }
     }
 

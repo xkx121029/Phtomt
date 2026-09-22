@@ -88,6 +88,8 @@ class MainViewModel(
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
     val stepShot: StateFlow<com.phoneagent.domain.model.StepShot> = engine.stepShot
     val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> = engine.traces
+    /** 任务会话归档（Agent 页侧边栏）：最新一次任务在最前 */
+    val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> = engine.taskSessions
     val taskQueue: StateFlow<List<String>> = engine.taskQueue
     val needsUser: StateFlow<Boolean> = engine.needsUser
     val userHintRequest = engine.userHintRequest
