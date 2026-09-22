@@ -124,7 +124,14 @@ export const content = {
   // 首屏与站点元信息是「通道显示名 / 日志配色」两张表的唯一来源，
   // 读到就顺手并入本地注册表，视图里 channelLabel() 即可直接用
   bootstrap: () => read('/api/bootstrap', (s) => s.bootstrap).then(applySiteMetaOf('site')),
-  site: () => read('/api/site', (s) => s.site).then(applySiteMeta),
+  // applySiteMeta 只往注册表里并两张展示表、本身不返回内容，所以不能直接当 .then 的
+  // 映射函数用——那样调用方拿到的是 undefined，页头页脚求值 site.version 就会抛错、
+  // 被 Vue 当成渲染失败整块吞掉（表现为页眉页脚凭空消失）。这里显式把站点对象传下去。
+  site: () =>
+    read('/api/site', (s) => s.site).then((site) => {
+      applySiteMeta(site)
+      return site
+    }),
   features: () => read('/api/features', (s) => s.features),
   releases: (channel = 'all') =>
     read(`/api/releases?channel=${encodeURIComponent(channel)}`, (s) => s.releases),
