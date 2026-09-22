@@ -39,7 +39,7 @@ onMounted(async () => {
     <PageHero
       eyebrow="文档中心"
       :title="total ? `${total} 篇文档，从装好到改源码` : '文档中心'"
-      lead="按「入门 → 进阶 → 支持」组织。每篇都写清了设计动机——为什么这么做，以及不这么做会踩什么坑。"
+      lead="按「入门 → 进阶 → 支持 → 合规」组织。每篇都写清了设计动机——为什么这么做，以及不这么做会踩什么坑。"
     >
       <div class="search">
         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">

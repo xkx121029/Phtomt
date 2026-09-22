@@ -4,7 +4,7 @@ import CollectionEditor from './CollectionEditor.vue'
 const FIELDS = [
   { key: 'slug', label: '路径标识', mono: true, readonly: true, hint: '文档地址是 /docs/<slug>，创建后不可改' },
   { key: 'order', label: '排序', type: 'number' },
-  { key: 'group', label: '分组', hint: '入门 / 进阶 / 支持' },
+  { key: 'group', label: '分组', hint: '入门 / 进阶 / 支持 / 合规' },
   { key: 'title', label: '标题' },
   { key: 'summary', label: '摘要', type: 'textarea', rows: 3 },
   {
