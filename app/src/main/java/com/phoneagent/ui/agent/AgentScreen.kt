@@ -1,7 +1,6 @@
 package com.phoneagent.ui.agent
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -31,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,10 +49,11 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.PressableScale
-import com.phoneagent.ui.components.TopFadeScrim
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -58,6 +61,7 @@ import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.EaseOut
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -209,18 +213,6 @@ fun AgentScreen(
 
     // 自动跟随：只在用户已在底部、且没有主动上滑时贴到最新
     val follow by remember { derivedStateOf { !listState.canScrollForward } }
-    // 顶部渐隐只在内容真的滚到被截断时才出现：
-    // 常驻的话它会盖住列表首项的可视区（图标、第一张卡的上半截）
-    val scrimActive by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        }
-    }
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (scrimActive) 1f else 0f,
-        animationSpec = tween(DurationNormal, easing = EaseOut),
-        label = "top-scrim-alpha",
-    )
     // 空态里已带无障碍引导文案，再把任务流的 Notice 摆在同一屏就是重复提示
     val visibleItems = if (showEmpty) {
         items.filterNot { it is AgentTimelineItem.Notice }
@@ -234,182 +226,208 @@ fun AgentScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase),
+            .background(colors.surfaceBase)
+            // 让出悬浮导航栏的净空：它现在浮在内容之上，不再由 Scaffold 统一预留
+            .padding(bottom = LocalBottomNavClearance.current),
     ) {
-        Column(
+        // 顶栏与底部输入区改为浮在任务流之上的毛玻璃层：
+        // 任务流真正从它们下方穿过，模糊才有东西可模糊。
+        // 取样源与两个玻璃面必须是同一 Box 下的兄弟节点，且取样源在前。
+        val glass = rememberGlassState()
+        val density = LocalDensity.current
+        // 实测高度回填成列表的内边距，首项/末项不会被压在玻璃下面
+        var headerHeight by remember { mutableIntStateOf(0) }
+        var dockHeight by remember { mutableIntStateOf(0) }
+
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 让出悬浮导航栏的净空：它现在浮在内容之上，不再由 Scaffold 统一预留
-                .padding(bottom = LocalBottomNavClearance.current),
+                .hazeSource(glass),
         ) {
-            AgentHeaderBar(
-                running = agent.isRunning,
-                runningTask = agent.task,
-                queue = queue,
-                taskCount = sessions.size,
-                onOpenTasks = { drawerOpen = true },
-                onOpenMemory = onOpenMemory,
-            )
-
-            // 回看历史任务时的提示条：明确当前主区域不是实时任务，并给一键回到当前任务的出口
-            if (viewingTaskId != null) {
-                HistoryViewBanner(
-                    title = archivedSession?.title.orEmpty(),
-                    onBack = { selectedTaskId = -1L },
-                    modifier = Modifier.padding(
-                        start = AppSpacing.Lg,
-                        end = AppSpacing.Lg,
-                        top = AppSpacing.Xs,
-                    ),
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = AppSpacing.Lg,
+                    end = if (railVisible) 22.dp else AppSpacing.Lg,
+                    top = with(density) { headerHeight.toDp() } + AppSpacing.Sm,
+                    bottom = with(density) { dockHeight.toDp() } + AppSpacing.Lg,
+                ),
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = AppSpacing.Lg,
-                        end = if (railVisible) 22.dp else AppSpacing.Lg,
-                        top = AppSpacing.Sm,
-                        bottom = AppSpacing.Lg,
-                    ),
-                ) {
-                    if (showEmpty) {
-                        item(key = "empty") {
-                            AgentEmptyState(
-                                a11yEnabled = a11yEnabled,
-                                onPickSuggestion = { draft = it },
-                            )
-                        }
-                    }
-                    itemsIndexed(items = visibleItems, key = { _, item -> item.key }) { index, item ->
-                        Box(modifier = Modifier.animateListItem(index = index)) {
-                            AgentTimelineItemView(
-                                item = item,
-                                vm = vm,
-                                onFocusComposer = { focusRequester.requestFocus() },
-                            )
-                        }
-                        Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
+                if (showEmpty) {
+                    item(key = "empty") {
+                        AgentEmptyState(
+                            a11yEnabled = a11yEnabled,
+                            onPickSuggestion = { draft = it },
+                        )
                     }
                 }
+                itemsIndexed(items = visibleItems, key = { _, item -> item.key }) { index, item ->
+                    Box(modifier = Modifier.animateListItem(index = index)) {
+                        AgentTimelineItemView(
+                            item = item,
+                            vm = vm,
+                            onFocusComposer = { focusRequester.requestFocus() },
+                        )
+                    }
+                    Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
+                }
+            }
 
-                TopFadeScrim(
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    alpha = scrimAlpha,
+            if (railVisible) {
+                AgentStepRail(
+                    totalSteps = totalSteps,
+                    completed = latestSteps.count { it.verified },
+                    current = agent.stepCount.coerceIn(0, totalSteps),
+                    onSeek = onSeek,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
+            }
+        }
+
+        // 顶部玻璃浮层：贴顶、只圆下面两角，读起来就是"从屏幕边缘伸出来的一块"
+        GlassSurface(
+            hazeState = glass,
+            shape = RoundedCornerShape(bottomStart = AppRadii.Card, bottomEnd = AppRadii.Card),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .onSizeChanged { headerHeight = it.height },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                AgentHeaderBar(
+                    running = agent.isRunning,
+                    runningTask = agent.task,
+                    queue = queue,
+                    taskCount = sessions.size,
+                    onOpenTasks = { drawerOpen = true },
+                    onOpenMemory = onOpenMemory,
                 )
 
-                if (railVisible) {
-                    AgentStepRail(
-                        totalSteps = totalSteps,
-                        completed = latestSteps.count { it.verified },
-                        current = agent.stepCount.coerceIn(0, totalSteps),
-                        onSeek = onSeek,
-                        modifier = Modifier.align(Alignment.CenterEnd),
+                // 回看历史任务时的提示条：明确当前主区域不是实时任务，并给一键回到当前任务的出口
+                if (viewingTaskId != null) {
+                    HistoryViewBanner(
+                        title = archivedSession?.title.orEmpty(),
+                        onBack = { selectedTaskId = -1L },
+                        modifier = Modifier.padding(
+                            start = AppSpacing.Lg,
+                            end = AppSpacing.Lg,
+                            top = AppSpacing.Xs,
+                            bottom = AppSpacing.Sm,
+                        ),
                     )
                 }
             }
+        }
 
-            AnimatedVisibility(
-                visible = showStrip,
-                // 与条目出现方向一致：由下向上
-                enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +
-                    slideInVertically(tween(DurationNormal, easing = EaseOut)) { it / 3 },
-                exit = fadeOut(tween(DurationNormal, easing = EaseOut)) +
-                    slideOutVertically(tween(DurationNormal, easing = EaseOut)) { it / 3 },
-            ) {
-                AgentRunStatusStrip(
-                    state = agent,
-                    plannedSteps = plannedSteps,
-                    confidence = confidence,
-                    needsUser = needsUser,
-                    previewVisible = previewVisible,
-                    onTogglePreview = { previewVisible = !previewVisible },
-                    onFocusComposer = { focusRequester.requestFocus() },
-                    onStop = { vm.stopAgent() },
-                )
-            }
+        // 底部玻璃浮层：贴底、只圆上面两角。imePadding 放在玻璃外层，
+        // 键盘弹出时整块玻璃一起上移，而不是玻璃留在原地、内容从它下面钻出来
+        GlassSurface(
+            hazeState = glass,
+            shape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .imePadding()
+                .onSizeChanged { dockHeight = it.height },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                AnimatedVisibility(
+                    visible = showStrip,
+                    // 与条目出现方向一致：由下向上
+                    enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +
+                        slideInVertically(tween(DurationNormal, easing = EaseOut)) { it / 3 },
+                    exit = fadeOut(tween(DurationNormal, easing = EaseOut)) +
+                        slideOutVertically(tween(DurationNormal, easing = EaseOut)) { it / 3 },
+                ) {
+                    AgentRunStatusStrip(
+                        state = agent,
+                        plannedSteps = plannedSteps,
+                        confidence = confidence,
+                        needsUser = needsUser,
+                        previewVisible = previewVisible,
+                        onTogglePreview = { previewVisible = !previewVisible },
+                        onFocusComposer = { focusRequester.requestFocus() },
+                        onStop = { vm.stopAgent() },
+                    )
+                }
 
-            // 有协助浮层时输入区让位，避免同屏出现两个输入框
-            if (shownAssist == null) {
-            AgentComposer(
-                draft = draft,
-                onDraftChange = { draft = it },
-                mode = mode,
-                lockHint = lockHint,
-                queueCount = queue.size,
-                onOpenQueue = {
-                    if (items.isNotEmpty()) scope.launch { listState.animateScrollToItem(items.lastIndex) }
-                },
-                reviewEnabled = settings.enableReview,
-                onToggleReview = { enabled -> vm.saveSettings(settings.copy(enableReview = enabled)) },
-                onSend = {
-                    val text = draft.trim()
-                    if (text.isNotEmpty()) {
-                        when (mode) {
-                            ComposerMode.NEW_TASK -> {
-                                submittedTask = text
-                                // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
-                                selectedTaskId = -1L
-                                vm.startPlanning(text)
-                            }
-
-                            ComposerMode.QUEUE_FOLLOW_UP -> vm.startAgent(text)
-                            ComposerMode.ANSWER_CLARIFY ->
-                                vm.answerClarification(ClarificationOption(id = "manual", label = text))
-
-                            ComposerMode.GUIDE_AGENT -> vm.provideUserHint(text)
-                            ComposerMode.LOCKED -> Unit
-                        }
-                        draft = ""
-                    }
-                },
-                onStop = { vm.stopAgent() },
-                onDismissUser = { vm.dismissUser() },
-                focusRequester = focusRequester,
-            )
-            }
-
-            // 协助浮层：从页面下方浮入，承载选项与输入；此时输入区让位（否则同屏两个输入框）
-            AnimatedVisibility(
-                visible = assist != null,
-                enter = slideInVertically(tween(DurationNormal, easing = EaseOut)) { it } +
-                    fadeIn(tween(DurationNormal, easing = EaseOut)),
-                exit = slideOutVertically(tween(DurationFast, easing = EaseOut)) { it } +
-                    fadeOut(tween(DurationFast, easing = EaseOut)),
-            ) {
-                shownAssist?.let { spec ->
-                    AgentAssistSheet(
-                        vm = vm,
-                        title = spec.title,
-                        message = spec.message,
-                        options = spec.options,
-                        allowManualHandle = spec.allowManualHandle,
+                // 有协助浮层时输入区让位，避免同屏出现两个输入框
+                if (shownAssist == null) {
+                    AgentComposer(
                         draft = draft,
                         onDraftChange = { draft = it },
-                        onPickOption = { option ->
-                            vm.answerClarification(option)
-                            draft = ""
+                        mode = mode,
+                        lockHint = lockHint,
+                        queueCount = queue.size,
+                        onOpenQueue = {
+                            if (items.isNotEmpty()) scope.launch { listState.animateScrollToItem(items.lastIndex) }
                         },
-                        onSubmitText = { text ->
-                            if (spec.allowManualHandle) {
-                                vm.provideUserHint(text)
-                            } else {
-                                vm.answerClarification(ClarificationOption(id = "manual", label = text))
+                        reviewEnabled = settings.enableReview,
+                        onToggleReview = { enabled -> vm.saveSettings(settings.copy(enableReview = enabled)) },
+                        onSend = {
+                            val text = draft.trim()
+                            if (text.isNotEmpty()) {
+                                when (mode) {
+                                    ComposerMode.NEW_TASK -> {
+                                        submittedTask = text
+                                        // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
+                                        selectedTaskId = -1L
+                                        vm.startPlanning(text)
+                                    }
+
+                                    ComposerMode.QUEUE_FOLLOW_UP -> vm.startAgent(text)
+                                    ComposerMode.ANSWER_CLARIFY ->
+                                        vm.answerClarification(ClarificationOption(id = "manual", label = text))
+
+                                    ComposerMode.GUIDE_AGENT -> vm.provideUserHint(text)
+                                    ComposerMode.LOCKED -> Unit
+                                }
+                                draft = ""
                             }
-                            draft = ""
                         },
-                        onManualHandled = { vm.dismissUser() },
-                        modifier = Modifier
-                            .background(colors.surfaceBase)
-                            .imePadding()
-                            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+                        onStop = { vm.stopAgent() },
+                        onDismissUser = { vm.dismissUser() },
+                        focusRequester = focusRequester,
                     )
+                }
+
+                // 协助浮层：从页面下方浮入，承载选项与输入；此时输入区让位（否则同屏两个输入框）
+                AnimatedVisibility(
+                    visible = assist != null,
+                    enter = slideInVertically(tween(DurationNormal, easing = EaseOut)) { it } +
+                        fadeIn(tween(DurationNormal, easing = EaseOut)),
+                    exit = slideOutVertically(tween(DurationFast, easing = EaseOut)) { it } +
+                        fadeOut(tween(DurationFast, easing = EaseOut)),
+                ) {
+                    shownAssist?.let { spec ->
+                        AgentAssistSheet(
+                            vm = vm,
+                            title = spec.title,
+                            message = spec.message,
+                            options = spec.options,
+                            allowManualHandle = spec.allowManualHandle,
+                            draft = draft,
+                            onDraftChange = { draft = it },
+                            onPickOption = { option ->
+                                vm.answerClarification(option)
+                                draft = ""
+                            },
+                            onSubmitText = { text ->
+                                if (spec.allowManualHandle) {
+                                    vm.provideUserHint(text)
+                                } else {
+                                    vm.answerClarification(ClarificationOption(id = "manual", label = text))
+                                }
+                                draft = ""
+                            },
+                            onManualHandled = { vm.dismissUser() },
+                            modifier = Modifier.padding(
+                                horizontal = AppSpacing.Lg,
+                                vertical = AppSpacing.Md,
+                            ),
+                        )
+                    }
                 }
             }
         }

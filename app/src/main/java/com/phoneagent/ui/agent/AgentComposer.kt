@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -168,11 +167,11 @@ internal fun AgentComposer(
         ComposerMode.NEW_TASK -> "描述任务，AI 将逐步接管手机"
     }
 
+    // 自身不铺底：这一层被 AgentScreen 的底部毛玻璃 dock 包着，
+    // 底色交给玻璃，输入区才有"浮在任务流之上"的层次
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.surfaceBase)
-            .imePadding()
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         if (queueCount > 0) {
