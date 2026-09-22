@@ -916,8 +916,8 @@ class AgentEngine(
                 val task = pendingTasks.poll() ?: break
                 run(task, null)
                 lastTaskId = currentTaskId
-                // 每个任务结束后持久化调试记录（日志/轨迹/历史/对话），App 重启后 Debug 页仍可查看
-                tryOrNull("调试记录持久化失败") { persistDebug() }
+                // 调试记录（日志/轨迹/历史/对话）与任务会话归档的持久化已由 run() 的收尾统一完成：
+                // 放这里会与收尾再写一遍同样的整包数据（含全部截图缩略图与 API 原文），白写一倍磁盘
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             cancelled = true
