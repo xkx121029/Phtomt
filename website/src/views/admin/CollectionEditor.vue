@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useCollection } from './useCollection.js'
-import { sectionsToText, textToSections } from './sections.js'
+import { sectionsToText, textToSections, stepsToText, textToSteps } from './sections.js'
 
 /**
  * 集合编辑器：左侧条目列表，右侧表单。
@@ -32,7 +32,9 @@ const form = reactive({})
 const showRaw = ref(false)
 const rawText = ref('')
 
-const MULTI = props.fields.filter((f) => f.type === 'list' || f.type === 'sections').map((f) => f.key)
+const MULTI = props.fields
+  .filter((f) => f.type === 'list' || f.type === 'sections' || f.type === 'steps')
+  .map((f) => f.key)
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
@@ -55,6 +57,7 @@ function toForm(item) {
     const value = item?.[field.key]
     if (field.type === 'list') out[field.key] = Array.isArray(value) ? value.join('\n') : ''
     else if (field.type === 'sections') out[field.key] = sectionsToText(value)
+    else if (field.type === 'steps') out[field.key] = stepsToText(value)
     else if (field.type === 'switch') out[field.key] = value !== false
     else out[field.key] = value ?? ''
   }
@@ -67,6 +70,7 @@ function fromForm() {
     const value = form[field.key]
     if (field.type === 'list') out[field.key] = String(value || '').split('\n').map((s) => s.trim()).filter(Boolean)
     else if (field.type === 'sections') out[field.key] = textToSections(value)
+    else if (field.type === 'steps') out[field.key] = textToSteps(value)
     else if (field.type === 'number') out[field.key] = value === '' ? undefined : Number(value)
     else if (field.type === 'switch') out[field.key] = Boolean(value)
     else out[field.key] = typeof value === 'string' ? value : value
@@ -236,10 +240,17 @@ defineExpose({ reload: load })
           </label>
 
           <textarea
-            v-else-if="field.type === 'textarea' || field.type === 'list' || field.type === 'sections'"
+            v-else-if="
+              field.type === 'textarea' ||
+              field.type === 'list' ||
+              field.type === 'sections' ||
+              field.type === 'steps'
+            "
             v-model="form[field.key]"
             class="textarea"
-            :class="{ 'textarea--tall': field.type === 'sections' || field.rows > 8 }"
+            :class="{
+              'textarea--tall': field.type === 'sections' || field.type === 'steps' || field.rows > 8
+            }"
             :rows="field.rows || 5"
             spellcheck="false"
           />
