@@ -592,6 +592,23 @@ tr:last-child td {
   );
 }
 
+/* 环境色雾：整页垫一层极淡色斑，落在所有卡片之下。
+   存在的理由只有一个——卡片是半透明的，平底色上 backdrop-filter 无物可糊，
+   玻璃感就永远读不出来。三处色斑刻意不对称（左上一大块品牌绿、右侧偏下暖琥珀、
+   底部偏左一点冷雾蓝），居中对称的径向光晕是最典型的 AI 味。
+   用 fixed 不用 absolute：色斑不跟内容滚，卡片从它上面滑过去时模糊才有连续感。
+   z-index:-1 让它落在正文之下、body 底色（已上提到画布）之上，正好卡在卡片背后。 */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(56% 46% at 10% -6%, var(--ambient-brand) 0%, transparent 68%),
+    radial-gradient(44% 40% at 92% 30%, var(--ambient-warm) 0%, transparent 70%),
+    radial-gradient(58% 44% at 34% 104%, var(--ambient-cool) 0%, transparent 72%);
+}
+
 /* 编辑感粗分隔线：比 1px 的 --line 更有态度，用来切分大段落 */
 .rule {
   height: 2px;

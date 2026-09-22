@@ -15,6 +15,9 @@ useCardTilt()
 
 <template>
   <div class="shell">
+    <!-- 环境色雾：卡片亚克力的「背景物」。没有它，半透明卡片底下是一片死平的纸色，
+         模糊无物可糊，玻璃效果就等于没做。纯装饰，不进无障碍树。 -->
+    <div class="ambient" aria-hidden="true"></div>
     <SiteHeader v-if="!isAdmin" />
     <main :class="['main', { 'main--admin': isAdmin }]">
       <RouterView v-slot="{ Component, route: current }">

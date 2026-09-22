@@ -397,8 +397,12 @@ onMounted(async () => {
   margin-top: 32px;
 }
 
+/* 交替区块：底色带绿调，比 --paper 更有归属感。
+   这里必须留出透明度——色雾铺在整页之下，不透明底色会把卡片背后的色斑整块挡死，
+   落在这个区块里的卡片就退回死平的玻璃。第一行是不支持 color-mix 时的替身。 */
 .band {
   background: var(--paper-tint);
+  background: color-mix(in srgb, var(--paper-tint) 70%, transparent);
   border-block: 1px solid var(--line);
 }
 
