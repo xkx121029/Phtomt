@@ -149,6 +149,9 @@ class AgentAccessibilityService : AccessibilityService() {
         var noLabel = 0
         var deduped = 0
 
+        /** 已收录的"非可交互纯文字"节点数：上限 [MAX_PLAIN_NODES]，防止正文页把整页文字灌进 AI 上下文 */
+        var plainCollected = 0
+
         fun describe(root: AccessibilityNodeInfo?): String =
             "访问=$visited 不可见=$invisible 无标签=$noLabel 尺寸为0=$zeroSize 容器内重复=$deduped" +
                 " 根节点子数=${root?.childCount ?: -1}"
@@ -167,6 +170,15 @@ class AgentAccessibilityService : AccessibilityService() {
 
     /** 后代文字的最大递归深度（只找浅层文字，深了就是另一条内容） */
     private val LABEL_MAX_DEPTH = 3
+
+    companion object {
+        /**
+         * 非可交互纯文字节点的收录上限。
+         * 收它们是为了让 AI 能"读"页面（正文、列表项文字），但正文页动辄上百条，
+         * 全塞进决策上下文会明显推高成本，这里只保留遍历顺序靠前的部分。
+         */
+        private const val MAX_PLAIN_NODES = 80
+    }
 
     private fun collectElements(
         node: AccessibilityNodeInfo,
