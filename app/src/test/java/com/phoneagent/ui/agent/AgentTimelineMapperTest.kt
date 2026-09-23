@@ -210,8 +210,32 @@ class AgentTimelineMapperTest {
         )
         // 提问与选项都由输入栏（AgentComposer）承载，任务流只剩任务标题这一条
         assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
-        assertTrue(items.none { it is AgentTimelineItem.PlanApproval })
         assertEquals(listOf("把字体调大"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+    }
+
+    @Test
+    fun `待批准的步骤清单不再进任务流（改由输入栏承载）`() {
+        val items = build(
+            submittedTask = "把字体调大",
+            planPhase = PlanPhase.AwaitingApproval(TaskPlan(steps = emptyList(), confidence = 0.8)),
+        )
+        // 步骤清单与「批准并开始 / 取消」都搬进输入栏，任务流只留任务标题
+        assertEquals(listOf("把字体调大"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+        assertTrue(items.none { it is AgentTimelineItem.PlanApproved })
+        assertTrue(items.none { it is AgentTimelineItem.PlanFailed })
+    }
+
+    @Test
+    fun `纯对话阶段：任务标题留在任务流，回答以 say 气泡呈现`() {
+        val items = build(
+            submittedTask = "你好",
+            planPhase = PlanPhase.Reply("你好！有什么可以帮你的？"),
+            sayEvents = listOf(sayEvent(id = 1, step = 1)),
+        )
+        assertEquals(listOf("你好"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+        // 规划流的原始 JSON 不该漏进任务流
+        assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
+        assertTrue(items.none { it is AgentTimelineItem.PlanFailed })
     }
 
     @Test
