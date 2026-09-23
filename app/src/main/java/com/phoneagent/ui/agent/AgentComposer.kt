@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -45,7 +46,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.ClarificationOption
+import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
+import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
@@ -59,10 +63,12 @@ import com.phoneagent.ui.theme.EaseOut
  *
  * 关键约束来自引擎真实行为（见方案 2.5）：
  * - 运行中不禁用输入，走「排队下一条」而不是并发执行；
- * - Planning / AwaitingApproval 阶段必须锁定——此时引擎的规划 job 尚空闲，
- *   若下发新任务会与规划并发跑，所以这两个阶段一律 LOCKED。
+ * - Planning 阶段必须锁定——此时引擎的规划 job 尚空闲，
+ *   若下发新任务会与规划并发跑，所以这个阶段一律 LOCKED；
+ * - AwaitingApproval 不锁定输入框（没有输入框），而是整块换成计划面板：
+ *   步骤清单与「批准并开始 / 取消」都落在输入栏里，任务流里不再另出一张卡片。
  */
-internal enum class ComposerMode { NEW_TASK, QUEUE_FOLLOW_UP, GUIDE_AGENT, ANSWER_CLARIFY, LOCKED }
+internal enum class ComposerMode { NEW_TASK, QUEUE_FOLLOW_UP, GUIDE_AGENT, ANSWER_CLARIFY, LOCKED, PLAN_APPROVAL }
 
 /** 细行开关：比 M3 默认 Switch 紧凑，匹配 28dp 行高 */
 @Composable
@@ -231,11 +237,118 @@ private fun ClarifyOptionChips(
 }
 
 /**
+ * 待批准的计划面板：整块占据输入栏的位置。
+ *
+ * 为什么放在输入栏而不是任务流里：批准是"该我拍板了"的动作，和输入框一样属于
+ * 底部操作区；摆进任务流会跟历史消息混在一起，用户得往上翻才找得到按钮。
+ * 步骤清单限高内滚——步骤多时也不能把底部面板顶到半屏高。
+ */
+@Composable
+private fun PlanApprovalPanel(
+    plan: TaskPlan,
+    vm: MainViewModel,
+    onApprove: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val shape = RoundedCornerShape(AppRadii.Card)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .border(1.dp, colors.outlineSoft, shape)
+            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "执行计划",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            StatusPill(text = "共 ${plan.steps.size} 步", color = colors.brand)
+            Spacer(Modifier.width(AppSpacing.Xs))
+            StatusPill(
+                text = "把握 ${(plan.confidence * 100).toInt()}%",
+                color = confidenceColor(plan.confidence),
+            )
+        }
+        if (plan.estimatedTimeSeconds > 0) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "预计耗时约 ${plan.estimatedTimeSeconds} 秒",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceRaised,
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Sm))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = PlanListMaxHeight)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            plan.steps.forEachIndexed { index, step ->
+                val desc = rememberTranslated(step.description, vm)
+                val intent = rememberTranslated(step.intent, vm)
+                Row(
+                    modifier = Modifier.padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        text = "${index + 1}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = colors.brand,
+                        modifier = Modifier.width(16.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = desc,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        if (intent.isNotBlank()) {
+                            Text(
+                                text = intent,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceRaised,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(AppSpacing.Sm))
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+            AgentActionButton(
+                text = "取消",
+                tone = AgentButtonTone.NEUTRAL,
+                onClick = onCancel,
+                modifier = Modifier.weight(1f),
+            )
+            AgentActionButton(
+                text = "批准并开始",
+                icon = AppIcons.Play,
+                onClick = onApprove,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/** 计划步骤清单在输入栏里的最大高度：超出内滚，底部面板不会被顶高 */
+private val PlanListMaxHeight = 132.dp
+
+/**
  * 固定底部输入区：输入框与动作按钮同处一个容器，圆角与内边距随聚焦形变，
  * 按钮随 [mode] 切换。不使用系统弹窗，队列入口为内嵌细条。
  */
 @Composable
 internal fun AgentComposer(
+    vm: MainViewModel,
     draft: String,
     onDraftChange: (String) -> Unit,
     mode: ComposerMode,
@@ -250,6 +363,10 @@ internal fun AgentComposer(
     /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */
     options: List<ClarificationOption> = emptyList(),
     onPickOption: (ClarificationOption) -> Unit = {},
+    /** 待批准的计划：非空且 mode 为 [ComposerMode.PLAN_APPROVAL] 时，整块输入面换成计划面板 */
+    plan: TaskPlan? = null,
+    onApprovePlan: () -> Unit = {},
+    onCancelPlan: () -> Unit = {},
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -271,6 +388,7 @@ internal fun AgentComposer(
 
     val placeholder = when (mode) {
         ComposerMode.LOCKED -> lockHint.ifBlank { "请稍候…" }
+        ComposerMode.PLAN_APPROVAL -> "请先批准或取消计划"
         ComposerMode.ANSWER_CLARIFY -> "或者自己说一个答案"
         ComposerMode.QUEUE_FOLLOW_UP -> "追加下一条任务（当前任务结束后执行）"
         ComposerMode.GUIDE_AGENT -> "直接告诉我该怎么做"
@@ -315,6 +433,17 @@ internal fun AgentComposer(
         // 澄清态：输入面顶部先铺候选答案，点一下即答；下面的输入框留给选项覆盖不到的情况
         if (mode == ComposerMode.ANSWER_CLARIFY && options.isNotEmpty()) {
             ClarifyOptionChips(options = options, onPick = onPickOption)
+        }
+
+        // 待批准：整块输入面换成计划面板——步骤清单与批准键就在输入栏的位置上
+        if (mode == ComposerMode.PLAN_APPROVAL && plan != null) {
+            PlanApprovalPanel(
+                plan = plan,
+                vm = vm,
+                onApprove = onApprovePlan,
+                onCancel = onCancelPlan,
+            )
+            return@Column
         }
 
         // 输入面：一个容器同时装下输入框与动作按钮。
@@ -424,6 +553,9 @@ internal fun AgentComposer(
                     enabled = draft.isNotBlank(),
                     onClick = onSend,
                 )
+
+                // 计划面板不走这一行（上面已经整块替换掉了），这里只为穷尽分支
+                ComposerMode.PLAN_APPROVAL -> Unit
             }
         }
     }

@@ -30,11 +30,6 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "plan#live"
     }
 
-    /** 计划已生成，等待用户批准 */
-    data class PlanApproval(val plan: TaskPlan) : AgentTimelineItem {
-        override val key: String get() = "plan#approval"
-    }
-
     /** 计划已批准，正在执行 */
     data class PlanApproved(val plan: TaskPlan) : AgentTimelineItem {
         override val key: String get() = "plan#approved"

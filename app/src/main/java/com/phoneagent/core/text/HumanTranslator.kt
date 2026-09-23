@@ -142,7 +142,7 @@ object HumanTranslator {
         val sb = StringBuilder(verb)
         if (!target.isNullOrBlank()) sb.append("「$target」")
         if (confidence != null) sb.append(" · ").append(confidenceWord(confidence)).append(" ${(confidence * 100).toInt()}%")
-        if (!reasoning.isNullOrBlank()) sb.append(" · 因为：").append(reasoning)
+        if (!reasoning.isNullOrBlank()) sb.append(" · 目的：").append(reasoning)
         return sb.toString()
     }
 
@@ -250,7 +250,7 @@ object HumanTranslator {
         when {
             // 枚举只有闭合才成立，半截的 intent 出字只会是乱码
             key == "intent" -> if (!partial) parts += actionVerb(value) else Unit
-            key == "reasoning" -> parts += " · 因为：$value"
+            key == "reasoning" -> parts += " · 目的：$value"
             key == "value" && parent == "target" -> parts += if (partial) "「$value" else "「$value」"
             key == "summary" -> parts += if (intent in streamPrimaryIntents) value else " · $value"
             key == "text" -> parts += "：$value"

@@ -32,9 +32,6 @@ internal object AgentTimelineMapper {
     /** 视觉描述（OCR/模型输出）单条最大长度 */
     private const val VISION_MAX = 400
 
-    /** 实时流式回显保留的最大字符数（只展示尾部，避免长文把列表项撑爆） */
-    private const val STREAM_MAX = 800
-
     /** 引擎在端侧决策留档时写入 StepTrace.visionSource 的标注值（对应 AgentEngine.LOCAL_DECISION_SOURCE） */
     private const val SOURCE_LOCAL_DECISION = "端侧决策"
 
@@ -87,7 +84,8 @@ internal object AgentTimelineMapper {
         // 2) 焦点任务的标题 —— 实时看引擎状态里的任务名，历史回看用归档标题。
         //    规划尚未产出执行时，标题由下面的「待批准规划」分支负责渲染，这里不重复出
         val pendingPlanFlow = planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
-            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Error
+            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply ||
+            planPhase is PlanPhase.Error
         val focusTitle = when {
             focusRun != null -> focusRun.taskName
             archived != null -> archived.title.ifBlank { "历史任务" }
@@ -190,8 +188,10 @@ internal object AgentTimelineMapper {
                 phase = state.phase,
                 message = state.message.ifBlank { phaseLabel(state.phase) },
                 foldedCount = fold.observe(focusRun?.runKey ?: "", state.message),
-                // AI 正在生成的正文：把半截 JSON 译成人话再限长，尾部滚动展示即可
-                streaming = HumanTranslator.humanStream(decisionStream).takeLast(STREAM_MAX),
+                // AI 正在生成的正文：把半截 JSON 译成人话后**全量**交给打字机。
+                // 这里不能先 takeLast 截断——截断会破坏"前缀单调"，打字机只能整段跳变，
+                // 表现就是"分段蹦"；限长改在渲染处（LiveStatusItem 只贴尾部若干行）。
+                streaming = HumanTranslator.humanStream(decisionStream),
                 startedAtMillis = state.startedAtMillis,
             )
         }
@@ -220,7 +220,8 @@ internal object AgentTimelineMapper {
 
         // 10) 待批准的规划（新任务尚未产生 traces）
         if (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
-            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Error
+            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply ||
+            planPhase is PlanPhase.Error
         ) {
             if (submittedTask.isNotBlank()) {
                 items += AgentTimelineItem.UserTask(submittedTask, queued = false, ownerKey = "pending")
@@ -230,9 +231,11 @@ internal object AgentTimelineMapper {
                     items += AgentTimelineItem.PlanStreaming(planText)
                 }
 
-                // 澄清的提问与选项由输入栏（AgentComposer）承载，任务流不再重复一条
-                is PlanPhase.Clarifying -> Unit
-                is PlanPhase.AwaitingApproval -> items += AgentTimelineItem.PlanApproval(planPhase.plan)
+                // 澄清的提问与选项由输入栏（AgentComposer）承载，任务流不再重复一条；
+                // 待批准的步骤清单与「批准并开始」同样搬进输入栏，任务流里也不再出卡片
+                is PlanPhase.Clarifying, is PlanPhase.AwaitingApproval -> Unit
+                // 纯对话：回答已经作为一条 say 气泡出现在上面，这里不再产出条目
+                is PlanPhase.Reply -> Unit
                 is PlanPhase.Error -> items += AgentTimelineItem.PlanFailed(planPhase.message)
                 else -> Unit
             }
@@ -341,7 +344,7 @@ internal object AgentTimelineMapper {
         val sb = StringBuilder(verb)
         if (target != null) sb.append("「$target」")
         action.confidence?.let { sb.append(" · ").append(HumanTranslator.confidenceWord(it)) }
-        action.reasoning?.takeIf { it.isNotBlank() }?.let { sb.append(" · 因为：").append(it) }
+        action.reasoning?.takeIf { it.isNotBlank() }?.let { sb.append(" · 目的：").append(it) }
         return sb.toString().take(HUMAN_MAX)
     }
 

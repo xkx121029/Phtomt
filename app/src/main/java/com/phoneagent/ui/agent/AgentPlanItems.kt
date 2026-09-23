@@ -7,7 +7,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,13 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,9 +30,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.PressableScale
-import com.phoneagent.ui.components.StatusPill
-import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -98,100 +90,13 @@ internal fun PlanStreamingItem(
             }
             if (item.text.isNotBlank()) {
                 Spacer(Modifier.height(AppSpacing.Sm))
-                // 半截 markdown 也能渲染（解析器会 flush 未闭合代码块），只保留尾部片段避免撑爆列表项。
-                // 打字机把分块到达的规划文本摊成连续吐字（key 恒定，换任务不残留）
-                val typed = rememberTypedText(item.text.takeLast(900), key = "plan")
-                AgentMessageText(text = typed, vm = vm)
+                // 半截 markdown 也能渲染（解析器会 flush 未闭合代码块）。
+                // 打字机必须吃**全量**文本：先截断再打字的话，前缀单调性被破坏，
+                // 打字机会判定为"换了内容"而整段跳变（就是"分段蹦"）。
+                // 限长放在打字之后——渲染时只取尾部片段，避免撑爆列表项。
+                val typed = rememberTypedText(item.text, key = "plan")
+                AgentMessageText(text = typed.takeLast(900), vm = vm)
             }
-        }
-    }
-}
-
-/** 计划待批准：步数 / 预计时长 / 置信度 / 逐步清单，交互与原 PlanPanel 一致 */
-@Composable
-internal fun PlanApprovalItem(
-    item: AgentTimelineItem.PlanApproval,
-    vm: MainViewModel,
-    onApprove: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
-            .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
-            .padding(AppSpacing.Lg),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "执行计划",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            StatusPill(text = "共 ${item.plan.steps.size} 步", color = colors.brand)
-            Spacer(Modifier.width(AppSpacing.Xs))
-            StatusPill(
-                text = "把握 ${(item.plan.confidence * 100).toInt()}%",
-                color = confidenceColor(item.plan.confidence),
-            )
-        }
-        if (item.plan.estimatedTimeSeconds > 0) {
-            Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = "预计耗时约 ${item.plan.estimatedTimeSeconds} 秒",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceRaised,
-            )
-        }
-        Spacer(Modifier.height(AppSpacing.Md))
-
-        item.plan.steps.forEachIndexed { index, step ->
-            val desc = rememberTranslated(step.description, vm)
-            Row(
-                modifier = Modifier.padding(vertical = 3.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Text(
-                    text = "${index + 1}",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = colors.brand,
-                    modifier = Modifier.width(18.dp),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = desc,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (step.intent.isNotBlank()) {
-                        val intent = rememberTranslated(step.intent, vm)
-                        Text(
-                            text = intent,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceRaised,
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(AppSpacing.Lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
-            AgentActionButton(
-                text = "取消",
-                tone = AgentButtonTone.NEUTRAL,
-                onClick = onCancel,
-                modifier = Modifier.weight(1f),
-            )
-            AgentActionButton(
-                text = "批准并开始",
-                icon = AppIcons.Play,
-                onClick = onApprove,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }

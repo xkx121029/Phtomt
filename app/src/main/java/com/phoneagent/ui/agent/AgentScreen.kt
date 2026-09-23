@@ -161,13 +161,14 @@ fun AgentScreen(
     val mode = when {
         needsUser -> ComposerMode.GUIDE_AGENT
         planPhase is PlanPhase.Clarifying -> ComposerMode.ANSWER_CLARIFY
-        planPhase is PlanPhase.Planning || planPhase is PlanPhase.AwaitingApproval -> ComposerMode.LOCKED
+        planPhase is PlanPhase.Planning -> ComposerMode.LOCKED
+        // 待批准的步骤清单与「批准并开始 / 取消」都搬进输入栏，任务流里不再出卡片
+        planPhase is PlanPhase.AwaitingApproval -> ComposerMode.PLAN_APPROVAL
         agent.isRunning -> ComposerMode.QUEUE_FOLLOW_UP
         else -> ComposerMode.NEW_TASK
     }
     val lockHint = when (planPhase) {
         is PlanPhase.Planning -> "AI 正在规划，请稍候…"
-        is PlanPhase.AwaitingApproval -> "请先在上方批准或取消计划"
         else -> "请稍候…"
     }
 
@@ -190,10 +191,10 @@ fun AgentScreen(
     // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态
     val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && traces.isEmpty() &&
         queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null
-    // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示
+    // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示（纯对话也已产出一句回答，同样算本轮任务）
     val planningTitle = submittedTask.takeIf {
         it.isNotBlank() && (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
-            planPhase is PlanPhase.AwaitingApproval)
+            planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply)
     }
 
     val latestRunKey = traces.maxOfOrNull { it.taskId }?.let { "r$it" }
@@ -389,6 +390,7 @@ fun AgentScreen(
                 // 用了它输入区会在浮层退场后一直消失
                 if (assist == null) {
                     AgentComposer(
+                        vm = vm,
                         draft = draft,
                         onDraftChange = { draft = it },
                         mode = mode,
@@ -401,6 +403,9 @@ fun AgentScreen(
                         onToggleReview = { enabled -> vm.saveSettings(settings.copy(enableReview = enabled)) },
                         options = clarifyPhase?.clarification?.options.orEmpty(),
                         onPickOption = { vm.answerClarification(it) },
+                        plan = (planPhase as? PlanPhase.AwaitingApproval)?.plan,
+                        onApprovePlan = { vm.approvePlan() },
+                        onCancelPlan = { vm.cancelPlanning() },
                         onSend = {
                             val text = draft.trim()
                             if (text.isNotEmpty()) {
@@ -417,7 +422,7 @@ fun AgentScreen(
                                         vm.answerClarification(ClarificationOption(id = "manual", label = text))
 
                                     ComposerMode.GUIDE_AGENT -> vm.provideUserHint(text)
-                                    ComposerMode.LOCKED -> Unit
+                                    ComposerMode.LOCKED, ComposerMode.PLAN_APPROVAL -> Unit
                                 }
                                 draft = ""
                             }
@@ -564,13 +569,6 @@ private fun AgentTimelineItemView(
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
         is AgentTimelineItem.PlanStreaming -> PlanStreamingItem(item, vm)
-        is AgentTimelineItem.PlanApproval -> PlanApprovalItem(
-            item = item,
-            vm = vm,
-            onApprove = { vm.approvePlan() },
-            onCancel = { vm.cancelPlanning() },
-        )
-
         is AgentTimelineItem.PlanApproved -> PlanApprovedItem(item)
         is AgentTimelineItem.PlanFailed -> PlanFailedItem(item.message, vm)
         is AgentTimelineItem.AssistantNote -> AssistantNoteItem(item, vm)

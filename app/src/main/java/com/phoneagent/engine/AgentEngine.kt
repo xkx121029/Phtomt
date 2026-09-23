@@ -677,6 +677,9 @@ class AgentEngine(
         if (task.isBlank()) return
         pendingTask = task
         _planStream.value = ""
+        // 上一轮任务里 AI 说过的话先清掉：纯对话不会进 run()，靠它清就太晚了，
+        // 新问题的回答会和上一轮的旧气泡同屏
+        _sayEvents.value = emptyList()
         _planPhase.value = PlanPhase.Planning
         // 新一轮输入：作废上一轮算好的会话承接块（它对应的是上一轮的输入与历史）
         sessionContextCache = null
@@ -705,29 +708,45 @@ class AgentEngine(
                     log(AgentLog.Level.ERROR, "规划失败：$content")
                     pushFloating("规划失败", "ERROR")
                 }
-                // 规划完成后，需要用户交互时推送内容到悬浮窗
-                when (val phase = _planPhase.value) {
-                    is PlanPhase.Clarifying -> {
-                        pushFloating("需要澄清", "OBSERVING")
-                        showFloatingInteraction(
-                            "clarify", "需要澄清", phase.clarification.question,
-                            phase.clarification.options.map { it.label },
-                        )
-                    }
-                    is PlanPhase.AwaitingApproval -> {
-                        val plan = phase.plan
-                        val summary = plan?.steps?.joinToString("\n") { s ->
-                            "${s.description}" + (s.intent?.let { " → $it" } ?: "")
-                        }?.take(300) ?: "计划已生成"
-                        pushFloating("等待批准", "OBSERVING")
-                        showFloatingInteraction("approve", "执行计划", summary)
-                    }
-                    else -> {}
-                }
+                settlePlanPhase()
             } catch (e: Exception) {
                 _planPhase.value = PlanPhase.Error("规划出错：${e.message}")
                 log(AgentLog.Level.ERROR, "规划异常：${e.message}")
             }
+        }
+    }
+
+    /**
+     * 规划阶段落定后的收尾。
+     *
+     * [PlanPhase.Reply] 是纯对话：不请求批准、不进入执行，直接把这句话呈现成任务流里的一条消息
+     * （用户要的"问一句你好不该走批准流程"就落在这里）；其余阶段按需推悬浮窗交互。
+     */
+    private fun settlePlanPhase() {
+        when (val phase = _planPhase.value) {
+            is PlanPhase.Reply -> {
+                emitSayEvent(phase.text, "r$currentTaskId", 1)
+                pushFloating(phase.text.take(20), "THINKING")
+            }
+
+            is PlanPhase.Clarifying -> {
+                pushFloating("需要澄清", "OBSERVING")
+                showFloatingInteraction(
+                    "clarify", "需要澄清", phase.clarification.question,
+                    phase.clarification.options.map { it.label },
+                )
+            }
+
+            is PlanPhase.AwaitingApproval -> {
+                val plan = phase.plan
+                val summary = plan?.steps?.joinToString("\n") { s ->
+                    "${s.description}" + (s.intent?.let { " → $it" } ?: "")
+                }?.take(300) ?: "计划已生成"
+                pushFloating("等待批准", "OBSERVING")
+                showFloatingInteraction("approve", "执行计划", summary)
+            }
+
+            else -> Unit
         }
     }
 
@@ -745,6 +764,7 @@ class AgentEngine(
                 if (_planPhase.value is PlanPhase.Error) {
                     log(AgentLog.Level.ERROR, "重新规划失败：$content")
                 }
+                settlePlanPhase()
             } catch (e: Exception) {
                 _planPhase.value = PlanPhase.Error("重新规划出错：${e.message}")
                 log(AgentLog.Level.ERROR, "重新规划异常：${e.message}")
@@ -1977,16 +1997,20 @@ class AgentEngine(
                     visionSrc == "主模型直读" -> settingsVal.model
                     else -> ""
                 }
-                recordStepTrace(
-                    step = _state.value.stepCount,
-                    sent = userText,
-                    decision = decision,
-                    visionSource = visionSrc,
-                    visionModel = visionModel,
-                    visionDescription = desc?.takeIf { it.isNotBlank() }
-                        ?: if (mainSeesImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
-                    screenshot = screenshot,
-                )
+                // say 不落决策轨迹：它不是一步操作，落档会在任务流里凭空多出一条「说」的步骤
+                // （只有 trace、没有执行记录），读起来像是工具没被识别出来
+                if (intent.intent != IntentType.SAY) {
+                    recordStepTrace(
+                        step = _state.value.stepCount,
+                        sent = userText,
+                        decision = decision,
+                        visionSource = visionSrc,
+                        visionModel = visionModel,
+                        visionDescription = desc?.takeIf { it.isNotBlank() }
+                            ?: if (mainSeesImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
+                        screenshot = screenshot,
+                    )
+                }
 
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
             intent.intent != IntentType.GIVE_UP && needsReviewIntent(intent, snapshot)

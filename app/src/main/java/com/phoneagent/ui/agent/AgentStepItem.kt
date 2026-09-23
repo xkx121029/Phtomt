@@ -145,11 +145,11 @@ internal fun ToolStepRow(
                 shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
         ) {
             Column(modifier = Modifier.padding(start = 40.dp)) {
-                // 依据（弱化，不与动作抢注意力）
+                // 目的（AI 输出的 reasoning 就是这个动作要干什么；弱化，不与动作抢注意力）
                 if (!step.thinking.isNullOrBlank()) {
                     Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
-                        text = "因为：${step.thinking}",
+                        text = "目的：${step.thinking}",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceRaised,
                         maxLines = 3,

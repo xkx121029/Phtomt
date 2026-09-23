@@ -220,6 +220,7 @@ internal fun AssistantNoteItem(
  * AI 主动说的一句话（say 意图）：挂在任务流里的 AI 气泡，一次说完不折叠。
  *
  * 它不是一步操作，因此没有工具图标、没有步号——只作为一条对话消息出现；正文走 Markdown 渲染。
+ * 正文用打字机逐字吐出：引擎把整句一次性投递过来，直接渲染就是"啪"地整段蹦出来。
  */
 @Composable
 internal fun SayItem(
@@ -227,6 +228,7 @@ internal fun SayItem(
     vm: MainViewModel,
 ) {
     val colors = AppTheme.colors
+    val typed = rememberTypedText(item.text, key = item.key)
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         Column(
             modifier = Modifier
@@ -238,7 +240,7 @@ internal fun SayItem(
             AgentSpeakerHeader(label = "对我说", tint = colors.onMessageBubbleAgent)
             Spacer(Modifier.height(AppSpacing.Xs))
             AgentMessageText(
-                text = item.text,
+                text = typed,
                 vm = vm,
                 modifier = Modifier.fillMaxWidth(),
             )

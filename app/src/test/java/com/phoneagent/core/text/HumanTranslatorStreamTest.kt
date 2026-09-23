@@ -20,7 +20,7 @@ class HumanTranslatorStreamTest {
     @Test
     fun `完整 JSON 译成一句人话`() {
         assertEquals(
-            "点击「搜索框」 · 因为：页面顶部就是搜索入口",
+            "点击「搜索框」 · 目的：页面顶部就是搜索入口",
             HumanTranslator.humanStream(fullTap),
         )
     }
@@ -55,7 +55,7 @@ class HumanTranslatorStreamTest {
     @Test
     fun `半截的 reasoning 能吐出已读部分`() {
         assertEquals(
-            "点击 · 因为：因为页面",
+            "点击 · 目的：因为页面",
             HumanTranslator.humanStream("""{"intent":"tap","reasoning":"因为页面"""),
         )
     }
