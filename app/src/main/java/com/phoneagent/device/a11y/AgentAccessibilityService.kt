@@ -42,6 +42,13 @@ class AgentAccessibilityService : AccessibilityService() {
         /** 无障碍截图最长等待时间：系统限流/内部错误时不回调，超时即放弃，避免 Agent 卡在“观察屏幕” */
         private const val SCREENSHOT_TIMEOUT_MS = 2500L
 
+        /**
+         * 非可交互纯文字节点的收录上限。
+         * 收它们是为了让 AI 能"读"页面（正文、列表项文字），但正文页动辄上百条，
+         * 全塞进决策上下文会明显推高成本，这里只保留遍历顺序靠前的部分。
+         */
+        private const val MAX_PLAIN_NODES = 80
+
         /** Agent 是否正在执行任务：为 true 时内置跳广告暂停，避免与 Agent 的广告处理冲突 */
         @Volatile
         var agentRunning = false
@@ -170,15 +177,6 @@ class AgentAccessibilityService : AccessibilityService() {
 
     /** 后代文字的最大递归深度（只找浅层文字，深了就是另一条内容） */
     private val LABEL_MAX_DEPTH = 3
-
-    companion object {
-        /**
-         * 非可交互纯文字节点的收录上限。
-         * 收它们是为了让 AI 能"读"页面（正文、列表项文字），但正文页动辄上百条，
-         * 全塞进决策上下文会明显推高成本，这里只保留遍历顺序靠前的部分。
-         */
-        private const val MAX_PLAIN_NODES = 80
-    }
 
     private fun collectElements(
         node: AccessibilityNodeInfo,
