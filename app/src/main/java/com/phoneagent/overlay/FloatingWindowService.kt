@@ -52,8 +52,8 @@ import com.phoneagent.ui.MainActivity
  * 悬浮窗服务：任务执行时在屏幕上显示实时进度面板，支持用户在窗内直接交互。
  *
  * 窗口结构（两个独立窗口，职责不重叠）：
- * - **顶栏**：全宽、贴屏幕物理顶边的跑马灯色带，任务期间常驻，实时显示 AI 意向/任务状态；
- *   任务期间系统状态栏会被隐藏，顶栏就承担"状态栏"的角色。
+ * - **底部跑马灯**：浮在屏幕底边之上（留 [MARQUEE_BOTTOM_GAP] 净空）的圆角胶囊，任务期间常驻，
+ *   实时显示 AI 意向/任务状态；长宽随文字自适应，文字超出一屏才滚动。
  * - **任务卡片**：300dp 宽、可拖动的小卡片，承载标题/步骤/详情/交互，高度随内容自适应。
  *
  * 视觉：统一用 App 主题色实色（玄青 + 白字），不做半透明/玻璃质感。
@@ -210,7 +210,7 @@ class FloatingWindowService : Service() {
         super.onCreate()
         instance = this
         startForegroundCompat()
-        // 监听跑马灯设置：厚度/颜色修改后即时生效
+        // 监听跑马灯设置：内边距/颜色修改后即时生效
         scope.launch {
             appSettings.settings.collect { s ->
                 marqueeHeightDp = s.marqueeHeight
@@ -477,7 +477,7 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 用户点「隐藏」：收起卡片/顶栏，只留悬浮球（任务搁置交由引擎处理）。
+     * 用户点「隐藏」：收起卡片/跑马灯，只留悬浮球（任务搁置交由引擎处理）。
      *
      * 底部选项卡刻意不动：它承载的是"AI 正在等用户回答/确认"这类不能让用户错过的问题，
      * 收起状态面板不应顺手把它藏掉——藏了以后 AI 仍在等输入，面板又回不来，任务就永久挂住了。
@@ -1107,7 +1107,7 @@ class FloatingWindowService : Service() {
         handler.post {
             // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
             resetPanel()
-            // 顶栏底色随阶段变化：观察/思考/执行/完成/出错各一套色调
+            // 跑马灯底色随阶段变化：观察/思考/执行/完成/出错各一套色调
             currentPhase = phase
             marquee?.setColors(FloatingUi.phaseGradient(marqueeColors, phase))
             marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
