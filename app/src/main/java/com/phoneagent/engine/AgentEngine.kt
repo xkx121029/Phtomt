@@ -25,6 +25,8 @@ import com.phoneagent.engine.execution.CapabilityManager
 import com.phoneagent.engine.execution.IntentResolver
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifiedClickExecutor
+import com.phoneagent.engine.execution.pickBestByLabel
+import com.phoneagent.engine.execution.pickMostSpecific
 import com.phoneagent.overlay.FloatingWindowService
 import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.AnomalyMemoryEngine
@@ -2757,14 +2759,14 @@ class AgentEngine(
         action.elementIndex?.let { idx -> snapshot.elements.firstOrNull { it.index == idx } }?.let { return it }
         val t = action.target ?: return null
         return when (t.method) {
-            "label" -> snapshot.elements.firstOrNull {
-                val label = it.effectiveLabel() ?: return@firstOrNull false
-                label.contains(t.value, ignoreCase = true)
-            }
-            "id" -> snapshot.elements.firstOrNull {
-                it.semanticId == t.value ||
-                    (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
-            }
+            // 同一段文字常常同时挂在容器与内层控件上，必须挑最具体的一个，
+            // 否则会点到容器中心（可能离用户看到的按钮很远）
+            "label" -> pickBestByLabel(snapshot.elements, t.value)
+            "id" -> pickMostSpecific(
+                snapshot.elements.filter {
+                    it.semanticId == t.value || (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
+                },
+            )
             else -> null
         }
     }

@@ -56,15 +56,17 @@ class IntentResolver {
 
         // 第一级：id（by=id 时精确查找；找不到再降级文字）
         if (target.by == "id") {
-            val byId = snapshot.elements.firstOrNull {
-                it.semanticId == target.value || (it.viewId ?: "").endsWith(target.value, ignoreCase = true)
-            }
+            val byId = pickMostSpecific(
+                snapshot.elements.filter {
+                    it.semanticId == target.value || (it.viewId ?: "").endsWith(target.value, ignoreCase = true)
+                },
+            )
             if (byId != null) return elementTarget(byId, w, h)
         }
 
         // 第二级：text（by=text，或 by=id 失败后降级）
         if (target.by == "text" || target.by == "id") {
-            val byText = snapshot.elements.firstOrNull { labelContains(it, target.value) }
+            val byText = pickBestByLabel(snapshot.elements, target.value)
             if (byText != null) return elementTarget(byText, w, h)
         }
 
@@ -100,4 +102,30 @@ class IntentResolver {
         val label = elem.effectiveLabel() ?: return false
         return label.contains(value, ignoreCase = true)
     }
+}
+
+/**
+ * 多个候选里挑最像"用户看到的那个控件"的一个。
+ *
+ * 为什么不能直接取第一个命中：同一段文字常常同时挂在**外层容器**和**内层控件**上
+ * （容器没有自己的文字时，标签由后代文字拼出来），而容器在遍历顺序里排在前面。
+ * 直接取第一个，点击就会落到容器中心——对整屏/整卡片级的容器来说，那可能离按钮很远。
+ *
+ * 取舍顺序：可点击/可编辑优先（那才是能按的），其次面积小的优先（越具体越贴近视觉位置）。
+ */
+internal fun pickMostSpecific(elements: List<UiElement>): UiElement? =
+    elements.minWithOrNull(
+        compareBy(
+            { if (it.clickable || it.editable || it.longClickable) 0 else 1 },
+            { it.width * it.height },
+        ),
+    )
+
+/** 按文字挑目标：标签与目标文字完全相等的最优先，其余交给 [pickMostSpecific] 取舍 */
+internal fun pickBestByLabel(elements: List<UiElement>, value: String): UiElement? {
+    val hits = elements.filter { labelContains(it, value) }
+    if (hits.isEmpty()) return null
+    val wanted = value.trim()
+    val exact = hits.filter { it.effectiveLabel()?.trim().equals(wanted, ignoreCase = true) }
+    return pickMostSpecific(exact.ifEmpty { hits })
 }
