@@ -851,6 +851,13 @@ class AgentEngine(
                 log(AgentLog.Level.AI, "需要澄清：$question")
                 PlanPhase.Clarifying(com.phoneagent.domain.model.Clarification(question = question, options = options))
             } else {
+                // 纯对话：模型判断这次不需要碰手机，直接给一句话。兼容 reply 写成对象或裸字符串
+                val replyText = root["reply"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
+                    ?: root["reply"]?.jsonPrimitive?.contentOrNull
+                if (!replyText.isNullOrBlank()) {
+                    log(AgentLog.Level.AI, "纯对话回复：${replyText.take(60)}")
+                    return PlanPhase.Reply(replyText)
+                }
                 val planObj = root["plan"]?.jsonObject
                 if (planObj != null) {
                     val stepsRaw = planObj["steps"] as? kotlinx.serialization.json.JsonArray
@@ -3676,6 +3683,11 @@ sealed class PlanPhase {
     data class Clarifying(val clarification: Clarification) : PlanPhase()
     /** 计划已生成，等待用户批准 */
     data class AwaitingApproval(val plan: TaskPlan) : PlanPhase()
+    /**
+     * 纯对话：不需要操作手机，AI 直接用一句话回答。
+     * 这一阶段不请求批准、不进入执行，回答直接作为一条消息呈现（见 [settlePlanPhase]）。
+     */
+    data class Reply(val text: String) : PlanPhase()
     /** 已批准，开始执行 */
     data class Approved(val plan: TaskPlan?) : PlanPhase()
     /** 规划失败 */

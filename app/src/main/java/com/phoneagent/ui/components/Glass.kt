@@ -102,7 +102,16 @@ fun GlassSurface(
                     // 不支持背景模糊时的替身：接近不透明，保证文字仍然读得清
                     fallbackTint = HazeTint(colors.glassFallback),
                 ),
-            )
+            ) {
+                // 必须显式放行取样区，否则整块玻璃会一个字都不画（表现为完全透明）。
+                // 原因：Haze 默认只画「zIndex 严格小于本层取样源」的区域，而取样源的 zIndex
+                // 由 ModifierLocalCurrentHazeZIndex 逐层累加着传给后代。全局悬浮导航栏在内容层
+                // 之外又套了一层取样源，它把 zIndex=0 传给了本页所有后代；本页自己的取样源
+                // zIndex 也是 0，于是过滤条件 0 < 0 为 false，本页取样区被全部滤掉 →
+                // areas 为空 → hazeEffect 直接跳过绘制。这里本面只取样同一 Box 下的兄弟取样源，
+                // 不存在把自己画进取样层的自反馈，过滤没有意义，一律放行。
+                canDrawArea = { true }
+            }
             .border(1.dp, colors.glassBorder, shape),
     ) {
         if (showSheen && colors.glassSheen.alpha > 0f) {
