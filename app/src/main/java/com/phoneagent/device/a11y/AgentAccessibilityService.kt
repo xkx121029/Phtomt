@@ -115,8 +115,13 @@ class AgentAccessibilityService : AccessibilityService() {
             missingAccessibility = true,
         )
         val elements = mutableListOf<UiElement>()
-        var counter = 0
-        counter = collectElements(root, true, counter, elements)
+        val scan = TreeScan()
+        collectElements(root, true, 0, elements, scan)
+        lastTreeStats = scan.describe(root)
+        if (elements.isEmpty()) {
+            // 空树必须留下证据：否则只能看到「未检测到可交互元素」，分不清是系统不给节点还是被筛选条件挡掉
+            android.util.Log.w(TAG, "元素树为空：$lastTreeStats")
+        }
         val (w, h) = screenSize()
         return ScreenSnapshot(
             packageName = root.packageName?.toString(),
@@ -133,25 +138,78 @@ class AgentAccessibilityService : AccessibilityService() {
         return point.x to point.y
     }
 
-    private fun collectElements(node: AccessibilityNodeInfo, isRoot: Boolean, counterHolder: Int, out: MutableList<UiElement>, depth: Int = 0): Int {
+    /**
+     * 一次抓取的统计：元素树为空时用它判断"是系统不给节点"还是"被我们的筛选条件挡掉"。
+     * 计数只服务诊断，不参与决策。
+     */
+    private class TreeScan {
+        var visited = 0
+        var invisible = 0
+        var zeroSize = 0
+        var noLabel = 0
+        var deduped = 0
+
+        fun describe(root: AccessibilityNodeInfo?): String =
+            "访问=$visited 不可见=$invisible 无标签=$noLabel 尺寸为0=$zeroSize 容器内重复=$deduped" +
+                " 根节点子数=${root?.childCount ?: -1}"
+    }
+
+    /**
+     * 最近一次抓取的统计摘要，元素为空时由引擎写进任务日志（排查"读不到控件"用）。
+     */
+    @Volatile
+    var lastTreeStats: String = ""
+        private set
+
+    /** 容器标签最多拼接的后代文字段数 / 总字数：防止列表容器把整页文字拼成一大串 */
+    private val LABEL_MAX_PARTS = 3
+    private val LABEL_MAX_CHARS = 60
+
+    /** 后代文字的最大递归深度（只找浅层文字，深了就是另一条内容） */
+    private val LABEL_MAX_DEPTH = 3
+
+    private fun collectElements(
+        node: AccessibilityNodeInfo,
+        isRoot: Boolean,
+        counterHolder: Int,
+        out: MutableList<UiElement>,
+        scan: TreeScan,
+        depth: Int = 0,
+        insideInteractive: Boolean = false,
+    ): Int {
         var counter = counterHolder
         // 限制递归深度（80 层）和节点总数（500 个），防止 StackOverflow 和性能问题
         if (depth > 80 || counter > 500) return counter
+        scan.visited++
         val isInteractive = node.isClickable ||
             node.isScrollable ||
             node.isEditable ||
             node.isLongClickable
-        if (!isRoot && isInteractive && node.isVisibleToUser) {
+        val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        // 可点击容器常常自身没有文字（文字挂在不可点击的子控件上，微信就是这么做的）：
+        // 这类容器用后代文字补一个标签，否则 AI 只拿到一堆无名方框，按 by=text 定位必然失败。
+        // 只补"可点击/可长按/可编辑"的容器（列表容器本身不需要名字）。
+        val derivedLabel = if (ownText == null && ownDesc == null &&
+            (node.isClickable || node.isLongClickable || node.isEditable)
+        ) descendantLabel(node) else null
+        // 收录条件：① 可交互的控件（点击目标）；② 自带文字的可见节点（页面内容，供 AI 阅读与按文字定位）。
+        // 已在可交互容器内的普通子节点不再重复收录——它的文字已经补到容器标签上，
+        // 重复收录只会让 AI 在同一位置看到两个目标（微信聊天列表就是这种结构）。
+        val keep = node.isVisibleToUser && (isInteractive || ((ownText != null || ownDesc != null) && !insideInteractive))
+        if (!isRoot && keep) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             if (bounds.width() > 0 && bounds.height() > 0) {
                 val cls = node.className?.toString() ?: "Unknown"
+                // 标签落在 contentDescription：text 保持节点真实文字，派生标签不污染它，
+                // 而 effectiveLabel() = text ?: contentDescription 仍能被 AI 与定位层看到
                 out += UiElement(
                     index = counter,
                     className = cls,
                     type = classify(cls),
-                    text = node.text?.toString(),
-                    contentDescription = node.contentDescription?.toString(),
+                    text = ownText,
+                    contentDescription = ownDesc ?: derivedLabel,
                     isSelected = node.isSelected,
                     currentValue = if (node.isEditable) node.text?.toString() else null,
                     x = bounds.centerX(),
@@ -171,16 +229,48 @@ class AgentAccessibilityService : AccessibilityService() {
                     childCount = node.childCount,
                 )
                 counter++
+            } else {
+                scan.zeroSize++
             }
+        } else if (!isRoot) {
+            if (!node.isVisibleToUser) scan.invisible++
+            else if (!isInteractive && (ownText != null || ownDesc != null)) scan.deduped++
+            else scan.noLabel++
         }
+        val childInside = insideInteractive || (!isRoot && isInteractive)
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
-                counter = collectElements(child, false, counter, out, depth + 1)
+                counter = collectElements(child, false, counter, out, scan, depth + 1, childInside)
                 // 每个 getChild 获取的节点只由其调用方回收一次，避免双重 recycle（API 33+ 框架自动回收）
                 if (android.os.Build.VERSION.SDK_INT < 33) child.recycle()
             }
         }
         return counter
+    }
+
+    /**
+     * 取后代文字作为容器标签：最多 [LABEL_MAX_PARTS] 段、总长 [LABEL_MAX_CHARS] 字、深度不超过 [LABEL_MAX_DEPTH]。
+     * 多段用 " / " 连接（如「末影箱 / 测试消息 / 昨天」），让 AI 一眼认出这一行是什么。
+     */
+    private fun descendantLabel(node: AccessibilityNodeInfo): String? {
+        val parts = ArrayList<String>(LABEL_MAX_PARTS)
+        collectDescendantTexts(node, 0, parts)
+        if (parts.isEmpty()) return null
+        val joined = parts.joinToString(" / ")
+        return if (joined.length > LABEL_MAX_CHARS) joined.take(LABEL_MAX_CHARS) else joined
+    }
+
+    private fun collectDescendantTexts(node: AccessibilityNodeInfo, depth: Int, out: MutableList<String>) {
+        if (depth >= LABEL_MAX_DEPTH || out.size >= LABEL_MAX_PARTS) return
+        for (i in 0 until node.childCount) {
+            if (out.size >= LABEL_MAX_PARTS) return
+            val child = node.getChild(i) ?: continue
+            val text = child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            text?.let { out += it }
+            collectDescendantTexts(child, depth + 1, out)
+            if (android.os.Build.VERSION.SDK_INT < 33) child.recycle()
+        }
     }
 
     /** 每步自动截图（不依赖 MediaProjection 屏幕共享）：改用无障碍服务的 takeScreenshot（API 30+）。
