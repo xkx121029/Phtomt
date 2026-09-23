@@ -1248,12 +1248,17 @@ class AgentEngine(
             val needExternal3b = settingsVal.enableExternalVision &&
                 (!settingsVal.smartVisionRoute || !treeSparse)
             // 截图链路（MediaProjection / 无障碍）在权限被回收或服务断开时会直接抛异常；
-            // 截图只是增强信息，失败即降级为「本轮无截图」，用无障碍元素树继续决策
-            val screenshot = if (settingsVal.attachScreenshot || needExternal3b ||
-                (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")))
+            // 截图只是增强信息，失败即降级为「本轮无截图」，用无障碍元素树继续决策。
+            // 元素树稀疏/为空时无条件截图：这时元素树已经不足以支撑决策，视觉是唯一的信息来源，
+            // 不能再被「截图总开关」「视觉总开关」卡住（否则页面在 AI 眼里完全不可见）
+            val screenshot = if (settingsVal.attachScreenshot || needExternal3b || treeSparse)
                 tryOrNull("截图失败") { com.phoneagent.device.screen.ScreenCapture.capture() } else null
+            if (snapshot.elements.isEmpty()) {
+                // 元素树为空的直接证据：区分"系统没给节点"与"被筛选条件挡掉"
+                log(AgentLog.Level.WARN, "元素树为空：${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}")
+            }
             log(AgentLog.Level.INFO, "第 $step 轮观察：${snapshot.elements.size} 个元素，页面类型=${annotated.pageType}" +
-                if (treeSparse && (settingsVal.visionEnabled || settingsVal.visionMode == "LOCAL")) "（元素稀疏，自动启用视觉模型）" else "")
+                if (treeSparse) "（元素稀疏，自动启用视觉模型）" else "")
 
             // 2. 安全：敏感页只读
             if (SensitivePageDetector.isSensitive(snapshot)) {
