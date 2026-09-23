@@ -72,10 +72,8 @@ class FloatingWindowService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val appSettings: AppSettings by inject()
     // 跑马灯内边距（dp，决定面板厚度）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
-    private var marqueeHeightDp = 26
+    private var marqueeHeightDp = 8
     private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
-    /** 当前执行阶段：跑马灯底色随它变化（观察/思考/执行/完成/出错各一套色调） */
-    private var currentPhase = "PENDING"
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
@@ -228,7 +226,7 @@ class FloatingWindowService : Service() {
      */
     private fun applyMarqueeSettings() {
         val m = marquee ?: return
-        m.setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
+        m.setColors(marqueeColors)
         m.setPadV(dp(marqueeHeightDp))
     }
 
@@ -382,7 +380,7 @@ class FloatingWindowService : Service() {
         if (marquee != null) return
         val wm = windowManager ?: return
         val bar = MarqueeView(this).apply {
-            setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
+            setColors(marqueeColors)
             setPadV(dp(marqueeHeightDp))
         }
         val lp = WindowManager.LayoutParams(
@@ -1107,10 +1105,9 @@ class FloatingWindowService : Service() {
         handler.post {
             // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
             resetPanel()
-            // 跑马灯底色随阶段变化：观察/思考/执行/完成/出错各一套色调
-            currentPhase = phase
-            marquee?.setColors(FloatingUi.phaseGradient(marqueeColors, phase))
-            marquee?.setText(reasoning.ifBlank { status }, marqueeColor(phase))
+            // 跑马灯底色就是用户在设置里选的原色，不随阶段变色（阶段由卡片上的徽章与状态灯表达）
+            marquee?.setColors(marqueeColors)
+            marquee?.setText(reasoning.ifBlank { status })
             taskTitle?.text = task
             stepText?.text = "第 $step 步 · $status"
             // 阶段徽章：实心阶段色胶囊 + 白字（卡片是实色主题色，徽章也必须实色才压得住）
@@ -1397,8 +1394,6 @@ class FloatingWindowService : Service() {
         }
         container?.addView(btn)
     }
-
-    private fun marqueeColor(phase: String): Int = FloatingUi.phaseColor(phase)
 
     private fun dotColor(phase: String): Int = FloatingUi.phaseColor(phase)
 

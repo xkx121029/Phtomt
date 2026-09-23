@@ -21,10 +21,11 @@ import android.view.View
  *
  * 几个刻意为之的地方（都是踩过的坑）：
  *
- * 1. **文字用相位色纯色，不再叠渐变 shader**。
- *    `Paint` 里 shader 的优先级高于 color，早先给文字设了渐变 shader 之后，
- *    `setText(text, marqueeColor(phase))` 传进来的相位色被无声覆盖 —— 相位色从未生效过。
- *    底色渐变已经承担了彩色视觉，文字保持纯色反而更易读。
+ * 1. **底色就是用户选的原色，文字固定白色**。
+ *    底色已在设置里由用户配色，再向白色柔化或按阶段混色都会让配色选择器形同虚设，
+ *    设置页的预览也就永远对不上实际——预览与实际必须同源。
+ *    另外 `Paint` 里 shader 的优先级高于 color：给文字设了渐变 shader 之后，
+ *    传进来的颜色会被无声覆盖 —— 早先的相位色就是这么失效的。
  * 2. **更新文字不重置滚动相位**。AI 状态是高频更新的（每秒数次），
  *    每次重置都会把文字钉回起点，看上去像卡住不动。
  * 3. **回位判据必须是"完全滚出"**。文字画在 x = offset，完全离开左侧要满足
@@ -92,11 +93,10 @@ class MarqueeView @JvmOverloads constructor(
     /** 单帧最大推进时长：视图不可见一段时间后恢复，不该让文字瞬移一大段 */
     private val maxFrameSeconds = 0.1f
 
-    /** 更新文字与颜色主题（内容未变时直接跳过，避免无谓重绘） */
-    fun setText(text: String, color: Int = Color.WHITE) {
-        if (this.text == text && paint.color == color) return
+    /** 更新文字（内容未变时直接跳过，避免无谓重绘） */
+    fun setText(text: String) {
+        if (this.text == text) return
         this.text = text
-        paint.color = color
         textWidth = paint.measureText(text)
         // 宽度随文字自适应：文字换了要重新测量，窗口才会跟着变宽变窄
         requestLayout()
@@ -126,18 +126,11 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 背景渐变：用户颜色序列柔化（向白色混合）作底色，随窗口尺寸重建 */
+    /** 背景渐变：用户配色原样使用（不透明实色），随窗口尺寸重建 */
     private fun buildBgGradient() {
         if (width <= 0 || gradientColors.isEmpty()) return
-        val soft = gradientColors.map { c ->
-            Color.argb(
-                0xFF,
-                (Color.red(c) + 3 * 255) / 4,
-                (Color.green(c) + 3 * 255) / 4,
-                (Color.blue(c) + 3 * 255) / 4,
-            )
-        }
-        val arr = (soft + soft.first()).toIntArray()
+        // 首色补到末尾：渐变首尾同色，色带接缝处才不会断开
+        val arr = (gradientColors + gradientColors.first()).toIntArray()
         bgGradient = LinearGradient(0f, 0f, width.toFloat(), 0f, arr, null, Shader.TileMode.REPEAT)
     }
 
