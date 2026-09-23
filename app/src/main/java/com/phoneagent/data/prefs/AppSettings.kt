@@ -70,8 +70,8 @@ class AppSettings(private val context: Context) {
         val shizukuEnabled: Boolean = true,
         /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
         val executionChannel: String = "AUTO",
-        /** 悬浮窗跑马灯厚度（dp） */
-        val marqueeHeight: Int = 26,
+        /** 底部跑马灯的上下内边距（dp）：面板长宽自适应，厚度由它决定 */
+        val marqueeHeight: Int = 8,
         /** 悬浮窗跑马灯渐变颜色（ARGB 列表，按顺序组成渐变） */
         val marqueeColors: List<Long> = listOf(0xFF4FA3FF, 0xFF9B5CFF, 0xFFFF6B9D),
         /** 执行审核：用独立的审核者 AI 复核执行者每一步动作是否基于当前页面证据，防止脑补（非链路聚合时用同主模型） */
@@ -202,7 +202,8 @@ class AppSettings(private val context: Context) {
             edgeLightingWidth = prefs[Keys.EDGE_LIGHTING_WIDTH] ?: 20,
             edgeLightingEnabled = prefs[Keys.EDGE_LIGHTING_ENABLED] ?: true,
             floatingWindowEnabled = prefs[Keys.FLOATING_WINDOW_ENABLED] ?: true,
-            marqueeHeight = prefs[Keys.MARQUEE_HEIGHT] ?: 26,
+            // 旧版本存的是"色带厚度"（8~120），现在语义变成内边距，夹到新范围避免面板过厚
+            marqueeHeight = (prefs[Keys.MARQUEE_HEIGHT] ?: 8).coerceIn(4, 28),
             marqueeColors = (prefs[Keys.MARQUEE_COLORS]
                 ?: "FF4FA3FF;FF9B5CFF;FF6B9D").split(";")
                 .mapNotNull { it.trim().toLongOrNull(16) },

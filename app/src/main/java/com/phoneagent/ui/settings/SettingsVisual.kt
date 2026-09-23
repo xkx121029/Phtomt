@@ -180,21 +180,21 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "调节悬浮窗顶部跑马灯的厚度与渐变颜色。厚度为状态栏下方可见部分，顶部始终覆盖到屏幕顶端。",
+                    "调节悬浮窗底部跑马灯的内边距与渐变颜色。跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
                 ToggleRow(
                     "任务执行时隐藏状态栏",
-                    "状态栏窗口压在跑马灯之上，不隐藏的话色带只会从状态栏下缘露出来。开启后经 Shell 通道临时改系统策略隐藏状态栏，任务结束自动恢复（需无线ADB/Shizuku，部分机型可能无效）",
+                    "任务期间经 Shell 通道临时改系统策略隐藏状态栏，任务结束自动恢复（需无线ADB/Shizuku，部分机型可能无效）。跑马灯在屏幕底部，不受状态栏影响",
                     st.hideStatusBarDuringTask,
                 ) {
                     st.hideStatusBarDuringTask = it
                     save()
                 }
                 Spacer(Modifier.height(10.dp))
-                CalibrationSlider("厚度", st.marqueeHeight, 8f..120f) {
+                CalibrationSlider("内边距", st.marqueeHeight, 4f..28f) {
                     st.marqueeHeight = it
                     save()
                 }
