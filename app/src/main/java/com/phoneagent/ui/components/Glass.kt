@@ -1,20 +1,35 @@
 package com.phoneagent.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -131,5 +146,74 @@ fun GlassSurface(
             )
         }
         content()
+    }
+}
+
+/**
+ * 玻璃页眉板距屏幕左右（含上缘）的外边距，与 Agent 页顶栏同一套形态。
+ * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
+ * 得把这段外边距从 [AppTopBar] 的 contentPadding 里减掉，见 [GlassHeaderInnerPad]。
+ */
+val GlassHeaderInset = AppSpacing.Md
+
+/** 玻璃页眉板内层内容的左右留白：补上板子自身的外边距，屏幕上仍是原来的 20dp */
+val GlassHeaderInnerPad = 20.dp - GlassHeaderInset
+
+/**
+ * 玻璃页眉骨架：正文整屏铺开当取样源，页眉是一块浮在正文之上的玻璃板。
+ *
+ * 把「取样源 + 玻璃面必须是同层兄弟节点」这套约定收进骨架，页面只管摆内容：
+ * ```
+ * GlassHeaderScaffold(header = { AppTopBar("调试", contentPadding = ...) }) { pad ->
+ *     LazyColumn(contentPadding = PaddingValues(top = pad.calculateTopPadding())) { ... }
+ * }
+ * ```
+ * 正文必须把 [PaddingValues] 的顶部净空用在**滚动容器内部**——LazyColumn 的 contentPadding、
+ * 或 verticalScroll 之后再 padding。用在滚动容器外面只是把内容整体压低，页眉背后永远是
+ * 一块纯底色，玻璃会退化成一条灰蒙蒙的色带；用在里面，内容滚动时才会从玻璃下穿过。
+ *
+ * @param header 页眉内容，会被套进一块四角全圆的玻璃板
+ * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
+ */
+@Composable
+fun GlassHeaderScaffold(
+    modifier: Modifier = Modifier,
+    header: @Composable () -> Unit,
+    content: @Composable (PaddingValues) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val glass = rememberGlassState()
+    val density = LocalDensity.current
+    // 实测高度回填给正文，首项不会被压在玻璃页眉下面
+    var headerHeight by remember { mutableIntStateOf(0) }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(colors.surfaceBase),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(glass),
+        ) {
+            content(PaddingValues(top = with(density) { headerHeight.toDp() } + GlassHeaderInset))
+        }
+
+        GlassSurface(
+            hazeState = glass,
+            shape = RoundedCornerShape(AppRadii.Hero),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .padding(start = GlassHeaderInset, end = GlassHeaderInset, top = GlassHeaderInset)
+                .onSizeChanged { headerHeight = it.height },
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                header()
+                // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来
+                Spacer(Modifier.height(AppSpacing.Sm))
+            }
+        }
     }
 }
