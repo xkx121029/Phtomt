@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -57,6 +59,7 @@ import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
+import com.phoneagent.overlay.FloatingUi
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -512,12 +515,92 @@ internal val marqueeDefaultColors = listOf(0xFF4FA3FF.toLong(), 0xFF9B5CFF.toLon
 /** 预览里的示意文案：真实跑马灯显示的也是这种单行 AI 动作简述 */
 private const val marqueePreviewText = "正在打开设置页面…"
 
+/** 跟随状态时的阶段色清单（顺序即任务推进顺序），色值一律取自 FloatingUi，不在这里另抄一套 */
+private val marqueePhases = listOf(
+    "OBSERVING" to "观察",
+    "THINKING" to "思考",
+    "ACTING" to "执行",
+    "DONE" to "完成",
+    "ERROR" to "出错",
+)
+
 /**
- * 跑马灯渐变颜色选择器。
+ * 跑马灯胶囊的等比预览：半高圆角、左右 16dp / 上下 [padV] 内边距、距底边 12dp 留白，
+ * 与悬浮窗里的 `MarqueeView` 对齐——预览一旦与实际各写一套，用户看到的和拿到的就不是同一个东西。
+ */
+@Composable
+private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
+    // 屏幕底边示意：胶囊浮在底边之上，一眼看出「隆起」的观感与厚度
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Item))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(top = 20.dp, bottom = 12.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(background)
+                .padding(horizontal = 16.dp, vertical = padV.dp),
+        ) {
+            Text(
+                marqueePreviewText,
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * 「跟随状态变色」的预览：胶囊底色示意当前阶段（以最常见的执行中为例），
+ * 下方列出五个阶段各自的底色，让用户一眼知道跑马灯会怎么变色。
+ */
+@Composable
+internal fun MarqueePhasePreview(padV: Int) {
+    Column {
+        MarqueeCapsuleMock(SolidColor(Color(FloatingUi.phaseColor("ACTING"))), padV)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            marqueePhases.forEach { (id, label) ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(FloatingUi.phaseColor(id))),
+                    )
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "跑马灯底色随阶段切换，无需自定义配色",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 跑马灯渐变颜色选择器（自定义配色模式）。
  *
- * 顶部是**照实际渲染的预览**：底色取用户配色原色、胶囊圆角、左右 16dp / 上下 [padV] 内边距、
- * 距底边 12dp 留白，全部与悬浮窗里的 `MarqueeView` 对齐。
- * 预览一旦与实际各写一套，用户看到的和拿到的就不是同一个东西。
+ * 顶部是照实际渲染的预览：底色取用户配色原色、胶囊圆角、内边距、贴底留白都与 `MarqueeView` 对齐。
  */
 @Composable
 internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List<Long>) -> Unit) {
@@ -530,30 +613,7 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
         // 与 MarqueeView.setColors 同一条兜底：不足 2 色时用默认渐变
         val colors = (if (selected.size >= 2) selected else marqueeDefaultColors).map { Color(it.toInt()) }
         // 与 MarqueeView.buildBgGradient 同构：首色补到末尾，渐变首尾同色接缝处才不断开
-        val brush = Brush.horizontalGradient(colors + colors.first())
-        // 屏幕底边示意：胶囊浮在底边之上，一眼看出「隆起」的观感与厚度
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(AppRadii.Item))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                .padding(top = 20.dp, bottom = 12.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(brush)
-                    .padding(horizontal = 16.dp, vertical = padV.dp),
-            ) {
-                Text(
-                    marqueePreviewText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color.White,
-                    maxLines = 1,
-                )
-            }
-        }
+        MarqueeCapsuleMock(Brush.horizontalGradient(colors + colors.first()), padV)
         Spacer(Modifier.height(10.dp))
         Text(
             if (selected.isNotEmpty()) "已选 ${selected.size} 色（按选择顺序渐变，最多 6 色）"

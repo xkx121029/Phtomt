@@ -509,7 +509,7 @@ Output ONLY JSON.
             val net = env.network.ifBlank { "未知" }
             val bat = env.battery.ifBlank { "未知" }
             append("\n- 网络：$net；电量：$bat")
-            append("\n- 已安装应用：${env.installedCount} 个（清单未提供，需要时输出 device_query 查 kind=apps）")
+            append("\n- 已安装应用：${env.installedCount} 个（清单未提供，需要时输出 device_query 查 kind=apps，可用 filter 按关键词缩小）")
         }
         PromptLang.EN -> buildString {
             append("\n\n# Environment (collected on-device, live)")
@@ -518,7 +518,7 @@ Output ONLY JSON.
             val net = env.network.ifBlank { "unknown" }
             val bat = env.battery.ifBlank { "unknown" }
             append("\n- Network: $net; battery: $bat")
-            append("\n- Installed apps: ${env.installedCount} (list not provided; query it with device_query kind=apps when needed)")
+            append("\n- Installed apps: ${env.installedCount} (list not provided; query it with device_query kind=apps, narrow it with filter)")
         }
     }
 

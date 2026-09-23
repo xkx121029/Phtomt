@@ -180,7 +180,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "调节悬浮窗底部跑马灯的内边距与渐变颜色。跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度。",
+                    "调节悬浮窗底部跑马灯。跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度。底色可以跟随任务状态，也可以自己配渐变。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -194,21 +194,34 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                     save()
                 }
                 Spacer(Modifier.height(10.dp))
+                ToggleRow(
+                    "跟随状态变色",
+                    "跑马灯底色由当前阶段决定：观察蓝 / 思考紫 / 执行粉 / 完成绿 / 出错红。不用自己配色，一眼就能看出 AI 在干什么",
+                    st.marqueeAutoColor,
+                ) {
+                    st.marqueeAutoColor = it
+                    save()
+                }
+                Spacer(Modifier.height(10.dp))
                 CalibrationSlider("内边距", st.marqueeHeight, 4f..28f) {
                     st.marqueeHeight = it
                     save()
                 }
                 Spacer(Modifier.height(14.dp))
-                Text(
-                    "颜色",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                MarqueeColorPicker(st.marqueeColors, st.marqueeHeight) {
-                    st.marqueeColors = it
-                    save()
+                if (st.marqueeAutoColor) {
+                    MarqueePhasePreview(st.marqueeHeight)
+                } else {
+                    Text(
+                        "颜色",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MarqueeColorPicker(st.marqueeColors, st.marqueeHeight) {
+                        st.marqueeColors = it
+                        save()
+                    }
                 }
             }
         }

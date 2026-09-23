@@ -204,8 +204,15 @@ class AgentEngine(
         /** 会话承接：最多回看几轮更早的任务（越靠前越近） */
         private const val MAX_PREVIOUS_TASKS = 3
 
-        /** device_query 返回内容注入 AI 上下文的最大字符数（应用清单可能很长） */
-        private const val MAX_DEVICE_QUERY_OUTPUT = 1500
+        /** device_query 返回内容注入 AI 上下文的最大字符数（按需查询，可以给足；应用清单本身另有条数上限） */
+        private const val MAX_DEVICE_QUERY_OUTPUT = 9000
+
+        /**
+         * device_query kind=apps 一次最多列出的应用条数。
+         * 上限只用来兜住"装了 500 个应用"的极端设备：够不上的部分必须显式告知 AI 去用 filter 缩小范围，
+         * 绝不能静默截断——被截掉的应用在 AI 眼里等同于"没装"，会直接导致误判为需要澄清或放弃任务。
+         */
+        private const val MAX_DEVICE_QUERY_APPS = 300
 
         /**
          * 连续「决策链路异常」次数上限。
@@ -3502,9 +3509,13 @@ class AgentEngine(
         return if (p.y > 0) p.y else 2400
     }
 
-    /** 查询已安装应用（桌面启动器应用）的应用名列表，供规划提示词参考，让计划更贴近真实环境 */
+    /**
+     * 规划提示词用的已安装应用清单，让计划贴近真实环境。
+     * **必须给全，不能截断**：提示词里写着「目标应用未安装 → 澄清或 give_up」，
+     * 清单一旦漏项，AI 就会把已装的应用判成"没装"，进而反问用户或直接放弃。
+     */
     private fun installedAppList(): String =
-        queryLauncherApps().take(60).joinToString("、")
+        queryLauncherApps().joinToString("、")
 
     /** 已安装可启动应用：`应用名(包名)` 列表，按名称排序（查询一次，供清单与计数复用） */
     private fun queryLauncherApps(): List<String> {
@@ -3617,8 +3628,16 @@ class AgentEngine(
             } else if (hit.isEmpty()) {
                 "已安装应用里没有匹配「$filter」的（共 ${apps.size} 个可启动应用）"
             } else {
-                "已安装可启动应用共 ${apps.size} 个，匹配「${filter.ifBlank { "全部" }}」的 ${hit.size} 个：\n" +
-                    hit.take(80).joinToString("、")
+                val shown = hit.take(MAX_DEVICE_QUERY_APPS)
+                buildString {
+                    append("已安装可启动应用共 ${apps.size} 个，匹配「${filter.ifBlank { "全部" }}」的 ${hit.size} 个：")
+                    append("\n")
+                    append(shown.joinToString("、"))
+                    // 真的列不下时把话说清楚：漏掉的部分要靠 AI 自己用 filter 再查，而不是当作不存在
+                    if (shown.size < hit.size) {
+                        append("\n（仅列出前 ${shown.size} 个，剩下 ${hit.size - shown.size} 个请用 filter 按关键词缩小范围后再查）")
+                    }
+                }
             }
         }
         "time" -> "当前时间：${envFacts().dateTime}"

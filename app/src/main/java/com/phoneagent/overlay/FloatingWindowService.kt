@@ -212,10 +212,11 @@ class FloatingWindowService : Service() {
         super.onCreate()
         instance = this
         startForegroundCompat()
-        // 监听跑马灯设置：内边距/颜色修改后即时生效
+        // 监听跑马灯设置：内边距/配色方式修改后即时生效
         scope.launch {
             appSettings.settings.collect { s ->
                 marqueeHeightDp = s.marqueeHeight
+                marqueeAutoColor = s.marqueeAutoColor
                 marqueeColors = s.marqueeColors.map { it.toInt() }
                 applyMarqueeSettings()
             }
@@ -223,14 +224,21 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 把「跑马灯内边距 / 颜色」设置应用到跑马灯面板。
+     * 跑马灯底色：跟随状态时用当前阶段色（纯色，一眼看出观察/思考/执行/完成/出错），
+     * 否则用用户自定义的渐变配色。
+     */
+    private fun marqueeGradient(phase: String): List<Int> =
+        if (marqueeAutoColor) listOf(FloatingUi.phaseColor(phase)) else marqueeColors
+
+    /**
+     * 把「跑马灯内边距 / 配色」设置应用到跑马灯面板。
      *
      * 面板长宽自适应，厚度由内边距决定：改内边距只要让面板重新测量（窗口是 WRAP_CONTENT，
      * 视图量多少窗口就多大），不必再动窗口 LayoutParams，也影响不到任务卡片。
      */
     private fun applyMarqueeSettings() {
         val m = marquee ?: return
-        m.setColors(marqueeColors)
+        m.setColors(marqueeGradient(currentPhase))
         m.setPadV(dp(marqueeHeightDp))
     }
 
@@ -384,7 +392,7 @@ class FloatingWindowService : Service() {
         if (marquee != null) return
         val wm = windowManager ?: return
         val bar = MarqueeView(this).apply {
-            setColors(marqueeColors)
+            setColors(marqueeGradient(currentPhase))
             setPadV(dp(marqueeHeightDp))
         }
         val lp = WindowManager.LayoutParams(
@@ -1109,8 +1117,9 @@ class FloatingWindowService : Service() {
         handler.post {
             // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
             resetPanel()
-            // 跑马灯底色就是用户在设置里选的原色，不随阶段变色（阶段由卡片上的徽章与状态灯表达）
-            marquee?.setColors(marqueeColors)
+            // 跑马灯底色随阶段变化（跟随状态）或保持用户自定义配色
+            currentPhase = phase
+            marquee?.setColors(marqueeGradient(phase))
             marquee?.setText(reasoning.ifBlank { status })
             taskTitle?.text = task
             stepText?.text = "第 $step 步 · $status"
