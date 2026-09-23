@@ -509,35 +509,48 @@ internal fun CalibrationSlider(
 /** 跑马灯渐变默认颜色 */
 internal val marqueeDefaultColors = listOf(0xFF4FA3FF.toLong(), 0xFF9B5CFF.toLong(), 0xFFFF6B9D.toLong())
 
-/** 跑马灯渐变颜色选择器 */
+/** 预览里的示意文案：真实跑马灯显示的也是这种单行 AI 动作简述 */
+private const val marqueePreviewText = "正在打开设置页面…"
+
+/**
+ * 跑马灯渐变颜色选择器。
+ *
+ * 顶部是**照实际渲染的预览**：底色取用户配色原色、胶囊圆角、左右 16dp / 上下 [padV] 内边距、
+ * 距底边 12dp 留白，全部与悬浮窗里的 `MarqueeView` 对齐。
+ * 预览一旦与实际各写一套，用户看到的和拿到的就不是同一个东西。
+ */
 @Composable
-internal fun MarqueeColorPicker(selected: List<Long>, onSelect: (List<Long>) -> Unit) {
+internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List<Long>) -> Unit) {
     val buzz = rememberHapticClick()
     val presets = listOf(
         0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt(), 0xFF00C2A8.toInt(),
         0xFFFF8A3D.toInt(), 0xFF6BD968.toInt(), 0xFFFFD600.toInt(), 0xFFE74C5C.toInt(),
     )
     Column {
-        val previewColors = selected.map { Color(it.toInt()) }
+        // 与 MarqueeView.setColors 同一条兜底：不足 2 色时用默认渐变
+        val colors = (if (selected.size >= 2) selected else marqueeDefaultColors).map { Color(it.toInt()) }
+        // 与 MarqueeView.buildBgGradient 同构：首色补到末尾，渐变首尾同色接缝处才不断开
+        val brush = Brush.horizontalGradient(colors + colors.first())
+        // 屏幕底边示意：胶囊浮在底边之上，一眼看出「隆起」的观感与厚度
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(34.dp)
-                .clip(RoundedCornerShape(AppRadii.Tile))
-                .background(
-                    when {
-                        previewColors.size >= 2 -> Brush.horizontalGradient(previewColors)
-                        previewColors.size == 1 -> Brush.horizontalGradient(listOf(previewColors[0], previewColors[0]))
-                        else -> Brush.horizontalGradient(listOf(Color(0xFFCFD4DA), Color(0xFFCFD4DA)))
-                    }
-                ),
-            contentAlignment = Alignment.Center,
+                .clip(RoundedCornerShape(AppRadii.Item))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                .padding(top = 20.dp, bottom = 12.dp),
+            contentAlignment = Alignment.BottomCenter,
         ) {
-            if (selected.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(brush)
+                    .padding(horizontal = 16.dp, vertical = padV.dp),
+            ) {
                 Text(
-                    "点击下方颜色，按顺序组成渐变（至少 2 色）",
-                    style = MaterialTheme.typography.labelMedium,
+                    marqueePreviewText,
+                    style = MaterialTheme.typography.labelLarge,
                     color = Color.White,
+                    maxLines = 1,
                 )
             }
         }

@@ -206,7 +206,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                MarqueeColorPicker(st.marqueeColors) {
+                MarqueeColorPicker(st.marqueeColors, st.marqueeHeight) {
                     st.marqueeColors = it
                     save()
                 }
