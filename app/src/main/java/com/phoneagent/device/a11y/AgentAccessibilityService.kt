@@ -197,18 +197,19 @@ class AgentAccessibilityService : AccessibilityService() {
             node.isLongClickable
         val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        // 可点击容器常常自身没有文字（文字挂在不可点击的子控件上，微信就是这么做的）：
-        // 这类容器用后代文字补一个标签，否则 AI 只拿到一堆无名方框，按 by=text 定位必然失败。
-        // 只补"可点击/可长按/可编辑"的容器（列表容器本身不需要名字）。
-        val derivedLabel = if (ownText == null && ownDesc == null &&
-            (node.isClickable || node.isLongClickable || node.isEditable)
-        ) descendantLabel(node) else null
         // 收录条件：① 可交互的控件（点击目标）；② 自带文字的可见节点（页面内容，供 AI 阅读与按文字定位）。
         // 已在可交互容器内的普通子节点不再重复收录——它的文字已经补到容器标签上，
         // 重复收录只会让 AI 在同一位置看到两个目标（微信聊天列表就是这种结构）。
         val plainText = !isInteractive && (ownText != null || ownDesc != null)
         val keep = node.isVisibleToUser && (isInteractive ||
             (plainText && !insideInteractive && scan.plainCollected < MAX_PLAIN_NODES))
+        // 可点击容器常常自身没有文字（文字挂在不可点击的子控件上，微信就是这么做的）：
+        // 这类容器用后代文字补一个标签，否则 AI 只拿到一堆无名方框，按 by=text 定位必然失败。
+        // 只补"可点击/可长按/可编辑"的容器（列表容器本身不需要名字）；
+        // 放在 keep 之后算，被筛掉的节点不必再花时间翻它的后代
+        val derivedLabel = if (keep && ownText == null && ownDesc == null &&
+            (node.isClickable || node.isLongClickable || node.isEditable)
+        ) descendantLabel(node) else null
         if (!isRoot && keep) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
