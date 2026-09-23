@@ -1774,16 +1774,21 @@ class AgentEngine(
         // 外挂视觉（enableExternalVision）优先于云端/本地，仅在未启用或不可用时才走后续来源。
         // 混合路由（smartVisionRoute）：端侧 3B 只认「简单任务」（元素树可读）——框选快、省云端额度；
         //  复杂任务（元素树稀疏，需强语义理解，如游戏/WebView/小程序）跳过 3B，直接走云端视觉。
-        val visionCfg = visionConfig(settingsVal)
         // 页面是否复杂：元素树稀疏即视为复杂（无障碍读不到控件，需强视觉理解）
         val complexPage = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
+        // 元素树稀疏/为空时必须拿到视觉配置（force）：此时视觉是唯一的信息来源，
+        // 不能因为「视觉总开关关着」就把这一路掐掉，否则 AI 面对的是完全不可见的页面
+        val visionCfg = visionConfig(settingsVal, force = complexPage)
         val hybrid = settingsVal.smartVisionRoute
-        // 端侧 3B 是否用于本步：开启外挂且（未开混合，或当前为简单任务）
-        val useOnDevice3b = settingsVal.enableExternalVision && (!hybrid || !complexPage)
-        // 云端视觉是否可用：配置就绪，且（未开混合 / 复杂任务 / 简单任务但没启用 3B 只能靠云端）
+        // 云端视觉配置是否就绪：有配置且没有明确指定只走 LOCAL
+        val cloudReady = visionCfg != null && settingsVal.visionMode != "LOCAL"
+        // 端侧 3B 是否用于本步：开启外挂，且（未开混合 或 简单任务 或 复杂任务但云端不可用）
+        // 复杂任务且云端可用时跳过 3B（把额度与延迟留给云端），但云端不可用时必须回落到 3B，不能两条路都断
+        val useOnDevice3b = settingsVal.enableExternalVision &&
+            (!hybrid || !complexPage || !cloudReady)
+        // 云端视觉是否可用：配置就绪，且（未开混合 或 复杂任务 或 未启用外挂只能靠云端）
         // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
-        val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL" &&
-            (!hybrid || complexPage || !settingsVal.enableExternalVision)
+        val cloudVision = cloudReady && (!hybrid || complexPage || !settingsVal.enableExternalVision)
         // 主模型自身能识图（hasVision 由"所选主模型的能力"判定），且本轮确实拍到了图 → 图片直接进主模型上下文。
         // hasVision 是用户可覆盖的开关，attachScreenshot 决定"本轮有没有图"，两者都满足才算真的发图。
         val mainSeesImage = settingsVal.hasVision && settingsVal.attachScreenshot && screenshot != null
@@ -1857,8 +1862,10 @@ class AgentEngine(
                         // 同第 1 步：坐标留着，描述按开关决定要不要
                         if (wantVisionDesc) desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                     } else {
-                        log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
-                        if (wantVisionDesc) desc = "（未识别到控件）"
+                        // 只记日志，不往上下文里写「未识别到控件」：
+                        // 那句话会被 AI 当成"页面上没有可操作控件"的事实，从而放弃尝试、编造动作或直接收尾，
+                        // 而真实情况只是这一路视觉没结果，元素树/其它来源仍然有效
+                        log(AgentLog.Level.WARN, "外挂视觉不可用，本地无可识别控件")
                     }
                 }
                 if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
@@ -1867,6 +1874,17 @@ class AgentEngine(
             if (visionDone == null) {
                 log(AgentLog.Level.WARN, "视觉分析超过 ${WATCHDOG_VISION_MS / 1000}s 未返回，本步放弃视觉描述，改用无障碍元素树继续决策")
                 desc = null
+            }
+            // 元素树稀疏且视觉也没产出：这一步 AI 实际上"什么都看不到"，
+            // 必须明确记下来，否则用户只会看到 AI 在乱猜，不知道是两条感知链路同时空了。
+            // 主模型自己能看图（mainSeesImage）时不算"看不到"，那种情况下不发这条警告
+            if (complexPage && desc.isNullOrBlank() && localRegions.isNullOrEmpty() && !mainSeesImage) {
+                log(
+                    AgentLog.Level.WARN,
+                    "元素树稀疏（${snapshot.elements.size} 个元素）且视觉链路未产出内容：" +
+                        "元素树统计=${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}" +
+                        "，请检查视觉模型配置或外挂视觉服务",
+                )
             }
         }
         val userText = AgentPrompts.decision(
@@ -2199,9 +2217,14 @@ class AgentEngine(
         delay(200)
     }
 
-    /** 视觉模型配置：仅在视觉模型启用时生效；视觉 API Key 为空则回退主模型 Key */
-    private fun visionConfig(settingsVal: AppSettings.Settings): VisionConfig? {
-        if (!settingsVal.visionEnabled) return null
+    /**
+     * 视觉模型配置：仅在视觉模型启用时生效；视觉 API Key 为空则回退主模型 Key。
+     *
+     * @param force 元素树稀疏/为空时为 true：此时元素树已经不足以支撑决策，视觉是唯一信息来源，
+     *   不能因为「视觉总开关」关着就放弃这一路（分会话里表现为 AI 对着完全不可见的页面空转）
+     */
+    private fun visionConfig(settingsVal: AppSettings.Settings, force: Boolean = false): VisionConfig? {
+        if (!force && !settingsVal.visionEnabled) return null
         val model = settingsVal.visionModel.trim()
         if (model.isBlank()) return null
         val baseUrl = settingsVal.visionBaseUrl.trim().ifBlank { GlmDefaults.BASE_URL }
