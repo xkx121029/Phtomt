@@ -77,21 +77,6 @@ class IntentResolver {
         return ResolvedTarget()
     }
 
-    /** 解析 "x,y" 坐标（比例 0~1 或像素），返回像素坐标 */
-    private fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
-        val parts = raw.split(",")
-        if (parts.size < 2) return null
-        val x = toPixel(parts[0], w) ?: return null
-        val y = toPixel(parts[1], h) ?: return null
-        return x to y
-    }
-
-    /** 单个坐标值 → 像素：比例(<1)视为 0~1 乘尺寸；否则视为像素原样使用 */
-    private fun toPixel(raw: String, dim: Int): Int? {
-        val f = raw.trim().toFloatOrNull() ?: return null
-        return if (f < 1.0f) (f * dim).toInt().coerceIn(0, dim) else f.toInt().coerceIn(0, dim)
-    }
-
     private fun elementTarget(elem: UiElement, w: Int, h: Int): ResolvedTarget {
         val x = if (elem.ratioX != null) (elem.ratioX!! * w).toInt() else elem.centerX
         val y = if (elem.ratioY != null) (elem.ratioY!! * h).toInt() else elem.centerY
@@ -128,4 +113,24 @@ internal fun pickBestByLabel(elements: List<UiElement>, value: String): UiElemen
     val wanted = value.trim()
     val exact = hits.filter { it.effectiveLabel()?.trim().equals(wanted, ignoreCase = true) }
     return pickMostSpecific(exact.ifEmpty { hits })
+}
+
+/**
+ * 解析 "x,y" 坐标（比例 0~1 或像素），返回像素坐标。
+ *
+ * 这是「比例 / 像素」两种口径的**唯一定义点**：所有需要把坐标字符串变成像素的地方都必须调这里。
+ * 各自写一份的后果很实际——某一处把像素当比例再乘一次屏幕尺寸，点出来就是屏幕角落。
+ */
+internal fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
+    val parts = raw.split(",")
+    if (parts.size < 2) return null
+    val x = coordinateToPixel(parts[0], w) ?: return null
+    val y = coordinateToPixel(parts[1], h) ?: return null
+    return x to y
+}
+
+/** 单个坐标值 → 像素：比例(<1)视为 0~1 乘尺寸；否则视为像素原样使用 */
+internal fun coordinateToPixel(raw: String, dim: Int): Int? {
+    val f = raw.trim().toFloatOrNull() ?: return null
+    return if (f < 1.0f) (f * dim).toInt().coerceIn(0, dim) else f.toInt().coerceIn(0, dim)
 }

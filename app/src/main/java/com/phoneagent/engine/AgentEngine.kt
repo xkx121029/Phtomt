@@ -2314,7 +2314,18 @@ class AgentEngine(
         val result = when (type) {
             ActionType.CLICK, ActionType.TAP -> {
                 if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件", "", "")
-                else verifier.executeAndVerify(snapshot, action) { executor.click(x, y).isSuccess() }
+                else {
+                    // 记下"命中了哪个控件、bounds 是多少、最终点在哪"，
+                    // 出现"点错位置"时靠这一行就能分清是选错控件还是坐标算错
+                    log(
+                        AgentLog.Level.INFO,
+                        "点击 ($x, $y)：" + (target?.let {
+                            "[#${it.index}] ${it.effectiveLabel() ?: it.className} " +
+                                "bounds=(${it.left},${it.top})-(${it.right},${it.bottom})"
+                        } ?: "坐标定位"),
+                    )
+                    verifier.executeAndVerify(snapshot, action) { executor.click(x, y).isSuccess() }
+                }
             }
             ActionType.LONG_CLICK, ActionType.LONG_PRESS -> {
                 if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "无法定位动作目标", "", "")
@@ -2777,12 +2788,11 @@ class AgentEngine(
         action.x?.let { if (action.y != null) return action.x to action.y }
         val t = action.target ?: return null to null
         if (t.method == "coordinate") {
-            val parts = t.value.split(",").map { it.trim().toFloatOrNull() }
-            if (parts.size == 2 && parts[0] != null && parts[1] != null) {
-                // 比例坐标收敛到屏幕内，防止越界点击
-                return ((parts[0]!! * screenWidth()).toInt().coerceIn(0, screenWidth())) to
-                    ((parts[1]!! * screenHeight()).toInt().coerceIn(0, screenHeight()))
-            }
+            // 统一走 IntentResolver 的 coordinate 解析口径（比例 / 像素都认）。
+            // 这里曾经一律当成比例相乘，AI 一旦给出像素坐标就会被放大数倍再夹到屏幕边缘，
+            // 表现出来就是"点哪儿都不对"
+            return com.phoneagent.engine.execution.parseCoordinate(t.value, screenWidth(), screenHeight())
+                ?: (null to null)
         }
         return null to null
     }
