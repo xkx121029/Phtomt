@@ -71,9 +71,13 @@ class FloatingWindowService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val appSettings: AppSettings by inject()
-    // 跑马灯内边距（dp，决定面板厚度）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
+    // 跑马灯内边距（dp，决定面板厚度）与底色配置，从设置读取并随设置实时更新
     private var marqueeHeightDp = 8
+    /** 跟随状态变色：底色由当前阶段决定，不用用户自定义配色 */
+    private var marqueeAutoColor = true
     private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
+    /** 当前执行阶段：跟随状态变色时用它决定跑马灯底色 */
+    private var currentPhase = "PENDING"
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null

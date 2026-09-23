@@ -72,7 +72,9 @@ class AppSettings(private val context: Context) {
         val executionChannel: String = "AUTO",
         /** 底部跑马灯的上下内边距（dp）：面板长宽自适应，厚度由它决定 */
         val marqueeHeight: Int = 8,
-        /** 悬浮窗跑马灯渐变颜色（ARGB 列表，按顺序组成渐变） */
+        /** 跑马灯跟随状态变色：开启后底色由当前阶段决定，用户不必自定义配色 */
+        val marqueeAutoColor: Boolean = true,
+        /** 悬浮窗跑马灯渐变颜色（ARGB 列表，按顺序组成渐变）；[marqueeAutoColor] 开启时不生效 */
         val marqueeColors: List<Long> = listOf(0xFF4FA3FF, 0xFF9B5CFF, 0xFFFF6B9D),
         /** 执行审核：用独立的审核者 AI 复核执行者每一步动作是否基于当前页面证据，防止脑补（非链路聚合时用同主模型） */
         val enableReview: Boolean = true,
@@ -126,6 +128,7 @@ class AppSettings(private val context: Context) {
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
         val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
         val MARQUEE_HEIGHT = intPreferencesKey("marquee_height")
+        val MARQUEE_AUTO_COLOR = booleanPreferencesKey("marquee_auto_color")
         val MARQUEE_COLORS = stringPreferencesKey("marquee_colors")
         val ENABLE_REVIEW = booleanPreferencesKey("enable_review")
         val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
@@ -204,6 +207,7 @@ class AppSettings(private val context: Context) {
             floatingWindowEnabled = prefs[Keys.FLOATING_WINDOW_ENABLED] ?: true,
             // 旧版本存的是"色带厚度"（8~120），现在语义变成内边距，夹到新范围避免面板过厚
             marqueeHeight = (prefs[Keys.MARQUEE_HEIGHT] ?: 8).coerceIn(4, 28),
+            marqueeAutoColor = prefs[Keys.MARQUEE_AUTO_COLOR] ?: true,
             marqueeColors = (prefs[Keys.MARQUEE_COLORS]
                 ?: "FF4FA3FF;FF9B5CFF;FF6B9D").split(";")
                 .mapNotNull { it.trim().toLongOrNull(16) },
@@ -252,6 +256,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.EDGE_LIGHTING_ENABLED] = settings.edgeLightingEnabled
             prefs[Keys.FLOATING_WINDOW_ENABLED] = settings.floatingWindowEnabled
             prefs[Keys.MARQUEE_HEIGHT] = settings.marqueeHeight
+            prefs[Keys.MARQUEE_AUTO_COLOR] = settings.marqueeAutoColor
             prefs[Keys.MARQUEE_COLORS] = settings.marqueeColors.joinToString(";") { it.toString(16) }
             prefs[Keys.ENABLE_REVIEW] = settings.enableReview
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled

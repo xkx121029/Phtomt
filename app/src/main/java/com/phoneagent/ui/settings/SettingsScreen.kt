@@ -150,6 +150,7 @@ class SettingsState(initial: AppSettings.Settings) {
     var floatingWindowEnabled by mutableStateOf(initial.floatingWindowEnabled)
     var executionChannel by mutableStateOf(initial.executionChannel)
     var marqueeHeight by mutableIntStateOf(initial.marqueeHeight)
+    var marqueeAutoColor by mutableStateOf(initial.marqueeAutoColor)
     var marqueeColors by mutableStateOf(initial.marqueeColors)
     var cursorOverlayEnabled by mutableStateOf(initial.cursorOverlayEnabled)
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
@@ -193,6 +194,7 @@ class SettingsState(initial: AppSettings.Settings) {
         floatingWindowEnabled = s.floatingWindowEnabled
         executionChannel = s.executionChannel
         marqueeHeight = s.marqueeHeight
+        marqueeAutoColor = s.marqueeAutoColor
         marqueeColors = s.marqueeColors
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
@@ -258,6 +260,7 @@ class SettingsState(initial: AppSettings.Settings) {
         floatingWindowEnabled = floatingWindowEnabled,
         executionChannel = executionChannel,
         marqueeHeight = marqueeHeight,
+        marqueeAutoColor = marqueeAutoColor,
         marqueeColors = marqueeColors,
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
