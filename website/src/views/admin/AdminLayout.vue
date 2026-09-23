@@ -94,6 +94,11 @@ onMounted(ensureSession)
 
         <div class="side__foot">
           <RouterLink to="/" class="side__link">查看官网</RouterLink>
+          <RouterLink
+            to="/admin/password"
+            class="side__link"
+            :class="{ 'side__link--on': route.path === '/admin/password' }"
+          >修改密码</RouterLink>
           <button class="side__link side__link--btn" type="button" @click="logout">退出登录</button>
         </div>
       </aside>

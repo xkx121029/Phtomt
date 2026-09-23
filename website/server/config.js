@@ -39,6 +39,11 @@ export const config = {
   adminPassword: adminPassword || generatedPassword,
   generatedPassword,
   adminSecret: process.env.ADMIN_SECRET?.trim() || 'phtomt-dev-secret-do-not-use-in-production',
+  /**
+   * 是否还在用代码里写死的那个签名密钥。
+   * 这个密钥是公开在仓库里的，用它签的令牌谁都能伪造——改密码页会据此给出警告。
+   */
+  adminSecretIsDefault: !process.env.ADMIN_SECRET?.trim(),
   adminTokenTtlHours: Number(process.env.ADMIN_TOKEN_TTL || 72),
   dataDir: abs(process.env.DATA_DIR || 'server/data'),
   apkDir: abs(process.env.APK_DIR || 'public/apk'),

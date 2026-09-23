@@ -5,6 +5,7 @@ import multer from 'multer'
 import { config } from '../config.js'
 import * as store from '../lib/store.js'
 import { checkPassword, issueToken, requireAdmin } from '../lib/auth.js'
+import * as credentials from '../lib/credentials.js'
 import {
   apkInfo,
   apkPath,
@@ -34,6 +35,49 @@ adminRouter.post('/login', (req, res) => {
 
 adminRouter.get('/session', requireAdmin, (req, res) => {
   res.json({ ok: true, expiresAt: Number((req.get('authorization') || '').slice(7).split('.')[0]) })
+})
+
+// ---------- 口令 ----------
+
+const PASSWORD_MIN = 8
+const PASSWORD_MAX = 200
+
+adminRouter.get('/password', requireAdmin, (_req, res) => {
+  res.json({
+    source: credentials.source(),
+    updatedAt: credentials.updatedAt(),
+    // 环境变量里配了口令，但已经被后台改过的值盖住——页面上要说清这件事
+    envPasswordSet: Boolean(process.env.ADMIN_PASSWORD?.trim()),
+    signingKeyIsDefault: config.adminSecretIsDefault,
+    minLength: PASSWORD_MIN
+  })
+})
+
+adminRouter.post('/password', requireAdmin, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {}
+
+  if (!checkPassword(currentPassword)) {
+    audit(req, 'password', 'admin', '修改口令失败：当前口令不正确')
+    return fail(res, 400, 'bad_password', '当前口令不正确')
+  }
+
+  const next = String(newPassword ?? '')
+  if (next.length < PASSWORD_MIN) {
+    return fail(res, 400, 'weak_password', `新口令至少 ${PASSWORD_MIN} 位`)
+  }
+  if (next.length > PASSWORD_MAX) {
+    return fail(res, 400, 'weak_password', `新口令不能超过 ${PASSWORD_MAX} 位`)
+  }
+  if (next === String(currentPassword ?? '')) {
+    return fail(res, 400, 'same_password', '新口令与当前口令相同')
+  }
+
+  credentials.setPassword(next)
+  audit(req, 'password', 'admin', '修改管理口令')
+
+  // 换了凭据，之前签出去的令牌全部作废；当前这次操作补发一张新的，
+  // 否则用户会在「保存成功」的提示里被踢回登录页。
+  res.json({ ok: true, ...issueToken() })
 })
 
 // ---------- 概览与留痕 ----------

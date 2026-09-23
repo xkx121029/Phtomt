@@ -8,3 +8,5 @@ dist-static/
 public/apk/*.apk
 server/data/stats.json
 server/data/audit.json
+# 管理口令哈希（后台改密码后生成）。绝不能入库——仓库是公开的
+server/data/admin.json

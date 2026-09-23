@@ -51,6 +51,8 @@ export const PUBLIC_ENDPOINTS = [
 export const ADMIN_ENDPOINTS = [
   { method: 'POST', path: '/api/admin/login', desc: '口令换取管理令牌' },
   { method: 'GET', path: '/api/admin/session', desc: '校验当前令牌是否有效' },
+  { method: 'GET', path: '/api/admin/password', desc: '口令来源与安全状态（环境变量或后台设置）' },
+  { method: 'POST', path: '/api/admin/password', desc: '修改管理口令，需提供当前口令；成功后旧令牌全部失效' },
   { method: 'GET', path: '/api/admin/overview', desc: '后台概览：计数 / 存储占用 / 最近操作' },
   { method: 'GET', path: '/api/admin/audit', desc: '操作留痕（最近 300 条）' },
   { method: 'GET', path: '/api/admin/apk', desc: '磁盘上的 APK 文件清单' },
