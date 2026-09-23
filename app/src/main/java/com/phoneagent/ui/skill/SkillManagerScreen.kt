@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -67,6 +68,8 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.GlassHeaderInnerPad
+import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
@@ -85,26 +88,38 @@ import kotlinx.coroutines.launch
 @Composable
 fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var tab by remember { mutableStateOf(SkillTab.SKILLS) }
-    Column(modifier = modifier.fillMaxSize()) {
-        AppTopBar(
-            title = "技能与能力",
-            subtitle = "Skill · MCP · 无线 ADB · 提示词",
-        )
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            SkillTab.entries.forEachIndexed { index, t ->
-                SegmentedButton(
-                    selected = tab == t,
-                    onClick = { tab = t },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = SkillTab.entries.size),
-                ) { Text(t.label) }
+    GlassHeaderScaffold(
+        modifier = modifier,
+        header = {
+            AppTopBar(
+                title = "技能与能力",
+                subtitle = "Skill · MCP · 无线 ADB · 提示词",
+                contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = 8.dp),
+            )
+        },
+    ) { pad ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 净空按玻璃页眉实测高度垫出：页签栏落在页眉下沿之外，不会被压住
+                .padding(top = pad.calculateTopPadding()),
+        ) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                SkillTab.entries.forEachIndexed { index, t ->
+                    SegmentedButton(
+                        selected = tab == t,
+                        onClick = { tab = t },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = SkillTab.entries.size),
+                    ) { Text(t.label) }
+                }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        when (tab) {
-            SkillTab.SKILLS -> SkillsTab(vm)
-            SkillTab.MCP -> McpTab(vm)
-            SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
-            SkillTab.PROMPTS -> PromptsTab(vm)
+            Spacer(Modifier.height(8.dp))
+            when (tab) {
+                SkillTab.SKILLS -> SkillsTab(vm)
+                SkillTab.MCP -> McpTab(vm)
+                SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
+                SkillTab.PROMPTS -> PromptsTab(vm)
+            }
         }
     }
 }

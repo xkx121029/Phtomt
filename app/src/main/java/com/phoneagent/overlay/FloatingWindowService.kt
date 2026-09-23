@@ -26,6 +26,7 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.view.inputmethod.InputMethodManager
@@ -70,7 +71,7 @@ class FloatingWindowService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val appSettings: AppSettings by inject()
-    // 跑马灯厚度（dp）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
+    // 跑马灯内边距（dp，决定面板厚度）与渐变颜色（ARGB 列表），从设置读取并随设置实时更新
     private var marqueeHeightDp = 26
     private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
     /** 当前执行阶段：跑马灯底色随它变化（观察/思考/执行/完成/出错各一套色调） */
@@ -78,7 +79,10 @@ class FloatingWindowService : Service() {
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
-    /** 顶部状态栏跑马灯：它同时是顶栏窗口的根视图（见 [showTopBar]） */
+    /** 底部跑马灯距屏幕底边的基础留白（导航栏高度之外再加这么多） */
+    private val MARQUEE_BOTTOM_GAP = 12
+
+    /** 顶部状态栏跑马灯：它同时是底部跑马灯窗口的根视图（见 [showMarquee]） */
     private var marquee: MarqueeView? = null
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
@@ -135,14 +139,14 @@ class FloatingWindowService : Service() {
     private var sheetVisibleBeforeHide = false
 
     /**
-     * 顶部状态栏的窗口参数（窗口根视图就是 [marquee]）。
+     * 底部跑马灯的窗口参数（窗口根视图就是 [marquee]）。
      *
-     * 顶栏刻意不放进任务卡片：卡片只有 300dp 宽、还能被拖走，跑马灯挂在里面既贴不到屏幕左右边缘，
-     * 也会被用户一拖就带走；拆成独立的全宽窗口，才能真正做到"贴屏幕顶 + 铺满整宽 + 任务期间常驻"。
+     * 跑马灯刻意不放进任务卡片：卡片只有 300dp 宽、还能被用户拖走，挂在里面会跟着一起被拖走；
+     * 拆成独立窗口浮在屏幕底边之上，才能做到"任务期间常驻 + 长宽随内容自适应"。
      */
     private var barParams: WindowManager.LayoutParams? = null
 
-    /** 截图隐藏前顶栏是否可见，用于截图后原样恢复 */
+    /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
 
     /**
@@ -164,37 +168,26 @@ class FloatingWindowService : Service() {
     /**
      * 任务执行期间系统状态栏是否已被隐藏（由 AgentEngine 经 [setStatusBarHidden] 驱动）。
      *
-     * 顶栏是独立窗口，它的落点直接由这个状态决定（见 [topBarY]）：隐藏时贴物理屏顶，
-     * 未隐藏时退到状态栏下方。卡片（任务面板）的上边界也跟着走。
+     * 只影响任务卡片（任务面板）的上边界（见 [cardTopLimit]）：隐藏时卡片可贴物理屏顶，
+     * 未隐藏时退到状态栏下方，不至于把时间电量盖掉。底部跑马灯与它无关。
      */
     // 初值取 companion 里的静态标志：任务可能在悬浮窗启动之前就把状态栏隐藏了（服务晚一步起来时
-    // 仍要按「已隐藏」来布局，否则顶栏会被压到状态栏下方）
+    // 仍要按「已隐藏」来布局，否则卡片会被压到状态栏下方）
     private var statusBarHidden = statusBarHiddenFlag
 
     /**
-     * 顶栏窗口（独立全宽跑马灯）的落点 y：状态栏被隐藏时贴物理屏顶，否则退到状态栏下方。
+     * 任务卡片可拖动的上边界：状态栏被隐藏时可贴物理屏顶，否则退到状态栏下方。
      *
-     * 「贴顶」是用户反复提的诉求，但系统状态栏窗口的层级**永远**压在 TYPE_APPLICATION_OVERLAY 之上：
-     * 状态栏没被隐藏时把顶栏放在 y=0，只会被状态栏整条盖住（表现就是"上方还是没到屏幕边缘"）。
-     * 所以贴顶的前提是状态栏真的隐藏了；没隐藏时退到状态栏下方，至少不遮系统图标。
+     * 跑马灯移到底部之后，卡片上方不再有别的东西压着，这条边界只用来避开系统状态栏。
      */
-    private fun topBarY(): Int = if (statusBarHidden) 0 else statusBarHeight()
+    private fun cardTopLimit(): Int = if (statusBarHidden) 0 else statusBarHeight()
 
-    /** 顶栏底边：任务卡片可拖动的上边界，避免卡片被顶栏压住 */
-    private fun topBarBottom(): Int = topBarY() + dp(marqueeHeightDp)
-
-    /** 状态栏隐藏状态变化：顶栏与卡片一起重新落位 */
+    /** 状态栏隐藏状态变化：卡片重新落位（底部跑马灯不受影响） */
     private fun applyStatusBarHidden(hidden: Boolean) {
         if (statusBarHidden == hidden) return
         statusBarHidden = hidden
-        barParams?.let { p ->
-            p.y = topBarY()
-            runCatching { marquee?.let { b -> windowManager?.updateViewLayout(b, p) } }
-            marquee?.post { correctTopBarY(0) }
-        }
-        // 卡片上边界随顶栏下移：原本贴在顶栏底边的卡片不能被顶栏盖住
         val p = params ?: return
-        val minY = topBarBottom()
+        val minY = cardTopLimit()
         if (p.y < minY) {
             p.y = minY
             runCatching { root?.let { r -> windowManager?.updateViewLayout(r, p) } }
@@ -228,26 +221,15 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 把「跑马灯厚度 / 颜色」设置应用到顶栏窗口。
+     * 把「跑马灯内边距 / 颜色」设置应用到跑马灯面板。
      *
-     * 尺寸变化必须走 updateViewLayout：顶栏是独立窗口，改视图自身的 LayoutParams 不会让窗口重新测量；
-     * 厚度变了还要顺带把卡片推到新的顶栏下沿之下，否则卡片会被变厚的顶栏压住。
+     * 面板长宽自适应，厚度由内边距决定：改内边距只要让面板重新测量（窗口是 WRAP_CONTENT，
+     * 视图量多少窗口就多大），不必再动窗口 LayoutParams，也影响不到任务卡片。
      */
     private fun applyMarqueeSettings() {
         val m = marquee ?: return
         m.setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
-        m.requestLayout()
-        val p = barParams ?: return
-        val newHeight = dp(marqueeHeightDp)
-        if (p.height != newHeight) {
-            p.height = newHeight
-            runCatching { windowManager?.updateViewLayout(m, p) }
-            val cardParams = params
-            if (cardParams != null && cardParams.y < topBarBottom()) {
-                cardParams.y = topBarBottom()
-                runCatching { root?.let { r -> windowManager?.updateViewLayout(r, cardParams) } }
-            }
-        }
+        m.setPadV(dp(marqueeHeightDp))
     }
 
     private fun startForegroundCompat() {
@@ -314,16 +296,16 @@ class FloatingWindowService : Service() {
     /**
      * 状态栏高度（像素）。
      *
-     * 该值直接决定悬浮窗的初始 y（`y = -statusBarHeight()`），也就是跑马灯色带能不能贴到屏幕物理顶边。
-     * 因此不能用「查系统资源名」这一种方式：`getIdentifier("status_bar_height", ...)` 在相当一部分
-     * ROM / 高版本系统上取不到，返回 0 —— 于是 y 变成 0，色带就落在状态栏下方。
+     * 该值决定任务卡片可拖动的上边界（见 [cardTopLimit]），因此不能用「查系统资源名」这一种方式：
+     * `getIdentifier("status_bar_height", ...)` 在相当一部分 ROM / 高版本系统上取不到，返回 0 ——
+     * 于是边界变成 0，卡片会压住状态栏上的时间与电量。
      *
      * 取值顺序：WindowInsets（API 30+，最可靠）→ 系统资源名 → 经验兜底值。
      */
     private fun statusBarHeight(): Int {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             // 同时算上刘海/挖孔：有 cutout 的机型上，屏幕物理顶到可视内容之间的实际距离
-            // 比状态栏更高，只取 statusBars 会偏小，色带就差那么一截贴不到顶
+            // 比状态栏更高，只取 statusBars 会偏小，卡片就差那么一截压到状态栏上
             val inset = runCatching {
                 windowManager?.currentWindowMetrics?.windowInsets
                     ?.getInsetsIgnoringVisibility(
@@ -339,7 +321,7 @@ class FloatingWindowService : Service() {
             val h = resources.getDimensionPixelSize(id)
             if (h > 0) return h
         }
-        // 兜底：宁可多覆盖一点，也不能返回 0 —— 返回 0 会让色带整条掉到状态栏下方
+        // 兜底：宁可多留一点，也不能返回 0 —— 返回 0 会让卡片整块压到状态栏上
         return dp(24)
     }
 
@@ -363,13 +345,13 @@ class FloatingWindowService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 初始位置：水平居中，纵向落在顶栏下沿之下（顶栏是独立窗口，卡片不再承担色带）
+            // 初始位置：水平居中，纵向落在状态栏下方（跑马灯已移到底部，卡片上边界只看状态栏）
             x = (screenW - winW) / 2
-            y = topBarBottom() + dp(FloatingUi.PAD)
+            y = cardTopLimit() + dp(FloatingUi.PAD)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 // 关键：API 30+ 默认 fitInsetsTypes = systemBars()，会把窗口内容整体推到状态栏下方，
                 // 这是与 FLAG_LAYOUT_NO_LIMITS 无关的另一套机制（inset 适配）。
-                // 清空后窗口坐标系才真正从物理屏顶开始，负 y / 顶栏贴顶才有意义。
+                // 清空后窗口坐标系才真正从物理屏顶开始，y = 0 贴顶、负 y 出屏才有意义。
                 fitInsetsTypes = 0
             }
         }
@@ -384,27 +366,28 @@ class FloatingWindowService : Service() {
         try {
             windowManager?.addView(layout, params)
         } catch (_: Exception) {}
-        showTopBar()
+        showMarquee()
         showSheetWindow()
     }
 
     /**
-     * 创建顶部状态栏窗口（独立全宽跑马灯），任务期间常驻。
+     * 创建底部跑马灯窗口，任务期间常驻。
      *
      * 三个关键点：
-     * 1. **窗口宽度 MATCH_PARENT**：色带铺满整宽，这才是"顶栏"而不是卡片上的一条装饰；
-     * 2. **FLAG_NOT_TOUCHABLE**：它只负责显示，绝不吃掉任何触摸——顶栏横跨整屏，可触摸就完了；
-     * 3. **fitInsetsTypes = 0**：清掉系统栏 inset 适配，配合 [topBarY] 的 y 才能真正贴到物理屏顶。
+     * 1. **长宽 WRAP_CONTENT**：面板尺寸交给 [MarqueeView] 按文字量，不再铺满整宽；
+     * 2. **FLAG_NOT_TOUCHABLE**：它只负责显示，绝不吃掉任何触摸；
+     * 3. **fitInsetsTypes = 0**：清掉系统栏 inset 适配，底部偏移才是从物理屏底算起。
      */
-    private fun showTopBar() {
+    private fun showMarquee() {
         if (marquee != null) return
         val wm = windowManager ?: return
         val bar = MarqueeView(this).apply {
             setColors(FloatingUi.phaseGradient(marqueeColors, currentPhase))
+            setPadV(dp(marqueeHeightDp))
         }
         val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            dp(marqueeHeightDp),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
@@ -413,40 +396,35 @@ class FloatingWindowService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             x = 0
-            y = topBarY()
+            y = marqueeBottomOffset()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
         }
         try {
             wm.addView(bar, lp)
             marquee = bar
             barParams = lp
-            // 各 ROM 对 overlay 窗口的 y 处理不一致（有的会把窗口下移一个状态栏），
-            // 加窗后按实测屏幕坐标做一次校正——这是唯一跨 ROM 可靠的贴顶手段
-            bar.post { correctTopBarY(0) }
         } catch (_: Exception) {
-            // 无悬浮窗权限：顶栏建不出来，任务卡片照常工作
+            // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
         }
     }
 
     /**
-     * 按实测屏幕坐标校正顶栏 y。
+     * 底部跑马灯距屏幕底边的距离：基础留白 + 导航栏（手势条）高度。
      *
-     * `getLocationOnScreen` 给出的是窗口**真实**落点：与期望值（[topBarY]）有差就反向补偿。
-     * 校正次数封顶，避免个别 ROM 上取到的坐标永远对不上时陷入"改一次、量一次"的死循环。
+     * 面板压在系统手势条上会干扰上滑手势，所以先退到导航栏之上再留白。
+     * 拿不到导航栏 inset（API 30 以下）就只留基础留白，面板照常显示。
      */
-    private fun correctTopBarY(attempt: Int) {
-        val bar = marquee ?: return
-        val p = barParams ?: return
-        if (attempt >= 3) return
-        val loc = IntArray(2)
-        runCatching { bar.getLocationOnScreen(loc) }
-        val delta = loc[1] - topBarY()
-        if (kotlin.math.abs(delta) <= 1) return
-        p.y -= delta
-        runCatching { windowManager?.updateViewLayout(bar, p) }
-        bar.post { correctTopBarY(attempt + 1) }
+    private fun marqueeBottomOffset(): Int {
+        val navBar = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                windowManager?.currentWindowMetrics?.windowInsets
+                    ?.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
+                    ?.bottom
+            } else null
+        }.getOrNull() ?: 0
+        return navBar + dp(MARQUEE_BOTTOM_GAP)
     }
 
     /**
@@ -485,9 +463,9 @@ class FloatingWindowService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            // 右上角、顶栏下方：既不压状态栏，也不容易挡住用户正在看的内容
+            // 右上角、状态栏下方：既不压状态栏，也不容易挡住用户正在看的内容
             x = screenW - size - dp(FloatingUi.PAD_L)
-            y = topBarBottom() + dp(FloatingUi.PAD)
+            y = cardTopLimit() + dp(FloatingUi.PAD)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
         }
         try {
@@ -640,8 +618,8 @@ class FloatingWindowService : Service() {
         )
         panel.setPadding(FloatingUi.PAD_L, FloatingUi.PAD_S, FloatingUi.PAD_L, FloatingUi.PAD_S)
 
-        // 顶部跑马灯已拆成独立的全宽顶栏窗口（见 showTopBar），卡片里不再有色带：
-        // 卡片只有 300dp 宽，色带挂在里面永远贴不到屏幕两侧与物理顶边
+        // 跑马灯已拆成独立的底部窗口（见 showMarquee），卡片里不再有色带：
+        // 卡片只有 300dp 宽，跑马灯挂在里面会跟着卡片一起被拖走
 
         // 头部：状态点 + 任务标题 + 详情开关 + 关闭（仅头部可拖动；轻点头部也可切换详情）
         header = LinearLayout(this).apply {
@@ -1034,8 +1012,8 @@ class FloatingWindowService : Service() {
             p.x + winW >= screenW - snapZone -> (screenW - winW - gap).coerceAtLeast(gap)
             else -> null
         }
-        // 纵向：顶部最多贴到顶栏下沿（卡片不该被顶栏压住），底部至少留一角可抓
-        val minY = topBarBottom()
+        // 纵向：顶部最多贴到状态栏下方，底部至少留一角可抓
+        val minY = cardTopLimit()
         val maxY = (screenH - winH - dp(24)).coerceAtLeast(minY)
         val targetY = p.y.coerceIn(minY, maxY)
         if (targetX != null || targetY != p.y) {
@@ -1082,8 +1060,8 @@ class FloatingWindowService : Service() {
                 startX, startY,
                 vx.toInt(), vy.toInt(),
                 gap, (screenW - winW - gap).coerceAtLeast(gap),   // x：始终保留完整窗口在屏内
-                topBarBottom(),                                    // y：顶部不越过顶栏
-                (screenH - winH - dp(24)).coerceAtLeast(topBarBottom()),
+                cardTopLimit(),                                    // y：顶部不越过状态栏
+                (screenH - winH - dp(24)).coerceAtLeast(cardTopLimit()),
             )
         }
         isFlinging = true

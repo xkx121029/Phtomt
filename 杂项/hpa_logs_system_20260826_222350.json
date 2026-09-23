@@ -1,0 +1,1 @@
+{"app":"Happy Phone Agent","exported_at":"2026-08-26 22:23:50","task_id":-1,"task_name":"系统日志","log_count":3,"logs":[{"ts":1787754205087,"time":"08-26 22:23:25.087","level":"INFO","message":"开始规划任务：打开微信"},{"ts":1787754205120,"time":"08-26 22:23:25.120","level":"INFO","message":"模板命中，免规划：打开微信"},{"ts":1787754206227,"time":"08-26 22:23:26.227","level":"INFO","message":"计划已批准：2 步"}]}

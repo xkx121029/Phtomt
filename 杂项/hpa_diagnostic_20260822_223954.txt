@@ -1,0 +1,1092 @@
+Happy Phone Agent 诊断报告
+导出时间：2026-08-22 22:39:54
+════════════════════════════════════════════════
+
+━━━ 一、人话摘要区（用户视角）━━━
+
+■ 任务：打开微信（6 步）
+  · 第1步 启动应用 · 很确定 95% · 因为：启动微信应用 · 744ms · 0token
+  · 第2步 启动应用 · 很确定 90% · 因为：启动微信应用 · 26913ms · 0token
+  · 第3步 等待 · 不太确定 70% · 因为：等待微信应用加载完成 · 709ms · 0token
+  · 第4步 启动应用 · 很确定 90% · 因为：重新启动微信应用 · 995ms · 0token
+  · 第5步 启动应用 · 很确定 95% · 因为：重新启动微信应用 · 682ms · 0token
+  · 第6步 启动应用 · 较确定 80% · 因为：微信未打开，重新尝试启动 · 662ms · 0token
+
+■ 遇到的问题（已翻译成人话）：
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作未生效（第 2 次重试）：launch
+  - 动作未生效（第 3 次重试）：launch
+  - 动作 3 次未生效：launch，请求用户介入
+  - 任务已停止
+  - 任务执行异常：StandaloneCoroutine was cancelled
+
+
+━━━ 二、原始数据区（开发者视角，已脱敏）━━━
+
+-- 执行追踪 (Trace) --
+
+[任务 1787409319117] 打开微信
+· 步骤 1 | 视觉=无() | 思考=false | token=0 | 744ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[1/1] 按计划执行下一步
+上一步结果：无
+连续失败：0
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+  GOT:  {"type":"launch","packageName":"com.tencent.mm","reasoning":"启动微信应用","expected":"微信应用打开","confidence":0.95}
+· 步骤 2 | 视觉=无() | 思考=false | token=0 | 26913ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[2/2] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+  GOT:  {"type":"launch","packageName":"com.tencent.mm","reasoning":"启动微信应用","expected":"微信打开","confidence":0.9}
+· 步骤 3 | 视觉=无() | 思考=false | token=0 | 709ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[3/3] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.view.View(View) center=(140,240) bounds=(56,156)-(224,324)
+  [#1] android.view.View(View) center=(720,531) bounds=(506,447)-(935,615)
+  [#2] android.view.View(View) center=(1152,531) bounds=(935,447)-(1370,615)
+  [#3] android.view.View(View) center=(1268,1183) bounds=(1167,1099)-(1370,1267)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#6] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#7] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+  GOT:  {"type":"wait","timeout_ms":3000,"reasoning":"等待微信应用加载完成","expected":"微信启动界面或主界面出现","confidence":0.7}
+· 步骤 4 | 视觉=无() | 思考=false | token=0 | 995ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[4/4] 按计划执行下一步
+上一步结果：✅ 已确认成功: wait
+连续失败：0
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 9 个）：
+  [#0] android.view.View(View) center=(720,500) bounds=(70,378)-(1370,623)
+  [#1] android.view.View(View) center=(720,747) bounds=(70,625)-(1370,870)
+  [#2] android.view.View(View) center=(720,994) bounds=(70,872)-(1370,1117)
+  [#3] android.view.View(View) center=(720,1241) bounds=(70,1119)-(1370,1364)
+  [#4] android.view.View(View) center=(720,1488) bounds=(70,1366)-(1370,1611)
+  [#5] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#6] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#7] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#8] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+  GOT:  {"type":"launch","packageName":"com.tencent.mm","reasoning":"重新启动微信应用","expected":"微信应用打开","confidence":0.9}
+· 步骤 5 | 视觉=无() | 思考=false | token=0 | 682ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[5/5] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 15 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.widget.EditText(EditText) label="https://api.agnes-ai.cn/v1/chat/completions" center=(720,164) bounds=(126,58)-(1314,271)
+  [#2] android.widget.EditText(EditText) label="sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq" center=(720,507) bounds=(126,380)-(1314,635)
+  [#3] android.widget.EditText(EditText) label="agnes-2.5-flash" center=(720,871) bounds=(126,744)-(1314,999)
+  [#4] android.view.View(View) center=(1223,1378) bounds=(1132,1294)-(1314,1462)
+  [#5] android.view.View(View) center=(323,1739) bounds=(126,1655)-(521,1823)
+  [#6] android.view.View(View) center=(718,1739) bounds=(521,1655)-(916,1823)
+  [#7] android.view.View(View) center=(1223,1935) bounds=(1132,1851)-(1314,2019)
+  [#8] android.view.View(View) center=(1223,2179) bounds=(1132,2095)-(1314,2263)
+  [#9] android.view.View(View) center=(720,2485) bounds=(126,2401)-(1314,2569)
+  [#10] android.view.View(View) center=(1223,2681) bounds=(1132,2597)-(1314,2765)
+  [#11] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#12] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#13] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#14] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+  GOT:  {"type":"launch","packageName":"com.tencent.mm","reasoning":"重新启动微信应用","expected":"微信应用打开","confidence":0.95}
+· 步骤 6 | 视觉=无() | 思考=false | token=0 | 662ms
+  SENT: 【执行决策】
+
+任务：打开微信
+步骤：[6/6] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：content_list
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 14 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(720,952) bounds=(70,833)-(1370,1071)
+  [#2] android.view.View(View) center=(384,1232) bounds=(70,1113)-(699,1351)
+  [#3] android.view.View(View) center=(1055,1232) bounds=(741,1113)-(1370,1351)
+  [#4] android.view.View(View) center=(1212,1719) bounds=(1111,1635)-(1314,1803)
+  [#5] android.view.View(View) center=(384,2304) bounds=(70,2178)-(699,2431)
+  [#6] android.view.View(View) center=(1055,2304) bounds=(741,2178)-(1370,2431)
+  [#7] android.view.View(View) center=(384,2599) bounds=(70,2473)-(699,2726)
+  [#8] android.view.View(View) center=(1055,2599) bounds=(741,2473)-(1370,2726)
+  [#9] android.view.View(View) center=(384,2828) bounds=(70,2768)-(699,2888)
+  [#10] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#11] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#12] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#13] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+  GOT:  {"type":"launch","packageName":"com.tencent.mm","reasoning":"微信未打开，重新尝试启动","expected":"微信应用启动","confidence":0.8}
+
+-- 系统日志 (Logs，含 API) --
+[08-22 22:34:58.798][INFO] 开始规划任务：打开微信
+[08-22 22:35:07.949][API] API 调用 · 8062ms
+    ═══ 请求 ═══
+【模式：歧义检测 + 深度任务规划】
+
+用户任务：打开微信
+用户偏好（仅相关部分）：无
+已安装应用：12321助手、123云盘、AI See、AppShare、Authenticator、BadAppleJuice、Blackmagic Camera、Camera FV-5、Canta、Cellular-Z、DJI Fly、DJI Mimo、DJI Virtual Flight、DeepSeek、Dji Mic Recorder、Door Kickers、Edge Canary、Epic Games、Epson iPrint、Euclidea、GitHub、Grok、HTML快览、Happy Agent、Happy HTML 管理、Happy Photos、HappyPrinter、Hole.io、Infinite Flight、InstallerX、KARDS、KIRI Engine、Kimi、LEGO® Builder、Local Dream、LocalSend、MT管理器、Minecraft、OpenClaw Node、OurPlay加速器、P2P Remote、Play 商店、QQ、SN 追踪台、Shizuku、Snapseed、Spaceflight Simulator、Steam、TM加速器、TRAE、TRAE Remote、Tabbit、Termux、ToDesk、Truckers of Europe 3、UOM、Umeko IR、WeTV、Windy、WorkBuddy
+
+# 当前设备状态（无需解锁）
+手机已解锁，当前停留在本应用「Happy Agent（快乐手机助手）」页面。
+禁止规划以下步骤：解锁手机、点亮屏幕、回到桌面、进入本应用。
+第一步应直接从「打开目标应用 / 执行具体操作」开始。
+
+# 角色定位
+你是深度规划器。把用户任务拆成"每一步都能被手机执行层直接执行"的原子步骤。计划必须具体、可执行、可验证。禁止浅层概括。
+
+# 深度分解规则（违反任何一条 = 重写）
+1. 步骤粒度：每步 = 一个可执行动作（打开某应用 / 点击某控件 / 输入某文本 / 滑动查找 / 等待加载），面向具体控件或坐标，而不是目标陈述。
+2. 覆盖全程：从"启动应用/进入入口"一直覆盖到"任务完成"，不跳步、不省略必经中间页面。
+3. 受阻处理：登录、权限弹窗、倒计时广告、加载等待，必须作为显式步骤纳入（如"等待加载完成""关闭权限弹窗"）。
+4. 结果可验证：每步 intent 写明"执行后屏幕应出现什么"（如"进入首页""弹出菜单""文字已填入"），供执行层验证。
+5. 禁止浅层步骤：❌"完成购物" ❌"搜索商品" ✅"点击搜索框 → 输入'无线耳机' → 点击搜索按钮 → 点击目标商品"。
+6. 数量：拆为 3~8 步。宁少勿多，只拆真正必要的步骤；步骤数必须贴合实际执行，禁止为了凑数规划用不到的中间步骤（如已知无弹窗就不要再规划"关闭弹窗"）。
+
+# 环境与寻址
+- 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 abort。
+- 国产应用速查（应用名 = 英文名/包名）：微信=WeChat(com.tencent.mm)、QQ=QQ(com.tencent.mobileqq)、支付宝=Alipay(com.eg.android.AlipayGphone)、淘宝=Taobao(com.taobao.taobao)、京东=JD(com.jingdong.app.mall)、拼多多=Pinduoduo(com.xunmeng.pinduoduo)、抖音=Douyin(com.ss.android.ugc.aweme)、快手=Kuaishou(com.smile.gifmaker)、哔哩哔哩=Bilibili(tv.danmaku.bili)、微博=Weibo(com.sina.weibo)、小红书=Xiaohongshu/RED(com.xingin.xhs)、美团=Meituan(com.sankuai.meituan)、滴滴出行=DiDi(com.sdu.didi.psnger)、高德地图=Amap(com.autonavi.minimap)、百度地图=Baidu Maps(com.baidu.BaiduMap)、百度=Baidu(com.baidu.searchbox)、网易云音乐=NetEase Cloud Music(com.netease.cloudmusic)、腾讯视频=Tencent Video(com.tencent.qqlive)、爱奇艺=iQIYI(com.qiyi.video)、优酷=Youku(com.youku.phone)、钉钉=DingTalk(com.alibaba.android.rimet)、企业微信=WeCom(com.tencent.wework)
+- 可依赖的动作：launch(包名启动)、tap/long_press/swipe(坐标或控件)、type(输入文本)、key(返回等)、scroll_to(滑动查找)、wait(等待加载)、write_doc(生成文档到工作区)、open(深链直达：目标页面有稳定深链/scheme 时直接调出)。
+- 页面坐标用比例(0~1)；控件优先用 id/label 定位。
+
+# 文档类任务
+任务需要生成/整理文档（周报、清单、总结、报告、资料、笔记、文章等）时，计划应包含一步「生成文档并保存到工作区」（description 写清文档主题与要点），不要规划打开记事本/便签或在屏幕上打字。
+
+# 歧义检测条件
+- 目标 App 不明确
+- 多个候选且差异显著
+- 选择标准模糊
+- 时间/数量/预算缺失且任务依赖
+- 计划依赖"某应用已安装"但列表中缺失
+
+# 输出前自检（必须全部通过）
+- [ ] 每步是可执行动作而非目标陈述
+- [ ] 步骤顺序真实可达（下一步建立在当前屏幕可达之上）
+- [ ] 无浅层概括步骤（如"完成XX"）
+- [ ] 5~10 步，覆盖开始到结束
+- [ ] 每步有可验证的预期结果
+
+# 输出格式
+无歧义：{"needs_clarification":false,"plan":{"steps":[{"description":"可执行动作","intent":"可验证的预期结果"}],"estimated_time_seconds":秒,"confidence":0~1}}
+有歧义：{"needs_clarification":true,"clarification":{"question":"以用户口吻提问","options":[{"id":"标识","label":"标题","description":"说明","is_default":bool}]}}
+
+选项 2~5 个。"✏️ 我想自己说"的 id = manual，放最末。
+
+只输出 JSON。首字符 = {，末字符 = }。禁止 ```json 标记。
+
+═══ 响应 ═══
+{"needs_clarification":false,"plan":{"steps":[{"description":"从已安装应用列表中启动WeChat（微信）","intent":"微信应用成功启动并显示初始界面（如登录页或聊天列表）"},{"description":"等待应用加载完成","intent":"微信主界面完全加载，确保用户可以正常进行操作"}],"estimated_time_seconds":15,"confidence":0.99}}
+[08-22 22:35:07.956][AI] 规划完成：2 步
+[08-22 22:35:19.116][INFO] 计划已批准：2 步
+[08-22 22:35:19.120][INFO] 任务开始：打开微信
+[08-22 22:35:19.120][INFO] 执行策略=AUTO
+[08-22 22:35:19.467][INFO] 第 1 轮观察：8 个元素，页面类型=form
+[08-22 22:35:20.216][API] API 调用 · 745ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[1/1] 按计划执行下一步
+上一步结果：无
+连续失败：0
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+
+═══ 响应 ═══
+{"type":"launch","packageName":"com.tencent.mm","reasoning":"启动微信应用","expected":"微信应用打开","confidence":0.95}
+[08-22 22:35:20.722][WARN] 动作未生效（第 2 次重试）：launch
+[08-22 22:35:22.170][WARN] 动作未生效（第 3 次重试）：launch
+[08-22 22:35:23.583][INFO] 执行动作：launch（待确认）
+[08-22 22:35:24.012][INFO] 第 2 轮观察：8 个元素，页面类型=form
+[08-22 22:35:50.930][API] API 调用 · 26914ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[2/2] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(1286,2183) bounds=(1195,2099)-(1377,2267)
+  [#2] android.widget.EditText(EditText) label="打开微信" center=(720,2541) bounds=(0,2365)-(1440,2718)
+  [#3] android.view.View(View) center=(720,2824) bounds=(0,2760)-(1440,2888)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#6] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#7] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+
+═══ 响应 ═══
+{"type":"launch","packageName":"com.tencent.mm","reasoning":"启动微信应用","expected":"微信打开","confidence":0.9}
+[08-22 22:35:51.435][WARN] 动作未生效（第 2 次重试）：launch
+[08-22 22:35:52.888][WARN] 动作未生效（第 3 次重试）：launch
+[08-22 22:35:54.307][INFO] 执行动作：launch（待确认）
+[08-22 22:35:54.745][INFO] 第 3 轮观察：8 个元素，页面类型=generic
+[08-22 22:35:55.457][API] API 调用 · 710ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[3/3] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 8 个）：
+  [#0] android.view.View(View) center=(140,240) bounds=(56,156)-(224,324)
+  [#1] android.view.View(View) center=(720,531) bounds=(506,447)-(935,615)
+  [#2] android.view.View(View) center=(1152,531) bounds=(935,447)-(1370,615)
+  [#3] android.view.View(View) center=(1268,1183) bounds=(1167,1099)-(1370,1267)
+  [#4] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#5] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#6] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#7] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+
+═══ 响应 ═══
+{"type":"wait","timeout_ms":3000,"reasoning":"等待微信应用加载完成","expected":"微信启动界面或主界面出现","confidence":0.7}
+[08-22 22:35:58.476][INFO] 执行动作：wait（已验证生效）
+[08-22 22:35:58.927][INFO] 第 4 轮观察：9 个元素，页面类型=generic
+[08-22 22:35:59.926][API] API 调用 · 996ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[4/4] 按计划执行下一步
+上一步结果：✅ 已确认成功: wait
+连续失败：0
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 9 个）：
+  [#0] android.view.View(View) center=(720,500) bounds=(70,378)-(1370,623)
+  [#1] android.view.View(View) center=(720,747) bounds=(70,625)-(1370,870)
+  [#2] android.view.View(View) center=(720,994) bounds=(70,872)-(1370,1117)
+  [#3] android.view.View(View) center=(720,1241) bounds=(70,1119)-(1370,1364)
+  [#4] android.view.View(View) center=(720,1488) bounds=(70,1366)-(1370,1611)
+  [#5] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#6] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#7] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#8] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+
+═══ 响应 ═══
+{"type":"launch","packageName":"com.tencent.mm","reasoning":"重新启动微信应用","expected":"微信应用打开","confidence":0.9}
+[08-22 22:36:00.433][WARN] 动作未生效（第 2 次重试）：launch
+[08-22 22:36:01.934][WARN] 动作未生效（第 3 次重试）：launch
+[08-22 22:36:03.736][INFO] 执行动作：launch（待确认）
+[08-22 22:36:04.223][INFO] 第 5 轮观察：15 个元素，页面类型=form
+[08-22 22:36:04.908][API] API 调用 · 682ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[5/5] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 15 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.widget.EditText(EditText) label="https://api.agnes-ai.cn/v1/chat/completions" center=(720,164) bounds=(126,58)-(1314,271)
+  [#2] android.widget.EditText(EditText) label="sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq" center=(720,507) bounds=(126,380)-(1314,635)
+  [#3] android.widget.EditText(EditText) label="agnes-2.5-flash" center=(720,871) bounds=(126,744)-(1314,999)
+  [#4] android.view.View(View) center=(1223,1378) bounds=(1132,1294)-(1314,1462)
+  [#5] android.view.View(View) center=(323,1739) bounds=(126,1655)-(521,1823)
+  [#6] android.view.View(View) center=(718,1739) bounds=(521,1655)-(916,1823)
+  [#7] android.view.View(View) center=(1223,1935) bounds=(1132,1851)-(1314,2019)
+  [#8] android.view.View(View) center=(1223,2179) bounds=(1132,2095)-(1314,2263)
+  [#9] android.view.View(View) center=(720,2485) bounds=(126,2401)-(1314,2569)
+  [#10] android.view.View(View) center=(1223,2681) bounds=(1132,2597)-(1314,2765)
+  [#11] android.view.View(View) center=(132,3028) bounds=(0,2888)-(265,3168)
+  [#12] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#13] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#14] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+
+═══ 响应 ═══
+{"type":"launch","packageName":"com.tencent.mm","reasoning":"重新启动微信应用","expected":"微信应用打开","confidence":0.95}
+[08-22 22:36:05.413][WARN] 动作未生效（第 2 次重试）：launch
+[08-22 22:36:06.875][WARN] 动作未生效（第 3 次重试）：launch
+[08-22 22:36:08.581][INFO] 执行动作：launch（待确认）
+[08-22 22:36:09.965][INFO] 第 6 轮观察：14 个元素，页面类型=content_list
+[08-22 22:36:10.629][API] API 调用 · 663ms
+    ═══ 请求 ═══
+【执行决策】
+
+任务：打开微信
+步骤：[6/6] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：content_list
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目标应用尚未打开时，先 launch 并等待其界面出现，禁止凭想象点击页面外的控件（例如微信没打开却要"点击输入框"）。
+
+# 动作选择时机（何时必须用哪个动作）
+- 需要**更多内容/更多列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe（direction up/down/left/right）或 scroll_to，先滑到能看到目标再操作，禁止硬点看不到的坐标。
+- 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、长按批量选择）→ 必须用 long_press + target（id/label），配 durationMs。
+- **页面正在加载 / 出现倒计时 / 等待内容出现** → 必须用 wait（timeout_ms，建议 1000~3000ms），等加载完再点，禁止在未就绪时硬点。
+
+# 输出
+正常 → 单个动作 JSON。
+合并条件满足（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ JSON 数组，最多 2 个。
+
+# 文档任务提醒
+若本步/本任务需要生成或整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接输出 write_doc 把完整内容写入工作区，不要操作屏幕。
+
+只输出 JSON。禁止 ```json 标记，禁止 JSON 前后任何文字。
+
+## 已批准的执行计划
+1. 从已安装应用列表中启动WeChat（微信）
+2. 等待应用加载完成
+
+## 当前页面
+当前前台应用: com.phoneagent
+屏幕分辨率: 1440x3168
+可交互元素（共 14 个）：
+  [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
+  [#1] android.view.View(View) center=(720,952) bounds=(70,833)-(1370,1071)
+  [#2] android.view.View(View) center=(384,1232) bounds=(70,1113)-(699,1351)
+  [#3] android.view.View(View) center=(1055,1232) bounds=(741,1113)-(1370,1351)
+  [#4] android.view.View(View) center=(1212,1719) bounds=(1111,1635)-(1314,1803)
+  [#5] android.view.View(View) center=(384,2304) bounds=(70,2178)-(699,2431)
+  [#6] android.view.View(View) center=(1055,2304) bounds=(741,2178)-(1370,2431)
+  [#7] android.view.View(View) center=(384,2599) bounds=(70,2473)-(699,2726)
+  [#8] android.view.View(View) center=(1055,2599) bounds=(741,2473)-(1370,2726)
+  [#9] android.view.View(View) center=(384,2828) bounds=(70,2768)-(699,2888)
+  [#10] android.view.View(View) center=(425,3028) bounds=(293,2888)-(558,3168)
+  [#11] android.view.View(View) center=(719,3028) bounds=(586,2888)-(852,3168)
+  [#12] android.view.View(View) center=(1013,3028) bounds=(880,2888)-(1146,3168)
+  [#13] android.view.View(View) center=(1307,3028) bounds=(1174,2888)-(1440,3168)
+
+
+## 当前任务附加指导 · 页面直达(open)
+若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。网页/系统页用 uri；公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 launch 逐步。以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：
+系统设置：1=Wi-Fi 2=蓝牙 3=显示 4=应用管理 5=存储 6=声音 7=位置
+高德地图：1=地图首页 2=路线规划 3=附近
+抖音：1=首页 2=搜索
+浏览器：1=网页
+## 执行进度（长线任务参照，概览即可，勿重复执行已完成步骤）
+已完成 1/2 步。 阶段 1/1。最近操作：第3步: 等待（等待微信应用加载完成）
+
+═══ 响应 ═══
+{"type":"launch","packageName":"com.tencent.mm","reasoning":"微信未打开，重新尝试启动","expected":"微信应用启动","confidence":0.8}
+[08-22 22:36:11.133][WARN] 动作未生效（第 2 次重试）：launch
+[08-22 22:36:12.602][WARN] 动作未生效（第 3 次重试）：launch
+[08-22 22:36:14.543][ERROR] 动作 3 次未生效：launch，请求用户介入
+[08-22 22:36:28.285][WARN] 任务已停止
+[08-22 22:36:30.397][ERROR] 任务执行异常：StandaloneCoroutine was cancelled
+
+-- 对话 (Conversation) --
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[1/1] 按计划执行下一步
+上一步结果：无
+连续失败：0
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素树**。目
+[assistant] AgentAction(type=launch, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=null, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=com.tencent.mm, distancePx=null, pageFingerprint=null, reasoning=启动微信应用, expected=微信应用打开, confidence=0.95, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[2/2] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：打开微信
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真
+[assistant] AgentAction(type=launch, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=null, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=com.tencent.mm, distancePx=null, pageFingerprint=null, reasoning=启动微信应用, expected=微信打开, confidence=0.9, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[3/3] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当
+[assistant] AgentAction(type=wait, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=3000, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=null, distancePx=null, pageFingerprint=null, reasoning=等待微信应用加载完成, expected=微信启动界面或主界面出现, confidence=0.7, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[4/4] 按计划执行下一步
+上一步结果：✅ 已确认成功: wait
+连续失败：0
+页面提示：页面类型：generic
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出现在**当前页面元素
+[assistant] AgentAction(type=launch, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=null, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=com.tencent.mm, distancePx=null, pageFingerprint=null, reasoning=重新启动微信应用, expected=微信应用打开, confidence=0.9, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[5/5] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：1
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abo
+[assistant] AgentAction(type=launch, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=null, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=com.tencent.mm, distancePx=null, pageFingerprint=null, reasoning=重新启动微信应用, expected=微信应用打开, confidence=0.95, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)
+[user] 【执行决策】
+
+任务：打开微信
+步骤：[6/6] 按计划执行下一步
+上一步结果：⚠️ 已发送但未确认: launch
+连续失败：2
+页面提示：页面类型：content_list
+
+# 执行状态三态
+上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
+
+# 失败处理
+| 连续失败次数 | 动作 |
+|-------------|------|
+| 1~2 次 | 换方式重试（如改用 label 寻址） |
+| 3 次 | 输出 abort |
+
+# 精准且简洁（本步铁律）
+- 定位：优先 target 的 id/label；元素树无该控件（图片/图标/图表）用 hint 一句语义描述（如"右上角的搜索图标"），端侧会截图视觉定位，禁止无依据猜坐标硬点，也不输出像素坐标。
+- 找不到时：先用 scroll_to 滚动查找定位，不乱点试探；仍找不到才 abort。
+- 简练：一步就是一次明确动作，点中即成，不做多余小动作（如先点别处再回来）；同一控件不要反复操作。
+- 每步都对着当前页面确认，别凭印象重复执行已做过的操作。
+- 前台对齐：点击/输入前必须确认目标控件真实出
+[assistant] AgentAction(type=launch, x=null, y=null, endX=null, endY=null, text=null, elementIndex=null, durationMs=null, timeoutMs=null, summary=null, reason=null, target=null, direction=null, keycode=null, packageName=com.tencent.mm, distancePx=null, pageFingerprint=null, reasoning=微信未打开，重新尝试启动, expected=微信应用启动, confidence=0.8, needsUserConfirmation=false, command=null, uri=null, app=null, page=null)

@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import android.widget.Toast
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.GlassHeaderInnerPad
+import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.debug.panels.ChatPanel
 import com.phoneagent.ui.debug.panels.ExecutionFlowPanel
 import com.phoneagent.ui.debug.panels.LogPanel
@@ -110,74 +113,82 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
     val missing = permissions.count { !it.granted }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-    ) {
-        AppTopBar(
-            title = "调试",
-            subtitle = "每一步怎么决定 · 怎么执行 · Token 与视觉",
-            trailingContent = {
-                // 导出 / 清空 / 画框 / 能力状态统一收进内嵌菜单，页头只留一个入口
-                Box {
-                    IconButton(onClick = { actionsOpen = true }) {
-                        Icon(
-                            AppIcons.More,
-                            contentDescription = "更多操作",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    GlassHeaderScaffold(
+        modifier = modifier,
+        header = {
+            AppTopBar(
+                title = "调试",
+                subtitle = "每一步怎么决定 · 怎么执行 · Token 与视觉",
+                trailingContent = {
+                    // 导出 / 清空 / 画框 / 能力状态统一收进内嵌菜单，页头只留一个入口
+                    Box {
+                        IconButton(onClick = { actionsOpen = true }) {
+                            Icon(
+                                AppIcons.More,
+                                contentDescription = "更多操作",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        DebugActionsMenu(
+                            expanded = actionsOpen,
+                            onDismiss = { actionsOpen = false },
+                            annotating = annotating,
+                            onShowCapabilities = { actionsOpen = false; showCapabilities = true },
+                            onAnnotate = { actionsOpen = false; runExternalAnnotate() },
+                            onExportReport = { actionsOpen = false; toast(vm.exportDiagnosticReport(context)) },
+                            onExportJson = { actionsOpen = false; toast(vm.exportLogsJsonAll(context)) },
+                            onClear = { actionsOpen = false; vm.clearDebug() },
                         )
                     }
-                    DebugActionsMenu(
-                        expanded = actionsOpen,
-                        onDismiss = { actionsOpen = false },
-                        annotating = annotating,
-                        onShowCapabilities = { actionsOpen = false; showCapabilities = true },
-                        onAnnotate = { actionsOpen = false; runExternalAnnotate() },
-                        onExportReport = { actionsOpen = false; toast(vm.exportDiagnosticReport(context)) },
-                        onExportJson = { actionsOpen = false; toast(vm.exportLogsJsonAll(context)) },
-                        onClear = { actionsOpen = false; vm.clearDebug() },
-                    )
-                }
-            },
-        )
-
-        // 能力项齐全时这一整块不占位；有缺失才出现提示条（完整状态在「更多」菜单里）
-        if (missing > 0) {
-            CapabilityNotice(
-                permissions = permissions,
-                onFix = { vm.openPermissionSettings(context, it) },
-                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+                },
+                contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = AppSpacing.Sm),
             )
+        },
+    ) { pad ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                // 净空按玻璃页眉实测高度垫出：提示条与页签落在页眉下沿之外，不会被压住
+                .padding(top = pad.calculateTopPadding()),
+        ) {
+            // 能力项齐全时这一整块不占位；有缺失才出现提示条（完整状态在「更多」菜单里）
+            if (missing > 0) {
+                CapabilityNotice(
+                    permissions = permissions,
+                    onFix = { vm.openPermissionSettings(context, it) },
+                    modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+                )
+                Spacer(Modifier.height(AppSpacing.Md))
+            }
+
+            SegmentedTabs(selected = tab, onSelect = { tab = it }, modifier = Modifier.padding(horizontal = AppSpacing.Lg))
             Spacer(Modifier.height(AppSpacing.Md))
-        }
 
-        SegmentedTabs(selected = tab, onSelect = { tab = it }, modifier = Modifier.padding(horizontal = AppSpacing.Lg))
-        Spacer(Modifier.height(AppSpacing.Md))
-
-        // 视角切换只做「自下而上的淡入」，不做横向滑动；面板统一 16dp 左右留白
-        AnimatedContent(
-            targetState = tab,
-            transitionSpec = {
-                (
-                    fadeIn(tween(DurationFast, easing = EaseOut)) +
-                        slideInVertically(tween(DurationFast, easing = EaseOut)) { it / 8 }
-                    ).togetherWith(fadeOut(tween(DurationInstant, easing = EaseOut)))
-            },
-            modifier = Modifier.weight(1f),
-            label = "debug-panel",
-        ) { current ->
-            Box(modifier = Modifier.fillMaxSize().padding(horizontal = AppSpacing.Lg)) {
-                when (current) {
-                    DebugTab.FLOW -> ExecutionFlowPanel(
-                        traces = traces,
-                        records = history,
-                        stepShot = stepShot,
-                        annotatedMap = annotatedMap,
-                        isRunning = agentState.isRunning,
-                    )
-                    DebugTab.METRICS -> MetricsPanel(metrics)
-                    DebugTab.CHAT -> ChatPanel(conversation)
-                    DebugTab.LOGS -> LogPanel(logs)
+            // 视角切换只做「自下而上的淡入」，不做横向滑动；面板统一 16dp 左右留白
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    (
+                        fadeIn(tween(DurationFast, easing = EaseOut)) +
+                            slideInVertically(tween(DurationFast, easing = EaseOut)) { it / 8 }
+                        ).togetherWith(fadeOut(tween(DurationInstant, easing = EaseOut)))
+                },
+                modifier = Modifier.weight(1f),
+                label = "debug-panel",
+            ) { current ->
+                Box(modifier = Modifier.fillMaxSize().padding(horizontal = AppSpacing.Lg)) {
+                    when (current) {
+                        DebugTab.FLOW -> ExecutionFlowPanel(
+                            traces = traces,
+                            records = history,
+                            stepShot = stepShot,
+                            annotatedMap = annotatedMap,
+                            isRunning = agentState.isRunning,
+                        )
+                        DebugTab.METRICS -> MetricsPanel(metrics)
+                        DebugTab.CHAT -> ChatPanel(conversation)
+                        DebugTab.LOGS -> LogPanel(logs)
+                    }
                 }
             }
         }
