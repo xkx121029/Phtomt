@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -75,6 +76,9 @@ internal fun AgentHeaderBar(
             } else {
                 "描述任务，AI 将逐步接管手机"
             },
+            // 顶栏是一块有外边距的浮动玻璃卡片，页头留白在这里扣掉那层边距，
+            // 标题才会与其他页面一样落在距屏幕 20dp 的竖直线上
+            contentPadding = PaddingValues(horizontal = AppSpacing.Sm, vertical = AppSpacing.Sm),
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (running) {

@@ -30,11 +30,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,14 +50,34 @@ import java.io.File
 
 /**
  * 轻量 Markdown 渲染器：把 md 源码渲染为排版好的阅读视图（预览而非编辑）。
- * 支持：标题(#、##…)、粗体(**)、行内代码(`)、无序/有序列表、代码块(```)、引用(>)、分隔线(---)、图片(![alt](src))。
+ * 支持：标题(#、##…)、粗体(**)、斜体(*)、删除线(~~)、行内代码(`)、链接([文字](网址))、
+ * 无序/有序列表、代码块(```)、引用(>)、分隔线(---)、图片(![alt](src))。
  * 图片支持：data:image…base64 内嵌图，以及基于 [baseDir] 解析的相对/绝对本地路径。
  * 解析器为本地确定性实现，不依赖第三方库。
+ *
+ * [maxLines] 非空时限行并省略（流式回显只贴尾部若干行）；为 null 时行为与不限行完全一致。
  */
 @Composable
-fun MarkdownPreview(content: String, modifier: Modifier = Modifier, baseDir: String? = null) {
+fun MarkdownPreview(
+    content: String,
+    modifier: Modifier = Modifier,
+    baseDir: String? = null,
+    maxLines: Int? = null,
+) {
     if (content.isBlank()) {
         Text("（空文档）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    // 不像 md 的纯文本整段渲染即可：强套解析器既浪费，也会吃掉换行、把正文里的 * 与 - 误当格式
+    if (!looksLikeMarkdown(content)) {
+        Text(
+            text = content.trim(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = maxLines ?: Int.MAX_VALUE,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier,
+        )
         return
     }
     val blocks = remember(content, baseDir) { parseBlocks(content) }
@@ -70,11 +95,15 @@ fun MarkdownPreview(content: String, modifier: Modifier = Modifier, baseDir: Str
                     fontWeight = if (b.level <= 3) FontWeight.Bold else FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 24.sp,
+                    maxLines = maxLines ?: Int.MAX_VALUE,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 is MdB.Para -> Text(
                     rich(b.text),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = maxLines ?: Int.MAX_VALUE,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 is MdB.Bullet -> Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     b.items.forEachIndexed { idx, itm ->
@@ -89,6 +118,8 @@ fun MarkdownPreview(content: String, modifier: Modifier = Modifier, baseDir: Str
                                 rich(itm),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = maxLines ?: Int.MAX_VALUE,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -119,6 +150,8 @@ fun MarkdownPreview(content: String, modifier: Modifier = Modifier, baseDir: Str
                         rich(b.text),
                         style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = maxLines ?: Int.MAX_VALUE,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -127,6 +160,33 @@ fun MarkdownPreview(content: String, modifier: Modifier = Modifier, baseDir: Str
             }
         }
     }
+}
+
+// ---------------- 是否像 Markdown ----------------
+
+/** 块级标记：行首 `#` / 列表 / 引用 / 围栏 / 分隔线。要求行首，避免正文中间的 `-` 被误判 */
+private val MD_BLOCK_MARKERS = listOf(
+    Regex("(?m)^#{1,6}(\\s|$)"),
+    Regex("(?m)^\\s*([-*+]\\s|\\d+\\.\\s)"),
+    Regex("(?m)^\\s*>\\s"),
+    Regex("(?m)^\\s*```"),
+    Regex("(?m)^\\s*(-{3,}|\\*{3,}|_{3,})\\s*$"),
+)
+
+/**
+ * 是否"看起来像 Markdown"。
+ *
+ * 命中任一标记才算，纯文本不强行套块级解析——解析器会把换行拍平、
+ * 也会把正文里偶然出现的 `-` / `*` 当列表。流式半截文本同样适用。
+ */
+fun looksLikeMarkdown(text: String): Boolean {
+    if (text.isBlank()) return false
+    if (MD_BLOCK_MARKERS.any { it.containsMatchIn(text) }) return true
+    if (text.contains("**") || text.contains("~~") || text.contains('`')) return true
+    if (text.contains("](") || text.contains("![")) return true
+    // 表格行：至少两个竖线才像表，单个竖线在普通句子里太常见
+    if (text.count { it == '|' } >= 2) return true
+    return false
 }
 
 // ---------------- 块结构 ----------------
@@ -312,30 +372,91 @@ private fun sampleSize(w: Int, h: Int): Int {
     return sample
 }
 
-// ---------------- 行内样式（粗体 / 行内代码） ----------------
+// ---------------- 行内样式（粗体 / 斜体 / 删除线 / 行内代码 / 链接） ----------------
 
 private const val INLINE_CODE_BG = 0x20_78909C.toInt()
 
-private fun rich(text: String): AnnotatedString = buildAnnotatedString {
+/** 行内链接色：与品牌色一致（[rich] 不是 Composable，拿不到 MaterialTheme） */
+private const val INLINE_LINK_COLOR = 0xFF0E7C66.toInt()
+
+/** 行内链接的样式：品牌色 + 下划线 */
+private fun linkStyles() = TextLinkStyles(
+    style = SpanStyle(color = Color(INLINE_LINK_COLOR), textDecoration = TextDecoration.Underline),
+)
+
+/** 解析出来的行内链接；[end] 是 `)` 之后的下标 */
+private data class MdLink(val label: String, val url: String, val end: Int)
+
+/**
+ * 解析 `[文字](网址)`。
+ * 只认同一行内、括号配平的最短形态；**落单时返回 null**——流式输出里半截的
+ * `[文字](` 是常态，调用方必须把它当普通字符继续，不能吞字符。
+ */
+private fun parseInlineLink(text: String, start: Int): MdLink? {
+    val labelEnd = text.indexOf(']', start + 1)
+    if (labelEnd < 0) return null
+    if (text.getOrNull(labelEnd + 1) != '(') return null
+    val label = text.substring(start + 1, labelEnd)
+    if (label.contains('\n')) return null
+    var depth = 1
+    var i = labelEnd + 2
+    while (i < text.length) {
+        when (text[i]) {
+            '(' -> depth++
+            ')' -> {
+                depth--
+                if (depth == 0) return MdLink(label, text.substring(labelEnd + 2, i), i + 1)
+            }
+            '\n' -> return null
+        }
+        i++
+    }
+    return null
+}
+
+/**
+ * 行内样式解析：`**粗体**`、`*斜体*`、`~~删除线~~`、`` `行内代码` ``、`[文字](网址)`。
+ *
+ * 判定顺序即优先级：`**` / `~~` 这类双字符标记必须先于单字符判定，否则开头会被吃成斜体。
+ * 行内代码里的一切都当字面量。
+ */
+internal fun rich(text: String): AnnotatedString = buildAnnotatedString {
     var bold = false
+    var italic = false
+    var strike = false
     var code = false
     val sb = StringBuilder()
     fun flush() {
         if (sb.isEmpty()) return
         val t = sb.toString(); sb.setLength(0)
-        when {
-            bold && code -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)) { append(t) }
-            bold -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(t) }
-            code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(INLINE_CODE_BG))) { append(t) }
-            else -> append(t)
-        }
+        val style = SpanStyle(
+            fontWeight = if (bold) FontWeight.Bold else null,
+            fontStyle = if (italic) FontStyle.Italic else null,
+            textDecoration = if (strike) TextDecoration.LineThrough else null,
+            fontFamily = if (code) FontFamily.Monospace else null,
+            background = if (code) Color(INLINE_CODE_BG) else Color.Unspecified,
+        )
+        if (style == SpanStyle()) append(t) else withStyle(style) { append(t) }
     }
     var i = 0
     while (i < text.length) {
         when {
-            text.startsWith("**", i) -> { flush(); bold = !bold; i += 2 }
             text[i] == '`' -> { flush(); code = !code; i += 1 }
-            else -> { sb.append(text[i]); i++ }
+            code -> { sb.append(text[i]); i += 1 }
+            text.startsWith("**", i) -> { flush(); bold = !bold; i += 2 }
+            text.startsWith("~~", i) -> { flush(); strike = !strike; i += 2 }
+            text[i] == '[' -> {
+                val link = parseInlineLink(text, i)
+                if (link == null) {
+                    sb.append(text[i]); i += 1
+                } else {
+                    flush()
+                    withLink(LinkAnnotation.Url(url = link.url, styles = linkStyles())) { append(link.label) }
+                    i = link.end
+                }
+            }
+            text[i] == '*' -> { flush(); italic = !italic; i += 1 }
+            else -> { sb.append(text[i]); i += 1 }
         }
     }
     flush()

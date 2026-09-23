@@ -5,21 +5,26 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,8 +41,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
@@ -124,8 +131,108 @@ private fun QueueStrip(count: Int, onOpen: () -> Unit) {
 }
 
 /**
- * 固定底部输入区：圆角与内边距随聚焦形变，按钮随 [mode] 切换。
- * 不使用系统弹窗，队列入口为内嵌细条。
+ * 输入面内主操作的尺寸。
+ * 与 [AgentActionButton] 的高度（20sp 行高 + 上下各 10dp）对齐，
+ * 一行的两个按钮底边齐平，不会一个高一个矮。
+ */
+private val ComposerActionSize = 40.dp
+
+/**
+ * 输入面内的主操作：方块图标按钮。
+ *
+ * 为什么不是通栏文字按钮：主操作属于"输入框的一部分"——按下的对象是刚写完的这句话，
+ * 不是页面底部的一个独立表单按钮。收进输入面之后，底部浮层从"输入框 + 一行按钮"
+ * 压回单段高度，动作与文本在同一个容器里，视线不用来回跳。
+ * 禁用态用下沉底色而不是降透明度：纸白底上一团半透明的主色会发浑，换底色更干净。
+ */
+@Composable
+private fun ComposerActionButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppRadii.Tile)
+    PressableScale(
+        onPress = buzz,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(ComposerActionSize)
+            .clip(shape)
+            .background(if (enabled) colors.brand else colors.surfaceSunken),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = if (enabled) colors.onBrand else colors.outlineStrong,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 澄清态的候选答案：铺在输入面正上方的一排胶囊，点一下即答。
+ *
+ * 规划期 AI 反问时，"问题 + 选项"整个落在输入栏里，任务流与浮层都不再重复——
+ * 使用者看到的就是"该我答了"，而不是"列表里多了一条记录"。
+ * 横向可滚：选项文字长短不一，宁可滚也不要让输入框被顶高。
+ */
+@Composable
+private fun ClarifyOptionChips(
+    options: List<ClarificationOption>,
+    onPick: (ClarificationOption) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppRadii.Chip)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(bottom = AppSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEach { option ->
+            PressableScale(
+                onPress = buzz,
+                onClick = { onPick(option) },
+                modifier = Modifier
+                    .clip(shape)
+                    .background(colors.surfaceSunken)
+                    .border(1.dp, colors.outlineSoft, shape)
+                    .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+            ) {
+                Column {
+                    Text(
+                        text = option.label,
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                    if (option.description.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = option.description,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceRaised,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 固定底部输入区：输入框与动作按钮同处一个容器，圆角与内边距随聚焦形变，
+ * 按钮随 [mode] 切换。不使用系统弹窗，队列入口为内嵌细条。
  */
 @Composable
 internal fun AgentComposer(
@@ -140,6 +247,9 @@ internal fun AgentComposer(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onDismissUser: () -> Unit,
+    /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */
+    options: List<ClarificationOption> = emptyList(),
+    onPickOption: (ClarificationOption) -> Unit = {},
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -161,18 +271,19 @@ internal fun AgentComposer(
 
     val placeholder = when (mode) {
         ComposerMode.LOCKED -> lockHint.ifBlank { "请稍候…" }
-        ComposerMode.ANSWER_CLARIFY -> "也可以自己说答案"
+        ComposerMode.ANSWER_CLARIFY -> "或者自己说一个答案"
         ComposerMode.QUEUE_FOLLOW_UP -> "追加下一条任务（当前任务结束后执行）"
         ComposerMode.GUIDE_AGENT -> "直接告诉我该怎么做"
         ComposerMode.NEW_TASK -> "描述任务，AI 将逐步接管手机"
     }
 
-    // 自身不铺底：这一层被 AgentScreen 的底部毛玻璃 dock 包着，
-    // 底色交给玻璃，输入区才有"浮在任务流之上"的层次
+    // 自身不铺底：这一层被 AgentScreen 的底部毛玻璃板包着，
+    // 底色交给玻璃，输入区才有"浮在任务流之上"的层次。
+    // 玻璃板已退到屏幕里一段，这里把那段距离补回来，输入框在屏幕上仍是原来的位置
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Md),
     ) {
         if (queueCount > 0) {
             QueueStrip(count = queueCount, onOpen = onOpenQueue)
@@ -201,7 +312,14 @@ internal fun AgentComposer(
             }
         }
 
-        Box(
+        // 澄清态：输入面顶部先铺候选答案，点一下即答；下面的输入框留给选项覆盖不到的情况
+        if (mode == ComposerMode.ANSWER_CLARIFY && options.isNotEmpty()) {
+            ClarifyOptionChips(options = options, onPick = onPickOption)
+        }
+
+        // 输入面：一个容器同时装下输入框与动作按钮。
+        // 右侧按钮贴着行底：文本涨到多行时，按钮留在右下角不动，不会跟着文字上下漂
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .shadow(fieldElevation, fieldShape)
@@ -212,87 +330,100 @@ internal fun AgentComposer(
                     color = if (focused && !locked) colors.brand.copy(alpha = 0.45f) else colors.outlineSoft,
                     shape = fieldShape,
                 )
-                .padding(fieldPad)
+                .padding(
+                    start = fieldPad,
+                    end = AppSpacing.Sm,
+                    top = AppSpacing.Sm,
+                    bottom = AppSpacing.Sm,
+                )
                 .alpha(if (locked) 0.7f else 1f),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {
-            if (draft.isEmpty()) {
-                Text(
-                    text = placeholder,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceRaised,
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = ComposerActionSize),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (draft.isEmpty()) {
+                    Text(
+                        text = placeholder,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceRaised,
+                    )
+                }
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { if (!locked) onDraftChange(it) },
+                    enabled = !locked,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(colors.brand),
+                    maxLines = 5,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { focused = it.isFocused },
                 )
             }
-            BasicTextField(
-                value = draft,
-                onValueChange = { if (!locked) onDraftChange(it) },
-                enabled = !locked,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = MaterialTheme.colorScheme.onSurface,
-                ),
-                cursorBrush = SolidColor(colors.brand),
-                maxLines = 5,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { focused = it.isFocused },
-            )
-        }
 
-        Spacer(Modifier.height(AppSpacing.Md))
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
+            // 次要动作跟主操作挤在同一行：停止 / 已手动处理是"运行中才会出现"的旁路出口，
+            // 不值得为它单独占掉一整行的高度
             when (mode) {
-                ComposerMode.LOCKED -> AgentActionButton(
-                    text = "发送",
+                ComposerMode.GUIDE_AGENT -> AgentActionButton(
+                    text = "已手动处理",
+                    tone = AgentButtonTone.NEUTRAL,
+                    onClick = onDismissUser,
+                )
+
+                ComposerMode.QUEUE_FOLLOW_UP -> AgentActionButton(
+                    text = "停止",
+                    icon = AppIcons.Stop,
+                    tone = AgentButtonTone.DANGER,
+                    onClick = onStop,
+                )
+
+                else -> Unit
+            }
+
+            when (mode) {
+                ComposerMode.LOCKED -> ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = lockHint.ifBlank { "请稍候…" },
                     enabled = false,
-                    modifier = Modifier.weight(1f),
                     onClick = {},
                 )
 
-                ComposerMode.NEW_TASK, ComposerMode.ANSWER_CLARIFY -> AgentActionButton(
-                    text = if (mode == ComposerMode.NEW_TASK) "发送" else "提交回答",
+                ComposerMode.NEW_TASK -> ComposerActionButton(
                     icon = AppIcons.Send,
+                    description = "发送",
                     enabled = draft.isNotBlank(),
-                    modifier = Modifier.weight(1f),
                     onClick = onSend,
                 )
 
-                ComposerMode.GUIDE_AGENT -> {
-                    AgentActionButton(
-                        text = "指导 AI",
-                        icon = AppIcons.Send,
-                        enabled = draft.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        onClick = onSend,
-                    )
-                    AgentActionButton(
-                        text = "已手动处理",
-                        tone = AgentButtonTone.NEUTRAL,
-                        onClick = onDismissUser,
-                    )
-                }
+                ComposerMode.ANSWER_CLARIFY -> ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = "提交回答",
+                    enabled = draft.isNotBlank(),
+                    onClick = onSend,
+                )
 
-                ComposerMode.QUEUE_FOLLOW_UP -> {
-                    if (draft.isNotBlank()) {
-                        AgentActionButton(
-                            text = "排队",
-                            icon = AppIcons.Add,
-                            modifier = Modifier.weight(1f),
-                            onClick = onSend,
-                        )
-                    }
-                    AgentActionButton(
-                        text = "停止",
-                        icon = AppIcons.Stop,
-                        tone = AgentButtonTone.DANGER,
-                        modifier = if (draft.isNotBlank()) Modifier else Modifier.weight(1f),
-                        onClick = onStop,
-                    )
-                }
+                ComposerMode.GUIDE_AGENT -> ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = "指导 AI",
+                    enabled = draft.isNotBlank(),
+                    onClick = onSend,
+                )
+
+                // 排队用「加号」：它的含义是"把这条追加到队列末尾"，不是"发出去"
+                ComposerMode.QUEUE_FOLLOW_UP -> ComposerActionButton(
+                    icon = AppIcons.Add,
+                    description = "排队执行下一条",
+                    enabled = draft.isNotBlank(),
+                    onClick = onSend,
+                )
             }
         }
     }

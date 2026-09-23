@@ -13,17 +13,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -46,7 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.phoneagent.core.ai.CatalogModel
+import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.ui.components.rememberHapticClick
@@ -100,6 +108,7 @@ internal fun buildApiTestTargets(st: SettingsState): List<ApiTestTarget> {
 /**
  * 套用服务商预设：填好 API 地址与主模型，并在该服务商确实提供对应模型时同步视觉/思考模型。
  * 未提供视觉模型的服务商（如 DeepSeek）不动原有视觉配置，保留用户既有的云端视觉或本地 OCR 选择。
+ * 同时把该服务商作为一个端点、把三个模型写进模型库 —— 预设本身就是"组合配置"，不该只填三处输入框。
  */
 internal fun applyProviderPreset(st: SettingsState, preset: ProviderPreset) {
     st.baseUrl = preset.baseUrl
@@ -111,6 +120,30 @@ internal fun applyProviderPreset(st: SettingsState, preset: ProviderPreset) {
     if (preset.reasonModel.isNotBlank()) {
         st.reasonBaseUrl = preset.baseUrl
         st.reasonModel = preset.reasonModel
+    }
+    ensureEndpoint(st, preset.baseUrl, st.apiKey)
+    listOf(preset.model, preset.visionModel, preset.reasonModel).forEach {
+        ensureCatalogModel(st, preset.baseUrl, it)
+    }
+}
+
+/** 端点按归一化 URL 去重入库（地址为空则不建），返回端点 id 供调用方继续用 */
+internal fun ensureEndpoint(st: SettingsState, baseUrl: String, apiKey: String): String? {
+    val id = ModelCatalogCodec.endpointId(baseUrl)
+    if (id.isBlank()) return null
+    if (st.endpoints.none { it.id == id }) {
+        st.endpoints.add(Endpoint(id = id, baseUrl = baseUrl.trim(), apiKey = apiKey.trim()))
+    }
+    return id
+}
+
+/** 模型条目按「端点 + 模型名」去重入库；能力徽章留给真实探测填 */
+internal fun ensureCatalogModel(st: SettingsState, baseUrl: String, name: String) {
+    val id = ModelCatalogCodec.endpointId(baseUrl)
+    val trimmed = name.trim()
+    if (id.isBlank() || trimmed.isBlank()) return
+    if (st.catalog.none { it.endpointId == id && it.name == trimmed }) {
+        st.catalog.add(CatalogModel(endpointId = id, name = trimmed))
     }
 }
 
@@ -569,6 +602,311 @@ internal fun MarqueeColorPicker(selected: List<Long>, onSelect: (List<Long>) -> 
             },
         ) {
             Text("重置为默认渐变")
+        }
+    }
+}
+
+// ========== 模型库与职责分配 ==========
+
+/** 端点显示名：去掉协议头，够短且能区分同名服务（如 open.bigmodel.cn/api/paas/v4） */
+internal fun endpointHost(baseUrl: String): String =
+    baseUrl.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
+
+/** 能力徽章：识图 / 纯文字 / 工具。null = 未测出，与"不支持"分开显示 */
+@Composable
+internal fun AbilityBadges(vision: Boolean?, tools: Boolean?) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        when (vision) {
+            true -> CapChip("识图 ✓", true)
+            false -> CapChip("纯文字", false)
+            null -> CapChip("识图 ?", null)
+        }
+        when (tools) {
+            true -> CapChip("工具 ✓", true)
+            false -> CapChip("无工具", false)
+            null -> CapChip("工具 ?", null)
+        }
+    }
+}
+
+@Composable
+private fun CapChip(text: String, state: Boolean?) {
+    val bg = when (state) {
+        true -> MaterialTheme.colorScheme.primaryContainer
+        false -> MaterialTheme.colorScheme.surfaceVariant
+        null -> Color.Transparent
+    }
+    val fg = when (state) {
+        true -> MaterialTheme.colorScheme.onPrimaryContainer
+        false -> MaterialTheme.colorScheme.onSurfaceVariant
+        null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    }
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Chip),
+        color = bg,
+        border = if (state == null) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = fg,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+        )
+    }
+}
+
+/**
+ * 端点卡片：一行一个 API 端点。
+ * 「获取模型」拉 /models 写入模型库；删除端点会连带清掉它的模型条目（在页面侧级联）。
+ */
+@Composable
+internal fun EndpointCard(
+    baseUrl: String,
+    apiKey: String,
+    modelCount: Int,
+    fetching: Boolean,
+    hint: String?,
+    onBaseUrl: (String) -> Unit,
+    onApiKey: (String) -> Unit,
+    onFetch: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val buzz = rememberHapticClick()
+    var confirmDelete by remember { mutableStateOf(false) }
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Item),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            LabeledField("API 地址") {
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = onBaseUrl,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            LabeledField("API Key") {
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = onApiKey,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = { buzz(); onFetch() },
+                    enabled = !fetching && apiKey.isNotBlank(),
+                ) { Text(if (fetching) "获取中…" else "获取模型") }
+                Text(
+                    "已入库 $modelCount 个",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        buzz()
+                        if (confirmDelete) onDelete() else confirmDelete = true
+                    },
+                ) {
+                    Text(
+                        if (confirmDelete) "确认删除" else "删除",
+                        color = if (confirmDelete) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            hint?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/**
+ * 职责行：只表达"这个职责用哪个模型"，地址与 Key 都由所属端点提供（不再重复填）。
+ * 点击整行打开模型选择弹层；视觉/思考职责带启用开关。
+ */
+@Composable
+internal fun RoleRow(
+    dragHandle: @Composable () -> Unit,
+    title: String,
+    subtitle: String,
+    model: String,
+    endpointLabel: String,
+    showToggle: Boolean,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit,
+) {
+    val buzz = rememberHapticClick()
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Item),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            dragHandle()
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { buzz(); onClick() }
+                    .padding(vertical = 14.dp, horizontal = 4.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    model.ifBlank { "未指定模型" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (model.isBlank()) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    if (endpointLabel.isBlank()) subtitle else "$subtitle · $endpointLabel",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (showToggle) {
+                Switch(checked = enabled, onCheckedChange = onToggle, modifier = Modifier.padding(end = 12.dp))
+            } else {
+                Icon(
+                    AppIcons.ChevronRight,
+                    contentDescription = "更换模型",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 模型选择弹层：列出模型库里已探测的模型（带能力徽章），也允许直接手填模型名。
+ * 内嵌 Dialog（非系统弹窗），样式与技能编辑弹层一致。
+ */
+@Composable
+internal fun ModelPickerDialog(
+    title: String,
+    models: List<CatalogModel>,
+    endpointLabelOf: (CatalogModel) -> String,
+    current: String,
+    onPickModel: (CatalogModel) -> Unit,
+    onPickManual: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val buzz = rememberHapticClick()
+    var query by remember { mutableStateOf("") }
+    var manual by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+            ) {
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "选择模型库中的模型，或直接手填模型名（手填的能力徽章需要重新探测）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("筛选模型名") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                val filtered = models.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (filtered.isEmpty()) {
+                        Text(
+                            if (models.isEmpty()) "模型库为空：先在「端点」里点「获取模型」"
+                            else "没有匹配的模型",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    filtered.forEach { m ->
+                        Surface(
+                            shape = RoundedCornerShape(AppRadii.Item),
+                            color = if (m.name == current) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { buzz(); onPickModel(m) }
+                                    .padding(12.dp),
+                            ) {
+                                Text(m.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.height(4.dp))
+                                AbilityBadges(m.vision, m.tools)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    endpointLabelOf(m),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = manual,
+                        onValueChange = { manual = it },
+                        singleLine = true,
+                        placeholder = { Text("手填模型名") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { buzz(); if (manual.isNotBlank()) onPickManual(manual.trim()) },
+                        enabled = manual.isNotBlank(),
+                    ) { Text("使用") }
+                }
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.TextButton(
+                    onClick = { buzz(); onDismiss() },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("关闭") }
+            }
         }
     }
 }

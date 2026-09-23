@@ -50,17 +50,17 @@ import dev.chrisbanes.haze.hazeSource
  * 透明度不再参与可读性，这一点在 [com.phoneagent.ui.theme.AppColors] 里落实。
  */
 object GlassTokens {
-    /** 大面 chrome（顶栏、输入区）的模糊半径：看得清是"透过去的"，又不会糊成一团 */
-    val Blur = 26.dp
+    /** 大面 chrome（顶栏、输入区、悬浮导航栏）的模糊半径：看得清是"透过去的"，又不会糊成一团 */
+    val Blur = 36.dp
 
     /** 单块浮层用的更克制的模糊半径 */
-    val BlurCompact = 18.dp
+    val BlurCompact = 24.dp
 
     /** 噪点量：只做到"能感觉到颗粒"，再高就变成廉价的磨砂贴图了 */
-    const val Noise = 0.03f
+    const val Noise = 0.04f
 
-    /** 顶部受光高光在竖直方向上的衰减位置（占整体高度的比例） */
-    const val SheenFade = 0.42f
+    /** 顶部受光高光在竖直方向上的衰减位置（占整体高度的比例）。压得短一点，高光就只是一层薄光晕 */
+    const val SheenFade = 0.34f
 }
 
 /** 毛玻璃取样源状态。一个页面一个，交给 [hazeSource] 与 [GlassSurface] 共用。 */

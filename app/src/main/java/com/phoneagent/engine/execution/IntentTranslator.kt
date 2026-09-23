@@ -284,6 +284,28 @@ internal class RememberStrategy : IntentTranslationStrategy {
 }
 
 /**
+ * 说话策略：AI 表达"要对用户说一句人话，而不是操作手机"。
+ * 内容放 text，正文支持 Markdown；不需要 target / 通道 / 坐标。
+ *
+ * 与 REMEMBER / WAIT / WRITE_DOC 同类——不触碰设备、不需要通道与坐标，故在只读模式下同样放行。
+ */
+internal class SayStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val text = intent.text?.trim().orEmpty()
+        if (text.isBlank()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "text",
+                reason = "AI 输出了 say 但未提供 text（要说的话）。请补全 text，" +
+                    "例如 {\"intent\":\"say\",\"text\":\"我准备先打开设置，再定位到显示项\"}。",
+            )
+        }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(type = ActionType.SAY, text = text, reason = reasonOf(intent)),
+        )
+    }
+}
+
+/**
  * 本机信息查询策略：AI 想知道"装了哪些应用 / 现在几点 / 电量网络如何 / 存储还剩多少"时，
  * 不必靠猜，也不必用一连串点击去翻设置页。
  *
@@ -412,6 +434,9 @@ class IntentTranslator(
         // 记忆写入（本地写库，不触碰设备）
         put(IntentType.REMEMBER, RememberStrategy())
 
+        // 说话（对用户输出一句人话，不触碰设备）
+        put(IntentType.SAY, SayStrategy())
+
         put(IntentType.DEVICE_QUERY, DeviceQueryStrategy())
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
@@ -476,12 +501,13 @@ class IntentTranslator(
     private fun applyReadOnly(result: TranslationResult, mode: Mode): TranslationResult = when {
         result !is TranslationResult.Command -> result
         mode != Mode.READONLY -> result
-        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY 都不触碰设备
-        // （等待、本地生成文档、本地写记忆库、本地读设备信息），只读模式下同样放行
+        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY / SAY 都不触碰设备
+        // （等待、本地生成文档、本地写记忆库、本地读设备信息、直接对用户说话），只读模式下同样放行
         result.action.type == ActionType.WAIT ||
             result.action.type == ActionType.WRITE_DOC ||
             result.action.type == ActionType.REMEMBER ||
-            result.action.type == ActionType.DEVICE_QUERY -> result
+            result.action.type == ActionType.DEVICE_QUERY ||
+            result.action.type == ActionType.SAY -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )

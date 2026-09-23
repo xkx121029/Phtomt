@@ -280,6 +280,34 @@ class IntentTranslatorTest {
         assertEquals(ActionType.WRITE_DOC, action.type)
     }
 
+    // ---- say（对用户说一句话，不操作设备）----
+
+    @Test
+    fun say_携带正文_转译为说话命令() {
+        mode(Mode.ACCESSIBILITY)
+        val action = command(
+            AgentIntent(intent = IntentType.SAY, text = "我先打开设置，再定位到显示项"),
+            snapshot(),
+        )
+        assertEquals(ActionType.SAY, action.type)
+        assertEquals("我先打开设置，再定位到显示项", action.text)
+    }
+
+    @Test
+    fun say_无正文_转为缺参可追问() {
+        mode(Mode.ACCESSIBILITY)
+        val result = translator.translate(AgentIntent(intent = IntentType.SAY), snapshot())
+        assertTrue("期望 MissingParam（缺 text 可追问），实际: $result", result is IntentTranslator.TranslationResult.MissingParam)
+        assertEquals("text", (result as IntentTranslator.TranslationResult.MissingParam).field)
+    }
+
+    @Test
+    fun 只读模式_说话被允许() {
+        mode(Mode.READONLY)
+        val action = command(AgentIntent(intent = IntentType.SAY, text = "当前页面只读，请手动操作"), snapshot())
+        assertEquals(ActionType.SAY, action.type)
+    }
+
     @Test
     fun 意图携带期望与置信度_透传到命令() {
         mode(Mode.SHIZUKU)

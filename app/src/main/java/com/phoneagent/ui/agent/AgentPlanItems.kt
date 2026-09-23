@@ -34,7 +34,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
@@ -99,60 +98,12 @@ internal fun PlanStreamingItem(
             }
             if (item.text.isNotBlank()) {
                 Spacer(Modifier.height(AppSpacing.Sm))
-                // 半截 markdown 也能渲染（解析器会 flush 未闭合代码块），只保留尾部片段避免撑爆列表项
-                AgentMessageText(text = item.text.takeLast(900), vm = vm)
+                // 半截 markdown 也能渲染（解析器会 flush 未闭合代码块），只保留尾部片段避免撑爆列表项。
+                // 打字机把分块到达的规划文本摊成连续吐字（key 恒定，换任务不残留）
+                val typed = rememberTypedText(item.text.takeLast(900), key = "plan")
+                AgentMessageText(text = typed, vm = vm)
             }
         }
-    }
-}
-
-/**
- * 歧义澄清：任务流里只留一条记录（问题原文）。
- * 真正的选项与输入在底部协助浮层（[AgentAssistSheet]）里，避免同屏两套入口。
- */
-@Composable
-internal fun PlanClarifyItem(
-    item: AgentTimelineItem.PlanClarify,
-    vm: MainViewModel,
-) {
-    val colors = AppTheme.colors
-    val question = rememberTranslated(item.clarification.question, vm)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
-            .background(colors.accentCoolContainer)
-            .padding(AppSpacing.Lg),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = AppIcons.Info,
-                contentDescription = null,
-                tint = colors.onAccentCoolContainer,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(AppSpacing.Xs))
-            Text(
-                text = "需要向你确认",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.onAccentCoolContainer,
-            )
-        }
-        Spacer(Modifier.height(AppSpacing.Sm))
-        Text(
-            text = question,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onAccentCoolContainer,
-        )
-        // 选项与输入统一交给底部协助浮层，这里只留一条记录——
-        // 同屏出现两套入口（卡片里一套、浮层里一套）会让用户不知道该点哪个
-        Spacer(Modifier.height(AppSpacing.Sm))
-        Text(
-            text = "请在下方的协助浮层中选择，或直接说出你的答案",
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onAccentCoolContainer.copy(alpha = 0.82f),
-        )
     }
 }
 

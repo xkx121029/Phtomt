@@ -1,7 +1,6 @@
 package com.phoneagent.ui.agent
 
 import com.phoneagent.domain.model.AgentState
-import com.phoneagent.domain.model.Clarification
 import com.phoneagent.domain.model.TaskPlan
 
 /**
@@ -31,11 +30,6 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "plan#live"
     }
 
-    /** 规划请求澄清（歧义） */
-    data class PlanClarify(val clarification: Clarification) : AgentTimelineItem {
-        override val key: String get() = "plan#clarify#${clarification.question.hashCode()}"
-    }
-
     /** 计划已生成，等待用户批准 */
     data class PlanApproval(val plan: TaskPlan) : AgentTimelineItem {
         override val key: String get() = "plan#approval"
@@ -61,31 +55,17 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "an#${source.id}#$runKey#$step"
     }
 
-    /** 单步工具调用（trace 与 record 按 step 合并后的一条） */
-    data class StepCall(
+    /**
+     * 连续若干步工具调用：聊天流里收成一条「调用了 N 个工具」的回显行。
+     *
+     * 图标连排（几个图标连在一起，就是调用了几个工具），点开才铺开每一步的细节。
+     * 单步也走这条，形态与多步一致。
+     */
+    data class ToolChain(
         val runKey: String,
-        val step: Int,
-        val actionVerb: String,
-        val human: String,
-        val confidence: Double?,
-        val verified: Boolean,
-        val failed: Boolean,
-        val durationMs: Long,
-        val tokens: Int,
-        val thinking: String?,
-        val rawReceived: String,
-        val rawSent: String,
-        val hasScreenshot: Boolean,
-        /** 该步实际执行的命令（仅 shell 类动作有值） */
-        val shellCommand: String = "",
-        /** 命令输出：成功为 stdout/stderr，失败为可读原因 */
-        val shellOutput: String = "",
-        /** 执行/转译结果说明：让"未生效"带上原因，而不是一句没有解释的结论 */
-        val detail: String = "",
-        /** 该步是端侧（本地）决策产出的（云端决策为 false） */
-        val fromLocalDecision: Boolean = false,
+        val steps: List<StepCall>,
     ) : AgentTimelineItem {
-        override val key: String get() = "sc#$runKey#$step"
+        override val key: String get() = "tc#$runKey#${steps.firstOrNull()?.step}-${steps.lastOrNull()?.step}"
     }
 
     /** 连续中间状态折叠成的恒定一条 */
@@ -152,6 +132,19 @@ internal sealed interface AgentTimelineItem {
     }
 
     /**
+     * AI 主动对用户说的一句话（say 意图）。
+     * 它不是操作、不占执行步：只在任务流里作为一条对话消息出现，正文支持 Markdown。
+     */
+    data class Say(
+        val id: Long,
+        val text: String,
+        val runKey: String,
+        val step: Int,
+    ) : AgentTimelineItem {
+        override val key: String get() = "say#$runKey#$id"
+    }
+
+    /**
      * 提示类型。
      * 只有「无障碍未开启」会阻断 AI 读页面，属于真问题；
      * 悬浮窗是可选能力，不在此提示（改由设置页开关控制）。
@@ -168,6 +161,41 @@ internal sealed interface AgentTimelineItem {
         THINKING("think"),
         VISION("vision"),
     }
+}
+
+/**
+ * 单步工具调用（trace 与 record 按 step 合并后的一条）。
+ *
+ * 它不是列表项：连续的若干步会被 [AgentTimelineItem.ToolChain] 收成一条回显行，
+ * 界面从它身上取"调用了哪个工具"（[toolType] → 图标 + 工具名）与这步的细节。
+ */
+internal data class StepCall(
+    val runKey: String,
+    val step: Int,
+    /** AI 输出的原始动作类型（click / type / shell …），用于选工具图标与工具名 */
+    val toolType: String,
+    val actionVerb: String,
+    val human: String,
+    val confidence: Double?,
+    val verified: Boolean,
+    val failed: Boolean,
+    val durationMs: Long,
+    val tokens: Int,
+    val thinking: String?,
+    val rawReceived: String,
+    val rawSent: String,
+    val hasScreenshot: Boolean,
+    /** 该步实际执行的命令（仅 shell 类动作有值） */
+    val shellCommand: String = "",
+    /** 命令输出：成功为 stdout/stderr，失败为可读原因 */
+    val shellOutput: String = "",
+    /** 执行/转译结果说明：让"未生效"带上原因，而不是一句没有解释的结论 */
+    val detail: String = "",
+    /** 该步是端侧（本地）决策产出的（云端决策为 false） */
+    val fromLocalDecision: Boolean = false,
+) {
+    /** 稳定 key：同一步在同一任务内唯一（供 rememberSaveable 记住展开状态） */
+    val key: String get() = "sc#$runKey#$step"
 }
 
 /**

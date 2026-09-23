@@ -12,11 +12,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.phoneagent.core.ai.CatalogModel
+import com.phoneagent.core.ai.Endpoint
+import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
@@ -150,6 +154,10 @@ class SettingsState(initial: AppSettings.Settings) {
     var cursorOverlayEnabled by mutableStateOf(initial.cursorOverlayEnabled)
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
     var hideStatusBarDuringTask by mutableStateOf(initial.hideStatusBarDuringTask)
+    // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
+    val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
+    val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
+    var skipVisionDescWhenMainSees by mutableStateOf(initial.skipVisionDescWhenMainSees)
     var calibrationExpanded by mutableStateOf(false)
 
     fun applyFrom(s: AppSettings.Settings) {
@@ -189,6 +197,33 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
         hideStatusBarDuringTask = s.hideStatusBarDuringTask
+        // 列表不能整体替换，否则 Compose 感知不到元素级变化
+        endpoints.clear()
+        endpoints.addAll(s.endpoints)
+        catalog.clear()
+        catalog.addAll(s.catalog)
+        skipVisionDescWhenMainSees = s.skipVisionDescWhenMainSees
+    }
+
+    /**
+     * 端点落库前归一化：id 由地址推导、地址为空的行丢弃、同址去重
+     * —— 编辑期允许"地址还没填"的临时行，但它不该被写进设置。
+     */
+    private fun normalizedEndpoints(): List<Endpoint> = endpoints
+        .mapNotNull { ep ->
+            val id = ModelCatalogCodec.endpointId(ep.baseUrl)
+            if (id.isBlank()) null
+            else Endpoint(id = id, baseUrl = ep.baseUrl.trim(), apiKey = ep.apiKey.trim())
+        }
+        .distinctBy { it.id }
+
+    /** 模型条目只留下指向现存端点的；端点地址改写后条目已随行迁移，这里再兜一次保证无孤儿 */
+    private fun normalizedCatalog(): List<CatalogModel> {
+        val ids = normalizedEndpoints().map { it.id }.toSet()
+        return catalog
+            .map { it.copy(endpointId = ModelCatalogCodec.endpointId(it.endpointId), name = it.name.trim()) }
+            .filter { it.endpointId in ids && it.name.isNotBlank() }
+            .distinctBy { it.endpointId to it.name }
     }
 
     fun toSettings() = AppSettings.Settings(
@@ -227,5 +262,8 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
         hideStatusBarDuringTask = hideStatusBarDuringTask,
+        endpoints = normalizedEndpoints(),
+        catalog = normalizedCatalog(),
+        skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,
     )
 }

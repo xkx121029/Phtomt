@@ -30,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.ui.MainViewModel
@@ -61,7 +60,7 @@ private fun phaseWord(phase: AgentState.Phase): String = when (phase) {
  * 思考阶段让文字微光扫过，暗示"正在生成"，并附上"已工作 N 秒"。
  */
 @Composable
-internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus) {
+internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus, vm: MainViewModel) {
     val colors = AppTheme.colors
     val reduceMotion = motionSettings().reduceMotion
 
@@ -82,6 +81,8 @@ internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus) {
         phaseWord(item.phase)
     }
     val thinking = item.phase == AgentState.Phase.THINKING
+    // 打字机：流式正文分块到达，这里摊成连续吐字（key 恒定，换任务不残留上一条的打字状态）
+    val typed = rememberTypedText(item.streaming, key = "decision")
 
     Column(
         modifier = Modifier
@@ -123,15 +124,39 @@ internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus) {
                 .background(colors.outlineSoft.copy(alpha = 0.62f)),
         )
 
-        // AI 正在生成的正文：只贴尾部若干行（像终端 tail），让用户看到它"此刻在说什么"
+        // AI 正在生成的正文：只贴尾部若干行（像终端 tail），让用户看到它"此刻在说什么"。
+        // 用与助手消息同一种气泡形态 + AI 身份标，聊天流里才读得出"这是 AI 在说话"
         if (item.streaming.isNotBlank()) {
-            Spacer(Modifier.height(AppSpacing.Sm))
-            Text(
-                text = item.streaming.lines().takeLast(STREAM_LINES).joinToString("\n"),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceRaised,
+            Spacer(Modifier.height(AppSpacing.Md))
+            AgentEchoBubble(
+                text = typed.lines().takeLast(STREAM_LINES).joinToString("\n"),
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * AI 实时回显气泡：正在生成的正文（尾部若干行）走与"助手消息"同一套气泡形态，
+ * 左侧一枚 AI 标，读到的是"AI 此刻在说什么"，而不是一条滚动的系统日志。
+ */
+@Composable
+private fun AgentEchoBubble(text: String, vm: MainViewModel) {
+    val colors = AppTheme.colors
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .clip(agentBubbleShape(isUser = false))
+                .background(colors.messageBubbleAgent)
+                .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+        ) {
+            AgentSpeakerHeader(label = "AI 回显", tint = colors.onMessageBubbleAgent)
+            Spacer(Modifier.height(AppSpacing.Xs))
+            AgentMessageText(
+                text = text,
+                vm = vm,
                 maxLines = STREAM_LINES,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

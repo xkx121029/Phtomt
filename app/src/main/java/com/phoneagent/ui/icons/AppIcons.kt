@@ -5,6 +5,7 @@ import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.Camera
 import com.composables.icons.lucide.ChartLine
+import com.composables.icons.lucide.ArrowUpDown
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.ChevronUp
@@ -14,6 +15,7 @@ import com.composables.icons.lucide.CircleCheckBig
 import com.composables.icons.lucide.CircleX
 import com.composables.icons.lucide.CloudUpload
 import com.composables.icons.lucide.Code
+import com.composables.icons.lucide.CornerDownLeft
 import com.composables.icons.lucide.Cpu
 import com.composables.icons.lucide.EllipsisVertical
 import com.composables.icons.lucide.Eye
@@ -24,22 +26,28 @@ import com.composables.icons.lucide.Folder
 import com.composables.icons.lucide.FolderOpen
 import com.composables.icons.lucide.Globe
 import com.composables.icons.lucide.GripVertical
+import com.composables.icons.lucide.Hand
 import com.composables.icons.lucide.History
 import com.composables.icons.lucide.House
 import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.KeyRound
+import com.composables.icons.lucide.Keyboard
 import com.composables.icons.lucide.Languages
 import com.composables.icons.lucide.ListFilter
 import com.composables.icons.lucide.ListTodo
 import com.composables.icons.lucide.LoaderCircle
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Maximize
+import com.composables.icons.lucide.MousePointerClick
 import com.composables.icons.lucide.Pencil
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.Pointer
 import com.composables.icons.lucide.RefreshCcw
 import com.composables.icons.lucide.RefreshCw
+import com.composables.icons.lucide.Rocket
+import com.composables.icons.lucide.Save
+import com.composables.icons.lucide.ScanSearch
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Settings
@@ -164,4 +172,22 @@ object AppIcons {
     val Translate: ImageVector get() = Lucide.Languages
     /** 画面预览 */
     val Preview: ImageVector get() = Lucide.Eye
+
+    // ── 工具动作（Agent 页"调用了什么工具"的图标语言） ──────────────
+    /** 点击 / 轻触 */
+    val Tap: ImageVector get() = Lucide.MousePointerClick
+    /** 长按 */
+    val LongPress: ImageVector get() = Lucide.Hand
+    /** 键盘输入 */
+    val Keyboard: ImageVector get() = Lucide.Keyboard
+    /** 回车 / 按键 */
+    val EnterKey: ImageVector get() = Lucide.CornerDownLeft
+    /** 滑动 / 滚动 */
+    val ScrollVertical: ImageVector get() = Lucide.ArrowUpDown
+    /** 滚动查找 */
+    val ScrollSearch: ImageVector get() = Lucide.ScanSearch
+    /** 启动应用 */
+    val Launch: ImageVector get() = Lucide.Rocket
+    /** 记住（写入长期记忆） */
+    val Remember: ImageVector get() = Lucide.Save
 }

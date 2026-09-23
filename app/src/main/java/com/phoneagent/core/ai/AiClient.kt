@@ -1,6 +1,7 @@
 package com.phoneagent.core.ai
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.util.Base64
 import android.util.Log
 import com.phoneagent.domain.model.AgentIntent
@@ -28,6 +29,12 @@ class AiClient(
 ) {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * 枚举 / 探测专用 client：继承主 client 的连接池，只把 callTimeout 压到 20s。
+     * 主 client 的 readTimeout 是 120s，一次能力探测等不起。
+     */
+    private val probeClient by lazy { client.newBuilder().callTimeout(20, TimeUnit.SECONDS).build() }
 
     companion object {
         private const val INITIAL_DELAY_MS = 800L
@@ -92,6 +99,43 @@ class AiClient(
             if (nums.size != 4 || nums.any { it !in 0..255 }) return null
             val (a, b) = nums[0] to nums[1]
             return a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && b in 16..31)
+        }
+
+        /**
+         * 模型列表端点：与 [chatCompletionsUrl] 同样兼容各服务商填法差异 ——
+         * 用户误把完整端点（`…/v1/chat/completions`）填进「API 地址」时先摘掉，再拼 `/models`。
+         */
+        internal fun modelsUrl(baseUrl: String): String {
+            val base = normalizeBaseUrl(baseUrl).removeSuffix("/chat/completions")
+            return if (base.endsWith("/models")) base else "$base/models"
+        }
+
+        /**
+         * 单项探测判定（只看状态码，不做 image/tool 关键词启发式 —— 5xx 的错误正文会被误判成"不支持"）：
+         * - 2xx → `true`：该能力可用
+         * - 415 / 422 → `false`：服务端明确拒绝了这种请求体（媒体类型 / 字段不被支持）
+         * - 401 / 403 → `null`：鉴权问题（调用方已在整体层面拦截，不会走到这里）
+         * - 400 / 5xx / 其他 → `null`：未测出（字段不认识、网关改写、服务端异常都落这里）
+         */
+        internal fun probeVerdict(status: Int): Boolean? = when {
+            status in 200..299 -> true
+            status == 415 || status == 422 -> false
+            else -> null
+        }
+
+        /** 模型名相关线索：命中即认为"模型名/地址不对"，整体失败（而不是记成"该能力不支持"）。 */
+        private val MODEL_NAME_ERROR_HINTS = listOf(
+            "model not found", "model_not_found", "unknown model", "invalid model",
+            "model does not exist", "no such model", "unsupported model",
+            "模型不存在", "无效的模型", "模型名", "不存在的模型",
+        )
+
+        /** 是否是"模型名/地址错"：404 一律算；400 需正文出现模型名线索（避免把"不支持图片"误判）。 */
+        internal fun isModelNameError(status: Int, body: String): Boolean {
+            if (status == 404) return true
+            if (status != 400) return false
+            val lower = body.lowercase()
+            return MODEL_NAME_ERROR_HINTS.any { lower.contains(it) }
         }
 
         /** AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL） */
@@ -362,6 +406,163 @@ class AiClient(
             parseCoordinate(content)
         }
     }
+
+    // ==================== 模型枚举与能力探测 ====================
+
+    /** 单发请求的原始结果：状态码 + 正文 */
+    private data class RawResponse(val status: Int, val body: String)
+
+    /**
+     * 拉取该端点可用的模型列表（`GET /models`）。
+     *
+     * 只写库、不做能力探测：网关常返回上百条模型，逐条探测等于几百次请求。
+     */
+    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request = Request.Builder()
+                    .url(modelsUrl(baseUrl))
+                    .header("Authorization", "Bearer $apiKey")
+                    .get()
+                    .build()
+                probeClient.newCall(request).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    if (resp.code == 404) error("该服务未提供模型列表接口（HTTP 404），请手动填写模型名")
+                    if (!resp.isSuccessful) error(httpErrorText(resp, body))
+                    val parsed = runCatching { json.decodeFromString<ModelListResponse>(body) }.getOrNull()
+                        ?: error("模型列表返回格式不认识（HTTP ${resp.code}）\n返回内容：${snippet(body)}")
+                    parsed.data.mapNotNull { it.id?.trim()?.takeIf(String::isNotEmpty) }.distinct().sorted()
+                }
+            }
+        }
+
+    /**
+     * 真实请求探测单个模型的能力：文本 → 识图 → 工具，前一步整体失败即短路。
+     *
+     * 不复用 [executeWithRetry]：其 429 退避（2/4/8/16s）会把探测拖到分钟级，且会把
+     * 「`finish_reason=tool_calls` + `content=null`」误判成"AI 返回空内容"。
+     * 能力值 `null` = 未测出（服务端 400/5xx、网关改写、200 但空正文），与"不支持"（`false`）区分开。
+     */
+    suspend fun probeAbility(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val notes = mutableListOf<String>()
+
+                // 1) 文本：这一步失败说明地址 / Key / 模型名有问题，整体失败
+                val textCall = rawPost(
+                    baseUrl, apiKey,
+                    ChatRequest(
+                        model = model,
+                        messages = listOf(
+                            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
+                        ),
+                        max_tokens = 8,
+                    ),
+                )
+                probeBlocker(textCall)?.let { error(it) }
+                if (textCall.status !in 200..299) error("文本请求失败（HTTP ${textCall.status}）：${snippet(textCall.body)}")
+
+                // 2) 识图：200 且正文非空才算测出支持
+                val shot = probeImageBitmap()
+                val visionCall = try {
+                    rawPost(
+                        baseUrl, apiKey,
+                        ChatRequest(
+                            model = model,
+                            messages = listOf(
+                                ChatMessageDto(
+                                    role = "user",
+                                    content = listOf(
+                                        ContentPart(type = "text", text = "这张图是什么颜色？只回答颜色。"),
+                                        ContentPart(type = "image_url", image_url = ImageUrl(base64Image(shot))),
+                                    ),
+                                ),
+                            ),
+                            max_tokens = 16,
+                        ),
+                    )
+                } finally {
+                    shot.recycle()
+                }
+                probeBlocker(visionCall)?.let { error(it) }
+                val vision: Boolean? = when {
+                    visionCall.status !in 200..299 -> probeVerdict(visionCall.status)
+                    hasContent(visionCall) -> true
+                    else -> null
+                }
+                if (vision == null) notes += "识图：${probeNote(visionCall)}"
+
+                // 3) 工具调用：成功响应通常是 content=null + finish_reason=tool_calls，故只看状态码
+                val toolsCall = rawPost(
+                    baseUrl, apiKey,
+                    ChatRequest(
+                        model = model,
+                        messages = listOf(
+                            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请调用 noop_ping 工具。"))),
+                        ),
+                        max_tokens = 64,
+                        tools = listOf(
+                            ToolSpec(
+                                function = FunctionSpec(
+                                    name = "noop_ping",
+                                    description = "无副作用的连通性探测工具",
+                                    parameters = json.parseToJsonElement("""{"type":"object","properties":{}}"""),
+                                ),
+                            ),
+                        ),
+                        tool_choice = "auto",
+                    ),
+                )
+                probeBlocker(toolsCall)?.let { error(it) }
+                val tools = probeVerdict(toolsCall.status)
+                if (tools == null) notes += "工具：${probeNote(toolsCall)}"
+
+                ModelAbility(vision = vision, tools = tools, note = notes.joinToString("；"))
+            }
+        }
+
+    /** 单发 POST（无重试）：探测走这条，不做退避 */
+    private fun rawPost(baseUrl: String, apiKey: String, body: ChatRequest): RawResponse {
+        val request = Request.Builder()
+            .url(chatCompletionsUrl(baseUrl))
+            .header("Authorization", "Bearer $apiKey")
+            .post(buildRequest(body))
+            .build()
+        return try {
+            probeClient.newCall(request).execute().use { resp ->
+                RawResponse(resp.code, resp.body?.string().orEmpty())
+            }
+        } catch (e: Exception) {
+            throw IllegalStateException("请求未送达：${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    /** 探测用极小图片（64×64 纯红）：够模型解码，又不产生可审查内容 */
+    private fun probeImageBitmap(): Bitmap =
+        Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+
+    /**
+     * 整体性失败判定：鉴权与模型名问题说明地址 / Key / 模型名本身不对，
+     * 此时把能力记成"不支持"会误导用户，直接让整个探测失败。
+     */
+    private fun probeBlocker(resp: RawResponse): String? = when {
+        resp.status == 401 || resp.status == 403 ->
+            "鉴权失败（HTTP ${resp.status}），请检查 API Key"
+        isModelNameError(resp.status, resp.body) ->
+            "模型或地址不可用（HTTP ${resp.status}），请确认模型名与 API 地址\n返回内容：${snippet(resp.body)}"
+        else -> null
+    }
+
+    /** 200 但可能是空 choices（网关改写），进一步确认真的有正文 */
+    private fun hasContent(resp: RawResponse): Boolean {
+        val parsed = runCatching { json.decodeFromString<ChatResponse>(resp.body) }.getOrNull() ?: return false
+        return !parsed.choices.firstOrNull()?.message?.content.isNullOrBlank()
+    }
+
+    private fun probeNote(resp: RawResponse): String = "HTTP ${resp.status} ${snippet(resp.body)}"
+
+    private fun snippet(body: String): String =
+        body.trim().take(200).ifEmpty { "（响应体为空）" }
 
     /** 通用 POST 请求：返回模型正文（支持图片与可选结构化输出） */
     private suspend fun postCompat(

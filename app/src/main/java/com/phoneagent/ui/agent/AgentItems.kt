@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,10 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.MarkdownPreview
@@ -51,12 +54,56 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 
 /** 气泡圆角：朝向说话者一侧的底角收窄，形成克制的对话尾，而不是四角一样的通用气泡 */
-private fun agentBubbleShape(isUser: Boolean) = RoundedCornerShape(
+internal fun agentBubbleShape(isUser: Boolean) = RoundedCornerShape(
     topStart = AppRadii.Bubble,
     topEnd = AppRadii.Bubble,
     bottomStart = if (isUser) AppRadii.Bubble else 6.dp,
     bottomEnd = if (isUser) 6.dp else AppRadii.Bubble,
 )
+
+/**
+ * AI 侧的身份标识：一枚小小的"AI"标 + 这条输出是什么。
+ *
+ * AI 的每一类输出（完成说明 / 思考 / 画面识别 / 实时回显）都从这一行开始，
+ * 聊天流里才分得清"谁在说、说的是哪一类"，而不是一堆没有出处的文字块。
+ */
+@Composable
+internal fun AgentSpeakerHeader(
+    label: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(RoundedCornerShape(AppRadii.Chip))
+                .background(tint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "AI",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 9.sp,
+                ),
+                color = tint,
+            )
+        }
+        Spacer(Modifier.width(AppSpacing.Sm))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = tint,
+        )
+        Spacer(Modifier.weight(1f))
+        trailing()
+    }
+}
 
 /** 用户下达的任务（右对齐气泡）。排队中的任务降饱和显示，避免看起来像正在执行 */
 @Composable
@@ -119,39 +166,36 @@ internal fun AssistantNoteItem(
                 onPress = buzz,
                 onClick = { expanded = !expanded },
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        imageVector = AppIcons.AutoAwesome,
-                        contentDescription = null,
-                        tint = colors.onMessageBubbleAgent.copy(alpha = 0.7f),
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Spacer(Modifier.width(AppSpacing.Xs))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.onMessageBubbleAgent,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    Icon(
-                        imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                        contentDescription = if (expanded) "收起" else "展开",
-                        tint = colors.onMessageBubbleAgent.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
+                AgentSpeakerHeader(
+                    label = label,
+                    tint = colors.onMessageBubbleAgent,
+                    trailing = {
+                        Icon(
+                            imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
+                            contentDescription = if (expanded) "收起" else "展开",
+                            tint = colors.onMessageBubbleAgent.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
+                )
             }
             Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onMessageBubbleAgent.copy(alpha = 0.9f),
-                maxLines = if (expanded) Int.MAX_VALUE else 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // 折叠态只截图一行预览（不做解析，省一次 md 解析）；展开态整段走 md 渲染
+            if (expanded) {
+                AgentMessageText(
+                    text = item.text,
+                    vm = vm,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onMessageBubbleAgent.copy(alpha = 0.9f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             AnimatedVisibility(
                 visible = expanded,
                 enter = fadeIn(tween(DurationFast, easing = EaseOut)) +
@@ -168,6 +212,36 @@ internal fun AssistantNoteItem(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * AI 主动说的一句话（say 意图）：挂在任务流里的 AI 气泡，一次说完不折叠。
+ *
+ * 它不是一步操作，因此没有工具图标、没有步号——只作为一条对话消息出现；正文走 Markdown 渲染。
+ */
+@Composable
+internal fun SayItem(
+    item: AgentTimelineItem.Say,
+    vm: MainViewModel,
+) {
+    val colors = AppTheme.colors
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(agentBubbleShape(isUser = false))
+                .background(colors.messageBubbleAgent)
+                .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+        ) {
+            AgentSpeakerHeader(label = "对我说", tint = colors.onMessageBubbleAgent)
+            Spacer(Modifier.height(AppSpacing.Xs))
+            AgentMessageText(
+                text = item.text,
+                vm = vm,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

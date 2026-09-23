@@ -85,6 +85,7 @@ object EngineRules {
         ActionType.WRITE_DOC -> "写入文档"
         ActionType.REMEMBER -> "记住信息"
         ActionType.DEVICE_QUERY -> "查询本机信息"
+        ActionType.SAY -> "说"
         ActionType.MCP_CALL -> "调用技能"
         ActionType.OPEN -> "打开链接/Scheme"
         // 内置浏览器的 6 个子操作：由 BrowserChannel 直出，不经转译层，故直接按意图名映射

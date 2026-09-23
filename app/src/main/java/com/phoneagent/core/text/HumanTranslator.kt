@@ -36,6 +36,9 @@ object HumanTranslator {
         "shell" to "执行命令",
         "write_doc" to "生成文档",
         "remember" to "记住",
+        "device_query" to "查询本机",
+        "mcp_call" to "调用技能",
+        "say" to "说",
     )
 
     /** 异常技术描述 → 人话 */
@@ -141,6 +144,117 @@ object HumanTranslator {
         if (confidence != null) sb.append(" · ").append(confidenceWord(confidence)).append(" ${(confidence * 100).toInt()}%")
         if (!reasoning.isNullOrBlank()) sb.append(" · 因为：").append(reasoning)
         return sb.toString()
+    }
+
+    /**
+     * `summary` 属于"正文"而非"附注"的意图：这些意图说的话本身就是全部内容，
+     * 直接吐出来，不再加 `·` 前缀。
+     */
+    private val streamPrimaryIntents = setOf("finish", "write_doc", "remember", "device_query", "say")
+
+    /**
+     * 把 AI 流式输出的原始 JSON 片段译成"人话预览"。
+     *
+     * 与 [summarizeDecision] 的区别：这里吃的是**半截 JSON**，必须保证
+     * "输入变长 → 输出只追加"（打字机依赖这条单调性，回退会导致文字倒吸）。
+     * 做法是按字段**出现顺序**拼接片段，而不是按理想语序重排——
+     * 语序偶尔会怪，但永远不会倒退。片段一旦产出就不再改写，所以每个前缀
+     * 单独翻译的结果，天然是完整 JSON 翻译结果的前缀。
+     *
+     * 技术字段（confidence / type / by / app / uri / page_fingerprint 等）不输出，
+     * 否则等于把内部协议摊在界面上。
+     */
+    fun humanStream(raw: String): String {
+        if (raw.isBlank()) return ""
+        val parts = ArrayList<String>(6)
+        // 每个容器深度上"最后一个字段名"，以及"打开该容器的字段名"——
+        // target.value 要靠这两层才认得出来
+        val lastKey = HashMap<Int, String>()
+        val openKey = HashMap<Int, String?>()
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var stringIsValue = false
+        var expectValue = false
+        var intent = ""
+        val sb = StringBuilder()
+        var i = 0
+        while (i < raw.length) {
+            val c = raw[i]
+            if (inString) {
+                when {
+                    escaped -> { sb.append(c); escaped = false }
+                    c == '\\' -> escaped = true
+                    c == '"' -> {
+                        inString = false
+                        val content = sb.toString()
+                        sb.setLength(0)
+                        val key = lastKey[depth]
+                        if (stringIsValue) {
+                            // intent 只认闭合值：半截枚举没有意义，但闭合后要记住它，
+                            // 供 summary 判断"是正文还是附注"
+                            if (key == "intent") intent = content
+                            streamFragment(parts, key, openKey[depth], content, intent)
+                        } else {
+                            lastKey[depth] = content
+                        }
+                        expectValue = false
+                    }
+                    else -> sb.append(c)
+                }
+                i++
+                continue
+            }
+            when (c) {
+                '"' -> {
+                    inString = true
+                    escaped = false
+                    sb.setLength(0)
+                    stringIsValue = expectValue
+                }
+                '{' -> {
+                    depth++
+                    openKey[depth] = lastKey[depth - 1]
+                    expectValue = false
+                }
+                '[' -> { depth++; expectValue = false }
+                '}', ']' -> {
+                    openKey.remove(depth)
+                    lastKey.remove(depth)
+                    depth = (depth - 1).coerceAtLeast(0)
+                    expectValue = false
+                }
+                ':' -> expectValue = true
+                ',' -> expectValue = false
+            }
+            i++
+        }
+        // 尾部那个还没闭合的字符串：模型正在逐字吐这个字段，把人话同步长出来
+        if (inString && stringIsValue) {
+            streamFragment(parts, lastKey[depth], openKey[depth], sb.toString(), intent, partial = true)
+        }
+        return parts.joinToString("").trim()
+    }
+
+    /** 把单个字段片段译成人话追加到 [parts]；不是"该说出来"的字段就什么都不加 */
+    private fun streamFragment(
+        parts: MutableList<String>,
+        key: String?,
+        parent: String?,
+        value: String,
+        intent: String,
+        /** 该字段还没闭合（模型正在逐字吐） */
+        partial: Boolean = false,
+    ) {
+        if (key == null || value.isEmpty()) return
+        when {
+            // 枚举只有闭合才成立，半截的 intent 出字只会是乱码
+            key == "intent" -> if (!partial) parts += actionVerb(value) else Unit
+            key == "reasoning" -> parts += " · 因为：$value"
+            key == "value" && parent == "target" -> parts += if (partial) "「$value" else "「$value」"
+            key == "summary" -> parts += if (intent in streamPrimaryIntents) value else " · $value"
+            key == "text" -> parts += "：$value"
+        }
     }
 
     /** 从原始文本中抽出某 JSON 字段的字符串值（正则） */

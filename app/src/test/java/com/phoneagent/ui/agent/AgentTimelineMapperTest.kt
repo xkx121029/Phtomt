@@ -4,12 +4,15 @@ import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.Clarification
+import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
+import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -72,6 +75,7 @@ class AgentTimelineMapperTest {
         a11yEnabled: Boolean = true,
         fold: LiveStatusFold = LiveStatusFold(),
         memoryEvents: List<MemoryEvent> = emptyList(),
+        sayEvents: List<SayEvent> = emptyList(),
         focusTaskId: Long? = null,
         archived: TaskSession? = null,
     ) = AgentTimelineMapper.build(
@@ -87,6 +91,7 @@ class AgentTimelineMapperTest {
         a11yEnabled = a11yEnabled,
         fold = fold,
         memoryEvents = memoryEvents,
+        sayEvents = sayEvents,
         focusTaskId = focusTaskId,
         archived = archived,
     )
@@ -113,6 +118,46 @@ class AgentTimelineMapperTest {
         step = step,
     )
 
+    /** 摊平工具链：断言"某一步"时不必关心它被收进了哪条链 */
+    private fun List<AgentTimelineItem>.steps(): List<StepCall> =
+        filterIsInstance<AgentTimelineItem.ToolChain>().flatMap { it.steps }
+
+    private fun sayEvent(
+        id: Long,
+        step: Int,
+        text: String = "我先打开设置，再定位到显示项",
+        runKey: String = "r1",
+    ) = SayEvent(id = id, text = text, runKey = runKey, step = step)
+
+    /** 找到承载某一步的那条工具链在列表中的下标 */
+    private fun List<AgentTimelineItem>.chainIndexOf(step: Int): Int =
+        indexOfFirst { it is AgentTimelineItem.ToolChain && it.steps.any { s -> s.step == step } }
+
+    @Test
+    fun `连续步骤收成一条工具链且能摊平回原有步序`() {
+        val items = build(
+            traces = (1..3).map { trace(1, it) },
+            history = (1..3).map { record(it, verified = true) },
+        )
+        val chains = items.filterIsInstance<AgentTimelineItem.ToolChain>()
+        assertEquals("连续三步应只出一条工具链", 1, chains.size)
+        assertEquals(listOf(1, 2, 3), chains.single().steps.map { it.step })
+        assertTrue("工具链要能报出调用了什么工具", chains.single().steps.all { it.toolType.isNotBlank() })
+    }
+
+    @Test
+    fun `中间夹了记忆卡片时工具链自然断开`() {
+        val items = build(
+            traces = (1..3).map { trace(1, it) },
+            history = (1..3).map { record(it, verified = true) },
+            memoryEvents = listOf(memoryEvent(id = 1, step = 2)),
+        )
+        val chains = items.filterIsInstance<AgentTimelineItem.ToolChain>()
+        assertEquals("第 2 步后夹了记忆卡，应断成两条链", 2, chains.size)
+        assertEquals(listOf(1, 2), chains[0].steps.map { it.step })
+        assertEquals(listOf(3), chains[1].steps.map { it.step })
+    }
+
     @Test
     fun `记忆卡片紧跟产生它的那一步`() {
         val items = build(
@@ -120,7 +165,7 @@ class AgentTimelineMapperTest {
             history = listOf(record(1, verified = true), record(2, verified = true)),
             memoryEvents = listOf(memoryEvent(id = 7, step = 1)),
         )
-        val stepIdx = items.indexOfFirst { it is AgentTimelineItem.StepCall && it.step == 1 }
+        val stepIdx = items.chainIndexOf(1)
         val memIdx = items.indexOfFirst { it is AgentTimelineItem.MemoryAdded }
         assertTrue("应产出记忆卡片", memIdx >= 0)
         assertEquals("记忆卡片应紧跟第 1 步", stepIdx + 1, memIdx)
@@ -153,12 +198,58 @@ class AgentTimelineMapperTest {
     }
 
     @Test
+    fun `澄清阶段不再往任务流里塞问答卡片`() {
+        val items = build(
+            submittedTask = "把字体调大",
+            planPhase = PlanPhase.Clarifying(
+                Clarification(
+                    question = "要调系统字体还是应用内字体？",
+                    options = listOf(ClarificationOption(id = "sys", label = "系统字体")),
+                ),
+            ),
+        )
+        // 提问与选项都由输入栏（AgentComposer）承载，任务流只剩任务标题这一条
+        assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
+        assertTrue(items.none { it is AgentTimelineItem.PlanApproval })
+        assertEquals(listOf("把字体调大"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+    }
+
+    @Test
+    fun `AI 说的话挂在最近的前序步骤后面`() {
+        val items = build(
+            traces = (1..3).map { trace(1, it) },
+            history = (1..3).map { record(it, verified = true) },
+            sayEvents = listOf(sayEvent(id = 1, step = 2), sayEvent(id = 2, step = 3)),
+        )
+        val says = items.filterIsInstance<AgentTimelineItem.Say>()
+        assertEquals("两条话都应产出，且按 id 升序", listOf(1L, 2L), says.map { it.id })
+        assertEquals("第 2 步说的话跟在第 2 步后面", items.chainIndexOf(2) + 1, items.indexOfFirst { it is AgentTimelineItem.Say })
+        assertEquals(
+            "第 3 步说的话跟在第 3 步后面",
+            items.chainIndexOf(3) + 1,
+            items.indexOfLast { it is AgentTimelineItem.Say },
+        )
+    }
+
+    @Test
+    fun `回看历史任务时不回放 AI 说过的话`() {
+        val items = build(
+            traces = (1..3).map { trace(taskId = 1, step = it) } + trace(taskId = 2, step = 1),
+            history = (1..3).map { record(step = it, verified = true, taskId = 1) } +
+                record(step = 1, verified = true, taskId = 2),
+            sayEvents = listOf(sayEvent(id = 1, step = 1, runKey = "r1")),
+            focusTaskId = 1L,
+        )
+        assertTrue("归档不存这些话，历史回看不该出现", items.none { it is AgentTimelineItem.Say })
+    }
+
+    @Test
     fun `同一步的追踪与执行记录只产出一条步骤项`() {
         val items = build(
             traces = listOf(trace(1, 1), trace(1, 2)),
             history = listOf(record(1, verified = true), record(2, verified = false)),
         )
-        val calls = items.filterIsInstance<AgentTimelineItem.StepCall>()
+        val calls = items.steps()
         assertEquals(2, calls.size)
         assertEquals(listOf(1, 2), calls.map { it.step })
         assertTrue(calls.first { it.step == 1 }.verified)
@@ -235,7 +326,7 @@ class AgentTimelineMapperTest {
             history = (1..9).map { record(step = it, verified = it <= 5, taskId = 1) } +
                 record(step = 1, verified = true, taskId = 2),
         )
-        val calls = items.filterIsInstance<AgentTimelineItem.StepCall>()
+        val calls = items.steps()
         assertEquals("只应铺开最新一次", listOf("r2"), calls.map { it.runKey }.distinct())
         assertEquals("任务2", items.filterIsInstance<AgentTimelineItem.UserTask>().single().text)
     }
@@ -249,7 +340,7 @@ class AgentTimelineMapperTest {
                 record(step = 1, verified = true, taskId = 2),
             focusTaskId = 1L,
         )
-        val calls = items.filterIsInstance<AgentTimelineItem.StepCall>()
+        val calls = items.steps()
         assertEquals(listOf(1, 2, 3), calls.map { it.step })
         assertEquals(listOf("r1"), calls.map { it.runKey }.distinct())
         assertEquals("任务1", items.filterIsInstance<AgentTimelineItem.UserTask>().single().text)

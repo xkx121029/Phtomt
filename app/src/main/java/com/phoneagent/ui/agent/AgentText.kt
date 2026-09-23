@@ -35,14 +35,17 @@ internal fun rememberTranslated(text: String, vm: MainViewModel): String {
  *
  * 用本地确定性解析器而不是第三方库，是因为它会把**未闭合的 ``` 代码块 flush 输出**，
  * 天然适配规划流的半截 markdown（流式过程中每 150ms 就会重算一次）。
+ * 不像 markdown 的纯文本由 [MarkdownPreview] 自动按整段渲染，不强行套格式。
  */
 @Composable
 internal fun AgentMessageText(
     text: String,
     vm: MainViewModel,
     modifier: Modifier = Modifier,
+    /** 非空时限行并省略（流式回显只贴尾部若干行） */
+    maxLines: Int? = null,
 ) {
     val rendered = rememberTranslated(text, vm)
     if (rendered.isBlank()) return
-    MarkdownPreview(content = rendered, modifier = modifier)
+    MarkdownPreview(content = rendered, modifier = modifier, maxLines = maxLines)
 }

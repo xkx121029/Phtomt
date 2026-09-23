@@ -106,6 +106,14 @@ class MainViewModel(
     suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> =
         engine.testConnection(baseUrl, apiKey, model)
 
+    /** 拉取端点可用模型列表（设置页"获取模型"） */
+    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
+        engine.listModels(baseUrl, apiKey)
+
+    /** 探测单个模型的能力（识图 / 工具调用） */
+    suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<com.phoneagent.core.ai.ModelAbility> =
+        engine.probeModel(baseUrl, apiKey, model)
+
     fun startPlanning(task: String) = engine.startPlanning(task)
     fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
     fun approvePlan() = engine.approvePlan()
@@ -423,6 +431,9 @@ class MainViewModel(
     // ---- AI 记忆图谱 ----
     /** 本次任务内 AI 写入的记忆事件（引擎内存态），Agent 页据此实时插卡 */
     val memoryEvents: StateFlow<List<com.phoneagent.engine.MemoryEvent>> get() = engine.memoryEvents
+
+    /** 本次任务内 AI "对用户说话"的事件（引擎内存态），Agent 页据此实时出气泡 */
+    val sayEvents: StateFlow<List<com.phoneagent.engine.SayEvent>> get() = engine.sayEvents
 
     /** 撤销一条刚写入的记忆：删库 + 从任务流移除卡片 */
     fun undoMemory(id: Long) {

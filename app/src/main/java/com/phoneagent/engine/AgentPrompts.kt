@@ -178,6 +178,7 @@ object AgentPrompts {
 | scroll_to | 滚动查找目标 | target |
 | write_doc | 生成文档（结果在 Agent 页预览） | text(正文),summary(文件名) |
 | remember | 记住长期信息（不操作屏幕，仅写入记忆） | text(要记住的一句话),summary(分类 preference/fact/habit/tip) |
+| say | 对用户说一句话（不操作屏幕，直接显示在任务流里；支持 Markdown） | text(要说的话) |
 | device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
 | fetch | 取正文（需本机已装 Termux）；返回 HTML 时端侧自动转成 Markdown 再回传；网页界面一律走 browse_* | uri |
 | browse_open | 内置浏览器打开网址（界面会切到浏览器页，网页出现在之后每张截图里） | uri（http/https 网址） |
@@ -253,6 +254,7 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 1. 创建/整理文档（周报、清单、总结、报告、资料、笔记、文章、邮件、方案、攻略等）→ 必须用 write_doc 直接产出文档正文（结果会在 Agent 页预览给用户），独占此通道；禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。
 2. "打开"分四类，别用错通道：① 需要你读/操作网页内容（查资料、点网页链接、填网页表单）→ browse_open + browse_*，独占此通道，不要用 open 顶替（内置浏览器是独立通道，不依赖无障碍/Shizuku/无线 ADB，只读模式下也照常可用）；② 只是把网址打开给用户看、或用户点名"用浏览器打开" → open + uri（http/https），交系统浏览器；③ App 内部页 / 系统页 / 公开 scheme → open 深链一键直达（uri 或 app+page 索引）；④ 本地文件（ppt/doc/pdf/图片/音视频，路径形如 /sdcard/Download/x.ppt）→ open + uri=文件路径，端侧交给系统文档软件打开，要指定用哪个应用就填 app。封闭 App（如微信聊天页）不发明 scheme，改用 open_app 逐步操作。**上网绝不用 open_app 打开浏览器**：open_app 只在用户明确要"打开浏览器这个应用本身"时才算对，查资料/看网页一律走 ① 或 ②。
 3. 需要本机事实（装了哪些应用、当前时间、电量、网络、存储）→ 用 device_query 一次问清（kind=apps/time/battery/network/storage/all，应用清单可用 filter 过滤），不要翻设置页或靠点击试探；完整应用清单默认不给你，需要时自己查。
+4. 执行中需要向用户解释、汇报或提问（**不是**操作手机）→ 用 say 说清楚（一次说完，支持 Markdown）；say 不是动作，禁止用它代替真正的操作，也禁止连续使用超过 2 次。
 
 # 倒计时广告（铁律级别）
 context_hint 含【⚠️ 疑似倒计时广告】→ 必须输出 wait，绝对禁止 tap。
@@ -347,6 +349,7 @@ You are Phantom, an Android device automation agent.
 | scroll_to | Scroll to find target | target |
 | write_doc | Generate document (previewed on the Agent page) | text(body),summary(filename) |
 | remember | Remember long-term info (no screen interaction, memory write only) | text(one sentence),summary(category preference/fact/habit/tip) |
+| say | Say one sentence to the user (no screen interaction; shown in the task stream, Markdown supported) | text(message) |
 | device_query | Query device info (no screen interaction, local read only) | kind(apps/time/battery/network/storage/all)[,filter(app-name keyword)] |
 | fetch | Fetch a body (requires Termux installed); when the response is HTML the device converts it to Markdown before returning it; web UIs always go through browse_* | uri |
 | browse_open | Open a URL in the built-in browser (the UI switches to the browser page; the page appears in every later screenshot) | uri (http/https URL) |
@@ -422,6 +425,7 @@ Examples:
 1. Generating/compiling documents (report, checklist, summary, notes, article, email, plan, guide, etc.) → MUST use write_doc to produce the document body directly (it will be previewed to the user on the Agent page), exclusive to this channel; do NOT type on screen, open a notes/notepad app, or use shell to write files.
 2. "Opening" splits into four cases — don't use the wrong channel: ① you must read/operate the web page content (research, click a web link, fill a web form) → browse_open + browse_*, exclusive to this channel, never substitute open (the built-in browser is an independent channel — no accessibility/Shizuku/wireless ADB needed, and it keeps working in read-only mode); ② the URL is merely shown to the user, or the user says "open it in a browser" → open + uri (http/https), handed to the system browser; ③ in-app page / system page / public scheme → open deep link, straight there (uri or app+page index); ④ local file (ppt/doc/pdf/image/audio/video, path like /sdcard/Download/x.ppt) → open + uri=file path, the device hands it to a system document app; fill app to pick a specific app. For closed apps (e.g. WeChat chat page) do NOT invent a scheme — use open_app and step through. For anything web-related NEVER open_app a browser: open_app is correct only when the user explicitly wants the browser app itself launched; research/viewing a web page always goes through ① or ②.
 3. Need device facts (installed apps, current time, battery, network, storage) → ask once with device_query (kind=apps/time/battery/network/storage/all; filter the app list with filter). Do NOT browse Settings or tap around to find out. The full app list is not given to you by default — query it when needed.
+4. During execution, when you need to explain, report, or ask the user something that is NOT a phone operation → use say (say it once, Markdown supported). say is not an action; never use it to replace real operations, and never use it more than 2 times in a row.
 
 # Countdown Ads (Iron Rule)
 context_hint contains 【⚠️ Countdown Ad】 → MUST output wait. NEVER tap.
@@ -479,11 +483,12 @@ Output ONLY JSON.
 
     /** 功能可用性说明（双语） */
     fun capabilitiesLang(lang: PromptLang, hasVision: Boolean): String = when (lang) {
+        // hasVision 的入参是"本轮真的带了截图"，不是用户勾的开关：文案说能看图就一定发了图
         PromptLang.CN ->
-            if (hasVision) "视觉理解：已启用。可结合截图理解图片、图表、界面元素的位置。"
+            if (hasVision) "视觉理解：已启用。本轮已附带屏幕截图，可直接看图判断元素位置、图标与图表含义。"
             else "视觉理解：未启用。完全依赖元素树中的 id/label/坐标与文本进行操作。"
         PromptLang.EN ->
-            if (hasVision) "Vision: enabled. Use screenshots to understand images, charts, and element positions."
+            if (hasVision) "Vision: enabled. A screenshot of the current screen is attached this turn — read it directly for element positions, icons and charts."
             else "Vision: disabled. Rely entirely on element-tree id/label/coordinates and text."
     }
 
@@ -743,6 +748,7 @@ No other text.
 - 发现**有长期价值**的信息（用户偏好、常用设置、该应用的固定操作路径）→ remember；只记真正值得长期保留的，禁止每步都记。
 - 需要本机事实（应用清单、时间、电量、网络、存储）→ device_query（kind=apps/time/battery/network/storage/all），结果会作为上一步结果回给你；不要翻设置页，也不要每步都查。
 - 需要上网看网页（查资料、看资讯、打开某个网址）→ browse_open 打开目标网址，之后用 browse_read 看清内容，再用 browse_click / browse_input / browse_scroll 操作；网页里的元素只能用 browse_click 按文字点，不要用 tap + 坐标去猜。结果是浏览器里的真实页面，你下一步的截图就能看到。只是把网址打开给用户看（或用户点名"用浏览器打开"）→ 改用 open + uri 交系统浏览器；打开本地文件（/sdcard/…、file://…）也用 open + uri 交给系统文档应用。
+- 需要向用户**解释一句、汇报一句、反问一句**（不是操作手机）→ say + text，一句话说完（支持 Markdown）；它不操作屏幕、不算一步操作，禁止用它代替真正的动作，也不要连续说超过 2 次。
 
 # 输出
 正常 → 单个意图 JSON；满足合并条件（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ 数组，最多 2 个。
@@ -781,6 +787,7 @@ Page hint: $contextHint${memoryBlock(lang, memory)}
 - Find information with **long-term value** (user preference, common setting, this app's fixed navigation path) → remember; only record what is truly worth keeping, never on every step.
 - Need device facts (installed apps, time, battery, network, storage) → device_query (kind=apps/time/battery/network/storage/all); the result comes back as the previous step result. Do NOT browse Settings, and do NOT query every step.
 - Need to go online (research, news, open a URL) → browse_open the target URL, then browse_read to see the content, then browse_click / browse_input / browse_scroll; web elements may only be clicked with browse_click by text — never guess with tap + coordinates. The result is the real page inside the browser, visible in your next screenshot. If the URL is merely shown to the user (or the user says "open it in a browser") → use open + uri to the system browser instead; opening a local file (/sdcard/…, file://…) also uses open + uri, handed to a system document app.
+- During execution, when you need to explain, report, or ask the user something that is NOT a phone operation → use say (say it once, Markdown supported). say is not an action; never use it to replace real operations, and never use it more than 2 times in a row.
 
 # Output
 Normal → single intent JSON; merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → array, max 2.

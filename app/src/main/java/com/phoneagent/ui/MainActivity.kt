@@ -78,8 +78,11 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.components.AppSnackbar
+import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.GlassTokens
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.SnackbarState
+import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
 import com.phoneagent.ui.home.HomeScreen
@@ -93,6 +96,8 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
 import com.phoneagent.ui.theme.SpringConfigs
 import com.phoneagent.ui.theme.motionSettings
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import org.koin.androidx.compose.koinViewModel
 import com.phoneagent.ui.icons.AppIcons
 
@@ -278,6 +283,11 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     val navBarVisible = extrasPage == null && !keyboardUp
     val navClearance = if (navBarVisible) NavBarHeight + AppSpacing.Md + systemNavInset else 0.dp
 
+    // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
+    // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
+    // 与 Agent 页顶栏/输入区各自持有的 HazeState 相互独立，不要混用。
+    val navGlass = rememberGlassState()
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
         // 不再用 bottomBar 整段预留底部：导航栏改为浮在内容之上，
@@ -300,56 +310,65 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
             )
             // 内容与悬浮导航栏同层：内容铺满到屏幕底，导航栏画在它上面
             Box(Modifier.fillMaxSize()) {
-                CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
-                    val currentExtras = extrasPage
-                    if (currentExtras != null) {
-                        // 全屏二级页：返回栏 + 对应页面
-                        ExtrasPageContent(
-                            page = currentExtras,
-                            vm = vm,
-                            modifier = Modifier.fillMaxSize(),
-                            onBack = { extrasPage = null },
-                        )
-                    } else {
-                        AnimatedContent(
-                            targetState = selected,
-                            transitionSpec = transitionSpec,
-                            label = "screen-switch",
-                        ) { screenIndex ->
-                            val contentMod = Modifier.fillMaxSize()
-                            when (screenIndex) {
-                                0 -> AgentScreen(
-                                    vm, contentMod,
-                                    onOpenMemory = { extrasPage = ExtrasPage.Memory },
-                                )
+                // 内容层整体作为毛玻璃取样源：导航栏玻璃要从这里取像素做模糊，
+                // 所以它必须是玻璃面的兄弟节点、且在玻璃面之前绘制
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(navGlass),
+                ) {
+                    CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
+                        val currentExtras = extrasPage
+                        if (currentExtras != null) {
+                            // 全屏二级页：返回栏 + 对应页面
+                            ExtrasPageContent(
+                                page = currentExtras,
+                                vm = vm,
+                                modifier = Modifier.fillMaxSize(),
+                                onBack = { extrasPage = null },
+                            )
+                        } else {
+                            AnimatedContent(
+                                targetState = selected,
+                                transitionSpec = transitionSpec,
+                                label = "screen-switch",
+                            ) { screenIndex ->
+                                val contentMod = Modifier.fillMaxSize()
+                                when (screenIndex) {
+                                    0 -> AgentScreen(
+                                        vm, contentMod,
+                                        onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                                    )
 
-                                1 -> HomeScreen(
-                                    vm, contentMod,
-                                    onRequestScreenshot = {
-                                        val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                        screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                                    },
-                                    onNavigate = { selected = it },
-                                    onOpenExtras = { extrasPage = it },
-                                )
+                                    1 -> HomeScreen(
+                                        vm, contentMod,
+                                        onRequestScreenshot = {
+                                            val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                            screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                        },
+                                        onNavigate = { selected = it },
+                                        onOpenExtras = { extrasPage = it },
+                                    )
 
-                                2 -> SettingsScreen(vm, contentMod)
+                                    2 -> SettingsScreen(vm, contentMod)
+                                }
                             }
-                        }
 
-                        // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
-                        AppSnackbar(
-                            state = snackbarState,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = navClearance + AppSpacing.Md),
-                        )
+                            // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
+                            AppSnackbar(
+                                state = snackbarState,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = navClearance + AppSpacing.Md),
+                            )
+                        }
                     }
                 }
 
-                // 悬浮导航栏本身：画在内容之上，内容从它下面穿过去（不再由内容层整段让位）
+                // 悬浮导航栏本身：毛玻璃画在内容之上，内容从它下面透出来
                 if (navBarVisible) {
                     FloatingNavBar(
+                        hazeState = navGlass,
                         tabs = tabs,
                         selected = selected,
                         onSelect = { selected = it },
@@ -373,31 +392,25 @@ private val NavBarHeight = 64.dp
 /**
  * 底部导航：大圆角长方形悬浮条。
  *
- * 与全站卡片语言同源——surfaceContainerHigh 底 + 1dp 细边框 + 大圆角 + 投影，
- * 左右留白、底部让开系统导航区后悬浮，不再通栏贴底。
+ * 材质是**毛玻璃**而不是实色面：条是浮在内容之上的固定 chrome，
+ * 背后真的压着滚动内容，模糊才有意义（平铺卡片不用玻璃，见 Glass.kt）。
+ * 内容从条下面透出来，条本身就不再是"挡住内容的一块矩形"。
  * 选中态沿用 Material 3 Expressive 的主色胶囊指示器与图标弹簧放大。
  */
 @Composable
 private fun FloatingNavBar(
+    hazeState: HazeState,
     tabs: List<TabItem>,
     selected: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(AppRadii.Hero)
-    Surface(
-        modifier = modifier
-            .shadow(elevation = 10.dp, shape = shape, clip = false)
-            .clip(shape)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                shape = shape,
-            ),
+    GlassSurface(
+        hazeState = hazeState,
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 0.dp,
+        blurRadius = GlassTokens.Blur,
+        modifier = modifier.shadow(elevation = 12.dp, shape = shape, clip = false),
     ) {
         Row(
             modifier = Modifier

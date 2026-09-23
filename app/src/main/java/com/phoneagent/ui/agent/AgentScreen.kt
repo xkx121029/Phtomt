@@ -67,6 +67,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
+ * 顶栏与输入区两块玻璃板距屏幕左右（顶栏还含上缘）的外边距。
+ * 内层内容的留白要从这个值里减出来（见 [AgentGlassInnerPad]），
+ * 这样面板退到屏幕里之后，里面的文字与卡片位置一个像素都没动。
+ */
+internal val AgentGlassInset = AppSpacing.Md
+
+/** 底部玻璃板内层内容的左右留白：补上外边距，屏幕上仍是原来的 16dp */
+internal val AgentGlassInnerPad = AppSpacing.Lg - AgentGlassInset
+
+/**
  * Agent 页：固定的顶栏 + 输入区夹着一条可滚动的任务流。
  *
  * 数据全部来自引擎已有状态（traces / executionHistory / AgentState / PlanPhase / planStream），
@@ -92,6 +102,7 @@ fun AgentScreen(
     val settings by vm.settingsFlow.collectAsState()
     val doc by vm.docResult.collectAsState()
     val memoryEvents by vm.memoryEvents.collectAsState()
+    val sayEvents by vm.sayEvents.collectAsState()
     val sessions by vm.taskSessions.collectAsState()
 
     var draft by rememberSaveable { mutableStateOf("") }
@@ -124,7 +135,7 @@ fun AgentScreen(
 
     val items = remember(
         submittedTask, agent, planPhase, planText, decisionText, traces, history,
-        queue, needsUser, a11yEnabled, fold, doc, memoryEvents, selectedTaskId, archivedSession,
+        queue, needsUser, a11yEnabled, fold, doc, memoryEvents, sayEvents, selectedTaskId, archivedSession,
     ) {
         AgentTimelineMapper.build(
             submittedTask = submittedTask,
@@ -141,6 +152,7 @@ fun AgentScreen(
             doc = doc,
             decisionStream = decisionText,
             memoryEvents = memoryEvents,
+            sayEvents = sayEvents,
             focusTaskId = viewingTaskId,
             archived = archivedSession,
         )
@@ -159,15 +171,10 @@ fun AgentScreen(
         else -> "请稍候…"
     }
 
-    // 当前是否有待用户处理的交互（答疑 / 协助）：有就让底部浮层顶上来
+    // 当前是否有待用户处理的交互（协助）：有就让底部浮层顶上来。
+    // 澄清不走这里——提问与选项已经由输入栏承载，浮层再浮一次就是第三个入口
     val clarifyPhase = planPhase as? PlanPhase.Clarifying
     val assist = when {
-        clarifyPhase != null -> AssistSpec(
-            title = "需要向你确认",
-            message = clarifyPhase.clarification.question,
-            options = clarifyPhase.clarification.options,
-            allowManualHandle = false,
-        )
         needsUser -> AssistSpec(
             title = "需要你的协助",
             message = agent.message,
@@ -190,8 +197,10 @@ fun AgentScreen(
     }
 
     val latestRunKey = traces.maxOfOrNull { it.taskId }?.let { "r$it" }
-    val latestSteps = items.filterIsInstance<AgentTimelineItem.StepCall>()
+    // 工具调用已按"连续若干步"收成工具链，这里摊平回来取最新一次任务的步
+    val latestSteps = items.filterIsInstance<AgentTimelineItem.ToolChain>()
         .filter { it.runKey == latestRunKey }
+        .flatMap { it.steps }
     val plannedSteps = (planPhase as? PlanPhase.Approved)?.plan?.steps?.size ?: 0
     val totalSteps = maxOf(plannedSteps, agent.stepCount, latestSteps.size)
     // 进度轨只在实时视图出现：历史任务回放时的"当前步"没有意义，摆一条会误导
@@ -201,9 +210,12 @@ fun AgentScreen(
     val showStrip = agent.isRunning || needsUser || agent.phase == AgentState.Phase.ERROR
 
     val stepIndexMap = remember(items) {
-        items.mapIndexedNotNull { index, item ->
-            (item as? AgentTimelineItem.StepCall)?.let { it.step to index }
-        }.toMap()
+        // 一条工具链承载多步：链内任意一步都定位到链所在的那一行
+        buildMap {
+            items.forEachIndexed { index, item ->
+                (item as? AgentTimelineItem.ToolChain)?.steps?.forEach { put(it.step, index) }
+            }
+        }
     }
     // 运行中拖动会与自动跟随打架，故只在停止时接管手势
     val onSeek: ((Int) -> Unit)? = if (agent.isRunning || stepIndexMap.isEmpty()) {
@@ -249,7 +261,7 @@ fun AgentScreen(
                 contentPadding = PaddingValues(
                     start = AppSpacing.Lg,
                     end = if (railVisible) 22.dp else AppSpacing.Lg,
-                    top = with(density) { headerHeight.toDp() } + AppSpacing.Sm,
+                    top = with(density) { headerHeight.toDp() } + AgentGlassInset + AppSpacing.Sm,
                     // 末项要能滚到输入区之上；输入区本身又浮在悬浮导航栏之上，
                     // 所以导航栏的净空也算进来，任务流才真正铺到屏幕底、从两层面板下穿过
                     bottom = with(density) { dockHeight.toDp() } +
@@ -288,13 +300,20 @@ fun AgentScreen(
             }
         }
 
-        // 顶部玻璃浮层：贴顶、只圆下面两角，读起来就是"从屏幕边缘伸出来的一块"
+        // 顶部玻璃浮层：四角全圆的浮动卡片。贴着屏幕上缘只圆下面两角时，
+        // 剩下两个直角会与状态栏白条拼成一条硬边，读起来像"没画完"；
+        // 退到屏幕里一点、四角同半径，才是一块完整的浮起面板。
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(bottomStart = AppRadii.Card, bottomEnd = AppRadii.Card),
+            shape = RoundedCornerShape(AppRadii.Hero),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
+                .padding(
+                    start = AgentGlassInset,
+                    end = AgentGlassInset,
+                    top = AgentGlassInset,
+                )
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -325,18 +344,23 @@ fun AgentScreen(
             }
         }
 
-        // 底部玻璃浮层：只圆上面两角。imePadding 放在玻璃外层，
+        // 底部玻璃浮层：与顶栏同一套形态——四角全圆的浮动卡片（只圆上面两角会在
+        // 下沿留出一条硬边，与整页"浮起的面板"读法不一致）。imePadding 放在玻璃外层，
         // 键盘弹出时整块玻璃一起上移，而不是玻璃留在原地、内容从它下面钻出来。
         // 净空padding放在 onSizeChanged 之外，让 dockHeight 只反映玻璃本体高度，
         // 否则列表会按「玻璃 + 净空」再加一次净空，末项被顶得过高
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card),
+            shape = RoundedCornerShape(AppRadii.Hero),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .imePadding()
-                .padding(bottom = LocalBottomNavClearance.current)
+                .padding(
+                    start = AgentGlassInset,
+                    end = AgentGlassInset,
+                    bottom = LocalBottomNavClearance.current,
+                )
                 .onSizeChanged { dockHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -360,8 +384,10 @@ fun AgentScreen(
                     )
                 }
 
-                // 有协助浮层时输入区让位，避免同屏出现两个输入框
-                if (shownAssist == null) {
+                // 有协助浮层时输入区让位，避免同屏出现两个输入框。
+                // 判断必须看 assist 而不是 shownAssist：后者只是退场动画的内容缓存，
+                // 用了它输入区会在浮层退场后一直消失
+                if (assist == null) {
                     AgentComposer(
                         draft = draft,
                         onDraftChange = { draft = it },
@@ -373,6 +399,8 @@ fun AgentScreen(
                         },
                         reviewEnabled = settings.enableReview,
                         onToggleReview = { enabled -> vm.saveSettings(settings.copy(enableReview = enabled)) },
+                        options = clarifyPhase?.clarification?.options.orEmpty(),
+                        onPickOption = { vm.answerClarification(it) },
                         onSend = {
                             val text = draft.trim()
                             if (text.isNotEmpty()) {
@@ -400,7 +428,7 @@ fun AgentScreen(
                     )
                 }
 
-                // 协助浮层：从页面下方浮入，承载选项与输入；此时输入区让位（否则同屏两个输入框）
+                // 协助浮层：从页面下方浮入，承载指导输入；此时输入区让位（否则同屏两个输入框）
                 AnimatedVisibility(
                     visible = assist != null,
                     enter = slideInVertically(tween(DurationNormal, easing = EaseOut)) { it } +
@@ -431,7 +459,7 @@ fun AgentScreen(
                             },
                             onManualHandled = { vm.dismissUser() },
                             modifier = Modifier.padding(
-                                horizontal = AppSpacing.Lg,
+                                horizontal = AgentGlassInnerPad,
                                 vertical = AppSpacing.Md,
                             ),
                         )
@@ -518,7 +546,7 @@ private fun HistoryViewBanner(
     }
 }
 
-/** 底部协助浮层的场景规格（答疑 / 协助），两者共用同一副面板骨架 */
+/** 底部协助浮层的场景规格（当前只有「协助」一种；骨架仍与答疑共用） */
 private data class AssistSpec(
     val title: String,
     val message: String,
@@ -536,7 +564,6 @@ private fun AgentTimelineItemView(
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
         is AgentTimelineItem.PlanStreaming -> PlanStreamingItem(item, vm)
-        is AgentTimelineItem.PlanClarify -> PlanClarifyItem(item, vm)
         is AgentTimelineItem.PlanApproval -> PlanApprovalItem(
             item = item,
             vm = vm,
@@ -547,8 +574,9 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.PlanApproved -> PlanApprovedItem(item)
         is AgentTimelineItem.PlanFailed -> PlanFailedItem(item.message, vm)
         is AgentTimelineItem.AssistantNote -> AssistantNoteItem(item, vm)
-        is AgentTimelineItem.StepCall -> StepCallItem(item)
-        is AgentTimelineItem.LiveStatus -> LiveStatusItem(item)
+        is AgentTimelineItem.Say -> SayItem(item, vm)
+        is AgentTimelineItem.ToolChain -> ToolChainItem(item, vm)
+        is AgentTimelineItem.LiveStatus -> LiveStatusItem(item, vm)
         is AgentTimelineItem.NeedsUser -> NeedsUserItem(item, onFocusComposer = onFocusComposer)
         is AgentTimelineItem.Done -> DoneItem(item)
         is AgentTimelineItem.Failed -> FailedItem(item.message, vm)

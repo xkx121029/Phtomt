@@ -158,6 +158,16 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.SAY, Skill(
+                id = "skill_say", name = "回话", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "沟通", legacyIntent = IntentType.SAY,
+                description = "对用户说一句话（不操作屏幕、不碰设备）：解释、汇报、反问都走它，会直接显示在任务流的对话里。",
+                params = listOf(
+                    SkillParam("text", "要说的话", "text", required = true, description = "一句话，支持 Markdown"),
+                ),
+            ),
+        )
+        put(
             IntentType.FETCH, Skill(
                 id = "skill_fetch", name = "取网页正文", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "取数", legacyIntent = IntentType.FETCH,

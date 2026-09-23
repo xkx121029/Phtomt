@@ -7,7 +7,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.phoneagent.core.ai.CatalogModel
+import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.ai.ModelCatalogCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -79,6 +82,13 @@ class AppSettings(private val context: Context) {
         val cursorClickSync: Boolean = false,
         /** 任务执行期间隐藏系统状态栏：跑马灯不再被状态栏压住，直接露出到屏幕物理顶；任务结束自动恢复 */
         val hideStatusBarDuringTask: Boolean = true,
+        // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
+        /** 已配置的 API 端点（存 JSON 字符串；空表示从未写过，读取时由旧三槽合成） */
+        val endpoints: List<Endpoint> = emptyList(),
+        /** 模型库（存 JSON 字符串，能力徽章来自真实请求探测） */
+        val catalog: List<CatalogModel> = emptyList(),
+        /** 主模型自身能识图时，跳过"视觉模型把截图转成文字描述"这一步（只省描述，不影响坐标框选） */
+        val skipVisionDescWhenMainSees: Boolean = true,
     )
 
     private object Keys {
@@ -121,25 +131,59 @@ class AppSettings(private val context: Context) {
         val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
         val HIDE_STATUS_BAR = booleanPreferencesKey("hide_status_bar_during_task")
+        val ENDPOINTS = stringPreferencesKey("model_endpoints")
+        val CATALOG = stringPreferencesKey("model_catalog")
+        val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
+        // 旧三槽（主 / 视觉 / 思考）的扁平字段仍是引擎契约，这里先取出来，既构造 Settings 也用于模型库合成
+        val apiBaseUrl = prefs[Keys.BASE_URL] ?: GlmDefaults.BASE_URL
+        val apiKey = prefs[Keys.API_KEY] ?: ""
+        val model = prefs[Keys.MODEL] ?: GlmDefaults.MODEL
+        val visionBaseUrl = prefs[Keys.VISION_BASE_URL] ?: GlmDefaults.BASE_URL
+        val visionModel = prefs[Keys.VISION_MODEL] ?: GlmDefaults.VISION_MODEL
+        val visionApiKey = prefs[Keys.VISION_API_KEY] ?: ""
+        val reasonBaseUrl = prefs[Keys.REASON_BASE_URL] ?: GlmDefaults.BASE_URL
+        val reasonModel = prefs[Keys.REASON_MODEL] ?: GlmDefaults.REASON_MODEL
+        val reasonApiKey = prefs[Keys.REASON_API_KEY] ?: ""
+
+        // 模型库：从未写过（键为空）才由老配置合成 —— 纯函数、不写回，避免读时写竞态；
+        // 用户手动删空后存的是 "[]"（非空字符串），不会被误当作"没写过"而复活
+        val endpointsRaw = prefs[Keys.ENDPOINTS]
+        val (endpoints, catalog) = if (endpointsRaw.isNullOrBlank()) {
+            ModelCatalogCodec.migrateFromLegacy(
+                apiBaseUrl = apiBaseUrl,
+                apiKey = apiKey,
+                model = model,
+                visionBaseUrl = visionBaseUrl,
+                visionApiKey = visionApiKey,
+                visionModel = visionModel,
+                reasonBaseUrl = reasonBaseUrl,
+                reasonApiKey = reasonApiKey,
+                reasonModel = reasonModel,
+            )
+        } else {
+            ModelCatalogCodec.decodeEndpoints(endpointsRaw) to
+                ModelCatalogCodec.decodeModels(prefs[Keys.CATALOG] ?: "")
+        }
+
         Settings(
-            apiBaseUrl = prefs[Keys.BASE_URL] ?: GlmDefaults.BASE_URL,
-            apiKey = prefs[Keys.API_KEY] ?: "",
-            model = prefs[Keys.MODEL] ?: GlmDefaults.MODEL,
+            apiBaseUrl = apiBaseUrl,
+            apiKey = apiKey,
+            model = model,
             hasVision = prefs[Keys.HAS_VISION] ?: false,
             temperature = prefs[Keys.TEMPERATURE] ?: 0.4,
             maxSteps = prefs[Keys.MAX_STEPS] ?: 0,
             attachScreenshot = prefs[Keys.SCREENSHOT] ?: true,
             systemPrompt = prefs[Keys.SYSTEM_PROMPT] ?: "",
             promptLanguage = prefs[Keys.PROMPT_LANGUAGE] ?: "CN",
-            visionBaseUrl = prefs[Keys.VISION_BASE_URL] ?: GlmDefaults.BASE_URL,
-            visionModel = prefs[Keys.VISION_MODEL] ?: GlmDefaults.VISION_MODEL,
-            visionApiKey = prefs[Keys.VISION_API_KEY] ?: "",
-            reasonBaseUrl = prefs[Keys.REASON_BASE_URL] ?: GlmDefaults.BASE_URL,
-            reasonModel = prefs[Keys.REASON_MODEL] ?: GlmDefaults.REASON_MODEL,
-            reasonApiKey = prefs[Keys.REASON_API_KEY] ?: "",
+            visionBaseUrl = visionBaseUrl,
+            visionModel = visionModel,
+            visionApiKey = visionApiKey,
+            reasonBaseUrl = reasonBaseUrl,
+            reasonModel = reasonModel,
+            reasonApiKey = reasonApiKey,
             visionEnabled = prefs[Keys.VISION_ENABLED] ?: true,
             visionMode = prefs[Keys.VISION_MODE] ?: "AUTO",
             enableExternalVision = prefs[Keys.EXTERNAL_VISION] ?: true,
@@ -166,6 +210,9 @@ class AppSettings(private val context: Context) {
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
             hideStatusBarDuringTask = prefs[Keys.HIDE_STATUS_BAR] ?: true,
+            endpoints = endpoints,
+            catalog = catalog,
+            skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
         )
     }
 
@@ -209,6 +256,13 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
             prefs[Keys.HIDE_STATUS_BAR] = settings.hideStatusBarDuringTask
+            prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
+            // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏
+            val liveEndpointIds = settings.endpoints.map { it.id }.toSet()
+            prefs[Keys.CATALOG] = ModelCatalogCodec.encodeModels(
+                settings.catalog.filter { it.endpointId in liveEndpointIds },
+            )
+            prefs[Keys.SKIP_VISION_DESC] = settings.skipVisionDescWhenMainSees
         }
     }
 }

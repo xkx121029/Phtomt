@@ -114,6 +114,9 @@ object ActionType {
     /** 查询本机信息（text=kind, summary=filter），纯本地读取、不操作设备 */
     const val DEVICE_QUERY = "device_query"
 
+    /** 对用户说一句话（text=要说的话），纯端侧呈现、不操作设备、支持 Markdown */
+    const val SAY = "say"
+
     /** 调用 MCP 技能（不操作设备，直接向 MCP 服务器发 JSON-RPC 请求） */
     const val MCP_CALL = "mcp_call"
 

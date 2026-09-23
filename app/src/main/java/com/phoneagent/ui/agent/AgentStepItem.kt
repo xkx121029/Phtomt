@@ -1,17 +1,12 @@
 package com.phoneagent.ui.agent
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
@@ -46,149 +42,94 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 
 /**
- * 单步工具调用项：trace（决策追踪）与 record（执行结果）已按 step 合并为一条。
+ * 单步工具调用行：作为 [ToolChainItem] 展开后的内容出现，自身不带卡片外壳
+ * （外壳由工具链统一给），保证"一条链 = 一张卡"。
  *
  * 信息层级（一级最重、逐级弱化）：
- * 1. 动作人话 —— AI 这一步做了什么；
- * 2. 生效状态 —— 结果如何（已生效 / 未生效）；
- * 3. 因为 —— AI 给出的依据；
- * 4. 命令与输出 —— shell 类动作的真实执行证据（用户此前完全看不到）；
- * 5. 元信息（耗时 / tokens / 置信度）与原始数据 —— 默认最弱，原始数据折叠。
+ * 1. 工具 —— 第几步、调用了哪个工具（图标 + 工具名，与折叠行同一套口径）；
+ * 2. 结果 —— 已生效 / 未生效；
+ * 3. 动作人话 —— 这一步具体做了什么；
+ * 4. 依据、命令与输出 —— 展开后的执行证据；
+ * 5. 元信息与原始数据 —— 默认最弱，原始数据折叠。
  */
 @Composable
-internal fun StepCallItem(item: AgentTimelineItem.StepCall) {
+internal fun ToolStepRow(
+    step: StepCall,
+    vm: MainViewModel,
+    modifier: Modifier = Modifier,
+) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    var expanded by rememberSaveable(item.key) { mutableStateOf(false) }
+    var expanded by rememberSaveable(step.key) { mutableStateOf(false) }
+    var rawOpen by rememberSaveable(step.key) { mutableStateOf(false) }
 
     val statusColor = when {
-        item.failed -> colors.error
-        item.verified -> colors.success
+        step.failed -> colors.error
+        step.verified -> colors.success
         else -> colors.onSurfaceRaised
     }
-    val statusIcon = when {
-        item.failed -> AppIcons.ErrorOutline
-        item.verified -> AppIcons.CheckCircle
-        else -> AppIcons.Bolt
-    }
+    val human = rememberTranslated(step.human, vm)
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
-            .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
-            .padding(AppSpacing.Lg),
+            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
-        // 第 1 层：步骤序号 + 动作 + 生效状态（一眼看清"做了什么、成没成"）
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = statusIcon,
-                contentDescription = null,
-                tint = statusColor,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(AppSpacing.Sm))
-            Text(
-                text = if (item.actionVerb.isNotBlank()) "第 ${item.step} 步 · ${item.actionVerb}" else "第 ${item.step} 步",
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.weight(1f))
-            // 端侧决策的步骤标一下来源：用户能分清"AI 想的"和"端侧规则直接做的"
-            if (item.fromLocalDecision) {
-                StatusPill(text = "端侧", color = colors.onSurfaceRaised)
-                Spacer(Modifier.width(AppSpacing.Xs))
-            }
-            // 状态徽标平滑切换：执行中 → 已生效 / 未生效 不再是瞬间跳变
-            AnimatedContent(
-                targetState = when {
-                    item.failed -> "未生效"
-                    item.verified -> "已生效"
-                    else -> ""
-                },
-                transitionSpec = {
-                    // 徽标切换也走"由下向上"，与新条目出现的方向保持一致
-                    (slideInVertically(tween(DurationFast, easing = EaseOut)) { it / 2 } +
-                        fadeIn(tween(DurationFast, easing = EaseOut))) togetherWith
-                        (slideOutVertically(tween(DurationFast, easing = EaseOut)) { -it / 2 } +
-                            fadeOut(tween(DurationFast, easing = EaseOut)))
-                },
-                label = "step-status-pill",
-            ) { statusLabel ->
-                if (statusLabel.isNotBlank()) {
-                    StatusPill(
-                        text = statusLabel,
-                        color = if (item.failed) colors.error else colors.success,
-                    )
-                }
-            }
-        }
-
-        if (item.human.isNotBlank()) {
-            Spacer(Modifier.height(AppSpacing.Sm))
-            Text(
-                text = item.human,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // 第 3 层：依据（弱化，不与动作抢注意力）
-        if (!item.thinking.isNullOrBlank()) {
-            Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = "因为：${item.thinking}",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceRaised,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // 结果说明：失败时把"为什么没成"说清楚（红），成功时是执行层说明（弱化）
-        // 与 shell 输出相同时不重复展示
-        if (item.detail.isNotBlank() && item.detail != item.shellOutput) {
-            Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = if (item.failed) "原因：${item.detail}" else item.detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (item.failed) colors.error else colors.onSurfaceRaised,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        // 第 4 层：命令与输出（shell 类动作的执行证据）
-        if (item.shellCommand.isNotBlank() || item.shellOutput.isNotBlank()) {
-            Spacer(Modifier.height(AppSpacing.Sm))
-            CommandBlock(command = item.shellCommand, output = item.shellOutput)
-        }
-
-        // 第 5 层：元信息（耗时 / tokens / 置信度）—— 置信度从顶行下移到此，让顶行只留结论
-        Spacer(Modifier.height(AppSpacing.Sm))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = metaLine(item),
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onSurfaceRaised,
-                modifier = Modifier.weight(1f),
-            )
-            PressableScale(onPress = buzz, onClick = { expanded = !expanded }) {
+        PressableScale(
+            modifier = Modifier.fillMaxWidth(),
+            onPress = buzz,
+            onClick = { expanded = !expanded },
+        ) {
+            Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (expanded) "收起原始数据" else "原始数据",
+                        text = "第 ${step.step} 步",
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.brand,
+                        color = colors.onSurfaceRaised,
+                        modifier = Modifier.width(40.dp),
                     )
+                    Icon(
+                        imageVector = AgentToolStyle.icon(step.toolType),
+                        contentDescription = null,
+                        tint = statusColor,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(AppSpacing.Sm))
+                    Text(
+                        text = AgentToolStyle.name(step.toolType),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    // 端侧决策的步骤标一下来源：用户能分清"AI 想的"和"端侧规则直接做的"
+                    if (step.fromLocalDecision) {
+                        StatusPill(text = "端侧", color = colors.onSurfaceRaised)
+                        Spacer(Modifier.width(AppSpacing.Xs))
+                    }
+                    if (step.failed || step.verified) {
+                        StatusPill(
+                            text = if (step.failed) "未生效" else "已生效",
+                            color = statusColor,
+                        )
+                    }
                     Spacer(Modifier.width(AppSpacing.Xs))
                     Icon(
                         imageVector = if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                        contentDescription = null,
-                        tint = colors.brand,
+                        contentDescription = if (expanded) "收起这一步" else "展开这一步",
+                        tint = colors.onSurfaceRaised,
                         modifier = Modifier.size(14.dp),
+                    )
+                }
+                if (human.isNotBlank()) {
+                    Spacer(Modifier.height(AppSpacing.Xs))
+                    Text(
+                        text = human,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 40.dp),
                     )
                 }
             }
@@ -201,22 +142,89 @@ internal fun StepCallItem(item: AgentTimelineItem.StepCall) {
             exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
                 shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
         ) {
-            Column {
-                RawBlock(
-                    title = "AI 的决策",
-                    body = item.rawReceived.ifBlank { "（本步没有留下决策正文）" },
-                )
-                if (item.rawSent.isNotBlank()) {
-                    Spacer(Modifier.height(AppSpacing.Sm))
-                    RawBlock(title = "本轮发给模型的上下文", body = item.rawSent)
-                }
-                if (item.hasScreenshot) {
+            Column(modifier = Modifier.padding(start = 40.dp)) {
+                // 依据（弱化，不与动作抢注意力）
+                if (!step.thinking.isNullOrBlank()) {
                     Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
-                        text = "本步有截图留档，可在调试页按步查看原图与识别对比",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = "因为：${step.thinking}",
+                        style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceRaised,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                }
+
+                // 结果说明：失败时把"为什么没成"说清楚（红），成功时是执行层说明（弱化）
+                // 与 shell 输出相同时不重复展示
+                if (step.detail.isNotBlank() && step.detail != step.shellOutput) {
+                    Spacer(Modifier.height(AppSpacing.Xs))
+                    Text(
+                        text = if (step.failed) "原因：${step.detail}" else step.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (step.failed) colors.error else colors.onSurfaceRaised,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                // 命令与输出（shell 类动作的执行证据）
+                if (step.shellCommand.isNotBlank() || step.shellOutput.isNotBlank()) {
+                    Spacer(Modifier.height(AppSpacing.Sm))
+                    CommandBlock(command = step.shellCommand, output = step.shellOutput)
+                }
+
+                // 元信息（耗时 / tokens / 置信度）
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Text(
+                    text = metaLine(step),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceRaised,
+                )
+                Spacer(Modifier.height(AppSpacing.Sm))
+                PressableScale(onPress = buzz, onClick = { rawOpen = !rawOpen }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (rawOpen) "收起原始数据" else "查看原始数据",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.brand,
+                        )
+                        Spacer(Modifier.width(AppSpacing.Xs))
+                        Icon(
+                            imageVector = if (rawOpen) AppIcons.ChevronUp else AppIcons.ChevronDown,
+                            contentDescription = null,
+                            tint = colors.brand,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = rawOpen,
+                    enter = fadeIn(tween(DurationFast, easing = EaseOut)) +
+                        expandVertically(tween(DurationFast, easing = EaseOut), expandFrom = Alignment.Bottom),
+                    exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
+                        shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
+                ) {
+                    Column {
+                        Spacer(Modifier.height(AppSpacing.Sm))
+                        RawBlock(
+                            title = "AI 的决策",
+                            body = step.rawReceived.ifBlank { "（本步没有留下决策正文）" },
+                        )
+                        if (step.rawSent.isNotBlank()) {
+                            Spacer(Modifier.height(AppSpacing.Sm))
+                            RawBlock(title = "本轮发给模型的上下文", body = step.rawSent)
+                        }
+                        if (step.hasScreenshot) {
+                            Spacer(Modifier.height(AppSpacing.Sm))
+                            Text(
+                                text = "本步有截图留档，可在调试页按步查看原图与识别对比",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.onSurfaceRaised,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -299,17 +307,17 @@ private fun RawBlock(title: String, body: String) {
 }
 
 /** 步内元信息（弱化层）：耗时 / token / 置信度 / 是否留档截图 */
-private fun metaLine(item: AgentTimelineItem.StepCall): String {
+private fun metaLine(step: StepCall): String {
     val parts = ArrayList<String>(4)
-    if (item.durationMs > 0) {
-        parts += if (item.durationMs >= 1000) {
-            "耗时 ${"%.1f".format(item.durationMs / 1000.0)} 秒"
+    if (step.durationMs > 0) {
+        parts += if (step.durationMs >= 1000) {
+            "耗时 ${"%.1f".format(step.durationMs / 1000.0)} 秒"
         } else {
-            "耗时 ${item.durationMs} 毫秒"
+            "耗时 ${step.durationMs} 毫秒"
         }
     }
-    if (item.tokens > 0) parts += "$item.tokens tokens"
-    item.confidence?.let { parts += "置信度 ${(it * 100).toInt()}%" }
-    if (item.hasScreenshot) parts += "有截图留档"
+    if (step.tokens > 0) parts += "${step.tokens} tokens"
+    step.confidence?.let { parts += "置信度 ${(it * 100).toInt()}%" }
+    if (step.hasScreenshot) parts += "有截图留档"
     return if (parts.isEmpty()) "暂无更多信息" else parts.joinToString(" · ")
 }

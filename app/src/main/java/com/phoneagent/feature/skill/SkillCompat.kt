@@ -196,6 +196,7 @@ object SkillCompat {
                 kind = args["kind"]?.takeIf { it.isNotBlank() } ?: args["text"]?.takeIf { it.isNotBlank() },
                 filter = args["filter"]?.takeIf { it.isNotBlank() } ?: args["summary"]?.takeIf { it.isNotBlank() },
             )
+            IntentType.SAY -> agent.copy(text = args["text"])
             IntentType.FETCH -> agent.copy(uri = args["uri"])
             // 内置浏览器：打开网址 / 抓正文 / 点元素 / 填表单 / 滚动 / 后退
             IntentType.BROWSE_OPEN -> agent.copy(uri = args["uri"])

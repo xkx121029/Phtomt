@@ -8,6 +8,7 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
+import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
 import com.phoneagent.feature.document.DocResult
 
@@ -55,12 +56,16 @@ internal object AgentTimelineMapper {
         decisionStream: String = "",
         /** 本次任务内 AI 写入的记忆事件（引擎内存态），实时插卡 */
         memoryEvents: List<MemoryEvent> = emptyList(),
+        /** 本次任务内 AI 主动说的话（say 事件，引擎内存态），实时出气泡；历史回看不回放 */
+        sayEvents: List<SayEvent> = emptyList(),
         /** 只看这一次任务；null = 跟随实时（最新一次执行 + 尚未产生执行的规划流程） */
         focusTaskId: Long? = null,
         /** 焦点任务是历史会话时，引擎归档的标题 / 计划 / 摘要 / 记忆 */
         archived: TaskSession? = null,
     ): List<AgentTimelineItem> {
-        val items = ArrayList<AgentTimelineItem>()
+        // 中间列表同时装"列表项"与"单步工具调用"：后者只是过渡形态，
+        // 会在收尾时被 groupToolChains 收进工具链，不会流到界面
+        val items = ArrayList<Any>()
         // 已挂到具体步骤上的记忆事件 id，避免末尾兜底时重复插入
         val consumedMemoryIds = HashSet<Long>()
         val runs = buildRuns(traces, history)
@@ -102,19 +107,43 @@ internal object AgentTimelineMapper {
         focusPlan?.let { items += AgentTimelineItem.PlanApproved(it) }
 
         // 4) 本次任务的每一步（决策 + 执行合并），以及挂在步骤上的记忆卡片
-        focusRun?.steps?.forEach { step ->
-            items += stepItem(focusRun.runKey, step)
-            events.filter { it.runKey == focusRun.runKey && it.step == step.step }.forEach { ev ->
-                consumedMemoryIds += ev.id
-                items += memoryItem(ev, focusRun.runKey, step.step)
-            }
-            step.trace?.visionDescription?.takeIf { it.isNotBlank() }?.let { desc ->
-                items += AgentTimelineItem.AssistantNote(
-                    text = desc.take(VISION_MAX),
-                    source = AgentTimelineItem.NoteSource.VISION,
-                    runKey = focusRun.runKey,
-                    step = step.step,
-                )
+        //    AI 说过的话同样按步号挂到最近的前序步骤后面；说在第一个动作之前（还没有
+        //    任何步骤号 ≤ 它）的，就落在标题之后、步骤之前。历史回看不回放这些话。
+        val liveSteps = focusRun?.steps.orEmpty()
+        val stepNumbers = liveSteps.map { it.step }
+        val says = if (isLive) sayEvents else emptyList()
+        fun anchorOf(sayStep: Int): Int? = stepNumbers.lastOrNull { it <= sayStep }
+        says.filter { anchorOf(it.step) == null }.forEach { ev ->
+            items += AgentTimelineItem.Say(
+                id = ev.id,
+                text = ev.text,
+                runKey = focusRun?.runKey ?: ev.runKey,
+                step = ev.step,
+            )
+        }
+        focusRun?.let { run ->
+            liveSteps.forEach { step ->
+                items += stepItem(run.runKey, step)
+                says.filter { anchorOf(it.step) == step.step }.forEach { ev ->
+                    items += AgentTimelineItem.Say(
+                        id = ev.id,
+                        text = ev.text,
+                        runKey = run.runKey,
+                        step = step.step,
+                    )
+                }
+                events.filter { it.runKey == run.runKey && it.step == step.step }.forEach { ev ->
+                    consumedMemoryIds += ev.id
+                    items += memoryItem(ev, run.runKey, step.step)
+                }
+                step.trace?.visionDescription?.takeIf { it.isNotBlank() }?.let { desc ->
+                    items += AgentTimelineItem.AssistantNote(
+                        text = desc.take(VISION_MAX),
+                        source = AgentTimelineItem.NoteSource.VISION,
+                        runKey = run.runKey,
+                        step = step.step,
+                    )
+                }
             }
         }
 
@@ -144,7 +173,7 @@ internal object AgentTimelineMapper {
 
                 TaskSession.Status.RUNNING, null -> Unit
             }
-            return items.distinctBy { it.key }
+            return groupToolChains(items).distinctBy { it.key }
         }
 
         // 7) 需要协助：动作连续未生效 / 敏感页只读保护
@@ -161,8 +190,8 @@ internal object AgentTimelineMapper {
                 phase = state.phase,
                 message = state.message.ifBlank { phaseLabel(state.phase) },
                 foldedCount = fold.observe(focusRun?.runKey ?: "", state.message),
-                // AI 正在生成的正文（限长，尾部滚动展示即可）
-                streaming = decisionStream.takeLast(STREAM_MAX),
+                // AI 正在生成的正文：把半截 JSON 译成人话再限长，尾部滚动展示即可
+                streaming = HumanTranslator.humanStream(decisionStream).takeLast(STREAM_MAX),
                 startedAtMillis = state.startedAtMillis,
             )
         }
@@ -201,7 +230,8 @@ internal object AgentTimelineMapper {
                     items += AgentTimelineItem.PlanStreaming(planText)
                 }
 
-                is PlanPhase.Clarifying -> items += AgentTimelineItem.PlanClarify(planPhase.clarification)
+                // 澄清的提问与选项由输入栏（AgentComposer）承载，任务流不再重复一条
+                is PlanPhase.Clarifying -> Unit
                 is PlanPhase.AwaitingApproval -> items += AgentTimelineItem.PlanApproval(planPhase.plan)
                 is PlanPhase.Error -> items += AgentTimelineItem.PlanFailed(planPhase.message)
                 else -> Unit
@@ -219,7 +249,36 @@ internal object AgentTimelineMapper {
         }
 
         // 稳定 key 兜底：历史上 ChatPanel 出现过 key 冲突导致闪退
-        return items.distinctBy { it.key }
+        return groupToolChains(items).distinctBy { it.key }
+    }
+
+    /**
+     * 把连续若干步工具调用收成一条 [AgentTimelineItem.ToolChain]。
+     *
+     * 聊天流默认只显示"调用了 N 个工具"这一行（图标连排），点开才铺开每步细节；
+     * 中间夹了别的条目（记忆卡 / 画面识别）就自然断成两组，"连在一起"的语义才成立。
+     */
+    private fun groupToolChains(items: List<Any>): List<AgentTimelineItem> {
+        val out = ArrayList<AgentTimelineItem>(items.size)
+        var chain = ArrayList<StepCall>()
+        fun flush() {
+            if (chain.isEmpty()) return
+            out += AgentTimelineItem.ToolChain(runKey = chain.first().runKey, steps = chain.toList())
+            chain = ArrayList()
+        }
+        items.forEach { element ->
+            when (element) {
+                is StepCall -> chain += element
+                is AgentTimelineItem -> {
+                    flush()
+                    out += element
+                }
+
+                else -> Unit
+            }
+        }
+        flush()
+        return out
     }
 
     /** 记忆事件 → 列表项 */
@@ -243,15 +302,16 @@ internal object AgentTimelineMapper {
         AgentState.Phase.ERROR -> "出错"
     }
 
-    private fun stepItem(runKey: String, step: MergedStep): AgentTimelineItem.StepCall {
+    private fun stepItem(runKey: String, step: MergedStep): StepCall {
         val action: AgentAction? = step.record?.action
         val raw = step.trace?.receivedText.orEmpty()
         val type = action?.type ?: typeRegex.find(raw)?.groupValues?.getOrNull(1)
         val human = action?.let { summarizeAction(it) }
             ?: HumanTranslator.summarizeDecision(raw).take(HUMAN_MAX)
-        return AgentTimelineItem.StepCall(
+        return StepCall(
             runKey = runKey,
             step = step.step,
+            toolType = type.orEmpty(),
             actionVerb = type?.let { HumanTranslator.actionVerb(it) } ?: "",
             human = human,
             confidence = action?.confidence ?: HumanTranslator.extractConfidence(raw),

@@ -22,6 +22,24 @@ data class ChatRequest(
     val thinking: ThinkingSpec? = null,
     /** 流式输出时是否返回用量统计（include_usage，部分厂商支持） */
     val stream_options: StreamOptions? = null,
+    /** 可调用工具声明：仅用于「模型能力探测」，不参与 Agent 决策链 */
+    val tools: List<ToolSpec>? = null,
+    /** 工具选择策略（如 "auto"）；与 [tools] 同时出现才有意义 */
+    val tool_choice: String? = null,
+)
+
+/** 工具声明（OpenAI tools 字段的单项） */
+@Serializable
+data class ToolSpec(
+    val type: String = "function",
+    val function: FunctionSpec,
+)
+
+@Serializable
+data class FunctionSpec(
+    val name: String,
+    val description: String? = null,
+    val parameters: JsonElement? = null,
 )
 
 @Serializable
@@ -87,6 +105,13 @@ data class ApiError(
     val type: String? = null,
     val code: String? = null,
 )
+
+/** GET /models 响应（OpenAI 兼容） */
+@Serializable
+data class ModelListResponse(val data: List<ModelInfo> = emptyList())
+
+@Serializable
+data class ModelInfo(val id: String? = null)
 
 /** SSE 流式响应块 */
 @Serializable

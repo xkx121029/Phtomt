@@ -86,7 +86,8 @@ data class AppColors(
      * - [glassFallback] 是平台不支持背景模糊时的替身，必须接近不透明，
      *   否则未模糊的内容会直接糊在文字后面；
      * - [glassBorder] 带品牌色相的发丝线，替代通用的白色描边；
-     * - [glassSheen] 顶部受光高光，给亚克力一点"有厚度"的暗示。
+     * - [glassSheen] 顶部受光高光。**刻意做到极淡**：玻璃面的价值在于"内容从中透出来"，
+     *   高光一旦看得清就变成一块发白的塑料膜，反而盖住了内容与文字。
      */
     val glassTint: Color,
     val glassFallback: Color,
@@ -142,10 +143,13 @@ val LightAppColors = AppColors(
     emptyStateIcon = Color(0xFFB4BAB3),
     emptyStateText = Color(0xFF838A83),
     runningIndicator = Color(0xFF1F7A55),
-    glassTint = Color(0xC7F7F6F3),
-    glassFallback = Color(0xF7F7F6F3),
+    glassTint = Color(0xA0F7F6F3),
+    // 不支持背景模糊的机型（Android 12 以下）走这一档：比玻璃浓、但不做实心，
+    // 否则悬浮导航栏又会退化成"挡住内容的一块矩形"
+    glassFallback = Color(0xE0F7F6F3),
     glassBorder = Color(0x260E7C66),
-    glassSheen = Color(0x59FFFFFF),
+    // 高光只留一丝：要凑近看才觉得面上"有点光"，一抬眼就该看见内容与文字
+    glassSheen = Color(0x14FFFFFF),
 )
 
 /** 深色：深墨底 + 流萤青主色 */
@@ -196,10 +200,12 @@ val DarkAppColors = AppColors(
     emptyStateIcon = Color(0xFF6A716B),
     emptyStateText = Color(0xFF6A716B),
     runningIndicator = Color(0xFF4CC38A),
-    glassTint = Color(0xAD141816),
-    glassFallback = Color(0xF7141816),
+    glassTint = Color(0x8C141816),
+    // 同浅色：模糊不可用时也要留出一点透感，不能变回实心矩形
+    glassFallback = Color(0xE0141816),
     glassBorder = Color(0x3D5FD9B4),
-    glassSheen = Color(0x14FFFFFF),
+    // 同浅色：深色底上的一点受光，只在纯色区域才勉强分辨得出
+    glassSheen = Color(0x0AFFFFFF),
 )
 
 /** 浅色高对比度：纯白底 + 加深主色与描边，服务于「高对比度文字」无障碍开关 */

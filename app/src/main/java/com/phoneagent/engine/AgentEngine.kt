@@ -8,6 +8,7 @@ import com.phoneagent.core.ai.AiClient
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.ai.ModelAbility
 import com.phoneagent.data.prefs.AppSettings
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -75,6 +76,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import kotlin.coroutines.coroutineContext
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Agent 引擎：编排“观察 → 本地/云端决策 → 带验证执行 → 记录”的 ReAct 循环。
@@ -175,6 +177,12 @@ class AgentEngine(
         /** 任务内记忆事件流的保留上限（只用于界面提示，超出丢弃最早的） */
         private const val MAX_MEMORY_EVENTS = 20
 
+        /** say 事件流的保留上限（只用于界面实时气泡，超出丢弃最早的） */
+        private const val MAX_SAY_EVENTS = 20
+
+        /** 连续 say 次数上限：超过即要求 AI 开始真正执行，避免"只聊天不干活"死循环 */
+        private const val MAX_SAY_STREAK = 3
+
         /** 记忆提炼的超时：独立于主流程，超时直接放弃，不阻塞任务收尾 */
         private const val DISTILL_TIMEOUT_MS = 12_000L
 
@@ -245,6 +253,20 @@ class AgentEngine(
      */
     private val _memoryEvents = MutableStateFlow<List<MemoryEvent>>(emptyList())
     val memoryEvents: StateFlow<List<MemoryEvent>> get() = _memoryEvents.asStateFlow()
+
+    /**
+     * 本次任务内 AI "对用户说话"的事件流（内存态，供 Agent 页实时出气泡）。
+     * 只在实时任务流里出现：归档（[TaskSession]）不存，历史回看不回放这句话。
+     */
+    private val _sayEvents = MutableStateFlow<List<SayEvent>>(emptyList())
+    val sayEvents: StateFlow<List<SayEvent>> get() = _sayEvents.asStateFlow()
+
+    /** say 事件自增 id：不能用 text.hashCode() 当 key（重复内容会撞车） */
+    private val saySeq = AtomicLong(0L)
+
+    /** 连续 say 计数：达到 [MAX_SAY_STREAK] 即要求 AI 开始真正执行 */
+    @Volatile
+    private var sayStreak = 0
 
     /**
      * 任务会话归档（Agent 页侧边栏数据源），最新一次任务排在最前。
@@ -1116,6 +1138,9 @@ class AgentEngine(
         localLoopNotified = false
         // 清空上一任务的记忆事件流（本任务产生的记忆卡片只发生在本次执行期间）
         _memoryEvents.value = emptyList()
+        // 同样清掉上一任务里 AI 说过的话，避免新任务开头飘着上一条气泡
+        _sayEvents.value = emptyList()
+        sayStreak = 0
         lastDistilledTaskId = -1L
         memoryBriefCache = null
         // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
@@ -1129,11 +1154,14 @@ class AgentEngine(
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
+        // 提示词里的"能看图"必须与实际是否真的发图一致：关掉"附送屏幕截图"后每步都不带图，
+        // 此时仍告诉 AI"可视"会让它去描述图里看到的东西（实际没收到图）
+        val effectiveHasVision = settingsVal.hasVision && settingsVal.attachScreenshot
         // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
         val skillsPrompt = skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, settingsVal.hasVision, shellChannelAvailable(), skills = skillsPrompt)))))
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, settingsVal.hasVision)))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt)))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, effectiveHasVision)))))
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
                 PromptLang.CN -> "执行通道（无障碍/Shizuku）由端侧自动选择，无需你指定。打开应用用 open_app（写应用名即可）；目标定位与坐标计算全部由端侧完成，你不输出像素坐标。"
@@ -1417,6 +1445,22 @@ class AgentEngine(
                         handleDeviceQuery(step, action!!, messages)
                         continue
                     }
+                    // AI 对用户说话：纯端侧呈现，不操作设备、不截图、不重试，
+                    // 也不落 StepRecord（否则同一句话既是一张步骤卡又是一条气泡）
+                    if (action!!.type == ActionType.SAY) {
+                        if (sayStreak >= MAX_SAY_STREAK) {
+                            sayStreak = 0
+                            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                                text = "⚠️ 你已连续说了 $MAX_SAY_STREAK 次而没有执行任何动作。请立刻输出真正的操作意图；只有确实需要向用户澄清关键信息时才可以再说一次。",
+                            ))))
+                            continue
+                        }
+                        handleSay(step, action!!)
+                        sayStreak++
+                        continue
+                    }
+                    // 真的动手了：把连续说话计数清掉
+                    sayStreak = 0
                     verify = safeExecute(action!!, snapshot)
                     // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
                     isStructuralError = verify.reason.contains("未知 shell 命令") ||
@@ -1708,6 +1752,12 @@ class AgentEngine(
         // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
         val cloudVision = visionCfg != null && settingsVal.visionMode != "LOCAL" &&
             (!hybrid || complexPage || !settingsVal.enableExternalVision)
+        // 主模型自身能识图（hasVision 由"所选主模型的能力"判定），且本轮确实拍到了图 → 图片直接进主模型上下文。
+        // hasVision 是用户可覆盖的开关，attachScreenshot 决定"本轮有没有图"，两者都满足才算真的发图。
+        val mainSeesImage = settingsVal.hasVision && settingsVal.attachScreenshot && screenshot != null
+        // 「主模型识图时跳过视觉描述」：只省"把截图转成文字"这一步——图片已经在主模型上下文里，
+        // 再花钱把同一张图转成文字没有收益；但外挂 3B 框选出的坐标（hint 定位的第一优先来源）照常保留
+        val wantVisionDesc = !(mainSeesImage && settingsVal.skipVisionDescWhenMainSees)
         var localRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
         var externalUsed = false
         var pageText = safeText
@@ -1736,13 +1786,14 @@ class AgentEngine(
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
-                        desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
+                        // 跳过描述时仍保留框选坐标：hint 目标定位要靠它，文字描述则可以不给
+                        if (wantVisionDesc) desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                     } else {
                         log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
                     }
                 }
-                // 2) 云端视觉
-                if (desc.isNullOrBlank() && cloudVision) {
+                // 2) 云端视觉（只产文字描述，主模型能看图时整段跳过）
+                if (desc.isNullOrBlank() && cloudVision && wantVisionDesc) {
                     log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
                     val t0 = System.nanoTime()
                     desc = aiClient.visionDescribe(
@@ -1771,10 +1822,11 @@ class AgentEngine(
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
-                        desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
+                        // 同第 1 步：坐标留着，描述按开关决定要不要
+                        if (wantVisionDesc) desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                     } else {
                         log(AgentLog.Level.INFO, "外挂视觉不可用，本地无可识别控件")
-                        desc = "（未识别到控件）"
+                        if (wantVisionDesc) desc = "（未识别到控件）"
                     }
                 }
                 if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
@@ -1804,14 +1856,15 @@ class AgentEngine(
             AgentPrompts.environment(currentLang, envFacts(snapshot)) +
             sessionContextText(task, currentLang)
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
-        addConversation("user", userText, hasImage = screenshot != null)
+        addConversation("user", userText, hasImage = mainSeesImage)
 
         _state.value = _state.value.copy(phase = AgentState.Phase.THINKING, message = "正在思考下一步...")
         pushFloating("正在思考下一步", "THINKING")
         // 实时展示发送给 AI 的决策上下文
         pushThinking(sent = userText)
         val startNano = System.nanoTime()
-        // 主模型不收截图（只收视觉描述后的文本），避免不支持图片的模型报错；
+        // 主模型能识图（hasVision）时把截图直接交给它；否则只收视觉描述后的文本，
+        // 避免不支持图片的模型因 image_url 报错（旧行为是恒不发图，这里改为按能力发）
         // 流式生成，边生成边把返回内容实时显示到悬浮窗 + 通知
         // 看门狗：单步决策超时则本步改为等待、下一轮重试，避免长线任务因云端卡住而无限阻塞
         val result: Result<com.phoneagent.core.ai.AiDecision>? = withTimeoutOrNull(WATCHDOG_DECIDE_MS) {
@@ -1821,7 +1874,7 @@ class AgentEngine(
                 model = settingsVal.model,
                 // 长线任务历史压缩：只带系统消息 + 最近几轮 + 当前轮，避免上下文无限累积
                 messages = chatHistory(messages, userMsg),
-                screenshot = null,
+                screenshot = if (mainSeesImage) screenshot else null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
                 onRetry = {
@@ -1904,6 +1957,8 @@ class AgentEngine(
         // 记录本轮决策的详细追踪（Debug「按任务分类」展示）
                 val visionSrc = when {
                     externalUsed -> "外挂3B"
+                    // 主模型直接读图（跳过视觉描述时最常见）：图片进了主模型上下文
+                    mainSeesImage -> "主模型直读"
                     !desc.isNullOrBlank() && cloudVision -> "云端"
                     !desc.isNullOrBlank() -> "本地OCR"
                     else -> "无"
@@ -1912,6 +1967,7 @@ class AgentEngine(
                     externalUsed -> "Qwen2.5-VL-3B (端侧)"
                     visionSrc == "云端" -> visionCfg?.model ?: ""
                     visionSrc == "本地OCR" -> "ML Kit 中文OCR"
+                    visionSrc == "主模型直读" -> settingsVal.model
                     else -> ""
                 }
                 recordStepTrace(
@@ -1920,7 +1976,8 @@ class AgentEngine(
                     decision = decision,
                     visionSource = visionSrc,
                     visionModel = visionModel,
-                    visionDescription = desc.orEmpty(),
+                    visionDescription = desc?.takeIf { it.isNotBlank() }
+                        ?: if (mainSeesImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
                     screenshot = screenshot,
                 )
 
@@ -2017,6 +2074,17 @@ class AgentEngine(
             temperature = 0.1,
         )
     }
+
+    /**
+     * 拉取端点可用模型列表（设置页"获取模型"用）。
+     * 只列表不探测：网关常返回上百条，逐条探测等于几百次请求。
+     */
+    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
+        aiClient.listModels(baseUrl.trim(), apiKey.trim())
+
+    /** 真实请求探测单个模型的能力（识图 / 工具调用；文本能力用 Result 成败表达） */
+    suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
+        aiClient.probeAbility(baseUrl.trim(), apiKey.trim(), model.trim())
 
     /**
      * 生成注入系统提示的技能区块：**只列出真正可被调用的技能**。
@@ -2814,6 +2882,20 @@ class AgentEngine(
     }
 
     /**
+     * 处理 AI 的 say 意图：把一句话呈现在任务流里，并把用户可能的追问空间留在原地。
+     *
+     * 与 remember / device_query 同类——端侧代办、不触碰设备，因此不截图、不走通道、不做重试，
+     * 也**不写 StepRecord**（这句话是一条对话，不是一步操作）。
+     */
+    private fun handleSay(step: Int, action: AgentAction) {
+        val text = action.text.orEmpty().trim()
+        if (text.isEmpty()) return
+        log(AgentLog.Level.INFO, "AI 说话：${text.take(120)}")
+        emitSayEvent(text, "r$currentTaskId", step)
+        pushFloating(text.take(20), "THINKING")
+    }
+
+    /**
      * 处理 AI 的 browse_* 意图：交给内置浏览器通道（[com.phoneagent.feature.browser.BrowserChannel]）执行。
      *
      * 与 remember / device_query / MCP 技能同类——端侧代办、不操控用户设备、不需要无障碍通道与坐标，
@@ -2940,6 +3022,18 @@ class AgentEngine(
         updateTaskSession(runKey.removePrefix("r").toLongOrNull() ?: return) { cur ->
             cur.copy(memoryEvents = cur.memoryEvents + event)
         }
+    }
+
+    /** AI 说话事件入流（内存态，供 Agent 页实时出气泡；环形保留最近 N 条） */
+    private fun emitSayEvent(text: String, runKey: String, step: Int) {
+        val event = SayEvent(
+            id = saySeq.incrementAndGet(),
+            text = text,
+            runKey = runKey,
+            step = step,
+            createdAt = System.currentTimeMillis(),
+        )
+        _sayEvents.value = (_sayEvents.value + event).takeLast(MAX_SAY_EVENTS)
     }
 
     // ==================== 任务会话归档（Agent 页侧边栏） ====================
@@ -3555,6 +3649,18 @@ data class MemoryEvent(
     val content: String,
     val category: String,
     val updated: Boolean,
+    val runKey: String,
+    val step: Int,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/**
+ * AI "对用户说话"的一条记录（引擎内存态），供 Agent 页在任务流里出对话气泡。
+ * [id] 为任务内自增序号，用作列表 key（不能用内容哈希，AI 重复说同一句话会撞 key）。
+ */
+data class SayEvent(
+    val id: Long,
+    val text: String,
     val runKey: String,
     val step: Int,
     val createdAt: Long = System.currentTimeMillis(),

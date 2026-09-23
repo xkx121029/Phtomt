@@ -129,7 +129,9 @@ internal fun AgentRunStatusStrip(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)
+            // 外层留白只负责"离玻璃板边缘多远"：玻璃板自己已经退到屏幕里一段，
+            // 这里补上那段距离，状态条在屏幕上仍在原来的位置
+            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Sm)
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(container)
             .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
