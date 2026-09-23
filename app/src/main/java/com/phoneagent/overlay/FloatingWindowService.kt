@@ -846,7 +846,7 @@ class FloatingWindowService : Service() {
         // WRAP_CONTENT，LinearLayout 在 AT_MOST 下会把「沿高度方向的剩余空间」全分给权重子视图，
         // 而剩余空间就是整块屏幕 —— 面板于是被撑到整屏高，整个窗口变成一张盖住全屏的
         // 透明可触摸层：屏幕上千点什么都落到这层上（用户侧表现就是"整个手机都点不动"，
-        // 而顶部跑马灯是另一个窗口，照旧在滚）。
+        // 而底部跑马灯是另一个窗口，照旧在滚）。
         // 改成固定限高：短文案不留大片空白，超长文案在卡片内部滚动。
         val contentScroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(140))
@@ -1440,7 +1440,7 @@ class FloatingWindowService : Service() {
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
-        // 顶栏是独立窗口，需一并移除（否则任务结束后全宽色带会常驻在屏幕顶部）
+        // 跑马灯是独立窗口，需一并移除（否则任务结束后胶囊会常驻在屏幕底部）
         marquee?.let { runCatching { windowManager?.removeView(it) } }
         marquee = null
         barParams = null
@@ -1493,7 +1493,7 @@ class FloatingWindowService : Service() {
 
         /**
          * 通知浮窗：任务期间的系统状态栏已隐藏 / 已恢复。
-         * 跑马灯色带本身不动（它一直铺到物理顶），只是把文字安全区在「避让状态栏」与「贴顶」之间切换。
+         * 跑马灯在屏幕底部，不受状态栏影响；这里只用来决定任务卡片可拖动的上边界（见 [cardTopLimit]）。
          */
         fun setStatusBarHidden(hidden: Boolean) {
             statusBarHiddenFlag = hidden
@@ -1554,8 +1554,8 @@ class FloatingWindowService : Service() {
             val svc = instance ?: return false
             svc.handler.post {
                 svc.root?.visibility = if (visible) View.VISIBLE else View.GONE
-                // 顶栏是独立窗口，截图时同样要藏起来（它横跨整屏顶部，一定会被截进画面）；
-                // 同样先记下本来的可见状态，截完按原样恢复（任务完成后顶栏本来是隐藏的）
+                // 跑马灯是独立窗口，截图时同样要藏起来（它浮在屏幕底部，一定会被截进画面）；
+                // 同样先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
                 if (!visible) {
                     svc.barVisibleBeforeHide = svc.marquee?.visibility == View.VISIBLE
                     svc.marquee?.visibility = View.GONE
