@@ -154,7 +154,7 @@ class AgentAccessibilityService : AccessibilityService() {
 
         fun describe(root: AccessibilityNodeInfo?): String =
             "访问=$visited 不可见=$invisible 无标签=$noLabel 尺寸为0=$zeroSize 容器内重复=$deduped" +
-                " 根节点子数=${root?.childCount ?: -1}"
+                " 纯文字收录=$plainCollected 根节点子数=${root?.childCount ?: -1}"
     }
 
     /**
@@ -208,11 +208,14 @@ class AgentAccessibilityService : AccessibilityService() {
         // 收录条件：① 可交互的控件（点击目标）；② 自带文字的可见节点（页面内容，供 AI 阅读与按文字定位）。
         // 已在可交互容器内的普通子节点不再重复收录——它的文字已经补到容器标签上，
         // 重复收录只会让 AI 在同一位置看到两个目标（微信聊天列表就是这种结构）。
-        val keep = node.isVisibleToUser && (isInteractive || ((ownText != null || ownDesc != null) && !insideInteractive))
+        val plainText = !isInteractive && (ownText != null || ownDesc != null)
+        val keep = node.isVisibleToUser && (isInteractive ||
+            (plainText && !insideInteractive && scan.plainCollected < MAX_PLAIN_NODES))
         if (!isRoot && keep) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             if (bounds.width() > 0 && bounds.height() > 0) {
+                if (plainText) scan.plainCollected++
                 val cls = node.className?.toString() ?: "Unknown"
                 // 标签落在 contentDescription：text 保持节点真实文字，派生标签不污染它，
                 // 而 effectiveLabel() = text ?: contentDescription 仍能被 AI 与定位层看到
