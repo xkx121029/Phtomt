@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.webkit.WebView
+import com.phoneagent.feature.browser.script.NavScripts
+import com.phoneagent.feature.browser.script.ReadScript
+import com.phoneagent.feature.browser.script.InteractScripts
 import com.phoneagent.ui.MainActivity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -29,10 +32,13 @@ private const val TAG = "BrowserBridge"
  * 三个边界（与提示词一一对应）：
  * 1. **可见**：浏览器是本 App 的「浏览器」二级页，需要上网时把 App 切到前台，
  *    于是每步截图里就是真实网页 —— AI 能"亲眼看到"页面，而不是只拿一段文本凭空判断。
- * 2. **端侧自足**：网页读写走 DOM 脚本（[BrowserScripts]），不依赖无障碍、Shizuku、Termux，
+ * 2. **端侧自足**：网页读写走 DOM 脚本（`feature/browser/script/`），不依赖无障碍、Shizuku、Termux，
  *    这些能力缺失时浏览器照常可用。
  * 3. **只操作浏览器里的页**：所有操作都作用于 WebView 里当前这一页；没有打开过网页时，
  *    一律返回可判定的中文原因（引导 AI 先 browse_open），而不是静默无动作。
+ *
+ * 这一层只做"怎么碰 WebView"：切主线程、等页面加载、解析脚本返回值、把结果排版成给 AI 的中文块。
+ * 判定与措辞（参数校验 / 只读护栏 / 通道分流）在 [BrowserChannel]。
  *
  * 线程：WebView 只能在主线程碰，故所有交互统一切到主线程；调用方（AgentEngine）在后台协程里 await。
  * 生命周期：Activity 重建会重新 [attach]，引擎侧只需一次 [open]，等待点由 [attachWaiter]/[loadWaiter] 承接。
@@ -177,10 +183,10 @@ object BrowserBridge {
         BrowseResult(true, "已在内置浏览器打开网页（下一步的截图中就能看到它）：\n标题：$title\n网址：$url")
     }
 
-    /** browse_read：抓取当前网页 —— 正文以 Markdown 返回（链接内联），另附输入框与按钮清单 */
+    /** browse_read：抓取当前网页 —— 正文以 Markdown 返回（链接内联），另附可操作元素清单 */
     suspend fun read(): BrowseResult = lock.withLock {
         withPage { wv ->
-            val obj = eval(wv, BrowserScripts.READ)
+            val obj = eval(wv, ReadScript.READ)
                 ?: return@withPage BrowseResult(false, "读取网页内容超时，请重试或先 wait 等待页面渲染。")
             if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
                 return@withPage BrowseResult(false, "读取网页内容失败：${obj.str("error").ifBlank { "未知原因" }}")
@@ -189,11 +195,14 @@ object BrowserBridge {
         }
     }
 
-    /** browse_click：按元素文字（或 CSS 选择器）点击网页元素 */
-    suspend fun click(by: String, value: String): BrowseResult = lock.withLock {
+    /** browse_click：按元素文字（或 CSS 选择器）点击网页元素；[guard] 为真时脚本内再探一次不可逆词表 */
+    suspend fun click(by: String, value: String, guard: Boolean = false): BrowseResult = lock.withLock {
         withPage { wv ->
-            val obj = eval(wv, BrowserScripts.click(by, value))
+            val obj = eval(wv, InteractScripts.click(by, value, guard))
                 ?: return@withPage BrowseResult(false, "点击网页元素超时，请重试。")
+            if (obj["refused"]?.jsonPrimitive?.contentOrNull == "true") {
+                return@withPage BrowseResult(false, obj.str("error"), refused = true)
+            }
             if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
                 return@withPage BrowseResult(false, "点击「$value」失败：${obj.str("error").ifBlank { "未知原因" }}")
             }
@@ -206,10 +215,10 @@ object BrowserBridge {
         }
     }
 
-    /** browse_input：往网页输入框填字 */
+    /** browse_input：往网页输入框填字（目标是下拉框时按选项文字选中） */
     suspend fun input(by: String, value: String, text: String): BrowseResult = lock.withLock {
         withPage { wv ->
-            val obj = eval(wv, BrowserScripts.input(by, value, text))
+            val obj = eval(wv, InteractScripts.input(by, value, text))
                 ?: return@withPage BrowseResult(false, "写入网页输入框超时，请重试。")
             if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
                 return@withPage BrowseResult(false, "往「$value」填字失败：${obj.str("error").ifBlank { "未知原因" }}")
@@ -221,7 +230,7 @@ object BrowserBridge {
     /** browse_scroll：滚动网页 */
     suspend fun scroll(direction: String): BrowseResult = lock.withLock {
         withPage { wv ->
-            val obj = eval(wv, BrowserScripts.scroll(direction))
+            val obj = eval(wv, NavScripts.scroll(direction))
                 ?: return@withPage BrowseResult(false, "滚动网页超时，请重试。")
             if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
                 return@withPage BrowseResult(false, "滚动网页失败：${obj.str("error").ifBlank { "未知原因" }}")
@@ -238,7 +247,7 @@ object BrowserBridge {
     /** browse_back：网页内后退（不是系统返回，不会退出浏览器） */
     suspend fun back(): BrowseResult = lock.withLock {
         withPage { wv ->
-            val obj = eval(wv, BrowserScripts.BACK)
+            val obj = eval(wv, NavScripts.BACK)
                 ?: return@withPage BrowseResult(false, "网页后退超时，请重试。")
             if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
                 return@withPage BrowseResult(false, "网页后退失败：${obj.str("error").ifBlank { "未知原因" }}")
@@ -290,9 +299,11 @@ object BrowserBridge {
      * 把抓到的页面整理成紧凑的中文块，直接作为"上一步结果"喂给 AI。
      *
      * 正文是 **Markdown**（标题层级/列表/表格/代码块/内联链接），链接已内联为 `[文字](网址)`，
-     * 因此不再单独给"可点链接"清单——AI 要 `browse_click` 时直接取正文里的链接文字。
-     * 输入框与按钮仍单独列出：它们是浏览通道特有的**可操作面**（fetch 链路没有），
-     * AI 靠它们决定 `browse_input` 的 target 与 `browse_click` 的文字。
+     * 因此不再单独给"可点链接"清单——AI 要 `browse_click` 时可以直接取正文里的链接文字。
+     *
+     * 下面这份**可操作元素清单**是浏览通道特有的"可操作面"（fetch 链路没有）：
+     * `labelOf` 取到的文字与 [InteractScripts] 的查找同源，所以 AI 把清单里的文字原样拿去
+     * `browse_click` / `browse_input` 一定命中；下拉还会带上"当前=… 选项=a | b"，AI 一次就能选对。
      */
     private fun formatPage(o: JsonObject): String {
         val sb = StringBuilder()
@@ -302,35 +313,37 @@ object BrowserBridge {
             .append(o["scroll"]?.jsonObject?.str("height")).append('\n')
         val md = o.str("markdown").trim()
         sb.append("正文（Markdown）").append(if (o.str("truncated") == "true") "（已截断）" else "").append("：\n")
-        // 给输入框/按钮留出尾部空间，正文预算 = 总预算 - 已用长度 - 预留
+        // 给可操作元素清单留出尾部空间，正文预算 = 总预算 - 已用长度 - 预留
         val bodyBudget = (MAX_RESULT_CHARS - sb.length - TAIL_RESERVE).coerceAtLeast(200)
         sb.append(
             if (md.isBlank()) "(页面没有可读正文)"
             else com.phoneagent.core.text.HtmlToMarkdown.takeBlocks(md, bodyBudget),
         ).append('\n')
-        val inputs = o.items("inputs")
-        if (inputs.isNotEmpty()) {
-            sb.append("输入框：\n")
-            inputs.take(10).forEachIndexed { i, it2 ->
-                sb.append("  ").append(i + 1).append(") ").append(it2.str("hint").ifBlank { "(无提示文字)" })
-                    .append("（").append(it2.str("type")).append("）")
-                    .append(if (it2.str("id").isNotBlank()) " id=${it2.str("id")}" else "")
-                    .append('\n')
+        val ops = o.items("ops")
+        if (ops.isNotEmpty()) {
+            sb.append("可操作元素（点它用 browse_click，填字用 browse_input，target 原样取下列文字或 id）：\n")
+            ops.forEachIndexed { i, it2 ->
+                sb.append("  ").append(i + 1).append(") [").append(it2.str("kind")).append("] ")
+                    .append(it2.str("label"))
+                val hint = it2.str("hint")
+                if (hint.isNotBlank()) sb.append("（提示：").append(hint).append("）")
+                val state = it2.str("state")
+                if (state.isNotBlank()) sb.append("（").append(state).append("）")
+                sb.append('\n')
             }
         }
-        val buttons = runCatching { o["buttons"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } }
-            .getOrNull().orEmpty()
-        if (buttons.isNotEmpty()) sb.append("按钮：").append(buttons.joinToString(" | ")).append('\n')
         return sb.toString().trimEnd().take(MAX_RESULT_CHARS)
     }
 
-    /** 输入框/按钮清单的预留长度：保证它们不会被正文挤掉 */
-    private const val TAIL_RESERVE = 400
+    /** 可操作元素清单的预留长度：清单比旧的"输入框+按钮"两行表长得多，不能让正文挤掉它 */
+    private const val TAIL_RESERVE = 900
 }
 
 /**
  * 一次浏览器操作的结果。
  * @param ok 是否成功
  * @param text 成功时是给 AI 看的结果内容；失败时是中文原因（可直接回注决策上下文）
+ * @param refused 是否被只读护栏拒绝（脚本侧探针命中不可逆词表）。与普通失败区分开：
+ *   拒绝要按"不可重试"处理并告知用户，普通失败可以让 AI 换个方式再试。
  */
-data class BrowseResult(val ok: Boolean, val text: String)
+data class BrowseResult(val ok: Boolean, val text: String, val refused: Boolean = false)

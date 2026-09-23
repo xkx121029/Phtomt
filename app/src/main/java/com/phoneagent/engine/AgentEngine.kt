@@ -187,6 +187,9 @@ class AgentEngine(
         /** 连续「技能调用被拒」（未知/停用/缺参）次数上限：达到即收尾，避免 AI 反复白试 */
         private const val MAX_SKILL_ERROR_STREAK = 3
 
+        /** 连续「浏览器意图缺参」次数上限：达到即收尾，避免 AI 一直输出缺参的 browse_* */
+        private const val MAX_BROWSE_MISSING_STREAK = 3
+
         /** 侧边栏保留的历史任务会话条数上限（只留任务级元数据，逐步明细另有环形上限） */
         private const val MAX_TASK_SESSIONS = 30
 
@@ -218,6 +221,16 @@ class AgentEngine(
         capabilityManager, appNameResolver, intentResolver,
         // Termux 命令行通道可用性：转译层据此决定 fetch 这类"命令行取数"意图能否落地
         termuxAvailable = { termuxBridge?.isAvailable() == true },
+    )
+    /**
+     * 内置浏览器通道：**与 [intentTranslator] 同级**的独立通道，browse_* 意图在这里落地，
+     * 不进转译层策略表。网页读写走本 App 自己的 WebView（DOM 脚本），因此不受无障碍 / Shizuku /
+     * 无线 ADB 是否可用影响——"手机没法自动操作"不该影响能不能上网。
+     *
+     * [BrowserChannel.readOnly] 用 lambda 现取模式：任务中途用户可能去开无障碍或接上无线 ADB。
+     */
+    private val browserChannel = com.phoneagent.feature.browser.BrowserChannel(
+        readOnly = { capabilityManager.currentMode() == CapabilityManager.Mode.READONLY },
     )
     /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
     @Volatile
@@ -302,6 +315,8 @@ class AgentEngine(
     private var invalidCommandStreak = 0
     /** 连续「技能调用被拒」次数（未知技能 / 已停用 / 缺必填参数）；达到上限即收尾，避免 AI 反复白试 */
     private var skillErrorStreak = 0
+    /** 连续「浏览器意图缺参」次数（browse_open 没给 uri、browse_click 没给 target 等）；达到上限即收尾，避免反复追问 */
+    private var browseMissingStreak = 0
     private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** 当前任务 ID（每次 run 开始时生成，用于分任务日志/导出） */
@@ -1062,6 +1077,7 @@ class AgentEngine(
         earlyDoneRejections = 0
         invalidCommandStreak = 0
         skillErrorStreak = 0
+        browseMissingStreak = 0
         decisionFailureStreak = 0
         lastShellOutput = ""
         lastSnapshot = ScreenSnapshot()
@@ -1310,6 +1326,20 @@ class AgentEngine(
                     }
                 }
             }
+            // 3.6 浏览器通道分流：browse_* 是**与设备能力无关**的独立通道，先于转译层落地。
+            //     它不走 IntentTranslator 的策略表（不受无障碍/Shizuku/无线 ADB 影响），
+            //     也不产生 AgentAction：网页读写由本 App 的 WebView 用 DOM 脚本完成，
+            //     结果作为"上一步结果"回注下一轮决策。
+            if (browserChannel.handles(intent.intent)) {
+                val (browseAction, browseVerify) = handleBrowseIntent(step, intent, messages)
+                log(
+                    AgentLog.Level.INFO,
+                    "执行动作：${browseAction.type}（${if (browseVerify.success) "已验证生效" else "待确认"}）",
+                )
+                recordsIntoHistory(step, browseAction, browseVerify)
+                stepShotCapture(step, browseAction, browseVerify.success)
+                continue
+            }
             // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）。
             //    参数缺失（如 tap 没给 target、open_app 没给 app）时，端侧先向 AI 追问一次补全，再重转译，而非直接失败。
             // 转译异常（定位/坐标换算内部出错）按转译失败处理：交给既有失败链路回注 AI 纠正，而不是崩掉任务
@@ -1385,12 +1415,6 @@ class AgentEngine(
                     // 本机信息查询：同类端侧代办，读到的内容作为"上一步结果"回注下一轮决策
                     if (action!!.type == ActionType.DEVICE_QUERY) {
                         handleDeviceQuery(step, action!!, messages)
-                        continue
-                    }
-                    // 内置浏览器：AI 上网时由端侧 WebView 落地（打开网页/抓正文/点元素/填表单/滚动/后退），
-                    // 网页内容同样作为"上一步结果"回注下一轮；不走无障碍通道、不依赖 Shizuku/Termux
-                    if (action!!.type == ActionType.BROWSE) {
-                        handleBrowse(step, action!!, messages)
                         continue
                     }
                     verify = safeExecute(action!!, snapshot)
@@ -1481,28 +1505,38 @@ class AgentEngine(
                     guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
                 }
                 if (guided != null && guided.intent != IntentType.FINISH && guided.intent != IntentType.GIVE_UP) {
-                    // 直接执行引导后的意图（转译为命令），不重走决策（避免变卦 + 节省一次云调用）
-                    val gTranslate = tryOrNull("引导后意图转译失败") {
-                        intentTranslator.translate(guided, observe(), null)
-                    } ?: IntentTranslator.TranslationResult.Failed("引导后意图转译异常")
-                    when (gTranslate) {
-                        is IntentTranslator.TranslationResult.Command -> {
-                            action = gTranslate.action
-                            verify = safeExecute(gTranslate.action, observe())
-                            verified = verify.success
-                            if (!verified) {
-                                log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
+                    // 直接执行引导后的意图，不重走决策（避免变卦 + 节省一次云调用）。
+                    // 浏览器意图走独立通道：这里不能 continue（后面的 recordsIntoHistory 要落档），
+                    // 故用「合成动作 + 验证结果」接进既有链路，让留档与截图照常发生。
+                    val gIntent = guided
+                    if (browserChannel.handles(gIntent.intent)) {
+                        val (browseAction, browseVerify) = handleBrowseIntent(step, gIntent, messages)
+                        action = browseAction
+                        verify = browseVerify
+                        verified = browseVerify.success
+                    } else {
+                        val gTranslate = tryOrNull("引导后意图转译失败") {
+                            intentTranslator.translate(gIntent, observe(), null)
+                        } ?: IntentTranslator.TranslationResult.Failed("引导后意图转译异常")
+                        when (gTranslate) {
+                            is IntentTranslator.TranslationResult.Command -> {
+                                action = gTranslate.action
+                                verify = safeExecute(gTranslate.action, observe())
+                                verified = verify.success
+                                if (!verified) {
+                                    log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
+                                }
                             }
-                        }
-                        is IntentTranslator.TranslationResult.Failed -> {
-                            verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
-                            verified = false
-                            log(AgentLog.Level.WARN, "引导后意图转译失败：${gTranslate.reason}")
-                        }
-                        is IntentTranslator.TranslationResult.MissingParam -> {
-                            verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
-                            verified = false
-                            log(AgentLog.Level.WARN, "引导后意图缺参：${gTranslate.reason}")
+                            is IntentTranslator.TranslationResult.Failed -> {
+                                verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
+                                verified = false
+                                log(AgentLog.Level.WARN, "引导后意图转译失败：${gTranslate.reason}")
+                            }
+                            is IntentTranslator.TranslationResult.MissingParam -> {
+                                verify = com.phoneagent.engine.execution.VerifyResult(false, gTranslate.reason, "", "")
+                                verified = false
+                                log(AgentLog.Level.WARN, "引导后意图缺参：${gTranslate.reason}")
+                            }
                         }
                     }
                 }
@@ -2780,78 +2814,113 @@ class AgentEngine(
     }
 
     /**
-     * 处理 AI 的 browse_* 意图：交给内置浏览器（WebView 可见页）执行，结果作为"上一步结果"回注。
+     * 处理 AI 的 browse_* 意图：交给内置浏览器通道（[com.phoneagent.feature.browser.BrowserChannel]）执行。
      *
-     * 与 remember / device_query / MCP 技能同类——端侧代办、不操控用户设备、不需要通道与坐标，
-     * 因此不截图留档、不做生效重试；失败原因一律回注给 AI 让它自己纠正（比如先 browse_open）。
+     * 与 remember / device_query / MCP 技能同类——端侧代办、不操控用户设备、不需要无障碍通道与坐标，
+     * 失败原因一律回注给 AI 让它自己纠正（比如先 browse_open）。
+     *
+     * 与旧实现的区别：**判定与执行都在通道里**（含只读护栏与中文措辞），这里只负责
+     * 记账（日志 / 悬浮窗 / 失败计数 / 回注消息）；步骤留档（StepRecord / 执行流）由调用方统一做，
+     * 因此两条调用路径（主循环与用户引导）不会出现双重留档。
+     *
+     * @return 合成动作 + 验证结果，供调用方按既有链路留档（浏览器意图不产生 AgentAction，故这里只造一条用于留档）
      */
-    private suspend fun handleBrowse(step: Int, action: AgentAction, messages: MutableList<ChatMessageDto>) {
-        val op = action.op.orEmpty()
-        val label = browseOpLabel(op)
+    private suspend fun handleBrowseIntent(
+        step: Int,
+        intent: AgentIntent,
+        messages: MutableList<ChatMessageDto>,
+    ): Pair<AgentAction, com.phoneagent.engine.execution.VerifyResult> {
+        val op = intent.intent
+        val label = browserChannel.label(op)
         log(
             AgentLog.Level.INFO,
-            "内置浏览器：$op uri=${action.uri ?: "-"} target=${action.target?.value ?: "-"} text=${action.text ?: "-"}",
+            "内置浏览器：$op uri=${intent.uri ?: "-"} target=${intent.target?.value ?: "-"} text=${intent.text ?: "-"}",
         )
         _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "浏览器：$label")
         pushFloating("浏览器：$label", "ACTING")
-        val result = runCatching {
-            when (op) {
-                IntentType.BROWSE_OPEN -> com.phoneagent.feature.browser.BrowserBridge.open(action.uri.orEmpty())
-                IntentType.BROWSE_READ -> com.phoneagent.feature.browser.BrowserBridge.read()
-                IntentType.BROWSE_CLICK -> com.phoneagent.feature.browser.BrowserBridge.click(
-                    action.target?.method ?: "text", action.target?.value.orEmpty(),
-                )
-                IntentType.BROWSE_INPUT -> com.phoneagent.feature.browser.BrowserBridge.input(
-                    action.target?.method ?: "text", action.target?.value.orEmpty(), action.text.orEmpty(),
-                )
-                IntentType.BROWSE_SCROLL -> com.phoneagent.feature.browser.BrowserBridge.scroll(action.direction ?: "down")
-                IntentType.BROWSE_BACK -> com.phoneagent.feature.browser.BrowserBridge.back()
-                else -> com.phoneagent.feature.browser.BrowseResult(false, "未知的浏览器操作：$op")
-            }
+        // 用于留档的合成动作：浏览器意图不经转译层，但调试面板/执行流仍要看得到"这一步在干什么"
+        val record = AgentAction(
+            type = op,
+            uri = intent.uri,
+            target = intent.target?.let { ActionTarget(method = it.by, value = it.value) },
+            text = intent.text,
+            direction = intent.direction,
+            reasoning = intent.reasoning,
+            reason = intent.reasoning ?: intent.reason,
+        )
+        val outcome = runCatching {
+            browserChannel.execute(intent)
         }.getOrElse {
-            com.phoneagent.feature.browser.BrowseResult(
-                false,
+            com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed(
                 "浏览器操作异常：${it.message ?: it::class.simpleName}",
             )
         }
-        val text = result.text.trim().take(com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS)
-        recordStep(
-            step = step,
-            action = action,
-            verification = if (result.ok) "verified_success" else "unverified",
-            before = "",
-            after = "",
-            detail = if (result.ok) text.take(300) else "失败：${text.take(300)}",
-        )
-        val injected = if (result.ok) {
-            "内置浏览器（$op）结果：\n$text"
-        } else {
-            "内置浏览器（$op）失败：$text\n请按提示调整：" +
-                "需要打开网页就先用 browse_open；需要知道当前页有什么可以点、可以填什么就先 browse_read（正文里的链接文字、输入框、按钮都在里面）。"
+        val text = when (outcome) {
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok -> outcome.text
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Missing -> outcome.reason
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused -> outcome.reason
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed -> outcome.reason
+        }.trim().take(com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS)
+        val injected = when (outcome) {
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok ->
+                "内置浏览器（$op）结果：\n$text"
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Missing ->
+                "⚠️ 内置浏览器（$op）缺少必要参数：$text"
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused ->
+                "⛔ 内置浏览器（$op）已被端侧拒绝：$text"
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed ->
+                "内置浏览器（$op）失败：$text\n请按提示调整：" +
+                    "需要打开网页就先用 browse_open；需要知道当前页有什么可以点、可以填什么就先 browse_read" +
+                    "（正文里的链接文字与「可操作元素」清单都在里面，清单里的文字可原样用于 browse_click / browse_input）。"
         }
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
         addConversation("assistant", injected)
-        if (result.ok) {
-            consecutiveFailures = 0
-            recordProgress(step, action)
-            pushFloating("浏览器：$label 完成", "THINKING")
-        } else {
-            consecutiveFailures++
-            log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
-            pushFloating("浏览器：$label 未成功", "THINKING")
+        when (outcome) {
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok -> {
+                browseMissingStreak = 0
+                consecutiveFailures = 0
+                recordProgress(step, record)
+                pushFloating("浏览器：$label 完成", "THINKING")
+            }
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Missing -> {
+                // 缺参属"AI 表述不完整"：只提示一次让它补全，连续多次仍不补全则收尾，避免无限追问
+                browseMissingStreak++
+                consecutiveFailures++
+                log(AgentLog.Level.WARN, "浏览器意图缺参（第 $browseMissingStreak 次）：$op → ${text.take(120)}")
+                pushFloating("浏览器：$label 缺参数", "THINKING")
+            }
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused -> {
+                // 只读护栏的拒绝是"设计如此"，不是工具坏了：明确告诉 AI 不要再重试同一个动作
+                browseMissingStreak = 0
+                consecutiveFailures++
+                log(AgentLog.Level.WARN, "只读模式拒绝浏览器操作：$op → ${text.take(120)}")
+                pushFloating("浏览器：$label 已按只读规则拒绝", "THINKING")
+            }
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed -> {
+                browseMissingStreak = 0
+                consecutiveFailures++
+                log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
+                pushFloating("浏览器：$label 未成功", "THINKING")
+            }
+        }
+        if (browseMissingStreak >= MAX_BROWSE_MISSING_STREAK) {
+            log(AgentLog.Level.ERROR, "连续 $browseMissingStreak 次浏览器意图缺参，停止任务：$text")
+            _state.value = _state.value.copy(
+                phase = AgentState.Phase.ERROR,
+                message = "浏览器意图连续缺少必要参数，已停止任务",
+            )
+            pushFloating("浏览器意图缺参，已停止", "ERROR")
+            finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+            stop()
         }
         delay(200)
-    }
-
-    /** 浏览器子操作的中文标签：用于悬浮窗与调试面板，让用户看得懂 AI 在做什么 */
-    private fun browseOpLabel(op: String): String = when (op) {
-        IntentType.BROWSE_OPEN -> "打开网页"
-        IntentType.BROWSE_READ -> "抓取网页内容"
-        IntentType.BROWSE_CLICK -> "点击网页元素"
-        IntentType.BROWSE_INPUT -> "填写网页表单"
-        IntentType.BROWSE_SCROLL -> "滚动网页"
-        IntentType.BROWSE_BACK -> "网页后退"
-        else -> op
+        val verify = com.phoneagent.engine.execution.VerifyResult(
+            success = outcome is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok,
+            reason = if (outcome is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok) "" else text,
+            beforeFingerprint = "",
+            afterFingerprint = "",
+        )
+        return record to verify
     }
 
     /** 记忆写入事件入流（内存态，供 Agent 页实时插卡；环形保留最近 N 条） */

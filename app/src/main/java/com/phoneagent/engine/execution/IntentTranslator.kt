@@ -12,11 +12,6 @@ import com.phoneagent.domain.model.ScreenSnapshot
 
 private const val TAG = "IntentTranslator"
 
-/** 只读模式下放行的浏览器操作（只看不动）：打开网页 / 抓正文 / 滚动 / 后退 */
-private val READONLY_BROWSE_OPS = setOf(
-    IntentType.BROWSE_OPEN, IntentType.BROWSE_READ, IntentType.BROWSE_SCROLL, IntentType.BROWSE_BACK,
-)
-
 /**
  * 单条意图的转译策略：输入"意图 + [TranslationContext]" → 输出端侧命令或失败原因。
  *
@@ -365,101 +360,6 @@ internal class TermuxFetchStrategy(
 }
 
 /**
- * 内置浏览器策略：把 6 个 browse_* 意图收口成一条 [ActionType.BROWSE] 命令，子操作放在 `op`。
- *
- * 边界（与 AI 提示词一一对应）：
- * - 浏览器是本 App 自己的可见页（WebView），走 DOM 脚本读写网页，**不依赖**无障碍 / Shizuku / Termux；
- * - 它操作的是"当前已打开的网页"，因此 browse_read/click/input/scroll/back 都要求浏览器里已有页面，
- *   没有页面时给出可判定的失败原因（让 AI 先 browse_open），而不是静默无动作；
- * - browse_click/browse_input 会真实改变网页状态（可能触发下单/发送），属交互类动作，
- *   只读模式下一律拒绝；browse_open/read/scroll/back 只是查看，只读模式放行。
- */
-internal class BrowserStrategy : IntentTranslationStrategy {
-
-    companion object {
-        /** 点击/输入的目标定位方式：text=元素文字（优先），id=CSS 选择器 */
-        val TARGET_BY = setOf("text", "id", "hint")
-        /** 滚动方向白名单 */
-        val DIRECTIONS = setOf("up", "down", "top", "bottom")
-    }
-
-    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
-        val op = intent.intent
-        return when (op) {
-            IntentType.BROWSE_OPEN -> {
-                val uri = intent.uri?.trim().orEmpty()
-                when {
-                    uri.isBlank() -> IntentTranslator.TranslationResult.MissingParam(
-                        field = "uri",
-                        reason = "AI 输出了 browse_open 但未提供 uri（要打开的网址）。请补全 uri，" +
-                            "例如 {\"intent\":\"browse_open\",\"uri\":\"https://example.com\"}。",
-                    )
-                    !uri.startsWith("http://") && !uri.startsWith("https://") ->
-                        IntentTranslator.TranslationResult.Failed("browse_open 只支持 http/https 网址：$uri")
-                    else -> command(intent, ctx, uri = uri)
-                }
-            }
-            // 抓正文 / 网页后退：无参数，靠当前已打开的网页
-            IntentType.BROWSE_READ, IntentType.BROWSE_BACK -> command(intent, ctx)
-            IntentType.BROWSE_CLICK, IntentType.BROWSE_INPUT -> {
-                val target = intent.target
-                if (target == null || target.value.isBlank()) {
-                    IntentTranslator.TranslationResult.MissingParam(
-                        field = "target",
-                        reason = "AI 输出了 $op 但未提供 target（网页里的目标元素）。网页元素优先按文字定位：" +
-                            "{\"by\":\"text\",\"value\":\"登录\"}；元素无文字时用 CSS 选择器：{\"by\":\"id\",\"value\":\"#login\"}。",
-                    )
-                } else {
-                    val by = target.by.takeIf { it in TARGET_BY } ?: "text"
-                    when {
-                        op == IntentType.BROWSE_INPUT && intent.text.isNullOrBlank() ->
-                            IntentTranslator.TranslationResult.MissingParam(
-                                field = "text",
-                                reason = "AI 输出了 browse_input 但未提供 text（要填写的文字）。请补全 text。",
-                            )
-                        else -> command(
-                            intent, ctx,
-                            taskTarget = ActionTarget(method = by, value = target.value.trim()),
-                            text = intent.text?.takeIf { it.isNotBlank() },
-                        )
-                    }
-                }
-            }
-            IntentType.BROWSE_SCROLL -> {
-                val dir = intent.direction?.trim()?.lowercase().orEmpty().ifBlank { "down" }
-                if (dir !in DIRECTIONS) {
-                    IntentTranslator.TranslationResult.Failed(
-                        "browse_scroll 不支持 direction=$dir；可选值：${DIRECTIONS.joinToString("/")}。",
-                    )
-                } else {
-                    command(intent, ctx, direction = dir)
-                }
-            }
-            else -> IntentTranslator.TranslationResult.Failed("未知的浏览器操作：$op")
-        }
-    }
-
-    private fun command(
-        intent: AgentIntent,
-        ctx: TranslationContext,
-        uri: String? = null,
-        taskTarget: ActionTarget? = null,
-        text: String? = null,
-        direction: String? = null,
-    ): IntentTranslator.TranslationResult = IntentTranslator.TranslationResult.Command(
-        ctx.base.copy(
-            type = ActionType.BROWSE,
-            op = intent.intent,
-            uri = uri,
-            target = taskTarget,
-            text = text,
-            direction = direction,
-            reason = reasonOf(intent),
-        ),
-    )
-}
-
-/**
  * 意图转译器（对应 HPA动作执行逻辑优化文档 v2.1 四、IntentTranslator）。
  *
  * 策略化拆分：把 AI 的"意图"（做什么）转译为端侧可执行的"命令"（怎么做）。
@@ -515,13 +415,8 @@ class IntentTranslator(
         put(IntentType.DEVICE_QUERY, DeviceQueryStrategy())
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
-        // 内置浏览器（WebView 可见页）：6 个 browse_* 意图共用一颗策略，子操作随 intent 名走
-        put(IntentType.BROWSE_OPEN, BrowserStrategy())
-        put(IntentType.BROWSE_READ, BrowserStrategy())
-        put(IntentType.BROWSE_CLICK, BrowserStrategy())
-        put(IntentType.BROWSE_INPUT, BrowserStrategy())
-        put(IntentType.BROWSE_SCROLL, BrowserStrategy())
-        put(IntentType.BROWSE_BACK, BrowserStrategy())
+        // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，
+        // 不依赖无障碍/Shizuku/Termux，也不产生 ActionType。
         // 收尾
         put(IntentType.FINISH, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.summary ?: "任务完成") })
         put(IntentType.GIVE_UP, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.reason ?: "已放弃任务") })
@@ -587,10 +482,6 @@ class IntentTranslator(
             result.action.type == ActionType.WRITE_DOC ||
             result.action.type == ActionType.REMEMBER ||
             result.action.type == ActionType.DEVICE_QUERY -> result
-        // 浏览器"只看不动"的四类操作放行：打开网页 / 抓正文 / 滚动 / 后退都不改变页面状态，
-        // 只读模式下 AI 依然可以上网查资料；而 browse_click / browse_input 会真实改变网页
-        // （可能触发下单、发送、提交），与其它交互动作同等对待，一律拒绝。
-        result.action.type == ActionType.BROWSE && result.action.op in READONLY_BROWSE_OPS -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )

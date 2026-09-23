@@ -64,12 +64,6 @@ data class AgentAction(
     val app: String? = null,
     /** open 动作：目标软件内的页面索引序号（见软件页面直达索引表） */
     val page: Int? = null,
-    /**
-     * 内置浏览器动作的子操作（type=browse 时使用）。
-     * 取值即意图名：browse_open / browse_read / browse_click / browse_input / browse_scroll / browse_back。
-     * AI 不写这个字段，由端侧按 AI 输出的意图名生成，故与 AI 的 JSON 契约无关。
-     */
-    val op: String? = null,
 )
 
 /** 动作目标 */
@@ -125,13 +119,6 @@ object ActionType {
 
     /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */
     const val OPEN = "open"
-
-    /**
-     * 内置浏览器操作（op=子操作，见 [AgentAction.op]）。
-     * 纯端侧执行：不依赖无障碍/Shizuku/Termux，WebView 是本 App 自己的界面，
-     * 网页内容通过 DOM 脚本读取与操作，因此 AI 能"亲眼看到"网页（每步截图即为浏览器页）。
-     */
-    const val BROWSE = "browse"
 
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(

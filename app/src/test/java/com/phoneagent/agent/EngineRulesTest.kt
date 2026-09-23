@@ -103,6 +103,17 @@ class EngineRulesTest {
         assertEquals("weird", EngineRules.actionLabel("weird"))
     }
 
+    @Test
+    fun actionLabel_内置浏览器六类意图都有中文标签() {
+        // browse_* 不经转译层、不产生 ActionType，标签按意图名直查，六类必须齐全（缺一个跑马灯就露英文）
+        assertEquals("打开网页", EngineRules.actionLabel(IntentType.BROWSE_OPEN))
+        assertEquals("抓取网页内容", EngineRules.actionLabel(IntentType.BROWSE_READ))
+        assertEquals("点击网页元素", EngineRules.actionLabel(IntentType.BROWSE_CLICK))
+        assertEquals("填写网页表单", EngineRules.actionLabel(IntentType.BROWSE_INPUT))
+        assertEquals("滚动网页", EngineRules.actionLabel(IntentType.BROWSE_SCROLL))
+        assertEquals("网页后退", EngineRules.actionLabel(IntentType.BROWSE_BACK))
+    }
+
     // ---- extractJsonObject / extractJsonBackward ----
 
     @Test

@@ -1,50 +1,31 @@
-package com.phoneagent.feature.browser
+package com.phoneagent.feature.browser.script
 
 import com.phoneagent.core.text.HtmlToMarkdown
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * 内置浏览器注入脚本集合。
+ * 抓取当前网页：标题/网址/滚动 + **Markdown 正文** + **可操作元素清单**。
  *
- * 为什么用 DOM 脚本而不是让 AI 用 tap 猜控件：网页元素（下拉、弹层、登录框）在无障碍树里
- * 往往拿不到可靠的 id/文字，坐标更是一换分辨率就错；而网页自己有 DOM，读正文、按文字点元素、
- * 往输入框填字都能精确完成。所以网页内的读写统一走这里的脚本，AI 只表达"点哪个字/填什么"。
+ * 正文为什么给 Markdown：AI 极熟 Markdown（write_doc 产出的就是它），标题层级、列表、
+ * 表格、代码块、内联链接都能带上；压平成一坨纯文本时这些都丢了，AI 只能瞎猜页面结构。
+ * 链接**内联**在正文里（`[文字](网址)`），AI 要点击时直接取链接文字，或取下方清单里的元素文字——
+ * 两者可寻址，且"清单里显示的文字"与 [InteractScripts] 的查找用的是同一份 `labelOf`（见 [BrowserJs]）。
  *
- * 约定：每段脚本都是一个立即执行函数，**返回对象**（不是字符串）。WebView 的
- * `evaluateJavascript` 会把返回的对象序列化成 JSON 交给 Kotlin 侧，因此 [BrowserBridge]
- * 只需解析一次；返回对象统一带 `ok` 字段，失败时给中文 `error`。
+ * 四重上限防低端机卡死：节点 15000 / 深度 120 / 输出 8000 / 单次 1500ms。
+ * 这里的 8000 只是**安全上限**，给 AI 的 4000 预算截断统一由 Kotlin 的
+ * [HtmlToMarkdown.takeBlocks] 执行，保证与 fetch 链路行为一致。
  *
- * **[READ] 的正文是 Markdown，规则表与 `core/text/HtmlToMarkdown.kt` 同源**：
+ * **[READ] 的规则表与 `core/text/HtmlToMarkdown.kt` 同源**：
  * 丢弃表 / 块级表 / 自闭合表 / 行内标记表 / 隐藏类名表 / 转义字符表 / 围栏字面量
  * 全部由 [HtmlToMarkdown] 的常量插值生成，改规则只会改一处，两侧不可能漂移。
  * 与 Kotlin 侧**唯一允许的两处差异**（其余逐条一致）：
  * 1. 这里能用 `getComputedStyle` 看到被样式表藏起来的元素，Kotlin 只能看属性；
  * 2. 这里用浏览器原生能力解码实体（是所有命名实体的超集），Kotlin 只认 32 个命名实体。
  */
-internal object BrowserScripts {
+internal object ReadScript {
 
-    /** 页面加载完成后跑一次：把 target=_blank 的链接改成同窗打开，否则点击会静默无反应 */
-    val UNBLANK = """
-(function(){
-  try {
-    var as = document.querySelectorAll('a[target]');
-    for (var i = 0; i < as.length; i++) { as[i].removeAttribute('target'); }
-    return {ok:true};
-  } catch (e) { return {ok:false, error:String(e)}; }
-})()
-""".trimIndent()
+    /** 清单上限：再多 AI 也读不完，只徒增上下文 */
+    private const val OPS_CAP = 30
 
-    /**
-     * 抓取当前网页：标题/网址/滚动 + **Markdown 正文** + 输入框 + 按钮。
-     *
-     * 正文为什么给 Markdown：AI 极熟 Markdown（write_doc 产出的就是它），标题层级、列表、
-     * 表格、代码块、内联链接都能带上；压平成一坨纯文本时这些都丢了，AI 只能瞎猜页面结构。
-     * 链接**内联**在正文里（`[文字](网址)`），因此不再单独给链接清单——AI 要点击时直接取链接文字。
-     *
-     * 四重上限防低端机卡死：节点 15000 / 深度 120 / 输出 8000 / 单次 1500ms。
-     * 这里的 8000 只是**安全上限**，给 AI 的 4000 预算截断统一由 Kotlin 的
-     * [HtmlToMarkdown.takeBlocks] 执行，保证与 fetch 链路行为一致。
-     */
     val READ = """
 (function(){
   try {
@@ -58,6 +39,10 @@ internal object BrowserScripts {
     var MARK = {};
     var MP = ${HtmlToMarkdown.jsMarkPairs(HtmlToMarkdown.MARK_RULE)};
     for (var mi = 0; mi < MP.length; mi++) { MARK[MP[mi][0]] = MP[mi][1]; }
+
+    // ===== 共享 helper：与 InteractScripts 同源（清单显示的文字 = 按文字能找到的元素）=====
+    var LIST_SELECTOR = ${HtmlToMarkdown.jsStr(BrowserJs.LIST_SELECTOR)};
+${BrowserJs.HELPERS}
 
     var HARD = 8000, NODE_CAP = 15000, DEPTH_CAP = 120, MS_CAP = 1500;
     var NODES = 0, T0 = Date.now();
@@ -336,16 +321,9 @@ internal object BrowserScripts {
       else if (BLOCK[tag]) flushInline();
     }
 
-    // ===== 可操作元素清单（AI 靠它决定 browse_input 的 target 与 browse_click 的文字）=====
-    function vis(el){
-      if (!el) return false;
-      var r = el.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return false;
-      var s = window.getComputedStyle(el);
-      return !(s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0');
-    }
-    function txt(el){ return String((el.innerText || el.textContent || '')).replace(/\s+/g, ' ').trim(); }
-
+    // ===== 可操作元素清单：AI 靠它决定 browse_click 的 target 与 browse_input 的目标 =====
+    // 采集用的 labelOf/vis/kindOf/stateOf 与 InteractScripts 的查找同源，
+    // 因此"这里列出来的文字"拿去 browse_click 一定找得到那个元素。
     var body = document.body || document.documentElement;
     if (!body) return {ok:false, error:'页面尚无内容'};
     walk(body, 0);
@@ -354,22 +332,20 @@ internal object BrowserScripts {
     var markdown = out.join('');
     if (markdown.length > HARD) { markdown = markdown.slice(0, HARD); truncated = true; }
 
-    var inputs = [];
-    var is = document.querySelectorAll('input,textarea,select');
-    for (var j = 0; j < is.length && inputs.length < 20; j++){
-      var el2 = is[j];
+    var ops = [];
+    var els = document.querySelectorAll(LIST_SELECTOR);
+    for (var j = 0; j < els.length && ops.length < ${OPS_CAP}; j++){
+      var el2 = els[j];
       if (!vis(el2)) continue;
-      var hint = el2.getAttribute('placeholder') || el2.getAttribute('aria-label') || el2.getAttribute('name') || el2.id || '';
-      inputs.push({hint: String(hint).slice(0,40), type: String(el2.type || el2.tagName).toLowerCase(), id: String(el2.id || '')});
-    }
-    var buttons = [];
-    var bs = document.querySelectorAll('button,[role=button],input[type=submit],input[type=button]');
-    for (var k = 0; k < bs.length && buttons.length < 20; k++){
-      var b = bs[k];
-      if (!vis(b)) continue;
-      var bt = txt(b) || String(b.value || '') || b.getAttribute('aria-label') || '';
-      if (!bt) continue;
-      buttons.push(String(bt).slice(0,40));
+      if (el2.disabled && String(el2.tagName).toLowerCase() === 'button') continue;
+      var nm = labelOf(el2).slice(0, 60);
+      if (!nm) continue;
+      var item = {label: nm, kind: kindOf(el2)};
+      var stt = stateOf(el2);
+      if (stt) item.state = stt;
+      var ph = String(el2.getAttribute('placeholder') || '').trim();
+      if (ph) item.hint = ph.slice(0, 40);
+      ops.push(item);
     }
     var st = window.scrollY || document.documentElement.scrollTop || 0;
     var sh = Math.max(document.documentElement.scrollHeight || 0, body.scrollHeight || 0);
@@ -382,142 +358,8 @@ internal object BrowserScripts {
       scroll: {y: Math.round(st), height: Math.round(sh)},
       markdown: markdown,
       truncated: truncated,
-      inputs: inputs,
-      buttons: buttons
+      ops: ops
     };
-  } catch (e) { return {ok:false, error:String(e)}; }
-})()
-""".trimIndent()
-
-    /**
-     * 点击网页元素。
-     * @param by text=元素文字（精确优先，其次包含）；id=CSS 选择器；hint 与 text 同义
-     */
-    fun click(by: String, value: String): String {
-        val want = JsonPrimitive(value).toString()
-        val css = if (by == "id") "true" else "false"
-        return """
-(function(){
-  try {
-    function vis(el){
-      if(!el) return false;
-      var r = el.getBoundingClientRect();
-      if(r.width <= 0 || r.height <= 0) return false;
-      var s = window.getComputedStyle(el);
-      return !(s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0');
-    }
-    function txt(el){ return String((el.innerText || el.textContent || '')).replace(/\s+/g,' ').trim(); }
-    function fire(el){
-      try {
-        el.dispatchEvent(new MouseEvent('mousedown', {bubbles:true, cancelable:true, view:window}));
-        el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true, cancelable:true, view:window}));
-      } catch (e) {}
-      el.click();
-    }
-    var want = $want;
-    var el = null;
-    if($css){
-      try { el = document.querySelector(want); }
-      catch (e) { return {ok:false, error:'CSS 选择器无效：' + want}; }
-    } else {
-      var cands = document.querySelectorAll('a,button,[role=button],input[type=submit],input[type=button],[onclick],li,span,div,p,td,label,h1,h2,h3');
-      var exact = null, partial = null;
-      for (var i = 0; i < cands.length; i++){
-        var c = cands[i];
-        if(!vis(c)) continue;
-        var t = txt(c);
-        if(!t) continue;
-        if(t === want){ exact = c; break; }
-        if(!partial && t.indexOf(want) >= 0 && t.length <= want.length + 30) partial = c;
-      }
-      el = exact || partial;
-    }
-    if(!el) return {ok:false, error:'页面上没找到「' + want + '」这个可点元素，请先 browse_read 看当前页正文里的链接文字、输入框与按钮'};
-    if(!vis(el)) { try { el.scrollIntoView({block:'center'}); } catch (e) {} }
-    var label = txt(el).slice(0,40) || String(el.value || '') || el.tagName;
-    var a = el.closest ? el.closest('a[href]') : null;
-    if(a && a.getAttribute('target') === '_blank'){ location.href = a.href; }
-    else { fire(el); }
-    return {ok:true, clicked: label, tag: String(el.tagName || ''), url_after: String(location.href)};
-  } catch (e) { return {ok:false, error:String(e)}; }
-})()
-""".trimIndent()
-    }
-
-    /** 往网页输入框填字：按 placeholder/aria-label/name/id 文字或 CSS 选择器定位 */
-    fun input(by: String, value: String, text: String): String {
-        val want = JsonPrimitive(value).toString()
-        val fill = JsonPrimitive(text).toString()
-        val css = if (by == "id") "true" else "false"
-        return """
-(function(){
-  try {
-    function vis(el){
-      if(!el) return false;
-      var r = el.getBoundingClientRect();
-      if(r.width <= 0 || r.height <= 0) return false;
-      var s = window.getComputedStyle(el);
-      return !(s.display === 'none' || s.visibility === 'hidden');
-    }
-    function setVal(el, val){
-      el.focus();
-      var proto = (el.tagName === 'TEXTAREA') ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-      var d = Object.getOwnPropertyDescriptor(proto, 'value');
-      if(d && d.set){ d.set.call(el, val); } else { el.value = val; }
-      el.dispatchEvent(new Event('input', {bubbles:true}));
-      el.dispatchEvent(new Event('change', {bubbles:true}));
-    }
-    var want = $want;
-    var fill = $fill;
-    var el = null;
-    if($css){
-      try { el = document.querySelector(want); }
-      catch (e) { return {ok:false, error:'CSS 选择器无效：' + want}; }
-    } else {
-      var is = document.querySelectorAll('input,textarea');
-      for (var i = 0; i < is.length; i++){
-        var c = is[i];
-        if(!vis(c)) continue;
-        var t = String(c.getAttribute('placeholder') || c.getAttribute('aria-label') || c.getAttribute('name') || c.id || '').trim();
-        if(t && (t === want || t.indexOf(want) >= 0)){ el = c; break; }
-      }
-    }
-    if(!el) return {ok:false, error:'页面上没找到「' + want + '」这个输入框，请先 browse_read 看当前页有哪些输入框'};
-    if(!vis(el)) { try { el.scrollIntoView({block:'center'}); } catch (e) {} }
-    setVal(el, fill);
-    return {ok:true, filled: fill.slice(0,60), into: want};
-  } catch (e) { return {ok:false, error:String(e)}; }
-})()
-""".trimIndent()
-    }
-
-    /** 网页滚动：up/down/top/bottom */
-    fun scroll(direction: String): String {
-        val js = when (direction) {
-            "up" -> "window.scrollBy(0, -Math.round(window.innerHeight * 0.8));"
-            "top" -> "window.scrollTo(0, 0);"
-            "bottom" -> "window.scrollTo(0, Math.max(document.documentElement.scrollHeight, document.body.scrollHeight));"
-            else -> "window.scrollBy(0, Math.round(window.innerHeight * 0.8));"
-        }
-        return """
-(function(){
-  try {
-    $js
-    var y = Math.round(window.scrollY || document.documentElement.scrollTop || 0);
-    var h = Math.max(document.documentElement.scrollHeight || 0, (document.body ? document.body.scrollHeight : 0));
-    return {ok:true, scroll_y: y, scroll_height: h, at_bottom: (y + window.innerHeight) >= (h - 4)};
-  } catch (e) { return {ok:false, error:String(e)}; }
-})()
-""".trimIndent()
-    }
-
-    /** 网页后退 */
-    val BACK = """
-(function(){
-  try {
-    if(!(window.history && window.history.length > 1)) return {ok:false, error:'当前网页没有上一页可后退'};
-    window.history.back();
-    return {ok:true};
   } catch (e) { return {ok:false, error:String(e)}; }
 })()
 """.trimIndent()

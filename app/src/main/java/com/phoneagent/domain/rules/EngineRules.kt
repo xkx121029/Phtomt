@@ -87,6 +87,13 @@ object EngineRules {
         ActionType.DEVICE_QUERY -> "查询本机信息"
         ActionType.MCP_CALL -> "调用技能"
         ActionType.OPEN -> "打开链接/Scheme"
+        // 内置浏览器的 6 个子操作：由 BrowserChannel 直出，不经转译层，故直接按意图名映射
+        IntentType.BROWSE_OPEN -> "打开网页"
+        IntentType.BROWSE_READ -> "抓取网页内容"
+        IntentType.BROWSE_CLICK -> "点击网页元素"
+        IntentType.BROWSE_INPUT -> "填写网页表单"
+        IntentType.BROWSE_SCROLL -> "滚动网页"
+        IntentType.BROWSE_BACK -> "网页后退"
         ActionType.BACK -> "返回"
         ActionType.HOME -> "回到桌面"
         ActionType.RECENTS -> "最近任务"

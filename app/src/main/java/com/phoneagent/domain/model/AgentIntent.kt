@@ -155,12 +155,7 @@ object IntentType {
         FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,
-        // 6 个浏览意图共用一条动作类型，具体子操作由 action.op 携带（AI 不写 op，端侧按意图名生成）
-        BROWSE_OPEN to ActionType.BROWSE,
-        BROWSE_READ to ActionType.BROWSE,
-        BROWSE_CLICK to ActionType.BROWSE,
-        BROWSE_INPUT to ActionType.BROWSE,
-        BROWSE_SCROLL to ActionType.BROWSE,
-        BROWSE_BACK to ActionType.BROWSE,
+        // 6 个浏览意图（browse_*）不在此表：它们走内置浏览器通道（BrowserChannel），
+        // 由 DOM 脚本直接落地，不经过转译层，也不产生 ActionType。
     )
 }

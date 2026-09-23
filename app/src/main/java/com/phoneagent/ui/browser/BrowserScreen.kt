@@ -38,7 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.phoneagent.feature.browser.BrowserBridge
-import com.phoneagent.feature.browser.BrowserScripts
+import com.phoneagent.feature.browser.script.NavScripts
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -86,7 +86,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                         settings.useWideViewPort = true
                         settings.loadWithOverviewMode = true
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                        // 不开多窗口：target=_blank 的链接由页面钩子改成同窗打开（见 BrowserScripts.UNBLANK），
+                        // 不开多窗口：target=_blank 的链接由页面钩子改成同窗打开（见 NavScripts.UNBLANK），
                         // 否则 WebView 会静默吞掉这类点击，AI 看起来就是"点了没反应"
                         settings.setSupportMultipleWindows(false)
                         webViewClient = object : WebViewClient() {
@@ -98,7 +98,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 
                             override fun onPageFinished(view: WebView?, u: String?) {
                                 BrowserBridge.onPageFinished(u.orEmpty())
-                                view?.evaluateJavascript(BrowserScripts.UNBLANK, null)
+                                view?.evaluateJavascript(NavScripts.UNBLANK, null)
                             }
                         }
                         webChromeClient = object : WebChromeClient() {

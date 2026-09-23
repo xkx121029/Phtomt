@@ -1,6 +1,9 @@
 package com.phoneagent.core.text
 
-import com.phoneagent.feature.browser.BrowserScripts
+import com.phoneagent.feature.browser.BrowserGuard
+import com.phoneagent.feature.browser.script.BrowserJs
+import com.phoneagent.feature.browser.script.InteractScripts
+import com.phoneagent.feature.browser.script.ReadScript
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -12,7 +15,7 @@ import org.junit.Test
  * 覆盖三层：
  * 1. **嗅探**（[HtmlToMarkdown.isHtml]）——必须挡住 JSON、纯文本、`uiautomator dump` 的 XML；
  * 2. **转换**（[HtmlToMarkdown.convert]）——标题/列表/引用/代码/表格/链接/实体等结构是否真的转出来了；
- * 3. **两侧同源**——浏览器侧脚本 [BrowserScripts.READ] 的规则表必须由本侧常量插值生成，
+ * 3. **两侧同源**——浏览器侧脚本 [ReadScript.READ] 的规则表必须由本侧常量插值生成，
  *    且**不能**把 `html`/`body` 当噪声丢掉（丢它们等于正文全空）。
  */
 class HtmlToMarkdownTest {
@@ -239,7 +242,7 @@ class HtmlToMarkdownTest {
 
     @Test
     fun `浏览器脚本内嵌的规则表与本侧常量同源`() {
-        val read = BrowserScripts.READ
+        val read = ReadScript.READ
         fun table(key: String): String = read.lineSequence().first { it.contains("var $key =") }
         val drop = table("DROP")
         val block = table("BLOCK")
@@ -260,5 +263,27 @@ class HtmlToMarkdownTest {
         // 回归护栏：html/body 是正文容器，一旦被列进丢弃表，整页会转出空 Markdown
         assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("body") + ":1"))
         assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("html") + ":1"))
+    }
+
+    @Test
+    fun `清单与点击共用同一套选择器与同一个人话取名函数`() {
+        // 读侧清单（browse_read）与写侧点击（browse_click）必须共享选择器与 labelOf，
+        // 否则会出现"清单里看得见的按钮，点下去却说找不到"。
+        val read = ReadScript.READ
+        assertTrue(read, read.contains(HtmlToMarkdown.jsStr(BrowserJs.LIST_SELECTOR)))
+        assertTrue(read, read.contains(BrowserJs.HELPERS))
+
+        val click = InteractScripts.click("text", "下一页", guard = true)
+        assertTrue(click, click.contains(HtmlToMarkdown.jsStr(BrowserJs.CLICK_SELECTOR)))
+        assertTrue(click, click.contains(BrowserJs.HELPERS))
+        // 候选面必须以清单选择器为前缀（先真控件、再文字宽网），保证"看得见就点得到"
+        assertTrue(BrowserJs.CLICK_SELECTOR.startsWith(BrowserJs.LIST_SELECTOR))
+    }
+
+    @Test
+    fun `只读护栏词表在脚本侧与端侧同源`() {
+        // 词表只在 BrowserGuard 定义一次：Kotlin 判定用它，注入脚本的探针也用它
+        val click = InteractScripts.click("text", "确认支付", guard = true)
+        assertTrue(click, click.contains(BrowserGuard.jsWords()))
     }
 }

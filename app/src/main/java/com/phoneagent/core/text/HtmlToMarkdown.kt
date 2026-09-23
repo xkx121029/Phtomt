@@ -10,7 +10,7 @@ package com.phoneagent.core.text
  * 设计要点：
  * - **全程无递归**（显式标签栈），畸形页面 / 千层 div 都不会栈溢出；
  * - **无回溯正则**，一次线性扫描；[MAX_INPUT] 切片 + [MAX_DEPTH] 深度 + [HARD_CAP] 生成上限三重兜底；
- * - 输出与浏览器侧 JS 版（`BrowserScripts.READ`）**同构**：规则表就是下面这几张常量，
+ * - 输出与浏览器侧 JS 版（`feature/browser/script/ReadScript.kt`）**同构**：规则表就是下面这几张常量，
  *   JS 脚本由 [jsSet]/[jsArr]/[jsStr] 插值生成，从根上杜绝"两侧规则漂移"。
  *
  * 与 JS 侧**唯一允许的两处差异**（其余必须逐条一致）：
@@ -59,7 +59,7 @@ object HtmlToMarkdown {
      * `head` 也在其中——它只有元信息，正文转换前会先把 title/base/canonical/og:url 抽走。
      *
      * **`html` 与 `body` 绝不在此表**：它们是正文的容器，丢它们等于丢整篇（曾被误列入，
-     * 导致整页转出空 Markdown，[BrowserScripts.READ] 从 `body` 起步会当场空手而归）。
+     * 导致整页转出空 Markdown，`ReadScript.READ` 从 `body` 起步会当场空手而归）。
      */
     const val DROP_RULE =
         "script style noscript template svg canvas iframe object embed audio video map area " +
