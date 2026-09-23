@@ -82,11 +82,12 @@ class IntentResolver {
         val y = if (elem.ratioY != null) (elem.ratioY!! * h).toInt() else elem.centerY
         return ResolvedTarget(element = elem, x = x, y = y)
     }
+}
 
-    private fun labelContains(elem: UiElement, value: String): Boolean {
-        val label = elem.effectiveLabel() ?: return false
-        return label.contains(value, ignoreCase = true)
-    }
+/** 元素标签是否包含目标文字（忽略大小写） */
+internal fun labelContains(elem: UiElement, value: String): Boolean {
+    val label = elem.effectiveLabel() ?: return false
+    return label.contains(value, ignoreCase = true)
 }
 
 /**
