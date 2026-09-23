@@ -3511,11 +3511,20 @@ class AgentEngine(
 
     /**
      * 规划提示词用的已安装应用清单，让计划贴近真实环境。
-     * **必须给全，不能截断**：提示词里写着「目标应用未安装 → 澄清或 give_up」，
+     * **不能静默截断**：提示词里写着「目标应用未安装 → 澄清或 give_up」，
      * 清单一旦漏项，AI 就会把已装的应用判成"没装"，进而反问用户或直接放弃。
+     * 所以上限只用来兜住极端设备（几百个应用），真被截断时必须在清单里写明并给出补救用法。
      */
-    private fun installedAppList(): String =
-        queryLauncherApps().joinToString("、")
+    private fun installedAppList(): String {
+        val apps = queryLauncherApps()
+        val shown = apps.take(MAX_DEVICE_QUERY_APPS)
+        return buildString {
+            append(shown.joinToString("、"))
+            if (shown.size < apps.size) {
+                append("\n（此处仅列出前 ${shown.size} 个，本机共 ${apps.size} 个；确认某个应用是否安装可用 device_query kind=apps 配合 filter 查）")
+            }
+        }
+    }
 
     /** 已安装可启动应用：`应用名(包名)` 列表，按名称排序（查询一次，供清单与计数复用） */
     private fun queryLauncherApps(): List<String> {
