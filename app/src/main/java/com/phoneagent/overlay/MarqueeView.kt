@@ -10,14 +10,13 @@ import android.graphics.Shader
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.min
 
 /**
  * 底部跑马灯面板：圆角胶囊 + 单行状态文字向左匀速滚动。
  *
  * 它是**独立窗口的根视图**（不挂在任务卡片里）：浮在屏幕底边之上、任务期间常驻，显示 AI 当前动作简述。
  * 长宽随内容自适应——宽 = 文字宽 + 左右内边距（超过屏幕可用宽就封顶并开始滚动），
- * 高 = 文字高 + 上下内边距（内边距由设置里的「跑马灯厚度」滑块控制）。
+ * 高 = 文字高 + 上下内边距（内边距由设置里的「内边距」滑块控制）。
  * 底色是不透明实色——浮窗压在别的 App 上，半透明白会让文字随时失去对比度。
  *
  * 几个刻意为之的地方（都是踩过的坑）：
@@ -51,7 +50,7 @@ class MarqueeView @JvmOverloads constructor(
     private var bgGradient: LinearGradient? = null
     private val panel = RectF()
 
-    /** 跑马灯色带颜色（按顺序组成渐变，可在设置中自定义，默认蓝→紫→粉） */
+    /** 面板底色渐变颜色（按顺序组成渐变，可在设置中自定义，默认蓝→紫→粉） */
     private var gradientColors = listOf(
         Color.rgb(0x4f, 0xa3, 0xff),
         Color.rgb(0x9b, 0x5c, 0xff),
@@ -114,7 +113,7 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 设置跑马灯色带颜色（至少 2 色，按顺序组成循环渐变） */
+    /** 设置面板底色渐变颜色（至少 2 色，按顺序组成循环渐变） */
     fun setColors(colors: List<Int>) {
         val list = if (colors.size >= 2) colors
             else listOf(
@@ -127,7 +126,7 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 背景色带：用户颜色序列柔化（向白色混合）作底色，随窗口尺寸重建 */
+    /** 背景渐变：用户颜色序列柔化（向白色混合）作底色，随窗口尺寸重建 */
     private fun buildBgGradient() {
         if (width <= 0 || gradientColors.isEmpty()) return
         val soft = gradientColors.map { c ->
