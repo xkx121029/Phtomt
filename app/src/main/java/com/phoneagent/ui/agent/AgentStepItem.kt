@@ -31,8 +31,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.looksLikeMarkdown
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
@@ -279,7 +281,13 @@ private fun CommandBlock(command: String, output: String) {
     }
 }
 
-/** 折叠区里的原始数据块：下沉底色 + 限高，避免超长文本把列表项撑成整屏 */
+/**
+ * 折叠区里的原始数据块：下沉底色，避免超长文本把列表项撑成整屏。
+ *
+ * 正文带 Markdown 结构（如发给模型的上下文：`#` 章节 + `-` 条目 + 逐行元素树）时按 Markdown 排版，
+ * 并保留原始换行——否则元素树会被软换行连成一整段，反而比纯文本更难读；
+ * 不像 Markdown 的（如决策 JSON）仍按纯文本限行显示。
+ */
 @Composable
 private fun RawBlock(title: String, body: String) {
     val colors = AppTheme.colors
@@ -296,13 +304,21 @@ private fun RawBlock(title: String, body: String) {
             color = colors.onSurfaceRaised,
         )
         Spacer(Modifier.height(AppSpacing.Xs))
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 60,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (looksLikeMarkdown(body)) {
+            MarkdownPreview(
+                content = body,
+                modifier = Modifier.fillMaxWidth(),
+                keepLineBreaks = true,
+            )
+        } else {
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 60,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

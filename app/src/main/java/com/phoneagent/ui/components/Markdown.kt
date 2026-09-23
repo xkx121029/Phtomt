@@ -56,6 +56,8 @@ import java.io.File
  * 解析器为本地确定性实现，不依赖第三方库。
  *
  * [maxLines] 非空时限行并省略（流式回显只贴尾部若干行）；为 null 时行为与不限行完全一致。
+ * [keepLineBreaks] 为 true 时保留正文里的单次换行（每行照排，不按 Markdown 软换行拍平）——
+ * 提示词、页面元素树这类"一行一条"的文本需要它，否则会被连成一大段。
  */
 @Composable
 fun MarkdownPreview(
@@ -63,6 +65,7 @@ fun MarkdownPreview(
     modifier: Modifier = Modifier,
     baseDir: String? = null,
     maxLines: Int? = null,
+    keepLineBreaks: Boolean = false,
 ) {
     if (content.isBlank()) {
         Text("（空文档）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -80,7 +83,7 @@ fun MarkdownPreview(
         )
         return
     }
-    val blocks = remember(content, baseDir) { parseBlocks(content) }
+    val blocks = remember(content, baseDir, keepLineBreaks) { parseBlocks(content, keepLineBreaks) }
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEach { b ->
             when (b) {
@@ -201,8 +204,13 @@ private sealed interface MdB {
     object Rule : MdB
 }
 
-/** 把 markdown 文本解析为渲染块列表 */
-private fun parseBlocks(text: String): List<MdB> {
+/**
+ * 把 markdown 文本解析为渲染块列表。
+ *
+ * [keepLineBreaks] 为 true 时，连续普通行的单次换行原样保留（同一段内用 \n 分行），
+ * 而不是按 Markdown 软换行合成一行；默认 false，与历史行为完全一致。
+ */
+private fun parseBlocks(text: String, keepLineBreaks: Boolean = false): List<MdB> {
     val out = mutableListOf<MdB>()
     val lines = text.replace("\r\n", "\n").split("\n")
     var i = 0
@@ -256,7 +264,7 @@ private fun parseBlocks(text: String): List<MdB> {
 
         // 普通文本：若在列表后则先结束列表
         flushBullets()
-        if (para.isNotEmpty()) para.append(' ')
+        if (para.isNotEmpty()) para.append(if (keepLineBreaks) '\n' else ' ')
         para.append(rawLine.trim())
         i++
     }
