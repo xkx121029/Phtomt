@@ -33,6 +33,8 @@ import kotlin.coroutines.resume
 class AgentAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val TAG = "AgentA11y"
+
         @Volatile
         var instance: AgentAccessibilityService? = null
             private set
