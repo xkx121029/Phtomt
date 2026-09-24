@@ -132,23 +132,44 @@ watch(() => route.fullPath, () => {
 </template>
 
 <style scoped>
+/* 离屏边缘的距离：滚动离顶后整条导航缩进这么多，从「贴边横杠」变成一块悬空的板 */
 .head {
+  --head-lift: 12px;
   position: fixed;
-  inset: 0 0 auto;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 60;
   height: 66px;
-  border-bottom: 1px solid transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-float);
   transition:
+    top var(--dur-ui) var(--ease-out),
+    left var(--dur-ui) var(--ease-out),
+    right var(--dur-ui) var(--ease-out),
     background-color var(--dur-ui) ease,
     border-color var(--dur-ui) ease,
+    box-shadow var(--dur-ui) ease,
     -webkit-backdrop-filter var(--dur-ui) ease,
     backdrop-filter var(--dur-ui) ease;
 }
 
 /* 只在滚动后才上玻璃：停在顶部时让点阵背景透上来，画面才连成一片。
-   配方（底色 / 模糊 / 描边）都在 base.css 的 .glass 里，这里只决定「什么时候用」。 */
+   配方（底色 / 模糊 / 描边）都在 base.css 的 .glass 里，这里只决定「什么时候用」。
+   上玻璃的同时脱离上缘与左右边缘、圆角加到 --r-float，并补一道投影——
+   投影在这套体系里专管「浮起」（见 tokens.css 的层次注释），正好是此刻要说的意思。 */
 .head.glass {
-  border-bottom-color: var(--glass-line);
+  top: var(--head-lift);
+  left: var(--head-lift);
+  right: var(--head-lift);
+  border-color: var(--glass-line);
+  box-shadow: var(--shadow-2);
+}
+
+/* 整条缩进之后，内层要少让一圈同等的宽，左右才与正文落在同一条竖线上。
+   （宽屏时版心本来就窄于容器，居中即可对齐，这条只在窄屏生效） */
+.head.glass .head__inner {
+  width: min(var(--page), calc(100% - var(--gutter) * 2 + var(--head-lift) * 2));
 }
 
 /* 停在顶部时不留高光：此时导航是透明的，一条亮带会凭空浮在点阵背景上 */

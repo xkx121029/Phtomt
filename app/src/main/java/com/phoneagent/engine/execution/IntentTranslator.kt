@@ -382,6 +382,91 @@ internal class TermuxFetchStrategy(
 }
 
 /**
+ * 自由模式：AI 自写命令策略（仅自由模式）。
+ *
+ * 与 [TermuxFetchStrategy] 的区别很关键：那条链路的命令由**端侧拼装**（AI 只给 uri），
+ * 这里则是 AI 亲自写命令原文 —— 因此产物打上 [AgentAction.aiAuthored]，
+ * 执行层据此在本任务首次执行前向用户确认一次（用户既然选了自由模式，就由用户把最后一道关）。
+ *
+ * 本策略不选通道：shizuku / 无线 ADB / Termux 由执行层的既有通道决策负责，AI 无感知。
+ */
+internal class ShellCommandStrategy(
+    private val actionMode: () -> ActionMode,
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        // 纵深防御：主门控在 AgentEngine，这里再自检一次，防止绕过门控直接调转译层
+        val verdict = ActionPolicy.allows(actionMode(), IntentType.SHELL)
+        if (verdict is ActionPolicy.Verdict.Denied) return IntentTranslator.TranslationResult.Failed(verdict.reason)
+        val cmd = intent.command?.trim().orEmpty()
+        if (cmd.isBlank()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "command",
+                reason = "AI 输出了 shell 但未提供 command（要执行的命令原文）。请补全 command，" +
+                    "例如 {\"intent\":\"shell\",\"command\":\"pm list packages | grep 相机\"}。",
+            )
+        }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.SHELL,
+                command = cmd,
+                // AI 亲自书写 → 本任务首次执行前需用户确认一次
+                aiAuthored = true,
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+}
+
+/**
+ * 自由模式：无障碍端点直调策略（仅自由模式）。
+ *
+ * 这是"转译层够不着时的最后手段"——AI 直接点名一个 [A11yEndpoint] 并给出参数。
+ * 端点名与参数键都必须在 [ActionPolicy.a11yEndpoints] 白名单内，越界即失败并回报可选清单，
+ * 杜绝"AI 凭印象写一个端点名"这种无处可查的调用。
+ */
+internal class A11yEndpointStrategy(
+    private val actionMode: () -> ActionMode,
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val verdict = ActionPolicy.allows(actionMode(), IntentType.A11Y)
+        if (verdict is ActionPolicy.Verdict.Denied) return IntentTranslator.TranslationResult.Failed(verdict.reason)
+
+        val name = intent.endpoint?.trim()?.lowercase().orEmpty()
+        if (name.isBlank()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "endpoint",
+                reason = "AI 输出了 a11y 但未提供 endpoint（要调用的无障碍端点名）。可选端点：" +
+                    ActionPolicy.a11yEndpoints.joinToString("/") { it.name } + "。",
+            )
+        }
+        val endpoint = ActionPolicy.endpointOf(name)
+            ?: return IntentTranslator.TranslationResult.Failed(
+                "无障碍端点「$name」不存在；可选端点：" +
+                    ActionPolicy.a11yEndpoints.joinToString("/") { it.name } + "。",
+            )
+        // 参数键不设白名单（部分端点的参数本就随场景变化），但必填项必须给全
+        val args = intent.args.orEmpty().filterKeys { it != "endpoint" }
+        val missing = endpoint.requiredArgs.filter { args[it].isNullOrBlank() }
+        if (missing.isNotEmpty()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "args.${missing.first()}",
+                reason = "端点「${endpoint.name}」缺少必填参数：${missing.joinToString("、")}；" +
+                    "它需要 ${endpoint.argsText()}（${endpoint.description}）。请把参数写进 args 对象，" +
+                    "例如 {\"intent\":\"a11y\",\"endpoint\":\"${endpoint.name}\",\"args\":{...}}。",
+            )
+        }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.A11Y_CALL,
+                endpoint = endpoint.name,
+                args = args.ifEmpty { null },
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+}
+
+/**
  * 意图转译器（对应 HPA动作执行逻辑优化文档 v2.1 四、IntentTranslator）。
  *
  * 策略化拆分：把 AI 的"意图"（做什么）转译为端侧可执行的"命令"（怎么做）。
@@ -389,6 +474,8 @@ internal class TermuxFetchStrategy(
  * - 每个意图类型由一颗独立的 [IntentTranslationStrategy] 处理，便于扩展与单测；
  * - 目标定位交由 [IntentResolver]，应用名→包名交由 [AppNameResolver]；AI 对通道选择与坐标完全无感知。
  * - 只读（READONLY）模式作为横切约束统一拦截，不在各策略里各自实现。
+ * - 动作模式（[ActionMode]）的**主门控在 AgentEngine**（它同时覆盖 browse_* 这条不走转译层的通道）；
+ *   这里传入 [actionMode] 仅供自由模式专属策略做纵深防御自检。
  */
 class IntentTranslator(
     private val capabilityManager: CapabilityManager,
@@ -396,6 +483,8 @@ class IntentTranslator(
     private val intentResolver: IntentResolver,
     /** 当前是否具备 Termux 命令行通道（普通应用权限）；由调用方注入，转译层据此决定 fetch 能否落地 */
     private val termuxAvailable: () -> Boolean = { false },
+    /** 当前动作模式（自由模式专属意图的纵深防御自检；主门控在 AgentEngine） */
+    private val actionMode: () -> ActionMode = { ActionMode.DEFAULT },
 ) {
 
     /** 转译结果 */
@@ -461,6 +550,9 @@ class IntentTranslator(
         put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.DELETE, SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, irreversible = true, intentResolver = intentResolver))
+        // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly）----
+        put(IntentType.SHELL, ShellCommandStrategy(actionMode))
+        put(IntentType.A11Y, A11yEndpointStrategy(actionMode))
     }
 
     /**

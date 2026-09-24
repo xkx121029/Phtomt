@@ -128,6 +128,8 @@ class MainViewModel(
                 "clarify" -> answerClarification(com.phoneagent.domain.model.ClarificationOption(id = payload, label = payload, description = payload))
                 "hint" -> provideUserHint(payload)
                 "dismiss" -> dismissUser()
+                // 自由模式：AI 自写命令的首次确认（与 hint/dismiss 分开，见 engine.resolveShellApproval 的说明）
+                "shell_approve" -> resolveShellApproval(payload == "yes")
                 // 任务完成：用户确认是否保存执行模板（主动确认才入库）
                 "save_template" -> engine.confirmSaveTemplate(payload == "yes")
                 // 关闭悬浮窗 → 同步停止正在运行的任务
@@ -156,6 +158,10 @@ class MainViewModel(
     fun clearDebug() = engine.clearDebug()
     fun provideUserHint(hint: String) = engine.provideUserHint(hint)
     fun dismissUser() = engine.dismissUser()
+
+    /** 正在等待用户确认的 AI 自写命令（null = 没有待确认项）；驱动 App 内协助面板的「批准执行 / 拒绝」 */
+    val pendingShellCommand: StateFlow<String?> = engine.pendingShellCommand
+    fun resolveShellApproval(approve: Boolean) = engine.resolveShellApproval(approve)
 
     private val _a11yEnabled = MutableStateFlow(false)
     val a11yEnabled: StateFlow<Boolean> get() = _a11yEnabled.asStateFlow()
@@ -396,6 +402,10 @@ class MainViewModel(
     }
     fun resumeFromCheckpoint() = engine.resumeFromCheckpoint()
     suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? = engine.lastCheckpoint()
+    /** 清除长线任务的续传检查点（不影响任务模板） */
+    fun clearCheckpoint(context: Context) {
+        viewModelScope.launch { runCatching { com.phoneagent.data.store.TaskStore.clearCheckpoint(context) } }
+    }
     suspend fun loadTemplates(context: Context): List<com.phoneagent.data.store.TaskTemplate> =
         runCatching { com.phoneagent.data.store.TaskStore.loadTemplates(context) }.getOrDefault(emptyList())
     fun deleteTemplate(context: Context, id: String) {

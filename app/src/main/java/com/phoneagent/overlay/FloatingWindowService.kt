@@ -56,9 +56,15 @@ import com.phoneagent.ui.MainActivity
  *   实时显示 AI 意向/任务状态；长宽随文字自适应，文字超出一屏才滚动。
  * - **任务卡片**：300dp 宽、可拖动的小卡片，承载标题/步骤/详情/交互，高度随内容自适应。
  *
- * 视觉：任务卡片用「品牌色半透明 + 背景模糊」的毛玻璃（玄青 85% 不透明度 + 窗口
- *       blurBehindRadius，见 [applyBlurBehind]）；跑马灯仍是不透明实色（它只显示文字，
- *       半透明会让文字随时失去对比度）。
+ * 视觉：任务卡片用玄青 85% 不透明度的半透明底（[FloatingUi.BRAND_GLASS]）+ 发丝描边；
+ *       跑马灯仍是不透明实色（它只显示文字，半透明会让文字随时失去对比度）。
+ *
+ *       卡片**刻意不开** `blurBehindRadius`（曾开过，是 bug 的来源）：它糊的是"窗口背后的
+ *       整块屏幕"，而不是卡片那 300dp 见方——框架文档写得很明确：*Blur behind blurs the
+ *       whole screen behind the window*，只有 `Window#setBackgroundBlurRadius` 才是"只糊
+ *       窗口自身范围"。真机上表现为任务一跑整屏发灰，卡片只是这块灰里颜色更深的一小块。
+ *       而悬浮窗是用 WindowManager 直接加 View 的，没有 `Window` 对象，
+ *       拿不到 `setBackgroundBlurRadius`——"只糊卡片"没有公开 API 可走，索性不糊。
  * 尺寸：卡片宽度固定，高度 WRAP_CONTENT——默认只占"头部 + 状态行"两行；
  *       AI 详情默认折叠，用户点开才占位，避免长任务时窗口越撑越大。
  * 交互：等待批准（批准/取消）、歧义澄清（选项按钮）、需要指导（输入框+按钮），
@@ -344,8 +350,9 @@ class FloatingWindowService : Service() {
                 // 清空后窗口坐标系才真正从物理屏顶开始，y = 0 贴顶、负 y 出屏才有意义。
                 fitInsetsTypes = 0
             }
-            // 卡片是半透明的，配上这层背景模糊才是毛玻璃（不支持时自动跳过）
-            applyBlurBehind(this)
+            // 这里曾调用 applyBlurBehind()：blurBehindRadius 会把整块屏幕糊掉（不只是卡片），
+            // 任务一跑整屏发灰。悬浮窗又没有 Window 对象，拿不到"只糊窗口范围"的
+            // Window#setBackgroundBlurRadius，所以卡片就只是一块半透明品牌色。
         }
         root = layout
         // 真实投影：让卡片浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
@@ -360,25 +367,6 @@ class FloatingWindowService : Service() {
         } catch (_: Exception) {}
         showMarquee()
         showSheetWindow()
-    }
-
-    /**
-     * 给任务卡片窗口打开背景模糊——毛玻璃的另一半（卡片那半是 [FloatingUi.BRAND_GLASS] 的半透明底）。
-     *
-     * 模糊由 SurfaceFlinger 做：窗口设了 [WindowManager.LayoutParams.blurBehindRadius] 之后，
-     * 系统会把窗口背后的内容（别的 App 的画面）做高斯模糊，半透明的卡片才透出一层磨砂底图。
-     * 两个前提缺一不可，缺了就是高不透明度实色卡片，不会崩也不会报错：
-     * 1. Android 12+（`blurBehindRadius` 是 API 31 才有的字段）；
-     * 2. 系统跨窗口模糊是开着的（省电模式、无障碍里的"降低透明度"都会把它关掉）。
-     *
-     * 刻意不去查 `WindowManager.isCrossWindowBlurEnabled()`：SDK 存根把它声明成了实例方法
-     * （javap 可见 ACC_PUBLIC 无 ACC_STATIC），Kotlin 里静态调用编译不过；而且查了也不改变行为——
-     * 模糊被系统关掉时框架直接忽略这个半径，卡片退化成 85% 品牌色，本来就压得住白字。
-     */
-    private fun applyBlurBehind(lp: WindowManager.LayoutParams) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-        lp.blurBehindRadius = dp(FloatingUi.GLASS_BLUR)
     }
 
     /**
@@ -620,11 +608,10 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // 卡片底色：品牌色半透明毛玻璃（玄青 85%）。
-        // 卡片自己只负责"半透明"，真正把底图糊掉的是窗口的背景模糊（见 [applyBlurBehind]）——
-        // SurfaceFlinger 对窗口背后的内容做高斯模糊，半透明的卡片才透出一层磨砂底。
-        // 两者必须配套：只加半透明不加模糊，透出来的是清晰底图，文字对比度会随底图乱跳；
-        // 模糊不可用时（Android 12 以下 / 系统关了跨窗口模糊）则退化成高不透明度实色卡片。
+        // 卡片底色：玄青 85% 不透明度的半透明底 + 发丝描边。
+        // **没有背景模糊**——卡片曾经配过窗口的 blurBehindRadius，但那个 API 糊的是整块屏幕，
+        // 不是卡片这 300dp 见方（见类注释）；悬浮窗拿不到"只糊窗口范围"的 setBackgroundBlurRadius。
+        // 留着半透明是因为它仍有层次：透出来的底图是清晰的原样，不是磨砂。
         panel.background = FloatingUi.capsule(
             dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
             FloatingUi.BRAND_GLASS,
@@ -1340,6 +1327,12 @@ class FloatingWindowService : Service() {
                 }
                 "guide" -> {
                     showHintInput()
+                }
+                "shellconfirm" -> {
+                    // 自由模式：AI 自写命令的首次确认。批准后本任务内不再问；
+                    // 拒绝只针对本任务，不影响设置里的动作模式档位。
+                    addBtn(interactButtons, "批准执行", true) { onInteraction?.invoke("shell_approve", "yes") }
+                    addBtn(interactButtons, "拒绝", false) { onInteraction?.invoke("shell_approve", "no") }
                 }
             }
             showSheet()

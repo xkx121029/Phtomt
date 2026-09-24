@@ -272,7 +272,7 @@ object ShellCommands {
 | clip | — | 剪贴板内容 |
 | raw | 完整ADB命令 | 直接透传（兜底） |
 
-示例: {"type":"shell","command":"tap 500 800","reasoning":"点击搜索框","expected":"搜索框获焦","confidence":0.9}
+示例: {"intent":"shell","command":"tap 500 800","reasoning":"点击搜索框","expected":"搜索框获焦","confidence":0.9}
 
 注意：command 若直接写裸包名（如 com.tencent.mm）会被自动补全为实际动作 launch（启动该应用）。"""
         else -> """# Friendly Commands (use in command field)
@@ -302,7 +302,7 @@ object ShellCommands {
 | clip | — | Clipboard content |
 | raw | raw ADB command | Passthrough (fallback) |
 
-Example: {"type":"shell","command":"tap 500 800","reasoning":"tap search box","expected":"search focused","confidence":0.9}
+Example: {"intent":"shell","command":"tap 500 800","reasoning":"tap search box","expected":"search focused","confidence":0.9}
 
 Note: if command is a bare package name (e.g. com.tencent.mm), it is auto-prefixed with the actual action `launch` (launches the app)."""
     }

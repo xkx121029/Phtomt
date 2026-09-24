@@ -38,6 +38,7 @@ import com.composables.icons.lucide.ListTodo
 import com.composables.icons.lucide.LoaderCircle
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Maximize
+import com.composables.icons.lucide.Menu
 import com.composables.icons.lucide.MousePointerClick
 import com.composables.icons.lucide.Pencil
 import com.composables.icons.lucide.Play
@@ -105,6 +106,8 @@ object AppIcons {
     val Reorder: ImageVector get() = Lucide.GripVertical
     val FilterList: ImageVector get() = Lucide.ListFilter
     val More: ImageVector get() = Lucide.EllipsisVertical
+    /** 三横线 / 抽屉入口（原 Icons.Rounded.Menu） */
+    val Menu: ImageVector get() = Lucide.Menu
 
     // ── 运行控制 ────────────────────────────────────────────────
     val Play: ImageVector get() = Lucide.Play

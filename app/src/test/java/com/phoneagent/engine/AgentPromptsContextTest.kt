@@ -1,5 +1,7 @@
 package com.phoneagent.engine
 
+import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.ActionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -73,5 +75,71 @@ class AgentPromptsContextTest {
         val text = AgentPrompts.sessionContext(PromptLang.CN, previous, followUp = false)
         assertFalse(text.contains("追问"))
         assertTrue(text.contains("独立任务"))
+    }
+
+    // ---- 动作模式（授权范围）提示词 ----
+
+    @Test
+    fun `保守模式列出低风险清单并声明其余被拒`() {
+        val text = AgentPrompts.actionModeSection(PromptLang.CN, ActionMode.CONSERVATIVE)
+        assertTrue(text.contains("保守"))
+        assertTrue("应列出低风险意图", text.contains("refresh"))
+        assertTrue("应提供换档指路", text.contains("均衡"))
+        // 自由模式专属内容不该出现在保守档
+        assertFalse(text.contains("intent=shell"))
+        assertFalse(text.contains("click_node"))
+    }
+
+    @Test
+    fun `均衡模式声明全意图可用但不含自由专属`() {
+        val text = AgentPrompts.actionModeSection(PromptLang.CN, ActionMode.BALANCED)
+        assertTrue(text.contains("全部意图"))
+        assertTrue(text.contains("自由模式"))
+        assertFalse(text.contains("intent=a11y"))
+    }
+
+    @Test
+    fun `自由模式给出命令表与端点全表`() {
+        val text = AgentPrompts.actionModeSection(PromptLang.CN, ActionMode.FREE)
+        assertTrue("应带上友好命令表", text.contains("友好命令"))
+        assertTrue("应说明首次确认", text.contains("确认"))
+        // 端点表必须与白名单同源：逐个端点都应在提示词里出现
+        ActionPolicy.a11yEndpoints.forEach {
+            assertTrue("提示词缺少端点 ${it.name}", text.contains(it.name))
+        }
+    }
+
+    @Test
+    fun `自由模式铁律二放开自写命令_其余档位仍然禁止`() {
+        val free = AgentPrompts.system(PromptLang.CN, "", hasVision = true, shizukuAvailable = true, actionMode = ActionMode.FREE)
+        assertTrue("自由档应明确允许 shell 与 a11y", free.contains("intent=shell") && free.contains("intent=a11y"))
+
+        val balanced = AgentPrompts.system(PromptLang.CN, "", hasVision = true, shizukuAvailable = true)
+        assertTrue("默认档位仍禁止输出 shell 命令", balanced.contains("禁止输出 shell 命令"))
+    }
+
+    @Test
+    fun `自定义提示词也照样追加授权范围一段`() {
+        // 用户自定义系统提示不该成为"绕过门控说明书"的口子
+        val text = AgentPrompts.system(
+            PromptLang.CN, "自定义", hasVision = false, shizukuAvailable = false,
+            actionMode = ActionMode.CONSERVATIVE,
+        )
+        assertTrue(text.startsWith("自定义"))
+        assertTrue(text.contains("动作模式"))
+    }
+
+    @Test
+    fun `英文档位提示词不混入中文`() {
+        val conservative = AgentPrompts.actionModeSection(PromptLang.EN, ActionMode.CONSERVATIVE)
+        assertTrue(conservative.contains("Action Mode"))
+        assertTrue(conservative.contains("Conservative"))
+        assertFalse(conservative.contains("动作模式"))
+
+        // 自由档内容最多（命令表 + 端点全表 + 示例），是英文提示词最容易被污染的一档
+        val free = AgentPrompts.actionModeSection(PromptLang.EN, ActionMode.FREE)
+        assertTrue(free.contains("Free"))
+        val cjk = free.filter { it.code in 0x4E00..0x9FFF }.take(20)
+        assertFalse("英文提示词混入中文字符：$cjk", free.any { it.code in 0x4E00..0x9FFF })
     }
 }

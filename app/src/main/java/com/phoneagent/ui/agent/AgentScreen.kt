@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -51,10 +52,13 @@ import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.HeaderLiftAmount
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.components.headerLift
 import com.phoneagent.ui.components.rememberGlassState
+import com.phoneagent.ui.components.rememberHeaderLiftState
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -68,13 +72,20 @@ import kotlinx.coroutines.launch
 
 /**
  * 顶栏与输入区两块玻璃板距屏幕左右（顶栏还含上缘）的外边距。
- * 内层内容的留白要从这个值里减出来（见 [AgentGlassInnerPad]），
- * 这样面板退到屏幕里之后，里面的文字与卡片位置一个像素都没动。
+ * 面板里的内容还要再让出 [AgentGlassInnerPad]——这段外边距只管"面板离屏幕多远"，
+ * 面板边框与内容之间得有自己的一圈呼吸感，不能靠它充数。
  */
 internal val AgentGlassInset = AppSpacing.Md
 
-/** 底部玻璃板内层内容的左右留白：补上外边距，屏幕上仍是原来的 16dp */
-internal val AgentGlassInnerPad = AppSpacing.Lg - AgentGlassInset
+/**
+ * 底部玻璃板内层内容的左右留白，与 [AgentComposer] 自己的上下留白同为 [AppSpacing.Md]：
+ * 内层输入框距面板边框 12dp，面板四周的"壁厚"才均匀。
+ *
+ * 原先取 [AppSpacing.Lg] - [AgentGlassInset] = 4dp（想把面板退进去的那 16dp 补回来），
+ * 结果是「审核 AI」首字和输入框左边框一起贴在面板边线上——等于没有留白，
+ * 而同一个容器的上下留白却是 12dp，横竖不对称。
+ */
+internal val AgentGlassInnerPad = AppSpacing.Md
 
 /**
  * Agent 页：固定的顶栏 + 输入区夹着一条可滚动的任务流。
@@ -89,12 +100,15 @@ fun AgentScreen(
     modifier: Modifier = Modifier,
     /** 打开全屏记忆页（原底部「记忆」Tab 已并入 Agent 页） */
     onOpenMemory: () -> Unit = {},
+    /** 任务抽屉开合变化：抽屉是盖住整页的，打开时外层要让悬浮导航栏让位，别浮在抽屉上 */
+    onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
     val colors = AppTheme.colors
 
     val agent by vm.agentState.collectAsState()
     val queue by vm.taskQueue.collectAsState()
     val needsUser by vm.needsUser.collectAsState()
+    val pendingShellCommand by vm.pendingShellCommand.collectAsState()
     val a11yEnabled by vm.a11yEnabled.collectAsState()
     val planPhase by vm.planPhase.collectAsState()
     val traces by vm.traces.collectAsState()
@@ -109,6 +123,10 @@ fun AgentScreen(
     var submittedTask by rememberSaveable { mutableStateOf("") }
     var previewVisible by rememberSaveable { mutableStateOf(false) }
     var drawerOpen by remember { mutableStateOf(false) }
+    // 抽屉从左侧拉出时盖住整页，外层据此收掉悬浮导航栏（否则它会浮在抽屉上面）。
+    // 离开本页时（组合被回收）必须复位，否则导航栏会一直藏着。
+    LaunchedEffect(drawerOpen) { onDrawerOpenChange(drawerOpen) }
+    DisposableEffect(Unit) { onDispose { onDrawerOpenChange(false) } }
     // 侧边栏里选中的任务；-1 = 跟随实时（最新一次执行 + 正在进行的规划）。
     // 新建任务时一律复位到这里，保证「新建任务打开的是新任务」而不是接着看旧的。
     var selectedTaskId by rememberSaveable { mutableStateOf(-1L) }
@@ -176,6 +194,18 @@ fun AgentScreen(
     // 澄清不走这里——提问与选项已经由输入栏承载，浮层再浮一次就是第三个入口
     val clarifyPhase = planPhase as? PlanPhase.Clarifying
     val assist = when {
+        // 自由模式的首次自写命令确认：与「协助」互不影响（各自独立信箱），
+        // 但确认是"卡住任务"的一环，优先展示，避免用户先看到协助面板而漏掉确认
+        pendingShellCommand != null -> AssistSpec(
+            title = "确认执行命令",
+            message = "AI 在自由模式下写了一条命令，需要你确认后才会真正执行（批准后本次任务内不再询问）：\n${pendingShellCommand}",
+            options = listOf(
+                ClarificationOption(id = "approve", label = "批准执行", description = "本任务内不再询问"),
+                ClarificationOption(id = "reject", label = "拒绝", description = "AI 会换一种做法继续"),
+            ),
+            allowManualHandle = false,
+            isShellApproval = true,
+        )
         needsUser -> AssistSpec(
             title = "需要你的协助",
             message = agent.message,
@@ -237,10 +267,14 @@ fun AgentScreen(
         if (follow && visibleItems.isNotEmpty()) listState.animateScrollToItem(visibleItems.lastIndex)
     }
 
+    // 任务流滚了多远在这里汇总：顶栏据此从"吸顶横杠"浮成一块悬空的板
+    val headerLift = rememberHeaderLiftState()
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase),
+            .background(colors.surfaceBase)
+            .headerLift(headerLift),
     ) {
         // 顶栏与底部输入区改为浮在任务流之上的毛玻璃层：
         // 任务流真正从它们下方穿过，模糊才有东西可模糊。
@@ -300,16 +334,18 @@ fun AgentScreen(
         // 顶部玻璃浮层：四角全圆的浮动卡片。贴着屏幕上缘只圆下面两角时，
         // 剩下两个直角会与状态栏白条拼成一条硬边，读起来像"没画完"；
         // 退到屏幕里一点、四角同半径，才是一块完整的浮起面板。
+        // 停在顶部时它是吸顶横杠，任务流一滚就脱开上缘再让一口气——
+        // 那口气加上比底部输入区更圆的 R 角，才撑得住"悬在内容上方"的读法。
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(AppRadii.Hero),
+            shape = RoundedCornerShape(AppRadii.Header),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .padding(
                     start = AgentGlassInset,
                     end = AgentGlassInset,
-                    top = AgentGlassInset,
+                    top = AgentGlassInset + HeaderLiftAmount * headerLift.progress,
                 )
                 .onSizeChanged { headerHeight = it.height },
         ) {
@@ -317,7 +353,6 @@ fun AgentScreen(
                 AgentHeaderBar(
                     running = agent.isRunning,
                     runningTask = agent.task,
-                    taskCount = sessions.size,
                     onOpenTasks = { drawerOpen = true },
                     onOpenMemory = onOpenMemory,
                 )
@@ -442,10 +477,12 @@ fun AgentScreen(
                             message = spec.message,
                             options = spec.options,
                             allowManualHandle = spec.allowManualHandle,
+                            allowFreeText = !spec.isShellApproval,
                             draft = draft,
                             onDraftChange = { draft = it },
                             onPickOption = { option ->
-                                vm.answerClarification(option)
+                                if (spec.isShellApproval) vm.resolveShellApproval(option.id == "approve")
+                                else vm.answerClarification(option)
                                 draft = ""
                             },
                             onSubmitText = { text ->
@@ -551,6 +588,8 @@ private data class AssistSpec(
     val message: String,
     val options: List<ClarificationOption>,
     val allowManualHandle: Boolean,
+    /** 自写命令确认：选项走 resolveShellApproval，且不给自由输入（输入的内容无处可去） */
+    val isShellApproval: Boolean = false,
 )
 
 /** 单个任务流列表项。抽成独立函数避免 LazyColumn 的 item 块过长 */

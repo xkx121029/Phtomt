@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import com.phoneagent.device.a11y.ActionExecutor
 import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.device.a11y.NodeSelector
 import com.phoneagent.core.ai.AiClient
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
@@ -20,6 +21,8 @@ import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.domain.rules.LocalDecisionEngine
 import com.phoneagent.domain.rules.SessionContext
 import com.phoneagent.domain.rules.ShellCommands
+import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.AppNameResolver
 import com.phoneagent.engine.execution.CapabilityManager
 import com.phoneagent.engine.execution.ClickRunner
@@ -195,6 +198,13 @@ class AgentEngine(
         /** 连续「技能调用被拒」（未知/停用/缺参）次数上限：达到即收尾，避免 AI 反复白试 */
         private const val MAX_SKILL_ERROR_STREAK = 3
 
+        /**
+         * 连续「被动作模式拒绝」次数上限：达到即收尾。
+         * 保守模式下 AI 若反复尝试点击/输入这类被禁动作，只会把步数耗在无意义的往返上；
+         * 明确停下并告诉用户去换档，比让它空转到 maxSteps 更诚实。
+         */
+        private const val MAX_MODE_DENY_STREAK = 3
+
         /** 连续「浏览器意图缺参」次数上限：达到即收尾，避免 AI 一直输出缺参的 browse_* */
         private const val MAX_BROWSE_MISSING_STREAK = 3
 
@@ -236,7 +246,18 @@ class AgentEngine(
         capabilityManager, appNameResolver, intentResolver,
         // Termux 命令行通道可用性：转译层据此决定 fetch 这类"命令行取数"意图能否落地
         termuxAvailable = { termuxBridge?.isAvailable() == true },
+        // 动作模式：仅用于自由模式专属意图（shell / a11y）在转译层内的纵深防御自检。
+        // 主门控在上面 run() 里——只有那里才能一并覆盖不走转译层的 browse_* 通道。
+        actionMode = { activeActionMode },
     )
+    /**
+     * 本次任务生效的动作模式（保守 / 均衡 / 自由）。
+     *
+     * 每步决策都读它，转译层与门控共用同一个值：一旦两处各取一次设置，
+     * 就会出现"提示词按 A 档说能用、端侧按 B 档拒掉"的错位。
+     */
+    @Volatile
+    private var activeActionMode: ActionMode = ActionMode.DEFAULT
     /**
      * 内置浏览器通道：**与 [intentTranslator] 同级**的独立通道，browse_* 意图在这里落地，
      * 不进转译层策略表。网页读写走本 App 自己的 WebView（DOM 脚本），因此不受无障碍 / Shizuku /
@@ -430,6 +451,28 @@ class AgentEngine(
      * Channel 在无接收者时会把值缓存住，接收者一到就能取走。
      */
     private val userHintMailbox = Channel<String>(Channel.CONFLATED)
+
+    // ---- 自由模式：AI 自写命令的首次确认 ----
+    /**
+     * 本任务内 AI 自写命令的确认状态：null = 还没问过；true = 已批准；false = 已拒绝。
+     * 用户既然选了自由模式，就由用户把最后一道关——但本任务内只问一次（问完记在这里，后续同类命令直接放行/拒掉）。
+     */
+    @Volatile
+    private var shellApprovedForTask: Boolean? = null
+
+    /** 待确认的自写命令；非空表示悬浮窗 / App 内正等着用户点「批准执行 / 拒绝」 */
+    private val _pendingShellCommand = MutableStateFlow<String?>(null)
+    val pendingShellCommand: StateFlow<String?> get() = _pendingShellCommand.asStateFlow()
+
+    /**
+     * 用户对自写命令的答复信箱：单槽 CONFLATED。
+     * 用 Channel 而非 SharedFlow 的理由与 [userHintMailbox] 完全一致——用户抢在等待方订阅之前点按，
+     * 值也必须被缓存住，否则主循环会永久挂死在等待上。
+     */
+    private val shellApprovalMailbox = Channel<Boolean>(Channel.CONFLATED)
+
+    /** 连续「被动作模式拒绝」的次数；放行一次即清零 */
+    private var modeDenyStreak = 0
 
     /**
      * 任务是否被用户「搁置」（悬浮窗上的隐藏按钮）。
@@ -972,6 +1015,9 @@ class AgentEngine(
         runCatching { com.phoneagent.device.vision.ExternalVisionProvider.unbind(appContext) }
         // 停止即彻底结束：搁置标志必须一并清掉，否则下一个任务会带着上一个任务的搁置态起不来
         taskPaused = false
+        // 停止时若正卡在「等待确认自写命令」，把待确认命令一并清掉：
+        // 否则面板已收，协助面板仍挂着一个再也等不到答复的确认框
+        _pendingShellCommand.value = null
         // 先把状态落到 IDLE 再走统一复位：safeResetRuntime 带 DONE 终态守卫，
         // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
@@ -1029,6 +1075,54 @@ class AgentEngine(
         clearFloatingQuery()
         // 「已手动处理」：不退出，发送语义信号让 Agent 继续观察页面并重新决策下一步
         userHintMailbox.trySend(SELF_DISMISS_HINT)
+    }
+
+    /**
+     * 用户对「AI 自写命令」的答复（悬浮窗 / App 内协助面板的「批准执行 / 拒绝」按钮）。
+     *
+     * 与 [provideUserHint] 的关键区别：这条答复**不受 [_needsUser] 约束**。
+     * 协助面板是由 [pendingShellCommand] 驱动的独立交互，若也挂到 needsUser 上，
+     * 两套等待就会互相覆盖（一边关掉标志，另一边永远等不到）。
+     */
+    fun resolveShellApproval(approve: Boolean) {
+        if (_pendingShellCommand.value == null) return
+        clearFloatingQuery()
+        shellApprovalMailbox.trySend(approve)
+    }
+
+    /**
+     * 自由模式：AI 自写命令的首次确认闸门。
+     *
+     * 只在「本任务第一次真要执行 AI 亲自写的命令」时问一次：批准 → 本任务内后续自写命令直接放行；
+     * 拒绝 → 本任务内不再问，也不再执行任何自写命令（由调用方把拒绝结果回注给 AI 换路子）。
+     *
+     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）不带 [AgentAction.aiAuthored]，不走这里。
+     *
+     * @return true = 可以执行；false = 用户拒绝，调用方**不得**执行
+     */
+    private suspend fun ensureShellApproval(action: AgentAction): Boolean {
+        if (action.type != ActionType.SHELL || !action.aiAuthored) return true
+        shellApprovedForTask?.let { return it }
+
+        val cmd = action.command.orEmpty()
+        _pendingShellCommand.value = cmd
+        log(AgentLog.Level.WARN, "自由模式：等待用户确认 AI 自写命令：$cmd")
+        pushFloating("等待确认命令", "THINKING")
+        showFloatingInteraction("shellconfirm", "确认执行命令", cmd, listOf("批准执行", "拒绝"))
+        _state.value = _state.value.copy(message = "AI 想执行一条自己编写的命令，需要你确认：$cmd")
+        val approved = try {
+            shellApprovalMailbox.receive()
+        } finally {
+            _pendingShellCommand.value = null
+            // 排空：等待期间用户可能连点了两次，残留值会污染下一次等待
+            while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
+        }
+        shellApprovedForTask = approved
+        log(
+            AgentLog.Level.INFO,
+            if (approved) "用户已批准 AI 自写命令，本任务内不再确认" else "用户已拒绝 AI 自写命令，本任务内不再执行自写命令",
+        )
+        return approved
     }
 
     private suspend fun processQueue() {
@@ -1169,6 +1263,12 @@ class AgentEngine(
         // 同样清掉上一任务里 AI 说过的话，避免新任务开头飘着上一条气泡
         _sayEvents.value = emptyList()
         sayStreak = 0
+        // 动作模式与本任务的确认状态一并复位：
+        // 上一任务的「已批准自写命令」绝不能带到下一个任务（那等于永久授权）
+        shellApprovedForTask = null
+        _pendingShellCommand.value = null
+        modeDenyStreak = 0
+        while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
         lastDistilledTaskId = -1L
         memoryBriefCache = null
         // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
@@ -1180,6 +1280,9 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "任务开始：$task")
         log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
         val settingsVal = settings.settings.first()
+        // 动作模式：整个任务期间固定不动（每步读同一个值，档位不会中途漂移）
+        activeActionMode = ActionMode.fromKey(settingsVal.actionMode)
+        log(AgentLog.Level.INFO, "动作模式=${activeActionMode.label}（${activeActionMode.key}）")
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
         // 提示词里的"能看图"必须与实际是否真的发图一致：关掉"附送屏幕截图"后每步都不带图，
@@ -1188,7 +1291,7 @@ class AgentEngine(
         // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
         val skillsPrompt = skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt)))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt, actionMode = activeActionMode)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, effectiveHasVision)))))
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
@@ -1389,7 +1492,29 @@ class AgentEngine(
                     }
                 }
             }
-            // 3.6 浏览器通道分流：browse_* 是**与设备能力无关**的独立通道，先于转译层落地。
+            // 3.6 动作模式门控：三档权限（保守 / 均衡 / 自由）的**唯一检查点**。
+            //     位置是刻意的——技能归一化之后（此时 intent 已是标准意图名），浏览器分流之前
+            //     （browse_* 走独立通道、不进转译层，只有卡在这里才能把它一并覆盖）。
+            //     转译层内部对 shell/a11y 另有自检，那只是纵深防御，不替代此处。
+            val modeVerdict = ActionPolicy.allows(activeActionMode, intent.intent)
+            if (modeVerdict is ActionPolicy.Verdict.Denied) {
+                modeDenyStreak++
+                log(AgentLog.Level.WARN, "动作模式拒绝意图（第 $modeDenyStreak 次）：${intent.intent}｜${modeVerdict.reason}")
+                if (modeDenyStreak >= MAX_MODE_DENY_STREAK) {
+                    val stopReason = "连续 $modeDenyStreak 次尝试被「${activeActionMode.label}」动作模式拒绝，已停止任务。" +
+                        "若这个任务确实需要这些动作，请在「设置 → Agent 运行 → 动作模式」里放宽档位后重试。"
+                    _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = stopReason)
+                    pushFloating("动作模式不允许，已停止", "ERROR")
+                    log(AgentLog.Level.ERROR, stopReason)
+                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                    stop()
+                    return
+                }
+                messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${modeVerdict.reason}"))))
+                continue
+            }
+            modeDenyStreak = 0
+            // 3.7 浏览器通道分流：browse_* 是**与设备能力无关**的独立通道，先于转译层落地。
             //     它不走 IntentTranslator 的策略表（不受无障碍/Shizuku/无线 ADB 影响），
             //     也不产生 AgentAction：网页读写由本 App 的 WebView 用 DOM 脚本完成，
             //     结果作为"上一步结果"回注下一轮决策。
@@ -1494,13 +1619,28 @@ class AgentEngine(
                         sayStreak++
                         continue
                     }
+                    // 自由模式：AI 自写命令在本任务首次执行前要向用户确认一次。
+                    // 拒绝不等于放弃任务——把"用户拒绝了这条命令"回注给 AI，让它换条路子继续干。
+                    if (!ensureShellApproval(action!!)) {
+                        val denied = "用户拒绝执行这条命令：${action!!.command}。" +
+                            "请不要重试同一条命令：改用转译层既有意图完成当前目标，或换一条用户更可能接受的命令。"
+                        log(AgentLog.Level.WARN, "用户拒绝 AI 自写命令，已跳过执行：${action!!.command}")
+                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $denied"))))
+                        recordsIntoHistory(step, action!!, com.phoneagent.engine.execution.VerifyResult(false, denied, "", ""))
+                        stepShotCapture(step, action!!, false)
+                        continue
+                    }
                     // 真的动手了：把连续说话计数清掉
                     sayStreak = 0
                     verify = safeExecute(action!!, snapshot)
                     // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
                     isStructuralError = verify.reason.contains("未知 shell 命令") ||
                         verify.reason.contains("命令为空") ||
-                        verify.reason.contains("参数无效")
+                        verify.reason.contains("参数无效") ||
+                        // 自由模式的两类结构性错误同样不该重试：端点名/参数写错，重跑同一串动作不会自己变好
+                        verify.reason.contains("未知无障碍端点") ||
+                        verify.reason.contains("缺少参数") ||
+                        verify.reason.contains("缺少 endpoint")
                     verified = verify.success
                     var times = 1
                     // 点击类动作不再交给外层重跑：ClickRunner 内部已把"活节点直点 → 手势点击 → 快照坐标 →
@@ -1592,7 +1732,14 @@ class AgentEngine(
                     // 浏览器意图走独立通道：这里不能 continue（后面的 recordsIntoHistory 要落档），
                     // 故用「合成动作 + 验证结果」接进既有链路，让留档与截图照常发生。
                     val gIntent = guided
-                    if (browserChannel.handles(gIntent.intent)) {
+                    // 引导回来的意图同样要过动作模式门控：用户给的"指导"不能成为越权的旁路
+                    val gDenied = ActionPolicy.allows(activeActionMode, gIntent.intent) as? ActionPolicy.Verdict.Denied
+                    if (gDenied != null) {
+                        log(AgentLog.Level.WARN, "引导后意图被动作模式拒绝：${gIntent.intent}｜${gDenied.reason}")
+                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${gDenied.reason}"))))
+                        verify = com.phoneagent.engine.execution.VerifyResult(false, gDenied.reason, "", "")
+                        verified = false
+                    } else if (browserChannel.handles(gIntent.intent)) {
                         val (browseAction, browseVerify) = handleBrowseIntent(step, gIntent, messages)
                         action = browseAction
                         verify = browseVerify
@@ -1604,10 +1751,19 @@ class AgentEngine(
                         when (gTranslate) {
                             is IntentTranslator.TranslationResult.Command -> {
                                 action = gTranslate.action
-                                verify = safeExecute(gTranslate.action, observe())
-                                verified = verify.success
-                                if (!verified) {
-                                    log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
+                                // 自写命令的首次确认在这里同样不能绕：引导路径若把它跳过，
+                                // 等于「第一次自写命令」可以不被确认就执行
+                                if (ensureShellApproval(gTranslate.action)) {
+                                    verify = safeExecute(gTranslate.action, observe())
+                                    verified = verify.success
+                                    if (!verified) {
+                                        log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
+                                    }
+                                } else {
+                                    val denied = "用户拒绝执行这条命令：${gTranslate.action.command}。请改用既有意图完成当前目标。"
+                                    messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $denied"))))
+                                    verify = com.phoneagent.engine.execution.VerifyResult(false, denied, "", "")
+                                    verified = false
                                 }
                             }
                             is IntentTranslator.TranslationResult.Failed -> {
@@ -1658,6 +1814,13 @@ class AgentEngine(
                     ContentPart(type = "text", text = "shell 命令输出：\n$lastShellOutput"),
                 )))
                 lastShellOutput = ""
+            }
+            // 无障碍端点直调的结果同样要回注：can_screenshot / capture_tree 这类端点本身就是"问一句话"，
+            // 不回注等于 AI 问了却永远收不到答案，接下来只能靠猜
+            if (action.type == ActionType.A11Y_CALL && verify.success && verify.reason.isNotBlank()) {
+                messages.add(ChatMessageDto(role = "assistant", content = listOf(
+                    ContentPart(type = "text", text = "无障碍端点输出：\n${verify.reason}"),
+                )))
             }
             messages.add(ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = action.type))))
             delay(400)
@@ -2292,6 +2455,13 @@ class AgentEngine(
             }
         }
 
+        // 无障碍端点直调（自由模式专属）：绕过语义策略，按 AI 指定的端点与参数直接落到底层接口
+        if (type == ActionType.A11Y_CALL) {
+            return executeA11yEndpoint(action, snapshot).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
+        }
+
         // 幂等保护（v2.2 5.4）：副作用意图（提交/发送/下单/支付/删除）已由页面证明完成 → 跳过，防重复副作用与误触
         if (isFinalSubmit(action, type) && idempotencyDone(snapshot)) {
             return com.phoneagent.engine.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "").also {
@@ -2452,7 +2622,8 @@ class AgentEngine(
                 )
             }
             val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
-                ?: return com.phoneagent.engine.execution.VerifyResult(false, "命令无法解析: $cmd", "", "")
+                ?: if (action.aiAuthored) cmd
+                else return com.phoneagent.engine.execution.VerifyResult(false, "命令无法解析: $cmd", "", "")
             triggerCursorForShell(resolved)
             return finishShellResult(bridge.executeShell(resolved), action.uri)
         }
@@ -2461,9 +2632,129 @@ class AgentEngine(
             return executeShellViaAccessibility(cmd)
         }
         val resolved = ShellCommands.resolve(cmd, screenWidth(), screenHeight())
-            ?: return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
+            // 自由模式：命令是 AI 亲自写的，端侧认不出来也必须原样交下去——
+            // 友好命令表只是端侧词汇，不是权限边界，在这里把它当白名单会把自由模式变成均衡模式
+            ?: if (action.aiAuthored) cmd
+            else return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
         triggerCursorForShell(resolved)
         return runRealShell(resolved, action.uri)
+    }
+
+    /**
+     * 无障碍端点直调（自由模式专属）。
+     *
+     * 绕开语义策略，按 AI 指定的端点名与参数直接落到 [ActionExecutor] / 无障碍服务的底层接口。
+     * 端点白名单与必填参数由 [ActionPolicy.a11yEndpoints] 唯一定义（转译层已校验端点名与必填项），
+     * 这里只把字符串参数翻成对应调用，并把**真实结果**如实回报给 AI——感知类端点绝不能假装成功，
+     * 否则 AI 会以为"已经看过了"，据此编造页面内容。
+     */
+    private suspend fun executeA11yEndpoint(
+        action: AgentAction,
+        snapshot: ScreenSnapshot,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val name = action.endpoint?.trim()?.lowercase().orEmpty()
+        if (name.isEmpty()) {
+            return com.phoneagent.engine.execution.VerifyResult(false, "a11y 调用缺少 endpoint", "", "")
+        }
+        if (ActionPolicy.endpointOf(name) == null) {
+            return com.phoneagent.engine.execution.VerifyResult(
+                false,
+                "未知无障碍端点: $name。可用端点：${ActionPolicy.a11yEndpoints.joinToString("/") { it.name }}",
+                "", "",
+            )
+        }
+        val args = action.args.orEmpty()
+        val fail = { reason: String -> com.phoneagent.engine.execution.VerifyResult(false, reason, "", "") }
+        val ok = { msg: String -> com.phoneagent.engine.execution.VerifyResult(true, msg, "", "") }
+        fun intArg(key: String): Int? = args[key]?.trim()?.toIntOrNull()
+        fun strArg(key: String): String? = args[key]?.trim()?.takeIf { it.isNotBlank() }
+        /** 按文字/语义 id 在快照元素树里找控件（坐标兜底与滚动定位共用） */
+        fun elementOf(raw: String) = snapshot.elements.firstOrNull {
+            it.semanticId == raw || (!it.text.isNullOrBlank() && it.text.contains(raw))
+        }
+
+        // 感知类端点不经过无障碍动作通道，先单独处理
+        when (name) {
+            "can_screenshot" -> {
+                val service = AgentAccessibilityService.instance ?: return fail("无障碍服务不可用，无法查询截图能力")
+                val yes = service.canScreenshot()
+                return ok(if (yes) "截图能力：可用" else "截图能力：不可用（需 Android 11+ 且无障碍服务已声明截图能力）")
+            }
+            "screenshot" -> {
+                val service = AgentAccessibilityService.instance ?: return fail("无障碍服务不可用，无法截图")
+                if (!service.canScreenshot()) return fail("本机当前不具备截图能力，无法截图")
+                val bmp = service.takeScreenshotBitmap() ?: return fail("截图失败或超时")
+                val size = "${bmp.width}×${bmp.height}"
+                bmp.recycle()
+                return ok("已截取当前屏幕位图（$size）。位图本身不在你的上下文里：要看页面内容请读元素树，网页内容请用 browse_read。")
+            }
+            "capture_tree" -> {
+                val fresh = observe()
+                return ok("已重新抓取当前页面元素树：${fresh.packageName ?: "未知应用"}，共 ${fresh.elements.size} 个控件。")
+            }
+        }
+
+        val service = AgentAccessibilityService.instance ?: return fail("无障碍服务不可用")
+        val executor = ActionExecutor(service)
+        fun wrap(r: ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult = when (r) {
+            is ActionExecutor.Result.Success -> ok(r.description.ifBlank { "端点 $name 执行成功" })
+            is ActionExecutor.Result.Failure -> fail(r.reason)
+        }
+
+        return when (name) {
+            "click" -> wrap(executor.click(
+                intArg("x") ?: return fail("click 缺少参数 x"),
+                intArg("y") ?: return fail("click 缺少参数 y"),
+            ))
+            "long_click" -> wrap(executor.longClick(
+                intArg("x") ?: return fail("long_click 缺少参数 x"),
+                intArg("y") ?: return fail("long_click 缺少参数 y"),
+            ))
+            "click_node" -> {
+                val raw = strArg("target") ?: return fail("click_node 缺少参数 target")
+                // 「id:资源名」走 viewId 精确匹配；否则按文字匹配，并把快照中心点作为同字控件并列时的兜底线索
+                val selector = if (raw.startsWith("id:", ignoreCase = true)) {
+                    NodeSelector(viewId = raw.substringAfter(':').trim())
+                } else {
+                    NodeSelector(label = raw, centerHint = elementOf(raw)?.let { it.x to it.y })
+                }
+                val long = args["long_click"]?.trim()?.let { it.equals("true", true) || it == "1" } == true
+                wrap(executor.clickNode(selector, longClick = long))
+            }
+            "swipe" -> wrap(executor.swipe(
+                intArg("x1") ?: return fail("swipe 缺少参数 x1"),
+                intArg("y1") ?: return fail("swipe 缺少参数 y1"),
+                intArg("x2") ?: return fail("swipe 缺少参数 x2"),
+                intArg("y2") ?: return fail("swipe 缺少参数 y2"),
+                (intArg("duration_ms") ?: 400).toLong(),
+            ))
+            "swipe_direction" -> {
+                val direction = strArg("direction") ?: return fail("swipe_direction 缺少参数 direction")
+                val (ex, ey) = swipeEndpoints(screenWidth() / 2, screenHeight() / 2, direction, intArg("distance_px"))
+                wrap(executor.swipe(screenWidth() / 2, screenHeight() / 2, ex, ey, 400))
+            }
+            "scroll" -> {
+                val direction = strArg("direction") ?: return fail("scroll 缺少参数 direction")
+                wrap(executor.scroll(strArg("target")?.let { elementOf(it) }, direction))
+            }
+            "scroll_container" -> wrap(executor.scrollContainer(strArg("direction") ?: return fail("scroll_container 缺少参数 direction")))
+            "global_action" -> wrap(executor.globalAction(intArg("action") ?: return fail("global_action 缺少参数 action")))
+            "back" -> wrap(executor.back())
+            "home" -> wrap(executor.home())
+            "recents" -> wrap(executor.recents())
+            "launch_app" -> wrap(executor.launchApp(strArg("package") ?: return fail("launch_app 缺少参数 package")))
+            "open_uri" -> wrap(executor.openUri(
+                strArg("uri") ?: return fail("open_uri 缺少参数 uri"),
+                strArg("package"),
+            ))
+            "open_settings_action" -> wrap(executor.openSettingsAction(strArg("action") ?: return fail("open_settings_action 缺少参数 action")))
+            "type_text" -> {
+                val text = args["text"]?.takeIf { it.isNotEmpty() } ?: return fail("type_text 缺少参数 text")
+                val elem = strArg("target")?.let { elementOf(it) }
+                wrap(executor.typeText(text, elem, elem?.x, elem?.y))
+            }
+            else -> fail("端点 $name 未实现")
+        }
     }
 
     /**

@@ -53,6 +53,8 @@ internal fun AgentAssistSheet(
     message: String,
     options: List<ClarificationOption>,
     allowManualHandle: Boolean,
+    /** 是否给自由输入框：自写命令确认只有「批准 / 拒绝」两个出口，打字无处可去，故隐藏输入与提交 */
+    allowFreeText: Boolean = true,
     draft: String,
     onDraftChange: (String) -> Unit,
     onPickOption: (ClarificationOption) -> Unit,
@@ -136,66 +138,70 @@ internal fun AgentAssistSheet(
         }
 
         // 自由输入：选项覆盖不到的情况，用户可以直接说
-        Spacer(Modifier.height(AppSpacing.Md))
-        BasicTextField(
-            value = draft,
-            onValueChange = onDraftChange,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
-            cursorBrush = SolidColor(colors.brand),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(AppRadii.Tile))
-                .background(colors.surfaceSunken)
-                .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
-                .padding(AppSpacing.Md),
-            decorationBox = { inner ->
-                if (draft.isEmpty()) {
-                    Text(
-                        text = if (options.isEmpty()) "直接告诉我该怎么做" else "或者自己说一个答案",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceRaised,
-                    )
-                }
-                inner()
-            },
-        )
+        if (allowFreeText) {
+            Spacer(Modifier.height(AppSpacing.Md))
+            BasicTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(colors.brand),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(AppRadii.Tile))
+                    .background(colors.surfaceSunken)
+                    .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                    .padding(AppSpacing.Md),
+                decorationBox = { inner ->
+                    if (draft.isEmpty()) {
+                        Text(
+                            text = if (options.isEmpty()) "直接告诉我该怎么做" else "或者自己说一个答案",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceRaised,
+                        )
+                    }
+                    inner()
+                },
+            )
+        }
 
         // 出口：协助场景给「已手动处理」，两种场景都可用输入提交
-        Spacer(Modifier.height(AppSpacing.Md))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (allowManualHandle) {
+        if (allowManualHandle || allowFreeText) {
+            Spacer(Modifier.height(AppSpacing.Md))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (allowManualHandle) {
+                    PressableScale(
+                        onPress = buzz,
+                        onClick = onManualHandled,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(AppRadii.Chip))
+                            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Chip))
+                            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                    ) {
+                        Text(
+                            text = "已手动处理",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
                 PressableScale(
+                    enabled = canSubmit,
                     onPress = buzz,
-                    onClick = onManualHandled,
+                    onClick = { if (canSubmit) onSubmitText(draft) },
                     modifier = Modifier
                         .clip(RoundedCornerShape(AppRadii.Chip))
-                        .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Chip))
-                        .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                        .background(if (canSubmit) colors.brand else colors.surfaceSunken)
+                        .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm),
                 ) {
                     Text(
-                        text = "已手动处理",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        text = if (options.isEmpty()) "告诉 AI" else "提交",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (canSubmit) colors.onBrand else colors.onSurfaceRaised,
                     )
                 }
-            }
-            Spacer(Modifier.weight(1f))
-            PressableScale(
-                enabled = canSubmit,
-                onPress = buzz,
-                onClick = { if (canSubmit) onSubmitText(draft) },
-                modifier = Modifier
-                    .clip(RoundedCornerShape(AppRadii.Chip))
-                    .background(if (canSubmit) colors.brand else colors.surfaceSunken)
-                    .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm),
-            ) {
-                Text(
-                    text = if (options.isEmpty()) "告诉 AI" else "提交",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = if (canSubmit) colors.onBrand else colors.onSurfaceRaised,
-                )
             }
         }
     }

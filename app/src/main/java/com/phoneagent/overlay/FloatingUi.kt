@@ -6,9 +6,10 @@ import android.graphics.drawable.GradientDrawable
  * 悬浮窗 UI 设计令牌（Material 3 Expressive 质感，原生 View 实现）。
  *
  * 视觉原则（emilkowalski/skills + M3 Expressive，避免俗套 AI 审美）：
- * - 统一主题色 + 毛玻璃：任务卡片底色用 App 的「玄青」品牌色半透明化（[BRAND_GLASS]），
- *   真实磨砂交给窗口的背景模糊（见 FloatingWindowService.applyBlurBehind）。
- *   品牌色本身保持高不透明度（85%），模糊不可用的机型退化后仍是一块读得清的白字卡片
+ * - 统一主题色：任务卡片底色用 App 的「玄青」品牌色半透明化（[BRAND_GLASS]）+ 发丝描边。
+ *   **不做背景模糊**：窗口的 blurBehindRadius 糊的是整块屏幕而不是卡片（真机表现为任务一跑
+ *   整屏发灰），而"只糊窗口范围"的 Window#setBackgroundBlurRadius 悬浮窗拿不到（没有 Window
+ *   对象，见 FloatingWindowService 类注释）。品牌色保持高不透明度（85%），底图透出来也不影响读字
  * - 清晰层级：通过 卡片嵌套 + 柔和阴影 + 差异化字号 建立主次
  * - 大圆角 + 胶囊：卡片 28dp、内层 20dp、徽章/按钮胶囊，体现 M3 流动感
  * - 舒适间距：统一 4/8/12 间距体系，不再全用 8dp 怼满
@@ -37,12 +38,10 @@ object FloatingUi {
     const val BRAND = 0xFF0E7C66.toInt()            // 品牌主色
     const val BRAND_DEEP = 0xFF0A5F4E.toInt()       // 深一档：按下态 / 细描边
 
-    // 任务卡片毛玻璃：品牌色 85% 不透明度（0xD9），透出被模糊掉的底图。
-    // 不做到更透是刻意的——模糊在 Android 12 以下、省电模式、系统"降低透明度"下都会失效，
-    // 那时这块底就是唯一的文字背景，85% 的玄青仍能压住白字。
+    // 任务卡片底色：品牌色 85% 不透明度（0xD9）。
+    // 不做到更透是刻意的：卡片坐在别的 App 画面之上，这块底色就是白字唯一的背景，
+    // 85% 的玄青在任何底图上都压得住字。注意这里没有模糊可配，见类注释。
     const val BRAND_GLASS = 0xD90E7C66.toInt()
-    /** 背景模糊半径（dp）：够糊掉底图细节，又不至于糊成一片纯色 */
-    const val GLASS_BLUR = 24
     /** 玻璃收边的细描边：只在浅色底图上才看得出来 */
     const val GLASS_EDGE = 0x2EFFFFFF.toInt()
     const val ON_BRAND = 0xFFFFFFFF.toInt()         // 主题色底上的主文字

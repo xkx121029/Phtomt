@@ -82,6 +82,7 @@ object EngineRules {
         ActionType.TYPE_TEXT -> "输入文本"
         ActionType.LAUNCH -> "启动应用"
         ActionType.SHELL -> "执行Shell"
+        ActionType.A11Y_CALL -> "调用无障碍端点"
         ActionType.WRITE_DOC -> "写入文档"
         ActionType.REMEMBER -> "记住信息"
         ActionType.DEVICE_QUERY -> "查询本机信息"

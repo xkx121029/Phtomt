@@ -1,6 +1,7 @@
 package com.phoneagent.feature.skill
 
 import com.phoneagent.domain.model.IntentType
+import com.phoneagent.engine.execution.ActionPolicy
 
 /**
  * 内置 Skill 目录：把原硬编码命令（意图）升级为内置 Skill。
@@ -357,6 +358,38 @@ object SkillCatalog {
                 id = "skill_clear_input", name = "清空输入", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "操作", legacyIntent = IntentType.CLEAR_INPUT, description = "清空输入框内容。",
                 params = optionalTarget,
+            ),
+        )
+        // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly）----
+        put(
+            IntentType.SHELL, Skill(
+                id = "skill_shell", name = "执行命令", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "自由模式", legacyIntent = IntentType.SHELL,
+                description = "执行 AI 自写的命令（仅自由模式；本任务首次执行前用户确认一次）。" +
+                    "command 填命令原文，shizuku / 无线 ADB / Termux 通道由端侧按可用性自动选，" +
+                    "终端输出会作为「上一步结果」回给你。",
+                params = listOf(
+                    SkillParam(
+                        "command", "命令原文", "text", required = true,
+                        description = "如 pm list packages | grep 相机；也可写友好命令",
+                    ),
+                ),
+            ),
+        )
+        put(
+            IntentType.A11Y, Skill(
+                id = "skill_a11y", name = "调用无障碍端点", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "自由模式", legacyIntent = IntentType.A11Y,
+                description = "直接调用一个无障碍底层端点（仅自由模式）。endpoint 选端点名，" +
+                    "端点所需参数直接写在 args 对象里（键名见各端点说明，如 click 需 x/y）。" +
+                    "它是转译层够不着时的兜底手段，能用既有意图解决就不要用它。",
+                params = listOf(
+                    SkillParam(
+                        "endpoint", "端点", "select", required = true,
+                        options = ActionPolicy.a11yEndpoints.map { it.name },
+                        description = ActionPolicy.a11yEndpoints.joinToString("；") { "${it.name}(${it.argsText()}) ${it.description}" },
+                    ),
+                ),
             ),
         )
     }

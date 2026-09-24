@@ -277,12 +277,18 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
     val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
+    var taskDrawerOpen by remember { mutableStateOf(false) }
+
     // 底部悬浮导航栏的净空 = 条本体 + 条上下的呼吸间距 + 系统手势区。
     // 条下方那段（[NavBarGap]）同时也是条自身的 bottom padding；条上方再留同样一段，
     // 页面末项与 Agent 页输入区才不会贴着玻璃上沿——两层面板贴在一起会糊成一块。
-    // 键盘弹出或进全屏二级页时导航栏不显示，净空归零，页面按原样铺满。
-    val navBarVisible = extrasPage == null && !keyboardUp
-    val navClearance = if (navBarVisible) NavBarHeight + NavBarGap * 2 + systemNavInset else 0.dp
+    // 键盘弹出或进全屏二级页时，底部这层 chrome 整块不占位，净空归零。
+    val navSpaceReserved = extrasPage == null && !keyboardUp
+    // Agent 页把任务抽屉拉出来时只是导航栏让位（抽屉盖住整页，别浮一层玻璃在它上面），
+    // 净空照旧：净空一变，页面末项与输入区会在抽屉底下整段跳一下。
+    val navBarVisible = navSpaceReserved && !taskDrawerOpen
+    val navClearance = if (navSpaceReserved) NavBarHeight + NavBarGap * 2 + systemNavInset else 0.dp
 
     // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
     // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
@@ -339,6 +345,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                                     0 -> AgentScreen(
                                         vm, contentMod,
                                         onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                                        onDrawerOpenChange = { taskDrawerOpen = it },
                                     )
 
                                     1 -> HomeScreen(

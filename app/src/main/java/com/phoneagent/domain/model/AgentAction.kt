@@ -58,6 +58,15 @@ data class AgentAction(
     val needsUserConfirmation: Boolean = false,
     /** shell 命令字符串（type=shell 时使用） */
     val command: String? = null,
+    /**
+     * 该命令是否由 AI 亲自书写（自由模式 shell 意图）→ 本任务首次执行前需用户确认一次。
+     * 端侧自己编排的命令（如 fetch 落到 Termux）不算，不触发确认。
+     */
+    val aiAuthored: Boolean = false,
+    /** a11y_call：要调用的无障碍端点名（见 ActionPolicy.a11yEndpoints） */
+    val endpoint: String? = null,
+    /** a11y_call：端点参数（参数名 → 值） */
+    val args: Map<String, String>? = null,
     /** 深链/协议直达（type=open 时使用），如 https:// 链接或应用私有 scheme */
     val uri: String? = null,
     /** open 动作：目标软件名或包名（配合 [page] 走软件页面直达索引） */
@@ -104,6 +113,9 @@ object ActionType {
 
     /** Shizuku ADB shell 命令 */
     const val SHELL = "shell"
+
+    /** 调用无障碍端点（自由模式专属；endpoint=端点名，args=参数） */
+    const val A11Y_CALL = "a11y_call"
 
     /** 生成文档（text=内容，summary=文件名，可选），结果在 Agent 页预览 */
     const val WRITE_DOC = "write_doc"

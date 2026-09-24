@@ -13,21 +13,31 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
 
 /**
  * 设置主页（一级导航）。
- * 按「模型 / 运行 / 外观与高级」三组归类，而不是把 5 个入口平铺成一张长卡片——
+ * 按「模型 / 运行 / 外观与高级 / 系统」四组归类，而不是把 8 个入口平铺成一张长卡片——
  * 分组后同类项挨在一起，找东西时先看组再看条目，扫视成本更低。
  */
 @Composable
-internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
+internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (SettingsPage) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val permissions by vm.permissions.collectAsState()
+    // 权限状态由 ViewModel 聚合，进设置页时刷一次，入口摘要才不会是空的
+    LaunchedEffect(Unit) { vm.refreshPermissions(context) }
+    val pendingPermissions = permissions.count { !it.granted }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -80,6 +90,20 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
                 summary = "任务管理",
                 onClick = { onOpen(SettingsPage.LONG_RUN) },
             )
+            GroupDivider()
+            SettingsEntry(
+                icon = AppIcons.Terminal,
+                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                iconBackground = MaterialTheme.colorScheme.surfaceVariant,
+                title = "权限与执行通道",
+                subtitle = "无障碍 / 悬浮窗 / 无线ADB / Shizuku / Termux",
+                summary = when {
+                    permissions.isEmpty() -> "检测中"
+                    pendingPermissions == 0 -> "全部已就绪"
+                    else -> "尚需授权 $pendingPermissions 项"
+                },
+                onClick = { onOpen(SettingsPage.PERMISSIONS) },
+            )
         }
 
         // ---- 外观与高级 ----
@@ -93,6 +117,30 @@ internal fun SettingsHome(st: SettingsState, onOpen: (SettingsPage) -> Unit) {
                 subtitle = "屏幕边缘光效标定",
                 summary = if (st.edgeLightingEnabled) "已开启" else "已关闭",
                 onClick = { onOpen(SettingsPage.VISUAL) },
+            )
+        }
+
+        // ---- 系统：本机数据与关于 ----
+        SettingsSectionLabel("系统")
+        GroupCard {
+            SettingsEntry(
+                icon = AppIcons.Folder,
+                iconTint = MaterialTheme.colorScheme.tertiary,
+                iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
+                title = "数据与存储",
+                subtitle = "导出日志 / 清空记忆 / 断点续传 / 恢复默认",
+                summary = "本机数据",
+                onClick = { onOpen(SettingsPage.DATA) },
+            )
+            GroupDivider()
+            SettingsEntry(
+                icon = AppIcons.Info,
+                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                iconBackground = MaterialTheme.colorScheme.surfaceVariant,
+                title = "关于与帮助",
+                subtitle = "版本 / 开源仓库 / 使用说明 / 隐私",
+                summary = "v${com.phoneagent.BuildConfig.VERSION_NAME}",
+                onClick = { onOpen(SettingsPage.ABOUT) },
             )
         }
         Spacer(Modifier.height(AppSpacing.Lg))

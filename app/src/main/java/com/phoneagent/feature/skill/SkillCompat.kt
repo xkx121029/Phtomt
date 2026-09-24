@@ -125,6 +125,8 @@ object SkillCompat {
             durationMs = if (given("duration_ms")) fromArgs.durationMs else intent.durationMs,
             kind = if (given("kind")) fromArgs.kind else intent.kind,
             filter = if (given("filter")) fromArgs.filter else intent.filter,
+            command = if (given("command")) fromArgs.command else intent.command,
+            endpoint = if (given("endpoint")) fromArgs.endpoint else intent.endpoint,
         )
     }
 
@@ -211,6 +213,12 @@ object SkillCompat {
             IntentType.SEND, IntentType.CONFIRM, IntentType.CLOSE, IntentType.SHARE,
             IntentType.COLLECT, IntentType.COPY, IntentType.DELETE, IntentType.DOWNLOAD,
             IntentType.ADD, IntentType.SWITCH, IntentType.CLEAR_INPUT -> agent
+            // 自由模式专属：AI 自写命令 / 直接调无障碍端点（端点参数保留在 intent.args 里原样透传）
+            IntentType.SHELL -> agent.copy(command = args["command"]?.takeIf { it.isNotBlank() })
+            IntentType.A11Y -> agent.copy(
+                endpoint = args["endpoint"]?.takeIf { it.isNotBlank() },
+                args = args.filterKeys { it != "endpoint" }.ifEmpty { null },
+            )
             else -> null
         }
     }

@@ -70,6 +70,11 @@ class AppSettings(private val context: Context) {
         val shizukuEnabled: Boolean = true,
         /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
         val executionChannel: String = "AUTO",
+        /**
+         * 动作模式（授权范围，与执行通道正交）：CONSERVATIVE=仅低风险意图 | BALANCED=转译层全部意图 | FREE=额外允许自写命令与直调无障碍端点。
+         * 见 [com.phoneagent.engine.execution.ActionMode]；存字符串而非枚举，避免脏数据反序列化失败。
+         */
+        val actionMode: String = "BALANCED",
         /** 底部跑马灯的上下内边距（dp）：面板长宽自适应，厚度由它决定 */
         val marqueeHeight: Int = 8,
         /** 跑马灯跟随状态变色：开启后底色由当前阶段决定，用户不必自定义配色 */
@@ -125,6 +130,7 @@ class AppSettings(private val context: Context) {
         val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
         val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
+        val ACTION_MODE = stringPreferencesKey("action_mode")
         val MARQUEE_HEIGHT = intPreferencesKey("marquee_height")
         val MARQUEE_AUTO_COLOR = booleanPreferencesKey("marquee_auto_color")
         val MARQUEE_COLORS = stringPreferencesKey("marquee_colors")
@@ -194,6 +200,7 @@ class AppSettings(private val context: Context) {
                 .split(";").map { it.trim() }.filter { it.isNotEmpty() },
             shizukuEnabled = prefs[Keys.SHIZUKU_ENABLED] ?: true,
             executionChannel = prefs[Keys.EXECUTION_CHANNEL] ?: "AUTO",
+            actionMode = prefs[Keys.ACTION_MODE] ?: "BALANCED",
             edgeInsetTop = prefs[Keys.EDGE_INSET_TOP] ?: 0,
             edgeInsetBottom = prefs[Keys.EDGE_INSET_BOTTOM] ?: 0,
             edgeInsetLeft = prefs[Keys.EDGE_INSET_LEFT] ?: 0,
@@ -243,6 +250,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CHAIN_ORDER] = settings.chainOrder.joinToString(";")
             prefs[Keys.SHIZUKU_ENABLED] = settings.shizukuEnabled
             prefs[Keys.EXECUTION_CHANNEL] = settings.executionChannel
+            prefs[Keys.ACTION_MODE] = settings.actionMode
             prefs[Keys.EDGE_INSET_TOP] = settings.edgeInsetTop
             prefs[Keys.EDGE_INSET_BOTTOM] = settings.edgeInsetBottom
             prefs[Keys.EDGE_INSET_LEFT] = settings.edgeInsetLeft

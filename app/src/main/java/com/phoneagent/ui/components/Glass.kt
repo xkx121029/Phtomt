@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -21,9 +23,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -149,6 +155,69 @@ fun GlassSurface(
     }
 }
 
+/** 页眉"浮起"前需要滚动的距离：滚过这么多就完全浮起，再滚也不会继续抬 */
+internal val HeaderLiftDistance = 48.dp
+
+/**
+ * 页眉浮起时额外让出的上缘距离。
+ *
+ * 常态 12dp（[GlassHeaderInset]）只是"不贴着屏幕边"，读起来仍是一条吸顶横杠；
+ * 再加 12dp 让它明显脱开上缘，才是一块悬在内容上方的浮板。
+ */
+internal val HeaderLiftAmount = 12.dp
+
+/**
+ * 页眉浮起状态：页眉始终吸顶，但页面一旦离顶就自动脱开上缘多让一段距离。
+ *
+ * 离顶距离不去各页要——调试页与技能页的滚动容器藏在页签面板里，逐个透传会把改动
+ * 摊到整棵组件树——改为从嵌套滚动里听：它自己就是一个 [NestedScrollConnection]，
+ * 挂在页面根节点上（见 [headerLift]），页面里**所有**滚动容器派发的位移都会汇总到这里。
+ *
+ * 只听"被消费掉的位移"（没被消费说明滚不动），并在两处夹住，
+ * 免得滚到底继续拉把浮起量推高、回到顶部却收不回来：
+ * - 想往上滚却一点没被消费 → 已经在最顶上，直接复位；
+ * - 累计量夹在 [0, 浮起距离] 之间，越界不再累加。
+ */
+@Stable
+class HeaderLiftState internal constructor(private val distancePx: Float) : NestedScrollConnection {
+    private var scrolled by mutableFloatStateOf(0f)
+
+    /**
+     * 0f = 贴边吸顶；1f = 完全浮起。
+     * 直接跟着滚动量连续变化，不再补一层动画——补了反而会落后于手指。
+     */
+    val progress: Float get() = (scrolled / distancePx).coerceIn(0f, 1f)
+
+    override fun onPostScroll(
+        consumed: Offset,
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (consumed.y == 0f && available.y < 0f) {
+            scrolled = 0f
+        } else {
+            scrolled = (scrolled + consumed.y).coerceIn(0f, distancePx)
+        }
+        return Offset.Zero
+    }
+}
+
+/** 创建本页的页眉浮起状态，配合 [headerLift] 使用 */
+@Composable
+fun rememberHeaderLiftState(): HeaderLiftState {
+    val density = LocalDensity.current
+    val distancePx = with(density) { HeaderLiftDistance.toPx() }
+    return remember(distancePx) { HeaderLiftState(distancePx) }
+}
+
+/**
+ * 把本页的滚动位移汇总给 [state]，页眉据此决定浮起多少。
+ *
+ * 必须挂在**页面根节点**上，而不是某个滚动容器上：一页里往往有多个滚动容器
+ * （页签面板、内嵌列表），挂在根上才能把它们都收进来。
+ */
+fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
+
 /**
  * 玻璃页眉板距屏幕左右（含上缘）的外边距，与 Agent 页顶栏同一套形态。
  * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
@@ -172,6 +241,10 @@ val GlassHeaderInnerPad = 20.dp - GlassHeaderInset
  * 或 verticalScroll 之后再 padding。用在滚动容器外面只是把内容整体压低，页眉背后永远是
  * 一块纯底色，玻璃会退化成一条灰蒙蒙的色带；用在里面，内容滚动时才会从玻璃下穿过。
  *
+ * 页眉**始终吸顶**，但页面离顶后会自动脱开上缘浮起一段（见 [HeaderLiftState]）：
+ * 贴在顶上时它是一条吸顶横杠，滚起来之后才是一块悬在内容上方的浮板。
+ * 页面不需要为此传任何参数，正文的滚动位移由骨架自己从嵌套滚动里听。
+ *
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板
  * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
  */
@@ -184,13 +257,15 @@ fun GlassHeaderScaffold(
     val colors = AppTheme.colors
     val glass = rememberGlassState()
     val density = LocalDensity.current
+    val lift = rememberHeaderLiftState()
     // 实测高度回填给正文，首项不会被压在玻璃页眉下面
     var headerHeight by remember { mutableIntStateOf(0) }
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase),
+            .background(colors.surfaceBase)
+            .headerLift(lift),
     ) {
         Box(
             modifier = Modifier
@@ -202,11 +277,16 @@ fun GlassHeaderScaffold(
 
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(AppRadii.Hero),
+            shape = RoundedCornerShape(AppRadii.Header),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = GlassHeaderInset, end = GlassHeaderInset, top = GlassHeaderInset)
+                .padding(
+                    start = GlassHeaderInset,
+                    end = GlassHeaderInset,
+                    // 离顶后上缘多让一口气：这口气就是"浮起来"的全部信息量
+                    top = GlassHeaderInset + HeaderLiftAmount * lift.progress,
+                )
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {

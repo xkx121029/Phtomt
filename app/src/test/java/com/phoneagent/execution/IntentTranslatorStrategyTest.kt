@@ -1,5 +1,6 @@
 package com.phoneagent.execution
 
+import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.AppNameResolver
 import com.phoneagent.engine.execution.CapabilityManager
 import com.phoneagent.engine.execution.CapabilityManager.Mode
@@ -29,11 +30,18 @@ class IntentTranslatorStrategyTest {
     private lateinit var appNameResolver: AppNameResolver
     private lateinit var translator: IntentTranslator
 
+    /** 自由模式下的转译器：只有它才放行 shell / a11y 两个专属意图 */
+    private lateinit var freeTranslator: IntentTranslator
+
     @Before
     fun setUp() {
         capabilityManager = mockk()
         appNameResolver = mockk()
         translator = IntentTranslator(capabilityManager, appNameResolver, IntentResolver())
+        freeTranslator = IntentTranslator(
+            capabilityManager, appNameResolver, IntentResolver(),
+            actionMode = { ActionMode.FREE },
+        )
     }
 
     private fun mode(m: Mode) = every { capabilityManager.currentMode() } returns m
@@ -303,5 +311,119 @@ class IntentTranslatorStrategyTest {
             assertEquals("$intent 应转 tap", ActionType.TAP, action.type)
             assertEquals("$intent 应命中语义按钮", 0, action.elementIndex)
         }
+    }
+
+    // ---- 自由模式专属：自写命令（shell） ----
+
+    private fun freeCommand(intent: AgentIntent, snapshot: ScreenSnapshot = snapshot()): AgentAction {
+        val result = freeTranslator.translate(intent, snapshot)
+        assertTrue("期望自由模式转译成功，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        return (result as IntentTranslator.TranslationResult.Command).action
+    }
+
+    private fun freeFailure(intent: AgentIntent, snapshot: ScreenSnapshot = snapshot()): String {
+        val result = freeTranslator.translate(intent, snapshot)
+        assertTrue("期望自由模式转译失败，实际: $result", result is IntentTranslator.TranslationResult.Failed)
+        return (result as IntentTranslator.TranslationResult.Failed).reason
+    }
+
+    @Test
+    fun shell_自由模式_命令原文透传且标记AI自写() {
+        mode(Mode.SHIZUKU)
+        val action = freeCommand(
+            AgentIntent(intent = IntentType.SHELL, command = "pm list packages | grep camera"),
+        )
+        assertEquals(ActionType.SHELL, action.type)
+        assertEquals("pm list packages | grep camera", action.command)
+        // aiAuthored 是引擎侧"首次确认"的唯一触发器，漏标等于自写命令可以不经确认就执行
+        assertTrue(action.aiAuthored)
+    }
+
+    @Test
+    fun shell_非自由模式_被转译层拒绝() {
+        mode(Mode.SHIZUKU)
+        val result = translator.translate(
+            AgentIntent(intent = IntentType.SHELL, command = "pm list packages"),
+            snapshot(),
+        )
+        assertTrue(result is IntentTranslator.TranslationResult.Failed)
+        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("自由模式"))
+    }
+
+    @Test
+    fun shell_自由模式_空命令返回缺参而非失败() {
+        mode(Mode.SHIZUKU)
+        val result = freeTranslator.translate(AgentIntent(intent = IntentType.SHELL, command = "   "), snapshot())
+        assertTrue("空命令应可追问补全", result is IntentTranslator.TranslationResult.MissingParam)
+    }
+
+    // ---- 自由模式专属：直调无障碍端点（a11y） ----
+
+    @Test
+    fun a11y_自由模式_端点与参数透传() {
+        mode(Mode.ACCESSIBILITY)
+        val action = freeCommand(
+            AgentIntent(
+                intent = IntentType.A11Y,
+                endpoint = "click",
+                args = mapOf("x" to "540", "y" to "1200"),
+            ),
+        )
+        assertEquals(ActionType.A11Y_CALL, action.type)
+        assertEquals("click", action.endpoint)
+        assertEquals("540", action.args?.get("x"))
+    }
+
+    @Test
+    fun a11y_自由模式_端点名大小写与空白归一() {
+        mode(Mode.ACCESSIBILITY)
+        val action = freeCommand(AgentIntent(intent = IntentType.A11Y, endpoint = " Click_Node ", args = mapOf("target" to "搜索")))
+        assertEquals("click_node", action.endpoint)
+    }
+
+    @Test
+    fun a11y_未知端点_失败并列出可选清单() {
+        mode(Mode.ACCESSIBILITY)
+        val reason = freeFailure(AgentIntent(intent = IntentType.A11Y, endpoint = "teleport"))
+        assertTrue("应指出端点不存在，实际: $reason", reason.contains("不存在"))
+        assertTrue("应给出可选端点清单，实际: $reason", reason.contains("click_node"))
+    }
+
+    @Test
+    fun a11y_缺必填参数_返回缺参() {
+        mode(Mode.ACCESSIBILITY)
+        val result = freeTranslator.translate(
+            AgentIntent(intent = IntentType.A11Y, endpoint = "click", args = mapOf("x" to "540")),
+            snapshot(),
+        )
+        assertTrue("缺 y 应可追问补全", result is IntentTranslator.TranslationResult.MissingParam)
+        assertEquals("args.y", (result as IntentTranslator.TranslationResult.MissingParam).field)
+    }
+
+    @Test
+    fun a11y_缺端点名_返回缺参() {
+        mode(Mode.ACCESSIBILITY)
+        val result = freeTranslator.translate(AgentIntent(intent = IntentType.A11Y), snapshot())
+        assertTrue(result is IntentTranslator.TranslationResult.MissingParam)
+        assertEquals("endpoint", (result as IntentTranslator.TranslationResult.MissingParam).field)
+    }
+
+    @Test
+    fun a11y_非自由模式_被转译层拒绝() {
+        mode(Mode.ACCESSIBILITY)
+        val result = translator.translate(
+            AgentIntent(intent = IntentType.A11Y, endpoint = "back"),
+            snapshot(),
+        )
+        assertTrue(result is IntentTranslator.TranslationResult.Failed)
+        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("自由模式"))
+    }
+
+    @Test
+    fun a11y_只读模式_即使自由档也被拒() {
+        // 动作模式与通道模式正交：自由档放开"允许提出"，只读通道仍然回答"能不能执行"
+        mode(Mode.READONLY)
+        val reason = freeFailure(AgentIntent(intent = IntentType.A11Y, endpoint = "back"))
+        assertTrue("只读通道应拒绝端点直调，实际: $reason", reason.contains("只读模式"))
     }
 }

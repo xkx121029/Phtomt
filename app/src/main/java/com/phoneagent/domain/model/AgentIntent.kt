@@ -46,6 +46,10 @@ data class AgentIntent(
     val kind: String? = null,
     /** device_query：应用清单的过滤关键词（可选，如「相机」） */
     val filter: String? = null,
+    /** shell：AI 自写的命令原文（仅自由模式可用；友好命令或 raw 透传，通道由端侧决定） */
+    val command: String? = null,
+    /** a11y：要调用的无障碍端点名（仅自由模式可用，见 ActionPolicy.a11yEndpoints） */
+    val endpoint: String? = null,
     /**
      * 技能调用参数：技能名 / 技能 id（或 MCP 技能 id）时，具体参数放入此对象（param 名 → 值）。
      * 用于把"调用技能"统一归一化成等价意图或 MCP 调用。普通意图场景不填。
@@ -128,6 +132,10 @@ object IntentType {
     const val SWITCH = "switch"           // 切换开关状态
     const val CLEAR_INPUT = "clear_input" // 清空输入框
 
+    // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly） ----
+    const val SHELL = "shell"             // AI 自写命令（command=命令原文；shizuku/adb/termux 通道由端侧决定）
+    const val A11Y = "a11y"               // 调用无障碍端点（endpoint=端点名，args=参数）
+
     /**
      * 全部合法意图（转译层能识别的意图全集）。
      * 供判分/白名单校验使用：AI 输出的 intent 不在此集合内即为非法意图。
@@ -138,6 +146,7 @@ object IntentType {
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
+        SHELL, A11Y,
     )
 
     /** 意图 → 内部执行动作（AgentAction.type）的映射。供转译层把意图变成命令。 */
@@ -157,6 +166,9 @@ object IntentType {
         FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,
+        // 自由模式专属：AI 自写命令落到 shell，无障碍端点落到 a11y_call
+        SHELL to ActionType.SHELL,
+        A11Y to ActionType.A11Y_CALL,
         // 6 个浏览意图（browse_*）不在此表：它们走内置浏览器通道（BrowserChannel），
         // 由 DOM 脚本直接落地，不经过转译层，也不产生 ActionType。
     )

@@ -40,6 +40,8 @@ object AppRadii {
     val Hero = 28.dp
     /** 覆盖层 / 对话框 / 手机外壳 */
     val Overlay = 32.dp
+    /** 浮动页眉玻璃板：比 Hero 再圆一档，"离顶浮起"时才读得出是一块悬空的板 */
+    val Header = 32.dp
 }
 
 /**

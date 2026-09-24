@@ -16,17 +16,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
@@ -75,6 +82,37 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     save()
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        GroupCard {
+            GroupHeader("动作模式", "AI 可以提出哪一类请求（授权范围）；与下面的执行通道正交，两者叠加生效")
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                val modes = ActionMode.entries
+                val currentMode = ActionMode.fromKey(st.actionMode)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    modes.forEachIndexed { i, mode ->
+                        SegmentedButton(
+                            selected = currentMode == mode,
+                            onClick = { st.actionMode = mode.key; save() },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
+                        ) {
+                            Text(mode.label, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    when (currentMode) {
+                        ActionMode.CONSERVATIVE -> "仅低风险命令：只读 / 导航 / 本地读写。点击、输入、打开应用、搜索、发送、删除等一律被端侧拒绝。"
+                        ActionMode.BALANCED -> "转译层全部意图可用（点击 / 输入 / 打开 / 搜索 / 发送 / 确认 / 删除，以及全部网页操作），即既有默认行为。"
+                        ActionMode.FREE -> "在均衡基础上再放开两项：AI 可自写 shizuku / 无线 ADB / Termux 命令，也可直调全部无障碍端点。本任务首次自写命令会弹窗向你确认一次。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
@@ -148,6 +186,63 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                             )
                         }
                     }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        GroupCard {
+            GroupHeader(
+                "系统提示词",
+                "留空 = 使用内置提示词（含执行铁律与动作格式）；填写后用你写的替换它，技能区块仍会追加在末尾",
+            )
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                // 文本类改动不逐字落库：设置流会回灌编辑态，长文本（贴一段提示词）会与输入互抢光标
+                var draft by remember { mutableStateOf(st.systemPrompt) }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text("留空 = 使用内置提示词（推荐）") },
+                    minLines = 4,
+                    maxLines = 10,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        when {
+                            // 「未保存」优先于「当前生效」：清空输入框但还没保存时，
+                            // 生效中的仍是旧值，不能显示成"内置提示词"
+                            draft != st.systemPrompt -> "有未保存的修改（${draft.length} 字）"
+                            draft.isBlank() -> "当前生效：内置提示词"
+                            else -> "当前生效：自定义（${draft.length} 字）"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (draft.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (draft.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                draft = ""
+                                st.systemPrompt = ""
+                                save()
+                            },
+                        ) { Text("恢复内置") }
+                    }
+                    TextButton(
+                        onClick = {
+                            st.systemPrompt = draft
+                            save()
+                        },
+                        enabled = draft != st.systemPrompt,
+                    ) { Text("保存修改") }
                 }
             }
         }

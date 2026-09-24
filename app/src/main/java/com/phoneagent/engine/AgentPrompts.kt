@@ -1,6 +1,9 @@
 package com.phoneagent.engine
 
 import com.phoneagent.domain.model.AppPageIndex
+import com.phoneagent.domain.rules.ShellCommands
+import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.feature.browser.BrowserGuard
 
 /**
@@ -62,6 +65,7 @@ object AgentPrompts {
     // ==================== 一、系统 Prompt ====================
     /**
      * @param skills 技能区块（见 [skillSection]），追加在系统提示末尾；为空则不加，不增加 AI 负担
+     * @param actionMode 本次任务生效的动作模式（保守/均衡/自由），决定授权范围那一段怎么写、铁律 2 是否放开
      */
     fun system(
         lang: PromptLang,
@@ -69,14 +73,110 @@ object AgentPrompts {
         hasVision: Boolean,
         shizukuAvailable: Boolean,
         skills: String = "",
+        actionMode: ActionMode = ActionMode.DEFAULT,
     ): String {
         val base = custom.ifBlank {
             when (lang) {
-                PromptLang.CN -> systemCN(hasVision, shizukuAvailable)
-                PromptLang.EN -> systemEN(hasVision, shizukuAvailable)
+                PromptLang.CN -> systemCN(hasVision, shizukuAvailable, actionMode)
+                PromptLang.EN -> systemEN(hasVision, shizukuAvailable, actionMode)
             }
         }
-        return if (skills.isBlank()) base else "$base\n\n$skills"
+        // 授权范围一段无论用户是否自定义提示词都必须追加：它是端侧真实拒绝逻辑的说明书，
+        // 缺了它 AI 会按自己的想象发请求，然后在门控那里反复撞墙
+        val withMode = "$base\n\n${actionModeSection(lang, actionMode)}"
+        return if (skills.isBlank()) withMode else "$withMode\n\n$skills"
+    }
+
+    /**
+     * 动作模式（授权范围）区块：三档各写一份，与 [ActionPolicy] 的判定逐条对应。
+     *
+     * 这是"提示词 ↔ 端侧门控"的同源点：AI 在这一段看到的可用意图清单，
+     * 就是 [ActionPolicy] 真实放行的那一批，不会出现"说了能用其实被拒"。
+     */
+    fun actionModeSection(lang: PromptLang, mode: ActionMode): String = when (lang) {
+        PromptLang.CN -> buildString {
+            append("# 动作模式（当前：${mode.label}，${mode.summary}）\n")
+            append("端侧会按这个档位**逐条拒绝**越权意图：被拒的意图不会对设备产生任何操作，只会回你一句中文原因。\n")
+            when (mode) {
+                ActionMode.CONSERVATIVE -> {
+                    append("- 本档只放行低风险意图（只读 / 导航 / 本地读写）：${ActionPolicy.lowRisk.joinToString("/")}。\n")
+                    append("- 其余意图（点击、输入、打开应用、搜索、发送、确认、删除、网页点击与填表等）一律被端侧拒绝，不要尝试。\n")
+                    append("- 确实必须点击或输入才能推进时：用 give_up，在 reason 里说明「需要用户把动作模式切到均衡」，而不是反复重试被拒的动作。\n")
+                }
+                ActionMode.BALANCED -> {
+                    append("- 本档放行转译层的全部意图（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作），与上面两张意图表完全一致。\n")
+                    append("- 不可用的只有「自写 shell 命令」与「直调无障碍端点」——那两项要在自由模式下才开放，本档不要输出。\n")
+                }
+                ActionMode.FREE -> {
+                    append("- 本档在均衡的基础上额外放行两类能力：自写命令（intent=shell）与直调无障碍端点（intent=a11y）。\n")
+                    append("- 这两类是**兜底手段**：能用上面意图表说清楚的事，就用意图表；只有意图表确实表达不了时才动用它们。\n")
+                    append("- 自写命令在本任务首次执行前会弹给用户确认一次（批准后本次任务内不再问；被拒后就别再发同一条命令，换个做法继续）。\n\n")
+                    append("## 自写命令（intent=shell）\n")
+                    append("command 字段填命令原文。下面这张友好命令表和裸 shell 命令都能用：\n")
+                    append(ShellCommands.promptDoc("CN"))
+                    append("\n\n裸命令示例（端侧原样交给 shizuku / 无线 ADB / Termux 执行）：\n")
+                    append("{\"intent\":\"shell\",\"command\":\"pm list packages | grep 相机\",\"reasoning\":\"查相机包名\",\"expected\":\"列出相机相关包名\",\"confidence\":0.9}\n")
+                    append("通道由端侧按可用性自动选（shizuku / 无线 ADB / Termux）；终端输出会作为「上一步结果」回给你。\n\n")
+                    append("## 直调无障碍端点（intent=a11y）\n")
+                    append("endpoint 填端点名，端点所需参数直接写在 args 对象里：\n")
+                    append("| 端点 | 参数 | 说明 |\n|---|---|---|\n")
+                    ActionPolicy.a11yEndpoints.forEach { append("| ${it.name} | ${it.argsText()} | ${it.description} |\n") }
+                    append("\n示例：{\"intent\":\"a11y\",\"endpoint\":\"click_node\",\"args\":{\"target\":\"搜索\"},\"reasoning\":\"直点搜索控件\",\"expected\":\"进入搜索页\",\"confidence\":0.9}\n")
+                    append("端点名与参数名写错会被端侧直接指出（不重试）；坐标类端点只在元素树确实没有该控件时才用。\n")
+                }
+            }
+        }
+        PromptLang.EN -> buildString {
+            append("# Action Mode (current: ${mode.labelEn} / ${mode.key}) — ${mode.summaryEn}\n")
+            append("The device **rejects** over-privileged intents one by one according to this mode: a rejected intent performs nothing on the device and only returns a short reason.\n")
+            when (mode) {
+                ActionMode.CONSERVATIVE -> {
+                    append("- This mode allows low-risk intents only (read-only / navigation / local read-write): ${ActionPolicy.lowRisk.joinToString("/")}.\n")
+                    append("- Every other intent (tap, input, open_app, search, send, confirm, delete, web click/fill, ...) is rejected. Do not attempt them.\n")
+                    append("- If you truly cannot proceed without tapping or typing: use give_up and state in `reason` that the user must switch the action mode to Balanced — never keep retrying a rejected action.\n")
+                }
+                ActionMode.BALANCED -> {
+                    append("- This mode allows every translator intent (tap/input/open/search/send/confirm/delete and all browse_* web operations), exactly as the two intent tables above describe.\n")
+                    append("- The only things unavailable are self-written shell commands and direct accessibility-endpoint calls; those require Free mode. Do not emit them here.\n")
+                }
+                ActionMode.FREE -> {
+                    append("- On top of Balanced, this mode also allows two extra capabilities: self-written commands (intent=shell) and direct accessibility-endpoint calls (intent=a11y).\n")
+                    append("- Both are **fallbacks**: if the intent tables above can express it, use them; reach for these only when the tables genuinely cannot.\n")
+                    append("- Your first self-written command in a task is confirmed with the user once (approved = never asked again within that task; if denied, do not resend the same command — take another route).\n\n")
+                    append("## Self-written command (intent=shell)\n")
+                    append("Put the raw command in `command`. Both the friendly command table below and raw shell commands work:\n")
+                    append(ShellCommands.promptDoc("EN"))
+                    append("\n\nRaw command example (executed verbatim via shizuku / wireless ADB / Termux):\n")
+                    append("{\"intent\":\"shell\",\"command\":\"pm list packages | grep camera\",\"reasoning\":\"find camera package\",\"expected\":\"camera-related packages listed\",\"confidence\":0.9}\n")
+                    append("The channel is auto-selected on-device (shizuku / wireless ADB / Termux); terminal output comes back as the previous step result.\n\n")
+                    append("## Direct accessibility endpoint (intent=a11y)\n")
+                    append("Put the endpoint name in `endpoint` and its arguments in the `args` object:\n")
+                    append("| Endpoint | Args | Description |\n|---|---|---|\n")
+                    ActionPolicy.a11yEndpoints.forEach { append("| ${it.name} | ${it.argsText()} | ${it.descriptionEn} |\n") }
+                    append("\nExample: {\"intent\":\"a11y\",\"endpoint\":\"click_node\",\"args\":{\"target\":\"Search\"},\"reasoning\":\"click the search control directly\",\"expected\":\"search page opens\",\"confidence\":0.9}\n")
+                    append("A wrong endpoint or argument name is reported back immediately (no retry); coordinate endpoints are only for controls the element tree truly lacks.\n")
+                }
+            }
+        }
+    }
+
+    /** 铁律 2：默认禁止输出命令/坐标；只有在自由模式下才放开"自写命令 + 直调端点"，其余约束不变 */
+    private fun ironRule2CN(mode: ActionMode): String = if (mode == ActionMode.FREE) {
+        "字段名只能是 intent（禁止 type/action）；禁止输出像素坐标——定位与算坐标仍由端侧本地完成。" +
+            "自由模式额外允许 intent=shell（自写命令，写在 command 里）与 intent=a11y（直调无障碍端点），" +
+            "但这两类只是兜底：能用意图表表达的一律用意图表，且不得输出无障碍实现细节（如 performAction、节点对象）。"
+    } else {
+        "字段名只能是 intent（禁止 type/action）；禁止输出 shell 命令、无障碍指令、像素坐标——" +
+            "\"怎么做\"（选通道、定位、算坐标、转命令）全由端侧本地完成，你永远看不到也不需要知道命令长什么样。"
+    }
+
+    private fun ironRule2EN(mode: ActionMode): String = if (mode == ActionMode.FREE) {
+        "The field name MUST be \"intent\" (NOT type/action); NEVER output pixel coordinates — locating and coordinate computing stay on-device. " +
+            "Free mode additionally allows intent=shell (self-written command in `command`) and intent=a11y (direct accessibility endpoint call), " +
+            "but both are fallbacks: use the intent tables whenever they can express it, and never emit accessibility implementation details (performAction, node objects)."
+    } else {
+        "The field name MUST be \"intent\" (NOT type/action); NEVER output shell commands, accessibility instructions, or pixel coordinates — " +
+            "\"how\" (channel, locating, coordinates, command translation) happens locally on-device; you never see or need to know the command."
     }
 
     /**
@@ -139,12 +239,12 @@ object AgentPrompts {
         return sb.toString().trimEnd()
     }
 
-    private fun systemCN(hasVision: Boolean, shizukuAvailable: Boolean): String = """
+    private fun systemCN(hasVision: Boolean, shizukuAvailable: Boolean, actionMode: ActionMode): String = """
 你是 Phantom，一个 Android 手机操控 Agent。
 
 # 铁律（违反任何一条 = 任务失败）
 1. 只输出纯 JSON：首字符 = {，末字符 = }；禁止 ```json 或任何 Markdown 标记；JSON 前后不得有任何文字。
-2. 字段名只能是 intent（禁止 type/action）；禁止输出 shell 命令、无障碍指令、像素坐标——"怎么做"（选通道、定位、算坐标、转命令）全由端侧本地完成，你永远看不到也不需要知道命令长什么样。
+2. ${ironRule2CN(actionMode)}
 3. 每步只输出一个意图（除非满足下方「动作合并」条件）。
 4. 严格按计划分步执行，不跳步，不合并无关操作；完成一步再进入下一步。
 5. 拿不准做什么 → 先尝试解决（关弹窗、滑动查找、换定位方式）；仍受阻 → give_up。禁止凭空猜一个意图来"试试"。
@@ -310,12 +410,12 @@ $COMMON_CN_APPS
 只输出 JSON。
 """.trimIndent()
 
-    private fun systemEN(hasVision: Boolean, shizukuAvailable: Boolean): String = """
+    private fun systemEN(hasVision: Boolean, shizukuAvailable: Boolean, actionMode: ActionMode): String = """
 You are Phantom, an Android device automation agent.
 
 # Iron Rules (violation = task failure)
 1. Output pure JSON only: first char = {, last char = }; NEVER any ```json or Markdown markers; no text before/after the JSON.
-2. The field name MUST be "intent" (NOT type/action); NEVER output shell commands, accessibility instructions, or pixel coordinates — "how" (channel, locating, coordinates, command translation) happens locally on-device; you never see or need to know the command.
+2. ${ironRule2EN(actionMode)}
 3. One intent per step (unless the "Action Merging" conditions below are met).
 4. Follow the plan step by step. No skipping, no combining unrelated actions; finish one step before moving to the next.
 5. Unsure what to do → first try to resolve (dismiss dialog, scroll to find, switch targeting). If still stuck → give_up. NEVER fabricate an intent to "try".

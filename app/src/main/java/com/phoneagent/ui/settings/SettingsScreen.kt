@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
-enum class SettingsPage { HOME, AI_MODELS, AGENT, VISUAL, LONG_RUN }
+enum class SettingsPage { HOME, AI_MODELS, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -105,11 +105,14 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         modifier = modifier,
     ) { p ->
         when (p) {
-            SettingsPage.HOME -> SettingsHome(st, onOpen = { page = it })
+            SettingsPage.HOME -> SettingsHome(st, vm, onOpen = { page = it })
             SettingsPage.AI_MODELS -> SettingsAiModels(vm = vm, st = st, onBack = { page = SettingsPage.HOME })
             SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
             SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = { page = SettingsPage.HOME })
+            SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, onBack = { page = SettingsPage.HOME })
+            SettingsPage.DATA -> SettingsData(vm = vm, onBack = { page = SettingsPage.HOME })
+            SettingsPage.ABOUT -> SettingsAbout(onBack = { page = SettingsPage.HOME })
         }
     }
 }
@@ -125,6 +128,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var maxSteps by mutableIntStateOf(initial.maxSteps)
     var attachScreenshot by mutableStateOf(initial.attachScreenshot)
     var promptLanguage by mutableStateOf(initial.promptLanguage)
+    /** 自定义系统提示词：留空=用内置提示词；非空=整体替换内置系统提示词 */
+    var systemPrompt by mutableStateOf(initial.systemPrompt)
     var visionBaseUrl by mutableStateOf(initial.visionBaseUrl)
     var visionModel by mutableStateOf(initial.visionModel)
     var visionApiKey by mutableStateOf(initial.visionApiKey)
@@ -149,6 +154,7 @@ class SettingsState(initial: AppSettings.Settings) {
 
     var floatingWindowEnabled by mutableStateOf(initial.floatingWindowEnabled)
     var executionChannel by mutableStateOf(initial.executionChannel)
+    var actionMode by mutableStateOf(initial.actionMode)
     var marqueeHeight by mutableIntStateOf(initial.marqueeHeight)
     var marqueeAutoColor by mutableStateOf(initial.marqueeAutoColor)
     var marqueeColors by mutableStateOf(initial.marqueeColors)
@@ -168,6 +174,7 @@ class SettingsState(initial: AppSettings.Settings) {
         maxSteps = s.maxSteps
         attachScreenshot = s.attachScreenshot
         promptLanguage = s.promptLanguage
+        systemPrompt = s.systemPrompt
         visionBaseUrl = s.visionBaseUrl
         visionModel = s.visionModel
         visionApiKey = s.visionApiKey
@@ -192,6 +199,7 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeLightingEnabled = s.edgeLightingEnabled
         floatingWindowEnabled = s.floatingWindowEnabled
         executionChannel = s.executionChannel
+        actionMode = s.actionMode
         marqueeHeight = s.marqueeHeight
         marqueeAutoColor = s.marqueeAutoColor
         marqueeColors = s.marqueeColors
@@ -234,6 +242,7 @@ class SettingsState(initial: AppSettings.Settings) {
         maxSteps = maxSteps,
         attachScreenshot = attachScreenshot,
         promptLanguage = promptLanguage,
+        systemPrompt = systemPrompt,
         visionBaseUrl = visionBaseUrl,
         visionModel = visionModel,
         visionApiKey = visionApiKey,
@@ -257,6 +266,7 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeLightingEnabled = edgeLightingEnabled,
         floatingWindowEnabled = floatingWindowEnabled,
         executionChannel = executionChannel,
+        actionMode = actionMode,
         marqueeHeight = marqueeHeight,
         marqueeAutoColor = marqueeAutoColor,
         marqueeColors = marqueeColors,

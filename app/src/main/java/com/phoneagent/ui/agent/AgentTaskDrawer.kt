@@ -6,8 +6,8 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,10 +19,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -39,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,13 +62,16 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.motionSettings
 
 /**
- * Agent 页「任务」侧边栏：列出一份份任务会话，点谁看谁，并给出「新建任务」入口。
+ * Agent 页「任务」抽屉：列出一份份任务会话，点谁看谁，并给出「新建任务」入口。
  *
  * 交互模型：主区域一次只铺开**一个任务**。默认跟随实时任务（最新一次执行 + 正在进行的规划），
  * 从这里点选某个历史任务后主区域改为只看那一次，顶部会出现「返回当前任务」提示条。
  *
- * 为什么放左侧：右侧返回手势被系统占用，底部又被输入区占据，左下抽出是本页唯一不打架的位置。
- * 动画遵守全站约定——只做由下向上的位移 + 淡入，不做横向滑入、不做缩放。
+ * 为什么放左侧：右侧返回手势被系统占用，底部又被输入区占据，左侧是本页唯一不打架的位置。
+ *
+ * 出场方式是**从左侧整条拉出**：面板贴死上/下/左三条边，横向位移就是抽屉自身的物理隐喻
+ * ——拉出这个动作读得出来，靠淡入或上浮则读不出来。这是全站"入场只做自下而上"的唯一例外，
+ * 其余页面与面板仍是纵向入场 + 淡入，不做横向滑动、不做缩放。
  *
  * [open] 为 false 时本组件仍留在组合树里（只有一层空 Box，不吃触摸事件），
  * 这样打开时能真正播放入场动画。
@@ -94,8 +99,6 @@ internal fun AgentTaskDrawer(
     }
     BackHandler(enabled = open) { onDismiss() }
 
-    val shiftPx = with(LocalDensity.current) { (if (reduceMotion) 0 else 28).dp.roundToPx() }
-
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val panelWidth = minOf(maxWidth * 0.84f, 336.dp)
 
@@ -119,10 +122,13 @@ internal fun AgentTaskDrawer(
 
         AnimatedVisibility(
             visibleState = panelState,
-            enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +
-                slideInVertically(tween(DurationNormal, easing = EaseOut)) { shiftPx },
-            exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
-                slideOutVertically(tween(DurationFast, easing = EaseOut)) { shiftPx },
+            // 起点是整个面板宽度之外：从屏幕左缘外一路拉进来，中途不会凭空出现
+            enter = slideInHorizontally(tween(DurationNormal, easing = EaseOut)) { full ->
+                if (reduceMotion) 0 else -full
+            } + fadeIn(tween(DurationNormal, easing = EaseOut)),
+            exit = slideOutHorizontally(tween(DurationFast, easing = EaseOut)) { full ->
+                if (reduceMotion) 0 else -full
+            } + fadeOut(tween(DurationFast, easing = EaseOut)),
             modifier = Modifier.align(Alignment.CenterStart),
         ) {
             TaskPanel(
@@ -149,6 +155,7 @@ private fun TaskPanel(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
+    val systemNavInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val shape = RoundedCornerShape(topEnd = AppRadii.Card, bottomEnd = AppRadii.Card)
     // 主区域看的就是最新那一次执行，所以"实时"与"最新会话"本是同一件事：
     // 只有规划中的新任务例外——它还没有会话，此时不该把上一条历史任务显示成选中。
@@ -242,7 +249,13 @@ private fun TaskPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                contentPadding = PaddingValues(start = AppSpacing.Lg, end = AppSpacing.Lg, bottom = AppSpacing.Lg),
+                // 抽屉拉开时悬浮导航栏会让位，面板一路铺到屏幕底，
+                // 末项得自己让开系统手势区（否则最后一条会压在系统手势条下面）
+                contentPadding = PaddingValues(
+                    start = AppSpacing.Lg,
+                    end = AppSpacing.Lg,
+                    bottom = AppSpacing.Lg + systemNavInsetBottom,
+                ),
                 verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
             ) {
                 if (pendingTitle != null) {
