@@ -60,7 +60,12 @@ internal sealed interface AgentTimelineItem {
         val runKey: String,
         val steps: List<StepCall>,
     ) : AgentTimelineItem {
-        override val key: String get() = "tc#$runKey#${steps.firstOrNull()?.step}-${steps.lastOrNull()?.step}"
+        /**
+         * key 只锚在**链首步**上，不用首尾区间：链是边走边长的，用尾步号做 key
+         * 会让每来一步就换一个 key —— LazyColumn 视作新项、展开状态被丢掉、
+         * 入场动画重播。锚住链首，同一条链自始至终是同一项。
+         */
+        override val key: String get() = "tc#$runKey#${steps.firstOrNull()?.step}"
     }
 
     /** 连续中间状态折叠成的恒定一条 */
@@ -70,8 +75,6 @@ internal sealed interface AgentTimelineItem {
         val foldedCount: Int,
         /** AI 正在生成的流式内容（空串 = 当前没有流式输出） */
         val streaming: String = "",
-        /** 本次任务开始时间戳（用于显示"已工作 N 秒"；0 = 未知） */
-        val startedAtMillis: Long = 0,
     ) : AgentTimelineItem {
         override val key: String get() = "live#status"
     }

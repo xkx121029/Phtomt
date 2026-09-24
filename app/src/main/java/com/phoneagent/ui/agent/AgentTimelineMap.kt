@@ -192,7 +192,6 @@ internal object AgentTimelineMapper {
                 // 这里不能先 takeLast 截断——截断会破坏"前缀单调"，打字机只能整段跳变，
                 // 表现就是"分段蹦"；限长改在渲染处（LiveStatusItem 只贴尾部若干行）。
                 streaming = HumanTranslator.humanStream(decisionStream),
-                startedAtMillis = state.startedAtMillis,
             )
         }
 

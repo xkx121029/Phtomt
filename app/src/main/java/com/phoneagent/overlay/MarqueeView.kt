@@ -49,6 +49,15 @@ class MarqueeView @JvmOverloads constructor(
     // 背景：用户颜色序列柔化渐变，让面板成为一块实色底
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var bgGradient: LinearGradient? = null
+
+    /**
+     * 单色实心底色（非 null 时优先于 [bgGradient]）。
+     *
+     * "跟随状态变色"只给一个阶段色，这时面板必须是**一整块纯色**——
+     * 早先不足两色会被补成"首色+尾色"两段，一旦上游给空列表（配色串解析失败等）
+     * 就退化成蓝→紫的横向渐变，跑马灯上凭空多出一层颜色，与设置页预览也对不上。
+     */
+    private var solidColor: Int? = null
     private val panel = RectF()
 
     /** 面板底色渐变颜色（按顺序组成渐变，可在设置中自定义，默认蓝→紫→粉） */
@@ -113,15 +122,21 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 设置面板底色渐变颜色（至少 2 色，按顺序组成循环渐变） */
+    /** 设置面板底色：只给一个颜色（跟随状态变色）就是纯色实心，给两个以上才铺渐变 */
     fun setColors(colors: List<Int>) {
-        val list = if (colors.size >= 2) colors
-            else listOf(
-                colors.firstOrNull() ?: Color.rgb(0x4f, 0xa3, 0xff),
-                colors.lastOrNull() ?: Color.rgb(0x9b, 0x5c, 0xff),
-            )
-        if (gradientColors == list) return
-        gradientColors = list
+        if (colors.size < 2) {
+            // 单色：整块铺一个色，绝不走渐变（见 solidColor 说明）
+            val c = colors.firstOrNull() ?: DEFAULT_SOLID
+            if (solidColor == c && gradientColors.isEmpty()) return
+            solidColor = c
+            gradientColors = emptyList()
+            bgGradient = null
+            invalidate()
+            return
+        }
+        if (solidColor == null && gradientColors == colors) return
+        solidColor = null
+        gradientColors = colors
         buildBgGradient()
         invalidate()
     }
@@ -131,7 +146,10 @@ class MarqueeView @JvmOverloads constructor(
         if (width <= 0 || gradientColors.isEmpty()) return
         // 首色补到末尾：渐变首尾同色，色带接缝处才不会断开
         val arr = (gradientColors + gradientColors.first()).toIntArray()
-        bgGradient = LinearGradient(0f, 0f, width.toFloat(), 0f, arr, null, Shader.TileMode.REPEAT)
+        // 整幅渐变正好铺满面板宽度，两端用 CLAMP 收口即可。
+        // REPEAT 是平铺语义：万一渐变的宽度与面板当前宽度不同步，它会把整条色带再重复一遍，
+        // 屏幕上就凭空多出几段颜色——设置页预览用的是不平铺的横向渐变，这里必须同源。
+        bgGradient = LinearGradient(0f, 0f, width.toFloat(), 0f, arr, null, Shader.TileMode.CLAMP)
     }
 
     /**
@@ -208,9 +226,17 @@ class MarqueeView @JvmOverloads constructor(
         // 圆角胶囊：半径取半高，隆起的一块面板
         val radius = h / 2f
         panel.set(0f, 0f, w, h)
-        bgGradient?.let {
-            bgPaint.shader = it
+        val solid = solidColor
+        if (solid != null) {
+            // 单色：实心一块，不留任何渐变痕迹（shader 必须清掉，否则旧渐变会接着生效）
+            bgPaint.shader = null
+            bgPaint.color = solid
             canvas.drawRoundRect(panel, radius, radius, bgPaint)
+        } else {
+            bgGradient?.let {
+                bgPaint.shader = it
+                canvas.drawRoundRect(panel, radius, radius, bgPaint)
+            }
         }
         if (text.isEmpty()) return
 
@@ -256,5 +282,8 @@ class MarqueeView @JvmOverloads constructor(
     companion object {
         /** 面板两侧至少留出的空白：长文本封顶后也不能顶到屏幕边缘 */
         private const val PANEL_MARGIN = 16f
+
+        /** 单色模式的兜底色（上游一个颜色都没给时用），取默认渐变的头色 */
+        private const val DEFAULT_SOLID = 0xFF4FA3FF.toInt()
     }
 }

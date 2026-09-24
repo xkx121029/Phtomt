@@ -56,7 +56,9 @@ import com.phoneagent.ui.MainActivity
  *   实时显示 AI 意向/任务状态；长宽随文字自适应，文字超出一屏才滚动。
  * - **任务卡片**：300dp 宽、可拖动的小卡片，承载标题/步骤/详情/交互，高度随内容自适应。
  *
- * 视觉：统一用 App 主题色实色（玄青 + 白字），不做半透明/玻璃质感。
+ * 视觉：任务卡片用「品牌色半透明 + 背景模糊」的毛玻璃（玄青 85% 不透明度 + 窗口
+ *       blurBehindRadius，见 [applyBlurBehind]）；跑马灯仍是不透明实色（它只显示文字，
+ *       半透明会让文字随时失去对比度）。
  * 尺寸：卡片宽度固定，高度 WRAP_CONTENT——默认只占"头部 + 状态行"两行；
  *       AI 详情默认折叠，用户点开才占位，避免长任务时窗口越撑越大。
  * 交互：等待批准（批准/取消）、歧义澄清（选项按钮）、需要指导（输入框+按钮），
@@ -168,33 +170,11 @@ class FloatingWindowService : Service() {
     private var miniVisibleBeforeHide = false
 
     /**
-     * 任务执行期间系统状态栏是否已被隐藏（由 AgentEngine 经 [setStatusBarHidden] 驱动）。
-     *
-     * 只影响任务卡片（任务面板）的上边界（见 [cardTopLimit]）：隐藏时卡片可贴物理屏顶，
-     * 未隐藏时退到状态栏下方，不至于把时间电量盖掉。底部跑马灯与它无关。
-     */
-    // 初值取 companion 里的静态标志：任务可能在悬浮窗启动之前就把状态栏隐藏了（服务晚一步起来时
-    // 仍要按「已隐藏」来布局，否则卡片会被压到状态栏下方）
-    private var statusBarHidden = statusBarHiddenFlag
-
-    /**
-     * 任务卡片可拖动的上边界：状态栏被隐藏时可贴物理屏顶，否则退到状态栏下方。
+     * 任务卡片可拖动的上边界：始终退到状态栏下方，不至于把时间电量盖掉。
      *
      * 跑马灯移到底部之后，卡片上方不再有别的东西压着，这条边界只用来避开系统状态栏。
      */
-    private fun cardTopLimit(): Int = if (statusBarHidden) 0 else statusBarHeight()
-
-    /** 状态栏隐藏状态变化：卡片重新落位（底部跑马灯不受影响） */
-    private fun applyStatusBarHidden(hidden: Boolean) {
-        if (statusBarHidden == hidden) return
-        statusBarHidden = hidden
-        val p = params ?: return
-        val minY = cardTopLimit()
-        if (p.y < minY) {
-            p.y = minY
-            runCatching { root?.let { r -> windowManager?.updateViewLayout(r, p) } }
-        }
-    }
+    private fun cardTopLimit(): Int = statusBarHeight()
 
     private val handler = Handler(Looper.getMainLooper())
     private var notificationManager: NotificationManager? = null
@@ -364,6 +344,8 @@ class FloatingWindowService : Service() {
                 // 清空后窗口坐标系才真正从物理屏顶开始，y = 0 贴顶、负 y 出屏才有意义。
                 fitInsetsTypes = 0
             }
+            // 卡片是半透明的，配上这层背景模糊才是毛玻璃（不支持时自动跳过）
+            applyBlurBehind(this)
         }
         root = layout
         // 真实投影：让卡片浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
@@ -378,6 +360,25 @@ class FloatingWindowService : Service() {
         } catch (_: Exception) {}
         showMarquee()
         showSheetWindow()
+    }
+
+    /**
+     * 给任务卡片窗口打开背景模糊——毛玻璃的另一半（卡片那半是 [FloatingUi.BRAND_GLASS] 的半透明底）。
+     *
+     * 模糊由 SurfaceFlinger 做：窗口设了 [WindowManager.LayoutParams.blurBehindRadius] 之后，
+     * 系统会把窗口背后的内容（别的 App 的画面）做高斯模糊，半透明的卡片才透出一层磨砂底图。
+     * 两个前提缺一不可，缺了就是高不透明度实色卡片，不会崩也不会报错：
+     * 1. Android 12+（`blurBehindRadius` 是 API 31 才有的字段）；
+     * 2. 系统跨窗口模糊是开着的（省电模式、无障碍里的"降低透明度"都会把它关掉）。
+     *
+     * 刻意不去查 `WindowManager.isCrossWindowBlurEnabled()`：SDK 存根把它声明成了实例方法
+     * （javap 可见 ACC_PUBLIC 无 ACC_STATIC），Kotlin 里静态调用编译不过；而且查了也不改变行为——
+     * 模糊被系统关掉时框架直接忽略这个半径，卡片退化成 85% 品牌色，本来就压得住白字。
+     */
+    private fun applyBlurBehind(lp: WindowManager.LayoutParams) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+        lp.blurBehindRadius = dp(FloatingUi.GLASS_BLUR)
     }
 
     /**
@@ -619,12 +620,16 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // 卡片底色：应用主题色实色（玄青），不用半透明/玻璃质感。
-        // 浮窗是压在别的 App 上的一小块，透出的底图会让文字随时失去对比度；
-        // 实色 + 白色文字反而是最克制、最"看得清"的方案。
+        // 卡片底色：品牌色半透明毛玻璃（玄青 85%）。
+        // 卡片自己只负责"半透明"，真正把底图糊掉的是窗口的背景模糊（见 [applyBlurBehind]）——
+        // SurfaceFlinger 对窗口背后的内容做高斯模糊，半透明的卡片才透出一层磨砂底。
+        // 两者必须配套：只加半透明不加模糊，透出来的是清晰底图，文字对比度会随底图乱跳；
+        // 模糊不可用时（Android 12 以下 / 系统关了跨窗口模糊）则退化成高不透明度实色卡片。
         panel.background = FloatingUi.capsule(
             dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
-            FloatingUi.BRAND,
+            FloatingUi.BRAND_GLASS,
+            FloatingUi.GLASS_EDGE,
+            dp(1),
         )
         panel.setPadding(FloatingUi.PAD_L, FloatingUi.PAD_S, FloatingUi.PAD_L, FloatingUi.PAD_S)
 
@@ -1491,23 +1496,6 @@ class FloatingWindowService : Service() {
         @Volatile
         var instance: FloatingWindowService? = null
             private set
-
-        /**
-         * 任务执行期间系统状态栏是否已隐藏（由 AgentEngine 维护）。
-         * 放在 companion 上：服务可能晚于任务启动，静态标志保证实例起来时能读到正确状态。
-         */
-        @Volatile
-        private var statusBarHiddenFlag = false
-
-        /**
-         * 通知浮窗：任务期间的系统状态栏已隐藏 / 已恢复。
-         * 跑马灯在屏幕底部，不受状态栏影响；这里只用来决定任务卡片可拖动的上边界（见 [cardTopLimit]）。
-         */
-        fun setStatusBarHidden(hidden: Boolean) {
-            statusBarHiddenFlag = hidden
-            val svc = instance ?: return
-            svc.handler.post { svc.applyStatusBarHidden(hidden) }
-        }
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, FloatingWindowService::class.java))

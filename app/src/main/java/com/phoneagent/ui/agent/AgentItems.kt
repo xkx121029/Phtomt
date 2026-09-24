@@ -255,8 +255,8 @@ private fun sourceHint(source: AgentTimelineItem.NoteSource): String = when (sou
     AgentTimelineItem.NoteSource.VISION -> "截图识别结果，非 AI 自述"
 }
 
-/** 列表项之间的统一纵向间距（供 AgentScreen 的 LazyColumn 使用） */
-internal val AgentItemSpacing = 10.dp
+/** 列表项之间的统一纵向间距（供 AgentScreen 的 LazyColumn 使用），归入间距令牌体系 */
+internal val AgentItemSpacing = AppSpacing.Md
 
 /**
  * AI 生成的文档结果：直接嵌在任务流里预览，不再另开工作区页面。

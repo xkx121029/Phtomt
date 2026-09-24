@@ -6,7 +6,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -116,7 +115,8 @@ internal fun PlanApprovedItem(item: AgentTimelineItem.PlanApproved) {
         PlanningPulseDot(colors.brand)
         Spacer(Modifier.width(AppSpacing.Sm))
         Text(
-            text = "计划已批准，正在执行（共 ${item.plan.steps.size} 步）",
+            // 步数不在这里报：底部状态条已经是「第 N 步 / 共 M 步」的唯一口径
+            text = "计划已批准，开始执行",
             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
             color = colors.onBrandContainer,
         )

@@ -22,11 +22,10 @@ import com.phoneagent.domain.rules.SessionContext
 import com.phoneagent.domain.rules.ShellCommands
 import com.phoneagent.engine.execution.AppNameResolver
 import com.phoneagent.engine.execution.CapabilityManager
+import com.phoneagent.engine.execution.ClickRunner
 import com.phoneagent.engine.execution.IntentResolver
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifiedClickExecutor
-import com.phoneagent.engine.execution.pickBestByLabel
-import com.phoneagent.engine.execution.pickMostSpecific
 import com.phoneagent.overlay.FloatingWindowService
 import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.AnomalyMemoryEngine
@@ -52,7 +51,6 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepShot
 import com.phoneagent.domain.model.TaskPlan
-import com.phoneagent.domain.model.UiElement
 import com.phoneagent.engine.network.CloudAgent
 import com.phoneagent.engine.perception.PageAnnotator
 import com.phoneagent.engine.perception.effectiveLabel
@@ -1086,9 +1084,6 @@ class AgentEngine(
         try {
             // 新任务一律从「未搁置」开始：上一个任务的搁置标志不能带过来，否则任务起来就挂住
             taskPaused = false
-            // 任务开始：按设置临时隐藏系统状态栏（让跑马灯贴到物理屏顶）；
-            // 失败只是「没隐藏」，不影响任务本身
-            hideStatusBarForTask()
             runInner(task, plan) { owned = it }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // 用户停止 / 协程取消属于正常控制流，必须原样抛出：
@@ -1101,9 +1096,6 @@ class AgentEngine(
             log(AgentLog.Level.ERROR, "任务异常终止：${e.message}", e.stackTraceToString().take(1200))
             safeResetRuntime(owned?.taskId, "任务异常终止：${e.message ?: e.javaClass.simpleName}")
         } finally {
-            // 状态栏是系统级状态，必须在取消/异常下也恢复：stop() 取消协程后，普通 suspend 调用会
-            // 直接抛 CancellationException 而不执行，状态栏就会一直隐藏着
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { restoreStatusBarAfterTask() }
             val mem = owned
             if (mem != null) finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
             // 归档本次任务会话（侧边栏数据源）。与上面同理按 taskId 归属，
@@ -1237,7 +1229,9 @@ class AgentEngine(
             if (adFilter.isAd) {
                 if (adFilter.target != null) {
                     log(AgentLog.Level.INFO, adFilter.reason)
-                    pushFloating("检测到广告，自动关闭", "ACTION")
+                    // 关闭广告属于「执行」动作，阶段必须写 ACTING：写成 ACTION 落到 FloatingUi.phaseColor
+                    // 的兜底琥珀色上，跑马灯会闪出一个设置页阶段清单里根本没列的颜色
+                    pushFloating("检测到广告，自动关闭", "ACTING")
                     AgentAccessibilityService.instance?.let { service ->
                         com.phoneagent.device.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
                     }
@@ -1509,7 +1503,11 @@ class AgentEngine(
                         verify.reason.contains("参数无效")
                     verified = verify.success
                     var times = 1
-                    while (!verified && times < 3 && !isStructuralError && coroutineContext.isActive) {
+                    // 点击类动作不再交给外层重跑：ClickRunner 内部已把"活节点直点 → 手势点击 → 快照坐标 →
+                    // 滚动查找"逐级穷尽过一遍，外层再重跑只是把同一串动作重复执行（还可能造成重复副作用）
+                    val clickLike = action!!.type == ActionType.CLICK || action!!.type == ActionType.TAP ||
+                        action!!.type == ActionType.LONG_CLICK || action!!.type == ActionType.LONG_PRESS
+                    while (!verified && times < 3 && !isStructuralError && !clickLike && coroutineContext.isActive) {
                         times++
                         log(AgentLog.Level.WARN, "动作未生效（第 $times 次重试）：${action!!.type}")
                         repeat(3) { delay(300) }
@@ -2307,30 +2305,21 @@ class AgentEngine(
         val executor = ActionExecutor(service)
         val verifier = VerifiedClickExecutor(executor)
 
-        // 解析目标坐标（仅对需要坐标的动作类型校验非空）
-        val target = resolveTarget(action, snapshot)
-        val (x, y) = resolvePoint(action, target)
+        // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
+        val resolved = intentResolver.resolveAction(action, snapshot)
+        val target = resolved.element
+        val x = resolved.x
+        val y = resolved.y
 
         val result = when (type) {
-            ActionType.CLICK, ActionType.TAP -> {
-                if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件", "", "")
-                else {
-                    // 记下"命中了哪个控件、bounds 是多少、最终点在哪"，
-                    // 出现"点错位置"时靠这一行就能分清是选错控件还是坐标算错
-                    log(
-                        AgentLog.Level.INFO,
-                        "点击 ($x, $y)：" + (target?.let {
-                            "[#${it.index}] ${it.effectiveLabel() ?: it.className} " +
-                                "bounds=(${it.left},${it.top})-(${it.right},${it.bottom})"
-                        } ?: "坐标定位"),
-                    )
-                    verifier.executeAndVerify(snapshot, action) { executor.click(x, y).isSuccess() }
-                }
-            }
-            ActionType.LONG_CLICK, ActionType.LONG_PRESS -> {
-                if (x == null || y == null) com.phoneagent.engine.execution.VerifyResult(false, "无法定位动作目标", "", "")
-                else verifier.executeAndVerify(snapshot, action) { executor.longClick(x, y).isSuccess() }
-            }
+            ActionType.CLICK, ActionType.TAP ->
+                // 点击走专门的流水线：活节点直点 → 手势点最新位置 → 快照坐标 → 滚动查找，
+                // 每步分层确认（控件自身状态 → 整页指纹），失败原因里带前台应用与缺失控件
+                ClickRunner(service, executor, intentResolver) { msg -> log(AgentLog.Level.INFO, msg) }
+                    .run(action, snapshot, longClick = false)
+            ActionType.LONG_CLICK, ActionType.LONG_PRESS ->
+                ClickRunner(service, executor, intentResolver) { msg -> log(AgentLog.Level.INFO, msg) }
+                    .run(action, snapshot, longClick = true)
             ActionType.SWIPE -> {
                 // swipe 常为纯手势（无 target），缺少坐标时以屏幕中心为起点，避免“无法定位动作目标”误判失败
                 val px = x ?: (screenWidth() / 2)
@@ -2572,68 +2561,6 @@ class AgentEngine(
         }
     }
 
-    /** 本任务是否真的改动过 `policy_control`——收尾要不要恢复由它决定（原值本身可能是空的） */
-    private var statusBarHiddenByTask = false
-
-    /** 隐藏状态栏之前 `policy_control` 的原值，空串表示原本没有这项设置 */
-    private var savedPolicyControl = ""
-
-    /**
-     * 任务开始：按设置临时隐藏系统状态栏，让悬浮窗跑马灯不再被状态栏压住。
-     *
-     * 走的是全局策略 `policy_control`，只有真实 shell 通道（无线 ADB / Shizuku）才改得动。
-     * 这一步纯属观感增强，**任何失败都只是「没隐藏」**，绝不能让任务起不来，
-     * 因此全程吞异常、只记日志。
-     */
-    private suspend fun hideStatusBarForTask() {
-        runCatching {
-            if (!settings.settings.first().hideStatusBarDuringTask) return@runCatching
-            if (!shellChannelAvailable()) {
-                log(AgentLog.Level.INFO, "无 shell 通道，跳过隐藏状态栏")
-                return@runCatching
-            }
-            // 先记原值：用户或系统可能本来就设过 policy_control，恢复时不能一律抹成 null
-            val raw = (execShellViaChannel("settings get global policy_control")
-                as? com.phoneagent.device.shell.ShizukuManager.ShellResult.Success)?.output?.trim()
-            // 上一次任务若被系统杀掉而来不及恢复，这里读到的就是残留的沉浸值；
-            // 它不能当作「用户原本的设置」写回去，否则状态栏会被永久固化在隐藏状态
-            val saved = if (raw.isNullOrBlank() || raw == "null" || raw.startsWith("immersive")) "" else raw
-            val put = execShellViaChannel("settings put global policy_control immersive.status=*")
-            if (put is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success) {
-                savedPolicyControl = saved
-                statusBarHiddenByTask = true
-                FloatingWindowService.setStatusBarHidden(true)
-                log(AgentLog.Level.INFO, "任务期间已隐藏状态栏（原值=${saved.ifEmpty { "null" }}）")
-            } else {
-                statusBarHiddenByTask = false
-                log(
-                    AgentLog.Level.WARN,
-                    "隐藏状态栏失败：${(put as? com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure)?.reason}",
-                )
-            }
-        }
-    }
-
-    /**
-     * 任务结束：把状态栏恢复成任务开始前的样子。
-     *
-     * 原值为空 / `null`（说明本来就没有这项设置）时删除该项，否则原样写回，
-     * 避免把用户自己的沉浸式配置一并清掉。同样吞异常：恢复失败不该影响任务收尾。
-     */
-    private suspend fun restoreStatusBarAfterTask() {
-        if (!statusBarHiddenByTask) return
-        statusBarHiddenByTask = false
-        val saved = savedPolicyControl
-        savedPolicyControl = ""
-        runCatching {
-            val cmd = if (saved.isBlank()) "settings delete global policy_control"
-            else "settings put global policy_control $saved"
-            execShellViaChannel(cmd)
-            FloatingWindowService.setStatusBarHidden(false)
-            log(AgentLog.Level.INFO, "已恢复状态栏（原值=$saved）")
-        }
-    }
-
     /**
      * 判断是否为 Termux 工具链命令（curl / python / jq 等）。
      * 取首个 token 的命令名并去掉绝对路径；`a && b` 这类组合只看首段。
@@ -2765,37 +2692,12 @@ class AgentEngine(
         }
     }
 
-    /** 解析动作目标元素：优先 elementIndex，其次 target.method=id/label */
-    private fun resolveTarget(action: AgentAction, snapshot: ScreenSnapshot): UiElement? {
-        action.elementIndex?.let { idx -> snapshot.elements.firstOrNull { it.index == idx } }?.let { return it }
-        val t = action.target ?: return null
-        return when (t.method) {
-            // 同一段文字常常同时挂在容器与内层控件上，必须挑最具体的一个，
-            // 否则会点到容器中心（可能离用户看到的按钮很远）
-            "label" -> pickBestByLabel(snapshot.elements, t.value)
-            "id" -> pickMostSpecific(
-                snapshot.elements.filter {
-                    it.semanticId == t.value || (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
-                },
-            )
-            else -> null
-        }
-    }
-
-    /** 解析点击坐标：目标元素中心 > 比例坐标 > 直接 x/y */
-    private fun resolvePoint(action: AgentAction, target: UiElement?): Pair<Int?, Int?> {
-        if (target != null) return target.centerX to target.centerY
-        action.x?.let { if (action.y != null) return action.x to action.y }
-        val t = action.target ?: return null to null
-        if (t.method == "coordinate") {
-            // 统一走 IntentResolver 的 coordinate 解析口径（比例 / 像素都认）。
-            // 这里曾经一律当成比例相乘，AI 一旦给出像素坐标就会被放大数倍再夹到屏幕边缘，
-            // 表现出来就是"点哪儿都不对"
-            return com.phoneagent.engine.execution.parseCoordinate(t.value, screenWidth(), screenHeight())
-                ?: (null to null)
-        }
-        return null to null
-    }
+    /**
+     * 目标定位与坐标换算已收口到 IntentResolver：[IntentResolver.resolveAction]（元素/坐标）、
+     * [IntentResolver.relocateOnLatest]（按当前页面重定位）、[IntentResolver.nodeSelectorOf]（活节点线索）。
+     * 这里原先的 resolveTarget / resolvePoint / relocateOnLatestPage 三份私有副本已删除——
+     * 同一套规则写两遍，改了一处漏一处，就会出现"引擎点的位置和别处算的不一样"。
+     */
 
     /** 计算滑动终点（纯逻辑，见 [EngineRules.swipeEndpoints]） */
     private fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> =

@@ -49,10 +49,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
@@ -512,16 +515,41 @@ internal fun CalibrationSlider(
 /** 跑马灯渐变默认颜色 */
 internal val marqueeDefaultColors = listOf(0xFF4FA3FF.toLong(), 0xFF9B5CFF.toLong(), 0xFFFF6B9D.toLong())
 
-/** 预览里的示意文案：真实跑马灯显示的也是这种单行 AI 动作简述 */
-private const val marqueePreviewText = "正在打开设置页面…"
+/**
+ * 预览里的示意文案：真实跑马灯显示的也是这种单行 AI 动作简述。
+ *
+ * 刻意写得接近真实长度（任务里的简述多在十几字），而不是一句四五个字的短词：
+ * 胶囊宽度随文字走，渐变色是横跨整块胶囊铺开的——文案太短，几个颜色就会被压成一团，
+ * 预览看上去和实际任务里"铺满半屏"的渐变完全对不上。
+ */
+private const val marqueePreviewText = "正在打开设置页面并连接调试端口"
 
-/** 跟随状态时的阶段色清单（顺序即任务推进顺序），色值一律取自 FloatingUi，不在这里另抄一套 */
+/**
+ * 跟随状态时的阶段色清单（顺序即任务推进顺序），色值一律取自 FloatingUi，不在这里另抄一套。
+ *
+ * 只列真正会被用到的这五个阶段色：面板同时只有一种颜色，多列一个兜底色只会让人以为跑马灯是多彩的。
+ */
 private val marqueePhases = listOf(
     "OBSERVING" to "观察",
     "THINKING" to "思考",
     "ACTING" to "执行",
     "DONE" to "完成",
     "ERROR" to "出错",
+)
+
+/**
+ * 跑马灯的文字样式：必须与悬浮窗 `MarqueeView` 里的 `TextPaint` 一字不差
+ * （14sp、常规字重、零字距、不设行高）。
+ *
+ * 这里原先用的是 `typography.labelLarge`——它是 14sp/Medium/0.1sp 字距、且带 20sp 行高，
+ * 同一个「内边距」值下，预览的胶囊比实际厚 4dp 左右、字也更粗，用户当场就看出了两处不同。
+ */
+private val marqueePreviewTextStyle = TextStyle(
+    fontFamily = FontFamily.SansSerif,
+    fontWeight = FontWeight.Normal,
+    fontSize = 14.sp,
+    letterSpacing = 0.sp,
+    // 不设 lineHeight：留空才会按字体 ascent/descent 量高，与 MarqueeView 的算法同源
 )
 
 /**
@@ -547,7 +575,7 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
         ) {
             Text(
                 marqueePreviewText,
-                style = MaterialTheme.typography.labelLarge,
+                style = marqueePreviewTextStyle,
                 color = Color.White,
                 maxLines = 1,
             )
@@ -610,14 +638,22 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
         0xFFFF8A3D.toInt(), 0xFF6BD968.toInt(), 0xFFFFD600.toInt(), 0xFFE74C5C.toInt(),
     )
     Column {
-        // 与 MarqueeView.setColors 同一条兜底：不足 2 色时用默认渐变
-        val colors = (if (selected.size >= 2) selected else marqueeDefaultColors).map { Color(it.toInt()) }
-        // 与 MarqueeView.buildBgGradient 同构：首色补到末尾，渐变首尾同色接缝处才不断开
-        MarqueeCapsuleMock(Brush.horizontalGradient(colors + colors.first()), padV)
+        // 与 MarqueeView.setColors 同一条规则：不足 2 色就是单色实心（不铺渐变），2 色以上才走横向渐变
+        val colors = (if (selected.isNotEmpty()) selected else marqueeDefaultColors).map { Color(it.toInt()) }
+        val brush = if (colors.size < 2) {
+            SolidColor(colors.first())
+        } else {
+            // 与 MarqueeView.buildBgGradient 同构：首色补到末尾，渐变首尾同色接缝处才不断开
+            Brush.horizontalGradient(colors + colors.first())
+        }
+        MarqueeCapsuleMock(brush, padV)
         Spacer(Modifier.height(10.dp))
         Text(
-            if (selected.isNotEmpty()) "已选 ${selected.size} 色（按选择顺序渐变，最多 6 色）"
-            else "当前为默认渐变，可点击下方颜色自定义",
+            when {
+                selected.size >= 2 -> "已选 ${selected.size} 色（按选择顺序渐变，最多 6 色）"
+                selected.size == 1 -> "已选 1 色（单色实心底色）"
+                else -> "当前为默认渐变，可点击下方颜色自定义"
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

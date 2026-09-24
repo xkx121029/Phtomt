@@ -82,8 +82,6 @@ class AppSettings(private val context: Context) {
         val cursorOverlayEnabled: Boolean = true,
         /** 光标先到位再执行点击（默认关闭=并行，避免每步额外等待） */
         val cursorClickSync: Boolean = false,
-        /** 任务执行期间隐藏系统状态栏：跑马灯不再被状态栏压住，直接露出到屏幕物理顶；任务结束自动恢复 */
-        val hideStatusBarDuringTask: Boolean = true,
         // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
         /** 已配置的 API 端点（存 JSON 字符串；空表示从未写过，读取时由旧三槽合成） */
         val endpoints: List<Endpoint> = emptyList(),
@@ -133,7 +131,6 @@ class AppSettings(private val context: Context) {
         val ENABLE_REVIEW = booleanPreferencesKey("enable_review")
         val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
-        val HIDE_STATUS_BAR = booleanPreferencesKey("hide_status_bar_during_task")
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
         val CATALOG = stringPreferencesKey("model_catalog")
         val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
@@ -214,7 +211,6 @@ class AppSettings(private val context: Context) {
             enableReview = prefs[Keys.ENABLE_REVIEW] ?: true,
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
-            hideStatusBarDuringTask = prefs[Keys.HIDE_STATUS_BAR] ?: true,
             endpoints = endpoints,
             catalog = catalog,
             skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
@@ -261,7 +257,6 @@ class AppSettings(private val context: Context) {
             prefs[Keys.ENABLE_REVIEW] = settings.enableReview
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
-            prefs[Keys.HIDE_STATUS_BAR] = settings.hideStatusBarDuringTask
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
             // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏
             val liveEndpointIds = settings.endpoints.map { it.id }.toSet()

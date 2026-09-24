@@ -154,7 +154,6 @@ class SettingsState(initial: AppSettings.Settings) {
     var marqueeColors by mutableStateOf(initial.marqueeColors)
     var cursorOverlayEnabled by mutableStateOf(initial.cursorOverlayEnabled)
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
-    var hideStatusBarDuringTask by mutableStateOf(initial.hideStatusBarDuringTask)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
@@ -198,7 +197,6 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = s.marqueeColors
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
-        hideStatusBarDuringTask = s.hideStatusBarDuringTask
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
         endpoints.addAll(s.endpoints)
@@ -264,7 +262,6 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = marqueeColors,
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
-        hideStatusBarDuringTask = hideStatusBarDuringTask,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,

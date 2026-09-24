@@ -7,7 +7,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,7 +37,6 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.motionSettings
-import kotlinx.coroutines.delay
 
 /** 相位中文名 */
 private fun phaseWord(phase: AgentState.Phase): String = when (phase) {
@@ -55,31 +52,19 @@ private fun phaseWord(phase: AgentState.Phase): String = when (phase) {
  * 实时中间状态：无论中间刷过多少条，列表里恒定只有这一条，
  * 被折叠掉的条数用「另有 N 条动态」告知，避免刷屏。
  *
+ * 这里只讲"AI 此刻在说什么"：步数 / 相位 / 用时由底部常驻状态条统一报，
+ * 本行不再复述（同一屏出现两遍同样的话，读起来像回声）。
+ *
  * 观感上刻意与"已完成"的步骤卡拉开层次（参考 Aether 的做法）：
  * 进行中只是过程，不铺卡片底色、不加边框，只用一行弱化文字 + 一条 1dp 细分线；
- * 思考阶段让文字微光扫过，暗示"正在生成"，并附上"已工作 N 秒"。
+ * 思考阶段让文字微光扫过，暗示"正在生成"。
  */
 @Composable
 internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus, vm: MainViewModel) {
     val colors = AppTheme.colors
     val reduceMotion = motionSettings().reduceMotion
 
-    // 已工作时长：每秒刷新一次（开始时间由引擎在任务启动时写入）
-    val elapsedMs by produceState(
-        initialValue = elapsedOf(item.startedAtMillis),
-        item.startedAtMillis,
-    ) {
-        while (item.startedAtMillis > 0L) {
-            value = elapsedOf(item.startedAtMillis)
-            delay(1_000L)
-        }
-    }
-
-    val headline = if (item.message.isNotBlank()) {
-        "${phaseWord(item.phase)} · ${item.message}"
-    } else {
-        phaseWord(item.phase)
-    }
+    val headline = item.message.ifBlank { phaseWord(item.phase) }
     val thinking = item.phase == AgentState.Phase.THINKING
     // 打字机：流式正文分块到达，这里摊成连续吐字（key 恒定，换任务不残留上一条的打字状态）
     val typed = rememberTypedText(item.streaming, key = "decision")
@@ -101,17 +86,13 @@ internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus, vm: MainViewMode
                     modifier = Modifier.weight(1f),
                 )
             }
-            if (elapsedMs >= 1_000L) {
+            if (item.foldedCount > 0) {
                 Spacer(Modifier.width(AppSpacing.Sm))
                 Text(
-                    text = "已工作 ${formatElapsed(elapsedMs)}",
+                    text = "另有 ${item.foldedCount} 条动态",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceRaised,
                 )
-            }
-            if (item.foldedCount > 0) {
-                Spacer(Modifier.width(AppSpacing.Sm))
-                StatusPill(text = "另有 ${item.foldedCount} 条动态", color = colors.onSurfaceRaised)
             }
         }
 
@@ -166,18 +147,6 @@ private fun AgentEchoBubble(text: String, vm: MainViewModel) {
 /** 实时回显最多展示的行数（超出取尾部） */
 private const val STREAM_LINES = 10
 
-/** 已工作时长（毫秒）；开始时间未知时返回 0 */
-private fun elapsedOf(startedAtMillis: Long): Long {
-    if (startedAtMillis <= 0L) return 0L
-    return (System.currentTimeMillis() - startedAtMillis).coerceAtLeast(0L)
-}
-
-/** 时长人话：秒 / 分秒 */
-private fun formatElapsed(ms: Long): String = when {
-    ms < 60_000L -> "${ms / 1_000L} 秒"
-    else -> "${ms / 60_000L} 分 ${(ms % 60_000L) / 1_000L} 秒"
-}
-
 /**
  * 微光扫过文字：用在"正在生成"的状态行上，替代常驻脉冲圆点。
  * 行程随文字长度伸缩（短句扫得慢、长句扫得快），扫完停顿一下再重来。
@@ -222,20 +191,19 @@ private fun ShimmerStatusText(text: String, modifier: Modifier = Modifier) {
 
 /**
  * 需要用户协助：敏感页只读保护 / 动作连续未生效。
- * 两个出口在底部输入区（指导 AI / 已手动处理），这里只负责把原因说清楚并把焦点引过去。
+ *
+ * 本卡片只是任务流里的一个**时间锚点**（在哪一步需要人介入），交互全部归底部协助浮层：
+ * 那边已经摆着同一个标题、同一段原因和一个输入框。所以这里不再重复一颗「去回复」按钮
+ * （点了也没处聚焦——该状态下输入区已被浮层顶掉），只留一行指路文字。
  */
 @Composable
-internal fun NeedsUserItem(
-    item: AgentTimelineItem.NeedsUser,
-    onFocusComposer: () -> Unit,
-) {
+internal fun NeedsUserItem(item: AgentTimelineItem.NeedsUser) {
     val colors = AppTheme.colors
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.errorContainer)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -261,23 +229,20 @@ internal fun NeedsUserItem(
             color = colors.onErrorContainer,
         )
         Spacer(Modifier.height(AppSpacing.Md))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AgentActionButton(
-                text = "去输入框回复",
-                icon = AppIcons.Edit,
-                onClick = onFocusComposer,
-            )
-            Spacer(Modifier.width(AppSpacing.Md))
-            Text(
-                text = "或点「已手动处理」让 AI 继续",
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onErrorContainer.copy(alpha = 0.8f),
-            )
-        }
+        Text(
+            text = "在下方输入框告诉我该怎么做，或点「已手动处理」让 AI 继续",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = colors.onErrorContainer.copy(alpha = 0.85f),
+        )
     }
 }
 
-/** 任务完成摘要：步数 / token / 平均响应，全部来自真实执行数据 */
+/**
+ * 任务完成摘要：步数 / token / 平均响应，全部来自真实执行数据。
+ *
+ * 步数只报一次（顶部胶囊"生效 X/Y 步"），底部行不再复述步数，只留成本与响应速度。
+ * 彩色容器不描边：底色本身已经划出边界，再套一圈灰绿发丝线只是噪音。
+ */
 @Composable
 internal fun DoneItem(item: AgentTimelineItem.Done) {
     val colors = AppTheme.colors
@@ -286,7 +251,6 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.successContainer)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -303,7 +267,9 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
                 color = colors.onSuccessContainer,
                 modifier = Modifier.weight(1f),
             )
-            StatusPill(text = "生效 ${item.okSteps}/${item.totalSteps} 步", color = colors.success)
+            if (item.totalSteps > 0) {
+                StatusPill(text = "生效 ${item.okSteps}/${item.totalSteps} 步", color = colors.success)
+            }
         }
         if (item.note.isNotBlank()) {
             Spacer(Modifier.height(AppSpacing.Sm))
@@ -316,12 +282,20 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
         Spacer(Modifier.height(AppSpacing.Sm))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "共 ${item.totalSteps} 步 · ${item.tokens} tokens · 平均响应 ${formatMs(item.avgLatencyMs)}",
+                text = summaryLine(item),
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSuccessContainer.copy(alpha = 0.85f),
             )
         }
     }
+}
+
+/** 完成摘要的底行：只放"花了多少、多快"，步数交给顶部胶囊 */
+private fun summaryLine(item: AgentTimelineItem.Done): String {
+    val parts = ArrayList<String>(2)
+    if (item.tokens > 0) parts += "${item.tokens} tokens"
+    if (item.avgLatencyMs > 0) parts += "平均响应 ${formatMs(item.avgLatencyMs)}"
+    return if (parts.isEmpty()) "本次任务未产生额外消耗" else parts.joinToString(" · ")
 }
 
 /** 任务失败 / 达到步数上限 */
@@ -337,7 +311,6 @@ internal fun FailedItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.errorContainer)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

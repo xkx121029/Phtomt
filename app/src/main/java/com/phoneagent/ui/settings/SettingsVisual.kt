@@ -186,15 +186,6 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                 )
                 Spacer(Modifier.height(12.dp))
                 ToggleRow(
-                    "任务执行时隐藏状态栏",
-                    "任务期间经 Shell 通道临时改系统策略隐藏状态栏，任务结束自动恢复（需无线ADB/Shizuku，部分机型可能无效）。跑马灯在屏幕底部，不受状态栏影响",
-                    st.hideStatusBarDuringTask,
-                ) {
-                    st.hideStatusBarDuringTask = it
-                    save()
-                }
-                Spacer(Modifier.height(10.dp))
-                ToggleRow(
                     "跟随状态变色",
                     "跑马灯底色由当前阶段决定：观察蓝 / 思考紫 / 执行粉 / 完成绿 / 出错红。不用自己配色，一眼就能看出 AI 在干什么",
                     st.marqueeAutoColor,

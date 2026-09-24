@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -182,33 +181,43 @@ private fun ComposerActionButton(
 }
 
 /**
- * 澄清态的候选答案：铺在输入面正上方的一排胶囊，点一下即答。
+ * 澄清态的候选答案：竖排铺在输入面正上方，一行一个，点一下即答。
  *
  * 规划期 AI 反问时，"问题 + 选项"整个落在输入栏里，任务流与浮层都不再重复——
  * 使用者看到的就是"该我答了"，而不是"列表里多了一条记录"。
- * 横向可滚：选项文字长短不一，宁可滚也不要让输入框被顶高。
+ *
+ * 为什么是竖排、而不是原先那排横向滚动的胶囊：选项自带说明文字，横排时每条都被
+ * 压成一行省略号，且第三条起就滑出屏幕——"一共有哪些可选"这件事本身先看不见了，
+ * 而这正是用户此刻唯一要判断的事。竖排一行一个，说明完整可读，AI 给的选项
+ * （连同最末的"我想自己说"）一屏看全。
+ * 高度上限 [OptionsMaxHeight] 兜住极端条数：选项再多也只内滚，不会把底部面板顶到半屏高。
  */
 @Composable
-private fun ClarifyOptionChips(
+private fun ClarifyOptionList(
     options: List<ClarificationOption>,
     onPick: (ClarificationOption) -> Unit,
+    onManualInput: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Chip)
-    Row(
+    val shape = RoundedCornerShape(AppRadii.Tile)
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(bottom = AppSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(bottom = AppSpacing.Sm)
+            .heightIn(max = OptionsMaxHeight)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
         options.forEach { option ->
+            // "✏️ 我想自己说"不是一个答案，而是"我要打字"的入口：点它把焦点交给下面的输入框。
+            // 不能当成选项提交——那会把"我想自己说"这句话原样发给规划模型。
+            val manual = option.id == ManualOptionId
             PressableScale(
                 onPress = buzz,
-                onClick = { onPick(option) },
+                onClick = { if (manual) onManualInput() else onPick(option) },
                 modifier = Modifier
+                    .fillMaxWidth()
                     .clip(shape)
                     .background(colors.surfaceSunken)
                     .border(1.dp, colors.outlineSoft, shape)
@@ -219,7 +228,6 @@ private fun ClarifyOptionChips(
                         text = option.label,
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
                     )
                     if (option.description.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
@@ -227,7 +235,6 @@ private fun ClarifyOptionChips(
                             text = option.description,
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.onSurfaceRaised,
-                            maxLines = 1,
                         )
                     }
                 }
@@ -343,6 +350,15 @@ private fun PlanApprovalPanel(
 private val PlanListMaxHeight = 132.dp
 
 /**
+ * 澄清候选答案在输入栏里的最大高度：约四行（每行 ≈54dp + 8dp 间距）。
+ * 规划提示词约定给 2~5 个选项，四行是常见条数，再多也只内滚。
+ */
+private val OptionsMaxHeight = 240.dp
+
+/** "我想自己说"选项的固定 id，由规划提示词约定（见 AgentPrompts 的澄清输出格式） */
+private const val ManualOptionId = "manual"
+
+/**
  * 固定底部输入区：输入框与动作按钮同处一个容器，圆角与内边距随聚焦形变，
  * 按钮随 [mode] 切换。不使用系统弹窗，队列入口为内嵌细条。
  */
@@ -430,9 +446,14 @@ internal fun AgentComposer(
             }
         }
 
-        // 澄清态：输入面顶部先铺候选答案，点一下即答；下面的输入框留给选项覆盖不到的情况
+        // 澄清态：输入面顶部竖排候选答案，点一下即答；下面的输入框留给选项覆盖不到的情况
         if (mode == ComposerMode.ANSWER_CLARIFY && options.isNotEmpty()) {
-            ClarifyOptionChips(options = options, onPick = onPickOption)
+            ClarifyOptionList(
+                options = options,
+                onPick = onPickOption,
+                // "我想自己说"那一行不是答案，点它就把焦点交给下面的输入框
+                onManualInput = { focusRequester.requestFocus() },
+            )
         }
 
         // 待批准：整块输入面换成计划面板——步骤清单与批准键就在输入栏的位置上

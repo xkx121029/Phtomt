@@ -13,14 +13,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.ContentTransform
 import androidx.compose.foundation.background
@@ -90,11 +88,12 @@ import com.phoneagent.ui.memory.MemoryGraphScreen
 import com.phoneagent.ui.settings.SettingsScreen
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
-import com.phoneagent.ui.theme.DurationNormal
+import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
 import com.phoneagent.ui.theme.SpringConfigs
+import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -175,7 +174,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 记忆已并入 Agent 页（顶栏入口 + 任务流内嵌卡片），不再占底部 Tab
     val tabs = listOf(
         TabItem("Agent", AppIcons.Bolt),
-        TabItem("主页", AppIcons.Home),
+        TabItem("概览", AppIcons.Home),
         TabItem("设置", AppIcons.Settings),
     )
     val activity = androidx.compose.ui.platform.LocalContext.current as ComponentActivity
@@ -205,26 +204,26 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
         }
     }
 
-    // Screen transition spec — symmetric paths with ease-out.
-    // Principle: "If something disappears one way, we expect it to emerge
-    // from where it came."
+    // Tab 切换的转场：新页自下而上小幅升起 + 淡入，旧页原地淡出。
+    //
+    // 这里**不用左右滑动**：左右位移在移动端是"推入/推出"的语义，暗示两个页面有层级
+    // 先后；而底部 Tab 是平级目的地，从右滑入的页并不比当前页"更深一层"，方向本身
+    // 就是假的。同时全项目只保留自下而上的入场，不再引入水平位移。
+    // 位移取屏高的 1/12：只给出"升起"的方向感，不做整屏位移——Tab 是高频动作，
+    // 大幅位移每次都要等它走完，只会显得拖沓。
     val transitionSpec: AnimatedContentTransitionScope<Int>.() -> ContentTransform = {
         if (motion.reduceMotion) {
             // Reduced motion: simple fade only
             fadeIn(tween(durationMillis = transitionDuration, easing = EaseOut)) togetherWith
                 fadeOut(tween(durationMillis = transitionDuration, easing = EaseOut))
         } else {
-            val direction = if (targetState > initialState) 1 else -1
-            slideInHorizontally(
-                initialOffsetX = { fullWidth -> direction * fullWidth / 4 },
+            slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight / 12 },
                 animationSpec = tween(durationMillis = transitionDuration, easing = EaseOut),
             ) + fadeIn(
                 animationSpec = tween(durationMillis = transitionDuration, easing = EaseOut),
             ) togetherWith
-                slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> direction * -fullWidth / 4 },
-                    animationSpec = tween(durationMillis = transitionDuration, easing = EaseOut),
-                ) + fadeOut(
+                fadeOut(
                     animationSpec = tween(durationMillis = transitionDuration, easing = EaseOut),
                 )
         }
@@ -278,10 +277,12 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
     val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    // 底部悬浮导航栏的净空 = 条本体 + 与屏幕的呼吸间距 + 系统手势区。
+    // 底部悬浮导航栏的净空 = 条本体 + 条上下的呼吸间距 + 系统手势区。
+    // 条下方那段（[NavBarGap]）同时也是条自身的 bottom padding；条上方再留同样一段，
+    // 页面末项与 Agent 页输入区才不会贴着玻璃上沿——两层面板贴在一起会糊成一块。
     // 键盘弹出或进全屏二级页时导航栏不显示，净空归零，页面按原样铺满。
     val navBarVisible = extrasPage == null && !keyboardUp
-    val navClearance = if (navBarVisible) NavBarHeight + AppSpacing.Md + systemNavInset else 0.dp
+    val navClearance = if (navBarVisible) NavBarHeight + NavBarGap * 2 + systemNavInset else 0.dp
 
     // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
     // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
@@ -377,7 +378,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                             .padding(
                                 start = AppSpacing.Lg,
                                 end = AppSpacing.Lg,
-                                bottom = systemNavInset + AppSpacing.Md,
+                                bottom = systemNavInset + NavBarGap,
                             ),
                     )
                 }
@@ -388,6 +389,12 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
 
 /** 悬浮导航栏本体高度。页面净空与条自身布局共用同一常量，避免两边改漏 */
 private val NavBarHeight = 64.dp
+
+/**
+ * 悬浮导航栏的呼吸间距：条下方到系统手势区、条上方到页面末项，用同一个值。
+ * 只留一侧会出现"下面松、上面贴"的失衡——尤其是 Agent 页，输入区也浮在条上方。
+ */
+private val NavBarGap = AppSpacing.Md
 
 /**
  * 底部导航：大圆角长方形悬浮条。
@@ -410,6 +417,10 @@ private fun FloatingNavBar(
         hazeState = hazeState,
         shape = shape,
         blurRadius = GlassTokens.Blur,
+        // 不画顶部受光高光：这条浮在内容之上，左右 16dp、下方让开系统手势区，
+        // 四边都不贴屏幕边，高光没有光源可言，只会变成一道说不清来历的脏边。
+        // 贴边的大面 chrome（顶栏、输入区）才需要它，见 Glass.kt。
+        showSheen = false,
         modifier = modifier.shadow(elevation = 12.dp, shape = shape, clip = false),
     ) {
         Row(
@@ -454,31 +465,32 @@ private fun FloatingNavItem(
         ),
         label = "nav-item-press",
     )
-    // 选中图标轻微放大（弹簧回弹），未选中恢复正常
+    // 选中图标轻微放大，未选中恢复正常。
+    // 用全项目统一的入场弹簧（阻尼 0.82），不用更弹的 0.6：Tab 一天要切几十次，
+    // 回弹越少越不碍事，弹跳留给"偶尔发生"的入场。
     val iconScale by animateFloatAsState(
         targetValue = if (selected) 1.14f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.6f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        animationSpec = contentSpringSpec(),
         label = "nav-icon-scale",
     )
-    // 选中态：主色胶囊指示器 + 主色文字
+    // 选中态：主色胶囊指示器 + 主色文字。
+    // 三处颜色都走 DurationFast：指示器是"按下这一刻"的直接反馈，
+    // 拖到 200ms 会明显慢半拍（页面转场另有更长的时长，两者不冲突）。
     val indicatorColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-        animationSpec = tween(DurationNormal, easing = EaseOut),
+        animationSpec = tween(DurationFast, easing = EaseOut),
         label = "nav-indicator",
     )
     val iconColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(DurationNormal, easing = EaseOut),
+        animationSpec = tween(DurationFast, easing = EaseOut),
         label = "nav-icon-color",
     )
     val labelColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = tween(DurationNormal, easing = EaseOut),
+        animationSpec = tween(DurationFast, easing = EaseOut),
         label = "nav-label-color",
     )
 
@@ -498,20 +510,25 @@ private fun FloatingNavItem(
     ) {
         Box(
             modifier = Modifier
+                // 56×30 的横胶囊：宽度够包住 22dp 图标并留出主色面积，
+                // 高度压在 30dp 让上下留白归给文字行，整条 64dp 才不显挤。
+                // 形状用 percent=50 表达"胶囊"，不写死 15dp 半高，改尺寸时不会脱形。
                 .size(width = 56.dp, height = 30.dp)
-                .background(color = indicatorColor, shape = RoundedCornerShape(15.dp)),
+                .background(color = indicatorColor, shape = RoundedCornerShape(percent = 50)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = tab.icon,
-                contentDescription = tab.label,
+                // 标签文字就在正下方，图标不再重复描述一次——否则读屏会把同一个
+                // 标签念两遍（"Agent，Agent"）。
+                contentDescription = null,
                 tint = iconColor,
                 modifier = Modifier
                     .size(22.dp)
                     .scale(iconScale),
             )
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(AppSpacing.Xs))
         Text(
             text = tab.label,
             style = MaterialTheme.typography.labelMedium,

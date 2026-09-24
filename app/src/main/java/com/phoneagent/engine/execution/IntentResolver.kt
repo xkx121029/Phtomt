@@ -1,5 +1,7 @@
 package com.phoneagent.engine.execution
 
+import com.phoneagent.device.a11y.NodeSelector
+import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
@@ -75,6 +77,104 @@ class IntentResolver {
             if (visualCoordinate != null) return ResolvedTarget(x = visualCoordinate.first, y = visualCoordinate.second)
         }
         return ResolvedTarget()
+    }
+
+    /**
+     * 解析**动作**的目标（执行前的唯一定位入口）。
+     *
+     * 它合并了原先散落在引擎里的两段私有逻辑（resolveTarget + resolvePoint），
+     * 现在"AI 说的目标 → 屏幕上的控件/坐标"只有这一处口径，不会再出现两处规则各自演进的情况。
+     *
+     * 顺序：elementIndex 命中的元素优先（AI 直接引用元素树编号最准），
+     * 其次 target.method = id/label 找元素；都没命中才退化为动作自带的 x/y 或 coordinate。
+     */
+    fun resolveAction(action: AgentAction, snapshot: ScreenSnapshot): ResolvedTarget {
+        val w = if (snapshot.screenWidth > 0) snapshot.screenWidth else 1080
+        val h = if (snapshot.screenHeight > 0) snapshot.screenHeight else 2400
+
+        // 元素索引是遍历序号，只对"这一份快照"有效；这里必须用传入的 snapshot，不能拿旧索引用到新树上
+        val byIndex = action.elementIndex?.let { idx -> snapshot.elements.firstOrNull { it.index == idx } }
+        val t = action.target
+        val byTarget = when (t?.method) {
+            // 同一段文字常常同时挂在容器与内层控件上，必须挑最具体的一个，
+            // 否则会点到容器中心（可能离用户看到的按钮很远）
+            "label" -> pickBestByLabel(snapshot.elements, t.value)
+            "id" -> pickMostSpecific(
+                snapshot.elements.filter {
+                    it.semanticId == t.value || (it.viewId ?: "").endsWith(t.value, ignoreCase = true)
+                },
+            )
+            else -> null
+        }
+        (byIndex ?: byTarget)?.let { return elementTarget(it, w, h) }
+
+        // 没有命中元素：动作里带坐标就用坐标（视觉定位结果也走这条路）
+        action.x?.let { ax -> action.y?.let { ay -> return ResolvedTarget(x = ax, y = ay) } }
+        if (t?.method == "coordinate") {
+            // 统一走 parseCoordinate 的比例 / 像素口径：这里曾经一律当比例相乘，
+            // AI 一给像素坐标就会被放大数倍再夹到屏幕边缘，表现出来就是"点哪儿都不对"
+            parseCoordinate(t.value, w, h)?.let { return ResolvedTarget(x = it.first, y = it.second) }
+        }
+        return ResolvedTarget()
+    }
+
+    /**
+     * 用**当前**页面重新定位目标控件，拿到它此刻的中心点；拿不到时返回 null（调用方沿用快照坐标）。
+     *
+     * 为什么必要：点击坐标是按"观察那一刻"的元素树算好的，而中间隔着一次 AI 请求（可能数秒）。
+     * 只要这期间页面有布局变化，旧坐标就会整体失效，落到别的控件上。
+     *
+     * 只在同一应用内重定位：包名变了说明页面已经切走，旧控件与旧坐标一并失效，
+     * 该交给原本的失败/重规划逻辑处理，不能拿新页面上的同名控件硬点。
+     *
+     * 不能图省事复用 [resolveAction]：它优先按 `elementIndex` 取元素，而索引是遍历序号，
+     * 两次抓取之间并不稳定，拿旧索引到新树上取元素会取到完全不同的控件。
+     */
+    fun relocateOnLatest(source: UiElement?, snapshot: ScreenSnapshot, fresh: ScreenSnapshot): UiElement? {
+        if (source == null) return null
+        if (fresh.missingAccessibility || fresh.packageName != snapshot.packageName) return null
+        return matchInFresh(source, fresh)
+    }
+
+    /**
+     * 在另一份页面快照里找 source 的"同一个控件"：viewId 是控件自身的标识，优先按它找；
+     * 找不到才退回文字；最后由"离原位置最近"定夺。
+     *
+     * 最后一步不可省：同一个 viewId / 同一段文字常常出现在列表的每一行上，
+     * 不按距离取舍就会点到列表里的另一行。
+     */
+    fun matchInFresh(source: UiElement, fresh: ScreenSnapshot): UiElement? {
+        val id = source.viewId?.takeIf { it.isNotBlank() }
+        val label = source.effectiveLabel()?.takeIf { it.isNotBlank() }
+        val pool = fresh.elements.filter { e ->
+            id != null && (e.viewId ?: "").endsWith(id, ignoreCase = true)
+        }.ifEmpty {
+            if (label == null) emptyList()
+            else fresh.elements.filter { (it.effectiveLabel() ?: "").contains(label, ignoreCase = true) }
+        }
+        return pool.minByOrNull {
+            val dx = it.centerX - source.centerX
+            val dy = it.centerY - source.centerY
+            dx * dx + dy * dy
+        }
+    }
+
+    /**
+     * 从"动作 + 已命中元素"推导**活节点定位线索**，供在活节点树上直接 performAction 点击。
+     *
+     * 元素快照里只有 viewId/文字，没有节点句柄，所以线索就是这两样加上中心点；
+     * 三样都拿不到（例如纯坐标点击）时返回 null，调用方只能走坐标手势。
+     */
+    fun nodeSelectorOf(action: AgentAction, element: UiElement?): NodeSelector? {
+        val t = action.target
+        val label = element?.effectiveLabel()?.takeIf { it.isNotBlank() }
+            ?: t?.value?.takeIf { it.isNotBlank() && t.method == "label" }
+        val selector = NodeSelector(
+            viewId = element?.viewId?.takeIf { it.isNotBlank() },
+            label = label,
+            centerHint = element?.let { it.centerX to it.centerY },
+        )
+        return selector.takeUnless { it.isEmpty }
     }
 
     private fun elementTarget(elem: UiElement, w: Int, h: Int): ResolvedTarget {

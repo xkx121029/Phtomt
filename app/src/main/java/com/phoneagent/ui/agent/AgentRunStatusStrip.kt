@@ -63,9 +63,13 @@ private fun formatElapsed(ms: Long): String {
 }
 
 /**
- * 运行状态条：相位灯 + 步数 / 阶段 + 置信度 + 用时 + 画面开关 + 停止。
+ * 运行状态条：相位灯 + 步数 / 阶段 + 用时 + 置信度 + 画面开关 + 停止。
  *
- * 需要协助时整条切成 errorContainer 配色，并提供「去回复」一键聚焦输入区。
+ * 它是**运行状态的唯一口径**（步数 / 相位 / 用时只在这里报一次），
+ * 任务流里的实时行只负责"AI 此刻在说什么"，两边不再逐字重复。
+ *
+ * 需要协助时整条切成 errorContainer 配色；不再另设「去回复」按钮——
+ * 该状态下协助浮层本身就带着输入框，按钮与它是同一个入口的第二次出现。
  */
 @Composable
 internal fun AgentRunStatusStrip(
@@ -75,7 +79,6 @@ internal fun AgentRunStatusStrip(
     needsUser: Boolean,
     previewVisible: Boolean,
     onTogglePreview: () -> Unit,
-    onFocusComposer: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -130,11 +133,20 @@ internal fun AgentRunStatusStrip(
         modifier = modifier
             .fillMaxWidth()
             // 外层留白只负责"离玻璃板边缘多远"：玻璃板自己已经退到屏幕里一段，
-            // 这里补上那段距离，状态条在屏幕上仍在原来的位置
-            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Sm)
+            // 这里补上那段距离，状态条在屏幕上仍在原来的位置。
+            // 只留上缘：下缘让给输入区自己的上留白，否则两段留白叠成 20dp 的断层
+            .padding(start = AgentGlassInnerPad, end = AgentGlassInnerPad, top = AppSpacing.Sm)
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(container)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+            // 中性态靠一圈发丝线定边界；切到 errorContainer 后底色自己就划出了边界，
+            // 再套一圈灰绿描边只会让这块警示面显得脏
+            .then(
+                if (needsUser) {
+                    Modifier
+                } else {
+                    Modifier.border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                },
+            )
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -179,13 +191,6 @@ internal fun AgentRunStatusStrip(
                 tone = if (previewVisible) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
                 onClick = onTogglePreview,
             )
-            if (needsUser) {
-                AgentActionButton(
-                    text = "去回复",
-                    icon = AppIcons.Edit,
-                    onClick = onFocusComposer,
-                )
-            }
             Spacer(Modifier.weight(1f))
             if (state.isRunning) {
                 AgentActionButton(

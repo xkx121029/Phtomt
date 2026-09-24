@@ -187,16 +187,21 @@ internal fun ToolChainItem(
     }
 }
 
-/** 折叠行的主文案：一个工具报名字，多个工具报数量 */
+/**
+ * 折叠行的主文案：一个工具报到第几步 + 工具名，多个工具报数量。
+ *
+ * 单步刻意不用"调用了「点击」工具"这种句式：绕了一圈才说出"点了哪里"，
+ * 而步号是用户与轨道、与展开后的步骤行对齐的唯一坐标，值得占这个位置。
+ */
 private fun chainTitle(steps: List<StepCall>): String {
     if (steps.size != 1) return "调用了 ${steps.size} 个工具"
-    val type = steps.first().toolType
-    return if (type.isBlank()) "调用了 1 个工具" else "调用了「${AgentToolStyle.name(type)}」工具"
+    val first = steps.first()
+    return "第 ${first.step} 步 · ${AgentToolStyle.name(first.toolType)}"
 }
 
 /** 折叠行的副文案：单步给这步做了什么，多步给这串工具的顺序 */
 private fun chainSubtitle(steps: List<StepCall>): String = if (steps.size == 1) {
-    steps.first().human.ifBlank { "第 ${steps.first().step} 步" }
+    steps.first().human.ifBlank { "本步没有留下动作说明" }
 } else {
     steps.joinToString("、") { AgentToolStyle.name(it.toolType) }
 }

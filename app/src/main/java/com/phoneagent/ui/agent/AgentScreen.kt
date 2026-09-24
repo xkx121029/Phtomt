@@ -280,11 +280,7 @@ fun AgentScreen(
                 }
                 itemsIndexed(items = visibleItems, key = { _, item -> item.key }) { index, item ->
                     Box(modifier = Modifier.animateListItem(index = index)) {
-                        AgentTimelineItemView(
-                            item = item,
-                            vm = vm,
-                            onFocusComposer = { focusRequester.requestFocus() },
-                        )
+                        AgentTimelineItemView(item = item, vm = vm)
                     }
                     Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
                 }
@@ -321,7 +317,6 @@ fun AgentScreen(
                 AgentHeaderBar(
                     running = agent.isRunning,
                     runningTask = agent.task,
-                    queue = queue,
                     taskCount = sessions.size,
                     onOpenTasks = { drawerOpen = true },
                     onOpenMemory = onOpenMemory,
@@ -380,7 +375,6 @@ fun AgentScreen(
                         needsUser = needsUser,
                         previewVisible = previewVisible,
                         onTogglePreview = { previewVisible = !previewVisible },
-                        onFocusComposer = { focusRequester.requestFocus() },
                         onStop = { vm.stopAgent() },
                     )
                 }
@@ -564,7 +558,6 @@ private data class AssistSpec(
 private fun AgentTimelineItemView(
     item: AgentTimelineItem,
     vm: MainViewModel,
-    onFocusComposer: () -> Unit,
 ) {
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
@@ -575,7 +568,7 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.Say -> SayItem(item, vm)
         is AgentTimelineItem.ToolChain -> ToolChainItem(item, vm)
         is AgentTimelineItem.LiveStatus -> LiveStatusItem(item, vm)
-        is AgentTimelineItem.NeedsUser -> NeedsUserItem(item, onFocusComposer = onFocusComposer)
+        is AgentTimelineItem.NeedsUser -> NeedsUserItem(item)
         is AgentTimelineItem.Done -> DoneItem(item)
         is AgentTimelineItem.Failed -> FailedItem(item.message, vm)
         is AgentTimelineItem.Notice -> NoticeItem(item)

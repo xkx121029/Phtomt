@@ -43,7 +43,9 @@ private val StartSuggestions = listOf(
 /**
  * 空态：没有任何任务痕迹时展示。
  * 唯一硬前置是无障碍服务（没它 AI 读不到控件）；悬浮窗是可选能力，这里不再提示。
- * 提示内嵌在空态里（不使用系统弹窗），点建议句直接带入输入区。
+ *
+ * 刻意不写一段"描述你想让 AI 替你做的事…"的说明：输入框的占位文案与顶栏副标题
+ * 已经把这句话说了两遍，空态只负责给出口——标题 + 可以照说的例子。
  */
 @Composable
 internal fun AgentEmptyState(
@@ -72,12 +74,6 @@ internal fun AgentEmptyState(
             text = "还没有任务",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(AppSpacing.Xs))
-        Text(
-            text = "描述你想让 AI 替你做的事，它会一步步操作手机，并把每一步的依据留在这里",
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.emptyStateText,
         )
 
         if (!a11yEnabled) {
