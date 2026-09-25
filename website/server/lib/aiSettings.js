@@ -65,7 +65,8 @@ const NUMERIC = {
   maxTokens: [128, 8192],
   contextChars: [2000, 120000],
   historyTurns: [0, 20],
-  rateLimitPerHour: [0, 1000]
+  rateLimitPerHour: [0, 1000],
+  logLimit: [50, 5000]
 }
 
 const MAX_TEXT = {
