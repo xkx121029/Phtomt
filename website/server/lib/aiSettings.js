@@ -43,6 +43,12 @@ export const DEFAULTS = {
   historyTurns: 6,
   /** 每个 IP 每小时提问上限，0 表示不限 */
   rateLimitPerHour: 30,
+  /** 允许 AI 直接把用户带到站内页面（标记解析后立即跳转，不需要用户点击） */
+  guideEnabled: true,
+  /** 记录访客问答留痕。访客内容会离开浏览器，不需要就在后台关掉 */
+  logEnabled: true,
+  /** 留痕条数上限，满了丢最旧的 */
+  logLimit: 500,
   assistantName: '项目助手',
   /** 面板打开时的开场白 */
   greeting: '',
