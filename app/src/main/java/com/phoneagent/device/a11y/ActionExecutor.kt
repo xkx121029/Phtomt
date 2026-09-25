@@ -265,6 +265,7 @@ class ActionExecutor(
             )
             build()
         })
+    }
 
     /** 方向滑动（补齐屏幕中心点） */
     suspend fun swipeDirection(x1: Int, y1: Int, x2: Int, y2: Int): Result = swipe(x1, y1, x2, y2)
