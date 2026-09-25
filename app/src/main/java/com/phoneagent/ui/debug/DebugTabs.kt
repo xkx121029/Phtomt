@@ -76,7 +76,6 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
-import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,7 +93,7 @@ internal fun SegmentedTabs(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
         DebugTab.entries.forEach { t ->
             val isSelected = selected == t

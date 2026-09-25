@@ -32,12 +32,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.device.screen.ScreenSharingService
+import com.phoneagent.ui.components.OverlayScrim
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
@@ -71,11 +71,12 @@ internal fun AgentPreviewPanel(
         }
     }
 
-    // 点击空白处收起；面板自身吞掉点击，避免误关
+    // 点击空白处收起；面板自身吞掉点击，避免误关。
+    // 压暗底走全项目共用的 OverlayScrim，不在这里自己调黑度（见 Components.kt）
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.38f))
+            .background(OverlayScrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

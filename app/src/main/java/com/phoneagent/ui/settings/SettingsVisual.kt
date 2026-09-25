@@ -27,6 +27,15 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
+/**
+ * 标定预览框的颜色。
+ *
+ * 这里是全项目唯一一处**刻意不用语义色令牌**的界面色：它是一把「标尺」，
+ * 需要在任意壁纸、任意主题下都刺眼可见，跟页面其余部分不是一套语言。
+ * 收进具名常量只为不留魔法数字，不参与主题色板。
+ */
+private val CalibrationGuideBorder = Color(0xFFFFD600)
+
 /** 视觉效果页 */
 @Composable
 internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
@@ -99,7 +108,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                             Surface(
                                 shape = RoundedCornerShape(st.cornerRadius.dp),
                                 color = Color.Transparent,
-                                border = BorderStroke(2.dp, Color(0xFFFFD600)),
+                                border = BorderStroke(2.dp, CalibrationGuideBorder),
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(
