@@ -284,9 +284,14 @@ class ActionExecutor(
      * 比坐标滑动精确：坐标滑动是从屏幕中心盲划，碰到横向轮播、悬浮按钮、非滚动区域时要么划不动、
      * 要么划错容器；直接对容器下发滚动动作，完全不受坐标与手势落点影响。
      *
+     * 这条路径没有手势，但**不能因此没有光标**：AI 表达滚动时并不给坐标（`swipe` 只说方向，
+     * `scroll_to` 只说"要找什么控件"），而"滚动查找"走的正是这里。不补一段轨迹，
+     * 用户看到的就是"列表自己跳了一下"，看不出 AI 在动手机。
+     * 轨迹按容器 bounds 现场推导——AI 不给坐标，几何就由本机自己补。
+     *
      * @param direction up=往下翻看后面的内容；down=往上翻回前面的内容
      */
-    fun scrollContainer(direction: String): Result {
+    suspend fun scrollContainer(direction: String): Result {
         val root = service.rootInActiveWindow ?: return Result.Failure("无障碍读不到当前页面节点树")
         val container = findScrollable(root) ?: return Result.Failure("当前页面没有可滚动容器")
         val action = if (direction == "down") {
@@ -294,11 +299,23 @@ class ActionExecutor(
         } else {
             AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
         }
-        return if (container.performAction(action)) {
-            Result.Success("已在可滚动容器内滚动")
-        } else {
-            Result.Failure("容器不接受滚动动作")
+        if (!container.performAction(action)) return Result.Failure("容器不接受滚动动作")
+        // 滚动是内容动、手指不动，这次没有手势可跟——轨迹只是"滚了一下"的可视回执，
+        // 容器自己的滚动动画与本轨迹同时在跑，看起来是一回事
+        val rect = Rect()
+        container.getBoundsInScreen(rect)
+        if (rect.width() > 0 && rect.height() > 0) {
+            // 上下各留一段边距：容器边缘常有固定头部或悬浮按钮，那里本来就不跟着滚
+            val inset = (rect.height() * TRACE_INSET_RATIO).toInt()
+            val top = rect.top + inset
+            val bottom = rect.bottom - inset
+            val cx = rect.centerX()
+            // up（往下翻看后面的内容）= 手指自下而上带；down 反之
+            val fromY = if (direction == "down") top else bottom
+            val toY = if (direction == "down") bottom else top
+            com.phoneagent.overlay.CursorOverlayService.swipe(cx, fromY, cx, toY, CONTAINER_TRACE_MS)
         }
+        return Result.Success("已在可滚动容器内滚动")
     }
 
     /** 找页面里最像"主内容区"的可滚动容器：可见且可滚动，取面积最大的那个 */
@@ -514,6 +531,12 @@ class ActionExecutor(
 
         /** 长按手势的按压时长；光标"按住不放"的动效时长与它同源，改一处即可两处对齐 */
         const val LONG_PRESS_MS = 800L
+
+        /** 容器滚动示意轨迹的时长：这条路径没有真实手势可同步，只是一个"滚了一下"的可视回执 */
+        const val CONTAINER_TRACE_MS = 300L
+
+        /** 容器滚动示意轨迹在容器上下各留的边距比例，避开固定头部与悬浮按钮 */
+        const val TRACE_INSET_RATIO = 0.22f
     }
 }
 
