@@ -171,6 +171,7 @@ class MemoryStore(private val context: Context) {
     private val profileKey = stringPreferencesKey("user_profile")
     private val aiMemoryKey = stringPreferencesKey("ai_memory")
     private val taskMemoryKey = stringPreferencesKey("task_memory")
+    private val evolvedRulesKey = stringPreferencesKey("evolved_rules")
 
     suspend fun loadAnomalies(): List<AnomalyMemoryEntry> {
         val raw = context.memoryStore.data.first()[anomaliesKey] ?: return emptyList()
@@ -263,6 +264,79 @@ class MemoryStore(private val context: Context) {
             if (entry.id in idSet) entry.copy(useCount = entry.useCount + 1, lastUsedAt = now) else entry
         }
         saveAiMemories(list)
+    }
+
+    // ---- 经验规则（带作用域的做法类经验，见 EvolvedRule）----
+
+    suspend fun loadEvolvedRules(): List<EvolvedRule> {
+        val raw = context.memoryStore.data.first()[evolvedRulesKey] ?: return emptyList()
+        return runCatching { json.decodeFromString<List<EvolvedRule>>(raw) }.getOrDefault(emptyList())
+    }
+
+    suspend fun saveEvolvedRules(list: List<EvolvedRule>) {
+        context.memoryStore.edit {
+            it[evolvedRulesKey] = json.encodeToString(ListSerializer(EvolvedRule.serializer()), EvolvedRule.trimToLimit(list))
+        }
+    }
+
+    /**
+     * 写入一条经验规则：内容与已有规则高度相似时合并更新（保留原 id 与命中次数），否则新增。
+     * id 由本方法统一分配，调用方无需关心。
+     *
+     * 作用域**只会收紧、不会被覆盖退化**：拿不到前台应用的任务会推断成 GLOBAL，
+     * 若用它覆盖掉先前那条 PACKAGE，等于把"只对美团成立"的经验升级成"对谁都成立"。
+     * 因此只有当本次推断更具体（非 GLOBAL）时才改写作用域。
+     */
+    suspend fun upsertEvolvedRule(
+        content: String,
+        kind: String,
+        scopeKind: String,
+        scopeValue: String,
+        sourceTask: String,
+        confidence: Double = 0.7,
+    ): EvolvedRule? {
+        val text = content.trim()
+        if (text.isEmpty()) return null
+        val list = loadEvolvedRules().toMutableList()
+        val now = System.currentTimeMillis()
+        val matched = list.firstOrNull { AiMemoryDedupe.isSame(it.content, text) }
+        val entry = if (matched != null) {
+            val degrade = scopeKind == EvolvedRule.SCOPE_GLOBAL && matched.scopeKind != EvolvedRule.SCOPE_GLOBAL
+            val merged = matched.copy(
+                content = text,
+                kind = kind.ifBlank { matched.kind },
+                scopeKind = if (degrade) matched.scopeKind else scopeKind.ifBlank { matched.scopeKind },
+                scopeValue = if (degrade) matched.scopeValue else scopeValue,
+                confidence = maxOf(matched.confidence, confidence),
+            )
+            list[list.indexOf(matched)] = merged
+            merged
+        } else {
+            val added = EvolvedRule(
+                id = (list.maxOfOrNull { it.id } ?: 0L) + 1,
+                content = text,
+                kind = kind.ifBlank { "general" },
+                scopeKind = scopeKind.ifBlank { EvolvedRule.SCOPE_GLOBAL },
+                scopeValue = scopeValue,
+                confidence = confidence,
+                sourceTask = sourceTask,
+                createdAt = now,
+            )
+            list.add(added)
+            added
+        }
+        saveEvolvedRules(list)
+        return entry
+    }
+
+    /** 经验规则被实际注入后累计命中次数（供容量淘汰排序） */
+    suspend fun touchEvolvedRules(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val idSet = ids.toSet()
+        saveEvolvedRules(
+            loadEvolvedRules().map { if (it.id in idSet) it.copy(hitCount = it.hitCount + 1, lastUsedAt = now) else it },
+        )
     }
 
     // ---- 任务记忆（任务执行中的工作记忆）----

@@ -31,9 +31,13 @@ import com.phoneagent.engine.execution.IntentResolver
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifiedClickExecutor
 import com.phoneagent.overlay.FloatingWindowService
+import com.phoneagent.data.store.AiMemoryDedupe
+import com.phoneagent.data.store.AiMemoryEntry
 import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.AnomalyMemoryEngine
+import com.phoneagent.data.store.EvolvedRule
 import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.ProfileLearner
 import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.domain.model.AgentAction
@@ -321,9 +325,29 @@ class AgentEngine(
     @Volatile
     private var lastDistilledTaskId = -1L
 
-    /** 本任务已加载的记忆简报缓存：每任务读一次库，逐步骤复用，不每步 IO；null 表示尚未加载 */
+    /**
+     * 本任务已加载的记忆素材缓存：画像 + AI 记忆 + 经验规则，每任务读一次库，逐步骤复用；
+     * null 表示尚未加载。**缓存的是原始素材而不是成品文本**——因为每步要用的经验规则
+     * 取决于该步的前台应用，而"记忆里要剔除哪些条目"又取决于命中了哪些规则，两者都得每步现算。
+     */
     @Volatile
-    private var memoryBriefCache: String? = null
+    private var memoryRawCache: MemoryRaw? = null
+
+    /** 记忆素材三元组（画像 / 记忆 / 经验规则） */
+    private data class MemoryRaw(
+        val profile: List<ProfileEntry>,
+        val memories: List<AiMemoryEntry>,
+        val rules: List<EvolvedRule>,
+    )
+
+    /**
+     * 任务执行期间前台包名 → 出现次数。任务结束时据此推断经验规则的作用域：
+     * 待得最久的那个应用，就是这次经验真正的作用对象。
+     */
+    private val foregroundPkgCounts = mutableMapOf<String, Int>()
+
+    /** 本任务已经计入过命中次数的规则 id：同一任务内命中多次只算一次，防长线任务把计数刷爆 */
+    private val touchedRuleIds = mutableSetOf<Long>()
 
     /** 已安装应用数量缓存（每任务查一次 PackageManager，避免每步决策都全量查询） */
     @Volatile
@@ -1369,7 +1393,10 @@ class AgentEngine(
         modeDenyStreak = 0
         while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
         lastDistilledTaskId = -1L
-        memoryBriefCache = null
+        memoryRawCache = null
+        // 前台应用计数与规则命中计数同样按任务归零：它们描述的是"这一次任务"，跨任务累计会算错作用域
+        foregroundPkgCounts.clear()
+        touchedRuleIds.clear()
         // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
         installedAppCountCache = -1
         sessionContextCache = null
@@ -2163,6 +2190,8 @@ class AgentEngine(
                 )
             }
         }
+        // 记忆与经验规则：两者互斥去重（同一条内容只注入一遍），故必须一起算
+        val (memoryText, ruleText) = memoryAndRules(task, snapshot)
         val userText = AgentPrompts.decision(
             lang = currentLang,
             task = task,
@@ -2173,7 +2202,9 @@ class AgentEngine(
             consecutiveFailures = consecutiveFailures,
             contextHint = DataSanitizer.sanitize(annotated.contextHint),
             // 记忆注入：让 AI 每一步都能看到已知偏好与既往经验，而不是只在规划阶段看得到
-            memory = memoryBrief(snapshot),
+            memory = memoryText,
+            // 经验规则注入：只放"与当前应用/任务相关"的那几条（见 RuleScoper），其余留在记忆里
+            evolvedRules = ruleText,
         ) + planNote + "\n\n## 当前页面\n$pageText" +
             DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task, termuxBridge?.isAvailable() == true) +
@@ -3244,8 +3275,8 @@ class AgentEngine(
         recordStep(step, action, "verified_success", "", "", "已写入记忆")
         if (upsert == null) return
         emitMemoryEvent(upsert, "r$currentTaskId", step)
-        // 记忆变了 → 作废简报缓存，让后续步骤立刻用上刚记下的信息
-        memoryBriefCache = null
+        // 记忆变了 → 作废素材缓存，让后续步骤立刻用上刚记下的信息
+        memoryRawCache = null
         pushFloating("记住了：${content.take(20)}", "THINKING")
     }
 
@@ -3503,22 +3534,44 @@ class AgentEngine(
     suspend fun dismissMemoryEvent(id: Long) {
         runCatching { memory.deleteAiMemory(id) }
         _memoryEvents.value = _memoryEvents.value.filterNot { it.id == id }
-        memoryBriefCache = null
+        memoryRawCache = null
     }
 
     /**
-     * 本步要注入的记忆简报。
-     * 画像 + AI 记忆每任务只读一次库并缓存（记忆被写入后缓存作废）；
+     * 本步要注入的（记忆简报, 经验规则简报）。
+     *
+     * 两段必须一起算，因为**同一条内容只允许注入一遍**：命中的经验规则会先从记忆候选里剔除，
+     * 否则"在美团要先关掉首页弹窗"会既出现在记忆段又出现在规则段，白占上下文还显得自相矛盾。
+     * 反过来，没命中的规则（作用域不符 / 置信度不够）不会被剔除，它的内容仍由记忆段兜住，信息不丢。
+     *
+     * 画像 + 记忆 + 规则每任务只读一次库并缓存（记忆被写入后缓存作废）；
      * 异常经验随页面变化，按页面指纹单独缓存，换页才重新查。
      */
-    private suspend fun memoryBrief(snapshot: ScreenSnapshot): String {
-        val base = memoryBriefCache ?: runCatching {
-            MemoryBrief.build(profile = memory.loadProfile(), memories = memory.loadAiMemories())
-        }.getOrDefault("").also { memoryBriefCache = it }
+    private suspend fun memoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> {
+        val raw = memoryRawCache ?: runCatching {
+            MemoryRaw(memory.loadProfile(), memory.loadAiMemories(), memory.loadEvolvedRules())
+        }.getOrDefault(MemoryRaw(emptyList(), emptyList(), emptyList())).also { memoryRawCache = it }
+
+        val hit = RuleScoper.select(raw.rules, snapshot.packageName.orEmpty(), task)
+        val memories = if (hit.isEmpty()) {
+            raw.memories
+        } else {
+            raw.memories.filterNot { m -> hit.any { AiMemoryDedupe.isSame(it.content, m.content) } }
+        }
+        val base = MemoryBrief.build(profile = raw.profile, memories = memories)
         val hint = anomalyHint(snapshot)
-        if (hint.isBlank()) return base
-        val line = "异常经验：${hint.take(60)}"
-        return if (base.isBlank()) line else "$base\n$line"
+        val memoryText = when {
+            hint.isBlank() -> base
+            base.isBlank() -> "异常经验：${hint.take(60)}"
+            else -> "$base\n异常经验：${hint.take(60)}"
+        }
+        val fresh = hit.filter { it.id !in touchedRuleIds }
+        if (fresh.isNotEmpty()) {
+            // 同一任务内命中多次只计一次：否则一个 40 步的任务会把计数刷到 40，淘汰排序彻底失真
+            touchedRuleIds += fresh.map { it.id }
+            runCatching { memory.touchEvolvedRules(fresh.map { it.id }) }
+        }
+        return memoryText to RuleScoper.brief(hit)
     }
 
     /**
@@ -3570,14 +3623,29 @@ class AgentEngine(
         } ?: return
         val items = parseDistilledMemories(reply)
         if (items.isEmpty()) return
+        // 同一条提炼产物同时落两边：
+        // - AI 记忆：全量注入，承担"用户画像 + 通用记忆"（客观事实类）；
+        // - 经验规则：带作用域注入，承担"与某个应用/任务相关的做法类经验"。
+        // 作用域由本次执行的前台应用分布推断（见 RuleScoper），推断不出来就退化成 GLOBAL。
+        val scope = RuleScoper.inferScope(task, foregroundPkgCounts.toMap(), appContext.packageName, installedAppKeywords())
         items.forEach { item ->
             val upsert = runCatching {
                 memory.upsertAiMemory(item.content, item.category, task, "distill", item.confidence)
             }.getOrNull() ?: return@forEach
             emitMemoryEvent(upsert, "r$currentTaskId", completedSteps)
+            runCatching {
+                memory.upsertEvolvedRule(
+                    content = item.content,
+                    kind = item.category,
+                    scopeKind = scope.kind,
+                    scopeValue = scope.value,
+                    sourceTask = task,
+                    confidence = item.confidence,
+                )
+            }
         }
-        memoryBriefCache = null
-        log(AgentLog.Level.INFO, "记忆提炼完成：新增/更新 ${items.size} 条")
+        memoryRawCache = null
+        log(AgentLog.Level.INFO, "记忆提炼完成：新增/更新 ${items.size} 条（作用域=${scope.kind}${scope.value})")
     }
 
     /** 提炼结果条目 */
@@ -3899,6 +3967,19 @@ class AgentEngine(
         return queryLauncherApps().size.also { installedAppCountCache = it }
     }
 
+    /**
+     * 已装应用名清单：供经验规则推断"任务文本里点名的那个应用"当关键词作用域。
+     * 只在任务结束提炼时调用一次，不做缓存（复用同一次包管理器查询的产物，代价可忽略）。
+     */
+    private fun installedAppKeywords(): List<String> =
+        queryLauncherApps().mapNotNull { it.substringBefore('(').trim().ifBlank { null } }.distinct()
+
+    /** 累计前台应用出现次数（同一任务内），供经验规则推断作用域；本 App 自己不计入 */
+    private fun noteForeground(pkg: String) {
+        if (pkg.isBlank() || pkg == appContext.packageName) return
+        foregroundPkgCounts[pkg] = (foregroundPkgCounts[pkg] ?: 0) + 1
+    }
+
     // ==================== 环境上下文 ====================
 
     /**
@@ -3910,6 +3991,8 @@ class AgentEngine(
             java.text.SimpleDateFormat("yyyy-MM-dd E HH:mm", java.util.Locale.CHINA).format(java.util.Date())
         }.getOrDefault("")
         val pkg = snapshot?.packageName.orEmpty()
+        // 顺手记一次前台应用分布：任务结束提炼经验时据此推断作用域（不额外采集，零成本）
+        noteForeground(pkg)
         val foreground = if (pkg.isBlank()) {
             ""
         } else {
