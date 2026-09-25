@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -54,9 +55,12 @@ import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalHeaderContentPad
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.components.headerLift
 import com.phoneagent.ui.components.rememberGlassState
+import com.phoneagent.ui.components.rememberHeaderLiftState
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -280,10 +284,15 @@ fun AgentScreen(
         if (follow && visibleItems.isNotEmpty()) listState.animateScrollToItem(visibleItems.lastIndex)
     }
 
+    // 顶栏与 GlassHeaderScaffold 同一套吸顶形态：页面贴顶时通栏直角，离顶才收成圆角浮板。
+    // 位移同样从嵌套滚动里听，挂在本页根节点上——任务流、侧边栏等所有滚动容器都汇总到这里
+    val headerLift = rememberHeaderLiftState()
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase),
+            .background(colors.surfaceBase)
+            .headerLift(headerLift),
     ) {
         // 顶栏与底部输入区改为浮在任务流之上的毛玻璃层：
         // 任务流真正从它们下方穿过，模糊才有东西可模糊。
@@ -344,41 +353,45 @@ fun AgentScreen(
             }
         }
 
-        // 顶部玻璃浮层：四角全圆的浮动卡片。贴着屏幕上缘只圆下面两角时，
-        // 剩下两个直角会与状态栏白条拼成一条硬边，读起来像"没画完"；
-        // 退到屏幕里一点、四角同半径，才是一块完整的浮起面板。
+        // 顶部玻璃浮层：吸顶时是一条通栏直角的吸顶栏，离顶后收成四角全圆的浮动卡片。
+        // 贴顶上缘、左右不留白，是为了与状态栏下方那条白条拼成一条完整的顶栏；
+        // 滚起来才脱开上缘与两沿，变成一块悬在任务流上方的浮板。
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(AppRadii.Hero),
+            shape = RoundedCornerShape(headerLift.cornerRadius),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .padding(
-                    start = AgentGlassInset,
-                    end = AgentGlassInset,
-                    top = AgentGlassInset,
+                    start = headerLift.sideInset,
+                    end = headerLift.sideInset,
+                    top = headerLift.topInset,
                 )
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                AgentHeaderBar(
-                    running = agent.isRunning,
-                    runningTask = agent.task,
-                    onOpenTasks = { drawerOpen = true },
-                    onOpenMemory = onOpenMemory,
-                )
-
-                // 回看历史任务时的提示条：明确当前主区域不是实时任务，并给一键回到当前任务的出口
-                if (viewingTaskId != null) {
-                    HistoryViewBanner(
-                        title = archivedSession?.title.orEmpty(),
-                        onBack = { selectedTaskId = -1L },
-                        modifier = Modifier.padding(
-                            start = AppSpacing.Lg,
-                            end = AppSpacing.Lg,
-                            top = AppSpacing.Xs,
-                        ),
+                // 面板边距随吸顶进度收放，板内内容的左右留白由同一进度反向抵消：
+                // 标题、入口图标与历史提示条都钉在距屏幕边 20dp 的竖直线上，不做横向位移
+                CompositionLocalProvider(LocalHeaderContentPad provides headerLift.contentPad) {
+                    AgentHeaderBar(
+                        running = agent.isRunning,
+                        runningTask = agent.task,
+                        onOpenTasks = { drawerOpen = true },
+                        onOpenMemory = onOpenMemory,
                     )
+
+                    // 回看历史任务时的提示条：明确当前主区域不是实时任务，并给一键回到当前任务的出口
+                    if (viewingTaskId != null) {
+                        HistoryViewBanner(
+                            title = archivedSession?.title.orEmpty(),
+                            onBack = { selectedTaskId = -1L },
+                            modifier = Modifier.padding(
+                                start = LocalHeaderContentPad.current,
+                                end = LocalHeaderContentPad.current,
+                                top = AppSpacing.Xs,
+                            ),
+                        )
+                    }
                 }
 
                 // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来
