@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalBottomNavClearance
@@ -42,6 +43,7 @@ import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
@@ -104,8 +106,9 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 // 页眉净空必须垫在滚动容器**内部**（verticalScroll 之后再 padding）：
                 // 垫在容器外面只是把内容整体压低，页眉背后永远是一块纯底色，
-                // 玻璃会退化成一条灰带，正文也不会从它下面穿过
-                .padding(top = contentPad.calculateTopPadding())
+                // 玻璃会退化成一条灰带，正文也不会从它下面穿过。
+                // 再多让出 8dp 呼吸，与 Agent 页正文的上缘留白对齐
+                .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
                 .padding(horizontal = 20.dp)
                 // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
                 .padding(bottom = LocalBottomNavClearance.current),
@@ -125,10 +128,11 @@ fun HomeScreen(
                     ),
             ) {
                 RunningBanner(agent.message.ifBlank { agent.task })
-                Spacer(Modifier.height(20.dp))
             }
 
-            // 状态概览
+            // 区块之间的纵向节奏只由 [SectionHeader] 自带的上边距决定，
+            // 正文里再补 Spacer 就成了"两次留白叠一起"（原先这里是 20+20=40，
+            // 上一区块却是 12+20=32，同一屏里两种节奏）
             SectionHeader("能力状态")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 PressableScale(
@@ -140,7 +144,7 @@ fun HomeScreen(
                         title = if (a11y) "无障碍服务" else "未开启",
                         subtitle = if (a11y) "已连接，可读取与操作" else "点击前往开启",
                         iconColor = if (a11y) Success else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (a11y) Success.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        iconBackground = if (a11y) Success.copy(alpha = 0.15f) else AppSurfaceMuted,
                     )
                 }
             }
@@ -155,7 +159,7 @@ fun HomeScreen(
                         title = "屏幕捕获",
                         subtitle = if (screenshotActive) "运行中，支持视觉理解" else "点击授权截屏",
                         iconColor = if (screenshotActive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (screenshotActive) MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        iconBackground = if (screenshotActive) MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f) else AppSurfaceMuted,
                     )
                 }
                 PressableScale(
@@ -168,13 +172,12 @@ fun HomeScreen(
                         title = if (settings.apiKey.isNotBlank()) "AI 已配置" else "未配置",
                         subtitle = settings.model,
                         iconColor = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        iconBackground = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f) else AppSurfaceMuted,
                     )
                 }
             }
 
             // 外挂视觉模型调试
-            Spacer(Modifier.height(20.dp))
             SectionHeader("视觉模型")
             VisionModelCard(
                 connected = visualConn,
@@ -193,7 +196,6 @@ fun HomeScreen(
                     }
                 },
             )
-            Spacer(Modifier.height(12.dp))
 
             // 快捷模块入口
             SectionHeader("快捷入口")

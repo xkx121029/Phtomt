@@ -1,27 +1,23 @@
 package com.phoneagent.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
 
@@ -53,14 +49,15 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                // 页眉净空垫在滚动容器内部，正文才会从玻璃页眉下面穿过
-                .padding(top = contentPad.calculateTopPadding())
+                // 页眉净空垫在滚动容器内部，正文才会从玻璃页眉下面穿过；
+                // 再多让出 8dp 呼吸，与首页正文的上缘留白对齐
+                .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
                 .padding(horizontal = AppSpacing.Lg)
                 // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
                 .padding(bottom = LocalBottomNavClearance.current),
         ) {
             // ---- 模型：接入哪家 AI ----
-            SettingsSectionLabel("模型")
+            SectionHeader("模型")
             GroupCard {
                 SettingsEntry(
                     icon = AppIcons.SmartToy,
@@ -74,7 +71,7 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             }
 
             // ---- 运行：AI 怎么干活 ----
-            SettingsSectionLabel("运行")
+            SectionHeader("运行")
             GroupCard {
                 SettingsEntry(
                     icon = AppIcons.Play,
@@ -112,7 +109,7 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             }
 
             // ---- 外观与高级 ----
-            SettingsSectionLabel("外观与高级")
+            SectionHeader("外观与高级")
             GroupCard {
                 SettingsEntry(
                     icon = AppIcons.Star,
@@ -126,7 +123,7 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             }
 
             // ---- 系统：本机数据与关于 ----
-            SettingsSectionLabel("系统")
+            SectionHeader("系统")
             GroupCard {
                 SettingsEntry(
                     icon = AppIcons.Folder,
@@ -151,16 +148,4 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             Spacer(Modifier.height(AppSpacing.Lg))
         }
     }
-}
-
-/** 分组小标题：字号小、颜色淡，只负责分隔，不与条目抢注意力 */
-@Composable
-private fun SettingsSectionLabel(text: String) {
-    Spacer(Modifier.height(AppSpacing.Lg))
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = AppSpacing.Xs, bottom = AppSpacing.Sm),
-    )
 }

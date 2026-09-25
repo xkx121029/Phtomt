@@ -57,7 +57,7 @@ private val appModule = module {
     // 无线 ADB「开始配对」通知栏向导
     single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
 
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 }
 
 fun initKoin(context: Context) {

@@ -58,7 +58,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
-import com.phoneagent.engine.prompt.PromptTemplate
 import com.phoneagent.device.shell.AdbError
 import com.phoneagent.device.shell.AdbPhase
 import com.phoneagent.device.shell.AdbWirelessTransport

@@ -2,6 +2,7 @@ package com.phoneagent.ui.memory
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +62,8 @@ import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.AppCardBorder
+import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionCard
@@ -88,7 +91,10 @@ import com.phoneagent.ui.icons.AppIcons
 internal fun EmptyMemoryCard(onRefresh: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        // 这是一张卡片，走卡片底色（不是"下沉面"）：空态与有内容时的记忆卡应当是同一层次，
+        // 只是里面暂时没有条目
+        color = AppCardContainer,
+        border = BorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
     ) {
         Column(

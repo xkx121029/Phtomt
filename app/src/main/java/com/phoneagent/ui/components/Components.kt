@@ -194,7 +194,12 @@ fun Modifier.animateListItem(
 }
 
 /**
- * Section header with restrained typography.
+ * 区块标题：分隔页内成组的正文。
+ *
+ * 上 [AppSpacing.Lg] / 下 [AppSpacing.Sm] 的**不对称**留白是刻意的——标题离上一块远、
+ * 离自己的内容近，读起来才"归属"下方那组，而不是悬在两块中间。
+ * 全项目只此一个区块标题组件：设置页原先另有一套（labelLarge + 16/8 的散装间距），
+ * 同一个角色两种字号两种节奏，扫视时像是两个页面拼起来的。
  *
  * Design principle: "Typography is size-specific — never one tracking value
  * for all sizes. Large text wants negative tracking; small text wants
@@ -208,7 +213,7 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.SemiBold,
         ),
         color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier.padding(top = 20.dp, bottom = 10.dp),
+        modifier = modifier.padding(top = AppSpacing.Lg, bottom = AppSpacing.Sm),
     )
 }
 
@@ -222,13 +227,38 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 /** 卡片容器默认圆角（分组大卡） */
 val AppCardRadius = AppRadii.Card
 
-/** 统一分组卡：surface 底 + 细边框，深/浅主题均保持清晰层次 */
+/**
+ * 卡片底色：全项目唯一的"微抬起的面"。
+ *
+ * 层次靠**色调位移**而不是阴影拉开——比页面底色正好深一档（浅色主题）/ 亮一档（深色主题），
+ * 肉眼看得出是一块独立的面，又不会在深色下糊成一片灰。
+ * 从前这里有三套写法并存（surfaceContainerLow / surface（等于页面底色，卡片是平的）/
+ * surfaceVariant@50%），同一个屏里两种卡片层次不同，读起来像没对齐；现在统一由这里定义。
+ */
+val AppCardContainer: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
+
+/** 卡片发丝描边：把卡片边界从底色里"描"出来，无它则浅色主题下卡片边缘会化掉 */
+val AppCardBorder: Color
+    @Composable get() = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+
+/**
+ * 下沉 / 静默面：未激活的图标底、禁用行、次要控件的底色。
+ *
+ * 比 [AppCardContainer] 再退一档——它表示"这块现在不重要/不可用"，
+ * 与卡片是两回事，不能和卡片共用同一个底。全项目原本 9 处各自写
+ * `surfaceVariant.copy(alpha = 0.5f)`，浓淡一旦有人改动就会漂移，故收成一个定义点。
+ */
+val AppSurfaceMuted: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+
+/** 统一分组卡：微抬起底色 + 发丝描边，深/浅主题均保持清晰层次 */
 @Composable
 fun AppCard(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = AppCardRadius,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
-    borderColor: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+    containerColor: Color = AppCardContainer,
+    borderColor: Color = AppCardBorder,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     androidx.compose.material3.Card(
@@ -245,7 +275,7 @@ fun AppCard(
 @Composable
 fun AppItemCard(
     modifier: Modifier = Modifier,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
+    containerColor: Color = AppCardContainer,
     onClick: (() -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
 ) {
@@ -256,14 +286,14 @@ fun AppItemCard(
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            border = BorderStroke(1.dp, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     } else {
         androidx.compose.material3.Card(
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            border = BorderStroke(1.dp, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     }
 }
@@ -663,7 +693,8 @@ fun StatTile(
 ) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        color = AppCardContainer,
+        border = BorderStroke(1.dp, AppCardBorder),
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(AppSpacing.Lg)) {
@@ -707,7 +738,8 @@ fun SectionCard(
 ) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        color = AppCardContainer,
+        border = BorderStroke(1.dp, AppCardBorder),
         modifier = modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm),
     ) {
         Column(modifier = Modifier.padding(AppSpacing.Lg)) {

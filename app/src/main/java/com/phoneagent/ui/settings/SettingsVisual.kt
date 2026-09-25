@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
@@ -98,7 +99,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                     Spacer(Modifier.height(6.dp))
                     Surface(
                         shape = RoundedCornerShape(AppRadii.Item),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        color = AppSurfaceMuted,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp)

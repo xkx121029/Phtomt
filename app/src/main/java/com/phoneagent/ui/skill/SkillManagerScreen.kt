@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
-import com.phoneagent.engine.prompt.PromptTemplate
 import com.phoneagent.device.shell.AdbError
 import com.phoneagent.device.shell.AdbPhase
 import com.phoneagent.device.shell.AdbWirelessTransport
@@ -136,7 +135,6 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 )
                 SkillTab.MCP -> McpTab(vm)
                 SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
-                SkillTab.PROMPTS -> PromptsTab(vm)
             }
         }
     }
@@ -146,5 +144,4 @@ private enum class SkillTab(val label: String) {
     SKILLS("技能"),
     MCP("MCP"),
     WIRELESS_ADB("无线ADB"),
-    PROMPTS("提示词"),
 }

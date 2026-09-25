@@ -63,6 +63,9 @@ import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.overlay.FloatingUi
+import com.phoneagent.ui.components.AppCardBorder
+import com.phoneagent.ui.components.AppCardContainer
+import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
@@ -183,13 +186,13 @@ internal fun SettingsTopBar(title: String, onBack: () -> Unit) {
     }
 }
 
-/** 分组卡片：圆角容器 */
+/** 分组卡片：微抬起底色 + 发丝描边，与首页/Agent 页的卡片同源（见 AppCardContainer） */
 @Composable
 internal fun GroupCard(content: @Composable () -> Unit) {
     Card(
         shape = RoundedCornerShape(AppRadii.Card),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        colors = CardDefaults.cardColors(containerColor = AppCardContainer),
+        border = BorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) { content() }
@@ -332,7 +335,7 @@ internal fun ExpandableCard(
 
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
-        color = if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        color = if (enabled) AppSurfaceMuted
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -564,7 +567,7 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .background(AppSurfaceMuted)
             .padding(top = 20.dp, bottom = 12.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
@@ -785,7 +788,7 @@ internal fun EndpointCard(
     var confirmDelete by remember { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -958,7 +961,7 @@ internal fun ModelPickerDialog(
                 Surface(
                     shape = RoundedCornerShape(AppRadii.Item),
                     color = if (m.name == current) MaterialTheme.colorScheme.primaryContainer
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            else AppSurfaceMuted,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(

@@ -92,13 +92,12 @@ data class PromptVars(
     )
 }
 
-/** 渲染可变模板 */
+/**
+ * 占位符渲染器：把区块正文里的 `{变量}` 替换成 [PromptVars] 中的值。
+ */
 object PromptTemplateEngine {
     /** `{name}` 形式的占位符：只认标识符，天然避开正文里的 JSON 花括号 */
     private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
-
-    /** 把模板中的 {key} 占位符替换为变量值；未在变量表中的占位符保留原样 */
-    fun render(template: String, vars: PromptVars): String = renderOnce(template, vars.map)
 
     /**
      * 单趟替换：**先扫出全部占位符再一次性替换**。
@@ -108,7 +107,4 @@ object PromptTemplateEngine {
      */
     fun renderOnce(template: String, vars: Map<String, String>): String =
         PLACEHOLDER.replace(template) { m -> vars[m.groupValues[1]] ?: m.value }
-
-    /** 若模板为空白，返回 null 以触发默认回退 */
-    fun effectiveBody(body: String): String? = body.trim().ifBlank { null }
 }
