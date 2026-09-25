@@ -78,6 +78,7 @@ class AgentTimelineMapperTest {
         sayEvents: List<SayEvent> = emptyList(),
         focusTaskId: Long? = null,
         archived: TaskSession? = null,
+        conversationStart: Long = 0L,
     ) = AgentTimelineMapper.build(
         submittedTask = submittedTask,
         state = state,
@@ -94,6 +95,7 @@ class AgentTimelineMapperTest {
         sayEvents = sayEvents,
         focusTaskId = focusTaskId,
         archived = archived,
+        conversationStart = conversationStart,
     )
 
     private fun running(message: String, stepCount: Int = 1) = AgentState(
@@ -437,5 +439,55 @@ class AgentTimelineMapperTest {
         val note = items.filterIsInstance<AgentTimelineItem.AssistantNote>().single()
         assertEquals(AgentTimelineItem.NoteSource.GIVE_UP, note.source)
         assertTrue(note.text.isNotBlank())
+    }
+
+    // ---- 对话边界：新建对话后主区域必须是干净的 ----
+
+    @Test
+    fun `新建对话后不铺开上一段对话的痕迹与终态`() {
+        val items = build(
+            state = AgentState(
+                isRunning = false,
+                task = "把字体调大",
+                phase = AgentState.Phase.DONE,
+                message = "字体已调大",
+                stepCount = 2,
+                startedAtMillis = 100L,
+            ),
+            traces = listOf(trace(100, 1), trace(100, 2)),
+            history = listOf(record(1, true, taskId = 100), record(2, true, taskId = 100)),
+            conversationStart = 200L,
+        )
+        assertTrue("上一段对话的标题/步骤/完成摘要都不该出现在新对话里", items.isEmpty())
+    }
+
+    @Test
+    fun `本对话内的任务照常铺开`() {
+        val items = build(
+            state = AgentState(
+                isRunning = false,
+                task = "把字体调大",
+                phase = AgentState.Phase.DONE,
+                message = "字体已调大",
+                stepCount = 2,
+                startedAtMillis = 300L,
+            ),
+            traces = listOf(trace(300, 1), trace(300, 2)),
+            history = listOf(record(1, true, taskId = 300), record(2, true, taskId = 300)),
+            conversationStart = 200L,
+        )
+        assertEquals(listOf(1, 2), items.steps().map { it.step })
+        assertTrue(items.any { it is AgentTimelineItem.Done })
+    }
+
+    @Test
+    fun `回看上一段对话的历史任务仍能铺开它的步骤`() {
+        val items = build(
+            traces = listOf(trace(100, 1), trace(100, 2)),
+            history = listOf(record(1, true, taskId = 100), record(2, true, taskId = 100)),
+            focusTaskId = 100L,
+            conversationStart = 200L,
+        )
+        assertEquals(listOf(1, 2), items.steps().map { it.step })
     }
 }

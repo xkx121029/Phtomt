@@ -1330,7 +1330,7 @@ class FloatingWindowService : Service() {
                 }
                 "shellconfirm" -> {
                     // 自由模式：AI 自写命令的首次确认。批准后本任务内不再问；
-                    // 拒绝只针对本任务，不影响设置里的动作模式档位。
+                    // 拒绝只针对本任务，不改动 Agent 页那条动作模式切换条的档位。
                     addBtn(interactButtons, "批准执行", true) { onInteraction?.invoke("shell_approve", "yes") }
                     addBtn(interactButtons, "拒绝", false) { onInteraction?.invoke("shell_approve", "no") }
                 }

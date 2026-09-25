@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
@@ -582,4 +583,71 @@ internal fun AgentComposer(
             }
         }
     }
+}
+
+/**
+ * 动作模式切换条：贴在输入面正下方的一条，三档各配一个图标。
+ *
+ * 为什么落在这里而不是设置页：动作模式是"这一次任务允许 AI 做到哪一步"的决定，
+ * 属于发任务时的上下文；藏进设置等于每改一次档都要离开任务页、改完再回来。
+ * 所以它跟着输入栏走，且只在条上写"图标 + 档名"——各档差别由端侧门控与提示词负责解释，
+ * 这里不摊开说明文字，免得把底部操作区顶高。
+ *
+ * 档位在任务开始时读取（见 AgentEngine.run），运行中改档不影响正在跑的任务，只对下一次生效。
+ */
+@Composable
+internal fun AgentModeBar(
+    current: ActionMode,
+    onSelect: (ActionMode) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ActionMode.entries.forEach { mode ->
+            val selected = mode == current
+            val shape = RoundedCornerShape(AppRadii.Chip)
+            PressableScale(
+                onPress = buzz,
+                // 已选中的档位再点一次不重复落库：设置写盘是要钱的，别让白点变成白写
+                onClick = { if (!selected) onSelect(mode) },
+                modifier = Modifier
+                    .clip(shape)
+                    .background(if (selected) colors.brand else colors.surfaceSunken)
+                    .border(1.dp, if (selected) colors.brand else colors.outlineSoft, shape)
+                    .padding(horizontal = AppSpacing.Md, vertical = 6.dp),
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = modeIcon(mode),
+                        // 图标与文字同义，读屏只念一次档名即可
+                        contentDescription = null,
+                        tint = if (selected) colors.onBrand else colors.onSurfaceRaised,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = mode.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (selected) colors.onBrand else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 三档图标：护盾（收窄）/ 滑杆（可调）/ 闪电（放开），三个轮廓形状互不相近，扫一眼就能分辨 */
+private fun modeIcon(mode: ActionMode): ImageVector = when (mode) {
+    ActionMode.CONSERVATIVE -> AppIcons.Guard
+    ActionMode.BALANCED -> AppIcons.Tune
+    ActionMode.FREE -> AppIcons.Bolt
 }

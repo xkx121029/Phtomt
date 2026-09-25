@@ -86,6 +86,8 @@ internal fun AgentTaskDrawer(
     viewingTaskId: Long?,
     onSelect: (Long?) -> Unit,
     onNewTask: () -> Unit,
+    /** 是否允许新建对话：任务运行中为 false（引擎拒绝另起对话，入口置灰并说明原因） */
+    newConversationEnabled: Boolean = true,
     onDismiss: () -> Unit,
 ) {
     val reduceMotion = motionSettings().reduceMotion
@@ -138,6 +140,7 @@ internal fun AgentTaskDrawer(
                 viewingTaskId = viewingTaskId,
                 onSelect = onSelect,
                 onNewTask = onNewTask,
+                newConversationEnabled = newConversationEnabled,
                 onDismiss = onDismiss,
             )
         }
@@ -152,6 +155,7 @@ private fun TaskPanel(
     viewingTaskId: Long?,
     onSelect: (Long?) -> Unit,
     onNewTask: () -> Unit,
+    newConversationEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -209,13 +213,14 @@ private fun TaskPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppSpacing.Lg),
+            enabled = newConversationEnabled,
             onClick = onNewTask,
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(AppRadii.Item))
-                    .background(colors.brand)
+                    .background(if (newConversationEnabled) colors.brand else colors.surfaceBase)
                     .padding(vertical = AppSpacing.Md),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
@@ -223,16 +228,27 @@ private fun TaskPanel(
                 Icon(
                     imageVector = AppIcons.Add,
                     contentDescription = null,
-                    tint = colors.onBrand,
+                    tint = if (newConversationEnabled) colors.onBrand else colors.onSurfaceRaised,
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(AppSpacing.Sm))
                 Text(
-                    text = "新建任务",
+                    text = "新建对话",
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.onBrand,
+                    color = if (newConversationEnabled) colors.onBrand else colors.onSurfaceRaised,
                 )
             }
+        }
+
+        // 置灰时必须说清为什么：否则用户只会以为按钮坏了
+        if (!newConversationEnabled) {
+            Spacer(Modifier.height(AppSpacing.Sm))
+            Text(
+                text = "任务运行中，结束后可新建对话",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceRaised,
+                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+            )
         }
 
         Spacer(Modifier.height(AppSpacing.Lg))

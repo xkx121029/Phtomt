@@ -183,6 +183,9 @@ class AgentEngine(
         /** say 事件流的保留上限（只用于界面实时气泡，超出丢弃最早的） */
         private const val MAX_SAY_EVENTS = 20
 
+        /** 本对话内纯对话往来（问答）的保留上限，只喂给会话承接块 */
+        private const val MAX_CONVERSATION_CHATS = 6
+
         /** 连续 say 次数上限：超过即要求 AI 开始真正执行，避免"只聊天不干活"死循环 */
         private const val MAX_SAY_STREAK = 3
 
@@ -316,11 +319,31 @@ class AgentEngine(
     private var installedAppCountCache: Int = -1
 
     /**
-     * 本任务的会话承接块（上一轮任务 + 是否为追问），每任务构建一次后逐步骤复用；
-     * 空串表示没有可承接的历史任务。规划与每步决策共用同一份，避免两处口径不一致。
+     * 本任务的会话承接块（本对话内更早的往来 + 是否为追问），每任务构建一次后逐步骤复用；
+     * 空串表示本对话里没有可承接的往来。规划与每步决策共用同一份，避免两处口径不一致。
      */
     @Volatile
     private var sessionContextCache: String? = null
+
+    /**
+     * 当前对话的起点（毫秒时间戳）。
+     *
+     * 任务 id 就是任务开始时刻，因此「本对话」= taskId >= 起点的那些任务：
+     * 承接块只从这里取材，实时视图也只铺开这之后的执行痕迹。
+     * 「新建对话」把起点推到现在，上一段对话的聊天记录既不进上下文、也不再显示。
+     */
+    private val _conversationStart = MutableStateFlow(System.currentTimeMillis())
+    val conversationStart: StateFlow<Long> get() = _conversationStart.asStateFlow()
+
+    /**
+     * 本对话内的纯对话问答（无任务执行的那些轮次）。
+     * 只用于会话承接，不落库：新建对话时清空，应用重启后同样不复存在。
+     */
+    private val conversationChats = mutableListOf<ConversationChat>()
+    private val chatLock = Any()
+
+    /** 本对话内的一次问答往来 */
+    private data class ConversationChat(val at: Long, val question: String, val answer: String)
 
     /** 异常经验查询的页面指纹缓存：同一页面不重复查库 */
     @Volatile
@@ -720,6 +743,48 @@ class AgentEngine(
         }
     }
 
+    // ==================== 对话边界 ====================
+
+    /**
+     * 新建对话：把对话起点推到现在，并清空只属于上一段对话的界面态与上下文。
+     *
+     * 清的是「本对话的上下文与实时视图」——上一段对话的任务仍留在侧边栏可回看，
+     * 但它的目标/结论不再进提示词，它的执行痕迹也不再铺在实时视图里。
+     *
+     * 任务运行中不允许另起对话：否则实时视图与本任务互相矛盾（视图声称是新对话，
+     * 却仍有任务在跑）。界面据此把入口置灰，这里再兜一层。
+     */
+    fun newConversation() {
+        if (_state.value.isRunning) return
+        _conversationStart.value = System.currentTimeMillis()
+        synchronized(chatLock) { conversationChats.clear() }
+        sessionContextCache = null
+        _sayEvents.value = emptyList()
+        _memoryEvents.value = emptyList()
+        _conversation.value = emptyList()
+        _planPhase.value = PlanPhase.Idle
+        _planStream.value = ""
+        pendingTask = ""
+        activePlan = null
+        // 上一段对话残留的「批准计划 / 需要澄清」面板必须收掉：任务已被作废，
+        // 留着按钮只会点了没反应
+        FloatingWindowService.interaction(null, null, null)
+        log(AgentLog.Level.INFO, "已新建对话（上一段对话的上下文与视图已清空）")
+    }
+
+    /** 记下本对话内的一次纯对话问答，供下一轮承接（新建对话时清空） */
+    private fun rememberChatTurn(question: String, answer: String) {
+        if (question.isBlank() || answer.isBlank()) return
+        synchronized(chatLock) {
+            conversationChats += ConversationChat(
+                at = System.currentTimeMillis(),
+                question = question.trim().take(200),
+                answer = answer.trim().take(200),
+            )
+            while (conversationChats.size > MAX_CONVERSATION_CHATS) conversationChats.removeAt(0)
+        }
+    }
+
     // ==================== 规划 / 澄清 / 批准 ====================
 
     /** 开始规划：AI 流式思考并检测歧义。不直接执行。 */
@@ -777,6 +842,8 @@ class AgentEngine(
             is PlanPhase.Reply -> {
                 emitSayEvent(phase.text, "r$currentTaskId", 1)
                 pushFloating(phase.text.take(20), "THINKING")
+                // 这轮是纯对话（没有执行）：记进本对话的往来，下一轮"再改一下"才有据可依
+                rememberChatTurn(pendingTask, phase.text)
             }
 
             is PlanPhase.Clarifying -> {
@@ -1502,7 +1569,7 @@ class AgentEngine(
                 log(AgentLog.Level.WARN, "动作模式拒绝意图（第 $modeDenyStreak 次）：${intent.intent}｜${modeVerdict.reason}")
                 if (modeDenyStreak >= MAX_MODE_DENY_STREAK) {
                     val stopReason = "连续 $modeDenyStreak 次尝试被「${activeActionMode.label}」动作模式拒绝，已停止任务。" +
-                        "若这个任务确实需要这些动作，请在「设置 → Agent 运行 → 动作模式」里放宽档位后重试。"
+                        "若这个任务确实需要这些动作，请在「Agent 页输入栏下方的动作模式」里放宽档位后重试。"
                     _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = stopReason)
                     pushFloating("动作模式不允许，已停止", "ERROR")
                     log(AgentLog.Level.ERROR, stopReason)
@@ -3870,31 +3937,47 @@ class AgentEngine(
     // ==================== 会话承接（连续对话） ====================
 
     /**
-     * 会话承接块：取本会话中最近几轮已结束的任务（目标 + 状态 + 结论），
+     * 会话承接块：取**本对话内**更早的往来（已结束任务的目标/状态/结论，以及纯对话问答），
      * 与本轮输入是否为追问一起交给 AI。
      *
-     * 每任务只构建一次（规划与所有决策步共用），避免逐步骤读库、也避免两处口径不一致。
+     * 取材严格限定在当前对话里（起点见 [_conversationStart]）：上一段对话的聊天记录既不发出去，
+     * 也不会被拿来讲"上一轮"。每任务只构建一次（规划与所有决策步共用），避免两处口径不一致。
      */
-    private suspend fun sessionContextText(task: String, lang: PromptLang): String {
+    private fun sessionContextText(task: String, lang: PromptLang): String {
         sessionContextCache?.let { return it }
         val text = runCatching {
-            val previous = memory.loadTaskMemories()
+            // 素材带时间戳，任务与问答按同一时间轴排，才读得出"上一轮"到底是谁
+            val turns = ArrayList<Pair<Long, PreviousTask>>()
+            val start = _conversationStart.value
+            _taskSessions.value
+                .filter { it.taskId >= start }
                 // 只承接已结束的任务：进行中的那条就是本任务自己，不能拿它当"上一轮"
-                .filter { it.status != TaskMemoryEntry.STATUS_RUNNING }
-                .sortedByDescending { it.updatedAt }
-                .take(MAX_PREVIOUS_TASKS)
-                .map { entry ->
-                    PreviousTask(
-                        goal = entry.goal,
-                        statusLabel = entry.statusLabel(),
-                        // 结论优先用完成说明；没有就退回最后一条已验证做法，至少让 AI 知道上一轮做到哪
-                        conclusion = entry.conclusion.ifBlank { entry.methods.lastOrNull().orEmpty() },
+                .filter { it.status != TaskSession.Status.RUNNING }
+                .forEach { s ->
+                    turns += s.startedAt to PreviousTask(
+                        goal = s.title,
+                        statusLabel = taskStatusLabel(s.status),
+                        conclusion = s.summary,
                     )
                 }
+            synchronized(chatLock) {
+                conversationChats.forEach { c ->
+                    turns += c.at to PreviousTask(goal = c.question, statusLabel = "对话", conclusion = c.answer)
+                }
+            }
+            val previous = turns.sortedBy { it.first }.map { it.second }.takeLast(MAX_PREVIOUS_TASKS)
             AgentPrompts.sessionContext(lang, previous, SessionContext.isFollowUp(task))
         }.getOrDefault("")
         sessionContextCache = text
         return text
+    }
+
+    /** 承接块里的任务状态标签（与侧边栏一致） */
+    private fun taskStatusLabel(status: TaskSession.Status): String = when (status) {
+        TaskSession.Status.DONE -> "已完成"
+        TaskSession.Status.ABORTED -> "已停止"
+        TaskSession.Status.FAILED -> "失败"
+        TaskSession.Status.RUNNING -> "进行中"
     }
 }
 

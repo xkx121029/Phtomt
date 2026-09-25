@@ -59,13 +59,35 @@ internal object AgentTimelineMapper {
         focusTaskId: Long? = null,
         /** 焦点任务是历史会话时，引擎归档的标题 / 计划 / 摘要 / 记忆 */
         archived: TaskSession? = null,
+        /**
+         * 当前对话的起点（见 AgentEngine.conversationStart）。
+         *
+         * 引擎的 traces / executionHistory / state 都是跨对话累积的，新建对话后它们仍然在内存里。
+         * 这里按起点判定「哪些实时态属于本对话」：不属于的不渲染——否则新建对话打开的就是
+         * 上一段对话的完成摘要与失败状态，而不是一张白纸。
+         */
+        conversationStart: Long = 0L,
     ): List<AgentTimelineItem> {
+        // 实时态是否属于本对话：正在跑的任务一定属于（新建对话时引擎拒绝另起），
+        // 已结束的任务看它开始时刻是否落在本对话起点之后
+        val stateInConversation = state.isRunning || state.startedAtMillis >= conversationStart
         // 中间列表同时装"列表项"与"单步工具调用"：后者只是过渡形态，
         // 会在收尾时被 groupToolChains 收进工具链，不会流到界面
         val items = ArrayList<Any>()
         // 已挂到具体步骤上的记忆事件 id，避免末尾兜底时重复插入
         val consumedMemoryIds = HashSet<Long>()
-        val runs = buildRuns(traces, history)
+        // 实时视图只铺开本对话（起点之后）的执行痕迹；回看历史任务时按 taskId 精确取，
+        // 起点之后的过滤会把要回看的旧任务一并滤掉，所以两条路径不能共用一份输入。
+        // 执行记录里 taskId = -1 的是"无归属"旧记录：它们靠 FIFO 补给缺执行结果的步骤，
+        // 归不到任何对话上，不能按起点滤掉，否则那些步骤只剩"怎么决定的"而没有"执行成没成"
+        val runs = if (focusTaskId == null) {
+            buildRuns(
+                traces.filter { it.taskId >= conversationStart },
+                history.filter { it.taskId >= conversationStart || it.taskId < 0 },
+            )
+        } else {
+            buildRuns(traces, history)
+        }
         val newestId = runs.lastOrNull()?.taskId
         // 焦点就是「正在跑的那一次」：这时才渲染实时状态、结束态、待批准的计划等活的流程数据
         val isLive = focusTaskId == null || focusTaskId == newestId
@@ -86,11 +108,14 @@ internal object AgentTimelineMapper {
         val pendingPlanFlow = planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
             planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply ||
             planPhase is PlanPhase.Error
+        // state.task 是跨对话留存的：不属于本对话的执行痕迹时退回本页刚提交的输入，
+        // 否则新建对话打开的就是上一段对话的任务标题
         val focusTitle = when {
             focusRun != null -> focusRun.taskName
             archived != null -> archived.title.ifBlank { "历史任务" }
-            isLive && !pendingPlanFlow -> state.task.ifBlank { submittedTask }
-            else -> ""
+            !isLive || pendingPlanFlow -> ""
+            stateInConversation -> state.task.ifBlank { submittedTask }
+            else -> submittedTask
         }
         if (focusTitle.isNotBlank()) {
             items += AgentTimelineItem.UserTask(
@@ -175,7 +200,7 @@ internal object AgentTimelineMapper {
         }
 
         // 7) 需要协助：动作连续未生效 / 敏感页只读保护
-        if (needsUser) {
+        if (needsUser && stateInConversation) {
             items += AgentTimelineItem.NeedsUser(
                 reason = needsUserReason.takeIf { it.isNotBlank() } ?: "Agent 已暂停，等待你接管或指示",
                 step = focusRun?.steps?.lastOrNull()?.step ?: state.stepCount,
@@ -195,8 +220,8 @@ internal object AgentTimelineMapper {
             )
         }
 
-        // 9) 结束态：完成摘要 / 失败原因
-        when (state.phase) {
+        // 9) 结束态：完成摘要 / 失败原因（跨对话留存的终态不在这里复述，新建对话看到的是空聊天）
+        if (stateInConversation) when (state.phase) {
             AgentState.Phase.DONE -> {
                 val planned = (planPhase as? PlanPhase.Approved)?.plan?.steps?.size ?: 0
                 items += AgentTimelineItem.Done(

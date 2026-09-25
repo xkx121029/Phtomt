@@ -193,7 +193,7 @@ object ActionPolicy {
 
     private fun freeModeOnlyReason(intent: String): String =
         "意图「$intent」仅在自由模式下可用（自写命令 / 调用无障碍端点）。当前动作模式不允许它；" +
-            "请改用转译层既有意图完成当前目标；确实必须用到时，用 say 提示用户到「设置 → Agent 运行 → 动作模式」切换到自由模式。"
+            "请改用转译层既有意图完成当前目标；确实必须用到时，用 say 提示用户到「Agent 页输入栏下方的动作模式」切换到自由模式。"
 
     private fun conservativeReason(intent: String): String =
         "当前为保守模式（仅低风险命令），意图「$intent」属于中/高风险动作，端侧已拒绝，未对设备做任何操作。" +

@@ -90,6 +90,8 @@ class MainViewModel(
     val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> = engine.traces
     /** 任务会话归档（Agent 页侧边栏）：最新一次任务在最前 */
     val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> = engine.taskSessions
+    /** 当前对话的起点：实时视图只铺开这之后的任务，承接块也只取这之后的往来 */
+    val conversationStart: StateFlow<Long> = engine.conversationStart
     val taskQueue: StateFlow<List<String>> = engine.taskQueue
     val needsUser: StateFlow<Boolean> = engine.needsUser
     val userHintRequest = engine.userHintRequest
@@ -118,6 +120,15 @@ class MainViewModel(
     fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
     fun approvePlan() = engine.approvePlan()
     fun cancelPlanning() = engine.cancelPlanning()
+
+    /**
+     * 新建对话：引擎划断上下文并复位实时态，文档预览一并撤下。
+     * 历史任务仍留在 [taskSessions] 里可回看，只是不再进入新对话的上下文。
+     */
+    fun newConversation() {
+        engine.newConversation()
+        documentEngine.dismiss()
+    }
 
     // ---- 悬浮窗交互桥接：气泡窗按钮动作转发到引擎 ----
     init {

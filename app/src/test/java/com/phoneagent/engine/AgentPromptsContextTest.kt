@@ -56,16 +56,17 @@ class AgentPromptsContextTest {
     }
 
     @Test
-    fun `追问时强调以上一轮任务为目标主体`() {
+    fun `追问时强调以上一轮为目标主体`() {
         val previous = listOf(
             PreviousTask(goal = "帮我在美团点一份黄焖鸡米饭", statusLabel = "已完成", conclusion = "已下单一份黄焖鸡米饭"),
             PreviousTask(goal = "查一下明天天气", statusLabel = "已完成"),
         )
         val text = AgentPrompts.sessionContext(PromptLang.CN, previous, followUp = true)
-        assertTrue(text.contains("上一轮任务"))
+        assertTrue(text.contains("本对话中更早的往来"))
+        assertTrue(text.contains("上一轮"))
         assertTrue(text.contains("帮我在美团点一份黄焖鸡米饭"))
         assertTrue(text.contains("结论：已下单一份黄焖鸡米饭"))
-        assertTrue(text.contains("更早的任务1"))
+        assertTrue(text.contains("更早的第 1 轮"))
         assertTrue(text.contains("追问"))
     }
 

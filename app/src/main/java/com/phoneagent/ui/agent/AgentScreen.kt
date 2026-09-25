@@ -50,15 +50,13 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
+import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassSurface
-import com.phoneagent.ui.components.HeaderLiftAmount
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
-import com.phoneagent.ui.components.headerLift
 import com.phoneagent.ui.components.rememberGlassState
-import com.phoneagent.ui.components.rememberHeaderLiftState
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -118,6 +116,10 @@ fun AgentScreen(
     val memoryEvents by vm.memoryEvents.collectAsState()
     val sayEvents by vm.sayEvents.collectAsState()
     val sessions by vm.taskSessions.collectAsState()
+    val conversationStart by vm.conversationStart.collectAsState()
+    // 实时视图只铺开本对话（起点之后）的执行痕迹：新建对话后主区域因此是干净的。
+    // 回看历史任务时由 AgentTimelineMapper 按 taskId 精确取，不受这里影响。
+    val liveTraces = remember(traces, conversationStart) { traces.filter { it.taskId >= conversationStart } }
 
     var draft by rememberSaveable { mutableStateOf("") }
     var submittedTask by rememberSaveable { mutableStateOf("") }
@@ -154,6 +156,7 @@ fun AgentScreen(
     val items = remember(
         submittedTask, agent, planPhase, planText, decisionText, traces, history,
         queue, needsUser, a11yEnabled, fold, doc, memoryEvents, sayEvents, selectedTaskId, archivedSession,
+        conversationStart,
     ) {
         AgentTimelineMapper.build(
             submittedTask = submittedTask,
@@ -173,6 +176,7 @@ fun AgentScreen(
             sayEvents = sayEvents,
             focusTaskId = viewingTaskId,
             archived = archivedSession,
+            conversationStart = conversationStart,
         )
     }
 
@@ -219,7 +223,7 @@ fun AgentScreen(
     LaunchedEffect(assist) { if (assist != null) shownAssist = assist }
 
     // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态
-    val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && traces.isEmpty() &&
+    val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && liveTraces.isEmpty() &&
         queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null
     // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示（纯对话也已产出一句回答，同样算本轮任务）
     val planningTitle = submittedTask.takeIf {
@@ -227,18 +231,22 @@ fun AgentScreen(
             planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply)
     }
 
-    val latestRunKey = traces.maxOfOrNull { it.taskId }?.let { "r$it" }
+    val latestRunKey = liveTraces.maxOfOrNull { it.taskId }?.let { "r$it" }
     // 工具调用已按"连续若干步"收成工具链，这里摊平回来取最新一次任务的步
     val latestSteps = items.filterIsInstance<AgentTimelineItem.ToolChain>()
         .filter { it.runKey == latestRunKey }
         .flatMap { it.steps }
     val plannedSteps = (planPhase as? PlanPhase.Approved)?.plan?.steps?.size ?: 0
-    val totalSteps = maxOf(plannedSteps, agent.stepCount, latestSteps.size)
+    // agent 的步数/错误相位都是跨对话留存的：不属于本对话时一律不展示，
+    // 否则新建对话后的第一条消息就会带出上一段对话的进度轨与错误条
+    val stateInConversation = agent.isRunning || agent.startedAtMillis >= conversationStart
+    val stepsInConversation = if (stateInConversation) agent.stepCount else 0
+    val totalSteps = maxOf(plannedSteps, stepsInConversation, latestSteps.size)
     // 进度轨只在实时视图出现：历史任务回放时的"当前步"没有意义，摆一条会误导
     val railVisible = viewingTaskId == null && !showEmpty && totalSteps >= 2
     val confidence = latestSteps.lastOrNull()?.confidence
         ?: (planPhase as? PlanPhase.Approved)?.plan?.confidence
-    val showStrip = agent.isRunning || needsUser || agent.phase == AgentState.Phase.ERROR
+    val showStrip = agent.isRunning || needsUser || (agent.phase == AgentState.Phase.ERROR && stateInConversation)
 
     val stepIndexMap = remember(items) {
         // 一条工具链承载多步：链内任意一步都定位到链所在的那一行
@@ -267,14 +275,10 @@ fun AgentScreen(
         if (follow && visibleItems.isNotEmpty()) listState.animateScrollToItem(visibleItems.lastIndex)
     }
 
-    // 任务流滚了多远在这里汇总：顶栏据此从"吸顶横杠"浮成一块悬空的板
-    val headerLift = rememberHeaderLiftState()
-
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.surfaceBase)
-            .headerLift(headerLift),
+            .background(colors.surfaceBase),
     ) {
         // 顶栏与底部输入区改为浮在任务流之上的毛玻璃层：
         // 任务流真正从它们下方穿过，模糊才有东西可模糊。
@@ -334,18 +338,16 @@ fun AgentScreen(
         // 顶部玻璃浮层：四角全圆的浮动卡片。贴着屏幕上缘只圆下面两角时，
         // 剩下两个直角会与状态栏白条拼成一条硬边，读起来像"没画完"；
         // 退到屏幕里一点、四角同半径，才是一块完整的浮起面板。
-        // 停在顶部时它是吸顶横杠，任务流一滚就脱开上缘再让一口气——
-        // 那口气加上比底部输入区更圆的 R 角，才撑得住"悬在内容上方"的读法。
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(AppRadii.Header),
+            shape = RoundedCornerShape(AppRadii.Hero),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .padding(
                     start = AgentGlassInset,
                     end = AgentGlassInset,
-                    top = AgentGlassInset + HeaderLiftAmount * headerLift.progress,
+                    top = AgentGlassInset,
                 )
                 .onSizeChanged { headerHeight = it.height },
         ) {
@@ -462,6 +464,14 @@ fun AgentScreen(
                     )
                 }
 
+                // 动作模式切换条：紧贴输入面下方。与输入面同进退——协助浮层占用底部操作区时一起让位
+                if (assist == null) {
+                    AgentModeBar(
+                        current = ActionMode.fromKey(settings.actionMode),
+                        onSelect = { mode -> vm.saveSettings(settings.copy(actionMode = mode.key)) },
+                    )
+                }
+
                 // 协助浮层：从页面下方浮入，承载指导输入；此时输入区让位（否则同屏两个输入框）
                 AnimatedVisibility(
                     visible = assist != null,
@@ -521,9 +531,14 @@ fun AgentScreen(
             },
             onNewTask = {
                 selectedTaskId = -1L
+                // 新建对话：清掉上一段的输入回显与文档预览，主区域随即变成一张白纸
+                submittedTask = ""
+                vm.newConversation()
                 drawerOpen = false
                 focusRequester.requestFocus()
             },
+            // 任务运行中不能另起对话（引擎侧同样会拒绝）：入口据此置灰并说明原因
+            newConversationEnabled = !agent.isRunning,
             onDismiss = { drawerOpen = false },
         )
     }

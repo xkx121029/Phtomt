@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
@@ -82,37 +81,6 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     save()
                 }
                 Spacer(Modifier.height(4.dp))
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        GroupCard {
-            GroupHeader("动作模式", "AI 可以提出哪一类请求（授权范围）；与下面的执行通道正交，两者叠加生效")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                val modes = ActionMode.entries
-                val currentMode = ActionMode.fromKey(st.actionMode)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    modes.forEachIndexed { i, mode ->
-                        SegmentedButton(
-                            selected = currentMode == mode,
-                            onClick = { st.actionMode = mode.key; save() },
-                            shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
-                        ) {
-                            Text(mode.label, style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    when (currentMode) {
-                        ActionMode.CONSERVATIVE -> "仅低风险命令：只读 / 导航 / 本地读写。点击、输入、打开应用、搜索、发送、删除等一律被端侧拒绝。"
-                        ActionMode.BALANCED -> "转译层全部意图可用（点击 / 输入 / 打开 / 搜索 / 发送 / 确认 / 删除，以及全部网页操作），即既有默认行为。"
-                        ActionMode.FREE -> "在均衡基础上再放开两项：AI 可自写 shizuku / 无线 ADB / Termux 命令，也可直调全部无障碍端点。本任务首次自写命令会弹窗向你确认一次。"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 

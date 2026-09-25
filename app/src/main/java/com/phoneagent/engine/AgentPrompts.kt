@@ -625,38 +625,39 @@ Output ONLY JSON.
     // ==================== 会话承接（连续对话的上一轮任务） ====================
 
     /**
-     * 会话承接块：把最近几轮任务的目标与结论摆给 AI，让"再改一下"这类追问有据可依。
+     * 会话承接块：把**本对话内**更早的往来摆给 AI，让"再改一下"这类追问有据可依。
+     * 素材由引擎按对话边界筛选后传入（跨对话的记录不会出现在这里）。
      *
-     * 只在确有历史任务时注入；[followUp] 为真（用户这轮用了指代词）时额外强调"本轮说的是上一轮"。
+     * 只在确有往来时注入；[followUp] 为真（用户这轮用了指代词）时额外强调"本轮说的是上一轮"。
      */
     fun sessionContext(lang: PromptLang, previous: List<PreviousTask>, followUp: Boolean): String {
         if (previous.isEmpty()) return ""
         val sb = StringBuilder()
         when (lang) {
             PromptLang.CN -> {
-                sb.append("\n\n# 会话承接（本会话中更早的任务，仅供理解用户意图，无关时忽略）")
+                sb.append("\n\n# 会话承接（本对话中更早的往来，仅供理解用户意图，无关时忽略）")
                 previous.forEachIndexed { i, p ->
-                    val head = if (i == 0) "上一轮任务" else "更早的任务${i}"
+                    val head = if (i == 0) "上一轮" else "更早的第 ${i} 轮"
                     sb.append("\n- $head：${p.goal.take(120)} —— ${p.statusLabel}")
                     if (p.conclusion.isNotBlank()) sb.append("；结论：${p.conclusion.take(120)}")
                 }
                 if (followUp) {
-                    sb.append("\n⚠️ 本轮输入含指代词（再/接着/刚才/这个等），判定为对上一轮任务的追问：")
-                    sb.append("必须以「上一轮任务」为目标主体规划与执行，承接它的目标与已完成结果，不要重复已完成的部分。")
+                    sb.append("\n⚠️ 本轮输入含指代词（再/接着/刚才/这个等），判定为对上一轮的追问：")
+                    sb.append("必须以「上一轮」为目标主体规划与执行，承接它的目标与已完成结果，不要重复已完成的部分。")
                 } else {
-                    sb.append("\n本轮是新一轮输入：与上面的任务有关就承接其目标与结果，无关就当作独立任务。")
+                    sb.append("\n本轮是新一轮输入：与上面的往来有关就承接其目标与结果，无关就当作独立任务。")
                 }
             }
             PromptLang.EN -> {
-                sb.append("\n\n# Conversation Carry-over (earlier tasks in this session; only for understanding intent, ignore if unrelated)")
+                sb.append("\n\n# Conversation Carry-over (earlier exchanges in this conversation; only for understanding intent, ignore if unrelated)")
                 previous.forEachIndexed { i, p ->
-                    val head = if (i == 0) "Previous task" else "Earlier task $i"
+                    val head = if (i == 0) "Previous turn" else "Earlier turn $i"
                     sb.append("\n- $head: ${p.goal.take(120)} — ${p.statusLabel}")
                     if (p.conclusion.isNotBlank()) sb.append("; outcome: ${p.conclusion.take(120)}")
                 }
                 if (followUp) {
-                    sb.append("\n⚠️ This input references the previous task (再/接着/刚才/这个…), so treat it as a follow-up:")
-                    sb.append(" plan and execute against the previous task's goal, carry over its results, and do not redo what is already done.")
+                    sb.append("\n⚠️ This input references the previous turn (再/接着/刚才/这个…), so treat it as a follow-up:")
+                    sb.append(" plan and execute against the previous turn's goal, carry over its results, and do not redo what is already done.")
                 } else {
                     sb.append("\nThis is a new input: carry over the goal/results above when related, otherwise treat it as independent.")
                 }

@@ -52,6 +52,8 @@ import com.composables.icons.lucide.ScanSearch
 import com.composables.icons.lucide.Search
 import com.composables.icons.lucide.Send
 import com.composables.icons.lucide.Settings
+import com.composables.icons.lucide.Shield
+import com.composables.icons.lucide.SlidersHorizontal
 import com.composables.icons.lucide.SmartphoneNfc
 import com.composables.icons.lucide.Sparkles
 import com.composables.icons.lucide.Square
@@ -193,4 +195,10 @@ object AppIcons {
     val Launch: ImageVector get() = Lucide.Rocket
     /** 记住（写入长期记忆） */
     val Remember: ImageVector get() = Lucide.Save
+
+    // ── 动作模式档位（输入栏下方那条切换条） ──────────────────────
+    /** 保守档：护盾——授权范围收窄 */
+    val Guard: ImageVector get() = Lucide.Shield
+    /** 均衡档：滑杆——范围可调 */
+    val Tune: ImageVector get() = Lucide.SlidersHorizontal
 }
