@@ -126,11 +126,19 @@ class PromptRuleTest {
 
     @Test
     fun `总字数不超上限_放不下就整体停止`() {
-        // 每条 200 字，5 条即 1000 > 800，只能放下 4 条（各条内容互不相同，不去重干扰）
+        // 每条 200 字（正好等于单条展示上限），5 条即 1000 > 800，只能放下 4 条
         val rules = (1..5).map { rule(it.toLong(), "经$it".repeat(100), confidence = 0.9) }
         val hit = RuleScoper.select(rules, "", "任务")
         assertEquals(4, hit.size)
-        assertTrue(hit.sumOf { it.content.length } <= RuleScoper.MAX_CHARS)
+        assertTrue(hit.sumOf { it.content.take(RuleScoper.PER_RULE_CHARS).length } <= RuleScoper.MAX_CHARS)
+    }
+
+    @Test
+    fun `单条展示上限必须大于总上限除以条数_否则总字数上限永远不触发`() {
+        assertTrue(
+            "PER_RULE_CHARS=${RuleScoper.PER_RULE_CHARS} 必须 > ${RuleScoper.MAX_CHARS}/${RuleScoper.MAX_SELECTED}",
+            RuleScoper.PER_RULE_CHARS > RuleScoper.MAX_CHARS / RuleScoper.MAX_SELECTED,
+        )
     }
 
     @Test

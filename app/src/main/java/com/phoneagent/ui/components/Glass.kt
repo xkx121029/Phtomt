@@ -280,13 +280,18 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  *   [LocalHeaderContentPad] 下发，页眉里放 [AppTopBar] 时**不要再传 contentPadding**，
  *   否则标题会跟着面板边距一起横移。
  * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
+ * @param dock 底部玻璃浮层（如 Agent 页的输入区）。它和页眉一样要从正文取像素做模糊，
+ *   而取样源只有骨架手里这一份——所以底部浮层不能各页自己再造一个，否则要么取不到样、
+ *   要么得把整棵正文树套两层取样源。槽位把骨架的 [HazeState] 递出来，页内直接用即可。
+ *   槽位只负责"画在正文之上、页内浮层之下"，位置由页内自己 align。
  * @param overlay 页内浮层（如内嵌确认层）。给的是骨架最外层的 Box 作用域，
- *   所以它压得住玻璃页眉——浮层不该在页眉下面断开。
+ *   所以它压得住玻璃页眉——浮层不该在页眉下面断开。底部浮层也在它之下。
  */
 @Composable
 fun GlassHeaderScaffold(
     modifier: Modifier = Modifier,
     header: @Composable () -> Unit,
+    dock: (@Composable BoxScope.(HazeState) -> Unit)? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -335,7 +340,10 @@ fun GlassHeaderScaffold(
             }
         }
 
-        // 页内浮层放最后：它要盖住正文，也要盖住玻璃页眉
+        // 底部玻璃浮层：与页眉共用同一个取样源，因此必须是同一 Box 下的兄弟节点
+        dock?.invoke(this, glass)
+
+        // 页内浮层放最后：它要盖住正文，也要盖住玻璃页眉与底部浮层
         overlay?.invoke(this)
     }
 }

@@ -6,6 +6,7 @@ import { config, originOf } from './config.js'
 import { publicRouter, SITE_ROUTES } from './routes/public.js'
 import { downloadRouter } from './routes/download.js'
 import { adminRouter } from './routes/admin.js'
+import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
 
 const app = express()
@@ -33,7 +34,9 @@ if (config.corsOrigins.length) {
 // ---------- 内容 API ----------
 
 app.use('/api', publicRouter)
+app.use('/api/ai', aiRouter)
 app.use('/api/download', downloadRouter)
+app.use('/api/admin/ai', aiAdminRouter)
 app.use('/api/admin', adminRouter)
 
 app.get('/api/openapi', (req, res) => {

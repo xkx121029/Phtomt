@@ -17,11 +17,16 @@ object RuleScoper {
     /** 单次注入的条数上限 */
     const val MAX_SELECTED = 5
 
-    /** 单次注入的总字数上限 */
+    /** 单次注入的总字数上限（按**实际展示长度**核算，即已按 [PER_RULE_CHARS] 截断后的长度） */
     const val MAX_CHARS = 800
 
-    /** 单条展示长度上限：防止一条超长文本吃掉整个预算 */
-    const val PER_RULE_CHARS = 120
+    /**
+     * 单条展示长度上限：防止一条超长文本吃掉整个预算。
+     *
+     * 它必须**大于 [MAX_CHARS] / [MAX_SELECTED]**（800/5=160），否则"最多 5 条"本身就凑不满总字数，
+     * 总字数上限成了永远不触发的死代码。这条关系由单测锁定。
+     */
+    const val PER_RULE_CHARS = 200
 
     /** 作用域推断结果 */
     data class Scope(val kind: String, val value: String = "")

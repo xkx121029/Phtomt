@@ -13,6 +13,7 @@ export const SITE_ROUTES = [
   { path: '/how-it-works', name: 'how', title: '工作原理', group: '主要' },
   { path: '/scenarios', name: 'scenarios', title: '场景示例', group: '主要' },
   { path: '/download', name: 'download', title: '下载', group: '主要' },
+  { path: '/ask', name: 'ask', title: 'AI 问答', group: '主要' },
   { path: '/changelog', name: 'changelog', title: '更新日志', group: '内容' },
   { path: '/changelog/:version', name: 'changelog-detail', title: '版本详情', group: '内容' },
   { path: '/docs', name: 'docs', title: '文档中心', group: '内容' },
@@ -41,6 +42,12 @@ export const PUBLIC_ENDPOINTS = [
   { method: 'GET', path: '/api/roadmap', desc: '路线图：阶段与条目' },
   { method: 'GET', path: '/api/stats', desc: '下载统计：总量 / 分版本 / 近 14 天' },
   { method: 'GET', path: '/api/routes', desc: '站点路由表与端点清单' },
+  { method: 'GET', path: '/api/ai/status', desc: '站点问答是否可用，以及助手名、开场白与推荐提问' },
+  {
+    method: 'POST',
+    path: '/api/ai/chat',
+    desc: '站点问答：请求体 { messages: [{ role: "user" | "assistant", content }] }，以 SSE 流式返回 delta / done / error'
+  },
   { method: 'GET', path: '/api/openapi', desc: 'OpenAPI 3.1 规范（机器可读）' },
   { method: 'GET', path: '/api/download/latest', desc: '重定向到最新版 APK' },
   { method: 'GET', path: '/api/download/:version', desc: '下载指定版本 APK（计入统计）' },
@@ -85,5 +92,9 @@ export const ADMIN_ENDPOINTS = [
   { method: 'POST', path: '/api/admin/scenarios', desc: '新增场景' },
   { method: 'PUT', path: '/api/admin/scenarios/:id', desc: '更新场景' },
   { method: 'DELETE', path: '/api/admin/scenarios/:id', desc: '删除场景' },
-  { method: 'POST', path: '/api/admin/import/changelog', desc: '从 CHANGELOG.md 文本导入更新日志' }
+  { method: 'POST', path: '/api/admin/import/changelog', desc: '从 CHANGELOG.md 文本导入更新日志' },
+  { method: 'GET', path: '/api/admin/ai', desc: 'AI 问答配置（密钥打码，只回指纹）与知识库规模' },
+  { method: 'PUT', path: '/api/admin/ai', desc: '保存 AI 问答配置；apiKey 留空表示不修改，clearKey=true 表示清除' },
+  { method: 'POST', path: '/api/admin/ai/test', desc: '用当前表单值测一次连通性，返回延迟与模型回复' },
+  { method: 'POST', path: '/api/admin/ai/preview', desc: '预览一次提问实际注入给模型的项目资料与命中的来源' }
 ]

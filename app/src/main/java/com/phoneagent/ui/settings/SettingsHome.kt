@@ -17,10 +17,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
@@ -38,112 +38,118 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
     LaunchedEffect(Unit) { vm.refreshPermissions(context) }
     val pendingPermissions = permissions.count { !it.granted }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = AppSpacing.Lg)
-            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
-    ) {
-        Spacer(Modifier.height(AppSpacing.Sm))
-        Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            "按模块分层管理 AI 服务与运行行为",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    // 一级页与 Agent / 概览页共用同一套玻璃页眉骨架：贴顶通栏、离顶收成圆角浮板。
+    // 标题从正文里搬进页眉，页面滚起来后它一直悬在内容上方，不再随内容滚走。
+    GlassHeaderScaffold(
+        modifier = Modifier.fillMaxSize(),
+        header = {
+            AppTopBar(
+                title = "设置",
+                subtitle = "按模块分层管理 AI 服务与运行行为",
+            )
+        },
+    ) { contentPad ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                // 页眉净空垫在滚动容器内部，正文才会从玻璃页眉下面穿过
+                .padding(top = contentPad.calculateTopPadding())
+                .padding(horizontal = AppSpacing.Lg)
+                // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
+                .padding(bottom = LocalBottomNavClearance.current),
+        ) {
+            // ---- 模型：接入哪家 AI ----
+            SettingsSectionLabel("模型")
+            GroupCard {
+                SettingsEntry(
+                    icon = AppIcons.SmartToy,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                    title = "AI 模型配置",
+                    subtitle = "主模型 / 视觉 / 思考链路",
+                    summary = st.model,
+                    onClick = { onOpen(SettingsPage.AI_MODELS) },
+                )
+            }
 
-        // ---- 模型：接入哪家 AI ----
-        SettingsSectionLabel("模型")
-        GroupCard {
-            SettingsEntry(
-                icon = AppIcons.SmartToy,
-                iconTint = MaterialTheme.colorScheme.primary,
-                iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                title = "AI 模型配置",
-                subtitle = "主模型 / 视觉 / 思考链路",
-                summary = st.model,
-                onClick = { onOpen(SettingsPage.AI_MODELS) },
-            )
-        }
+            // ---- 运行：AI 怎么干活 ----
+            SettingsSectionLabel("运行")
+            GroupCard {
+                SettingsEntry(
+                    icon = AppIcons.Play,
+                    iconTint = MaterialTheme.colorScheme.tertiary,
+                    iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
+                    title = "Agent 运行",
+                    subtitle = "步数限制、执行通道、提示词语言",
+                    summary = if (st.maxSteps > 0) "最多 ${st.maxSteps} 步" else "不设限",
+                    onClick = { onOpen(SettingsPage.AGENT) },
+                )
+                GroupDivider()
+                SettingsEntry(
+                    icon = AppIcons.Search,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                    title = "长线任务",
+                    subtitle = "执行策略 / 断点续传 / 任务模板",
+                    summary = "任务管理",
+                    onClick = { onOpen(SettingsPage.LONG_RUN) },
+                )
+                GroupDivider()
+                SettingsEntry(
+                    icon = AppIcons.Terminal,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    iconBackground = MaterialTheme.colorScheme.surfaceVariant,
+                    title = "权限与执行通道",
+                    subtitle = "无障碍 / 悬浮窗 / 无线ADB / Shizuku / Termux",
+                    summary = when {
+                        permissions.isEmpty() -> "检测中"
+                        pendingPermissions == 0 -> "全部已就绪"
+                        else -> "尚需授权 $pendingPermissions 项"
+                    },
+                    onClick = { onOpen(SettingsPage.PERMISSIONS) },
+                )
+            }
 
-        // ---- 运行：AI 怎么干活 ----
-        SettingsSectionLabel("运行")
-        GroupCard {
-            SettingsEntry(
-                icon = AppIcons.Play,
-                iconTint = MaterialTheme.colorScheme.tertiary,
-                iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
-                title = "Agent 运行",
-                subtitle = "步数限制、执行通道、提示词语言",
-                summary = if (st.maxSteps > 0) "最多 ${st.maxSteps} 步" else "不设限",
-                onClick = { onOpen(SettingsPage.AGENT) },
-            )
-            GroupDivider()
-            SettingsEntry(
-                icon = AppIcons.Search,
-                iconTint = MaterialTheme.colorScheme.primary,
-                iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
-                title = "长线任务",
-                subtitle = "执行策略 / 断点续传 / 任务模板",
-                summary = "任务管理",
-                onClick = { onOpen(SettingsPage.LONG_RUN) },
-            )
-            GroupDivider()
-            SettingsEntry(
-                icon = AppIcons.Terminal,
-                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                iconBackground = MaterialTheme.colorScheme.surfaceVariant,
-                title = "权限与执行通道",
-                subtitle = "无障碍 / 悬浮窗 / 无线ADB / Shizuku / Termux",
-                summary = when {
-                    permissions.isEmpty() -> "检测中"
-                    pendingPermissions == 0 -> "全部已就绪"
-                    else -> "尚需授权 $pendingPermissions 项"
-                },
-                onClick = { onOpen(SettingsPage.PERMISSIONS) },
-            )
-        }
+            // ---- 外观与高级 ----
+            SettingsSectionLabel("外观与高级")
+            GroupCard {
+                SettingsEntry(
+                    icon = AppIcons.Star,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),
+                    title = "视觉效果",
+                    subtitle = "屏幕边缘光效标定",
+                    summary = if (st.edgeLightingEnabled) "已开启" else "已关闭",
+                    onClick = { onOpen(SettingsPage.VISUAL) },
+                )
+            }
 
-        // ---- 外观与高级 ----
-        SettingsSectionLabel("外观与高级")
-        GroupCard {
-            SettingsEntry(
-                icon = AppIcons.Star,
-                iconTint = MaterialTheme.colorScheme.secondary,
-                iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),
-                title = "视觉效果",
-                subtitle = "屏幕边缘光效标定",
-                summary = if (st.edgeLightingEnabled) "已开启" else "已关闭",
-                onClick = { onOpen(SettingsPage.VISUAL) },
-            )
+            // ---- 系统：本机数据与关于 ----
+            SettingsSectionLabel("系统")
+            GroupCard {
+                SettingsEntry(
+                    icon = AppIcons.Folder,
+                    iconTint = MaterialTheme.colorScheme.tertiary,
+                    iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
+                    title = "数据与存储",
+                    subtitle = "导出日志 / 清空记忆 / 断点续传 / 恢复默认",
+                    summary = "本机数据",
+                    onClick = { onOpen(SettingsPage.DATA) },
+                )
+                GroupDivider()
+                SettingsEntry(
+                    icon = AppIcons.Info,
+                    iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    iconBackground = MaterialTheme.colorScheme.surfaceVariant,
+                    title = "关于与帮助",
+                    subtitle = "版本 / 开源仓库 / 使用说明 / 隐私",
+                    summary = "v${com.phoneagent.BuildConfig.VERSION_NAME}",
+                    onClick = { onOpen(SettingsPage.ABOUT) },
+                )
+            }
+            Spacer(Modifier.height(AppSpacing.Lg))
         }
-
-        // ---- 系统：本机数据与关于 ----
-        SettingsSectionLabel("系统")
-        GroupCard {
-            SettingsEntry(
-                icon = AppIcons.Folder,
-                iconTint = MaterialTheme.colorScheme.tertiary,
-                iconBackground = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.13f),
-                title = "数据与存储",
-                subtitle = "导出日志 / 清空记忆 / 断点续传 / 恢复默认",
-                summary = "本机数据",
-                onClick = { onOpen(SettingsPage.DATA) },
-            )
-            GroupDivider()
-            SettingsEntry(
-                icon = AppIcons.Info,
-                iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                iconBackground = MaterialTheme.colorScheme.surfaceVariant,
-                title = "关于与帮助",
-                subtitle = "版本 / 开源仓库 / 使用说明 / 隐私",
-                summary = "v${com.phoneagent.BuildConfig.VERSION_NAME}",
-                onClick = { onOpen(SettingsPage.ABOUT) },
-            )
-        }
-        Spacer(Modifier.height(AppSpacing.Lg))
     }
 }
 

@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.ui.model.PermissionItem
@@ -72,33 +73,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.icons.AppIcons
 
-/** 品牌 Hero：渐变品牌瓦片 + 主标题/副标题 */
+/** 品牌瓦片：深海军蓝 → 电光蓝紫 渐变，呼应应用图标主色调。放在页眉最左侧 */
 @Composable
-internal fun BrandHero(modifier: Modifier = Modifier) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = modifier.fillMaxWidth()) {
-        // 品牌瓦片：深海军蓝 → 电光蓝紫 渐变，呼应应用图标主色调
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(RoundedCornerShape(AppRadii.Item))
-                .background(Brush.linearGradient(listOf(BrandNavy, Accent))),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                AppIcons.AutoAwesome,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(30.dp),
-            )
-        }
-        Column {
-            Text("手机智能体", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "AI 接管手机，替你把任务做完",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+internal fun BrandTile(size: Dp = 40.dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(AppRadii.Tile))
+            .background(Brush.linearGradient(listOf(BrandNavy, Accent))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            AppIcons.AutoAwesome,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(size * 0.5f),
+        )
     }
 }
 

@@ -35,8 +35,6 @@ import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.data.store.McpStore
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpMarketplaceEntry
-import com.phoneagent.engine.prompt.PromptTemplate
-import com.phoneagent.data.store.PromptTemplateStore
 import com.phoneagent.device.shell.ShizukuManager
 import com.phoneagent.device.shell.TermuxBridge
 import com.phoneagent.device.shell.TermuxStatus
@@ -72,7 +70,6 @@ class MainViewModel(
     private val skillRegistry: SkillRegistry,
     private val mcpManager: McpManager,
     private val mcpStore: McpStore,
-    private val promptTemplateStore: PromptTemplateStore,
     private val shizukuBootstrap: ShizukuBootstrap,
     private val adbPairingFlow: WirelessAdbPairingFlow,
 ) : ViewModel() {
@@ -636,21 +633,6 @@ class MainViewModel(
     val mcpMarketplace: List<McpMarketplaceEntry> get() = McpMarketplace.all()
     fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = McpMarketplace.byCategory(category)
     fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = McpMarketplace.search(keyword)
-
-    // ---- 提示词模板库 ----
-    private val _templates = MutableStateFlow<List<PromptTemplate>>(promptTemplateStore.all())
-    val templates: StateFlow<List<PromptTemplate>> = _templates.asStateFlow()
-
-    fun saveTemplate(id: String, name: String, body: String) {
-        viewModelScope.launch {
-            promptTemplateStore.upsert(PromptTemplate(id, name, body, isBuiltIn = promptTemplateStore.byId(id)?.isBuiltIn ?: false))
-            _templates.value = promptTemplateStore.all()
-        }
-    }
-
-    fun deleteTemplate(id: String) {
-        viewModelScope.launch { promptTemplateStore.remove(id); _templates.value = promptTemplateStore.all() }
-    }
 
     // ---- Shizuku / 无线 ADB 状态 ----
     val adbStatus: StateFlow<AdbStatus> = shizukuBootstrap.status

@@ -8,7 +8,6 @@ import com.phoneagent.feature.mcp.McpManager
 import com.phoneagent.data.store.McpStore
 import com.phoneagent.feature.mcp.OkHttpMcpTransportFactory
 import com.phoneagent.data.store.MemoryStore
-import com.phoneagent.data.store.PromptTemplateStore
 import com.phoneagent.device.shell.ShizukuManager
 import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.device.shell.ShizukuBootstrap
@@ -43,8 +42,6 @@ private val appModule = module {
     single { OkHttpMcpTransportFactory.managerOf(emptyList()) }
     // MCP 服务器配置持久化（DataStore）
     single { McpStore(androidContext()) }
-    // 提示词模板库：内置默认模板
-    single { PromptTemplateStore(PromptTemplateStore.defaults()) }
     // 执行网关：统一 Skill/MCP 解析入口
     single { SkillExecutionGateway(get(), get()) }
     // 无线 ADB 传输（共享单例：ShizukuBootstrap 直连 / WirelessAdbPairingFlow 发现共用）
