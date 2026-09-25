@@ -10,7 +10,6 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,7 +59,6 @@ import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
-import com.phoneagent.ui.components.GlassHeaderInnerPad
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.skeleton
@@ -111,7 +109,6 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                 },
-                contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = 8.dp),
             )
         },
     ) { pad ->

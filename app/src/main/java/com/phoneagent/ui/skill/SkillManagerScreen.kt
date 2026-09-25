@@ -67,7 +67,6 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
-import com.phoneagent.ui.components.GlassHeaderInnerPad
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.theme.AppRadii
@@ -97,7 +96,6 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             AppTopBar(
                 title = "技能与能力",
                 subtitle = "Skill · MCP · 无线 ADB · 提示词",
-                contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = 8.dp),
             )
         },
         overlay = {

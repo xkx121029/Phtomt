@@ -8,7 +8,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -34,7 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
-import com.phoneagent.ui.components.GlassHeaderInnerPad
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
@@ -145,7 +143,6 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                 },
-                contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = AppSpacing.Sm),
             )
         },
         // 能力状态是页内浮层，不走系统弹窗：放进骨架的 overlay 槽，压得住玻璃页眉
