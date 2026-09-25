@@ -103,6 +103,7 @@ object IntentType {
     const val REMEMBER = "remember"       // 记住长期信息（text=记忆内容, summary=分类），纯本地写库、不操作设备
     const val DEVICE_QUERY = "device_query" // 查询本机信息（kind=apps/time/battery/network/storage/all，filter 可选），纯本地读取、不操作设备
     const val SAY = "say"                 // 对用户说一句话（不操作设备，直接显示在任务流；支持 Markdown）
+    const val SHOW_AGENT = "show_agent"   // 把用户引导回 Agent 页看结果（不操作设备；text=要全屏展示的 Markdown，summary=标题）
     const val FETCH = "fetch"             // 获取网页/接口正文（uri），经转译层落到 Termux 命令行取数
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
@@ -142,7 +143,7 @@ object IntentType {
      */
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
-        SAY, FETCH, FINISH, GIVE_UP,
+        SAY, SHOW_AGENT, FETCH, FINISH, GIVE_UP,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
@@ -163,6 +164,7 @@ object IntentType {
         WRITE_DOC to ActionType.WRITE_DOC,
         DEVICE_QUERY to ActionType.DEVICE_QUERY,
         SAY to ActionType.SAY,
+        SHOW_AGENT to ActionType.SHOW_AGENT,
         FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,

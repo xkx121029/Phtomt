@@ -6,6 +6,23 @@
 
 ---
 
+## [v0.1.544] — 2026-09-25
+
+新增 **`show_agent`** 动作与意图（纯端侧、不操作设备）：把用户拉回 Agent 页当场看结果。
+`text` 可选——给了就先落成 Markdown 文档，随后在 Agent 页全屏展示；`summary` 作为标题。
+该动作在只读模式下同样放行，并注册为内置技能 `skill_show_agent`（沟通类）。
+
+### 新增
+
+- **`IntentType.SHOW_AGENT` / `ActionType.SHOW_AGENT`**（`domain/model/AgentIntent.kt`、`AgentAction.kt`）
+  - 不触碰设备：拉起本应用并切到 Agent 页，`text` 可选先存为文档
+- **技能注册**（`feature/skill/SkillCatalog.kt`、`SkillCompat.kt`）
+  - `skill_show_agent`，分类「沟通」，`legacyIntent = SHOW_AGENT`
+- **执行链路**（`engine/execution/IntentTranslator.kt`、`ActionMode.kt`）
+  - 转译为 passthrough 动作；只读模式下与 SAY / REMEMBER / DEVICE_QUERY 同档放行
+
+---
+
 ## [v0.1.543] — 2026-09-25
 
 同一套设计语言此前只落在"页面骨架"这一层：卡片、顶栏、配色有令牌，但**具体页面里的圆角、间距、颜色、动画时长

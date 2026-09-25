@@ -129,6 +129,12 @@ object ActionType {
     /** 对用户说一句话（text=要说的话），纯端侧呈现、不操作设备、支持 Markdown */
     const val SAY = "say"
 
+    /**
+     * 把用户引导回 Agent 页看结果（拉起本应用并切到 Agent 页，纯端侧、不操作屏幕）。
+     * text=要全屏展示的 Markdown（可选，给了就先落成文档），summary=标题（可选）
+     */
+    const val SHOW_AGENT = "show_agent"
+
     /** 调用 MCP 技能（不操作设备，直接向 MCP 服务器发 JSON-RPC 请求） */
     const val MCP_CALL = "mcp_call"
 
