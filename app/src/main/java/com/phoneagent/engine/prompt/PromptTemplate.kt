@@ -139,7 +139,7 @@ object PromptTemplateEngine {
     private val PLACEHOLDER = Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 
     /** 把模板中的 {key} 占位符替换为变量值；未在变量表中的占位符保留原样 */
-    fun render(template: String, vars: PromptVars): String = renderOnce(template, vars)
+    fun render(template: String, vars: PromptVars): String = renderOnce(template, vars.map)
 
     /**
      * 单趟替换：**先扫出全部占位符再一次性替换**。
