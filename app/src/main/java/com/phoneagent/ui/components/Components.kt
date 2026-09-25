@@ -324,9 +324,11 @@ fun StatusPill(
  * - 左侧可选 leading 图标
  * - 右侧可选 trailing 操作（图标按钮等）
  *
- * 默认左右留白 20dp（与各页 20dp 的内容留白对齐）。当页头本身带着一层
- * 有外边距的背板时（如 Agent 页的浮动玻璃顶栏），用 [contentPadding] 把
- * 背板外边距减掉，标题才会与其他页面落在同一条竖直线上。
+ * 默认左右留白取 [LocalHeaderContentPad]（骨架外恒为 20dp，与各页 20dp 的内容留白对齐）。
+ * 页头本身带着一层有外边距的玻璃背板时（Agent 页顶栏、[GlassHeaderScaffold] 的页眉），
+ * 背板外边距在吸顶与浮起之间收放，这段留白由背板按进度下发，标题才会始终落在
+ * 与其他页面同一条竖直线上。**因此玻璃页眉里不要自己传 [contentPadding]**：
+ * 传了就绕开了这条抵消，标题会跟着背板边距一起横移。
  */
 @Composable
 fun AppTopBar(
@@ -336,7 +338,10 @@ fun AppTopBar(
     leadingIcon: ImageVector? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+    contentPadding: PaddingValues = PaddingValues(
+        horizontal = LocalHeaderContentPad.current,
+        vertical = 8.dp,
+    ),
 ) {
     Row(
         modifier = modifier

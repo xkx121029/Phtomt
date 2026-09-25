@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -195,6 +197,12 @@ class HeaderLiftState internal constructor(private val distancePx: Float) : Nest
     /** 左右外边距：吸顶时 0（通栏到屏幕两沿），浮起时为 [GlassHeaderInset] */
     val sideInset: Dp get() = GlassHeaderInset * progress
 
+    /**
+     * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
+     * [GlassHeaderDefaultContentPad]。面板边距收放时文字原地不动，只有面板两沿在动。
+     */
+    val contentPad: Dp get() = GlassHeaderDefaultContentPad - sideInset
+
     /** 上缘外边距：吸顶时 0（贴住内容区上沿），浮起时为 [GlassHeaderInset] + [HeaderLiftAmount] */
     val topInset: Dp get() = (GlassHeaderInset + HeaderLiftAmount) * progress
 
@@ -256,7 +264,7 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  *
  * 把「取样源 + 玻璃面必须是同层兄弟节点」这套约定收进骨架，页面只管摆内容：
  * ```
- * GlassHeaderScaffold(header = { AppTopBar("调试", contentPadding = ...) }) { pad ->
+ * GlassHeaderScaffold(header = { AppTopBar("调试") }) { pad ->
  *     LazyColumn(contentPadding = PaddingValues(top = pad.calculateTopPadding())) { ... }
  * }
  * ```
@@ -264,11 +272,13 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * 或 verticalScroll 之后再 padding。用在滚动容器外面只是把内容整体压低，页眉背后永远是
  * 一块纯底色，玻璃会退化成一条灰蒙蒙的色带；用在里面，内容滚动时才会从玻璃下穿过。
  *
- * 页眉**始终吸顶**，但页面离顶后会自动脱开上缘浮起一段（见 [HeaderLiftState]）：
- * 贴在顶上时它是一条吸顶横杠，滚起来之后才是一块悬在内容上方的浮板。
+ * 页眉**始终吸顶**，形态随页面离顶的远近在两端之间连续变化（见 [HeaderLiftState]）：
+ * 页面就在最顶上时是一条通栏直角的吸顶栏，滚起来之后才收成一块悬在内容上方的圆角浮板。
  * 页面不需要为此传任何参数，正文的滚动位移由骨架自己从嵌套滚动里听。
  *
- * @param header 页眉内容，会被套进一块四角全圆的玻璃板
+ * @param header 页眉内容，会被套进一块四角全圆的玻璃板。内层内容的左右留白由骨架通过
+ *   [LocalHeaderContentPad] 下发，页眉里放 [AppTopBar] 时**不要再传 contentPadding**，
+ *   否则标题会跟着面板边距一起横移。
  * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
  * @param overlay 页内浮层（如内嵌确认层）。给的是骨架最外层的 Box 作用域，
  *   所以它压得住玻璃页眉——浮层不该在页眉下面断开。
@@ -286,6 +296,9 @@ fun GlassHeaderScaffold(
     val lift = rememberHeaderLiftState()
     // 实测高度回填给正文，首项不会被压在玻璃页眉下面
     var headerHeight by remember { mutableIntStateOf(0) }
+    // 正文净空按"贴顶吸顶"的形态算，不跟着浮起量变：
+    // 净空一变，列表在同一帧里既被手指拖着走、又被改掉内边距，读起来像打滑
+    val contentTopPad = with(density) { headerHeight.toDp() } + GlassHeaderInset
 
     Box(
         modifier = modifier
@@ -298,26 +311,26 @@ fun GlassHeaderScaffold(
                 .fillMaxSize()
                 .hazeSource(glass),
         ) {
-            content(PaddingValues(top = with(density) { headerHeight.toDp() } + GlassHeaderInset))
+            content(PaddingValues(top = contentTopPad))
         }
 
         GlassSurface(
             hazeState = glass,
-            shape = RoundedCornerShape(AppRadii.Header),
+            // 吸顶时是通栏直角（半径 0），离顶才收成圆角浮板：同一个进度同时驱动
+            // 外边距与圆角，中间态与手指同一帧发生，不另补动画
+            shape = RoundedCornerShape(lift.cornerRadius),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(
-                    start = GlassHeaderInset,
-                    end = GlassHeaderInset,
-                    // 离顶后上缘多让一口气：这口气就是"浮起来"的全部信息量
-                    top = GlassHeaderInset + HeaderLiftAmount * lift.progress,
-                )
+                .padding(start = lift.sideInset, end = lift.sideInset, top = lift.topInset)
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                header()
-                // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来
+                CompositionLocalProvider(LocalHeaderContentPad provides lift.contentPad) {
+                    header()
+                }
+                // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来。
+                // 这段固定不随进度收放——它计进 headerHeight，一动就会带动正文净空
                 Spacer(Modifier.height(AppSpacing.Sm))
             }
         }
