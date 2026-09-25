@@ -213,16 +213,16 @@ internal object PromptCatalog {
             requires = setOf(PromptFlag.HAS_VISION),
             exclusiveGroup = "capabilities",
             origin = "AgentPrompts.capabilitiesLang 有视觉版",
-            bodyCN = "视觉理解：已启用。本轮已附带屏幕截图，可直接看图判断元素位置、图标与图表含义。",
-            bodyEN = "Vision: enabled. A screenshot of the current screen is attached this turn — read it directly for element positions, icons and charts.",
+            bodyCN = "视觉理解：已启用。本轮已附带屏幕截图，可直接看图判断元素位置、图标与图表含义；此外你随时可以用 see 按需追问视觉模型。",
+            bodyEN = "Vision: enabled. A screenshot of the current screen is attached this turn — read it directly for element positions, icons and charts; you may also ask the vision model on demand with see at any time.",
         ),
         PromptBlock(
             id = "cap.novision", group = PromptGroup.CAPABILITIES, order = 1, safe = true,
             excludes = setOf(PromptFlag.HAS_VISION),
             exclusiveGroup = "capabilities",
             origin = "AgentPrompts.capabilitiesLang 无视觉版",
-            bodyCN = "视觉理解：未启用。完全依赖元素树中的 id/label/坐标与文本进行操作。",
-            bodyEN = "Vision: disabled. Rely entirely on element-tree id/label/coordinates and text.",
+            bodyCN = "视觉理解：未启用（截图不直接发给你）。完全依赖元素树中的 id/label/坐标与文本操作；需要看图时用 see 追问视觉模型。",
+            bodyEN = "Vision: disabled (screenshots are NOT sent to you directly). Rely entirely on element-tree id/label/coordinates and text; when you need to see the picture, ask with see.",
         ),
     )
 
@@ -413,7 +413,12 @@ internal object PromptCatalog {
             origin = "AgentPrompts.decision 随时可用：show_agent",
         ),
         PromptBlock(
-            id = "dec.output", group = PromptGroup.DECISION, order = 14, sep = "",
+            id = "dec.always.see", group = PromptGroup.DECISION, order = 14, sep = "\n\n",
+            bodyCN = PromptBodies.DEC_ALWAYS_SEE_CN, bodyEN = PromptBodies.DEC_ALWAYS_SEE_EN,
+            origin = "AgentPrompts.decision 随时可用：see（看图追问）",
+        ),
+        PromptBlock(
+            id = "dec.output", group = PromptGroup.DECISION, order = 15, sep = "",
             bodyCN = PromptBodies.DEC_OUTPUT_CN, bodyEN = PromptBodies.DEC_OUTPUT_EN,
             origin = "AgentPrompts.decision「# 输出」",
         ),
