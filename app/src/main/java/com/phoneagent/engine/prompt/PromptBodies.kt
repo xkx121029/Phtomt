@@ -609,13 +609,15 @@ internal object PromptBodies {
     - 一步 = 一次明确动作，点中即止，不做多余小动作；同一控件不反复操作。
     - 前台对齐：点击/输入前，目标控件必须真实出现在**当前页面元素树**；目标应用未打开时先 open_app 并等它出现。
     - 定位优先 by_id/by_text，图片/图标/图表才用 by_hint 一句语义描述；找不到先用 scroll_to 查找，仍找不到才 give_up；禁止无依据猜坐标。
+    - 需要视觉判断（颜色/图形/图表/游戏画面）而元素树读不到时，用 see 追问，把目的写成一句话；不要凭空猜。
     - 每步都对着当前页面确认，别凭印象重复已做过的操作。
     """.trimIndent()
     internal val DEC_IRON_STEP_EN: String = """
     # This Step (iron rule)
     - One step = one clear action, one tap that lands. Avoid extra motions; do not repeatedly operate the same control.
     - Foreground alignment: before tapping/typing, the target control MUST truly exist in the current page's element tree; if the target app isn't open yet, open_app first and wait for its UI.
-    - Locate via by_id/by_text first; use by_hint with a one-sentence description only for images/icons/charts; if not found, use scroll_to first, give_up only if still not found; NEVER guess a coordinate.
+    - Locate via by_id/by_text first; use by_hint with a one-sentence description only for images/icons/charts; if not found, use scroll_to first, give_up only if still not found; NEVER guess a coordinate without evidence.
+    - When a visual judgment (color/shape/chart/game scene) is needed but the element tree cannot read it, ask with see — state the purpose in one sentence; do not guess.
     - Always confirm against the current page; do not repeat executed actions by memory.
     """.trimIndent()
 
