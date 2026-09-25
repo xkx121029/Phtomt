@@ -9,27 +9,43 @@ package com.phoneagent.domain.rules
 object ShellCommands {
 
     /**
-     * 从已解析的 ADB 命令里反查点击坐标，供点击光标定位使用。
+     * 从已解析的 ADB 命令里反查"这一下动了什么"，供光标按形态回放。
      *
-     * 覆盖两种"点"的形态：
-     * - `input tap x y`（点击 / 双击，双击取第一个点）
-     * - `input swipe x y x y 1500`（长按：起终点相同）
-     *
-     * 方向滑动（起终点不同）与其它命令返回 null——那些不是"点"，不该显示点击光标。
+     * 光标有三种形态，反查也必须分清三种：只认"点"的话，长按会被画成点击、滑动干脆没有光标，
+     * 用户看到的就是"列表自己跳了一下"。
      */
-    fun parseTapPoint(cmd: String): Pair<Int, Int>? {
+    sealed interface Motion {
+        /** 点击（`input tap`，双击取第一个点） */
+        data class Tap(val x: Int, val y: Int) : Motion
+
+        /** 长按（起终点相同的 swipe），[holdMs] 取命令里写的按压时长 */
+        data class LongPress(val x: Int, val y: Int, val holdMs: Long) : Motion
+
+        /** 滑动（起终点不同的 swipe），[durationMs] 取命令里写的时长 */
+        data class Swipe(val x1: Int, val y1: Int, val x2: Int, val y2: Int, val durationMs: Long) : Motion
+    }
+
+    /**
+     * 反查命令对应的动作形态；按键、文本、raw 透传等非触摸命令返回 null。
+     */
+    fun parseMotion(cmd: String): Motion? {
         Regex("""input\s+tap\s+(\d+)\s+(\d+)""").find(cmd)?.let { m ->
             val x = m.groupValues[1].toIntOrNull() ?: return null
             val y = m.groupValues[2].toIntOrNull() ?: return null
-            return x to y
+            return Motion.Tap(x, y)
         }
-        Regex("""input\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\d+""").find(cmd)?.let { m ->
+        Regex("""input\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)""").find(cmd)?.let { m ->
             val x1 = m.groupValues[1].toIntOrNull() ?: return null
             val y1 = m.groupValues[2].toIntOrNull() ?: return null
             val x2 = m.groupValues[3].toIntOrNull() ?: return null
             val y2 = m.groupValues[4].toIntOrNull() ?: return null
-            // 仅同点 swipe（长按）算"点"；真正滑动不显示点击光标
-            return if (x1 == x2 && y1 == y2) x1 to y1 else null
+            val ms = m.groupValues[5].toLongOrNull() ?: return null
+            // 起终点相同 = 原地按住 = 长按；不同才是真的滑动
+            return if (x1 == x2 && y1 == y2) {
+                Motion.LongPress(x1, y1, ms)
+            } else {
+                Motion.Swipe(x1, y1, x2, y2, ms)
+            }
         }
         return null
     }

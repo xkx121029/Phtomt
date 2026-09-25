@@ -21,6 +21,7 @@ import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.domain.rules.LocalDecisionEngine
 import com.phoneagent.domain.rules.SessionContext
 import com.phoneagent.domain.rules.ShellCommands
+import com.phoneagent.domain.rules.ShellCommands.Motion
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.AppNameResolver
@@ -2862,12 +2863,24 @@ class AgentEngine(
     }
 
     /**
-     * shell 点击也要让用户看到光标：从解析后的完整命令里提取点击坐标，
-     * 触发光标飞向该点。非点击命令（swipe 方向滑、文本处理等）静默跳过。
+     * shell 通道也要让用户看到光标：从解析后的完整命令里反查"这一下动了什么"，
+     * 按形态回放——点击飞向落点、长按停留呼吸、滑动沿轨迹推进。
+     *
+     * 三种形态必须分开认：只认"点"的话，长按会被画成点击、滑动干脆没有光标，
+     * 用户看到的就是"列表自己跳了一下"。按键、文本、raw 透传等非触摸命令静默跳过。
      */
     private suspend fun triggerCursorForShell(resolved: String) {
-        val point = ShellCommands.parseTapPoint(resolved) ?: return
-        com.phoneagent.overlay.CursorOverlayService.point(point.first, point.second)
+        when (val motion = ShellCommands.parseMotion(resolved)) {
+            is Motion.Tap ->
+                com.phoneagent.overlay.CursorOverlayService.point(motion.x, motion.y)
+            is Motion.LongPress ->
+                com.phoneagent.overlay.CursorOverlayService.longPress(motion.x, motion.y, motion.holdMs)
+            is Motion.Swipe ->
+                com.phoneagent.overlay.CursorOverlayService.swipe(
+                    motion.x1, motion.y1, motion.x2, motion.y2, motion.durationMs,
+                )
+            null -> Unit
+        }
     }
 
     /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB→Shizuku→Termux | ADB=仅无线ADB | SHIZUKU=仅Shizuku | TERMUX=仅Termux） */

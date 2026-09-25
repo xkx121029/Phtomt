@@ -37,6 +37,16 @@
 - **滑动没有光标**（`device/a11y/ActionExecutor.kt`）
   - `swipe` 在派发前按 `(x1,y1)→(x2,y2)` 与 `durationMs` 播放轨迹，`swipeDirection`、
     元素内 `scroll`、滚动查找一并覆盖
+- **滚动容器没有光标**（`device/a11y/ActionExecutor.kt`）
+  - `scrollContainer`（`ACTION_SCROLL_FORWARD` / `BACKWARD`）没有坐标、没有手势，此前屏幕上全无痕迹；
+    改为按容器 bounds 现场推导一段纵向轨迹。这条是 AI「滚动查找 / `scroll_to` / `scroll_container`」
+    的主路径，与「AI 不给坐标」正好对得上
+- **shell 通道的滑动与长按没有正确光标**（`domain/rules/ShellCommands.kt`、`engine/AgentEngine.kt`）
+  - 原 `parseTapPoint` 反查只认"点"，注释里就写着"真正的滑动静默跳过"：`input swipe` 滑动没有光标、
+    起终点相同的 `input swipe`（长按）被画成点击
+  - 改为 `sealed interface Motion { Tap / LongPress / Swipe }` + `parseMotion`：按起终点是否相同
+    区分长按与滑动，并取命令里第 5 个参数的毫秒数作为按压 / 推进时长
+  - `triggerCursorForShell` 按形态分派到 `point` / `longPress` / `swipe`
 - **长按与点击共用同一个脉冲动效**：两者观感无差别，用户分不清 AI 是按了一下还是按住不放
 - **长按时长 800ms 字面值**：收口为 `ActionExecutor.LONG_PRESS_MS`，手势时长与光标动效时长同源
 
@@ -45,6 +55,9 @@
 - `CursorPointerView.animateTo` 由 `animate(mode, …)` 取代；光标已压在落点上时移动段压到 0，
   不做无意义的空移
 - `CursorOverlayService.setVisible`（截图前隐藏）对三种形态一视同仁，轨迹同样不会被截进画面污染 AI 读屏
+- 设计前提是**AI 不会以坐标表达滑动**（`swipe` 只给 `direction[,distance_px]`，`scroll_to` 只说"要找什么控件"），
+  所以滑动的几何一律由本机现场推导：容器边界、屏幕中心、shell 命令里的起止点——AI 不给坐标，光标照样有轨迹
+- 单测 `ShellCommandsTapPointTest` 随之改为 `ShellCommandsMotionTest`，断言三形态反查
 
 ---
 
