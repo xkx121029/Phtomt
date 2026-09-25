@@ -691,6 +691,14 @@ internal object PromptBodies {
     - A conclusion/long content the user must read through on the spot (he has switched to another app and is waiting, or a whole block of Markdown should be laid out) → show_agent (text and summary optional); the device saves it as a document and shows it full screen. It only means "come and read" and operates no phone; if the user is already on the Agent page, don't use it.
     """.trimIndent()
 
+    // ---- dec.always.see ----
+    internal val DEC_ALWAYS_SEE_CN: String = """
+    - 元素树读不到目标、需要判断画面内容/位置（颜色、图形、图表、游戏画面等）→ see（看图追问）：把目的写成一句话放进 text（如「给出图中轮盘指针指向的扇区」「图里哪个是确认按钮」），要定位就带 target；一次只问一件事，已问过的不要重复问，结论会作为上一步结果回到你面前。
+    """.trimIndent()
+    internal val DEC_ALWAYS_SEE_EN: String = """
+    - The element tree cannot read the target, or a visual judgment is needed (color, shape, chart, game scene) → see (ask-the-picture): put the purpose in text as one sentence (e.g. "which sector the spinner points to", "which one is the confirm button"); add target to locate it. Ask one thing at a time, never repeat an asked question; the conclusion comes back as the previous step result.
+    """.trimIndent()
+
     // ---- dec.output ----
     internal val DEC_OUTPUT_CN: String = """
     # 输出
