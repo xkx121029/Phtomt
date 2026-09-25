@@ -117,6 +117,7 @@ fun AgentScreen(
     val doc by vm.docResult.collectAsState()
     val memoryEvents by vm.memoryEvents.collectAsState()
     val sayEvents by vm.sayEvents.collectAsState()
+    val clarifyEvents by vm.clarifyEvents.collectAsState()
     val sessions by vm.taskSessions.collectAsState()
     val conversationStart by vm.conversationStart.collectAsState()
     // 实时视图只铺开本对话（起点之后）的执行痕迹：新建对话后主区域因此是干净的。
@@ -157,7 +158,8 @@ fun AgentScreen(
 
     val items = remember(
         submittedTask, agent, planPhase, planText, decisionText, traces, history,
-        queue, needsUser, a11yEnabled, fold, doc, memoryEvents, sayEvents, selectedTaskId, archivedSession,
+        queue, needsUser, a11yEnabled, fold, doc, memoryEvents, sayEvents, clarifyEvents,
+        selectedTaskId, archivedSession,
         conversationStart,
     ) {
         AgentTimelineMapper.build(
@@ -176,6 +178,7 @@ fun AgentScreen(
             decisionStream = decisionText,
             memoryEvents = memoryEvents,
             sayEvents = sayEvents,
+            clarifyEvents = clarifyEvents,
             focusTaskId = viewingTaskId,
             archived = archivedSession,
             conversationStart = conversationStart,
@@ -627,6 +630,8 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.PlanFailed -> PlanFailedItem(item.message, vm)
         is AgentTimelineItem.AssistantNote -> AssistantNoteItem(item, vm)
         is AgentTimelineItem.Say -> SayItem(item, vm)
+        is AgentTimelineItem.ClarifyQuestion -> ClarifyQuestionItem(item)
+        is AgentTimelineItem.ClarifyAnswer -> ClarifyAnswerItem(item)
         is AgentTimelineItem.ToolChain -> ToolChainItem(item, vm)
         is AgentTimelineItem.LiveStatus -> LiveStatusItem(item, vm)
         is AgentTimelineItem.NeedsUser -> NeedsUserItem(item)

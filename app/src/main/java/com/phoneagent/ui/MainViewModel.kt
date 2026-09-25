@@ -456,6 +456,9 @@ class MainViewModel(
     /** 本次任务内 AI "对用户说话"的事件（引擎内存态），Agent 页据此实时出气泡 */
     val sayEvents: StateFlow<List<com.phoneagent.engine.SayEvent>> get() = engine.sayEvents
 
+    /** 本对话内 AI 澄清 → 用户选择 的往来（引擎内存态），Agent 页据此保留 问题 + 选择 */
+    val clarifyEvents: StateFlow<List<com.phoneagent.engine.ClarifyAnswered>> get() = engine.clarifyEvents
+
     /** 撤销一条刚写入的记忆：删库 + 从任务流移除卡片 */
     fun undoMemory(id: Long) {
         viewModelScope.launch {

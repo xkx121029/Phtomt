@@ -1,6 +1,7 @@
 package com.phoneagent.ui.agent
 
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
 
 /**
@@ -140,6 +141,31 @@ internal sealed interface AgentTimelineItem {
         val step: Int,
     ) : AgentTimelineItem {
         override val key: String get() = "say#$runKey#$id"
+    }
+
+    /**
+     * AI 澄清歧义时提出的问题（左对齐 AI 气泡）。
+     * [exchangeId] 锚定这一组往来：live 表示正在回答、还没定答案；cN 表示已完成的第 N 组
+     *（与同组的 [ClarifyAnswer] 共用同一个交换 id，key 才各自唯一）。
+     */
+    data class ClarifyQuestion(
+        val question: String,
+        val options: List<ClarificationOption>,
+        val exchangeId: String,
+    ) : AgentTimelineItem {
+        override val key: String get() = "cq#$exchangeId"
+    }
+
+    /**
+     * 用户在澄清中选择的答案（右对齐用户气泡 + 主题色描边）。
+     * [question] 只为完整承载这一组往来；展示时问题已由同组的 AI 气泡呈现，这里只渲染选择。
+     */
+    data class ClarifyAnswer(
+        val question: String,
+        val answer: String,
+        val exchangeId: String,
+    ) : AgentTimelineItem {
+        override val key: String get() = "ca#$exchangeId"
     }
 
     /**

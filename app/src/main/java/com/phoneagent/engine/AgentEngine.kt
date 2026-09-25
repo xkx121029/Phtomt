@@ -183,6 +183,9 @@ class AgentEngine(
         /** say 事件流的保留上限（只用于界面实时气泡，超出丢弃最早的） */
         private const val MAX_SAY_EVENTS = 20
 
+        /** 澄清往来（问题 + 选择）流的保留上限，只用于界面展示，超出丢弃最早的 */
+        private const val MAX_CLARIFY_EVENTS = 20
+
         /** 本对话内纯对话往来（问答）的保留上限，只喂给会话承接块 */
         private const val MAX_CONVERSATION_CHATS = 6
 
@@ -294,6 +297,13 @@ class AgentEngine(
 
     /** say 事件自增 id：不能用 text.hashCode() 当 key（重复内容会撞车） */
     private val saySeq = AtomicLong(0L)
+
+    /** 澄清往来自增 id：问题气泡与答案气泡共用同一个 id 锚在同一组上 */
+    private val clarifySeq = AtomicLong(0L)
+
+    /** 本对话内的澄清往来（引擎内存态），Agent 页据此在任务流里保留 问题 + 选择 */
+    private val _clarifyEvents = MutableStateFlow<List<ClarifyAnswered>>(emptyList())
+    val clarifyEvents: StateFlow<List<ClarifyAnswered>> get() = _clarifyEvents.asStateFlow()
 
     /** 连续 say 计数：达到 [MAX_SAY_STREAK] 即要求 AI 开始真正执行 */
     @Volatile
@@ -761,6 +771,7 @@ class AgentEngine(
         sessionContextCache = null
         _sayEvents.value = emptyList()
         _memoryEvents.value = emptyList()
+        _clarifyEvents.value = emptyList()
         _conversation.value = emptyList()
         _planPhase.value = PlanPhase.Idle
         _planStream.value = ""
@@ -785,6 +796,16 @@ class AgentEngine(
         }
     }
 
+    /** 记下一次澄清往来（问题 + 选择），供 Agent 页在任务流里成组保留；新一轮输入时清空 */
+    private fun rememberClarify(question: String, answer: String) {
+        if (answer.isBlank()) return
+        _clarifyEvents.value = (_clarifyEvents.value + ClarifyAnswered(
+            id = clarifySeq.incrementAndGet(),
+            question = question.trim().take(200),
+            answer = answer.trim().take(200),
+        )).takeLast(MAX_CLARIFY_EVENTS)
+    }
+
     // ==================== 规划 / 澄清 / 批准 ====================
 
     /** 开始规划：AI 流式思考并检测歧义。不直接执行。 */
@@ -795,6 +816,8 @@ class AgentEngine(
         // 上一轮任务里 AI 说过的话先清掉：纯对话不会进 run()，靠它清就太晚了，
         // 新问题的回答会和上一轮的旧气泡同屏
         _sayEvents.value = emptyList()
+        // 澄清往来同样只属于它那一段规划流：新一轮输入作废上一轮的 问题 + 选择
+        _clarifyEvents.value = emptyList()
         _planPhase.value = PlanPhase.Planning
         // 新一轮输入：作废上一轮算好的会话承接块（它对应的是上一轮的输入与历史）
         sessionContextCache = null
@@ -817,7 +840,7 @@ class AgentEngine(
                 return@launch
             }
             try {
-                val content = cloudPlanStream(task, null) { delta -> _planStream.value += delta }
+                val content = cloudPlanStream(task, null, null) { delta -> _planStream.value += delta }
                 _planPhase.value = parsePlanResponse(content)
                 if (_planPhase.value is PlanPhase.Error) {
                     log(AgentLog.Level.ERROR, "规划失败：$content")
@@ -871,12 +894,16 @@ class AgentEngine(
     fun answerClarification(option: ClarificationOption) {
         val task = pendingTask
         if (task.isBlank()) return
+        // 记下 AI 刚问的那句：planPhase 马上要切走，问题只能在这儿读最后一次；
+        // Option/答案一起入流，任务流据此保留 问题 + 选择 这一组往来
+        val question = (planPhase as? PlanPhase.Clarifying)?.clarification?.question.orEmpty()
+        rememberClarify(question, option.label)
         clearFloatingQuery()
         _planStream.value = ""
         _planPhase.value = PlanPhase.Planning
         scope.launch {
             try {
-                val content = cloudPlanStream(task, option.label) { delta -> _planStream.value += delta }
+                val content = cloudPlanStream(task, question, option.label) { delta -> _planStream.value += delta }
                 _planPhase.value = parsePlanResponse(content)
                 if (_planPhase.value is PlanPhase.Error) {
                     log(AgentLog.Level.ERROR, "重新规划失败：$content")
@@ -910,7 +937,7 @@ class AgentEngine(
         activePlan = null
     }
 
-    private suspend fun cloudPlanStream(task: String, answer: String?, onDelta: (String) -> Unit): String {
+    private suspend fun cloudPlanStream(task: String, question: String?, answer: String?, onDelta: (String) -> Unit): String {
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         val profile = memory.loadProfile().takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.key}:${it.value}" } ?: ""
@@ -925,8 +952,12 @@ class AgentEngine(
         // 环境上下文（时间/网络/电量/已安装应用数）+ 会话承接（上一轮任务）：规划阶段就要带上，
         // 否则"明天""再改一下"这类依赖时间与上下文的说法在规划时无从判断
         val context = AgentPrompts.environment(lang, envFacts()) + sessionContextText(task, lang)
-        val text = if (answer.isNullOrBlank()) "$prompt$execContext$context"
-        else "$prompt$execContext$context\n\n用户已选择澄清项：$answer"
+        // 澄清后重规划：问题与答案一起注入——光给答案不给问题，AI 就不知道这句话在回答哪一问
+        val text = when {
+            answer.isNullOrBlank() -> "$prompt$execContext$context"
+            question.isNullOrBlank() -> "$prompt$execContext$context\n\n用户已选择澄清项：$answer"
+            else -> "$prompt$execContext$context\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
+        }
         val messages = listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = text))))
         // 链路聚合：规划等复杂任务优先使用思考模型（开启 thinking），未配置则回退主模型
         val reason = reasoningConfig(settingsVal)
@@ -4072,6 +4103,16 @@ data class SayEvent(
     val runKey: String,
     val step: Int,
     val createdAt: Long = System.currentTimeMillis(),
+)
+
+/**
+ * AI 澄清歧义 → 用户选择 的一次往来（引擎内存态）。
+ * 供 Agent 页在任务流里成组保留「问题 + 选择」，并在重规划时把两者一起注入上下文。
+ */
+data class ClarifyAnswered(
+    val id: Long,
+    val question: String,
+    val answer: String,
 )
 
 /** 规划流程阶段 */

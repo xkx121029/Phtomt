@@ -255,6 +255,55 @@ private fun sourceHint(source: AgentTimelineItem.NoteSource): String = when (sou
     AgentTimelineItem.NoteSource.VISION -> "截图识别结果，非 AI 自述"
 }
 
+/**
+ * AI 澄清歧义时提出的问题（左对齐 AI 气泡）。
+ * 选项仍由输入栏承载，这里只呈现问题本身，让"AI 在问什么"留在任务流里。
+ */
+@Composable
+internal fun ClarifyQuestionItem(item: AgentTimelineItem.ClarifyQuestion) {
+    val colors = AppTheme.colors
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(agentBubbleShape(isUser = false))
+                .background(colors.messageBubbleAgent)
+                .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+        ) {
+            AgentSpeakerHeader(label = "需要确认", tint = colors.onMessageBubbleAgent)
+            Spacer(Modifier.height(AppSpacing.Xs))
+            Text(
+                text = item.question,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onMessageBubbleAgent,
+            )
+        }
+    }
+}
+
+/**
+ * 用户在澄清中选择的答案（右对齐用户气泡 + 主题色描边）。
+ * 主题色描边把那一次选择标出来，与普通任务气泡区分——这是"我点的不是打字打的"。
+ */
+@Composable
+internal fun ClarifyAnswerItem(item: AgentTimelineItem.ClarifyAnswer) {
+    val colors = AppTheme.colors
+    val shape = agentBubbleShape(isUser = true)
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+        Text(
+            text = item.answer,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onMessageBubbleUser,
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .clip(shape)
+                .background(colors.messageBubbleUser)
+                .border(1.5.dp, colors.brand, shape)
+                .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+        )
+    }
+}
+
 /** 列表项之间的统一纵向间距（供 AgentScreen 的 LazyColumn 使用），归入间距令牌体系 */
 internal val AgentItemSpacing = AppSpacing.Md
 

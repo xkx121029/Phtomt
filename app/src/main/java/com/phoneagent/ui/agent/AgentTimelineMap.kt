@@ -6,6 +6,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.SayEvent
@@ -55,6 +56,8 @@ internal object AgentTimelineMapper {
         memoryEvents: List<MemoryEvent> = emptyList(),
         /** 本次任务内 AI 主动说的话（say 事件，引擎内存态），实时出气泡；历史回看不回放 */
         sayEvents: List<SayEvent> = emptyList(),
+        /** 本对话内 AI 澄清 → 用户选择 的往来（引擎内存态），规划流程里成组保留 */
+        clarifyEvents: List<ClarifyAnswered> = emptyList(),
         /** 只看这一次任务；null = 跟随实时（最新一次执行 + 尚未产生执行的规划流程） */
         focusTaskId: Long? = null,
         /** 焦点任务是历史会话时，引擎归档的标题 / 计划 / 摘要 / 记忆 */
@@ -250,14 +253,26 @@ internal object AgentTimelineMapper {
             if (submittedTask.isNotBlank()) {
                 items += AgentTimelineItem.UserTask(submittedTask, queued = false, ownerKey = "pending")
             }
+            // 已完成的澄清往来（问题 + 选择）在重规划 / 待批准期间仍留在任务流里：
+            // 渲染在 when 之外，回答切走 Clarifying 后这组问答才不会跟着消失
+            clarifyEvents.forEach { ev ->
+                items += AgentTimelineItem.ClarifyQuestion(ev.question, emptyList(), exchangeId = "c${ev.id}")
+                items += AgentTimelineItem.ClarifyAnswer(ev.question, ev.answer, exchangeId = "c${ev.id}")
+            }
             when (planPhase) {
                 is PlanPhase.Planning -> if (planText.isNotBlank()) {
                     items += AgentTimelineItem.PlanStreaming(planText)
                 }
 
-                // 澄清的提问与选项由输入栏（AgentComposer）承载，任务流不再重复一条；
+                // 澄清进行中：先出一条 AI 问题气泡；用户选择后由上面的 clarifyEvents 收尾成 问题+选择
+                is PlanPhase.Clarifying -> items += AgentTimelineItem.ClarifyQuestion(
+                    question = planPhase.clarification.question,
+                    options = planPhase.clarification.options,
+                    exchangeId = "live",
+                )
+
                 // 待批准的步骤清单与「批准并开始」同样搬进输入栏，任务流里也不再出卡片
-                is PlanPhase.Clarifying, is PlanPhase.AwaitingApproval -> Unit
+                is PlanPhase.AwaitingApproval -> Unit
                 // 纯对话：回答已经作为一条 say 气泡出现在上面，这里不再产出条目
                 is PlanPhase.Reply -> Unit
                 is PlanPhase.Error -> items += AgentTimelineItem.PlanFailed(planPhase.message)
