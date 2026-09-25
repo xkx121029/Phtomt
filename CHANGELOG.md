@@ -6,6 +6,49 @@
 
 ---
 
+## [v0.1.611] — 2026-09-25
+
+主模型视觉链路存在五个断点：提示词与当下目的无关（描述是整屏铺开的通用罗列）；hint 定位优先级反了
+（先走要花钱发网络的远端 AIDL，再回落零成本的本地匹配）；云端视觉明明返回了坐标却没人接（同一张图
+编码上传两次）；`base64Image` 每步重新 scale/JPEG/Base64（同一步内被决策与定位各算一遍）；主模型
+能否读图只看手填布尔、模型库里真实探测出的能力完全不参与。本次以三态识图、统一视觉提问入口 `see`
+、缓存与优先级修正收口这条链路。
+
+### 新增
+
+- **主模型识图三态**（`core/ai/VisionRouting.kt`）
+  - `AUTO`（按模型库探测结果决定，探测不出等同不支持）/ `强制开` / `强制关`，`resolve` 为唯一合流口径
+  - 旧布尔 `has_vision` 仅作迁移读取（true→`ON`），不再写入；设置页换三档分段按钮
+  - `AgentEngine.mainSeesImage(s)` 收口所有判定点，决策附图、能力提示、trace 全走它
+- **看图追问意图 `see`**（带目的的按需视觉调用）
+  - `IntentType.SEE` + 内置技能 `skill_see`，`SkillCompat.Normalized.Vision` 归一化（缺「问题」中文拒绝）
+  - `AgentEngine.invokeVisionAsk`：一句 purpose + 上下文干净的单条消息，答案作为上一步结果回注；
+    带 `target` 时回 JSON 拿坐标，写入 `lastVisualCoordinate` 供下一步复用
+  - 归低风险档（保守模式可用），不触碰设备、不产生动作，照 `browse_*` 先例不设独立 `ActionType`
+  - 提示词：意图表（中英）、铁律「需要视觉判断时用 see 追问」、`dec.always.see` 区块、
+    capabilities 有/无视觉两版各补一句；金样本同步回填
+- **`ACTION_SCHEMA` 的 intent enum 现场生成**（`AiClient.kt`）
+  - 由 `IntentType.ALL` 拼出，不再手抄 —— 此前手抄落后全集 12 项，结构化回退路径会把新意图判非法
+
+### 修复
+
+- **hint 定位优先级反转**：本地免费匹配（`ControlFormat.locate`）提到最前，远端 AIDL 退居其后，
+  云端视觉再次；先花钱后免费的顺序倒过来了
+- **云端视觉坐标复用**：每步自动描述改带 purpose，其返回的坐标映射为 `DetectedControl`
+  并入本地区域表，不再"描述归描述、定位归定位"各传一次图
+- **同图重复编码**（`AiClient.base64Image`）：单槽缓存（同一位图对象直接复用 Base64 结果），
+  每步开头 `clearImageCache()` 释放
+- **云端条目画框错位**（`DetectedControl.drawBoxes`）：无 bounds 的云端条目跳过不画，
+  避免框画到左上角当假证据
+
+### 验证
+
+- `compileDebugKotlin` / `testDebugUnitTest`（524 项，含新增 14 项）/ `assembleDebug` 全通过
+- grep 复核：`settingsVal.hasVision`、`visionDescribe(`、`visionLocate(` 零残留；
+  `HAS_VISION` 仅存迁移读取与 `PromptFlag` 枚举两处预期用法
+
+---
+
 ## [v0.1.561] — 2026-09-25
 
 虚拟光标此前只有"点击"一种形态，而且**只有降级到坐标手势那条路才会点亮它**——节点直点（多数点击实际走的就是
