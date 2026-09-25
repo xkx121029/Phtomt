@@ -85,10 +85,17 @@ object PromptAssembler {
      * 裁剪自检：列出"因为条件不满足而被裁掉"且**被标为安全块**的区块。
      *
      * 安全块（铁律 / 授权范围 / 禁止输出 / 能力声明）不应被任何条件裁掉，
-     * 返回非空即说明目录里给安全块挂了 requires —— 由单测断言恒为空。
+     * 返回非空即说明目录里给安全块挂了 `requires`——由单测穷举断言恒为空。
+     *
+     * 例外是**互斥族**（[PromptBlock.exclusiveGroup]）：动作模式三档、功能声明两版天生"只出一块"，
+     * 缺席一块是正常的二选一。因此只有当同族里**一块都不在场**时才判为异常。
      */
     fun unsafeCrops(ctx: PromptContext): List<String> =
         PromptCatalog.all
             .filter { it.safe && !it.isPresent(ctx.flags) }
+            .filter { block ->
+                block.exclusiveGroup.isBlank() ||
+                    PromptCatalog.all.none { it.exclusiveGroup == block.exclusiveGroup && it.isPresent(ctx.flags) }
+            }
             .map { "${it.id}（缺 ${it.requires.joinToString("+")}）" }
 }

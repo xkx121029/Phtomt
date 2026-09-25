@@ -78,6 +78,8 @@ enum class PromptFlag {
  * @param id 唯一标识，如 `sys.web_browse`
  * @param bodyCN 中文正文，可含 `{占位符}`（由 [PromptAssembler] 用 [PromptVars] 渲染）
  * @param safe 安全块：裁剪逻辑永不裁它（铁律 / 授权范围 / 禁止输出 / 能力声明等）
+ * @param exclusiveGroup 互斥族名：同族区块"只出一块"（如动作模式三档、功能声明两版）。
+ *        空串 = 不属于任何互斥族。裁剪自检据此区分"被错误裁掉"与"正常的二选一"。
  * @param order 组内拼接顺序，必须与原文顺序一致
  * @param origin 溯源，说明这段正文原来写在哪
  */
@@ -89,6 +91,7 @@ data class PromptBlock(
     val requires: Set<PromptFlag> = emptySet(),
     val excludes: Set<PromptFlag> = emptySet(),
     val safe: Boolean = false,
+    val exclusiveGroup: String = "",
     val order: Int,
     val prefix: String = "",
     val sep: String = "",

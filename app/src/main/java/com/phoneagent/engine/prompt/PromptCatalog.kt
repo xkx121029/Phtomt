@@ -126,6 +126,7 @@ internal object PromptCatalog {
         PromptBlock(
             id = "mode.conservative", group = PromptGroup.ACTION_MODE, order = 0, sep = "\n", safe = true,
             requires = setOf(PromptFlag.ACTION_CONSERVATIVE),
+            exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 保守档",
             bodyCN = MODE_HEAD_CN + """
             - 本档只放行低风险意图（只读 / 导航 / 本地读写）：{low_risk}。
@@ -141,6 +142,7 @@ internal object PromptCatalog {
         PromptBlock(
             id = "mode.balanced", group = PromptGroup.ACTION_MODE, order = 1, sep = "\n", safe = true,
             requires = setOf(PromptFlag.ACTION_BALANCED),
+            exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 均衡档",
             bodyCN = MODE_HEAD_CN + """
             - 本档放行转译层的全部意图（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作），与上面两张意图表完全一致。
@@ -154,6 +156,7 @@ internal object PromptCatalog {
         PromptBlock(
             id = "mode.free", group = PromptGroup.ACTION_MODE, order = 2, sep = "\n", safe = true,
             requires = setOf(PromptFlag.ACTION_FREE),
+            exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 自由档",
             bodyCN = MODE_HEAD_CN + """
             - 本档在均衡的基础上额外放行两类能力：自写命令（intent=shell）与直调无障碍端点（intent=a11y）。
@@ -208,6 +211,7 @@ internal object PromptCatalog {
         PromptBlock(
             id = "cap.vision", group = PromptGroup.CAPABILITIES, order = 0, safe = true,
             requires = setOf(PromptFlag.HAS_VISION),
+            exclusiveGroup = "capabilities",
             origin = "AgentPrompts.capabilitiesLang 有视觉版",
             bodyCN = "视觉理解：已启用。本轮已附带屏幕截图，可直接看图判断元素位置、图标与图表含义。",
             bodyEN = "Vision: enabled. A screenshot of the current screen is attached this turn — read it directly for element positions, icons and charts.",
@@ -215,6 +219,7 @@ internal object PromptCatalog {
         PromptBlock(
             id = "cap.novision", group = PromptGroup.CAPABILITIES, order = 1, safe = true,
             excludes = setOf(PromptFlag.HAS_VISION),
+            exclusiveGroup = "capabilities",
             origin = "AgentPrompts.capabilitiesLang 无视觉版",
             bodyCN = "视觉理解：未启用。完全依赖元素树中的 id/label/坐标与文本进行操作。",
             bodyEN = "Vision: disabled. Rely entirely on element-tree id/label/coordinates and text.",
