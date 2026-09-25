@@ -102,6 +102,7 @@ export const routes = [
       { path: 'scenarios', name: 'admin-scenarios', component: () => import('../views/admin/AdminScenarios.vue'), meta: { title: '场景示例', admin: true } },
       { path: 'roadmap', name: 'admin-roadmap', component: () => import('../views/admin/AdminRoadmap.vue'), meta: { title: '路线图', admin: true } },
       { path: 'ai', name: 'admin-ai', component: () => import('../views/admin/AdminAi.vue'), meta: { title: 'AI 问答', admin: true } },
+      { path: 'ai-log', name: 'admin-ai-log', component: () => import('../views/admin/AdminAiLog.vue'), meta: { title: '问答留痕', admin: true } },
       { path: 'audit', name: 'admin-audit', component: () => import('../views/admin/AdminAudit.vue'), meta: { title: '操作留痕', admin: true } },
       { path: 'password', name: 'admin-password', component: () => import('../views/admin/AdminPassword.vue'), meta: { title: '修改密码', admin: true } }
     ]
