@@ -84,9 +84,16 @@ class ActionExecutor(
 
     /** 长按 */
     suspend fun longClick(x: Int, y: Int): Result {
-        com.phoneagent.overlay.CursorOverlayService.point(x, y)
+        // 光标形态为"按住不放 + 呼吸光环"，保持时长取真实按压时长，两者才对得上
+        com.phoneagent.overlay.CursorOverlayService.longPress(x, y, LONG_PRESS_MS)
         return dispatchGesture(GestureDescription.Builder().run {
-            addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(x.toFloat(), y.toFloat()) }, 0, 800))
+            addStroke(
+                GestureDescription.StrokeDescription(
+                    Path().apply { moveTo(x.toFloat(), y.toFloat()) },
+                    0,
+                    LONG_PRESS_MS,
+                ),
+            )
             build()
         })
     }
@@ -99,12 +106,26 @@ class ActionExecutor(
      *
      * 命中的可能是"没有文字的容器"（真正的可点击控件在它祖先上），所以失败时沿父链
      * **上溯最近的可点击祖先**；仍不行才返回失败，由上层降级为坐标手势。
+     *
+     * 出手前先把光标送到控件上：节点直点没有坐标手势，屏幕上不留任何痕迹，
+     * 不补光标的话用户只看到页面自己变了。同步模式下与手势点击同规矩——等光标到位再点。
      */
-    fun clickNode(selector: NodeSelector, longClick: Boolean = false): Result {
+    suspend fun clickNode(selector: NodeSelector, longClick: Boolean = false): Result {
         val root = service.rootInActiveWindow
             ?: return Result.Failure("无障碍读不到当前页面节点树")
         val found = findNode(root, selector)
             ?: return Result.Failure("活节点树中没有控件(${selector.describe()})")
+        val bounds = Rect()
+        found.getBoundsInScreen(bounds)
+        if (bounds.width() > 0 && bounds.height() > 0) {
+            val nx = bounds.centerX()
+            val ny = bounds.centerY()
+            if (longClick) {
+                com.phoneagent.overlay.CursorOverlayService.longPress(nx, ny, LONG_PRESS_MS)
+            } else {
+                com.phoneagent.overlay.CursorOverlayService.point(nx, ny)
+            }
+        }
         val action = if (longClick) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK
         var node: AccessibilityNodeInfo? = found
         var hops = 0
@@ -231,8 +252,10 @@ class ActionExecutor(
     }
 
     /** 滑动 */
-    suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result =
-        dispatchGesture(GestureDescription.Builder().run {
+    suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result {
+        // 光标沿轨迹推进，时长与手势一致，轨迹才和手指同步
+        com.phoneagent.overlay.CursorOverlayService.swipe(x1, y1, x2, y2, durationMs)
+        return dispatchGesture(GestureDescription.Builder().run {
             addStroke(
                 GestureDescription.StrokeDescription(
                     Path().apply { moveTo(x1.toFloat(), y1.toFloat()); lineTo(x2.toFloat(), y2.toFloat()) },
@@ -487,6 +510,9 @@ class ActionExecutor(
 
         /** 活节点树单次遍历收录的节点数上限，防超长列表把遍历拖成秒级 */
         const val MAX_COLLECT_NODES = 800
+
+        /** 长按手势的按压时长；光标"按住不放"的动效时长与它同源，改一处即可两处对齐 */
+        const val LONG_PRESS_MS = 800L
     }
 }
 

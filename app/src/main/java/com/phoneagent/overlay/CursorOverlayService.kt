@@ -15,13 +15,18 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
- * 点击光标覆盖层：任务执行时在全屏透明覆盖层上显示一个圆润指针，
- * 平滑移动到 AI 即将点击的位置，按下时切换颜色并缩小。
+ * 虚拟光标覆盖层：任务执行时在全屏透明覆盖层上显示一个圆润指针，
+ * 让"AI 在动手机"这件事对用户可见——否则屏幕上的变化看起来像是自己发生的。
+ *
+ * 三种动作各有对应形态（见 [CursorMode]）：
+ * - 点击：光标飞向落点并做一次按压脉冲
+ * - 长按：光标压住不放，光环呼吸、外圈张开，时长与真实按压一致
+ * - 滑动：光标沿轨迹推进，虚线指示去向、实线指示已走过，松手后轨迹淡出
  *
  * 结构对齐 [com.phoneagent.feature.edge.EdgeLightingService]：
  * TYPE_APPLICATION_OVERLAY + 全屏透明 + 不拦截触摸 + 自绘 View + companion 静态门面。
  *
- * 服务在任务期间常驻（[show]/[hide]），点击时只更新 View 内部状态，
+ * 服务在任务期间常驻（[show]/[hide]），动作时只更新 View 内部状态，
  * 不反复 startService；无悬浮窗权限时静默失败，绝不影响任务执行。
  */
 class CursorOverlayService : Service() {
@@ -119,21 +124,6 @@ class CursorOverlayService : Service() {
         super.onDestroy()
     }
 
-    /** 把指针移到 (x, y)，移动段结束时回调；视图已移除时立即回调，避免调用方挂起 */
-    private fun moveTo(x: Int, y: Int, onArrived: (() -> Unit)?) {
-        val view = pointerView
-        if (view == null) {
-            onArrived?.invoke()
-            return
-        }
-        view.animateTo(x.toFloat(), y.toFloat(), onArrived)
-    }
-
-    /** 首次出现时直接定位，不做移动动画 */
-    private fun placeAt(x: Int, y: Int) {
-        pointerView?.setPosition(x.toFloat(), y.toFloat())
-    }
-
     companion object {
         private const val ACTION_HIDE = "com.phoneagent.cursor.HIDE"
 
@@ -187,30 +177,74 @@ class CursorOverlayService : Service() {
         }
 
         /**
-         * 指针移动到 (x, y) 并做一次按压动效。
+         * 点击：光标飞向落点 (x, y) 并做一次按压脉冲。
          * - 默认并行：立即返回，不阻塞点击（任务速度不变）
          * - 同步模式：等光标飞到位再返回，点击随后发生
          *
          * 服务未挂上（无权限/未启动）时直接返回，调用方无需判空。
          */
-        suspend fun point(x: Int, y: Int) {
+        suspend fun point(x: Int, y: Int) = dispatch(CursorMode.TAP, x, y, x, y, 0L, 0L)
+
+        /**
+         * 长按：光标飞向落点后压住不放，呼吸光环持续 [holdMs] 再松开。
+         * [holdMs] 取真实按压时长，光标的手感才和实际动作一致。
+         */
+        suspend fun longPress(x: Int, y: Int, holdMs: Long) =
+            dispatch(CursorMode.LONG_PRESS, x, y, x, y, holdMs, 0L)
+
+        /**
+         * 滑动：光标落在起点，随后在 [durationMs] 内沿轨迹推进到终点，
+         * 虚线指示去向、实线指示已走过，松手后轨迹淡出。
+         *
+         * [durationMs] 与手势时长一致，轨迹才和手指同步。
+         */
+        suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long) =
+            dispatch(CursorMode.SWIPE, x1, y1, x2, y2, 0L, durationMs)
+
+        /**
+         * 三种形态共用的派发：定形态 → 定落位方式 → 起时间线。
+         *
+         * 落位分两种：
+         * - **直接落位**（首个动作 / 滑动）：光标骤然出现在起点。首个动作是从屏幕左上角飞过来的话
+         *   会先横穿半屏；滑动则必须立刻对齐起点，否则轨迹整体晚于手势。
+         * - **飞过去**（点击、长按）：同步模式下等飞到位再返回，动作随后发生。
+         */
+        private suspend fun dispatch(
+            mode: CursorMode,
+            x1: Int, y1: Int, x2: Int, y2: Int,
+            holdMs: Long, durationMs: Long,
+        ) {
             val service = instance ?: return
-            if (!service.placedOnce) {
-                // 首个点击点：直接落位，避免从屏幕左上角飞过来，也无需等待
-                service.placedOnce = true
-                service.mainHandler.post { service.placeAt(x, y) }
+            // 首个动作：光标还没落过位，直接出现在起点即可
+            val first = !service.placedOnce
+            if (first) service.placedOnce = true
+            val jump = first || mode == CursorMode.SWIPE
+
+            if (jump || !syncMode) {
+                service.mainHandler.post {
+                    val view = service.pointerView ?: return@post
+                    if (jump) view.setPosition(x1.toFloat(), y1.toFloat())
+                    view.animate(
+                        mode, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(),
+                        holdMs, durationMs, null,
+                    )
+                }
                 return
             }
-            if (!syncMode) {
-                service.mainHandler.post { service.moveTo(x, y, null) }
-                return
-            }
-            // 同步模式：等移动段结束再放行点击。
+            // 同步模式：等移动段结束再放行动作。
             // 超时兜底——服务被销毁/动画异常时也必须放行，绝不能让光标卡住任务。
             withTimeoutOrNull(MOVE_WAIT_TIMEOUT_MS) {
                 suspendCancellableCoroutine { cont ->
                     service.mainHandler.post {
-                        service.moveTo(x, y) { if (cont.isActive) cont.resume(Unit) }
+                        val view = service.pointerView
+                        if (view == null) {
+                            if (cont.isActive) cont.resume(Unit)
+                            return@post
+                        }
+                        view.animate(
+                            mode, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(),
+                            holdMs, durationMs,
+                        ) { if (cont.isActive) cont.resume(Unit) }
                     }
                 }
             }
