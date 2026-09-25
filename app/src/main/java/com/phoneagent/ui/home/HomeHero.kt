@@ -64,8 +64,10 @@ import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.BrandNavy
+import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.icons.AppIcons
@@ -103,16 +105,23 @@ internal fun BrandHero(modifier: Modifier = Modifier) {
 /** 运行状态横幅：呼吸指示灯 + 当前消息 */
 @Composable
 internal fun RunningBanner(message: String) {
-    val transition = rememberInfiniteTransition(label = "running-pulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = EaseOut),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "running-pulse-alpha",
-    )
+    // 与 Agent 页的呼吸点同一条规矩：减少动画时静态常亮，不闪烁
+    val reduceMotion = motionSettings().reduceMotion
+    val pulse = if (reduceMotion) {
+        1f
+    } else {
+        val transition = rememberInfiniteTransition(label = "running-pulse")
+        val animated by transition.animateFloat(
+            initialValue = 0.45f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = DurationPulse, easing = EaseOut),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "running-pulse-alpha",
+        )
+        animated
+    }
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),

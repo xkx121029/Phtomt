@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -38,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.model.PermissionItem
 import com.phoneagent.ui.model.PermissionKind
@@ -115,25 +115,22 @@ internal fun CapabilityNotice(
     }
 }
 
-/** 完整五项能力状态（页头「更多」→「查看能力状态」），内嵌弹窗而非系统弹窗 */
+/** 完整五项能力状态（页头「更多」→「查看能力状态」），内嵌浮层而非系统弹窗 */
 @Composable
 internal fun CapabilityStatusDialog(
     permissions: List<PermissionItem>,
     onFix: (PermissionKind) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("能力状态", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Lg)) {
-                permissions.forEach { p -> CapabilityRow(p, onFix) }
-            }
-        },
-        confirmButton = {
+    InlineOverlay(onDismiss = onDismiss) {
+        Text("能力状态", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Lg)) {
+            permissions.forEach { p -> CapabilityRow(p, onFix) }
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onDismiss) { Text("知道了") }
-        },
-    )
+        }
+    }
 }
 
 /** 单项能力：状态点 + 名称 + 说明 + 缺失时的「去设置」 */

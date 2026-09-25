@@ -54,6 +54,14 @@ const val DurationSlow = 280
 /** Emphasis (celebrations, onboarding) — can be longer, but still restrained */
 const val DurationEmphasis = 400
 
+/**
+ * 循环动效周期（毫秒）：状态点脉动、骨架微光、运行指示共用一个节拍。
+ *
+ * 循环动画不是"过渡"，不套用 100/160/200/280 那套一次性时长；单独给一个慢拍，
+ * 全站所有"呼吸"才是同一口气（原先 800/900 两三种节拍混用，并排出现时会互相打架）。
+ */
+const val DurationPulse = 900
+
 // --- Animation Decision Framework ---
 //
 // 1. Should this animate at all?

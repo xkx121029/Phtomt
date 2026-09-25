@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -67,6 +65,8 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.LocalSnackbar
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
@@ -78,13 +78,13 @@ import com.phoneagent.ui.icons.AppIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SkillsTab(vm: MainViewModel) {
+internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    // 宿主注入的全局浮条：轻量反馈统一走它，不用系统 Toast
+    val snackbar = LocalSnackbar.current
     val skills by vm.skills.collectAsState()
     var batchMode by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(mutableSetOf<String>()) }
-    var editing by remember { mutableStateOf<Skill?>(null) }
-    var showCreate by remember { mutableStateOf(false) }
 
     // 顶部操作条
     Row(
@@ -92,7 +92,7 @@ internal fun SkillsTab(vm: MainViewModel) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Button(onClick = { showCreate = true }, modifier = Modifier.weight(1f)) {
+        Button(onClick = { onOpenEditor(null) }, modifier = Modifier.weight(1f)) {
             Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(4.dp))
             Text("新增技能")
@@ -139,7 +139,7 @@ internal fun SkillsTab(vm: MainViewModel) {
                     val json = vm.exportSkills()
                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("skills", json))
-                    android.widget.Toast.makeText(context, "已导出 ${vm.skillAll().count { !it.isBuiltIn }} 个技能到剪贴板", android.widget.Toast.LENGTH_SHORT).show()
+                    snackbar?.show("已导出 ${vm.skillAll().count { !it.isBuiltIn }} 个技能到剪贴板", SnackbarType.SUCCESS)
                 }) {
                     Icon(AppIcons.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -150,10 +150,10 @@ internal fun SkillsTab(vm: MainViewModel) {
                     val clip = cm.primaryClip
                     val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
                     if (text.isNullOrBlank()) {
-                        android.widget.Toast.makeText(context, "剪贴板为空或不是技能 JSON", android.widget.Toast.LENGTH_SHORT).show()
+                        snackbar?.show("剪贴板为空或不是技能 JSON", SnackbarType.WARNING)
                     } else {
                         val n = vm.importSkills(text)
-                        android.widget.Toast.makeText(context, "已导入 $n 个技能", android.widget.Toast.LENGTH_SHORT).show()
+                        snackbar?.show("已导入 $n 个技能", SnackbarType.SUCCESS)
                     }
                 }) {
                     Icon(AppIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -168,30 +168,14 @@ internal fun SkillsTab(vm: MainViewModel) {
                 batchMode = batchMode,
                 checked = skill.id in selected,
                 onCheckedChange = { on -> if (on) selected.add(skill.id) else selected.remove(skill.id) },
-                onOpen = { editing = skill },
+                onOpen = { onOpenEditor(skill) },
                 onToggleEnabled = { vm.setSkillEnabled(skill.id, !skill.enabled) },
             )
         }
         item { Spacer(Modifier.height(12.dp)) }
     }
-
-    // 新建/编辑 弹窗
-    if (showCreate) {
-        SkillEditorDialog(
-            initial = null,
-            suggestedId = vm.nextSkillId(),
-            onDismiss = { showCreate = false },
-            onSave = { s -> vm.addSkill(s); showCreate = false },
-        )
-    }
-    editing?.let { skill ->
-        SkillEditorDialog(
-            initial = skill,
-            suggestedId = skill.id,
-            onDismiss = { editing = null },
-            onSave = { s -> vm.updateSkill(s); editing = null },
-        )
-    }
+    // 新建/编辑浮层由 SkillManagerScreen 在骨架 overlay 槽里渲染：
+    // 本 Tab 的根是 LazyColumn（可滚动、高度不受约束），满屏浮层挂在这里会被压成 0 高
 }
 
 @Composable

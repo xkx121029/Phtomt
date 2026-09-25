@@ -33,6 +33,7 @@ import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseInOut
 import com.phoneagent.ui.theme.motionSettings
 
@@ -48,7 +49,7 @@ private fun PlanningPulseDot(color: Color) {
             initialValue = 0.35f,
             targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(900, easing = EaseInOut),
+                animation = tween(DurationPulse, easing = EaseInOut),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "plan-pulse-alpha",

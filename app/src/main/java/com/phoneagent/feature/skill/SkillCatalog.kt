@@ -178,12 +178,12 @@ object SkillCatalog {
                 ),
             ),
         )
-        // ---- 内置浏览器（WebView 可见页，AI 能亲眼看到网页）----
+        // ---- 内置浏览器（WebView 后台静默加载，内容用 browse_read 读）----
         put(
             IntentType.BROWSE_OPEN, Skill(
                 id = "skill_browse_open", name = "打开网页", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "浏览器", legacyIntent = IntentType.BROWSE_OPEN,
-                description = "在 App 内置浏览器打开网址，页面会切到前台，AI 每步截图中能看到网页。只要打开网页就用它（不用 open 深链、不用 fetch）。",
+                description = "在 App 内置浏览器打开网址（后台静默加载，界面不切走、截图里看不到网页）。只要打开网页就用它（不用 open 深链、不用 fetch），之后用 browse_read 看内容。",
                 params = listOf(
                     SkillParam("uri", "网址", "text", required = true, description = "http:// 或 https:// 开头的完整网址"),
                 ),

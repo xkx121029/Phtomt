@@ -63,6 +63,9 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.MemoryAnomaly
 import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
@@ -150,9 +153,10 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
     var selectedNode by remember { mutableStateOf<GraphNode?>(null) }
     val textMeasurer = rememberTextMeasurer()
 
+    val colors = AppTheme.colors
     val animatedScale by animateFloatAsState(
         targetValue = scale,
-        animationSpec = tween(150),
+        animationSpec = tween(DurationFast, easing = EaseOut),
         label = "graph-scale",
     )
 
@@ -216,7 +220,9 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                     val px = n.xRatio * w - w / 2
                     val py = n.yRatio * h - h / 2
                     drawLine(
-                        color = Color(0x552979FF),
+                        // 连线是结构线，不是语义色：取描边令牌并压淡，
+                        // 随四套配色/深色自动跟随（原先写死的蓝紫在深色下会发亮）
+                        color = colors.outlineSoft.copy(alpha = 0.6f),
                         start = Offset(cx, cy),
                         end = Offset(px, py),
                         strokeWidth = 2f,

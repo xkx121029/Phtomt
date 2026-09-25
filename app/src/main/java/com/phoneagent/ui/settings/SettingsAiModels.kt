@@ -34,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,6 +45,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 /**
@@ -53,7 +53,14 @@ import kotlinx.coroutines.launch
  * 职责行只记「模型名」，地址与 Key 一律由所属端点提供，避免同一个地址在页面里填三遍。
  */
 @Composable
-internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -> Unit) {
+internal fun SettingsAiModels(
+    vm: MainViewModel,
+    st: SettingsState,
+    onBack: () -> Unit,
+    // 模型选择浮层由 SettingsScreen 在页面根节点上渲染：本页根容器是可滚动的，
+    // 浮层挂在这里拿不到「满屏」的高度约束，会被压成 0
+    onPickRole: (String) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val buzz = rememberHapticClick()
@@ -69,7 +76,6 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
     var probeHintFor by remember { mutableStateOf<String?>(null) }
     var probeHint by remember { mutableStateOf<String?>(null) }
     var modelQuery by remember { mutableStateOf("") }
-    var pickRole by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -311,7 +317,7 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             showToggle = false,
                             enabled = true,
                             onToggle = {},
-                            onClick = { buzz(); pickRole = "main" },
+                            onClick = { buzz(); onPickRole("main") },
                         )
                         "vision" -> RoleRow(
                             dragHandle = dragHandle,
@@ -322,7 +328,7 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             showToggle = true,
                             enabled = st.visionEnabled,
                             onToggle = { st.visionEnabled = it },
-                            onClick = { buzz(); pickRole = "vision" },
+                            onClick = { buzz(); onPickRole("vision") },
                         )
                         "reason" -> if (st.enableChain) RoleRow(
                             dragHandle = dragHandle,
@@ -333,7 +339,7 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                             showToggle = true,
                             enabled = true,
                             onToggle = {},
-                            onClick = { buzz(); pickRole = "reason" },
+                            onClick = { buzz(); onPickRole("reason") },
                         )
                     }
                 }
@@ -469,7 +475,7 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
                 Text(
                     (if (item.ok) "✓ " else "✗ ") + item.detail,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (item.ok) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error,
+                    color = if (item.ok) AppTheme.colors.success else MaterialTheme.colorScheme.error,
                 )
             }
         }
@@ -513,36 +519,6 @@ internal fun SettingsAiModels(vm: MainViewModel, st: SettingsState, onBack: () -
         }
 
         Spacer(Modifier.height(28.dp))
-    }
-
-    // ---- 模型选择弹层 ----
-    pickRole?.let { role ->
-        val current = when (role) {
-            "main" -> st.model
-            "vision" -> st.visionModel
-            else -> st.reasonModel
-        }
-        ModelPickerDialog(
-            title = when (role) {
-                "main" -> "选择主模型"
-                "vision" -> "选择视觉模型"
-                else -> "选择思考模型"
-            },
-            models = st.catalog.toList(),
-            endpointLabelOf = { m ->
-                st.endpoints.firstOrNull { it.id == m.endpointId }?.let { endpointHost(it.baseUrl) } ?: ""
-            },
-            current = current,
-            onPickModel = { m ->
-                applyRoleModel(st, role, m.endpointId, m.name)
-                pickRole = null
-            },
-            onPickManual = { name ->
-                applyRoleModel(st, role, null, name)
-                pickRole = null
-            },
-            onDismiss = { pickRole = null },
-        )
     }
 }
 
@@ -629,7 +605,7 @@ private fun endpointLabelOf(st: SettingsState, baseUrl: String): String {
 }
 
 /** 把选中的模型落到对应职责：地址与 Key 跟随端点一起带过去，手填则只改模型名 */
-private fun applyRoleModel(st: SettingsState, role: String, endpointId: String?, name: String) {
+internal fun applyRoleModel(st: SettingsState, role: String, endpointId: String?, name: String) {
     val ep = endpointId?.let { id -> st.endpoints.firstOrNull { it.id == id } }
     when (role) {
         "main" -> {

@@ -281,7 +281,7 @@ object AgentPrompts {
 | say | 对用户说一句话（不操作屏幕，直接显示在任务流里；支持 Markdown） | text(要说的话) |
 | device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
 | fetch | 取正文（需本机已装 Termux）；返回 HTML 时端侧自动转成 Markdown 再回传；网页界面一律走 browse_* | uri |
-| browse_open | 内置浏览器打开网址（界面会切到浏览器页，网页出现在之后每张截图里） | uri（http/https 网址） |
+| browse_open | 内置浏览器在后台静默打开网址（界面不切走，截图里看不到网页，内容用 browse_read 读） | uri（http/https 网址） |
 | browse_read | 抓取当前网页正文（Markdown，链接已内联）+ 可操作元素清单（清单里显示的文字就是下一步的 target） | 无 |
 | browse_click | 点击网页里的元素（链接/按钮/勾选框） | target（{"by":"text","value":"清单里的文字"} 优先；无文字才用 {"by":"id","value":"CSS选择器"}） |
 | browse_input | 填写网页表单；下拉框也用它选选项（text 填选项文字） | target,text |
@@ -296,14 +296,14 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
 只能从上面两张表中选择意图；端侧能自动找到对应按钮时优先用语义意图，找不到再降级为 tap+target 精确指定。
 
 # 网页浏览（内置浏览器：与"操作手机"同级的独立通道，网页内容操作只走 browse_*）
-本 App 内置一个真实浏览器：执行 browse_open 后界面会切到该浏览器页，网页会出现在之后每一步的截图中，所以你看得见网页内容，不需要靠猜。
+本 App 内置一个真实浏览器：browse_open 在**后台静默**打开网页 —— App 界面不切走、用户的屏幕和正在用的 App 都不受影响，所以**截图里看不到网页**。要看网页内容只能靠 browse_read（Markdown 正文 + 可操作元素清单），不能凭猜测判断页面。
 - 通道特权（铁律级别）：browse_* 直接作用于浏览器里的网页 DOM，**不经过操作手机的自动化通道**——不需要无障碍、不需要 Shizuku、不需要无线 ADB，也不受当前授权模式影响，所以它的权限高于操作手机。
   - 即使端侧处于**只读模式**：browse_open / browse_read / browse_scroll / browse_back 照常可用，网页里的普通链接、翻页、搜索、勾选、填表单也一律放行。
   - 只读模式唯一拦的是**不可逆操作**：点击目标命中 ${BrowserGuard.promptWords()} 之一时，端侧直接拒绝并回"已拒绝点击（没有真正点下去）"。**被拒后不要重试同一个动作**，改做不具破坏性的动作，或 give_up 说明原因。
   - 网页里的支付/提交订单/删除/发布/发送同样属于不可逆操作，输出时必须带 "needs_confirmation": true，用户确认后才执行。
 - 何时用（判断条件，按目标类型选一个）：
   1. 目标是"某个网址""上网查/搜一下""看看最新的 …"，且**需要你读/操作页面内容** → browse_open 打开（搜索引擎用可直达网址，如 https://www.bing.com/search?q=关键词）。若只是把网址打开给用户看、或用户点名"用浏览器打开"，改用 open + uri 交系统浏览器，不要占用内置浏览器。
-  2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面，再决定 browse_click / browse_input / browse_scroll。browse_read 给你两样东西：
+  2. 网页已经打开、要知道里面有什么 → 先 browse_read 看清页面，再决定 browse_click / browse_input / browse_scroll。browse_read 给你两样东西（静默模式下这是你唯一能"看到"网页的方式，没有网页截图可看）：
      - 正文 Markdown（标题层级/列表/表格/代码块，链接已内联成 [文字](网址)）；
      - **可操作元素清单**，每行形如「N) [种类] 元素文字（提示：…）（当前=…，选项=a|b）」——其中「元素文字」就是下一步 browse_click / browse_input 的 target 值，**原样取用**；清单里的下拉框用 browse_input 选（text 填选项文字）。
   3. 目标是 App 内部页面或系统页（某 App 的设置页、系统设置项）→ 用 open_app / open 深链，绝不用 browse_*。
@@ -315,9 +315,9 @@ back 返回上一页 / home 回桌面 / refresh 刷新 / search 进入搜索 / s
   - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。
   - 正文里的链接要点，就取方括号里的文字交给 browse_click；直接用清单里的文字也行，两条路都通。
   - 表格转成了扁平化的管道表：原网页里的跨列/跨行单元格（colspan/rowspan）会被忽略，列可能错位，别拿错位的数值直接下结论。
-  - browse_back 只在网页历史里后退；要离开浏览器回到 App，用 press key=BACK。
+  - browse_back 只在网页历史里后退（不是系统返回）。静默上网不会切走 App 界面，所以不需要用 BACK 离开浏览器——要回桌面/切应用就直接用 home / open_app。
 - 示例：
-{"intent":"browse_open","uri":"https://www.bing.com/search?q=今天的汇率","reasoning":"打开网页查汇率","expected":"浏览器显示搜索结果页","confidence":0.9}
+{"intent":"browse_open","uri":"https://www.bing.com/search?q=今天的汇率","reasoning":"打开网页查汇率","expected":"网页在后台静默加载完成","confidence":0.9}
 {"intent":"browse_read","reasoning":"看清网页有哪些可点元素","expected":"返回 Markdown 正文与可操作元素清单","confidence":0.9}
 {"intent":"browse_click","target":{"by":"text","value":"下一页"},"reasoning":"翻到下一页结果","expected":"列表更新","confidence":0.85}
 {"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"无线耳机","reasoning":"在网页搜索框输入","expected":"输入框出现该文字","confidence":0.85}
@@ -452,7 +452,7 @@ You are Phantom, an Android device automation agent.
 | say | Say one sentence to the user (no screen interaction; shown in the task stream, Markdown supported) | text(message) |
 | device_query | Query device info (no screen interaction, local read only) | kind(apps/time/battery/network/storage/all)[,filter(app-name keyword)] |
 | fetch | Fetch a body (requires Termux installed); when the response is HTML the device converts it to Markdown before returning it; web UIs always go through browse_* | uri |
-| browse_open | Open a URL in the built-in browser (the UI switches to the browser page; the page appears in every later screenshot) | uri (http/https URL) |
+| browse_open | Open a URL silently in the background with the built-in browser (the UI is not switched, the page is NOT in screenshots — read it with browse_read) | uri (http/https URL) |
 | browse_read | Read the current web page's body (Markdown, links already inlined) + an actionable-element list (the text shown there is the next target) | none |
 | browse_click | Click an element on the web page (link/button/checkbox) | target ({"by":"text","value":"text from that list"} preferred; {"by":"id","value":"CSS selector"} only when it has no text) |
 | browse_input | Fill a web form field; also used to pick a dropdown option (put the option text in text) | target,text |
@@ -467,14 +467,14 @@ back / home / refresh / search / send / confirm / close / share / collect / copy
 Only choose intents from the two tables above; prefer a semantic intent when the device can auto-find the button, otherwise downgrade to tap+target.
 
 # Web Browsing (built-in browser — a channel on par with "operating the phone"; web-page CONTENT operations go through browse_* only)
-This app has a real built-in browser: after browse_open the UI switches to that browser page, and the page appears in every later screenshot, so you can actually see the web content instead of guessing.
+This app has a real built-in browser: browse_open loads the page **silently in the background** — the app UI is not switched, the user's screen and current app are untouched, so **the page does NOT appear in screenshots**. To see the page content you must use browse_read (Markdown body + actionable-element list); never guess what the page contains.
 - Channel privilege (Iron Rule): browse_* acts directly on the page DOM and does **NOT go through the phone-automation channel** — no accessibility, no Shizuku, no wireless ADB, and it is not limited by the current authorization mode. Its authority is higher than operating the phone.
   - Even in **read-only mode**: browse_open / browse_read / browse_scroll / browse_back all work, and ordinary links, pagination, search, checkbox toggles and form filling on the page are all allowed.
   - The only thing read-only mode blocks is an **irreversible action**: when the click target contains one of ${BrowserGuard.promptWordsEn()}, the device refuses outright and replies "click refused (nothing was actually clicked)". **Do NOT retry the same action after a refusal** — do something non-destructive instead, or give_up with the reason.
   - Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry "needs_confirmation": true; it runs only after the user confirms.
 - When to use (decision conditions — pick one by target type):
   1. The target is "some URL", "look it up online", "check the latest …" **and you must read/operate the page content** → browse_open (for search engines use a directly-openable URL, e.g. https://www.bing.com/search?q=keyword). If the URL is merely opened for the user to look at, or the user says "open it in a browser", use open + uri to the system browser instead — don't tie up the built-in browser.
-  2. The page is already open and you need to know what's in it → browse_read first, then decide browse_click / browse_input / browse_scroll. browse_read gives you two things:
+  2. The page is already open and you need to know what's in it → browse_read first, then decide browse_click / browse_input / browse_scroll. browse_read gives you two things (in silent mode this is the ONLY way to "see" the page — there is no page screenshot):
      - the Markdown body (heading levels/lists/tables/code blocks, links already inlined as [text](url));
      - an **actionable-element list**, each line shaped like "N) [kind] element text (hint: …) (current=…, options=a|b)" — the "element text" is exactly the target value for the next browse_click / browse_input, so **use it verbatim**; a dropdown in that list is operated with browse_input (put the option text in text).
   3. The target is an in-app page or a system page (an app's settings screen, a system setting) → use open_app / open deep link, never browse_*.
@@ -486,9 +486,9 @@ This app has a real built-in browser: after browse_open the UI switches to that 
   - The browse_read result is returned to you as the previous step result — read it, then decide; do not keep blind-clicking.
   - The browse_read body is Markdown: links are already inlined as [text](url) — to click one, pass the text inside the brackets to browse_click as-is; using the text from the element list works too — both routes work.
   - Tables are flattened into pipe tables: colspan/rowspan cells from the original page are ignored and columns may end up misaligned — never draw conclusions from misaligned values.
-  - browse_back only goes back in web history; to leave the browser and return to the app, use press key=BACK.
+  - browse_back only goes back in web history (it is not the system back). Silent browsing never switches the app UI away, so you do NOT need BACK to leave the browser — to return to the home screen or another app just use home / open_app.
 - Examples:
-{"intent":"browse_open","uri":"https://www.bing.com/search?q=usd+cny","reasoning":"open a page to check the rate","expected":"browser shows search results","confidence":0.9}
+{"intent":"browse_open","uri":"https://www.bing.com/search?q=usd+cny","reasoning":"open a page to check the rate","expected":"page loaded silently in the background","confidence":0.9}
 {"intent":"browse_read","reasoning":"see which elements the page offers","expected":"Markdown body and actionable element list returned","confidence":0.9}
 {"intent":"browse_click","target":{"by":"text","value":"Next"},"reasoning":"go to the next results page","expected":"list updates","confidence":0.85}
 {"intent":"browse_input","target":{"by":"text","value":"Search"},"text":"wireless earbuds","reasoning":"type into the web search box","expected":"the text appears in the field","confidence":0.85}
@@ -696,7 +696,7 @@ Output ONLY JSON.
 - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
 - 国产应用速查：$COMMON_CN_APPS
 - 可用意图：open_app(应用名启动，泛指类目优先系统自带) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / say(对用户说一句话，不操作屏幕，直接显示在任务流里) / write_doc(生成文档，结果在 Agent 页预览) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文 Markdown + 可操作元素清单) / browse_click(点网页元素，target 取清单里的文字) / browse_input(填网页表单，下拉也用它) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
-- 上网类任务（查资料、看资讯、在网页里搜索，需要你读页面内容）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。内置浏览器是独立通道，只读模式也能用，只有命中不可逆词表（${BrowserGuard.promptWords()}）的网页操作会被拒。
+- 上网类任务（查资料、看资讯、在网页里搜索，需要你读页面内容）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。内置浏览器在后台静默加载（界面不切走、截图里看不到网页，内容一律用 browse_read 读），是独立通道，只读模式也能用，只有命中不可逆词表（${BrowserGuard.promptWords()}）的网页操作会被拒。
 - 打开本地文件（用户给了 ppt/doc/pdf/图片路径，或说"用文档软件打开这个文件"）：规划一步 open + uri=文件路径；指定应用时才填 app。
 - 只是把网址打开给用户看（用户说"用浏览器打开这个网址"）：规划一步 open + uri=网址，不要规划 browse_open。
 - 高层语义意图（端侧自动定位按钮）：back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input。
@@ -745,7 +745,7 @@ You are a deep planner: break the user task into atomic steps the execution laye
 - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
 - Common Chinese apps: $COMMON_CN_APPS
 - Available intents: open_app(launch by app name; for a generic category the built-in system app wins) / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link into an in-app page, or hand a URL/local file to a system app — set app to pick a specific app) / say(say one sentence to the user; touches no screen, shown right in the task stream) / write_doc(generate document, previewed on the Agent page) / remember / device_query / fetch(fetch a body, requires Termux; HTML responses are converted to Markdown) / browse_open(open a URL in the built-in browser) / browse_read(read current page body as Markdown + an actionable-element list) / browse_click(click a web element; take the target text from that list) / browse_input(fill a web form, also used to pick a dropdown option) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
-- Online-lookup tasks (research, news, search inside a website — you must read the page content): plan browse_open as the first step, then advance with browse_read / browse_click / browse_input. Do NOT plan "open the browser app" or "open a URL with open". When the URL is unknown, plan a browse_open that opens a search-engine results page. The built-in browser is an independent channel that keeps working in read-only mode; only a web action hitting the irreversible word list (${BrowserGuard.promptWordsEn()}) is refused.
+- Online-lookup tasks (research, news, search inside a website — you must read the page content): plan browse_open as the first step, then advance with browse_read / browse_click / browse_input. Do NOT plan "open the browser app" or "open a URL with open". When the URL is unknown, plan a browse_open that opens a search-engine results page. The built-in browser loads pages silently in the background (the UI is not switched and the page is NOT in screenshots — always read it with browse_read); it is an independent channel that keeps working in read-only mode; only a web action hitting the irreversible word list (${BrowserGuard.promptWordsEn()}) is refused.
 - Opening a local file (the user gave a ppt/doc/pdf/image path, or said "open this file with a document app"): plan one step of open + uri=file path; fill app only when a specific app is named.
 - Merely showing a URL to the user (the user said "open this URL in a browser"): plan one step of open + uri=URL, do NOT plan browse_open.
 - High-level semantic intents (the device auto-finds the button): back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input.
@@ -854,7 +854,7 @@ No other text.
 - 需要生成/整理文档（周报、清单、总结、报告、资料、笔记等）→ 直接 write_doc 交完整正文（结果在 Agent 页预览），不要操作屏幕。
 - 发现**有长期价值**的信息（用户偏好、常用设置、该应用的固定操作路径）→ remember；只记真正值得长期保留的，禁止每步都记。
 - 需要本机事实（应用清单、时间、电量、网络、存储）→ device_query（kind=apps/time/battery/network/storage/all），结果会作为上一步结果回给你；不要翻设置页，也不要每步都查。
-- 需要上网看网页（查资料、看资讯、打开某个网址）→ browse_open 打开目标网址，之后用 browse_read 看清内容，再用 browse_click / browse_input / browse_scroll 操作；网页里的元素只能用 browse_click 按文字点，不要用 tap + 坐标去猜。结果是浏览器里的真实页面，你下一步的截图就能看到。只是把网址打开给用户看（或用户点名"用浏览器打开"）→ 改用 open + uri 交系统浏览器；打开本地文件（/sdcard/…、file://…）也用 open + uri 交给系统文档应用。
+- 需要上网看网页（查资料、看资讯、打开某个网址）→ browse_open 打开目标网址，之后用 browse_read 看清内容，再用 browse_click / browse_input / browse_scroll 操作；网页里的元素只能用 browse_click 按文字点，不要用 tap + 坐标去猜。网页在后台静默加载，截图里看不到，必须靠 browse_read 的正文与元素清单判断。只是把网址打开给用户看（或用户点名"用浏览器打开"）→ 改用 open + uri 交系统浏览器；打开本地文件（/sdcard/…、file://…）也用 open + uri 交给系统文档应用。
 - 需要向用户**解释一句、汇报一句、反问一句**（不是操作手机）→ say + text，一句话说完（支持 Markdown）；它不操作屏幕、不算一步操作，禁止用它代替真正的动作，也不要连续说超过 2 次。
 
 # 输出
@@ -893,7 +893,7 @@ Page hint: $contextHint${memoryBlock(lang, memory)}
 - Need to generate/compile a document (report, checklist, summary, notes, etc.) → output write_doc with the full body (previewed on the Agent page); do NOT interact with the screen.
 - Find information with **long-term value** (user preference, common setting, this app's fixed navigation path) → remember; only record what is truly worth keeping, never on every step.
 - Need device facts (installed apps, time, battery, network, storage) → device_query (kind=apps/time/battery/network/storage/all); the result comes back as the previous step result. Do NOT browse Settings, and do NOT query every step.
-- Need to go online (research, news, open a URL) → browse_open the target URL, then browse_read to see the content, then browse_click / browse_input / browse_scroll; web elements may only be clicked with browse_click by text — never guess with tap + coordinates. The result is the real page inside the browser, visible in your next screenshot. If the URL is merely shown to the user (or the user says "open it in a browser") → use open + uri to the system browser instead; opening a local file (/sdcard/…, file://…) also uses open + uri, handed to a system document app.
+- Need to go online (research, news, open a URL) → browse_open the target URL, then browse_read to see the content, then browse_click / browse_input / browse_scroll; web elements may only be clicked with browse_click by text — never guess with tap + coordinates. The page loads silently in the background and is NOT in screenshots, so judge by the body and element list returned by browse_read. If the URL is merely shown to the user (or the user says "open it in a browser") → use open + uri to the system browser instead; opening a local file (/sdcard/…, file://…) also uses open + uri, handed to a system document app.
 - During execution, when you need to explain, report, or ask the user something that is NOT a phone operation → use say (say it once, Markdown supported). say is not an action; never use it to replace real operations, and never use it more than 2 times in a row.
 
 # Output
@@ -1236,25 +1236,25 @@ Output ONLY JSON. First char = {, last = }.
         if (browseHit) {
             sb.append("\n\n## 当前任务附加指导 · 上网与网页操作(browse_*)\n")
             if (lang == PromptLang.CN) {
-                sb.append("本 App 内置浏览器，可直接打开并操纵网页；网页会出现在之后每一步的截图里，所以你看得见网页内容，不用猜。\n")
-                sb.append("""打开网址：{"intent":"browse_open","uri":"https://example.com","reasoning":"打开该网页","expected":"浏览器显示该页面","confidence":0.9}""")
+                sb.append("本 App 内置浏览器，可直接打开并操纵网页；网页在**后台静默**加载（界面不切走，截图里看不到网页），所以内容要用 browse_read 读，不用猜。\n")
+                sb.append("""打开网址：{"intent":"browse_open","uri":"https://example.com","reasoning":"打开该网页","expected":"网页在后台静默加载完成","confidence":0.9}""")
                 sb.append("\n网址不明确就用搜索引擎直达页，例如 https://www.bing.com/search?q=关键词（关键词做 URL 编码）。\n")
                 sb.append("""看清当前网页：{"intent":"browse_read","reasoning":"读取网页内容","expected":"返回 Markdown 正文与可操作元素清单","confidence":0.9}""")
                 sb.append("""\n操作网页：{"intent":"browse_click","target":{"by":"text","value":"下一页"}} / {"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"关键词"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
                 sb.append("\n分流（先判断再动手）：要你读/操作网页内容（查资料、点网页链接、填网页表单）才用 browse_*；只是把网址打开给用户看、或用户点名\"用浏览器打开\"时，改用 open + uri 交系统浏览器，别占用内置浏览器。")
                 sb.append("\n通道特权（重要）：browse_* 是独立通道，不经过无障碍/Shizuku/无线 ADB，只读模式下照常可用——普通链接、翻页、搜索、勾选、填表单都放行；只有点击目标命中不可逆词表（${BrowserGuard.promptWords()}）会被端侧直接拒绝，被拒后不要重试同一动作。")
-                sb.append("\n边界（重要）：网页元素只能用 browse_click 按元素文字点（清单里看得见就点得到），禁止用 tap + 坐标去猜；browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要点的元素清单里没有就先 browse_scroll 滚出来；要离开浏览器回 App 用 press key=BACK。")
+                sb.append("\n边界（重要）：网页元素只能用 browse_click 按元素文字点（清单里看得见就点得到），禁止用 tap + 坐标去猜；browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要点的元素清单里没有就先 browse_scroll 滚出来；静默上网不会切走 App 界面，不需要用 BACK 离开浏览器。")
                 sb.append("browse_read 返回两样：Markdown 正文（标题层级/列表/表格/代码块齐全，链接已内联成 [文字](网址)）+ 可操作元素清单（每行「N) [种类] 元素文字（提示：…）」，其中元素文字就是 browse_click / browse_input 的 target，原样取用；下拉框用 browse_input 选，text 填选项文字）。表格被拍平成管道表，跨列跨行单元格会丢，列可能错位，别拿错位数值下结论。")
                 sb.append("网页里的支付/提交订单/删除/发布/发送同属不可逆操作，必须带 \"needs_confirmation\": true。")
             } else {
-                sb.append("This app has a built-in browser that can open and drive web pages; the page appears in every later screenshot, so you can actually see the content instead of guessing.\n")
-                sb.append("""Open a URL: {"intent":"browse_open","uri":"https://example.com","reasoning":"open that page","expected":"browser shows the page","confidence":0.9}""")
+                sb.append("This app has a built-in browser that can open and drive web pages; it loads pages **silently in the background** — the UI is not switched and the page is NOT in any screenshot, so read the content with browse_read instead of guessing.\n")
+                sb.append("""Open a URL: {"intent":"browse_open","uri":"https://example.com","reasoning":"open that page","expected":"page loaded silently in the background","confidence":0.9}""")
                 sb.append("\nWhen the URL is unknown use a search-engine results URL, e.g. https://www.bing.com/search?q=keyword (URL-encode the keyword).\n")
                 sb.append("""Read the current page: {"intent":"browse_read","reasoning":"read the page content","expected":"Markdown body and actionable element list returned","confidence":0.9}""")
                 sb.append("""\nAct on the page: {"intent":"browse_click","target":{"by":"text","value":"Next"}} / {"intent":"browse_input","target":{"by":"text","value":"Search"},"text":"keyword"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
                 sb.append("\nSplit first: only use browse_* when you must read/operate the page content (research, click a web link, fill a web form); when the URL is merely shown to the user, or the user says \"open it in a browser\", switch to open + uri for the system browser — don't tie up the built-in browser.")
                 sb.append("\nChannel privilege (important): browse_* is an independent channel — no accessibility, no Shizuku, no wireless ADB — so it keeps working in read-only mode: ordinary links, pagination, search, checkbox toggles and form filling are all allowed. Only a click target hitting the irreversible word list (${BrowserGuard.promptWordsEn()}) is refused outright; never retry the same action after a refusal.")
-                sb.append("\nBoundary (important): web elements may ONLY be clicked with browse_click by element text (what the list shows is what can be clicked) — never guess with tap + coordinates; browse_click / browse_input / browse_scroll / browse_back all require a page already loaded in the browser, otherwise browse_open first; if the element isn't in the list, scroll it into view with browse_scroll; to leave the browser and return to the app use press key=BACK.")
+                sb.append("\nBoundary (important): web elements may ONLY be clicked with browse_click by element text (what the list shows is what can be clicked) — never guess with tap + coordinates; browse_click / browse_input / browse_scroll / browse_back all require a page already loaded in the browser, otherwise browse_open first; if the element isn't in the list, scroll it into view with browse_scroll; silent browsing never switches the app UI away, so you do not need BACK to leave the browser.")
                 sb.append("browse_read returns two things: the Markdown body (heading levels/lists/tables/code blocks, links already inlined as [text](url)) + an actionable-element list (each line \"N) [kind] element text (hint: …)\", where the element text is exactly the target for browse_click / browse_input — use it verbatim; a dropdown is operated with browse_input, putting the option text in text). Tables are flattened into pipe tables, so colspan/rowspan cells are lost and columns may end up misaligned — never draw conclusions from misaligned values.")
                 sb.append("Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry \"needs_confirmation\": true.")
             }

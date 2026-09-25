@@ -2540,7 +2540,7 @@ class AgentEngine(
             recordExecMs((System.nanoTime() - execT0) / 1_000_000)
         }
         val executor = ActionExecutor(service)
-        val verifier = VerifiedClickExecutor(executor)
+        val verifier = VerifiedClickExecutor()
 
         // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
         val resolved = intentResolver.resolveAction(action, snapshot)
@@ -2564,32 +2564,32 @@ class AgentEngine(
                 val dist = action.distancePx
                     ?: if (action.direction == "left" || action.direction == "right") screenWidth() else screenHeight()
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py - screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py - screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_DOWN -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, px, (py + screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py + screenHeight()).coerceIn(0, screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_LEFT -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px - screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px - screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
             }
             ActionType.SWIPE_RIGHT -> {
                 val px = x ?: (screenWidth() / 2)
                 val py = y ?: (screenHeight() / 2)
-                verifier.executeAndVerify(snapshot, action) { executor.swipe(px, py, (px + screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px + screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
             }
-            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot, action) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
+            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
                 if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(snapshot, action) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
+                else verifier.executeAndVerify(snapshot) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {

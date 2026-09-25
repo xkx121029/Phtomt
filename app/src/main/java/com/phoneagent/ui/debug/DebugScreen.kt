@@ -32,11 +32,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderInnerPad
 import com.phoneagent.ui.components.GlassHeaderScaffold
+import com.phoneagent.ui.components.LocalSnackbar
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.debug.panels.ChatPanel
 import com.phoneagent.ui.debug.panels.ExecutionFlowPanel
 import com.phoneagent.ui.debug.panels.LogPanel
@@ -78,6 +79,8 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var showCapabilities by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 宿主注入的全局浮条：在组合期取值，之后在协程/回调里直接调用
+    val snackbar = LocalSnackbar.current
 
     // 进入调试页时刷新能力/权限状态，保证「能力缺失提示条」准确
     LaunchedEffect(Unit) { runCatching { vm.refreshPermissions(context) } }
@@ -86,7 +89,8 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var annotatedMap by remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
     var annotating by remember { mutableStateOf(false) }
 
-    fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+    // 轻量反馈走宿主注入的页面内浮条；不用系统 Toast（字体/圆角/位置都不是本项目语言）
+    fun toast(msg: String, type: SnackbarType = SnackbarType.INFO) = snackbar?.show(msg, type)
 
     fun runExternalAnnotate() {
         scope.launch {
@@ -144,6 +148,16 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = AppSpacing.Sm),
             )
         },
+        // 能力状态是页内浮层，不走系统弹窗：放进骨架的 overlay 槽，压得住玻璃页眉
+        overlay = {
+            if (showCapabilities) {
+                CapabilityStatusDialog(
+                    permissions = permissions,
+                    onFix = { vm.openPermissionSettings(context, it) },
+                    onDismiss = { showCapabilities = false },
+                )
+            }
+        },
     ) { pad ->
         Column(
             modifier = Modifier
@@ -192,14 +206,6 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 }
             }
         }
-    }
-
-    if (showCapabilities) {
-        CapabilityStatusDialog(
-            permissions = permissions,
-            onFix = { vm.openPermissionSettings(context, it) },
-            onDismiss = { showCapabilities = false },
-        )
     }
 }
 

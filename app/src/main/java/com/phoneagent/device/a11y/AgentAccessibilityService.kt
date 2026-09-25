@@ -171,13 +171,6 @@ class AgentAccessibilityService : AccessibilityService() {
     var lastTreeStats: String = ""
         private set
 
-    /** 容器标签最多拼接的后代文字段数 / 总字数：防止列表容器把整页文字拼成一大串 */
-    private val LABEL_MAX_PARTS = 3
-    private val LABEL_MAX_CHARS = 60
-
-    /** 后代文字的最大递归深度（只找浅层文字，深了就是另一条内容） */
-    private val LABEL_MAX_DEPTH = 3
-
     private fun collectElements(
         node: AccessibilityNodeInfo,
         isRoot: Boolean,
@@ -205,11 +198,9 @@ class AgentAccessibilityService : AccessibilityService() {
             (plainText && !insideInteractive && scan.plainCollected < MAX_PLAIN_NODES))
         // 可点击容器常常自身没有文字（文字挂在不可点击的子控件上，微信就是这么做的）：
         // 这类容器用后代文字补一个标签，否则 AI 只拿到一堆无名方框，按 by=text 定位必然失败。
-        // 只补"可点击/可长按/可编辑"的容器（列表容器本身不需要名字）；
+        // 拼接规则与执行层的 [DerivedLabel] 同源（元素树里看得见的标签，执行层也必须匹配得到）；
         // 放在 keep 之后算，被筛掉的节点不必再花时间翻它的后代
-        val derivedLabel = if (keep && ownText == null && ownDesc == null &&
-            (node.isClickable || node.isLongClickable || node.isEditable)
-        ) descendantLabel(node) else null
+        val derivedLabel = if (keep) DerivedLabel.of(node, recycleChildren = true) else null
         if (!isRoot && keep) {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
@@ -263,31 +254,7 @@ class AgentAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 取后代文字作为容器标签：最多 [LABEL_MAX_PARTS] 段、总长 [LABEL_MAX_CHARS] 字、深度不超过 [LABEL_MAX_DEPTH]。
-     * 多段用 " / " 连接（如「末影箱 / 测试消息 / 昨天」），让 AI 一眼认出这一行是什么。
-     */
-    private fun descendantLabel(node: AccessibilityNodeInfo): String? {
-        val parts = ArrayList<String>(LABEL_MAX_PARTS)
-        collectDescendantTexts(node, 0, parts)
-        if (parts.isEmpty()) return null
-        val joined = parts.joinToString(" / ")
-        return if (joined.length > LABEL_MAX_CHARS) joined.take(LABEL_MAX_CHARS) else joined
-    }
-
-    private fun collectDescendantTexts(node: AccessibilityNodeInfo, depth: Int, out: MutableList<String>) {
-        if (depth >= LABEL_MAX_DEPTH || out.size >= LABEL_MAX_PARTS) return
-        for (i in 0 until node.childCount) {
-            if (out.size >= LABEL_MAX_PARTS) return
-            val child = node.getChild(i) ?: continue
-            val text = child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            text?.let { out += it }
-            collectDescendantTexts(child, depth + 1, out)
-            if (android.os.Build.VERSION.SDK_INT < 33) child.recycle()
-        }
-    }
-
-    /** 每步自动截图（不依赖 MediaProjection 屏幕共享）：改用无障碍服务的 takeScreenshot（API 30+）。
+     * 每步自动截图（不依赖 MediaProjection 屏幕共享）：改用无障碍服务的 takeScreenshot（API 30+）。
      *  无需额外权限，复用已开启的无障碍通道；结果经 HardwareBuffer → Bitmap 拷贝，可安全复用。 */
     fun canScreenshot(): Boolean {
         if (android.os.Build.VERSION.SDK_INT < 30) return false

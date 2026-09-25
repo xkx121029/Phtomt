@@ -58,13 +58,16 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.BrandNavy
+import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import kotlinx.coroutines.delay
@@ -80,6 +83,8 @@ fun HomeScreen(
     onOpenExtras: (ExtrasPage) -> Unit = {},
 ) {
     val context = LocalContext.current
+    // 宿主注入的全局浮条：在组合期取值，闭包里直接用，避免在协程里读 CompositionLocal
+    val snackbar = LocalSnackbar.current
     val settings by vm.settingsFlow.collectAsState()
     val a11y by vm.a11yEnabled.collectAsState()
     val agent by vm.agentState.collectAsState()
@@ -122,15 +127,15 @@ fun HomeScreen(
         // 运行状态卡
         AnimatedVisibility(
             visible = agent.isRunning,
-            enter = fadeIn(animationSpec = tween(durationMillis = 160, easing = EaseOut)) +
+            enter = fadeIn(animationSpec = tween(durationMillis = DurationFast, easing = EaseOut)) +
                 slideInVertically(
                     initialOffsetY = { it / 2 },
-                    animationSpec = tween(durationMillis = 160, easing = EaseOut),
+                    animationSpec = tween(durationMillis = DurationFast, easing = EaseOut),
                 ),
-            exit = fadeOut(animationSpec = tween(durationMillis = 160, easing = EaseOut)) +
+            exit = fadeOut(animationSpec = tween(durationMillis = DurationFast, easing = EaseOut)) +
                 slideOutVertically(
                     targetOffsetY = { it / 2 },
-                    animationSpec = tween(durationMillis = 160, easing = EaseOut),
+                    animationSpec = tween(durationMillis = DurationFast, easing = EaseOut),
                 ),
         ) {
             RunningBanner(agent.message.ifBlank { agent.task })
@@ -191,11 +196,11 @@ fun HomeScreen(
             onTest = ::testVisual,
             onOpenExternal = {
                 if (!com.phoneagent.device.vision.ExternalVisionProvider.launchApp(context)) {
-                    android.widget.Toast.makeText(
-                        context,
+                    // 轻量反馈走页面内浮条，不用系统 Toast（字体/圆角/位置都不是本项目语言）
+                    snackbar?.show(
                         "未检测到外挂视觉 APK（com.phoneagent.ondevice），请先安装后重试",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
+                        SnackbarType.WARNING,
+                    )
                 } else {
                     // 已拉起外挂，稍后重新检测连接状态
                     scope.launch { delay(600); testVisual() }

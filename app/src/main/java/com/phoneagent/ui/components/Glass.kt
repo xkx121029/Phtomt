@@ -247,11 +247,14 @@ val GlassHeaderInnerPad = 20.dp - GlassHeaderInset
  *
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板
  * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
+ * @param overlay 页内浮层（如内嵌确认层）。给的是骨架最外层的 Box 作用域，
+ *   所以它压得住玻璃页眉——浮层不该在页眉下面断开。
  */
 @Composable
 fun GlassHeaderScaffold(
     modifier: Modifier = Modifier,
     header: @Composable () -> Unit,
+    overlay: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -295,5 +298,8 @@ fun GlassHeaderScaffold(
                 Spacer(Modifier.height(AppSpacing.Sm))
             }
         }
+
+        // 页内浮层放最后：它要盖住正文，也要盖住玻璃页眉
+        overlay?.invoke(this)
     }
 }

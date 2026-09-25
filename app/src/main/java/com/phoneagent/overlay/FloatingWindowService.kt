@@ -9,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Outline
@@ -134,9 +135,40 @@ class FloatingWindowService : Service() {
     private var interactPanel: LinearLayout? = null
     private var interactTitle: TextView? = null
     private var interactContent: TextView? = null
-    private var interactButtons: LinearLayout? = null
+    /** 选项行与出口行的容器（按类型重建，见 [showInteraction]） */
+    private var interactRows: LinearLayout? = null
     private var hintInput: EditText? = null
-    private var hintBtnRow: LinearLayout? = null
+    /** 输入区的出口行容器（「已手动处理 / 指导 AI」） */
+    private var interactActions: LinearLayout? = null
+
+    /**
+     * 答疑面板是否被用户收起。
+     *
+     * 收起是"让出屏幕"而不是关掉问题：AI 仍在等这个答案，所以收起后必须留一个入口
+     * （[collapsedPill]）能点回来，否则任务会永久挂住。
+     * 收起期间容器里只剩那枚小胶囊，窗口高度随之压到胶囊高 ——
+     * 屏幕其余位置的触摸照常落到底下的 App 上。
+     */
+    private var interactCollapsed = false
+
+    /** 收起后留在右下角的入口胶囊：「需要你回答 · 点开」 */
+    private var collapsedPill: TextView? = null
+
+    /**
+     * 当前面板配色（浅色暖纸白 / 深色近黑），跟随系统深浅色。
+     *
+     * 悬浮窗的视图是一次性建出来的（[buildPanel] 只跑一次），系统切换深浅色时不能重建整扇窗口
+     * ——那会丢掉正在跑的任务状态。所以用「登记式重上色」：建视图时顺手登记一段
+     * 「拿到配色后怎么涂」的代码，翻面时把所有登记项重跑一遍（见 [themed]）。
+     */
+    private var palette = FloatingUi.Palette.Light
+    private val themeAppliers = mutableListOf<(FloatingUi.Palette) -> Unit>()
+
+    /** 最近一次答疑的入参：翻面时要用同样的入参重绘选项行/出口行（它们是每次交互现建的） */
+    private var lastInteractType: String? = null
+    private var lastInteractTitle: String? = null
+    private var lastInteractContent: String? = null
+    private var lastInteractOptions: List<String>? = null
 
     /**
      * 底部选项卡：AI 需要答疑（澄清歧义）或协助（动作未生效/敏感页保护）时，
@@ -197,6 +229,8 @@ class FloatingWindowService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // 起始配色取当下的系统深浅色；之后由 onConfigurationChanged 跟随翻面
+        palette = FloatingUi.Palette.of(FloatingUi.isNightMode(this))
         startForegroundCompat()
         // 监听跑马灯设置：内边距/配色方式修改后即时生效
         scope.launch {
@@ -545,6 +579,36 @@ class FloatingWindowService : Service() {
                 },
             )
         }
+        // 收起后的入口胶囊：右下角一枚小胶囊。它是容器里唯一占位的东西 ——
+        // LinearLayout 不计 GONE 子视图（连外边距都不计），所以收起时窗口高度正好等于胶囊高，
+        // 屏幕其余位置的触摸全部落到底下的 App 上（窗口是 FLAG_NOT_TOUCH_MODAL）。
+        collapsedPill = TextView(this).apply {
+            text = "需要你回答 · 点开"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            visibility = View.GONE
+            setOnClickListener { setInteractCollapsed(false) }
+            // 与面板里的主操作同一支主色：它按下去就是"继续回答"，属于同一条动线
+            themed { p ->
+                setTextColor(p.onBrand)
+                background = FloatingUi.capsule(FloatingUi.RADIUS_PILL, p.brand)
+            }
+        }
+        collapsedPill?.let { pill ->
+            container.addView(
+                pill,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    gravity = Gravity.END
+                    marginEnd = dp(FloatingUi.PAD_XL)
+                    bottomMargin = dp(FloatingUi.PAD)
+                },
+            )
+        }
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -599,6 +663,16 @@ class FloatingWindowService : Service() {
                 // 面板留在 VISIBLE 会继续把窗口撑出同样高度 —— 一层看不见却可触摸的窗口
                 // 会持续吃掉这块屏幕区域的操作。
                 interactPanel?.visibility = View.GONE
+                // 收起胶囊同理：它是答疑面板的入口，问题已经收起（答复完毕/任务结束）时不该留在屏幕上
+                collapsedPill?.visibility = View.GONE
+                interactCollapsed = false
+                // 窗口尺寸复原为整宽：下一次交互滑进来时是完整的选项卡，而不是一条贴着右边缘的窄窗
+                applySheetCollapsedWindow(false)
+                // 丢掉"上次问了什么"的记录：留着它，系统切深浅色时旧问题会被重新摆回屏幕上
+                lastInteractType = null
+                lastInteractTitle = null
+                lastInteractContent = null
+                lastInteractOptions = null
             }
             .start()
     }
@@ -743,11 +817,8 @@ class FloatingWindowService : Service() {
         thinkingPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            background = FloatingUi.capsule(
-                FloatingUi.RADIUS_PANEL,
-                FloatingUi.PANEL,
-            )
             setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
+            themed { p -> background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, p.panel) }
         }
         // 内容可滚动，限制高度避免悬浮窗过大（折叠时整块不占位）
         thinkingScroll = ScrollView(this).apply {
@@ -762,63 +833,69 @@ class FloatingWindowService : Service() {
         val sentLabel = TextView(this).apply {
             text = "发送给 AI"
             textSize = 10f
-            setTextColor(FloatingUi.TEXT_TERTIARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
+            themed { p -> setTextColor(p.textTertiary) }
         }
         thinkCol.addView(sentLabel)
         thinkingSentText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(FloatingUi.TEXT_SECONDARY)
             setPadding(0, dp(3), 0, dp(2))
+            themed { p -> setTextColor(p.textSecondary) }
         }
         thinkCol.addView(thinkingSentText)
         val retLabel = TextView(this).apply {
             text = "AI 返回"
             textSize = 10f
-            setTextColor(FloatingUi.TEXT_TERTIARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
+            themed { p -> setTextColor(p.textTertiary) }
         }
         thinkCol.addView(retLabel)
         thinkingReturnText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
             setPadding(0, dp(3), 0, dp(2))
+            themed { p -> setTextColor(p.textPrimary) }
         }
         thinkCol.addView(thinkingReturnText)
         val reviewLabel = TextView(this).apply {
             text = "审核结论"
             textSize = 10f
-            setTextColor(FloatingUi.BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setPadding(0, dp(6), 0, 0)
+            themed { p -> setTextColor(p.brand) }
         }
         thinkCol.addView(reviewLabel)
         reviewText = TextView(this).apply {
             text = ""
             textSize = 11f
-            setTextColor(FloatingUi.BRAND)
             setPadding(0, dp(3), 0, dp(4))
+            themed { p -> setTextColor(p.brand) }
         }
         thinkCol.addView(reviewText)
         thinkingScroll?.addView(thinkCol)
         thinkingPanel?.addView(thinkingScroll)
         panel.addView(thinkingPanel)
 
-        // 交互区域（批准/澄清/指导，默认隐藏）：圆角内嵌卡
+        // 交互区域（批准/澄清/指导，默认隐藏）：暖纸白实色卡 + 发丝描边。
+        // 圆角取第一层 RADIUS_CARD：它是这扇窗口最外层的表面，与 App 侧同名的协助浮层
+        // （AgentAssistSheet，容器同为 Card 圆角）对齐；内层的选项行/输入框再降一档到 RADIUS_TILE。
         interactPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            background = FloatingUi.capsule(
-                FloatingUi.RADIUS_PANEL,
-                FloatingUi.PANEL,
-            )
-            setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
+            setPadding(dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL))
+            themed { p ->
+                background = FloatingUi.capsule(
+                    FloatingUi.RADIUS_CARD,
+                    p.panel,
+                    p.panelEdge,
+                    dp(1),
+                )
+            }
         }
-        // 帮助徽章 + 标题
+        // 帮助徽章 + 标题 + 收起
         val interactHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -829,18 +906,41 @@ class FloatingWindowService : Service() {
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(999f, FloatingUi.ACCENT_WARM)
-            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
+            background = FloatingUi.capsule(FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
+            setPadding(dp(FloatingUi.PAD), dp(3), dp(FloatingUi.PAD), dp(3))
         }
         interactTitle = TextView(this).apply {
             text = "需要确认"
             textSize = 13f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(FloatingUi.PAD, 0, 0, 0)
+            setPadding(dp(FloatingUi.PAD), 0, 0, 0)
+            // 占满中间：把「收起」顶到最右侧，标题多长都不会把它挤走
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            themed { p -> setTextColor(p.textPrimary) }
+        }
+        // 「收起」：让出屏幕。收起后面板整块 GONE，只留右下角一枚入口胶囊，
+        // 用户可以先去动手处理屏幕上的事，处理完再点胶囊回来回答（问题不会丢）
+        val collapseChip = TextView(this).apply {
+            text = "收起"
+            textSize = 11f
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dp(10), 0, dp(10), 0)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26))
+            setOnClickListener { setInteractCollapsed(true) }
+            themed { p ->
+                setTextColor(p.brand)
+                background = FloatingUi.capsule(
+                    FloatingUi.RADIUS_PILL,
+                    p.panelSunken,
+                    p.panelEdge,
+                    dp(1),
+                )
+            }
         }
         interactHeader.addView(helpBadge)
         interactHeader.addView(interactTitle)
+        interactHeader.addView(collapseChip)
         interactPanel?.addView(interactHeader)
         // 内容可滚动（长文本）
         //
@@ -849,48 +949,52 @@ class FloatingWindowService : Service() {
         // 而剩余空间就是整块屏幕 —— 面板于是被撑到整屏高，整个窗口变成一张盖住全屏的
         // 透明可触摸层：屏幕上千点什么都落到这层上（用户侧表现就是"整个手机都点不动"，
         // 而底部跑马灯是另一个窗口，照旧在滚）。
-        // 改成固定限高：短文案不留大片空白，超长文案在卡片内部滚动。
-        val contentScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(140))
+        // 改成「限高内滚」：短文案贴合内容高度（不再留一片固定 140dp 的空白），超长才内滚。
+        val contentScroll = MaxHeightScrollView(this, dp(140)).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
             isVerticalScrollBarEnabled = false
         }
         interactContent = TextView(this).apply {
             text = ""
             textSize = 12f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
-            setPadding(0, dp(8), 0, dp(6))
+            setPadding(0, dp(8), 0, dp(2))
+            themed { p -> setTextColor(p.textPrimary) }
         }
         contentScroll.addView(interactContent)
         interactPanel?.addView(contentScroll)
-        // 选项按钮容器
-        interactButtons = LinearLayout(this).apply {
+        // 选项行 / 出口行的容器（按交互类型重建）
+        interactRows = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, FloatingUi.PAD, 0, 0)
         }
-        interactPanel?.addView(interactButtons)
+        interactPanel?.addView(interactRows)
         // 指导输入框
         hintInput = EditText(this).apply {
             textSize = 12f
-            setTextColor(FloatingUi.TEXT_PRIMARY)
-            setHintTextColor(FloatingUi.TEXT_TERTIARY)
             setHint("告诉 AI 该怎么做（或留空）")
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
             minLines = 2
             maxLines = 3
             setBackgroundResource(0)
-            background = FloatingUi.capsule(
-                FloatingUi.RADIUS_INPUT,
-                FloatingUi.PANEL_SUNKEN,
-            )
-            setPadding(FloatingUi.PAD_L, dp(10), FloatingUi.PAD_L, dp(10))
+            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
+            themed { p ->
+                setTextColor(p.textPrimary)
+                setHintTextColor(p.textTertiary)
+                background = FloatingUi.capsule(
+                    FloatingUi.RADIUS_TILE,
+                    p.panelSunken,
+                    p.panelEdge,
+                    dp(1),
+                )
+            }
         }
         interactPanel?.addView(hintInput)
-        hintBtnRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(10), 0, 0)
+        interactActions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
-        interactPanel?.addView(hintBtnRow)
+        interactPanel?.addView(interactActions)
         // 交互面板不再挂进顶部窗口：它由底部选项卡承载（见 showSheetWindow），
         // 顶部只保留任务状态与跑马灯，两边职责不重叠
 
@@ -899,8 +1003,8 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             visibility = View.GONE
-            background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, FloatingUi.PANEL)
             setPadding(0, dp(16), 0, dp(16))
+            themed { p -> background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, p.panel) }
         }
         successMark = SuccessMarkView(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
@@ -1289,6 +1393,11 @@ class FloatingWindowService : Service() {
                 hideKeyboard()
                 return@post
             }
+            // 记下入参：系统切深浅色时要用同一份入参把动态行重绘一遍
+            lastInteractType = type
+            lastInteractTitle = title
+            lastInteractContent = content
+            lastInteractOptions = options
             // 所有交互（批准 / 保存模板 / 澄清 / 指导）都渲染在同一个 interactPanel 里，
             // 而 interactPanel 挂在底部选项卡窗口上，顶部窗口只保留状态与跑马灯。
             // 所以这里必须做三件事，缺一样用户就操作不了：
@@ -1297,31 +1406,42 @@ class FloatingWindowService : Service() {
             //   3) showSheet() 让选项卡容器滑出来 —— 容器默认 GONE，
             //      之前 approve / savetemplate 走的是"顶部渲染"分支（面板早已不挂在顶部窗口），
             //      面板永远不可见，于是需要批准时用户点什么都没反应、任务一直挂着。
-            interactButtons?.removeAllViews()
+            interactRows?.removeAllViews()
             hintInput?.visibility = View.GONE
-            hintBtnRow?.removeAllViews()
+            hintInput?.setText("")
+            interactActions?.removeAllViews()
             interactTitle?.text = title ?: "需要确认"
             interactContent?.text = content ?: ""
-            // 不叠加缩放动画：入场方向统一为「自下而上」，滑动由容器承担
-            interactPanel?.visibility = View.VISIBLE
+            // 每次新交互都从展开态开始：收起是"我现在要腾出手"，不该被下一个问题继承
+            setInteractCollapsed(false)
 
             when (type) {
                 "approve" -> {
                     // 批准/取消
-                    addBtn(interactButtons, "批准并开始", true) { onInteraction?.invoke("approve", "") }
-                    addBtn(interactButtons, "取消", false) { onInteraction?.invoke("cancel", "") }
+                    addActionRow(
+                        interactRows,
+                        secondaryLabel = "取消",
+                        secondaryClick = { onInteraction?.invoke("cancel", "") },
+                        primaryLabel = "批准并开始",
+                        primaryClick = { onInteraction?.invoke("approve", "") },
+                    )
                 }
                 "savetemplate" -> {
                     // 任务完成：是否把执行步骤保存为模板（用户主动确认才入库）
-                    addBtn(interactButtons, "保存为模板", true) { onInteraction?.invoke("save_template", "yes") }
-                    addBtn(interactButtons, "不保存", false) { onInteraction?.invoke("save_template", "no") }
+                    addActionRow(
+                        interactRows,
+                        secondaryLabel = "不保存",
+                        secondaryClick = { onInteraction?.invoke("save_template", "no") },
+                        primaryLabel = "保存为模板",
+                        primaryClick = { onInteraction?.invoke("save_template", "yes") },
+                    )
                 }
                 "clarify" -> {
-                    // 选项按钮
+                    // 选项行：一行一个、点一下即答，与 App 侧协助浮层的选项行同构
                     options?.forEach { opt ->
-                        addBtn(interactButtons, opt, false) { onInteraction?.invoke("clarify", opt) }
+                        addOptionRow(interactRows, opt) { onInteraction?.invoke("clarify", opt) }
                     }
-                    addBtn(interactButtons, "✏️ 我想自己说", false) {
+                    addOptionRow(interactRows, "✏️ 我想自己说", highlight = true) {
                         showHintInput()
                     }
                 }
@@ -1331,8 +1451,13 @@ class FloatingWindowService : Service() {
                 "shellconfirm" -> {
                     // 自由模式：AI 自写命令的首次确认。批准后本任务内不再问；
                     // 拒绝只针对本任务，不改动 Agent 页那条动作模式切换条的档位。
-                    addBtn(interactButtons, "批准执行", true) { onInteraction?.invoke("shell_approve", "yes") }
-                    addBtn(interactButtons, "拒绝", false) { onInteraction?.invoke("shell_approve", "no") }
+                    addActionRow(
+                        interactRows,
+                        secondaryLabel = "拒绝",
+                        secondaryClick = { onInteraction?.invoke("shell_approve", "no") },
+                        primaryLabel = "批准执行",
+                        primaryClick = { onInteraction?.invoke("shell_approve", "yes") },
+                    )
                 }
             }
             showSheet()
@@ -1344,18 +1469,23 @@ class FloatingWindowService : Service() {
         setInputMode(true)
         hintInput?.requestFocus()
         hintInput?.visibility = View.VISIBLE
-        hintBtnRow?.removeAllViews()
-        addBtn(hintBtnRow, "已手动处理", false) { onInteraction?.invoke("dismiss", "") }
-        addBtn(hintBtnRow, "指导 AI", true) {
-            val text = hintInput?.text?.toString()?.trim() ?: ""
-            if (text.isEmpty()) {
-                // 留空点击「指导 AI」等价「已手动处理」，避免空串被 provideUserHint 吞掉导致静默挂起
-                onInteraction?.invoke("dismiss", "")
-            } else {
-                onInteraction?.invoke("hint", text)
-            }
-            hintInput?.setText("")
-        }
+        interactActions?.removeAllViews()
+        addActionRow(
+            interactActions,
+            secondaryLabel = "已手动处理",
+            secondaryClick = { onInteraction?.invoke("dismiss", "") },
+            primaryLabel = "指导 AI",
+            primaryClick = {
+                val text = hintInput?.text?.toString()?.trim() ?: ""
+                if (text.isEmpty()) {
+                    // 留空点击「指导 AI」等价「已手动处理」，避免空串被 provideUserHint 吞掉导致静默挂起
+                    onInteraction?.invoke("dismiss", "")
+                } else {
+                    onInteraction?.invoke("hint", text)
+                }
+                hintInput?.setText("")
+            },
+        )
         // 延迟弹出软键盘，等待窗口布局完成后再唤起输入法
         hintInput?.postDelayed({
             val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
@@ -1384,26 +1514,183 @@ class FloatingWindowService : Service() {
         runCatching { windowManager?.updateViewLayout(rootView, p) }
     }
 
-    private fun addBtn(container: LinearLayout?, label: String, primary: Boolean, onClick: () -> Unit) {
-        val btn = Button(this).apply {
+    /**
+     * 登记一个「跟随主题重上色」的视图：登记时立刻按当前配色涂一遍，
+     * 之后系统深浅色翻面时会被再跑一遍（见 [onConfigurationChanged]）。
+     */
+    private fun themed(apply: (FloatingUi.Palette) -> Unit) {
+        themeAppliers += apply
+        apply(palette)
+    }
+
+    /**
+     * 系统深浅色翻面：把所有登记过的静态视图重涂一遍，再重绘答疑里的动态行。
+     *
+     * 只处理登记过的那一层（内层卡片与卡片上的文字/主色）；玄青任务卡与跑马灯是品牌/阶段表面，
+     * 深浅两套下都成立，不参与切换。
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val dark = FloatingUi.isNightMode(this)
+        if (dark == palette.isDark) return
+        palette = FloatingUi.Palette.of(dark)
+        themeAppliers.forEach { it(palette) }
+        rerenderInteractRows()
+    }
+
+    /**
+     * 重绘答疑里的动态行（选项行 / 出口行）。
+     *
+     * 这些视图每次交互现建，登记不到静态表里，只能按上次的入参重新渲染一遍。
+     * 重来之前先把"正在输入"这个状态和用户已经打好的字记下来，之后原样还回去 ——
+     * 切主题不该让用户丢掉半句已经写完的回答。
+     */
+    private fun rerenderInteractRows() {
+        val type = lastInteractType ?: return
+        // 收起的面板不重绘：它的可见内容只有一枚主色胶囊，本身就不随主题变
+        if (interactCollapsed) return
+        val draft = hintInput?.text?.toString().orEmpty()
+        val inputOpen = hintInput?.visibility == View.VISIBLE
+        // 重绘走 showInteraction 自己的队列（内部会 post 到主线程）；输入状态用一个后入队的
+        // post 补回来 —— 同一个 Handler 是 FIFO，后入队的一定跑在重绘之后。
+        showInteraction(type, lastInteractTitle, lastInteractContent, lastInteractOptions)
+        if (!inputOpen) return
+        handler.post {
+            showHintInput()
+            hintInput?.setText(draft)
+            hintInput?.setSelection(draft.length)
+        }
+    }
+
+    /**
+     * 收起/展开答疑面板。
+     *
+     * 收起 = 把面板整块让出屏幕，只留右下角一枚入口胶囊（[collapsedPill]）；
+     * 同时收起软键盘并恢复窗口的不可聚焦模式 —— 留着可聚焦的窗口会让底下 App 的输入法行为异常。
+     * 问题本身不受影响：AI 仍在等这个答案，点胶囊即可原样展开继续回答。
+     */
+    private fun setInteractCollapsed(collapsed: Boolean) {
+        interactCollapsed = collapsed
+        if (collapsed) hideKeyboard()
+        interactPanel?.visibility = if (collapsed) View.GONE else View.VISIBLE
+        collapsedPill?.visibility = if (collapsed) View.VISIBLE else View.GONE
+        applySheetCollapsedWindow(collapsed)
+    }
+
+    /**
+     * 收起时把窗口本身也收窄到胶囊大小。
+     *
+     * 只把面板置 GONE 还不够：窗口是 MATCH_PARENT 宽，收起来之后仍然是一条全宽、几十 dp 高、
+     * 什么都看不见却能触摸的窗口，落在其中的操作全被它吃掉。收窄到 WRAP_CONTENT + 右对齐后，
+     * 屏幕上只剩胶囊那一小块归悬浮窗，其余位置照常传给底下的 App。
+     */
+    private fun applySheetCollapsedWindow(collapsed: Boolean) {
+        val p = sheetParams ?: return
+        val root = sheetRoot ?: return
+        p.width = if (collapsed) {
+            WindowManager.LayoutParams.WRAP_CONTENT
+        } else {
+            WindowManager.LayoutParams.MATCH_PARENT
+        }
+        p.gravity = if (collapsed) {
+            Gravity.BOTTOM or Gravity.END
+        } else {
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        }
+        runCatching { windowManager?.updateViewLayout(root, p) }
+    }
+
+    /**
+     * 胶囊按钮：主操作 = 主题色实底白字，次要 = 下沉实底 + 发丝描边。
+     * 两种态都是不透明表面（不再用半透明叠层做层次），悬浮在别的 App 之上也不会透出底图。
+     */
+    private fun actionButton(label: String, primary: Boolean, onClick: () -> Unit): TextView =
+        TextView(this).apply {
             text = label
             textSize = 12f
-            isAllCaps = false
-            val params = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(40),
-            ).apply { topMargin = FloatingUi.PAD }
-            layoutParams = params
-            if (primary) {
-                setTextColor(FloatingUi.ON_BRAND)
-                background = FloatingUi.capsule(999f, FloatingUi.BRAND)
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(if (primary) palette.onBrand else palette.textPrimary)
+            background = if (primary) {
+                FloatingUi.capsule(FloatingUi.RADIUS_PILL, palette.brand)
             } else {
-                setTextColor(FloatingUi.BRAND)
-                background = FloatingUi.capsule(999f, FloatingUi.PANEL_STATE)
+                FloatingUi.capsule(
+                    FloatingUi.RADIUS_PILL,
+                    palette.panelSunken,
+                    palette.panelEdge,
+                    dp(1),
+                )
             }
+            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), 0)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
             setOnClickListener { onClick() }
         }
-        container?.addView(btn)
+
+    /**
+     * 出口行：次要在左、主操作在右（与 App 侧协助浮层的出口行同构）。
+     * 两个按钮都靠内容定宽，中间用一条权重空隙把主操作推到最右 —— 主操作的落点固定，
+     * 不会因为次要按钮文案长短而左右横跳。
+     */
+    private fun addActionRow(
+        container: LinearLayout?,
+        secondaryLabel: String?,
+        secondaryClick: (() -> Unit)?,
+        primaryLabel: String,
+        primaryClick: () -> Unit,
+    ) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(FloatingUi.PAD_L) }
+        }
+        if (secondaryLabel != null && secondaryClick != null) {
+            row.addView(actionButton(secondaryLabel, false, secondaryClick))
+        }
+        row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        row.addView(actionButton(primaryLabel, true, primaryClick))
+        container?.addView(row)
+    }
+
+    /**
+     * 选项行：一行一个、点一下即答（澄清候选答案）。
+     * 圆角取第三层 RADIUS_TILE、底色取下沉实色 —— 与输入框同一档，读起来是"能点的行"而不是按钮。
+     * [highlight] 用于「我想自己说」这种不是答案、而是"我要打字"的入口。
+     */
+    private fun addOptionRow(container: LinearLayout?, label: String, highlight: Boolean = false, onClick: () -> Unit) {
+        val row = TextView(this).apply {
+            text = label
+            textSize = 12f
+            setTextColor(if (highlight) palette.brand else palette.textPrimary)
+            background = FloatingUi.capsule(
+                FloatingUi.RADIUS_TILE,
+                palette.panelSunken,
+                palette.panelEdge,
+                dp(1),
+            )
+            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(FloatingUi.PAD) }
+            setOnClickListener { onClick() }
+        }
+        container?.addView(row)
+    }
+
+    /**
+     * 限高滚动容器：内容短时贴合内容高度，超长时限到上限并内部滚动。
+     *
+     * 为什么不用固定高度：短文案下会在卡片里留一片空白，面板看着像"没做完"。
+     * 为什么不用「高度 0 + weight 1」：选项卡窗口是 WRAP_CONTENT，LinearLayout 在 AT_MOST 下
+     * 会把整屏剩余空间分给权重子视图，窗口被撑到整屏高 —— 一层透明却可触摸的窗口会盖住整块屏幕。
+     */
+    private class MaxHeightScrollView(context: Context, private val maxHeightPx: Int) : ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST))
+        }
     }
 
     private fun dotColor(phase: String): Int = FloatingUi.phaseColor(phase)

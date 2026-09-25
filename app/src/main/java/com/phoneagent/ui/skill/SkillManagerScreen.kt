@@ -53,7 +53,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -88,6 +87,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var tab by remember { mutableStateOf(SkillTab.SKILLS) }
+    // 技能编辑器由本页渲染（而不是技能 Tab 内）：各 Tab 都是可滚动容器，
+    // 满屏浮层挂在里面拿不到高度约束；放骨架的 overlay 槽才能压住页眉与正文
+    var editorOpen by remember { mutableStateOf(false) }
+    var editingSkill by remember { mutableStateOf<Skill?>(null) }
     GlassHeaderScaffold(
         modifier = modifier,
         header = {
@@ -96,6 +99,20 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 subtitle = "Skill · MCP · 无线 ADB · 提示词",
                 contentPadding = PaddingValues(horizontal = GlassHeaderInnerPad, vertical = 8.dp),
             )
+        },
+        overlay = {
+            if (editorOpen) {
+                val editing = editingSkill
+                SkillEditorDialog(
+                    initial = editing,
+                    suggestedId = editing?.id ?: vm.nextSkillId(),
+                    onDismiss = { editorOpen = false },
+                    onSave = { s ->
+                        if (editing == null) vm.addSkill(s) else vm.updateSkill(s)
+                        editorOpen = false
+                    },
+                )
+            }
         },
     ) { pad ->
         Column(
@@ -115,7 +132,11 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
             Spacer(Modifier.height(8.dp))
             when (tab) {
-                SkillTab.SKILLS -> SkillsTab(vm)
+                SkillTab.SKILLS -> SkillsTab(
+                    vm = vm,
+                    // null = 新建，非 null = 编辑该技能
+                    onOpenEditor = { s -> editingSkill = s; editorOpen = true },
+                )
                 SkillTab.MCP -> McpTab(vm)
                 SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
                 SkillTab.PROMPTS -> PromptsTab(vm)

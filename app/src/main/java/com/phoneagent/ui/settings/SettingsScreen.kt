@@ -4,7 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.IntOffset
@@ -17,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
@@ -40,6 +42,8 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
     val st = remember { SettingsState(settings) }
     var page by remember { mutableStateOf(SettingsPage.HOME) }
+    // 正在挑选模型的职责（main / vision / reason）；null = 浮层收起
+    var pickRole by remember { mutableStateOf<String?>(null) }
 
     // 监听标定面板展开状态，启动/停止全屏预览
     LaunchedEffect(st.calibrationExpanded, st.edgeLightingEnabled) {
@@ -84,35 +88,69 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     // 转场走 Motion.kt 的时长/缓动，并尊重系统「减少动画」设置
     val pageTransitionMs = motionSettings().scaledDuration(ScreenTransitions.Duration)
 
-    AnimatedContent(
-        targetState = page,
-        // 用层级转场（淡入 + 轻微位移）替代纯 fade：
-        // 进二级页时内容从右侧推入、返回时退回，方向感与"进/出层级"一致
-        transitionSpec = {
-            val fade = tween<Float>(pageTransitionMs, easing = ScreenTransitions.Easing)
-            val slide = tween<IntOffset>(pageTransitionMs, easing = ScreenTransitions.Easing)
-            if (targetState == SettingsPage.HOME) {
-                (fadeIn(fade) + slideInHorizontally(slide) { -it / 12 })
+    // 根节点必须是满屏 Box：模型选择浮层铺满全屏，挂在这里才拿得到高度约束。
+    // 各子页自己都是可滚动容器，浮层挂进子页会被压成 0 高
+    Box(modifier = modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = page,
+            // 转场语言与底部 Tab 完全一致：只做自下而上的升起 + 淡入，不用水平位移。
+            // 沿用 MainActivity 里定下的那条全局规矩——全项目只保留自下而上的入场，
+            // 不再引入水平位移；层级感交给"内容换了"本身表达。
+            transitionSpec = {
+                val fade = tween<Float>(pageTransitionMs, easing = ScreenTransitions.Easing)
+                val slide = tween<IntOffset>(pageTransitionMs, easing = ScreenTransitions.Easing)
+                (fadeIn(fade) + slideInVertically(slide) { full -> full / 12 })
                     .togetherWith(fadeOut(fade))
-            } else {
-                (fadeIn(fade) + slideInHorizontally(slide) { it / 12 })
-                    .togetherWith(fadeOut(fade))
+            },
+            label = "settings-page",
+            // 不再整块让位：页面铺满到屏幕底，净空由各子页在自己的滚动内容里垫出，
+            // 这样滚动视口是满高的，内容能从悬浮导航栏下面穿过去
+            modifier = Modifier.fillMaxSize(),
+        ) { p ->
+            when (p) {
+                SettingsPage.HOME -> SettingsHome(st, vm, onOpen = { page = it })
+                SettingsPage.AI_MODELS -> SettingsAiModels(
+                    vm = vm, st = st,
+                    onBack = { page = SettingsPage.HOME },
+                    onPickRole = { pickRole = it },
+                )
+
+                SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
+                SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
+                SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = { page = SettingsPage.HOME })
+                SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, onBack = { page = SettingsPage.HOME })
+                SettingsPage.DATA -> SettingsData(vm = vm, onBack = { page = SettingsPage.HOME })
+                SettingsPage.ABOUT -> SettingsAbout(onBack = { page = SettingsPage.HOME })
             }
-        },
-        label = "settings-page",
-        // 不再整块让位：页面铺满到屏幕底，净空由各子页在自己的滚动内容里垫出，
-        // 这样滚动视口是满高的，内容能从悬浮导航栏下面穿过去
-        modifier = modifier,
-    ) { p ->
-        when (p) {
-            SettingsPage.HOME -> SettingsHome(st, vm, onOpen = { page = it })
-            SettingsPage.AI_MODELS -> SettingsAiModels(vm = vm, st = st, onBack = { page = SettingsPage.HOME })
-            SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
-            SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
-            SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = { page = SettingsPage.HOME })
-            SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, onBack = { page = SettingsPage.HOME })
-            SettingsPage.DATA -> SettingsData(vm = vm, onBack = { page = SettingsPage.HOME })
-            SettingsPage.ABOUT -> SettingsAbout(onBack = { page = SettingsPage.HOME })
+        }
+
+        // 模型选择浮层：页内浮层而非系统弹窗，挂在页面根节点上，压得住任何一页
+        pickRole?.let { role ->
+            ModelPickerDialog(
+                title = when (role) {
+                    "main" -> "选择主模型"
+                    "vision" -> "选择视觉模型"
+                    else -> "选择思考模型"
+                },
+                models = st.catalog.toList(),
+                endpointLabelOf = { m ->
+                    st.endpoints.firstOrNull { it.id == m.endpointId }?.let { endpointHost(it.baseUrl) } ?: ""
+                },
+                current = when (role) {
+                    "main" -> st.model
+                    "vision" -> st.visionModel
+                    else -> st.reasonModel
+                },
+                onPickModel = { m ->
+                    applyRoleModel(st, role, m.endpointId, m.name)
+                    pickRole = null
+                },
+                onPickManual = { name ->
+                    applyRoleModel(st, role, null, name)
+                    pickRole = null
+                },
+                onDismiss = { pickRole = null },
+            )
         }
     }
 }

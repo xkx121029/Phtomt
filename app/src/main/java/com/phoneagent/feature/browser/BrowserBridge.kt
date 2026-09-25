@@ -30,8 +30,9 @@ private const val TAG = "BrowserBridge"
  * 内置浏览器桥：把 AI 的 browse_* 意图接到 App 自己的 WebView 上。
  *
  * 三个边界（与提示词一一对应）：
- * 1. **可见**：浏览器是本 App 的「浏览器」二级页，需要上网时把 App 切到前台，
- *    于是每步截图里就是真实网页 —— AI 能"亲眼看到"页面，而不是只拿一段文本凭空判断。
+ * 1. **静默**：网页默认在**后台**打开 —— WebView 挂在 [HeadlessWebHost] 的全透明悬浮窗里，
+ *    App 界面不切走、不打断用户，AI 也不靠截图看网页，内容一律走 browse_read
+ *    （Markdown 正文 + 可操作元素清单）。用户自己点开「浏览器」二级页时那条可见路径优先级更高。
  * 2. **端侧自足**：网页读写走 DOM 脚本（`feature/browser/script/`），不依赖无障碍、Shizuku、Termux，
  *    这些能力缺失时浏览器照常可用。
  * 3. **只操作浏览器里的页**：所有操作都作用于 WebView 里当前这一页；没有打开过网页时，
@@ -63,6 +64,10 @@ object BrowserBridge {
 
     @Volatile
     private var webView: WebView? = null
+
+    /** 后台静默宿主的 WebView（浏览器页没打开时 AI 用它，界面不切前台），懒建 */
+    @Volatile
+    private var silentView: WebView? = null
 
     @Volatile
     private var lastUrl: String = ""
@@ -133,43 +138,67 @@ object BrowserBridge {
     // ==================== AI 可调用的 6 个操作 ====================
 
     /**
-     * browse_open：在内置浏览器打开网址。WebView 不在时先把 App 切到「浏览器」页再加载。
-     * 等待页面加载完成，让下一步的截图必然是"已经出来的页面"，而不是白屏。
+     * browse_open：打开网址。用户正开着的浏览器页优先（那条路径本就可信可见），
+     * 否则在**后台静默宿主**里加载 —— 界面不切走，用户该看什么还看什么。
+     * 两种都拿不到（宿主建不起来）才回退到老路径：把 App 切到「浏览器」二级页。
      */
     suspend fun open(url: String): BrowseResult = lock.withLock {
         val ctx = appContext
             ?: return@withLock BrowseResult(false, "内置浏览器尚未初始化，无法打开网页。")
+        val existing = activeView()
+        // 静默优先：没有可用 WebView 时先在后台起一个；宿主建不起来才回退到可见页
+        val wv = existing ?: withContext(Dispatchers.Main.immediate) { silent() }
+        if (wv != null) {
+            val waiter = CompletableDeferred<Boolean>()
+            loadWaiter = waiter
+            withContext(Dispatchers.Main) { wv.loadUrl(url) }
+            val loaded = withTimeoutOrNull(LOAD_TIMEOUT_MS) { waiter.await() } ?: false
+            loadWaiter = null
+            if (!loaded) {
+                return@withLock BrowseResult(
+                    false,
+                    "网页加载超时（${LOAD_TIMEOUT_MS / 1000}s）：$url。请检查网址是否正确、网络是否可用，或换一个地址。",
+                )
+            }
+            val title = lastTitle.ifBlank { url }
+            return@withLock BrowseResult(
+                true,
+                if (existing != null) {
+                    "已在内置浏览器打开网页（下一步的截图中就能看到它）：\n标题：$title\n网址：$url"
+                } else {
+                    // 静默模式：界面没动，AI 要看到网页内容只能靠 browse_read
+                    "已在后台静默打开网页（App 界面没有切走，截图里看不到网页；" +
+                        "网页内容用 browse_read 读取）：\n标题：$title\n网址：$url"
+                },
+            )
+        }
+        // 回退路径：把 App 切到「浏览器」二级页（需要悬浮窗权限以外的能力，慢且会打断用户）
+        pendingUrl = url
+        attachWaiter = CompletableDeferred()
         val waiter = CompletableDeferred<Boolean>()
         loadWaiter = waiter
-        val existing = webView
-        if (existing != null) {
-            withContext(Dispatchers.Main) { existing.loadUrl(url) }
-        } else {
-            pendingUrl = url
-            attachWaiter = CompletableDeferred()
-            val started = runCatching {
-                ctx.startActivity(
-                    Intent(ctx, MainActivity::class.java).apply {
-                        addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP,
-                        )
-                        putExtra(EXTRA_BROWSE, true)
-                    },
-                )
-            }.isSuccess
-            if (!started) {
-                loadWaiter = null
-                pendingUrl = ""
-                return@withLock BrowseResult(false, "无法切到内置浏览器界面，请检查应用是否被系统限制后台启动。")
-            }
-            val attached = withTimeoutOrNull(ATTACH_TIMEOUT_MS) { attachWaiter?.await() }
-            if (attached == null) {
-                loadWaiter = null
-                pendingUrl = ""
-                return@withLock BrowseResult(false, "内置浏览器界面打开超时（${ATTACH_TIMEOUT_MS / 1000}s），请重试。")
-            }
+        val started = runCatching {
+            ctx.startActivity(
+                Intent(ctx, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                    )
+                    putExtra(EXTRA_BROWSE, true)
+                },
+            )
+        }.isSuccess
+        if (!started) {
+            loadWaiter = null
+            pendingUrl = ""
+            return@withLock BrowseResult(false, "无法切到内置浏览器界面，请检查应用是否被系统限制后台启动。")
+        }
+        val attached = withTimeoutOrNull(ATTACH_TIMEOUT_MS) { attachWaiter?.await() }
+        if (attached == null) {
+            loadWaiter = null
+            pendingUrl = ""
+            return@withLock BrowseResult(false, "内置浏览器界面打开超时（${ATTACH_TIMEOUT_MS / 1000}s），请重试。")
         }
         val loaded = withTimeoutOrNull(LOAD_TIMEOUT_MS) { waiter.await() } ?: false
         loadWaiter = null
@@ -259,9 +288,27 @@ object BrowserBridge {
 
     // ==================== 内部 ====================
 
+    /**
+     * 当前给 AI 用的 WebView：用户正开着「浏览器」页时用那一份（页面就在屏幕上，AI 能靠截图看见），
+     * 否则用后台静默宿主。两者都没有时返回 null，调用方给出可判定的中文原因。
+     */
+    private fun activeView(): WebView? = webView ?: silentView
+
+    /**
+     * 懒建后台静默宿主。**只能在主线程调用**（WebView 只能在带 Looper 的线程创建）。
+     * 建不起来（系统没给悬浮窗权限等）返回 null，由 [open] 回退到可见页路径。
+     */
+    private fun silent(): WebView? {
+        silentView?.let { return it }
+        val ctx = appContext ?: return null
+        val wv = HeadlessWebHost.ensure(ctx) ?: return null
+        silentView = wv
+        return wv
+    }
+
     /** 统一的"必须先有网页"守卫：没有 WebView / 没打开过网页时给出可判定的中文原因 */
     private inline fun withPage(block: (WebView) -> BrowseResult): BrowseResult {
-        val wv = webView
+        val wv = activeView()
             ?: return BrowseResult(
                 false,
                 "内置浏览器还没打开，请先 browse_open 打开目标网址，再执行这一步。",

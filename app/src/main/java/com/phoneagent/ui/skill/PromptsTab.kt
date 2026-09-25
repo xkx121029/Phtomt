@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -67,8 +65,10 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -82,52 +82,58 @@ internal fun PromptsTab(vm: MainViewModel) {
     val templates by vm.templates.collectAsState()
     var editing by remember { mutableStateOf<PromptTemplate?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            "可变提示词模板。正文支持 {task}{skills}{mcpTools}{controls}{currentApp}{lastResult}{goal}{auditRejection}{situational} 等占位符，空模板将回退内置默认。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-            items(templates, key = { it.id }) { t ->
-                AppItemCard(onClick = { editing = t }) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(t.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                t.body.ifBlank { "（空模板 → 使用内置默认）" },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = AppSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+        ) {
+            Text(
+                "可变提示词模板。正文支持 {task}{skills}{mcpTools}{controls}{currentApp}{lastResult}{goal}{auditRejection}{situational} 等占位符，空模板将回退内置默认。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxSize()) {
+                items(templates, key = { it.id }) { t ->
+                    AppItemCard(onClick = { editing = t }) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(t.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    t.body.ifBlank { "（空模板 → 使用内置默认）" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (t.isBuiltIn) StatusPill("内置", MaterialTheme.colorScheme.onSurfaceVariant) else IconButton(onClick = { editing = t }) { Icon(AppIcons.Edit, contentDescription = "编辑") }
                         }
-                        if (t.isBuiltIn) StatusPill("内置", MaterialTheme.colorScheme.onSurfaceVariant) else IconButton(onClick = { editing = t }) { Icon(AppIcons.Edit, contentDescription = "编辑") }
                     }
                 }
             }
         }
-    }
 
-    editing?.let { t ->
-        AlertDialog(
-            onDismissRequest = { editing = null },
-            title = { Text("编辑提示词：${t.name}") },
-            text = {
+        // 编辑模板走页内浮层：系统弹窗的圆角、按钮排布、入场方式都不是本项目的语言
+        editing?.let { t ->
+            InlineOverlay(onDismiss = { editing = null }) {
+                Text(
+                    "编辑提示词：${t.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 PromptEditor(template = t, onSave = { body ->
                     vm.saveTemplate(t.id, t.name, body)
                     editing = null
                 })
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { editing = null }) { Text("关闭") }
-            },
-        )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { editing = null }) { Text("关闭") }
+                }
+            }
+        }
     }
 }
 

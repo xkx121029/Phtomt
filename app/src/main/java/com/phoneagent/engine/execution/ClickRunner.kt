@@ -2,6 +2,8 @@ package com.phoneagent.engine.execution
 
 import com.phoneagent.device.a11y.ActionExecutor
 import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.device.a11y.NodeHit
+import com.phoneagent.device.a11y.NodeSelector
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
@@ -21,16 +23,22 @@ import kotlinx.coroutines.delay
  * 执行阶梯，**只在动作根本没交付时才升级**（同一个控件被按两遍，对发送/提交/删除就是重复副作用）：
  *   ① 活节点直点：在**此刻**的活节点树上重新找到控件，直接 performAction(ACTION_CLICK)
  *      （控件本身不可点则上溯最近的可点击祖先）。交付成功就以它为准，不再补手势
- *   ② 手势点控件最新位置：①找不到节点/不可点（=没交付）时才降级；只有手势**没派发出去**
- *      （系统拒绝/被取消）才换快照坐标再试一次——派发成功即视为已交付，不再重复按
+ *   ② 手势点控件最新位置：①找不到节点/不可点（=没交付）时才降级。落点按"此刻"取——
+ *      活节点当前位置 → 元素最新位置 → 快照坐标，逐个夹进屏幕可见区（元素只露一半时
+ *      它的中心可能已在屏幕外）；只有手势**没派发出去**（系统拒绝/被取消）才换下一个落点
  *   ③ 滚动一屏重查：仅在①之前、且"自始至终没定位到目标"时启用
+ *
+ * 手势派发前先做**落点审计**（[ActionExecutor.hitTest]）：问清"这一下会落到谁身上"。
+ * 落点不是目标控件时——"无变化"会把差异写进失败原因（是定位/坐标偏了，该重新定位；
+ * 还是控件本身无响应，该换意图，AI 下一步的做法完全不同）；"已生效"则只记日志不动结果，
+ * 免得 AI 把已经生效的点击当可疑再按一次（发送/删除这类不可逆按钮就是重复副作用）。
  *
  * 成功判定分层（见 [judge]）：先看目标控件自身状态（选中/值/文字/描述）有没有变——
  * 在列表里勾选一项并不会改变整页指纹，只看指纹会把成功误判成失败；再看整页指纹；
  * 前台应用都换了则直接算成功。
  *
- * 确认改用**短轮询**（见 [VERIFY_DELAYS_MS]）：响应快的页面一取样就能确认，
- * 不必像原先那样无论快慢都干等 550ms；慢页面（动画/网络）也仍有观察窗。
+ * 确认用**短轮询**（见 [VERIFY_DELAYS_MS]，与 [VerifyTiming] 同源）：响应快的页面一取样就能确认，
+ * 不必无论快慢都干等；慢页面（动画/网络）也仍有观察窗。
  */
 class ClickRunner(
     private val service: AgentAccessibilityService,
@@ -131,15 +139,29 @@ class ClickRunner(
             }
         }
 
-        // ② 手势：首选控件最新位置；只有手势没派发出去才换快照坐标重试（派发成功=已交付，不重复按）
-        val points = mutableListOf<Pair<String, Pair<Int, Int>>>()
-        if (cx != null && cy != null) points += "手势点击" to Pair(cx, cy)
+        // ② 手势：落点一律取**此刻**的位置，且必须落在屏幕可见区内
+        //    （元素只露一半时它的中心可能在屏幕外，派发到屏幕外等于白点；只按时间点定序不按坐标猜）
         val sx = resolved.x
         val sy = resolved.y
-        if (sx != null && sy != null && (sx != cx || sy != cy)) points += "快照坐标点击" to Pair(sx, sy)
+        val candidates = mutableListOf<Pair<String, Pair<Int, Int>>>()
+        if (selector != null) {
+            // 活节点位置最新——AI 思考的数秒里页面可能已滚动/被顶动，快照坐标早已偏移
+            executor.liveCenter(selector)?.let { candidates += "活节点当前位置" to it }
+        }
+        if (cx != null && cy != null) candidates += "元素最新位置" to Pair(cx, cy)
+        if (sx != null && sy != null) candidates += "快照坐标" to Pair(sx, sy)
+        val points = candidates
+            .map { (name, p) -> name to clampToScreen(p, snapshot) }
+            .distinctBy { it.second }
 
         for ((name, point) in points) {
-            logger("$verb (${point.first}, ${point.second})：$name")
+            // 落点审计：先问清"这一下会落到谁身上"。点错时能立刻分清是定位/坐标偏了
+            // （该重新定位）还是控件本身无响应（该换意图），不写清楚 AI 只会把同一下再点一遍
+            val hit = executor.hitTest(point.first, point.second)
+            logger(
+                "$verb (${point.first}, ${point.second})：$name" +
+                    (hit?.let { "；落点命中 ${it.describe()}" } ?: "；该点下读不到控件（按坐标盲点）"),
+            )
             val dispatched = if (longClick) {
                 executor.longClick(point.first, point.second)
             } else {
@@ -152,11 +174,18 @@ class ClickRunner(
                 continue
             }
             val v = confirm(baseline, baselineState, verb)
-            if (v.success) return v
+            if (v.success) {
+                // 页面变了不等于点对了地方：落点与目标不一致时只记日志。
+                // 刻意不动结果——已经生效的点击若被判成"可疑"，AI 很可能重按一次，
+                // 对发送/删除这类不可逆按钮就是重复副作用；而"没生效"那条路径下面会写明落点差异
+                if (hit != null && isMismatch(hit, element, selector)) {
+                    logger("注意：$verb 落点命中的 ${hit.describe()} 与目标「$targetName」不一致，页面变化可能来自别的控件")
+                }
+                return v
+            }
             return VerifyResult(
                 false,
-                "当前页面($pkg)的控件($targetName)${verb}已派发到 (${point.first}, ${point.second})，" +
-                    "但页面与控件状态均无变化：请先观察当前页面再决定下一步",
+                missReason(pkg, targetName, verb, point, hit, element, selector),
                 v.beforeFingerprint, v.afterFingerprint,
             )
         }
@@ -242,6 +271,70 @@ class ClickRunner(
     private fun captureQuietly(): ScreenSnapshot? =
         runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
 
+    /**
+     * 把落点夹进屏幕可见区。
+     *
+     * 元素树里的"可见"只保证它露了一部分：列表底部半截可见的行，中心点可能已经在屏幕外，
+     * 手势派发到屏幕外的点要么被系统拒绝、要么落在别处，表现出来就是"点了没反应"。
+     */
+    private fun clampToScreen(point: Pair<Int, Int>, snapshot: ScreenSnapshot): Pair<Int, Int> {
+        val w = snapshot.screenWidth.takeIf { it > 0 } ?: DEFAULT_SCREEN_W
+        val h = snapshot.screenHeight.takeIf { it > 0 } ?: DEFAULT_SCREEN_H
+        return point.first.coerceIn(0, w - 1) to point.second.coerceIn(0, h - 1)
+    }
+
+    /**
+     * 落点命中的控件是不是"我们要点的那个"。
+     *
+     * 两侧都按包含比对，不做严格相等：目标可能是外层容器、落点可能是它内层的图标/文字
+     * （点下去照样算点中），反过来也一样。
+     *
+     * 不可点击的落点一律算"无法判定"：此时点击其实由祖先容器承接，据此报"点错"就是误报。
+     */
+    private fun isMismatch(hit: NodeHit, element: UiElement?, selector: NodeSelector?): Boolean {
+        if (!hit.clickable) return false
+        val labels = listOfNotNull(element?.text, element?.contentDescription, selector?.label)
+            .map { it.trim() }.filter { it.isNotEmpty() }
+        val ids = listOfNotNull(element?.viewId, selector?.viewId).filter { it.isNotBlank() }
+        if (labels.isEmpty() && ids.isEmpty()) return false
+        val hitLabel = hit.label?.trim().orEmpty()
+        if (hitLabel.isNotEmpty() &&
+            labels.any { it.equals(hitLabel, true) || it.contains(hitLabel, true) || hitLabel.contains(it, true) }
+        ) {
+            return false
+        }
+        val hitId = hit.viewId.orEmpty()
+        if (hitId.isNotEmpty() && ids.any { hitId.endsWith(it, true) || it.endsWith(hitId, true) }) return false
+        return true
+    }
+
+    /**
+     * "已派发但页面无变化"的失败原因：把落点命中的控件一并写明。
+     *
+     * 两种情况下一步完全不同——落点不是目标控件的，是定位/坐标偏差，该重新观察页面重新定位；
+     * 落点就是目标控件的，说明控件本身无响应（或页面变化慢），该换意图或等待。
+     * 只回一句笼统的"未生效"，AI 多半会把同一下再点一遍。
+     */
+    private fun missReason(
+        pkg: String,
+        targetName: String,
+        verb: String,
+        point: Pair<Int, Int>,
+        hit: NodeHit?,
+        element: UiElement?,
+        selector: NodeSelector?,
+    ): String {
+        val base = "当前页面($pkg)的控件($targetName)${verb}已派发到 (${point.first}, ${point.second})，但页面与控件状态均无变化"
+        if (hit == null) return "$base：请先观察当前页面再决定下一步"
+        return if (isMismatch(hit, element, selector)) {
+            "$base——落点实际命中的是 ${hit.describe()}，与目标不一致（定位或坐标偏差）：" +
+                "请先观察当前页面并重新定位目标，不要直接重试同一下"
+        } else {
+            "$base——落点即目标控件，该控件可能本就无响应或页面变化较慢：" +
+                "请先观察当前页面，必要时换一个意图"
+        }
+    }
+
     /** 页面是否已切到别的应用（包名读到才判定，读不到时不阻断执行） */
     private fun switchedApp(after: ScreenSnapshot, before: ScreenSnapshot): Boolean {
         val a = after.packageName ?: return false
@@ -253,10 +346,15 @@ class ClickRunner(
         /**
          * 点击后取样的累计等待时刻（毫秒）：短轮询让响应快的页面尽早定型（首取样即可确认），
          * 不必像固定等待那样无论快慢都干等；两次取样都没变化才判失败。
+         * 与 [VerifyTiming] 同源：点击与滑动/输入共用一套取样节奏，不出现两套标准。
          */
-        val VERIFY_DELAYS_MS = longArrayOf(200L, 500L)
+        val VERIFY_DELAYS_MS = VerifyTiming.SAMPLE_DELAYS_MS
 
         /** 滚动后的稳定等待：等滚动动画/惯性结束再抓页面 */
         const val SCROLL_SETTLE_MS = 400L
+
+        /** 屏幕尺寸读不到时的兜底尺寸（仅用于把落点夹进屏幕内） */
+        const val DEFAULT_SCREEN_W = 1080
+        const val DEFAULT_SCREEN_H = 2400
     }
 }

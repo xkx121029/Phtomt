@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.engine.TaskSession
 import com.phoneagent.ui.components.AppIconTile
+import com.phoneagent.ui.components.OverlayScrim
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.formatFileTime
@@ -113,7 +114,8 @@ internal fun AgentTaskDrawer(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.36f))
+                    // 与内嵌浮层共用同一层压暗底，避免抽屉自己调一个黑度
+                    .background(OverlayScrim)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,

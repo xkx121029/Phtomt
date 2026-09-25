@@ -1,7 +1,12 @@
 package com.phoneagent.ui.agent
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +45,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -586,12 +592,14 @@ internal fun AgentComposer(
 }
 
 /**
- * 动作模式切换条：贴在输入面正下方的一条，三档各配一个图标。
+ * 动作模式选择器：收起时只留一个档位按钮，点它从下往上拉出三档供选。
  *
- * 为什么落在这里而不是设置页：动作模式是"这一次任务允许 AI 做到哪一步"的决定，
- * 属于发任务时的上下文；藏进设置等于每改一次档都要离开任务页、改完再回来。
- * 所以它跟着输入栏走，且只在条上写"图标 + 档名"——各档差别由端侧门控与提示词负责解释，
- * 这里不摊开说明文字，免得把底部操作区顶高。
+ * 为什么不是三档全摆开：这行是输入栏的附属件，三个胶囊常驻会把底部操作区摊宽，
+ * 也会把"我现在处于哪一档"淹没在并排按钮里。收成一个按钮，"当前权限"一眼可见；
+ * 真要改档时再拉出来选——选择这件事才发生一次。
+ *
+ * 面板长在触发器正上方、同一块底部玻璃之内（与协助浮层同一种做法）：从下往上滑入，
+ * 玻璃板随之上抬，输入框不会被面板盖住，也不引入额外的弹窗窗口。
  *
  * 档位在任务开始时读取（见 AgentEngine.run），运行中改档不影响正在跑的任务，只对下一次生效。
  */
@@ -603,43 +611,119 @@ internal fun AgentModeBar(
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    Row(
+    var expanded by remember { mutableStateOf(false) }
+
+    // 只留底部内边距：输入面自己已经收了 12dp 的下边距，这里再加一段就会
+    // 把输入区与切换条撑成 24dp，破坏 dock 内统一的 12dp 节奏
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Md),
-        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = AgentGlassInnerPad)
+            .padding(bottom = AppSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
-        ActionMode.entries.forEach { mode ->
-            val selected = mode == current
-            val shape = RoundedCornerShape(AppRadii.Chip)
-            PressableScale(
-                onPress = buzz,
-                // 已选中的档位再点一次不重复落库：设置写盘是要钱的，别让白点变成白写
-                onClick = { if (!selected) onSelect(mode) },
+        AnimatedVisibility(
+            visible = expanded,
+            // 方向与"拉出来"一致：整块从下往上顶上来
+            enter = slideInVertically(tween(DurationFast, easing = EaseOut)) { it } +
+                fadeIn(tween(DurationFast, easing = EaseOut)),
+            exit = slideOutVertically(tween(DurationFast, easing = EaseOut)) { it } +
+                fadeOut(tween(DurationFast, easing = EaseOut)),
+        ) {
+            val sheetShape = RoundedCornerShape(AppRadii.Card)
+            Column(
                 modifier = Modifier
-                    .clip(shape)
-                    .background(if (selected) colors.brand else colors.surfaceSunken)
-                    .border(1.dp, if (selected) colors.brand else colors.outlineSoft, shape)
-                    .padding(horizontal = AppSpacing.Md, vertical = 6.dp),
+                    .fillMaxWidth()
+                    // 圆角裁在容器上：首尾两行的选中底色才不会溢出圆角
+                    .clip(sheetShape)
+                    .background(colors.surfaceRaised)
+                    .border(1.dp, colors.outlineSoft, sheetShape),
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = modeIcon(mode),
-                        // 图标与文字同义，读屏只念一次档名即可
-                        contentDescription = null,
-                        tint = if (selected) colors.onBrand else colors.onSurfaceRaised,
-                        modifier = Modifier.size(14.dp),
-                    )
-                    Text(
-                        text = mode.label,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (selected) colors.onBrand else MaterialTheme.colorScheme.onSurface,
-                    )
+                ActionMode.entries.forEach { mode ->
+                    val selected = mode == current
+                    PressableScale(
+                        onPress = buzz,
+                        onClick = {
+                            // 选中即收：拉出来只为了做这一次选择，选完不该继续占着版面
+                            if (!selected) onSelect(mode)
+                            expanded = false
+                        },
+                        // 底色与点击区都铺满整行，内边距交给内容层——否则可点范围会缩进一圈
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (selected) colors.brandContainer else Color.Transparent),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = modeIcon(mode),
+                                contentDescription = null,
+                                tint = if (selected) colors.onBrandContainer else colors.onSurfaceRaised,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = mode.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (selected) colors.onBrandContainer else MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = mode.summary,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.onSurfaceRaised,
+                                )
+                            }
+                            // 选中标记：档位名后面跟一个勾，比只靠底色更不依赖色彩分辨
+                            if (selected) {
+                                Icon(
+                                    imageVector = AppIcons.CheckCircle,
+                                    contentDescription = "当前档位",
+                                    tint = colors.brand,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+        }
+
+        // 触发器：图标 + 当前档名 + 朝向（收起时向上，表示"点它往上拉"）
+        // 高度与面板同族的触控尺度（8dp 内边距 + 16dp 图标 ≈ 34dp），既有实手感又不满占一行
+        val chipShape = RoundedCornerShape(AppRadii.Chip)
+        PressableScale(
+            onPress = buzz,
+            onClick = { expanded = !expanded },
+            modifier = Modifier
+                .clip(chipShape)
+                .background(colors.brandContainer)
+                .border(1.dp, colors.outlineSoft, chipShape),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = modeIcon(current),
+                    contentDescription = null,
+                    tint = colors.onBrandContainer,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = current.label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onBrandContainer,
+                )
+                Icon(
+                    imageVector = if (expanded) AppIcons.ChevronDown else AppIcons.ChevronUp,
+                    contentDescription = if (expanded) "收起档位选择" else "展开档位选择",
+                    tint = colors.onBrandContainer,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }

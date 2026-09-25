@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,14 +21,18 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +59,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.DurationInstant
 import com.phoneagent.ui.theme.DurationNormal
+import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.SpringConfigs
 import com.phoneagent.ui.theme.Warning
@@ -73,6 +82,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 导航栏隐藏时（全屏二级页、键盘弹出）由宿主提供 0，页面按原样铺满。
  */
 val LocalBottomNavClearance = staticCompositionLocalOf { 0.dp }
+
+/**
+ * 全局 Snackbar：宿主（MainActivity）注入，页面内直接取用。
+ *
+ * 项目铁律是不使用系统 Toast——它的字体、圆角、位置全由系统决定，
+ * 和页面里其余反馈不是一套语言。轻量反馈统一走「页面内浮条」。
+ */
+val LocalSnackbar = staticCompositionLocalOf<SnackbarState?> { null }
+
+/** 浮层遮罩：抽屉与内嵌浮层共用同一层压暗底，避免每个浮层自己调一个黑度 */
+val OverlayScrim: Color
+    @Composable get() = MaterialTheme.colorScheme.scrim.copy(alpha = 0.36f)
 
 /**
  * Button press feedback — scale(0.97) on press with critically-damped spring.
@@ -384,7 +405,7 @@ fun Modifier.skeleton(
         initialValue = 0.5f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 800, easing = EaseOut),
+            animation = tween(durationMillis = DurationPulse, easing = EaseOut),
         ),
     )
     return this
@@ -458,10 +479,10 @@ fun AppSnackbar(
     val data = state.current
     AnimatedVisibility(
         visible = data != null,
-        enter = fadeIn(tween(200, easing = EaseOut)) +
-            slideInVertically(tween(200, easing = EaseOut)) { it / 2 },
-        exit = fadeOut(tween(150, easing = EaseOut)) +
-            slideOutVertically(tween(150, easing = EaseOut)) { -it / 2 },
+        enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +
+            slideInVertically(tween(DurationNormal, easing = EaseOut)) { it / 2 },
+        exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
+            slideOutVertically(tween(DurationFast, easing = EaseOut)) { -it / 2 },
         modifier = modifier,
     ) {
         data?.let { snack ->
@@ -516,6 +537,77 @@ fun AppSnackbar(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 内嵌浮层：铺满父容器的一层压暗底 + 居中面板。
+ *
+ * 项目铁律是不使用系统 Dialog/AlertDialog：系统弹窗自带另一套字体、圆角与
+ * 窗口动画，一出现就把页面语言切断。需要「必须回应一次」的浮层一律用它，
+ * 长在页面内部——跟着页面走（切页/返回自然消失），不另开窗口。
+ *
+ * 用法：把宿主页面的根节点包成 Box，再把浮层作为 Box 的最后一个子项。
+ *
+ * @param fillHeight 面板是否撑满可用高度。内容里有 `weight(...)` 的长列表
+ *   （如模型选择弹层）必须打开：面板高度不定的情况下权重拿不到可分配空间。
+ *   短内容保持默认的「随内容收紧」，浮层才不会变成一块空板。
+ */
+@Composable
+fun InlineOverlay(
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxWidth: Dp = 460.dp,
+    fillHeight: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val reduceMotion = motionSettings().reduceMotion
+    // 与抽屉同一套做法：首帧就落位的话入场整段看不到，所以用 MutableTransitionState 起手
+    val state = remember { MutableTransitionState(false) }
+    LaunchedEffect(Unit) { state.targetState = true }
+
+    AnimatedVisibility(
+        visibleState = state,
+        enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +
+            slideInVertically(tween(DurationNormal, easing = EaseOut)) { full ->
+                if (reduceMotion) 0 else full / 12
+            },
+        exit = fadeOut(tween(DurationInstant, easing = EaseOut)),
+        modifier = modifier.fillMaxSize(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(OverlayScrim)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(AppRadii.Overlay),
+                color = AppTheme.colors.surfaceBase,
+                // 面板自身吃掉点击，避免点内容穿透到遮罩上被当成"点了外面"
+                modifier = Modifier
+                    .padding(AppSpacing.Lg)
+                    .fillMaxWidth()
+                    .widthIn(max = maxWidth)
+                    .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(AppSpacing.Lg),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+                    content = content,
+                )
             }
         }
     }

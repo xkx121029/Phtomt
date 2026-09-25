@@ -63,6 +63,7 @@ import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.overlay.FloatingUi
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -922,100 +923,83 @@ internal fun ModelPickerDialog(
     val buzz = rememberHapticClick()
     var query by remember { mutableStateOf("") }
     var manual by remember { mutableStateOf("") }
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
+    // 页内浮层，不用系统 Dialog：样式与技能编辑浮层同一套，跟着页面走
+    // 列表用 weight 撑开，所以面板要 fillHeight（高度不定时权重拿不到空间）
+    InlineOverlay(onDismiss = onDismiss, fillHeight = true) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            "选择模型库中的模型，或直接手填模型名（手填的能力徽章需要重新探测）",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            singleLine = true,
+            placeholder = { Text("筛选模型名") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val filtered = models.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp),
-            ) {
-                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
+            if (filtered.isEmpty()) {
                 Text(
-                    "选择模型库中的模型，或直接手填模型名（手填的能力徽章需要重新探测）",
-                    style = MaterialTheme.typography.bodySmall,
+                    if (models.isEmpty()) "模型库为空：先在「端点」里点「获取模型」"
+                    else "没有匹配的模型",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("筛选模型名") },
+            }
+            filtered.forEach { m ->
+                Surface(
+                    shape = RoundedCornerShape(AppRadii.Item),
+                    color = if (m.name == current) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                val filtered = models.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (filtered.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { buzz(); onPickModel(m) }
+                            .padding(AppSpacing.Md),
+                    ) {
+                        Text(m.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(AppSpacing.Xs))
+                        AbilityBadges(m.vision, m.tools)
+                        Spacer(Modifier.height(AppSpacing.Xs))
                         Text(
-                            if (models.isEmpty()) "模型库为空：先在「端点」里点「获取模型」"
-                            else "没有匹配的模型",
-                            style = MaterialTheme.typography.bodyMedium,
+                            endpointLabelOf(m),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    filtered.forEach { m ->
-                        Surface(
-                            shape = RoundedCornerShape(AppRadii.Item),
-                            color = if (m.name == current) MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { buzz(); onPickModel(m) }
-                                    .padding(12.dp),
-                            ) {
-                                Text(m.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                Spacer(Modifier.height(4.dp))
-                                AbilityBadges(m.vision, m.tools)
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    endpointLabelOf(m),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    OutlinedTextField(
-                        value = manual,
-                        onValueChange = { manual = it },
-                        singleLine = true,
-                        placeholder = { Text("手填模型名") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick = { buzz(); if (manual.isNotBlank()) onPickManual(manual.trim()) },
-                        enabled = manual.isNotBlank(),
-                    ) { Text("使用") }
-                }
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.TextButton(
-                    onClick = { buzz(); onDismiss() },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("关闭") }
             }
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = manual,
+                onValueChange = { manual = it },
+                singleLine = true,
+                placeholder = { Text("手填模型名") },
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = { buzz(); if (manual.isNotBlank()) onPickManual(manual.trim()) },
+                enabled = manual.isNotBlank(),
+            ) { Text("使用") }
+        }
+        androidx.compose.material3.TextButton(
+            onClick = { buzz(); onDismiss() },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("关闭") }
     }
 }

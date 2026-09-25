@@ -8,7 +8,6 @@ import com.phoneagent.ui.theme.EaseOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,7 +56,9 @@ import com.phoneagent.feature.test.TestStatus
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
+import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.TestDecision
 import com.phoneagent.ui.theme.TestFormat
@@ -89,15 +90,12 @@ internal fun ResultSummary(summary: com.phoneagent.feature.test.TestRunSummary, 
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("方案：${summary.presetName}", style = MaterialTheme.typography.titleMedium)
-                // 语言标签
-                Box(
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(vm.getLanguageLabel(lang), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                }
+                // 语言标签：与全站标签同一枚 StatusPill，不再自造一个 4dp 圆角的小方块
+                StatusPill(
+                    text = vm.getLanguageLabel(lang),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = AppSpacing.Xs),
+                )
             }
             if (err) {
                 Text("运行出错：${summary.error}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)

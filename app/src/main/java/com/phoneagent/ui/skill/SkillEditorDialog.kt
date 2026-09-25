@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,7 +51,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -67,8 +65,10 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -88,101 +88,96 @@ internal fun SkillEditorDialog(
     var legacyIntent by remember { mutableStateOf(initial?.legacyIntent ?: "") }
     var params by remember { mutableStateOf(initial?.params?.map { it.toDraft() } ?: emptyList<ParamDraft>()) }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxSize().padding(12.dp),
+    // 技能编辑器是一张长表单，用可滚动的页内浮层承载——不用系统 Dialog：
+    // 系统弹窗自带另一套字体、圆角与入场方式，和全站浮层不是一套语言
+    InlineOverlay(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    if (initial == null) "新增技能" else "编辑技能",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
+            Text(
+                if (initial == null) "新增技能" else "编辑技能",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
 
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    label = { Text("名称（必填，AI 与用户可见）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                // id：新建时展示建议值，编辑时只读
-                OutlinedTextField(
-                    value = suggestedId, onValueChange = {},
-                    label = { Text("ID（${if (initial == null) "将自动生成" else "不可修改"}）") },
-                    singleLine = true,
-                    enabled = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = category, onValueChange = { category = it },
-                    label = { Text("分类（如 自定义 / 系统 / 工具）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = desc, onValueChange = { desc = it },
-                    label = { Text("说明（喂给 AI 以决定何时调用）") },
-                    modifier = Modifier.fillMaxWidth().height(76.dp),
-                )
-                OutlinedTextField(
-                    value = legacyIntent, onValueChange = { legacyIntent = it },
-                    label = { Text("兼容旧命令意图（如 open_app，可留空）") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            OutlinedTextField(
+                value = name, onValueChange = { name = it },
+                label = { Text("名称（必填，AI 与用户可见）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // id：新建时展示建议值，编辑时只读
+            OutlinedTextField(
+                value = suggestedId, onValueChange = {},
+                label = { Text("ID（${if (initial == null) "将自动生成" else "不可修改"}）") },
+                singleLine = true,
+                enabled = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = category, onValueChange = { category = it },
+                label = { Text("分类（如 自定义 / 系统 / 工具）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = desc, onValueChange = { desc = it },
+                label = { Text("说明（喂给 AI 以决定何时调用）") },
+                modifier = Modifier.fillMaxWidth().height(76.dp),
+            )
+            OutlinedTextField(
+                value = legacyIntent, onValueChange = { legacyIntent = it },
+                label = { Text("兼容旧命令意图（如 open_app，可留空）") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
-                Text("参数（${params.size}）", style = MaterialTheme.typography.titleSmall)
-                if (params.isEmpty()) {
-                    Text("暂无参数。可点击下方「添加参数」为技能补充输入项。",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                } else {
-                    params.forEachIndexed { i, p ->
-                        SkillParamEditor(
-                            draft = p,
-                            onChange = { updated -> params = params.toMutableList().apply { this[i] = updated } },
-                            onDelete = { params = params.toMutableList().apply { removeAt(i) } },
+            Text("参数（${params.size}）", style = MaterialTheme.typography.titleSmall)
+            if (params.isEmpty()) {
+                Text("暂无参数。可点击下方「添加参数」为技能补充输入项。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                params.forEachIndexed { i, p ->
+                    SkillParamEditor(
+                        draft = p,
+                        onChange = { updated -> params = params.toMutableList().apply { this[i] = updated } },
+                        onDelete = { params = params.toMutableList().apply { removeAt(i) } },
+                    )
+                }
+            }
+            OutlinedButton(onClick = { params = params + ParamDraft() }, modifier = Modifier.fillMaxWidth()) {
+                Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(AppSpacing.Xs))
+                Text("添加参数")
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+                Button(
+                    enabled = name.isNotBlank(),
+                    onClick = {
+                        val skillParams = params.mapNotNull { it.toParam() }
+                        val base = initial?.copy(
+                            name = name.trim(),
+                            description = desc.trim(),
+                            category = category.trim().ifBlank { "自定义" },
+                            legacyIntent = legacyIntent.trim().ifBlank { null },
+                            params = skillParams,
+                        ) ?: Skill(
+                            id = suggestedId,
+                            name = name.trim(),
+                            description = desc.trim(),
+                            source = SkillSource.INTENT,
+                            category = category.trim().ifBlank { "自定义" },
+                            legacyIntent = legacyIntent.trim().ifBlank { null },
+                            params = skillParams,
+                            createdBy = "user",
                         )
-                    }
-                }
-                OutlinedButton(onClick = { params = params + ParamDraft() }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("添加参数")
-                }
-
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
-                    Button(
-                        enabled = name.isNotBlank(),
-                        onClick = {
-                            val skillParams = params.mapNotNull { it.toParam() }
-                            val base = initial?.copy(
-                                name = name.trim(),
-                                description = desc.trim(),
-                                category = category.trim().ifBlank { "自定义" },
-                                legacyIntent = legacyIntent.trim().ifBlank { null },
-                                params = skillParams,
-                            ) ?: Skill(
-                                id = suggestedId,
-                                name = name.trim(),
-                                description = desc.trim(),
-                                source = SkillSource.INTENT,
-                                category = category.trim().ifBlank { "自定义" },
-                                legacyIntent = legacyIntent.trim().ifBlank { null },
-                                params = skillParams,
-                                createdBy = "user",
-                            )
-                            onSave(base)
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) { Text("保存") }
-                }
+                        onSave(base)
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text("保存") }
             }
         }
     }

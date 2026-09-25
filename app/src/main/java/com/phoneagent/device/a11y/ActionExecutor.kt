@@ -40,6 +40,26 @@ data class NodeSelector(
 }
 
 /**
+ * 手势落点命中的控件（"这一下点到了谁"）。
+ *
+ * 点击前用它审计落点：落点与目标不是同一个控件时，能立刻分清是**选错/坐标偏了**
+ * （该重新定位）还是**控件本身无响应**（该换意图），而不是笼统报"未生效"。
+ */
+data class NodeHit(
+    /** 控件标签：自身文字/描述，没有则由后代文字拼出（与 [DerivedLabel] 同源） */
+    val label: String?,
+    val viewId: String?,
+    val className: String,
+    val clickable: Boolean,
+) {
+    /** 供日志与失败原因使用的中文描述 */
+    fun describe(): String {
+        val name = label?.takeIf { it.isNotBlank() } ?: viewId?.takeIf { it.isNotBlank() } ?: className
+        return "「$name」${if (clickable) "(可点击)" else "(不可点击)"}"
+    }
+}
+
+/**
  * 通过无障碍服务执行具体的屏幕动作。
  * 点击/滑动使用手势，返回键/主页/最近任务使用全局按键，文本输入使用 ACTION_SET_TEXT。
  */
@@ -100,34 +120,81 @@ class ActionExecutor(
 
     /** 在活节点树上按线索找目标控件：viewId → 文字精确 → 文字包含 → 位置兜底，逐级降级 */
     private fun findNode(root: AccessibilityNodeInfo, selector: NodeSelector): AccessibilityNodeInfo? {
-        val all = mutableListOf<AccessibilityNodeInfo>()
-        collectVisible(root, 0, all)
-        if (all.isEmpty()) return null
+        val all = collectVisibleNodes(root) ?: return null
 
         // 逐级降级：只有上一级完全没命中才启用下一级，避免"id 明明在、却被同文字的别的控件抢先"
         selector.viewId?.takeIf { it.isNotBlank() }?.let { id ->
             pickBy(all.filter { (it.viewIdResourceName ?: "").endsWith(id, ignoreCase = true) }, selector)?.let { return it }
         }
         selector.label?.trim()?.takeIf { it.isNotEmpty() }?.let { label ->
-            pickBy(all.filter { n -> textsOf(n).any { it.equals(label, ignoreCase = true) } }, selector)?.let { return it }
+            pickBy(labelCandidates(all, label, exact = true), selector)?.let { return it }
             // 容器自身没有文字、标签由后代拼出来的情况，只能按"包含"兜底
-            pickBy(all.filter { n -> textsOf(n).any { it.contains(label, ignoreCase = true) } }, selector)?.let { return it }
+            pickBy(labelCandidates(all, label, exact = false), selector)?.let { return it }
         }
         selector.centerHint?.let { hint ->
-            val rect = Rect()
-            pickBy(
-                all.filter { node ->
-                    node.getBoundsInScreen(rect)
-                    rect.contains(hint.first, hint.second)
-                },
-                selector,
-            )?.let { return it }
+            pickBy(NodesAtPoint.of(all, hint.first, hint.second), selector)?.let { return it }
         }
         return null
     }
 
+    /** 活节点树上的可见节点（遍历一次）；读不到节点树返回 null */
+    private fun collectVisibleNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo>? {
+        val all = mutableListOf<AccessibilityNodeInfo>()
+        collectVisible(root, 0, all)
+        return all.ifEmpty { null }
+    }
+
+    /**
+     * 按标签挑候选：节点的**自身**文字/描述，或**后代文字拼出的派生标签**（[DerivedLabel]）命中即可。
+     *
+     * 派生标签这一层不能少：可点击容器常常没有自己的文字（微信聊天列表行就是这样，标签挂在
+     * 不可点击的子控件上），元素树里 AI 看到的标签正是拼出来的那串。只比节点自身文字，
+     * 这类目标在活节点树上永远匹配不到，「节点直点」这一级就静默失效，退化成按坐标猜。
+     */
+    private fun labelCandidates(
+        all: List<AccessibilityNodeInfo>,
+        label: String,
+        exact: Boolean,
+    ): List<AccessibilityNodeInfo> = all.filter { node ->
+        val texts = textsOf(node) + listOfNotNull(DerivedLabel.of(node))
+        texts.any { if (exact) it.equals(label, ignoreCase = true) else it.contains(label, ignoreCase = true) }
+    }
+
     private fun textsOf(node: AccessibilityNodeInfo): List<String> =
         listOfNotNull(node.text?.toString(), node.contentDescription?.toString()).filter { it.isNotBlank() }
+
+    /**
+     * 目标控件**此刻**的中心点：把定位线索重新落到活节点树上，取命中节点自身的中心。
+     *
+     * 供上层在手势点击前取最新落点——AI 思考的数秒里页面可能已滚动/被顶动，
+     * 快照坐标早已偏离；活节点位置才是"现在它到底在哪"。
+     * 命中的是内层图标也无妨：其中心必然落在承接点击的祖先容器内。
+     */
+    fun liveCenter(selector: NodeSelector): Pair<Int, Int>? {
+        val root = service.rootInActiveWindow ?: return null
+        val node = findNode(root, selector) ?: return null
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.width() <= 0 || rect.height() <= 0) return null
+        return rect.centerX() to rect.centerY()
+    }
+
+    /**
+     * 落点审计：屏幕上承接 (x, y) 这一下的控件是谁（最内层、优先可点击）。
+     *
+     * 只读探测，不派发任何动作；读不到节点树时返回 null（调用方按"无法审计"处理）。
+     */
+    fun hitTest(x: Int, y: Int): NodeHit? {
+        val root = service.rootInActiveWindow ?: return null
+        val all = collectVisibleNodes(root) ?: return null
+        val node = pickBy(NodesAtPoint.of(all, x, y), NodeSelector(centerHint = x to y)) ?: return null
+        return NodeHit(
+            label = textsOf(node).firstOrNull() ?: DerivedLabel.of(node),
+            viewId = node.viewIdResourceName?.substringAfterLast('/'),
+            className = node.className?.toString() ?: "Unknown",
+            clickable = node.isClickable,
+        )
+    }
 
     private fun collectVisible(node: AccessibilityNodeInfo, depth: Int, out: MutableList<AccessibilityNodeInfo>) {
         if (depth > MAX_NODE_DEPTH || out.size >= MAX_COLLECT_NODES) return
@@ -420,5 +487,71 @@ class ActionExecutor(
 
         /** 活节点树单次遍历收录的节点数上限，防超长列表把遍历拖成秒级 */
         const val MAX_COLLECT_NODES = 800
+    }
+}
+
+/** "这一屏上压在某个点上的节点"的唯一判定点（位置兜底定位与落点审计共用） */
+internal object NodesAtPoint {
+    fun of(nodes: List<AccessibilityNodeInfo>, x: Int, y: Int): List<AccessibilityNodeInfo> {
+        val rect = Rect()
+        return nodes.filter { node ->
+            node.getBoundsInScreen(rect)
+            rect.contains(x, y)
+        }
+    }
+}
+
+/**
+ * 派生标签（容器标签）：可点击容器自身没有文字时，用后代文字拼一个标签
+ * （如微信聊天列表行 →「末影箱 / 测试消息 / 昨天」）。
+ *
+ * 感知层（[AgentAccessibilityService] 收录元素）与执行层（[ActionExecutor] 回到活节点树定位）
+ * **共用这一份定义**：两边各写一份的后果很实际——拼接规则稍有出入，元素树里 AI 看得见的标签
+ * 在执行层就永远匹配不到，点击只能退化成按坐标猜。
+ */
+internal object DerivedLabel {
+
+    /** 最多拼接的后代文字段数 / 总字数 / 递归深度：防止列表容器把整页文字拼成一大串 */
+    const val MAX_PARTS = 3
+    const val MAX_CHARS = 60
+    const val MAX_DEPTH = 3
+    const val SEPARATOR = " / "
+
+    /**
+     * 取容器的派生标签；自身已有文字、或不是可点击/可长按/可编辑的容器则返回 null
+     * （前者标签就是它自己，后者不是点击目标、不需要名字）。
+     *
+     * @param recycleChildren 取完是否回收子节点（API 33+ 框架自动回收）。感知层只取文字、之后
+     *   不再持有节点，传 true 避免 API<33 上的泄漏；执行层要把命中的**节点句柄**交给上层
+     *   performAction，一旦回收就会点到已失效的节点上，故必须传 false。
+     */
+    fun of(node: AccessibilityNodeInfo, recycleChildren: Boolean = false): String? {
+        val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        if (ownText != null || ownDesc != null) return null
+        if (!node.isClickable && !node.isLongClickable && !node.isEditable) return null
+        val parts = ArrayList<String>(MAX_PARTS)
+        collect(node, 0, parts, recycleChildren)
+        if (parts.isEmpty()) return null
+        val joined = parts.joinToString(SEPARATOR)
+        return if (joined.length > MAX_CHARS) joined.take(MAX_CHARS) else joined
+    }
+
+    private fun collect(
+        node: AccessibilityNodeInfo,
+        depth: Int,
+        out: MutableList<String>,
+        recycleChildren: Boolean,
+    ) {
+        if (depth >= MAX_DEPTH || out.size >= MAX_PARTS) return
+        for (i in 0 until node.childCount) {
+            if (out.size >= MAX_PARTS) return
+            val child = node.getChild(i) ?: continue
+            val text = child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            text?.let { out += it }
+            collect(child, depth + 1, out, recycleChildren)
+            if (recycleChildren && android.os.Build.VERSION.SDK_INT < 33) child.recycle()
+        }
     }
 }

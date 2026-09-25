@@ -79,6 +79,7 @@ import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
 import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarState
 import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.components.rememberHapticPress
@@ -324,7 +325,12 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                         .fillMaxSize()
                         .hazeSource(navGlass),
                 ) {
-                    CompositionLocalProvider(LocalBottomNavClearance provides navClearance) {
+                    CompositionLocalProvider(
+                        LocalBottomNavClearance provides navClearance,
+                        // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
+                        // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
+                        LocalSnackbar provides snackbarState,
+                    ) {
                         val currentExtras = extrasPage
                         if (currentExtras != null) {
                             // 全屏二级页：返回栏 + 对应页面
