@@ -155,19 +155,23 @@ fun GlassSurface(
     }
 }
 
-/** 页眉"浮起"前需要滚动的距离：滚过这么多就完全浮起，再滚也不会继续抬 */
+/** 页眉从"吸顶"过渡到"浮起"需要滚动的距离：滚过这么多就完全浮起，再滚也不会继续抬 */
 internal val HeaderLiftDistance = 48.dp
 
 /**
- * 页眉浮起时额外让出的上缘距离。
- *
- * 常态 12dp（[GlassHeaderInset]）只是"不贴着屏幕边"，读起来仍是一条吸顶横杠；
- * 再加 12dp 让它明显脱开上缘，才是一块悬在内容上方的浮板。
+ * 页眉浮起时在上缘额外让出的距离：完全浮起时上缘外边距是
+ * [GlassHeaderInset] + [HeaderLiftAmount]，吸顶时归 0。
  */
 internal val HeaderLiftAmount = 12.dp
 
 /**
- * 页眉浮起状态：页眉始终吸顶，但页面一旦离顶就自动脱开上缘多让一段距离。
+ * 页眉吸顶状态：**贴顶时是一条通栏直角的吸顶栏，离顶后才收成一块圆角浮板**。
+ *
+ * 两端形态由同一个 [progress] 插值出来（[sideInset] / [topInset] / [cornerRadius]），
+ * 中间态跟着手指连续变化，因此"到顶"这件事不需要单独判定一个布尔量：
+ * - progress = 0：页面就在最顶上，页眉背后没有任何内容，"浮板"没有存在理由，
+ *   只会在顶部平白多出一圈留白——于是左右不留白、上缘贴住内容区上沿、四角全直角；
+ * - progress = 1：页面已离顶，页眉真正压在滚动内容之上，才收成四角全圆的浮板。
  *
  * 离顶距离不去各页要——调试页与技能页的滚动容器藏在页签面板里，逐个透传会把改动
  * 摊到整棵组件树——改为从嵌套滚动里听：它自己就是一个 [NestedScrollConnection]，
@@ -183,10 +187,19 @@ class HeaderLiftState internal constructor(private val distancePx: Float) : Nest
     private var scrolled by mutableFloatStateOf(0f)
 
     /**
-     * 0f = 贴边吸顶；1f = 完全浮起。
+     * 0f = 贴顶吸顶（通栏直角）；1f = 完全浮起（圆角浮板）。
      * 直接跟着滚动量连续变化，不再补一层动画——补了反而会落后于手指。
      */
     val progress: Float get() = (scrolled / distancePx).coerceIn(0f, 1f)
+
+    /** 左右外边距：吸顶时 0（通栏到屏幕两沿），浮起时为 [GlassHeaderInset] */
+    val sideInset: Dp get() = GlassHeaderInset * progress
+
+    /** 上缘外边距：吸顶时 0（贴住内容区上沿），浮起时为 [GlassHeaderInset] + [HeaderLiftAmount] */
+    val topInset: Dp get() = (GlassHeaderInset + HeaderLiftAmount) * progress
+
+    /** 四角圆角：吸顶时 0（四角全直角），浮起时为 [AppRadii.Header] */
+    val cornerRadius: Dp get() = AppRadii.Header * progress
 
     override fun onPostScroll(
         consumed: Offset,
@@ -219,9 +232,11 @@ fun rememberHeaderLiftState(): HeaderLiftState {
 fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
 
 /**
- * 玻璃页眉板距屏幕左右（含上缘）的外边距，与 Agent 页顶栏同一套形态。
+ * 玻璃页眉板**浮起后**距屏幕左右（含上缘）的外边距；吸顶时这一段收为 0，页眉通栏。
  * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
  * 得把这段外边距从 [AppTopBar] 的 contentPadding 里减掉，见 [GlassHeaderInnerPad]。
+ * （吸顶时外边距为 0，标题会相应左移到 12dp 那条线上，这是"通栏"本身的形态：
+ * 通栏吸顶栏按惯例不保留页面留白，左右两沿直接顶到屏幕边。）
  */
 val GlassHeaderInset = AppSpacing.Md
 
