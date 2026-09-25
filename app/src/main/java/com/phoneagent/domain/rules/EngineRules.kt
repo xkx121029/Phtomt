@@ -89,6 +89,8 @@ object EngineRules {
         ActionType.SAY -> "说"
         ActionType.MCP_CALL -> "调用技能"
         ActionType.OPEN -> "打开链接/Scheme"
+        // 看图追问：由引擎就地调用视觉模型直出（同 browse_* 的做法，不设独立 ActionType）
+        IntentType.SEE -> "看图追问"
         // 内置浏览器的 6 个子操作：由 BrowserChannel 直出，不经转译层，故直接按意图名映射
         IntentType.BROWSE_OPEN -> "打开网页"
         IntentType.BROWSE_READ -> "抓取网页内容"

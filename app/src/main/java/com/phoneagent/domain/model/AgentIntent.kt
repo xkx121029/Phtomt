@@ -104,6 +104,7 @@ object IntentType {
     const val DEVICE_QUERY = "device_query" // 查询本机信息（kind=apps/time/battery/network/storage/all，filter 可选），纯本地读取、不操作设备
     const val SAY = "say"                 // 对用户说一句话（不操作设备，直接显示在任务流；支持 Markdown）
     const val SHOW_AGENT = "show_agent"   // 把用户引导回 Agent 页看结果（不操作设备；text=要全屏展示的 Markdown，summary=标题）
+    const val SEE = "see"                 // 看图追问（text=这次看图要回答什么，target 可选=要定位的目标），纯端侧视觉调用、不操作设备
     const val FETCH = "fetch"             // 获取网页/接口正文（uri），经转译层落到 Termux 命令行取数
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
@@ -143,7 +144,7 @@ object IntentType {
      */
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
-        SAY, SHOW_AGENT, FETCH, FINISH, GIVE_UP,
+        SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
@@ -173,5 +174,6 @@ object IntentType {
         A11Y to ActionType.A11Y_CALL,
         // 6 个浏览意图（browse_*）不在此表：它们走内置浏览器通道（BrowserChannel），
         // 由 DOM 脚本直接落地，不经过转译层，也不产生 ActionType。
+        // see 同理：由 AgentEngine 就地调用视觉模型（端侧代办、不触碰设备），不经过转译层。
     )
 }

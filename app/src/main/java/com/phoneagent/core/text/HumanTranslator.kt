@@ -39,6 +39,7 @@ object HumanTranslator {
         "device_query" to "查询本机",
         "mcp_call" to "调用技能",
         "say" to "说",
+        "see" to "看图追问",
     )
 
     /** 异常技术描述 → 人话 */

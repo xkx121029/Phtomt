@@ -42,11 +42,11 @@ export const PUBLIC_ENDPOINTS = [
   { method: 'GET', path: '/api/roadmap', desc: '路线图：阶段与条目' },
   { method: 'GET', path: '/api/stats', desc: '下载统计：总量 / 分版本 / 近 14 天' },
   { method: 'GET', path: '/api/routes', desc: '站点路由表与端点清单' },
-  { method: 'GET', path: '/api/ai/status', desc: '站点问答是否可用，以及助手名、开场白与推荐提问' },
+  { method: 'GET', path: '/api/ai/status', desc: '站点问答是否可用，以及助手名、开场白、推荐提问与是否允许带路' },
   {
     method: 'POST',
     path: '/api/ai/chat',
-    desc: '站点问答：请求体 { messages: [{ role: "user" | "assistant", content }] }，以 SSE 流式返回 delta / done / error'
+    desc: '站点问答：请求体 { messages: [{ role: "user" | "assistant", content }] }，以 SSE 流式返回 delta / done / error。回答里的 [[go:<路径>|<去处名>]] 是站内引导标记，由前端解析后直接跳转'
   },
   { method: 'GET', path: '/api/openapi', desc: 'OpenAPI 3.1 规范（机器可读）' },
   { method: 'GET', path: '/api/download/latest', desc: '重定向到最新版 APK' },
@@ -96,5 +96,7 @@ export const ADMIN_ENDPOINTS = [
   { method: 'GET', path: '/api/admin/ai', desc: 'AI 问答配置（密钥打码，只回指纹）与知识库规模' },
   { method: 'PUT', path: '/api/admin/ai', desc: '保存 AI 问答配置；apiKey 留空表示不修改，clearKey=true 表示清除' },
   { method: 'POST', path: '/api/admin/ai/test', desc: '用当前表单值测一次连通性，返回延迟与模型回复' },
-  { method: 'POST', path: '/api/admin/ai/preview', desc: '预览一次提问实际注入给模型的项目资料与命中的来源' }
+  { method: 'POST', path: '/api/admin/ai/preview', desc: '预览一次提问实际注入给模型的项目资料与命中的来源' },
+  { method: 'GET', path: '/api/admin/ai/logs', desc: '问答留痕：访客提问与回答（IP 已打码），支持 ?q=&page=&size=' },
+  { method: 'DELETE', path: '/api/admin/ai/logs', desc: '清空问答留痕' }
 ]

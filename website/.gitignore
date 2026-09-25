@@ -12,3 +12,5 @@ server/data/audit.json
 server/data/admin.json
 # AI 问答配置，里面有一把模型 API Key。同样绝不能入库
 server/data/ai.json
+# 问答留痕：访客提问与回答的原文，属于访客内容，不入库
+server/data/ai-log.json

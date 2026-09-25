@@ -13,8 +13,12 @@ const isAdmin = computed(() => route.matched.some((r) => r.meta?.admin))
 // 独立问答页里已经有一整块对话，右下角再挂一个入口就是重复
 const showDock = computed(() => !isAdmin.value && route.name !== 'ask')
 
-const { loadStatus } = useAssistant()
-onMounted(() => loadStatus())
+const { loadStatus, restore } = useAssistant()
+onMounted(() => {
+  // 先把上次的对话接回来再探状态：反过来的话，探测失败也不会影响已经读出来的历史
+  restore()
+  loadStatus()
+})
 
 // 卡片悬停微倾斜：文档级代理，路由切换后新渲染的卡片也照样覆盖
 useCardTilt()

@@ -42,6 +42,12 @@ object SkillCompat {
         data class Intent(val intent: AgentIntent) : Normalized()
         /** MCP 技能：由 MCP 客户端就地调用，不产生设备动作 */
         data class Mcp(val skill: Skill, val target: McpSkillTarget, val args: Map<String, String>) : Normalized()
+        /**
+         * 看图追问：由引擎就地调用视觉模型（带着 [question] 这句目的），回答回注下一轮决策。
+         * 与 [Mcp] 同类——端侧代办、不触碰设备，故不产生设备动作；
+         * [target] 非空时要求视觉模型额外返回该目标的坐标。
+         */
+        data class Vision(val skill: Skill, val question: String, val target: String?) : Normalized()
         /** 拒绝执行，附中文原因（未知技能 / 已停用 / 缺必填参数） */
         data class Error(val reason: String) : Normalized()
     }
@@ -66,6 +72,21 @@ object SkillCompat {
         }
         if (!skill.enabled) {
             return Normalized.Error("技能「${skill.name}」已停用，无法调用；请换用其他方式，或让用户在「技能与能力」页启用后重试。")
+        }
+        // 看图追问：端侧就地调用视觉模型（不操作设备、不产生 AgentAction），因此不走意图转译映射。
+        // 问题优先取扁平字段 text，兼容 args 写法；问题为空等同于缺必填参数，回注原因让 AI 补全。
+        if (skill.legacyIntent == IntentType.SEE) {
+            val question = intent.text?.trim().orEmpty()
+                .ifBlank { intent.args?.get("text")?.trim().orEmpty() }
+            if (question.isBlank()) {
+                return Normalized.Error(
+                    "「看图追问」缺少必填参数「问题」：请用 text 说明这次看图要回答什么，" +
+                        "例如 {\"intent\":\"see\",\"text\":\"图中转盘指针指向哪个扇区\"}。",
+                )
+            }
+            val target = intent.target?.value?.trim().orEmpty()
+                .ifBlank { intent.args?.get("target")?.trim().orEmpty() }
+            return Normalized.Vision(skill, question, target.ifBlank { null })
         }
         return when (skill.source) {
             SkillSource.MCP -> {

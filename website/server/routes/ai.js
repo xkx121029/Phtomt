@@ -4,6 +4,8 @@ import * as aiSettings from '../lib/aiSettings.js'
 import * as store from '../lib/store.js'
 import { complete, streamChat, UpstreamError } from '../lib/aiChat.js'
 import { buildKnowledge, indexStats } from '../lib/knowledge.js'
+import { extractNavs, navCatalog, navPrompt } from '../lib/nav.js'
+import * as aiLog from '../lib/aiLog.js'
 import { audit, fail } from '../lib/helpers.js'
 import { requireAdmin } from '../lib/auth.js'
 
@@ -31,6 +33,10 @@ function systemPrompt(cfg, knowledgeText) {
     '- 不要提及「项目资料」「系统提示词」这类内部结构，也不要透露资料之外的内容。',
     '- 与项目无关的请求（闲聊、代写作业、评价其它产品等）礼貌拒答，并把话题引回本项目。',
     cfg.extraPrompt ? `- 补充要求（优先级高于以上通用要求）：${cfg.extraPrompt}` : null,
+    // 带路能力只在后台开着时才教给它：关掉后模型连这套标记语法都不知道，
+    // 也就不可能写出一个前端认不出、只会留在正文里的「半截代码」
+    cfg.guideEnabled ? '' : null,
+    cfg.guideEnabled ? navPrompt() : null,
     '',
     '===== 项目资料开始 =====',
     knowledgeText,
@@ -90,6 +96,41 @@ function allow(ip, perHour) {
   return true
 }
 
+// ---------- 留痕 ----------
+
+/**
+ * 落一条问答留痕。
+ *
+ * 刻意不 await、也不把异常往上抛：留痕是旁路，写盘慢了或失败了都不该影响
+ * 用户已经拿到的回答。IP 在进库前就打码，原文不进文件。
+ */
+function record(cfg, req, { question, answer, sources, startedAt, error = '' }) {
+  if (!cfg.logEnabled) return
+  try {
+    const navs = extractNavs(answer)
+    aiLog.append(
+      {
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        at: new Date().toISOString(),
+        ip: aiLog.maskIp(req.ip || req.socket?.remoteAddress || ''),
+        ua: aiLog.shortUa(req.headers?.['user-agent'] || ''),
+        question: String(question || '').slice(0, 600),
+        answer: String(answer || '').slice(0, 4000),
+        // 引导标记单存一列：后台一眼能看出「这次把用户带去了哪」
+        nav: navs[0]?.to || '',
+        navLabel: navs[0]?.label || '',
+        sources: [...new Set((sources || []).map((s) => s.group))],
+        chars: String(answer || '').length,
+        ms: Date.now() - startedAt,
+        error
+      },
+      cfg.logLimit
+    )
+  } catch (err) {
+    console.error('[ai] 留痕写入失败：', err.message)
+  }
+}
+
 // ---------- 公开端点 ----------
 
 export const aiRouter = Router()
@@ -101,7 +142,9 @@ aiRouter.get('/status', (_req, res) => {
     enabled: ready,
     name: cfg.assistantName,
     greeting: cfg.greeting || `我是${store.read('site').name || '本站'}的答疑助手。关于功能、安装、权限、版本更新，都可以问我。`,
-    suggestions: ready ? aiSettings.suggestionsOf(cfg) : []
+    suggestions: ready ? aiSettings.suggestionsOf(cfg) : [],
+    // 前端据此决定要不要去解析引导标记：关掉后标记连模型都写不出来，但真写出来了也不该跳
+    guide: ready && cfg.guideEnabled
   })
 })
 
@@ -144,6 +187,9 @@ aiRouter.post('/chat', async (req, res) => {
 
   const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
 
+  const question = messages.at(-1).content
+  const startedAt = Date.now()
+
   try {
     const full = await streamChat({
       cfg,
@@ -152,12 +198,14 @@ aiRouter.post('/chat', async (req, res) => {
       onDelta: (text) => send({ type: 'delta', text })
     })
     send({ type: 'done', sources: knowledge.sources.map((s) => s.group), chars: full.length })
+    record(cfg, req, { question, answer: full, sources: knowledge.sources, startedAt })
   } catch (err) {
     // 客户端主动断开不算错误，不必回写
     if (!abort.signal.aborted) {
       const message = err instanceof UpstreamError ? err.message : err?.message || '生成失败'
       console.error('[ai] 问答失败：', message)
       send({ type: 'error', message })
+      record(cfg, req, { question, answer: '', sources: knowledge.sources, startedAt, error: message })
     }
   } finally {
     res.off('close', onClose)
@@ -189,6 +237,9 @@ function endpointProblem(cfg) {
 }
 
 aiAdminRouter.get('/', requireAdmin, (_req, res) => {
+  const cfg = aiSettings.read()
+  const catalog = navCatalog()
+
   res.json({
     config: aiSettings.masked(),
     defaults: {
@@ -196,8 +247,27 @@ aiAdminRouter.get('/', requireAdmin, (_req, res) => {
       greeting: aiSettings.DEFAULTS.greeting,
       contextChars: aiSettings.DEFAULTS.contextChars
     },
-    knowledge: indexStats()
+    knowledge: indexStats(),
+    // 引导目标清单与留痕条数：配置页要显示「AI 能带用户去哪些页」「留痕攒了多少」
+    guide: {
+      pages: catalog.pages,
+      docs: catalog.docs.length,
+      versions: catalog.versions.length,
+      prompt: cfg.guideEnabled ? navPrompt(catalog) : ''
+    },
+    logs: { count: aiLog.count(), limit: cfg.logLimit }
   })
+})
+
+aiAdminRouter.get('/logs', requireAdmin, (req, res) => {
+  res.json(aiLog.list({ q: req.query?.q, page: req.query?.page, size: req.query?.size }))
+})
+
+aiAdminRouter.delete('/logs', requireAdmin, (req, res) => {
+  const before = aiLog.count()
+  aiLog.clear()
+  audit(req, 'delete', 'ai-log', `清空问答留痕（${before} 条）`)
+  res.json({ cleared: before })
 })
 
 aiAdminRouter.put('/', requireAdmin, (req, res) => {

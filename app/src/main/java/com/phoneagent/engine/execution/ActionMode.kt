@@ -87,12 +87,12 @@ object ActionPolicy {
     }
 
     /**
-     * 低风险意图（21 项）：不改变设备/外部状态，或只做本地读写与只读浏览。
+     * 低风险意图（22 项）：不改变设备/外部状态，或只做本地读写与只读浏览。
      * 保守模式只放行这一档。
      */
     val lowRisk: Set<String> = setOf(
-        // 纯本地：等待 / 说话 / 记忆 / 查设备 / 生成文档 / 引导用户回来看结果 / 收尾
-        IntentType.WAIT, IntentType.SAY, IntentType.REMEMBER, IntentType.DEVICE_QUERY,
+        // 纯本地：等待 / 说话 / 记忆 / 查设备 / 看图追问 / 生成文档 / 引导用户回来看结果 / 收尾
+        IntentType.WAIT, IntentType.SAY, IntentType.REMEMBER, IntentType.DEVICE_QUERY, IntentType.SEE,
         IntentType.WRITE_DOC, IntentType.SHOW_AGENT, IntentType.FINISH, IntentType.GIVE_UP,
         // 纯导航与视图滚动（不触发任何按钮）
         IntentType.SWIPE, IntentType.SCROLL_TO, IntentType.PRESS,

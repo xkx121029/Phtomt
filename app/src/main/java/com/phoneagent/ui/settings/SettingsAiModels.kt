@@ -256,10 +256,8 @@ internal fun SettingsAiModels(
                                                                 probedAt = System.currentTimeMillis(),
                                                             )
                                                         }
-                                                        // 主槽同名模型被证实能识图 → 单向打开视觉理解（反向不自动关，尊重用户手改）
-                                                        if (ability.vision == true && st.model.trim() == m.name) {
-                                                            st.hasVision = true
-                                                        }
+                                                        // 这里不再顺手改写"视觉理解"档位：三态下的「自动」本就看探测结果，
+                                                        // 再写一手会在用户明确选了「强制关」时把设置偷偷翻回去
                                                         ability.note.ifBlank { "探测完成" }
                                                     },
                                                     onFailure = { it.message ?: "探测失败" },
@@ -356,13 +354,26 @@ internal fun SettingsAiModels(
         GroupCard {
             GroupHeader("功能选项")
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                ToggleRow("启用视觉理解", "结合截图理解图片、图表等元素树无法表达的内容", st.hasVision) { st.hasVision = it }
-                Spacer(Modifier.height(4.dp))
+                Text("主模型识图", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(2.dp))
                 Text(
-                    "由所选主模型的能力徽章判定，可手动覆盖：主模型能识图时，每步会直接把截图交给它",
+                    "自动 = 按模型库的探测结果决定：探测出能识图才把截图交给主模型，探测不出按不支持处理；" +
+                        "强制开/关是你说了算，探测不参与",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(8.dp))
+                val mainVisionModes = listOf("自动" to "AUTO", "强制开" to "ON", "强制关" to "OFF")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    mainVisionModes.forEachIndexed { i, (label, key) ->
+                        SegmentedButton(
+                            selected = st.mainVisionMode == key,
+                            onClick = { buzz(); st.mainVisionMode = key },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = mainVisionModes.size),
+                            label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 ToggleRow(
                     "主模型识图时跳过视觉描述",

@@ -36,6 +36,9 @@ const form = reactive({
   contextChars: 24000,
   historyTurns: 6,
   rateLimitPerHour: 30,
+  guideEnabled: true,
+  logEnabled: true,
+  logLimit: 500,
   assistantName: '项目助手',
   greeting: '',
   suggestions: '',
@@ -45,6 +48,8 @@ const form = reactive({
 const base = ref(null)
 const defaults = ref({ suggestions: [], greeting: '', contextChars: 24000 })
 const knowledge = ref({})
+const guide = ref({ pages: [], docs: 0, versions: 0, prompt: '' })
+const logs = ref({ count: 0, limit: 500 })
 const loading = ref(true)
 const saving = ref(false)
 const testing = ref(false)
@@ -106,6 +111,8 @@ async function reload() {
     base.value = payload.config
     defaults.value = payload.defaults
     knowledge.value = payload.knowledge || {}
+    guide.value = payload.guide || { pages: [], docs: 0, versions: 0, prompt: '' }
+    logs.value = payload.logs || { count: 0, limit: 500 }
     fill(payload.config)
     clearKey.value = false
     testResult.value = null
@@ -153,6 +160,9 @@ async function save() {
       contextChars: Number(form.contextChars),
       historyTurns: Number(form.historyTurns),
       rateLimitPerHour: Number(form.rateLimitPerHour),
+      guideEnabled: Boolean(form.guideEnabled),
+      logEnabled: Boolean(form.logEnabled),
+      logLimit: Number(form.logLimit),
       assistantName: form.assistantName,
       greeting: form.greeting,
       suggestions: form.suggestions,
@@ -361,7 +371,70 @@ onMounted(reload)
         </div>
       </section>
 
-      <!-- 4. 知识注入 -->
+      <!-- 4. 带路与留痕 -->
+      <section class="card block">
+        <h2 class="block__title">带路与留痕</h2>
+
+        <label class="switch">
+          <input v-model="form.guideEnabled" type="checkbox" />
+          <span class="switch__track" aria-hidden="true"></span>
+          <span class="switch__text">
+            <strong>允许 AI 直接带路</strong>
+            <em>
+              需要让用户去看某个页面时，AI 会在回答里写下引导标记，浏览器识别到就立刻跳过去，
+              不需要用户再点一次。关掉后模型连这套语法都不会被告知。
+            </em>
+          </span>
+        </label>
+
+        <div v-if="form.guideEnabled" class="roads">
+          <p class="muted small">能被带去的地方只有这些，路径全部来自站点路由表，不会指向不存在的地址：</p>
+          <ul class="roads__list">
+            <li v-for="page in guide.pages" :key="page.path" class="roads__item">
+              <span class="mono roads__path">{{ page.path }}</span>
+              <span class="roads__title">{{ page.title }}</span>
+            </li>
+            <li class="roads__item roads__item--more">
+              另有 <span class="mono">/docs/&lt;slug&gt;</span>（{{ guide.docs }} 篇）与
+              <span class="mono">/changelog/&lt;version&gt;</span>（{{ guide.versions }} 个版本）
+            </li>
+          </ul>
+          <details class="roads__raw">
+            <summary>看看实际教给模型的带路规则</summary>
+            <pre class="code preview">{{ guide.prompt }}</pre>
+          </details>
+        </div>
+
+        <label class="switch">
+          <input v-model="form.logEnabled" type="checkbox" />
+          <span class="switch__track" aria-hidden="true"></span>
+          <span class="switch__text">
+            <strong>记录问答留痕</strong>
+            <em>
+              把访客的提问与回答存一份到服务端，用来看大家真正关心什么，好回头补 FAQ 与文档。
+              访客内容会因此离开浏览器，不需要就在这里关掉。IP 进库前已打码。
+            </em>
+          </span>
+        </label>
+
+        <div v-if="form.logEnabled" class="fields">
+          <label class="field">
+            <span>留痕上限</span>
+            <input v-model.number="form.logLimit" class="input mono" type="number" min="50" max="5000" step="50" />
+            <span class="hint">
+              50~5000 条，满了丢最旧的。这是个环形缓冲而不是档案库；当前已存
+              <span class="mono">{{ logs.count }}</span> 条。
+            </span>
+          </label>
+        </div>
+
+        <p class="muted small">
+          <RouterLink to="/admin/ai-log">打开问答留痕</RouterLink>
+          ——可以按关键词搜访客问了什么，也能一键清空。
+        </p>
+      </section>
+
+      <!-- 5. 知识注入 -->
       <section class="card block">
         <h2 class="block__title">知识注入</h2>
         <p class="muted small">
@@ -636,6 +709,69 @@ onMounted(reload)
   margin: 0;
   font-size: 0.78rem;
   line-height: 1.75;
+}
+
+/* ---------- 带路目标清单 ---------- */
+
+.roads {
+  display: grid;
+  gap: 10px;
+}
+
+.roads__list {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--line);
+}
+
+.roads__item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--paper-raised);
+  font-size: var(--t-sm);
+}
+
+.roads__item--more {
+  display: block;
+  color: var(--ink-2);
+  font-size: var(--t-xs);
+}
+
+.roads__path {
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--brand);
+}
+
+.roads__title {
+  color: var(--ink-2);
+}
+
+.roads__raw summary {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.roads__raw summary:hover {
+  color: var(--brand);
+}
+
+.roads__raw .preview {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-sunken);
+  max-height: 300px;
 }
 
 /* ---------- 消息条 ---------- */

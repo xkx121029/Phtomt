@@ -162,7 +162,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var baseUrl by mutableStateOf(initial.apiBaseUrl)
     var apiKey by mutableStateOf(initial.apiKey)
     var model by mutableStateOf(initial.model)
-    var hasVision by mutableStateOf(initial.hasVision)
+    /** 主模型识图三态：AUTO/ON/OFF，判定口径见 com.phoneagent.core.ai.VisionRouting */
+    var mainVisionMode by mutableStateOf(initial.mainVisionMode)
     var maxSteps by mutableIntStateOf(initial.maxSteps)
     var attachScreenshot by mutableStateOf(initial.attachScreenshot)
     var promptLanguage by mutableStateOf(initial.promptLanguage)
@@ -208,7 +209,7 @@ class SettingsState(initial: AppSettings.Settings) {
         baseUrl = s.apiBaseUrl
         apiKey = s.apiKey
         model = s.model
-        hasVision = s.hasVision
+        mainVisionMode = s.mainVisionMode
         maxSteps = s.maxSteps
         attachScreenshot = s.attachScreenshot
         promptLanguage = s.promptLanguage
@@ -276,7 +277,7 @@ class SettingsState(initial: AppSettings.Settings) {
         apiBaseUrl = baseUrl,
         apiKey = apiKey,
         model = model,
-        hasVision = hasVision,
+        mainVisionMode = mainVisionMode,
         maxSteps = maxSteps,
         attachScreenshot = attachScreenshot,
         promptLanguage = promptLanguage,

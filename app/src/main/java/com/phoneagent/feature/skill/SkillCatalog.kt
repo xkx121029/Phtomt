@@ -190,6 +190,18 @@ object SkillCatalog {
                 ),
             ),
         )
+        put(
+            IntentType.SEE, Skill(
+                id = "skill_see", name = "看图追问", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "取数", legacyIntent = IntentType.SEE,
+                description = "就当前屏幕截图向视觉模型提一个问题（问题要写成一句明确的目的，如「给出图中轮盘指针指向的扇区」）；" +
+                    "回答作为「上一步结果」回注下一步。元素树读不到目标、需要判断画面内容/位置时用它。",
+                params = listOf(
+                    SkillParam("text", "问题", "text", required = true, description = "这次看图要回答什么，一句话（如「图里哪个是确认按钮」）"),
+                    SkillParam("target", "目标", "text", description = "可选：要定位的具体目标文字，给了就返回它的坐标"),
+                ),
+            ),
+        )
         // ---- 内置浏览器（WebView 后台静默加载，内容用 browse_read 读）----
         put(
             IntentType.BROWSE_OPEN, Skill(

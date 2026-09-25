@@ -26,7 +26,11 @@ class AppSettings(private val context: Context) {
         val apiBaseUrl: String = GlmDefaults.BASE_URL,
         val apiKey: String = "",
         val model: String = GlmDefaults.MODEL,
-        val hasVision: Boolean = false,
+        /**
+         * 主模型「能不能直接读图」的三态：AUTO=按模型库的真实探测结果决定（探测不出即不发图）；
+         * ON/OFF=用户强制覆盖，探测不参与。判定收口在 [com.phoneagent.core.ai.VisionRouting]。
+         */
+        val mainVisionMode: String = "AUTO",
         val temperature: Double = 0.4,
         /** 最大运行步数，0 表示不设限 */
         val maxSteps: Int = 0,
@@ -100,6 +104,9 @@ class AppSettings(private val context: Context) {
         val BASE_URL = stringPreferencesKey("api_base_url")
         val API_KEY = stringPreferencesKey("api_key")
         val MODEL = stringPreferencesKey("model")
+        /** 主模型识图三态（AUTO/ON/OFF），见 [Settings.mainVisionMode] */
+        val MAIN_VISION_MODE = stringPreferencesKey("main_vision_mode")
+        /** 旧版手填布尔「启用视觉理解」——**仅用于迁移**（true→ON，false/未写→AUTO），不再写入 */
         val HAS_VISION = booleanPreferencesKey("has_vision")
         val TEMPERATURE = doublePreferencesKey("temperature")
         val MAX_STEPS = intPreferencesKey("max_steps")
@@ -178,7 +185,9 @@ class AppSettings(private val context: Context) {
             apiBaseUrl = apiBaseUrl,
             apiKey = apiKey,
             model = model,
-            hasVision = prefs[Keys.HAS_VISION] ?: false,
+            // 迁移：老用户勾过「启用视觉理解」的迁到 ON（明确覆盖）；没勾过的落到 AUTO，改由模型库探测结果决定
+            mainVisionMode = prefs[Keys.MAIN_VISION_MODE]
+                ?: if (prefs[Keys.HAS_VISION] == true) "ON" else "AUTO",
             temperature = prefs[Keys.TEMPERATURE] ?: 0.4,
             maxSteps = prefs[Keys.MAX_STEPS] ?: 0,
             attachScreenshot = prefs[Keys.SCREENSHOT] ?: true,
@@ -229,7 +238,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.BASE_URL] = settings.apiBaseUrl.trim().trimEnd('/')
             prefs[Keys.API_KEY] = settings.apiKey.trim()
             prefs[Keys.MODEL] = settings.model.trim()
-            prefs[Keys.HAS_VISION] = settings.hasVision
+            prefs[Keys.MAIN_VISION_MODE] = settings.mainVisionMode
             prefs[Keys.TEMPERATURE] = settings.temperature
             prefs[Keys.MAX_STEPS] = settings.maxSteps
             prefs[Keys.SCREENSHOT] = settings.attachScreenshot

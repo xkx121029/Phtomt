@@ -16,7 +16,7 @@ defineProps({
   variant: { type: String, default: 'dock' }
 })
 
-const { messages, status, sending, available, ask, stop, reset } = useAssistant()
+const { messages, status, sending, available, ask, stop, reset, backFromNav } = useAssistant()
 
 const draft = ref('')
 const scroller = ref(null)
@@ -83,6 +83,16 @@ function onKeydown(event) {
             <MarkdownBody v-else-if="m.content" :source="m.content" />
             <p v-if="m.state === 'error'" class="turn__error">{{ m.error }}</p>
           </div>
+
+          <!-- 带路回执。跳转是自动发生的，用户一眨眼就换了页面，
+               不留一行说明的话，他会以为是网站自己乱跳。 -->
+          <p v-if="m.visited && m.nav" class="turn__go">
+            <span class="turn__go-mark" aria-hidden="true">↗</span>
+            <span class="turn__go-text">已带你到「{{ m.nav.label || m.nav.to }}」</span>
+            <button v-if="m.navFrom" class="turn__go-back" type="button" @click="backFromNav(m)">
+              回到原处
+            </button>
+          </p>
         </li>
       </ol>
     </div>
@@ -111,7 +121,7 @@ function onKeydown(event) {
     </div>
 
     <p class="foot">
-      <span>回答由 AI 依据站内资料生成，关键信息请以文档与仓库为准。</span>
+      <span>回答由 AI 依据站内资料生成，关键信息请以文档与仓库为准；需要时会直接带你到相关页面。</span>
       <button v-if="!isEmpty" class="foot__reset" type="button" @click="reset">清空</button>
     </p>
   </div>
@@ -260,6 +270,58 @@ function onKeydown(event) {
   font-size: var(--t-xs);
   line-height: 1.7;
   word-break: break-word;
+}
+
+/* 带路回执：不做成提示条，避免和错误行抢同一套「彩色横条」的语感。
+   它是一个事实陈述，所以只给一个小标记 + 一句淡文字。 */
+.turn__go {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 12px;
+  border-radius: var(--r-pill);
+  background: var(--brand-wash);
+  font-size: var(--t-xs);
+  color: var(--ink-2);
+}
+
+.turn__go-mark {
+  flex: none;
+  color: var(--brand-strong);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+[data-theme="dark"] .turn__go-mark {
+  color: var(--brand);
+}
+
+.turn__go-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.turn__go-back {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--brand-strong);
+  font-size: var(--t-xs);
+  cursor: pointer;
+  transition: color var(--dur-ui) ease;
+}
+
+[data-theme="dark"] .turn__go-back {
+  color: var(--brand);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .turn__go-back:hover {
+    text-decoration: underline;
+  }
 }
 
 /* 生成中的三点：不用旋转圈——那是「加载中」，这里要表达的是「正在写」 */

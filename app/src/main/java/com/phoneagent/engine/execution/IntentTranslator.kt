@@ -534,6 +534,7 @@ class IntentTranslator(
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，
         // 不依赖无障碍/Shizuku/Termux，也不产生 ActionType。
+        // see（看图追问）同理：由引擎就地调用视觉模型，不产生设备动作，故不在此表。
         // 收尾
         put(IntentType.FINISH, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.summary ?: "任务完成") })
         put(IntentType.GIVE_UP, passthrough(ActionType.TASK_DONE) { i, a -> a.copy(summary = i.reason ?: "已放弃任务") })

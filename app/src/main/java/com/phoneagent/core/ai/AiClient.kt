@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.util.Base64
 import android.util.Log
 import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.IntentType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -138,12 +139,18 @@ class AiClient(
             return MODEL_NAME_ERROR_HINTS.any { lower.contains(it) }
         }
 
-        /** AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL） */
+        /**
+         * AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL）。
+         *
+         * intent 的 enum 由 [IntentType.ALL] 现场生成，**不手抄**：这份表曾因手抄而落后于意图全集
+         * （缺 remember/device_query/say/show_agent/fetch/6 个 browse_*/shell/a11y），
+         * 结果是"结构化回退"这条路上新意图被 schema 直接判非法。唯一定义点在 [IntentType.ALL]。
+         */
         private val ACTION_SCHEMA = """
         {
           "type": "object",
           "properties": {
-            "intent": { "type": "string", "enum": ["open_app","open","tap","long_press","input","swipe","press","wait","scroll_to","write_doc","finish","give_up","back","home","refresh","search","send","confirm","close","share","collect","copy","delete","download","add","switch","clear_input"] },
+            "intent": { "type": "string", "enum": [${IntentType.ALL.joinToString(",") { "\"$it\"" }}] },
             "target": {
               "type": "object",
               "properties": {
@@ -348,23 +355,42 @@ class AiClient(
         ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096),
     )
 
-    // ==================== 视觉模型（glm-4.6v-flash） ====================
+    // ==================== 视觉模型（glm-4.6v-flash / 端侧 3B 之外的云端读图） ====================
+
+    /** 视觉模型的一次回答：[text] 为原始回答正文，[x]/[y] 为（可选）某个目标的归一化中心坐标 */
+    data class VisionAnswer(val text: String, val x: Float? = null, val y: Float? = null)
 
     /**
-     * 用视觉模型描述截图：把图片转成可交互元素的文本描述（含大致位置）。
-     * 用于主模型不支持图片输入时，将截图“翻译”成文本。
+     * 统一的视觉提问入口 —— **上下文干净**：只有一条 user 消息（一句目的 + 这张图），不带任何对话历史。
+     *
+     * 旧实现是两个专用函数（visionDescribe 描述整屏 / visionLocate 定位单个目标），提示词都是引擎写死的
+     * 通用话术，与"这一步到底想看图里的什么"无关：于是每次都整屏铺开、慢且贵，还答不到点上
+     * （如「转盘指针指向哪个扇区」这类问题根本没人问）。改为目的由调用方现场给出一句话。
+     *
+     * @param purpose 这次为什么要看图，一句话（如「给出图中轮盘指针指向的扇区」）
+     * @param target  要定位的具体目标；非空时要求返回该目标的归一化中心坐标
      */
-    suspend fun visionDescribe(
+    suspend fun visionAsk(
         baseUrl: String,
         apiKey: String,
         model: String,
         screenshot: Bitmap,
-        task: String,
-    ): Result<String> = withContext(Dispatchers.IO) {
+        purpose: String,
+        target: String? = null,
+        jsonMode: Boolean = false,
+    ): Result<VisionAnswer> = withContext(Dispatchers.IO) {
         runCatching {
-            val prompt = "请仔细观察这张手机截图。列出页面上所有可交互元素（按钮、输入框、列表项、开关等）" +
-                "以及它们显示的文字，并给出每个元素在屏幕上的大致位置（用 0~1 的比例坐标，x 为横向、y 为纵向）。" +
-                "用户当前的目标是：$task。请用中文回答，聚焦可用于点击/操作的目标。"
+            val wantCoord = !target.isNullOrBlank() || jsonMode
+            val prompt = if (wantCoord) {
+                "这次看图的目的：$purpose\n" +
+                    "请在截图中找到目标「${target ?: purpose}」，返回其中心点的比例坐标，" +
+                    "格式严格为 JSON：{\"x\":0.0~1.0,\"y\":0.0~1.0}。只输出 JSON，不要任何其他文字。"
+            } else {
+                "这次看图的目的：$purpose\n" +
+                    "请只围绕这个目的回答，用中文；列出与目的相关的元素及其显示的文字与大致位置" +
+                    "（用 0~1 的比例坐标，x 为横向、y 为纵向）。与目的无关的内容不必赘述。"
+            }
+            // 上下文干净：单条 user 消息，不携带任何历史轮次
             val messages = listOf(
                 ChatMessageDto(
                     role = "user",
@@ -374,36 +400,13 @@ class AiClient(
                     ),
                 ),
             )
-            postCompat(baseUrl, apiKey, model, messages, 0.1, null)
-        }
-    }
-
-    /**
-     * 用视觉模型定位目标：给定目标文字，返回其在截图上的比例坐标（0~1）。
-     * 返回 JSON 形如 {"x":0.5,"y":0.3}。
-     */
-    suspend fun visionLocate(
-        baseUrl: String,
-        apiKey: String,
-        model: String,
-        screenshot: Bitmap,
-        targetText: String,
-    ): Result<Pair<Float, Float>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val prompt = "请在这张手机截图上找到目标元素“$targetText”。" +
-                "返回该元素中心点的比例坐标，格式严格为 JSON：{\"x\":0.0~1.0,\"y\":0.0~1.0}。" +
-                "只输出 JSON，不要任何其他文字。"
-            val messages = listOf(
-                ChatMessageDto(
-                    role = "user",
-                    content = listOf(
-                        ContentPart(type = "text", text = prompt),
-                        ContentPart(type = "image_url", image_url = ImageUrl(base64Image(screenshot))),
-                    ),
-                ),
+            val content = postCompat(
+                baseUrl, apiKey, model, messages, 0.1,
+                if (wantCoord) ResponseFormat(type = "json_object") else null,
             )
-            val content = postCompat(baseUrl, apiKey, model, messages, 0.1, ResponseFormat(type = "json_object"))
-            parseCoordinate(content)
+            // 要坐标时解析失败不算整体失败：正文照旧带回去，让调用方按"没拿到坐标"降级处理
+            val coord = if (wantCoord) runCatching { parseCoordinate(content) }.getOrNull() else null
+            VisionAnswer(text = content, x = coord?.first, y = coord?.second)
         }
     }
 
@@ -933,7 +936,28 @@ class AiClient(
         return null
     }
 
+    /**
+     * 同一张截图的 base64 单槽缓存。
+     *
+     * 同一步里同一张图会被用到多次（每步自动描述、hint 定位、发主模型），而 scale+JPEG+Base64
+     * 是纯 CPU 开销：不做缓存就是同一张图编码三遍。这里只留"最近一张"，因为决策链路天然是
+     * 一张图走完（用完即换下一个截图对象），多槽反而要处理淘汰。
+     */
+    private var cachedImageSrc: Bitmap? = null
+    private var cachedImageB64: String? = null
+
+    /** 每步开头清一次：截图对象用完会被回收，避免跨步持有一份指向已回收位图的缓存 */
+    fun clearImageCache() {
+        cachedImageSrc = null
+        cachedImageB64 = null
+    }
+
     private fun base64Image(bitmap: Bitmap): String {
+        // 引用相等而非 equals：只认"就是这张对象"，避免同尺寸不同内容的两张图互相串；
+        // isRecycled 守卫：位图被回收后必须重新编码，不能把旧字符串再交出去
+        if (cachedImageSrc === bitmap && !bitmap.isRecycled) {
+            cachedImageB64?.let { return it }
+        }
         val scaled = scaleBitmap(bitmap, 1024)
         val stream = ByteArrayOutputStream()
         scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
@@ -941,6 +965,8 @@ class AiClient(
         val result = "data:image/jpeg;base64,${Base64.encodeToString(bytes, Base64.NO_WRAP)}"
         // 若产生了缩放副本，用完即回收，避免原生内存泄漏
         if (scaled !== bitmap) scaled.recycle()
+        cachedImageSrc = bitmap
+        cachedImageB64 = result
         return result
     }
 
