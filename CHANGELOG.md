@@ -16,10 +16,15 @@
 
 - **`IntentType.SHOW_AGENT` / `ActionType.SHOW_AGENT`**（`domain/model/AgentIntent.kt`、`AgentAction.kt`）
   - 不触碰设备：拉起本应用并切到 Agent 页，`text` 可选先存为文档
-- **技能注册**（`feature/skill/SkillCatalog.kt`、`SkillCompat.kt`）
-  - `skill_show_agent`，分类「沟通」，`legacyIntent = SHOW_AGENT`
 - **执行链路**（`engine/execution/IntentTranslator.kt`、`ActionMode.kt`）
   - 转译为 passthrough 动作；只读模式下与 SAY / REMEMBER / DEVICE_QUERY 同档放行
+  - 低风险意图清单扩至 21 项，保守模式同样放行
+- **技能注册**（`feature/skill/SkillCatalog.kt`、`SkillCompat.kt`）
+  - `skill_show_agent`，分类「沟通」，`legacyIntent = SHOW_AGENT`，支持 `text` / `summary` 参数
+- **`DocViewerScreen` 全屏阅读页**（`ui/agent/DocViewerScreen.kt`，新建）
+  - 整屏只放正文，覆盖含底部导航栏；出口为底部「返回主页」按钮与返回手势
+  - `MainActivity` 新增 `showAgentPage` 静态入口与 `EXTRA_AGENT_PAGE` / `EXTRA_AGENT_DOC` 常量，引擎调用后自动切回 Agent 页并可选全屏展示
+  - `AgentItems.kt` 文档预览卡片新增全屏图标入口（`AppIcons.Expand`）
 
 ---
 

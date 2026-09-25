@@ -169,6 +169,18 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.SHOW_AGENT, Skill(
+                id = "skill_show_agent", name = "引导用户看结果", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "沟通", legacyIntent = IntentType.SHOW_AGENT,
+                description = "把用户带回 Agent 页当面看结果（不操作屏幕）：用户人已经切到别的 App、结果需要他当场过目时用它。" +
+                    "带上 text 时会先把这段 Markdown 存成文档，随即在 Agent 页全屏展示。",
+                params = listOf(
+                    SkillParam("text", "要全屏展示的正文", "text", description = "可选，Markdown；留空则只把用户带回 Agent 页"),
+                    SkillParam("summary", "标题/文件名", "text", description = "可选，留空自动命名"),
+                ),
+            ),
+        )
+        put(
             IntentType.FETCH, Skill(
                 id = "skill_fetch", name = "取网页正文", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "取数", legacyIntent = IntentType.FETCH,

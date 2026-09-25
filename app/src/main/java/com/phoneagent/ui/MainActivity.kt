@@ -75,6 +75,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
+import com.phoneagent.ui.agent.DocViewerScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
@@ -102,6 +103,38 @@ import org.koin.androidx.compose.koinViewModel
 import com.phoneagent.ui.icons.AppIcons
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        /** 引擎要求把用户引导回 Agent 页（AI 的 show_agent 意图） */
+        const val EXTRA_AGENT_PAGE = "com.phoneagent.extra.AGENT_PAGE"
+
+        /** 引导回来的同时是否全屏展示 AI 生成的内容 */
+        const val EXTRA_AGENT_DOC = "com.phoneagent.extra.AGENT_DOC"
+
+        /**
+         * 把 App 拉到前台并切到 Agent 页，供引擎（AI 的 show_agent 意图）调用。
+         *
+         * 已在栈上时走 [onNewIntent]（启动 Intent 带 SINGLE_TOP|CLEAR_TOP），
+         * 落地与「浏览器页」那条路径同源，都靠 [pageSignal] 触发界面切页。
+         * @param showDocument 是否顺带全屏展示 AI 生成的内容（无内容时界面自行忽略）
+         */
+        fun showAgentPage(context: android.content.Context, showDocument: Boolean) {
+            val started = runCatching {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                        )
+                        putExtra(EXTRA_AGENT_PAGE, true)
+                        putExtra(EXTRA_AGENT_DOC, showDocument)
+                    },
+                )
+            }.isSuccess
+            if (!started) android.util.Log.w("MainActivity", "拉起 Agent 页失败（系统可能限制了后台启动）")
+        }
+    }
 
     /**
      * 外部打开二级页的信号：AI 执行 browse_* 时，引擎从后台把 App 切到「浏览器」页。
@@ -242,14 +275,26 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
         vm.refreshA11yState()
     }
 
-    // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）。
+    // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）；
+    // AI 引导回 Agent 页同理（MainActivity.EXTRA_AGENT_PAGE，可顺带全屏展示生成的内容）。
     // 首次组合（onCreate）与已在栈上被复用（onNewIntent）都走这里，保证两条路径的落点一致。
     val browseSignal by pageSignal.collectAsState()
+    val doc by vm.docResult.collectAsState()
+    var docFullscreen by remember { mutableStateOf(false) }
     LaunchedEffect(browseSignal) {
         val intent = activity.intent
         if (intent?.getBooleanExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE, false) == true) {
             intent.removeExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE)
             extrasPage = ExtrasPage.Browser
+        }
+        if (intent?.getBooleanExtra(MainActivity.EXTRA_AGENT_PAGE, false) == true) {
+            val showDoc = intent.getBooleanExtra(MainActivity.EXTRA_AGENT_DOC, false)
+            intent.removeExtra(MainActivity.EXTRA_AGENT_PAGE)
+            intent.removeExtra(MainActivity.EXTRA_AGENT_DOC)
+            // 二级页也一并退掉：AI 请用户回来看结果，落点必须是 Agent 页本身
+            extrasPage = null
+            selected = 0
+            if (showDoc && doc != null) docFullscreen = true
         }
     }
 
@@ -262,6 +307,10 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     }
     BackHandler(enabled = extrasPage == null && selected != 0) {
         selected = 0
+    }
+    // 全屏阅读是最上层的一层，返回手势先关它（放在最后注册，优先级最高）
+    BackHandler(enabled = docFullscreen) {
+        docFullscreen = false
     }
 
     // 键盘是否弹出：必须在内容层读一次，不能写在 Scaffold 的 bottomBar 里。
@@ -351,6 +400,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                                     0 -> AgentScreen(
                                         vm, contentMod,
                                         onOpenMemory = { extrasPage = ExtrasPage.Memory },
+                                        onOpenDocFullscreen = { docFullscreen = true },
                                         onDrawerOpenChange = { taskDrawerOpen = it },
                                     )
 
@@ -393,6 +443,16 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                                 end = AppSpacing.Lg,
                                 bottom = systemNavInset + NavBarGap,
                             ),
+                    )
+                }
+
+                // 全屏阅读：AI 回返的 Markdown 整屏通读。画在所有 chrome 之上（含悬浮导航栏），
+                // 出口只有底部大圆角按钮与返回手势
+                if (docFullscreen) {
+                    DocViewerScreen(
+                        doc = doc,
+                        onClose = { docFullscreen = false },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }

@@ -98,6 +98,8 @@ fun AgentScreen(
     modifier: Modifier = Modifier,
     /** 打开全屏记忆页（原底部「记忆」Tab 已并入 Agent 页） */
     onOpenMemory: () -> Unit = {},
+    /** 全屏阅读 AI 生成的内容（任务流里的文档卡片只能限高内滚，通读要走整屏） */
+    onOpenDocFullscreen: () -> Unit = {},
     /** 任务抽屉开合变化：抽屉是盖住整页的，打开时外层要让悬浮导航栏让位，别浮在抽屉上 */
     onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
@@ -318,7 +320,11 @@ fun AgentScreen(
                 }
                 itemsIndexed(items = visibleItems, key = { _, item -> item.key }) { index, item ->
                     Box(modifier = Modifier.animateListItem(index = index)) {
-                        AgentTimelineItemView(item = item, vm = vm)
+                        AgentTimelineItemView(
+                            item = item,
+                            vm = vm,
+                            onOpenDocFullscreen = onOpenDocFullscreen,
+                        )
                     }
                     Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
                 }
@@ -612,6 +618,7 @@ private data class AssistSpec(
 private fun AgentTimelineItemView(
     item: AgentTimelineItem,
     vm: MainViewModel,
+    onOpenDocFullscreen: () -> Unit,
 ) {
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
@@ -626,7 +633,11 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.Done -> DoneItem(item)
         is AgentTimelineItem.Failed -> FailedItem(item.message, vm)
         is AgentTimelineItem.Notice -> NoticeItem(item)
-        is AgentTimelineItem.DocPreview -> DocPreviewItem(item, onDismiss = { vm.dismissDoc() })
+        is AgentTimelineItem.DocPreview -> DocPreviewItem(
+            item,
+            onDismiss = { vm.dismissDoc() },
+            onExpandFullscreen = onOpenDocFullscreen,
+        )
         is AgentTimelineItem.MemoryAdded -> MemoryCardItem(item, onUndo = { vm.undoMemory(it) })
     }
 }

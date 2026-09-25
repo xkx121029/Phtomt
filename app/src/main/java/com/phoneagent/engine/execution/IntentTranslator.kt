@@ -526,6 +526,9 @@ class IntentTranslator(
         // 说话（对用户输出一句人话，不触碰设备）
         put(IntentType.SAY, SayStrategy())
 
+        // 把用户引导回 Agent 页看结果（拉起本应用 + 切页，不触碰设备）
+        put(IntentType.SHOW_AGENT, passthrough(ActionType.SHOW_AGENT) { i, a -> a.copy(text = i.text, summary = i.summary) })
+
         put(IntentType.DEVICE_QUERY, DeviceQueryStrategy())
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
@@ -593,13 +596,15 @@ class IntentTranslator(
     private fun applyReadOnly(result: TranslationResult, mode: Mode): TranslationResult = when {
         result !is TranslationResult.Command -> result
         mode != Mode.READONLY -> result
-        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY / SAY 都不触碰设备
-        // （等待、本地生成文档、本地写记忆库、本地读设备信息、直接对用户说话），只读模式下同样放行
+        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY / SAY / SHOW_AGENT 都不触碰设备
+        // （等待、本地生成文档、本地写记忆库、本地读设备信息、直接对用户说话、把用户拉回本应用看结果），
+        // 只读模式下同样放行
         result.action.type == ActionType.WAIT ||
             result.action.type == ActionType.WRITE_DOC ||
             result.action.type == ActionType.REMEMBER ||
             result.action.type == ActionType.DEVICE_QUERY ||
-            result.action.type == ActionType.SAY -> result
+            result.action.type == ActionType.SAY ||
+            result.action.type == ActionType.SHOW_AGENT -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )

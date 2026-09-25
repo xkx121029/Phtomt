@@ -260,12 +260,13 @@ internal val AgentItemSpacing = AppSpacing.Md
 
 /**
  * AI 生成的文档结果：直接嵌在任务流里预览，不再另开工作区页面。
- * 默认展开让用户一眼看到成果，长文限高内滚，可收起或关闭预览。
+ * 默认展开让用户一眼看到成果，长文限高内滚，可全屏通读、收起或关闭预览。
  */
 @Composable
 internal fun DocPreviewItem(
     item: AgentTimelineItem.DocPreview,
     onDismiss: () -> Unit,
+    onExpandFullscreen: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
@@ -307,6 +308,18 @@ internal fun DocPreviewItem(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            PressableScale(
+                onPress = buzz,
+                onClick = { buzz(); onExpandFullscreen() },
+            ) {
+                Icon(
+                    imageVector = AppIcons.Expand,
+                    contentDescription = "全屏阅读文档",
+                    tint = colors.onSurfaceRaised,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Spacer(Modifier.width(AppSpacing.Md))
             PressableScale(
                 onPress = buzz,
                 onClick = { expanded = !expanded },
