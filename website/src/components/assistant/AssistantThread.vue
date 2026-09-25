@@ -20,6 +20,7 @@ const { messages, status, sending, available, ask, stop, reset, backFromNav } = 
 
 const draft = ref('')
 const scroller = ref(null)
+const trailer = ref(null)
 const box = ref(null)
 
 const suggestions = computed(() => status.value.suggestions || [])
@@ -30,14 +31,20 @@ async function toEnd() {
   await nextTick()
   const el = scroller.value
   if (!el) return
-  // 浮窗里对话装在一个限高滚动盒里，改 scrollTop 就够；独立页没有那个盒子
-  // （页面自己滚），此时写 scrollTop 是空操作，得把窗口滚下来，
-  // 否则流式回答一直长在视口下面，用户看不见它在写。
+
+  // 浮窗：对话装在一个限高滚动盒里，改 scrollTop 就够
   if (el.scrollHeight > el.clientHeight + 1) {
     el.scrollTop = el.scrollHeight
     return
   }
-  window.scrollTo(0, el.getBoundingClientRect().bottom + window.scrollY)
+
+  // 独立页：没有那个盒子，页面自己滚。要让最新一行正好落在吸底的输入区之上——
+  // 直接滚到文档底部会把页脚一并带进视口，所以按「对话底部 −（视口高 − 输入区高）」算。
+  // 显式写 behavior: 'auto'：全局开了 scroll-behavior: smooth，而这里每来一个字都要跟一次，
+  // 走平滑动画会变成页面永远在追。
+  const reserve = trailer.value?.getBoundingClientRect().height || 0
+  const bottomInDoc = el.getBoundingClientRect().bottom + window.scrollY
+  window.scrollTo({ top: bottomInDoc - window.innerHeight + reserve, behavior: 'auto' })
 }
 
 // 流式输出时内容长度一直在变，deep 才能跟着追上
@@ -105,7 +112,7 @@ function onKeydown(event) {
       </ol>
     </div>
 
-    <div class="trailer">
+    <div ref="trailer" class="trailer">
       <div class="composer">
         <textarea
           ref="box"
