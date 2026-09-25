@@ -122,10 +122,6 @@ object PromptSnapshot {
             map["planning/${lang}"] =
                 AgentPrompts.planning(lang, "帮我在美团点一份黄焖鸡米饭", "用户常在美团点餐", "美团、微信、支付宝")
             map["planningEmptyProfile/${lang}"] = AgentPrompts.planning(lang, "查一下明天天气", "", "")
-            map["batchPlanning/${lang}"] =
-                AgentPrompts.batchPlanning(lang, "打开微信给张三发消息，然后查一下明天天气", "微信、天气")
-            map["replan/${lang}"] =
-                AgentPrompts.replan(lang, "帮我在美团点一份黄焖鸡米饭", "找不到搜索框", "1. 打开美团 ✅\n2. 点击搜索 ❌")
 
             map["decision/${lang}"] = AgentPrompts.decision(
                 lang, "帮我在美团点一份黄焖鸡米饭", 2, 5, "在搜索框输入关键词",
@@ -137,18 +133,9 @@ object PromptSnapshot {
             )
 
             map["review/${lang}"] = AgentPrompts.reviewSystem(lang)
-            map["verify/${lang}"] = AgentPrompts.verify(lang, "点击搜索框", "键盘弹出")
             map["memoryDistill/${lang}"] =
                 AgentPrompts.memoryDistill(lang, "帮我在美团点一份黄焖鸡米饭", "已完成", "打开美团 → 搜索 → 下单")
             map["memoryDistillEmptySteps/${lang}"] = AgentPrompts.memoryDistill(lang, "打个招呼", "已完成", "")
-            map["takeoverRecovery/${lang}"] =
-                AgentPrompts.takeoverRecovery(lang, "帮我在美团点一份黄焖鸡米饭", "点击搜索", "1. 打开美团\n2. 点击搜索")
-            map["takeoverRecoveryNoPlan/${lang}"] =
-                AgentPrompts.takeoverRecovery(lang, "帮我在美团点一份黄焖鸡米饭", "点击搜索", "")
-            map["userGuidance/${lang}"] =
-                AgentPrompts.userGuidance(lang, "先点右上角的三条杠", "帮我在美团点一份黄焖鸡米饭", "点击搜索", "上一步失败")
-            map["userGuidanceNoFailure/${lang}"] =
-                AgentPrompts.userGuidance(lang, "先点右上角的三条杠", "帮我在美团点一份黄焖鸡米饭", "点击搜索", "")
 
             map["environment/${lang}"] = AgentPrompts.environment(
                 lang,
