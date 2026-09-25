@@ -73,9 +73,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 顶栏与输入区两块玻璃板距屏幕左右（顶栏还含上缘）的外边距。
+ * 底部输入区玻璃板距屏幕左右的外边距。
  * 面板里的内容还要再让出 [AgentGlassInnerPad]——这段外边距只管"面板离屏幕多远"，
  * 面板边框与内容之间得有自己的一圈呼吸感，不能靠它充数。
+ *
+ * 顶部那块玻璃板不再用这个常量：它的外边距随吸顶进度收放（贴顶 0、离顶 12dp），
+ * 固定在顶部会与"贴顶通栏"的形态打架。
  */
 internal val AgentGlassInset = AppSpacing.Md
 
