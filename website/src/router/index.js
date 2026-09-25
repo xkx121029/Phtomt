@@ -40,6 +40,12 @@ export const routes = [
     meta: { title: '下载', group: '主要' }
   },
   {
+    path: '/ask',
+    name: 'ask',
+    component: () => import('../views/AskView.vue'),
+    meta: { title: 'AI 问答', group: '主要' }
+  },
+  {
     path: '/changelog',
     name: 'changelog',
     component: () => import('../views/ChangelogView.vue'),
@@ -95,6 +101,7 @@ export const routes = [
       { path: 'faq', name: 'admin-faq', component: () => import('../views/admin/AdminFaq.vue'), meta: { title: '常见问题', admin: true } },
       { path: 'scenarios', name: 'admin-scenarios', component: () => import('../views/admin/AdminScenarios.vue'), meta: { title: '场景示例', admin: true } },
       { path: 'roadmap', name: 'admin-roadmap', component: () => import('../views/admin/AdminRoadmap.vue'), meta: { title: '路线图', admin: true } },
+      { path: 'ai', name: 'admin-ai', component: () => import('../views/admin/AdminAi.vue'), meta: { title: 'AI 问答', admin: true } },
       { path: 'audit', name: 'admin-audit', component: () => import('../views/admin/AdminAudit.vue'), meta: { title: '操作留痕', admin: true } },
       { path: 'password', name: 'admin-password', component: () => import('../views/admin/AdminPassword.vue'), meta: { title: '修改密码', admin: true } }
     ]

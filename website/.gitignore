@@ -10,3 +10,5 @@ server/data/stats.json
 server/data/audit.json
 # 管理口令哈希（后台改密码后生成）。绝不能入库——仓库是公开的
 server/data/admin.json
+# AI 问答配置，里面有一把模型 API Key。同样绝不能入库
+server/data/ai.json

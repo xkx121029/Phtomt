@@ -17,7 +17,8 @@ const NAV = [
   { to: '/download', label: '下载' },
   { to: '/changelog', label: '更新' },
   { to: '/docs', label: '文档' },
-  { to: '/faq', label: '问答' }
+  { to: '/faq', label: '问答' },
+  { to: '/ask', label: 'AI 问答' }
 ]
 
 const isDark = computed(() => theme.value === 'dark')

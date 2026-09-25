@@ -127,7 +127,13 @@ aiRouter.post('/chat', async (req, res) => {
   const payload = [{ role: 'system', content: systemPrompt(cfg, knowledge.text) }, ...messages]
 
   const abort = new AbortController()
-  req.on('close', () => abort.abort())
+  // 客户端断开就掐掉上游请求，别为没人要的回答继续付费。
+  // 监听的是 res 而不是 req：req 的 'close' 在请求体读完时就会触发（Node 18+ 的行为），
+  // 拿它当「用户已经离开」会在上游还没开始返回时就把自己 abort 掉，表现为「答完一片空白」。
+  const onClose = () => {
+    if (!res.writableEnded) abort.abort()
+  }
+  res.on('close', onClose)
 
   // SSE 响应头要在「上游确认可用」之后再设：上游失败时还来得及返回一个正常的 JSON 错误
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
@@ -154,6 +160,7 @@ aiRouter.post('/chat', async (req, res) => {
       send({ type: 'error', message })
     }
   } finally {
+    res.off('close', onClose)
     res.end()
   }
 })

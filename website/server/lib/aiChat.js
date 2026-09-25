@@ -16,18 +16,36 @@ export class UpstreamError extends Error {
   }
 }
 
+/** 常见状态码的处置建议。上游的错误说明大多不可读，能补一句「该往哪改」就好很多 */
+function statusHint(status) {
+  if (status === 401 || status === 403) return '密钥无效，或这把密钥没有该模型的权限'
+  if (status === 404) return '接口地址可能不对，检查是否需要填到 /v1'
+  if (status === 429) return '上游限流，稍后再试'
+  if (status >= 500) return '上游服务异常'
+  return ''
+}
+
 /** 把上游的错误响应体榨成一句话。各家格式不一，逐层退让而不是直接甩 JSON */
-export function upstreamMessage(text) {
+export function upstreamMessage(text, status = 0) {
   const raw = String(text || '').trim()
-  if (!raw) return '（上游没有返回内容）'
-  try {
-    const json = JSON.parse(raw)
-    const msg = json?.error?.message || json?.error?.msg || json?.message || json?.msg
-    if (msg) return String(msg).slice(0, 300)
-  } catch {
-    /* 不是 JSON，按文本处理 */
+  const hint = statusHint(status)
+
+  if (!raw) return hint ? `上游没有返回内容（${hint}）` : '（上游没有返回内容）'
+
+  // HTML 错误页（反向代理/框架给的 404 页）：整段贴给用户没人看得懂，换成能照着改的话
+  if (!raw.startsWith('<')) {
+    try {
+      const json = JSON.parse(raw)
+      const msg = json?.error?.message || json?.error?.msg || json?.message || json?.msg
+      if (msg) return String(msg).slice(0, 300)
+    } catch {
+      /* 不是 JSON，按文本处理 */
+    }
+    const cut = raw.slice(0, 300)
+    return hint ? `${cut}（${hint}）` : cut
   }
-  return raw.slice(0, 300)
+
+  return hint || `上游返回 ${status}，返回内容不是 JSON——多半是接口地址不对`
 }
 
 function request(cfg, messages, { stream, maxTokens, signal }) {
@@ -56,7 +74,7 @@ export async function complete({ cfg, messages, maxTokens, signal }) {
   } catch (err) {
     throw new UpstreamError(0, `无法连接到 ${chatUrl(cfg)}：${err.message}`)
   }
-  if (!res.ok) throw new UpstreamError(res.status, upstreamMessage(await res.text().catch(() => '')))
+  if (!res.ok) throw new UpstreamError(res.status, upstreamMessage(await res.text().catch(() => ''), res.status))
 
   const data = await res.json().catch(() => null)
   const text = data?.choices?.[0]?.message?.content
@@ -79,7 +97,7 @@ export async function streamChat({ cfg, messages, maxTokens, signal, onDelta }) 
   } catch (err) {
     throw new UpstreamError(0, `无法连接到 ${chatUrl(cfg)}：${err.message}`)
   }
-  if (!res.ok) throw new UpstreamError(res.status, upstreamMessage(await res.text().catch(() => '')))
+  if (!res.ok) throw new UpstreamError(res.status, upstreamMessage(await res.text().catch(() => ''), res.status))
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
@@ -107,7 +125,7 @@ export async function streamChat({ cfg, messages, maxTokens, signal, onDelta }) 
         continue // 半行或心跳，跳过
       }
       // 有些中转会在流里夹一条错误事件，不能当成正文拼进去
-      if (json?.error) throw new UpstreamError(res.status, upstreamMessage(JSON.stringify(json)))
+      if (json?.error) throw new UpstreamError(res.status, upstreamMessage(JSON.stringify(json), res.status))
 
       const piece = json?.choices?.[0]?.delta?.content
       if (typeof piece === 'string' && piece) {

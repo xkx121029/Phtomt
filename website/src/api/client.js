@@ -99,6 +99,94 @@ export const api = {
 }
 
 /**
+ * 站点 AI 问答。
+ *
+ * 状态探测是普通 JSON，走 request()；提问是 SSE，必须走另一条路——
+ * request() 会先把整个 body 读完再解析，流式回答拿到手时早就生成完了。
+ */
+export const assistant = {
+  status: () => api.get('/api/ai/status'),
+
+  /**
+   * 流式提问。
+   *
+   * @param {{role:'user'|'assistant', content:string}[]} messages 完整对话，末条必须是 user
+   * @param {{onDelta?:(chunk:string, full:string)=>void, signal?:AbortSignal}} options
+   * @returns {Promise<{text:string, sources:string[], chars:number}>}
+   */
+  async chat(messages, { onDelta, signal } = {}) {
+    if (isStaticBuild) throw new ApiError('当前是静态站点，没有可用的问答后端', 0, 'static')
+
+    let res
+    try {
+      res = await fetch(`${base()}/api/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages }),
+        signal
+      })
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err
+      throw new ApiError('无法连接到服务，请确认后端已启动', 0, 'network')
+    }
+
+    // 上游没配好、被限流这类情况在 SSE 开始之前就已经是普通 JSON 错误了
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null)
+      throw new ApiError(payload?.message || `请求失败（${res.status}）`, res.status, payload?.error)
+    }
+    if (!res.body) throw new ApiError('当前浏览器不支持流式响应', 0, 'no-stream')
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let text = ''
+    let result = { sources: [], chars: 0 }
+
+    const handle = (raw) => {
+      const line = raw.trim()
+      if (!line.startsWith('data:')) return
+      let event
+      try {
+        event = JSON.parse(line.slice(5).trim())
+      } catch {
+        return
+      }
+      if (event.type === 'delta' && event.text) {
+        text += event.text
+        onDelta?.(event.text, text)
+      } else if (event.type === 'error') {
+        // 生成中途的失败：已经流出来的内容由调用方决定留不留
+        throw new ApiError(event.message || '生成失败', res.status, 'upstream')
+      } else if (event.type === 'done') {
+        result = { sources: event.sources || [], chars: event.chars || text.length }
+      }
+    }
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        // 按行切而不是按空行切块：一条事件可能被 TCP 拆成几段送达
+        let nl = buffer.indexOf('\n')
+        while (nl >= 0) {
+          const line = buffer.slice(0, nl)
+          buffer = buffer.slice(nl + 1)
+          handle(line)
+          nl = buffer.indexOf('\n')
+        }
+      }
+      if (buffer.trim()) handle(buffer)
+    } finally {
+      reader.cancel().catch(() => {})
+    }
+
+    return { text, ...result }
+  }
+}
+
+/**
  * 带快照兜底的读取。
  * 静态站直接返回快照；有后端时若请求失败也回落到快照，页面不至于白屏。
  */

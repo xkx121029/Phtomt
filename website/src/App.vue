@@ -1,13 +1,20 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import SiteHeader from './components/SiteHeader.vue'
 import SiteFooter from './components/SiteFooter.vue'
+import AssistantDock from './components/assistant/AssistantDock.vue'
+import { useAssistant } from './composables/useAssistant.js'
 import { useCardTilt } from './composables/useCardTilt.js'
 
 const route = useRoute()
 // 管理后台自带一套外壳，不套官网的页头页脚
 const isAdmin = computed(() => route.matched.some((r) => r.meta?.admin))
+// 独立问答页里已经有一整块对话，右下角再挂一个入口就是重复
+const showDock = computed(() => !isAdmin.value && route.name !== 'ask')
+
+const { loadStatus } = useAssistant()
+onMounted(() => loadStatus())
 
 // 卡片悬停微倾斜：文档级代理，路由切换后新渲染的卡片也照样覆盖
 useCardTilt()
@@ -25,6 +32,7 @@ useCardTilt()
       </RouterView>
     </main>
     <SiteFooter v-if="!isAdmin" />
+    <AssistantDock v-if="showDock" />
   </div>
 </template>
 
