@@ -234,14 +234,22 @@ fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
 /**
  * 玻璃页眉板**浮起后**距屏幕左右（含上缘）的外边距；吸顶时这一段收为 0，页眉通栏。
  * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
- * 得把这段外边距从 [AppTopBar] 的 contentPadding 里减掉，见 [GlassHeaderInnerPad]。
- * （吸顶时外边距为 0，标题会相应左移到 12dp 那条线上，这是"通栏"本身的形态：
- * 通栏吸顶栏按惯例不保留页面留白，左右两沿直接顶到屏幕边。）
+ * 得把这段外边距从内容留白里减掉——骨架用 [LocalHeaderContentPad] 自动做这件事，
+ * 各页不必自己算。
  */
 val GlassHeaderInset = AppSpacing.Md
 
-/** 玻璃页眉板内层内容的左右留白：补上板子自身的外边距，屏幕上仍是原来的 20dp */
-val GlassHeaderInnerPad = 20.dp - GlassHeaderInset
+/** 玻璃页眉内层内容的左右留白：除本页页眉外，屏幕上仍是各页通用的 20dp */
+val GlassHeaderDefaultContentPad = 20.dp
+
+/**
+ * 玻璃页眉内层内容的左右留白。[GlassHeaderScaffold] 按当前吸顶进度提供，[AppTopBar] 默认取它。
+ *
+ * 存在的理由：页眉板的左右外边距在"吸顶 ↔ 浮起"之间要收放，而文字**不该跟着横移**
+ * （全项目只做自下而上的位移）。留白按 `20dp - 面板外边距` 反向抵消，标题与尾部操作
+ * 在整段变化里始终落在距屏幕边 20dp 的竖直线上，与页面正文同一条线。
+ */
+val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
 
 /**
  * 玻璃页眉骨架：正文整屏铺开当取样源，页眉是一块浮在正文之上的玻璃板。
