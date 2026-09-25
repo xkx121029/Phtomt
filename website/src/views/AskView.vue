@@ -47,7 +47,7 @@ onMounted(() => loadStatus())
           <p class="muted small">正在检查问答服务…</p>
         </div>
 
-        <div v-else class="card board">
+        <div v-else class="board">
           <AssistantThread variant="page" />
         </div>
       </div>
@@ -74,17 +74,10 @@ onMounted(() => loadStatus())
   color: var(--ink-2);
 }
 
+/* 问答页是一页正文，不是一个嵌在页面里的控件：不套卡片外框（描边 / 投影 / 玻璃底 / 圆角），
+   也不再限高内滚——那样会把整段对话压成窗口里的一小块。
+   宽度沿用站内长文的 64ch 阅读栏（与 DocDetailView 同一条尺），左侧与上方 hero 对齐。 */
 .board {
-  display: flex;
-  flex-direction: column;
-  height: min(70vh, 760px);
-  padding: 20px 22px;
-}
-
-@media (max-width: 700px) {
-  .board {
-    height: min(76vh, 640px);
-    padding: 16px;
-  }
+  max-width: 64ch;
 }
 </style>

@@ -29,7 +29,15 @@ const canSend = computed(() => Boolean(draft.value.trim()) && !sending.value)
 async function toEnd() {
   await nextTick()
   const el = scroller.value
-  if (el) el.scrollTop = el.scrollHeight
+  if (!el) return
+  // 浮窗里对话装在一个限高滚动盒里，改 scrollTop 就够；独立页没有那个盒子
+  // （页面自己滚），此时写 scrollTop 是空操作，得把窗口滚下来，
+  // 否则流式回答一直长在视口下面，用户看不见它在写。
+  if (el.scrollHeight > el.clientHeight + 1) {
+    el.scrollTop = el.scrollHeight
+    return
+  }
+  window.scrollTo(0, el.getBoundingClientRect().bottom + window.scrollY)
 }
 
 // 流式输出时内容长度一直在变，deep 才能跟着追上
@@ -97,33 +105,35 @@ function onKeydown(event) {
       </ol>
     </div>
 
-    <div class="composer">
-      <textarea
-        ref="box"
-        v-model="draft"
-        class="composer__box"
-        rows="1"
-        :placeholder="available ? '问点什么…（Enter 发送，Shift+Enter 换行）' : '问答尚未开启'"
-        :disabled="!available"
-        @input="grow"
-        @keydown="onKeydown"
-      ></textarea>
+    <div class="trailer">
+      <div class="composer">
+        <textarea
+          ref="box"
+          v-model="draft"
+          class="composer__box"
+          rows="1"
+          :placeholder="available ? '问点什么…（Enter 发送，Shift+Enter 换行）' : '问答尚未开启'"
+          :disabled="!available"
+          @input="grow"
+          @keydown="onKeydown"
+        ></textarea>
 
-      <button v-if="sending" class="composer__send composer__send--stop" type="button" @click="stop">
-        停止
-      </button>
-      <button v-else class="composer__send" type="button" :disabled="!canSend" @click="send()">
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-          <path d="M10 16.5V3.5m0 0L4.8 8.7M10 3.5l5.2 5.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span class="sr-only">发送</span>
-      </button>
+        <button v-if="sending" class="composer__send composer__send--stop" type="button" @click="stop">
+          停止
+        </button>
+        <button v-else class="composer__send" type="button" :disabled="!canSend" @click="send()">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 16.5V3.5m0 0L4.8 8.7M10 3.5l5.2 5.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span class="sr-only">发送</span>
+        </button>
+      </div>
+
+      <p class="foot">
+        <span>回答由 AI 依据站内资料生成，关键信息请以文档与仓库为准；需要时会直接带你到相关页面。</span>
+        <button v-if="!isEmpty" class="foot__reset" type="button" @click="reset">清空</button>
+      </p>
     </div>
-
-    <p class="foot">
-      <span>回答由 AI 依据站内资料生成，关键信息请以文档与仓库为准；需要时会直接带你到相关页面。</span>
-      <button v-if="!isEmpty" class="foot__reset" type="button" @click="reset">清空</button>
-    </p>
   </div>
 </template>
 
@@ -474,6 +484,32 @@ function onKeydown(event) {
 
 .thread--page .turn__reply :deep(.prose) {
   font-size: var(--t-body);
+}
+
+/* ---------- 独立页：对话是正文，不是滚动盒 ---------- */
+
+/* 摘掉限高与内部滚动，让整段对话随页面一起长。
+   否则无论页面多长，对话都被压成窗口里的一小块，又变回了「控件」。 */
+.thread--page {
+  height: auto;
+}
+
+.thread--page .thread__scroll {
+  flex: none;
+  overflow: visible;
+  padding: 4px 0 8px;
+}
+
+/* 对话不再限高之后，输入框会被长回答顶到屏幕外，追问前得先滚半天。
+   把「输入区 + 脚注」整块吸在视口底部。
+   只吸输入区是不够的：脚注留在文档流里会被吸住的输入区压在下面看不见。
+   底色必须是页面底色（--paper）而非透明——吸住时下方内容会从它背后穿过。 */
+.thread--page .trailer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-bottom: 16px;
+  background: var(--paper);
 }
 
 @media (prefers-reduced-motion: reduce) {
