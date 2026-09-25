@@ -2367,7 +2367,7 @@ class AgentEngine(
                         visionSource = visionSrc,
                         visionModel = visionModel,
                         visionDescription = desc?.takeIf { it.isNotBlank() }
-                            ?: if (mainSeesImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
+                            ?: if (mainGetsImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
                         screenshot = screenshot,
                     )
                 }
@@ -2553,6 +2553,131 @@ class AgentEngine(
         }
         delay(200)
     }
+
+    /**
+     * 执行一次「看图追问」：就当前截图向视觉模型提一个**带目的**的问题，回答作为"上一步结果"回注下一轮。
+     *
+     * 与 MCP 技能同类 —— 端侧代办、不触碰设备，故不截图、不走执行通道、不做生效重试；
+     * 与每步自动描述的区别：目的由 AI 现场给出，回答只针对这件事，而不是整屏铺开罗列。
+     */
+    private suspend fun invokeVisionAsk(
+        step: Int,
+        vision: com.phoneagent.feature.skill.SkillCompat.Normalized.Vision,
+        messages: MutableList<ChatMessageDto>,
+        screenshot: Bitmap?,
+        settingsVal: AppSettings.Settings,
+    ) {
+        val question = vision.question
+        // 没有截图就没有可看的东西：直接回注原因让 AI 换一条路取信息，不要白等一次调用
+        if (screenshot == null) {
+            messages.add(
+                ChatMessageDto(
+                    role = "user",
+                    content = listOf(ContentPart(
+                        type = "text",
+                        text = "⚠️ 本轮没有可用的屏幕截图，看图追问无法进行；请改用元素树里能读到的线索，" +
+                            "或用 device_query / browse_* 取信息。",
+                    )),
+                ),
+            )
+            return
+        }
+        // force = true：追问是 AI 明确提出的取数请求，不受「视觉总开关」影响（与元素树稀疏时同理）
+        val cfg = visionConfig(settingsVal, force = true)
+        if (cfg == null) {
+            messages.add(
+                ChatMessageDto(
+                    role = "user",
+                    content = listOf(ContentPart(
+                        type = "text",
+                        text = "⚠️ 当前没有可用的视觉模型（未配置视觉模型地址/密钥），看图追问无法进行。",
+                    )),
+                ),
+            )
+            return
+        }
+        val target = vision.target
+        log(AgentLog.Level.INFO, "看图追问：$question（定位目标=${target ?: "无"}）")
+        _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "看图追问：${question.take(30)}")
+        pushFloating("看图追问：${question.take(30)}", "ACTING")
+        // 同一步骤的看门狗：云端视觉读超时可达 120s，套上它保证主循环不被拖死
+        val t0 = System.nanoTime()
+        val answer = withVisionWatchdog(WATCHDOG_VISION_MS) {
+            aiClient.visionAsk(
+                baseUrl = cfg.baseUrl,
+                apiKey = cfg.apiKey,
+                model = cfg.model,
+                screenshot = screenshot,
+                purpose = question,
+                target = target,
+                jsonMode = target != null,
+            )
+        }
+        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+        val ans = answer?.getOrNull()
+        val text = ans?.text?.trim().orEmpty()
+        val x = ans?.x
+        val y = ans?.y
+        val failed = ans == null || (text.isBlank() && (x == null || y == null))
+        val action = AgentAction(
+            type = IntentType.SEE,
+            reasoning = question.take(60),
+            reason = "看图追问：${question.take(30)}",
+            confidence = 0.9,
+        )
+        val injected: String
+        val detail: String
+        when {
+            failed -> {
+                val why = if (answer == null) "视觉调用超过 ${WATCHDOG_VISION_MS / 1000}s 未返回" else "视觉调用失败"
+                injected = "⚠️ 看图追问失败：$why。请改用其他方式取信息，不要重复追问同一件事。"
+                detail = injected
+            }
+            // 带了目标且拿回坐标：写成像素坐标供**紧接着的那一步**复用一次（下一步开头会自然清零）
+            x != null && y != null && target != null -> {
+                lastVisualCoordinate = (x * screenWidth()).toInt() to (y * screenHeight()).toInt()
+                injected = "看图追问「$question」的结论：${text.ifBlank { "（无文字说明）" }}\n" +
+                    "目标「$target」位于比例坐标(x=${"%.3f".format(x)}, y=${"%.3f".format(y)})；" +
+                    "如需点击它，可用 by_hint 写同一句目标描述，端侧会复用这次定位。"
+                detail = "追问：$question\n目标：$target → 比例坐标(${"%.3f".format(x)}, ${"%.3f".format(y)})"
+            }
+            else -> {
+                injected = "看图追问「$question」的结论：${text.ifBlank { "（模型没有给出内容）" }}"
+                detail = "追问：$question\n$text"
+            }
+        }
+        recordStep(
+            step = step,
+            action = action,
+            verification = if (failed) "unverified" else "verified_success",
+            before = "",
+            after = "",
+            detail = detail,
+        )
+        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
+        addConversation("assistant", injected)
+        if (failed) {
+            log(AgentLog.Level.WARN, "看图追问失败：$question")
+            pushFloating("看图追问失败", "ERROR")
+        } else {
+            log(AgentLog.Level.INFO, "看图追问返回：${text.take(200)}")
+            pushFloating("看图追问已返回", "THINKING")
+            recordProgress(step, action)
+        }
+        delay(200)
+    }
+
+    /**
+     * 主模型这一轮能不能直接读图 —— 三态判定的**唯一定义点**（口径见 [VisionRouting]）：
+     * `AUTO` 听模型库里真实探测出的能力，`ON`/`OFF` 是用户覆盖、探测不参与。
+     *
+     * 这里只回答"能力"，"本轮有没有图"由调用方叠加 `attachScreenshot` / `screenshot != null`。
+     */
+    private fun mainSeesImage(s: AppSettings.Settings): Boolean =
+        VisionRouting.resolve(
+            VisionRouting.modeFromKey(s.mainVisionMode),
+            VisionRouting.probedVisionOf(s.catalog, s.apiBaseUrl, s.model),
+        )
 
     /**
      * 视觉模型配置：仅在视觉模型启用时生效；视觉 API Key 为空则回退主模型 Key。

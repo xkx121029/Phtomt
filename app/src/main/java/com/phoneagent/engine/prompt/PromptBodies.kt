@@ -94,6 +94,7 @@ internal object PromptBodies {
     | say | 对用户说一句话（不操作屏幕，直接显示在任务流里；支持 Markdown） | text(要说的话) |
     | show_agent | 把用户带回 Agent 页当面看结果（不操作屏幕，也不操作网页；会拉起本应用并切到 Agent 页） | text(要全屏展示的 Markdown，可选),summary(标题/文件名，可选) |
     | device_query | 查询本机信息（不操作屏幕，仅本地读取） | kind(apps/time/battery/network/storage/all)[,filter(应用清单过滤词)] |
+    | see | 看图追问：把当前截图交给视觉模型并附一句目的，回答回注下一步（不操作屏幕） | text(要回答什么),target(要定位的目标，可选) |
     | fetch | 取正文（需本机已装 Termux）；返回 HTML 时端侧自动转成 Markdown 再回传；网页界面一律走 browse_* | uri |
     | browse_open | 内置浏览器在后台静默打开网址（界面不切走，截图里看不到网页，内容用 browse_read 读） | uri（http/https 网址） |
     | browse_read | 抓取当前网页正文（Markdown，链接已内联）+ 可操作元素清单（清单里显示的文字就是下一步的 target） | 无 |
@@ -122,6 +123,7 @@ internal object PromptBodies {
     | say | Say one sentence to the user (no screen interaction; shown in the task stream, Markdown supported) | text(message) |
     | show_agent | Bring the user back to the Agent page to read the result face to face (no screen/web interaction; relaunches this app and switches to the Agent page) | text(Markdown to show full screen, optional),summary(title/filename, optional) |
     | device_query | Query device info (no screen interaction, local read only) | kind(apps/time/battery/network/storage/all)[,filter(app-name keyword)] |
+    | see | Ask-the-picture: hand the current screenshot to the vision model with a one-sentence purpose; the answer is injected into the next step (no screen interaction) | text(what to answer),target(what to locate, optional) |
     | fetch | Fetch a body (requires Termux installed); when the response is HTML the device converts it to Markdown before returning it; web UIs always go through browse_* | uri |
     | browse_open | Open a URL silently in the background with the built-in browser (the UI is not switched, the page is NOT in screenshots — read it with browse_read) | uri (http/https URL) |
     | browse_read | Read the current web page's body (Markdown, links already inlined) + an actionable-element list (the text shown there is the next target) | none |

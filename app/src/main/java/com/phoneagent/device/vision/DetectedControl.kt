@@ -75,6 +75,10 @@ object ControlFormat {
                 textSize = (w / 36f).coerceIn(11f, 24f)
             }
             for (c in controls) {
+                // 只画有边界的条目：云端视觉只回中心坐标、没有框（bounds 为空），
+                // 照画会把框画在左上角，等于给调试截图加了假证据
+                if (c.bounds.size < 4) continue
+                if (c.bounds[0] == 0f && c.bounds[1] == 0f && c.bounds[2] == 0f && c.bounds[3] == 0f) continue
                 val color = ROLE_COLORS[c.role] ?: 0xFF607D8B.toInt()
                 val rect = RectF(c.bounds[0] * w, c.bounds[1] * h, c.bounds[2] * w, c.bounds[3] * h)
                 canvas.drawRect(rect, Paint(Paint.ANTI_ALIAS_FLAG).apply {

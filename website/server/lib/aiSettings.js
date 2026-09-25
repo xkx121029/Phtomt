@@ -78,6 +78,15 @@ const MAX_TEXT = {
   extraPrompt: 4000
 }
 
+/**
+ * 布尔字段白名单。
+ *
+ * 表单过来的是 'true' / 'false' 字符串，若不单独归一化会掉进下面的 String() 分支，
+ * 存成字符串「"false"」——它在 JS 里是真值，于是开关关了也没关：
+ * 留痕照样写、带路提示词照样注入、后台复选框照样显示为勾上。所以必须逐个点名。
+ */
+const BOOLEANS = new Set(['enabled', 'guideEnabled', 'logEnabled'])
+
 let cache
 
 function file() {
@@ -125,7 +134,7 @@ function coerce(key, value) {
     if (!Number.isFinite(n)) return DEFAULTS[key]
     return Math.min(range[1], Math.max(range[0], n))
   }
-  if (key === 'enabled') return value === true || value === 'true'
+  if (BOOLEANS.has(key)) return value === true || value === 'true'
   return String(value ?? '')
     .trim()
     .slice(0, MAX_TEXT[key] || 500)
