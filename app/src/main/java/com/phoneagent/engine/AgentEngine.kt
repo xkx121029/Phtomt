@@ -1686,6 +1686,12 @@ class AgentEngine(
                         sayStreak++
                         continue
                     }
+                    // 引导用户回 Agent 页看结果：同样纯端侧，但要真的把人带回来（拉起本应用 + 切页）
+                    if (action!!.type == ActionType.SHOW_AGENT) {
+                        handleShowAgent(step, action!!)
+                        sayStreak = 0
+                        continue
+                    }
                     // 自由模式：AI 自写命令在本任务首次执行前要向用户确认一次。
                     // 拒绝不等于放弃任务——把"用户拒绝了这条命令"回注给 AI，让它换条路子继续干。
                     if (!ensureShellApproval(action!!)) {
@@ -3231,6 +3237,33 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "AI 说话：${text.take(120)}")
         emitSayEvent(text, "r$currentTaskId", step)
         pushFloating(text.take(20), "THINKING")
+    }
+
+    /**
+     * 处理 AI 的 show_agent 意图：把用户带回 Agent 页当面看结果。
+     *
+     * 与 remember / device_query / say 同类——端侧代办、不触碰用户设备，因此不截图、不走通道、不做重试，
+     * 也**不写 StepRecord**（这一步的意义就是"请你过来看"，不是一次设备操作）。
+     *
+     * 带上 text 时先按 write_doc 的同一条通道落成文档（于是它既在任务流里留档，也能整屏通读），
+     * 再拉起本应用切到 Agent 页；是否整屏展示由界面按"此刻有没有文档"自行决定。
+     */
+    private fun handleShowAgent(step: Int, action: AgentAction) {
+        val text = action.text.orEmpty().trim()
+        val title = action.summary.orEmpty().trim()
+        val written = if (text.isNotEmpty()) {
+            documentEngine?.writeDocument(text, title)?.takeIf { it.isNotBlank() }
+        } else null
+        log(
+            AgentLog.Level.INFO,
+            "引导用户回 Agent 页：${written?.let { "并展示文档 $it" } ?: "看已有结果"}",
+        )
+        // 没带正文时任务流里没东西可看，留一句话说明为什么把用户叫回来
+        if (written == null) {
+            emitSayEvent(title.ifBlank { "结果已经准备好，回 Agent 页看吧" }, "r$currentTaskId", step)
+        }
+        pushFloating(if (written != null) "已回到 Agent 页看结果" else "已回到 Agent 页", "THINKING")
+        com.phoneagent.ui.MainActivity.showAgentPage(appContext, showDocument = written != null)
     }
 
     /**

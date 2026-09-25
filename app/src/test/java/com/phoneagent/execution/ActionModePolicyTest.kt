@@ -35,10 +35,10 @@ class ActionModePolicyTest {
 
     @Test
     fun 风险分档_三档之和等于全集() {
-        // 低 20 + 中 14 + 高 3 = 37 = IntentType.ALL；自由专属的两项不计入风险档
-        assertEquals(37, ActionPolicy.tiered.size)
-        assertEquals(37, (IntentType.ALL - ActionPolicy.freeOnly).size)
-        assertEquals(20, ActionPolicy.lowRisk.size)
+        // 低 21 + 中 14 + 高 3 = 38 = IntentType.ALL；自由专属的两项不计入风险档
+        assertEquals(38, ActionPolicy.tiered.size)
+        assertEquals(38, (IntentType.ALL - ActionPolicy.freeOnly).size)
+        assertEquals(21, ActionPolicy.lowRisk.size)
         assertEquals(14, ActionPolicy.midRisk.size)
         assertEquals(3, ActionPolicy.highRisk.size)
     }

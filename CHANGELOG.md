@@ -25,6 +25,9 @@
   - 整屏只放正文，覆盖含底部导航栏；出口为底部「返回主页」按钮与返回手势
   - `MainActivity` 新增 `showAgentPage` 静态入口与 `EXTRA_AGENT_PAGE` / `EXTRA_AGENT_DOC` 常量，引擎调用后自动切回 Agent 页并可选全屏展示
   - `AgentItems.kt` 文档预览卡片新增全屏图标入口（`AppIcons.Expand`）
+- **提示词与策略同步**（`engine/AgentEngine.kt`、`engine/AgentPrompts.kt`、`execution/ActionModePolicyTest.kt`）
+  - 中英文提示词均补充 `show_agent` 意图说明、使用边界（用户已在 Agent 页时禁用）及文档类任务末尾补步规则
+  - 低风险意图清单 20 → 21 项，三档合计 37 → 38，对应测试断言同步更新
 
 ---
 
