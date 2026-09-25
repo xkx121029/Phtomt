@@ -2145,13 +2145,14 @@ class AgentEngine(
                 if (desc.isNullOrBlank() && cloudVision && wantVisionDesc) {
                     log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
                     val t0 = System.nanoTime()
-                    desc = aiClient.visionDescribe(
+                    // 提问带目的：把"这次任务想推进什么"直接写进提问，视觉模型不必再整屏铺开罗列
+                    desc = aiClient.visionAsk(
                         baseUrl = visionCfg?.baseUrl ?: "",
                         apiKey = visionCfg?.apiKey ?: "",
                         model = visionCfg?.model ?: "",
                         screenshot = shot,
-                        task = task,
-                    ).getOrNull()
+                        purpose = "根据用户任务「$task」，找出当前页面上可用于推进任务的操作目标",
+                    ).getOrNull()?.text
                     recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 }
                 // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
@@ -2189,8 +2190,8 @@ class AgentEngine(
             }
             // 元素树稀疏且视觉也没产出：这一步 AI 实际上"什么都看不到"，
             // 必须明确记下来，否则用户只会看到 AI 在乱猜，不知道是两条感知链路同时空了。
-            // 主模型自己能看图（mainSeesImage）时不算"看不到"，那种情况下不发这条警告
-            if (complexPage && desc.isNullOrBlank() && localRegions.isNullOrEmpty() && !mainSeesImage) {
+            // 主模型自己能看图（mainGetsImage）时不算"看不到"，那种情况下不发这条警告
+            if (complexPage && desc.isNullOrBlank() && localRegions.isNullOrEmpty() && !mainGetsImage) {
                 log(
                     AgentLog.Level.WARN,
                     "元素树稀疏（${snapshot.elements.size} 个元素）且视觉链路未产出内容：" +
@@ -2222,14 +2223,14 @@ class AgentEngine(
             AgentPrompts.environment(currentLang, envFacts(snapshot)) +
             sessionContextText(task, currentLang)
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
-        addConversation("user", userText, hasImage = mainSeesImage)
+        addConversation("user", userText, hasImage = mainGetsImage)
 
         _state.value = _state.value.copy(phase = AgentState.Phase.THINKING, message = "正在思考下一步...")
         pushFloating("正在思考下一步", "THINKING")
         // 实时展示发送给 AI 的决策上下文
         pushThinking(sent = userText)
         val startNano = System.nanoTime()
-        // 主模型能识图（hasVision）时把截图直接交给它；否则只收视觉描述后的文本，
+        // 主模型能识图（三态合流见 mainSeesImage）时把截图直接交给它；否则只收视觉描述后的文本，
         // 避免不支持图片的模型因 image_url 报错（旧行为是恒不发图，这里改为按能力发）
         // 流式生成，边生成边把返回内容实时显示到悬浮窗 + 通知
         // 看门狗：单步决策超时则本步改为等待、下一轮重试，避免长线任务因云端卡住而无限阻塞
@@ -2240,7 +2241,7 @@ class AgentEngine(
                 model = settingsVal.model,
                 // 长线任务历史压缩：只带系统消息 + 最近几轮 + 当前轮，避免上下文无限累积
                 messages = chatHistory(messages, userMsg),
-                screenshot = if (mainSeesImage) screenshot else null,
+                screenshot = if (mainGetsImage) screenshot else null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
                 onRetry = {
@@ -2287,32 +2288,52 @@ class AgentEngine(
                 // 定位同样是阻塞式视觉调用（端侧 AIDL / 云端 OkHttp），套同一只看门狗：
                 // 超时即放弃坐标（转译层会提示降级重定位），不让它拖死主循环
                 val pos: Pair<Float, Float>? = withVisionWatchdog(EXTERNAL_VISION_TIMEOUT) {
+                    // 1) 免费且即时：在已识别到的控件里做字符串匹配（先全等、再包含），零网络零 IPC。
+                    //    能命中就绝不发远端 —— 旧逻辑先发 AIDL 远端、失败才回落本地，白等一次跨进程调用
+                    val local = localRegions?.let { com.phoneagent.device.vision.ControlFormat.locate(it, targetText) }
                     when {
-                    // 外挂视觉优先：端侧 3B 定位不准时退回已识别控件的本地匹配
-                    externalUsed -> {
-                        log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
-                        val t0 = System.nanoTime()
-                        val p = com.phoneagent.device.vision.ExternalVisionProvider.locate(
-                            appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
-                        ) ?: com.phoneagent.device.vision.ControlFormat.locate(localRegions!!, targetText)
-                        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
-                        p
-                    }
-                    localRegions != null -> com.phoneagent.device.vision.ControlFormat.locate(localRegions, targetText)
-                    cloudVision -> {
-                        log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
-                        val t0 = System.nanoTime()
-                        val p = aiClient.visionLocate(
-                            baseUrl = visionCfg?.baseUrl ?: "",
-                            apiKey = visionCfg?.apiKey ?: "",
-                            model = visionCfg?.model ?: "",
-                            screenshot = screenshot,
-                            targetText = targetText,
-                        ).getOrNull()
-                        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
-                        p
-                    }
-                    else -> null
+                        local != null -> local
+                        // 2) 本地没匹配上，且外挂视觉这一路确实是活的：发一次远端精定位
+                        externalUsed -> {
+                            log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
+                            val t0 = System.nanoTime()
+                            val p = com.phoneagent.device.vision.ExternalVisionProvider.locate(
+                                appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
+                            )
+                            recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                            p
+                        }
+                        // 3) 最后才是云端：同一张图再上传一次，代价最高
+                        cloudVision -> {
+                            log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
+                            val t0 = System.nanoTime()
+                            val ans = aiClient.visionAsk(
+                                baseUrl = visionCfg?.baseUrl ?: "",
+                                apiKey = visionCfg?.apiKey ?: "",
+                                model = visionCfg?.model ?: "",
+                                screenshot = screenshot,
+                                purpose = "定位用户任务「$task」中需要的目标「$targetText」",
+                                target = targetText,
+                            ).getOrNull()
+                            recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                            val ax = ans?.x
+                            val ay = ans?.y
+                            // 云端这次定位已经花过钱：把结果并进本地表，本次与后续的字符串匹配都能命中，
+                            // 不必为同一个目标再上传同一张图
+                            if (ax != null && ay != null) {
+                                localRegions = (localRegions ?: emptyList()) + com.phoneagent.device.vision.DetectedControl(
+                                    label = targetText,
+                                    role = "目标",
+                                    purpose = "云端定位：$targetText",
+                                    bounds = floatArrayOf(),
+                                    cx = ax,
+                                    cy = ay,
+                                    source = "cloud",
+                                )
+                            }
+                            if (ax != null && ay != null) ax to ay else null
+                        }
+                        else -> null
                     }
                 }
                 if (pos != null) {
@@ -2324,7 +2345,7 @@ class AgentEngine(
                 val visionSrc = when {
                     externalUsed -> "外挂3B"
                     // 主模型直接读图（跳过视觉描述时最常见）：图片进了主模型上下文
-                    mainSeesImage -> "主模型直读"
+                    mainGetsImage -> "主模型直读"
                     !desc.isNullOrBlank() && cloudVision -> "云端"
                     !desc.isNullOrBlank() -> "本地OCR"
                     else -> "无"
