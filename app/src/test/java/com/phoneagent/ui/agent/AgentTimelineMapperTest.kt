@@ -10,6 +10,7 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
+import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.SayEvent
@@ -76,6 +77,7 @@ class AgentTimelineMapperTest {
         fold: LiveStatusFold = LiveStatusFold(),
         memoryEvents: List<MemoryEvent> = emptyList(),
         sayEvents: List<SayEvent> = emptyList(),
+        clarifyEvents: List<ClarifyAnswered> = emptyList(),
         focusTaskId: Long? = null,
         archived: TaskSession? = null,
         conversationStart: Long = 0L,
@@ -93,6 +95,7 @@ class AgentTimelineMapperTest {
         fold = fold,
         memoryEvents = memoryEvents,
         sayEvents = sayEvents,
+        clarifyEvents = clarifyEvents,
         focusTaskId = focusTaskId,
         archived = archived,
         conversationStart = conversationStart,
@@ -200,7 +203,7 @@ class AgentTimelineMapperTest {
     }
 
     @Test
-    fun `澄清阶段不再往任务流里塞问答卡片`() {
+    fun `澄清进行中任务流出一条AI问题气泡不产步骤`() {
         val items = build(
             submittedTask = "把字体调大",
             planPhase = PlanPhase.Clarifying(
@@ -210,9 +213,30 @@ class AgentTimelineMapperTest {
                 ),
             ),
         )
-        // 提问与选项都由输入栏（AgentComposer）承载，任务流只剩任务标题这一条
-        assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
         assertEquals(listOf("把字体调大"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+        // 提问现在留在任务流里（左对齐 AI 气泡），选项仍由输入栏承载
+        val question = items.filterIsInstance<AgentTimelineItem.ClarifyQuestion>().single()
+        assertEquals("要调系统字体还是应用内字体？", question.question)
+        assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
+        assertTrue(items.none { it is AgentTimelineItem.ClarifyAnswer })
+    }
+
+    @Test
+    fun `选定澄清选项后：问题与选择成组保留在任务流里`() {
+        val items = build(
+            submittedTask = "把字体调大",
+            planPhase = PlanPhase.AwaitingApproval(TaskPlan(steps = emptyList(), confidence = 0.8)),
+            clarifyEvents = listOf(
+                ClarifyAnswered(id = 1, question = "要调系统字体还是应用内字体？", answer = "系统字体"),
+            ),
+        )
+        val question = items.filterIsInstance<AgentTimelineItem.ClarifyQuestion>().single()
+        assertEquals("要调系统字体还是应用内字体？", question.question)
+        // 用户点的选择收成用户侧气泡，紧跟在同一组问题后面
+        val answer = items.filterIsInstance<AgentTimelineItem.ClarifyAnswer>().single()
+        assertEquals("系统字体", answer.answer)
+        assertTrue(items.indexOfFirst { it is AgentTimelineItem.ClarifyQuestion } <
+            items.indexOfFirst { it is AgentTimelineItem.ClarifyAnswer })
     }
 
     @Test
