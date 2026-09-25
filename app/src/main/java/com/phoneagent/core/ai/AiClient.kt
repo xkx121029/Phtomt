@@ -143,7 +143,7 @@ class AiClient(
          * AgentIntent 的标准 JSON Schema，用于约束模型输出（对齐 HPA动作执行逻辑优化文档 v2.1 三、意图 DSL）。
          *
          * intent 的 enum 由 [IntentType.ALL] 现场生成，**不手抄**：这份表曾因手抄而落后于意图全集
-         * （缺 remember/device_query/say/show_agent/fetch/6 个 browse_*/shell/a11y），
+         * （缺 remember、device_query、say、show_agent、fetch、6 个 browse_*、shell、a11y），
          * 结果是"结构化回退"这条路上新意图被 schema 直接判非法。唯一定义点在 [IntentType.ALL]。
          */
         private val ACTION_SCHEMA = """

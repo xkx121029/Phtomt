@@ -98,6 +98,11 @@ function allow(ip, perHour) {
 
 // ---------- 留痕 ----------
 
+/** 命中来源归一：同一份资料可能被多条命中带出来，对外只该出现一次 */
+function grouped(sources) {
+  return [...new Set((sources || []).map((s) => s.group))]
+}
+
 /**
  * 落一条问答留痕。
  *
@@ -119,7 +124,7 @@ function record(cfg, req, { question, answer, sources, startedAt, error = '' }) 
         // 引导标记单存一列：后台一眼能看出「这次把用户带去了哪」
         nav: navs[0]?.to || '',
         navLabel: navs[0]?.label || '',
-        sources: [...new Set((sources || []).map((s) => s.group))],
+        sources: grouped(sources),
         chars: String(answer || '').length,
         ms: Date.now() - startedAt,
         error
@@ -197,7 +202,9 @@ aiRouter.post('/chat', async (req, res) => {
       signal: abort.signal,
       onDelta: (text) => send({ type: 'delta', text })
     })
-    send({ type: 'done', sources: knowledge.sources.map((s) => s.group), chars: full.length })
+    // 同一份命中来源在事件与留痕里必须长得一样：检索会同一组命中多条，
+    // 不去重就会得到 ["docs","changelog","scenarios","scenarios",…] 这种带重复的清单
+    send({ type: 'done', sources: grouped(knowledge.sources), chars: full.length })
     record(cfg, req, { question, answer: full, sources: knowledge.sources, startedAt })
   } catch (err) {
     // 客户端主动断开不算错误，不必回写
