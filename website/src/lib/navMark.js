@@ -19,6 +19,22 @@ const NAV_CLOSE = ']]'
 export const NAV_MAX = 1
 
 /**
+ * 末尾是不是「标记开头的一截」。
+ *
+ * 只从两字符起认：`[[` 是标记的开头，而单个 `[` 太常见了（正在流进来的 Markdown 链接
+ * 就是 `[文字](网址)` 这个形状），把它扣住会让正常文本跟着卡一下。
+ * 取舍是：宁可让极少数以 `[[` 结尾的正文少显示两个字符，也不要让标记露头。
+ *
+ * @returns {number} 该从哪个位置开始扣；没命中返回 -1
+ */
+function partialOpenAt(tail) {
+  for (let len = Math.min(NAV_OPEN.length - 1, tail.length); len >= 2; len -= 1) {
+    if (tail.endsWith(NAV_OPEN.slice(0, len))) return tail.length - len
+  }
+  return -1
+}
+
+/**
  * 拆出引导标记。
  *
  * @param {string} raw 模型吐出来的原始文本
@@ -37,7 +53,15 @@ export function splitNavs(raw) {
   for (;;) {
     const start = src.indexOf(NAV_OPEN, cursor)
     if (start < 0) {
-      text += src.slice(cursor)
+      // 剩下的部分里已经没有完整开头了，但它可能是开头的一部分（`[[go` 还没吐到冒号）
+      const tail = src.slice(cursor)
+      const at = partialOpenAt(tail)
+      if (at >= 0) {
+        text += tail.slice(0, at)
+        pending = true
+      } else {
+        text += tail
+      }
       break
     }
 

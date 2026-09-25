@@ -10,6 +10,7 @@ import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelAbility
+import com.phoneagent.core.ai.VisionRouting
 import com.phoneagent.data.prefs.AppSettings
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -1412,8 +1413,9 @@ class AgentEngine(
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
         // 提示词里的"能看图"必须与实际是否真的发图一致：关掉"附送屏幕截图"后每步都不带图，
-        // 此时仍告诉 AI"可视"会让它去描述图里看到的东西（实际没收到图）
-        val effectiveHasVision = settingsVal.hasVision && settingsVal.attachScreenshot
+        // 此时仍告诉 AI"可视"会让它去描述图里看到的东西（实际没收到图）。
+        // 判定走三态（见 VisionRouting）：AUTO 听模型库里真实探测出的能力，ON/OFF 是用户覆盖
+        val effectiveHasVision = mainSeesImage(settingsVal) && settingsVal.attachScreenshot
         // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
         val skillsPrompt = skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
@@ -1511,6 +1513,8 @@ class AgentEngine(
 
             // 3. 端侧决策优先（输出的都是"意图"）
             lastVisualCoordinate = null
+            // 跨步清理图片编码缓存：上一轮的截图早已回收，留着引用既不省事也占内存
+            aiClient.clearImageCache()
             // 端侧决策异常（规则引擎内部越界等）不能让整个任务崩掉：降级为空，直接走云端决策
             val localIntent = tryOrNull("端侧决策失败") { localDecision.decide(snapshot) }
             var decidedIntent: AgentIntent?
@@ -1601,6 +1605,11 @@ class AgentEngine(
                     is com.phoneagent.feature.skill.SkillCompat.Normalized.Mcp -> {
                         skillErrorStreak = 0
                         invokeMcpSkill(step, normalized, messages)
+                        continue
+                    }
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Vision -> {
+                        skillErrorStreak = 0
+                        invokeVisionAsk(step, normalized, messages, screenshot, settingsVal)
                         continue
                     }
                     is com.phoneagent.feature.skill.SkillCompat.Normalized.Error -> {
@@ -2092,12 +2101,12 @@ class AgentEngine(
         // 云端视觉是否可用：配置就绪，且（未开混合 或 复杂任务 或 未启用外挂只能靠云端）
         // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
         val cloudVision = cloudReady && (!hybrid || complexPage || !settingsVal.enableExternalVision)
-        // 主模型自身能识图（hasVision 由"所选主模型的能力"判定），且本轮确实拍到了图 → 图片直接进主模型上下文。
-        // hasVision 是用户可覆盖的开关，attachScreenshot 决定"本轮有没有图"，两者都满足才算真的发图。
-        val mainSeesImage = settingsVal.hasVision && settingsVal.attachScreenshot && screenshot != null
+        // 主模型自身能识图（三态合流，见 VisionRouting）且本轮确实拍到了图 → 图片直接进主模型上下文。
+        // 局部变量刻意不叫 mainSeesImage：那是"能力判定"，这里还要叠加"本轮有图"
+        val mainGetsImage = mainSeesImage(settingsVal) && settingsVal.attachScreenshot && screenshot != null
         // 「主模型识图时跳过视觉描述」：只省"把截图转成文字"这一步——图片已经在主模型上下文里，
         // 再花钱把同一张图转成文字没有收益；但外挂 3B 框选出的坐标（hint 定位的第一优先来源）照常保留
-        val wantVisionDesc = !(mainSeesImage && settingsVal.skipVisionDescWhenMainSees)
+        val wantVisionDesc = !(mainGetsImage && settingsVal.skipVisionDescWhenMainSees)
         var localRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
         var externalUsed = false
         var pageText = safeText
