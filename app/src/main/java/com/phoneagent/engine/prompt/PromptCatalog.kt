@@ -403,7 +403,7 @@ internal object PromptCatalog {
             origin = "AgentPrompts.decision 随时可用：say",
         ),
         PromptBlock(
-            id = "dec.always.show_agent", group = PromptGroup.DECISION, order = 13, sep = "\n",
+            id = "dec.always.show_agent", group = PromptGroup.DECISION, order = 13, sep = "\n\n",
             bodyCN = PromptBodies.DEC_ALWAYS_SHOW_AGENT_CN, bodyEN = PromptBodies.DEC_ALWAYS_SHOW_AGENT_EN,
             origin = "AgentPrompts.decision 随时可用：show_agent",
         ),

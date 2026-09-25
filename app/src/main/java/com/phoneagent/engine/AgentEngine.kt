@@ -1390,7 +1390,8 @@ class AgentEngine(
         // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
         val skillsPrompt = skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt, actionMode = activeActionMode)))))
+            // task 只用于按任务类型裁剪与当下无关的大块（见 TaskKindDetector），不参与正文渲染
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt, actionMode = activeActionMode, task = task)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, effectiveHasVision)))))
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {

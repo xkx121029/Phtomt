@@ -190,7 +190,8 @@ object AgentPrompts {
             if (disabledNames.isNotEmpty()) add(PromptFlag.DISABLED_SKILLS)
         }
         val vars = PromptVars(
-            mcpTable = mcpLines.joinToString("\n"),
+            // 每行原文是 "| $line |"，行间以换行相接、末尾不带换行（表尾空行留在正文里）
+            mcpTable = mcpLines.joinToString("\n") { "| $it |" },
             disabledNames = if (lang == PromptLang.CN) disabledNames.joinToString("、") else disabledNames.joinToString(", "),
         )
         // 每块自带尾随换行，整组装配后统一裁掉，与原文 sb.toString().trimEnd() 一致
