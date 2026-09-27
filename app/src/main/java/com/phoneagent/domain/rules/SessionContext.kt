@@ -19,6 +19,24 @@ object SessionContext {
     )
 
     /**
+     * 英文承接/指代词。判定与中文同源——提示词支持中英切换，英文输入若只认中文词，
+     * 英文用户说 "do that again" 就永远落在"当作独立任务"那一支，承接规则形同失效。
+     * 刻意只用**多词或明确指代**的形式，避免 "it"/"this" 这类单词误命中（子串匹配）。
+     */
+    private val STRONG_MARKERS_EN = listOf(
+        "again", "continue", "instead", "same as", "the same", "that one", "this one",
+        "change it", "make it", "go on", "keep going", "previous one", "last one",
+    )
+
+    /**
+     * 英文标记必须按**整词**匹配：子串匹配会让 "against"/"bargain" 这类词误命中 "again"。
+     */
+    private val EN_FOLLOW_UP = Regex(
+        STRONG_MARKERS_EN.joinToString("|", prefix = "\\b(", postfix = ")\\b") { Regex.escape(it) },
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
      * 弱承接词"再"：只在短句里才算追问。
      * "再改一下"是追问；"再帮我订一张明天下午的电影票"自带完整目标，不该被上一轮带偏。
      */
@@ -30,6 +48,7 @@ object SessionContext {
         val t = text.trim()
         if (t.isEmpty()) return false
         if (STRONG_MARKERS.any { t.contains(it) }) return true
+        if (EN_FOLLOW_UP.containsMatchIn(t)) return true
         return t.contains(WEAK_MARKER) && t.length <= SHORT_TEXT_MAX
     }
 }

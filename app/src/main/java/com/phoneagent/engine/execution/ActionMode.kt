@@ -22,8 +22,8 @@ enum class ActionMode(
     /** 保守：仅低风险命令（只读 + 导航 + 纯本地动作），不放行任何改动设备/外部状态的动作 */
     CONSERVATIVE(
         "CONSERVATIVE", "保守", "Conservative",
-        "仅低风险命令：只读 / 导航 / 本地读写",
-        "low-risk commands only: read-only / navigation / local read-write",
+        "仅低风险命令：读取信息 / 导航 / 本地读写",
+        "low-risk commands only: information reading / navigation / local read-write",
     ),
 
     /** 均衡：转译层全部意图可用（= 既有默认行为） */

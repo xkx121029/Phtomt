@@ -15,6 +15,12 @@ data class VerifyResult(
     val beforeFingerprint: String,
     /** 执行后指纹 */
     val afterFingerprint: String,
+    /**
+     * 执行成功、但需要回注给 AI 的注意项（目前唯一来源：点击落点命中的控件与目标不一致）。
+     * 为空表示没有要额外提醒的。刻意与 [reason] 分开：[reason] 是给人看的成败说明，
+     * note 是"这步算成了，但下一步要留意"——混在一起会让成功文案带上一串解释。
+     */
+    val note: String = "",
 )
 
 /**

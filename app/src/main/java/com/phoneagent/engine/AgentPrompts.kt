@@ -222,7 +222,7 @@ object AgentPrompts {
             val net = env.network.ifBlank { "未知" }
             val bat = env.battery.ifBlank { "未知" }
             append("\n- 网络：$net；电量：$bat")
-            append("\n- 已安装应用：${env.installedCount} 个（清单未提供，需要时输出 device_query 查 kind=apps，可用 filter 按关键词缩小）")
+            append("\n- 已安装应用：${env.installedCount} 个（清单太长不随上下文下发；要哪个应用就用 device_query kind=apps 配合 filter，如 filter=\"微信\"，查询结果以「上一步结果」文本回传）")
         }
         PromptLang.EN -> buildString {
             append("\n\n# Environment (collected on-device, live)")
@@ -231,7 +231,7 @@ object AgentPrompts {
             val net = env.network.ifBlank { "unknown" }
             val bat = env.battery.ifBlank { "unknown" }
             append("\n- Network: $net; battery: $bat")
-            append("\n- Installed apps: ${env.installedCount} (list not provided; query it with device_query kind=apps, narrow it with filter)")
+            append("\n- Installed apps: ${env.installedCount} (the list is too long to ship in the context; query the one you need with device_query kind=apps + filter, e.g. filter=\"WeChat\" — the result comes back as text in the last step result)")
         }
     }
 
@@ -248,35 +248,52 @@ object AgentPrompts {
         val sb = StringBuilder()
         when (lang) {
             PromptLang.CN -> {
-                sb.append("\n\n# 会话承接（本对话中更早的往来，仅供理解用户意图，无关时忽略）")
+                sb.append("\n\n# 会话承接（本对话中更早的往来，作为本轮的理解背景）")
                 previous.forEachIndexed { i, p ->
                     val head = if (i == 0) "上一轮" else "更早的第 ${i} 轮"
                     sb.append("\n- $head：${p.goal.take(120)} —— ${p.statusLabel}")
                     if (p.conclusion.isNotBlank()) sb.append("；结论：${p.conclusion.take(120)}")
                 }
+                sb.append("\n- 「上一轮」指最近一轮。「已完成」的意思只有一个：**那一轮的步骤不用再走一遍**（已经下过单就不要再下一遍）。")
                 if (followUp) {
-                    sb.append("\n⚠️ 本轮输入含指代词（再/接着/刚才/这个等），判定为对上一轮的追问：")
-                    sb.append("必须以「上一轮」为目标主体规划与执行，承接它的目标与已完成结果，不要重复已完成的部分。")
+                    sb.append("\n⚠️ 本轮输入含指代词（再/接着/刚才/这个/还有等），判定为对「上一轮」那件事的追问：")
+                    sb.append("目标就是那一轮那件事：在它已经做出来的结果上接着改（例如「再辣一点」＝把上一轮那一单改成加辣，而不是重新下单一遍），不是把整件事从头重做。")
+                    sb.append("「已经做出来的结果」包括那一轮的结论和它留在屏幕上的状态——屏幕此刻长什么样，看随附的「当前页面」与截图即可。")
                 } else {
-                    sb.append("\n本轮是新一轮输入：与上面的往来有关就承接其目标与结果，无关就当作独立任务。")
+                    sb.append("\n本轮是新一轮输入：与上面的往来有关就接着它的结果继续，无关就当作独立任务。")
                 }
             }
             PromptLang.EN -> {
-                sb.append("\n\n# Conversation Carry-over (earlier exchanges in this conversation; only for understanding intent, ignore if unrelated)")
+                sb.append("\n\n# Conversation Carry-over (earlier exchanges in this conversation — background for this turn)")
                 previous.forEachIndexed { i, p ->
                     val head = if (i == 0) "Previous turn" else "Earlier turn $i"
-                    sb.append("\n- $head: ${p.goal.take(120)} — ${p.statusLabel}")
+                    sb.append("\n- $head: ${p.goal.take(120)} — ${statusLabelEn(p.statusLabel)}")
                     if (p.conclusion.isNotBlank()) sb.append("; outcome: ${p.conclusion.take(120)}")
                 }
+                sb.append("\n- \"Previous turn\" means the most recent one. A status of \"done\" means exactly one thing: **that turn's steps do not need to be walked again** (an order already placed must not be placed twice).")
                 if (followUp) {
-                    sb.append("\n⚠️ This input references the previous turn (再/接着/刚才/这个…), so treat it as a follow-up:")
-                    sb.append(" plan and execute against the previous turn's goal, carry over its results, and do not redo what is already done.")
+                    sb.append("\n⚠️ This input references that earlier thing (again / still / that one / also…), so treat it as a follow-up on it:")
+                    sb.append(" the target is that same thing — keep adjusting what it already produced (e.g. \"make it spicier\" = adjust that order, not place a new one), do NOT redo the whole thing from scratch.")
+                    sb.append(" \"What it already produced\" covers that turn's outcome plus the state it left on screen; the screen as it is right now is what the attached \"current page\" block and screenshot show.")
                 } else {
-                    sb.append("\nThis is a new input: carry over the goal/results above when related, otherwise treat it as independent.")
+                    sb.append("\nThis is a new input: if it relates to the above, continue on top of its result; otherwise treat it as an independent task.")
                 }
             }
         }
         return sb.toString()
+    }
+
+    /**
+     * 承接块里的状态标签由端侧给出，是中文枚举（见 MemoryStore.statusLabel）；
+     * 英文提示词下换成英文，避免英文上下文里冒出「已完成」这种中英混排。
+     */
+    private fun statusLabelEn(label: String): String = when (label) {
+        "已完成" -> "done"
+        "未完成" -> "unfinished"
+        "已中断" -> "aborted"
+        "进行中" -> "in progress"
+        "对话" -> "chat"
+        else -> label
     }
 
     // ==================== 二、歧义检测 + 规划 ====================
@@ -387,66 +404,85 @@ object AgentPrompts {
             sb.append("\n\n## 当前任务附加指导 · 文档生成\n")
             if (lang == PromptLang.CN) {
                 sb.append("检测到本任务需要生成/整理文档。必须直接输出 write_doc，禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。模板：\n")
-                sb.append("""{"intent":"write_doc","text":"完整文档内容（Markdown）","summary":"文件名.md","reasoning":"生成文档并在 Agent 页预览","expected":"文档已生成","confidence":0.95}""")
+                sb.append("""{"intent":"write_doc","text":"完整文档内容（Markdown）","summary":"给这份文档起的文件名.md（按内容命名，不要照抄本示例）","reasoning":"生成文档并在 Agent 页预览","expected":"文档已生成","confidence":0.95}""")
+                sb.append("\n正文（text）由你自己写：按用户要求组织内容，不要问用户「素材在哪」。内容需要外部事实（天气、汇率、搜索结果、设备信息）时，先用能拿到它的步骤取回（browse_read / fetch / device_query），把结果作为依据再成文；确实缺关键信息且自己拿不到时才 clarify。")
             } else {
                 sb.append("This task requires generating/compiling a document. Must output write_doc directly; do NOT type on screen, open a notes app, or use shell to write files. Template:\n")
-                sb.append("""{"intent":"write_doc","text":"full document content (Markdown)","summary":"filename.md","reasoning":"generate document, preview on the Agent page","expected":"document generated","confidence":0.95}""")
+                sb.append("""{"intent":"write_doc","text":"full document content (Markdown)","summary":"a filename for the document.md (name it by content; do not copy this example)","reasoning":"generate document, preview on the Agent page","expected":"document generated","confidence":0.95}""")
+                sb.append("\nYou write the body (text) yourself: organize the content per the user's request; never ask the user where the material is. When the content needs external facts (weather, exchange rate, search results, device info), first fetch them with the step that can (browse_read / fetch / device_query) and write from those results; use clarify only when a key fact is genuinely missing and unobtainable.")
             }
         }
         if (openHit) {
             sb.append("\n\n## 当前任务附加指导 · 页面直达(open)\n")
             if (lang == PromptLang.CN) {
                 sb.append("若目标页面有稳定直达方式，优先用 open 一键直达，减少逐步点击。")
-                sb.append("App 内页/系统页用 uri，公开 scheme 用官方 scheme；封闭 App（如微信聊天）不发明 scheme，改用 open_app 逐步。")
-                sb.append("要把链接/文件交给系统应用打开也用它：网址给系统浏览器，本地文件（/sdcard/…、file://…）给系统文档/图片/播放器，端侧自动补类型；泛指不必填 app（端侧优先系统自带应用），用户点名了具体应用才填 app。")
-                sb.append("""模板：{"intent":"open","uri":"/sdcard/Download/季度汇报.ppt","reasoning":"用文档软件打开PPT","expected":"文档应用显示该PPT","confidence":0.9}""")
+                sb.append("\n怎么填只有一个判据——**看用户给的是「一串网址/文件路径」还是「某个软件里的某个页面」**，两种形态不会同时出现：")
+                sb.append("\n- 给的是网址/文件 → 填 uri（网址给系统浏览器，本地文件 /sdcard/… 给系统文档/图片/播放器，端侧自动补类型），app 只是「用哪个应用打开」、可以不填：泛指类目（“用文档软件打开”）就不填，端侧优先系统自带；点名了具体应用（“用 WPS 打开”）才填。")
+                sb.append("\n- 给的是软件里的页面 → 用 app + page 两个字段（page 填下面列表里页面名前的数字，app 填软件名），没有 uri。能这样直达的一律优先，比逐步点击更稳；列表里没有这个页面时才退回 uri/scheme。")
+                sb.append("\nApp 内页、系统页若官方公开了深链（scheme）就照官方写法用；**别自己拼 scheme**，拿不准就改用 app+page 或 open_app 逐步。封闭 App（如微信聊天页）没有公开深链，直接走 open_app 逐步。")
+                sb.append("""\n模板：{"intent":"open","uri":"/sdcard/Download/季度汇报.ppt","reasoning":"用文档软件打开PPT","expected":"文档应用显示该PPT","confidence":0.9}""")
                 sb.append("\n要读网页内容仍用 browse_*（见上网与网页操作）；uri 必须是用户给的或上一步结果里真实出现的，禁止编造路径。")
-                sb.append("以下软件页面可直达（用 open 的 app+page 字段，先声明软件与页面再填页码）：\n${AppPageIndex.indexText()}")
+                sb.append("以下软件页面可直达，用 open 的 **app + page 两个字段**（app 填软件名，page 填下面列表里页面名前面的那个数字）：\n")
+                sb.append(AppPageIndex.indexText())
+                sb.append("\n例如 ")
+                sb.append("""{"intent":"open","app":"高德地图","page":"1","reasoning":"直达高德搜索页","expected":"高德搜索页打开","confidence":0.9}""")
+                sb.append(" 表示直达高德那一行里序号 1 的那个页面。")
+                sb.append("\n列表里若列到“浏览器”，那一行指的是**打开浏览器应用本身**（不是打开某个网址）：只在用户明确要这个应用时才用；只要目标是读网页内容、查资料、操作网页，一律走 browse_*，两者不要混用。")
             } else {
-                sb.append("If the target page has a stable direct open, prefer open to jump there directly. Use uri for in-app/system pages; official scheme for public schemes; do NOT invent schemes for closed apps — use open_app instead.")
-                sb.append("Use it as well to hand a link/file to a system app: URLs go to the system browser, local files (/sdcard/…, file://…) to the system document/image/player app; the device fills in the MIME type. Leave app empty for generic targets (the device prefers system apps); set app only when the user named a specific app.")
-                sb.append("""Template: {"intent":"open","uri":"/sdcard/Download/report.ppt","reasoning":"open the PPT with a document app","expected":"document app shows the PPT","confidence":0.9}""")
+                sb.append("If the target page has a stable direct open, prefer open to jump there directly.")
+                sb.append("\nThere is only one criterion for what to fill in — **is the user giving you a URL/file path, or a page inside some app?** The two forms never occur together:")
+                sb.append("\n- A URL/file → fill uri (URLs go to the system browser, local files /sdcard/… to the system document/image/player app; the device fills in the MIME type). app there only means \"which app to open it with\" and may be omitted: for a generic category (\"open it with a document app\") leave it empty and the device prefers a system app; fill it only when a specific app is named (\"open it with WPS\").")
+                sb.append("\n- A page inside an app → use the two fields app + page (page = the number in front of a page name in the list below, app = software name); no uri. When the list covers it, always prefer this — it is more reliable than tapping step by step; fall back to uri/scheme only for pages the list does not cover.")
+                sb.append("\nFor in-app and system pages, use the officially published deep link (scheme) when there is one; **never invent a scheme** — if unsure, use app+page or open_app step by step. Closed apps (e.g. a WeChat chat page) have no public deep link, so go with open_app.")
+                sb.append("""\nTemplate: {"intent":"open","uri":"/sdcard/Download/report.ppt","reasoning":"open the PPT with a document app","expected":"document app shows the PPT","confidence":0.9}""")
                 sb.append("\nReading page content still goes through browse_* (see the browsing section); uri MUST be given by the user or appear in the last step result — never invent a path.")
-                sb.append("Directly openable software pages (use open's app+page fields):\n${AppPageIndex.indexText()}")
+                sb.append("These software pages can be opened directly, using open's **two fields app + page** (app = software name, page = the number in front of a page name in the list below):\n")
+                sb.append(AppPageIndex.indexText())
+                sb.append("\nE.g. ")
+                sb.append("""{"intent":"open","app":"Amap","page":"1","reasoning":"jump to the Amap search page","expected":"Amap search page opens","confidence":0.9}""")
+                sb.append(" means jumping to item 1 in the Amap line.")
+                sb.append("\nIf the list contains \"browser\", that entry means **launching the browser app itself** (NOT opening a URL): use it only when the user explicitly wants that app; whenever the goal is reading or operating web page content, always go through browse_*, never mix the two.")
             }
         }
         if (browseHit) {
             sb.append("\n\n## 当前任务附加指导 · 上网与网页操作(browse_*)\n")
             if (lang == PromptLang.CN) {
                 sb.append("本 App 内置浏览器，可直接打开并操纵网页；网页在**后台静默**加载（界面不切走，截图里看不到网页），所以内容要用 browse_read 读，不用猜。\n")
-                sb.append("""打开网址：{"intent":"browse_open","uri":"https://example.com","reasoning":"打开该网页","expected":"网页在后台静默加载完成","confidence":0.9}""")
+                sb.append("""打开网址：{"intent":"browse_open","uri":"https://www.bing.com/search?q=今天的汇率","reasoning":"打开网页查汇率","expected":"网页在后台静默加载完成","confidence":0.9}""")
                 sb.append("\n网址不明确就用搜索引擎直达页，例如 https://www.bing.com/search?q=关键词（关键词做 URL 编码）。\n")
                 sb.append("""看清当前网页：{"intent":"browse_read","reasoning":"读取网页内容","expected":"返回 Markdown 正文与可操作元素清单","confidence":0.9}""")
                 sb.append("""\n操作网页：{"intent":"browse_click","target":{"by":"text","value":"下一页"}} / {"intent":"browse_input","target":{"by":"text","value":"搜索"},"text":"关键词"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
                 sb.append("\n分流（先判断再动手）：要你读/操作网页内容（查资料、点网页链接、填网页表单）才用 browse_*；只是把网址打开给用户看、或用户点名\"用浏览器打开\"时，改用 open + uri 交系统浏览器，别占用内置浏览器。")
-                sb.append("\n通道特权（重要）：browse_* 是独立通道，不经过无障碍/Shizuku/无线 ADB，只读模式下照常可用——普通链接、翻页、搜索、勾选、填表单都放行；只有点击目标命中不可逆词表（${BrowserGuard.promptWords()}）会被端侧直接拒绝，被拒后不要重试同一动作。")
+                sb.append("\n通道特权（重要）：browse_* 是独立通道，不经过无障碍/Shizuku/无线 ADB——打开网页、读正文、翻页、搜索、勾选、填表单一律直接执行，不需要谁确认。唯一可能被拦的是**不可逆操作**（点击目标命中不可逆词表 ${BrowserGuard.promptWords()}，或你给它带了 needs_confirmation）：端侧可能直接回“已拒绝点击（没有真正点下去）”。端侧怎么放行由它自己判定，**你不需要预判、也不需要知道当前处于什么模式**——照下面那条把不可逆动作标成 needs_confirmation 发出去即可；真收到“已拒绝”就说明这一步当下不允许，**同一个不可逆动作不要再发（改坐标、换措辞、换目标写法都算同一个），也不要降级成 tap 去点**，改为告知用户这一步需手动完成，或收尾说明原因。（这只管「被端侧拒绝」这一种情形；普通操作失败、找不到元素时照铁律 5 换策略继续试。）")
                 sb.append("\n边界（重要）：网页元素只能用 browse_click 按元素文字点（清单里看得见就点得到），禁止用 tap + 坐标去猜；browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要点的元素清单里没有就先 browse_scroll 滚出来；静默上网不会切走 App 界面，不需要用 BACK 离开浏览器。")
                 sb.append("browse_read 返回两样：Markdown 正文（标题层级/列表/表格/代码块齐全，链接已内联成 [文字](网址)）+ 可操作元素清单（每行「N) [种类] 元素文字（提示：…）」，其中元素文字就是 browse_click / browse_input 的 target，原样取用；下拉框用 browse_input 选，text 填选项文字）。表格被拍平成管道表，跨列跨行单元格会丢，列可能错位，别拿错位数值下结论。")
                 sb.append("网页里的支付/提交订单/删除/发布/发送同属不可逆操作，必须带 \"needs_confirmation\": true。")
+                sb.append("browse_* 的结果都以**「上一步结果」文本**回传（browse_read 就是正文 + 元素清单），不会另给页面块；「当前页面」始终是手机前台界面的元素树，浏览器在后台加载不会改变它——所以别指望在元素树里看到网页内容。每步的执行结果（成功、被拒、失败原文）也都写在那里，照它判断这一步有没有落地，别默认「点了就算成了」。")
             } else {
                 sb.append("This app has a built-in browser that can open and drive web pages; it loads pages **silently in the background** — the UI is not switched and the page is NOT in any screenshot, so read the content with browse_read instead of guessing.\n")
-                sb.append("""Open a URL: {"intent":"browse_open","uri":"https://example.com","reasoning":"open that page","expected":"page loaded silently in the background","confidence":0.9}""")
+                sb.append("""Open a URL: {"intent":"browse_open","uri":"https://www.bing.com/search?q=USD+to+CNY","reasoning":"open a page to check the exchange rate","expected":"page loaded silently in the background","confidence":0.9}""")
                 sb.append("\nWhen the URL is unknown use a search-engine results URL, e.g. https://www.bing.com/search?q=keyword (URL-encode the keyword).\n")
                 sb.append("""Read the current page: {"intent":"browse_read","reasoning":"read the page content","expected":"Markdown body and actionable element list returned","confidence":0.9}""")
                 sb.append("""\nAct on the page: {"intent":"browse_click","target":{"by":"text","value":"Next"}} / {"intent":"browse_input","target":{"by":"text","value":"Search"},"text":"keyword"} / {"intent":"browse_scroll","direction":"down"} / {"intent":"browse_back"}""")
                 sb.append("\nSplit first: only use browse_* when you must read/operate the page content (research, click a web link, fill a web form); when the URL is merely shown to the user, or the user says \"open it in a browser\", switch to open + uri for the system browser — don't tie up the built-in browser.")
-                sb.append("\nChannel privilege (important): browse_* is an independent channel — no accessibility, no Shizuku, no wireless ADB — so it keeps working in read-only mode: ordinary links, pagination, search, checkbox toggles and form filling are all allowed. Only a click target hitting the irreversible word list (${BrowserGuard.promptWordsEn()}) is refused outright; never retry the same action after a refusal.")
+                sb.append("\nChannel privilege (important): browse_* is an independent channel — no accessibility, no Shizuku, no wireless ADB — so opening a page, reading the body, pagination, search, checkbox toggles and form filling all run directly, with no confirmation required from anyone. The only thing that can be blocked is an **irreversible action** (click target hitting the irreversible word list ${BrowserGuard.promptWordsEn()}, or carrying needs_confirmation): the device may refuse outright with \"click refused (nothing was actually clicked)\". How the device decides is its own business — **you never need to predict it and never need to know which mode is active**; just mark irreversible actions with needs_confirmation as stated below. If you do get a refusal, that step is simply not allowed right now: **never send that same irreversible action again (changing coordinates, rewording, or rewriting the target all count as the same one), and never downgrade it to a tap** — tell the user this one step has to be done manually, or wrap up with the reason. (This only covers a device-side refusal; for an ordinary failure or a missing element, keep switching strategies per Iron Rule 5.)")
                 sb.append("\nBoundary (important): web elements may ONLY be clicked with browse_click by element text (what the list shows is what can be clicked) — never guess with tap + coordinates; browse_click / browse_input / browse_scroll / browse_back all require a page already loaded in the browser, otherwise browse_open first; if the element isn't in the list, scroll it into view with browse_scroll; silent browsing never switches the app UI away, so you do not need BACK to leave the browser.")
                 sb.append("browse_read returns two things: the Markdown body (heading levels/lists/tables/code blocks, links already inlined as [text](url)) + an actionable-element list (each line \"N) [kind] element text (hint: …)\", where the element text is exactly the target for browse_click / browse_input — use it verbatim; a dropdown is operated with browse_input, putting the option text in text). Tables are flattened into pipe tables, so colspan/rowspan cells are lost and columns may end up misaligned — never draw conclusions from misaligned values.")
                 sb.append("Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry \"needs_confirmation\": true.")
+                sb.append("Every browse_* result comes back as **text in the last step result** (browse_read = Markdown body + element list) — there is no separate page block for it; \"current page\" is always the foreground phone UI's element tree, and the browser loading in the background never changes it, so never expect to find web content in the element tree. Each step's outcome (success, refusal, or the failure text) is reported there too — judge from it whether the step landed instead of assuming a click worked.")
             }
         }
         if (fetchHit) {
-            sb.append("\n\n## 当前任务附加指导 · 命令行取数(fetch)\n")
+            sb.append("\n\n## 当前任务附加指导 · 正文取回(fetch)\n")
             if (lang == PromptLang.CN) {
                 sb.append("本机已装并授权 Termux（普通应用权限的 Linux 环境），可让端侧直接取回正文：接口 JSON/纯文本原样返回，返回 HTML 时端侧自动转成 Markdown，比在界面上翻页查找更可靠。\n")
-                sb.append("""用法：{"intent":"fetch","uri":"https://example.com","reasoning":"取该页正文","expected":"返回正文文本","confidence":0.9}""")
-                sb.append("\n取回的内容会作为上一步命令输出回传给你，可据此继续（例如用 write_doc 汇总成文档）。\n")
+                sb.append("""用法：{"intent":"fetch","uri":"https://api.example.com/exchange-rate.json","reasoning":"取接口返回的汇率数据","expected":"返回正文文本","confidence":0.9}""")
+                sb.append("\n取回的内容会作为上一步结果回传给你，可据此继续（例如用 write_doc 汇总成文档）。\n")
                 sb.append("边界（重要）：目标是纯文本接口（JSON/纯文本）时用它；网页界面、网页正文一律走 browse_*（fetch 遇到 HTML 只是兜底自动转 Markdown，不是你选它的理由）。你只提供 uri，命令由端侧拼装执行，禁止输出任何命令；仅支持 http/https；需要登录态的私密接口不要用（只会拿到登录页）。")
             } else {
                 sb.append("Termux is installed and authorized on this device (a plain-app-permission Linux environment), so the device can fetch bodies directly — JSON/plain-text APIs come back as-is and HTML responses are converted to Markdown on-device, which is more reliable than paging through the UI.\n")
-                sb.append("""Usage: {"intent":"fetch","uri":"https://example.com","reasoning":"get the page body","expected":"body text returned","confidence":0.9}""")
-                sb.append("\nThe retrieved content is returned to you as the previous step's command output; continue from there (e.g. summarize it with write_doc).\n")
+                sb.append("""Usage: {"intent":"fetch","uri":"https://api.example.com/exchange-rate.json","reasoning":"get the exchange rate JSON","expected":"body text returned","confidence":0.9}""")
+                sb.append("\nThe retrieved content is returned to you as the previous step result; continue from there (e.g. summarize it with write_doc).\n")
                 sb.append("Boundary (important): use it when the target really is a plain-text API (JSON/plain text); web UIs and web page bodies always go through browse_* (fetch converting HTML is only a fallback, never a reason to pick it). You only supply uri — the command is assembled and executed on-device, so never output any command. Only http/https is supported. Do not use it on endpoints that require a logged-in session (you would only get a login page).")
             }
         }

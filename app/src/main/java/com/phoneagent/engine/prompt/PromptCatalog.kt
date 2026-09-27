@@ -117,10 +117,10 @@ internal object PromptCatalog {
 
     private const val MODE_HEAD_CN =
         "# 动作模式（当前：{mode_label}，{mode_summary}）\n" +
-            "端侧会按这个档位**逐条拒绝**越权意图：被拒的意图不会对设备产生任何操作，只会回你一句中文原因。\n"
+            "端侧按这个档位放行意图：不在此档范围内的一律被直接拒绝，不会对设备产生任何操作，只会回你一句中文原因。\n"
     private const val MODE_HEAD_EN =
         "# Action Mode (current: {mode_label_en} / {mode_key}) — {mode_summary_en}\n" +
-            "The device **rejects** over-privileged intents one by one according to this mode: a rejected intent performs nothing on the device and only returns a short reason.\n"
+            "The device allows intents according to this mode: anything outside it is rejected outright — it performs nothing on the device and only returns a short reason.\n"
 
     private val ACTION_MODE = listOf(
         PromptBlock(
@@ -129,12 +129,12 @@ internal object PromptCatalog {
             exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 保守档",
             bodyCN = MODE_HEAD_CN + """
-            - 本档只放行低风险意图（只读 / 导航 / 本地读写）：{low_risk}。
+            - 本档只放行低风险意图（读取信息 / 导航 / 本地读写）：{low_risk}。
             - 其余意图（点击、输入、打开应用、搜索、发送、确认、删除、网页点击与填表等）一律被端侧拒绝，不要尝试。
             - 确实必须点击或输入才能推进时：用 give_up，在 reason 里说明「需要用户把动作模式切到均衡」，而不是反复重试被拒的动作。
             """.trimIndent(),
             bodyEN = MODE_HEAD_EN + """
-            - This mode allows low-risk intents only (read-only / navigation / local read-write): {low_risk}.
+            - This mode allows low-risk intents only (information reading / navigation / local read-write): {low_risk}.
             - Every other intent (tap, input, open_app, search, send, confirm, delete, web click/fill, ...) is rejected. Do not attempt them.
             - If you truly cannot proceed without tapping or typing: use give_up and state in `reason` that the user must switch the action mode to Balanced — never keep retrying a rejected action.
             """.trimIndent(),
@@ -145,11 +145,11 @@ internal object PromptCatalog {
             exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 均衡档",
             bodyCN = MODE_HEAD_CN + """
-            - 本档放行转译层的全部意图（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作），与上面两张意图表完全一致。
+            - 本档放行上面两张意图表的每一项（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作）。
             - 不可用的只有「自写 shell 命令」与「直调无障碍端点」——那两项要在自由模式下才开放，本档不要输出。
             """.trimIndent(),
             bodyEN = MODE_HEAD_EN + """
-            - This mode allows every translator intent (tap/input/open/search/send/confirm/delete and all browse_* web operations), exactly as the two intent tables above describe.
+            - This mode allows every entry of the two intent tables above (tap/input/open/search/send/confirm/delete and all browse_* web operations).
             - The only things unavailable are self-written shell commands and direct accessibility-endpoint calls; those require Free mode. Do not emit them here.
             """.trimIndent(),
         ),
@@ -444,7 +444,7 @@ internal object PromptCatalog {
         ),
     )
 
-    /** 全部区块（55 块），按组拼接，组内已按 order 排序 */
+    /** 全部区块（53 块），按组拼接，组内已按 order 排序 */
     val all: List<PromptBlock> =
         SYSTEM + ACTION_MODE + CAPABILITIES + SKILLS + PLANNING + DECISION + REVIEW + DISTILL
 

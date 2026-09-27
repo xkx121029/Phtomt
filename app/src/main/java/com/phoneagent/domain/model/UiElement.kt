@@ -67,6 +67,10 @@ data class UiElement(
     fun describe(): String {
         val parts = mutableListOf<String>()
         parts += "[#$index] $className($type)"
+        // viewId 是控件自身的稳定标识（资源名），不受同名文字的干扰：把它给 AI 看到，
+        // 它才能对更多控件用 by=id 精确定位，而不是只能靠 label 匹配——
+        // 同一段文字常常同时挂在容器与内层控件上，靠文字选目标本来就要靠端侧再挑一次
+        viewId?.takeIf { it.isNotBlank() }?.let { parts += "id=$it" }
         val label = text?.takeIf { it.isNotBlank() } ?: contentDescription?.takeIf { it.isNotBlank() }
         if (!label.isNullOrBlank()) parts += "label=\"$label\""
         parts += "center=(${centerX},${centerY}) bounds=($left,$top)-($right,$bottom)"

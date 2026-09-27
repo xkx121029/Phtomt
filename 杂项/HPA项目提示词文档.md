@@ -6,6 +6,8 @@
 **模型 Model**：agnes-2.5-flash
 **API 参数 Parameters**：temperature=0.1（决策 decision）/ 0.3（规划 planning）/ 0.5（重规划 replanning），`response_format="json"`，超时 timeout=5s
 
+> ⚠️ **已过期**：本文件为 v2.0 时代的云端 Prompt 快照，正文已与代码脱节。当前提示词已重构为区块装配系统，请以 [HPA提示词系统文档.md](./HPA提示词系统文档.md) 为准，本文件仅作历史参考。
+
 ---
 
 ## 一、系统 Prompt / System Prompt

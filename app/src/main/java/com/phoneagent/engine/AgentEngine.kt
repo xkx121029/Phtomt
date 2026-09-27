@@ -153,6 +153,20 @@ class AgentEngine(
             "curl", "wget", "python", "python3", "pip", "pip3", "jq", "sed", "awk",
             "grep", "tr", "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
         )
+
+        /**
+         * 执行前需要"重新定位目标"的动作类型。
+         *
+         * 这些动作都依赖元素坐标（输入框中心、滚动容器中心、滑动起点），而坐标是按**观察那一刻**的
+         * 元素树算好的，中间隔着一次 AI 往返（可能数秒）：键盘顶起页面、列表滚动、弹窗落下之后，
+         * 坐标就指到别处了——典型表现是"文字填进了别的输入框""滚动的不是那个列表"。
+         * 点击类不在此列：[ClickRunner] 内部已经做了同一件事，且做得更细（活节点直点 → 手势 → 滚动查找）。
+         * 方向滑动（SWIPE_UP/DOWN/LEFT/RIGHT）也不在此列：它们按设计以屏幕中心为起点，不带元素目标。
+         */
+        private val RELOCATE_BEFORE_TYPES = setOf(
+            ActionType.TYPE_TEXT, ActionType.SCROLL, ActionType.SCROLL_TO, ActionType.SWIPE,
+        )
+
         /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
         private const val MAX_TRACES = 300
         /**
@@ -611,14 +625,19 @@ class AgentEngine(
         )
     }
 
-    /** 上一步执行结果文本（✅/⚠️/❌），供决策 Prompt 使用 */
-    private fun lastStepResultText(): String {
+    /**
+     * 上一步执行结果文本（✅/⚠️/❌），供决策 Prompt 使用。
+     * 必须跟随提示词语言：英文提示词的三态段写作 verified / sent but unverified / failed，
+     * 若这里仍回中文，模型得自己做一次中英映射，等于人为制造歧义。
+     */
+    private fun lastStepResultText(lang: PromptLang): String {
         val last = _executionHistory.value.lastOrNull() ?: return ""
         val action = last.action?.run { "${type}${reason?.let { "($it)" } ?: ""}" } ?: "-"
+        val cn = lang == PromptLang.CN
         return when {
-            last.isConfirmed -> "✅ 已确认成功: $action"
-            last.verificationResult == "failed" -> "❌ 未生效: $action"
-            else -> "⚠️ 已发送但未确认: $action"
+            last.isConfirmed -> if (cn) "✅ 已确认成功: $action" else "✅ verified: $action"
+            last.verificationResult == "failed" -> if (cn) "❌ 未生效: $action" else "❌ failed: $action"
+            else -> if (cn) "⚠️ 已发送但未确认: $action" else "⚠️ sent but unverified: $action"
         }
     }
 
@@ -1964,6 +1983,14 @@ class AgentEngine(
                     ContentPart(type = "text", text = "无障碍端点输出：\n${verify.reason}"),
                 )))
             }
+            // 执行成功但有注意项（当前唯一来源：点击落点与目标不一致）同样要回注。
+            // 成功路径此前只回报"执行了 CLICK"，AI 看不到"这一下其实点在了别的控件上"，
+            // 下一步就会把并非本次操作带来的页面变化当成预期结果继续往下走
+            if (verified && verify.note.isNotBlank()) {
+                messages.add(ChatMessageDto(role = "assistant", content = listOf(
+                    ContentPart(type = "text", text = "⚠️ ${verify.note}"),
+                )))
+            }
             messages.add(ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = action.type))))
             delay(400)
         }
@@ -2208,7 +2235,7 @@ class AgentEngine(
             stepIndex = _state.value.stepCount,
             totalSteps = totalPlannedSteps.coerceAtLeast(1),
             currentStep = if (!planSteps.isNullOrBlank()) "按计划执行下一步" else "根据当前页面执行下一步",
-            lastStepResult = lastStepResultText(),
+            lastStepResult = lastStepResultText(currentLang),
             consecutiveFailures = consecutiveFailures,
             contextHint = DataSanitizer.sanitize(annotated.contextHint),
             // 记忆注入：让 AI 每一步都能看到已知偏好与既往经验，而不是只在规划阶段看得到
@@ -2276,11 +2303,17 @@ class AgentEngine(
         apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
         recordMetrics(decision)
         var intent = decision.action
-        // 视觉定位：对 hint 目标（元素树拿不到）给出像素坐标，供转译层本次定位使用。
-        // by_id/by_text 由转译层在元素树中精确定位，无需这里算坐标。
+        // 视觉定位：给元素树里定位不到的目标算出像素坐标，供转译层本次定位使用。
+        // 只有"端侧在元素树里已经命中"的目标才跳过这一步——那种情况下转译层会直接精确定位到控件。
         lastVisualCoordinate = null
         val tTarget = intent.target
-        if (tTarget != null && tTarget.by == "hint" && screenshot != null &&
+        // 视觉定位的触发条件从「只有 by=hint」放宽为「元素树里没命中」：
+        // WebView/自绘页面里，AI 从视觉描述读到的文字往往并不在无障碍元素树中，
+        // 以前它按 by=text 给出目标只会收到"目标定位失败"，而视觉模型本就能定位到它。
+        // 先在元素树里试一次，命中就不花视觉的钱（by=hint 天然没有 id/文字，直接走视觉）。
+        val offlineMiss = tTarget != null && tTarget.by != "coordinate" &&
+            intentResolver.resolve(tTarget, snapshot).let { it.element == null && it.x == null }
+        if (tTarget != null && (tTarget.by == "hint" || offlineMiss) && screenshot != null &&
             (cloudVision || localRegions != null || externalUsed)
         ) {
             val targetText = tTarget.value
@@ -2769,9 +2802,32 @@ class AgentEngine(
 
         // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
         val resolved = intentResolver.resolveAction(action, snapshot)
-        val target = resolved.element
-        val x = resolved.x
-        val y = resolved.y
+        var target = resolved.element
+        var x = resolved.x
+        var y = resolved.y
+        // 执行前重定位（与 ClickRunner 同一纪律）：输入/滚动这些动作此前直接拿"观察那一刻"的元素坐标，
+        // 中间隔着一次 AI 往返（可能数秒），键盘顶起页面、列表滚动之后坐标就指到别处了。
+        // 重定位只按 viewId/文字 + 最近距离（[IntentResolver.relocateOnLatest] 刻意不用遍历序号，跨快照不稳定）；
+        // 重定位不到就沿用原坐标，不改变既有行为。
+        // 指纹基准同步换成"此刻"的页面：否则这期间页面自身的漂移会被当成"动作已生效"。
+        var baseline = snapshot
+        if (type in RELOCATE_BEFORE_TYPES) {
+            val fresh = runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
+            if (fresh != null && fresh.packageName == snapshot.packageName) {
+                baseline = fresh
+                intentResolver.relocateOnLatest(resolved.element, snapshot, fresh)?.let { relocated ->
+                    target = relocated
+                    x = relocated.centerX
+                    y = relocated.centerY
+                    log(
+                        AgentLog.Level.INFO,
+                        "执行前重定位：${relocated.effectiveLabel() ?: relocated.className} " +
+                            "bounds=(${relocated.left},${relocated.top})-(${relocated.right},${relocated.bottom})" +
+                            "（快照坐标为 (${resolved.x}, ${resolved.y})）",
+                    )
+                }
+            }
+        }
 
         val result = when (type) {
             ActionType.CLICK, ActionType.TAP ->
@@ -2789,7 +2845,7 @@ class AgentEngine(
                 val dist = action.distancePx
                     ?: if (action.direction == "left" || action.direction == "right") screenWidth() else screenHeight()
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
-                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
+                verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (screenWidth() / 2)
@@ -2811,10 +2867,10 @@ class AgentEngine(
                 val py = y ?: (screenHeight() / 2)
                 verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px + screenWidth()).coerceIn(0, screenWidth() - 1), py).isSuccess() }
             }
-            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(snapshot) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
+            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(baseline) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
                 if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(snapshot) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
+                else verifier.executeAndVerify(baseline) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
