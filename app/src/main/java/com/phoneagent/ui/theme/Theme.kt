@@ -164,7 +164,6 @@ private fun darkSchemeOf(c: AppColors): ColorScheme {
 @Composable
 fun PhoneAgentTheme(
     darkTheme: Boolean = isSystemDark(),
-    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val highContrast = rememberHighContrast()
