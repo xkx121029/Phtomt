@@ -156,11 +156,12 @@ class PromptDumpTest {
         ## 当前页面
         当前前台应用: com.sankuai.meituan
         屏幕分辨率: 1080x2340
-        可交互元素（共 4 个）：
+        可交互元素（共 5 个）：
           [#0] android.widget.TextView(textview) label="黄焖鸡米饭 ¥28.0（正常辣）" center=(540,300) bounds=(40,270)-(1040,330)
-          [#1] android.widget.Button(button) id=edit_spec label="修改规格" center=(540,700) bounds=(60,660)-(1020,740)
-          [#2] android.widget.Button(button) label="提交订单" center=(540,820) bounds=(60,780)-(1020,860)
-          [#3] android.widget.ImageButton(imagebutton) id=back_btn label="返回" center=(72,120) bounds=(24,80)-(120,160)
+          [#1] android.widget.Button(button) id=spicy_toggle label="辣度：正常辣（点击修改）" center=(540,380) bounds=(60,340)-(1020,420)
+          [#2] android.widget.Button(button) id=edit_spec label="修改规格" center=(540,700) bounds=(60,660)-(1020,740)
+          [#3] android.widget.Button(button) label="提交订单" center=(540,820) bounds=(60,780)-(1020,860)
+          [#4] android.widget.ImageButton(imagebutton) id=back_btn label="返回" center=(72,120) bounds=(24,80)-(120,160)
     """.trimIndent()
 
     /**
@@ -279,7 +280,7 @@ class PromptDumpTest {
             val tag = lang.name.lowercase()
             val en = lang == PromptLang.EN
             val memory = "- 用户常在美团点黄焖鸡米饭\n- 用户不吃辣，辣度要选「不辣」"
-            val rules = "[美团] 结算页的「提交订单」常被优惠弹窗遮挡，先关弹窗再点"
+            val rules = "[美团] 商品详情页的「辣度」控件会显示当前选择；下单前先确认它是「不辣」，不是就先点它改掉"
             out += Dump("dec.$tag.basic", "DECISION", lang, "user", true, "无记忆、无经验规则（含页面段）",
                 AgentPrompts.decision(lang, if (en) "order a huangmenji rice bowl on Meituan" else "帮我在美团点一份黄焖鸡米饭",
                     // 步骤文本必须把要输入的内容写全：只写"输入关键词"会被报"'keywords'未指定具体文本"（第三轮 dec.en.basic 3 条 high）
@@ -294,12 +295,12 @@ class PromptDumpTest {
                     2, "页面类型：product_detail", memory = memory, evolvedRules = rules) +
                     "\n\n$pageDetail")
             val plan = if (en) {
-                "\n\n## Approved plan\n1. open Meituan\n2. search huangmenji rice bowl\n3. open product detail\n4. tap Buy Now\n5. confirm payment"
+                "\n\n## Approved plan\n1. open Meituan\n2. search huangmenji rice bowl\n3. open product detail\n4. tap Buy Now\n5. switch the payment method to Balance\n6. tap Confirm Payment"
             } else {
-                "\n\n## 已批准的执行计划\n1. 打开美团\n2. 搜索黄焖鸡米饭\n3. 进入商品详情\n4. 点立即购买\n5. 确认支付"
+                "\n\n## 已批准的执行计划\n1. 打开美团\n2. 搜索黄焖鸡米饭\n3. 进入商品详情\n4. 点立即购买\n5. 把支付方式切到「余额」\n6. 点「确认支付」"
             }
-            // 本轮任务是**全新下单**，故任务、计划、当前步骤、页面、任务记忆必须四者同指一件事：
-            // task/任务记忆 = 下单；currentStep 5/5 = 选余额并确认支付（承接"用余额支付"）；
+            // 本轮任务是**全新下单**，故任务、计划、当前步骤、页面、任务记忆必须五者同指一件事：
+            // task/任务记忆 = 下单；currentStep 5/6 = 切到余额（承接"用余额支付"，第 6 步才是点「确认支付」）；
             // 上一步 = tap(立即购买)（即计划第 4 步刚做完）；页面 = 支付页（含支付方式控件）。
             // 曾把 task 改成"上一单太辣了改成不辣的"，与计划 1-5 步和会话承接正面冲突，被报了一串真缺陷。
             // 经验规则必须与当前页面**当场可验证**：曾写"支付按钮常被优惠弹窗遮挡，先关弹窗再点"，
@@ -312,7 +313,7 @@ class PromptDumpTest {
             }
             out += Dump("dec.$tag.full", "DECISION", lang, "user", true, "完整 user 消息（决策段 + 计划 + 页面 + 附加指导 + 任务记忆 + 环境 + 会话承接）",
                 AgentPrompts.decision(lang, if (en) "order a huangmenji rice bowl on Meituan" else "帮我在美团点一份黄焖鸡米饭",
-                    5, 5, if (en) "select Balance and tap Confirm Payment" else "选「余额」并点「确认支付」",
+                    5, 6, if (en) "tap Balance to switch the payment method" else "点「余额」，把支付方式切换成余额",
                     if (en) "✅ verified: tap(Buy Now)" else "✅ 已确认成功: tap(立即购买)",
                     0, "页面类型：payment_page", memory = memory, evolvedRules = fullRules) +
                 plan + "\n\n$pagePayment" +
