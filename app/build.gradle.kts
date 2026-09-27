@@ -21,7 +21,7 @@ fun loadBuildNumber(): Int {
 
 android {
     namespace = "com.phoneagent"
-    compileSdk = 35
+    compileSdk = 36
 
     // 签名配置：从 upload-signing.properties 读取（本地文件，不提交到仓库）
     val signingPropsFile = file("upload-signing.properties")
@@ -40,7 +40,7 @@ android {
     defaultConfig {
         applicationId = "com.phoneagent"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = loadBuildNumber()
         versionName = "0.1.${loadBuildNumber()}"
 
