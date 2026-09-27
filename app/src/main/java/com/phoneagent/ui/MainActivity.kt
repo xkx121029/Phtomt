@@ -94,9 +94,10 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
-import com.phoneagent.ui.theme.SpringConfigs
+import com.phoneagent.ui.theme.PressScale
 import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
+import com.phoneagent.ui.theme.pressScaleSpec
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import org.koin.androidx.compose.koinViewModel
@@ -531,11 +532,8 @@ private fun FloatingNavItem(
     LaunchedEffect(pressed) { if (pressed) hapticPress() }
 
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(
-            dampingRatio = SpringConfigs.ButtonDampingRatio,
-            stiffness = SpringConfigs.ButtonStiffness,
-        ),
+        targetValue = if (pressed) PressScale else 1f,
+        animationSpec = pressScaleSpec(),
         label = "nav-item-press",
     )
     // 选中图标轻微放大，未选中恢复正常。

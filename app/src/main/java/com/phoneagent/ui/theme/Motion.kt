@@ -120,6 +120,24 @@ object SpringConfigs {
 const val StaggerIntervalMs = 45
 
 /**
+ * 按压缩放口径：按下瞬间缩到 0.97，抬手回到 1。
+ *
+ * 这是全项目唯一的按压比例来源——`PressableScale`、悬浮导航栏等所有"按下要缩一下"的地方
+ * 都引用它，避免同一个手感在各处各写一个魔数（改一处漏三处）。
+ * 依据 emilkowalski/skills：按钮按下必须给即时反馈，缩放在 pointer-down 发生，不做回弹。
+ */
+const val PressScale = 0.97f
+
+/**
+ * 按压反馈弹簧：临界阻尼（阻尼比 1.0，无回弹）。
+ * 回弹只留给由动量驱动的手势（甩动、拖拽松手），按压一律"按下即到位"。
+ */
+fun <T> pressScaleSpec(): SpringSpec<T> = spring(
+    dampingRatio = SpringConfigs.ButtonDampingRatio,
+    stiffness = SpringConfigs.ButtonStiffness,
+)
+
+/**
  * 列表项入场动画的弹簧规格。
  * 轻微回弹（阻尼 0.82）+ 适度刚度，比 tween 更有“响应感”，
  * 且符合 skills 规范：弹簧仅用于入场这类离散状态切换，按钮按压不用。

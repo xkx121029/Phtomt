@@ -65,10 +65,11 @@ import com.phoneagent.ui.theme.DurationInstant
 import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
-import com.phoneagent.ui.theme.SpringConfigs
+import com.phoneagent.ui.theme.PressScale
 import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
+import com.phoneagent.ui.theme.pressScaleSpec
 import com.phoneagent.ui.theme.staggerDelayMs
 import kotlinx.coroutines.delay
 import com.phoneagent.ui.icons.AppIcons
@@ -120,11 +121,8 @@ fun PressableScale(
         if (pressed) onPress()
     }
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = spring(
-            dampingRatio = SpringConfigs.ButtonDampingRatio,
-            stiffness = SpringConfigs.ButtonStiffness,
-        ),
+        targetValue = if (pressed) PressScale else 1f,
+        animationSpec = pressScaleSpec(),
         label = "press",
     )
     Box(
