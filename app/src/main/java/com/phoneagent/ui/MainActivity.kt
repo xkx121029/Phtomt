@@ -211,7 +211,10 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
         TabItem("概览", AppIcons.Home),
         TabItem("设置", AppIcons.Settings),
     )
-    val activity = androidx.compose.ui.platform.LocalContext.current as ComponentActivity
+    // Compose 1.11 / activity-compose 1.12 起 lint 禁止把 LocalContext 强转成 Activity
+    // （[ContextCastToActivity]）：LocalContext 不保证是 Activity，且强转在预览/测试环境会崩。
+    // LocalActivity 就是宿主 Activity 本身，这里再收敛到 ComponentActivity 以取 intent / 系统服务。
+    val activity = androidx.activity.compose.LocalActivity.current as ComponentActivity
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
 

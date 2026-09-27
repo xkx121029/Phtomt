@@ -38,7 +38,8 @@ enum class SettingsPage { HOME, AI_MODELS, AGENT, VISUAL, LONG_RUN, PERMISSIONS,
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val settings by vm.settingsFlow.collectAsState()
-    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    // 同上：改走 LocalActivity（可空），不再把 LocalContext 强转成 Activity
+    val activity = androidx.activity.compose.LocalActivity.current
 
     val st = remember { SettingsState(settings) }
     var page by remember { mutableStateOf(SettingsPage.HOME) }

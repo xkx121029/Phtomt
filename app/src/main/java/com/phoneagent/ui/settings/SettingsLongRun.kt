@@ -110,7 +110,10 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                 Text(
                     "上次任务：${ck.task}\n已完成 ${ck.completedSteps} 步" +
                         (if (ck.totalPlannedSteps > 0) "（共 ${ck.totalPlannedSteps} 步）" else "") +
-                        "\n保存于 ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(ck.updatedAt))}",
+                        // 固定格式的时间戳用 Locale.ROOT：这里只有数字与连字符，
+                        // 取系统默认 Locale 既不会改变显示，又会被 lint 判为
+                        // "在 composable 里以不可观察的方式读取语言环境"（[NonObservableLocale]）
+                        "\n保存于 ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.ROOT).format(java.util.Date(ck.updatedAt))}",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
                 )
