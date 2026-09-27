@@ -46,13 +46,13 @@ internal object PromptBodies {
     # 任务完成（铁律，防止过早结束）
     - 只有当你"亲眼"在当前页面看到任务目标已达成的明确证据（目标结果出现 / 目标页面打开 / 目标文档生成 / 内容完整呈现），才能输出 finish；summary 必须写明你看到了什么证据。
     - 禁止在任务刚起步、只执行了少数几步、或屏幕尚无任何证据时输出 finish；拿不准是否完成 → 不要 finish，继续执行或说明当前看到的状态。
-    - 页面指纹与任务开始时相同、且未产生任何可见结果 → 不得 finish。
+    - 当前页面与任务开始时完全没变（元素树内容一致）、且未产生任何可见结果 → 不得 finish。
     """.trimIndent()
     internal val SYS_COMPLETION_EN: String = """
     # Task Completion (Iron Rule, prevent premature ending)
     - Only output finish when you "see" clear evidence on the current page that the goal is achieved (target result appeared / target page opened / target document generated / content fully presented); the summary MUST state that evidence.
     - NEVER output finish when the task just started, only a few steps ran, or the screen shows no evidence; if unsure → do NOT finish, keep executing or state what you currently see.
-    - If the page fingerprint equals the one at task start and nothing visible was produced → do NOT finish.
+    - If the current page is exactly the same as at task start (same element-tree content) and nothing visible was produced → do NOT finish.
     """.trimIndent()
 
     // ---- sys.page_data ----
@@ -384,7 +384,7 @@ internal object PromptBodies {
     4. 输入框先 tap 获焦再 input；搜索入口在顶部，提交/结算在右下角或底部。
     5. 有明确目标就执行，不要输出 wait 来"确认"。
     6. 精准且简洁：一步 = 一次明确动作，不做多余小动作；同一控件不反复操作。
-    7. 无进展判定：同一 intent+target 连续 2 次且页面指纹未变 → 必须换策略（scroll_to / by_hint / 语义意图），不得第 3 次原样重试；仍无进展才 give_up。
+    7. 无进展判定：同一 intent+target 连续 2 次仍没进展 → 必须换策略（scroll_to / by_hint / 语义意图），不得再原样重试；换过仍无进展、累计 3 次未生效 → give_up（与下方「失败处理」同一口径，不是两套次数）。
     """.trimIndent()
     internal val SYS_DECISION_RULES_EN: String = """
     # Decision Rules
@@ -394,7 +394,7 @@ internal object PromptBodies {
     4. Tap the input field to focus before input; search at top, submit/checkout at bottom-right.
     5. Act decisively when a clear target exists. Don't output wait to "confirm".
     6. Precise and concise: one step = one clear action, no extra motions; do not repeatedly operate the same control.
-    7. No-progress rule: the same intent+target twice in a row with an unchanged page fingerprint → MUST change strategy (scroll_to / by_hint / semantic intent); never retry identically a third time; give_up only if still stuck.
+    7. No-progress rule: the same intent+target twice in a row with no progress → MUST change strategy (scroll_to / by_hint / semantic intent); never retry it identically again; if it still makes no progress, 3 non-effective steps in a row → give_up (the same single threshold as "Failure Handling" below, not two different ones).
     """.trimIndent()
 
     // ---- sys.failure_paths ----
@@ -633,7 +633,7 @@ internal object PromptBodies {
     - 定位优先 by_id/by_text，图片/图标/图表才用 by_hint 一句语义描述；找不到先用 scroll_to 查找；仍拿不到就按上面「目标定位」给的兜底顺序走（元素树 → 视觉 → by_coordinate），全走完还是没有才 give_up；任何时候都不允许无依据猜坐标。
     - 需要视觉判断（颜色/图形/图表/游戏画面）而元素树读不到时，用 see 追问，把目的写成一句话；不要凭空猜。
     - 每步都对着当前页面确认，别凭印象重复已做过的操作。
-    - 本步只管把本步的动作做对。整件事算不算完成按证据判断：当前页面上要有**目标达成的可见成果**（目标结果出现 / 目标页面打开 / 目标文档生成），只看「这一步点成功了」不算任务完成，该继续就继续。
+    - 本步只管把本步的动作做对。整件事算不算完成，用「任务完成」那一条的同一标准：当前页面上要**亲眼看到目标已达成的明确证据**（目标结果出现 / 目标页面打开 / 目标文档生成 / 内容完整呈现）；只看「这一步点成功了」不算任务完成。
     """.trimIndent()
     internal val DEC_IRON_STEP_EN: String = """
     # This Step (iron rule)
@@ -642,7 +642,7 @@ internal object PromptBodies {
     - Locate via by_id/by_text first; use by_hint with a one-sentence description only for images/icons/charts; if not found, use scroll_to first; if still not found, walk the fallback order given under "Targeting" above (element tree → vision → by_coordinate) and give_up only after that is exhausted; NEVER guess a coordinate without evidence.
     - When a visual judgment (color/shape/chart/game scene) is needed but the element tree cannot read it, ask with see — state the purpose in one sentence; do not guess.
     - Always confirm against the current page; do not repeat executed actions by memory.
-    - This step only has to get its own action right. Whether the whole thing is done is judged by evidence: something visible on the current page proving the goal is met (target result shown / target page open / target document generated). A successful tap on this step is not task completion — keep going if the goal isn't there yet.
+    - This step only has to get its own action right. Whether the whole thing is done uses the same standard as "Task Completion": you must **see clear evidence on the current page that the goal is achieved** (target result appeared / target page opened / target document generated / content fully presented). A successful tap on this step is not task completion.
     """.trimIndent()
 
     // ---- dec.intent_timing ----
