@@ -6,8 +6,11 @@ kotlin = "2.4.20"
 coreKtx = "1.17.0"
 lifecycle = "2.10.0"
 activityCompose = "1.12.4"
-# Compose BOM 2026.09.00 → compose-ui 1.12.1 / material3 1.4.0
-composeBom = "2026.09.00"
+# Compose BOM 2026.06.01 → compose-ui 1.11.4 / material3 1.4.0
+# 不取最新的 2026.09.00：那批（ui 1.12.x）要求 AGP 9.1+ 且 compileSdk 37，
+# 会把这次升级从"换版本"变成"换构建系统"，风险不成比例。material3 两条线都是 1.4.0，
+# Expressive 该有的组件一个不少。
+composeBom = "2026.06.01"
 # Material 3 Expressive（MotionScheme、Shape morph、LoadingIndicator 等）自 1.4.0 起提供
 material3 = "1.4.0"
 datastore = "1.1.1"
