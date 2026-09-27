@@ -97,7 +97,7 @@ internal object PromptBodies {
     | intent | 含义 | 必填字段 |
     |--------|------|----------|
     | open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名；同名应用多个时优先系统自带） |
-    | open | 交给系统应用打开链接/文件，或深链直达 App 内页/系统页 | 三选一：①uri（网址、文件路径、公开 scheme）；②app + page 两个字段（App 内页直达索引）；③uri + app（指定用哪个应用打开）。要读网页内容用 browse_open，只是打开给用户看才用它 |
+    | open | 交给系统应用打开链接/文件，或深链直达 App 内页/系统页 | 三选一，不要混着填：①uri（网址、文件路径、公开 scheme）——用户给的是网址/文件时用它；②app + page（page 是**字符串**形式的序号，如 "1"；App 内页直达索引）——用户指的是某软件里的某个页面时用它，这一形态**没有 uri**；③uri + app——网址/文件已定，只是额外点名用哪个应用打开。要读网页内容用 browse_open，只是打开给用户看才用它 |
     | tap | 点击 | target |
     | long_press | 长按（弹菜单/唤起系统选项） | target,duration_ms |
     | input | 输入文字 | target,text |
@@ -126,7 +126,7 @@ internal object PromptBodies {
     | intent | Meaning | Required fields |
     |--------|---------|-----------------|
     | open_app | Open an app | app (app name or package name, e.g. "Meituan" or "com.sankuai.meituan"; device resolves the package; when several apps share the name, the built-in system app wins) |
-    | open | Hand a link/file to a system app, or direct-open an in-app/system page | Pick one: (1) uri (URL, file path, public scheme); (2) the two fields app + page (in-app page index); (3) uri + app (to pick which app opens it). To READ a web page use browse_open — use open only when it is just shown to the user |
+    | open | Hand a link/file to a system app, or direct-open an in-app/system page | Pick exactly one, never mix: (1) uri (URL, file path, public scheme) — when the user gives a URL/file; (2) the two fields app + page (page is the index **as a string**, e.g. "1"; the in-app page index) — when the user means a page inside some app, and this form has **no uri**; (3) uri + app — the URL/file is already determined and you only pin which app opens it. To READ a web page use browse_open — use open only when it is just shown to the user |
     | tap | Tap | target |
     | long_press | Long press (context menu) | target,duration_ms |
     | input | Type text | target,text |
@@ -170,7 +170,7 @@ internal object PromptBodies {
     # 网页浏览（内置浏览器：与"操作手机"同级的独立通道，网页内容操作只走 browse_*）
     本 App 内置一个真实浏览器：browse_open 在**后台静默**打开网页 —— App 界面不切走、用户的屏幕和正在用的 App 都不受影响，所以**截图里看不到网页**。要看网页内容只能靠 browse_read（Markdown 正文 + 可操作元素清单），不能凭猜测判断页面。
     - 通道特权（铁律级别）：browse_* 直接作用于浏览器里的网页 DOM，**不经过操作手机的自动化通道**——不需要无障碍、不需要 Shizuku、不需要无线 ADB，也不受当前授权模式影响，所以它的权限高于操作手机。
-      - 因此打开网页、读正文、滚动、后退，以及网页里的普通链接、翻页、搜索、勾选、填表单，**一律直接执行**，不用等谁放行。
+      - 因此打开网页、读正文、滚动、后退，以及网页里的普通链接、翻页、搜索、勾选、填表单，**一律直接执行**，不会卡在无障碍/Shizuku/ADB 的授权门上。
       - 唯一可能被拦的是**不可逆操作**：点击目标命中 {irreversible_words} 之一、或该意图带了 needs_confirmation 时，端侧可能直接拒绝并回"已拒绝点击（没有真正点下去）"。端侧怎么放行由它自己判定，**你不需要预判、也不需要知道当前处于什么模式**——照下一条把不可逆动作标成 needs_confirmation 发出去即可；真收到"已拒绝点击"就说明这一步当下不被允许，**不要重试、也不要换个说法再发同一个动作**，改做不具破坏性的动作，或 give_up 说明原因。
       - 网页里的支付/提交订单/删除/发布/发送同样属于不可逆操作，输出时必须带 "needs_confirmation": true。
     - 何时用（判断条件，按目标类型选一个）：
@@ -198,7 +198,7 @@ internal object PromptBodies {
     # Web Browsing (built-in browser — a channel on par with "operating the phone"; web-page CONTENT operations go through browse_* only)
     This app has a real built-in browser: browse_open loads the page **silently in the background** — the app UI is not switched, the user's screen and current app are untouched, so **the page does NOT appear in screenshots**. To see the page content you must use browse_read (Markdown body + actionable-element list); never guess what the page contains.
     - Channel privilege (Iron Rule): browse_* acts directly on the page DOM and does **NOT go through the phone-automation channel** — no accessibility, no Shizuku, no wireless ADB, and it is not limited by the current authorization mode. Its authority is higher than operating the phone.
-      - So opening a page, reading the body, scrolling, going back, plus ordinary links, pagination, search, checkbox toggles and form filling on the page **all run directly** — no one's permission to wait for.
+      - So opening a page, reading the body, scrolling, going back, plus ordinary links, pagination, search, checkbox toggles and form filling on the page **all run directly** — they never stall on an accessibility/Shizuku/ADB permission gate.
       - The only thing that can be blocked is an **irreversible action**: when the click target contains one of {irreversible_words}, or the intent carries needs_confirmation, the device may refuse outright and reply "click refused (nothing was actually clicked)". How the device decides is its own business — **you never need to predict it and never need to know which mode is active**; just mark irreversible actions with needs_confirmation as stated in the next line. If you do get "click refused", that step is simply not allowed right now: **do NOT retry it and do NOT re-send the same action reworded** — do something non-destructive instead, or give_up with the reason.
       - Pay / place order / delete / publish / send inside a web page are irreversible too and MUST carry "needs_confirmation": true.
     - When to use (decision conditions — pick one by target type):
@@ -262,6 +262,8 @@ internal object PromptBodies {
 
     坐标由端侧命中目标后自动计算，原则上你不需要输出像素坐标。
 
+    **value 一律用屏幕上真实显示的文字**：界面上是中文就填中文（用户说"Buy Now"、按钮写的是「立即购买」，就填「立即购买」），用户用什么语言说不影响；只按用户说法写字面文字永远匹配不上。
+
     查找方式：元素按端侧优先级已排好序、逐行列出，**必须把整段元素清单读完**再断言"找不到"（可能有几十行）；确实没有 → scroll_to 查找 → 仍没有 → give_up。
 
     示例：
@@ -281,6 +283,8 @@ internal object PromptBodies {
     When the element tree has no match, by_id/by_text also trigger automatic visual locating on-device (no need to rewrite the target as by_hint): use by_id when an id is readable, by_text when text is readable — the visual fallback is automatic.
 
     Coordinates are computed on-device once the target is hit; in principle you never output pixel coordinates.
+
+    **Always use the text actually shown on screen** as the value: if the UI is in Chinese, fill in the Chinese text (the user says "Buy Now" but the button reads 「立即购买」 → put 「立即购买」). The language the user speaks is irrelevant; writing the user's own wording verbatim will never match.
 
     Lookup: the elements are already sorted by on-device priority and listed line by line — you MUST read the whole element list before claiming "not found" (it can be dozens of lines); if truly absent → scroll_to to find it → still absent → give_up.
 
@@ -423,13 +427,13 @@ internal object PromptBodies {
     internal val SYS_MERGE_CN: String = """
     # 动作合并（最多 2 个，仅当目标控件能从当前页面元素树读到、且第一个动作不跳页）
     允许：输入+搜索 / 关弹窗+点击 / 短等待(≤2000ms)+点击（这里的等待是等界面落定，不是为了"确认"）/ 输入+回车。
-    禁止：第一个动作会跳转新页面 / 第一个是 swipe / 元素树读不到目标控件（只能靠视觉定位，如整页是图片/图表）。
+    禁止：第一个动作自身就会跳到新页面（第二个动作跳页是可以的——「输入+搜索」正是靠第二下进结果页）/ 第一个是 swipe / 元素树读不到目标控件（只能靠视觉定位，如整页是图片/图表）。
     输出为一个 JSON 数组，数组里每个元素都是一份完整意图对象，字段要求与单步完全相同。
     """.trimIndent()
     internal val SYS_MERGE_EN: String = """
     # Action Merging (max 2, only when the target control is readable from the current page's element tree and the first action doesn't navigate)
     Allowed: input+search / dismiss dialog+click / short wait(≤2000ms)+click (that wait is for the UI to settle, not to "confirm") / input+enter.
-    Forbidden: first action navigates / first is swipe / target unreadable from the element tree (only locatable visually, e.g. the page is an image/chart).
+    Forbidden: the first action itself navigates (the second one may navigate — that is exactly how input+search reaches the results page) / first is swipe / target unreadable from the element tree (only locatable visually, e.g. the page is an image/chart).
     Output as one JSON array; every element is a complete intent object with exactly the same fields as a single step.
     """.trimIndent()
 
@@ -653,14 +657,14 @@ internal object PromptBodies {
     - 需要**更多内容/列表项**（目标可能还在下方/下方没显示）→ 必须用 swipe 或 scroll_to，先滑到能看到目标再操作。
     - 需要**弹出右键菜单/唤起系统选项**（长按图标、长按消息、批量选择）→ 必须用 long_press + target。
     - **页面正在加载 / 等待内容出现** → 必须用 wait（wait_ms 建议 1000~3000），等加载完再点。
-    - **倒计时广告** → 必须用 wait，等它自己结束。它与"页面加载中"同时命中时**一律以广告为准**：只能继续 wait，绝不点广告上的任何按钮（含"跳过"）。
+    - **倒计时广告** → 必须用 wait，等它自己结束。它与"页面加载中"同时命中时**一律以广告为准**：只能继续 wait，绝不点广告上的任何按钮（含"跳过"）。等广告不算"卡住"：wait 不计入失败次数（wait 不会「❌ 未生效」），一直等到广告消失再继续，别因为等了几次就收尾。
     """.trimIndent()
     internal val DEC_INTENT_TIMING_EN: String = """
     # Which intent when
     - Need MORE content/list items (target still offscreen) → MUST use swipe or scroll_to until the target is visible.
     - Need a context menu / system options (long-press an icon/message/batch select) → MUST use long_press + target.
     - Page LOADING / waiting for content → MUST use wait (wait_ms suggest 1000~3000), then tap only after ready.
-    - A **countdown ad** → MUST use wait until it ends on its own. When it coincides with "page loading", **the ad always wins**: keep waiting only, and NEVER tap any button on the ad (including "Skip").
+    - A **countdown ad** → MUST use wait until it ends on its own. When it coincides with "page loading", **the ad always wins**: keep waiting only, and NEVER tap any button on the ad (including "Skip"). Waiting on an ad is not being "stuck": a wait never counts toward the failure count (a wait can never come back "❌ failed"), so keep waiting until the ad is gone — do not wrap up just because you have waited several times.
     """.trimIndent()
 
     // ---- dec.always.head ----
