@@ -405,11 +405,11 @@ object AgentPrompts {
             if (lang == PromptLang.CN) {
                 sb.append("检测到本任务需要生成/整理文档。必须直接输出 write_doc，禁止在屏幕上打字、打开记事本/便签、或用 shell 写文件。模板：\n")
                 sb.append("""{"intent":"write_doc","text":"完整文档内容（Markdown）","summary":"给这份文档起的文件名.md（按内容命名，不要照抄本示例）","reasoning":"生成文档并在 Agent 页预览","expected":"文档已生成","confidence":0.95}""")
-                sb.append("\n正文（text）由你自己写：按用户要求组织内容，不要问用户「素材在哪」。内容需要外部事实（天气、汇率、搜索结果、设备信息）时，先用能拿到它的步骤取回（browse_read / fetch / device_query），把结果作为依据再成文；确实缺关键信息且自己拿不到时才 clarify。")
+                sb.append("\n正文（text）由你自己写：按用户要求组织内容，不要问用户「素材在哪」。内容需要外部事实（天气、汇率、搜索结果、设备信息）时，先用能拿到它的步骤取回（browse_read / fetch / device_query），把结果作为依据再成文；确实缺关键信息且自己拿不到时才 give_up 并说明缺什么。")
             } else {
                 sb.append("This task requires generating/compiling a document. Must output write_doc directly; do NOT type on screen, open a notes app, or use shell to write files. Template:\n")
                 sb.append("""{"intent":"write_doc","text":"full document content (Markdown)","summary":"a filename for the document.md (name it by content; do not copy this example)","reasoning":"generate document, preview on the Agent page","expected":"document generated","confidence":0.95}""")
-                sb.append("\nYou write the body (text) yourself: organize the content per the user's request; never ask the user where the material is. When the content needs external facts (weather, exchange rate, search results, device info), first fetch them with the step that can (browse_read / fetch / device_query) and write from those results; use clarify only when a key fact is genuinely missing and unobtainable.")
+                sb.append("\nYou write the body (text) yourself: organize the content per the user's request; never ask the user where the material is. When the content needs external facts (weather, exchange rate, search results, device info), first fetch them with the step that can (browse_read / fetch / device_query) and write from those results; give_up with the reason only when a key fact is genuinely missing and unobtainable.")
             }
         }
         if (openHit) {
