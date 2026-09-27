@@ -119,12 +119,13 @@ class PromptDumpTest {
         ## 当前页面
         当前前台应用: com.sankuai.meituan
         屏幕分辨率: 1080x2340
-        可交互元素（共 5 个）：
+        可交互元素（共 6 个）：
           [#0] android.widget.TextView(textview) label="应付 ¥28.0" center=(540,600) bounds=(40,560)-(1040,640)
           [#1] android.widget.TextView(textview) label="支付方式" center=(180,720) bounds=(40,690)-(320,750)
-          [#2] android.widget.Button(button) id=select_box label="余额（¥126.5）" center=(540,760) bounds=(40,720)-(1040,800)
-          [#3] android.widget.Button(button) label="确认支付" center=(540,2260) bounds=(60,2200)-(1020,2320)
-          [#4] android.widget.ImageButton(imagebutton) id=back_btn label="返回" center=(72,120) bounds=(24,80)-(120,160)
+          [#2] android.widget.Button(button) id=pay_wechat label="微信支付（当前选中）" center=(540,760) bounds=(40,720)-(1040,800)
+          [#3] android.widget.Button(button) id=pay_balance label="余额（¥126.5，点击切换）" center=(540,880) bounds=(40,840)-(1040,920)
+          [#4] android.widget.Button(button) label="确认支付" center=(540,2260) bounds=(60,2200)-(1020,2320)
+          [#5] android.widget.ImageButton(imagebutton) id=back_btn label="返回" center=(72,120) bounds=(24,80)-(120,160)
     """.trimIndent()
 
     private val sampleTaskMemory = """
@@ -277,7 +278,7 @@ class PromptDumpTest {
         listOf(PromptLang.CN, PromptLang.EN).forEach { lang ->
             val tag = lang.name.lowercase()
             val en = lang == PromptLang.EN
-            val memory = "- 用户常在美团点黄焖鸡米饭\n- 用户偏好少辣"
+            val memory = "- 用户常在美团点黄焖鸡米饭\n- 用户不吃辣，辣度要选「不辣」"
             val rules = "[美团] 结算页的「提交订单」常被优惠弹窗遮挡，先关弹窗再点"
             out += Dump("dec.$tag.basic", "DECISION", lang, "user", true, "无记忆、无经验规则（含页面段）",
                 AgentPrompts.decision(lang, if (en) "order a huangmenji rice bowl on Meituan" else "帮我在美团点一份黄焖鸡米饭",
