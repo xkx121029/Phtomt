@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -98,9 +99,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -117,6 +115,14 @@ android {
             isReturnDefaultValues = true
             all { it.testLogging { events("passed", "skipped", "failed") } }
         }
+    }
+}
+
+// Kotlin 编译目标：Kotlin 2.4 起 android 块内的 `kotlinOptions.jvmTarget = "17"` 已移除
+// （字符串形式直接报错），统一改用 compilerOptions DSL。
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
