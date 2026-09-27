@@ -6,6 +6,31 @@
 
 ---
 
+## [v0.1.620] — 2026-09-27
+
+提示词工程从"手改文件 + 经验验证"升级为可审计闭环：导出的提示词可被真实模型逐条审查，
+改文案前先有金样本兜底；同时把两处文案行为口径收紧。
+
+### 新增
+
+- **提示词审计工具链**
+  - `PromptDumpTest`（离线导出）：把全部入口点提示词逐字节导出到 `app/build/prompt_dump/`
+    （`<id>.txt` + `manifest.json`），供外部脚本送审
+  - `tests/prompt_audit.mjs`（Node 审计脚本）：读 manifest 逐条送 agnes-2.5-flash 审视
+    confusions / contradictions / missing / redundant；支持 `--mode=run` 实跑检查合规、
+    `--with-context` 补 system 消息、`--resume` 断点续跑
+  - `杂项/HPA提示词系统文档.md`：53 块 8 组清单、装配流水线、标志位/占位符全表、
+    同源点、注入预算、维护指南、安全网单测
+- **会话承接英文指代词**（`SessionContext`）：`STRONG_MARKERS_EN` + 整词正则（`Regex.escape`
+  + `\b` 边界 + IGNORE_CASE），避免 "against"/"bargain" 误命中 "again"
+
+### 优化
+
+- `write_doc` 缺关键信息时行为口径从 `clarify` 收紧为 `give_up 并说明缺什么`（中英提示词同步，金样本回填）
+- `ActionMode` 保守档描述「只读」改「读取信息」，与动作语义对齐
+
+---
+
 ## [v0.1.619] — 2026-09-26
 
 执行准确度存在四处结构性缺口：视觉兜底只服务 `by=hint`（WebView/自绘页里 AI 按 `by=text`
