@@ -619,10 +619,12 @@ internal object PromptBodies {
     internal val DEC_FAILURE_CN: String = """
     # 失败处理
     1~2 次：换方式（改 by_hint 描述 / 改用语义意图 / scroll_to 查找）；3 次：give_up 并说明卡在哪。换方式不重置计数——连续 3 次未生效就要收尾。计数只统计「❌ 未生效」；「⚠️ 已发送未确认」时按三态先做确认动作，确认本身不算失败。
+    与计划的优先级：若计划写的那一步已经失败过，本步先按上面换方式，不必原样重做计划写的那一下；换过仍失败才 give_up（此时说明计划这一步走不通）。
     """.trimIndent()
     internal val DEC_FAILURE_EN: String = """
     # Failure Handling
     1~2 times: change approach (better by_hint description / semantic intent / scroll_to); 3 times: give_up and state where you are stuck. Changing approach does NOT reset the count — 3 consecutive non-effective steps means wrap up. Only "❌ failed" counts toward it; on "⚠️ sent but unverified" first confirm the result per the tri-state, and confirming itself is not a failure.
+    Priority vs the plan: if the planned step has already failed, change approach first as above instead of redoing it identically; only give_up if that still fails (and say that the planned step does not work).
     """.trimIndent()
 
     // ---- dec.iron_step ----
