@@ -34,8 +34,30 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Detekt (static analysis)
+        run: ./gradlew detekt --stacktrace
+
       - name: Unit Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Unit Test Coverage Report
+        run: ./gradlew :app:createDebugUnitTestCoverageReport --stacktrace
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-coverage
+          path: app/build/reports/coverage/test/debug
+          retention-days: 7
+
+      - name: Upload detekt report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: detekt-report
+          path: app/build/reports/detekt
+          retention-days: 7
 
       - name: Lint
         run: ./gradlew :app:lintDebug --stacktrace

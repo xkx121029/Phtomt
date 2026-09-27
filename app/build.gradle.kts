@@ -5,6 +5,29 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.detekt)
+}
+
+// 静态检查：默认规则集当"下限"，再用基线豁免存量问题。
+// 基线只固化"今天已经存在的"问题，因此这次接入不会让构建先爆红，
+// 而新增/改动的代码再犯同类问题（长函数、超长行、未用导入…）会立刻失败——
+// 这是把 4000 行级文件继续变胖的唯一自动闸门。
+detekt {
+    buildUponDefaultConfig = true
+    parallel = true
+    baseline = file("$rootDir/config/detekt/baseline.xml")
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    // 只扫手写源码；build/ 下的生成物（BuildConfig、资源 id）不参与
+    setSource(files("src/main/java", "src/test/java"))
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        txt.required.set(false)
+        sarif.required.set(false)
+        md.required.set(false)
+    }
 }
 
 // 版本号文件：读取在配置阶段（只读），自增推迟到构建执行阶段，
@@ -64,6 +87,11 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            // 覆盖率：AGP 内置 JaCoCo 支持，产出的报告由
+            // `createDebugUnitTestCoverageReport` 生成（CI 会上传为构建产物）。
+            // 覆盖率数字只用于"看见盲区"——不对全量设阈值：本工程主体是
+            // 无障碍/Shizuku/悬浮窗这类只能在真机上跑的逻辑，JVM 单测天然覆盖不到。
+            enableUnitTestCoverage = true
         }
     }
     compileOptions {
