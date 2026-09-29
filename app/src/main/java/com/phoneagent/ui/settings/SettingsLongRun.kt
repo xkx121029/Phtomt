@@ -32,6 +32,9 @@ import com.phoneagent.data.store.ExecutionStrategy
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalBottomNavClearance
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /** 长线任务设置页：执行策略热切换 + 断点续传 + 任务模板库 */
 @Composable
@@ -110,10 +113,9 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                 Text(
                     "上次任务：${ck.task}\n已完成 ${ck.completedSteps} 步" +
                         (if (ck.totalPlannedSteps > 0) "（共 ${ck.totalPlannedSteps} 步）" else "") +
-                        // 固定格式的时间戳用 Locale.ROOT：这里只有数字与连字符，
-                        // 取系统默认 Locale 既不会改变显示，又会被 lint 判为
-                        // "在 composable 里以不可观察的方式读取语言环境"（[NonObservableLocale]）
-                        "\n保存于 ${java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.ROOT).format(java.util.Date(ck.updatedAt))}",
+                        // 固定格式的时间戳用 Locale.ROOT：只有数字与连字符，取系统默认 Locale
+                        // 既不会改变显示，又会被 lint 判为 composable 内"不可观察地读取语言环境"
+                        "\n保存于 ${timestampText(ck.updatedAt)}",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(16.dp),
                 )
@@ -184,3 +186,14 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
         Spacer(Modifier.height(28.dp))
     }
 }
+
+/**
+ * 检查点时间戳（形如 `09-27 21:40`）。
+ *
+ * 用 [Locale.ROOT] 而不是系统默认 Locale：这条格式里只有数字和连字符，取默认 Locale
+ * 既不会改变显示，又会被 lint 判为"在 composable 里以不可观察的方式读取语言环境"
+ * （[androidx.compose.ui.platform.LocalLocale] 那套检查）。放在非 composable 的普通函数里，
+ * 是为了让"读取语言环境"这件事离开组合过程，而不是靠 suppress 把提示压掉。
+ */
+private fun timestampText(updatedAt: Long): String =
+    SimpleDateFormat("MM-dd HH:mm", Locale.ROOT).format(Date(updatedAt))

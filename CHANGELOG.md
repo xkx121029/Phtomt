@@ -6,6 +6,142 @@
 
 ---
 
+## [v0.2.714] — 2026-09-29
+
+`AgentEngine.kt` 4459 行，`runInner` 一个函数 676 行。这不是"写得丑"，是**改不动**：
+任何一次决策微调都要在四千行里找位置，改完没法单测（要靠真机 + 无障碍服务才能跑起来），
+评审也只能靠肉眼。这一批开始按角色拆分，但**不做一次性重写**——
+先抽"已经被旁路使用、纯逻辑、能被单测覆盖"的单元，每步编译 + 单测全绿再走下一步。
+本批完成四步（AI 输出解析、设备事实读取、执行验证判据 + 视觉路由、shell 执行链），
+`AgentEngine.kt` 4459 → 4219 行，新增 73 个单测。
+
+### 优化
+
+- **抽出 AI 输出解析层**（新增 `engine/AgentResponseParser.kt`，157 行）
+  - 引擎原先自己既做编排又做"把模型吐出来的一段字变成引擎能用的对象"，
+    解析逻辑夹在四千行里既看不清边界也没法单测。现在这层只做一件事：
+    **字符串进、模型对象出**，不落任何副作用——日志与 `activePlan` 的写入仍留在
+    `AgentEngine.parsePlanResponse`，调用方行为逐字未变
+  - 与 `domain/rules/EngineRules.kt` 的分工：那里放"判定规则"（要不要审核、温度多少），
+    这里放"格式解析"。新增 `AgentResponseParserTest`（20 个用例）覆盖
+    澄清 / 纯对话 / 计划三种正常去向与两种失败，以及代码块包裹、前后夹解释文字等真实模型输出
+- **抽出设备与环境事实读取层**（新增 `engine/DeviceFacts.kt`，196 行）
+  - 对应拆分目标里的 ContextBuilder **取数部分**：只回答"这台机器现在是什么样"
+    （装了哪些应用、屏幕多大、有没有网、多少电、剩多少空间），
+    不负责拼提示词、不做任何决策。取数与组装分开后，"取错了"和"写错了"是两类问题，各自能单独验证
+  - 应用数量缓存随之收拢进该类，按任务失效（`resetAppCache()`），
+    原先散落在引擎里的 `@Volatile` 缓存字段与 `MAX_DEVICE_QUERY_APPS` 常量一并删除
+  - 两个纯文案函数（应用清单提示词、`device_query` 查询答复）提到 `companion object`
+    并新增 `DeviceFactsTextTest`（9 个用例）——**截断必须显式披露**这条约定原先只存在于代码里，
+    现在被测试锁住：清单漏项会让 AI 把已装应用判成"没装"，进而反问或直接放弃任务
+- **抽出执行验证判据**（新增 `engine/execution/VerifyRules.kt`）
+  - 原先主循环里内联判断"这次失败要不要再跑两遍""这条错误算不算结构性错误""这一步在历史里记成什么状态"。
+    这些判据全部依赖 `verify.reason` 的**文案**：改一句提示词就可能悄悄改变重试行为，而夹在 600 行主循环里
+    既看不见也没法验证。抽出来后"改文案是否影响重试"成为一条可断言的规则（`VerifyRulesTest` 13 个用例）
+  - 顺带把 `verified_success` / `unverified` 这两个被多处手写、且被 `isConfirmed` 反向比对的字符串
+    收成常量，避免新增第三种写法
+- **抽出决策链路的视觉路由与来源归属**（`core/ai/VisionRouting.kt`）
+  - 端侧 3B / 云端视觉 / 文字描述三条链路互相补位的条件（含"复杂页交给云端、但云端不可用时必须回落 3B"）
+    下沉为纯函数 `VisionRouting.route`，用 9 个用例把路由真值表钉死——
+    任何一条链路被"优化"掉，都会让 AI 面对一个完全不可见的页面，这里不让它靠肉眼保证
+  - 「本轮视觉来源」由字符串字面量改为枚举（`VisionRouting.Source`），
+    原先下游靠 `source == "云端"` 做比对的写法一并消除；模型名映射随之收进 `modelOf`
+- **抽出 shell 执行链的通道判据与输出整理**（新增 `engine/execution/ShellRules.kt`）
+  - 两条执行链（`runRealShell` 回注 AI / `execShellViaChannel` 端侧自发）原先**各自内联了一份完全相同的
+    通道选择**：`ADB`/`SHIZUKU`/`TERMUX`/`AUTO` 四个分支 × 三条通道的可用性判断，连无线 ADB 的桥接 lambda
+    也抄了两遍。改一处漏一处，就会出现"这条命令走的通道和用户选的不一样"。现在通道判据收敛为纯函数
+    `ShellRules.pickChannel`（显式偏好只认自己那条，AUTO 按 无线ADB → Shizuku → Termux 顺位），
+    失败原因文案随之拆成"回注 AI 的完整版"与"端侧自发的简短版"两处，逐字保留原提示
+  - Termux 工具链命令识别（`isTermuxToolCommand`）与 shell 输出的预算截断（`renderShellOutput`）一并下沉。
+    后者保持**先嗅探 + 转 Markdown、再按预算截断**的顺序约定——顺序反过来会把 4000 字符的 HTML 前缀
+    截在 `<head>` 中段，转换器要么拿不到正文、要么把残片当正文，等于白转；该约定原先只写在注释里，
+    现在由用例锁住（含"JSON / dumpsys XML 一律不瞎转"与"超预算截断到 4000"）
+  - 真实副作用（Shizuku / 无线 ADB / Termux / 无障碍的调用、`lastShellOutput` 写入）仍留在引擎，
+    本步只搬移与收敛判据，不改执行行为。新增 `ShellRulesTest`（17 个用例）
+- **版本号方案切到 0.2.x 线**（`app/build.gradle.kts`）
+  - `versionName` 由 `"0.1.${buildNumber}"` 改为 `"0.2.${buildNumber}"`——上一批已经把工具链升到
+    Material 3 **Expressive** 的起点（material3 1.4.0 / compileSdk 36 / Kotlin 2.4.20）并开始按角色拆分引擎，
+    是一次代际升级，却仍顶着 0.1.x 的号往下走，从版本上看不出"东西换了"
+  - `versionCode` 仍按构建自增（版本比较语义不变），只换前缀：升到 0.2 的判定权在版本名上，
+    不动安装与覆盖升级的行为
+
+### 修复
+
+- **`reply` 写成裸字符串时被误判为"规划解析失败"**（`AgentResponseParser.replyOf`）
+  - 原代码注释声称"兼容 `reply` 为对象与裸字符串两种写法"，但实现用 `root["reply"]?.jsonObject`
+    硬取——遇到 `{"reply": "我在的"}` 会先抛 `IllegalArgumentException` 被外层 `try` 吞成
+    「规划解析失败」，注释里的兼容分支**永远走不到**。改用类型判定
+    （`is JsonObject` / `is JsonPrimitive`）让兼容真正生效，并在单测里锁住两种写法
+
+### 已知差异（保留原状，未改）
+
+- 调试轨迹里端侧描述通道的模型名仍写作「ML Kit 中文OCR」。本地读图自 v2.2 起已统一由外挂视觉 Agent 承担、
+  主程序不再内置 OCR，这个标签写的是旧实现。本批只做抽取、不改显示口径，故沿用原文并在此记明
+
+---
+
+## [v0.1.693] — 2026-09-29
+
+这一批不动 Agent 的决策逻辑，只补工程地基：工具链落后了两年、依赖里躺着两个从未被引用的库、
+设计令牌有四处各写一遍的魔数、构建门禁只跑测试不做静态检查。共同点是"现在没坏，
+但每次改动都在悄悄加利息"——拖得越久，升级越贵。所以按"删干净 → 对齐版本 → 加闸门"三步走，
+验收标准是**编译 + 单测 + lint + 静态检查全绿**，不含行为变化。
+
+### 工程
+
+- **工具链升级**（`gradle/libs.versions.toml`、`app/build.gradle.kts`）
+  - Kotlin 2.0.21 → 2.4.20、AGP 8.7.3 → 8.13.2、Compose BOM 2024.12.01 → 2026.06.01、
+    material3 1.3.1 → 1.4.0、compileSdk/targetSdk 35 → 36（Android 16）
+  - material3 1.4.0 是 Material 3 **Expressive** 组件的起点（MotionScheme、形状形变、加载指示器）：
+    此前版本根本没有这批 API，"按 Expressive 标准做 UI"无从谈起
+  - 同步 core-ktx 1.15.0 → 1.17.0、lifecycle 2.8.7 → 2.10.0、activity-compose 1.9.3 → 1.12.4
+  - **未取**最新的 Compose BOM 2026.09.00：那批（ui 1.12.x）要求 AGP 9.1+ 且 compileSdk 37，
+    会把这次升级从"换版本"变成"换构建系统"，风险不成比例；两条线的 material3 都是 1.4.0，
+    Expressive 该有的组件一个不少
+- **Kotlin 2.4 破坏性改动适配**（`app/build.gradle.kts`）：`kotlinOptions.jvmTarget = "17"`
+  在 2.4 已移除（字符串形式直接编译报错），改为 `kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_17 } }`
+- **依赖清理**：删掉 `navigation-compose` 与 `material-icons-extended`——全项目零引用
+  （图标体系早已整体迁到 Lucide，见 `ui/icons/AppIcons.kt`）。声明却不引用，等于每次构建
+  都白付解析与体积的代价，也让"到底用哪套"变得含糊
+- **仓库顺序改为国内镜像优先**（`settings.gradle.kts`）：原先 `google()` / `mavenCentral()` 排在最前，
+  国内直连常只有几十 KB/s，镜像被放在末尾只能兜底。调序后同一批新依赖的解析从"十几分钟没结果"
+  降到 1~2 分钟
+- **质量门禁补齐**（`app/build.gradle.kts`、`.github/workflows/android-ci.yml`）
+  - 接入 **detekt**：默认规则集 + 基线豁免存量 1836 条。"基线只固化今天已有的问题"，
+    所以这次接入不会先爆红，但新增代码再犯同类问题（超长行、超长函数、未用导入…）会立刻失败——
+    这是防止 4000 行级文件继续变胖的唯一自动闸门
+  - 接入 AGP 内置 **JaCoCo**（`enableUnitTestCoverage`），CI 产出并上传覆盖率报告。
+    不设覆盖率阈值：本工程主体是无障碍 / Shizuku / 悬浮窗这类只能在真机跑的代码，
+    JVM 单测天然够不着，硬设阈值只会逼出"为凑数字而写"的测试
+  - 当前基线：522 个单测全过，指令覆盖 15%、分支覆盖 13%——这个数字用来**看盲区**，不用来考核
+
+### 优化
+
+- **按压缩放收口为单一令牌**（`ui/theme/Motion.kt` 新增 `PressScale` 与 `pressScaleSpec()`）：
+  原先 `PressableScale` 与悬浮导航栏各写一遍 `0.97f` 加同一组弹簧参数，改一处必漏一处；
+  现在两处都引用同一个令牌，手感不会再各自漂移
+- **主题去掉死参数**（`ui/theme/Theme.kt`）：`PhoneAgentTheme(dynamicColor: Boolean = false)`
+  的函数体从未读过它——留着会让调用方以为"这个开关能开动态取色"
+
+### 修复
+
+- **升级后新出现的三条 lint 错误**（均来自新库新增的检查项）
+  - `MainActivity.kt`、`SettingsScreen.kt`：`LocalContext.current as Activity` 改为
+    `LocalActivity.current`。LocalContext 不保证是 Activity，强转在预览 / 测试环境会直接崩
+  - `SettingsLongRun.kt`：检查点在 composable 内读系统 `Locale`（`NonObservableLocale`），
+    抽成普通函数 `timestampText()` 并改用 `Locale.ROOT`——这条格式里只有数字和连字符，
+    用 ROOT 显示不变，也不必靠 suppress 把提示压掉
+
+### 文档
+
+- **规划文档与代码对账**（`杂项/HPA中长线任务优化及agent逻辑优化文档.md`）：v2.2 声称
+  "中等任务用脚本执行（一次规划、偏差才问）"，但代码里 `ExecutionStrategy.SCRIPT` 只是个
+  **被记录的标签**——`AgentEngine.run` 读出它写进日志与任务标签，执行路径始终是"每步问云端"的循环，
+  也没有 `TaskScript` / `ScriptStep` / `ScriptExecutor`。已在正文与结尾标注实现状态，
+  避免把"规划中"读成"已完成但漏勾"
+
+---
+
 ## [v0.1.679] — 2026-09-27
 
 上一批把提示词工程带进了可审计闭环，这一批就用审计的视角把文案里剩下的口径问题清了一遍。

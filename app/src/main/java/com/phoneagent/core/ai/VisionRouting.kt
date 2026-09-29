@@ -53,4 +53,110 @@ object VisionRouting {
         val id = ModelCatalogCodec.endpointId(baseUrl)
         return catalog.firstOrNull { it.endpointId == id && it.name == name }?.vision
     }
+
+    // ---- 一步决策的视觉路由 ----
+
+    /**
+     * 路由输入（全部是"已经算好的事实"，不在这里读设置、不碰设备，因此可单测）。
+     *
+     * [complexPage]：元素树是否稀疏到不足以支撑决策。
+     * [cloudReady]：云端视觉配置是否就绪（有视觉模型且没有明确指定只走 LOCAL）。
+     * [mainGetsImage]：主模型能否识图 **且** 本轮确实拍到了图。
+     */
+    data class RouteInput(
+        val complexPage: Boolean,
+        val cloudReady: Boolean,
+        val smartRoute: Boolean,
+        val externalEnabled: Boolean,
+        val mainGetsImage: Boolean,
+        val skipDescWhenMainSees: Boolean,
+    )
+
+    /** 路由输出：这一轮视觉怎么走 */
+    data class Route(
+        /** 端侧 3B 用于本步 */
+        val useOnDevice3b: Boolean,
+        /** 云端视觉用于本步 */
+        val cloudVision: Boolean,
+        /** 是否还需要"把截图转成文字描述"这一步 */
+        val wantVisionDesc: Boolean,
+    )
+
+    /**
+     * 视觉路由：决定端侧 3B、云端视觉、文字描述三者这一步各走不走。
+     *
+     * 这里承载的是原引擎里最难读的一段条件——三条链路互相补位、任何一条被"优化"掉都可能
+     * 让 AI 面对一个完全不可见的页面：
+     * - 混合路由（[RouteInput.smartRoute]）下，端侧 3B 只接简单任务（框选快、省额度），
+     *   复杂任务（元素树稀疏、需强语义理解）交给云端；
+     * - 但云端不可用时**必须**回落到 3B，不能两条路都断；
+     * - 主模型自己能看图时，把同一张图再转成文字没有收益，可跳过描述
+     *   （外挂 3B 框选出的坐标照常保留，那是 hint 定位的第一优先来源）。
+     */
+    fun route(input: RouteInput): Route = Route(
+        // 开启外挂 3B，且（未开混合 或 简单任务 或 复杂任务但云端不可用）
+        useOnDevice3b = input.externalEnabled &&
+            (!input.smartRoute || !input.complexPage || !input.cloudReady),
+        // 云端视觉可用，且（未开混合 或 复杂任务 或 未启用外挂只能靠云端）
+        cloudVision = input.cloudReady &&
+            (!input.smartRoute || input.complexPage || !input.externalEnabled),
+        wantVisionDesc = !(input.mainGetsImage && input.skipDescWhenMainSees),
+    )
+
+    // ---- 决策后处理：本轮视觉结果的来源归属（写进决策轨迹，供调试页回看） ----
+
+    /** 本轮决策的视觉来源。用枚举而不是字符串，避免下游靠 `source == "云端"` 这种字面量比对 */
+    enum class Source(val label: String) {
+        /** 外挂端侧 3B 控件识别 */
+        EXTERNAL("外挂3B"),
+
+        /** 主模型直接读图（未生成文字描述） */
+        MAIN_DIRECT("主模型直读"),
+
+        /** 云端视觉模型给出的文字描述 */
+        CLOUD("云端"),
+
+        /** 端侧识别的文字描述 */
+        LOCAL("本地OCR"),
+
+        /** 本步没有视觉产出 */
+        NONE("无"),
+    }
+
+    /**
+     * 判定本步视觉来源。顺序即优先级，与执行链路一致：
+     * 外挂 3B 先跑 → 主模型直读（跳过描述）→ 云端描述 → 端侧描述 → 无。
+     */
+    fun sourceOf(
+        externalUsed: Boolean,
+        mainGetsImage: Boolean,
+        hasDescription: Boolean,
+        cloudVision: Boolean,
+    ): Source = when {
+        externalUsed -> Source.EXTERNAL
+        mainGetsImage -> Source.MAIN_DIRECT
+        hasDescription && cloudVision -> Source.CLOUD
+        hasDescription -> Source.LOCAL
+        else -> Source.NONE
+    }
+
+    /** 端侧 3B 的名称（探测链路固定，不随设置变化） */
+    const val EXTERNAL_VISION_MODEL_LABEL = "Qwen2.5-VL-3B (端侧)"
+
+    /**
+     * 端侧文字描述通道的名称。
+     *
+     * 沿用历史文案：v2.2 起本地读图已统一由外挂视觉 Agent 承担，主程序不再内置 OCR，
+     * 这个标签写的是旧实现。保留原文以免改动调试页既有显示口径（差异已记录在 CHANGELOG）。
+     */
+    const val LOCAL_VISION_MODEL_LABEL = "ML Kit 中文OCR"
+
+    /** 视觉来源 → 展示用的模型名（[cloudModel]/[mainModel] 由调用方从当前设置取出） */
+    fun modelOf(source: Source, cloudModel: String, mainModel: String): String = when (source) {
+        Source.EXTERNAL -> EXTERNAL_VISION_MODEL_LABEL
+        Source.CLOUD -> cloudModel
+        Source.LOCAL -> LOCAL_VISION_MODEL_LABEL
+        Source.MAIN_DIRECT -> mainModel
+        Source.NONE -> ""
+    }
 }

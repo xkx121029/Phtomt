@@ -12,10 +12,6 @@ import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelAbility
 import com.phoneagent.core.ai.VisionRouting
 import com.phoneagent.data.prefs.AppSettings
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import com.phoneagent.domain.rules.EngineRules
@@ -30,7 +26,9 @@ import com.phoneagent.engine.execution.CapabilityManager
 import com.phoneagent.engine.execution.ClickRunner
 import com.phoneagent.engine.execution.IntentResolver
 import com.phoneagent.engine.execution.IntentTranslator
+import com.phoneagent.engine.execution.ShellRules
 import com.phoneagent.engine.execution.VerifiedClickExecutor
+import com.phoneagent.engine.execution.VerifyRules
 import com.phoneagent.overlay.FloatingWindowService
 import com.phoneagent.data.store.AiMemoryDedupe
 import com.phoneagent.data.store.AiMemoryEntry
@@ -118,6 +116,9 @@ class AgentEngine(
     private var job: Job? = null
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+    /** 设备与环境事实（应用清单 / 屏幕 / 网络 / 电量 / 存储）的读取入口，见 [DeviceFacts] */
+    private val deviceFacts = DeviceFacts(appContext)
+
     companion object {
         /** 参数缺失追问的最大补全轮数：tap 缺 target / open_app 缺 app 时最多向 AI 追问几轮 */
         private const val MAX_PARAM_REFILL = 3
@@ -146,15 +147,6 @@ class AgentEngine(
         private const val LOCAL_DECISION_SOURCE = "端侧决策"
 
         /**
-         * Termux 工具链命令白名单：这些命令在 adb shell 中通常不存在（Android 只带 toybox），
-         * 故命中时一律交给 Termux 通道执行，不受执行通道偏好影响。
-         */
-        private val TERMUX_TOOL_COMMANDS = setOf(
-            "curl", "wget", "python", "python3", "pip", "pip3", "jq", "sed", "awk",
-            "grep", "tr", "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
-        )
-
-        /**
          * 执行前需要"重新定位目标"的动作类型。
          *
          * 这些动作都依赖元素坐标（输入框中心、滚动容器中心、滑动起点），而坐标是按**观察那一刻**的
@@ -169,14 +161,6 @@ class AgentEngine(
 
         /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
         private const val MAX_TRACES = 300
-        /**
-         * shell 输出回注 AI 的字符预算。
-         * 与内置浏览器的 [com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS] 同量级：
-         * 网页 `curl` 回来要先转成 Markdown 再回传，原来的 1200 只够看到 `<head>` 开头。
-         */
-        private const val SHELL_OUTPUT_BUDGET = 4000
-        /** 转 Markdown 时给"网页标题 / 网页正文（已自动转为 Markdown）"两行表头留的余量 */
-        private const val SHELL_MD_HEADER_RESERVE = 300
         /** 调试执行历史最多保留条数 */
         private const val MAX_EXECUTION_HISTORY = 400
         /** 对话历史（决策 prompt）最多保留条数：长线任务每步决策都 append，需上限防内存膨胀 */
@@ -242,13 +226,6 @@ class AgentEngine(
 
         /** device_query 返回内容注入 AI 上下文的最大字符数（按需查询，可以给足；应用清单本身另有条数上限） */
         private const val MAX_DEVICE_QUERY_OUTPUT = 9000
-
-        /**
-         * device_query kind=apps 一次最多列出的应用条数。
-         * 上限只用来兜住"装了 500 个应用"的极端设备：够不上的部分必须显式告知 AI 去用 filter 缩小范围，
-         * 绝不能静默截断——被截掉的应用在 AI 眼里等同于"没装"，会直接导致误判为需要澄清或放弃任务。
-         */
-        private const val MAX_DEVICE_QUERY_APPS = 300
 
         /**
          * 连续「决策链路异常」次数上限。
@@ -363,10 +340,6 @@ class AgentEngine(
 
     /** 本任务已经计入过命中次数的规则 id：同一任务内命中多次只算一次，防长线任务把计数刷爆 */
     private val touchedRuleIds = mutableSetOf<Long>()
-
-    /** 已安装应用数量缓存（每任务查一次 PackageManager，避免每步决策都全量查询） */
-    @Volatile
-    private var installedAppCountCache: Int = -1
 
     /**
      * 本任务的会话承接块（本对话内更早的往来 + 是否为追问），每任务构建一次后逐步骤复用；
@@ -1041,54 +1014,26 @@ class AgentEngine(
         return content
     }
 
-    private fun parsePlanResponse(content: String): PlanPhase {
-        return try {
-            val obj = extractJsonObject(content)
-            // 手动解析 JSON，兼容 steps 为字符串数组或对象数组
-            val root = json.parseToJsonElement(obj).jsonObject
-            val needsClarification = root["needs_clarification"]?.jsonPrimitive?.contentOrNull?.toBoolean() ?: false
+    /**
+     * 解析规划输出并落副作用。
+     *
+     * 格式解析本身在 [AgentResponseParser.parsePlan]（纯逻辑、可单测）；这里只保留两件必须留在引擎里的事：
+     * 写 `activePlan`（`approvePlan` 会读它）与写日志（要有任务上下文才有意义）。
+     * 日志文案按解析结果反推，与拆分前逐字一致。
+     */
+    private fun parsePlanResponse(content: String): PlanPhase =
+        AgentResponseParser.parsePlan(content).also { phase ->
+            when (phase) {
+                is PlanPhase.Clarifying -> log(AgentLog.Level.AI, "需要澄清：${phase.clarification.question}")
+                is PlanPhase.Reply -> log(AgentLog.Level.AI, "纯对话回复：${phase.text.take(60)}")
+                is PlanPhase.AwaitingApproval -> {
+                    activePlan = phase.plan
+                    log(AgentLog.Level.AI, "规划完成：${phase.plan.steps.size} 步")
+                }
 
-            if (needsClarification) {
-                val clarObj = root["clarification"]?.jsonObject
-                val question = clarObj?.get("question")?.jsonPrimitive?.contentOrNull ?: ""
-                val opts = clarObj?.get("options") as? kotlinx.serialization.json.JsonArray
-                val options = opts?.mapNotNull { opt ->
-                    val o = opt as? JsonObject ?: return@mapNotNull null
-                    com.phoneagent.domain.model.ClarificationOption(
-                        id = o["id"]?.jsonPrimitive?.contentOrNull ?: "",
-                        label = o["label"]?.jsonPrimitive?.contentOrNull ?: "",
-                        description = o["description"]?.jsonPrimitive?.contentOrNull ?: "",
-                        isDefault = o["is_default"]?.jsonPrimitive?.contentOrNull?.toBoolean() ?: false,
-                    )
-                } ?: emptyList()
-                log(AgentLog.Level.AI, "需要澄清：$question")
-                PlanPhase.Clarifying(com.phoneagent.domain.model.Clarification(question = question, options = options))
-            } else {
-                // 纯对话：模型判断这次不需要碰手机，直接给一句话。兼容 reply 写成对象或裸字符串
-                val replyText = root["reply"]?.jsonObject?.get("text")?.jsonPrimitive?.contentOrNull
-                    ?: root["reply"]?.jsonPrimitive?.contentOrNull
-                if (!replyText.isNullOrBlank()) {
-                    log(AgentLog.Level.AI, "纯对话回复：${replyText.take(60)}")
-                    return PlanPhase.Reply(replyText)
-                }
-                val planObj = root["plan"]?.jsonObject
-                if (planObj != null) {
-                    val stepsRaw = planObj["steps"] as? kotlinx.serialization.json.JsonArray
-                    val steps = if (stepsRaw != null) com.phoneagent.domain.model.parseTaskSteps(stepsRaw) else emptyList()
-                    val estimatedTime = planObj["estimated_time_seconds"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
-                    val confidence = planObj["confidence"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
-                    val plan = com.phoneagent.domain.model.TaskPlan(steps = steps, estimatedTimeSeconds = estimatedTime, confidence = confidence)
-                    activePlan = plan
-                    log(AgentLog.Level.AI, "规划完成：${plan.steps.size} 步")
-                    PlanPhase.AwaitingApproval(plan)
-                } else {
-                    PlanPhase.Error("规划结果无法解析")
-                }
+                else -> Unit
             }
-        } catch (e: Exception) {
-            PlanPhase.Error("规划解析失败：${e.message}")
         }
-    }
 
     /**
      * 从 AI 响应中提取 JSON 对象（纯逻辑实现见 [EngineRules.extractJsonObject]）。
@@ -1418,7 +1363,7 @@ class AgentEngine(
         foregroundPkgCounts.clear()
         touchedRuleIds.clear()
         // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
-        installedAppCountCache = -1
+        deviceFacts.resetAppCache()
         sessionContextCache = null
         // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
         val strategy = runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
@@ -1726,7 +1671,7 @@ class AgentEngine(
                     }
                     if (action!!.type == ActionType.TASK_DONE) {
                         log(AgentLog.Level.INFO, "任务完成：${action!!.summary ?: "-"}")
-                        recordStep(step, action!!, "verified_success", "", "", verify.reason)
+                        recordStep(step, action!!, VerifyRules.STATUS_VERIFIED, "", "", verify.reason)
                         _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action!!.summary ?: "任务完成", isRunning = false)
                         AgentAccessibilityService.agentRunning = false
                         // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
@@ -1794,21 +1739,16 @@ class AgentEngine(
                     // 真的动手了：把连续说话计数清掉
                     sayStreak = 0
                     verify = safeExecute(action!!, snapshot)
-                    // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策
-                    isStructuralError = verify.reason.contains("未知 shell 命令") ||
-                        verify.reason.contains("命令为空") ||
-                        verify.reason.contains("参数无效") ||
-                        // 自由模式的两类结构性错误同样不该重试：端点名/参数写错，重跑同一串动作不会自己变好
-                        verify.reason.contains("未知无障碍端点") ||
-                        verify.reason.contains("缺少参数") ||
-                        verify.reason.contains("缺少 endpoint")
+                    // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策。
+                    // 判据（哪些错误算结构性、哪些动作不参与外层重试）下沉 VerifyRules，可单测
+                    isStructuralError = VerifyRules.isStructuralError(verify.reason)
                     verified = verify.success
                     var times = 1
                     // 点击类动作不再交给外层重跑：ClickRunner 内部已把"活节点直点 → 手势点击 → 快照坐标 →
                     // 滚动查找"逐级穷尽过一遍，外层再重跑只是把同一串动作重复执行（还可能造成重复副作用）
-                    val clickLike = action!!.type == ActionType.CLICK || action!!.type == ActionType.TAP ||
-                        action!!.type == ActionType.LONG_CLICK || action!!.type == ActionType.LONG_PRESS
-                    while (!verified && times < 3 && !isStructuralError && !clickLike && coroutineContext.isActive) {
+                    while (!verified &&
+                        VerifyRules.shouldRetry(action!!.type, verify.reason, times, coroutineContext.isActive)
+                    ) {
                         times++
                         log(AgentLog.Level.WARN, "动作未生效（第 $times 次重试）：${action!!.type}")
                         repeat(3) { delay(300) }
@@ -2118,22 +2058,26 @@ class AgentEngine(
         // 元素树稀疏/为空时必须拿到视觉配置（force）：此时视觉是唯一的信息来源，
         // 不能因为「视觉总开关关着」就把这一路掐掉，否则 AI 面对的是完全不可见的页面
         val visionCfg = visionConfig(settingsVal, force = complexPage)
-        val hybrid = settingsVal.smartVisionRoute
         // 云端视觉配置是否就绪：有配置且没有明确指定只走 LOCAL
         val cloudReady = visionCfg != null && settingsVal.visionMode != "LOCAL"
-        // 端侧 3B 是否用于本步：开启外挂，且（未开混合 或 简单任务 或 复杂任务但云端不可用）
-        // 复杂任务且云端可用时跳过 3B（把额度与延迟留给云端），但云端不可用时必须回落到 3B，不能两条路都断
-        val useOnDevice3b = settingsVal.enableExternalVision &&
-            (!hybrid || !complexPage || !cloudReady)
-        // 云端视觉是否可用：配置就绪，且（未开混合 或 复杂任务 或 未启用外挂只能靠云端）
-        // 混合模式下简单任务有 3B 时主动跳过云端，把额度留给复杂任务
-        val cloudVision = cloudReady && (!hybrid || complexPage || !settingsVal.enableExternalVision)
         // 主模型自身能识图（三态合流，见 VisionRouting）且本轮确实拍到了图 → 图片直接进主模型上下文。
         // 局部变量刻意不叫 mainSeesImage：那是"能力判定"，这里还要叠加"本轮有图"
         val mainGetsImage = mainSeesImage(settingsVal) && settingsVal.attachScreenshot && screenshot != null
-        // 「主模型识图时跳过视觉描述」：只省"把截图转成文字"这一步——图片已经在主模型上下文里，
-        // 再花钱把同一张图转成文字没有收益；但外挂 3B 框选出的坐标（hint 定位的第一优先来源）照常保留
-        val wantVisionDesc = !(mainGetsImage && settingsVal.skipVisionDescWhenMainSees)
+        // 三条视觉链路（端侧 3B / 云端描述 / 端侧描述）怎么走，以及"主模型识图时跳过视觉描述"：
+        // 路由判据（含"复杂任务且云端可用时跳过 3B，但云端不可用时必须回落 3B"）下沉 VisionRouting.route，可单测
+        val route = VisionRouting.route(
+            VisionRouting.RouteInput(
+                complexPage = complexPage,
+                cloudReady = cloudReady,
+                smartRoute = settingsVal.smartVisionRoute,
+                externalEnabled = settingsVal.enableExternalVision,
+                mainGetsImage = mainGetsImage,
+                skipDescWhenMainSees = settingsVal.skipVisionDescWhenMainSees,
+            ),
+        )
+        val useOnDevice3b = route.useOnDevice3b
+        val cloudVision = route.cloudVision
+        val wantVisionDesc = route.wantVisionDesc
         var localRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
         var externalUsed = false
         var pageText = safeText
@@ -2374,36 +2318,33 @@ class AgentEngine(
                 }
             }
         }
-        // 记录本轮决策的详细追踪（Debug「按任务分类」展示）
-                val visionSrc = when {
-                    externalUsed -> "外挂3B"
-                    // 主模型直接读图（跳过视觉描述时最常见）：图片进了主模型上下文
-                    mainGetsImage -> "主模型直读"
-                    !desc.isNullOrBlank() && cloudVision -> "云端"
-                    !desc.isNullOrBlank() -> "本地OCR"
-                    else -> "无"
-                }
-                val visionModel = when {
-                    externalUsed -> "Qwen2.5-VL-3B (端侧)"
-                    visionSrc == "云端" -> visionCfg?.model ?: ""
-                    visionSrc == "本地OCR" -> "ML Kit 中文OCR"
-                    visionSrc == "主模型直读" -> settingsVal.model
-                    else -> ""
-                }
-                // say 不落决策轨迹：它不是一步操作，落档会在任务流里凭空多出一条「说」的步骤
-                // （只有 trace、没有执行记录），读起来像是工具没被识别出来
-                if (intent.intent != IntentType.SAY) {
-                    recordStepTrace(
-                        step = _state.value.stepCount,
-                        sent = userText,
-                        decision = decision,
-                        visionSource = visionSrc,
-                        visionModel = visionModel,
-                        visionDescription = desc?.takeIf { it.isNotBlank() }
-                            ?: if (mainGetsImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
-                        screenshot = screenshot,
-                    )
-                }
+        // 记录本轮决策的详细追踪（Debug「按任务分类」展示）。
+        // 视觉来源与模型名的归属判据下沉 VisionRouting（用枚举替代原先的字符串字面量比对），可单测
+        val visionSource = VisionRouting.sourceOf(
+            externalUsed = externalUsed,
+            mainGetsImage = mainGetsImage,
+            hasDescription = !desc.isNullOrBlank(),
+            cloudVision = cloudVision,
+        )
+        val visionModel = VisionRouting.modelOf(
+            source = visionSource,
+            cloudModel = visionCfg?.model ?: "",
+            mainModel = settingsVal.model,
+        )
+        // say 不落决策轨迹：它不是一步操作，落档会在任务流里凭空多出一条「说」的步骤
+        // （只有 trace、没有执行记录），读起来像是工具没被识别出来
+        if (intent.intent != IntentType.SAY) {
+            recordStepTrace(
+                step = _state.value.stepCount,
+                sent = userText,
+                decision = decision,
+                visionSource = visionSource.label,
+                visionModel = visionModel,
+                visionDescription = desc?.takeIf { it.isNotBlank() }
+                    ?: if (mainGetsImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
+                screenshot = screenshot,
+            )
+        }
 
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
             intent.intent != IntentType.GIVE_UP && needsReviewIntent(intent, snapshot)
@@ -2563,7 +2504,7 @@ class AgentEngine(
         recordStep(
             step = step,
             action = action,
-            verification = if (result.isError) "unverified" else "verified_success",
+            verification = if (result.isError) VerifyRules.STATUS_UNVERIFIED else VerifyRules.STATUS_VERIFIED,
             before = "",
             after = "",
             detail = if (result.isError) text.ifBlank { "MCP 调用失败" } else "MCP 返回：${text.ifBlank { "（空）" }}",
@@ -2682,7 +2623,7 @@ class AgentEngine(
         recordStep(
             step = step,
             action = action,
-            verification = if (failed) "unverified" else "verified_success",
+            verification = if (failed) VerifyRules.STATUS_UNVERIFIED else VerifyRules.STATUS_VERIFIED,
             before = "",
             after = "",
             detail = detail,
@@ -2962,7 +2903,7 @@ class AgentEngine(
         val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(false, "shell 命令为空", "", "")
         // Termux 工具链命令（curl / python / jq 等）：adb shell 里没有这些工具，
         // 按命令名判定直接交给 Termux，不受 executionChannel 偏好影响
-        if (isTermuxToolCommand(cmd)) {
+        if (ShellRules.isTermuxToolCommand(cmd)) {
             val bridge = termuxBridge
             if (bridge == null || !bridge.isAvailable()) {
                 return com.phoneagent.engine.execution.VerifyResult(
@@ -3127,17 +3068,20 @@ class AgentEngine(
     }
 
     /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB→Shizuku→Termux | ADB=仅无线ADB | SHIZUKU=仅Shizuku | TERMUX=仅Termux） */
-    private suspend fun shellChannelAvailable(): Boolean {
-        val channel = settings.settings.first().executionChannel
-        return when (channel) {
-            "ADB" -> adbTransport?.isConnected() == true
-            "SHIZUKU" -> shizukuManager?.isAvailable() == true
-            "TERMUX" -> termuxBridge?.isAvailable() == true
-            // AUTO：无线 ADB → Shizuku → Termux（普通应用权限，仅作第三顺位兜底）
-            else -> adbTransport?.isConnected() == true ||
-                shizukuManager?.isAvailable() == true ||
-                termuxBridge?.isAvailable() == true
-        }
+    private suspend fun shellChannelAvailable(): Boolean =
+        // 通道判据与真实执行共用同一份（ShellRules.pickChannel），避免"这里说可用、那里走不通"
+        ShellRules.pickChannel(
+            settings.settings.first().executionChannel,
+            adbTransport?.isConnected() == true,
+            shizukuManager?.isAvailable() == true,
+            termuxBridge?.isAvailable() == true,
+        ) != ShellRules.Channel.NONE
+
+    /** 经无线 ADB 通道执行 shell：把字符串结果桥接成 Shizuku 的结果类型，供两条执行链共用 */
+    private suspend fun runAdbShell(cmd: String): com.phoneagent.device.shell.ShizukuManager.ShellResult {
+        val out = adbTransport?.executeShell(cmd)
+        return if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+        else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
     }
 
     /**
@@ -3150,33 +3094,20 @@ class AgentEngine(
         resolved: String,
         baseUrl: String? = null,
     ): com.phoneagent.engine.execution.VerifyResult {
-        val channel = settings.settings.first().executionChannel
-        val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { cmd ->
-            val out = adbTransport?.executeShell(cmd)
-            if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
-            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
-        }
+        val preference = settings.settings.first().executionChannel
+        val channel = ShellRules.pickChannel(
+            preference,
+            adbTransport?.isConnected() == true,
+            shizukuManager?.isAvailable() == true,
+            termuxBridge?.isAvailable() == true,
+        )
         val result: com.phoneagent.device.shell.ShizukuManager.ShellResult = when (channel) {
-            "ADB" -> {
-                if (adbTransport?.isConnected() == true) adbShell(resolved)
-                else return com.phoneagent.engine.execution.VerifyResult(false, "无线 ADB 未连接，无真实 shell 通道", "", "")
-            }
-            "SHIZUKU" -> {
-                if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
-                else return com.phoneagent.engine.execution.VerifyResult(false, "Shizuku 不可用，无真实 shell 通道", "", "")
-            }
-            "TERMUX" -> {
-                if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(resolved)
-                else return com.phoneagent.engine.execution.VerifyResult(
-                    false, "Termux 不可用（未安装或未授予 RUN_COMMAND 权限）", "", "",
-                )
-            }
-            else -> {
-                if (adbTransport?.isConnected() == true) adbShell(resolved)
-                else if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(resolved)
-                else if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(resolved)
-                else return com.phoneagent.engine.execution.VerifyResult(false, "无可用 shell 通道", "", "")
-            }
+            ShellRules.Channel.ADB -> runAdbShell(resolved)
+            ShellRules.Channel.SHIZUKU -> shizukuManager!!.executeShell(resolved)
+            ShellRules.Channel.TERMUX -> termuxBridge!!.executeShell(resolved)
+            ShellRules.Channel.NONE -> return com.phoneagent.engine.execution.VerifyResult(
+                false, ShellRules.noChannelReason(preference), "", "",
+            )
         }
         return finishShellResult(result, baseUrl)
     }
@@ -3190,40 +3121,21 @@ class AgentEngine(
      * AUTO 顺序：无线 ADB → Shizuku → Termux。
      */
     private suspend fun execShellViaChannel(cmd: String): com.phoneagent.device.shell.ShizukuManager.ShellResult {
-        val channel = settings.settings.first().executionChannel
-        val adbShell: suspend (String) -> com.phoneagent.device.shell.ShizukuManager.ShellResult = { c ->
-            val out = adbTransport?.executeShell(c)
-            if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
-            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
-        }
+        val preference = settings.settings.first().executionChannel
+        val channel = ShellRules.pickChannel(
+            preference,
+            adbTransport?.isConnected() == true,
+            shizukuManager?.isAvailable() == true,
+            termuxBridge?.isAvailable() == true,
+        )
         return when (channel) {
-            "ADB" -> if (adbTransport?.isConnected() == true) adbShell(cmd)
-            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 未连接")
-            "SHIZUKU" -> if (shizukuManager?.isAvailable() == true) shizukuManager.executeShell(cmd)
-            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("Shizuku 不可用")
-            "TERMUX" -> if (termuxBridge?.isAvailable() == true) termuxBridge.executeShell(cmd)
-            else com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("Termux 不可用")
-            else -> when {
-                adbTransport?.isConnected() == true -> adbShell(cmd)
-                shizukuManager?.isAvailable() == true -> shizukuManager.executeShell(cmd)
-                termuxBridge?.isAvailable() == true -> termuxBridge.executeShell(cmd)
-                else -> com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无可用 shell 通道")
-            }
+            ShellRules.Channel.ADB -> runAdbShell(cmd)
+            ShellRules.Channel.SHIZUKU -> shizukuManager!!.executeShell(cmd)
+            ShellRules.Channel.TERMUX -> termuxBridge!!.executeShell(cmd)
+            ShellRules.Channel.NONE -> com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure(
+                ShellRules.noChannelReasonShort(preference),
+            )
         }
-    }
-
-    /**
-     * 判断是否为 Termux 工具链命令（curl / python / jq 等）。
-     * 取首个 token 的命令名并去掉绝对路径；`a && b` 这类组合只看首段。
-     */
-    private fun isTermuxToolCommand(cmd: String): Boolean {
-        val body = cmd.trim().removePrefix("raw ").trim()
-        if (body.isBlank()) return false
-        val head = body.split(Regex("[\\s;&|]+")).firstOrNull()
-            ?.substringAfterLast('/')
-            ?.lowercase()
-            .orEmpty()
-        return head in TERMUX_TOOL_COMMANDS
     }
 
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
@@ -3233,7 +3145,7 @@ class AgentEngine(
     ): com.phoneagent.engine.execution.VerifyResult = when (result) {
         is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success -> {
             // 捕获输出：查询类命令回传 AI，指令类命令忽略
-            lastShellOutput = renderShellOutput(result.output.trim(), baseUrl)
+            lastShellOutput = ShellRules.renderShellOutput(result.output.trim(), baseUrl)
             pendingShellOutput = lastShellOutput
             delay(300)
             com.phoneagent.engine.execution.VerifyResult(true, "shell 执行成功", "", "")
@@ -3244,25 +3156,6 @@ class AgentEngine(
             pendingShellOutput = result.reason
             com.phoneagent.engine.execution.VerifyResult(false, result.reason, "", "")
         }
-    }
-
-    /**
-     * shell 输出整理成给 AI 读的文本。
-     *
-     * **顺序很关键：先嗅探 + 转 Markdown，再按预算截断**。反过来的话（先 take 再转），
-     * 4000 字符的 HTML 前缀常常停在 `<head>`/`<nav>` 中段，转换器要么拿不到正文、
-     * 要么把 `<div class="` 残片当成正文，等于白转。
-     */
-    private fun renderShellOutput(raw: String, baseUrl: String?): String {
-        if (raw.isEmpty()) return raw
-        // 不是 HTML（JSON / 纯文本 / dumpsys 的 XML）一律原样回传，绝不瞎转
-        if (!com.phoneagent.core.text.HtmlToMarkdown.isHtml(raw)) return raw.take(SHELL_OUTPUT_BUDGET)
-        val r = com.phoneagent.core.text.HtmlToMarkdown.convert(
-            raw, baseUrl, SHELL_OUTPUT_BUDGET - SHELL_MD_HEADER_RESERVE,
-        )
-        if (r.markdown.isBlank()) return raw.take(SHELL_OUTPUT_BUDGET)
-        val title = if (r.title.isNotBlank()) "网页标题：${r.title}\n" else ""
-        return title + "网页正文（已自动转为 Markdown）：\n" + r.markdown
     }
 
     /**
@@ -3483,7 +3376,7 @@ class AgentEngine(
             )
         }.getOrNull()
         log(AgentLog.Level.INFO, "写入记忆：$content")
-        recordStep(step, action, "verified_success", "", "", "已写入记忆")
+        recordStep(step, action, VerifyRules.STATUS_VERIFIED, "", "", "已写入记忆")
         if (upsert == null) return
         emitMemoryEvent(upsert, "r$currentTaskId", step)
         // 记忆变了 → 作废素材缓存，让后续步骤立刻用上刚记下的信息
@@ -3503,7 +3396,7 @@ class AgentEngine(
             .getOrDefault("查询失败")
             .take(MAX_DEVICE_QUERY_OUTPUT)
         log(AgentLog.Level.INFO, "查询本机信息：kind=$kind filter=${filter.ifBlank { "-" }} → ${text.take(120)}")
-        recordStep(step, action, "verified_success", "", "", "查询结果：${text.take(200)}")
+        recordStep(step, action, VerifyRules.STATUS_VERIFIED, "", "", "查询结果：${text.take(200)}")
         val injected = "device_query（kind=$kind）查询结果：\n$text"
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
         addConversation("assistant", injected)
@@ -3838,7 +3731,12 @@ class AgentEngine(
         // - AI 记忆：全量注入，承担"用户画像 + 通用记忆"（客观事实类）；
         // - 经验规则：带作用域注入，承担"与某个应用/任务相关的做法类经验"。
         // 作用域由本次执行的前台应用分布推断（见 RuleScoper），推断不出来就退化成 GLOBAL。
-        val scope = RuleScoper.inferScope(task, foregroundPkgCounts.toMap(), appContext.packageName, installedAppKeywords())
+        val scope = RuleScoper.inferScope(
+            task,
+            foregroundPkgCounts.toMap(),
+            appContext.packageName,
+            deviceFacts.launcherAppNames(),
+        )
         items.forEach { item ->
             val upsert = runCatching {
                 memory.upsertAiMemory(item.content, item.category, task, "distill", item.confidence)
@@ -3859,28 +3757,9 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "记忆提炼完成：新增/更新 ${items.size} 条（作用域=${scope.kind}${scope.value})")
     }
 
-    /** 提炼结果条目 */
-    private data class DistilledMemory(val content: String, val category: String, val confidence: Double)
-
-    /** 解析提炼输出 {"memories":[{content,category,confidence}]}，最多取 3 条 */
-    private fun parseDistilledMemories(raw: String): List<DistilledMemory> {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start < 0 || end <= start) return emptyList()
-        return runCatching {
-            val root = json.parseToJsonElement(raw.substring(start, end + 1)).jsonObject
-            val arr = root["memories"]?.jsonArray ?: return emptyList()
-            arr.take(3).mapNotNull { el ->
-                val obj = el.jsonObject
-                val content = obj["content"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-                if (content.isEmpty()) null else DistilledMemory(
-                    content = content,
-                    category = obj["category"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty(),
-                    confidence = obj["confidence"]?.jsonPrimitive?.doubleOrNull ?: 0.7,
-                )
-            }
-        }.getOrDefault(emptyList())
-    }
+    /** 解析提炼输出 {"memories":[{content,category,confidence}]}，格式解析见 [AgentResponseParser] */
+    private fun parseDistilledMemories(raw: String): List<AgentResponseParser.DistilledMemory> =
+        AgentResponseParser.parseDistilledMemories(raw)
 
     private fun recordStep(
         step: Int,
@@ -3900,7 +3779,7 @@ class AgentEngine(
             verificationResult = verification,
             beforeFingerprint = before,
             afterFingerprint = after,
-            isConfirmed = verification == "verified_success",
+            isConfirmed = verification == VerifyRules.STATUS_VERIFIED,
             // 消费本步暂存的 shell 输出（非 shell 步为空），并立即清空避免串到下一步
             shellOutput = pendingShellOutput.also { pendingShellOutput = "" },
             detail = detail,
@@ -3944,15 +3823,9 @@ class AgentEngine(
         }
     }
 
-    /** 将一步动作拼装成人类可读的执行说明（用 AI 的 reasoning/reason + 验证结果） */
-    private fun actionDescription(action: AgentAction, verified: Boolean): String {
-        val reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason?.takeIf { it.isNotBlank() }
-        return buildString {
-            append(if (verified) "✅ 已生效" else "⚠️ 待确认")
-            append(" · ${actionLabel(action.type)}")
-            reason?.let { append("\n$it") }
-        }
-    }
+    /** 将一步动作拼装成人类可读的执行说明（用 AI 的 reasoning/reason + 验证结果）；拼装逻辑下沉 VerifyRules */
+    private fun actionDescription(action: AgentAction, verified: Boolean): String =
+        VerifyRules.actionDescription(action, verified, actionLabel(action.type))
 
     /** 每步执行成功后，把该步摘要写入任务记忆（已验证有效的做法，供后续步骤复用） */
     private fun recordProgress(step: Int, action: AgentAction) {
@@ -4081,8 +3954,15 @@ class AgentEngine(
 
     private fun actionLabel(type: String): String = EngineRules.actionLabel(type)
 
-    private fun recordsIntoHistory(step: Int, action: AgentAction, verify: com.phoneagent.engine.execution.VerifyResult) {
-        recordStep(step, action, if (verify.success) "verified_success" else "unverified", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+    private fun recordsIntoHistory(
+        step: Int,
+        action: AgentAction,
+        verify: com.phoneagent.engine.execution.VerifyResult,
+    ) {
+        recordStep(
+            step, action, VerifyRules.historyStatus(verify.success),
+            verify.beforeFingerprint, verify.afterFingerprint, verify.reason,
+        )
     }
 
     /**
@@ -4123,67 +4003,16 @@ class AgentEngine(
     private fun screenWidth(): Int = lastSnapshot.screenWidth.takeIf { it > 0 } ?: realScreenWidth()
     private fun screenHeight(): Int = lastSnapshot.screenHeight.takeIf { it > 0 } ?: realScreenHeight()
 
-    /** 从系统 WindowManager 获取真实屏幕尺寸（不依赖无障碍服务） */
-    private fun realScreenWidth(): Int {
-        val wm = appContext.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager
-        val p = android.graphics.Point()
-        wm?.defaultDisplay?.getRealSize(p)
-        return if (p.x > 0) p.x else 1080
-    }
+    // 真实屏幕尺寸（不依赖无障碍服务）：直接问 WindowManager，取数细节见 [DeviceFacts]
+    private fun realScreenWidth(): Int = deviceFacts.realScreenSize().first
 
-    private fun realScreenHeight(): Int {
-        val wm = appContext.getSystemService(android.content.Context.WINDOW_SERVICE) as? android.view.WindowManager
-        val p = android.graphics.Point()
-        wm?.defaultDisplay?.getRealSize(p)
-        return if (p.y > 0) p.y else 2400
-    }
+    private fun realScreenHeight(): Int = deviceFacts.realScreenSize().second
 
     /**
      * 规划提示词用的已安装应用清单，让计划贴近真实环境。
-     * **不能静默截断**：提示词里写着「目标应用未安装 → 澄清或 give_up」，
-     * 清单一旦漏项，AI 就会把已装的应用判成"没装"，进而反问用户或直接放弃。
-     * 所以上限只用来兜住极端设备（几百个应用），真被截断时必须在清单里写明并给出补救用法。
+     * 文案与"截断必须写明"的规则在 [DeviceFacts.appListPromptText]（纯逻辑，可单测）。
      */
-    private fun installedAppList(): String {
-        val apps = queryLauncherApps()
-        val shown = apps.take(MAX_DEVICE_QUERY_APPS)
-        return buildString {
-            append(shown.joinToString("、"))
-            if (shown.size < apps.size) {
-                append("\n（此处仅列出前 ${shown.size} 个，本机共 ${apps.size} 个；确认某个应用是否安装可用 device_query kind=apps 配合 filter 查）")
-            }
-        }
-    }
-
-    /** 已安装可启动应用：`应用名(包名)` 列表，按名称排序（查询一次，供清单与计数复用） */
-    private fun queryLauncherApps(): List<String> {
-        return runCatching {
-            val pm = appContext.packageManager
-            val launcher = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-            }
-            pm.queryIntentActivities(launcher, 0)
-                .mapNotNull { info ->
-                    val label = info.loadLabel(pm).toString().trim()
-                    if (label.isBlank()) null else "$label(${info.activityInfo.packageName})"
-                }
-                .distinct()
-                .sorted()
-        }.getOrDefault(emptyList())
-    }
-
-    /** 已安装应用数量：每任务只查一次 PackageManager（决策每步都要用，不能每步全量查询） */
-    private fun installedAppCount(): Int {
-        installedAppCountCache.takeIf { it >= 0 }?.let { return it }
-        return queryLauncherApps().size.also { installedAppCountCache = it }
-    }
-
-    /**
-     * 已装应用名清单：供经验规则推断"任务文本里点名的那个应用"当关键词作用域。
-     * 只在任务结束提炼时调用一次，不做缓存（复用同一次包管理器查询的产物，代价可忽略）。
-     */
-    private fun installedAppKeywords(): List<String> =
-        queryLauncherApps().mapNotNull { it.substringBefore('(').trim().ifBlank { null } }.distinct()
+    private fun installedAppList(): String = DeviceFacts.appListPromptText(deviceFacts.launcherApps())
 
     /** 累计前台应用出现次数（同一任务内），供经验规则推断作用域；本 App 自己不计入 */
     private fun noteForeground(pkg: String) {
@@ -4198,111 +4027,42 @@ class AgentEngine(
      * 这些是元素树里读不到的事实（日期决定"明天"是哪天，前台应用决定面前这页属于谁）。
      */
     private fun envFacts(snapshot: ScreenSnapshot? = null): EnvFacts {
-        val dateTime = runCatching {
-            java.text.SimpleDateFormat("yyyy-MM-dd E HH:mm", java.util.Locale.CHINA).format(java.util.Date())
-        }.getOrDefault("")
         val pkg = snapshot?.packageName.orEmpty()
         // 顺手记一次前台应用分布：任务结束提炼经验时据此推断作用域（不额外采集，零成本）
         noteForeground(pkg)
-        val foreground = if (pkg.isBlank()) {
-            ""
-        } else {
-            val label = runCatching {
-                val pm = appContext.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().trim()
-            }.getOrDefault("")
-            if (label.isBlank() || label == pkg) pkg else "$label($pkg)"
+        // 取不到显示名时退回包名：宁可给 AI 一个能搜的串，也不要留空让它以为"没有前台应用"
+        val label = if (pkg.isBlank()) "" else deviceFacts.appLabelOf(pkg)
+        val foreground = when {
+            pkg.isBlank() -> ""
+            label.isBlank() || label == pkg -> pkg
+            else -> "$label($pkg)"
         }
         return EnvFacts(
-            dateTime = dateTime,
-            network = networkLabel(),
-            battery = batteryLabel(),
+            dateTime = deviceFacts.dateTimeText(),
+            network = deviceFacts.networkLabel(),
+            battery = deviceFacts.batteryLabel(),
             foreground = foreground,
-            installedCount = installedAppCount(),
+            installedCount = deviceFacts.launcherAppCount(),
         )
     }
 
-    /** 当前网络类型（Wi-Fi / 移动数据 / 以太网 / VPN / 无网络） */
-    private fun networkLabel(): String = runCatching {
-        val cm = appContext.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
-            as? android.net.ConnectivityManager
-        val caps = cm?.let { it.getNetworkCapabilities(it.activeNetwork) }
-        if (caps == null) {
-            "无网络"
-        } else {
-            val type = when {
-                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "移动数据"
-                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "以太网"
-                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
-                else -> "已连接"
-            }
-            if (caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) type else "$type（无外网）"
-        }
-    }.getOrDefault("")
-
-    /** 当前电量（含是否充电） */
-    private fun batteryLabel(): String = runCatching {
-        val intent = appContext.registerReceiver(
-            null,
-            android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),
-        )
-        val level = intent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = intent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
-        val status = intent?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
-        if (level < 0 || scale <= 0) {
-            ""
-        } else {
-            val pct = level * 100 / scale
-            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == android.os.BatteryManager.BATTERY_STATUS_FULL
-            if (charging) "$pct%（充电中）" else "$pct%"
-        }
-    }.getOrDefault("")
-
-    /** 数据分区容量（可用 / 总量） */
-    private fun storageLabel(): String = runCatching {
-        val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-        val freeGb = stat.availableBytes / 1024.0 / 1024.0 / 1024.0
-        val totalGb = stat.totalBytes / 1024.0 / 1024.0 / 1024.0
-        "可用 %.1f GB / 共 %.1f GB".format(freeGb, totalGb)
-    }.getOrDefault("")
-
     /**
      * device_query 的查询结果文本（中文，供 AI 直接读）。
-     * kind 已由转译层白名单校验，这里只负责把本地事实取出来。
+     * kind 已由转译层白名单校验，这里只负责把本地事实取出来并组装；
+     * 应用清单那一段的文案在 [DeviceFacts.appQueryAnswerText]（纯逻辑，可单测）。
      */
     private fun deviceQueryText(kind: String, filter: String): String = when (kind) {
-        "apps" -> {
-            val apps = queryLauncherApps()
-            val hit = if (filter.isBlank()) apps else apps.filter { it.contains(filter, ignoreCase = true) }
-            if (apps.isEmpty()) {
-                "未能读取到已安装应用清单"
-            } else if (hit.isEmpty()) {
-                "已安装应用里没有匹配「$filter」的（共 ${apps.size} 个可启动应用）"
-            } else {
-                val shown = hit.take(MAX_DEVICE_QUERY_APPS)
-                buildString {
-                    append("已安装可启动应用共 ${apps.size} 个，匹配「${filter.ifBlank { "全部" }}」的 ${hit.size} 个：")
-                    append("\n")
-                    append(shown.joinToString("、"))
-                    // 真的列不下时把话说清楚：漏掉的部分要靠 AI 自己用 filter 再查，而不是当作不存在
-                    if (shown.size < hit.size) {
-                        append("\n（仅列出前 ${shown.size} 个，剩下 ${hit.size - shown.size} 个请用 filter 按关键词缩小范围后再查）")
-                    }
-                }
-            }
-        }
-        "time" -> "当前时间：${envFacts().dateTime}"
-        "battery" -> "电量：${batteryLabel().ifBlank { "未知" }}"
-        "network" -> "网络：${networkLabel().ifBlank { "未知" }}"
-        "storage" -> "存储：${storageLabel().ifBlank { "未知" }}"
+        "apps" -> DeviceFacts.appQueryAnswerText(deviceFacts.launcherApps(), filter)
+        "time" -> "当前时间：${deviceFacts.dateTimeText()}"
+        "battery" -> "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}"
+        "network" -> "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}"
+        "storage" -> "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}"
         else -> listOf(
-            "当前时间：${envFacts().dateTime}",
-            "网络：${networkLabel().ifBlank { "未知" }}",
-            "电量：${batteryLabel().ifBlank { "未知" }}",
-            "存储：${storageLabel().ifBlank { "未知" }}",
-            "已安装可启动应用：${installedAppCount()} 个（需要清单请查 kind=apps，可用 filter 过滤）",
+            "当前时间：${deviceFacts.dateTimeText()}",
+            "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}",
+            "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}",
+            "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}",
+            "已安装可启动应用：${deviceFacts.launcherAppCount()} 个（需要清单请查 kind=apps，可用 filter 过滤）",
         ).joinToString("\n")
     }
 
