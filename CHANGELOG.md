@@ -15,8 +15,70 @@
 **现在没坏但每次改动都在加利息**（工具链落后两年、改一句决策要在四千行里找位置、
 构建门禁只跑测试不做静态检查）。
 
-0.2.0 是一次阶段收口，不引入新行为。下面按主题归纳这段时间做了什么、为什么；
-每条改动的完整理由与细节仍在各自版本里，这份条目只做归纳，不代替明细。
+0.2.0 这一版本身不引入新行为，它是这段时间的收口条目。下面先列出期间新增的功能，
+再按主题归纳做了什么、为什么；每条改动的完整理由与细节仍在各自版本里。
+
+### 新增功能
+
+**AI 新长出的能力**
+
+- `see` 看图追问——带目的的按需视觉调用，带 `target` 时回 JSON 拿坐标供下一步复用；内置技能 `skill_see`（v0.1.611）
+- `show_agent` 把用户拉回 Agent 页当场看结果 + `DocViewerScreen` 全屏阅读页（v0.1.544）
+- `device_query` 按需查本机信息（应用清单 / 时间 / 电量 / 网络 / 存储，`apps` 支持关键词过滤）（v0.1.335）
+- `say` 纯对话意图：模型判断不用碰手机时直接回答，**不请求批准、不进入执行**（v0.1.473）
+- `open` 打开链接与本地文件：本地路径归一化为 `content://`（免存储权限、不自建 FileProvider）、
+  40 种扩展名推断 MIME、未指定时优先系统应用（v0.1.413）
+- `fetch` 取网页正文：AI 只说取哪个地址，`curl` 命令由端侧拼装（v0.1.314）
+- `shell`（AI 亲写命令）与 `a11y`（AI 点名无障碍端点）两条自由模式专属意图（v0.1.513）
+- 给 AI 补上它看不见的事实：环境上下文每步注入、多轮对话承接最近 3 条已完成任务、任务结论落库（v0.1.335）
+- 任务记忆 `TaskMemoryEntry`：目标 / 用户要求 / 已验证做法随每一步落库，记忆页新增「任务记忆」分区（v0.1.328）
+
+**新增的技能体系与 MCP**
+
+- MCP 全链路：校验规则 `McpRules`、DataStore 持久化 `McpStore`、内置市场 `McpMarketplace`、
+  `describe()` 握手 + JSON Schema 参数解析、工具清单结构化注入系统提示、McpTab（含请求/响应 JSON 原文）、
+  绑定为技能（v0.1.265）
+- 技能归一化 `SkillCompat.normalize`：意图名 / 技能 id / 技能名三种写法等价，MCP 技能就地调用
+  （20s 超时、输出截断、连续 3 次被拒停止），新增动作类型 `ActionType.MCP_CALL`（v0.1.326）
+- 全屏技能编辑器：结构化参数编辑（参数名 / 类型 / 必填 / 候选项 / 默认值 / 说明，可动态增删）（v0.1.265）
+
+**新增的通道**
+
+- 浏览器通道 `BrowserChannel`（与 `IntentTranslator` 同级，不依赖无障碍 / Shizuku / 无线 ADB，
+  只读模式照常可用）+ 不可逆词表唯一定义点 `BrowserGuard`（v0.1.430）
+- Termux 通道 `TermuxBridge` + `TermuxResultReceiver` / `TermuxResultRelay`，
+  执行通道扩为四态 `AUTO` / `ADB` / `SHIZUKU` / `TERMUX`（v0.1.314）
+- 三档动作模式 `ActionMode` + 策略唯一定义点 `ActionPolicy` + 18 项无障碍端点白名单 +
+  `aiAuthored` 标记（AI 亲写命令在本任务首次执行前确认一次）（v0.1.513）
+- 点击流水线 `ClickRunner`（活节点直点 → 手势点控件最新位置 → 滚动一屏查找）、
+  `ActionExecutor.clickNode` / `scrollContainer`、定位口径唯一定义点 `IntentResolver`（v0.1.502）
+
+**新增的界面组件**
+
+- `InlineOverlay` 页内浮层 / `LocalSnackbar` 页内反馈 / `OverlayScrim` 压暗底 / `DurationPulse` 呼吸时长
+  ——四者各自成为唯一定义点，系统弹窗与 Toast 就此清零（v0.1.543）
+- `HeadlessWebHost` 静默浏览器宿主：把给 AI 用的 WebView 挂进全透明、不吃触摸、不抢焦点的悬浮窗（v0.1.543）
+- `AgentAssistSheet` 底部协助浮层：答疑与协助两种场景共用一副骨架，仅出口不同（v0.1.321）
+- `CursorMode` 光标三形态 `TAP` / `LONG_PRESS` / `SWIPE` + 派发统一入口 `dispatch`（v0.1.561）
+- 模型库与职责分配三层结构（端点 → 模型库 → 职责分配）+ 能力探测 `probeAbility`（只用真实请求）+
+  模型选择弹层 `ModelPickerDialog` + 开关「主模型识图时跳过视觉描述」（v0.1.445）
+- 底部跑马灯独立成窗（长宽随内容自适应，`FLAG_NOT_TOUCHABLE` 不吃触摸）+「跟随状态变色」开关（v0.1.473）
+- `GlassHeaderScaffold` 玻璃页眉骨架：把「取样源与玻璃面必须是同层兄弟节点」收进骨架（v0.1.473）
+- 任务执行期间隐藏系统状态栏（先记原值再改、收尾放进 `NonCancellable`）（v0.1.415）
+- 实时思考回显 + 命令与输出回显（v0.1.316）、失败原因回显 + 「端侧」徽标（v0.1.318）
+- `DocumentEngine` + Agent 页文档预览卡片（文件名 + 默认展开的 Markdown 正文）（v0.1.313）
+- 调试面板四页签（v0.1.386）
+
+**新增的工具与内容**
+
+- 提示词审计工具链：`PromptDumpTest`（逐字节导出）+ `tests/prompt_audit.mjs`（逐条送审）+
+  提示词系统文档（53 块 8 组清单）（v0.1.620）
+- `HtmlToMarkdown` 四段流水线解析器（全程无递归，四重兜底），浏览器侧脚本的七张规则表由 Kotlin 常量插值生成，
+  两侧不可能漂移（v0.1.406）
+- Agent 运行时广告过滤 `AdContentFilter`：识别广告并直接点关闭，广告信息不回传给 AI（v0.1.265）
+- 明文 HTTP 放行 + 地址自动补协议（内网 / localhost 补 `http://`，公网补 `https://`）（v0.1.333）
+- Release APK 签名构建（R8 混淆 + arm64-v8a 单 ABI）+ APK 上传 Gitee / GitHub Release（v0.1.265）
+- 官网独立站点（Vue 3 + Vite）与宣传片（v0.1.335）
 
 ### 决策与执行：每一步都要有据可依
 
