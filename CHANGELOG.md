@@ -44,8 +44,6 @@
 
 **新增的通道**
 
-- 浏览器通道 `BrowserChannel`（与 `IntentTranslator` 同级，不依赖无障碍 / Shizuku / 无线 ADB，
-  只读模式照常可用）+ 不可逆词表唯一定义点 `BrowserGuard`（v0.1.430）
 - Termux 通道 `TermuxBridge` + `TermuxResultReceiver` / `TermuxResultRelay`，
   执行通道扩为四态 `AUTO` / `ADB` / `SHIZUKU` / `TERMUX`（v0.1.314）
 - 三档动作模式 `ActionMode` + 策略唯一定义点 `ActionPolicy` + 18 项无障碍端点白名单 +
@@ -53,11 +51,20 @@
 - 点击流水线 `ClickRunner`（活节点直点 → 手势点控件最新位置 → 滚动一屏查找）、
   `ActionExecutor.clickNode` / `scrollContainer`、定位口径唯一定义点 `IntentResolver`（v0.1.502）
 
+**浏览器**
+
+- `BrowserChannel`：与 `IntentTranslator` 同级的独立通道 + 不可逆词表唯一定义点 `BrowserGuard`
+  （中文 19 词 / 英文 13 词）——网页读写不再依赖无障碍 / Shizuku / 无线 ADB，只读模式照常可用；
+  配套 `feature/browser/script/` 脚本四件套（v0.1.430）
+- `HeadlessWebHost` 静默浏览器宿主（全透明、不吃触摸、不抢焦点）+ `browse_open` 静默优先 +
+  `createBrowserWebView()` 构造收口成一份（v0.1.543）
+- `HtmlToMarkdown` 四段流水线解析器：`browse_read` 正文改 Markdown（链接内联在正文里），
+  回注预算 1200 → 4000 字符（v0.1.406）
+
 **新增的界面组件**
 
 - `InlineOverlay` 页内浮层 / `LocalSnackbar` 页内反馈 / `OverlayScrim` 压暗底 / `DurationPulse` 呼吸时长
   ——四者各自成为唯一定义点，系统弹窗与 Toast 就此清零（v0.1.543）
-- `HeadlessWebHost` 静默浏览器宿主：把给 AI 用的 WebView 挂进全透明、不吃触摸、不抢焦点的悬浮窗（v0.1.543）
 - `AgentAssistSheet` 底部协助浮层：答疑与协助两种场景共用一副骨架，仅出口不同（v0.1.321）
 - `CursorMode` 光标三形态 `TAP` / `LONG_PRESS` / `SWIPE` + 派发统一入口 `dispatch`（v0.1.561）
 - 模型库与职责分配三层结构（端点 → 模型库 → 职责分配）+ 能力探测 `probeAbility`（只用真实请求）+
@@ -73,8 +80,6 @@
 
 - 提示词审计工具链：`PromptDumpTest`（逐字节导出）+ `tests/prompt_audit.mjs`（逐条送审）+
   提示词系统文档（53 块 8 组清单）（v0.1.620）
-- `HtmlToMarkdown` 四段流水线解析器（全程无递归，四重兜底），浏览器侧脚本的七张规则表由 Kotlin 常量插值生成，
-  两侧不可能漂移（v0.1.406）
 - Agent 运行时广告过滤 `AdContentFilter`：识别广告并直接点关闭，广告信息不回传给 AI（v0.1.265）
 - 明文 HTTP 放行 + 地址自动补协议（内网 / localhost 补 `http://`，公网补 `https://`）（v0.1.333）
 - Release APK 签名构建（R8 混淆 + arm64-v8a 单 ABI）+ APK 上传 Gitee / GitHub Release（v0.1.265）
@@ -118,6 +123,42 @@
   （内网 / 私有网段 / localhost 补 `http://`）
 - **打开链接与文件**（v0.1.413）：本地路径归一化为 `content://`（不需要存储权限、不自建 FileProvider）、
   按扩展名推断 MIME、泛指类目优先系统应用
+
+### 浏览器：从"策略表里的一颗策略"到独立通道
+
+内置浏览器此前只是转译层策略表里的一颗策略：AI 说 `browse_open`，端侧先把它当普通手机动作走一遍授权判定，
+只读模式下还要过一张白名单。于是"没有无障碍 / 没有 Shizuku 就用不了浏览器""网页里点个链接也被当成操作手机拦下"
+这类别扭一直在——浏览器本来就不碰用户的手机，它的权限不该由操作手机的通道来定。同一时期还压着两个源头：
+打开网页会把 App 界面切走、把用户正在做的事打断；以及 AI 读到的正文只是 `innerText` 压平后的一坨文字。
+
+- **提成与 `IntentTranslator` 同级的独立通道**（v0.1.430）：网页读写走注入的 DOM 脚本，不经无障碍 / Shizuku /
+  无线 ADB，也不进策略表，**只读模式下照常可用**；护栏改为"按不可逆性放行"，词表由 `BrowserGuard` 一处定义
+  （中文 19 词 + 英文 13 词），且**执行前就拒**，拒绝语明确写"不要重试同一动作"
+- **旧链路整条删除**（v0.1.430）：`BrowserStrategy` 与只读白名单、`IntentType.TO_ACTION` 的 6 条映射、
+  `ActionType.BROWSE`、`AgentAction.op` 全部移除——浏览器不再产生任何 `AgentAction`；引擎主循环改为
+  **先过浏览器通道再走转译**
+- **脚本四件套**（v0.1.430）：`BrowserJs`（选择器与共享 JS 助手）/ `ReadScript` / `InteractScripts` / `NavScripts`
+- **清单里看得见就点得到**（v0.1.430）：`browse_read` 返回"可操作元素清单"，清单与点击**同源**
+  （都由 `labelOf` 取名、共用同一套选择器），解决"只有 aria-label 的图标按钮清单里看得见、点下去却说找不到"；
+  下拉框改为按选项文字设 `selectedIndex` 并派发 `input` / `change`（WebView 里 `select.click()` 不弹原生下拉），
+  `browse_click` 候选先按真控件选择器找、再退到"页面文字"那层宽网
+- **静默宿主 `HeadlessWebHost`**（v0.1.543）：把给 AI 用的 WebView 挂进全透明、不吃触摸、不抢焦点的悬浮窗，
+  屏幕上一个像素都看不到，页面照常布局、脚本照常执行；**不用"把窗口挪到屏幕外"**——部分 ROM 会把越界窗口
+  判成不可见而停掉渲染，网页就成了永远加载不完的样子；`importantForAccessibility` 设为 `NO_HIDE_DESCENDANTS`，
+  避免网页节点混进"当前前台窗口"的元素树污染感知；建不起来（没给悬浮窗权限）**不硬撑**，回退旧路径
+- **`browse_open` 改为"静默优先"**（v0.1.543）：用户正开着浏览器二级页时用那一份（页面就在屏幕上，AI 能靠截图看见），
+  否则用静默宿主；两种都拿不到才把 App 切到浏览器二级页；`createBrowserWebView()` 把可见页与静默宿主的
+  WebView 构造收口成一份
+- **提示词中英各 7 处同步**（v0.1.543）：写明 `browse_read` 是静默模式下**唯一**能看到网页的方式、
+  `browse_back` 之后不再需要 `press key=BACK`——落掉任何一处，AI 都会去等一张永远不会出现的截图
+- **正文改 Markdown**（v0.1.406）：`HtmlToMarkdown` 四段流水线解析器（链接**内联**在正文里，因此取消独立链接清单），
+  回注预算 1200 → 4000 字符；浏览器侧脚本的丢弃表 / 块级表 / 自闭合表 / 行内标记表 / 隐藏类名表 / 转义表 /
+  围栏字面量七张表全部由 Kotlin 常量**插值生成**，改规则只改一处，两侧不可能漂移
+- **提示词层面厘清分工**：需要读/操作网页内容归 `browse_*` 独占、只是把网址给用户看走 `open` + 系统浏览器、
+  **禁止用 `open_app` 打开"浏览器"来上网**（v0.1.413）；网页浏览章节前移并新增"浏览器不受操作手机通道约束"
+  铁律（v0.1.430）；"不用等谁放行"这类含糊表述换成明确口径（v0.1.620）
+- **回归用例钉住**（v0.1.430）：`BrowserGuardTest`（含"该放行的普通操作"反例清单，钉住只读模式可用性）、
+  `BrowserChannelTest`（注入假执行器，断言被拒时执行层一步未落地）
 
 ### 提示词：从手改文案到可审计闭环
 
