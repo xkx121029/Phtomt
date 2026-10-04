@@ -11,12 +11,15 @@ import org.junit.Test
 class SessionContextTest {
 
     @Test
-    fun `指代词开头视为追问`() {
+    fun `明确的接续词才算追问_裸指代词不再单独成立`() {
         assertTrue(SessionContext.isFollowUp("再改一下"))
         assertTrue(SessionContext.isFollowUp("接着刚才的继续"))
         assertTrue(SessionContext.isFollowUp("换成不要辣的"))
-        assertTrue(SessionContext.isFollowUp("这个也加上"))
+        assertTrue(SessionContext.isFollowUp("再加上一份"))
         assertTrue(SessionContext.isFollowUp("同样的再来一份"))
+        // "这个/它/加上" 子串误伤率过高（"查其它城市""我参加上海马拉松"），已从强承接词移除
+        assertFalse(SessionContext.isFollowUp("这个也加上"))
+        assertFalse(SessionContext.isFollowUp("帮我查其它城市天气"))
     }
 
     /** "再"单独出现且句子很短时算追问；长句自带完整目标，不该被上一轮带偏 */

@@ -21,9 +21,10 @@ class ShellRulesTest {
 
     @Test
     fun isTermuxToolCommand_白名单内的工具命令全部命中() {
+        // grep/sed/tr 是 toybox 自带命令，不再划给 Termux（awk 才真的没有）
         val tools = listOf(
-            "curl", "wget", "python", "python3", "pip", "pip3", "jq", "sed", "awk",
-            "grep", "tr", "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
+            "curl", "wget", "python", "python3", "pip", "pip3", "jq", "awk",
+            "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
         )
         for (t in tools) {
             assertTrue("应识别为 Termux 工具命令: $t", ShellRules.isTermuxToolCommand("$t --version"))

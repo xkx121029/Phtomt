@@ -222,7 +222,7 @@ class AppSettings(private val context: Context) {
             marqueeHeight = (prefs[Keys.MARQUEE_HEIGHT] ?: 8).coerceIn(4, 28),
             marqueeAutoColor = prefs[Keys.MARQUEE_AUTO_COLOR] ?: true,
             marqueeColors = (prefs[Keys.MARQUEE_COLORS]
-                ?: "FF4FA3FF;FF9B5CFF;FF6B9D").split(";")
+                ?: "FF4FA3FF;FF9B5CFF;FFFF6B9D").split(";")
                 .mapNotNull { it.trim().toLongOrNull(16) },
             enableReview = prefs[Keys.ENABLE_REVIEW] ?: true,
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,

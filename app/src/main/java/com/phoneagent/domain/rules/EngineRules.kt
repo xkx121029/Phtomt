@@ -45,6 +45,10 @@ object EngineRules {
 
     /** 幂等判定：当前页面是否已出现"完成成功"证据（避免重复执行副作用后再次触发） */
     fun idempotencyDone(snapshot: ScreenSnapshot): Boolean {
+        // 稀疏守卫：只有元素很少（≤6）的页面才可信地呈现"完成证据"；
+        // 元素多的普通页面里出现"操作成功/已完成"字样可能只是列表里的一条历史记录，
+        // 据此跳过动作会让真正的副作用操作永远执行不了
+        if (snapshot.elements.size > 6) return false
         val text = snapshot.toAiText()
         if (text.isBlank()) return false
         return listOf("发送成功", "提交成功", "下单成功", "支付成功", "发布成功", "删除成功", "办理成功", "操作成功", "交易成功", "已提交", "已完成")

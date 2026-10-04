@@ -49,14 +49,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.feature.test.TestGroup
 import com.phoneagent.feature.test.TestPreset
 import com.phoneagent.feature.test.TestResult
 import com.phoneagent.feature.test.TestStatus
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.TestDecision
@@ -79,6 +82,20 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val streamText by vm.testStreamText.collectAsState()
     val testLang by vm.testLanguage.collectAsState()
     val testCategory by vm.testCategory.collectAsState()
+    // Agent 任务的占用状态：测试页的「任务 / 执行」按钮在任务运行期间不允许再发起
+    val agentState by vm.agentState.collectAsState()
+    val planPhase by vm.planPhase.collectAsState()
+    val snackbar = LocalSnackbar.current
+    // 引擎不受理并发任务：任务运行/规划中再点「任务 / 执行」只会进入无人受理的死态。
+    // 不用 enabled=false 一禁了之——禁用态点了没反应，用户不知道原因；守卫 + 浮条给理由
+    val taskBusy = agentState.isRunning || planPhase is PlanPhase.Planning || planPhase is PlanPhase.AwaitingApproval
+    val startAsTask: (String) -> Unit = { name ->
+        if (taskBusy) {
+            snackbar?.show("有任务正在执行", SnackbarType.WARNING)
+        } else {
+            vm.startPlanning(name)
+        }
+    }
 
     var baseUrl by remember { mutableStateOf(config.baseUrl) }
     var model by remember { mutableStateOf(config.model) }
@@ -262,7 +279,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     lang = testLang,
                     enabled = !running,
                     onRunTest = { vm.runTest(preset) },
-                    onUseAsTask = { vm.startPlanning(preset.cases.first().name) },
+                    onUseAsTask = { startAsTask(preset.cases.first().name) },
                 )
             }
         }
@@ -300,7 +317,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             summary.results.forEachIndexed { i, result ->
                 TestResultCard(
                     result = result,
-                    onUseAsTask = { vm.startPlanning(result.case.name) },
+                    onUseAsTask = { startAsTask(result.case.name) },
                     modifier = Modifier.animateListItem(i + 1),
                 )
             }

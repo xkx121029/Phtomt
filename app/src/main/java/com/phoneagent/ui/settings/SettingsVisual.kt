@@ -131,22 +131,27 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    CalibrationSlider("顶部", st.edgeInsetTop, 0f..30f) {
-                        st.edgeInsetTop = it
-                        save()
-                    }
-                    CalibrationSlider("底部", st.edgeInsetBottom, 0f..30f) {
-                        st.edgeInsetBottom = it
-                        save()
-                    }
-                    CalibrationSlider("左侧", st.edgeInsetLeft, 0f..30f) {
-                        st.edgeInsetLeft = it
-                        save()
-                    }
-                    CalibrationSlider("右侧", st.edgeInsetRight, 0f..30f) {
-                        st.edgeInsetRight = it
-                        save()
-                    }
+                    // 拖动只改本地编辑态，松手才落盘（避免拖一次写几十次 DataStore）
+                    CalibrationSlider(
+                        "顶部", st.edgeInsetTop, 0f..30f,
+                        onChange = { st.edgeInsetTop = it },
+                        onCommit = save,
+                    )
+                    CalibrationSlider(
+                        "底部", st.edgeInsetBottom, 0f..30f,
+                        onChange = { st.edgeInsetBottom = it },
+                        onCommit = save,
+                    )
+                    CalibrationSlider(
+                        "左侧", st.edgeInsetLeft, 0f..30f,
+                        onChange = { st.edgeInsetLeft = it },
+                        onCommit = save,
+                    )
+                    CalibrationSlider(
+                        "右侧", st.edgeInsetRight, 0f..30f,
+                        onChange = { st.edgeInsetRight = it },
+                        onCommit = save,
+                    )
 
                     Spacer(Modifier.height(12.dp))
 
@@ -157,10 +162,11 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    CalibrationSlider("圆角", st.cornerRadius, 0f..60f) {
-                        st.cornerRadius = it
-                        save()
-                    }
+                    CalibrationSlider(
+                        "圆角", st.cornerRadius, 0f..60f,
+                        onChange = { st.cornerRadius = it },
+                        onCommit = save,
+                    )
 
                     Spacer(Modifier.height(12.dp))
 
@@ -171,10 +177,11 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    CalibrationSlider("粗细", st.edgeLightingWidth, 5f..50f) {
-                        st.edgeLightingWidth = it
-                        save()
-                    }
+                    CalibrationSlider(
+                        "粗细", st.edgeLightingWidth, 5f..50f,
+                        onChange = { st.edgeLightingWidth = it },
+                        onCommit = save,
+                    )
                 }
             }
         }
@@ -204,10 +211,11 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                     save()
                 }
                 Spacer(Modifier.height(10.dp))
-                CalibrationSlider("内边距", st.marqueeHeight, 4f..28f) {
-                    st.marqueeHeight = it
-                    save()
-                }
+                CalibrationSlider(
+                    "内边距", st.marqueeHeight, 4f..28f,
+                    onChange = { st.marqueeHeight = it },
+                    onCommit = save,
+                )
                 Spacer(Modifier.height(14.dp))
                 if (st.marqueeAutoColor) {
                     MarqueePhasePreview(st.marqueeHeight)

@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,6 +45,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -86,7 +90,11 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
     var msg by remember { mutableStateOf<String?>(null) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            // 内容超出屏幕时（小屏/大字号）可滚动，避免底部卡片够不着
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // 执行通道状态：无线 ADB 为主、Shizuku 可选增强
@@ -100,7 +108,18 @@ internal fun WirelessAdbTab(vm: MainViewModel) {
         val adbReady = adbStatus.phase == AdbPhase.READY
         val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
         val termuxStatus by vm.termuxStatus.collectAsState()
-        val localIp = remember { AdbWirelessTransport.localIpv4Address() }
+        // 本机 IP 会随网络切换变化：每次回到前台（ON_RESUME）bump 一次 tick，
+        // 以 tick 为 key 重算 IP；首次进入也会走一遍
+        var ipTick by remember { mutableStateOf(0) }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) ipTick++
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        val localIp = remember(ipTick) { AdbWirelessTransport.localIpv4Address() }
         AppCard {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -201,14 +201,24 @@ class McpClient(
         return runCatching {
             val root = Json.parseToJsonElement(schemaJson).jsonObject
             val props = root["properties"]?.jsonObject ?: return@runCatching emptyList()
+            // required 是字符串数组：正规解析取 content（旧实现 toString+去引号对转义内容会带反斜杠）
             val required = (root["required"] as? JsonArray)
-                ?.map { it.toString().removeSurrounding("\"") } ?: emptyList()
+                ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
             props.map { (name, schemaObj) ->
                 val o = schemaObj.jsonObject
-                val type = o["type"]?.toString()?.removeSurrounding("\"") ?: "string"
-                val desc = o["description"]?.toString()?.removeSurrounding("\"") ?: ""
-                val opts = (o["enum"] as? JsonArray)?.map { it.toString().removeSurrounding("\"") } ?: emptyList()
-                val def = o["default"]?.toString()?.removeSurrounding("\"")
+                // type 可能是字符串，也可能是数组（如 ["string","null"]）：数组取第一个元素的 content
+                val type = when (val t = o["type"]) {
+                    is JsonArray -> t.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }.firstOrNull() ?: "string"
+                    is JsonPrimitive -> t.contentOrNull ?: "string"
+                    else -> "string"
+                }
+                val desc = (o["description"] as? JsonPrimitive)?.contentOrNull ?: ""
+                val opts = (o["enum"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
+                val def = when (val d = o["default"]) {
+                    null -> null
+                    is JsonPrimitive -> d.contentOrNull
+                    else -> d.toString()
+                }
                 McpParam(
                     name = name,
                     label = desc.ifBlank { name },

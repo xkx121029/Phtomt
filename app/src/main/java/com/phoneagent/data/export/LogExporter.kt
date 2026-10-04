@@ -39,8 +39,9 @@ object LogExporter {
             sb.appendLine("任务：${taskName ?: "全部"}  ·  共 ${entries.size} 条")
             sb.appendLine("═".repeat(48))
             entries.forEach { e ->
-                sb.append("[${levelTag(e.level)}] ${formatTimestamp(e.timestamp)} ${e.message}")
-                e.detail?.let { sb.appendLine("\n$it") }
+                // 与诊断报告同一套脱敏：日志正文常带页面原文（短信码/卡号/姓名），不能明文落盘
+                sb.append("[${levelTag(e.level)}] ${formatTimestamp(e.timestamp)} ${DataSanitizer.sanitize(e.message)}")
+                e.detail?.let { sb.appendLine("\n${DataSanitizer.sanitize(it)}") }
                 sb.appendLine()
             }
 
@@ -81,8 +82,9 @@ object LogExporter {
                                     put("ts", l.timestamp)
                                     put("time", formatTimestamp(l.timestamp))
                                     put("level", l.level.name)
-                                    put("message", l.message)
-                                    l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", it) }
+                                    put("message", DataSanitizer.sanitize(l.message))
+                                    // detail 里是页面快照/响应原文，同样过一遍脱敏再导出
+                                    l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", DataSanitizer.sanitize(it)) }
                                 }
                             )
                         }

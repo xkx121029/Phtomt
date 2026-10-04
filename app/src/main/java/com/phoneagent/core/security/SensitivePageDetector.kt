@@ -10,25 +10,42 @@ object SensitivePageDetector {
 
     /** 敏感应用包名特征 */
     private val sensitivePackages = listOf(
-        "com.unionpay", "com.alipay", "com.tencent.mm", "com.icbc", "com.ccb",
+        "com.unionpay", "com.alipay", "com.icbc", "com.ccb",
         "com.cmbchina", "com.bankcomm", "com.android.bank", "cn.com.spdb",
+        // 中行/建行系：子应用与插件统一挂在 com.chinamworld.* 前缀下
+        "com.chinamworld",
+        // 邮储银行手机银行
+        "com.yitong.mbank.psbc",
+        // 中信银行手机银行
+        "com.ecitic.bank.mobile",
     )
 
-    /** 敏感页面关键词 */
+    /** 敏感页面关键词（银行/金融类应用：宽匹配，进密码页即只读） */
     private val sensitiveLabels = listOf(
         "支付密码", "付款密码", "验证码", "交易密码", "银行卡", "确认支付", "指纹支付",
         "转账", "余额", "安全键盘", "输入密码",
     )
 
+    /**
+     * 微信（com.tencent.mm）专用关键词表：微信是通用应用，聊天正文里也常出现
+     * 「银行卡 / 余额 / 转账」这类词，套用宽表会把普通聊天误判成支付页、整页锁死。
+     * 微信只认明确的支付场景词。
+     */
+    private val weChatPayLabels = listOf(
+        "确认支付", "付款", "收银台", "支付密码", "转账确认", "零钱明细",
+    )
+
     fun isSensitive(snapshot: ScreenSnapshot): Boolean {
         val pkg = snapshot.packageName ?: return false
-        if (sensitivePackages.any { pkg.contains(it, ignoreCase = true) }) {
-            val labels = snapshot.elements.mapNotNull {
-                it.text?.takeIf { t -> t.isNotBlank() } ?: it.contentDescription?.takeIf { t -> t.isNotBlank() }
-            }
-            if (labels.any { label -> sensitiveLabels.any { k -> label.contains(k) } }) return true
+        val isWeChat = pkg.contains("com.tencent.mm", ignoreCase = true)
+        val hitPackage = isWeChat || sensitivePackages.any { pkg.contains(it, ignoreCase = true) }
+        if (!hitPackage) return false
+        val labels = snapshot.elements.mapNotNull {
+            it.text?.takeIf { t -> t.isNotBlank() } ?: it.contentDescription?.takeIf { t -> t.isNotBlank() }
         }
-        return false
+        // 微信走专用窄表，其余敏感应用走通用宽表
+        val keywords = if (isWeChat) weChatPayLabels else sensitiveLabels
+        return labels.any { label -> keywords.any { k -> label.contains(k) } }
     }
 }
 

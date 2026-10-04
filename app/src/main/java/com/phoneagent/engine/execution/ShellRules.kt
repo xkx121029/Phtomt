@@ -33,10 +33,12 @@ internal object ShellRules {
     /**
      * Termux 工具链命令白名单：这些命令在 adb shell 中通常不存在（Android 只带 toybox），
      * 故命中时一律交给 Termux 通道执行，不受执行通道偏好影响。
+     * 注意：sed/grep/tr 是 toybox 自带的，adb 里就能跑，不进此名单（误入会把简单命令
+     * 错误地赶到 Termux 通道）；只有 awk 及网络/脚本类工具真正需要 Termux。
      */
     private val TERMUX_TOOL_COMMANDS = setOf(
-        "curl", "wget", "python", "python3", "pip", "pip3", "jq", "sed", "awk",
-        "grep", "tr", "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
+        "curl", "wget", "python", "python3", "pip", "pip3", "jq", "awk",
+        "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
     )
 
     /** 真实 shell 通道。NONE = 当前偏好下没有任何可用通道 */
@@ -52,7 +54,9 @@ internal object ShellRules {
      * 取首个 token 的命令名并去掉绝对路径；`a && b` 这类组合只看首段。
      */
     fun isTermuxToolCommand(cmd: String): Boolean {
-        val body = cmd.trim().removePrefix("raw ").trim()
+        val t = cmd.trim()
+        // raw 前缀大小写不敏感，命中后按固定长度剥前缀（removePrefix 只认小写，会漏掉 RAW 前缀）
+        val body = if (t.startsWith("raw ", ignoreCase = true)) t.substring(4).trim() else t
         if (body.isBlank()) return false
         val head = body.split(Regex("[\\s;&|]+")).firstOrNull()
             ?.substringAfterLast('/')

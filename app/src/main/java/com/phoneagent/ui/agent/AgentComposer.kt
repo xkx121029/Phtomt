@@ -548,12 +548,31 @@ internal fun AgentComposer(
             }
 
             when (mode) {
-                ComposerMode.LOCKED -> ComposerActionButton(
-                    icon = AppIcons.Send,
-                    description = lockHint.ifBlank { "请稍候…" },
-                    enabled = false,
-                    onClick = {},
-                )
+                ComposerMode.LOCKED -> {
+                    // 规划期的旁路出口：规划可能迟迟不归，在禁用的发送键旁补一个小的
+                    //「取消规划」文字按钮，让用户有出口而不必干等（与状态条上的取消同一动作）
+                    val cancelBuzz = rememberHapticClick()
+                    PressableScale(
+                        onPress = cancelBuzz,
+                        onClick = onCancelPlan,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(AppRadii.Tile))
+                            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                            .padding(horizontal = AppSpacing.Md, vertical = 10.dp),
+                    ) {
+                        Text(
+                            text = "取消规划",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = colors.onSurfaceRaised,
+                        )
+                    }
+                    ComposerActionButton(
+                        icon = AppIcons.Send,
+                        description = lockHint.ifBlank { "请稍候…" },
+                        enabled = false,
+                        onClick = {},
+                    )
+                }
 
                 ComposerMode.NEW_TASK -> ComposerActionButton(
                     icon = AppIcons.Send,

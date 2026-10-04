@@ -82,7 +82,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) {
         vm.refreshStatus(context)
-        vm.refreshA11yState()
+        vm.refreshA11yState(context)
         vm.refreshPermissions(context)
         testVisual()
     }

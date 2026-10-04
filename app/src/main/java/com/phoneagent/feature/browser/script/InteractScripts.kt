@@ -111,7 +111,9 @@ ${BrowserJs.HELPERS}
 
     /**
      * 填写/选择表单控件。按 `label/placeholder/aria-label/title/value/id` 的文字或 CSS 选择器定位。
-     * 目标是下拉框时按选项文字直接选中（同 [BrowserJs.HELPERS] 的 `pickOption`）。
+     * 目标是下拉框时按选项文字直接选中（同 [BrowserJs.HELPERS] 的 `pickOption`）；
+     * 目标是复选框/单选时按 [text] 的语义决定目标选中态（"true"/"1"/"on"/"是"/"勾选" → 选中），
+     * 用 `el.click()` 原生气泡切换并校验结果——只写 value 属性对这类控件无效。
      */
     fun input(by: String, value: String, text: String): String {
         val want = JsonPrimitive(value).toString()
@@ -150,6 +152,22 @@ ${BrowserJs.HELPERS}
       var hit = pickOption(el, FILL);
       if(!hit) return {ok:false, error:'下拉框「' + label + '」里没有「' + FILL + '」这个选项，请先 browse_read 看它的选项清单'};
       return {ok:true, filled: hit, into: label};
+    }
+    var ty = String(el.type || '').toLowerCase();
+    if(ty === 'checkbox' || ty === 'radio'){
+      // 复选框/单选没有"填字"语义，只能改选中态：先按 FILL 判定目标态，再用 el.click() 切换
+      // （原生气泡点击 React/Vue 都认，比手写 checked + 派发事件更稳），点击后必须校验选中态
+      var f = String(FILL).trim().toLowerCase();
+      var want = (f === 'true' || f === '1' || f === 'on' || f === '是' || f === '勾选');
+      if(el.checked !== want){
+        try { el.focus(); } catch (e) {}
+        el.click();
+      }
+      if(el.checked !== want){
+        return {ok:false, error:'「' + label + '」勾选失败：期望' + (want ? '选中' : '不选中') +
+          '，点击后仍是' + (el.checked ? '选中' : '未选') + '（控件可能被禁用或被页面脚本拦下）'};
+      }
+      return {ok:true, filled: (want ? '已选中' : '已取消选中'), into: label};
     }
     setValue(el, FILL);
     return {ok:true, filled: FILL.slice(0,60), into: label};

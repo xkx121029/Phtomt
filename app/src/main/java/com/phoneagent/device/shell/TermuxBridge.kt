@@ -184,7 +184,9 @@ class TermuxResultReceiver : BroadcastReceiver() {
     private fun parseResult(intent: Intent): ShellResult {
         val bundle = intent.getBundleExtra("com.termux.RUN_COMMAND_RESULT_BUNDLE")
             ?: intent.extras
-            ?: return ShellResult.Success("")
+            // 结果 Bundle 缺失：Termux 侧根本没执行/没回传（如 allow-external-apps 未开），
+            // 绝不能按 exit_code=0 报成功
+            ?: return ShellResult.Failure("Termux 未回传结果：请检查 Termux 的 allow-external-apps 设置与 RUN_COMMAND 权限")
 
         val values = HashMap<String, String>()
         for (key in bundle.keySet()) {
@@ -199,23 +201,29 @@ class TermuxResultReceiver : BroadcastReceiver() {
         }
 
         val errmsg = values.entries.firstOrNull { it.key.contains("errmsg") }?.value
-        val exitCode = values.entries.firstOrNull { it.key.contains("exit") }?.value?.toIntOrNull() ?: 0
+        val exitCode = values.entries.firstOrNull { it.key.contains("exit") }?.value?.toIntOrNull()
         val stdout = values.entries.firstOrNull { it.key.contains("stdout") }?.value.orEmpty()
         val stderr = values.entries.firstOrNull { it.key.contains("stderr") }?.value.orEmpty()
 
+        // Bundle 里既无退出码也无任何输出/错误（extras 里只有本 App 自己塞的 requestId）：
+        // Termux 没有回传有效结果，按失败处理而不是按 exit_code=0 报 Success("")
+        if (exitCode == null && errmsg.isNullOrBlank() && stdout.isBlank() && stderr.isBlank()) {
+            return ShellResult.Failure("Termux 未回传结果：请检查 Termux 的 allow-external-apps 设置与 RUN_COMMAND 权限")
+        }
+
         // 策略/权限拒绝（如 allow-external-apps 未开）会带 errmsg 且无任何输出
-        if (exitCode != 0 || (!errmsg.isNullOrBlank() && stdout.isBlank() && stderr.isBlank())) {
+        if ((exitCode ?: 0) != 0 || (!errmsg.isNullOrBlank() && stdout.isBlank() && stderr.isBlank())) {
             val reason = errmsg?.takeIf { it.isNotBlank() }
                 ?: stderr.takeIf { it.isNotBlank() }
                 ?: "Termux 执行失败（exit=$exitCode）"
-            return ShellResult.Failure(reason, exitCode)
+            return ShellResult.Failure(reason, exitCode ?: -1)
         }
 
         val merged = listOf(stdout, stderr)
             .filter { it.isNotBlank() }
             .joinToString("\n")
             .trim()
-        return ShellResult.Success(merged, exitCode)
+        return ShellResult.Success(merged, exitCode ?: 0)
     }
 }
 

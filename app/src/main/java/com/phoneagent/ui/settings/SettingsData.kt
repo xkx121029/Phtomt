@@ -234,6 +234,13 @@ private fun DataActionRow(
 ) {
     val buzz = rememberHapticClick()
     var armed by remember { mutableStateOf(false) }
+    // armed 置位 3 秒后自动复位：避免「确认」状态一直挂着，过一会儿误点反而直接执行
+    LaunchedEffect(armed) {
+        if (armed) {
+            kotlinx.coroutines.delay(3000)
+            armed = false
+        }
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),

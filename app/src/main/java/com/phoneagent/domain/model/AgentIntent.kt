@@ -1,7 +1,16 @@
 package com.phoneagent.domain.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * AI 决策后输出的"意图" DSL（对应 HPA动作执行逻辑优化文档 v2.1）。
@@ -25,11 +34,13 @@ data class AgentIntent(
     val text: String? = null,
     /** swipe：滑动方向 up|down|left|right */
     val direction: String? = null,
-    /** swipe：滑动像素距离（可选） */
+    /** swipe：滑动像素距离（可选）；JSON 字段与提示词一致（snake_case） */
+    @SerialName("distance_px")
     val distancePx: Int? = null,
     /** press：按键 BACK|HOME|ENTER|RECENT */
     val key: String? = null,
-    /** 长按时长 / 等待兜底（毫秒） */
+    /** 长按时长 / 等待兜底（毫秒）；JSON 字段与提示词一致（snake_case） */
+    @SerialName("duration_ms")
     val durationMs: Long? = null,
     /** wait：等待时长（毫秒） */
     @SerialName("wait_ms")
@@ -40,7 +51,11 @@ data class AgentIntent(
     val reason: String? = null,
     /** open：深链/协议直达 uri；browse_open：要在内置浏览器打开的网址 */
     val uri: String? = null,
-    /** open：软件页面直达索引序号（配合 app） */
+    /**
+     * open：软件页面直达索引序号（配合 app）。
+     * 提示词教 AI 以字符串传出（如 "1"），故用 [FlexibleIntSerializer] 兼容 "1" 与 1 两种形态。
+     */
+    @Serializable(with = FlexibleIntSerializer::class)
     val page: Int? = null,
     /** device_query：要查询的本机信息类别 apps|time|battery|network|storage|all */
     val kind: String? = null,
@@ -85,6 +100,32 @@ data class AgentIntentTarget(
     /** 控件 id / 控件文字 / 一句语义描述 /（by=coordinate 时）"x,y" 比例或像素坐标 */
     val value: String = "",
 )
+
+/**
+ * 宽松整数序列化器：JSON 字符串 "1" → 1，数字 1 → 1；其余形态原样抛异常
+ * （宁可解析失败走 give_up 兜底，也不静默吞值）。
+ * 属性类型是 Int?（AgentIntent.page），编译器插件会自动把本序列化器包上 nullable 处理 null/缺省，
+ * 故这里只需处理非空形态。
+ */
+object FlexibleIntSerializer : KSerializer<Int> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("FlexibleInt", PrimitiveKind.INT)
+
+    override fun deserialize(decoder: Decoder): Int = when (decoder) {
+        is JsonDecoder -> when (val el = decoder.decodeJsonElement()) {
+            // JsonNull（JsonPrimitive 子类）等非整数形态统一走抛异常
+            is JsonPrimitive -> el.content.toIntOrNull()
+                ?: throw SerializationException("期望整数或整数字符串，实际：${el.content}")
+            else -> throw SerializationException("期望整数或整数字符串，实际：$el")
+        }
+        // 非 JSON 格式（当前链路不存在）：按标准整数读取
+        else -> decoder.decodeInt()
+    }
+
+    override fun serialize(encoder: Encoder, value: Int) {
+        encoder.encodeInt(value)
+    }
+}
 
 /**
  * 意图常量。AI 在 JSON 中通过 intent 字段引用。

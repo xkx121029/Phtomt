@@ -71,6 +71,8 @@ private fun formatElapsed(ms: Long): String {
  *
  * 需要协助时整条切成 errorContainer 配色；不再另设「去回复」按钮——
  * 该状态下协助浮层本身就带着输入框，按钮与它是同一个入口的第二次出现。
+ * 规划期（Planning）同样显示：执行尚未开始，出口按钮是「取消规划」而非「停止」，
+ * 否则规划一卡住用户就没有任何取消入口，只能干等。
  */
 @Composable
 internal fun AgentRunStatusStrip(
@@ -81,20 +83,31 @@ internal fun AgentRunStatusStrip(
     previewVisible: Boolean,
     onTogglePreview: () -> Unit,
     onStop: () -> Unit,
+    /** 规划期：状态条照常出现，出口按钮变成「取消规划」 */
+    planning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
     val reduceMotion = motionSettings().reduceMotion
 
-    var elapsedMs by remember(state.isRunning) { mutableLongStateOf(0L) }
-    LaunchedEffect(state.isRunning) {
+    // 用时以引擎的 startedAtMillis 为基准计算，而不是本地从零计数：
+    // 重组 / 离开页面再回来不会把计时清零重走。运行中每秒 tick 刷新；
+    // 非 running 时按同式算出最终用时（没有起点则记 0）
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.isRunning, state.startedAtMillis) {
         if (state.isRunning) {
-            elapsedMs = 0L
             while (true) {
+                nowMs = System.currentTimeMillis()
                 delay(1000)
-                elapsedMs += 1000
             }
+        } else {
+            nowMs = System.currentTimeMillis()
         }
+    }
+    val elapsedMs = if (state.startedAtMillis > 0L) {
+        (nowMs - state.startedAtMillis).coerceAtLeast(0L)
+    } else {
+        0L
     }
 
     val container = if (needsUser) colors.errorContainer else colors.surfaceRaised
@@ -102,12 +115,13 @@ internal fun AgentRunStatusStrip(
 
     val dotColor = when {
         needsUser -> colors.error
+        planning -> colors.brand
         state.phase == AgentState.Phase.OBSERVING -> colors.accentCool
         state.phase == AgentState.Phase.THINKING || state.phase == AgentState.Phase.ACTING -> colors.brand
         state.phase == AgentState.Phase.ERROR -> colors.error
         else -> colors.railIdle
     }
-    val dotAlpha = if (reduceMotion || !state.isRunning) {
+    val dotAlpha = if (reduceMotion || (!state.isRunning && !planning)) {
         1f
     } else {
         val transition = rememberInfiniteTransition(label = "strip-pulse")
@@ -124,10 +138,11 @@ internal fun AgentRunStatusStrip(
     }
 
     val total = maxOf(plannedSteps, state.stepCount)
-    val stepText = if (total > 0) {
-        "第 ${state.stepCount.coerceAtMost(total)} 步 / 共 $total 步 · ${stripPhaseWord(state.phase)}"
-    } else {
-        stripPhaseWord(state.phase)
+    val stepText = when {
+        // 规划期执行还没开始：agent 的相位仍是 IDLE，直接照搬会显示"空闲"，改为明说在规划
+        planning -> "AI 正在规划任务"
+        total > 0 -> "第 ${state.stepCount.coerceAtMost(total)} 步 / 共 $total 步 · ${stripPhaseWord(state.phase)}"
+        else -> stripPhaseWord(state.phase)
     }
 
     Column(
@@ -193,11 +208,11 @@ internal fun AgentRunStatusStrip(
                 onClick = onTogglePreview,
             )
             Spacer(Modifier.weight(1f))
-            if (state.isRunning) {
+            if (state.isRunning || planning) {
                 AgentActionButton(
-                    text = "停止",
-                    icon = AppIcons.Stop,
-                    tone = AgentButtonTone.DANGER,
+                    text = if (planning && !state.isRunning) "取消规划" else "停止",
+                    icon = if (planning && !state.isRunning) AppIcons.Close else AppIcons.Stop,
+                    tone = if (planning && !state.isRunning) AgentButtonTone.NEUTRAL else AgentButtonTone.DANGER,
                     onClick = onStop,
                 )
             }

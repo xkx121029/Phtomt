@@ -5,7 +5,6 @@ import java.io.EOFException
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.zip.CRC32
 
 /**
  * ADB（Android Debug Bridge）协议帧编解码与常量。
@@ -13,7 +12,7 @@ import java.util.zip.CRC32
  * 帧格式（ADB 官方协议，公开稳定）：
  * - 24 字节头 + payload，所有字段为小端（LE）uint32：
  *   command / arg0 / arg1 / length / check / magic
- * - check = CRC32(payload)；magic = command ^ 0xFFFFFFFF
+ * - check = payload 逐字节累加和（AOSP check_sum()，取低 32 位）；magic = command ^ 0xFFFFFFFF
  * - command 常量：CNXN(连接) / AUTH(认证) / OPEN(打开服务) / OKAY / WRTE(写) / CLSE(关闭)
  * - AUTH 类型：1=TOKEN 2=SIGNATURE 3=RSAPUBLICKEY
  *
@@ -50,7 +49,7 @@ object AdbProtocol {
      * @param hostBanner 是否为 CNXN 的 host banner（含特征串）
      */
     fun encode(command: Int, arg0: Int, arg1: Int, payload: ByteArray = ByteArray(0)): ByteArray {
-        val check = crc32(payload)
+        val check = checksum(payload)
         val magic = command xor -1
         val buf = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
         buf.putInt(command)
@@ -87,11 +86,11 @@ object AdbProtocol {
         return Frame(command, arg0, arg1, payload)
     }
 
-    /** CRC32 校验值（ADB check 字段） */
-    fun crc32(data: ByteArray): Int {
-        val c = CRC32()
-        c.update(data)
-        return c.value.toInt()
+    /** ADB check 字段校验和：payload 逐字节累加和（AOSP check_sum()），Int 累加取低 32 位 */
+    fun checksum(data: ByteArray): Int {
+        var sum = 0
+        for (b in data) sum += b.toInt() and 0xFF
+        return sum
     }
 
     /** 构造 CNXN 的 host banner 字节（真机联调点：特征串随系统版本微调） */

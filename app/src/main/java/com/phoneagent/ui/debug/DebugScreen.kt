@@ -218,6 +218,17 @@ private fun DebugActionsMenu(
     onExportJson: () -> Unit,
     onClear: () -> Unit,
 ) {
+    // 清空是破坏性动作，走两步确认：第一次点只把文案换成「再点确认清空」且菜单保持打开；
+    // 3 秒不点自动复位，菜单关闭也复位。直接一击即清，误触菜单的代价太高
+    var clearArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(clearArmed) {
+        if (clearArmed) {
+            kotlinx.coroutines.delay(3000)
+            clearArmed = false
+        }
+    }
+    LaunchedEffect(expanded) { if (!expanded) clearArmed = false }
+
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DebugActionItem(AppIcons.Report, "查看能力状态", onClick = onShowCapabilities)
         HorizontalDivider(Modifier.padding(vertical = AppSpacing.Xs))
@@ -230,7 +241,14 @@ private fun DebugActionsMenu(
         DebugActionItem(AppIcons.Description, "导出诊断报告（人话+原始）", onClick = onExportReport)
         DebugActionItem(AppIcons.FileDownload, "导出 JSON（分任务）", onClick = onExportJson)
         HorizontalDivider(Modifier.padding(vertical = AppSpacing.Xs))
-        DebugActionItem(AppIcons.Delete, "清空调试数据", danger = true, onClick = onClear)
+        DebugActionItem(
+            AppIcons.Delete,
+            if (clearArmed) "再点确认清空" else "清空调试数据",
+            danger = true,
+            onClick = {
+                if (!clearArmed) clearArmed = true else onClear()
+            },
+        )
     }
 }
 

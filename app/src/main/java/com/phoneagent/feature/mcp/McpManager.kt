@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 
 /**
@@ -33,11 +34,20 @@ class McpManager(
     val serversFlow: StateFlow<List<McpServerConfig>> = _servers.asStateFlow()
     val servers: List<McpServerConfig> get() = _servers.value
 
+    /**
+     * 客户端缓存（key=服务器名，即 [McpServerConfig] 的唯一标识）。
+     * 以前每次调用都新建 McpClient/传输层：lastRequest/lastResponse 这类实例状态永远读不到，
+     * OkHttp 客户端也无法复用连接。现在按服务器复用客户端；配置变更时失效对应缓存。
+     */
+    private val clients = HashMap<String, McpClient>()
+
     fun enabledServers(): List<McpServerConfig> = servers.filter { it.enabled }
 
     fun byName(name: String): McpServerConfig? = servers.find { it.name == name }
 
-    private fun client(config: McpServerConfig): McpClient = McpClient(transportFor(config), config.name, config)
+    @Synchronized
+    private fun client(config: McpServerConfig): McpClient =
+        clients.getOrPut(config.name) { McpClient(transportFor(config), config.name, config) }
 
     // ==================== 可变管理 ====================
 
@@ -54,19 +64,22 @@ class McpManager(
         val existed = byName(name) != null
         if (!existed) return false
         _servers.value = servers.filterNot { it.name == name }
+        synchronized(this) { clients.remove(name) }
         return true
     }
 
-    /** 启停某服务器 */
+    /** 启停某服务器：配置已变，失效对应缓存（下次调用按新配置重建客户端） */
     fun setServerEnabled(name: String, enabled: Boolean): Boolean {
         val cfg = byName(name) ?: return false
         _servers.value = servers.map { if (it.name == name) it.copy(enabled = enabled) else it }
+        synchronized(this) { clients.remove(name) }
         return true
     }
 
     /** 整体替换（启动加载持久化配置时调用） */
     fun replaceAll(list: List<McpServerConfig>) {
         _servers.value = list
+        synchronized(this) { clients.clear() }
     }
 
     // ==================== 信息获取 ====================
@@ -89,9 +102,12 @@ class McpManager(
         return runCatching { client(cfg).describe() }.getOrNull()
     }
 
-    /** 传输层最近请求/响应原文（供 UI 展示 JSON，需求 5） */
-    fun lastRequestJson(serverName: String): String = (byName(serverName)?.let { client(it) } as? McpClient)?.lastRequestJson ?: ""
-    fun lastResponseJson(serverName: String): String = (byName(serverName)?.let { client(it) } as? McpClient)?.lastResponseJson ?: ""
+    /** 传输层最近请求/响应原文（供 UI 展示 JSON，需求 5）；只读缓存，不新建客户端 */
+    @Synchronized
+    fun lastRequestJson(serverName: String): String = clients[serverName]?.lastRequestJson ?: ""
+
+    @Synchronized
+    fun lastResponseJson(serverName: String): String = clients[serverName]?.lastResponseJson ?: ""
 
     /**
      * 把某个服务器枚举到的工具注册为 Skill（source=MCP）。
@@ -125,17 +141,25 @@ class McpManager(
         return added
     }
 
-    /** 调用一个 MCP 工具（参数按 argsTemplate 模板替换；调用前按规则校验工具名与必填参数） */
+    /**
+     * 调用一个 MCP 工具（调用前按规则校验工具名）。
+     *
+     * 参数合并语义：[McpSkillTarget.argsTemplate] 解析为 JsonObject 作**静态基底**（解析失败按空对象兜底），
+     * 动态 [args] 逐项覆盖/追加——同名时动态参数优先。自动注册的 "{}" 基底即纯动态参数，
+     * 手工 manifest 里带静态字段的模板也能保留其固定值。
+     * 以前是字符串 replace（fillTemplate）：值含引号/换行时拼出的 JSON 解析失败，参数被整体丢弃。
+     */
     suspend fun callTarget(target: McpSkillTarget, args: Map<String, String>): McpCallResult {
         val cfg = byName(target.server) ?: return McpCallResult(isError = true, content = "未配置 MCP 服务器「${target.server}」")
         McpRules.validateToolName(target.tool).takeIf { !it.ok }?.let {
             return McpCallResult(isError = true, content = it.reason)
         }
-        val filled = fillTemplate(target.argsTemplate, args)
-        val arguments = runCatching { json.parseToJsonElement(filled).jsonObject as JsonObject }.getOrElse { JsonObject(emptyMap()) }
+        val base = runCatching { json.parseToJsonElement(target.argsTemplate).jsonObject }.getOrNull()
+        val arguments = buildJsonObject {
+            base?.forEach { (k, v) -> put(k, v) }
+            // 值统一按 JSON 字符串写入：JsonPrimitive 构造天然免转义，引号/换行原样安全
+            args.forEach { (k, v) -> put(k, JsonPrimitive(v)) }
+        }
         return client(cfg).callTool(target.tool, arguments)
     }
-
-    private fun fillTemplate(template: String, args: Map<String, String>): String =
-        args.entries.fold(template) { acc, (k, v) -> acc.replace("{{$k}}", v) }
 }

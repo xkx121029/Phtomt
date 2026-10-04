@@ -18,8 +18,8 @@ import com.phoneagent.engine.perception.effectiveLabel
  */
 class LocalDecisionEngine {
 
-    /** 连续本地决策达到该次数后强制走云端 */
-    private val maxConsecutiveLocal = 5
+    /** 连续本地决策达到该次数后强制走云端（与引擎侧"连续 5 次端侧决策"的死循环提醒错开一档，避免互相打死） */
+    private val maxConsecutiveLocal = 6
     private var consecutiveLocal = 0
 
     /**
@@ -54,14 +54,19 @@ class LocalDecisionEngine {
     }
 
     private fun handleDialog(snapshot: ScreenSnapshot): AgentIntent? {
+        // 否定守卫：「不允许」「不同意」是拒绝表达，只是子串里含正向词，绝不能当正向按钮点
+        val negativeWords = listOf("不允许", "不同意")
         val positive = snapshot.elements.firstOrNull {
             val label = it.effectiveLabel() ?: ""
-            listOf("允许", "同意", "确定", "知道了", "始终允许", "授权", "ok", "continue").any { k -> label.contains(k, ignoreCase = true) }
+            listOf("允许", "同意", "始终允许", "授权").any { k -> label.contains(k, ignoreCase = true) } &&
+                negativeWords.none { k -> label.contains(k) }
         }
-        // 优先点正向按钮（允许/同意），否则点关闭按钮
+        // 优先点正向按钮（允许/同意），否则点关闭按钮。
+        // 裸「确定」「ok」「continue」语义太泛（普通页确认按钮也会命中）移出正向词表；
+        // 「知道了」是知晓类关闭，归入关闭词表
         val target = positive ?: snapshot.elements.firstOrNull {
             val label = it.effectiveLabel() ?: ""
-            listOf("关闭", "取消", "以后再说", "跳过", "稍后", "no", "cancel", "x", "✕").any { k -> label.contains(k, ignoreCase = true) }
+            listOf("关闭", "取消", "以后再说", "跳过", "稍后", "知道了", "no", "cancel", "x", "✕").any { k -> label.contains(k, ignoreCase = true) }
         }
         val reason = if (positive != null && positive.index == target?.index) "点击允许/同意按钮" else "关闭弹窗"
         return target?.let { tapIntent(it, reason) }

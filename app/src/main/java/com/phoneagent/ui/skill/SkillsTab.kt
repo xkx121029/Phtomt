@@ -37,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -101,6 +102,14 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
         }
     }
     if (batchMode) {
+        // 批量删除走两步确认：第一次点只变文案，3 秒不点自动复位（对齐 DataActionRow 的 armed 模式）
+        var deleteArmed by remember { mutableStateOf(false) }
+        LaunchedEffect(deleteArmed) {
+            if (deleteArmed) {
+                kotlinx.coroutines.delay(3000)
+                deleteArmed = false
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -108,17 +117,28 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
         ) {
             Text("已选 ${selected.size} 项", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { selected.clear() }) { Text("全不选") }
+            TextButton(onClick = { selected.clear(); deleteArmed = false }) { Text("全不选") }
             TextButton(
                 enabled = selected.isNotEmpty(),
                 onClick = {
-                    vm.removeSkills(selected.toSet())
-                    selected.clear()
+                    if (!deleteArmed) {
+                        deleteArmed = true
+                    } else {
+                        deleteArmed = false
+                        val ids = selected.toSet()
+                        selected.clear()
+                        vm.removeSkills(ids) { n ->
+                            snackbar?.show("已删除 $n 个技能", SnackbarType.SUCCESS)
+                        }
+                    }
                 },
             ) {
                 Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("删除所选")
+                Text(
+                    if (deleteArmed) "再点确认删除" else "删除所选",
+                    color = if (deleteArmed) MaterialTheme.colorScheme.error else Color.Unspecified,
+                )
             }
         }
     }
@@ -151,8 +171,10 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
                     if (text.isNullOrBlank()) {
                         snackbar?.show("剪贴板为空或不是技能 JSON", SnackbarType.WARNING)
                     } else {
-                        val n = vm.importSkills(text)
-                        snackbar?.show("已导入 $n 个技能", SnackbarType.SUCCESS)
+                        // 导入的 JSON 解析已在 ViewModel 里挪到后台线程，结果回主线程再弹浮条
+                        vm.importSkills(text) { n ->
+                            snackbar?.show("已导入 $n 个技能", SnackbarType.SUCCESS)
+                        }
                     }
                 }) {
                     Icon(AppIcons.Sync, contentDescription = null, modifier = Modifier.size(16.dp))

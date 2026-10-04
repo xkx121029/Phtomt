@@ -62,9 +62,9 @@ object ShellCommands {
         val trimmed = command.trim()
         // 空命令
         if (trimmed.isEmpty()) return null
-        // raw 前缀 → 直接透传（兜底）
+        // raw 前缀 → 直接透传（兜底）；前缀大小写不敏感，命中后按固定长度剥前缀
         if (trimmed.startsWith("raw ", ignoreCase = true))
-            return trimmed.removePrefix("raw ").trim().ifEmpty { null }
+            return trimmed.substring(4).trim().ifEmpty { null }
 
         // 按空格分割命令名和参数
         val parts = trimmed.split(" ", limit = 2)
@@ -134,6 +134,12 @@ object ShellCommands {
                     "SPACE" -> 62
                     "CLEAR" -> 28
                     "WAKEUP" -> 224
+                    else -> null
+                } ?: when {
+                    // 单个数字字符映射为数字键：KEYCODE_0=7，依次到 KEYCODE_9=16。
+                    // 不做此映射的话 "key 5" 会把 5 当成键码（5=CALL 键），打不出数字
+                    key.length == 1 && key[0] in '0'..'9' -> 7 + (key[0] - '0')
+                    // 多位数字串保留旧语义：显式键码直传（供 AI 直接写系统键码的场景）
                     else -> key.toIntOrNull() ?: return null
                 }
                 "input keyevent $code"
@@ -238,7 +244,11 @@ object ShellCommands {
         return x to y
     }
 
-    /** 单个坐标值 → 像素：百分比(4%)、比例(0.04)、像素(500) */
+    /**
+     * 单个坐标值 → 像素：百分比(4%)、比例(0.04)、像素(500)。
+     * 钳制到 [0, dim-1] 是兜底而非主语义：越界的像素输入会被静默压回屏内，
+     * 上层动作执行（如无障碍 scroll/swipe）仍需各自保证终点合法。
+     */
     private fun toPixel(raw: String, dim: Int): Int? {
         val s = raw.trim()
         if (s.isEmpty()) return null
@@ -268,10 +278,10 @@ object ShellCommands {
 | lp | x y | 长按 1500ms |
 | dt | x y | 双击 |
 | sw | x1 y1 x2 y2 | 滑动 |
-| su | x y | 上滑 400px |
-| sd | x y | 下滑 400px |
-| sl | x y | 左滑 400px |
-| sr | x y | 右滑 400px |
+| su | x y | 上滑 25% 屏幕高（至少 100px） |
+| sd | x y | 下滑 25% 屏幕高（至少 100px） |
+| sl | x y | 左滑 25% 屏幕宽（至少 100px） |
+| sr | x y | 右滑 25% 屏幕宽（至少 100px） |
 | key | BACK/HOME/ENTER/数字 | 按键 |
 | back | — | 返回键 |
 | home | — | 主页键 |
@@ -298,10 +308,10 @@ object ShellCommands {
 | lp | x y | Long press 1500ms |
 | dt | x y | Double tap |
 | sw | x1 y1 x2 y2 | Swipe |
-| su | x y | Swipe up 400px |
-| sd | x y | Swipe down 400px |
-| sl | x y | Swipe left 400px |
-| sr | x y | Swipe right 400px |
+| su | x y | Swipe up 25% of screen height (min 100px) |
+| sd | x y | Swipe down 25% of screen height (min 100px) |
+| sl | x y | Swipe left 25% of screen width (min 100px) |
+| sr | x y | Swipe right 25% of screen width (min 100px) |
 | key | BACK/HOME/ENTER/number | Key press |
 | back | — | Back key |
 | home | — | Home key |

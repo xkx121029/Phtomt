@@ -168,7 +168,7 @@ class IntentTranslatorStrategyTest {
     }
 
     @Test
-    fun scrollTo_目标含下方_向下滚() {
+    fun scrollTo_目标含下方_向上滚翻出下方内容() {
         mode(Mode.ACCESSIBILITY)
         val s = snapshot(elem(0, "列表"))
         val action = command(
@@ -176,7 +176,7 @@ class IntentTranslatorStrategyTest {
             s,
         )
         assertEquals(ActionType.SCROLL, action.type)
-        assertEquals("down", action.direction)
+        assertEquals("up", action.direction)
     }
 
     @Test

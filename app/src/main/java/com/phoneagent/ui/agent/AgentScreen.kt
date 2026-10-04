@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -120,11 +122,16 @@ fun AgentScreen(
     val clarifyEvents by vm.clarifyEvents.collectAsState()
     val sessions by vm.taskSessions.collectAsState()
     val conversationStart by vm.conversationStart.collectAsState()
+    // 不可逆动作确认门：引擎挂起等待放行时非空，任务流末尾插一张确认卡
+    val pendingConfirm = vm.pendingActionConfirmation.collectAsState().value
     // 实时视图只铺开本对话（起点之后）的执行痕迹：新建对话后主区域因此是干净的。
     // 回看历史任务时由 AgentTimelineMapper 按 taskId 精确取，不受这里影响。
     val liveTraces = remember(traces, conversationStart) { traces.filter { it.taskId >= conversationStart } }
 
     var draft by rememberSaveable { mutableStateOf("") }
+    // 协助浮层独立的输入草稿：与主输入框分开，避免两边共用同一份文本互相串扰
+    // （在浮层里打一半的字，不该出现在主输入框；提交/关闭也只清自己的那份）
+    var assistDraft by rememberSaveable { mutableStateOf("") }
     var submittedTask by rememberSaveable { mutableStateOf("") }
     var previewVisible by rememberSaveable { mutableStateOf(false) }
     var drawerOpen by remember { mutableStateOf(false) }
@@ -251,7 +258,10 @@ fun AgentScreen(
     val railVisible = viewingTaskId == null && !showEmpty && totalSteps >= 2
     val confidence = latestSteps.lastOrNull()?.confidence
         ?: (planPhase as? PlanPhase.Approved)?.plan?.confidence
-    val showStrip = agent.isRunning || needsUser || (agent.phase == AgentState.Phase.ERROR && stateInConversation)
+    val showStrip = agent.isRunning || needsUser ||
+        (agent.phase == AgentState.Phase.ERROR && stateInConversation) ||
+        // 规划期也给状态条：这是用户唯一看得到「正在规划」并可取消的地方
+        planPhase is PlanPhase.Planning
 
     val stepIndexMap = remember(items) {
         // 一条工具链承载多步：链内任意一步都定位到链所在的那一行
@@ -278,6 +288,12 @@ fun AgentScreen(
     }
     LaunchedEffect(visibleItems.size, planText.length, decisionText.length, follow) {
         if (follow && visibleItems.isNotEmpty()) listState.animateScrollToItem(visibleItems.lastIndex)
+    }
+    // 确认卡出现时滚到卡片本身：这是引擎的阻塞态，不能让用户误以为 AI 没了动静
+    LaunchedEffect(pendingConfirm != null) {
+        if (pendingConfirm != null) {
+            listState.animateScrollToItem((if (showEmpty) 1 else 0) + visibleItems.size)
+        }
     }
 
     val density = LocalDensity.current
@@ -347,6 +363,18 @@ fun AgentScreen(
                         }
                         Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
                     }
+                    // 待确认的不可逆动作卡：摆在任务流末尾，自动跟随会把它带到眼前；
+                    // 是阻塞态（引擎在此挂起），回看历史任务时也照样显示，避免用户找不到出口
+                    pendingConfirm?.let { confirm ->
+                        item(key = "action-confirm") {
+                            PendingActionConfirmCard(
+                                summary = confirm.actionSummary,
+                                reason = confirm.reason,
+                                onConfirm = { vm.confirmPendingAction() },
+                                onDeny = { vm.denyPendingAction() },
+                            )
+                        }
+                    }
                 }
 
                 if (railVisible) {
@@ -397,7 +425,11 @@ fun AgentScreen(
                             needsUser = needsUser,
                             previewVisible = previewVisible,
                             onTogglePreview = { previewVisible = !previewVisible },
-                            onStop = { vm.stopAgent() },
+                            // 规划期点的是「取消规划」，执行期才是「停止」
+                            onStop = {
+                                if (planPhase is PlanPhase.Planning) vm.cancelPlanning() else vm.stopAgent()
+                            },
+                            planning = planPhase is PlanPhase.Planning,
                         )
                     }
 
@@ -473,12 +505,13 @@ fun AgentScreen(
                                 options = spec.options,
                                 allowManualHandle = spec.allowManualHandle,
                                 allowFreeText = !spec.isShellApproval,
-                                draft = draft,
-                                onDraftChange = { draft = it },
+                                // 浮层用自己的草稿：与主输入框互不串扰，提交/关闭只清自己的
+                                draft = assistDraft,
+                                onDraftChange = { assistDraft = it },
                                 onPickOption = { option ->
                                     if (spec.isShellApproval) vm.resolveShellApproval(option.id == "approve")
                                     else vm.answerClarification(option)
-                                    draft = ""
+                                    assistDraft = ""
                                 },
                                 onSubmitText = { text ->
                                     if (spec.allowManualHandle) {
@@ -486,7 +519,7 @@ fun AgentScreen(
                                     } else {
                                         vm.answerClarification(ClarificationOption(id = "manual", label = text))
                                     }
-                                    draft = ""
+                                    assistDraft = ""
                                 },
                                 onManualHandled = { vm.dismissUser() },
                                 modifier = Modifier.padding(
@@ -593,6 +626,73 @@ private data class AssistSpec(
     /** 自写命令确认：选项走 resolveShellApproval，且不给自由输入（输入的内容无处可去） */
     val isShellApproval: Boolean = false,
 )
+
+/**
+ * 不可逆动作确认卡：引擎在执行需要用户确认的动作前挂起等待放行。
+ * 与悬浮窗的确认面板共用引擎的同一信箱，谁先答复都算数。卡片抄 NeedsUserItem 的骨架
+ * （errorContainer 配色表明"不可逆，需谨慎"）；交互就地落卡——它出现时底部输入区
+ * 可能正被协助浮层/计划面板占用，不能再指望用户去那里找出口。
+ */
+@Composable
+private fun PendingActionConfirmCard(
+    summary: String,
+    reason: String,
+    onConfirm: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Item))
+            .background(colors.errorContainer)
+            .padding(AppSpacing.Lg),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = AppIcons.TouchApp,
+                contentDescription = null,
+                tint = colors.onErrorContainer,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Xs))
+            Text(
+                text = "等待确认执行",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.onErrorContainer,
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Xs))
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.onErrorContainer,
+        )
+        if (reason.isNotBlank()) {
+            Spacer(Modifier.height(AppSpacing.Xs))
+            Text(
+                text = reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onErrorContainer.copy(alpha = 0.85f),
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Md))
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+            AgentActionButton(
+                text = "取消",
+                tone = AgentButtonTone.NEUTRAL,
+                onClick = onDeny,
+                modifier = Modifier.weight(1f),
+            )
+            AgentActionButton(
+                text = "确认执行",
+                tone = AgentButtonTone.PRIMARY,
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
 
 /** 单个任务流列表项。抽成独立函数避免 LazyColumn 的 item 块过长 */
 @Composable

@@ -6,8 +6,9 @@ package com.phoneagent.feature.mcp
  * 分类：
  * - 经典工具类（[CATEGORY_TOOLS]）：filesystem / sqlite / github / notion 等本地或自托管 MCP，
  *   默认需要用户填写自己的 URL / Token（[McpMarketplaceEntry.isPublic] = false）。
- * - 公共开放API（[CATEGORY_PUBLIC]）：天气、新闻、汇率、股票等公开 MCP/HTTP 端点，
- *   无需鉴权（[McpMarketplaceEntry.isPublic] = true），默认 URL 可直接使用。
+ * - 公共开放API（[CATEGORY_PUBLIC]）：天气、新闻、汇率、行情等条目。**注意：这些是普通 REST 站点，
+ *   不是 JSON-RPC MCP 服务，直接当 MCP 端点连必失败**——全部标 [McpMarketplaceEntry.isPublic] = false，
+ *   仅作"需自建 MCP 网关接入"的示例源，不能默认 URL 直接使用。
  *
  * 市场条目仅作为"快捷填充"入口：用户点击选用后回填新增表单，仍可修改 URL/Token 后添加。
  * 纯 Kotlin、无 Android 依赖，便于单元测试。
@@ -37,26 +38,26 @@ object McpMarketplace {
             url = "http://127.0.0.1:3003/mcp", defaultToken = "ntn_xxx",
             description = "Notion 页面/数据库读写（需配置 Notion API Key）",
         ),
-        // ---- 公共开放 API（无需鉴权，默认 URL 可直接用） ----
+        // ---- 公共开放 API：普通 REST 站点，不是 MCP 端点，仅作自建网关接入的示例源 ----
         McpMarketplaceEntry(
             id = "pub_weather", name = "天气查询", category = CATEGORY_PUBLIC,
-            url = "https://wttr.in", protocolVersion = "2025-03-26", isPublic = true,
-            description = "按城市查询天气（开放接口，返回文本）",
+            url = "https://wttr.in", protocolVersion = "2025-03-26", isPublic = false,
+            description = "REST 示例源：需自建 MCP 网关接入，不能直接作为 MCP 端点（按城市查询天气）",
         ),
         McpMarketplaceEntry(
             id = "pub_fx", name = "汇率查询", category = CATEGORY_PUBLIC,
-            url = "https://api.frankfurter.app", protocolVersion = "2025-03-26", isPublic = true,
-            description = "实时汇率查询（无需 Key）",
+            url = "https://api.frankfurter.app", protocolVersion = "2025-03-26", isPublic = false,
+            description = "REST 示例源：需自建 MCP 网关接入，不能直接作为 MCP 端点（实时汇率查询）",
         ),
         McpMarketplaceEntry(
             id = "pub_news", name = "新闻头条", category = CATEGORY_PUBLIC,
-            url = "https://saurav.tech/NewsAPI", protocolVersion = "2025-03-26", isPublic = true,
-            description = "聚合新闻头条（公开端点）",
+            url = "https://saurav.tech/NewsAPI", protocolVersion = "2025-03-26", isPublic = false,
+            description = "REST 示例源：需自建 MCP 网关接入，不能直接作为 MCP 端点（聚合新闻头条）",
         ),
         McpMarketplaceEntry(
             id = "pub_coingecko", name = "加密货币行情", category = CATEGORY_PUBLIC,
-            url = "https://api.coingecko.com/api/v3", protocolVersion = "2025-03-26", isPublic = true,
-            description = "加密货币实时行情（公开端点）",
+            url = "https://api.coingecko.com/api/v3", protocolVersion = "2025-03-26", isPublic = false,
+            description = "REST 示例源：需自建 MCP 网关接入，不能直接作为 MCP 端点（加密货币实时行情）",
         ),
     )
 

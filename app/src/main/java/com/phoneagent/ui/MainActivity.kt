@@ -275,7 +275,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
 
     LaunchedEffect(Unit) {
         vm.refreshStatus(activity)
-        vm.refreshA11yState()
+        vm.refreshA11yState(activity)
     }
 
     // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）；
@@ -421,14 +421,17 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                                 }
                             }
 
-                            // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上
+                        }
+
+                            // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上。
+                            // 不放在 else 分支里：二级页（extrasPage 非空）同样要能弹反馈，
+                            // 位置参数保持不变（底部居中、垫在导航栏净空之上）
                             AppSnackbar(
                                 state = snackbarState,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(bottom = navClearance + AppSpacing.Md),
                             )
-                        }
                     }
                 }
 

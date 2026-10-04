@@ -71,6 +71,7 @@ data class AdbPairingService(
 data class AdbTimeouts(
     val discoverMs: Long = 20_000L,   // mDNS 发现超时
     val connectMs: Long = 6_000L,     // TCP 连接超时
+    val soTimeoutMs: Long = 15_000L,  // socket 读超时（对端静默时抛 SocketTimeoutException）
     val authMs: Long = 8_000L,        // AUTH/握手超时
     val shellReadMs: Long = 15_000L,  // shell 输出等待超时
 )

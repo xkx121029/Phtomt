@@ -13,8 +13,8 @@ import java.net.MulticastSocket
  * 无线调试服务自发现常不返回，导致「搜索不到」。原始组播查询关闭 loopback 过滤
  * （IP_MULTICAST_LOOP）后可收到本机 adbd 的 mDNS 响应，作为配对服务发现的可靠兜底。
  *
- * 仅提取 SRV 端口（配对端口为动态值，是搜索的核心目标）；TXT 中的 salt 尽力解析，
- * 缺失时由 [PairingHandshake] 兜底（真机联调点）。host 由调用方用本机 IP 补齐。
+ * 仅提取 owner name 含配对服务标签（_adb-tls-pairing）的 SRV 端口（配对端口为动态值，是搜索的核心目标）；
+ * TXT 中的 salt 尽力解析，缺失时由 [PairingHandshake] 兜底（真机联调点）。host 由调用方用本机 IP 补齐。
  */
 @SuppressLint("MissingPermission")
 object MdnsAdbResolver {
@@ -24,6 +24,9 @@ object MdnsAdbResolver {
     private const val TYPE_PTR = 12
     private const val TYPE_SRV = 33
     private const val TYPE_TXT = 16
+
+    /** SRV 记录 owner name 必须包含该标签才接受，避免把局域网内任意服务的 SRV 当成配对端口 */
+    private const val PAIRING_OWNER_LABEL = "_adb-tls-pairing"
 
     /**
      * 解析无线调试配对服务：返回端口与（尽力而为的）TXT salt；找不到返回 null。
@@ -45,6 +48,10 @@ object MdnsAdbResolver {
             val buf = ByteArray(4096)
             val deadline = System.currentTimeMillis() + timeoutMs
             while (System.currentTimeMillis() < deadline) {
+                // 每轮按剩余时间设置 soTimeout，避免固定 2s 提前截断总 deadline
+                val remaining = (deadline - System.currentTimeMillis()).toInt()
+                if (remaining <= 0) break
+                socket.soTimeout = remaining
                 val pkt = DatagramPacket(buf, buf.size)
                 socket.receive(pkt) // 超时抛 SocketTimeoutException 跳出
                 val port = parseSrvPort(buf, pkt.length) ?: continue
@@ -85,7 +92,7 @@ object MdnsAdbResolver {
         return AdbPairingService(host = "", port = port, salt = salt)
     }
 
-    /** 在响应 ANSWER 区查找 SRV 记录并返回端口；失败/无则 null。 */
+    /** 在响应 ANSWER 区查找 SRV 记录并返回端口；仅接受 owner name 含配对服务标签的记录，失败/无则 null。 */
     private fun parseSrvPort(d: ByteArray, len: Int): Int? {
         return try {
             // header: ID(0) Flags(2) QD(4) AN(6) NS(8) AR(10)
@@ -94,17 +101,52 @@ object MdnsAdbResolver {
             var p = 12
             repeat(qd) { p = skipName(d, p); p += 4 }
             repeat(an) {
-                p = skipName(d, p)
+                // 解析记录的 owner name（支持压缩指针），过滤非配对服务的 SRV
+                val (owner, afterName) = readName(d, len, p) ?: return null
+                p = afterName
                 val type = readU16(d, p)
                 val rdlen = readU16(d, p + 8)
                 val rdata = p + 10
-                if (type == TYPE_SRV && rdlen >= 6) {
+                if (type == TYPE_SRV && rdlen >= 6 && owner.contains(PAIRING_OWNER_LABEL)) {
                     return readU16(d, rdata + 4)
                 }
                 p = rdata + rdlen
             }
             null
         } catch (_: Exception) { null }
+    }
+
+    /**
+     * 读取 DNS 名称并解码（支持压缩指针 0xC0，带跳转上限防环）。
+     * 返回「小写名称文本」与「记录下一字段起始位置」的 Pair；越界/异常返回 null。
+     */
+    private fun readName(d: ByteArray, len: Int, start: Int): Pair<String, Int>? {
+        var p = start
+        var jumped = false
+        var end = -1
+        var hops = 0
+        val sb = StringBuilder()
+        while (true) {
+            if (p < 0 || p >= len) return null
+            val b = d[p].toInt() and 0xff
+            if (b == 0) {
+                if (!jumped) end = p + 1
+                return sb.toString().lowercase() to end
+            }
+            if ((b and 0xC0) == 0xC0) {
+                if (p + 1 >= len) return null
+                val ptr = ((b and 0x3F) shl 8) or (d[p + 1].toInt() and 0xff)
+                if (!jumped) end = p + 2
+                p = ptr
+                jumped = true
+                if (++hops > 32) return null
+                continue
+            }
+            if (p + 1 + b > len) return null
+            for (i in 1..b) sb.append(((d[p + i].toInt() and 0xff)).toChar())
+            sb.append('.')
+            p += 1 + b
+        }
     }
 
     /** 在响应 ANSWER 区查找 TXT 记录并返回第一条字符串（best-effort）。 */

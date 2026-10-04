@@ -162,15 +162,15 @@ class LocalDecisionEngineTest {
     // ---- 防死循环 ----
 
     @Test
-    fun 连续五次本地决策后_强制走云端() {
+    fun 连续六次本地决策后_强制走云端() {
         val s = snapshot(
             elem(0, text = "系统提醒"),
             elem(1, text = "允许", type = "Button"),
             elem(2, text = "取消", type = "Button"),
         )
-        // 前 4 次均返回本地意图
-        repeat(4) { assertNotNull(engine.decide(s)) }
-        // 第 5 次：达到阈值，强制返回 null（走云端）
+        // 前 5 次均返回本地意图（阈值 6 与引擎侧"连续 5 次"提醒错开一档）
+        repeat(5) { assertNotNull(engine.decide(s)) }
+        // 第 6 次：达到阈值，强制返回 null（走云端）
         assertNull(engine.decide(s))
     }
 
@@ -187,8 +187,8 @@ class LocalDecisionEngineTest {
         assertNotNull(engine.decide(dialog))
         // 一次云端决策（计数清零）
         assertNull(engine.decide(normal))
-        // 再连续 5 次本地：第 5 次达到阈值触发防死循环
-        repeat(4) { engine.decide(dialog) }
+        // 再连续 6 次本地：第 6 次达到阈值触发防死循环
+        repeat(5) { engine.decide(dialog) }
         assertNull(engine.decide(dialog))
     }
 }

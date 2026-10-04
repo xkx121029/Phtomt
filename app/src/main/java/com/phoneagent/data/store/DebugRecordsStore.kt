@@ -114,12 +114,14 @@ object DebugRecordsStore {
     ) {
         runCatching {
             val dir = dir(ctx)
-            dir.listFiles { f -> f.name.endsWith(".png") }?.forEach { it.delete() }
+            // 旧存档是 .png（内容却是 JPEG）、新存档统一 .jpg：两类残留一并清掉
+            dir.listFiles { f -> f.name.endsWith(".png") || f.name.endsWith(".jpg") }?.forEach { it.delete() }
             val leanTraces = traces.mapIndexed { i, t ->
                 var shotFile: String? = null
                 if (t.screenshot != null) {
                     val thumb = thumb(t.screenshot) ?: t.screenshot
-                    val file = File(dir, "shot_$i.png")
+                    // 实际按 JPEG 压缩，扩展名跟着改成 .jpg，别再骗系统按 PNG 解
+                    val file = File(dir, "shot_$i.jpg")
                     file.outputStream().use { thumb.compress(Bitmap.CompressFormat.JPEG, 85, it) }
                     shotFile = file.name
                 }
@@ -152,7 +154,16 @@ object DebugRecordsStore {
                     )
                 },
             )
-            File(dir, BUNDLE_FILE).writeText(json.encodeToString(Bundle.serializer(), bundle))
+            // 原子替换：先写临时文件再 rename。写到一半被杀（进程/断电）时，
+            // 旧存档仍在原位，不会留下半个读不回来的 records.json
+            val target = File(dir, BUNDLE_FILE)
+            val tmp = File(dir, "$BUNDLE_FILE.tmp")
+            tmp.writeText(json.encodeToString(Bundle.serializer(), bundle))
+            if (!tmp.renameTo(target)) {
+                // rename 失败（极端文件系统差异）时退回覆盖写，语义不变
+                target.writeText(json.encodeToString(Bundle.serializer(), bundle))
+                tmp.delete()
+            }
         }
     }
 
@@ -173,7 +184,10 @@ object DebugRecordsStore {
         }
         Persisted(
             logs = bundle.logs.map {
-                AgentLog(it.timestamp, AgentLog.Level.valueOf(it.level), it.message, it.detail, it.taskId, it.taskName)
+                // 枚举名认不出来（改过枚举/旧存档）时退回 INFO，不让一条旧日志崩掉整个回载
+                val level = runCatching { AgentLog.Level.valueOf(it.level) }
+                    .getOrDefault(AgentLog.Level.INFO)
+                AgentLog(it.timestamp, level, it.message, it.detail, it.taskId, it.taskName)
             },
             traces = traces,
             history = bundle.history.map {

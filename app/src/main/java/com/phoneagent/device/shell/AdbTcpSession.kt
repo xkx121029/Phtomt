@@ -10,6 +10,8 @@ import com.phoneagent.device.shell.AdbProtocol.MAXDATA
 import com.phoneagent.device.shell.AdbProtocol.VERSION
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 真实 ADB TCP 会话（CNXN → AUTH → OPEN shell: → 读输出 → CLSE）。
@@ -26,7 +28,7 @@ class AdbTcpSession(
     private val timeouts: AdbTimeouts,
     private val keys: AdbKeyStore,
 ) {
-    private var nextLocalId = 1
+    private val nextLocalId = AtomicInteger(0)
     @Volatile private var connected = false
 
     fun isConnected(): Boolean = connected
@@ -35,6 +37,8 @@ class AdbTcpSession(
     suspend fun connect(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
         try {
             socket.connect(host, port, timeouts.connectMs.toInt())
+            // 读超时：对端静默时 readFrame 抛 SocketTimeoutException，而不是永久阻塞
+            socket.setSoTimeout(timeouts.soTimeoutMs.toInt())
             val input = socket.input()
             val output = socket.output()
 
@@ -77,14 +81,16 @@ class AdbTcpSession(
 
     /**
      * 在已认证会话上执行 shell 命令并回读输出（截断至 [maxChars]）。
-     * 返回空串表示失败或超时；输出上限默认 1200 字符（注入决策上下文）。
+     * 返回空串表示失败或超时；输出上限默认 4000 字符（与 ShellRules.SHELL_OUTPUT_BUDGET 对齐）。
      */
-    suspend fun execShell(cmd: String, maxChars: Int = 1200): String = withContext(Dispatchers.IO) {
+    suspend fun execShell(cmd: String, maxChars: Int = DEFAULT_MAX_CHARS): String = withContext(Dispatchers.IO) {
         if (!connected) return@withContext ""
+        // 对端流 id：OPEN 响应 OKAY / WRTE / CLSE 帧的 arg0 携带，用于回发 CLSE
+        var remoteId = 0
         try {
             val input = socket.input()
             val output = socket.output()
-            val localId = nextLocalId++
+            val localId = nextLocalId.incrementAndGet()
 
             // OPEN shell:<cmd>
             output.write(AdbProtocol.encode(CMD_OPEN, localId, 0, "shell:$cmd".toByteArray(Charsets.UTF_8)))
@@ -92,25 +98,64 @@ class AdbTcpSession(
 
             val sb = StringBuilder()
             val deadline = System.currentTimeMillis() + timeouts.shellReadMs
+            var streamClosed = false
             while (System.currentTimeMillis() < deadline) {
-                val frame = AdbProtocol.readFrame(input) ?: break
+                val frame = try {
+                    AdbProtocol.readFrame(input) ?: break
+                } catch (e: SocketTimeoutException) {
+                    // 对端静默触发读超时：本流收集结束（保留已收到的输出）
+                    break
+                }
+                // 流卫生：只处理寻址到本流（arg1 == localId）的帧，历史流残留帧直接丢弃
+                if (frame.arg1 != localId) continue
                 when (frame.command) {
                     CMD_WRTE -> {
+                        remoteId = frame.arg0
                         sb.append(String(frame.payload, Charsets.UTF_8))
                         // 回 OKAY 确认对端可继续写
                         output.write(AdbProtocol.encode(CMD_OKAY, frame.arg1, frame.arg0))
                         output.flush()
                     }
-                    CMD_CLSE -> break
-                    CMD_OKAY, CMD_CNXN -> Unit
+                    CMD_CLSE -> {
+                        remoteId = frame.arg0
+                        streamClosed = true
+                        break
+                    }
+                    CMD_OKAY -> remoteId = frame.arg0
                     else -> Unit
                 }
                 if (sb.length >= maxChars) break
             }
 
-            // 关闭服务
+            // 达到输出上限或读超时退出后，排空本流残留帧：
+            // 直到收到本流 CLSE / 再次读超时 / 达到帧数上限，避免残留帧污染下一次会话
+            if (!streamClosed) {
+                var drained = 0
+                while (drained < DRAIN_MAX_FRAMES) {
+                    val frame = try {
+                        AdbProtocol.readFrame(input) ?: break
+                    } catch (e: SocketTimeoutException) {
+                        break
+                    }
+                    drained++
+                    if (frame.arg1 != localId) continue
+                    when (frame.command) {
+                        CMD_WRTE -> {
+                            remoteId = frame.arg0
+                            output.write(AdbProtocol.encode(CMD_OKAY, frame.arg1, frame.arg0))
+                            output.flush()
+                        }
+                        CMD_CLSE -> {
+                            remoteId = frame.arg0
+                            break
+                        }
+                    }
+                }
+            }
+
+            // 关闭服务（arg0=本端流 id，arg1=对端流 id）
             runCatching {
-                output.write(AdbProtocol.encode(CMD_CLSE, localId, 0))
+                output.write(AdbProtocol.encode(CMD_CLSE, localId, remoteId))
                 output.flush()
             }
             val text = sb.toString().trim()
@@ -123,5 +168,13 @@ class AdbTcpSession(
     fun close() {
         socket.close()
         connected = false
+    }
+
+    companion object {
+        /** shell 输出默认上限（与 ShellRules.SHELL_OUTPUT_BUDGET 对齐） */
+        const val DEFAULT_MAX_CHARS = 4000
+
+        /** 排空残留帧的上限，防止对端异常时死循环 */
+        private const val DRAIN_MAX_FRAMES = 64
     }
 }

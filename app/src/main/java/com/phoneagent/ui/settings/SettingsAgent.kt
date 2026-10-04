@@ -61,11 +61,11 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     Spacer(Modifier.height(8.dp))
                     LabeledField("最大步数  ${st.maxSteps}") {
                         Slider(
+                            // 拖动只更新本地编辑态（数值即时跟手），松手才落盘，
+                            // 避免拖一次滑杆产生几十次 DataStore 写入
                             value = st.maxSteps.toFloat(),
-                            onValueChange = {
-                                st.maxSteps = it.toInt()
-                                save()
-                            },
+                            onValueChange = { st.maxSteps = it.toInt() },
+                            onValueChangeFinished = { save() },
                             valueRange = 5f..60f,
                             steps = 10,
                         )

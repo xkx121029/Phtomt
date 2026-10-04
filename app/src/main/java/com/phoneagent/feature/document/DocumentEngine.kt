@@ -38,7 +38,14 @@ class DocumentEngine(private val context: Context) {
             return ""
         }
         return runCatching {
-            val resolved = sanitizeName(fileName.ifBlank { "文档_${System.currentTimeMillis()}.md" })
+            var resolved = sanitizeName(fileName.ifBlank { "文档_${System.currentTimeMillis()}.md" })
+            // 同名不静默覆盖：已存在时追加时间戳后缀（保留原扩展名），旧文档不被冲掉
+            if (File(rootDir, resolved).exists()) {
+                val dot = resolved.lastIndexOf('.')
+                val stamp = System.currentTimeMillis()
+                resolved = if (dot > 0) "${resolved.substring(0, dot)}_$stamp${resolved.substring(dot)}"
+                else "${resolved}_$stamp"
+            }
             File(rootDir, resolved).writeText(content)
             _error.value = ""
             _result.value = DocResult(

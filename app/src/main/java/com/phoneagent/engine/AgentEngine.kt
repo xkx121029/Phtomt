@@ -233,6 +233,9 @@ class AgentEngine(
          * 这个计数器是异常隔离的护栏：连续异常到上限即收尾，避免任务在坏链路上无限打转。
          */
         private const val MAX_DECISION_FAILURE_STREAK = 5
+
+        /** 不可逆动作（needsUserConfirmation）确认等待的超时：超时视为用户取消，不让任务无限挂起 */
+        private const val ACTION_CONFIRM_TIMEOUT_MS = 120_000L
     }
 
     private val cloudAgent = CloudAgent(aiClient)
@@ -517,6 +520,39 @@ class AgentEngine(
      */
     private val shellApprovalMailbox = Channel<Boolean>(Channel.CONFLATED)
 
+    // ---- 不可逆动作确认门（AgentAction.needsUserConfirmation）----
+    /** 一条等待用户确认的不可逆动作摘要 */
+    data class PendingActionConfirmation(
+        /** 动作摘要（如「点按：确认支付」），供确认面板展示 */
+        val actionSummary: String,
+        /** AI 给出的动作理由/说明 */
+        val reason: String,
+    )
+
+    /**
+     * 待确认的不可逆动作；null = 没有正在等待的确认。
+     * 与 [_needsUser]（用户指导等待）、[_pendingShellCommand]（自写命令确认）是三套互相独立的
+     * 状态与信箱：确认等待若共用 needsUser 标志，一边收尾会把另一边的等待一起掐掉（互相覆盖）。
+     */
+    private val _pendingActionConfirmation = MutableStateFlow<PendingActionConfirmation?>(null)
+    val pendingActionConfirmation: StateFlow<PendingActionConfirmation?> get() = _pendingActionConfirmation.asStateFlow()
+
+    /**
+     * 用户对不可逆动作的答复信箱：单槽 CONFLATED。
+     * 用 Channel 而非 SharedFlow 的理由与 [userHintMailbox] 完全一致——用户抢在等待方订阅之前点按，
+     * 值也必须被缓存住，否则主循环会永久挂死在等待上。
+     */
+    private val actionConfirmationMailbox = Channel<Boolean>(Channel.CONFLATED)
+
+    /**
+     * 用户对「不可逆动作确认」的答复（悬浮窗 / App 内确认面板的「允许执行 / 取消」按钮）。
+     * 与 [resolveShellApproval] 同理**不受 [_needsUser] 约束**；没有等待中的确认时调用是空操作。
+     */
+    fun respondActionConfirmation(allow: Boolean) {
+        if (_pendingActionConfirmation.value == null) return
+        actionConfirmationMailbox.trySend(allow)
+    }
+
     /** 连续「被动作模式拒绝」的次数；放行一次即清零 */
     private var modeDenyStreak = 0
 
@@ -534,6 +570,12 @@ class AgentEngine(
     private var consecutiveFailures = 0
     /** 连续「决策链路异常」次数，达到 [MAX_DECISION_FAILURE_STREAK] 即收尾 */
     private var decisionFailureStreak = 0
+    /** 上一次自动点击的广告关闭目标 key（centerX/20:centerY/20），供连续命中护栏使用 */
+    @Volatile
+    private var lastAdClickTargetKey: String? = null
+    /** 同一广告关闭目标被自动点击的连续次数 */
+    @Volatile
+    private var adAutoClickStreak = 0
     /** 最近一次 shell 命令输出（查询类命令回传给 AI 上下文） */
     private var lastShellOutput: String = ""
 
@@ -764,10 +806,33 @@ class AgentEngine(
     /**
      * 启动一个直接执行单次任务的协程（如用户批准计划后立即执行）。
      * 与队列 worker 共用同一个 job 槽位：同一时刻只允许一个任务在跑。
+     * 已有任务在跑时不再静默丢弃：把任务入队交给队列 worker 排队执行
+     * （队列只带任务文本，计划不随队带入，排队任务由 AI 现场决策）。
      */
-    private fun launchSingleTask(block: suspend () -> Unit) {
+    private fun launchSingleTask(task: String, plan: TaskPlan? = null) {
         synchronized(queueLock) {
-            if (job?.isActive != true) job = scope.launch { block() }
+            if (job?.isActive == true) {
+                // 入队 + 补启动 worker：若当前任务正好在收尾，没有这次补启动任务就漏跑了
+                pendingTasks.enqueue(task)
+                ensureQueueWorker()
+                log(AgentLog.Level.INFO, "已有任务在执行，已加入任务队列：$task")
+                // 任务改为排队执行，规划面板不能停留在「已批准」
+                _planPhase.value = PlanPhase.Idle
+                return
+            }
+            job = scope.launch {
+                val self = coroutineContext[Job]
+                try {
+                    run(task, plan)
+                } finally {
+                    // 兜底：单任务协程结束时补启动队列 worker，执行期间入队的任务不能没人消费。
+                    // 被取消（用户停止）时不续跑：stop() 的语义是残留队列留给下次提交一并处理
+                    if (coroutineContext.isActive) {
+                        synchronized(queueLock) { if (job === self) job = null }
+                        ensureQueueWorker()
+                    }
+                }
+            }
         }
     }
 
@@ -945,7 +1010,7 @@ class AgentEngine(
         // run() 自带异常兜底且显式放行协程取消，这里不能再包 runCatching：
         // 它会吞掉 CancellationException，把用户的「停止」误报成「执行异常」，
         // 还会把 stop() 已经设好的 IDLE 状态覆盖掉
-        launchSingleTask { run(task, plan) }
+        launchSingleTask(task, plan)
     }
 
     fun cancelPlanning() {
@@ -1079,7 +1144,7 @@ class AgentEngine(
                 appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CHECKPOINT,
                 "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步。",
             )
-            launchSingleTask { run(ck.task, plan) }
+            launchSingleTask(ck.task, plan)
         }
     }
 
@@ -1106,6 +1171,8 @@ class AgentEngine(
         // 停止时若正卡在「等待确认自写命令」，把待确认命令一并清掉：
         // 否则面板已收，协助面板仍挂着一个再也等不到答复的确认框
         _pendingShellCommand.value = null
+        // 不可逆动作确认门同理：停止后不能再挂着一个等不到答复的确认面板
+        _pendingActionConfirmation.value = null
         // 先把状态落到 IDLE 再走统一复位：safeResetRuntime 带 DONE 终态守卫，
         // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板
         _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
@@ -1211,6 +1278,41 @@ class AgentEngine(
             if (approved) "用户已批准 AI 自写命令，本任务内不再确认" else "用户已拒绝 AI 自写命令，本任务内不再执行自写命令",
         )
         return approved
+    }
+
+    /**
+     * 不可逆动作（支付/删除/发送等，AI 或转译层标记 [AgentAction.needsUserConfirmation]）的确认闸门。
+     *
+     * 必须在动作**真正执行前**调用：置起待确认状态等待用户答复，[ACTION_CONFIRM_TIMEOUT_MS] 内
+     * 未答复视为取消。与自写命令确认（[ensureShellApproval]）互相独立，互不复用状态。
+     *
+     * @return true = 用户允许执行；false = 用户取消或超时，调用方不得执行该动作
+     */
+    private suspend fun awaitActionConfirmation(action: AgentAction): Boolean {
+        val summary = buildString {
+            append(actionLabel(action.type))
+            action.target?.value?.takeIf { it.isNotBlank() }?.let { append("：$it") }
+            action.text?.takeIf { it.isNotBlank() }?.let { append("（${it.take(30)}）") }
+        }
+        _pendingActionConfirmation.value = PendingActionConfirmation(
+            actionSummary = summary,
+            reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason.orEmpty(),
+        )
+        log(AgentLog.Level.WARN, "不可逆动作等待用户确认：$summary")
+        _state.value = _state.value.copy(message = "AI 想执行不可逆操作「$summary」，等待你确认")
+        pushFloating("等待确认操作", "THINKING")
+        val allowed = try {
+            withTimeoutOrNull(ACTION_CONFIRM_TIMEOUT_MS) { actionConfirmationMailbox.receive() } ?: false
+        } finally {
+            _pendingActionConfirmation.value = null
+            // 排空：等待期间用户可能连点了多次，残留值会污染下一次等待
+            while (actionConfirmationMailbox.tryReceive().isSuccess) { /* drain */ }
+        }
+        log(
+            AgentLog.Level.INFO,
+            if (allowed) "用户已允许执行不可逆操作：$summary" else "用户取消（或超时未确认）不可逆操作：$summary",
+        )
+        return allowed
     }
 
     private suspend fun processQueue() {
@@ -1357,6 +1459,14 @@ class AgentEngine(
         _pendingShellCommand.value = null
         modeDenyStreak = 0
         while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
+        // 不可逆动作确认门同样按任务复位：上一任务的待确认动作与残留答复不能带进本任务
+        _pendingActionConfirmation.value = null
+        while (actionConfirmationMailbox.tryReceive().isSuccess) { /* drain */ }
+        // 视觉坐标跨任务作废：上一任务留下的定位坐标对本次页面没有意义
+        lastVisualCoordinate = null
+        // 广告自动点击护栏按任务归零：上一个任务命中的广告目标与本次无关
+        lastAdClickTargetKey = null
+        adAutoClickStreak = 0
         lastDistilledTaskId = -1L
         memoryRawCache = null
         // 前台应用计数与规则命中计数同样按任务归零：它们描述的是"这一次任务"，跨任务累计会算错作用域
@@ -1424,15 +1534,26 @@ class AgentEngine(
             val adFilter = com.phoneagent.feature.adskip.AdContentFilter.filter(snapshot)
             if (adFilter.isAd) {
                 if (adFilter.target != null) {
-                    log(AgentLog.Level.INFO, adFilter.reason)
-                    // 关闭广告属于「执行」动作，阶段必须写 ACTING：写成 ACTION 落到 FloatingUi.phaseColor
-                    // 的兜底琥珀色上，跑马灯会闪出一个设置页阶段清单里根本没列的颜色
-                    pushFloating("检测到广告，自动关闭", "ACTING")
-                    AgentAccessibilityService.instance?.let { service ->
-                        com.phoneagent.device.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
+                    // 护栏：同一关闭目标连续命中 ≥2 次，说明自动点击无效（点了广告还在）。
+                    // 此时停止自动点击，该轮也不再剔除广告内容，把真实页面交给 AI 重新决策
+                    val targetKey = "${adFilter.target.centerX / 20}:${adFilter.target.centerY / 20}"
+                    if (targetKey == lastAdClickTargetKey) adAutoClickStreak++ else {
+                        lastAdClickTargetKey = targetKey
+                        adAutoClickStreak = 1
                     }
-                    delay(700)
-                    continue
+                    if (adAutoClickStreak >= 2) {
+                        log(AgentLog.Level.WARN, "广告自动关闭连续命中，已停止自动点击")
+                    } else {
+                        log(AgentLog.Level.INFO, adFilter.reason)
+                        // 关闭广告属于「执行」动作，阶段必须写 ACTING：写成 ACTION 落到 FloatingUi.phaseColor
+                        // 的兜底琥珀色上，跑马灯会闪出一个设置页阶段清单里根本没列的颜色
+                        pushFloating("检测到广告，自动关闭", "ACTING")
+                        AgentAccessibilityService.instance?.let { service ->
+                            com.phoneagent.device.a11y.ActionExecutor(service).click(adFilter.target.centerX, adFilter.target.centerY)
+                        }
+                        delay(700)
+                        continue
+                    }
                 } else {
                     log(AgentLog.Level.INFO, adFilter.reason)
                     snapshot = adFilter.cleanSnapshot
@@ -1440,6 +1561,13 @@ class AgentEngine(
             }
             lastSnapshot = snapshot
             val annotated = PageAnnotator.annotate(snapshot)
+            // 语义 id 回填：annotate() 把 semanticId 标在它**新建的元素列表**（annotated.elements）里，
+            // 原始 snapshot 的元素里 semanticId 全为 null；不回填的话，端侧决策的 by="id" 语义定位
+            // 与转译层的语义控件命中（send/confirm/close/delete 等）就永远失败
+            val semanticIndex = annotated.elements.mapNotNull { e -> e.semanticId?.let { e.index to it } }.toMap()
+            val semanticSnapshot = snapshot.copy(
+                elements = snapshot.elements.map { it.copy(semanticId = semanticIndex[it.index]) },
+            )
             // 无障碍读不到控件（元素树稀疏，如游戏/WebView/in-app 渲染界面）时，即使未开启截图开关也自动截图，
             // 交给视觉模型（glm-4.6v-flash）描述+坐标定位，弥补元素树缺失
             val treeSparse = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
@@ -1476,11 +1604,11 @@ class AgentEngine(
             }
 
             // 3. 端侧决策优先（输出的都是"意图"）
-            lastVisualCoordinate = null
             // 跨步清理图片编码缓存：上一轮的截图早已回收，留着引用既不省事也占内存
             aiClient.clearImageCache()
-            // 端侧决策异常（规则引擎内部越界等）不能让整个任务崩掉：降级为空，直接走云端决策
-            val localIntent = tryOrNull("端侧决策失败") { localDecision.decide(snapshot) }
+            // 端侧决策异常（规则引擎内部越界等）不能让整个任务崩掉：降级为空，直接走云端决策。
+            // 用回填过 semanticId 的快照决策：端侧 tapIntent 的 by="id" 定位依赖 semanticId
+            val localIntent = tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) }
             var decidedIntent: AgentIntent?
             var fromLocal = false
             if (localIntent != null) {
@@ -1518,7 +1646,7 @@ class AgentEngine(
                     return
                 }
                 decidedIntent = if (decisionThrew) {
-                    AgentIntent(intent = IntentType.WAIT, waitMs = 1200, reasoning = "决策链路异常，等待后重试")
+                    AgentIntent(intent = IntentType.WAIT, waitMs = 1500, reasoning = "决策链路异常，等待后重试")
                 } else decided
             }
 
@@ -1631,10 +1759,14 @@ class AgentEngine(
             // 4. 转译：意图 → 内部命令（端侧按授权模式选通道/定位/算坐标，AI 无感知）。
             //    参数缺失（如 tap 没给 target、open_app 没给 app）时，端侧先向 AI 追问一次补全，再重转译，而非直接失败。
             // 转译异常（定位/坐标换算内部出错）按转译失败处理：交给既有失败链路回注 AI 纠正，而不是崩掉任务
+            // 视觉坐标"消费一次"：上一步 see/视觉定位产出的坐标只供本次转译使用，取走即清空，
+            // 不再在每轮开头无条件清零（那样 see 拿到的坐标下一步必被清掉，等于白定位）
+            val carry = lastVisualCoordinate
+            lastVisualCoordinate = null
             var translation = tryOrNull("意图转译失败") {
-                intentTranslator.translate(intent, snapshot, lastVisualCoordinate)
+                intentTranslator.translate(intent, semanticSnapshot, carry)
             } ?: IntentTranslator.TranslationResult.Failed("意图转译异常，请重试")
-            translation = tryOrNull("参数补全失败") { fillMissingParam(translation, intent, snapshot, settingsVal) }
+            translation = tryOrNull("参数补全失败") { fillMissingParam(translation, intent, semanticSnapshot, settingsVal) }
                 ?: translation
             var action: AgentAction = AgentAction(type = "")
             var verify = com.phoneagent.engine.execution.VerifyResult(false, "", "", "")
@@ -1650,9 +1782,10 @@ class AgentEngine(
                         message = action!!.reason ?: "",
                     )
                     pushFloating(action!!.reasoning ?: action!!.reason ?: "正在执行", "ACTING")
-                    // 规划步数常多于实际执行步数：仅当完成度明显不足时（已执行 < 规划步数的60%）才拦截
+                    // 提前完成拦截门槛：有计划时 = 规划步数向上取整的 60%（不再叠加"至少 3 步"的下限，
+                    // 否则两三步的小任务会被强行拦截到凑步数）；无计划时保持 3 步的经验值
                     val minDoneThreshold = if (activePlan != null && activePlan!!.steps.isNotEmpty())
-                        maxOf(3, Math.ceil(activePlan!!.steps.size * 0.6).toInt())
+                        Math.ceil(activePlan!!.steps.size * 0.6).toInt()
                     else 3
                     if (action!!.type == ActionType.TASK_DONE && step < minDoneThreshold) {
                         // 要求 AI 重新决策，并注入纠偏提示
@@ -1670,9 +1803,24 @@ class AgentEngine(
                         }
                     }
                     if (action!!.type == ActionType.TASK_DONE) {
-                        log(AgentLog.Level.INFO, "任务完成：${action!!.summary ?: "-"}")
+                        val doneSummary = action!!.summary ?: "任务完成"
+                        // FINISH 与 GIVE_UP 都落到 TASK_DONE 动作（见转译层）：放弃绝不能按成功口径收尾
+                        if (intent.intent == IntentType.GIVE_UP) {
+                            log(AgentLog.Level.WARN, "任务已放弃：$doneSummary")
+                            recordStep(step, action!!, VerifyRules.STATUS_VERIFIED, "", "", verify.reason)
+                            // phase 不得写成 DONE：settleTaskSession 按 phase==DONE 判「已完成」，
+                            // 放弃必须落到失败口径（侧边栏状态=失败）
+                            _state.value = _state.value.copy(phase = AgentState.Phase.IDLE, message = "已放弃：$doneSummary", isRunning = false)
+                            AgentAccessibilityService.agentRunning = false
+                            // 放弃收尾：不学模板（learnTemplate）、不弹保存模板确认，收尾提示文案用「任务已放弃」
+                            FloatingWindowService.showDone("任务已放弃")
+                            // 任务记忆走失败口径，结论带「已放弃」前缀，会话承接时能看出是主动放弃
+                            finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, "已放弃：$doneSummary")
+                            return
+                        }
+                        log(AgentLog.Level.INFO, "任务完成：$doneSummary")
                         recordStep(step, action!!, VerifyRules.STATUS_VERIFIED, "", "", verify.reason)
-                        _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = action!!.summary ?: "任务完成", isRunning = false)
+                        _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = doneSummary, isRunning = false)
                         AgentAccessibilityService.agentRunning = false
                         // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
                         runCatching { learnTemplate(task) }
@@ -1684,15 +1832,15 @@ class AgentEngine(
                                 pendingTemplatePlan = activePlan
                                 requestConfirmSaveTemplate()
                             } else {
-                                FloatingWindowService.showDone(action!!.summary ?: "任务完成")
+                                FloatingWindowService.showDone(doneSummary)
                             }
                         }
                         // 任务记忆先收尾（目标已达成）：提炼再慢也不影响记忆页立刻变成「已完成」
                         // 完成说明一并落库，作为会话承接时"上一轮任务"的结论
-                        finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, action!!.summary.orEmpty())
+                        finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, doneSummary)
                         // 记忆提炼放最后：完成提示先给到用户，提炼再慢也不影响「已完成」的观感
                         // （独立调用一次模型，不写 conversation，因此不污染主决策上下文）
-                        runCatching { distillMemories(task, action!!.summary ?: "任务完成") }
+                        runCatching { distillMemories(task, doneSummary) }
                         return
                     }
                     // 记忆写入：纯本地写库，不操作屏幕，不走通道/不截图/不重试
@@ -1733,6 +1881,18 @@ class AgentEngine(
                         log(AgentLog.Level.WARN, "用户拒绝 AI 自写命令，已跳过执行：${action!!.command}")
                         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $denied"))))
                         recordsIntoHistory(step, action!!, com.phoneagent.engine.execution.VerifyResult(false, denied, "", ""))
+                        stepShotCapture(step, action!!, false)
+                        continue
+                    }
+                    // 不可逆动作确认门：AI/转译层标记 needsUserConfirmation 的动作，执行前先问用户。
+                    // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行
+                    if (action!!.needsUserConfirmation && !awaitActionConfirmation(action!!)) {
+                        val cancelReason = "用户取消了该操作"
+                        log(AgentLog.Level.WARN, "用户取消不可逆操作，已跳过执行：${action!!.type}")
+                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                            text = "⚠️ 用户拒绝执行该不可逆操作，请改用其他方案或询问用户，不要重复请求同一操作。",
+                        ))))
+                        recordsIntoHistory(step, action!!, com.phoneagent.engine.execution.VerifyResult(false, cancelReason, "", ""))
                         stepShotCapture(step, action!!, false)
                         continue
                     }
@@ -1793,6 +1953,8 @@ class AgentEngine(
                 }
             }
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
+            // 命令成功执行后清零「无效命令」计数：成功说明链路已恢复正常，旧账不该累计
+            if (verified) invalidCommandStreak = 0
             // 异常经验命中后回写使用效果（成功/失败计数），供后续按命中率判断是否还值得复用
             currentAnomalyEntry?.let { entry ->
                 runCatching { anomalyEngine.recordUse(entry, verified) }
@@ -1809,7 +1971,8 @@ class AgentEngine(
             }
             // 连续失败 ≥3 次才请求用户介入，避免单次动作失败频繁打断
             if (!verified && consecutiveFailures >= 3) {
-                recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+                // 此处不先记失败留档：引导重试后无论成败都会走到下方统一留档，
+                // 先记一遍会造成同一步双重留档；只有用户离开（本步直接 return）才补记
                 log(AgentLog.Level.ERROR, "动作 3 次未生效：${action.type}，请求用户介入")
                 pushFloating("需要指导", "ERROR")
                 showFloatingInteraction("guide", "需要你的协助", "动作「${action.type}」连续未能改变页面。请在窗内手动接管处理，或告诉 AI 该怎么做。")
@@ -1819,7 +1982,11 @@ class AgentEngine(
                 // 同敏感页分支：协作原因需要落到 agentState.message，界面才能显示出来
                 _state.value = _state.value.copy(message = stuckReason)
                 val hint = awaitUserHint()
-                if (hint.isBlank()) { finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return }
+                if (hint.isBlank()) {
+                    // 用户离开：这一步在 return，不会再走到下方统一留档，先补一条失败记录
+                    recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
+                }
                 // 用户指导 → 加入上下文并让云端重新决策（失败自动重试一次）
                 messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "用户提示：$hint 请据此重新决策下一步动作。" ))))
                 pushThinking(sent = "用户提示：$hint")
@@ -1857,7 +2024,18 @@ class AgentEngine(
                                 if (ensureShellApproval(gTranslate.action)) {
                                     verify = safeExecute(gTranslate.action, observe())
                                     verified = verify.success
-                                    if (!verified) {
+                                    if (verified) {
+                                        // 引导恢复成功同样要对齐常规路径的记账：清失败计数、记进度、存检查点
+                                        // （原来漏了这一步，引导成功后进度不涨、失败计数也不清）
+                                        consecutiveFailures = 0
+                                        recordProgress(step, action)
+                                        runCatching {
+                                            com.phoneagent.data.store.TaskStore.saveCheckpoint(
+                                                appContext, currentTaskName ?: task, activePlan,
+                                                completedSteps, totalPlannedSteps, currentTaskId,
+                                            )
+                                        }
+                                    } else {
                                         log(AgentLog.Level.WARN, "引导后动作仍未生效：${gTranslate.action.type}")
                                     }
                                 } else {
@@ -2237,10 +2415,13 @@ class AgentEngine(
             return AgentIntent(intent = "wait", waitMs = 1200, reasoning = "AI 决策超时，等待后重试")
         }
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
+        // 失败必须显式抛回主循环：静默 return null 会让上层把"单次网络抖动"当成「决策为空」直接杀任务，
+        // 且连续失败护栏（decisionFailureStreak）永远统计不到这条路径；
+        // 抛出后由主循环计数降级为 wait 重试，达到上限才收尾
         val decision = result.getOrElse { err ->
-            log(AgentLog.Level.ERROR, "AI 调用失败：${err.message}")
-            _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = err.message ?: "AI 调用失败")
-            return null
+            if (err is kotlinx.coroutines.CancellationException) throw err
+            log(AgentLog.Level.ERROR, "AI 调用失败：${err.message ?: err.javaClass.simpleName}")
+            throw err
         }
         // 决策已完成：正文已落 trace（可在步骤卡的"原始数据"里回看），清空流式回显避免与下一步混淆
         _decisionStream.value = ""
@@ -2249,7 +2430,7 @@ class AgentEngine(
         var intent = decision.action
         // 视觉定位：给元素树里定位不到的目标算出像素坐标，供转译层本次定位使用。
         // 只有"端侧在元素树里已经命中"的目标才跳过这一步——那种情况下转译层会直接精确定位到控件。
-        lastVisualCoordinate = null
+        // 不在这里清零 lastVisualCoordinate：坐标改为"消费一次"（转译前取走），上一步 see 的定位不再被本步冲掉
         val tTarget = intent.target
         // 视觉定位的触发条件从「只有 by=hint」放宽为「元素树里没命中」：
         // WebView/自绘页面里，AI 从视觉描述读到的文字往往并不在无障碍元素树中，
@@ -2494,7 +2675,7 @@ class AgentEngine(
                 isError = true,
                 content = "MCP 调用超时（${MCP_CALL_TIMEOUT_MS / 1000}s）：$target",
             )
-        val text = result.content.trim().take(MAX_MCP_OUTPUT)
+        val text = result.content.trim().take(MAX_MCP_OUTPUT).let { if (it.length == MAX_MCP_OUTPUT && it.last().isHighSurrogate()) it.dropLast(1) else it }
         val action = AgentAction(
             type = ActionType.MCP_CALL,
             reasoning = mcp.skill.description.take(60).ifBlank { label },
@@ -2840,7 +3021,9 @@ class AgentEngine(
                         entry?.uri != null -> executor.openUri(entry.uri)
                         entry?.intentAction != null -> executor.openSettingsAction(entry.intentAction)
                         entry?.packageName != null -> executor.launchApp(entry.packageName)
-                        else -> com.phoneagent.device.a11y.ActionExecutor.Result.Failure("未在软件页面索引中找到 ${action.app ?: "未知软件"} 页面${action.page ?: ""}")
+                        else -> com.phoneagent.device.a11y.ActionExecutor.Result.Failure(
+                            "未在软件页面索引中找到 ${action.app ?: "未知软件"} 页面${action.page?.toString() ?: "（未指定页码）"}",
+                        )
                     }.isSuccess()
                 }
             }
@@ -2848,7 +3031,12 @@ class AgentEngine(
             ActionType.HOME -> executeNoVerify(executor) { executor.home().isSuccess() }
             ActionType.RECENTS -> executeNoVerify(executor) { executor.recents().isSuccess() }
             ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.engine.execution.VerifyResult(true, "等待完成", "", "") }
-            ActionType.REFRESH -> com.phoneagent.engine.execution.VerifyResult(true, "刷新", "", "")
+            ActionType.REFRESH -> com.phoneagent.engine.execution.VerifyResult(
+                false,
+                "无障碍通道暂不支持直接刷新：请改用 refresh 意图点击页面刷新按钮，或下滑手势",
+                "",
+                "",
+            )
             else -> com.phoneagent.engine.execution.VerifyResult(false, "未知动作", "", "")
         }
         recordExecMs((System.nanoTime() - execT0) / 1_000_000)
@@ -3252,7 +3440,12 @@ class AgentEngine(
             "BACK" -> executeNoVerify(executor) { executor.back().isSuccess() }
             "HOME" -> executeNoVerify(executor) { executor.home().isSuccess() }
             "RECENT", "RECENTS" -> executeNoVerify(executor) { executor.recents().isSuccess() }
-            "ENTER" -> com.phoneagent.engine.execution.VerifyResult(true, "回车（假定键盘已确认）", "", "")
+            "ENTER" -> com.phoneagent.engine.execution.VerifyResult(
+                false,
+                "无障碍通道无法直接发送回车键：请改用点击页面上的发送/搜索按钮；若已开启 Shizuku/无线 ADB 可用 input keyevent 66",
+                "",
+                "",
+            )
             else -> com.phoneagent.engine.execution.VerifyResult(false, "未知按键 $keycode", "", "")
         }
     }

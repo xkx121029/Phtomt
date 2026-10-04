@@ -60,6 +60,7 @@ import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.feature.skill.Skill
 import com.phoneagent.feature.skill.SkillParam
 import com.phoneagent.feature.skill.SkillSource
+import com.phoneagent.domain.model.IntentType
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
@@ -86,6 +87,22 @@ internal fun SkillEditorDialog(
     var category by remember { mutableStateOf(initial?.category ?: "自定义") }
     var legacyIntent by remember { mutableStateOf(initial?.legacyIntent ?: "") }
     var params by remember { mutableStateOf(initial?.params?.map { it.toDraft() } ?: emptyList<ParamDraft>()) }
+
+    // 保存前预检：INTENT 技能要靠「legacyIntent ?: id 去前缀」映射到可执行意图才能被调用
+    // （与 SkillCompat.normalize 的 INTENT 分支同一判定）。这里不走真实 registry 模拟调用——
+    // 新技能尚未入库、被编辑技能若处于停用态都会让 normalize 误报；判定失败时阻止保存并展示原因，
+    // 否则存下来的就是一个永远调不动的死技能
+    val effectiveSource = initial?.source ?: SkillSource.INTENT
+    val effectiveIntent = legacyIntent.trim().ifBlank { suggestedId.removePrefix("skill_") }
+    val invocableError = if (effectiveSource == SkillSource.INTENT && effectiveIntent !in IntentType.ALL) {
+        if (legacyIntent.isBlank()) {
+            "旧命令意图留空，技能 ID 也映射不到可执行意图，保存后无法被调用；请填写意图名（如 open_app）"
+        } else {
+            "「${legacyIntent.trim()}」不是有效的意图名，保存后无法被调用"
+        }
+    } else {
+        null
+    }
 
     // 技能编辑器是一张长表单，用可滚动的页内浮层承载——不用系统 Dialog：
     // 系统弹窗自带另一套字体、圆角与入场方式，和全站浮层不是一套语言
@@ -127,10 +144,17 @@ internal fun SkillEditorDialog(
             )
             OutlinedTextField(
                 value = legacyIntent, onValueChange = { legacyIntent = it },
-                label = { Text("兼容旧命令意图（如 open_app，可留空）") },
+                label = { Text("兼容旧命令意图（如 open_app，留空将无法调用）") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            invocableError?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
 
             Text("参数（${params.size}）", style = MaterialTheme.typography.titleSmall)
             if (params.isEmpty()) {
@@ -154,7 +178,8 @@ internal fun SkillEditorDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(
-                    enabled = name.isNotBlank(),
+                    // 预检失败同样禁止保存：死技能不如不存
+                    enabled = name.isNotBlank() && invocableError == null,
                     onClick = {
                         val skillParams = params.mapNotNull { it.toParam() }
                         val base = initial?.copy(

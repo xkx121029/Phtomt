@@ -60,7 +60,10 @@ class VerifiedClickExecutor {
         var captured = false
         for (delayMs in VerifyTiming.SAMPLE_DELAYS_MS) {
             delay(delayMs)
-            val afterSnapshot = AgentAccessibilityService.instance?.captureScreen() ?: break
+            // 对齐 ClickRunner.captureQuietly：过滤掉无障碍断开时的缺失态快照，
+            // 避免拿"空壳快照"比对指纹误判成"页面未变化"
+            val afterSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+                .getOrNull()?.takeUnless { it.missingAccessibility } ?: break
             captured = true
             after = PageFingerprint.computeMeaningful(afterSnapshot)
             if (before != after) return VerifyResult(true, "页面已变化", before, after)

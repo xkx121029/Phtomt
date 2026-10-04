@@ -22,9 +22,9 @@ internal object PromptBodies {
     // ---- sys.iron ----
     internal val SYS_IRON_CN: String = """
     # 铁律（违反任何一条 = 任务失败）
-    1. 只输出纯 JSON：单步是一个对象（{ 开头、} 结尾）；满足「动作合并」时是一个数组（[ 开头、] 结尾）；禁止 ```json 或任何 Markdown 标记；JSON 前后不得有任何文字。
+    1. 只输出纯 JSON：单个意图对象（{ 开头、} 结尾），禁止输出 JSON 数组；禁止 ```json 或任何 Markdown 标记；JSON 前后不得有任何文字。
     2. {iron_rule_2}
-    3. 每步只输出一个意图（除非满足下方「动作合并」条件）。
+    3. 每步只输出一个意图；需要连续两个动作时输出第一个，下一步再做第二个。
     4. 严格按计划分步执行，不跳步，不合并无关操作；完成一步再进入下一步。
     5. 拿不准做什么 → 先尝试解决（关弹窗、滑动查找、换定位方式）；仍受阻 → give_up。禁止凭空猜一个意图来"试试"。
     6. 你是用户的手，不让用户操作手机，每步由你完成。
@@ -32,9 +32,9 @@ internal object PromptBodies {
     """.trimIndent()
     internal val SYS_IRON_EN: String = """
     # Iron Rules (violation = task failure)
-    1. Output pure JSON only: one step is one object ({ ... }); when "Action Merging" applies it is one array ([ ... ]); NEVER any ```json or Markdown markers; no text before/after the JSON.
+    1. Output pure JSON only: one single intent object ({ ... }), NEVER a JSON array; NEVER any ```json or Markdown markers; no text before/after the JSON.
     2. {iron_rule_2}
-    3. One intent per step (unless the "Action Merging" conditions below are met).
+    3. One intent per step; when two actions are needed in a row, output the first one and do the second on the next step.
     4. Follow the plan step by step. No skipping, no combining unrelated actions; finish one step before moving to the next.
     5. Unsure what to do → first try to resolve (dismiss dialog, scroll to find, switch targeting). If still stuck → give_up. NEVER fabricate an intent to "try".
     6. You are the user's hands. Never ask the user to operate. Every step by you.
@@ -425,16 +425,12 @@ internal object PromptBodies {
 
     // ---- sys.merge ----
     internal val SYS_MERGE_CN: String = """
-    # 动作合并（最多 2 个，仅当目标控件能从当前页面元素树读到、且第一个动作不跳页）
-    允许：输入+搜索 / 关弹窗+点击 / 短等待(≤2000ms)+点击（这里的等待是等界面落定，不是为了"确认"）/ 输入+回车。
-    禁止：第一个动作自身就会跳到新页面（第二个动作跳页是可以的——「输入+搜索」正是靠第二下进结果页）/ 第一个是 swipe / 元素树读不到目标控件（只能靠视觉定位，如整页是图片/图表）。
-    输出为一个 JSON 数组，数组里每个元素都是一份完整意图对象，字段要求与单步完全相同。
+    # 动作合并（已停用：端侧每次只执行数组中的第一个动作，第二个会被静默丢弃）
+    每次只输出一个意图，禁止输出 JSON 数组。需要连续两个动作时（如输入后搜索、先关弹窗再点击、短等待后点击、输入后回车），输出第一个动作，下一步再做第二个。
     """.trimIndent()
     internal val SYS_MERGE_EN: String = """
-    # Action Merging (max 2, only when the target control is readable from the current page's element tree and the first action doesn't navigate)
-    Allowed: input+search / dismiss dialog+click / short wait(≤2000ms)+click (that wait is for the UI to settle, not to "confirm") / input+enter.
-    Forbidden: the first action itself navigates (the second one may navigate — that is exactly how input+search reaches the results page) / first is swipe / target unreadable from the element tree (only locatable visually, e.g. the page is an image/chart).
-    Output as one JSON array; every element is a complete intent object with exactly the same fields as a single step.
+    # Action Merging (disabled: the device only executes the first intent of an array; the second one is silently dropped)
+    Output one single intent per step, NEVER a JSON array. When two actions are needed in a row (e.g. input then search, dismiss dialog then click, short wait then click, input then enter), output the first action and do the second on the next step.
     """.trimIndent()
 
     // ---- sys.forbidden ----
@@ -734,12 +730,12 @@ internal object PromptBodies {
     // ---- dec.output ----
     internal val DEC_OUTPUT_CN: String = """
     # 输出
-    正常 → 单个意图 JSON；满足合并条件（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）→ 数组，最多 2 个。
+    每次只输出一个意图（单个 JSON 对象），禁止输出 JSON 数组；需要连续两个动作时（输入+搜索 / 关弹窗+点击 / 短等待+点击 / 输入+回车）输出第一个，下一步再做第二个。
     只输出 JSON，禁止 ```json 标记，禁止 JSON 前后任何文字。
     """.trimIndent()
     internal val DEC_OUTPUT_EN: String = """
     # Output
-    Normal → single intent JSON; merge conditions met (input+search / dismiss dialog+click / short wait+click / input+enter) → array, max 2.
+    One intent per step (a single JSON object), NEVER a JSON array; when two actions are needed in a row (input+search / dismiss dialog+click / short wait+click / input+enter), output the first one and do the second on the next step.
     Output ONLY JSON. No ```json markers. No text before/after JSON.
     """.trimIndent()
 

@@ -226,7 +226,7 @@ object HtmlToMarkdown {
      */
     fun convert(html: String, baseUrl: String? = null, budget: Int = BUDGET): Result {
         if (html.isBlank()) return Result("", "", false)
-        val input = if (html.length > MAX_INPUT) html.substring(0, MAX_INPUT) else html
+        val input = if (html.length > MAX_INPUT) safeSubstring(html, MAX_INPUT) else html
         val meta = Meta()
         val cleaned = stripNoise(input, meta)
         val absBase = meta.base ?: meta.canonical ?: meta.ogUrl ?: baseUrl
@@ -253,13 +253,23 @@ object HtmlToMarkdown {
         if (md.length <= budget) return md
         val limit = budget - TRUNCATED_NOTE.length - 2
         if (limit <= 0) return TRUNCATED_NOTE
-        val head = md.substring(0, limit)
+        val head = safeSubstring(md, limit)
         val cut = head.lastIndexOf("\n\n").takeIf { it > 0 }
             ?: head.lastIndexOf('\n').takeIf { it > 0 }
             ?: head.length
         val body = repairCut(head.substring(0, cut)).trimEnd()
         if (body.isEmpty()) return TRUNCATED_NOTE
         return body + "\n\n" + TRUNCATED_NOTE
+    }
+
+    /**
+     * 代理对安全截断：落点前一个字符若是高代理项（emoji/生僻字等增补字符被切成两半）则回退一位，
+     * 保证截断结果不含残缺字符。
+     */
+    private fun safeSubstring(s: String, index: Int): String {
+        if (index >= s.length) return s
+        if (index <= 0) return ""
+        return if (s[index - 1].isHighSurrogate()) s.substring(0, index - 1) else s.substring(0, index)
     }
 
     /** 落点修复：末尾处在 `](...)`、未配平的 `[` 或行内标记中间时向前回退到安全位置 */
@@ -335,6 +345,12 @@ object HtmlToMarkdown {
                 continue
             }
             if (!tag.endTag && tag.name in DROP_TAGS) {
+                // script/style/noscript 的内容是原样文本（JS/样式里的伪标签会干扰子树配平），
+                // 单独整段跳过：绝不能让脚本/样式内容被当正文吐给 AI
+                if (tag.name in RAW_TEXT_TAGS) {
+                    i = skipRawText(html, tag)
+                    continue
+                }
                 val end = skipSubtree(html, tag)
                 captureMeta(html, tag, end, meta)
                 i = end
@@ -358,7 +374,10 @@ object HtmlToMarkdown {
         }
         when (tag.name) {
             "title" -> if (meta.title == null) {
-                val e = indexOfEndTag(html, "title", tag.end)
+                // 未闭合的 <title> 以前会一直吞到文末（indexOfEndTag 找不到闭合返回 src.length）：
+                // 最多取起始标签后 200 字符，保住标题的同时不吃掉正文
+                val close = indexOfEndTag(html, "title", tag.end)
+                val e = minOf(close, tag.end + TITLE_MAX_CHARS)
                 val raw = html.substring(tag.end, e)
                 meta.title = decodeEntities(raw).replace(WS_RE, " ").trim().ifBlank { null }
             }
@@ -443,7 +462,40 @@ object HtmlToMarkdown {
         return if (depth == 0) i else tag.end
     }
 
+    /**
+     * script/style/noscript 专用整段跳过（内容按原样文本处理，不做标签配平）。
+     * 以前走 [skipSubtree] 的"找不到闭合退回不丢"兜底，超长脚本（超出窗口）或未闭合时，
+     * 内容会留在清洗结果里被当成正文；这里改为：找得到闭合就连结束标签一起整段跳过，
+     * 找不到就保守只丢到下一个标签起点，不把未闭合脚本之后的正文一起吞掉。
+     */
+    private fun skipRawText(html: String, tag: Tag): Int {
+        if (tag.selfClosing) return tag.end
+        val close = indexOfEndTag(html, tag.name, tag.end)
+        if (close < html.length) {
+            val gt = html.indexOf('>', close)
+            return if (gt < 0) html.length else gt + 1
+        }
+        var j = tag.end
+        while (j < html.length) {
+            val lt = html.indexOf('<', j)
+            if (lt < 0) return html.length
+            if (lt + 1 < html.length) {
+                val c = html[lt + 1]
+                if (c.isLetter() || c == '/' || c == '!') return lt
+            }
+            j = lt + 1
+        }
+        return html.length
+    }
+
+    /** 原样文本类丢弃标签：内容是脚本/样式代码，不按子树结构配平 */
+    private val RAW_TEXT_TAGS = setOf("script", "style", "noscript")
+
     private const val SUBTREE_WINDOW = 500_000
+
+    /** 未闭合 `<title>` 的兜底取字上限 */
+    private const val TITLE_MAX_CHARS = 200
+
     private val WS_RE = Regex("\\s+")
 
     // ==================== 第二段：tokenize ====================

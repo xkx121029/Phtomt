@@ -320,7 +320,34 @@ class FloatingWindowService : Service() {
             return START_NOT_STICKY
         }
         showWindow()
+        // START_STICKY 被系统重建（intent 为 null）时：上一任务的真实状态已随进程丢失，
+        // 卡片不能继续摆出"任务进行中"的样子误导用户 —— 复位为空闲文案，等引擎重新推送
+        if (intent == null) {
+            resetToIdle()
+        }
         return START_STICKY
+    }
+
+    /** 任务卡片复位为空闲文案（sticky 重建路径）：标题/阶段/步骤/思考区/跑马灯/通知全部回到待命态 */
+    private fun resetToIdle() {
+        handler.post {
+            taskTitle?.text = "Happy Agent"
+            stepText?.text = "等待任务..."
+            phaseChip?.text = "待命"
+            phaseChip?.background = FloatingUi.capsule(
+                FloatingUi.RADIUS_CHIP / 2,
+                FloatingUi.phaseColor("PENDING"),
+            )
+            dot?.setBackgroundColor(dotColor("PENDING"))
+            stopDotPulse()
+            thinkingSentText?.text = ""
+            thinkingReturnText?.text = ""
+            lastSentShown = ""
+            marquee?.setText("等待任务...")
+            currentPhase = "PENDING"
+            applyMarqueeSettings()
+            updateNotification("等待任务...", "Happy Agent")
+        }
     }
 
     /**
@@ -723,7 +750,9 @@ class FloatingWindowService : Service() {
             setPadding(FloatingUi.PAD, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        // 关闭按钮：圆形胶囊，按压有反馈
+        // 关闭按钮：圆形胶囊，按压有反馈。
+        // 两段式确认：第一次点进入待确认态（文案变「再点确认停止」，2.5 秒后自动复位），
+        // 再次点击才真正回调 close 终止任务——一次误触不应杀掉正在执行的任务
         val close = TextView(this).apply {
             text = "✕"
             textSize = 12f
@@ -731,9 +760,33 @@ class FloatingWindowService : Service() {
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
             background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+            var closeArmed = false
             setOnClickListener {
-                onInteraction?.invoke("close", "")
-                stopSelf(); removeWindow()
+                if (!closeArmed) {
+                    // 第一段：进入待确认态（文案变长，宽度改为随内容自适应）
+                    closeArmed = true
+                    text = CLOSE_CONFIRM_LABEL
+                    textSize = 10f
+                    setPadding(FloatingUi.PAD_S, 0, FloatingUi.PAD_S, 0)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(26),
+                    )
+                    postDelayed({
+                        // 超时未确认：自动复位回「✕」，下次点击仍需两段确认
+                        if (closeArmed) {
+                            closeArmed = false
+                            text = "✕"
+                            textSize = 12f
+                            setPadding(0, 0, 0, 0)
+                            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+                        }
+                    }, CLOSE_CONFIRM_RESET_MS)
+                } else {
+                    // 第二段：用户已确认，才回调 close 并关闭悬浮窗
+                    onInteraction?.invoke("close", "")
+                    stopSelf(); removeWindow()
+                }
             }
         }
         // 详情开关：折叠态只显示三行，AI 的发送/返回/审核内容按需展开
@@ -1273,8 +1326,9 @@ class FloatingWindowService : Service() {
             }
             if (hasDelta) {
                 val cur = thinkingReturnText?.text?.toString().orEmpty()
-                // 限制展示长度，避免内容无限增长（完整内容由 AI 客户端保留用于解析）
-                thinkingReturnText?.text = (cur + delta).take(3000)
+                // 限制展示长度，避免内容无限增长（完整内容由 AI 客户端保留用于解析）；
+                // 返回区是流式追加，用户要看的是最新内容，超限时保留**尾部**（takeLast）
+                thinkingReturnText?.text = (cur + delta).takeLast(3000)
                 // 只有展开时才需要滚动到底：折叠状态下滚动位置没人看，做了也是白做
                 if (thinkingExpanded) {
                     thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
@@ -1766,6 +1820,12 @@ class FloatingWindowService : Service() {
         /** AI 思考写通知的最小间隔：流式增量每秒数次，逐条 notify 是跨进程调用 */
         private const val NOTIFY_THROTTLE_MS = 700L
 
+        /** 关闭按钮两段式确认：第一段显示的待确认文案 */
+        private const val CLOSE_CONFIRM_LABEL = "再点确认停止"
+
+        /** 关闭按钮待确认态自动复位的时长（毫秒） */
+        private const val CLOSE_CONFIRM_RESET_MS = 2500L
+
         /** 悬浮球直径（dp）：小到不挡操作，大到手指点得到 */
         private const val MINI_BALL_SIZE = 44
 
@@ -1824,35 +1884,49 @@ class FloatingWindowService : Service() {
 
         /**
          * 截图时隐藏悬浮窗 / 截图后恢复，避免悬浮窗出现在 AI 读屏画面中。
-         * 返回是否有悬浮窗服务实例在运行（无实例时调用方无需等待重绘）。
+         *
+         * 返回「本次调用确实隐藏了内容」：进入 handler.post **前**记录各窗口当前可见性，
+         * 只有原本可见的窗口才算本次隐藏（无实例或本来就全不可见时返回 false），
+         * 调用方据此决定是否需要恢复，避免对「没藏东西」的调用做无谓的恢复动作。
+         * 恢复分支会尊重用户手动隐藏状态（userHidden）：用户主动收起的面板不因截图恢复而弹回。
          */
         fun setVisible(visible: Boolean): Boolean {
             val svc = instance ?: return false
-            svc.handler.post {
-                svc.root?.visibility = if (visible) View.VISIBLE else View.GONE
-                // 跑马灯是独立窗口，截图时同样要藏起来（它浮在屏幕底部，一定会被截进画面）；
-                // 同样先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
-                if (!visible) {
+            // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
+            if (!visible) {
+                val rootShown = svc.root?.visibility == View.VISIBLE
+                val marqueeShown = svc.marquee?.visibility == View.VISIBLE
+                val miniShown = svc.miniRoot?.visibility == View.VISIBLE
+                val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
+                if (!rootShown && !marqueeShown && !miniShown && !sheetShown) return false
+                svc.handler.post {
+                    svc.root?.visibility = View.GONE
+                    // 跑马灯是独立窗口，截图时同样要藏起来（它浮在屏幕底部，一定会被截进画面）；
+                    // 同样先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
                     svc.barVisibleBeforeHide = svc.marquee?.visibility == View.VISIBLE
                     svc.marquee?.visibility = View.GONE
-                } else if (svc.barVisibleBeforeHide) {
+                    // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
+                    svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
+                    svc.miniRoot?.visibility = View.GONE
+                    // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
+                    // 截图前先记下它本来是否可见，截完按原样恢复
+                    svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
+                    svc.sheetRoot?.visibility = View.GONE
+                }
+                return true
+            }
+            svc.handler.post {
+                // 用户主动收起（userHidden）时面板保持隐藏：截图恢复不能推翻用户的收起操作
+                svc.root?.visibility = if (svc.userHidden) View.GONE else View.VISIBLE
+                if (svc.barVisibleBeforeHide) {
                     svc.marquee?.visibility = View.VISIBLE
                     svc.barVisibleBeforeHide = false
                 }
-                // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
-                if (!visible) {
-                    svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
-                    svc.miniRoot?.visibility = View.GONE
-                } else if (svc.miniVisibleBeforeHide) {
+                if (svc.miniVisibleBeforeHide) {
                     svc.miniRoot?.visibility = View.VISIBLE
                     svc.miniVisibleBeforeHide = false
                 }
-                // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
-                // 截图前先记下它本来是否可见，截完按原样恢复
-                if (!visible) {
-                    svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
-                    svc.sheetRoot?.visibility = View.GONE
-                } else if (svc.sheetVisibleBeforeHide) {
+                if (svc.sheetVisibleBeforeHide) {
                     svc.sheetRoot?.visibility = View.VISIBLE
                     svc.sheetVisibleBeforeHide = false
                 }

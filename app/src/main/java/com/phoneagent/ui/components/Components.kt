@@ -508,6 +508,13 @@ fun AppSnackbar(
     modifier: Modifier = Modifier,
 ) {
     val data = state.current
+    // 自动消失：普通提示 4s；带操作按钮的给 6s，留出点击时间。
+    // key 挂在 current 上：新一轮 show 会重启计时，不会把旧条的倒计时错套到新条
+    LaunchedEffect(state.current) {
+        val snack = state.current ?: return@LaunchedEffect
+        delay(if (snack.actionLabel != null) 6000L else 4000L)
+        state.dismiss()
+    }
     AnimatedVisibility(
         visible = data != null,
         enter = fadeIn(tween(DurationNormal, easing = EaseOut)) +

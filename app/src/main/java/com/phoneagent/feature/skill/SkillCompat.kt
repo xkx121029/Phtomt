@@ -247,7 +247,9 @@ object SkillCompat {
 
     /**
      * 把参数里的 target 文本解析为 [AgentIntentTarget]。
-     * 支持三种写法：`ctl_3` → by=id；`by:text:确认` → 显式指定 by；其余 → by=text。
+     * 支持四种写法：`ctl_3` → by=id；`by:text:确认` → 显式指定 by；
+     * CSS 选择器形态（`#login` / `.btn` / `/path` / 含 `[` 的属性选择器）→ by=id；
+     * 其余 → by=text。
      */
     fun parseTarget(raw: String): AgentIntentTarget {
         val s = raw.trim()
@@ -260,6 +262,12 @@ object SkillCompat {
                 val value = s.substring(idx + 1).trim()
                 if (by.isNotBlank() && value.isNotBlank()) return AgentIntentTarget(by = by, value = value)
             }
+        }
+        // CSS 选择器形态按扁平写法同款传 by=id，保证 {"args":{"target":"#login"}} 与
+        // {"target":{"by":"id","value":"#login"}} 等价（BrowserChannel 对 by=id 走 CSS 选择器定位）；
+        // 以前一律归 by=text，选择器会被当成"页面里的一段文字"去找，永远找不到
+        if (s.startsWith("#") || s.startsWith(".") || s.startsWith("/") || s.contains("[")) {
+            return AgentIntentTarget(by = "id", value = s)
         }
         return AgentIntentTarget(by = "text", value = s)
     }

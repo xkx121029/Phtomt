@@ -50,6 +50,13 @@ object ExternalVisionProvider {
     private const val LOAD_MODEL_TIMEOUT_MS = 60_000L   // 模型预加载
     private const val CONNECT_TIMEOUT_MS = 5_000L       // 连通性检查
 
+    /**
+     * 跨进程传输的位图长边上限：整屏（如 1080×2400）RGBA 字节数组约 10MB，
+     * 远超 binder 事务 1MB 限额，必抛 TransactionTooLargeException；降采样到该值后约 0.9MB。
+     * 外挂端返回归一化坐标，缩小不影响坐标语义，仅轻微损失小字文本可读性。
+     */
+    private const val MAX_IPC_EDGE = 480
+
     @Volatile
     private var service: IVisionService? = null
 
@@ -137,9 +144,20 @@ object ExternalVisionProvider {
     ): List<DetectedControl> = withContext(Dispatchers.Default) {
         if (!bindOnMain(context)) return@withContext emptyList()
         val svc = awaitService(timeoutMs) ?: return@withContext emptyList()
-        val rgba = bitmapToRgba(bitmap)
+        // 先降采样再转 RGBA：整屏原尺寸数组会撑爆 binder 事务缓冲
+        val scaled = downscaleForIpc(bitmap)
+        val rgba: ByteArray
+        val w: Int
+        val h: Int
+        try {
+            rgba = bitmapToRgba(scaled)
+            w = scaled.width
+            h = scaled.height
+        } finally {
+            if (scaled !== bitmap) scaled.recycle()
+        }
         val jsonStr = withTimeoutOrNull(timeoutMs) {
-            runCatching { svc.detectControls(rgba, bitmap.width, bitmap.height, "") }.getOrNull()
+            runCatching { svc.detectControls(rgba, w, h, "") }.getOrNull()
         } ?: run {
             Log.w(TAG, "外挂识别超时，返回空")
             return@withContext emptyList()
@@ -182,9 +200,20 @@ object ExternalVisionProvider {
     ): Pair<Float, Float>? = withContext(Dispatchers.Default) {
         if (!bindOnMain(context)) return@withContext null
         val svc = awaitService(timeoutMs) ?: return@withContext null
-        val rgba = bitmapToRgba(bitmap)
+        // 与 detectControls 同理：先降采样再转 RGBA，避免 binder 事务超限
+        val scaled = downscaleForIpc(bitmap)
+        val rgba: ByteArray
+        val w: Int
+        val h: Int
+        try {
+            rgba = bitmapToRgba(scaled)
+            w = scaled.width
+            h = scaled.height
+        } finally {
+            if (scaled !== bitmap) scaled.recycle()
+        }
         val s = withTimeoutOrNull(timeoutMs) {
-            runCatching { svc.locate(rgba, bitmap.width, bitmap.height, targetText) }.getOrNull()
+            runCatching { svc.locate(rgba, w, h, targetText) }.getOrNull()
         } ?: return@withContext null
         parseCoord(s)
     }
@@ -251,6 +280,19 @@ object ExternalVisionProvider {
     }
 
     // ---------------- 图像转换 ----------------
+
+    /**
+     * 跨进程传输前的降采样：长边超过 [MAX_IPC_EDGE] 时按宽高比缩到该值（双线性插值）。
+     * 尺寸已达标时原样返回调用方位图（不产生副本，调用方据此跳过 recycle）。
+     */
+    private fun downscaleForIpc(bmp: Bitmap): Bitmap {
+        val longEdge = maxOf(bmp.width, bmp.height)
+        if (longEdge <= MAX_IPC_EDGE) return bmp
+        val scale = MAX_IPC_EDGE.toFloat() / longEdge
+        val w = maxOf(1, (bmp.width * scale).toInt())
+        val h = maxOf(1, (bmp.height * scale).toInt())
+        return runCatching { Bitmap.createScaledBitmap(bmp, w, h, true) }.getOrNull() ?: bmp
+    }
 
     private fun bitmapToRgba(bmp: Bitmap): ByteArray {
         val w = bmp.width

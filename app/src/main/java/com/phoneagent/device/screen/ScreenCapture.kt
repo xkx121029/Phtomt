@@ -17,7 +17,8 @@ object ScreenCapture {
     /** 当前是否有任一截图源可用（用于状态展示，不做真实截图） */
     fun available(): Boolean =
         AgentAccessibilityService.instance?.canScreenshot() == true ||
-            ScreenSharingService.instance != null
+            // MediaProjection 路径还要求投影仍有效：服务被系统重建后 instance 在而投影已丢
+            ScreenSharingService.instance?.hasProjection == true
 
     /** 抓取当前屏幕 Bitmap；无可用截图源时返回 null */
     suspend fun capture(): Bitmap? {

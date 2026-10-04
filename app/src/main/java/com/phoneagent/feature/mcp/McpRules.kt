@@ -43,10 +43,15 @@ object McpRules {
         return McpValidation(true)
     }
 
-    /** 校验名称在现有列表中是否唯一（排除自身） */
-    fun validateUniqueName(name: String, existing: List<McpServerConfig>): McpValidation {
-        if (existing.any { it.name.equals(name.trim(), ignoreCase = true) && !it.name.equals(name.trim()) }) {
-            return McpValidation(false, "服务器名「${name.trim()}」已存在")
+    /**
+     * 校验名称在现有列表中是否唯一（忽略大小写判重）。
+     * 旧实现把条件写反：只拒绝"大小写不同"的，完全同名的反而放行。
+     * @param excludeId 编辑场景排除自身（本项目服务器标识就是 name，见 [McpManager.removeServer]）
+     */
+    fun validateUniqueName(name: String, existing: List<McpServerConfig>, excludeId: String? = null): McpValidation {
+        val n = name.trim()
+        if (existing.any { it.name != excludeId && it.name.equals(n, ignoreCase = true) }) {
+            return McpValidation(false, "服务器名「$n」已存在")
         }
         return McpValidation(true)
     }

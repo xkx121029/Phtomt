@@ -6,7 +6,10 @@ import android.util.Base64
 import android.util.Log
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -19,6 +22,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 /**
  * OpenAI 兼容的 AI 客户端，用于调用 GLM 等模型。
@@ -163,14 +167,14 @@ class AiClient(
             "app": { "type": "string" },
             "text": { "type": "string" },
             "direction": { "type": "string", "enum": ["up","down","left","right"] },
-            "distancePx": { "type": "integer" },
+            "distance_px": { "type": "integer" },
             "key": { "type": "string" },
-            "durationMs": { "type": "integer" },
+            "duration_ms": { "type": "integer" },
             "wait_ms": { "type": "integer" },
             "summary": { "type": "string" },
             "reason": { "type": "string" },
             "uri": { "type": "string" },
-            "page": { "type": "integer" },
+            "page": { "type": "string" },
             "reasoning": { "type": "string" },
             "expected": { "type": "string" },
             "confidence": { "type": "number" },
@@ -224,44 +228,56 @@ class AiClient(
             for (attempt in 0 until MAX_RETRIES) {
                 if (attempt > 0) {
                     onRetry?.invoke()
-                    backoffSleep(status, attempt) ?: break
+                    if (!backoffSleep(status, attempt)) break
                 }
                 try {
-                        full.setLength(0)
-                        lastUsage = null
-                        sawReasoning = false
-                        var streamFailed = false
-                    client.newCall(request).execute().use { resp ->
-                        status = resp.code
-                        if (!resp.isSuccessful) {
-                            val body = resp.body?.string().orEmpty()
-                            lastErr = httpErrorText(resp, body)
-                            streamFailed = true
-                            return@use
-                        }
-                        resp.body?.source()?.use { source ->
-                            while (!source.exhausted()) {
-                                val line = source.readUtf8Line() ?: break
-                                if (line.isBlank() || !line.startsWith("data:")) continue
-                                val payload = line.removePrefix("data:").trim()
-                                if (payload == "[DONE]") break
-                                val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
-                                val delta = chunk?.choices?.firstOrNull()?.delta
-                                val content = delta?.content.orEmpty()
-                                val reasoning = delta?.reasoning_content.orEmpty()
-                                if (reasoning.isNotEmpty()) sawReasoning = true
-                                // 思考内容优先展示（边思考边输出）
-                                val display = if (content.isNotEmpty()) content else reasoning
-                                if (display.isNotEmpty()) onDelta(display)
-                                // 完整正文只累积 content（用于最终解析 JSON）
-                                if (content.isNotEmpty()) full.append(content)
-                                // 末块可能携带 usage（stream_options.include_usage）
-                                runCatching { json.decodeFromString<ChatResponse>(payload).usage }
-                                    ?.getOrNull()?.let { lastUsage = it }
+                    full.setLength(0)
+                    lastUsage = null
+                    sawReasoning = false
+                    var streamFailed = false
+                    val call = client.newCall(request)
+                    // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
+                    val handle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+                    try {
+                        call.execute().use { resp ->
+                            status = resp.code
+                            if (!resp.isSuccessful) {
+                                val body = resp.body?.string().orEmpty()
+                                lastErr = httpErrorText(resp, body)
+                                streamFailed = true
+                                return@use
+                            }
+                            resp.body?.source()?.use { source ->
+                                while (!source.exhausted()) {
+                                    val line = source.readUtf8Line() ?: break
+                                    if (line.isBlank() || !line.startsWith("data:")) continue
+                                    val payload = line.removePrefix("data:").trim()
+                                    if (payload == "[DONE]") break
+                                    val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
+                                    val delta = chunk?.choices?.firstOrNull()?.delta
+                                    val content = delta?.content.orEmpty()
+                                    val reasoning = delta?.reasoning_content.orEmpty()
+                                    if (reasoning.isNotEmpty()) sawReasoning = true
+                                    // 思考内容优先展示（边思考边输出）
+                                    val display = if (content.isNotEmpty()) content else reasoning
+                                    if (display.isNotEmpty()) onDelta(display)
+                                    // 完整正文只累积 content（用于最终解析 JSON）
+                                    if (content.isNotEmpty()) full.append(content)
+                                    // 末块可能携带 usage（stream_options.include_usage）
+                                    runCatching { json.decodeFromString<ChatResponse>(payload).usage }
+                                        ?.getOrNull()?.let { lastUsage = it }
+                                }
                             }
                         }
+                    } finally {
+                        handle?.dispose()
                     }
-                    if (streamFailed) continue
+                    if (streamFailed) {
+                        // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
+                        // （对齐能力探测链路 probeBlocker 的"整体失败"口径）
+                        if (status == 401 || status == 403 || status == 404) break
+                        continue
+                    }
                     val content = full.toString()
                     if (content.isBlank()) {
                         // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
@@ -293,16 +309,20 @@ class AiClient(
                         thinking = sawReasoning,
                     )
                 } catch (e: Exception) {
+                    // 协程取消必须穿透重试循环向上传播，不能被当成普通失败吞掉
+                    if (e is CancellationException) throw e
                     status = -1
                     lastErr = e.message
                 }
             }
             error(lastErr ?: "AI 未返回内容")
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     /**
      * 通用文本对话：返回模型原始输出（用于规划/澄清/验证等非动作场景）。
+     * 历史版本曾强制 response_format=json_object，与"返回原始输出"的契约矛盾；
+     * 现与 [chatText] 合并：不强制 JSON 模式，需要 JSON 的调用方自行从正文中提取解析。
      */
     suspend fun chat(
         baseUrl: String,
@@ -310,18 +330,7 @@ class AiClient(
         model: String,
         messages: List<ChatMessageDto>,
         temperature: Double,
-    ): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val requestBody = buildTextRequestBody(messages, model, temperature)
-            val request = Request.Builder()
-                .url(chatCompletionsUrl(baseUrl))
-                .header("Authorization", "Bearer $apiKey")
-                .post(requestBody)
-                .build()
-
-            executeWithRetry(request)
-        }
-    }
+    ): Result<String> = chatText(baseUrl, apiKey, model, messages, temperature)
 
     /**
      * 普通文本对话（不强制 json_object）：返回模型原始输出。
@@ -343,7 +352,7 @@ class AiClient(
                 .build()
 
             executeWithRetry(request)
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     /** 无结构化约束、无 JSON 模式的文本请求体 */
@@ -407,7 +416,7 @@ class AiClient(
             // 要坐标时解析失败不算整体失败：正文照旧带回去，让调用方按"没拿到坐标"降级处理
             val coord = if (wantCoord) runCatching { parseCoordinate(content) }.getOrNull() else null
             VisionAnswer(text = content, x = coord?.first, y = coord?.second)
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     // ==================== 模型枚举与能力探测 ====================
@@ -442,7 +451,7 @@ class AiClient(
     /**
      * 真实请求探测单个模型的能力：文本 → 识图 → 工具，前一步整体失败即短路。
      *
-     * 不复用 [executeWithRetry]：其 429 退避（2/4/8/16s）会把探测拖到分钟级，且会把
+     * 不复用 [executeWithRetry]：其 429 退避（4/8/16/32s）会把探测拖到分钟级，且会把
      * 「`finish_reason=tool_calls` + `content=null`」误判成"AI 返回空内容"。
      * 能力值 `null` = 未测出（服务端 400/5xx、网关改写、200 但空正文），与"不支持"（`false`）区分开。
      */
@@ -587,44 +596,60 @@ class AiClient(
 
     /**
      * 执行非流式请求并返回模型正文，带 429 退避重试。
-     * - 429（限流）：指数退避 2s/4s/8s/16s，最多 5 次尝试
+     * - 429（限流）：指数退避 4s/8s/16s/32s，最多 5 次尝试
+     * - 401/403/404（鉴权/地址错误）：不重试，直接失败（对齐能力探测链路 probeBlocker 的"整体失败"口径）
      * - 其他失败：快速重试 1 次（800ms）
      */
-    private fun executeWithRetry(request: Request): String {
+    private suspend fun executeWithRetry(request: Request): String {
         var status = -1
         var lastErr: String? = null
         for (attempt in 0 until MAX_RETRIES) {
-            if (attempt > 0) backoffSleep(status, attempt) ?: break
+            if (attempt > 0) {
+                if (!backoffSleep(status, attempt)) break
+            }
             try {
                 var failed = false
-                client.newCall(request).execute().use { resp ->
-                    status = resp.code
-                    val body = resp.body?.string().orEmpty()
-                    if (!resp.isSuccessful) {
-                        lastErr = httpErrorText(resp, body)
+                val call = client.newCall(request)
+                // 协程取消时同步取消 OkHttp 请求；请求结束后反注册回调
+                val handle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+                try {
+                    call.execute().use { resp ->
+                        status = resp.code
+                        val body = resp.body?.string().orEmpty()
+                        if (!resp.isSuccessful) {
+                            lastErr = httpErrorText(resp, body)
+                            failed = true
+                            return@use
+                        }
+                        val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull()
+                        if (parsed == null) {
+                            // 200 但正文不是预期 JSON（网关改写 / HTML 提示页）：保留原始返回，避免只剩解析异常
+                            lastErr = httpErrorText(resp, body)
+                            failed = true
+                            return@use
+                        }
+                        if (parsed.error != null) {
+                            lastErr = httpErrorText(resp, body)
+                            failed = true
+                            return@use
+                        }
+                        val content = parsed.choices.firstOrNull()?.message?.content?.trim()
+                        if (content != null) return content
+                        lastErr = "AI 返回空内容\n返回内容：${body.trim().ifEmpty { "（响应体为空）" }}"
                         failed = true
-                        return@use
                     }
-                    val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull()
-                    if (parsed == null) {
-                        // 200 但正文不是预期 JSON（网关改写 / HTML 提示页）：保留原始返回，避免只剩解析异常
-                        lastErr = httpErrorText(resp, body)
-                        failed = true
-                        return@use
-                    }
-                    if (parsed.error != null) {
-                        lastErr = httpErrorText(resp, body)
-                        failed = true
-                        return@use
-                    }
-                    val content = parsed.choices.firstOrNull()?.message?.content?.trim()
-                    if (content != null) return content
-                    lastErr = "AI 返回空内容\n返回内容：${body.trim().ifEmpty { "（响应体为空）" }}"
-                    failed = true
+                } finally {
+                    handle?.dispose()
                 }
-                if (failed) continue
+                if (failed) {
+                    // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
+                    if (status == 401 || status == 403 || status == 404) break
+                    continue
+                }
                 error("AI 未返回内容")
             } catch (e: Exception) {
+                // 协程取消必须向上传播，不能被当成普通失败吞掉
+                if (e is CancellationException) throw e
                 status = -1
                 lastErr = e.message
             }
@@ -661,12 +686,15 @@ class AiClient(
     private fun buildRequest(request: ChatRequest): okhttp3.RequestBody =
         json.encodeToString(ChatRequest.serializer(), request).toRequestBody(jsonMediaType)
 
-    /** 退避等待：429 指数退避，其他最多重试 1 次；返回 false 表示不再重试 */
-    private fun backoffSleep(status: Int, attempt: Int): Boolean {
+    /**
+     * 退避等待：429 指数退避（4s/8s/16s/32s，随 attempt 递增），其他最多重试 1 次。
+     * 返回 false 表示不再重试。用 suspend delay 而非 Thread.sleep，保证协程取消能即时生效。
+     */
+    private suspend fun backoffSleep(status: Int, attempt: Int): Boolean {
         return when {
-            status == 429 -> { Thread.sleep(BASE_429_DELAY_MS shl attempt); true }
+            status == 429 -> { delay(BASE_429_DELAY_MS shl attempt); true }
             attempt >= MAX_NON_429_RETRIES -> false
-            else -> { Thread.sleep(INITIAL_DELAY_MS); true }
+            else -> { delay(INITIAL_DELAY_MS); true }
         }
     }
 
@@ -707,15 +735,6 @@ class AiClient(
         error("无法解析坐标：$content")
     }
 
-    /** 无结构化约束的文本请求体 */
-    private fun buildTextRequestBody(
-        messages: List<ChatMessageDto>,
-        model: String,
-        temperature: Double,
-    ): okhttp3.RequestBody = buildRequest(
-        ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, response_format = ResponseFormat(type = "json_object")),
-    )
-
     /**
      * 流式对话（SSE）：边生成边通过 onDelta 回调增量文本，返回完整正文。
      * 用于规划/思考阶段，避免用户长时间空等。
@@ -745,48 +764,62 @@ class AiClient(
             for (attempt in 0 until MAX_RETRIES) {
                 if (attempt > 0) {
                     onRetry?.invoke()
-                    backoffSleep(status, attempt) ?: break
+                    if (!backoffSleep(status, attempt)) break
                 }
                 try {
                     // 每次尝试独立累积，避免流中断重试后新旧内容拼接导致重复
                     full.setLength(0)
                     var streamFailed = false
-                    client.newCall(request).execute().use { resp ->
-                        status = resp.code
-                        if (!resp.isSuccessful) {
-                            val body = resp.body?.string().orEmpty()
-                            lastErr = httpErrorText(resp, body)
-                            streamFailed = true
-                            return@use
-                        }
-                        resp.body?.source()?.use { source ->
-                            while (!source.exhausted()) {
-                                val line = source.readUtf8Line() ?: break
-                                if (line.isBlank() || !line.startsWith("data:")) continue
-                                val payload = line.removePrefix("data:").trim()
-                                if (payload == "[DONE]") break
-                                val delta = runCatching {
-                                    json.decodeFromString<StreamChunk>(payload).choices.firstOrNull()?.delta
-                                }.getOrNull()
-                                val content = delta?.content.orEmpty()
-                                val reasoning = delta?.reasoning_content.orEmpty()
-                                // 思考内容优先展示（边思考边输出）
-                                val display = if (content.isNotEmpty()) content else reasoning
-                                if (display.isNotEmpty()) onDelta(display)
-                                // 完整正文只累积 content（用于最终解析 JSON）
-                                if (content.isNotEmpty()) full.append(content)
+                    val call = client.newCall(request)
+                    // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
+                    val handle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+                    try {
+                        call.execute().use { resp ->
+                            status = resp.code
+                            if (!resp.isSuccessful) {
+                                val body = resp.body?.string().orEmpty()
+                                lastErr = httpErrorText(resp, body)
+                                streamFailed = true
+                                return@use
+                            }
+                            resp.body?.source()?.use { source ->
+                                while (!source.exhausted()) {
+                                    val line = source.readUtf8Line() ?: break
+                                    if (line.isBlank() || !line.startsWith("data:")) continue
+                                    val payload = line.removePrefix("data:").trim()
+                                    if (payload == "[DONE]") break
+                                    val delta = runCatching {
+                                        json.decodeFromString<StreamChunk>(payload).choices.firstOrNull()?.delta
+                                    }.getOrNull()
+                                    val content = delta?.content.orEmpty()
+                                    val reasoning = delta?.reasoning_content.orEmpty()
+                                    // 思考内容优先展示（边思考边输出）
+                                    val display = if (content.isNotEmpty()) content else reasoning
+                                    if (display.isNotEmpty()) onDelta(display)
+                                    // 完整正文只累积 content（用于最终解析 JSON）
+                                    if (content.isNotEmpty()) full.append(content)
+                                }
                             }
                         }
+                    } finally {
+                        handle?.dispose()
                     }
-                    if (streamFailed) continue
+                    if (streamFailed) {
+                        // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
+                        // （对齐能力探测链路 probeBlocker 的"整体失败"口径）
+                        if (status == 401 || status == 403 || status == 404) break
+                        continue
+                    }
                     return@runCatching full.toString()
                 } catch (e: Exception) {
+                    // 协程取消必须穿透重试循环向上传播，不能被当成普通失败吞掉
+                    if (e is CancellationException) throw e
                     status = -1
                     lastErr = e.message
                 }
             }
             error(lastErr ?: "AI 未返回内容")
-        }
+        }.onFailure { if (it is CancellationException) throw it }
     }
 
     /** 流式文本请求体（stream=true）；规划阶段用 extractJsonObject 解析，故不强制 response_format */

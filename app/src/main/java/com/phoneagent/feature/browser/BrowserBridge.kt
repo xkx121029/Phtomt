@@ -379,7 +379,13 @@ object BrowserBridge {
                 sb.append('\n')
             }
         }
-        return sb.toString().trimEnd().take(MAX_RESULT_CHARS)
+        return safeTake(sb.toString().trimEnd(), MAX_RESULT_CHARS)
+    }
+
+    /** 代理对安全截断：落点若是高代理项（emoji/生僻字等增补字符被切成两半）则回退一位 */
+    private fun safeTake(s: String, max: Int): String {
+        if (s.length <= max) return s
+        return if (s[max - 1].isHighSurrogate()) s.substring(0, max - 1) else s.substring(0, max)
     }
 
     /** 可操作元素清单的预留长度：清单比旧的"输入框+按钮"两行表长得多，不能让正文挤掉它 */

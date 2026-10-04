@@ -20,7 +20,6 @@ class EdgeLightingService : Service() {
     private var windowManager: WindowManager? = null
     private var lightingView: EdgeLightingView? = null
     private var params: WindowManager.LayoutParams? = null
-    private var isPreviewMode = false
     /** 是否正处于任务运行光效模式（区别于设置页标定预览） */
     private var isRunning = false
 
@@ -32,7 +31,13 @@ class EdgeLightingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // START_STICKY 被系统重建时 intent 为 null：上一场光效的生命周期已随进程丢失，
+        // 不能走 else 分支无条件 showOverlay() 让光效「死而复生」——直接自杀（onDestroy 会清理 overlay）
+        if (intent == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        when (intent.action) {
             ACTION_STOP -> {
                 isRunning = false
                 removeOverlay()
@@ -40,7 +45,6 @@ class EdgeLightingService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_PREVIEW_START -> {
-                isPreviewMode = true
                 showOverlay()
                 val top = intent.getIntExtra("inset_top", 0)
                 val bottom = intent.getIntExtra("inset_bottom", 0)
@@ -54,7 +58,6 @@ class EdgeLightingService : Service() {
                 return START_STICKY
             }
             ACTION_PREVIEW_STOP -> {
-                isPreviewMode = false
                 if (isRunning) {
                     // 任务运行中的光效不应被设置页收起标定误关，仅退出预览模式
                     lightingView?.setPreviewMode(false)
@@ -77,16 +80,15 @@ class EdgeLightingService : Service() {
                 return START_STICKY
             }
             else -> {
-                isPreviewMode = false
                 isRunning = true
                 showOverlay()
-                val top = intent?.getIntExtra("inset_top", 0) ?: 0
-                val bottom = intent?.getIntExtra("inset_bottom", 0) ?: 0
-                val left = intent?.getIntExtra("inset_left", 0) ?: 0
-                val right = intent?.getIntExtra("inset_right", 0) ?: 0
-                val radius = intent?.getIntExtra("corner_radius", 0) ?: 0
-                val speed = intent?.getFloatExtra("speed", 0.3f) ?: 0.3f
-                val width = intent?.getIntExtra("edge_width", 20) ?: 20
+                val top = intent.getIntExtra("inset_top", 0)
+                val bottom = intent.getIntExtra("inset_bottom", 0)
+                val left = intent.getIntExtra("inset_left", 0)
+                val right = intent.getIntExtra("inset_right", 0)
+                val radius = intent.getIntExtra("corner_radius", 0)
+                val speed = intent.getFloatExtra("speed", 0.3f)
+                val width = intent.getIntExtra("edge_width", 20)
                 updateCalibration(top, bottom, left, right, radius, width, speed)
                 lightingView?.setPreviewMode(false)
             }

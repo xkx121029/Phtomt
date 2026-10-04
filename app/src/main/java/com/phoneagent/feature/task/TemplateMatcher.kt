@@ -16,6 +16,8 @@ object TemplateMatcher {
     /** 从候选模板中按目标相似度选出最匹配的健康模板；无命中返回 null */
     fun match(goal: String, templates: List<TaskTemplate>): TaskTemplate? {
         if (goal.isBlank()) return null
+        // 去符号后无任何字母/数字/汉字的目标没有可匹配语义，直接不命中
+        if (goal.none { it.isLetterOrDigit() }) return null
         val g = biGrams(goal)
         return templates
             .filter { it.enabled && it.failedStreak < 3 }
@@ -25,9 +27,10 @@ object TemplateMatcher {
             ?.first
     }
 
-    /** 中文字符串的 bigram（双字）切分；不足两个字符时整体作为单元素集合 */
+    /** 中文字符串的 bigram（双字）切分；不足两个字符时整体作为单元素集合；无有效字符时返回空集 */
     fun biGrams(s: String): Set<String> {
         val chars = s.filter { it.isLetterOrDigit() }
+        if (chars.isEmpty()) return emptySet()
         if (chars.length < 2) return setOf(chars)
         return (0 until chars.length - 1).map { chars.substring(it, it + 2) }.toSet()
     }

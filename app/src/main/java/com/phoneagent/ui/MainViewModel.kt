@@ -171,6 +171,15 @@ class MainViewModel(
     val pendingShellCommand: StateFlow<String?> = engine.pendingShellCommand
     fun resolveShellApproval(approve: Boolean) = engine.resolveShellApproval(approve)
 
+    // ---- 不可逆动作确认门：App 内任务流的确认卡与悬浮窗共用引擎的同一信箱 ----
+    /** 引擎正在等待用户确认的不可逆动作（null = 无待确认项）；驱动任务流里的确认卡片 */
+    val pendingActionConfirmation: StateFlow<AgentEngine.PendingActionConfirmation?> =
+        engine.pendingActionConfirmation
+    /** 确认执行该动作 */
+    fun confirmPendingAction() = engine.respondActionConfirmation(true)
+    /** 拒绝该动作（AI 会换做法或中止该步） */
+    fun denyPendingAction() = engine.respondActionConfirmation(false)
+
     private val _a11yEnabled = MutableStateFlow(false)
     val a11yEnabled: StateFlow<Boolean> get() = _a11yEnabled.asStateFlow()
 
@@ -236,8 +245,16 @@ class MainViewModel(
         context.startActivity(intent)
     }
 
+    /**
+     * 无障碍「真正可用」的统一口径：系统设置里的服务开关已打开，且服务实例已连接。
+     * 只查开关会漏掉「开关开着但实例没连上」（服务被系统杀掉/未拉起）的情况，
+     * 只查实例则覆盖不了开机未拉起的状态——两个条件同时满足才算可用。
+     */
+    private fun a11yUsable(context: Context): Boolean =
+        AgentAccessibilityService.isServiceEnabled(context) && AgentAccessibilityService.instance != null
+
     fun refreshStatus(context: Context) {
-        _a11yEnabled.value = AgentAccessibilityService.isServiceEnabled(context)
+        _a11yEnabled.value = a11yUsable(context)
         refreshOverlayPermission(context)
         shizukuManager.refreshState()
     }
@@ -391,9 +408,9 @@ class MainViewModel(
         viewModelScope.launch { settings.update(value) }
     }
 
-    fun refreshA11yState() {
-        // 由 UI 在页面可见时调用，读取无障碍服务实例状态
-        _a11yEnabled.value = AgentAccessibilityService.instance != null
+    /** 由 UI 在页面可见时调用，与 [refreshStatus] 走同一个口径（开关已开 + 实例已连接） */
+    fun refreshA11yState(context: Context) {
+        _a11yEnabled.value = a11yUsable(context)
     }
 
     fun startAgent(task: String) {
@@ -566,22 +583,36 @@ class MainViewModel(
         viewModelScope.launch { skillRegistry.remove(id); refreshSkills() }
     }
 
-    /** 批量删除：返回成功删除数量 */
-    fun removeSkills(ids: Set<String>): Int {
-        val n = skillRegistry.removeAll(ids)
-        refreshSkills()
-        return n
+    /**
+     * 批量删除：解析与删除在 Default 线程执行（含持久化 IO），结果回主线程后再刷新快照。
+     * @param onResult 主线程回调，参数为成功删除的数量
+     */
+    fun removeSkills(ids: Set<String>, onResult: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val n = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                skillRegistry.removeAll(ids)
+            }
+            refreshSkills()
+            onResult(n)
+        }
     }
 
     fun setSkillEnabled(id: String, enabled: Boolean) {
         viewModelScope.launch { skillRegistry.setEnabled(id, enabled); refreshSkills() }
     }
 
-    /** 导入技能清单（JSON 文本），返回导入数量 */
-    fun importSkills(text: String): Int {
-        val report = skillRegistry.importJson(text)
-        refreshSkills()
-        return report.imported
+    /**
+     * 导入技能清单（JSON 文本）：JSON 解析在 Default 线程执行，结果回主线程刷新快照。
+     * @param onResult 主线程回调，参数为导入数量（解析失败按 0 处理，不抛到主线程）
+     */
+    fun importSkills(text: String, onResult: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val imported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                runCatching { skillRegistry.importJson(text).imported }.getOrDefault(0)
+            }
+            refreshSkills()
+            onResult(imported)
+        }
     }
 
     fun exportSkills(): String = skillRegistry.exportJson()

@@ -24,9 +24,9 @@ data class AnnotatedPage(
  */
 object PageAnnotator {
 
-    /** 弹窗正向按钮关键词 */
+    /** 弹窗正向按钮关键词（英文词走整词匹配，避免子串误伤） */
     private val dialogPositive = listOf("允许", "同意", "确定", "知道了", "始终允许", "授权", "resume", "continue", "ok")
-    /** 弹窗关闭按钮关键词 */
+    /** 弹窗关闭按钮关键词（英文词走整词匹配，避免子串误伤） */
     private val dialogDismiss = listOf("关闭", "取消", "以后再说", "跳过", "稍后", "x", "✕", "no", "cancel")
     /** 加载中关键词 */
     private val loadingWords = listOf("加载中", "请稍候", "请稍等", "loading")
@@ -37,9 +37,20 @@ object PageAnnotator {
     /** 倒计时广告关键词 */
     private val countdownWords = listOf("跳过", "秒", "广告")
 
+    /**
+     * 整词匹配：中文词用 contains；纯 ASCII 词用 \b 词边界（大小写不敏感）。
+     * 避免 "resume" 命中 "preserved"、"ok" 命中 "broker" 这类英文子串误伤。
+     */
+    private fun matchesWord(label: String, token: String): Boolean =
+        if (token.all { it.code < 128 }) {
+            Regex("""\b${Regex.escape(token)}\b""", RegexOption.IGNORE_CASE).containsMatchIn(label)
+        } else {
+            label.contains(token)
+        }
+
     // ---- 语义 id 标定词表（扩展类别） ----
-    /** 返回键 */
-    private val backWords = listOf("返回", "退出", "向上")
+    /** 返回键（不含"退出"——"退出登录"这类按钮不是系统返回键） */
+    private val backWords = listOf("返回", "向上")
     /** 发送 */
     private val sendWords = listOf("发送", "发表")
     /** 确认/保存 */
@@ -117,7 +128,7 @@ object PageAnnotator {
         // 1) 弹窗正向按钮（允许/同意/确定/授权…）
         putOnce("dlg_allow") { e ->
             e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                dialogPositive.any { l.contains(it, ignoreCase = true) }
+                dialogPositive.any { matchesWord(l, it) }
             }
         }
         // 2) 弹窗关闭按钮：仅当确认为"真弹窗"（有正向按钮且元素稀疏）才标定，避免误判普通页"取消"
@@ -125,7 +136,7 @@ object PageAnnotator {
         if (isDialog) {
             putOnce("dlg_dismiss") { e ->
                 e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                    dialogDismiss.any { l.contains(it, ignoreCase = true) }
+                    dialogDismiss.any { matchesWord(l, it) }
                 }
             }
         }
@@ -273,19 +284,19 @@ object PageAnnotator {
                 sortWords.any { l.contains(it) }
             }
         }
-        // 26) 清除输入（输入框内 X）
+        // 26) 清除输入（输入框内 X；不含 delete——btn_delete_item 这类删除按钮不是清空输入框）
         putOnce("clear_input") { e ->
             val label = e.effectiveLabel() ?: ""
             val vi = e.viewId ?: ""
             e.clickable && (label.contains("清除") || label.contains("清空") ||
-                vi.contains("clear", ignoreCase = true) || vi.contains("delete", ignoreCase = true))
+                vi.contains("clear", ignoreCase = true))
         }
         return ids
     }
 
     /**
      * 把已标定的已知控件渲染成给 AI 的清单文本。
-     * AI 可直接用 target:{method:"id", value:"语义id"} 精确定位选择这些控件。
+     * AI 可直接用 target:{by:"id", value:"语义id"} 精确定位选择这些控件（契约字段是 by，见 AgentIntentTarget）。
      */
     fun knownControlsText(elements: List<UiElement>): String {
         val known = elements.filter { !it.semanticId.isNullOrBlank() }
@@ -294,7 +305,7 @@ object PageAnnotator {
             val label = (e.text ?: e.contentDescription)?.takeIf { it.isNotBlank() } ?: e.type
             "- ${e.semanticId}: $label（#${e.index}, viewId=${e.viewId ?: "-"}）"
         }
-        return "\n# 端侧已识别控件（可直接用 target:{method:\"id\",value:\"语义id\"} 选择）\n$lines"
+        return "\n# 端侧已识别控件（可直接用 target:{by:\"id\",value:\"语义id\"} 选择）\n$lines"
     }
 
     /** 页面类型推断 */
@@ -303,8 +314,8 @@ object PageAnnotator {
         val text = labels.joinToString(" ")
 
         // 弹窗：正向/关闭按钮共存，且元素稀疏
-        val hasPositive = labels.any { label -> dialogPositive.any { k -> label.contains(k, ignoreCase = true) } }
-        val hasDismiss = labels.any { label -> dialogDismiss.any { k -> label.contains(k, ignoreCase = true) } }
+        val hasPositive = labels.any { label -> dialogPositive.any { matchesWord(label, it) } }
+        val hasDismiss = labels.any { label -> dialogDismiss.any { matchesWord(label, it) } }
         if (hasPositive && hasDismiss && snapshot.elements.size <= 8) return "dialog_overlay"
 
         // 倒计时广告：跳过按钮 + 数字

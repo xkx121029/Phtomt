@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -483,13 +484,17 @@ internal fun ModelCard(
     }
 }
 
-/** 标定滑块 */
+/**
+ * 标定滑块：拖动中只经 [onChange] 更新本地编辑态（界面即时跟手），
+ * 松手触发 [onCommit] 才真正落盘——否则拖一次滑杆就是几十次 DataStore 写入。
+ */
 @Composable
 internal fun CalibrationSlider(
     label: String,
     value: Int,
     range: ClosedFloatingPointRange<Float>,
     onChange: (Int) -> Unit,
+    onCommit: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -504,6 +509,7 @@ internal fun CalibrationSlider(
         androidx.compose.material3.Slider(
             value = value.toFloat(),
             onValueChange = { onChange(it.toInt()) },
+            onValueChangeFinished = onCommit,
             valueRange = range,
             modifier = Modifier.weight(1f),
         )
@@ -786,6 +792,13 @@ internal fun EndpointCard(
 ) {
     val buzz = rememberHapticClick()
     var confirmDelete by remember { mutableStateOf(false) }
+    // 确认态 3 秒后自动复位：确认按钮不会一直挂着，避免之后误点直接删掉端点
+    LaunchedEffect(confirmDelete) {
+        if (confirmDelete) {
+            kotlinx.coroutines.delay(3000)
+            confirmDelete = false
+        }
+    }
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
         color = AppSurfaceMuted,

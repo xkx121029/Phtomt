@@ -66,6 +66,9 @@ class ScreenSharingService : Service() {
     @Volatile
     private var frameSeq = 0L
 
+    /** 是否已持有可用的 MediaProjection（START_STICKY 重建后为 false，供截图入口判定可用性） */
+    val hasProjection: Boolean get() = mediaProjection != null
+
     /** 串行化「隐藏悬浮窗→等新帧→读取→恢复」流程，避免并发交错 */
     private val captureLock = Any()
 
@@ -80,6 +83,15 @@ class ScreenSharingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // START_STICKY 被系统重建时 intent 为 null：投影授权 resultData 已随进程丢失，无法恢复捕获。
+        // 此时不能以「无投影却常驻前台」的僵尸状态存活——取消前台通知并自杀
+        if (intent == null) {
+            runCatching {
+                (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIF_ID)
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         // targetSdk>=34 下前台服务必须声明类型，否则 Android 14+ 抛 MissingForegroundServiceTypeException
         ServiceCompat.startForeground(
             this,
@@ -88,8 +100,8 @@ class ScreenSharingService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
         )
         registerDisplayListener()
-        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val data = intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+        val data = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
         if (resultCode != 0 && data != null) {
             startProjection(resultCode, data)
         }
@@ -193,13 +205,15 @@ class ScreenSharingService : Service() {
         // 点击光标与悬浮窗同进同出，否则圆点会被截进画面污染 AI 读屏
         val hasCursor = com.phoneagent.overlay.CursorOverlayService.setVisible(false)
         try {
-            if (hasOverlay) waitForCleanFrame(frameSeq, 250)
+            // 光标也是叠在画面上的覆盖物：只藏了光标时同样要等「干净」的新帧
+            if (hasOverlay || hasCursor) waitForCleanFrame(frameSeq, 250)
             synchronized(frameLock) {
                 val f = latestFrame ?: return@synchronized null
                 if (f.isRecycled) null else f.copy(Bitmap.Config.ARGB_8888, false)
             }
         } finally {
-            FloatingWindowService.setVisible(true)
+            // 只恢复本次确实隐藏过的窗口：没藏过时恢复会把用户手动收起的面板误弹回来
+            if (hasOverlay) FloatingWindowService.setVisible(true)
             if (hasCursor) com.phoneagent.overlay.CursorOverlayService.setVisible(true)
         }
     }

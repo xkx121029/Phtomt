@@ -54,12 +54,6 @@ object AppPageIndex {
                 Page(2, "搜索", Entry(packageName = "com.ss.android.ugc.aweme")),
             ),
         ),
-        App(
-            name = "浏览器", packageName = null,
-            pages = listOf(
-                Page(1, "网页", Entry()),
-            ),
-        ),
     )
 
     /** 按软件名或包名、页面索引查直达方式；查不到返回 null */

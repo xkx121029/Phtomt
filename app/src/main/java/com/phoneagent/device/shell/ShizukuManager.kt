@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import rikka.shizuku.Shizuku
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 
 /**
  * Shizuku 管理器：封装生命周期、权限检查、shell 命令执行。
@@ -31,6 +32,11 @@ class ShizukuManager {
 
     private val _state = MutableStateFlow(State.UNAVAILABLE)
     val state: StateFlow<State> get() = _state.asStateFlow()
+
+    /** shell 命令最长等待（毫秒），超时强杀进程并按失败返回 */
+    private companion object {
+        const val SHELL_TIMEOUT_MS = 30_000L
+    }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refreshState() }
     private val binderDeadListener = Shizuku.OnBinderDeadListener { _state.value = State.UNAVAILABLE }
@@ -89,18 +95,44 @@ class ShizukuManager {
             val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as? java.lang.Process
                 ?: return ShellResult.Failure("newProcess 返回 null")
             val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+            // stderr 由独立线程持续读入缓冲：主线程若先读 stderr 再读 stdout，
+            // 两条管道任一写满都会让子进程写阻塞，主线程又等不到退出 → 死锁
+            val errorBuilder = StringBuilder()
+            val errorThread = Thread {
+                runCatching {
+                    BufferedReader(InputStreamReader(process.errorStream)).use { er ->
+                        val buf = CharArray(8192)
+                        while (true) {
+                            val n = er.read(buf)
+                            if (n < 0) break
+                            errorBuilder.append(buf, 0, n)
+                        }
+                    }
+                }
+            }.apply {
+                isDaemon = true
+                start()
+            }
             val output = reader.readText()
-            val error = errorReader.readText()
-            val exitCode = process.waitFor()
-            reader.close()
-            errorReader.close()
+            errorThread.join(5_000)
+            // 带超时等待退出：命令卡死时强杀并按失败返回，而不是永久挂死调用线程
+            val finished = process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                process.destroy()
+                runCatching { reader.close() }
+                return ShellResult.Failure(
+                    reason = "命令执行超时（${SHELL_TIMEOUT_MS / 1000} 秒），已强制终止",
+                    exitCode = -1,
+                )
+            }
+            val exitCode = process.exitValue()
+            runCatching { reader.close() }
             process.destroy()
             if (exitCode == 0) {
                 ShellResult.Success(output = output)
             } else {
                 ShellResult.Failure(
-                    reason = error.ifBlank { "命令退出码: $exitCode" },
+                    reason = errorBuilder.toString().ifBlank { "命令退出码: $exitCode" },
                     exitCode = exitCode,
                 )
             }

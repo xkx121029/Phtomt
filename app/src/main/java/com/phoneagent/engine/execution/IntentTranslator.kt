@@ -179,11 +179,12 @@ internal class ScrollToStrategy(private val intentResolver: IntentResolver) : In
         }
         val r = intentResolver.resolve(intent.target, ctx.snapshot, null)
         val elem = r.element
-        // 确定滚动方向：目标在下方则向上滚（swipe up），反之向下滚
+        // 确定滚动方向：目标在下方 → 向上滚（swipe up，把下方内容翻出来）；目标在上方 → 向下滚（swipe down）；
+        // 默认向上滚查找（目标多半在当前视口之下）
         val direction = when {
-            intent.target?.by == "text" && intent.target.value.contains("上方") -> "up"
-            intent.target?.by == "text" && intent.target.value.contains("下方") -> "down"
-            else -> "up" // 默认向上滚，查找目标
+            intent.target?.by == "text" && intent.target.value.contains("上方") -> "down"
+            intent.target?.by == "text" && intent.target.value.contains("下方") -> "up"
+            else -> "up"
         }
         return IntentTranslator.TranslationResult.Command(
             ctx.base.copy(
@@ -364,8 +365,9 @@ internal class TermuxFetchStrategy(
                 "本机未安装或未授权 Termux，无法用命令行取数；请改用 UI 意图在当前页面完成。",
             )
         }
-        // 白名单过滤地址字符，杜绝把引号 / 反引号 / 命令替换符拼进命令
-        val safe = uri.filter { it.isLetterOrDigit() || it in ":/?&=#%._-+~@[]!()*,;" }
+        // 白名单过滤地址字符，杜绝把引号 / 反引号 / 命令替换符拼进命令；
+        // 分号可拼接第二条命令（如 "http://x; rm -rf /"），同样禁止
+        val safe = uri.filter { it.isLetterOrDigit() || it in ":/?&=#%._-+~@[]!*," }
         return IntentTranslator.TranslationResult.Command(
             ctx.base.copy(
                 type = ActionType.SHELL,
@@ -593,19 +595,21 @@ class IntentTranslator(
         return applyReadOnly(result, mode)
     }
 
-    /** 只读模式横切约束：除等待/文档写入/记忆写入外，拒绝自动执行（AI 仍在分析，只是手换成用户） */
+    /** 只读模式横切约束：除等待/文档写入/记忆写入/本机查询/说话/引导回 Agent 页/收尾（TASK_DONE）外，拒绝自动执行（AI 仍在分析，只是手换成用户） */
     private fun applyReadOnly(result: TranslationResult, mode: Mode): TranslationResult = when {
         result !is TranslationResult.Command -> result
         mode != Mode.READONLY -> result
-        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY / SAY / SHOW_AGENT 都不触碰设备
-        // （等待、本地生成文档、本地写记忆库、本地读设备信息、直接对用户说话、把用户拉回本应用看结果），
-        // 只读模式下同样放行
+        // WAIT / WRITE_DOC / REMEMBER / DEVICE_QUERY / SAY / SHOW_AGENT / TASK_DONE 都不触碰设备
+        // （等待、本地生成文档、本地写记忆库、本地读设备信息、直接对用户说话、把用户拉回本应用看结果、
+        // 收尾汇报），只读模式下同样放行。FINISH 与 GIVE_UP 都产出 TASK_DONE——收尾不是设备操作，
+        // 只读模式下必须放行，否则任务永远无法正常结束。
         result.action.type == ActionType.WAIT ||
             result.action.type == ActionType.WRITE_DOC ||
             result.action.type == ActionType.REMEMBER ||
             result.action.type == ActionType.DEVICE_QUERY ||
             result.action.type == ActionType.SAY ||
-            result.action.type == ActionType.SHOW_AGENT -> result
+            result.action.type == ActionType.SHOW_AGENT ||
+            result.action.type == ActionType.TASK_DONE -> result
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )

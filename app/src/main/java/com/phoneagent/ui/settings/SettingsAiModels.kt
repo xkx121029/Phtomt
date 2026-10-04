@@ -521,12 +521,21 @@ internal fun SettingsAiModels(
             Text(if (testing) "正在测试连接…" else "保存 AI 配置")
         }
         testError?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = 8.dp),
-            )
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                // 测试失败不堵死保存：部分供应商只在特定模型/地区放行，
+                // 连接测试通不过但配置本身可用，给出「仍要保存」逃生门
+                TextButton(
+                    onClick = {
+                        testError = null
+                        vm.saveSettings(st.toSettings())
+                    },
+                ) { Text("仍要保存") }
+            }
         }
 
         Spacer(Modifier.height(28.dp))

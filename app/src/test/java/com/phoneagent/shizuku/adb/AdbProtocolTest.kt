@@ -3,7 +3,6 @@ package com.phoneagent.shizuku.adb
 import com.phoneagent.device.shell.AdbProtocol
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
-import java.util.zip.CRC32
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -25,11 +24,13 @@ class AdbProtocolTest {
     }
 
     @Test
-    fun crc32与JDK一致() {
+    fun checksum与ADB协议一致_逐字节累加和() {
+        // AOSP adb check_sum()：payload 逐字节无符号累加，不是 CRC32
         val data = "adb-over-wifi".toByteArray(Charsets.UTF_8)
-        val c = CRC32()
-        c.update(data)
-        assertEquals(c.value.toInt(), AdbProtocol.crc32(data))
+        var sum = 0
+        for (b in data) sum += b.toInt() and 0xFF
+        assertEquals(sum, AdbProtocol.checksum(data))
+        assertEquals(0, AdbProtocol.checksum(ByteArray(0)))
     }
 
     @Test

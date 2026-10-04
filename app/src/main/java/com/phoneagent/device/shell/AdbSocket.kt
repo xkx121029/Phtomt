@@ -13,6 +13,12 @@ interface AdbSocket {
     /** 连接指定 host:port，超时毫秒 */
     fun connect(host: String, port: Int, timeoutMs: Int)
 
+    /**
+     * 设置读超时（SO_TIMEOUT，毫秒）：对端静默（无任何数据）时读操作抛 SocketTimeoutException，
+     * 避免会话在读侧永久挂死。默认空实现，供内存测试桩免于维护超时语义。
+     */
+    fun setSoTimeout(soTimeoutMs: Int) {}
+
     fun input(): DataInputStream
     fun output(): DataOutputStream
 
@@ -32,6 +38,10 @@ class TcpAdbSocket : AdbSocket {
         s.tcpNoDelay = true
         s.connect(InetSocketAddress(host, port), timeoutMs)
         socket = s
+    }
+
+    override fun setSoTimeout(soTimeoutMs: Int) {
+        runCatching { socket?.soTimeout = soTimeoutMs }
     }
 
     override fun input(): DataInputStream = DataInputStream(

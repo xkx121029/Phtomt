@@ -210,6 +210,15 @@ internal fun TaskMemoryList(
     onDelete: (Long) -> Unit,
     onClear: () -> Unit,
 ) {
+    // 单条删除的两步确认：第一次点只把该行图标染红（armed），再点才真删；
+    // 3 秒不点自动复位。armedId 记录当前处于确认态的行，同一时间只有一行
+    var armedId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(armedId) {
+        if (armedId != null) {
+            kotlinx.coroutines.delay(3000)
+            armedId = null
+        }
+    }
     SectionCard(
         title = "任务记忆",
         count = items.size,
@@ -239,10 +248,21 @@ internal fun TaskMemoryList(
                     )
                     Spacer(Modifier.width(8.dp))
                     StatusPill(text = m.statusLabel(), color = taskMemoryStatusColor(m.status))
-                    PressableScale(onClick = { onDelete(m.id) }) {
+                    val armed = armedId == m.id
+                    PressableScale(onClick = {
+                        if (!armed) {
+                            armedId = m.id
+                        } else {
+                            armedId = null
+                            onDelete(m.id)
+                        }
+                    }) {
                         Icon(
-                            AppIcons.DeleteOutline, contentDescription = "删除",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            AppIcons.DeleteOutline,
+                            // 视觉确认态：图标染红 + 读屏文案改为「再点确认删除」
+                            contentDescription = if (armed) "再点确认删除" else "删除",
+                            tint = if (armed) MaterialTheme.colorScheme.error
+                                   else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(6.dp).size(16.dp),
                         )
                     }

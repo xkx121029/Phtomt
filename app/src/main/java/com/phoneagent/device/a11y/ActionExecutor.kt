@@ -272,9 +272,16 @@ class ActionExecutor(
 
     /** 滚动（在元素范围内纵向滑动） */
     suspend fun scroll(elem: UiElement?, direction: String): Result {
-        val x1 = elem?.centerX ?: service.resources.displayMetrics.widthPixels / 2
-        val y1 = elem?.centerY ?: service.resources.displayMetrics.heightPixels / 2
-        val y2 = if (direction == "up") y1 - 600 else y1 + 600
+        val metrics = service.resources.displayMetrics
+        val x1 = elem?.centerX ?: metrics.widthPixels / 2
+        val y1 = elem?.centerY ?: metrics.heightPixels / 2
+        // ±600px 的终点可能越出屏幕边界，越界手势会被系统拒绝：钳制在屏内
+        val clamped = (if (direction == "up") y1 - 600 else y1 + 600)
+            .coerceIn(0, metrics.heightPixels - 1)
+        // 钳制后可能与起点重合（元素贴边），保留至少 1px 位移，避免零长轨迹手势被拒
+        val y2 = if (clamped == y1) {
+            (y1 + if (direction == "up") 1 else -1).coerceIn(0, metrics.heightPixels - 1)
+        } else clamped
         return swipe(x1, y1, x1, y2, 300)
     }
 
@@ -362,14 +369,9 @@ class ActionExecutor(
                 service.applicationContext.startActivity(intent)
                 return Result.Success("已启动 $packageName（activity=${ri.activityInfo.name}）")
             }
-            // 策略2：使用 broadcast 启动（某些设备更可靠）
-            val broadcastIntent = android.content.Intent("android.intent.action.MAIN").apply {
-                setPackage(packageName)
-                addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            service.applicationContext.sendBroadcast(broadcastIntent)
-            return Result.Success("已发送启动广播: $packageName")
+            // 无 LAUNCHER 入口时直接诚实失败：发 MAIN+LAUNCHER 广播并不会启动 Activity，
+            // 无论应用是否存在 sendBroadcast 都"成功"，会让 AI 误以为已打开而不再换方案
+            return Result.Failure("无法启动：未找到该应用的可启动入口（LAUNCHER Activity）")
         } catch (e: Exception) {
             Result.Failure("启动应用失败：${e.message} (pkg=$packageName)")
         }

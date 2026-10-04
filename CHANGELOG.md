@@ -6,6 +6,186 @@
 
 ---
 
+## [v0.2.721] — 2026-10-04
+
+这一批 71 个文件、+1869 / −594，没有新能力，全是**把已经写下的承诺兑现**。摊开看反复出现三类：
+
+**注释声称做了、实现没做**——注释写着 `reply` 兼容裸字符串，代码却硬取对象；注释写着"单字符叉号必须带类型判断"，
+实现里根本没有这个判断；`validateUniqueName` 的注释写"校验唯一"，条件却写反成"只拒绝大小写不同的"，
+**完全同名的反而放行**。
+
+**失败被记成成功**——给不存在的 Activity 发广播，`sendBroadcast` 无论应用在不在都"成功"；
+Termux 回传里既没有退出码也没有任何输出，却按 `exit_code=0` 报成功；引导恢复成功后忘了记账，
+进度不涨、失败计数不清。
+
+还有一类**只在特定条件下才现形的洞**——微信聊天里出现"转账"两个字就整页锁死；
+广告点了还在就一轮一轮点下去；投影授权丢失后服务还以"无投影却常驻前台"的僵尸状态活着。
+
+隐私面这次收了两处边界：敏感页面清单补上漏掉的银行，日志与诊断导出补上脱敏——
+日志正文里常常就是页面原文（短信验证码、卡号、姓名），此前是明文落盘的。
+
+### 新增
+
+**不可逆动作确认门：执行前先问用户**
+
+- 引擎新增 `AgentAction.needsUserConfirmation`（`engine/AgentEngine.kt`）：AI 或转译层标记为不可逆的动作
+  （支付确认、删除、清空…），执行前挂起等待答复。**超时按取消处理**，不让任务无限挂住
+- 任务流末尾插入确认卡（`ui/agent/AgentScreen.kt`、`ui/MainViewModel.kt`），与悬浮窗**共用引擎的同一信箱**。
+  卡片出现时自动滚到它本身——这是引擎的阻塞态，不能让用户误以为 AI 没了动静；回看历史任务时照样显示，
+  避免用户找不到出口
+- 拒绝的语义是"换做法"而非"硬执行"：该步记跳过，用户的决定回注给 AI 重新规划
+
+**两段式确认铺到其余破坏性入口**
+
+- 悬浮窗关闭键（`overlay/FloatingWindowService.kt`）：第一次点只把文案换成「再点确认停止」，2.5 秒自动复位，
+  再点才真正终止任务——一次误触不该杀掉正在执行的任务
+- 单条删除 / 清空存档 / 删除端点 / 批量删技能（`ui/memory/MemoryLists.kt`、`ui/debug/DebugScreen.kt`、
+  `ui/settings/SettingsData.kt`、`ui/settings/SettingsComponents.kt`、`ui/skill/SkillsTab.kt`）：
+  第一次点只进入 armed 态（图标染红、文案变「再点确认…」、读屏文案同步改），3 秒不点自动复位
+
+**其他新增**
+
+- 敏感页面检测新增**微信专用窄表**（`core/security/SensitivePageDetector.kt`）：微信是通用应用，
+  聊天正文里出现"银行卡/余额/转账"是常态，套宽表会把普通聊天页误判成支付页而**整页锁死**，
+  只有真正进入收付款页才该只读；同时补上漏掉的中信、邮储，以及挂在 `com.chinamworld.*` 前缀下的中行/建行系
+- 记忆库三类数据加上总量上限并按时间淘汰最旧（`data/store/MemoryStore.kt`）：
+  AI 记忆、异常经验、用户画像，长期使用不再随任务数无界增长
+
+### 修复
+
+**判据里藏着的洞**
+
+- **否定守卫**（`domain/rules/LocalDecisionEngine.kt`）：「不允许」「不同意」只是子串里含正向词，
+  原词表会把它当"允许"按钮点下去；同时把裸「确定 / ok / continue」移出正向词表——普通页面的确认按钮也会命中
+- **稀疏守卫**（`domain/rules/EngineRules.kt`）：只有元素 ≤6 的页面才可信地呈现"完成证据"；
+  元素多的页面里出现"操作成功"可能只是列表里的一条历史记录，据此跳过动作会让真正的副作用操作永远执行不了
+- **数字键映射**（`domain/rules/ShellCommands.kt`）：单个数字字符映射为数字键（`KEYCODE_0=7`…`KEYCODE_9=16`），
+  否则 `key 5` 会把 5 当键码（5 = CALL 键），打不出数字
+- **名称查重写反**（`feature/mcp/McpRules.kt`）：`validateUniqueName` 原条件只拒绝"大小写不同"的重名，
+  完全同名反而放行；改为忽略大小写判重并支持编辑时排除自身
+- **英文词左词边界**（`feature/browser/BrowserGuard.kt`）：`border` 不再被当成 order、`resend` 不再被当成 send
+- **CSS 选择器形态**（`feature/skill/SkillCompat.kt`）：`{"target":"#login"}` 以前一律归 `by=text`，
+  选择器被当成"页面里的一段文字"去找，永远找不到；现按扁平写法同款传 `by=id`
+- **空语义目标不命中**（`feature/task/TemplateMatcher.kt`）：去符号后无任何字母/数字/汉字的目标没有可匹配语义
+- **承接词过宽**（`domain/rules/SessionContext.kt`）：纯指代词（它/这个/那个）与裸「加上」在新任务里同样常见，
+  子串命中会把完全独立的新任务误判成追问而被上一轮带偏，已移出
+- **URL 白名单过滤**（`engine/execution/IntentTranslator.kt`）：引号 / 反引号 / 分号可拼接第二条命令
+  （`http://x; rm -rf /`），一律拒绝
+- **只读模式横切约束**（`engine/execution/IntentTranslator.kt`）：`WAIT` / `WRITE_DOC` / `REMEMBER` /
+  `DEVICE_QUERY` / `SAY` / `SHOW_AGENT` / `TASK_DONE` 不触碰设备，只读模式下同样放行；`FINISH` 与 `GIVE_UP`
+  都产出 `TASK_DONE`——收尾不是设备操作，否则任务永远无法正常结束
+- **JSON 字段解析**（`domain/model/AgentIntent.kt`）：`JsonNull` 等非整数形态统一走抛异常，不静默取默认值
+- **跑马灯默认色少一位**（`data/prefs/AppSettings.kt`）：第三色 `FF6B9D` 只有 6 位，按 ARGB 解析时被当成
+  缺省 alpha，补齐为 `FFFF6B9D`
+
+**把"成功"的定义收回原处**
+
+- **无 LAUNCHER 入口时诚实失败**（`device/a11y/ActionExecutor.kt`）：给不存在的 Activity 发 MAIN+LAUNCHER 广播，
+  无论应用是否存在 `sendBroadcast` 都"成功"，会让 AI 误以为已打开而不再换方案
+- **Termux 无有效回传按失败处理**（`device/shell/TermuxBridge.kt`）：结果 Bundle 里既无退出码也无任何输出
+  （如 `allow-external-apps` 未开），此前按 `exit_code=0` 报 `Success("")`
+- **失败必须显式抛回主循环**（`engine/AgentEngine.kt`）：静默 `return null` 会让上层把"单次网络抖动"当成
+  「决策为空」直接杀任务，且连续失败护栏统计不到这条路径
+- **引导恢复成功要对齐记账**（`engine/AgentEngine.kt`）：原来漏了这一步，引导成功后进度不涨、失败计数也不清
+- **失败留档去重**（`engine/AgentEngine.kt`）：引导重试后无论成败都会走到统一留档，先记一遍会造成同一步双重留档；
+  只有用户离开（直接 `return`）才补记
+- **广告自动点击护栏**（`engine/AgentEngine.kt`）：同一关闭目标连续命中 ≥2 次说明自动点击无效（点了广告还在），
+  此时停止自动点击、该轮也不再剔除广告内容，把真实页面交给 AI 重新决策
+- **`raw` 前缀大小写不敏感**（`engine/execution/ShellRules.kt`）：`removePrefix` 只认小写，会漏掉 `RAW` 前缀
+
+**语义定位与视觉坐标**
+
+- **semanticId 回填**（`engine/AgentEngine.kt`）：`annotate()` 把 `semanticId` 标在它**新建的元素列表**上，
+  原始快照里的元素全为 null；不回填的话端侧决策的 `by="id"` 定位与转译层的语义控件命中
+  （send / confirm / close / delete）永远失败
+- **视觉坐标"消费一次"**（`engine/AgentEngine.kt`）：上一步 `see` / 视觉定位产出的坐标只供本次转译使用，
+  取走即清空；不再在每轮开头无条件清零（那样 `see` 拿到的坐标下一步必被清掉，等于白定位）
+- **提前完成拦截门槛**（`engine/AgentEngine.kt`）：有计划时 = 规划步数向上取整的 60%，不再叠加"至少 3 步"的下限，
+  否则两三步的小任务会被强行拦截到凑步数
+
+**通道与服务**
+
+- **ADB 链路**（`device/shell/AdbTcpSession.kt`、`AdbWirelessTransport.kt`、`AdbSocket.kt`、`AdbProtocol.kt`、
+  `MdnsAdbResolver.kt`）：读超时不再永久阻塞；只处理寻址到本流的帧（历史流残留帧直接丢弃），
+  退出前排空本流残留帧避免污染下一次会话；mDNS 同一时间只允许一个 pending resolve，
+  且只接受 owner name 含配对服务标签的 SRV（否则局域网内任意服务的 SRV 都会被当成配对端口）；
+  配对 salt 读出恰为 32 字节才采用
+- **Shizuku**（`device/shell/ShizukuManager.kt`）：`stderr` 由独立线程持续读入——主线程若先读 `stderr`
+  再读 `stdout`，两条管道任一写满都会让子进程写阻塞、主线程又等不到退出，直接死锁；命令加超时强杀
+- **Service 被系统重建（START_STICKY，`intent == null`）后的处置**：截屏服务此时投影授权已随进程丢失，
+  不能以"无投影却常驻前台"的僵尸状态存活，取消前台通知并自杀（`device/screen/ScreenSharingService.kt`）；
+  边缘光效同理，不能走 `else` 分支让光效"死而复生"（`feature/edge/EdgeLightingService.kt`）；
+  悬浮窗任务卡复位为空闲文案，不继续摆出"任务进行中"误导用户（`overlay/FloatingWindowService.kt`）
+- **截图前隐藏覆盖物**（`overlay/FloatingWindowService.kt`）：跑马灯、悬浮球、底部选项卡都是独立窗口、
+  都会浮在屏幕上，此前只隐藏了光标；现在一并隐藏并记录原可见态，截完按原样恢复，
+  且不推翻用户主动收起（`userHidden`）的面板
+- **滑动越界钳制**（`device/a11y/ActionExecutor.kt`）：±600px 的终点可能越出屏幕被系统拒绝，钳制在屏内，
+  并保留至少 1px 位移（避免元素贴边时零长轨迹手势被拒）
+- **外部视觉降采样**（`device/vision/ExternalVisionProvider.kt`）：先降采样再转 RGBA，
+  整屏原尺寸数组会撑爆 binder 事务缓冲
+
+**其他修复**
+
+- **AI 客户端取消与重试口径**（`core/ai/AiClient.kt`）：协程取消（任务停止 / 页面关闭）必须穿透重试循环
+  向上传播，并同步取消 OkHttp 请求；401/403/404 属鉴权 / 地址错误，重试不会变好，直接失败；
+  200 但正文不是预期 JSON（网关改写 / HTML 提示页）时保留原始返回，避免只剩解析异常
+- **HTML 转 Markdown**（`core/text/HtmlToMarkdown.kt`）：`script` / `style` / `noscript` 整段跳过、
+  不按子树配平（JS 里的伪标签会干扰配平，且脚本内容绝不能被当正文吐给 AI）；
+  未闭合的 `<title>` 此前会一直吞到文末，现在最多取 200 字符
+- **通知 ID 顺序分配**（`core/notify/TaskProgressNotifier.kt`）：多任务各有一个独立 ID，不再互相覆盖；映射表加上限
+- **存档原子替换**（`data/store/DebugRecordsStore.kt`）：先写临时文件再 rename，写到一半被杀不会留下半个
+  读不回来的存档；扩展名 `.png` → `.jpg`（内容本就是 JPEG）
+- **id 撞车**（`data/store/MemoryStore.kt`）：原 `id = System.currentTimeMillis()`，同毫秒两次写入会互相覆盖，
+  改用 UUID 派生
+- **日志导出脱敏**（`data/export/LogExporter.kt`）：消息与 detail 是页面快照 / 响应原文，
+  与诊断报告走同一套 `DataSanitizer`，不再明文落盘
+- **MCP 协议**（`feature/mcp/McpClient.kt`、`OkHttpMcpTransportFactory.kt`、`McpManager.kt`）：
+  `required` 是字符串数组需正规解析（旧实现 `toString` + 去引号对转义内容会带反斜杠）；
+  会话 id 属单条连接，不能放在 `object` 级共享；启停服务器后失效对应缓存，下次调用按新配置重建
+- **市场条目不再是"MCP 端点"**（`feature/mcp/McpMarketplace.kt`）：天气 / 汇率 / 新闻 / 行情是普通 REST 站点，
+  直接当 MCP 端点连必失败，`isPublic` 全部改回 `false`，只作"需自建 MCP 网关"的示例源
+- **复选框 / 单选切换**（`feature/browser/script/InteractScripts.kt`）：没有"填字"语义，先按 FILL 判定目标态
+  再用 `el.click()` 切换并校验
+- **同名文档不静默覆盖**（`feature/document/DocumentEngine.kt`）：已存在时追加时间戳后缀
+- **代理对安全截断**（`feature/browser/BrowserBridge.kt`）：落点若是高代理项（emoji / 生僻字被切成两半）则回退一位
+- **广告区域边距**（`feature/adskip/AdContentFilter.kt`）：扩张边距由绝对 220px 改为屏幕短边的 12%，
+  高分屏太小、低分屏太大；单字符叉号仅图片类控件视为关闭按钮（`x` 在文本类控件里可能是序号或变量）
+- **弹窗按钮词表**（`engine/perception/PageAnnotator.kt`）：英文词走整词匹配，避免子串误伤；
+  「退出登录」这类按钮不再当系统返回键；输入框清空词表不含 `delete`（`btn_delete_item` 不是清空输入框）
+- **实效点击比对**（`engine/execution/VerifiedClickExecutor.kt`）：过滤无障碍断开时的缺失态快照，
+  避免拿"空壳快照"比对指纹误判成"页面未变化"
+- **无障碍可用性口径统一**（`ui/MainViewModel.kt`）：系统开关已打开 **且** 服务实例已连接才算可用——
+  只查开关会漏掉"开关开着但实例没连上"，只查实例则覆盖不了开机未拉起
+
+### 优化
+
+- **滑杆拖动不落盘**（`ui/settings/SettingsAgent.kt`、`ui/settings/SettingsVisual.kt`）：
+  拖动只更新本地编辑态（数值即时跟手），松手才写 DataStore——拖一次滑杆此前会产生几十次写入
+- **测试失败不堵死保存**（`ui/settings/SettingsAiModels.kt`）：部分供应商只在特定模型 / 地区放行，
+  连接测试通不过但配置本身可用，给「仍要保存」逃生门
+- **用时以引擎起点为基准**（`ui/agent/AgentRunStatusStrip.kt`）：重组 / 离开页面再回来不再把计时清零重走
+- **规划期的出口**（`ui/agent/AgentComposer.kt`、`ui/agent/AgentRunStatusStrip.kt`）：规划可能迟迟不归，
+  在禁用的发送键旁补「取消规划」文字按钮；状态条明说在规划，不再照搬 `IDLE` 显示"空闲"
+- **协助浮层独立输入草稿**（`ui/agent/AgentScreen.kt`）：与主输入框分开，两边不再串扰
+- **全局反馈覆盖层提到二级页之外**（`ui/MainActivity.kt`）：二级页（`extrasPage` 非空）同样能弹反馈；
+  自动消失计时补上（普通提示 4s、带操作按钮 6s 留出点击时间），key 挂在新条上，
+  不会把旧条的倒计时错套到新条（`ui/components/Components.kt`）
+- **技能批删 / 导入挪到后台线程**（`ui/MainViewModel.kt`、`ui/skill/SkillsTab.kt`）：
+  含持久化 IO 与 JSON 解析，结果回主线程再弹浮条
+- **技能编辑器保存前预检**（`ui/skill/SkillEditorDialog.kt`）：INTENT 技能要能映射到可执行意图才可保存，
+  判定失败时阻止保存并展示原因（不走真实 registry 模拟调用——新技能尚未入库、被编辑技能若处于停用态都会误报）
+- **无线 ADB 页**（`ui/skill/WirelessAdbTab.kt`）：内容超出屏幕时可滚动（小屏 / 大字号），
+  本机 IP 随网络切换变化，每次回到前台重算
+- **测试页并发守卫**（`ui/test/TestScreen.kt`）：引擎不受理并发任务，任务运行 / 规划中再点只会进入无人受理的死态；
+  不用 `enabled = false` 一禁了之（禁用态点了没反应，用户不知道原因），改为守卫 + 浮条给理由
+- **去掉失效的"浏览器"直达索引**（`domain/model/AppPageIndex.kt`）：内置浏览器已改为静默宿主，
+  这条只指向本应用二级页的索引不再有路由意义
+- **提示词金样本重算**：判据与文案变更后 `app/src/test/resources/prompt_golden/snapshot.sha256` 同步更新，
+  单测随判据收紧（`LocalDecisionEngineTest`、`SessionContextTest`、`IntentTranslatorStrategyTest`、
+  `ShellRulesTest`、`AdbProtocolTest`）
+
+---
+
 ## [v0.2.714] — 2026-09-29
 
 口径先说清：这段时间本文件留下 43 条版本记录。版本号的第三位是**全局构建号**——每次 assemble / bundle

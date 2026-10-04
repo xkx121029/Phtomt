@@ -160,6 +160,15 @@ class MemoryStore(private val context: Context) {
     private companion object {
         /** 任务记忆总量上限：记忆页是给人看的列表，超出按时间淘汰 */
         const val MAX_TASK_MEMORIES = 30
+
+        /** AI 记忆总量上限：长期使用不再无界增长，超出按 updatedAt 最旧淘汰 */
+        const val MAX_AI_MEMORIES = 50
+
+        /** 异常经验总量上限：超出按最近使用时间淘汰最旧的 */
+        const val MAX_ANOMALIES = 30
+
+        /** 用户画像总量上限：超出按最近使用时间淘汰最旧的 */
+        const val MAX_PROFILE = 50
     }
 
     private val json = Json {
@@ -179,7 +188,13 @@ class MemoryStore(private val context: Context) {
     }
 
     suspend fun saveAnomalies(list: List<AnomalyMemoryEntry>) {
-        context.memoryStore.edit { it[anomaliesKey] = json.encodeToString(ListSerializer(AnomalyMemoryEntry.serializer()), list) }
+        // 上限保护：异常经验不设限会随任务数无界增长，超出按最近使用时间淘汰最旧的
+        val capped = if (list.size > MAX_ANOMALIES) {
+            list.sortedByDescending { maxOf(it.lastUsedAt, it.createdAt) }.take(MAX_ANOMALIES)
+        } else {
+            list
+        }
+        context.memoryStore.edit { it[anomaliesKey] = json.encodeToString(ListSerializer(AnomalyMemoryEntry.serializer()), capped) }
     }
 
     suspend fun loadProfile(): List<ProfileEntry> {
@@ -188,7 +203,13 @@ class MemoryStore(private val context: Context) {
     }
 
     suspend fun saveProfile(list: List<ProfileEntry>) {
-        context.memoryStore.edit { it[profileKey] = json.encodeToString(ListSerializer(ProfileEntry.serializer()), list) }
+        // 上限保护：画像条目同样封顶，超出按最近使用时间淘汰最旧的
+        val capped = if (list.size > MAX_PROFILE) {
+            list.sortedByDescending { it.lastUsedAt }.take(MAX_PROFILE)
+        } else {
+            list
+        }
+        context.memoryStore.edit { it[profileKey] = json.encodeToString(ListSerializer(ProfileEntry.serializer()), capped) }
     }
 
     // ---- AI 记忆（自然语言条目）----
@@ -241,6 +262,11 @@ class MemoryStore(private val context: Context) {
                 updatedAt = now,
             )
             list.add(entry)
+            // 总量封顶：超出按 updatedAt 淘汰最旧的（刚写入的 updatedAt 最新，不会被淘汰）
+            if (list.size > MAX_AI_MEMORIES) {
+                val oldestIdx = list.withIndex().minByOrNull { it.value.updatedAt }?.index
+                if (oldestIdx != null) list.removeAt(oldestIdx)
+            }
             saveAiMemories(list)
             AiMemoryUpsert.Added(entry)
         }
@@ -462,7 +488,9 @@ class ProfileLearner(private val store: MemoryStore) {
     ) {
         val engine = AnomalyMemoryEngine(store)
         val entry = AnomalyMemoryEntry(
-            id = System.currentTimeMillis(),
+            // 原 id=System.currentTimeMillis()：同毫秒两次写入会互相覆盖；
+            // 改用 UUID 派生（模型 id 是 Long，取高 64 位并清符号位），唯一性不再依赖时钟
+            id = java.util.UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE,
             pageFingerprint = fingerprint,
             pageLabels = labels,
             anomalyType = anomalyType,

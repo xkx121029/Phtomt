@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.util.Log
+import com.phoneagent.engine.execution.ShellRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -75,26 +76,33 @@ class AdbWirelessTransport(
 
     override suspend fun isConnected(): Boolean = session?.isConnected() ?: false
 
-    override fun isConnectedNow(): Boolean = connectedNow
+    /**
+     * 对外「已连接」口径：缓存置位 且 会话仍存活。
+     * 只看 connectedNow 会在会话断开/关闭后误报已连接（只置位不清除），故叠加会话状态兜底。
+     */
+    override fun isConnectedNow(): Boolean = connectedNow && session?.isConnected() == true
 
     override suspend fun pair(code: String): AdbPairOutcome {
         if (code.length != 6 || !code.all { it.isDigit() }) {
             return AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, "配对码须为 6 位数字")
         }
-        return try {
-            val info = discoverService() ?: return AdbPairOutcome.Failure(
-                AdbError.PAIRING_PORT_OFF, "未发现无线调试配对服务，请保持配对界面",
-            )
-            // 配对握手（真机验证点）
-            val groomed = PairingHandshake.perform(info.host, info.port, code, info.salt)
-                ?: return AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, "配对握手失败")
-            // 配对成功后连接主调试端口并建立真实 ADB 会话
-            val ok = connectMain(info.host)
-            if (!ok) return AdbPairOutcome.Failure(AdbError.ADB_DISCONNECTED, "配对成功但连接主调试端口失败")
-            AdbPairOutcome.Success(productId = groomed)
-        } catch (e: Exception) {
-            Log.e(TAG, "pair failed", e)
-            AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, e.message ?: "配对异常")
+        // 配对全程含阻塞 socket IO（mDNS/握手/TCP 连接），切到 IO 线程，避免挂住调用方主线程
+        return withContext(Dispatchers.IO) {
+            try {
+                val info = discoverService() ?: return@withContext AdbPairOutcome.Failure(
+                    AdbError.PAIRING_PORT_OFF, "未发现无线调试配对服务，请保持配对界面",
+                )
+                // 配对握手（真机验证点）
+                val groomed = PairingHandshake.perform(info.host, info.port, code, info.salt)
+                    ?: return@withContext AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, "配对握手失败")
+                // 配对成功后连接主调试端口并建立真实 ADB 会话
+                val ok = connectMain(info.host)
+                if (!ok) return@withContext AdbPairOutcome.Failure(AdbError.ADB_DISCONNECTED, "配对成功但连接主调试端口失败")
+                AdbPairOutcome.Success(productId = groomed)
+            } catch (e: Exception) {
+                Log.e(TAG, "pair failed", e)
+                AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, e.message ?: "配对异常")
+            }
         }
     }
 
@@ -114,15 +122,16 @@ class AdbWirelessTransport(
 
     override suspend fun startShizukuService(): AdbStartOutcome {
         val s = session ?: return AdbStartOutcome.Failure("无线 ADB 未连接")
-        // 标准 Shizuku 用户服务启动命令（免 Root）：从 APK 内启动服务
+        // 标准 Shizuku 用户服务启动命令（免 Root）：从 APK 内启动服务（只跑一次）
         val shizukuPkg = "moe.shizuku.privileged.api"
-        val startCmd = "sh /sdcard/Android/data/$shizukuPkg/start.sh " +
-            "&& pkg=$shizukuPkg sh /sdcard/Android/data/$shizukuPkg/start.sh"
-        val output = s.execShell(startCmd)
+        val startCmd = "pkg=$shizukuPkg sh /sdcard/Android/data/$shizukuPkg/start.sh"
+        val output = s.execShell(startCmd, ShellRules.SHELL_OUTPUT_BUDGET)
         if (output.isBlank()) {
             // 空输出可能是 PATH 问题，改用 app_process 标准命令重试一次
+            // pm path 输出 "package:<apk 路径>"，用 cut -d: -f2- 剥前缀（tr -d 会误删路径中的冒号字符）
             val alt = s.execShell(
-                "CLASSPATH=$(pm path $shizukuPkg | tr -d 'package:') app_process / $shizukuPkg.Main --start-service",
+                "CLASSPATH=$(pm path $shizukuPkg | cut -d: -f2-) app_process / $shizukuPkg.Main --start-service",
+                ShellRules.SHELL_OUTPUT_BUDGET,
             )
             if (alt.isBlank()) return AdbStartOutcome.Failure("Shizuku 启动无输出，可能未安装 ${'"'}Shizuku${'"'}")
             return AdbStartOutcome.Success(alt)
@@ -133,7 +142,8 @@ class AdbWirelessTransport(
     /** 通过已建立的 ADB 连接执行真实 shell 命令并回读输出（复用原 Shizuku 命令通道） */
     override suspend fun executeShell(command: String): String? {
         val s = session ?: return null
-        return s.execShell(command).takeIf { it.isNotBlank() }
+        // 显式对齐 shell 通道统一的输出预算，避免落入旧的默认截断值
+        return s.execShell(command, ShellRules.SHELL_OUTPUT_BUDGET).takeIf { it.isNotBlank() }
     }
 
     override fun shutdown() {
@@ -177,11 +187,21 @@ class AdbWirelessTransport(
     private suspend fun discoverByType(serviceType: String): AdbPairingService? = suspendCancellableCoroutine { cont ->
         val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
         nsdManager = nsd
+        // NsdManager 同一时间只允许一个 pending resolve，防止重复 resolve 互踩
+        var resolving = false
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) {}
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                // host 在发现阶段常未解析（null）；配对端口立即可读，host 由调用方用本机 IP 补齐，
-                // 因此不再因 host 为空而放弃 resume（否则会一直等不到导致「搜索不到」）
+                // 端口未就绪（0）时不能直接 resume：先 resolveService 取真实端口，resolve 完成后再续
+                if (serviceInfo.port <= 0) {
+                    if (!resolving) {
+                        resolving = true
+                        resolveNsdService(nsd, serviceInfo, cont, this)
+                    }
+                    return
+                }
+                // host 在发现阶段常未解析（null）；端口立即可读，host 由调用方用本机 IP 补齐，
+                // 因此不因 host 为空而放弃 resume（否则会一直等不到导致「搜索不到」）
                 val salt = serviceInfo.serviceName?.toString()
                 if (cont.isActive) {
                     cont.resume(AdbPairingService(serviceInfo.host?.hostAddress.orEmpty(), serviceInfo.port, salt?.toByteArray()))
@@ -207,6 +227,43 @@ class AdbWirelessTransport(
             runCatching { nsd.stopServiceDiscovery(listener) }
         }
     }
+
+    /**
+     * [NsdManager.resolveService] 的包装：resolve 成功取真实 port/host，失败返回 null。
+     * 发现阶段（onServiceFound）拿到的 ServiceInfo 可能 port=0，必须 resolve 后才可用。
+     * resolve 结束（无论成败）后停止发现，避免发现回调在续行后继续空转。
+     */
+    private fun resolveNsdService(
+        nsd: NsdManager,
+        info: NsdServiceInfo,
+        cont: kotlinx.coroutines.CancellableContinuation<AdbPairingService?>,
+        discoveryListener: NsdManager.DiscoveryListener,
+    ) {
+        try {
+            nsd.resolveService(info, object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                    if (cont.isActive) cont.resume(null)
+                    runCatching { nsd.stopServiceDiscovery(discoveryListener) }
+                }
+                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                    if (cont.isActive) {
+                        val salt = serviceInfo.serviceName?.toString()
+                        cont.resume(
+                            AdbPairingService(
+                                serviceInfo.host?.hostAddress.orEmpty(),
+                                serviceInfo.port,
+                                salt?.toByteArray(),
+                            ),
+                        )
+                    }
+                    runCatching { nsd.stopServiceDiscovery(discoveryListener) }
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "resolveService failed", e)
+            if (cont.isActive) cont.resume(null)
+        }
+    }
 }
 
 /**
@@ -223,6 +280,8 @@ object PairingHandshake {
         return try {
             Socket().use { socket ->
                 socket.connect(InetSocketAddress(host, port), 6000)
+                // 读超时：设备无响应时抛 SocketTimeoutException 走失败分支，而不是永久阻塞
+                socket.soTimeout = 6000
                 val input = DataInputStream(socket.getInputStream())
                 val output = DataOutputStream(socket.getOutputStream())
 
@@ -233,12 +292,15 @@ object PairingHandshake {
                 output.write(codeBytes)
                 output.flush()
 
-                // 阶段 2：接收设备下发的 32 字节 salt（若无则由本地 salt 兜底）
+                // 阶段 2：接收设备下发的 32 字节 salt；
+                // 读出的字节数组恰为 32 字节才采用，否则回退 mDNS TXT salt / 全零
                 val recvSalt: ByteArray = runCatching {
                     val type = input.readByte().toInt() and 0xff
                     val len = input.readByte().toInt() and 0xff
-                    ByteArray(len).also { input.readFully(it) }
-                    ByteArray(32)
+                    val received = ByteArray(len).also { input.readFully(it) }
+                    received.takeIf { it.size == 32 }
+                        ?: salt?.takeIf { it.size == 32 }
+                        ?: ByteArray(32)
                 }.getOrElse { salt?.takeIf { it.size == 32 } ?: ByteArray(32) }
 
                 // 阶段 3：派生密钥并回填摘要完成握手（真机联调点：SPAKE2 最终密钥交换）
