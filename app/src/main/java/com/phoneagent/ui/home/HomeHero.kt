@@ -35,6 +35,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.BrandNavy
 import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.motionSettings
 
 /** 品牌瓦片：深海军蓝 → 电光蓝紫 渐变，呼应应用图标主色调。放在页眉最左侧 */
@@ -79,7 +80,7 @@ internal fun RunningBanner(message: String) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-        border = androidx.compose.foundation.BorderStroke(
+        border = appBorderStroke(
             1.dp,
             MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
         ),

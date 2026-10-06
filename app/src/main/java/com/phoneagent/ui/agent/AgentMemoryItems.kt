@@ -1,7 +1,6 @@
 package com.phoneagent.ui.agent
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +25,7 @@ import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.appBorder
 
 /** 分类中文化（供卡片展示） */
 internal fun memoryCategoryLabel(category: String): String = when (category) {
@@ -54,7 +54,7 @@ internal fun MemoryCardItem(item: AgentTimelineItem.MemoryAdded, onUndo: (Long) 
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(AppRadii.Item))
                 .background(colors.surfaceRaised)
-                .border(1.dp, colors.outlineSoft.copy(alpha = 0.6f), RoundedCornerShape(AppRadii.Item))
+                .appBorder(1.dp, colors.outlineSoft.copy(alpha = 0.6f), RoundedCornerShape(AppRadii.Item))
                 .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {

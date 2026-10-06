@@ -112,6 +112,16 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             SectionHeader("外观与高级")
             GroupCard {
                 SettingsEntry(
+                    icon = AppIcons.Palette,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                    title = "主题",
+                    subtitle = "标准 / 无框线",
+                    summary = if (st.borderless) "无框线" else "标准",
+                    onClick = { onOpen(SettingsPage.THEME) },
+                )
+                GroupDivider()
+                SettingsEntry(
                     icon = AppIcons.Star,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),

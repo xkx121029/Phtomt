@@ -7,7 +7,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -64,6 +63,7 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 
 /**
  * 「执行流」：以「一次执行」为单位组织调试数据。
@@ -191,7 +191,7 @@ private fun ExecutionCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(
+        border = appBorderStroke(
             1.dp,
             if (running) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),

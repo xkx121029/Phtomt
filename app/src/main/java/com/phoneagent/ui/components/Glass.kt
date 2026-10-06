@@ -1,7 +1,6 @@
 package com.phoneagent.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -39,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.appBorder
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -135,7 +135,7 @@ fun GlassSurface(
                 // 不存在把自己画进取样层的自反馈，过滤没有意义，一律放行。
                 canDrawArea = { true }
             }
-            .border(1.dp, colors.glassBorder, shape),
+            .appBorder(1.dp, colors.glassBorder, shape),
     ) {
         if (showSheen && colors.glassSheen.alpha > 0f) {
             Box(

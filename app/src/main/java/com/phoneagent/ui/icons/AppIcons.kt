@@ -40,6 +40,7 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Maximize
 import com.composables.icons.lucide.Menu
 import com.composables.icons.lucide.MousePointerClick
+import com.composables.icons.lucide.Palette
 import com.composables.icons.lucide.Pencil
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.Plus
@@ -135,6 +136,8 @@ object AppIcons {
     val Report: ImageVector get() = Lucide.TriangleAlert
     val Info: ImageVector get() = Lucide.Info
     val Star: ImageVector get() = Lucide.Star
+    /** 主题 / 外观 */
+    val Palette: ImageVector get() = Lucide.Palette
 
     // ── 功能模块 ────────────────────────────────────────────────
     val Home: ImageVector get() = Lucide.House

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,6 +45,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.appBorderStroke
 
 /**
  * 能力缺失提示条。
@@ -69,7 +69,7 @@ internal fun CapabilityNotice(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
         color = tone.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, tone.copy(alpha = 0.28f)),
+        border = appBorderStroke(1.dp, tone.copy(alpha = 0.28f)),
     ) {
         Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
             Row(

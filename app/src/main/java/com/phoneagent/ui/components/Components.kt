@@ -11,7 +11,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -65,6 +64,7 @@ import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PressScale
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.pressScaleSpec
@@ -261,7 +261,7 @@ fun AppCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(cornerRadius),
         colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, borderColor),
+        border = appBorderStroke(1.dp, borderColor),
     ) {
         androidx.compose.foundation.layout.Column(content = content)
     }
@@ -282,14 +282,14 @@ fun AppItemCard(
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = BorderStroke(1.dp, AppCardBorder),
+            border = appBorderStroke(1.dp, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     } else {
         androidx.compose.material3.Card(
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = BorderStroke(1.dp, AppCardBorder),
+            border = appBorderStroke(1.dp, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     }
 }
@@ -697,7 +697,7 @@ fun StatTile(
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
         color = AppCardContainer,
-        border = BorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(1.dp, AppCardBorder),
         modifier = modifier,
     ) {
         Column(modifier = Modifier.padding(AppSpacing.Lg)) {
@@ -742,7 +742,7 @@ fun SectionCard(
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
-        border = BorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(1.dp, AppCardBorder),
         modifier = modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm),
     ) {
         Column(modifier = Modifier.padding(AppSpacing.Lg)) {

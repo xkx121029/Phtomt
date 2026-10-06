@@ -2,7 +2,6 @@ package com.phoneagent.ui.agent
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +30,7 @@ import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.appBorder
 
 /**
  * 底部协助浮层：AI 在执行或规划中需要用户介入时，从页面下方浮入。
@@ -74,7 +74,7 @@ internal fun AgentAssistSheet(
             .animateContentSize()
             .clip(RoundedCornerShape(AppRadii.Card))
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -115,7 +115,7 @@ internal fun AgentAssistSheet(
                         .padding(vertical = AppSpacing.Xs)
                         .clip(RoundedCornerShape(AppRadii.Tile))
                         .background(colors.surfaceSunken)
-                        .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                        .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
                         .padding(AppSpacing.Md),
                 ) {
                     Column {
@@ -151,7 +151,7 @@ internal fun AgentAssistSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(AppRadii.Tile))
                     .background(colors.surfaceSunken)
-                    .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
                     .padding(AppSpacing.Md),
                 decorationBox = { inner ->
                     if (draft.isEmpty()) {
@@ -176,7 +176,7 @@ internal fun AgentAssistSheet(
                         onClick = onManualHandled,
                         modifier = Modifier
                             .clip(RoundedCornerShape(AppRadii.Chip))
-                            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Chip))
+                            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Chip))
                             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
                     ) {
                         Text(

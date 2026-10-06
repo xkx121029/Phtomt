@@ -1,6 +1,5 @@
 package com.phoneagent.ui.home
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,6 +30,7 @@ import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
+import com.phoneagent.ui.theme.appBorderStroke
 
 @Composable
 internal fun QuickEntry(
@@ -112,7 +112,7 @@ internal fun VisionModelCard(
         // 容器底色与其余卡片同源：连接状态由指示灯与文案说，不再把整块卡染成绿色——
         // 同一个屏里"有的卡带底色、有的不带"会让层次读起来像没对齐
         color = AppCardContainer,
-        border = BorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

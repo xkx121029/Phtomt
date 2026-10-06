@@ -2,10 +2,8 @@ package com.phoneagent.ui.memory
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -78,6 +76,8 @@ import com.phoneagent.ui.theme.MemoryProfileSoft
 import com.phoneagent.ui.theme.MemoryRoot
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorder
+import com.phoneagent.ui.theme.appBorderStroke
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,7 +94,7 @@ internal fun EmptyMemoryCard(onRefresh: () -> Unit) {
         // 这是一张卡片，走卡片底色（不是"下沉面"）：空态与有内容时的记忆卡应当是同一层次，
         // 只是里面暂时没有条目
         color = AppCardContainer,
-        border = BorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
     ) {
         Column(
@@ -234,7 +234,7 @@ internal fun TaskMemoryList(
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
                     .clip(RoundedCornerShape(AppRadii.Tile))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(AppRadii.Tile))
+                    .appBorder(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(AppRadii.Tile))
                     .padding(12.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

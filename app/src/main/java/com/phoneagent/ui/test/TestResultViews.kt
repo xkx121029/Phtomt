@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -67,6 +66,7 @@ import com.phoneagent.ui.theme.TestReal
 import com.phoneagent.ui.theme.TestRegression
 import com.phoneagent.ui.theme.TestTargeting
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
 
 @Composable
@@ -134,7 +134,7 @@ internal fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifie
         colors = CardDefaults.cardColors(
             containerColor = if (result.passed) passedColor.copy(alpha = 0.08f) else failedColor.copy(alpha = 0.08f),
         ),
-        border = BorderStroke(1.dp, borderColor.value),
+        border = appBorderStroke(1.dp, borderColor.value),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

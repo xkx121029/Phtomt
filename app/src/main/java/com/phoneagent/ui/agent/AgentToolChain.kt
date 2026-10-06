@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +45,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.appBorder
 
 /**
  * 工具调用的图标与名称：这里是"调用了什么工具"的唯一口径。
@@ -117,7 +117,7 @@ internal fun ToolChainItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item)),
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item)),
     ) {
         PressableScale(
             modifier = Modifier.fillMaxWidth(),
@@ -227,7 +227,7 @@ private fun ToolIconStrip(steps: List<StepCall>) {
                         .size(ChipSize)
                         .clip(RoundedCornerShape(AppRadii.Chip))
                         .background(if (failed) colors.errorContainer else colors.surfaceSunken)
-                        .border(
+                        .appBorder(
                             1.dp,
                             if (failed) colors.error.copy(alpha = 0.45f) else colors.outlineSoft,
                             RoundedCornerShape(AppRadii.Chip),

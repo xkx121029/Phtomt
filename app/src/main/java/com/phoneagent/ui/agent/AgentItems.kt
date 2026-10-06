@@ -52,6 +52,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.appBorder
 
 /** 气泡圆角：朝向说话者一侧的底角收窄，形成克制的对话尾，而不是四角一样的通用气泡 */
 internal fun agentBubbleShape(isUser: Boolean) = RoundedCornerShape(
@@ -326,7 +327,7 @@ internal fun DocPreviewItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item)),
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item)),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -446,7 +447,7 @@ internal fun AgentActionButton(
             .background(container)
             .then(
                 if (tone == AgentButtonTone.NEUTRAL) {
-                    Modifier.border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
                 } else {
                     Modifier
                 }

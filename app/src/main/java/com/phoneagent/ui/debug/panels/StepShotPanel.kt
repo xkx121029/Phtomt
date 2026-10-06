@@ -1,7 +1,6 @@
 package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -70,6 +69,7 @@ import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -83,7 +83,7 @@ internal fun StepShotPanel(shot: com.phoneagent.domain.model.StepShot) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(

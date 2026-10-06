@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
-enum class SettingsPage { HOME, AI_MODELS, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
+enum class SettingsPage { HOME, THEME, AI_MODELS, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -110,6 +110,7 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         ) { p ->
             when (p) {
                 SettingsPage.HOME -> SettingsHome(st, vm, onOpen = { page = it })
+                SettingsPage.THEME -> SettingsTheme(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
                 SettingsPage.AI_MODELS -> SettingsAiModels(
                     vm = vm, st = st,
                     onBack = { page = SettingsPage.HOME },
@@ -200,6 +201,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var marqueeColors by mutableStateOf(initial.marqueeColors)
     var cursorOverlayEnabled by mutableStateOf(initial.cursorOverlayEnabled)
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
+    /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画 */
+    var borderless by mutableStateOf(initial.borderless)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
@@ -245,6 +248,7 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = s.marqueeColors
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
+        borderless = s.borderless
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
         endpoints.addAll(s.endpoints)
@@ -312,6 +316,7 @@ class SettingsState(initial: AppSettings.Settings) {
         marqueeColors = marqueeColors,
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
+        borderless = borderless,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,

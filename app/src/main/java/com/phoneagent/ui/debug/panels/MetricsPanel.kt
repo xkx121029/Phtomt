@@ -1,7 +1,6 @@
 package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,6 +71,7 @@ import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -130,7 +130,7 @@ private fun MethodCard(m: AgentMetrics) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(AppRadii.Item),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("单步耗时构成（决策/视觉/执行）", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)

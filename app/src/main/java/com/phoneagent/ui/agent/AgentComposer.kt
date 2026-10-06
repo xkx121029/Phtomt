@@ -63,6 +63,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.appBorder
 
 /**
  * 输入区状态机。
@@ -227,7 +228,7 @@ private fun ClarifyOptionList(
                     .fillMaxWidth()
                     .clip(shape)
                     .background(colors.surfaceSunken)
-                    .border(1.dp, colors.outlineSoft, shape)
+                    .appBorder(1.dp, colors.outlineSoft, shape)
                     .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
             ) {
                 Column {
@@ -271,7 +272,7 @@ private fun PlanApprovalPanel(
             .fillMaxWidth()
             .clip(shape)
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, shape)
+            .appBorder(1.dp, colors.outlineSoft, shape)
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -557,7 +558,7 @@ internal fun AgentComposer(
                         onClick = onCancelPlan,
                         modifier = Modifier
                             .clip(RoundedCornerShape(AppRadii.Tile))
-                            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
                             .padding(horizontal = AppSpacing.Md, vertical = 10.dp),
                     ) {
                         Text(
@@ -656,7 +657,7 @@ internal fun AgentModeBar(
                     // 圆角裁在容器上：首尾两行的选中底色才不会溢出圆角
                     .clip(sheetShape)
                     .background(colors.surfaceRaised)
-                    .border(1.dp, colors.outlineSoft, sheetShape),
+                    .appBorder(1.dp, colors.outlineSoft, sheetShape),
             ) {
                 ActionMode.entries.forEach { mode ->
                     val selected = mode == current
@@ -719,7 +720,7 @@ internal fun AgentModeBar(
             modifier = Modifier
                 .clip(chipShape)
                 .background(colors.brandContainer)
-                .border(1.dp, colors.outlineSoft, chipShape),
+                .appBorder(1.dp, colors.outlineSoft, chipShape),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),

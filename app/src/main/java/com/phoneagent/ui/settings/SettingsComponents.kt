@@ -3,7 +3,6 @@ package com.phoneagent.ui.settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -71,6 +70,7 @@ import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
 
 // ========== 共享数据模型 ==========
@@ -193,7 +193,7 @@ internal fun GroupCard(content: @Composable () -> Unit) {
     Card(
         shape = RoundedCornerShape(AppRadii.Card),
         colors = CardDefaults.cardColors(containerColor = AppCardContainer),
-        border = BorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) { content() }
@@ -763,7 +763,7 @@ private fun CapChip(text: String, state: Boolean?) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Chip),
         color = bg,
-        border = if (state == null) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+        border = if (state == null) appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
     ) {
         Text(
             text,

@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +68,7 @@ import com.phoneagent.ui.theme.TestReal
 import com.phoneagent.ui.theme.TestRegression
 import com.phoneagent.ui.theme.TestTargeting
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
 
 /**
@@ -193,7 +193,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             Card(
                 shape = RoundedCornerShape(AppRadii.Tile),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                border = appBorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
@@ -221,7 +221,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             Card(
                 shape = RoundedCornerShape(AppRadii.Item),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
@@ -292,7 +292,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(AppRadii.Tile),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                border = appBorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

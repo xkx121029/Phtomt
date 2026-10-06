@@ -146,8 +146,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            PhoneAgentTheme {
-                val vm: MainViewModel = koinViewModel()
+            val vm: MainViewModel = koinViewModel()
+            // 主题设置：无框线模式实时驱动 PhoneAgentTheme 的框线开关，改完立即生效
+            val settings by vm.settingsFlow.collectAsState()
+            PhoneAgentTheme(bordersEnabled = !settings.borderless) {
                 ActivityContent(vm, pageSignal)
             }
         }

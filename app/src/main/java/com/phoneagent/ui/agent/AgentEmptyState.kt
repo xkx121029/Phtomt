@@ -1,7 +1,6 @@
 package com.phoneagent.ui.agent
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +27,7 @@ import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.appBorder
 
 /**
  * 起步建议：软件预置的固定示例，不是 AI 现编内容。
@@ -83,7 +83,7 @@ internal fun AgentEmptyState(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(AppRadii.Item))
                     .background(colors.warningContainer)
-                    .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
                     .padding(AppSpacing.Lg),
             ) {
                 Text(
@@ -125,7 +125,7 @@ private fun SuggestionRow(text: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Tile))
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

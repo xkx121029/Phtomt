@@ -1,11 +1,9 @@
 package com.phoneagent.ui.debug.panels
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +70,7 @@ import com.phoneagent.ui.debug.DebugEmptyHint
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorder
 
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -117,7 +116,7 @@ private fun ChatBubble(msg: ConversationMessage) {
                         bottomEnd = if (isUser) AppRadii.Chip else AppRadii.Bubble,
                     ),
                 )
-                .border(
+                .appBorder(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(

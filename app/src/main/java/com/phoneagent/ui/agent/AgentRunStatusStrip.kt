@@ -6,7 +6,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +39,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseInOut
+import com.phoneagent.ui.theme.appBorder
 import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.delay
 
@@ -160,7 +160,7 @@ internal fun AgentRunStatusStrip(
                 if (needsUser) {
                     Modifier
                 } else {
-                    Modifier.border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
                 },
             )
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),

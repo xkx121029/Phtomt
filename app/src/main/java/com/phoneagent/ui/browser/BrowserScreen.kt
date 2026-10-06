@@ -1,7 +1,6 @@
 package com.phoneagent.ui.browser
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import com.phoneagent.feature.browser.createBrowserWebView
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.appBorder
 
 /**
  * 内置浏览器页（全屏二级页）。
@@ -161,7 +161,7 @@ private fun EmptyHint(modifier: Modifier = Modifier) {
     ) {
         Column(
             modifier = Modifier
-                .border(
+                .appBorder(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(AppRadii.Card),

@@ -60,6 +60,7 @@ import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.EaseOut
+import com.phoneagent.ui.theme.appBorder
 import com.phoneagent.ui.theme.motionSettings
 
 /**
@@ -177,7 +178,7 @@ private fun TaskPanel(
             .fillMaxHeight()
             .clip(shape)
             .background(colors.surfaceRaised)
-            .border(1.dp, colors.outlineSoft, shape),
+            .appBorder(1.dp, colors.outlineSoft, shape),
     ) {
         Row(
             modifier = Modifier

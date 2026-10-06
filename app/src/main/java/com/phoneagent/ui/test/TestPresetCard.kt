@@ -5,7 +5,6 @@ import androidx.compose.animation.core.tween
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +65,7 @@ import com.phoneagent.ui.theme.TestReal
 import com.phoneagent.ui.theme.TestRegression
 import com.phoneagent.ui.theme.TestTargeting
 import com.phoneagent.ui.theme.Warning
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
 
 @Composable
@@ -89,7 +89,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
             modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
             shape = RoundedCornerShape(AppRadii.Item),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+            border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
         ) {
             Row(
                 modifier = Modifier.padding(16.dp),
