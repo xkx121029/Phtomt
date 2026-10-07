@@ -2,6 +2,7 @@ package com.phoneagent.engine
 
 import com.phoneagent.domain.model.AppPageIndex
 import com.phoneagent.domain.rules.ShellCommands
+import com.phoneagent.data.store.PageMemoryEntry
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.prompt.PromptAssembler
@@ -355,6 +356,65 @@ object AgentPrompts {
                 ),
             ),
         )
+    }
+
+    // ==================== 三·五、页面记忆提示块 ====================
+
+    /**
+     * 每步决策的页面记忆块：当前页面命中已记忆页面时注入已知热点与可去路径。
+     * 空内容返回空串（不占上下文）；文案中英双语，随 [lang] 切换。
+     * @param hotspots 已记忆热点（label to semanticId，semanticId 可为空）
+     * @param paths 可去路径（动作文案 to 下一页标题）
+     */
+    fun pageMemoryBlock(
+        lang: PromptLang,
+        page: PageMemoryEntry,
+        hotspots: List<Pair<String, String>>,
+        paths: List<Pair<String, String>>,
+    ): String {
+        if (hotspots.isEmpty() && paths.isEmpty()) return ""
+        val sb = StringBuilder()
+        if (lang == PromptLang.CN) {
+            sb.append("\n\n## 页面记忆\n当前页面此前执行任务时已记忆（来过 ${page.visitCount} 次），优先复用已知入口：")
+            if (hotspots.isNotEmpty()) {
+                sb.append("\n- 已知控件：")
+                sb.append(hotspots.take(8).joinToString("、") { (label, sid) ->
+                    if (sid.isBlank()) "「$label」" else "「$label」(id=$sid)"
+                })
+            }
+            if (paths.isNotEmpty()) {
+                sb.append("\n- 可去路径：")
+                sb.append(paths.take(6).joinToString("；") { (action, to) -> "$action → $to" })
+            }
+        } else {
+            sb.append("\n\n## Page Memory\nThis page was memorized from previous task runs (visited ${page.visitCount}x); prefer the known entries:")
+            if (hotspots.isNotEmpty()) {
+                sb.append("\n- Known controls: ")
+                sb.append(hotspots.take(8).joinToString(", ") { (label, sid) ->
+                    if (sid.isBlank()) "\"$label\"" else "\"$label\" (id=$sid)"
+                })
+            }
+            if (paths.isNotEmpty()) {
+                sb.append("\n- Known paths: ")
+                sb.append(paths.take(6).joinToString("; ") { (action, to) -> "$action -> $to" })
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * 规划阶段的页面记忆块：按应用汇总历史走过的路径，规划时优先复用。
+     * @param lines 每行一条「应用：路径摘要」，由引擎侧组装
+     */
+    fun pageMemoryPlanningBlock(lang: PromptLang, lines: List<String>): String {
+        if (lines.isEmpty()) return ""
+        return if (lang == PromptLang.CN) {
+            "\n\n# 页面记忆（规划可参考）\n以下页面与路径来自本机历史任务，规划时优先复用已知入口：\n" +
+                lines.joinToString("\n") { "- $it" }
+        } else {
+            "\n\n# Page Memory (plan may reference)\nThe following pages and paths were memorized from previous local task runs; prefer these known entries:\n" +
+                lines.joinToString("\n") { "- $it" }
+        }
     }
 
     // ==================== 三·五、记忆提炼 ====================

@@ -27,6 +27,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,8 +37,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +92,8 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val anomalies by vm.memoryAnomalies.collectAsState()
     val profiles by vm.memoryProfile.collectAsState()
     val taskMemories by vm.memoryTaskMemories.collectAsState()
+    val pageMemories by vm.pageMemories.collectAsState()
+    val pagePathEdges by vm.pagePathEdges.collectAsState()
     val loading by vm.memoryLoading.collectAsState()
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
@@ -158,6 +165,35 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                 }
+                return@Column
+            }
+
+            // 分段切换：「图谱」（异常经验/用户画像/任务记忆）与「页面记忆」两个分栏
+            var tab by rememberSaveable { mutableIntStateOf(0) }
+            val tabs = listOf("图谱", "页面记忆")
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                tabs.forEachIndexed { i, label ->
+                    SegmentedButton(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        shape = SegmentedButtonDefaults.itemShape(index = i, count = tabs.size),
+                        label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                    )
+                }
+            }
+
+            if (tab == 1) {
+                PageMemoryList(
+                    entries = pageMemories,
+                    edges = pagePathEdges,
+                    onDelete = { vm.deletePageMemory(it) },
+                    onClear = { vm.clearPageMemories() },
+                )
+                Spacer(Modifier.height(28.dp))
                 return@Column
             }
 

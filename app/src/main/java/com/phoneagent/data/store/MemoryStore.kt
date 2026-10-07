@@ -62,6 +62,53 @@ data class AiMemoryEntry(
 )
 
 /**
+ * 页面记忆热点：任务执行中记忆下来的可点击控件。
+ * 坐标用 ratio（0~1 相对屏幕比例）而非像素：旋转/换分辨率后标记仍落在原控件附近。
+ */
+@Serializable
+data class PageMemoryHotspot(
+    val label: String,
+    val semanticId: String = "",
+    val ratioX: Float,
+    val ratioY: Float,
+)
+
+/**
+ * 页面记忆条目：任务执行遇到页面时自动沉淀的「这一页长什么样、有哪些可用入口」。
+ * 指纹用 PageFingerprint.computeMeaningful（仅 type+label+中心点粗坐标，忽略时钟/viewId 序号），
+ * 跨会话命中率高；指纹不含包名，故条目单独存 appPackage，命中时先比包名。
+ */
+@Serializable
+data class PageMemoryEntry(
+    val id: Long = 0L,
+    val appPackage: String,
+    val fingerprint: String,
+    val pageType: String = "generic",
+    /** 页面标题/首行文案，供记忆页展示 */
+    val title: String = "",
+    val hotspots: List<PageMemoryHotspot> = emptyList(),
+    val visitCount: Int = 1,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+/**
+ * 页面路径边：一次任务里「页面A —[动作]→ 页面B」的跳转记录。
+ * from/to 都是页面指纹；同 from+to+动作 合并为一条并累计 count。
+ */
+@Serializable
+data class PagePathEdge(
+    val id: Long = 0L,
+    val appPackage: String,
+    val fromFp: String,
+    val toFp: String,
+    /** 动作文案，如「点击『搜索』」 */
+    val actionLabel: String,
+    val count: Int = 1,
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+/**
  * 任务记忆条目：一次任务执行期间持续维护的「目标 / 用户要求 / 已验证做法」。
  *
  * 与 AI 记忆（跨任务沉淀经验）不同，它只描述当前这一次任务：
@@ -152,10 +199,27 @@ data class TaskMemoryEntry(
 }
 
 /**
+ * 页面记忆存储的最小接口：采集器（PageMemoryRecorder）只依赖这几个方法，
+ * 单测用内存假实现替换，不必拉起 DataStore。
+ */
+interface PageMemoryStore {
+    suspend fun loadPageMemories(): List<PageMemoryEntry>
+    suspend fun loadPageEdges(): List<PagePathEdge>
+    suspend fun upsertPageMemory(
+        appPackage: String,
+        fingerprint: String,
+        pageType: String,
+        title: String,
+        hotspots: List<PageMemoryHotspot>,
+    ): PageMemoryEntry?
+    suspend fun upsertPageEdge(appPackage: String, fromFp: String, toFp: String, actionLabel: String): PagePathEdge?
+}
+
+/**
  * 记忆系统：异常经验记忆 + 用户画像，基于 DataStore 持久化。
  * 对应文档“第 10 层 记忆系统”。
  */
-class MemoryStore(private val context: Context) {
+class MemoryStore(private val context: Context) : PageMemoryStore {
 
     private companion object {
         /** 任务记忆总量上限：记忆页是给人看的列表，超出按时间淘汰 */
@@ -181,6 +245,8 @@ class MemoryStore(private val context: Context) {
     private val aiMemoryKey = stringPreferencesKey("ai_memory")
     private val taskMemoryKey = stringPreferencesKey("task_memory")
     private val evolvedRulesKey = stringPreferencesKey("evolved_rules")
+    private val pageMemoryKey = stringPreferencesKey("page_memory")
+    private val pagePathKey = stringPreferencesKey("page_path")
 
     suspend fun loadAnomalies(): List<AnomalyMemoryEntry> {
         val raw = context.memoryStore.data.first()[anomaliesKey] ?: return emptyList()
@@ -424,6 +490,183 @@ class MemoryStore(private val context: Context) {
                 list.filter { it.status == TaskMemoryEntry.STATUS_RUNNING }.sortedBy { it.updatedAt }
             ).take(overflow).map { it.taskId }.toSet()
         return list.filterNot { it.taskId in victims }
+    }
+
+    // ---- 页面记忆与路径边（任务执行自动沉淀，跨任务复用）----
+    // 纯合并/淘汰逻辑收口在 PageMemoryOps（可单测），这里只做 DataStore 读写
+
+    override suspend fun loadPageMemories(): List<PageMemoryEntry> {
+        val raw = context.memoryStore.data.first()[pageMemoryKey] ?: return emptyList()
+        return runCatching { json.decodeFromString<List<PageMemoryEntry>>(raw) }.getOrDefault(emptyList())
+    }
+
+    private suspend fun savePageMemories(list: List<PageMemoryEntry>) {
+        context.memoryStore.edit {
+            it[pageMemoryKey] = json.encodeToString(
+                ListSerializer(PageMemoryEntry.serializer()),
+                PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_MEMORIES) { it.updatedAt },
+            )
+        }
+    }
+
+    /**
+     * 写入一条页面记忆：同 包名+指纹 视为同一页面，命中则合并热点并集并累计访问次数。
+     * 热点去重：同 label 且中心点粗坐标一致（ratio×20 取整）视为同一控件；单页封顶 [PageMemoryOps.MAX_PAGE_HOTSPOTS]。
+     * id 由本方法统一分配，调用方无需关心。
+     */
+    override suspend fun upsertPageMemory(
+        appPackage: String,
+        fingerprint: String,
+        pageType: String,
+        title: String,
+        hotspots: List<PageMemoryHotspot>,
+    ): PageMemoryEntry? {
+        val (list, result) = PageMemoryOps.upsertEntry(loadPageMemories(), appPackage, fingerprint, pageType, title, hotspots, System.currentTimeMillis())
+            ?: return null
+        savePageMemories(list)
+        return result
+    }
+
+    /** 删除单条页面记忆，并连带删除引用该页面的路径边；返回是否删掉了东西 */
+    suspend fun deletePageMemory(id: Long): Boolean {
+        val list = loadPageMemories()
+        val target = list.firstOrNull { it.id == id } ?: return false
+        savePageMemories(list.filterNot { it.id == id })
+        val edges = loadPageEdges().filterNot { it.fromFp == target.fingerprint || it.toFp == target.fingerprint }
+        savePageEdges(edges)
+        return true
+    }
+
+    suspend fun clearPageMemories() {
+        savePageMemories(emptyList())
+        savePageEdges(emptyList())
+    }
+
+    override suspend fun loadPageEdges(): List<PagePathEdge> {
+        val raw = context.memoryStore.data.first()[pagePathKey] ?: return emptyList()
+        return runCatching { json.decodeFromString<List<PagePathEdge>>(raw) }.getOrDefault(emptyList())
+    }
+
+    private suspend fun savePageEdges(list: List<PagePathEdge>) {
+        context.memoryStore.edit {
+            it[pagePathKey] = json.encodeToString(
+                ListSerializer(PagePathEdge.serializer()),
+                PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_EDGES) { it.updatedAt },
+            )
+        }
+    }
+
+    /**
+     * 写入一条路径边：同 包名+from+to+动作 合并为一条并累计 count。
+     * id 由本方法统一分配，调用方无需关心。
+     */
+    override suspend fun upsertPageEdge(appPackage: String, fromFp: String, toFp: String, actionLabel: String): PagePathEdge? {
+        val (list, result) = PageMemoryOps.upsertEdge(loadPageEdges(), appPackage, fromFp, toFp, actionLabel, System.currentTimeMillis())
+            ?: return null
+        savePageEdges(list)
+        return result
+    }
+}
+
+/**
+ * 页面记忆/路径边的纯合并与淘汰逻辑：不碰 DataStore，可被单测直接覆盖。
+ * 上限常量也收口在这里，保证「唯一截断实现点」。
+ */
+internal object PageMemoryOps {
+    /** 页面记忆总量上限：超出按最近更新时间淘汰最旧的 */
+    const val MAX_PAGE_MEMORIES = 100
+
+    /** 页面路径边总量上限：超出按最近更新时间淘汰最旧的 */
+    const val MAX_PAGE_EDGES = 150
+
+    /** 单页热点上限：只保留最有导航价值的可点击控件 */
+    const val MAX_PAGE_HOTSPOTS = 12
+
+    /** 按时间淘汰：保留 updatedAt 最新的 [cap] 条 */
+    fun <T> trimByUpdatedAt(list: List<T>, cap: Int, updatedAt: (T) -> Long): List<T> {
+        if (list.size <= cap) return list
+        return list.sortedByDescending(updatedAt).take(cap)
+    }
+
+    /**
+     * 在 [list] 上写入一条页面记忆，返回 (新列表, 写入结果)；入参非法返回 null。
+     * 同 包名+指纹 命中则合并热点并集并 visitCount+1，否则新建（id = 现有最大 + 1）。
+     */
+    fun upsertEntry(
+        list: List<PageMemoryEntry>,
+        appPackage: String,
+        fingerprint: String,
+        pageType: String,
+        title: String,
+        hotspots: List<PageMemoryHotspot>,
+        now: Long,
+    ): Pair<List<PageMemoryEntry>, PageMemoryEntry>? {
+        if (appPackage.isBlank() || fingerprint.isBlank()) return null
+        val idx = list.indexOfFirst { it.appPackage == appPackage && it.fingerprint == fingerprint }
+        return if (idx >= 0) {
+            val existing = list[idx]
+            // 迟到落库保护（与 upsertTaskMemory 同思路）：旧快照后到不回写
+            val merged = existing.copy(
+                pageType = pageType.ifBlank { existing.pageType },
+                title = title.ifBlank { existing.title },
+                hotspots = mergeHotspots(existing.hotspots, hotspots),
+                visitCount = existing.visitCount + 1,
+                updatedAt = now,
+            )
+            list.toMutableList().also { it[idx] = merged } to merged
+        } else {
+            val created = PageMemoryEntry(
+                id = (list.maxOfOrNull { it.id } ?: 0L) + 1,
+                appPackage = appPackage,
+                fingerprint = fingerprint,
+                pageType = pageType.ifBlank { "generic" },
+                title = title,
+                hotspots = hotspots.take(MAX_PAGE_HOTSPOTS),
+                createdAt = now,
+                updatedAt = now,
+            )
+            list + created to created
+        }
+    }
+
+    /**
+     * 在 [list] 上写入一条路径边，返回 (新列表, 写入结果)；入参非法返回 null。
+     * 同 包名+from+to+动作 合并为一条并累计 count。
+     */
+    fun upsertEdge(
+        list: List<PagePathEdge>,
+        appPackage: String,
+        fromFp: String,
+        toFp: String,
+        actionLabel: String,
+        now: Long,
+    ): Pair<List<PagePathEdge>, PagePathEdge>? {
+        if (appPackage.isBlank() || fromFp.isBlank() || toFp.isBlank() || fromFp == toFp) return null
+        val label = actionLabel.trim().take(24)
+        if (label.isEmpty()) return null
+        val idx = list.indexOfFirst { it.appPackage == appPackage && it.fromFp == fromFp && it.toFp == toFp && it.actionLabel == label }
+        return if (idx >= 0) {
+            val merged = list[idx].copy(count = list[idx].count + 1, updatedAt = now)
+            list.toMutableList().also { it[idx] = merged } to merged
+        } else {
+            val created = PagePathEdge(
+                id = (list.maxOfOrNull { it.id } ?: 0L) + 1,
+                appPackage = appPackage,
+                fromFp = fromFp,
+                toFp = toFp,
+                actionLabel = label,
+                updatedAt = now,
+            )
+            list + created to created
+        }
+    }
+
+    /** 热点合并：同 label 且粗坐标一致（ratio×20 取整）视为同一控件；合并后按上限截断 */
+    private fun mergeHotspots(old: List<PageMemoryHotspot>, new: List<PageMemoryHotspot>): List<PageMemoryHotspot> {
+        fun keyOf(h: PageMemoryHotspot) = "${h.label}|${(h.ratioX * 20).toInt()}|${(h.ratioY * 20).toInt()}"
+        val merged = LinkedHashMap<String, PageMemoryHotspot>()
+        (old + new).forEach { merged.putIfAbsent(keyOf(it), it) }
+        return merged.values.take(MAX_PAGE_HOTSPOTS)
     }
 }
 

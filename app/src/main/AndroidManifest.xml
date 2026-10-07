@@ -89,6 +89,11 @@
             android:name=".overlay.CursorOverlayService"
             android:exported="false" />
 
+        <!-- 页面记忆标记覆盖层：命中已记忆页面时在已知控件位置画淡色圆环（不拦截触摸） -->
+        <service
+            android:name=".overlay.PageMarkOverlayService"
+            android:exported="false" />
+
         <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器 -->
         <receiver
             android:name=".device.shell.AdbPairingReceiver"

@@ -204,9 +204,11 @@ class ScreenSharingService : Service() {
         val hasOverlay = FloatingWindowService.setVisible(false)
         // 点击光标与悬浮窗同进同出，否则圆点会被截进画面污染 AI 读屏
         val hasCursor = com.phoneagent.overlay.CursorOverlayService.setVisible(false)
+        // 页面记忆标记同样只是给人看的覆盖物，截图时一并隐藏
+        val hasMarks = com.phoneagent.overlay.PageMarkOverlayService.setVisible(false)
         try {
             // 光标也是叠在画面上的覆盖物：只藏了光标时同样要等「干净」的新帧
-            if (hasOverlay || hasCursor) waitForCleanFrame(frameSeq, 250)
+            if (hasOverlay || hasCursor || hasMarks) waitForCleanFrame(frameSeq, 250)
             synchronized(frameLock) {
                 val f = latestFrame ?: return@synchronized null
                 if (f.isRecycled) null else f.copy(Bitmap.Config.ARGB_8888, false)
@@ -215,6 +217,7 @@ class ScreenSharingService : Service() {
             // 只恢复本次确实隐藏过的窗口：没藏过时恢复会把用户手动收起的面板误弹回来
             if (hasOverlay) FloatingWindowService.setVisible(true)
             if (hasCursor) com.phoneagent.overlay.CursorOverlayService.setVisible(true)
+            if (hasMarks) com.phoneagent.overlay.PageMarkOverlayService.setVisible(true)
         }
     }
 

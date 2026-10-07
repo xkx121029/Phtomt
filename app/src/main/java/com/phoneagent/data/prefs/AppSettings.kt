@@ -91,6 +91,11 @@ class AppSettings(private val context: Context) {
         val cursorOverlayEnabled: Boolean = true,
         /** 光标先到位再执行点击（默认关闭=并行，避免每步额外等待） */
         val cursorClickSync: Boolean = false,
+        /**
+         * 页面记忆：任务执行遇到页面时自动记忆页面热点与跳转路径，
+         * 屏幕淡色圆环标记记忆控件（不挡触摸），后续任务决策与规划可参考。
+         */
+        val pageMemoryEnabled: Boolean = true,
         /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画，层次只靠底色差 */
         val borderless: Boolean = false,
         // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
@@ -146,6 +151,8 @@ class AppSettings(private val context: Context) {
         val ENABLE_REVIEW = booleanPreferencesKey("enable_review")
         val CURSOR_OVERLAY_ENABLED = booleanPreferencesKey("cursor_overlay_enabled")
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
+        /** 页面记忆总开关，见 [Settings.pageMemoryEnabled] */
+        val PAGE_MEMORY_ENABLED = booleanPreferencesKey("page_memory_enabled")
         /** 主题：无框线模式，见 [Settings.borderless] */
         val BORDERLESS = booleanPreferencesKey("theme_borderless")
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
@@ -231,6 +238,7 @@ class AppSettings(private val context: Context) {
             enableReview = prefs[Keys.ENABLE_REVIEW] ?: true,
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
+            pageMemoryEnabled = prefs[Keys.PAGE_MEMORY_ENABLED] ?: true,
             borderless = prefs[Keys.BORDERLESS] ?: false,
             endpoints = endpoints,
             catalog = catalog,
@@ -279,6 +287,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.ENABLE_REVIEW] = settings.enableReview
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
+            prefs[Keys.PAGE_MEMORY_ENABLED] = settings.pageMemoryEnabled
             prefs[Keys.BORDERLESS] = settings.borderless
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
             // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏

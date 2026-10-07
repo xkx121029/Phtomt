@@ -39,6 +39,7 @@ import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.ProfileLearner
 import com.phoneagent.data.store.TaskMemoryEntry
+import com.phoneagent.engine.memory.PageMemoryRecorder
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.AgentIntent
@@ -243,6 +244,11 @@ class AgentEngine(
     private val memory = MemoryStore(appContext)
     private val anomalyEngine = AnomalyMemoryEngine(memory)
     private val profileLearner = ProfileLearner(memory)
+    /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
+    private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
+    /** 页面记忆提示缓存：按页面指纹缓存，换页才重查（与 anomalyHint 同款） */
+    private var pageMemoryHintFingerprint: String = ""
+    private var pageMemoryHintText: String = ""
 
     // ---- 意图化转译层（HPA动作执行逻辑优化文档 v2.1）：AI 输出意图，端侧按授权模式转译执行 ----
     private val capabilityManager = CapabilityManager(appContext, shizukuManager) { adbTransport?.isConnectedNow() == true }
@@ -709,6 +715,7 @@ class AgentEngine(
         )
         FloatingWindowService.stop(appContext)
         runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
+        runCatching { com.phoneagent.overlay.PageMarkOverlayService.hide() }
     }
 
     /** 记录完整 API 请求/响应（用于调试页日志，可展开查看全文） */
@@ -1035,11 +1042,15 @@ class AgentEngine(
         // 环境上下文（时间/网络/电量/已安装应用数）+ 会话承接（上一轮任务）：规划阶段就要带上，
         // 否则"明天""再改一下"这类依赖时间与上下文的说法在规划时无从判断
         val context = AgentPrompts.environment(lang, envFacts()) + sessionContextText(task, lang)
+        // 页面记忆：任务提到的应用若走过历史路径，规划时注入参考（空串不占上下文；开关关闭则跳过）
+        val pageMemoryContext = if (settingsVal.pageMemoryEnabled) {
+            runCatching { AgentPrompts.pageMemoryPlanningBlock(lang, pageMemoryPlanningLines(task, lang)) }.getOrDefault("")
+        } else ""
         // 澄清后重规划：问题与答案一起注入——光给答案不给问题，AI 就不知道这句话在回答哪一问
         val text = when {
-            answer.isNullOrBlank() -> "$prompt$execContext$context"
-            question.isNullOrBlank() -> "$prompt$execContext$context\n\n用户已选择澄清项：$answer"
-            else -> "$prompt$execContext$context\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
+            answer.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext"
+            question.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext\n\n用户已选择澄清项：$answer"
+            else -> "$prompt$execContext$context$pageMemoryContext\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
         }
         val messages = listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = text))))
         // 链路聚合：规划等复杂任务优先使用思考模型（开启 thinking），未配置则回退主模型
@@ -1392,6 +1403,7 @@ class AgentEngine(
             // 用户若立刻发起新任务，旧任务的收尾不能把新任务的光标一并撤掉
             if (mem == null || mem.taskId == currentTaskId) {
                 runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
+        runCatching { com.phoneagent.overlay.PageMarkOverlayService.hide() }
             }
         }
     }
@@ -1419,6 +1431,10 @@ class AgentEngine(
         // 新任务重置长线工作记忆
         completedSteps = 0
         totalPlannedSteps = plan?.steps?.size ?: 0
+        // 页面记忆：清上一任务的内存快照与提示缓存（DataStore 里的历史记忆保留，供本任务命中参考）
+        pageMemoryRecorder.reset()
+        pageMemoryHintFingerprint = ""
+        pageMemoryHintText = ""
         // 任务记忆：任务原文既是既定目标，也是第一条用户要求。
         // 先落库再执行，任务跑到一半（甚至中断）时记忆页也能看到它到底要做什么
         val taskMemory = TaskMemoryEntry(
@@ -1603,6 +1619,16 @@ class AgentEngine(
                 continue
             }
 
+            // 2.5 页面记忆：命中已记忆页面 → 屏幕淡色圆环标记 + 决策提示注入素材；新页面自动入库。
+            //     放在敏感页判定之后：敏感页绝不写入页面记忆（Recorder 内部还有双保险）。
+            //     未开启开关时什么都不做（任务收尾的 PageMarkOverlayService.hide 会兜底撤下标记）
+            var pageMemoryHint = ""
+            if (settingsVal.pageMemoryEnabled) {
+                val hit = runCatching { pageMemoryRecorder.onPageObserved(snapshot, annotated) }.getOrNull()
+                pageMemoryHint = runCatching { pageMemoryHintFor(snapshot, hit) }.getOrDefault("")
+                runCatching { com.phoneagent.overlay.PageMarkOverlayService.update(appContext, hit?.hotspots.orEmpty()) }
+            }
+
             // 3. 端侧决策优先（输出的都是"意图"）
             // 跨步清理图片编码缓存：上一轮的截图早已回收，留着引用既不省事也占内存
             aiClient.clearImageCache()
@@ -1623,7 +1649,7 @@ class AgentEngine(
                 // 而不是让异常穿透整个任务（既有的「正常返回 null → 决策为空停止」语义保持不变）
                 var decisionThrew = false
                 val decided = try {
-                    cloudDecide(task, snapshot, annotated, messages, screenshot, settingsVal)
+                    cloudDecide(task, snapshot, annotated, messages, screenshot, settingsVal, pageMemoryHint)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Throwable) {
@@ -1746,6 +1772,8 @@ class AgentEngine(
             //     它不走 IntentTranslator 的策略表（不受无障碍/Shizuku/无线 ADB 影响），
             //     也不产生 AgentAction：网页读写由本 App 的 WebView 用 DOM 脚本完成，
             //     结果作为"上一步结果"回注下一轮决策。
+            // 页面记忆：此刻意图已定稿（技能归一化之后），记为待记路径边的动作
+            pageMemoryRecorder.onIntent(intent)
             if (browserChannel.handles(intent.intent)) {
                 val (browseAction, browseVerify) = handleBrowseIntent(step, intent, messages)
                 log(
@@ -1753,6 +1781,7 @@ class AgentEngine(
                     "执行动作：${browseAction.type}（${if (browseVerify.success) "已验证生效" else "待确认"}）",
                 )
                 recordsIntoHistory(step, browseAction, browseVerify)
+                pageMemoryRecorder.onStepResult(browseVerify.success)
                 stepShotCapture(step, browseAction, browseVerify.success)
                 continue
             }
@@ -2000,6 +2029,8 @@ class AgentEngine(
                     // 浏览器意图走独立通道：这里不能 continue（后面的 recordsIntoHistory 要落档），
                     // 故用「合成动作 + 验证结果」接进既有链路，让留档与截图照常发生。
                     val gIntent = guided
+                    // 页面记忆：引导恢复的意图同样记为待记路径边的动作
+                    pageMemoryRecorder.onIntent(gIntent)
                     // 引导回来的意图同样要过动作模式门控：用户给的"指导"不能成为越权的旁路
                     val gDenied = ActionPolicy.allows(activeActionMode, gIntent.intent) as? ActionPolicy.Verdict.Denied
                     if (gDenied != null) {
@@ -2062,6 +2093,8 @@ class AgentEngine(
 
             log(AgentLog.Level.INFO, "执行动作：${action.type}（${if (verified) "已验证生效" else "待确认"}）")
             recordsIntoHistory(step, action, verify)
+            // 页面记忆：动作是否真实生效（下一步换页时据此决定要不要记路径边）
+            pageMemoryRecorder.onStepResult(verified)
             // 每步执行完：截图并写下执行说明，供本地调试板块展示（最新一步）
             stepShotCapture(step, action, verified)
 
@@ -2221,6 +2254,8 @@ class AgentEngine(
         messages: MutableList<ChatMessageDto>,
         screenshot: android.graphics.Bitmap?,
         settingsVal: AppSettings.Settings,
+        /** 页面记忆提示块（命中已记忆页面时非空，见 pageMemoryHintFor），空串不占上下文 */
+        pageMemoryHint: String = "",
     ): AgentIntent? {
         // 数据脱敏后再发送
         val safeText = DataSanitizer.sanitize(snapshot.toAiText())
@@ -2368,6 +2403,8 @@ class AgentEngine(
             DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task, termuxBridge?.isAvailable() == true) +
             taskMemoryText() +
+            // 页面记忆：命中已记忆页面时注入已知热点与可去路径（空串不占上下文）
+            pageMemoryHint +
             // 环境上下文（时间/前台应用/网络/电量）+ 会话承接（上一轮任务）：页面元素树里读不到的事实
             AgentPrompts.environment(currentLang, envFacts(snapshot)) +
             sessionContextText(task, currentLang)
@@ -3885,6 +3922,66 @@ class AgentEngine(
         val hit = runCatching { anomalyEngine.findSolution(fp, labels) }.getOrNull()
         currentAnomalyEntry = hit
         return hit?.userSolution.orEmpty()
+    }
+
+    /**
+     * 页面记忆提示块：命中已记忆页面时返回注入文本（已脱敏，≤400 字），未命中返回空串。
+     * 按页面指纹缓存，换页才重查（与 [anomalyHint] 同款），DataStore 读取不进每步热路径。
+     * @param hit 本步 Recorder 命中的已记忆页面（可能为 null：新页面或未记忆）
+     */
+    private suspend fun pageMemoryHintFor(snapshot: ScreenSnapshot, hit: com.phoneagent.data.store.PageMemoryEntry?): String {
+        val fp = runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }.getOrDefault("")
+        if (fp.isBlank()) return ""
+        if (fp == pageMemoryHintFingerprint) return pageMemoryHintText
+        pageMemoryHintFingerprint = fp
+        pageMemoryHintText = ""
+        val entry = hit ?: runCatching {
+            memory.loadPageMemories().firstOrNull {
+                it.appPackage == snapshot.packageName.orEmpty() && it.fingerprint == fp
+            }
+        }.getOrNull() ?: return ""
+        val pkg = entry.appPackage
+        val edges = runCatching { memory.loadPageEdges().filter { it.appPackage == pkg && it.fromFp == fp } }
+            .getOrDefault(emptyList())
+        // 路径边的「下一页」标题从页面记忆里反查，AI 才知道走这条边能到哪
+        val pages = runCatching { memory.loadPageMemories() }.getOrDefault(emptyList())
+        val paths = edges.mapNotNull { e ->
+            val to = pages.firstOrNull { it.appPackage == pkg && it.fingerprint == e.toFp }
+            val toTitle = to?.title?.ifBlank { null } ?: to?.pageType?.ifBlank { null } ?: return@mapNotNull null
+            e.actionLabel to toTitle
+        }
+        val hotspots = entry.hotspots.map { it.label to it.semanticId }
+        val text = runCatching {
+            DataSanitizer.sanitize(AgentPrompts.pageMemoryBlock(currentLang, entry, hotspots, paths))
+        }.getOrDefault("")
+        pageMemoryHintText = text.take(400)
+        return pageMemoryHintText
+    }
+
+    /**
+     * 规划用页面记忆行：按最近使用取前 6 条路径，组装「应用名：出发页 —动作→ 目标页（走过N次）」。
+     * 只挑与任务提到的应用相关的记忆（应用名出现在任务文本里才注入），避免无关路径污染规划。
+     */
+    private suspend fun pageMemoryPlanningLines(task: String, lang: PromptLang): List<String> {
+        val edges = runCatching { memory.loadPageEdges() }.getOrDefault(emptyList())
+        if (edges.isEmpty()) return emptyList()
+        val pages = runCatching { memory.loadPageMemories() }.getOrDefault(emptyList())
+        val lines = edges.sortedByDescending { it.updatedAt }.mapNotNull { e ->
+            // 应用名解析失败（应用已卸载等）退回包名尾段，仍可读
+            val appName = runCatching { appNameResolver.resolve(e.appPackage) }.getOrNull()
+                ?: e.appPackage.substringAfterLast('.')
+            // 任务没提到这个应用就不注入：规划上下文要贴题，不撒网
+            if (task.none { it.isLetterOrDigit() } || !(task.contains(appName, ignoreCase = true) || task.contains(e.appPackage, true))) {
+                return@mapNotNull null
+            }
+            val from = pages.firstOrNull { it.appPackage == e.appPackage && it.fingerprint == e.fromFp }
+            val to = pages.firstOrNull { it.appPackage == e.appPackage && it.fingerprint == e.toFp }
+            val fromTitle = from?.title?.ifBlank { null } ?: from?.pageType ?: ""
+            val toTitle = to?.title?.ifBlank { null } ?: to?.pageType ?: ""
+            val countNote = if (lang == PromptLang.CN) "（走过${e.count}次）" else " (used ${e.count}x)"
+            "$appName：$fromTitle ${e.actionLabel} → $toTitle$countNote"
+        }
+        return lines.take(6).map { it.take(80) }
     }
 
     /**

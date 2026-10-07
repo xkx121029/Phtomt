@@ -33,7 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
 /** Agent 运行页 */
@@ -45,7 +45,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
+            .padding(LocalNavClearance.current),
     ) {
         SettingsTopBar("Agent 运行", onBack)
         Spacer(Modifier.height(16.dp))
@@ -81,6 +81,22 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     save()
                 }
                 Spacer(Modifier.height(4.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        GroupCard {
+            GroupHeader("页面记忆", "任务执行时自动记忆页面热点与跳转路径")
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                ToggleRow(
+                    "启用页面记忆",
+                    "执行任务时自动记忆遇到过的页面；屏幕以淡色圆环标记已知控件（不挡触摸），后续任务规划与决策可参考",
+                    st.pageMemoryEnabled,
+                ) { enabled ->
+                    st.pageMemoryEnabled = enabled
+                    save()
+                }
             }
         }
 

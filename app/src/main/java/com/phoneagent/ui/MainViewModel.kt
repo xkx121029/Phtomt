@@ -490,6 +490,14 @@ class MainViewModel(
     private val _memoryTaskMemories = MutableStateFlow<List<TaskMemoryEntry>>(emptyList())
     val memoryTaskMemories: StateFlow<List<TaskMemoryEntry>> get() = _memoryTaskMemories.asStateFlow()
 
+    /** 页面记忆：任务执行自动沉淀的页面热点 */
+    private val _pageMemories = MutableStateFlow<List<com.phoneagent.data.store.PageMemoryEntry>>(emptyList())
+    val pageMemories: StateFlow<List<com.phoneagent.data.store.PageMemoryEntry>> get() = _pageMemories.asStateFlow()
+
+    /** 页面路径边：页面间的跳转记录 */
+    private val _pagePathEdges = MutableStateFlow<List<com.phoneagent.data.store.PagePathEdge>>(emptyList())
+    val pagePathEdges: StateFlow<List<com.phoneagent.data.store.PagePathEdge>> get() = _pagePathEdges.asStateFlow()
+
     private val _memoryLoading = MutableStateFlow(false)
     val memoryLoading: StateFlow<Boolean> get() = _memoryLoading.asStateFlow()
 
@@ -500,6 +508,8 @@ class MainViewModel(
             _memoryAnomalies.value = memoryStore.loadAnomalies()
             _memoryProfile.value = memoryStore.loadProfile()
             _memoryTaskMemories.value = memoryStore.loadTaskMemories()
+            _pageMemories.value = memoryStore.loadPageMemories()
+            _pagePathEdges.value = memoryStore.loadPageEdges()
             _memoryLoading.value = false
         }
     }
@@ -533,6 +543,23 @@ class MainViewModel(
     fun clearTaskMemories() {
         viewModelScope.launch {
             memoryStore.clearTaskMemories()
+            refreshMemory()
+        }
+    }
+
+    // ---- 页面记忆（任务执行自动沉淀的页面热点与路径）----
+    /** 删除单条页面记忆（连带删除引用它的路径边） */
+    fun deletePageMemory(id: Long) {
+        viewModelScope.launch {
+            memoryStore.deletePageMemory(id)
+            refreshMemory()
+        }
+    }
+
+    /** 清空页面记忆与路径 */
+    fun clearPageMemories() {
+        viewModelScope.launch {
+            memoryStore.clearPageMemories()
             refreshMemory()
         }
     }
