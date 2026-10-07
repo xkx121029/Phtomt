@@ -143,7 +143,9 @@ val LightAppColors = AppColors(
     emptyStateIcon = Color(0xFFB4BAB3),
     emptyStateText = Color(0xFF838A83),
     runningIndicator = Color(0xFF1F7A55),
-    glassTint = Color(0xA0F7F6F3),
+    // 磨砂浓淡：从 0xA0（63%）压到 0x87（53%）——玻璃面更透，模糊内容更容易看出来；
+    // 再低文字可读性开始受影响，浅色底到 0x78 附近就是下限
+    glassTint = Color(0x87F7F6F3),
     // 不支持背景模糊的机型（Android 12 以下）走这一档：比玻璃浓、但不做实心，
     // 否则悬浮导航栏又会退化成"挡住内容的一块矩形"
     glassFallback = Color(0xE0F7F6F3),
@@ -200,7 +202,8 @@ val DarkAppColors = AppColors(
     emptyStateIcon = Color(0xFF6A716B),
     emptyStateText = Color(0xFF6A716B),
     runningIndicator = Color(0xFF4CC38A),
-    glassTint = Color(0x8C141816),
+    // 磨砂浓淡：同浅色一起调透，0x8C（55%）→ 0x73（45%）；深色底上文字对比更脆，不再往下压
+    glassTint = Color(0x73141816),
     // 同浅色：模糊不可用时也要留出一点透感，不能变回实心矩形
     glassFallback = Color(0xE0141816),
     glassBorder = Color(0x3D5FD9B4),
