@@ -930,10 +930,9 @@ class AgentEngine(
                 return@launch
             }
             try {
-                val content = cloudPlanStream(task, null, null) { delta -> _planStream.value += delta }
-                _planPhase.value = parsePlanResponse(content)
+                _planPhase.value = planWithRepair(task, null, null) { delta -> _planStream.value += delta }
                 if (_planPhase.value is PlanPhase.Error) {
-                    log(AgentLog.Level.ERROR, "规划失败：$content")
+                    log(AgentLog.Level.ERROR, "规划失败（含纠错重发后仍无法解析）")
                     pushFloating("规划失败", "ERROR")
                 }
                 settlePlanPhase()
@@ -993,10 +992,9 @@ class AgentEngine(
         _planPhase.value = PlanPhase.Planning
         scope.launch {
             try {
-                val content = cloudPlanStream(task, question, option.label) { delta -> _planStream.value += delta }
-                _planPhase.value = parsePlanResponse(content)
+                _planPhase.value = planWithRepair(task, question, option.label) { delta -> _planStream.value += delta }
                 if (_planPhase.value is PlanPhase.Error) {
-                    log(AgentLog.Level.ERROR, "重新规划失败：$content")
+                    log(AgentLog.Level.ERROR, "重新规划失败（含纠错重发后仍无法解析）")
                 }
                 settlePlanPhase()
             } catch (e: Exception) {
@@ -1027,7 +1025,14 @@ class AgentEngine(
         activePlan = null
     }
 
-    private suspend fun cloudPlanStream(task: String, question: String?, answer: String?, onDelta: (String) -> Unit): String {
+    private suspend fun cloudPlanStream(
+        task: String,
+        question: String?,
+        answer: String?,
+        onDelta: (String) -> Unit,
+        /** 纠错重发：上一轮规划输出的原文（无法解析为标准 JSON 时非空），见 planWithRepair */
+        prevUnrecognized: String? = null,
+    ): String {
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         val profile = memory.loadProfile().takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.key}:${it.value}" } ?: ""
@@ -1051,7 +1056,12 @@ class AgentEngine(
             answer.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext"
             question.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext\n\n用户已选择澄清项：$answer"
             else -> "$prompt$execContext$context$pageMemoryContext\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
-        }
+        } + if (prevUnrecognized.isNullOrBlank()) "" else
+            "\n\n## 上一轮返回无法识别\n" +
+            "你上一轮针对本任务返回的内容无法解析为标准 JSON。上一轮原文：\n" +
+            "<prev_unrecognized>\n${prevUnrecognized.take(1500)}\n</prev_unrecognized>\n" +
+            "请重新回答：严格只输出一个标准 JSON 对象（不要解释文字、不要 Markdown 代码块围栏），" +
+            "字段与格式必须与系统提示中给定的规划 JSON 规范一致。"
         val messages = listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = text))))
         // 链路聚合：规划等复杂任务优先使用思考模型（开启 thinking），未配置则回退主模型
         val reason = reasoningConfig(settingsVal)
@@ -1088,6 +1098,28 @@ class AgentEngine(
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
         apiLog(text, content, latencyMs)
         return content
+    }
+
+    /**
+     * 规划调用 + 解析，解析失败时纠错重发一次。
+     *
+     * 模型偶尔会输出「解释文字 + JSON」之外的完全无法识别的内容（截断、纯散文、半截 JSON），
+     * 直接判 Error 会让用户白等一整轮。这里在判定失败后附上「上一轮信息无法识别」+ 原文重发一次，
+     * 要求只输出标准 JSON；重发仍失败才收敛为 [PlanPhase.Error]（上限一次，不与模型死循环）。
+     */
+    private suspend fun planWithRepair(
+        task: String,
+        question: String?,
+        answer: String?,
+        onDelta: (String) -> Unit,
+    ): PlanPhase {
+        val content = cloudPlanStream(task, question, answer, onDelta)
+        val first = parsePlanResponse(content)
+        if (first !is PlanPhase.Error) return first
+        log(AgentLog.Level.WARN, "规划输出无法解析为标准 JSON，附上原文纠错重发（仅一次）：${content.take(120)}")
+        val repaired = cloudPlanStream(task, question, answer, onDelta, prevUnrecognized = content)
+        // 重发仍失败 → 仍是 PlanPhase.Error，原样返回（上限一次，不与模型死循环）
+        return parsePlanResponse(repaired)
     }
 
     /**

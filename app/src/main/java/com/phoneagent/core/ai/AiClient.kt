@@ -205,7 +205,9 @@ class AiClient(
         /** 流式中断准备重试时回调：上层可借此重置展示（如清空思考面板），避免重放内容重复累积 */
         onRetry: (() -> Unit)? = null,
     ): Result<AiDecision> = withContext(Dispatchers.IO) {
-        runCatching {
+        // 显式标注泛型：while(true) 循环体里有面向 for 的 break，编译器把 lambda
+        // 返回类型推成 AiDecision | Unit（= Any），这里收口回 AiDecision
+        runCatching<AiDecision> {
             val startNano = System.nanoTime()
             // 若携带截图，把图片拼到末尾消息（主模型决策一般文本即可，这里保留能力）
             val finalMessages = if (screenshot != null) {
@@ -213,109 +215,151 @@ class AiClient(
                 val merged = messages.last().content.toMutableList() + imagePart
                 messages.toMutableList().also { it[it.lastIndex] = it.last().copy(content = merged) }
             } else messages
-            val streamBody = buildStreamRequestBody(finalMessages, model, temperature, thinking = false, streamOptions = StreamOptions())
-            val request = Request.Builder()
+            // JSON 纠错重发（最多一次）：流式返回解析不出标准 JSON 时，
+            // 附上「上一轮信息无法识别」+ 原文重新请求，要求只输出标准 JSON。
+            // 上限一次 —— 纠错后仍解析不了就走既有 give_up 兜底，避免与模型死循环
+            var activeMessages = finalMessages
+            var jsonRepairUsed = false
+            fun actionRequest(msgs: List<ChatMessageDto>): Request = Request.Builder()
                 .url(chatCompletionsUrl(baseUrl))
                 .header("Authorization", "Bearer $apiKey")
-                .post(streamBody)
+                .post(buildStreamRequestBody(msgs, model, temperature, thinking = false, streamOptions = StreamOptions()))
                 .build()
+            var request = actionRequest(activeMessages)
 
             val full = StringBuilder()
             var lastUsage: Usage? = null
             var sawReasoning = false
             var status = -1
             var lastErr: String? = null
-            for (attempt in 0 until MAX_RETRIES) {
-                if (attempt > 0) {
-                    onRetry?.invoke()
-                    if (!backoffSleep(status, attempt)) break
-                }
-                try {
-                    full.setLength(0)
-                    lastUsage = null
-                    sawReasoning = false
-                    var streamFailed = false
-                    val call = client.newCall(request)
-                    // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
-                    val handle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+            loop@ while (true) {
+                for (attempt in 0 until MAX_RETRIES) {
+                    if (attempt > 0) {
+                        onRetry?.invoke()
+                        if (!backoffSleep(status, attempt)) break
+                    }
                     try {
-                        call.execute().use { resp ->
-                            status = resp.code
-                            if (!resp.isSuccessful) {
-                                val body = resp.body?.string().orEmpty()
-                                lastErr = httpErrorText(resp, body)
-                                streamFailed = true
-                                return@use
-                            }
-                            resp.body?.source()?.use { source ->
-                                while (!source.exhausted()) {
-                                    val line = source.readUtf8Line() ?: break
-                                    if (line.isBlank() || !line.startsWith("data:")) continue
-                                    val payload = line.removePrefix("data:").trim()
-                                    if (payload == "[DONE]") break
-                                    val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
-                                    val delta = chunk?.choices?.firstOrNull()?.delta
-                                    val content = delta?.content.orEmpty()
-                                    val reasoning = delta?.reasoning_content.orEmpty()
-                                    if (reasoning.isNotEmpty()) sawReasoning = true
-                                    // 思考内容优先展示（边思考边输出）
-                                    val display = if (content.isNotEmpty()) content else reasoning
-                                    if (display.isNotEmpty()) onDelta(display)
-                                    // 完整正文只累积 content（用于最终解析 JSON）
-                                    if (content.isNotEmpty()) full.append(content)
-                                    // 末块可能携带 usage（stream_options.include_usage）
-                                    runCatching { json.decodeFromString<ChatResponse>(payload).usage }
-                                        ?.getOrNull()?.let { lastUsage = it }
+                        full.setLength(0)
+                        lastUsage = null
+                        sawReasoning = false
+                        var streamFailed = false
+                        val call = client.newCall(request)
+                        // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
+                        val handle = coroutineContext[Job]?.invokeOnCompletion { call.cancel() }
+                        try {
+                            call.execute().use { resp ->
+                                status = resp.code
+                                if (!resp.isSuccessful) {
+                                    val body = resp.body?.string().orEmpty()
+                                    lastErr = httpErrorText(resp, body)
+                                    streamFailed = true
+                                    return@use
+                                }
+                                resp.body?.source()?.use { source ->
+                                    while (!source.exhausted()) {
+                                        val line = source.readUtf8Line() ?: break
+                                        if (line.isBlank() || !line.startsWith("data:")) continue
+                                        val payload = line.removePrefix("data:").trim()
+                                        if (payload == "[DONE]") break
+                                        val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
+                                        val delta = chunk?.choices?.firstOrNull()?.delta
+                                        val content = delta?.content.orEmpty()
+                                        val reasoning = delta?.reasoning_content.orEmpty()
+                                        if (reasoning.isNotEmpty()) sawReasoning = true
+                                        // 思考内容优先展示（边思考边输出）
+                                        val display = if (content.isNotEmpty()) content else reasoning
+                                        if (display.isNotEmpty()) onDelta(display)
+                                        // 完整正文只累积 content（用于最终解析 JSON）
+                                        if (content.isNotEmpty()) full.append(content)
+                                        // 末块可能携带 usage（stream_options.include_usage）
+                                        runCatching { json.decodeFromString<ChatResponse>(payload).usage }
+                                            ?.getOrNull()?.let { lastUsage = it }
+                                    }
                                 }
                             }
+                        } finally {
+                            handle?.dispose()
                         }
-                    } finally {
-                        handle?.dispose()
-                    }
-                    if (streamFailed) {
-                        // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
-                        // （对齐能力探测链路 probeBlocker 的"整体失败"口径）
-                        if (status == 401 || status == 403 || status == 404) break
-                        continue
-                    }
-                    val content = full.toString()
-                    if (content.isBlank()) {
-                        // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
-                        lastErr = null
-                        val fallbackBody = buildRequestBody(messages, screenshot, model, temperature)
-                        val fallbackRequest = Request.Builder()
-                            .url(chatCompletionsUrl(baseUrl))
-                            .header("Authorization", "Bearer $apiKey")
-                            .post(fallbackBody)
-                            .build()
-                        val fbContent = executeWithRetry(fallbackRequest)
+                        if (streamFailed) {
+                            // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
+                            // （对齐能力探测链路 probeBlocker 的"整体失败"口径）
+                            if (status == 401 || status == 403 || status == 404) break
+                            continue
+                        }
+                        val content = full.toString()
+                        if (content.isBlank()) {
+                            // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
+                            lastErr = null
+                            val fallbackBody = buildRequestBody(messages, screenshot, model, temperature)
+                            val fallbackRequest = Request.Builder()
+                                .url(chatCompletionsUrl(baseUrl))
+                                .header("Authorization", "Bearer $apiKey")
+                                .post(fallbackBody)
+                                .build()
+                            val fbContent = executeWithRetry(fallbackRequest)
+                            return@runCatching AiDecision(
+                                action = parseAgentIntent(fbContent),
+                                promptTokens = 0,
+                                completionTokens = 0,
+                                totalTokens = 0,
+                                elapsedMs = (System.nanoTime() - startNano) / 1_000_000,
+                                rawContent = fbContent,
+                                thinking = false,
+                            )
+                        }
+                        // 先按「可空」口径解析：失败时不急着 give_up，先做一次纠错重发
+                        val action = parseAgentIntentOrNull(content)
+                        if (action == null && !jsonRepairUsed) {
+                            jsonRepairUsed = true
+                            Log.w("AiClient", "决策输出无法解析为标准 JSON，附上原文纠错重发（仅一次）")
+                            // 重发前清空流式回显（与网络重试同一口径），避免界面上内容叠加两遍
+                            onRetry?.invoke()
+                            // 附上「上一轮信息无法识别」：assistant 带原文 + user 要求只输出标准 JSON
+                            activeMessages = activeMessages + listOf(
+                                ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = content))),
+                                ChatMessageDto(
+                                    role = "user",
+                                    content = listOf(
+                                        ContentPart(
+                                            type = "text",
+                                            text = "你上一轮返回的信息无法识别（无法从中解析出标准 JSON 动作）。" +
+                                                "请重新回答本轮请求：严格只输出一个标准 JSON 对象，" +
+                                                "不要输出任何解释文字、Markdown 代码块围栏或 JSON 之外的内容；" +
+                                                "字段与格式必须符合本轮系统提示中给定的动作 JSON 规范。",
+                                        ),
+                                    ),
+                                ),
+                            )
+                            request = actionRequest(activeMessages)
+                            status = -1
+                            lastErr = null
+                            continue@loop
+                        }
                         return@runCatching AiDecision(
-                            action = parseAgentIntent(fbContent),
-                            promptTokens = 0,
-                            completionTokens = 0,
-                            totalTokens = 0,
+                            // 纠错后仍解析失败 → 走既有 give_up 兜底（不无限循环）
+                            action = action ?: parseAgentIntent(content),
+                            promptTokens = lastUsage?.promptTokens ?: 0,
+                            completionTokens = lastUsage?.completionTokens ?: 0,
+                            totalTokens = lastUsage?.totalTokens ?: 0,
                             elapsedMs = (System.nanoTime() - startNano) / 1_000_000,
-                            rawContent = fbContent,
-                            thinking = false,
+                            rawContent = content,
+                            thinking = sawReasoning,
                         )
+                    } catch (e: Exception) {
+                        // 协程取消必须穿透重试循环向上传播，不能被当成普通失败吞掉
+                        if (e is CancellationException) throw e
+                        status = -1
+                        lastErr = e.message
                     }
-                    return@runCatching AiDecision(
-                        action = parseAgentIntent(content),
-                        promptTokens = lastUsage?.promptTokens ?: 0,
-                        completionTokens = lastUsage?.completionTokens ?: 0,
-                        totalTokens = lastUsage?.totalTokens ?: 0,
-                        elapsedMs = (System.nanoTime() - startNano) / 1_000_000,
-                        rawContent = content,
-                        thinking = sawReasoning,
-                    )
-                } catch (e: Exception) {
-                    // 协程取消必须穿透重试循环向上传播，不能被当成普通失败吞掉
-                    if (e is CancellationException) throw e
-                    status = -1
-                    lastErr = e.message
                 }
+                // for 循环耗尽（网络重试上限/不可恢复错误）：error() 抛出结束整个调用，
+                // while(true) 仅由纠错重发的 continue@loop 重新进入，不存在无限循环
+                error(lastErr ?: "AI 未返回内容")
             }
-            error(lastErr ?: "AI 未返回内容")
+            // 编译器把内层 for 的 break 粗粒度当成 while 可正常退出（尾表达式为 Unit），
+            // 这里补一个不可达的 Nothing 收口类型；运行时确实到不了这里——
+            // for 耗尽时上面 error() 已经抛出
+            error("unreachable")
         }.onFailure { if (it is CancellationException) throw it }
     }
 
@@ -833,8 +877,20 @@ class AiClient(
         ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, stream = true, thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions),
     )
 
-    /** 从模型输出中解析 AgentIntent，带多级兜底解析 + 日志 */
-    private fun parseAgentIntent(content: String): AgentIntent {
+    /**
+     * 从模型输出中解析 AgentIntent，带多级兜底解析 + 日志。
+     * 兜底全部失败时构造 give_up（换为「放弃」，避免误报完成）；
+     * 需要在失败时做「纠错重发」的调用方改用 [parseAgentIntentOrNull]。
+     */
+    private fun parseAgentIntent(content: String): AgentIntent =
+        parseAgentIntentOrNull(content) ?: AgentIntent(
+            intent = "give_up",
+            reason = "AI 输出无法解析为意图",
+            reasoning = "解析失败",
+        )
+
+    /** 同 [parseAgentIntent]，但兜底全部失败时返回 null 而非 give_up（供纠错重发判定） */
+    internal fun parseAgentIntentOrNull(content: String): AgentIntent? {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
             return json.decodeFromString(AgentIntent.serializer(), extractJson(content))
@@ -864,13 +920,9 @@ class AiClient(
                 Log.w("AiClient", "Step3 array parse failed: ${e.message}")
             }
         }
-        // Step 4：全部失败 → 构造合法 give_up（换为「放弃」，避免误报完成）
+        // Step 4：全部失败 → 返回 null，由调用方决定纠错重发或 give_up 兜底
         Log.e("AiClient", "All parse steps failed. Raw content: ${content.take(300)}")
-        return AgentIntent(
-            intent = "give_up",
-            reason = "AI 输出无法解析为意图",
-            reasoning = "解析失败",
-        )
+        return null
     }
 
     /** 平衡花括号提取第一个完整 JSON 对象（支持嵌套） */
