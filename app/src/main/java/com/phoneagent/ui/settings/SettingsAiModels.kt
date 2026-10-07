@@ -42,7 +42,7 @@ import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppTheme
@@ -83,7 +83,7 @@ internal fun SettingsAiModels(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
+            .padding(LocalNavClearance.current),
     ) {
         SettingsTopBar("AI 模型配置", onBack)
         Spacer(Modifier.height(16.dp))

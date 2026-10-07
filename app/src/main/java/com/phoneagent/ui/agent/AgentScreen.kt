@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -55,7 +57,7 @@ import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.GlassSurface
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalHeaderContentPad
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
@@ -334,15 +336,17 @@ fun AgentScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = AppSpacing.Lg,
+                        // 横屏时导航是左侧竖栏，任务流跟着从栏右侧起排
+                        start = AppSpacing.Lg +
+                            LocalNavClearance.current.calculateStartPadding(LocalLayoutDirection.current),
                         end = if (railVisible) 22.dp else AppSpacing.Lg,
                         // 页眉净空（含上缘外边距）由骨架下发；任务流再多让出 8dp 呼吸
                         top = headerPad.calculateTopPadding() + AppSpacing.Sm,
-                        // 末项要能滚到输入区之上；输入区本身又浮在悬浮导航栏之上，
-                        // 所以导航栏的净空也算进来，任务流才真正铺到屏幕底、从两层面板下穿过
+                        // 末项要能滚到输入区之上；输入区本身又浮在悬浮导航之上，
+                        // 所以导航的净空也算进来，任务流才真正铺到屏幕底、从两层面板下穿过
                         bottom = with(density) { dockHeight.toDp() } +
                             AppSpacing.Lg +
-                            LocalBottomNavClearance.current,
+                            LocalNavClearance.current.calculateBottomPadding(),
                     ),
                 ) {
                     if (showEmpty) {
@@ -403,9 +407,11 @@ fun AgentScreen(
                     .align(Alignment.BottomCenter)
                     .imePadding()
                     .padding(
-                        start = AgentGlassInset,
+                        // 横屏时输入区从左侧竖栏右侧起排，避免与竖栏叠在一起
+                        start = AgentGlassInset +
+                            LocalNavClearance.current.calculateStartPadding(LocalLayoutDirection.current),
                         end = AgentGlassInset,
-                        bottom = LocalBottomNavClearance.current,
+                        bottom = LocalNavClearance.current.calculateBottomPadding(),
                     )
                     .onSizeChanged { dockHeight = it.height },
             ) {

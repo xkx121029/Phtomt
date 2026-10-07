@@ -36,7 +36,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
@@ -111,7 +111,7 @@ fun HomeScreen(
                 .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
                 .padding(horizontal = 20.dp)
                 // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
-                .padding(bottom = LocalBottomNavClearance.current),
+                .padding(LocalNavClearance.current),
         ) {
             // 运行状态卡
             AnimatedVisibility(

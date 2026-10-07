@@ -1,6 +1,7 @@
 package com.phoneagent.ui
 
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -41,6 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -69,7 +72,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
@@ -78,7 +83,8 @@ import com.phoneagent.ui.agent.DocViewerScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalIsLandscape
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarState
 import com.phoneagent.ui.components.rememberGlassState
@@ -285,7 +291,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 首次组合（onCreate）与已在栈上被复用（onNewIntent）都走这里，保证两条路径的落点一致。
     val browseSignal by pageSignal.collectAsState()
     val doc by vm.docResult.collectAsState()
-    var docFullscreen by remember { mutableStateOf(false) }
+    var docFullscreen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(browseSignal) {
         val intent = activity.intent
         if (intent?.getBooleanExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE, false) == true) {
@@ -332,18 +338,32 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
     val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    // 横竖屏判断全项目只在这里读一次（收口到 LocalIsLandscape，其余页面不得直读 LocalConfiguration）。
+    // 横屏时悬浮导航从底部横条换成左侧竖栏，系统手势条也转到屏幕两侧，
+    // 让位方向跟着从 bottom inset 换成 start inset。
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val startNavInset = WindowInsets.navigationBars.asPaddingValues()
+        .calculateStartPadding(LocalLayoutDirection.current)
+
     // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
     var taskDrawerOpen by remember { mutableStateOf(false) }
 
-    // 底部悬浮导航栏的净空 = 条本体 + 条上下的呼吸间距 + 系统手势区。
-    // 条下方那段（[NavBarGap]）同时也是条自身的 bottom padding；条上方再留同样一段，
+    // 悬浮导航的净空 = 导航本体 + 上下（左右）呼吸间距 + 系统手势区。
+    // 竖屏：条下方那段（[NavBarGap]）同时也是条自身的 bottom padding；条上方再留同样一段，
     // 页面末项与 Agent 页输入区才不会贴着玻璃上沿——两层面板贴在一起会糊成一块。
-    // 键盘弹出或进全屏二级页时，底部这层 chrome 整块不占位，净空归零。
+    // 横屏：竖栏与屏幕左缘之间留 [NavBarGap]，栏右侧再留同样一段给内容。
+    // 键盘弹出或进全屏二级页时，这层 chrome 整块不占位，净空归零。
     val navSpaceReserved = extrasPage == null && !keyboardUp
-    // Agent 页把任务抽屉拉出来时只是导航栏让位（抽屉盖住整页，别浮一层玻璃在它上面），
+    // Agent 页把任务抽屉拉出来时只是导航让位（抽屉盖住整页，别浮一层玻璃在它上面），
     // 净空照旧：净空一变，页面末项与输入区会在抽屉底下整段跳一下。
     val navBarVisible = navSpaceReserved && !taskDrawerOpen
-    val navClearance = if (navSpaceReserved) NavBarHeight + NavBarGap * 2 + systemNavInset else 0.dp
+    val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
+    val railClearanceStart = RailWidth + NavBarGap * 2 + startNavInset
+    val navClearance = when {
+        !navSpaceReserved -> PaddingValues(0.dp)
+        landscape -> PaddingValues(start = railClearanceStart)
+        else -> PaddingValues(bottom = barClearanceBottom)
+    }
 
     // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
     // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
@@ -354,7 +374,7 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
         contentWindowInsets = WindowInsets(0),
         // 不再用 bottomBar 整段预留底部：导航栏改为浮在内容之上，
         // 否则条下方会留下一条看不见的矩形预留带，看着像把内容截断了。
-        // 各页自己按 LocalBottomNavClearance 垫出净空。
+        // 各页自己按 LocalNavClearance 垫出净空。
     ) { padding ->
         // 统一白色状态栏边条：所有页面顶部先铺一条与状态栏等高的白色/浅色背景，
         // 内容整体下移，避免与系统状态栏图标重叠（edge-to-edge 下状态栏区域透明）
@@ -380,7 +400,8 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
                         .hazeSource(navGlass),
                 ) {
                     CompositionLocalProvider(
-                        LocalBottomNavClearance provides navClearance,
+                        LocalNavClearance provides navClearance,
+                        LocalIsLandscape provides landscape,
                         // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
                         // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
                         LocalSnackbar provides snackbarState,
@@ -425,33 +446,57 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
 
                         }
 
-                            // 全局 Snackbar 覆盖层：垫在悬浮导航栏之上。
+                            // 全局 Snackbar 覆盖层：垫在悬浮导航之上。
                             // 不放在 else 分支里：二级页（extrasPage 非空）同样要能弹反馈，
-                            // 位置参数保持不变（底部居中、垫在导航栏净空之上）
+                            // 竖屏贴底居中、垫在导航条净空之上；横屏从竖栏右侧起排
                             AppSnackbar(
                                 state = snackbarState,
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
-                                    .padding(bottom = navClearance + AppSpacing.Md),
+                                    .padding(
+                                        start = if (landscape && navSpaceReserved) {
+                                            railClearanceStart + AppSpacing.Md
+                                        } else {
+                                            0.dp
+                                        },
+                                        bottom = if (!landscape && navSpaceReserved) {
+                                            barClearanceBottom + AppSpacing.Md
+                                        } else {
+                                            AppSpacing.Md
+                                        },
+                                    ),
                             )
                     }
                 }
 
-                // 悬浮导航栏本身：毛玻璃画在内容之上，内容从它下面透出来
+                // 悬浮导航本身：毛玻璃画在内容之上，内容从它下面透出来。
+                // 竖屏是底部横向条；横屏换成左侧竖栏，手势条转到屏幕两侧，导航跟着搬家。
                 if (navBarVisible) {
-                    FloatingNavBar(
-                        hazeState = navGlass,
-                        tabs = tabs,
-                        selected = selected,
-                        onSelect = { selected = it },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(
-                                start = AppSpacing.Lg,
-                                end = AppSpacing.Lg,
-                                bottom = systemNavInset + NavBarGap,
-                            ),
-                    )
+                    if (landscape) {
+                        FloatingNavRail(
+                            hazeState = navGlass,
+                            tabs = tabs,
+                            selected = selected,
+                            onSelect = { selected = it },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = startNavInset + NavBarGap),
+                        )
+                    } else {
+                        FloatingNavBar(
+                            hazeState = navGlass,
+                            tabs = tabs,
+                            selected = selected,
+                            onSelect = { selected = it },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(
+                                    start = AppSpacing.Lg,
+                                    end = AppSpacing.Lg,
+                                    bottom = systemNavInset + NavBarGap,
+                                ),
+                        )
+                    }
                 }
 
                 // 全屏阅读：AI 回返的 Markdown 整屏通读。画在所有 chrome 之上（含悬浮导航栏），
@@ -472,10 +517,63 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
 private val NavBarHeight = 64.dp
 
 /**
+ * 横屏左侧竖向导航栏的本体宽度。页面净空与栏自身布局共用同一常量，
+ * 与 [NavBarHeight] 同理：两边各写一个数字，改的时候必漏一边。
+ */
+private val RailWidth = 72.dp
+
+/**
  * 悬浮导航栏的呼吸间距：条下方到系统手势区、条上方到页面末项，用同一个值。
  * 只留一侧会出现"下面松、上面贴"的失衡——尤其是 Agent 页，输入区也浮在条上方。
  */
 private val NavBarGap = AppSpacing.Md
+
+/**
+ * 左侧导航：横屏专用的竖向悬浮栏。
+ *
+ * 与底部条同一套材质语言——[GlassSurface] 毛玻璃、同圆角、同悬浮投影；
+ * 不另起一套样式，横竖屏切换时导航只是"搬家"，不是"换装"。
+ * 栏内条目竖排（图标上、文字下），沿用 [FloatingNavItem] 的胶囊指示器与弹簧手感，
+ * 无水平位移动效（动效铁律：入场一律自下而上）。
+ */
+@Composable
+private fun FloatingNavRail(
+    hazeState: HazeState,
+    tabs: List<TabItem>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(AppRadii.Hero)
+    GlassSurface(
+        hazeState = hazeState,
+        shape = shape,
+        blurRadius = GlassTokens.Blur,
+        // 与底部条同理：四边都不贴屏幕边，顶部受光高光没有光源可言，不画
+        showSheen = false,
+        modifier = modifier.shadow(elevation = 12.dp, shape = shape, clip = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(RailWidth)
+                .padding(vertical = AppSpacing.Sm)
+                .selectableGroup(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                FloatingNavItem(
+                    tab = tab,
+                    selected = selected == index,
+                    onClick = { onSelect(index) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(NavBarHeight),
+                    vertical = true,
+                )
+            }
+        }
+    }
+}
 
 /**
  * 底部导航：大圆角长方形悬浮条。
@@ -524,13 +622,19 @@ private fun FloatingNavBar(
     }
 }
 
-/** 悬浮导航栏的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪） */
+/**
+ * 悬浮导航的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪）。
+ *
+ * [vertical] 只决定"撑满哪个方向"：底部横条里撑满条高（fillMaxHeight），
+ * 左侧竖栏里撑满栏宽（fillMaxWidth）；内部布局（图标上、文字下）两种形态通用。
+ */
 @Composable
 private fun FloatingNavItem(
     tab: TabItem,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    vertical: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -574,7 +678,7 @@ private fun FloatingNavItem(
 
     Column(
         modifier = modifier
-            .fillMaxHeight()
+            .then(if (vertical) Modifier.fillMaxWidth() else Modifier.fillMaxHeight())
             .scale(pressScale)
             .selectable(
                 selected = selected,

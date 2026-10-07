@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.icons.AppIcons
@@ -54,7 +54,7 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                 .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
                 .padding(horizontal = AppSpacing.Lg)
                 // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-                .padding(bottom = LocalBottomNavClearance.current),
+                .padding(LocalNavClearance.current),
         ) {
             // ---- 模型：接入哪家 AI ----
             SectionHeader("模型")

@@ -1,7 +1,9 @@
 package com.phoneagent.feature.browser
 
 import android.annotation.SuppressLint
+import android.content.ComponentCallbacks
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
@@ -39,6 +41,9 @@ internal object HeadlessWebHost {
 
     private var windowManager: WindowManager? = null
     private var hostView: WebView? = null
+
+    /** 已登记过旋转监听就不再重复注册（ensure 会被反复调用，宿主是长驻复用的） */
+    private var rotationHooked = false
 
     /**
      * 取得静默 WebView（首次调用时建好宿主窗口）。
@@ -84,7 +89,41 @@ internal object HeadlessWebHost {
         }
         windowManager = wm
         hostView = web
+        hookRotationCallback(ctx)
         return web
+    }
+
+    /**
+     * 监听屏幕旋转，宿主窗口宽高跟着新方向重设。
+     *
+     * 宿主不是 Service（收不到 onConfigurationChanged），而窗口宽高是创建时固化的
+     * 真实屏幕尺寸 —— 不重设的话旋转后 WebView 视口还是旧方向，页面布局与
+     * browse_* 的坐标全部错位。挂在 applicationContext 的 ComponentCallbacks 上，
+     * 只登记一次；窗口 alpha=0 不可见，晚一帧重排没有可感知的影响。
+     */
+    private fun hookRotationCallback(ctx: Context) {
+        if (rotationHooked) return
+        rotationHooked = true
+        ctx.registerComponentCallbacks(object : ComponentCallbacks {
+            override fun onConfigurationChanged(newConfig: Configuration) {
+                relayoutIfNeeded()
+            }
+
+            override fun onLowMemory() = Unit
+        })
+    }
+
+    /** 当前窗口宽高与真实屏幕尺寸不一致（刚旋转过）时，按新尺寸重排窗口 */
+    private fun relayoutIfNeeded() {
+        val web = hostView ?: return
+        val wm = windowManager ?: return
+        val lp = web.layoutParams as? WindowManager.LayoutParams ?: return
+        val size = realSize(web.context)
+        if (lp.width == size.x && lp.height == size.y) return
+        lp.width = size.x
+        lp.height = size.y
+        runCatching { wm.updateViewLayout(web, lp) }
+            .onFailure { Log.w(TAG, "宿主窗口旋转重排失败：${it.message}") }
     }
 
     /** 从系统 WindowManager 取真实屏幕尺寸（失败才退回资源尺寸） */

@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.data.store.ExecutionStrategy
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -66,7 +66,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
+            .padding(LocalNavClearance.current),
     ) {
         Spacer(Modifier.height(8.dp))
         SettingsTopBar("长线任务", onBack = onBack)

@@ -259,6 +259,8 @@ class AgentTimelineMapperTest {
             sayEvents = listOf(sayEvent(id = 1, step = 1)),
         )
         assertEquals(listOf("你好"), items.filterIsInstance<AgentTimelineItem.UserTask>().map { it.text })
+        // AI 回答必须排在用户气泡下面（用户问 → AI 答），不能抢到上面
+        assertTrue(items.indexOfFirst { it is AgentTimelineItem.UserTask } < items.indexOfFirst { it is AgentTimelineItem.Say })
         // 规划流的原始 JSON 不该漏进任务流
         assertTrue(items.none { it is AgentTimelineItem.PlanStreaming })
         assertTrue(items.none { it is AgentTimelineItem.PlanFailed })

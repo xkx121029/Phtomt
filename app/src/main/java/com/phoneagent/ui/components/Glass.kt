@@ -157,45 +157,43 @@ fun GlassSurface(
     }
 }
 
-/** 页眉从"吸顶"过渡到"浮起"需要滚动的距离：滚过这么多就完全浮起，再滚也不会继续抬 */
-internal val HeaderLiftDistance = 48.dp
-
 /**
- * 页眉浮起时在上缘额外让出的距离：完全浮起时上缘外边距是
+ * 页眉浮起时在上缘额外让出的距离：浮起时上缘外边距是
  * [GlassHeaderInset] + [HeaderLiftAmount]，吸顶时归 0。
  */
 internal val HeaderLiftAmount = 12.dp
 
 /**
- * 页眉吸顶状态：**贴顶时是一条通栏直角的吸顶栏，离顶后才收成一块圆角浮板**。
+ * 页眉状态：**页面在最上方时是一条通栏直角的吸顶栏，只要离开了最上方就收成一块圆角浮板**。
  *
- * 两端形态由同一个 [progress] 插值出来（[sideInset] / [topInset] / [cornerRadius]），
- * 中间态跟着手指连续变化，因此"到顶"这件事不需要单独判定一个布尔量：
- * - progress = 0：页面就在最顶上，页眉背后没有任何内容，"浮板"没有存在理由，
+ * 两端形态是**离散**的两个状态，不做"滚过 N dp 才完全浮起"的连续插值：连续插值会让
+ * 页眉在离开页首的头几十 dp 里卡在中间态——既不是吸顶栏、也不是浮板，一块半直半圆的板
+ * 悬在内容上方，读起来就是"位置不对"。形态由同一个布尔量 [floating] 切换：
+ * - [floating] = false：页面就在最上方，页眉背后没有任何内容，"浮板"没有存在理由，
  *   只会在顶部平白多出一圈留白——于是左右不留白、上缘贴住内容区上沿、四角全直角；
- * - progress = 1：页面已离顶，页眉真正压在滚动内容之上，才收成四角全圆的浮板。
+ * - [floating] = true：页面已离顶，页眉真正压在滚动内容之上，才收成四角全圆的浮板。
  *
- * 离顶距离不去各页要——调试页与技能页的滚动容器藏在页签面板里，逐个透传会把改动
+ * "是否在最上方"不去各页要——调试页与技能页的滚动容器藏在页签面板里，逐个透传会把改动
  * 摊到整棵组件树——改为从嵌套滚动里听：它自己就是一个 [NestedScrollConnection]，
  * 挂在页面根节点上（见 [headerLift]），页面里**所有**滚动容器派发的位移都会汇总到这里。
  *
- * 只听"被消费掉的位移"（没被消费说明滚不动），并在两处夹住，
- * 免得滚到底继续拉把浮起量推高、回到顶部却收不回来：
- * - 想往上滚却一点没被消费 → 已经在最顶上，直接复位；
- * - 累计量夹在 [0, 浮起距离] 之间，越界不再累加。
+ * 累计的是**页面真实滚动位置**，而不是"最近滚了多少"：
+ * - 只要有位移被消费（`consumed.y != 0`），页面就不在最上方，累加进 [offsetPx]；
+ * - 想往页首滚却一点没被消费（`available.y < 0 && consumed.y == 0`）→ 已经在最上方，复位。
+ *
+ * 累计量**不设上限**是必须的：一旦把它夹在"浮起距离"上，往上滚回页首时它会提前归零，
+ * 页眉在半页处就吸顶了——"不在最上方却是方形"，与形态定义正好相反。
  */
 @Stable
-class HeaderLiftState internal constructor(private val distancePx: Float) : NestedScrollConnection {
-    private var scrolled by mutableFloatStateOf(0f)
+class HeaderLiftState internal constructor() : NestedScrollConnection {
+    /** 页面当前滚动位置（px）。只用来判断"是否在最上方"，不参与形态插值，故不需要上限 */
+    private var offsetPx by mutableFloatStateOf(0f)
 
-    /**
-     * 0f = 贴顶吸顶（通栏直角）；1f = 完全浮起（圆角浮板）。
-     * 直接跟着滚动量连续变化，不再补一层动画——补了反而会落后于手指。
-     */
-    val progress: Float get() = (scrolled / distancePx).coerceIn(0f, 1f)
+    /** true = 页面已离开最上方（圆角浮板）；false = 页面就在最上方（通栏直角吸顶栏） */
+    val floating: Boolean get() = offsetPx > 0f
 
     /** 左右外边距：吸顶时 0（通栏到屏幕两沿），浮起时为 [GlassHeaderInset] */
-    val sideInset: Dp get() = GlassHeaderInset * progress
+    val sideInset: Dp get() = if (floating) GlassHeaderInset else 0.dp
 
     /**
      * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
@@ -204,35 +202,33 @@ class HeaderLiftState internal constructor(private val distancePx: Float) : Nest
     val contentPad: Dp get() = GlassHeaderDefaultContentPad - sideInset
 
     /** 上缘外边距：吸顶时 0（贴住内容区上沿），浮起时为 [GlassHeaderInset] + [HeaderLiftAmount] */
-    val topInset: Dp get() = (GlassHeaderInset + HeaderLiftAmount) * progress
+    val topInset: Dp get() = if (floating) GlassHeaderInset + HeaderLiftAmount else 0.dp
 
     /** 四角圆角：吸顶时 0（四角全直角），浮起时为 [AppRadii.Header] */
-    val cornerRadius: Dp get() = AppRadii.Header * progress
+    val cornerRadius: Dp get() = if (floating) AppRadii.Header else 0.dp
 
     override fun onPostScroll(
         consumed: Offset,
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
-        if (consumed.y == 0f && available.y < 0f) {
-            scrolled = 0f
-        } else {
-            scrolled = (scrolled + consumed.y).coerceIn(0f, distancePx)
+        if (consumed.y != 0f) {
+            // 有位移被消费 → 页面不在最上方；累计真实滚动位置（往上滚会把它减回去）
+            offsetPx = (offsetPx + consumed.y).coerceAtLeast(0f)
+        } else if (available.y < 0f) {
+            // 想往页首滚却一点没被消费 → 已经在最上方，复位
+            offsetPx = 0f
         }
         return Offset.Zero
     }
 }
 
-/** 创建本页的页眉浮起状态，配合 [headerLift] 使用 */
+/** 创建本页的页眉状态，配合 [headerLift] 使用 */
 @Composable
-fun rememberHeaderLiftState(): HeaderLiftState {
-    val density = LocalDensity.current
-    val distancePx = with(density) { HeaderLiftDistance.toPx() }
-    return remember(distancePx) { HeaderLiftState(distancePx) }
-}
+fun rememberHeaderLiftState(): HeaderLiftState = remember { HeaderLiftState() }
 
 /**
- * 把本页的滚动位移汇总给 [state]，页眉据此决定浮起多少。
+ * 把本页的滚动位移汇总给 [state]，页眉据此判断"页面是否在最上方"。
  *
  * 必须挂在**页面根节点**上，而不是某个滚动容器上：一页里往往有多个滚动容器
  * （页签面板、内嵌列表），挂在根上才能把它们都收进来。
@@ -240,7 +236,8 @@ fun rememberHeaderLiftState(): HeaderLiftState {
 fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
 
 /**
- * 玻璃页眉板**浮起后**距屏幕左右（含上缘）的外边距；吸顶时这一段收为 0，页眉通栏。
+ * 玻璃页眉板**浮起后**距屏幕左右的外边距（上缘还要再加 [HeaderLiftAmount]）；
+ * 吸顶时这一段收为 0，页眉通栏。
  * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
  * 得把这段外边距从内容留白里减掉——骨架用 [LocalHeaderContentPad] 自动做这件事，
  * 各页不必自己算。
@@ -272,8 +269,8 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * 或 verticalScroll 之后再 padding。用在滚动容器外面只是把内容整体压低，页眉背后永远是
  * 一块纯底色，玻璃会退化成一条灰蒙蒙的色带；用在里面，内容滚动时才会从玻璃下穿过。
  *
- * 页眉**始终吸顶**，形态随页面离顶的远近在两端之间连续变化（见 [HeaderLiftState]）：
- * 页面就在最顶上时是一条通栏直角的吸顶栏，滚起来之后才收成一块悬在内容上方的圆角浮板。
+ * 页眉**始终吸顶**，形态只在两端之间切换（见 [HeaderLiftState]）：
+ * 页面就在最顶上时是一条通栏直角的吸顶栏，只要滚起来就收成一块悬在内容上方的圆角浮板。
  * 页面不需要为此传任何参数，正文的滚动位移由骨架自己从嵌套滚动里听。
  *
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板。内层内容的左右留白由骨架通过
@@ -301,7 +298,7 @@ fun GlassHeaderScaffold(
     val lift = rememberHeaderLiftState()
     // 实测高度回填给正文，首项不会被压在玻璃页眉下面
     var headerHeight by remember { mutableIntStateOf(0) }
-    // 正文净空按"贴顶吸顶"的形态算，不跟着浮起量变：
+    // 正文净空按"贴顶吸顶"的形态算，不跟着形态切换变：
     // 净空一变，列表在同一帧里既被手指拖着走、又被改掉内边距，读起来像打滑
     val contentTopPad = with(density) { headerHeight.toDp() } + GlassHeaderInset
 
@@ -321,8 +318,8 @@ fun GlassHeaderScaffold(
 
         GlassSurface(
             hazeState = glass,
-            // 吸顶时是通栏直角（半径 0），离顶才收成圆角浮板：同一个进度同时驱动
-            // 外边距与圆角，中间态与手指同一帧发生，不另补动画
+            // 吸顶时是通栏直角（半径 0），离开页首才收成圆角浮板：同一个布尔量同时驱动
+            // 外边距与圆角，切换与手指同一帧发生，不另补动画
             shape = RoundedCornerShape(lift.cornerRadius),
             modifier = Modifier
                 .fillMaxWidth()

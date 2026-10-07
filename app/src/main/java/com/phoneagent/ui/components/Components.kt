@@ -74,13 +74,21 @@ import com.phoneagent.ui.icons.AppIcons
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /**
- * 底部悬浮导航栏给页面留出的净空高度。
+ * 悬浮导航给页面留出的净空，方向跟随形态：
  *
- * 导航栏是浮在内容之上的圆角条（不再由 Scaffold 整段预留底部空间），
- * 因此各页要自己把底部元素/滚动内容垫高这么多，否则最后一条会被压在条下面。
- * 导航栏隐藏时（全屏二级页、键盘弹出）由宿主提供 0，页面按原样铺满。
+ * 竖屏时导航是底部的横向圆角条，净空垫在底部（bottom）；
+ * 横屏时导航是左侧的竖向悬浮栏，净空垫在开头侧（start）。
+ * 导航是浮在内容之上的 chrome（不再由 Scaffold 整段预留空间），
+ * 因此各页要自己把这层 padding 垫到滚动内容/输入区上，否则末项会被压在导航下面。
+ * 导航隐藏时（全屏二级页、键盘弹出）由宿主提供全 0，页面按原样铺满。
  */
-val LocalBottomNavClearance = staticCompositionLocalOf { 0.dp }
+val LocalNavClearance = staticCompositionLocalOf { PaddingValues(0.dp) }
+
+/**
+ * 当前是否横屏：宿主（MainActivity）读取一次后 provide，
+ * 各页不直接读 LocalConfiguration —— 横竖屏判断只留这一个定义点。
+ */
+val LocalIsLandscape = staticCompositionLocalOf { false }
 
 /**
  * 全局 Snackbar：宿主（MainActivity）注入，页面内直接取用。

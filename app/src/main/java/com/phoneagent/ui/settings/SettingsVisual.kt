@@ -25,7 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.AppSurfaceMuted
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
 /**
@@ -46,7 +46,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
+            .padding(LocalNavClearance.current),
     ) {
         SettingsTopBar("视觉效果", onBack)
         Spacer(Modifier.height(16.dp))

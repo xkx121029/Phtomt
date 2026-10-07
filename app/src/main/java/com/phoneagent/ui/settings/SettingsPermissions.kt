@@ -22,7 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.LocalBottomNavClearance
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.home.PermissionRadar
 import com.phoneagent.ui.skill.WirelessAdbTab
 
@@ -48,7 +48,7 @@ internal fun SettingsPermissions(vm: MainViewModel, onBack: () -> Unit) {
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(bottom = LocalBottomNavClearance.current),
+            .padding(LocalNavClearance.current),
     ) {
         Column(Modifier.padding(horizontal = 20.dp)) {
             SettingsTopBar("权限与执行通道", onBack)

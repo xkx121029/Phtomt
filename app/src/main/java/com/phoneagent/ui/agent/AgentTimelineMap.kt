@@ -135,18 +135,21 @@ internal object AgentTimelineMapper {
         // 4) 本次任务的每一步（决策 + 执行合并），以及挂在步骤上的记忆卡片
         //    AI 说过的话同样按步号挂到最近的前序步骤后面；说在第一个动作之前（还没有
         //    任何步骤号 ≤ 它）的，就落在标题之后、步骤之前。历史回看不回放这些话。
+        //    纯对话（见 10)）时任务标题此刻还没入流，这些话先攒着不落位——
+        //    否则 AI 气泡会排到用户气泡前面，看起来像 AI 抢答。
         val liveSteps = focusRun?.steps.orEmpty()
         val stepNumbers = liveSteps.map { it.step }
         val says = if (isLive) sayEvents else emptyList()
         fun anchorOf(sayStep: Int): Int? = stepNumbers.lastOrNull { it <= sayStep }
-        says.filter { anchorOf(it.step) == null }.forEach { ev ->
-            items += AgentTimelineItem.Say(
+        val floatingSays = says.filter { anchorOf(it.step) == null }.map { ev ->
+            AgentTimelineItem.Say(
                 id = ev.id,
                 text = ev.text,
                 runKey = focusRun?.runKey ?: ev.runKey,
                 step = ev.step,
             )
         }
+        if (!pendingPlanFlow) items.addAll(floatingSays)
         focusRun?.let { run ->
             liveSteps.forEach { step ->
                 items += stepItem(run.runKey, step)
@@ -259,6 +262,8 @@ internal object AgentTimelineMapper {
                 items += AgentTimelineItem.ClarifyQuestion(ev.question, emptyList(), exchangeId = "c${ev.id}")
                 items += AgentTimelineItem.ClarifyAnswer(ev.question, ev.answer, exchangeId = "c${ev.id}")
             }
+            // 纯对话攒下的 say 气泡：等用户气泡渲染完再放，保持「用户问 → AI 答」的顺序
+            items.addAll(floatingSays)
             when (planPhase) {
                 is PlanPhase.Planning -> if (planText.isNotBlank()) {
                     items += AgentTimelineItem.PlanStreaming(planText)

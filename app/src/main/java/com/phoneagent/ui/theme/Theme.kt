@@ -120,13 +120,28 @@ val AppShapes = Shapes(
 )
 
 /**
+ * 无框线档的容器色调位移倍率。
+ *
+ * 标准档的层次是"底色差 + 发丝描边"两条腿走路，所以容器色调只敢位移 3%~12%；
+ * 描边一旦拿掉，卡片与页面底色就只差约 3%——肉眼看不出边界，卡片会化进页面里。
+ * 这里把位移量乘上一个系数，用更大的底色差把层次重新撑起来。
+ *
+ * 取 2.0 而不是更大：这是**补偿**不是重做配色。系数再大，浅色下卡片会开始发灰、
+ * 深色下会开始发白，等于把配色换成另一套。只动"面与面之间"的距离，
+ * 文字色、品牌色、状态色一律不碰——去掉框线不该顺手把正文也改浓。
+ */
+private const val BorderlessToneBoost = 2.0f
+
+/**
  * 把语义色令牌映射成 M3 ColorScheme。
  *
  * 五级容器色调不写死十六进制，而是从 `surfaceBase` 出发做色调位移：
  * 浅色向黑下沉、深色向白抬升，保证换配色时整套层级自动跟随。
+ *
+ * @param toneBoost 容器色调位移倍率，标准档为 1，无框线档为 [BorderlessToneBoost]
  */
-private fun lightSchemeOf(c: AppColors): ColorScheme {
-    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.Black, t)
+private fun lightSchemeOf(c: AppColors, toneBoost: Float = 1f): ColorScheme {
+    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.Black, (t * toneBoost).coerceAtMost(0.6f))
     return lightColorScheme(
         primary = c.brand,
         onPrimary = c.onBrand,
@@ -167,8 +182,9 @@ private fun lightSchemeOf(c: AppColors): ColorScheme {
     )
 }
 
-private fun darkSchemeOf(c: AppColors): ColorScheme {
-    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.White, t)
+/** 同 [lightSchemeOf]，只是色调位移方向朝白，@param toneBoost 含义一致 */
+private fun darkSchemeOf(c: AppColors, toneBoost: Float = 1f): ColorScheme {
+    fun tone(t: Float): Color = lerp(c.surfaceBase, Color.White, (t * toneBoost).coerceAtMost(0.6f))
     return darkColorScheme(
         primary = c.brand,
         onPrimary = c.onBrand,
@@ -223,8 +239,10 @@ fun PhoneAgentTheme(
         highContrast -> LightContrastAppColors
         else -> LightAppColors
     }
-    val colorScheme = remember(palette, darkTheme) {
-        if (darkTheme) darkSchemeOf(palette) else lightSchemeOf(palette)
+    // 无框线档没有描边帮忙划边界，靠加大容器色调位移把层次补回来
+    val toneBoost = if (bordersEnabled) 1f else BorderlessToneBoost
+    val colorScheme = remember(palette, darkTheme, toneBoost) {
+        if (darkTheme) darkSchemeOf(palette, toneBoost) else lightSchemeOf(palette, toneBoost)
     }
 
     val view = LocalView.current

@@ -77,6 +77,8 @@ class FloatingWindowService : Service() {
     private var windowManager: WindowManager? = null
     private var root: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
+    /** 上一次收到的屏幕方向：只有方向真正翻面时才做窗口重排（深浅色切换不该触发） */
+    private var lastOrientation = android.content.res.Configuration.ORIENTATION_UNDEFINED
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val appSettings: AppSettings by inject()
@@ -1578,18 +1580,64 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 系统深浅色翻面：把所有登记过的静态视图重涂一遍，再重绘答疑里的动态行。
+     * 系统配置变化：深浅色翻面时把所有登记过的静态视图重涂一遍，再重绘答疑里的动态行；
+     * 屏幕方向翻面时把所有悬浮窗口按新几何重排（见 [relayoutOverlays]）。
      *
      * 只处理登记过的那一层（内层卡片与卡片上的文字/主色）；玄青任务卡与跑马灯是品牌/阶段表面，
      * 深浅两套下都成立，不参与切换。
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // 旋转重排：post 到主线程队列再跑。此刻窗口布局还没走完，直接读 view.height 是旧值，
+        // currentWindowMetrics / statusBarHeight 也要等系统下发新几何之后读才准
+        if (newConfig.orientation != lastOrientation) {
+            lastOrientation = newConfig.orientation
+            handler.post { relayoutOverlays() }
+        }
         val dark = FloatingUi.isNightMode(this)
         if (dark == palette.isDark) return
         palette = FloatingUi.Palette.of(dark)
         themeAppliers.forEach { it(palette) }
         rerenderInteractRows()
+    }
+
+    /**
+     * 屏幕旋转后重排所有悬浮窗口。
+     *
+     * 各窗口的差异：
+     * - 任务卡片（[root]）：x/y 是拖动/初始定位留下的绝对坐标，旋转后可能整块出屏，
+     *   按新屏幕尺寸夹回「顶部不越状态栏、底部留 24dp、左右留边距」的既有边界（与惯性滑行同界）；
+     * - 悬浮球（[miniRoot]）：固定在右上角，x 按新屏宽重算；
+     * - 跑马灯（[marquee]）：gravity=BOTTOM|CENTER_HORIZONTAL，横向自动跟随新屏宽，
+     *   只需把底部偏移按新方向的导航栏 inset 重算；
+     * - 底部选项卡（[sheetRoot]）：MATCH_PARENT + BOTTOM 居中，系统旋转时自动重排，无需处理。
+     */
+    private fun relayoutOverlays() {
+        val point = android.graphics.Point()
+        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
+        val screenW = if (point.x > 0) point.x else dp(360)
+        val screenH = if (point.y > 0) point.y else dp(640)
+        val gap = dp(FloatingUi.EDGE_GAP)
+        params?.let { p ->
+            val r = root ?: return@let
+            val winW = dp(FloatingUi.WIDTH)
+            val rootH = r.height
+            val winH = if (rootH > 0) rootH else dp(120)
+            p.x = p.x.coerceIn(gap, (screenW - winW - gap).coerceAtLeast(gap))
+            p.y = p.y.coerceIn(cardTopLimit(), (screenH - winH - dp(24)).coerceAtLeast(cardTopLimit()))
+            runCatching { windowManager?.updateViewLayout(r, p) }
+        }
+        miniRoot?.let { ball ->
+            val lp = ball.layoutParams as? WindowManager.LayoutParams ?: return@let
+            lp.x = screenW - dp(MINI_BALL_SIZE) - dp(FloatingUi.PAD_L)
+            lp.y = cardTopLimit() + dp(FloatingUi.PAD)
+            runCatching { windowManager?.updateViewLayout(ball, lp) }
+        }
+        barParams?.let { lp ->
+            val bar = marquee ?: return@let
+            lp.y = marqueeBottomOffset()
+            runCatching { windowManager?.updateViewLayout(bar, lp) }
+        }
     }
 
     /**
