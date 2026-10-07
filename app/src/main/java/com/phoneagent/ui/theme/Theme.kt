@@ -139,9 +139,30 @@ private const val BorderlessToneBoost = 2.0f
  * 夹在 40~230（16%~90%）：下限之下玻璃面兜不住文字可读性，
  * 上限之上模糊结果完全看不见，调节失去意义。
  */
-private fun shiftGlassTint(c: AppColors, offset: Int): AppColors {
-    val alpha = (c.glassTint.alpha * 255f + offset).coerceIn(40f, 230f).toInt()
-    return c.copy(glassTint = c.glassTint.copy(alpha = alpha / 255f))
+private fun shiftGlassTint(c: AppColors, offset: Int): AppColors =
+    c.copy(glassTint = glassTintWithOffset(c.glassTint, offset))
+
+/** 单个 tint 颜色的 alpha 位移（alpha 位移的唯一实现点，色板整体与预览样片共用） */
+internal fun glassTintWithOffset(base: Color, offset: Int): Color {
+    val alpha = (base.alpha * 255f + offset).coerceIn(40f, 230f).toInt()
+    return base.copy(alpha = alpha / 255f)
+}
+
+/**
+ * 主题页磨砂预览用：按当前模式（深/浅 + 高对比度）算出**调节中的**玻璃 tint。
+ * 条件与 [PhoneAgentTheme] 里对全局 palette 的处理完全同源——高对比度不参与微调，
+ * 保证"预览所见 = 落盘后全局所得"；基准取原始色板（未叠 offset）而不是
+ * `AppTheme.colors.glassTint`（那个在 offset≠0 时已经位移过，再叠就双重位移）。
+ */
+@Composable
+internal fun glassTintPreview(offset: Int): Color {
+    val highContrast = rememberHighContrast()
+    val base = when {
+        highContrast -> if (isSystemDark()) DarkContrastAppColors else LightContrastAppColors
+        isSystemDark() -> DarkAppColors
+        else -> LightAppColors
+    }.glassTint
+    return if (offset != 0 && !highContrast) glassTintWithOffset(base, offset) else base
 }
 
 /**

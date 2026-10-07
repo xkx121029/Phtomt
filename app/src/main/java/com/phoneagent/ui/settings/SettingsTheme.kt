@@ -24,13 +24,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.GlassTokens
+import com.phoneagent.ui.components.rememberGlassState
+import dev.chrisbanes.haze.hazeSource
 import com.phoneagent.ui.components.AppCardBorder
 import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.glassTintPreview
 
 /**
  * 主题页：选择整体视觉风格。
@@ -96,6 +104,75 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
         GroupCard {
             GroupHeader("磨砂玻璃", "玻璃面板的透光度：向左更透，向右更实")
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                // 实时预览样片：上面是"滚过玻璃下的内容"（彩色渐变 + 文字），
+                // 下面浮一块小玻璃板模拟页眉——tint 直接取滑杆的调节值，拖动跟手，
+                // 不用等落盘。真正落盘后全局玻璃面走的是同一个 alpha 位移实现点，
+                // 预览所见 = 全局所得
+                val previewTint = glassTintPreview(st.glassTintOffset)
+                val previewGlass = rememberGlassState()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(96.dp)
+                        .clip(RoundedCornerShape(AppRadii.Tile)),
+                ) {
+                    // 取样源：刻意用高饱和渐变 + 中英文，玻璃透不透一眼可辨
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .hazeSource(previewGlass)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(
+                                        Color(0xFF5FA0C9), Color(0xFF9AC98F), Color(0xFFE4B45C),
+                                    ),
+                                ),
+                            )
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                "滚过玻璃下方的内容",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                            )
+                            Text(
+                                "Frosted sample · 0123456789",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.8f),
+                            )
+                        }
+                    }
+                    // 玻璃浮板：与真实页眉同款材质（同模糊半径档位 + 高光 + 描边），
+                    // 只铺样片下半部、四边留白，模拟"内容滚到玻璃下"的观感
+                    GlassSurface(
+                        hazeState = previewGlass,
+                        tintOverride = previewTint,
+                        shape = RoundedCornerShape(AppRadii.Tile),
+                        blurRadius = GlassTokens.BlurCompact,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
+                            .height(44.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "玻璃页眉预览",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
                 LabeledField(
                     when {
                         st.glassTintOffset == 0 -> "浓淡  默认"

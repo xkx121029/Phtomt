@@ -1,5 +1,8 @@
 package com.phoneagent.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -99,6 +102,8 @@ fun rememberGlassState(): HazeState = remember { HazeState() }
  * @param blurRadius 模糊半径，默认取 [GlassTokens.Blur]
  * @param showSheen 是否画顶部高光。只有贴边的大面 chrome 需要它；
  *   四边都有留白的小浮层再加高光会显得脏
+ * @param tintOverride 覆盖全局色板的 tint（磨砂浓淡**实时预览**用：滑杆拖动时
+ *   全局 palette 还没落盘，预览样片拿调节中的值直接画）。null = 用全局色板值
  */
 @Composable
 fun GlassSurface(
@@ -107,6 +112,7 @@ fun GlassSurface(
     shape: Shape = RoundedCornerShape(AppRadii.Card),
     blurRadius: Dp = GlassTokens.Blur,
     showSheen: Boolean = true,
+    tintOverride: Color? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -119,7 +125,7 @@ fun GlassSurface(
                     // 不透明底色：节点边界处若取样源没覆盖到，露出的应当就是页面底色
                     backgroundColor = colors.surfaceBase,
                     // 叠在模糊结果之上的一层底色，浓淡由它决定
-                    tint = HazeTint(colors.glassTint),
+                    tint = HazeTint(tintOverride ?: colors.glassTint),
                     blurRadius = blurRadius,
                     noiseFactor = GlassTokens.Noise,
                     // 不支持背景模糊时的替身：接近不透明，保证文字仍然读得清
