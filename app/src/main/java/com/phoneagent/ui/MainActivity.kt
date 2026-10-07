@@ -155,7 +155,11 @@ class MainActivity : ComponentActivity() {
             val vm: MainViewModel = koinViewModel()
             // 主题设置：无框线模式实时驱动 PhoneAgentTheme 的框线开关，改完立即生效
             val settings by vm.settingsFlow.collectAsState()
-            PhoneAgentTheme(bordersEnabled = !settings.borderless) {
+            PhoneAgentTheme(
+                bordersEnabled = !settings.borderless,
+                // 磨砂浓淡微调：同样实时驱动，主题页拖动滑杆立即看到玻璃变化
+                glassTintOffset = settings.glassTintOffset,
+            ) {
                 ActivityContent(vm, pageSignal)
             }
         }

@@ -133,6 +133,18 @@ val AppShapes = Shapes(
 private const val BorderlessToneBoost = 2.0f
 
 /**
+ * 磨砂浓淡微调：把色板 glassTint 的 alpha 在基准上平移 [offset] 个百分比点。
+ * 只动透明度、不动 RGB——浓淡是"玻璃蒙了多少层"的量，换颜色就成换配色了。
+ *
+ * 夹在 40~230（16%~90%）：下限之下玻璃面兜不住文字可读性，
+ * 上限之上模糊结果完全看不见，调节失去意义。
+ */
+private fun shiftGlassTint(c: AppColors, offset: Int): AppColors {
+    val alpha = (c.glassTint.alpha * 255f + offset).coerceIn(40f, 230f).toInt()
+    return c.copy(glassTint = c.glassTint.copy(alpha = alpha / 255f))
+}
+
+/**
  * 把语义色令牌映射成 M3 ColorScheme。
  *
  * 五级容器色调不写死十六进制，而是从 `surfaceBase` 出发做色调位移：
@@ -230,14 +242,22 @@ fun PhoneAgentTheme(
     darkTheme: Boolean = isSystemDark(),
     /** 主题设置里的框线开关：true = 标准（画框线），false = 无框线 */
     bordersEnabled: Boolean = true,
+    /** 主题设置里的磨砂浓淡微调（-25 ~ +25，0 = 色板默认），负更透正更实 */
+    glassTintOffset: Int = 0,
     content: @Composable () -> Unit,
 ) {
     val highContrast = rememberHighContrast()
-    val palette = when {
+    // 磨砂微调只作用于标准浅/深色板；高对比度色板刻意近乎不透明（无障碍可读性兜底），不参与
+    val basePalette = when {
         darkTheme && highContrast -> DarkContrastAppColors
         darkTheme -> DarkAppColors
         highContrast -> LightContrastAppColors
         else -> LightAppColors
+    }
+    val palette = if (glassTintOffset != 0 && !highContrast) {
+        shiftGlassTint(basePalette, glassTintOffset)
+    } else {
+        basePalette
     }
     // 无框线档没有描边帮忙划边界，靠加大容器色调位移把层次补回来
     val toneBoost = if (bordersEnabled) 1f else BorderlessToneBoost

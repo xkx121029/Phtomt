@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,8 +35,9 @@ import com.phoneagent.ui.theme.AppRadii
 /**
  * 主题页：选择整体视觉风格。
  *
- * 目前只有一条轴——**框线**：标准保留卡片 / 面板 / 输入面的发丝描边，
- * 无框线则把这些装饰性描边全部去掉，层次只靠底色差拉开。
+ * 目前有两条轴——**框线**与**磨砂浓淡**：标准保留卡片 / 面板 / 输入面的发丝描边，
+ * 无框线则把这些装饰性描边全部去掉，层次只靠底色差拉开；
+ * 磨砂浓淡控制玻璃页眉/悬浮面板的透光度，负更透、正更实。
  * 选中即时落盘并即时生效：开关本身走 `PhoneAgentTheme(bordersEnabled = ...)`，
  * 保存后整棵树重组，不需要重启。
  */
@@ -83,6 +85,33 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     },
                 )
                 Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 磨砂浓淡：微调玻璃 tint 的透明度（相对色板默认 ±25 个百分点点），
+        // 拖动只更新本地编辑态（数值跟手），松手才落盘——落盘后 settingsFlow 驱动
+        // PhoneAgentTheme 重组，整棵树的玻璃面立即跟着变，避免拖一次写几十次 DataStore
+        GroupCard {
+            GroupHeader("磨砂玻璃", "玻璃面板的透光度：向左更透，向右更实")
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                LabeledField(
+                    when {
+                        st.glassTintOffset == 0 -> "浓淡  默认"
+                        st.glassTintOffset < 0 -> "浓淡  更透 ${-st.glassTintOffset}"
+                        else -> "浓淡  更实 ${st.glassTintOffset}"
+                    },
+                ) {
+                    Slider(
+                        value = st.glassTintOffset.toFloat(),
+                        onValueChange = { st.glassTintOffset = it.toInt() },
+                        onValueChangeFinished = { save() },
+                        valueRange = -25f..25f,
+                        steps = 9,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
             }
         }
 

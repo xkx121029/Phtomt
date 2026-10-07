@@ -205,6 +205,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var pageMemoryEnabled by mutableStateOf(initial.pageMemoryEnabled)
     /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画 */
     var borderless by mutableStateOf(initial.borderless)
+    /** 主题：磨砂浓淡微调（-25~25，0 = 色板默认），负更透正更实 */
+    var glassTintOffset by mutableIntStateOf(initial.glassTintOffset)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
@@ -252,6 +254,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorClickSync = s.cursorClickSync
         pageMemoryEnabled = s.pageMemoryEnabled
         borderless = s.borderless
+        glassTintOffset = s.glassTintOffset
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
         endpoints.addAll(s.endpoints)
@@ -321,6 +324,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorClickSync = cursorClickSync,
         pageMemoryEnabled = pageMemoryEnabled,
         borderless = borderless,
+        glassTintOffset = glassTintOffset,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,

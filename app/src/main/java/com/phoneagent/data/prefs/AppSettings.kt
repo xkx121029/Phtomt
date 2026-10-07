@@ -98,6 +98,12 @@ class AppSettings(private val context: Context) {
         val pageMemoryEnabled: Boolean = true,
         /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画，层次只靠底色差 */
         val borderless: Boolean = false,
+        /**
+         * 主题：磨砂浓淡微调（百分比点数，-25 ~ +25，0 = 色板默认）。
+         * 负值更透、正值更实，叠加在浅/深色色板各自的 glassTint 基准 alpha 上；
+         * 高对比度色板与 Android 12 以下的模糊降级底色不受影响
+         */
+        val glassTintOffset: Int = 0,
         // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
         /** 已配置的 API 端点（存 JSON 字符串；空表示从未写过，读取时由旧三槽合成） */
         val endpoints: List<Endpoint> = emptyList(),
@@ -155,6 +161,9 @@ class AppSettings(private val context: Context) {
         val PAGE_MEMORY_ENABLED = booleanPreferencesKey("page_memory_enabled")
         /** 主题：无框线模式，见 [Settings.borderless] */
         val BORDERLESS = booleanPreferencesKey("theme_borderless")
+
+        /** 主题：磨砂浓淡微调（-25~25），见 [Settings.glassTintOffset] */
+        val GLASS_TINT_OFFSET = intPreferencesKey("theme_glass_tint_offset")
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
         val CATALOG = stringPreferencesKey("model_catalog")
         val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
@@ -240,6 +249,7 @@ class AppSettings(private val context: Context) {
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
             pageMemoryEnabled = prefs[Keys.PAGE_MEMORY_ENABLED] ?: true,
             borderless = prefs[Keys.BORDERLESS] ?: false,
+            glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
             endpoints = endpoints,
             catalog = catalog,
             skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
@@ -289,6 +299,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
             prefs[Keys.PAGE_MEMORY_ENABLED] = settings.pageMemoryEnabled
             prefs[Keys.BORDERLESS] = settings.borderless
+            prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
             // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏
             val liveEndpointIds = settings.endpoints.map { it.id }.toSet()
