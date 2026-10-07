@@ -184,7 +184,7 @@ internal fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.B
     }
 }
 
-/** 在截图上用外挂/OCR 识别的控件画框并标注用途、文字（原在「任务」页，随页面合并移到这里） */
+/** 在截图上用端侧视觉/OCR 识别的控件画框并标注用途、文字（原在「任务」页，随页面合并移到这里） */
 internal fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneagent.device.vision.DetectedControl>): android.graphics.Bitmap {
     val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
     val canvas = android.graphics.Canvas(out)

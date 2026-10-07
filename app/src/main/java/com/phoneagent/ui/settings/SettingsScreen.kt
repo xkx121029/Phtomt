@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
-enum class SettingsPage { HOME, THEME, AI_MODELS, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
+enum class SettingsPage { HOME, THEME, AI_MODELS, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -116,6 +116,7 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     onBack = { page = SettingsPage.HOME },
                     onPickRole = { pickRole = it },
                 )
+                SettingsPage.ONDEVICE -> SettingsOnDevice(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
 
                 SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
                 SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
@@ -205,6 +206,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var pageMemoryEnabled by mutableStateOf(initial.pageMemoryEnabled)
     /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画 */
     var borderless by mutableStateOf(initial.borderless)
+    /** 主题：配色方案（ThemePalette.id） */
+    var palette by mutableStateOf(initial.palette)
     /** 主题：磨砂浓淡微调（-25~25，0 = 色板默认），负更透正更实 */
     var glassTintOffset by mutableIntStateOf(initial.glassTintOffset)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
@@ -254,6 +257,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorClickSync = s.cursorClickSync
         pageMemoryEnabled = s.pageMemoryEnabled
         borderless = s.borderless
+        palette = s.palette
         glassTintOffset = s.glassTintOffset
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
@@ -324,6 +328,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorClickSync = cursorClickSync,
         pageMemoryEnabled = pageMemoryEnabled,
         borderless = borderless,
+        palette = palette,
         glassTintOffset = glassTintOffset,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),

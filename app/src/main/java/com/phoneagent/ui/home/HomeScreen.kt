@@ -22,10 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -37,18 +33,14 @@ import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalNavClearance
-import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
-import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -59,32 +51,17 @@ fun HomeScreen(
     onOpenExtras: (ExtrasPage) -> Unit = {},
 ) {
     val context = LocalContext.current
-    // 宿主注入的全局浮条：在组合期取值，闭包里直接用，避免在协程里读 CompositionLocal
-    val snackbar = LocalSnackbar.current
     val settings by vm.settingsFlow.collectAsState()
     val a11y by vm.a11yEnabled.collectAsState()
     val agent by vm.agentState.collectAsState()
     val permissions by vm.permissions.collectAsState()
     val screenshotActive by vm.screenshotActive.collectAsState()
-    val scope = rememberCoroutineScope()
 
-    // 外挂视觉模型连接状态
-    var visualConn by remember { mutableStateOf<Boolean?>(null) }
-    var visualChecking by remember { mutableStateOf(false) }
-
-    fun testVisual() {
-        scope.launch {
-            visualChecking = true
-            visualConn = com.phoneagent.device.vision.ExternalVisionProvider.checkConnection(context)
-            visualChecking = false
-        }
-    }
-
+    // 视觉模型入口已收进 设置 → 端侧视觉，主页不再展示
     LaunchedEffect(Unit) {
         vm.refreshStatus(context)
         vm.refreshA11yState(context)
         vm.refreshPermissions(context)
-        testVisual()
     }
 
     // 页眉是浮在正文之上的玻璃板：贴顶时通栏直角，离顶才收成圆角浮板。
@@ -176,26 +153,6 @@ fun HomeScreen(
                     )
                 }
             }
-
-            // 外挂视觉模型调试
-            SectionHeader("视觉模型")
-            VisionModelCard(
-                connected = visualConn,
-                checking = visualChecking,
-                onTest = ::testVisual,
-                onOpenExternal = {
-                    if (!com.phoneagent.device.vision.ExternalVisionProvider.launchApp(context)) {
-                        // 轻量反馈走页面内浮条，不用系统 Toast（字体/圆角/位置都不是本项目语言）
-                        snackbar?.show(
-                            "未检测到外挂视觉 APK（com.phoneagent.ondevice），请先安装后重试",
-                            SnackbarType.WARNING,
-                        )
-                    } else {
-                        // 已拉起外挂，稍后重新检测连接状态
-                        scope.launch { delay(600); testVisual() }
-                    }
-                },
-            )
 
             // 快捷模块入口
             SectionHeader("快捷入口")

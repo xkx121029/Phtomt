@@ -83,7 +83,7 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     // 进入调试页时刷新能力/权限状态，保证「能力缺失提示条」准确
     LaunchedEffect(Unit) { runCatching { vm.refreshPermissions(context) } }
 
-    // 用外挂视觉对本次任务所有截图画框的结果（step → 框选图）
+    // 用端侧视觉对本次任务所有截图画框的结果（step → 框选图）
     var annotatedMap by remember { mutableStateOf<Map<Int, android.graphics.Bitmap>>(emptyMap()) }
     var annotating by remember { mutableStateOf(false) }
 
@@ -93,22 +93,22 @@ fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     fun runExternalAnnotate() {
         scope.launch {
             annotating = true
-            toast("正在用外挂视觉画框…")
+            toast("正在用端侧视觉画框…")
             val out = mutableMapOf<Int, android.graphics.Bitmap>()
             val tasks = traces.filter { it.taskId >= 0 }
             var count = 0
             tasks.forEach { t ->
                 val shot = t.screenshot ?: return@forEach
-                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(context, shot, 20_000)
+                val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(context, shot, 20_000)
                 if (controls.isNotEmpty()) count++
                 out[t.step] = drawBoxes(shot, controls)
             }
             annotatedMap = out
             annotating = false
-            val connected = com.phoneagent.device.vision.ExternalVisionProvider.isConnected
+            val engine3b = com.phoneagent.device.vision.OnDeviceVision.modelLoaded
             toast(
                 if (tasks.isEmpty()) "本任务暂无可画框的截图"
-                else "已用${if (connected) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
+                else "已用${if (engine3b) "端侧3B" else "本地OCR"}对 ${tasks.size} 张截图画框（含控件 ${count} 张）"
             )
         }
     }
@@ -234,7 +234,7 @@ private fun DebugActionsMenu(
         HorizontalDivider(Modifier.padding(vertical = AppSpacing.Xs))
         DebugActionItem(
             icon = AppIcons.Insights,
-            label = if (annotating) "画框中…" else "用外挂视觉画框",
+            label = if (annotating) "画框中…" else "用端侧视觉画框",
             enabled = !annotating,
             onClick = onAnnotate,
         )

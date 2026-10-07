@@ -43,17 +43,17 @@ data class StepTrace(
     val totalTokens: Int = 0,
     /** 本次请求耗时（毫秒） */
     val latencyMs: Long = 0,
-    /** 本轮是否使用了视觉模型：外挂3B / 云端 / 本地OCR / 无 */
+    /** 本轮是否使用了视觉模型：端侧3B / 云端 / 本地OCR / 无 */
     val visionSource: String = "无",
     /** 实际视觉模型名称 */
     val visionModel: String = "",
-    /** AI 对当前截图生成的视觉描述（外挂/云端/本地 OCR 输出） */
+    /** AI 对当前截图生成的视觉描述（端侧/云端/本地 OCR 输出） */
     val visionDescription: String = "",
     /** 该步是否思考（reasoning_content 非空） */
     val thinking: Boolean = false,
     /** 该步决策用的截图 */
     val screenshot: android.graphics.Bitmap? = null,
-    /** 用外挂视觉画框后的结果带控件列表（临时，用于 Debug 画框展示） */
+    /** 用端侧视觉画框后的结果带控件列表（临时，用于 Debug 画框展示） */
     val boxes: List<com.phoneagent.device.vision.DetectedControl> = emptyList(),
     val annotated: android.graphics.Bitmap? = null,
 )
@@ -100,7 +100,7 @@ data class AgentMetrics(
     /** 平均生成速度（tokens/秒） */
     val tokensPerSec: Double = 0.0,
     val requestCount: Int = 0,
-    /** 视觉环节调用次数与总耗时（外挂3B/云端/本地识别 + 定位） */
+    /** 视觉环节调用次数与总耗时（端侧3B/云端/本地识别 + 定位） */
     val visionCount: Int = 0,
     val visionTotalMs: Long = 0,
     /** 执行环节执行次数与总耗时（无障碍点击/输入/滑动等） */

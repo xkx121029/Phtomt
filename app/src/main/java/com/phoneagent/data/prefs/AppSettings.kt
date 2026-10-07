@@ -45,7 +45,7 @@ class AppSettings(private val context: Context) {
         val visionEnabled: Boolean = true,
         /** 视觉读图模式：CLOUD=仅云端 | LOCAL=仅本地OCR | AUTO=优先云端失败回退本地 */
         val visionMode: String = "AUTO",
-        /** 启用外挂视觉 Agent（本地视觉 APK，端侧 3B 模型）：启用后视觉链优先走外挂，不可用再回落云端/本地 */
+        /** 启用端侧视觉（进程内 3B 模型）：启用后视觉链优先走端侧，不可用再回落云端/本地 */
         val enableExternalVision: Boolean = true,
         /** 混合路由：启用后按任务复杂度分流——简单任务（元素树可读）用端侧 3B，复杂任务（元素稀疏/需理解）走云端视觉 */
         val smartVisionRoute: Boolean = true,
@@ -98,6 +98,8 @@ class AppSettings(private val context: Context) {
         val pageMemoryEnabled: Boolean = true,
         /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画，层次只靠底色差 */
         val borderless: Boolean = false,
+        /** 主题：配色方案（[com.phoneagent.ui.theme.ThemePalette.id]，存字符串避免脏数据反序列化失败） */
+        val palette: String = "ink_green",
         /**
          * 主题：磨砂浓淡微调（百分比点数，-25 ~ +25，0 = 色板默认）。
          * 负值更透、正值更实，叠加在浅/深色色板各自的 glassTint 基准 alpha 上；
@@ -161,6 +163,8 @@ class AppSettings(private val context: Context) {
         val PAGE_MEMORY_ENABLED = booleanPreferencesKey("page_memory_enabled")
         /** 主题：无框线模式，见 [Settings.borderless] */
         val BORDERLESS = booleanPreferencesKey("theme_borderless")
+        /** 主题：配色方案，见 [Settings.palette] */
+        val PALETTE = stringPreferencesKey("theme_palette")
 
         /** 主题：磨砂浓淡微调（-25~25），见 [Settings.glassTintOffset] */
         val GLASS_TINT_OFFSET = intPreferencesKey("theme_glass_tint_offset")
@@ -249,6 +253,7 @@ class AppSettings(private val context: Context) {
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
             pageMemoryEnabled = prefs[Keys.PAGE_MEMORY_ENABLED] ?: true,
             borderless = prefs[Keys.BORDERLESS] ?: false,
+            palette = prefs[Keys.PALETTE] ?: "ink_green",
             glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
             endpoints = endpoints,
             catalog = catalog,
@@ -299,6 +304,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
             prefs[Keys.PAGE_MEMORY_ENABLED] = settings.pageMemoryEnabled
             prefs[Keys.BORDERLESS] = settings.borderless
+            prefs[Keys.PALETTE] = settings.palette
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
             // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏

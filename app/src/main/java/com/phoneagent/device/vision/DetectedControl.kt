@@ -11,15 +11,15 @@ import kotlinx.coroutines.withContext
 /**
  * 视觉识别返回的一个控件（主程序侧的数据模型）。
  *
- * 说明：实际的"读图/OCR/框选"已统一放在外挂视觉 Agent（`com.phoneagent.ondevice`）中，
- * 主程序不再内置 OCR，仅通过 [ExternalVisionProvider] 跨进程拿到此模型，做展示与定位。
+ * 说明：实际的"读图/OCR/框选"已在主程序进程内完成（3B 模型 / ML Kit OCR），
+ * 由 [OnDeviceVision] 门面产出此模型，供展示与定位。
  */
 data class DetectedControl(
     /** 控件文字或描述 */
     val label: String,
     /** 控件类型：按钮/输入框/开关/标签页/文本/可滚动… */
     val role: String,
-    /** 控件用途（中文，启发式推断，由外挂产出） */
+    /** 控件用途（中文，启发式推断，由端侧识别产出） */
     val purpose: String,
     /** 归一化边界 [left, top, right, bottom]（0~1） */
     val bounds: FloatArray,

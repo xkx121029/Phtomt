@@ -34,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.CatalogModel
@@ -62,10 +61,7 @@ internal fun SettingsAiModels(
     onPickRole: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
     val buzz = rememberHapticClick()
-    var extStatus by remember { mutableStateOf<String?>(null) }
-    var extTesting by remember { mutableStateOf(false) }
     var presetHint by remember { mutableStateOf<String?>(null) }
     // 拉模型：提示只挂在发起的那张端点卡上，避免一份提示串到所有卡片
     var fetchingEndpointId by remember { mutableStateOf<String?>(null) }
@@ -401,38 +397,14 @@ internal fun SettingsAiModels(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                ToggleRow("外挂视觉 Agent", "用本地视觉 APK（端侧 3B）框选控件，优先于云端与本地 OCR；不可用时自动回落", st.enableExternalVision) { st.enableExternalVision = it }
-                Spacer(Modifier.height(6.dp))
-                ToggleRow("混合路由", "简单任务（元素树可读）走端侧 3B 省额度；复杂任务（如游戏/WebView）直接走云端视觉", st.smartVisionRoute) { st.smartVisionRoute = it }
-                Spacer(Modifier.height(6.dp))
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            extTesting = true; extStatus = "连接测试中…"
-                            // 空白图也会触发完整 IPC：外挂服务收到后返回 OCR/3B 控件结果
-                            val bmp = android.graphics.Bitmap.createBitmap(320, 640, android.graphics.Bitmap.Config.ARGB_8888)
-                            val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(ctx, bmp, 15_000)
-                            val connected = com.phoneagent.device.vision.ExternalVisionProvider.isConnected
-                            extStatus = if (connected) {
-                                "外挂视觉服务已连接，跨进程识别返回 ${controls.size} 个控件"
-                            } else {
-                                "外挂视觉不可用：服务未安装或绑定失败（可回首页视觉卡点击\"打开外挂\"检查）"
-                            }
-                            extTesting = false
-                        }
-                    },
-                    enabled = !extTesting,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text(if (extTesting) "连接测试中…" else "测试外挂连接") }
-                extStatus?.let { s ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(s, style = MaterialTheme.typography.bodySmall,
-                        color = if (s.contains("已连接")) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Spacer(Modifier.height(8.dp))
                 ToggleRow("附送屏幕截图", value = st.attachScreenshot) { st.attachScreenshot = it }
                 Spacer(Modifier.height(4.dp))
+                // 端侧 3B 视觉模型已并入主程序进程内，下载/加载/启用收在「设置 → 端侧视觉」
+                Text(
+                    "端侧 3B 视觉模型在「设置 → 端侧视觉」中下载与启用",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

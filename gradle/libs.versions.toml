@@ -21,6 +21,9 @@ coroutines = "1.9.0"
 shizuku = "13.1.5"
 lucide = "1.1.0"
 haze = "1.4.0"
+# ML Kit 中文 OCR：端侧视觉的离线兜底（无 3B 模型/推理失败时框选文字区域）
+mlkitText = "16.0.1"
+mlkitCommon = "18.11.0"
 junit = "4.13.2"
 mockk = "1.13.13"
 detekt = "1.23.8"
@@ -50,6 +53,8 @@ koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compos
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitText" }
+mlkit-common = { group = "com.google.mlkit", name = "common", version.ref = "mlkitCommon" }
 
 # 单元测试
 junit = { group = "junit", name = "junit", version.ref = "junit" }

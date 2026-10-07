@@ -19,6 +19,7 @@ import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.ThemePalette
 import com.phoneagent.ui.icons.AppIcons
 
 /**
@@ -68,6 +69,16 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                     summary = st.model,
                     onClick = { onOpen(SettingsPage.AI_MODELS) },
                 )
+                GroupDivider()
+                SettingsEntry(
+                    icon = AppIcons.Preview,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.13f),
+                    title = "端侧视觉",
+                    subtitle = "3B 模型下载 / 加载 / 启用",
+                    summary = if (st.enableExternalVision) "已启用" else "已关闭",
+                    onClick = { onOpen(SettingsPage.ONDEVICE) },
+                )
             }
 
             // ---- 运行：AI 怎么干活 ----
@@ -116,8 +127,8 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                     iconTint = MaterialTheme.colorScheme.primary,
                     iconBackground = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
                     title = "主题",
-                    subtitle = "标准 / 无框线",
-                    summary = if (st.borderless) "无框线" else "标准",
+                    subtitle = "配色 / 框线 / 磨砂",
+                    summary = "${ThemePalette.of(st.palette).label} · ${if (st.borderless) "无框线" else "标准"}",
                     onClick = { onOpen(SettingsPage.THEME) },
                 )
                 GroupDivider()

@@ -127,7 +127,7 @@ class AgentEngine(
         /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
         private const val VISION_FALLBACK_THRESHOLD = 3
 
-        /** 外挂视觉 Agent 单次识别的超时（ms）：端侧 3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
+        /** 端侧视觉单次识别的超时（ms）：3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
         private const val EXTERNAL_VISION_TIMEOUT = 20_000L
 
         /** 决策链路最多保留的近期对话轮次（每轮 user+assistant 各算一条）。超过则截断早期历史，
@@ -787,10 +787,10 @@ class AgentEngine(
     /** 提交任务到队列并开始处理 */
     fun start(task: String) {
         if (task.isBlank()) return
-        // 预热：若启用外挂视觉，异步预加载端侧 3B 模型，避免首次决策阻塞在模型加载
+        // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
         scope.launch {
             val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
-            if (ext) com.phoneagent.device.vision.ExternalVisionProvider.loadModel(appContext)
+            if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
         }
         // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
         _stepShot.value = StepShot()
@@ -1208,7 +1208,6 @@ class AgentEngine(
         // 用户主动停止：任务记忆收尾为「已中断」，否则记忆页会永远显示「进行中」。
         // 没有进行中的任务时 finishTaskMemory 内部直接返回，不会凭空写库
         finishTaskMemory(TaskMemoryEntry.STATUS_ABORTED)
-        runCatching { com.phoneagent.device.vision.ExternalVisionProvider.unbind(appContext) }
         // 停止即彻底结束：搁置标志必须一并清掉，否则下一个任务会带着上一个任务的搁置态起不来
         taskPaused = false
         // 停止时若正卡在「等待确认自写命令」，把待确认命令一并清掉：
@@ -1619,7 +1618,7 @@ class AgentEngine(
             // 无障碍读不到控件（元素树稀疏，如游戏/WebView/in-app 渲染界面）时，即使未开启截图开关也自动截图，
             // 交给视觉模型（glm-4.6v-flash）描述+坐标定位，弥补元素树缺失
             val treeSparse = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
-            // 混合路由：开启外挂且（未开混合，或简单任务=元素树可读）→ 走端侧 3B 需要截图
+            // 混合路由：启用端侧视觉且（未开混合，或简单任务=元素树可读）→ 走端侧 3B 需要截图
             val needExternal3b = settingsVal.enableExternalVision &&
                 (!settingsVal.smartVisionRoute || !treeSparse)
             // 截图链路（MediaProjection / 无障碍）在权限被回收或服务断开时会直接抛异常；
@@ -2295,7 +2294,7 @@ class AgentEngine(
         val planNote = if (!planSteps.isNullOrBlank()) "\n\n## 已批准的执行计划\n$planSteps" else ""
         // 视觉链路：主模型不支持图片输入时，先用视觉模型描述截图，再让主模型基于文本决策。
         // visionMode: CLOUD=仅云端 | LOCAL=仅本地OCR | AUTO=优先云端、失败/未配置回退本地
-        // 外挂视觉（enableExternalVision）优先于云端/本地，仅在未启用或不可用时才走后续来源。
+        // 端侧视觉（enableExternalVision）优先于云端/本地，仅在未启用或不可用时才走后续来源。
         // 混合路由（smartVisionRoute）：端侧 3B 只认「简单任务」（元素树可读）——框选快、省云端额度；
         //  复杂任务（元素树稀疏，需强语义理解，如游戏/WebView/小程序）跳过 3B，直接走云端视觉。
         // 页面是否复杂：元素树稀疏即视为复杂（无障碍读不到控件，需强视觉理解）
@@ -2337,12 +2336,12 @@ class AgentEngine(
             // 超时即放弃视觉描述，仅用无障碍元素树继续决策，保证主循环不被打死
             val triedOnDevice3b = useOnDevice3b
             val visionDone = withVisionWatchdog(WATCHDOG_VISION_MS) {
-                // 1) 优先：外挂端侧 3B 视觉 Agent 控件框选（类型 + 用途 + 归一化坐标）。
+                // 1) 优先：端侧 3B 视觉控件框选（类型 + 用途 + 归一化坐标）。
                 //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
                 if (useOnDevice3b) {
-                    log(AgentLog.Level.INFO, "外挂视觉 Agent 控件识别…")
+                    log(AgentLog.Level.INFO, "端侧视觉 3B 控件识别…")
                     val t0 = System.nanoTime()
-                    val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
+                    val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
                         context = appContext,
                         bitmap = shot,
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
@@ -2354,7 +2353,7 @@ class AgentEngine(
                         // 跳过描述时仍保留框选坐标：hint 目标定位要靠它，文字描述则可以不给
                         if (wantVisionDesc) desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                     } else {
-                        log(AgentLog.Level.INFO, "外挂视觉未就绪/不可用，回退云端或本地")
+                        log(AgentLog.Level.INFO, "端侧视觉未就绪/不可用，回退云端或本地")
                     }
                 }
                 // 2) 云端视觉（只产文字描述，主模型能看图时整段跳过）
@@ -2371,15 +2370,15 @@ class AgentEngine(
                     ).getOrNull()?.text
                     recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 }
-                // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（外挂 OCR/3B）识别兜底。
-                //    主程序不再内置 OCR，本地读图统一由外挂视觉 Agent 承担（v2.2 迁移）
-                //    同一步第 1 步已经找过外挂且没结果时不再重复调用（同一张图、同一服务，重试只是白等 20s）
+                // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（OCR/3B）识别兜底。
+                //    本地读图统一由进程内端侧视觉承担
+                //    同一步第 1 步已经找过端侧视觉且没结果时不再重复调用（同一张图，重试只是白等）
                 if (desc.isNullOrBlank() && !externalUsed && !triedOnDevice3b &&
                     (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
                 ) {
-                    log(AgentLog.Level.INFO, "外挂视觉端侧识别（LOCAL/兜底）…")
+                    log(AgentLog.Level.INFO, "端侧视觉识别（LOCAL/兜底）…")
                     val t0 = System.nanoTime()
-                    val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
+                    val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
                         context = appContext,
                         bitmap = shot,
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
@@ -2394,7 +2393,7 @@ class AgentEngine(
                         // 只记日志，不往上下文里写「未识别到控件」：
                         // 那句话会被 AI 当成"页面上没有可操作控件"的事实，从而放弃尝试、编造动作或直接收尾，
                         // 而真实情况只是这一路视觉没结果，元素树/其它来源仍然有效
-                        log(AgentLog.Level.WARN, "外挂视觉不可用，本地无可识别控件")
+                        log(AgentLog.Level.WARN, "端侧视觉不可用，本地无可识别控件")
                     }
                 }
                 if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
@@ -2412,7 +2411,7 @@ class AgentEngine(
                     AgentLog.Level.WARN,
                     "元素树稀疏（${snapshot.elements.size} 个元素）且视觉链路未产出内容：" +
                         "元素树统计=${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}" +
-                        "，请检查视觉模型配置或外挂视觉服务",
+                        "，请检查视觉模型配置",
                 )
             }
         }
@@ -2520,11 +2519,11 @@ class AgentEngine(
                     val local = localRegions?.let { com.phoneagent.device.vision.ControlFormat.locate(it, targetText) }
                     when {
                         local != null -> local
-                        // 2) 本地没匹配上，且外挂视觉这一路确实是活的：发一次远端精定位
+                        // 2) 本地没匹配上，且端侧视觉这一路确实是活的：发一次精定位
                         externalUsed -> {
-                            log(AgentLog.Level.INFO, "外挂视觉定位目标：$targetText")
+                            log(AgentLog.Level.INFO, "端侧视觉定位目标：$targetText")
                             val t0 = System.nanoTime()
-                            val p = com.phoneagent.device.vision.ExternalVisionProvider.locate(
+                            val p = com.phoneagent.device.vision.OnDeviceVision.locate(
                                 appContext, screenshot, targetText, EXTERNAL_VISION_TIMEOUT,
                             )
                             recordVisionMs((System.nanoTime() - t0) / 1_000_000)
@@ -3542,7 +3541,7 @@ class AgentEngine(
         )
     }
 
-    /** 观测性埋点：视觉环节单次耗时聚合（外挂3B/云端/本地识别 + 定位） */
+    /** 观测性埋点：视觉环节单次耗时聚合（端侧3B/云端/本地识别 + 定位） */
     private fun recordVisionMs(elapsedMs: Long) {
         val prev = _metrics.value
         _metrics.value = prev.copy(
@@ -4126,8 +4125,8 @@ class AgentEngine(
             val shot = tryOrNull("截图失败") { com.phoneagent.device.screen.ScreenCapture.capture() }
             var annotated: Bitmap? = null
             if (shot != null) {
-                // 端侧控件识别已外移到外挂视觉 Agent；这里跨进程调用并画框（v2.2.1 截图标注）
-                val controls = com.phoneagent.device.vision.ExternalVisionProvider.detectControls(
+                // 端侧控件识别已进程内化；这里调用引擎并画框（v2.2.1 截图标注）
+                val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
                     context = appContext,
                     bitmap = shot,
                     timeoutMs = EXTERNAL_VISION_TIMEOUT,

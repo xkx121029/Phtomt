@@ -6,6 +6,67 @@
 
 ---
 
+## [v0.2.738] — 2026-10-07
+
+### 变更
+
+- **动作模式提示词改为"只说当前能做什么"**：三档（保守/均衡/自由）的授权范围段不再互相指路，
+  设计前提是"档位边界由端侧门控负责，提示词只描述当下可用的操作"
+  - 保守档：只列当前可用的低风险意图清单，删掉「其余意图一律被拒」「切换到均衡」等跨档表述
+  - 均衡档：只声明当前可用意图表的每一项，删掉「shell/a11y 要在自由模式下才开放」的对照说明
+  - 自由档：改为"当前档位可用意图表全部 + 额外开放 shell/a11y 兜底"的自足表述，不再以"在均衡的基础上"定义
+  - 铁律 2 自由档文案同步：「自由模式额外允许」→「当前模式额外允许」（中英）
+- **门控拒绝话术统一为「此操作需要更改模式」**：AI 尝试当前档位之外的操作时，端侧拒绝原因
+  （`ActionPolicy.freeModeOnlyReason` / `conservativeReason`）不再指名目标档位（如"切换到均衡/
+  仅在自由模式可用"），改为说明"超出当前动作模式的授权范围，此操作需要更改模式"，并保留
+  当前模式可用清单与「用 say 告知用户」的行动建议
+
+### 测试
+
+- 金样本重导（`prompt_golden/snapshot.sha256`）：actionMode 全部 6 节 + system 自由档节随文案更新
+- `AgentPromptsContextTest`：保守/均衡档断言改为「不提及其他档位名」+「说明更改模式」
+- `ActionModePolicyTest`：拒绝原因断言改为「点明当前档位 + 更改模式提示 + 不含目标档名」
+- `IntentTranslatorStrategyTest`：shell/a11y 非自由档拒绝原因断言跟随新话术
+- 附带修复：`Glass.kt` 并行会话在途改动缺 `kotlin.math.max` 导入导致编译失败，补上导入
+
+---
+
+## [v0.2.737] — 2026-10-07
+
+### 变更
+
+- **端侧视觉模型并入主程序（移除外挂 APK 依赖）**：Qwen2.5-VL-3B 视觉模型的能力整体收进主程序
+  进程内运行，不再需要安装外部视觉 APK
+  - 原生层移植：libllama/libmtmd/libggml（arm64-v8a）随主 APK 分发（`app/src/main/jniLibs/`），
+    JNI 垫片 `vision_bridge.cpp` 以 dlopen/dlsym 方式加载，编译期不链接；llama.cpp 头文件收进
+    `third_party/llamacpp/`（仅 include，2.6MB）
+  - Kotlin 层移植（`device/vision/`）：`NativeVisionEngine`（JNI 绑定 + 推理互斥锁 + 3B 失败自动
+    回退 ML Kit 中文 OCR）、`VisionModelDownloader`（ModelScope 直链 + Range 断点续传 + 进度回调）、
+    `LocalDetector`（OCR 兜底）；`OnDeviceVision` 进程内门面对外提供与旧 `ExternalVisionProvider`
+    相同的 API，`AgentEngine`/`DebugScreen` 调用点全部替换
+  - 删除 IPC 旧链路：`ExternalVisionProvider.kt`、`IVisionService.aidl` 整体移除，不留兼容垫片
+  - 推理超时语义不变：原生层自带 120s 看门狗，Kotlin 侧不再包 withTimeout（中断 native 调用
+    只会留下孤儿线程）
+  - R8 保留规则：`NativeVisionEngine` 类名与方法名不可混淆（JNI 符号按包名+类名绑定）
+
+### 新增
+
+- **设置 → 端侧视觉**（`ui/settings/SettingsOnDevice.kt`）：模型的一站式管理页
+  - 模型状态：原生推理库可用性、主权重/视觉投影本地体积、内存加载状态
+  - 一键下载（约 3.1GB）：实时进度条 + 当前文件 + 已下载字节数，支持中断续传与取消
+    （已落盘部分保留，再次点击继续）；下载完成自动加载模型
+  - 手动加载与识别测试：空白图走完整推理链（3B 输出或 OCR 兜底），返回控件数即证明链路可用
+  - 运行开关：「启用端侧视觉」「混合路由」从 AI 模型页迁入本页，改动即存
+- 设置主页「模型」组新增「端侧视觉」入口（摘要显示启用状态）
+
+### 优化
+
+- 主页移除视觉模型调试卡（`VisionModelCard`）：入口收进设置页，主页只保留运行状态与快捷入口
+- 全局文案收敛：调试页「用外挂视觉画框」→「用端侧视觉画框」，日志与注释中「外挂视觉/外挂 3B」
+  统一改为「端侧视觉/端侧 3B」，与进程内实现一致
+
+---
+
 ## [v0.2.736] — 2026-10-07
 
 ### 新增
@@ -26,6 +87,11 @@
 
 ### 优化
 
+- **标题栏两态丝滑转场**（`ui/components/Glass.kt`）：页面在最顶上时仍是通栏直角吸顶栏，
+  一旦离开页首收成**圆形胶囊浮板**（圆角 = 页眉实测高度的一半，两端正圆弧）；转场由一根
+  无回弹弹簧统一驱动，左右边距、上缘外边距、圆角三条几何曲线同步过渡，文字经反向抵消的
+  内容留白全程原地不动。不跟滚动位置连续插值是刻意的：中间态只存在于转场动画期间，
+  动画结束必停在某一端，不会出现"半直半圆的板悬在半路"的稳态
 - **磨砂浓淡可调**（`ui/settings/SettingsTheme.kt`、`data/prefs/AppSettings.kt`、`ui/theme/Theme.kt`）：
   主题页新增滑杆微调玻璃 tint 透明度（±25，负更透正更实），实时驱动全 App 玻璃面；
   高对比度色板不参与（它的底色是可读性兜底，不允许被调虚）
@@ -92,11 +158,19 @@
 - 主题令牌（`ui/theme/Theme.kt`）：`LocalAppBorders` + `AppBorders.enabled`，并提供唯二的两个描边入口
   `appBorderStroke(width, color)`（Material `border` 参数版，无框线时返回 null）与
   `Modifier.appBorder(width, color, shape)`（修饰符版，无框线时原样返回）
-- `PhoneAgentTheme(bordersEnabled = ...)` 承接开关；`MainViewModel.settingsFlow` 直接驱动它，
-  **改完立即生效**，不需要重启
-- 设置页新增「主题」二级页（`ui/settings/SettingsTheme.kt`）：两个选项各带一个预览小块，
+- `PhoneAgentTheme(paletteId / bordersEnabled = ...)` 承接配色与框线开关；`MainViewModel.settingsFlow`
+  直接驱动，**改完立即生效**，不需要重启
+- 主题页新增「主题」二级页（`ui/settings/SettingsTheme.kt`）：两个选项各带一个预览小块，
   由参数而非全局开关驱动，所以标准档下预览仍能看见框线
-- 持久化：`AppSettings.borderless`（DataStore 键 `theme_borderless`），随其余非 AI 设置一起保存
+- 新增 3 套**配色方案**（`ui/theme/Color.kt`）：玄青（默认）之外，赭石（陶赭 × 暖沙纸）、
+  黛蓝（低饱和墨蓝 × 冷纸灰）、绛紫（墨色绛红 × 淡纸）各配浅 / 深两份色板，深浅跟随系统。
+  全部延续"低饱和墨色 + 纸感底色"的设计取向，避开高饱和蓝紫科技感；状态色（成功/警告/错误）
+  跨色板共用同一组值——状态色的语义是全局的，不随配色换色相
+- 主题页新增「配色」分组：每个方案带四色圆点预览（抬升面 / 底色 / 主色 / 冷辅色），
+  预览色取配色自身按当前深浅模式的那一份，所见即所选
+- 持久化：`AppSettings.palette`（DataStore 键 `theme_palette`，存 `ThemePalette.id` 字符串，
+  未知值回落玄青），随其余非 AI 设置一起保存
+- 设置主页「主题」入口摘要改为显示「配色名 · 框线档」
 
 ### 变更
 
@@ -123,6 +197,11 @@
 - 为什么要补偿：标准档的层次是"底色差 + 发丝描边"两条腿走路，容器色调只敢位移 3%~12%；
   描边一拿掉，卡片与页面底色就只差约 3%，卡片会化进页面里。补偿只作用于"面与面之间"，
   文字色、品牌色、状态色一律不碰——去掉框线不该顺手把正文也改浓
+- 新配色的高对比度变体（系统「高对比度文字」开启时）由通用派生函数实时算出
+  （`lightContrastOf` / `darkContrastOf`：主色与描边向黑/白压、底色提到纯白/纯黑、
+  玻璃退化为近乎不透明），玄青保持原有的手工精调版不变，避免无障碍观感回归
+- 手机外壳 / 空状态 / 运行指示灯等主题感知色改为读 `AppTheme.colors`：
+  换配色时它们跟着当前色板走，不再写死在玄青色板上
 
 ---
 

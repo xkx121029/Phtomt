@@ -10,3 +10,7 @@
 # OkHttp
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# 端侧视觉 JNI：libvisionbridge 按包名+类名绑定符号（Java_com_phoneagent_device_vision_NativeVisionEngine_*），
+# 类名/方法名被 R8 重命名后 dlsym 找不到入口，native 方法与类名都必须保留
+-keep class com.phoneagent.device.vision.NativeVisionEngine { *; }

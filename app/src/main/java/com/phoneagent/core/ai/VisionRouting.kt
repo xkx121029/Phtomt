@@ -91,10 +91,10 @@ object VisionRouting {
      *   复杂任务（元素树稀疏、需强语义理解）交给云端；
      * - 但云端不可用时**必须**回落到 3B，不能两条路都断；
      * - 主模型自己能看图时，把同一张图再转成文字没有收益，可跳过描述
-     *   （外挂 3B 框选出的坐标照常保留，那是 hint 定位的第一优先来源）。
+     *   （端侧 3B 框选出的坐标照常保留，那是 hint 定位的第一优先来源）。
      */
     fun route(input: RouteInput): Route = Route(
-        // 开启外挂 3B，且（未开混合 或 简单任务 或 复杂任务但云端不可用）
+        // 开启端侧 3B，且（未开混合 或 简单任务 或 复杂任务但云端不可用）
         useOnDevice3b = input.externalEnabled &&
             (!input.smartRoute || !input.complexPage || !input.cloudReady),
         // 云端视觉可用，且（未开混合 或 复杂任务 或 未启用外挂只能靠云端）
@@ -107,8 +107,8 @@ object VisionRouting {
 
     /** 本轮决策的视觉来源。用枚举而不是字符串，避免下游靠 `source == "云端"` 这种字面量比对 */
     enum class Source(val label: String) {
-        /** 外挂端侧 3B 控件识别 */
-        EXTERNAL("外挂3B"),
+        /** 端侧 3B 控件识别 */
+        EXTERNAL("端侧3B"),
 
         /** 主模型直接读图（未生成文字描述） */
         MAIN_DIRECT("主模型直读"),
@@ -125,7 +125,7 @@ object VisionRouting {
 
     /**
      * 判定本步视觉来源。顺序即优先级，与执行链路一致：
-     * 外挂 3B 先跑 → 主模型直读（跳过描述）→ 云端描述 → 端侧描述 → 无。
+     * 端侧 3B 先跑 → 主模型直读（跳过描述）→ 云端描述 → 端侧描述 → 无。
      */
     fun sourceOf(
         externalUsed: Boolean,
@@ -146,7 +146,7 @@ object VisionRouting {
     /**
      * 端侧文字描述通道的名称。
      *
-     * 沿用历史文案：v2.2 起本地读图已统一由外挂视觉 Agent 承担，主程序不再内置 OCR，
+     * 本地读图已统一由进程内端侧视觉承担（OCR 由 ML Kit 兜底），
      * 这个标签写的是旧实现。保留原文以免改动调试页既有显示口径（差异已记录在 CHANGELOG）。
      */
     const val LOCAL_VISION_MODEL_LABEL = "ML Kit 中文OCR"

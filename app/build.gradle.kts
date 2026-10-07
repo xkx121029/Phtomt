@@ -70,14 +70,16 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        // 端侧 3B 视觉引擎的预编译 .so 仅有 arm64-v8a（libllama/libmtmd/libggml*），
+        // 统一限定 ABI：debug 与 release 一致，避免模拟器 ABI 装上后 dlopen 失败
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            // ABI 精简：Release 仅保留 arm64-v8a，显著减小包体（约 -22MB，2026-08 实测）
-            ndk { abiFilters += listOf("arm64-v8a") }
+            // ABI 精简在 defaultConfig 统一限定 arm64-v8a（端侧视觉 .so 仅有该 ABI）
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -103,6 +105,13 @@ android {
         compose = true
         buildConfig = true
         aidl = true
+    }
+    // 端侧视觉 JNI 垫片：仅编译 visionbridge（dlopen 方式加载 jniLibs 里的 llama/mtmd）
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
     packaging {
         resources {
@@ -155,7 +164,9 @@ dependencies {
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    // 本地 OCR 已迁移至外挂视觉 Agent，主程序不再依赖 ML Kit（减少 APK 体积）
+    // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
+    implementation(libs.mlkit.text.chinese)
+    implementation(libs.mlkit.common)
 
     debugImplementation(libs.androidx.ui.tooling)
 
