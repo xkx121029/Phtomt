@@ -1,6 +1,7 @@
 package com.phoneagent.engine.execution
 
 import android.util.Log
+import com.phoneagent.device.a11y.VoiceAssistantDetector
 import com.phoneagent.engine.execution.CapabilityManager.Mode
 import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.ActionType
@@ -134,6 +135,52 @@ internal class OpenAppStrategy(private val appNameResolver: AppNameResolver) : I
                 ctx.base.copy(type = ActionType.LAUNCH, packageName = pkg, reason = intent.reasoning ?: intent.reason),
             )
         }
+    }
+}
+
+/**
+ * 语音助手策略：assistant → 唤起系统语音助手（可选传话）。
+ *
+ * 通道判据以"无障碍服务是否在线"为第一判据（而非模式二分）：
+ * - 无障碍在线 → LAUNCH_ASSISTANT，端侧拉起并尽力传话（传话只能靠无障碍，SHIZUKU+无障碍双开时走此路不丢传话能力）；
+ * - 无障碍离线且 SHIZUKU → 端侧拼 shell 命令仅拉起（fetch 先例，AI 无感知），传话降级；
+ * - 本机探测不到助手 → Failed 给出中文原因，AI 可即时换方案。
+ * text 可选，无 MissingParam 分支。
+ */
+internal class AssistantStrategy(
+    private val assistantProbe: () -> VoiceAssistantDetector.Target?,
+    private val a11yReady: () -> Boolean,
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val target = assistantProbe()
+            ?: return IntentTranslator.TranslationResult.Failed(
+                "本机未找到系统语音助手（小爱同学/小艺/小布/Google 助理等均未探测到）；该设备可能未启用语音助手，请改用其他意图完成任务，或 give_up 说明原因",
+            )
+        val reason = reasonOf(intent)
+        if (a11yReady()) {
+            return IntentTranslator.TranslationResult.Command(
+                ctx.base.copy(
+                    type = ActionType.LAUNCH_ASSISTANT,
+                    packageName = target.packageName,
+                    text = intent.text,
+                    reason = reason,
+                ),
+            )
+        }
+        // 无障碍离线的降级通道：SHIZUKU 下用 shell 仅拉起（传不了话）
+        if (ctx.mode == Mode.SHIZUKU) {
+            val command = when (target.via) {
+                VoiceAssistantDetector.Via.VOICE_COMMAND -> "raw am start -a android.intent.action.VOICE_COMMAND"
+                VoiceAssistantDetector.Via.ASSIST -> "raw am start -a android.intent.action.ASSIST"
+                VoiceAssistantDetector.Via.VENDOR -> "launch ${target.packageName}"
+            }
+            return IntentTranslator.TranslationResult.Command(
+                ctx.base.copy(type = ActionType.SHELL, command = command, packageName = target.packageName, reason = reason),
+            )
+        }
+        return IntentTranslator.TranslationResult.Failed(
+            "当前通道无法唤起语音助手（无障碍未开启且非 Shizuku 模式）；请开启无障碍或 Shizuku 后重试",
+        )
     }
 }
 
@@ -485,6 +532,10 @@ class IntentTranslator(
     private val intentResolver: IntentResolver,
     /** 当前是否具备 Termux 命令行通道（普通应用权限）；由调用方注入，转译层据此决定 fetch 能否落地 */
     private val termuxAvailable: () -> Boolean = { false },
+    /** 本机语音助手探测结果；由调用方注入，assistant 意图据此决定能否拉起 */
+    private val assistantProbe: () -> VoiceAssistantDetector.Target? = { null },
+    /** 无障碍服务是否在线；assistant 意图据此选择"拉起+传话"还是"仅拉起"通道 */
+    private val a11yReady: () -> Boolean = { false },
     /** 当前动作模式（自由模式专属意图的纵深防御自检；主门控在 AgentEngine） */
     private val actionMode: () -> ActionMode = { ActionMode.DEFAULT },
 ) {
@@ -520,6 +571,8 @@ class IntentTranslator(
         put(IntentType.SCROLL_TO, ScrollToStrategy(intentResolver))
         // 应用启动
         put(IntentType.OPEN_APP, OpenAppStrategy(appNameResolver))
+        // 语音助手（系统探测优先、厂商兜底；无障碍在线可传话）
+        put(IntentType.ASSISTANT, AssistantStrategy(assistantProbe, a11yReady))
         // 文档写入
         put(IntentType.WRITE_DOC, passthrough(ActionType.WRITE_DOC) { i, a -> a.copy(text = i.text, summary = i.summary) })
         // 记忆写入（本地写库，不触碰设备）

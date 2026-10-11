@@ -261,6 +261,8 @@ private fun darkSchemeOf(c: AppColors, toneBoost: Float = 1f): ColorScheme {
 @Composable
 fun PhoneAgentTheme(
     darkTheme: Boolean = isSystemDark(),
+    /** 主题设置里的配色方案（[ThemePalette.id]），未知值回落默认玄青 */
+    paletteId: String = ThemePalette.INK_GREEN.id,
     /** 主题设置里的框线开关：true = 标准（画框线），false = 无框线 */
     bordersEnabled: Boolean = true,
     /** 主题设置里的磨砂浓淡微调（-25 ~ +25，0 = 色板默认），负更透正更实 */
@@ -268,12 +270,13 @@ fun PhoneAgentTheme(
     content: @Composable () -> Unit,
 ) {
     val highContrast = rememberHighContrast()
+    val paletteKind = ThemePalette.of(paletteId)
     // 磨砂微调只作用于标准浅/深色板；高对比度色板刻意近乎不透明（无障碍可读性兜底），不参与
     val basePalette = when {
-        darkTheme && highContrast -> DarkContrastAppColors
-        darkTheme -> DarkAppColors
-        highContrast -> LightContrastAppColors
-        else -> LightAppColors
+        darkTheme && highContrast -> paletteKind.darkContrast
+        darkTheme -> paletteKind.dark
+        highContrast -> paletteKind.lightContrast
+        else -> paletteKind.light
     }
     val palette = if (glassTintOffset != 0 && !highContrast) {
         shiftGlassTint(basePalette, glassTintOffset)
@@ -330,35 +333,30 @@ private fun rememberHighContrast(): Boolean {
     }
 }
 
-// ========== 主题感知色（深/浅主题自动适配） ==========
+// ========== 主题感知色（跟随当前配色方案与深浅主题自动适配） ==========
+// 一律读 AppTheme.colors：换配色方案时这些色随当前色板走，不再写死在玄青色板上
+
 /** 手机外壳主体色 */
 @Composable
-fun phoneShellColor(darkTheme: Boolean = isSystemDark()): Color =
-    (if (darkTheme) DarkAppColors else LightAppColors).phoneShell
+fun phoneShellColor(): Color = AppTheme.colors.phoneShell
 
 /** 手机外壳边框色 */
 @Composable
-fun phoneShellBorderColor(darkTheme: Boolean = isSystemDark()): Color =
-    (if (darkTheme) DarkAppColors else LightAppColors).phoneShellBorder
+fun phoneShellBorderColor(): Color = AppTheme.colors.phoneShellBorder
 
 /** 摄像头挖孔（激活态） */
 @Composable
-fun phoneCameraHoleColor(active: Boolean, darkTheme: Boolean = isSystemDark()): Color {
-    val palette = if (darkTheme) DarkAppColors else LightAppColors
-    return if (active) palette.phoneCameraHole else palette.phoneCameraHoleIdle
-}
+fun phoneCameraHoleColor(active: Boolean): Color =
+    if (active) AppTheme.colors.phoneCameraHole else AppTheme.colors.phoneCameraHoleIdle
 
 /** 空状态图标色 */
 @Composable
-fun emptyStateIconColor(darkTheme: Boolean = isSystemDark()): Color =
-    (if (darkTheme) DarkAppColors else LightAppColors).emptyStateIcon
+fun emptyStateIconColor(): Color = AppTheme.colors.emptyStateIcon
 
 /** 空状态文字色 */
 @Composable
-fun emptyStateTextColor(darkTheme: Boolean = isSystemDark()): Color =
-    (if (darkTheme) DarkAppColors else LightAppColors).emptyStateText
+fun emptyStateTextColor(): Color = AppTheme.colors.emptyStateText
 
 /** 运行指示灯色 */
 @Composable
-fun runningIndicatorColor(darkTheme: Boolean = isSystemDark()): Color =
-    (if (darkTheme) DarkAppColors else LightAppColors).runningIndicator
+fun runningIndicatorColor(): Color = AppTheme.colors.runningIndicator

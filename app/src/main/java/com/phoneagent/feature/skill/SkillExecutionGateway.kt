@@ -60,8 +60,31 @@ class SkillExecutionGateway(
     fun normalize(intent: com.phoneagent.domain.model.AgentIntent): SkillCompat.Normalized =
         SkillCompat.normalize(intent, registry)
 
+    /**
+     * 意图对应的技能与其缺失的必填参数（供缺参自动推断；非技能调用 / 已停用 / 没有缺参返回 null）。
+     * 口径与 [SkillCompat.normalize] 的缺参拒绝分支完全一致：只针对 MCP 技能（INTENT 技能不校验必填），
+     * 「看图追问」的问题有专用追问提示，不走通用推断。
+     */
+    fun missingParamsOf(intent: com.phoneagent.domain.model.AgentIntent): Pair<Skill, List<SkillParam>>? {
+        val name = intent.intent
+        val skill = registry.byId(name) ?: registry.byName(name) ?: registry.byLegacyIntent(name)
+            ?: return null
+        if (!skill.enabled) return null
+        if (skill.legacyIntent == com.phoneagent.domain.model.IntentType.SEE) return null
+        if (skill.source != SkillSource.MCP) return null
+        val missing = SkillCompat.missingRequired(skill, intent.args)
+        return if (missing.isEmpty()) null else skill to missing
+    }
+
     /** 已启用的 MCP 技能（供提示词注入；只有这些技能可被 AI 调用） */
     fun enabledMcpSkills(): List<Skill> = registry.enabled().filter { it.source == SkillSource.MCP }
+
+    /** 已启用的宏技能（供提示词注入；只有这些技能可被 AI 调用） */
+    fun enabledMacroSkills(): List<Skill> = registry.enabled().filter { it.source == SkillSource.MACRO }
+
+    /** 宏步骤引用的技能解析（预检与接力执行共用；缺失返回 null） */
+    fun findStepSkill(step: MacroStep): Skill? =
+        registry.byId(step.skillId) ?: registry.byName(step.skillId)
 
     /** 已被用户停用的技能（提示词中声明不可调用，避免 AI 白试） */
     fun disabledSkills(): List<Skill> = registry.all().filter { !it.enabled }
@@ -81,6 +104,24 @@ class SkillExecutionGateway(
             }
         }
         return "${skill.id} | ${skill.name} | ${skill.description.ifBlank { skill.name }} | $params"
+    }
+
+    /** 一行式宏技能说明（宏 id | 名称 | 说明 | 入参 | 步骤），供提示词表格注入 */
+    fun macroSkillLine(skill: Skill): String {
+        val params = if (skill.params.isEmpty()) {
+            "无参数"
+        } else {
+            skill.params.joinToString("、") { p ->
+                val required = if (p.required) "必填" else "可选"
+                "${p.name}($required)"
+            }
+        }
+        val steps = if (skill.steps.isEmpty()) {
+            "（未配置步骤）"
+        } else {
+            skill.steps.joinToString(" → ") { st -> registry.byId(st.skillId)?.name ?: st.skillId }
+        }
+        return "${skill.id} | ${skill.name} | ${skill.description.ifBlank { skill.name }} | $params | $steps"
     }
 
     /** 就地调用 MCP 技能；未配置 MCP 或调用抛错时返回中文失败结果（不抛出，交引擎按普通失败处理） */

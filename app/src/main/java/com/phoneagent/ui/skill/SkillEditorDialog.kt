@@ -21,7 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -79,6 +81,8 @@ import com.phoneagent.ui.icons.AppIcons
 internal fun SkillEditorDialog(
     initial: Skill?,
     suggestedId: String,
+    isMacro: Boolean = false,
+    availableSkills: List<Skill> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (Skill) -> Unit,
 ) {
@@ -87,19 +91,37 @@ internal fun SkillEditorDialog(
     var category by remember { mutableStateOf(initial?.category ?: "自定义") }
     var legacyIntent by remember { mutableStateOf(initial?.legacyIntent ?: "") }
     var params by remember { mutableStateOf(initial?.params?.map { it.toDraft() } ?: emptyList<ParamDraft>()) }
+    // 宏步骤草稿：编辑既有宏时从 steps 还原；args 文本按 k=v 逗号分隔展示（占位符原样保留）
+    var steps by remember {
+        mutableStateOf(
+            initial?.steps?.map {
+                MacroStepDraft(
+                    skillId = it.skillId,
+                    argsText = it.args.entries.joinToString(",") { (k, v) -> "$k=$v" },
+                    description = it.description,
+                )
+            } ?: emptyList<MacroStepDraft>(),
+        )
+    }
 
     // 保存前预检：INTENT 技能要靠「legacyIntent ?: id 去前缀」映射到可执行意图才能被调用
     // （与 SkillCompat.normalize 的 INTENT 分支同一判定）。这里不走真实 registry 模拟调用——
     // 新技能尚未入库、被编辑技能若处于停用态都会让 normalize 误报；判定失败时阻止保存并展示原因，
     // 否则存下来的就是一个永远调不动的死技能
-    val effectiveSource = initial?.source ?: SkillSource.INTENT
+    val effectiveSource = initial?.source ?: if (isMacro) SkillSource.MACRO else SkillSource.INTENT
     val effectiveIntent = legacyIntent.trim().ifBlank { suggestedId.removePrefix("skill_") }
-    val invocableError = if (effectiveSource == SkillSource.INTENT && effectiveIntent !in IntentType.ALL) {
+    val invocableError = if (!isMacro && effectiveSource == SkillSource.INTENT && effectiveIntent !in IntentType.ALL) {
         if (legacyIntent.isBlank()) {
             "旧命令意图留空，技能 ID 也映射不到可执行意图，保存后无法被调用；请填写意图名（如 open_app）"
         } else {
             "「${legacyIntent.trim()}」不是有效的意图名，保存后无法被调用"
         }
+    } else {
+        null
+    }
+    // 宏必须至少配置一步：空步骤的宏在提示词与执行层都不产生任何效果，等于死宏
+    val macroError = if (isMacro && steps.none { it.skillId.isNotBlank() }) {
+        "宏至少需要一个步骤：请点击「添加步骤」并选择目标技能"
     } else {
         null
     }
@@ -112,7 +134,7 @@ internal fun SkillEditorDialog(
             verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
             Text(
-                if (initial == null) "新增技能" else "编辑技能",
+                if (initial == null) (if (isMacro) "新增宏技能" else "新增技能") else (if (isMacro) "编辑宏技能" else "编辑技能"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -142,18 +164,53 @@ internal fun SkillEditorDialog(
                 label = { Text("说明（喂给 AI 以决定何时调用）") },
                 modifier = Modifier.fillMaxWidth().height(76.dp),
             )
-            OutlinedTextField(
-                value = legacyIntent, onValueChange = { legacyIntent = it },
-                label = { Text("兼容旧命令意图（如 open_app，留空将无法调用）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (!isMacro) {
+                OutlinedTextField(
+                    value = legacyIntent, onValueChange = { legacyIntent = it },
+                    label = { Text("兼容旧命令意图（如 open_app，留空将无法调用）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             invocableError?.let {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+
+            if (isMacro) {
+                // 宏步骤：按顺序执行的目标技能序列。只允许引用已启用的非宏技能（宏不可嵌套，
+                // 与引擎 macroPrecheckReason 的判定一致），选择器里就只列这些
+                Text("步骤（按顺序执行，失败即停）", style = MaterialTheme.typography.titleSmall)
+                val stepCandidates = availableSkills.filter { it.enabled && it.source != SkillSource.MACRO }
+                if (steps.isEmpty()) {
+                    Text("暂无步骤。点击「添加步骤」从已启用的技能中选择。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                steps.forEachIndexed { i, s ->
+                    MacroStepEditor(
+                        draft = s,
+                        candidates = stepCandidates,
+                        canMoveUp = i > 0,
+                        onChange = { updated -> steps = steps.toMutableList().apply { this[i] = updated } },
+                        onMoveUp = { steps = steps.toMutableList().apply { add(i - 1, removeAt(i)) } },
+                        onDelete = { steps = steps.toMutableList().apply { removeAt(i) } },
+                    )
+                }
+                OutlinedButton(
+                    enabled = stepCandidates.isNotEmpty(),
+                    onClick = { steps = steps + MacroStepDraft(skillId = stepCandidates.firstOrNull()?.id ?: "") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(AppSpacing.Xs))
+                    Text(if (stepCandidates.isEmpty()) "没有可引用的技能" else "添加步骤")
+                }
+                macroError?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
 
             Text("参数（${params.size}）", style = MaterialTheme.typography.titleSmall)
@@ -178,32 +235,131 @@ internal fun SkillEditorDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
                 Button(
-                    // 预检失败同样禁止保存：死技能不如不存
-                    enabled = name.isNotBlank() && invocableError == null,
+                    // 预检失败同样禁止保存：死技能/死宏不如不存
+                    enabled = name.isNotBlank() && invocableError == null && macroError == null,
                     onClick = {
                         val skillParams = params.mapNotNull { it.toParam() }
-                        val base = initial?.copy(
-                            name = name.trim(),
-                            description = desc.trim(),
-                            category = category.trim().ifBlank { "自定义" },
-                            legacyIntent = legacyIntent.trim().ifBlank { null },
-                            params = skillParams,
-                        ) ?: Skill(
-                            id = suggestedId,
-                            name = name.trim(),
-                            description = desc.trim(),
-                            source = SkillSource.INTENT,
-                            category = category.trim().ifBlank { "自定义" },
-                            legacyIntent = legacyIntent.trim().ifBlank { null },
-                            params = skillParams,
-                            createdBy = "user",
-                        )
+                        val macroSteps = steps.filter { it.skillId.isNotBlank() }.mapIndexed { i, it ->
+                            com.phoneagent.feature.skill.MacroStep(
+                                skillId = it.skillId.trim(),
+                                args = it.toArgs(),
+                                description = it.description.trim(),
+                            )
+                        }
+                        val base = if (isMacro) {
+                            initial?.copy(
+                                name = name.trim(),
+                                description = desc.trim(),
+                                category = category.trim().ifBlank { "自定义" },
+                                legacyIntent = null,
+                                params = skillParams,
+                                steps = macroSteps,
+                            ) ?: Skill(
+                                id = suggestedId,
+                                name = name.trim(),
+                                description = desc.trim(),
+                                source = SkillSource.MACRO,
+                                category = category.trim().ifBlank { "自定义" },
+                                params = skillParams,
+                                steps = macroSteps,
+                                createdBy = "user",
+                            )
+                        } else {
+                            initial?.copy(
+                                name = name.trim(),
+                                description = desc.trim(),
+                                category = category.trim().ifBlank { "自定义" },
+                                legacyIntent = legacyIntent.trim().ifBlank { null },
+                                params = skillParams,
+                            ) ?: Skill(
+                                id = suggestedId,
+                                name = name.trim(),
+                                description = desc.trim(),
+                                source = SkillSource.INTENT,
+                                category = category.trim().ifBlank { "自定义" },
+                                legacyIntent = legacyIntent.trim().ifBlank { null },
+                                params = skillParams,
+                                createdBy = "user",
+                            )
+                        }
                         onSave(base)
                     },
                     modifier = Modifier.weight(1f),
                 ) { Text("保存") }
             }
         }
+    }
+}
+
+/** 单个宏步骤的编辑区：目标技能下拉 + 固定参数 + 说明 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MacroStepEditor(
+    draft: MacroStepDraft,
+    candidates: List<Skill>,
+    canMoveUp: Boolean,
+    onChange: (MacroStepDraft) -> Unit,
+    onMoveUp: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppRadii.Chip))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("步骤", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.weight(1f))
+            if (canMoveUp) TextButton(onClick = onMoveUp) { Text("上移") }
+            TextButton(onClick = onDelete) { Text("删除") }
+        }
+        // 目标技能：从已启用的非宏技能中选择（宏不可嵌套；被停用的技能预检也过不了）
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+        ) {
+            OutlinedTextField(
+                value = candidates.firstOrNull { it.id == draft.skillId }?.name ?: draft.skillId,
+                onValueChange = {},
+                label = { Text("目标技能") },
+                singleLine = true,
+                readOnly = true,
+                modifier = Modifier.fillMaxWidth().menuAnchor(),
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                candidates.forEach { c ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(c.name)
+                                Text(c.id, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        },
+                        onClick = {
+                            onChange(draft.copy(skillId = c.id))
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+        OutlinedTextField(
+            value = draft.argsText, onValueChange = { onChange(draft.copy(argsText = it)) },
+            label = { Text("参数（k=v，逗号分隔；可用 {{参数名}} 或 {{stepN}} 占位符）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = draft.description, onValueChange = { onChange(draft.copy(description = it)) },
+            label = { Text("步骤说明（可留空）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 

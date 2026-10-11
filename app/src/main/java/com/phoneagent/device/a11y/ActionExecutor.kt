@@ -378,6 +378,98 @@ class ActionExecutor(
     }
 
     /**
+     * 唤起系统语音助手（assistant 意图的执行出口）。
+     *
+     * 流程：探测（[VoiceAssistantDetector]）→ 拉起 → text 非空时尽力传话。
+     * 传话是"尽力而为"：填入/发送失败只影响传话本身，不算整体失败（回退为仅拉起），
+     * 仅"本机探测不到语音助手"才返回 Failure。
+     */
+    suspend fun launchAssistant(text: String?): Result {
+        val target = VoiceAssistantDetector(service.applicationContext).probe()
+            ?: return Result.Failure("本机未找到系统语音助手（已尝试语音指令、默认助理与常见厂商助手）；请确认设备已启用语音助手，或改用其他方式完成")
+        return try {
+            val ctx = service.applicationContext
+            val pm = ctx.packageManager
+            val intent = when (target.via) {
+                VoiceAssistantDetector.Via.VOICE_COMMAND ->
+                    android.content.Intent(android.content.Intent.ACTION_VOICE_COMMAND)
+                VoiceAssistantDetector.Via.ASSIST ->
+                    android.content.Intent(android.content.Intent.ACTION_ASSIST)
+                VoiceAssistantDetector.Via.VENDOR ->
+                    pm.getLaunchIntentForPackage(target.packageName ?: return Result.Failure("厂商助手包名缺失，无法拉起"))
+            }?.apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                // 系统入口探测到具体包名时钉住，避免被第三方应用抢答（厂商兜底自带包名，无需再钉）
+                if (target.via != VoiceAssistantDetector.Via.VENDOR && !target.packageName.isNullOrBlank()) {
+                    setPackage(target.packageName)
+                }
+            } ?: return Result.Failure("无法拉起语音助手：未找到可启动入口")
+            ctx.startActivity(intent)
+            Result.Success(passToAssistant(text))
+        } catch (e: Exception) {
+            Result.Failure("拉起语音助手失败：${e.message}")
+        }
+    }
+
+    /**
+     * 传话（尽力而为）：等助手界面出现输入框 → 填入文字 → 找"发送"类控件点击。
+     * 任何一环失败都降级为"仅拉起"的中文说明，不抛失败。
+     */
+    private suspend fun passToAssistant(text: String?): String {
+        if (text.isNullOrBlank()) return "已拉起语音助手"
+        // 等待助手窗口出现可编辑节点（语音优先的助手界面，输入框可能延迟渲染）
+        var box: AccessibilityNodeInfo? = null
+        for (attempt in 0 until ASSISTANT_PROBE_ROUNDS) {
+            box = findFirstEditable(service.rootInActiveWindow)
+            if (box != null) break
+            delay(ASSISTANT_PROBE_INTERVAL_MS)
+        }
+        if (box == null || !setText(box, text)) {
+            return "已拉起语音助手（未能自动传话，请直接对它说话）"
+        }
+        return if (tapSendControl()) {
+            "已拉起语音助手，并把「$text」转交给了它"
+        } else {
+            "已拉起语音助手，已填入文字但未找到发送按钮，请在助手界面确认"
+        }
+    }
+
+    /** 在活节点树里找"发送"类可点击控件并点击；找不到返回 false，由调用方降级为"已填入" */
+    private suspend fun tapSendControl(): Boolean {
+        val keywords = listOf("发送", "send", "搜索", "提问", "→", "➤")
+        val node = findSendNode(service.rootInActiveWindow, keywords, 0) ?: return false
+        val r = Rect()
+        node.getBoundsInScreen(r)
+        // 部分助手"发送"控件自身不可点击但祖先容器可点，上溯兜底（层数与 clickNode 同源）
+        var target = node
+        var hops = 0
+        while (!target.isClickable && hops < MAX_CLICKABLE_ANCESTOR_HOPS) {
+            target = target.parent ?: break
+            hops++
+        }
+        return if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            true
+        } else {
+            click(r.centerX(), r.centerY()) is Result.Success
+        }
+    }
+
+    /** 递归找文字/描述命中发送词表且可见的节点（深度上限与活节点遍历同源） */
+    private fun findSendNode(node: AccessibilityNodeInfo?, keywords: List<String>, depth: Int): AccessibilityNodeInfo? {
+        if (node == null || depth > MAX_NODE_DEPTH) return null
+        if (node.isVisibleToUser) {
+            val label = (node.text?.toString() ?: "") + (node.contentDescription?.toString() ?: "")
+            if (keywords.any { label.contains(it, ignoreCase = true) }) return node
+        }
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { child ->
+                findSendNode(child, keywords, depth + 1)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /**
      * 用系统应用打开链接/文件（ACTION_VIEW）——"交给系统软件打开"的统一出口。
      *
      * 三类目标都由 [OpenTarget] 归一化后交给系统：
@@ -539,6 +631,12 @@ class ActionExecutor(
 
         /** 容器滚动示意轨迹在容器上下各留的边距比例，避开固定头部与悬浮按钮 */
         const val TRACE_INSET_RATIO = 0.22f
+
+        /** 传话等待助手界面出输入框的轮询轮数（5 × 500ms = 2.5s 内没等到就降级为仅拉起） */
+        const val ASSISTANT_PROBE_ROUNDS = 5
+
+        /** 传话轮询间隔（毫秒） */
+        const val ASSISTANT_PROBE_INTERVAL_MS = 500L
     }
 }
 

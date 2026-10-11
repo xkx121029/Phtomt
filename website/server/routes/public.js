@@ -171,8 +171,18 @@ publicRouter.get('/stats', (_req, res) => {
  * 首屏聚合接口：SPA 启动只需要一次往返就能拿到站点元信息、特性、最新版本、统计与 FAQ 摘要。
  */
 publicRouter.get('/bootstrap', (req, res) => {
+  res.json(buildBootstrap(req))
+})
+
+/**
+ * 首屏聚合数据的唯一构造点。
+ *
+ * 公开端点 /api/bootstrap 与「把内容烘进 HTML 外壳」两条路共用它——两处若各写一份，
+ * 迟早漂移出「接口有、首屏无」这类只有用户能发现的差异。
+ */
+export function buildBootstrap(req) {
   const site = store.read('site')
-  res.json({
+  return {
     site: { ...site, latest: publicRelease(req, latestRelease()), stats: summarizeStats() },
     features: [...store.read('features')].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     releases: store
@@ -188,8 +198,8 @@ publicRouter.get('/bootstrap', (req, res) => {
     docs: [...store.read('docs')]
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map(({ body, ...rest }) => rest)
-  })
-})
+  }
+}
 
 /**
  * 站点路由表：前端路由与后端端点都在这里声明一次，

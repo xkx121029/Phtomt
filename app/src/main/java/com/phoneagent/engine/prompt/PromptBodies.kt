@@ -97,6 +97,7 @@ internal object PromptBodies {
     | intent | 含义 | 必填字段 |
     |--------|------|----------|
     | open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名；同名应用多个时优先系统自带） |
+    | assistant | 唤起系统语音助手（小爱同学/小艺/小布/Google 助理等）；text 给了就把这句话转交给助手执行（端侧在助手界面自动输入并发送，传话失败只影响传话不算失败），不给则仅拉起。要让助手办的事（打电话/发消息/控制硬件/系统级指令）用它；单纯打开某个应用用 open_app | text(要传给助手的话，可选) |
     | open | 交给系统应用打开链接/文件，或深链直达 App 内页/系统页 | 三选一，不要混着填：①uri（网址、文件路径、公开 scheme）——用户给的是网址/文件时用它；②app + page（page 是**字符串**形式的序号，如 "1"；App 内页直达索引）——用户指的是某软件里的某个页面时用它，这一形态**没有 uri**；③uri + app——网址/文件已定，只是额外点名用哪个应用打开。要读网页内容用 browse_open，只是打开给用户看才用它 |
     | tap | 点击 | target |
     | long_press | 长按（弹菜单/唤起系统选项） | target,duration_ms |
@@ -126,6 +127,7 @@ internal object PromptBodies {
     | intent | Meaning | Required fields |
     |--------|---------|-----------------|
     | open_app | Open an app | app (app name or package name, e.g. "Meituan" or "com.sankuai.meituan"; device resolves the package; when several apps share the name, the built-in system app wins) |
+    | assistant | Launch the system voice assistant (Xiao Ai / Celia / Breeno / Google Assistant, etc.); with text the device passes that sentence to the assistant automatically (typed & sent in its UI — a failed hand-off only drops the message, it never fails the step), without text it just launches. Use it for things the assistant should do (calls / messages / hardware / system-level commands); plain app launching stays with open_app | text(message to pass to the assistant, optional) |
     | open | Hand a link/file to a system app, or direct-open an in-app/system page | Pick exactly one, never mix: (1) uri (URL, file path, public scheme) — when the user gives a URL/file; (2) the two fields app + page (page is the index **as a string**, e.g. "1"; the in-app page index) — when the user means a page inside some app, and this form has **no uri**; (3) uri + app — the URL/file is already determined and you only pin which app opens it. To READ a web page use browse_open — use open only when it is just shown to the user |
     | tap | Tap | target |
     | long_press | Long press (context menu) | target,duration_ms |

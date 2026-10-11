@@ -36,8 +36,12 @@ data class PromptVars(
     // ---- 技能区块 ----
     /** MCP 技能表（Markdown 表格行，无表头） */
     val mcpTable: String = "",
+    /** 宏技能表（Markdown 表格行，无表头） */
+    val macroTable: String = "",
     /** 已停用技能名（顿号分隔） */
     val disabledNames: String = "",
+    /** 技能调用教训（最近失败留档摘要，见 SkillCallHistory.summarize） */
+    val skillHistory: String = "",
 
     // ---- 规划 / 决策区块 ----
     val profile: String = "",
@@ -74,7 +78,9 @@ data class PromptVars(
         "a11y_table" to a11yTable,
 
         "mcp_table" to mcpTable,
+        "macro_table" to macroTable,
         "disabled_names" to disabledNames,
+        "skill_history" to skillHistory,
 
         "profile" to profile,
         "installed_apps" to installedApps,

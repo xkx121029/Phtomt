@@ -149,10 +149,10 @@ object AgentPrompts {
     fun actionModeSection(lang: PromptLang, mode: ActionMode): String =
         PromptAssembler.assemble(PromptGroup.ACTION_MODE, modeCtx(lang, mode))
 
-    /** 铁律 2：默认禁止输出命令/坐标；只有在自由模式下才放开"自写命令 + 直调端点"，其余约束不变 */
+    /** 铁律 2：默认禁止输出命令/坐标；只有自由档才放开"自写命令 + 直调端点"，其余约束不变 */
     private fun ironRule2CN(mode: ActionMode): String = if (mode == ActionMode.FREE) {
         "字段名只能是 intent（禁止 type/action）；禁止输出像素坐标——定位与算坐标仍由端侧本地完成。" +
-            "自由模式额外允许 intent=shell（自写命令，写在 command 里）与 intent=a11y（直调无障碍端点），" +
+            "当前模式额外允许 intent=shell（自写命令，写在 command 里）与 intent=a11y（直调无障碍端点），" +
             "但这两类只是兜底：能用意图表表达的一律用意图表，且不得输出无障碍实现细节（如 performAction、节点对象）。"
     } else {
         "字段名只能是 intent（禁止 type/action）；禁止输出 shell 命令、无障碍指令、像素坐标——" +
@@ -161,7 +161,7 @@ object AgentPrompts {
 
     private fun ironRule2EN(mode: ActionMode): String = if (mode == ActionMode.FREE) {
         "The field name MUST be \"intent\" (NOT type/action); NEVER output pixel coordinates — locating and coordinate computing stay on-device. " +
-            "Free mode additionally allows intent=shell (self-written command in `command`) and intent=a11y (direct accessibility endpoint call), " +
+            "The current mode additionally allows intent=shell (self-written command in `command`) and intent=a11y (direct accessibility endpoint call), " +
             "but both are fallbacks: use the intent tables whenever they can express it, and never emit accessibility implementation details (performAction, node objects)."
     } else {
         "The field name MUST be \"intent\" (NOT type/action); NEVER output shell commands, accessibility instructions, or pixel coordinates — " +
@@ -177,23 +177,30 @@ object AgentPrompts {
      * @param mcpLines 已启用 MCP 技能的一行式说明（由 [com.phoneagent.feature.skill.SkillExecutionGateway.mcpSkillLine] 生成）
      * @param disabledNames 已被用户停用的技能名
      * @param hasMcpServer 是否已配置并启用 MCP 服务器（用于提示"已配置但未绑定技能"）
+     * @param historyHint 技能调用教训摘要（最近失败留档，来自 SkillCallHistory；空串则整块不出现）
      */
     fun skillSection(
         lang: PromptLang,
         mcpLines: List<String>,
         disabledNames: List<String>,
         hasMcpServer: Boolean,
+        historyHint: String = "",
+        macroLines: List<String> = emptyList(),
     ): String {
         val flags = buildSet {
             if (mcpLines.isNotEmpty()) add(PromptFlag.MCP_TOOLS)
             // 只在"配了服务器却一个工具都没绑定"时提示，避免和 MCP 表同时出现
             if (mcpLines.isEmpty() && hasMcpServer) add(PromptFlag.MCP_SERVER_ONLY)
             if (disabledNames.isNotEmpty()) add(PromptFlag.DISABLED_SKILLS)
+            if (historyHint.isNotBlank()) add(PromptFlag.SKILL_HISTORY)
+            if (macroLines.isNotEmpty()) add(PromptFlag.MACRO_SKILLS)
         }
         val vars = PromptVars(
             // 每行原文是 "| $line |"，行间以换行相接、末尾不带换行（表尾空行留在正文里）
             mcpTable = mcpLines.joinToString("\n") { "| $it |" },
+            macroTable = macroLines.joinToString("\n") { "| $it |" },
             disabledNames = if (lang == PromptLang.CN) disabledNames.joinToString("、") else disabledNames.joinToString(", "),
+            skillHistory = historyHint,
         )
         // 每块自带尾随换行，整组装配后统一裁掉，与原文 sb.toString().trimEnd() 一致
         return PromptAssembler.assemble(PromptGroup.SKILLS, PromptContext(lang, flags, vars)).trimEnd()

@@ -30,6 +30,20 @@ object SkillCompat {
         data class Error(val skillId: String, val reason: String) : Resolution()
     }
 
+    /**
+     * 缺失必填参数的唯一判定点：args 未提供技能声明的必填 param 即缺失。
+     * normalize（MCP 分支）与 resolve 共用，供缺参自动推断（SkillParamInferencer）复用同一口径。
+     */
+    fun missingRequired(skill: Skill, args: Map<String, String>?): List<SkillParam> =
+        skill.params.filter { it.required && args?.get(it.name).isNullOrBlank() }
+
+    /** 缺参拒绝文案（中文，示例带 args 补全写法） */
+    fun missingRequiredMessage(skill: Skill, missing: List<SkillParam>): String {
+        val names = missing.joinToString("、") { "「${it.label.ifBlank { it.name }}」" }
+        return "技能「${skill.name}」缺少必填参数：$names。" +
+            "请用 args 对象补全，例如 {\"intent\":\"${skill.id}\",\"args\":{...}}。"
+    }
+
     /** 旧命令意图 → 对应内置 Skill（向后兼容：旧命令名等价一个内置技能） */
     fun skillForLegacyIntent(intent: AgentIntent): Skill? =
         SkillCatalog.byLegacyIntent(intent.intent)
@@ -48,6 +62,11 @@ object SkillCompat {
          * [target] 非空时要求视觉模型额外返回该目标的坐标。
          */
         data class Vision(val skill: Skill, val question: String, val target: String?) : Normalized()
+        /**
+         * 宏技能：端侧按 [Skill.steps] 顺序接力执行（每步照常过 ActionPolicy 门控与转译层）。
+         * 归一化只做缺参校验与占位符登记，不在这里逐步执行——执行由引擎主循环接管。
+         */
+        data class Macro(val skill: Skill, val args: Map<String, String>) : Normalized()
         /** 拒绝执行，附中文原因（未知技能 / 已停用 / 缺必填参数） */
         data class Error(val reason: String) : Normalized()
     }
@@ -93,13 +112,9 @@ object SkillCompat {
                 val target = skill.mcp
                     ?: return Normalized.Error("MCP 技能「${skill.name}」缺少调用目标配置。")
                 val args = intent.args ?: emptyMap()
-                val missing = skill.params.filter { it.required && args[it.name].isNullOrBlank() }
+                val missing = missingRequired(skill, args)
                 if (missing.isNotEmpty()) {
-                    val names = missing.joinToString("、") { "「${it.label.ifBlank { it.name }}」" }
-                    Normalized.Error(
-                        "技能「${skill.name}」缺少必填参数：$names。" +
-                            "请用 args 对象补全，例如 {\"intent\":\"${skill.id}\",\"args\":{...}}。",
-                    )
+                    Normalized.Error(missingRequiredMessage(skill, missing))
                 } else {
                     Normalized.Mcp(skill, target, args)
                 }
@@ -110,6 +125,15 @@ object SkillCompat {
                     Normalized.Error("技能「${skill.name}」未映射到可执行的意图（$legacy）。")
                 } else {
                     Normalized.Intent(applyArgs(intent.copy(intent = legacy), skill, intent.args))
+                }
+            }
+            SkillSource.MACRO -> {
+                val args = intent.args ?: emptyMap()
+                val missing = missingRequired(skill, args)
+                if (missing.isNotEmpty()) {
+                    Normalized.Error(missingRequiredMessage(skill, missing))
+                } else {
+                    Normalized.Macro(skill, args)
                 }
             }
         }
@@ -162,11 +186,10 @@ object SkillCompat {
             return Resolution.Error(skill.id, "技能「${skill.name}」已停用，无法调用。")
         }
         val args = invocation.args
-        // 必填参数校验
-        val missing = skill.params.filter { it.required && args[it.name].isNullOrBlank() }
+        // 必填参数校验（与 normalize 共用同一判定口径）
+        val missing = missingRequired(skill, args)
         if (missing.isNotEmpty()) {
-            val names = missing.joinToString("、") { "「${it.label ?: it.name}」" }
-            return Resolution.Error(skill.id, "技能「${skill.name}」缺少必填参数：$names。")
+            return Resolution.Error(skill.id, missingRequiredMessage(skill, missing))
         }
         return when (skill.source) {
             SkillSource.MCP -> {
@@ -178,6 +201,7 @@ object SkillCompat {
                     ?: return Resolution.Error(skill.id, "技能「${skill.name}」无法映射到任何执行命令。")
                 Resolution.LegacyIntent(intent)
             }
+            SkillSource.MACRO -> Resolution.Error(skill.id, "宏技能「${skill.name}」不能被其它技能或宏嵌套调用，请直接输出该宏。")
         }
     }
 
@@ -201,6 +225,8 @@ object SkillCompat {
         val agent = AgentIntent(intent = legacy, target = target)
         return when (legacy) {
             IntentType.OPEN_APP -> agent.copy(app = args["app"]?.takeIf { it.isNotBlank() })
+            // 语音助手：text（可选）= 要传给助手的话，缺省仅拉起
+            IntentType.ASSISTANT -> agent.copy(text = args["text"])
             IntentType.OPEN -> agent.copy(
                 uri = args["uri"]?.takeIf { it.isNotBlank() },
                 app = args["app"]?.takeIf { it.isNotBlank() },

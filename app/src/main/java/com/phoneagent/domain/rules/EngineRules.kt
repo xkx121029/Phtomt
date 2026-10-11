@@ -85,6 +85,7 @@ object EngineRules {
         ActionType.SWIPE, ActionType.SWIPE_UP, ActionType.SWIPE_DOWN, ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT -> "滑动"
         ActionType.TYPE_TEXT -> "输入文本"
         ActionType.LAUNCH -> "启动应用"
+        ActionType.LAUNCH_ASSISTANT -> "唤起语音助手"
         ActionType.SHELL -> "执行Shell"
         ActionType.A11Y_CALL -> "调用无障碍端点"
         ActionType.WRITE_DOC -> "写入文档"

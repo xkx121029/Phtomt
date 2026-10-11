@@ -48,6 +48,21 @@ class SkillCompatTest {
     }
 
     @Test
+    fun 按技能名调用skill_assistant回填text() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        // 技能 id 调用：text 回填到意图字段
+        val r = SkillCompat.resolveByName("skill_assistant", mapOf("text" to "打电话给妈妈"), registry)
+        assertTrue("期望 LegacyIntent，实际: $r", r is SkillCompat.Resolution.LegacyIntent)
+        val intent = (r as SkillCompat.Resolution.LegacyIntent).intent
+        assertEquals(IntentType.ASSISTANT, intent.intent)
+        assertEquals("打电话给妈妈", intent.text)
+        // text 缺省：仅拉起
+        val r2 = SkillCompat.resolveByName("skill_assistant", emptyMap(), registry)
+        val i2 = (r2 as SkillCompat.Resolution.LegacyIntent).intent
+        assertEquals(null, i2.text)
+    }
+
+    @Test
     fun MCP技能分流() {
         val registry = SkillRegistry(SkillCatalog.builtins())
         registry.add(Skill(id = "m_query", name = "查余额", source = SkillSource.MCP,
@@ -301,6 +316,75 @@ class SkillCompatTest {
         assertEquals(IntentType.DEVICE_QUERY, ni.intent)
         assertEquals("battery", ni.kind)
         assertEquals("电量", ni.filter)
+    }
+
+    // ---- 宏技能（MACRO）：归一化只做缺参校验，执行由引擎接力；resolve 拒绝嵌套 ----
+
+    @Test
+    fun 归一化_宏技能分流并带出入参() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(
+            Skill(
+                id = "skill_macro_home", name = "回家模式", source = SkillSource.MACRO,
+                steps = listOf(
+                    com.phoneagent.feature.skill.MacroStep("skill_open_app", mapOf("app" to "{{导航应用}}")),
+                    com.phoneagent.feature.skill.MacroStep("skill_home"),
+                ),
+                params = listOf(SkillParam("导航应用", "导航应用", "text", true)),
+            ),
+        )
+        val n = SkillCompat.normalize(
+            com.phoneagent.domain.model.AgentIntent(intent = "skill_macro_home", args = mapOf("导航应用" to "高德地图")),
+            registry,
+        )
+        assertTrue(n is SkillCompat.Normalized.Macro)
+        val m = n as SkillCompat.Normalized.Macro
+        assertEquals("skill_macro_home", m.skill.id)
+        assertEquals("高德地图", m.args["导航应用"])
+    }
+
+    @Test
+    fun 归一化_宏技能缺必填入参拒绝() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(
+            Skill(
+                id = "skill_macro_home", name = "回家模式", source = SkillSource.MACRO,
+                steps = listOf(com.phoneagent.feature.skill.MacroStep("skill_home")),
+                params = listOf(SkillParam("导航应用", "导航应用", "text", true)),
+            ),
+        )
+        val n = SkillCompat.normalize(com.phoneagent.domain.model.AgentIntent(intent = "skill_macro_home"), registry)
+        assertTrue(n is SkillCompat.Normalized.Error)
+        assertTrue((n as SkillCompat.Normalized.Error).reason.contains("缺少必填参数"))
+    }
+
+    @Test
+    fun resolve_宏技能不可被嵌套调用() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(
+            Skill(
+                id = "skill_macro_home", name = "回家模式", source = SkillSource.MACRO,
+                steps = listOf(com.phoneagent.feature.skill.MacroStep("skill_home")),
+            ),
+        )
+        val r = SkillCompat.resolve(SkillInvocation("skill_macro_home"), registry)
+        assertTrue(r is SkillCompat.Resolution.Error)
+        assertTrue((r as SkillCompat.Resolution.Error).reason.contains("嵌套"))
+    }
+
+    @Test
+    fun 归一化_停用的宏同样拒绝() {
+        val registry = SkillRegistry(SkillCatalog.builtins())
+        registry.add(
+            Skill(
+                id = "skill_macro_home", name = "回家模式", source = SkillSource.MACRO,
+                steps = listOf(com.phoneagent.feature.skill.MacroStep("skill_home")),
+            ),
+        )
+        registry.setEnabled("skill_macro_home", false)
+        val n = SkillCompat.normalize(com.phoneagent.domain.model.AgentIntent(intent = "skill_macro_home"), registry)
+        assertTrue(n is SkillCompat.Normalized.Error)
+        assertTrue((n as SkillCompat.Normalized.Error).reason.contains("已停用"))
     }
 
     @Test

@@ -61,11 +61,17 @@ enum class PromptFlag {
     /** 有可调用的 MCP 技能 */
     MCP_TOOLS,
 
+    /** 有可调用的宏技能 */
+    MACRO_SKILLS,
+
     /** 配了 MCP 服务器但一个工具都没绑定成技能 */
     MCP_SERVER_ONLY,
 
     /** 有被停用的技能 */
     DISABLED_SKILLS,
+
+    /** 有可注入的技能调用教训（最近失败留档，见 SkillCallHistory） */
+    SKILL_HISTORY,
 }
 
 /**

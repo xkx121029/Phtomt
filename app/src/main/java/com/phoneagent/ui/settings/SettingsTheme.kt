@@ -38,15 +38,16 @@ import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.ThemePalette
 import com.phoneagent.ui.theme.glassTintPreview
 
 /**
  * 主题页：选择整体视觉风格。
  *
- * 目前有两条轴——**框线**与**磨砂浓淡**：标准保留卡片 / 面板 / 输入面的发丝描边，
- * 无框线则把这些装饰性描边全部去掉，层次只靠底色差拉开；
+ * 目前有三条轴——**配色**、**框线**与**磨砂浓淡**：配色决定整套品牌主色与底色（深浅跟随系统）；
+ * 标准保留卡片 / 面板 / 输入面的发丝描边，无框线则把这些装饰性描边全部去掉，层次只靠底色差拉开；
  * 磨砂浓淡控制玻璃页眉/悬浮面板的透光度，负更透、正更实。
- * 选中即时落盘并即时生效：开关本身走 `PhoneAgentTheme(bordersEnabled = ...)`，
+ * 选中即时落盘并即时生效：配色与框线走 `PhoneAgentTheme(paletteId / bordersEnabled = ...)`，
  * 保存后整棵树重组，不需要重启。
  */
 @Composable
@@ -92,6 +93,32 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         }
                     },
                 )
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 配色：整套品牌主色 + 底色（深浅跟随系统）。存 ThemePalette.id 字符串，
+        // 落盘后 settingsFlow 驱动 PhoneAgentTheme 重组，整棵树立即换色，不用重启
+        GroupCard {
+            GroupHeader("配色", "品牌主色与底色，深浅跟随系统")
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ThemePalette.entries.forEach { palette ->
+                    PaletteOption(
+                        palette = palette,
+                        selected = st.palette == palette.id,
+                        onClick = {
+                            if (st.palette != palette.id) {
+                                st.palette = palette.id
+                                save()
+                            }
+                        },
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -264,6 +291,83 @@ private fun ThemeSwatch(showBorder: Boolean) {
                     .height(2.dp)
                     .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
             )
+        }
+    }
+}
+
+/**
+ * 配色选项行：左侧色板预览（底色 / 抬升面 / 主色 / 冷辅色四点），右侧名称与说明。
+ * 预览色取配色自身按当前深浅模式的那一份——所见即所选，不借当前主题的颜色。
+ */
+@Composable
+private fun PaletteOption(
+    palette: ThemePalette,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Tile),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            PaletteSwatch(palette)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    palette.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    palette.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (selected) {
+                Icon(
+                    AppIcons.CheckCircle,
+                    contentDescription = "已选中",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 色板预览：一枚小卡上并排四色圆点（抬升面 / 底色 / 主色 / 冷辅色），深浅跟当前系统模式走 */
+@Composable
+private fun PaletteSwatch(palette: ThemePalette) {
+    val c = if (androidx.compose.foundation.isSystemInDarkTheme()) palette.dark else palette.light
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Inline),
+        color = AppCardContainer,
+        border = BorderStroke(1.dp, AppCardBorder),
+        modifier = Modifier.size(44.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(c.surfaceRaised, c.surfaceBase, c.brand, c.accentCool).forEach { color ->
+                Box(
+                    Modifier
+                        .padding(horizontal = 2.dp)
+                        .size(12.dp)
+                        .background(color, androidx.compose.foundation.shape.CircleShape),
+                )
+            }
         }
     }
 }

@@ -38,6 +38,17 @@ const EMPTY = {
 
 const cache = new Map()
 
+/**
+ * 内容版本号：每次 write 自增。
+ *
+ * HTML 外壳里烘了内容快照（见 lib/htmlShell.js），缓存要不要重建就靠它判断——
+ * 用一个单调计数器而不是逐个集合比对，后台一保存、下一次请求就是新内容。
+ */
+let revision = 0
+export function contentRevision() {
+  return revision
+}
+
 function fileOf(name) {
   const meta = COLLECTIONS[name]
   if (!meta) throw new Error(`未知集合：${name}`)
@@ -71,6 +82,8 @@ export function write(name, value) {
   fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
   fs.renameSync(tmp, file)
   cache.set(name, value)
+  // 留痕（audit）不进首页快照，记一笔就把整块 HTML 重建一次是白费力气
+  if (name !== 'audit') revision += 1
   return value
 }
 

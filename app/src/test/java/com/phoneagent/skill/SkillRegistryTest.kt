@@ -21,6 +21,7 @@ class SkillRegistryTest {
         assertTrue("内置技能全部是内置", all.all { it.isBuiltIn })
         assertNotNull("tap 技能可查", registry.byLegacyIntent("tap"))
         assertNotNull("open_app 技能可查", registry.byLegacyIntent("open_app"))
+        assertNotNull("assistant 技能可查", registry.byId("skill_assistant"))
     }
 
     @Test

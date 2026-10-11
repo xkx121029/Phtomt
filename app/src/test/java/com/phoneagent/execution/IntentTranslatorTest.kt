@@ -62,8 +62,8 @@ class IntentTranslatorTest {
     )
 
     /** 断言转译成功并返回非空命令（失败时测试断言即失败，因此返回非空） */
-    private fun command(intent: AgentIntent, snapshot: ScreenSnapshot): AgentAction {
-        val result = translator.translate(intent, snapshot)
+    private fun command(intent: AgentIntent, snapshot: ScreenSnapshot, from: IntentTranslator = translator): AgentAction {
+        val result = from.translate(intent, snapshot)
         assertTrue("期望转译成功，实际: ${result}", result is IntentTranslator.TranslationResult.Command)
         return (result as IntentTranslator.TranslationResult.Command).action
     }
@@ -325,5 +325,110 @@ class IntentTranslatorTest {
         assertEquals(0.92, action.confidence ?: 0.0, 0.001)
         assertNotNull(action.expected)
         assertTrue(action.needsUserConfirmation)
+    }
+
+    // ---- assistant（唤起系统语音助手）----
+
+    /** 按探测结果与无障碍在线状态构造被测转译器（探测/无障碍均为注入的假实现） */
+    private fun assistantTranslator(
+        probe: com.phoneagent.device.a11y.VoiceAssistantDetector.Target?,
+        a11y: Boolean,
+    ): IntentTranslator = IntentTranslator(
+        capabilityManager, appNameResolver, IntentResolver(),
+        assistantProbe = { probe },
+        a11yReady = { a11y },
+    )
+
+    @Test
+    fun assistant_a11y在线_转译为LAUNCH_ASSISTANT且text透传() {
+        mode(Mode.ACCESSIBILITY)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            ),
+            a11y = true,
+        )
+        val result = t.translate(AgentIntent(intent = IntentType.ASSISTANT, text = "打电话给妈妈"), snapshot())
+        assertTrue("期望转译成功，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        val action = (result as IntentTranslator.TranslationResult.Command).action
+        assertEquals(ActionType.LAUNCH_ASSISTANT, action.type)
+        assertEquals("com.x.assist", action.packageName)
+        assertEquals("打电话给妈妈", action.text)
+    }
+
+    @Test
+    fun assistant_text缺省_action_text为null() {
+        mode(Mode.ACCESSIBILITY)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.ASSIST, null, null,
+            ),
+            a11y = true,
+        )
+        val action = command(AgentIntent(intent = IntentType.ASSISTANT), snapshot(), t)
+        assertEquals(ActionType.LAUNCH_ASSISTANT, action.type)
+        assertEquals(null, action.text)
+    }
+
+    @Test
+    fun assistant_shizuku无a11y_厂商助手降级为shell拉起() {
+        mode(Mode.SHIZUKU)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
+            ),
+            a11y = false,
+        )
+        val action = command(AgentIntent(intent = IntentType.ASSISTANT), snapshot(), t)
+        assertEquals(ActionType.SHELL, action.type)
+        assertEquals("launch com.miui.voiceassist", action.command)
+    }
+
+    @Test
+    fun assistant_shizuku无a11y_系统入口降级为raw_am_start() {
+        mode(Mode.SHIZUKU)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            ),
+            a11y = false,
+        )
+        val action = command(AgentIntent(intent = IntentType.ASSISTANT), snapshot(), t)
+        assertEquals(ActionType.SHELL, action.type)
+        assertEquals("raw am start -a android.intent.action.VOICE_COMMAND", action.command)
+    }
+
+    @Test
+    fun assistant_未探测到助手_转译失败并给中文原因() {
+        mode(Mode.ACCESSIBILITY)
+        val reason = failure(AgentIntent(intent = IntentType.ASSISTANT), snapshot())
+        assertTrue(reason.contains("未找到系统语音助手"))
+    }
+
+    @Test
+    fun assistant_无障碍离线且非shizuku_转译失败() {
+        mode(Mode.ACCESSIBILITY)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
+            ),
+            a11y = false,
+        )
+        val result = t.translate(AgentIntent(intent = IntentType.ASSISTANT), snapshot())
+        assertTrue(result is IntentTranslator.TranslationResult.Failed)
+    }
+
+    @Test
+    fun 只读模式_assistant被拒绝() {
+        mode(Mode.READONLY)
+        val t = assistantTranslator(
+            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            ),
+            a11y = true,
+        )
+        val result = t.translate(AgentIntent(intent = IntentType.ASSISTANT), snapshot())
+        assertTrue(result is IntentTranslator.TranslationResult.Failed)
+        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("只读模式"))
     }
 }

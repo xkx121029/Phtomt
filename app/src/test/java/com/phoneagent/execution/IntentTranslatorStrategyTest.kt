@@ -347,7 +347,7 @@ class IntentTranslatorStrategyTest {
             snapshot(),
         )
         assertTrue(result is IntentTranslator.TranslationResult.Failed)
-        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("自由模式"))
+        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("更改模式"))
     }
 
     @Test
@@ -416,7 +416,7 @@ class IntentTranslatorStrategyTest {
             snapshot(),
         )
         assertTrue(result is IntentTranslator.TranslationResult.Failed)
-        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("自由模式"))
+        assertTrue((result as IntentTranslator.TranslationResult.Failed).reason.contains("更改模式"))
     }
 
     @Test

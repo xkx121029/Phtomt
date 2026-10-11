@@ -81,21 +81,24 @@ class AgentPromptsContextTest {
     // ---- 动作模式（授权范围）提示词 ----
 
     @Test
-    fun `保守模式列出低风险清单并声明其余被拒`() {
+    fun `保守模式只列当前可用操作且不提及其他档位`() {
         val text = AgentPrompts.actionModeSection(PromptLang.CN, ActionMode.CONSERVATIVE)
         assertTrue(text.contains("保守"))
         assertTrue("应列出低风险意图", text.contains("refresh"))
-        assertTrue("应提供换档指路", text.contains("均衡"))
-        // 自由模式专属内容不该出现在保守档
+        assertTrue("应说明被拒时提示更改模式", text.contains("更改模式"))
+        // 只讲当前档位能用什么，不提其他档位与它们的专属能力
+        assertFalse(text.contains("均衡"))
+        assertFalse(text.contains("自由"))
         assertFalse(text.contains("intent=shell"))
         assertFalse(text.contains("click_node"))
     }
 
     @Test
-    fun `均衡模式声明全意图可用但不含自由专属`() {
+    fun `均衡模式声明全意图可用且不提及其他档位`() {
         val text = AgentPrompts.actionModeSection(PromptLang.CN, ActionMode.BALANCED)
         assertTrue(text.contains("全部意图"))
-        assertTrue(text.contains("自由模式"))
+        assertTrue(text.contains("每一项"))
+        assertFalse(text.contains("自由模式"))
         assertFalse(text.contains("intent=a11y"))
     }
 

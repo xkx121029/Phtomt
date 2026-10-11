@@ -78,7 +78,7 @@ import com.phoneagent.ui.icons.AppIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
+internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpenMacroEditor: (Skill?) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     // 宿主注入的全局浮条：轻量反馈统一走它，不用系统 Toast
     val snackbar = LocalSnackbar.current
@@ -96,6 +96,11 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit) {
             Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(4.dp))
             Text("新增技能")
+        }
+        OutlinedButton(onClick = { onOpenMacroEditor(null) }, modifier = Modifier.weight(1f)) {
+            Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("新增宏")
         }
         OutlinedButton(onClick = { batchMode = !batchMode; selected.clear() }) {
             Text(if (batchMode) "完成" else "批量管理")
@@ -237,6 +242,8 @@ internal fun SkillCard(
                         StatusPill("内置", MaterialTheme.colorScheme.onSurfaceVariant)
                     } else if (skill.source == SkillSource.MCP) {
                         StatusPill("MCP", MaterialTheme.colorScheme.secondary)
+                    } else if (skill.source == SkillSource.MACRO) {
+                        StatusPill("宏", MaterialTheme.colorScheme.tertiary)
                     }
                 }
                 Text(
@@ -248,6 +255,9 @@ internal fun SkillCard(
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     StatusPill(skill.legacyIntent ?: skill.category, MaterialTheme.colorScheme.tertiary)
+                    if (skill.source == SkillSource.MACRO && skill.steps.isNotEmpty()) {
+                        StatusPill("步骤×${skill.steps.size}", MaterialTheme.colorScheme.secondary)
+                    }
                     if (skill.params.isNotEmpty()) {
                         StatusPill("参数×${skill.params.size}", MaterialTheme.colorScheme.primary)
                     }
@@ -274,6 +284,25 @@ internal data class ParamDraft(
     var defaultValue: String = "",
     var optionsText: String = "",
 )
+
+/** 宏步骤草稿：args 用「k=v，逗号分隔」的文本承载（占位符 {{参数名}}/{{stepN}} 原样保留） */
+internal data class MacroStepDraft(
+    var skillId: String = "",
+    var argsText: String = "",
+    var description: String = "",
+)
+
+/** 把步骤参数文本解析为 Map：支持中英文逗号分隔；只取每段第一个 = 前后的内容，坏段丢弃 */
+internal fun MacroStepDraft.toArgs(): Map<String, String> =
+    argsText.split(',', '，')
+        .mapNotNull { seg ->
+            val idx = seg.indexOf('=')
+            if (idx <= 0) return@mapNotNull null
+            val k = seg.substring(0, idx).trim()
+            val v = seg.substring(idx + 1).trim()
+            if (k.isEmpty()) null else k to v
+        }
+        .toMap()
 
 /** 把草稿转成 SkillParam */
 internal fun ParamDraft.toParam(): SkillParam? {

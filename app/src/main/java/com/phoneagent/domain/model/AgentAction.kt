@@ -141,6 +141,9 @@ object ActionType {
     /** 深链/协议直达页面（uri=链接或 scheme），直接调出目标应用页面 */
     const val OPEN = "open"
 
+    /** 唤起系统语音助手（packageName=探测到的助手包名，可为空；text=要传的话，可选） */
+    const val LAUNCH_ASSISTANT = "launch_assistant"
+
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(
         TAP to CLICK,

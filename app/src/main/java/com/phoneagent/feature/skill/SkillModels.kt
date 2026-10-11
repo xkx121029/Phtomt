@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
  * 三种来源（[SkillSource]）：
  * - INTENT：端侧意图能力（底层映射回旧命令，走原有 IntentTranslator 转译，保留全部原逻辑）
  * - MCP：调用约定的 MCP 工具
+ * - MACRO：宏技能（固定步骤序列，端侧按顺序接力执行，每步照常过安全门控；不可嵌套）
  */
 @Serializable
 data class Skill(
@@ -35,14 +36,32 @@ data class Skill(
     val legacyIntent: String? = null,
     /** source=MCP 时的调用目标 */
     val mcp: McpSkillTarget? = null,
+    /** source=MACRO 时的步骤序列：端侧按顺序接力执行，每步照常过安全门控；占位符见 MacroStepExpander */
+    val steps: List<MacroStep> = emptyList(),
     /** 由谁创建（内置 = "system"，自定义 = 用户 id/名） */
     val createdBy: String = "system",
     /** 版本 */
     val version: Int = 1,
 )
 
+/**
+ * 宏技能步骤：引用另一个技能 + 固定参数。
+ * 参数值支持两种占位符（由 MacroStepExpander 在执行时渲染）：
+ * - `{{参数名}}`：宏的入参（AI 调宏时 args 里给的值）
+ * - `{{stepN}}`：第 N 步（1 起）的执行结果文本（截 200 字），供后续步骤引用前步产出
+ */
 @Serializable
-enum class SkillSource { INTENT, MCP }
+data class MacroStep(
+    /** 目标技能 id（INTENT 或 MCP 技能；宏不可嵌套引用宏） */
+    val skillId: String,
+    /** 该步固定参数（值可含占位符） */
+    val args: Map<String, String> = emptyMap(),
+    /** 步骤说明（仅展示用） */
+    val description: String = "",
+)
+
+@Serializable
+enum class SkillSource { INTENT, MCP, MACRO }
 
 /** Skill 参数定义 */
 @Serializable

@@ -35,11 +35,11 @@ class ActionModePolicyTest {
 
     @Test
     fun 风险分档_三档之和等于全集() {
-        // 低 22 + 中 14 + 高 3 = 39 = IntentType.ALL；自由专属的两项不计入风险档
-        assertEquals(39, ActionPolicy.tiered.size)
-        assertEquals(39, (IntentType.ALL - ActionPolicy.freeOnly).size)
+        // 低 22 + 中 15 + 高 3 = 40 = IntentType.ALL；自由专属的两项不计入风险档
+        assertEquals(40, ActionPolicy.tiered.size)
+        assertEquals(40, (IntentType.ALL - ActionPolicy.freeOnly).size)
         assertEquals(22, ActionPolicy.lowRisk.size)
-        assertEquals(14, ActionPolicy.midRisk.size)
+        assertEquals(15, ActionPolicy.midRisk.size)
         assertEquals(3, ActionPolicy.highRisk.size)
     }
 
@@ -82,11 +82,20 @@ class ActionModePolicyTest {
     }
 
     @Test
-    fun 拒绝原因_带中文换档建议() {
+    fun 拒绝原因_点明当前档位并提示更改模式() {
         val reason = deniedReason(ActionMode.CONSERVATIVE, IntentType.TAP)
         assertNotNull(reason)
-        assertTrue("原因里应点明当前档位", reason!!.contains("保守模式"))
+        assertTrue("原因里应点明当前档位", reason!!.contains("保守"))
         assertTrue("原因里应给出可用意图清单", reason.contains(IntentType.WAIT))
+        assertTrue("原因里应说明此操作需要更改模式", reason.contains("更改模式"))
+        // 不再指名目标档位（切到均衡/自由之类的跨档指路已移除）
+        assertFalse(reason.contains("均衡"))
+        assertFalse(reason.contains("自由模式"))
+
+        val freeOnly = deniedReason(ActionMode.BALANCED, IntentType.SHELL)
+        assertNotNull(freeOnly)
+        assertTrue(freeOnly!!.contains("更改模式"))
+        assertFalse(freeOnly.contains("均衡"))
     }
 
     @Test

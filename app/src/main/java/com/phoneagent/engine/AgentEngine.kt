@@ -203,6 +203,9 @@ class AgentEngine(
         /** MCP 技能单次调用的超时：远端服务不可达时不能让主循环干等 */
         private const val MCP_CALL_TIMEOUT_MS = 20_000L
 
+        /** MCP 技能重试那一遍的超时：缩到 10s，最坏总等待 ≈ 20+0.5+10 ≤ 31s，不放大用户等待 */
+        private const val MCP_CALL_RETRY_TIMEOUT_MS = 10_000L
+
         /** MCP 技能返回值注入 AI 上下文的最大字符数（与 shell 输出一致，防长文撑爆上下文） */
         private const val MAX_MCP_OUTPUT = 1200
 
@@ -246,6 +249,21 @@ class AgentEngine(
     private val profileLearner = ProfileLearner(memory)
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
+    /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
+    private val skillCallHistory = com.phoneagent.feature.skill.SkillCallHistory(appContext, scope)
+    /** 上一轮技能/MCP/查询返回文本（缺参自动推断的来源之一；随任务复位，见 run() 开头清空段） */
+    private var lastSkillOutput: String = ""
+    // ---- 宏技能接力执行状态（Normalized.Macro 启动时赋值，随任务复位）----
+    /** 待执行的宏步骤队列（剩余步骤，首元素 = 下一步） */
+    private var macroQueue: List<com.phoneagent.feature.skill.MacroStep> = emptyList()
+    /** 宏入参（AI 调宏时给的 args，供 {{参数名}} 占位符展开） */
+    private var macroArgs: Map<String, String> = emptyMap()
+    /** 已执行步骤的结果文本（下标 0 = 第 1 步，供 {{stepN}} 引用） */
+    private var macroResults: List<String> = emptyList()
+    /** 正在执行的宏名（日志与回注说明用） */
+    private var macroName = ""
+    /** 已派发的宏步骤数（0 = 尚未派发任何步骤；用于区分「收割上一步结果」与「宏刚启动」） */
+    private var macroDispatched = 0
     /** 页面记忆提示缓存：按页面指纹缓存，换页才重查（与 anomalyHint 同款） */
     private var pageMemoryHintFingerprint: String = ""
     private var pageMemoryHintText: String = ""
@@ -254,10 +272,15 @@ class AgentEngine(
     private val capabilityManager = CapabilityManager(appContext, shizukuManager) { adbTransport?.isConnectedNow() == true }
     private val appNameResolver = AppNameResolver(appContext)
     private val intentResolver = IntentResolver()
+    /** 本机语音助手探测：assistant 意图据此拉起系统智能助手（系统入口优先、厂商包名兜底） */
+    private val assistantDetector = com.phoneagent.device.a11y.VoiceAssistantDetector(appContext)
     private val intentTranslator = IntentTranslator(
         capabilityManager, appNameResolver, intentResolver,
         // Termux 命令行通道可用性：转译层据此决定 fetch 这类"命令行取数"意图能否落地
         termuxAvailable = { termuxBridge?.isAvailable() == true },
+        // 语音助手探测 + 无障碍在线状态：assistant 意图据此选择"拉起+传话"或"仅拉起"通道
+        assistantProbe = { assistantDetector.probe() },
+        a11yReady = { com.phoneagent.device.a11y.AgentAccessibilityService.instance != null },
         // 动作模式：仅用于自由模式专属意图（shell / a11y）在转译层内的纵深防御自检。
         // 主门控在上面 run() 里——只有那里才能一并覆盖不走转译层的 browse_* 通道。
         actionMode = { activeActionMode },
@@ -1457,6 +1480,13 @@ class AgentEngine(
         browseMissingStreak = 0
         decisionFailureStreak = 0
         lastShellOutput = ""
+        lastSkillOutput = ""
+        // 宏接力状态随任务复位：上个任务没跑完的宏步骤绝不串到本任务
+        macroQueue = emptyList()
+        macroArgs = emptyMap()
+        macroResults = emptyList()
+        macroName = ""
+        macroDispatched = 0
         lastSnapshot = ScreenSnapshot()
         activePlan = plan
         // 新任务重置长线工作记忆
@@ -1660,15 +1690,31 @@ class AgentEngine(
                 runCatching { com.phoneagent.overlay.PageMarkOverlayService.update(appContext, hit?.hotspots.orEmpty()) }
             }
 
+            // 2.9 宏接力：宏还有未派发的步骤 → 本轮跳过 AI 决策，端侧直接把下一步注入为当前意图。
+            //     派发前先收割上一步的执行结果（供 {{stepN}} 引用）；上一步明确失败即终止宏（失败即停），
+            //     终止说明回注消息，宏状态清空，下一轮交还 AI 决策循环。
+            //     注入的意图照常走归一化 → ActionPolicy 门控 → 转译层全链路，不绕过任何安全机制。
+            var macroIntent: AgentIntent? = null
+            // 宏活跃判定：还有未派发步骤，或最后一步已派发但收尾消息还没回注（macroName 尚未清空）。
+            // 只判 macroQueue 会在最后一步派发后漏掉收尾轮，AI 就看不到「宏已执行完毕」的说明
+            if (macroQueue.isNotEmpty() || macroName.isNotBlank()) {
+                macroIntent = nextMacroIntent(messages)
+                if (macroIntent == null) continue // 宏已收尾/终止（说明已回注），回到正常决策循环
+            }
+
             // 3. 端侧决策优先（输出的都是"意图"）
             // 跨步清理图片编码缓存：上一轮的截图早已回收，留着引用既不省事也占内存
             aiClient.clearImageCache()
             // 端侧决策异常（规则引擎内部越界等）不能让整个任务崩掉：降级为空，直接走云端决策。
             // 用回填过 semanticId 的快照决策：端侧 tapIntent 的 by="id" 定位依赖 semanticId
-            val localIntent = tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) }
+            // 宏接力轮不需要任何决策（端侧已定好做什么），local/cloud 决策双双跳过
+            val localIntent = if (macroIntent == null) tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) } else null
             var decidedIntent: AgentIntent?
             var fromLocal = false
-            if (localIntent != null) {
+            if (macroIntent != null) {
+                decidedIntent = macroIntent
+                log(AgentLog.Level.INFO, "宏「$macroName」第 $macroDispatched 步注入：${macroIntent.intent} 参数=${macroIntent.args}")
+            } else if (localIntent != null) {
                 decidedIntent = localIntent
                 fromLocal = true
                 log(AgentLog.Level.AI, "端侧决策意图：${localIntent.intent}（${localIntent.reasoning ?: localIntent.reason}）")
@@ -1761,19 +1807,68 @@ class AgentEngine(
                         invokeVisionAsk(step, normalized, messages, screenshot, settingsVal)
                         continue
                     }
-                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Error -> {
-                        skillErrorStreak++
-                        log(AgentLog.Level.WARN, "技能调用被拒绝（第 $skillErrorStreak 次）：${normalized.reason}")
-                        if (skillErrorStreak >= MAX_SKILL_ERROR_STREAK) {
-                            _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = normalized.reason)
-                            pushFloating("技能不可用，已停止", "ERROR")
-                            log(AgentLog.Level.ERROR, "连续 $skillErrorStreak 次技能调用被拒绝，停止任务：${normalized.reason}")
-                            finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
-                            stop()
-                            return
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Macro -> {
+                        // 宏技能：先整宏预检（步骤技能存在且启用、意图类步骤过当前动作模式门控），
+                        // 任一步被拒整宏不启动；预检通过后进入接力模式，由端侧按顺序派发每一步
+                        // （每步照常走归一化 → ActionPolicy 门控 → 转译层全链路，不绕过任何安全机制）
+                        skillErrorStreak = 0
+                        val rejectReason = tryOrNull("宏预检失败") { macroPrecheckReason(normalized.skill) }
+                        if (rejectReason != null) {
+                            skillErrorStreak++
+                            log(AgentLog.Level.WARN, "宏启动被拒：$rejectReason")
+                            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $rejectReason"))))
+                            continue
                         }
-                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${normalized.reason}"))))
+                        macroName = normalized.skill.name
+                        macroArgs = normalized.args
+                        macroQueue = normalized.skill.steps
+                        macroResults = emptyList()
+                        macroDispatched = 0
+                        log(AgentLog.Level.INFO, "宏「$macroName」预检通过，共 ${normalized.skill.steps.size} 步，开始接力执行")
+                        pushFloating("执行宏：$macroName（${normalized.skill.steps.size} 步）", "ACTING")
                         continue
+                    }
+                    is com.phoneagent.feature.skill.SkillCompat.Normalized.Error -> {
+                        // 缺参自动推断：因缺必填参数被拒时，端侧先从（历史成功参数/上一步结果/任务原文/页面文本）
+                        // 推断补全并重归一化，命中即免去一轮向 AI 的补充追问；推断不出才落入原失败链路计数
+                        val recovered = tryOrNull("缺参推断失败") { inferMissingArgs(intent, semanticSnapshot) }
+                            ?.takeIf { it !is com.phoneagent.feature.skill.SkillCompat.Normalized.Error }
+                        when (recovered) {
+                            is com.phoneagent.feature.skill.SkillCompat.Normalized.Mcp -> {
+                                skillErrorStreak = 0
+                                invokeMcpSkill(step, recovered, messages)
+                                continue
+                            }
+                            is com.phoneagent.feature.skill.SkillCompat.Normalized.Vision -> {
+                                skillErrorStreak = 0
+                                invokeVisionAsk(step, recovered, messages, screenshot, settingsVal)
+                                continue
+                            }
+                            is com.phoneagent.feature.skill.SkillCompat.Normalized.Intent -> {
+                                skillErrorStreak = 0
+                                intent = recovered.intent
+                            }
+                            else -> {
+                                skillErrorStreak++
+                                // 宏步骤归一化被拒（如运行期技能被停用）= 失败即停：终止宏，交还 AI 决策循环
+                                if (macroName.isNotBlank()) {
+                                    log(AgentLog.Level.WARN, "宏「$macroName」步骤被归一化拒绝，宏终止")
+                                    macroQueue = emptyList()
+                                    macroName = ""
+                                }
+                                log(AgentLog.Level.WARN, "技能调用被拒绝（第 $skillErrorStreak 次）：${normalized.reason}")
+                                if (skillErrorStreak >= MAX_SKILL_ERROR_STREAK) {
+                                    _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = normalized.reason)
+                                    pushFloating("技能不可用，已停止", "ERROR")
+                                    log(AgentLog.Level.ERROR, "连续 $skillErrorStreak 次技能调用被拒绝，停止任务：${normalized.reason}")
+                                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                                    stop()
+                                    return
+                                }
+                                messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${normalized.reason}"))))
+                                continue
+                            }
+                        }
                     }
                 }
             }
@@ -1796,6 +1891,13 @@ class AgentEngine(
                     return
                 }
                 messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${modeVerdict.reason}"))))
+                // 宏步骤被动作模式拒绝 = 失败即停：终止宏并交还 AI 决策循环（预检已挡掉绝大多数情况，
+                // 这里兜住"任务中途用户切了档位"的运行期变化）
+                if (macroName.isNotBlank()) {
+                    log(AgentLog.Level.WARN, "宏「$macroName」步骤被动作模式拒绝，宏终止")
+                    macroQueue = emptyList()
+                    macroName = ""
+                }
                 continue
             }
             modeDenyStreak = 0
@@ -2707,16 +2809,106 @@ class AgentEngine(
      * 因此这里只列注册表里 source=MCP 且已启用的技能——提示词与可执行能力严格一一对应，
      * AI 不会去调一个端侧根本不认识的工具。无技能/无服务器时返回空串，不增加负担。
      */
-    private fun skillPromptText(): String {
+    private suspend fun skillPromptText(): String {
         val gateway = skillGateway ?: return ""
         val mcpLines = gateway.enabledMcpSkills().map { gateway.mcpSkillLine(it) }
+        val macroLines = gateway.enabledMacroSkills().filter { it.steps.isNotEmpty() }.map { gateway.macroSkillLine(it) }
         val disabled = gateway.disabledSkills().map { it.name }
-        if (mcpLines.isEmpty() && disabled.isEmpty() && !gateway.hasEnabledMcpServer()) return ""
+        if (mcpLines.isEmpty() && macroLines.isEmpty() && disabled.isEmpty() && !gateway.hasEnabledMcpServer()) return ""
+        // 技能调用教训：全局最近 2 条失败留档（跨技能），帮助 AI 规避同样失败；读取失败静默跳过
+        val historyHint = runCatching {
+            com.phoneagent.feature.skill.SkillCallOps.summarize(
+                skillCallHistory.all().let { com.phoneagent.feature.skill.SkillCallOps.recentFailures(it, 2) },
+            )
+        }.getOrElse { "" }
         return AgentPrompts.skillSection(
             lang = currentLang,
             mcpLines = mcpLines,
             disabledNames = disabled,
             hasMcpServer = gateway.hasEnabledMcpServer(),
+            historyHint = historyHint,
+            macroLines = macroLines,
+        )
+    }
+
+    /**
+     * 宏启动前的整宏预检：每一步引用的技能必须存在且启用（宏不可嵌套引用宏），
+     * 意图类步骤还必须过当前动作模式门控——**任一步被拒整宏不启动**，
+     * 避免"跑了一半才发现后面的步骤根本不允许执行"的半途而废。
+     * @return 拒绝原因（中文，可直接回注 AI）；null = 预检通过
+     */
+    private fun macroPrecheckReason(skill: com.phoneagent.feature.skill.Skill): String? {
+        skill.steps.forEachIndexed { i, st ->
+            val target = skillGateway?.findStepSkill(st)
+                ?: return "宏「${skill.name}」第 ${i + 1} 步引用的技能「${st.skillId}」不存在，宏无法启动。"
+            if (!target.enabled) {
+                return "宏「${skill.name}」第 ${i + 1} 步引用的技能「${target.name}」已停用，宏无法启动。"
+            }
+            when (target.source) {
+                com.phoneagent.feature.skill.SkillSource.MACRO ->
+                    return "宏「${skill.name}」第 ${i + 1} 步引用了另一个宏：宏不允许嵌套调用。"
+                com.phoneagent.feature.skill.SkillSource.INTENT -> {
+                    val legacy = target.legacyIntent ?: target.id.removePrefix("skill_")
+                    val verdict = ActionPolicy.allows(activeActionMode, legacy)
+                    if (verdict is ActionPolicy.Verdict.Denied) {
+                        return "宏「${skill.name}」第 ${i + 1} 步（${target.name}）被拒绝：${verdict.reason}。请让用户放宽动作模式后再试。"
+                    }
+                }
+                com.phoneagent.feature.skill.SkillSource.MCP -> Unit // MCP 步骤是数据调用，不产生设备动作，无需模式门控
+            }
+        }
+        return null
+    }
+
+    /**
+     * 宏接力派发：取出下一步并展开为待执行意图（intent=目标技能 id，args=占位符展开后的参数）。
+     *
+     * - 派发前先收割上一步的执行结果（执行历史末条），供后续步骤 `{{stepN}}` 引用；
+     * - **失败即停**：上一步明确失败（发送失败/验证失败）时终止宏，清空状态并回注说明，
+     *   后续步骤不再执行，交还 AI 决策循环决定是否换路重试；
+     * - 返回 null 表示宏已全部执行完（成功收尾说明已回注）或已终止（原因已回注）。
+     */
+    private fun nextMacroIntent(messages: MutableList<ChatMessageDto>): AgentIntent? {
+        // 1. 收割上一步结果：macroDispatched > 0 说明上一步已经走完一轮完整执行链路
+        if (macroDispatched > 0) {
+            val last = _executionHistory.value.lastOrNull()
+            val resultText = listOfNotNull(
+                last?.detail?.takeIf { it.isNotBlank() },
+                last?.shellOutput?.takeIf { it.isNotBlank() },
+            ).joinToString("；").ifBlank { last?.action?.reason ?: "" }
+            macroResults = macroResults + resultText.take(400)
+            // 失败即停：上一步明确失败就不再派发后续步骤（unverified 不算失败——部分动作本就无验证信号）
+            val failed = last != null &&
+                (last.sendResult == "send_failed" || last.verificationResult == "failed")
+            if (failed) {
+                val reason = "宏「$macroName」在第 $macroDispatched/${macroDispatched + macroQueue.size} 步失败：${resultText.take(200)}。剩余 ${macroQueue.size} 步已停止，请判断是否换方式继续任务。"
+                log(AgentLog.Level.WARN, reason)
+                messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $reason"))))
+                macroQueue = emptyList()
+                macroName = ""
+                return null
+            }
+        }
+        // 2. 全部步骤执行完毕：成功收尾
+        val next = macroQueue.firstOrNull() ?: run {
+            val done = "宏「$macroName」已按顺序执行完全部 $macroDispatched 步。"
+            log(AgentLog.Level.INFO, done)
+            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "✅ $done 请根据当前页面判断任务是否达成；未达成时继续执行剩余步骤。"))))
+            macroName = ""
+            return null
+        }
+        // 3. 派发下一步：占位符展开 → intent=目标技能 id（归一化层会按 source 分流 INTENT/MCP）
+        macroQueue = macroQueue.drop(1)
+        macroDispatched++
+        val expanded = com.phoneagent.feature.skill.MacroStepExpander.expand(next.args, macroArgs, macroResults)
+        val stepSkill = skillGateway?.findStepSkill(next)
+        val label = stepSkill?.name ?: next.skillId
+        _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "宏「$macroName」第 $macroDispatched 步：$label")
+        pushFloating("宏第 $macroDispatched 步：$label", "ACTING")
+        return AgentIntent(
+            intent = next.skillId,
+            args = expanded,
+            reasoning = "宏「$macroName」第 $macroDispatched 步" + (next.description.takeIf { it.isNotBlank() }?.let { "：$it" } ?: ""),
         )
     }
 
@@ -2737,12 +2929,32 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "调用 MCP 技能：$label（$target）参数=${mcp.args}")
         _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "调用技能：$label")
         pushFloating("调用技能：$label", "ACTING")
-        // 远端服务不可达时不能让主循环干等：与单步决策同一思路，超时即按失败回注，让 AI 自己改路线
-        val result = withTimeoutOrNull(MCP_CALL_TIMEOUT_MS) { gateway.invokeMcp(mcp.target, mcp.args) }
-            ?: com.phoneagent.feature.mcp.McpCallResult(
-                isError = true,
-                content = "MCP 调用超时（${MCP_CALL_TIMEOUT_MS / 1000}s）：$target",
-            )
+        // 远端服务不可达时不能让主循环干等：与单步决策同一思路，超时即按失败回注，让 AI 自己改路线。
+        // 健壮性增强：瞬时故障（超时/连接失败/5xx）按 McpRetryPolicy 自动重试一次（首试 20s、重试 10s）；
+        // 参数错/未配置这类确定性失败不重试。失败语义不变：结果照旧回注 AI，不计 skillErrorStreak。
+        val callStart = System.currentTimeMillis()
+        val result = invokeMcpWithRetry(mcp.target, mcp.args, target)
+        val elapsedMs = System.currentTimeMillis() - callStart
+        // 留档本次调用（成功/失败都记）：供缺参自动推断取历史成功参数、供提示词注入「上次教训」
+        lastSkillOutput = result.content.trim().take(MAX_MCP_OUTPUT)
+        skillCallHistory.recordAsync(
+            com.phoneagent.feature.skill.SkillCallRecord(
+                id = "${currentTaskId}-$step-${System.currentTimeMillis()}",
+                skillId = mcp.skill.id,
+                skillName = mcp.skill.name,
+                argsJson = runCatching {
+                    kotlinx.serialization.json.Json.encodeToString(
+                        kotlinx.serialization.serializer<Map<String, String>>(),
+                        mcp.args,
+                    )
+                }.getOrElse { "{}" },
+                success = !result.isError,
+                elapsedMs = elapsedMs,
+                failReason = if (result.isError) result.content.trim().take(160) else "",
+                taskId = currentTaskId,
+                ts = System.currentTimeMillis(),
+            ),
+        )
         val text = result.content.trim().take(MAX_MCP_OUTPUT).let { if (it.length == MAX_MCP_OUTPUT && it.last().isHighSurrogate()) it.dropLast(1) else it }
         val action = AgentAction(
             type = ActionType.MCP_CALL,
@@ -2775,6 +2987,83 @@ class AgentEngine(
             recordProgress(step, action)
         }
         delay(200)
+    }
+
+    /**
+     * 带瞬时故障重试的 MCP 调用：按 [McpRetryPolicy] 判定，瞬时故障（超时/连接失败/5xx）自动重试一次。
+     * 首试 [MCP_CALL_TIMEOUT_MS]、重试 [MCP_CALL_RETRY_TIMEOUT_MS]，最坏总等待 ≤ 31s 不放大用户等待；
+     * 确定性失败（缺参/未配置/4xx/权限）不重试，直接把原因交回主循环按既有失败链路回注 AI。
+     */
+    private suspend fun invokeMcpWithRetry(
+        target: com.phoneagent.feature.skill.McpSkillTarget,
+        args: Map<String, String>,
+        label: String,
+    ): com.phoneagent.feature.mcp.McpCallResult {
+        val gateway = skillGateway ?: return com.phoneagent.feature.mcp.McpCallResult(
+            isError = true,
+            content = "MCP 未配置：技能「$label」无法调用",
+        )
+        var attempt = 0
+        while (true) {
+            val timeoutMs = if (attempt == 0) MCP_CALL_TIMEOUT_MS else MCP_CALL_RETRY_TIMEOUT_MS
+            val r = withTimeoutOrNull(timeoutMs) { gateway.invokeMcp(target, args) }
+            if (r == null) {
+                // 端侧超时：还有重试额度就退避后重试，否则按超时失败返回
+                if (attempt >= com.phoneagent.feature.mcp.McpRetryPolicy.MAX_RETRY) {
+                    return com.phoneagent.feature.mcp.McpCallResult(
+                        isError = true,
+                        content = "MCP 调用超时（${timeoutMs / 1000}s）：$label",
+                    )
+                }
+                log(AgentLog.Level.WARN, "MCP 调用超时（${timeoutMs / 1000}s），自动重试 ${attempt + 1}/1：$label")
+            } else {
+                if (!r.isError) return r
+                if (attempt >= com.phoneagent.feature.mcp.McpRetryPolicy.MAX_RETRY ||
+                    !com.phoneagent.feature.mcp.McpRetryPolicy.shouldRetry(r.content, timedOut = false)
+                ) {
+                    return r
+                }
+                log(AgentLog.Level.WARN, "MCP 瞬时故障，自动重试 ${attempt + 1}/1：$label → ${r.content.take(120)}")
+            }
+            attempt++
+            delay(com.phoneagent.feature.mcp.McpRetryPolicy.BACKOFF_MS)
+        }
+    }
+
+    /**
+     * 缺参自动推断：技能因缺必填参数被拒时，端侧先从（历史成功参数 / 上一轮技能与 shell 结果 /
+     * 任务原文 / 页面文本）推断补全后重归一化；推断命中就避免一轮向 AI 的补充追问。
+     * 返回重归一化结果；推断不出或补全后仍被拒返回 null（走原失败链路计数）。
+     */
+    private suspend fun inferMissingArgs(
+        intent: com.phoneagent.domain.model.AgentIntent,
+        semanticSnapshot: com.phoneagent.domain.model.ScreenSnapshot?,
+    ): com.phoneagent.feature.skill.SkillCompat.Normalized? {
+        val gateway = skillGateway ?: return null
+        val (skill, missing) = gateway.missingParamsOf(intent) ?: return null
+        val history = runCatching { skillCallHistory.recentFor(skill.id, 3) }.getOrElse { emptyList() }
+        val screenTexts = semanticSnapshot?.elements
+            ?.mapNotNull { it.text?.trim()?.takeIf { t -> t.isNotEmpty() } }
+            .orEmpty()
+            .distinct()
+        val filled = com.phoneagent.feature.skill.SkillParamInferencer.infer(
+            com.phoneagent.feature.skill.SkillInferContext(
+                skill = skill,
+                missing = missing,
+                taskPrompt = currentTaskName ?: "",
+                lastResultText = listOf(lastSkillOutput, lastShellOutput).filter { it.isNotBlank() }.joinToString("\n"),
+                screenTexts = screenTexts,
+                history = history,
+            ),
+        )
+        if (filled.isEmpty()) return null
+        log(
+            AgentLog.Level.INFO,
+            "缺参自动推断命中：技能「${skill.name}」补全 ${filled.keys.joinToString("、")}（来源：历史/上一步结果/任务原文/页面文本）",
+        )
+        pushFloating("已自动补全参数：${filled.keys.joinToString("、")}", "THINKING")
+        val refilled = intent.copy(args = (intent.args ?: emptyMap()) + filled)
+        return tryOrNull("补参后重归一化失败") { gateway.normalize(refilled) }
     }
 
     /**
@@ -3076,6 +3365,18 @@ class AgentEngine(
                 // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面
                 delay(800)
                 com.phoneagent.engine.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
+            }
+            ActionType.LAUNCH_ASSISTANT -> {
+                // 唤起系统语音助手：description 原样透传（AI 能区分"已传话 / 已填入 / 仅拉起"）；
+                // 仅"本机探测不到语音助手"才是 Failure，走既有连续失败介入机制
+                val r = executor.launchAssistant(action.text)
+                if (r is com.phoneagent.device.a11y.ActionExecutor.Result.Failure) {
+                    com.phoneagent.engine.execution.VerifyResult(false, r.reason, "", "")
+                } else {
+                    val desc = (r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description
+                    delay(800)
+                    com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
+                }
             }
             ActionType.OPEN -> executeNoVerify(executor) {
                 // 优先直接深链 uri；否则按软件页面直达索引(app+page)解析直达方式

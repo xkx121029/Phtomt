@@ -1,4 +1,9 @@
 import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
+// 首页不走懒加载：它是绝大多数访问的落点，懒加载会多出「入口 → 首页分块」一次往返，
+// 且分块里的样式要等 JS 执行后才注入，首屏会先按骨架样式画一遍再闪一下。即时加载后，
+// 首页的 JS 随入口一起（已有 modulepreload，不额外请求），样式并入入口样式表、
+// 也一并被服务端内联进 HTML——照面即完整，一条往返到底。其他路由照旧懒加载。
+import HomeView from '../views/HomeView.vue'
 
 /**
  * 路由表。
@@ -12,7 +17,7 @@ export const routes = [
   {
     path: '/',
     name: 'home',
-    component: () => import('../views/HomeView.vue'),
+    component: HomeView,
     meta: { title: '首页', group: '主要' }
   },
   {

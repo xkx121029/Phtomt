@@ -35,6 +35,16 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.ASSISTANT, Skill(
+                id = "skill_assistant", name = "语音助手", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "导航", legacyIntent = IntentType.ASSISTANT,
+                description = "唤起系统语音助手（小爱同学/小艺/小布/Google 助理等）。text 是要让助手执行的一句话（可选），拉起后端侧会尝试在助手界面自动输入并发送；传话失败只是没传上话，不算失败。要让助手办语音/系统级的事（打电话、控制硬件、问它问题）用它；单纯打开某个应用用 open_app。",
+                params = listOf(
+                    SkillParam("text", "要传的话", "text", description = "可选：要让助手执行的一句话，如「打电话给妈妈」"),
+                ),
+            ),
+        )
+        put(
             IntentType.OPEN, Skill(
                 id = "skill_open_deeplink", name = "打开链接/文件", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "导航", legacyIntent = IntentType.OPEN,

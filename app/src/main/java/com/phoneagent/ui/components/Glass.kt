@@ -47,6 +47,7 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
+import kotlin.math.max
 
 /**
  * 毛玻璃（亚克力 / 磨砂）材质。
@@ -170,14 +171,16 @@ fun GlassSurface(
 internal val HeaderLiftAmount = 12.dp
 
 /**
- * 页眉状态：**页面在最上方时是一条通栏直角的吸顶栏，只要离开了最上方就收成一块圆角浮板**。
+ * 页眉状态：**页面在最上方时是一条通栏直角的吸顶栏，只要离开了最上方就收成一颗圆形胶囊浮板**。
  *
- * 两端形态是**离散**的两个状态，不做"滚过 N dp 才完全浮起"的连续插值：连续插值会让
- * 页眉在离开页首的头几十 dp 里卡在中间态——既不是吸顶栏、也不是浮板，一块半直半圆的板
- * 悬在内容上方，读起来就是"位置不对"。形态由同一个布尔量 [floating] 切换：
+ * 两端形态是**离散**的两个状态，[floating] 就是那把总开关。不做"跟着滚动位置连续插值"：
+ * 那会让页眉在离开页首的头几十 dp 里卡在中间态——既不是吸顶栏、也不是胶囊，一块半直半圆的板
+ * 悬在内容上方，读起来就是"位置不对"。但是——状态**翻转的那一刻**由骨架用一根弹簧把全部
+ * 几何量（边距、圆角）从旧形态平滑过渡到新形态（见 [GlassHeaderScaffold]）：中间态只在
+ * 转场动画期间存在，动画结束必定停在某一端，不存在"悬在半路"的稳态。
  * - [floating] = false：页面就在最上方，页眉背后没有任何内容，"浮板"没有存在理由，
  *   只会在顶部平白多出一圈留白——于是左右不留白、上缘贴住内容区上沿、四角全直角；
- * - [floating] = true：页面已离顶，页眉真正压在滚动内容之上，才收成四角全圆的浮板。
+ * - [floating] = true：页面已离顶，页眉真正压在滚动内容之上，才收成两端全圆的胶囊浮板。
  *
  * "是否在最上方"不去各页要——调试页与技能页的滚动容器藏在页签面板里，逐个透传会把改动
  * 摊到整棵组件树——改为从嵌套滚动里听：它自己就是一个 [NestedScrollConnection]，
@@ -195,23 +198,8 @@ class HeaderLiftState internal constructor() : NestedScrollConnection {
     /** 页面当前滚动位置（px）。只用来判断"是否在最上方"，不参与形态插值，故不需要上限 */
     private var offsetPx by mutableFloatStateOf(0f)
 
-    /** true = 页面已离开最上方（圆角浮板）；false = 页面就在最上方（通栏直角吸顶栏） */
+    /** true = 页面已离开最上方（胶囊浮板）；false = 页面就在最上方（通栏直角吸顶栏） */
     val floating: Boolean get() = offsetPx > 0f
-
-    /** 左右外边距：吸顶时 0（通栏到屏幕两沿），浮起时为 [GlassHeaderInset] */
-    val sideInset: Dp get() = if (floating) GlassHeaderInset else 0.dp
-
-    /**
-     * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
-     * [GlassHeaderDefaultContentPad]。面板边距收放时文字原地不动，只有面板两沿在动。
-     */
-    val contentPad: Dp get() = GlassHeaderDefaultContentPad - sideInset
-
-    /** 上缘外边距：吸顶时 0（贴住内容区上沿），浮起时为 [GlassHeaderInset] + [HeaderLiftAmount] */
-    val topInset: Dp get() = if (floating) GlassHeaderInset + HeaderLiftAmount else 0.dp
-
-    /** 四角圆角：吸顶时 0（四角全直角），浮起时为 [AppRadii.Header] */
-    val cornerRadius: Dp get() = if (floating) AppRadii.Header else 0.dp
 
     override fun onPostScroll(
         consumed: Offset,
@@ -276,7 +264,8 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * 一块纯底色，玻璃会退化成一条灰蒙蒙的色带；用在里面，内容滚动时才会从玻璃下穿过。
  *
  * 页眉**始终吸顶**，形态只在两端之间切换（见 [HeaderLiftState]）：
- * 页面就在最顶上时是一条通栏直角的吸顶栏，只要滚起来就收成一块悬在内容上方的圆角浮板。
+ * 页面就在最顶上时是一条通栏直角的吸顶栏，只要滚起来就收成一颗悬在内容上方的圆形胶囊浮板。
+ * 两态之间的转场由一根无回弹弹簧统一驱动（边距、圆角同步过渡），不跟滚动位置连续插值。
  * 页面不需要为此传任何参数，正文的滚动位移由骨架自己从嵌套滚动里听。
  *
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板。内层内容的左右留白由骨架通过
@@ -308,6 +297,36 @@ fun GlassHeaderScaffold(
     // 净空一变，列表在同一帧里既被手指拖着走、又被改掉内边距，读起来像打滑
     val contentTopPad = with(density) { headerHeight.toDp() } + GlassHeaderInset
 
+    // 胶囊浮板的圆角 = 页眉实测高度的一半，两端才是正圆弧、整条板才是真胶囊；
+    // 首帧还没量到高度时用 AppRadii.Header 兜底（只影响转场动画的端点，量到后立即校正）
+    val capsuleRadius = remember(headerHeight) {
+        maxOf(with(density) { headerHeight.toDp() / 2 }, AppRadii.Header)
+    }
+
+    // 形态切换的唯一驱动：0 = 吸顶通栏直角，1 = 浮起胶囊。四条几何量全部由这一个进度
+    // 推导，一根无回弹弹簧拉着整段转场，四条曲线天然同步——不会出现"圆角先到位、
+    // 边距还在半路"的各走各的。无回弹是刻意的：页眉是承标题的 chrome，回弹会让文字
+    // 上下颠一下，读起来像 Bug。
+    val liftProgress by animateFloatAsState(
+        targetValue = if (lift.floating) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "headerLiftProgress",
+    )
+    // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 GlassHeaderInset
+    val sideInset = GlassHeaderInset * liftProgress
+    /**
+     * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
+     * [GlassHeaderDefaultContentPad]。转场全程面板两沿在动、文字原地不动。
+     */
+    val contentPad = GlassHeaderDefaultContentPad - sideInset
+    // 上缘外边距：吸顶 0（贴住内容区上沿）→ 浮起 GlassHeaderInset + HeaderLiftAmount
+    val topInset = (GlassHeaderInset + HeaderLiftAmount) * liftProgress
+    // 四角圆角：吸顶 0（四角全直角）→ 浮起 capsuleRadius（真胶囊）
+    val cornerRadius = capsuleRadius * liftProgress
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -324,17 +343,17 @@ fun GlassHeaderScaffold(
 
         GlassSurface(
             hazeState = glass,
-            // 吸顶时是通栏直角（半径 0），离开页首才收成圆角浮板：同一个布尔量同时驱动
-            // 外边距与圆角，切换与手指同一帧发生，不另补动画
-            shape = RoundedCornerShape(lift.cornerRadius),
+            // 吸顶时是通栏直角（半径 0），离开页首收成胶囊浮板。形态由 [liftProgress]
+            // 一根弹簧统一驱动：圆角、左右/上缘外边距四条曲线同步走完，不各走各的
+            shape = RoundedCornerShape(cornerRadius),
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = lift.sideInset, end = lift.sideInset, top = lift.topInset)
+                .padding(start = sideInset, end = sideInset, top = topInset)
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                CompositionLocalProvider(LocalHeaderContentPad provides lift.contentPad) {
+                CompositionLocalProvider(LocalHeaderContentPad provides contentPad) {
                     header()
                 }
                 // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来。

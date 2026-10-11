@@ -19,9 +19,80 @@
         document.documentElement.dataset.theme = theme
       } catch (e) {}
     </script>
+    <style>
+      /* 首屏骨架。
+         在此之前，body 里只有一个空的 #app，第一帧要等到 index.js + vendor.js + HomeView
+         分块全部下完、Vue 挂载才出像素，FCP 因此拖到 2s。这里先画出底色与主张，
+         FCP 降到接近 TTFB。几何与 HomeView 的 hero 对齐（同样的顶栏留白、版心与字号），
+         Vue 挂载替换时几乎看不出位移。挂载后本段随 #app 一起被清掉。 */
+      .sk {
+        box-sizing: border-box;
+        min-height: 100svh;
+        padding: 66px 24px 0;
+        background: #f7f6f3;
+        font-family: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
+          "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      html[data-theme="dark"] .sk {
+        background: #121513;
+      }
+      .sk__page {
+        width: min(1180px, 100%);
+        margin-inline: auto;
+        padding-top: clamp(56px, 8vw, 104px);
+      }
+      .sk__eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #7b827b;
+      }
+      .sk__eyebrow::before {
+        content: "";
+        width: 18px;
+        height: 1px;
+        background: #b7bdb4;
+      }
+      .sk__title {
+        margin: 18px 0 0;
+        font-size: clamp(2.8rem, 1.4rem + 5vw, 5.2rem);
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1.02;
+        color: #141715;
+      }
+      html[data-theme="dark"] .sk__title {
+        color: #eef4f0;
+      }
+      .sk__lead {
+        margin: 24px 0 0;
+        max-width: 46ch;
+        font-size: 1rem;
+        line-height: 1.7;
+        color: #4b514c;
+      }
+      html[data-theme="dark"] .sk__lead {
+        color: #a9b2ac;
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="sk">
+        <div class="sk__page">
+          <p class="sk__eyebrow">Happy Phone Agent</p>
+          <h1 class="sk__title">让手机<br />自己动手</h1>
+          <p class="sk__lead">
+            一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。
+          </p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -1,4 +1,3 @@
-import { snapshot } from '../data/fallback.js'
 import { applySiteMeta } from '../lib/siteMeta.js'
 
 /**
@@ -12,6 +11,29 @@ import { applySiteMeta } from '../lib/siteMeta.js'
 
 const TOKEN_KEY = 'phtomt-admin-token'
 export const isStaticBuild = Boolean(__STATIC_EXPORT__)
+
+/**
+ * 构建期内容快照（216KB）。
+ *
+ * 它只在「静态导出」或「后端不可达」两条路上用到，却曾被静态 import 进本模块——
+ * 而 SiteHeader / SiteFooter（App.vue 常驻组件）都 import 了本模块，于是整包快照
+ * 被打进关键路径，入口包因此到 217KB。改成按需动态 import：正常访问永远不加载它。
+ */
+let snapshotPromise = null
+function loadSnapshot() {
+  if (!snapshotPromise) snapshotPromise = import('../data/fallback.js').then((m) => m.snapshot)
+  return snapshotPromise
+}
+
+/**
+ * 服务端把首屏聚合数据直接烘进了 HTML（window.__PHT_BOOTSTRAP__，见 server/lib/htmlShell.js）。
+ * 命中就不必再等一次 /api/bootstrap 往返，首屏内容与 JS 同时到达。
+ */
+function injectedBootstrap() {
+  if (typeof window === 'undefined') return null
+  const value = window.__PHT_BOOTSTRAP__
+  return value && typeof value === 'object' ? value : null
+}
 
 export class ApiError extends Error {
   constructor(message, status, code) {
@@ -191,11 +213,11 @@ export const assistant = {
  * 静态站直接返回快照；有后端时若请求失败也回落到快照，页面不至于白屏。
  */
 async function read(path, pick) {
-  if (isStaticBuild) return pick(snapshot)
+  if (isStaticBuild) return pick(await loadSnapshot())
   try {
     return await api.get(path)
   } catch (err) {
-    if (err.status === 0 || err.status >= 500) return pick(snapshot)
+    if (err.status === 0 || err.status >= 500) return pick(await loadSnapshot())
     throw err
   }
 }
@@ -210,8 +232,13 @@ function applySiteMetaOf(key) {
 
 export const content = {
   // 首屏与站点元信息是「通道显示名 / 日志配色」两张表的唯一来源，
-  // 读到就顺手并入本地注册表，视图里 channelLabel() 即可直接用
-  bootstrap: () => read('/api/bootstrap', (s) => s.bootstrap).then(applySiteMetaOf('site')),
+  // 读到就顺手并入本地注册表，视图里 channelLabel() 即可直接用。
+  // 数据优先吃服务端注入的那份（与 HTML 同帧到达），没有才回落到接口。
+  bootstrap: () => {
+    const injected = injectedBootstrap()
+    const source = injected ? Promise.resolve(injected) : read('/api/bootstrap', (s) => s.bootstrap)
+    return source.then(applySiteMetaOf('site'))
+  },
   // applySiteMeta 只往注册表里并两张展示表、本身不返回内容，所以不能直接当 .then 的
   // 映射函数用——那样调用方拿到的是 undefined，页头页脚求值 site.version 就会抛错、
   // 被 Vue 当成渲染失败整块吞掉（表现为页眉页脚凭空消失）。这里显式把站点对象传下去。

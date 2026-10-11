@@ -129,14 +129,12 @@ internal object PromptCatalog {
             exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 保守档",
             bodyCN = MODE_HEAD_CN + """
-            - 本档只放行低风险意图（读取信息 / 导航 / 本地读写）：{low_risk}。
-            - 其余意图（点击、输入、打开应用、搜索、发送、确认、删除、网页点击与填表等）一律被端侧拒绝，不要尝试。
-            - 确实必须点击或输入才能推进时：用 give_up，在 reason 里说明「需要用户把动作模式切到均衡」，而不是反复重试被拒的动作。
+            - 当前档位可用的操作只有下面这批，只输出这些意图：{low_risk}。
+            - 需要的操作不在上列时不要硬试：端侧会直接拒绝并回你「此操作需要更改模式」，那时用 say 告知用户即可，不要反复重试同类动作。
             """.trimIndent(),
             bodyEN = MODE_HEAD_EN + """
-            - This mode allows low-risk intents only (information reading / navigation / local read-write): {low_risk}.
-            - Every other intent (tap, input, open_app, search, send, confirm, delete, web click/fill, ...) is rejected. Do not attempt them.
-            - If you truly cannot proceed without tapping or typing: use give_up and state in `reason` that the user must switch the action mode to Balanced — never keep retrying a rejected action.
+            - The operations available in the current mode are exactly the list below — emit only these intents: {low_risk}.
+            - If what you need is not listed, don't force it: the device rejects it and replies "this action requires a mode change" — just tell the user with say, and never retry the same kind of action.
             """.trimIndent(),
         ),
         PromptBlock(
@@ -145,12 +143,12 @@ internal object PromptCatalog {
             exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 均衡档",
             bodyCN = MODE_HEAD_CN + """
-            - 本档放行上面两张意图表的每一项（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作）。
-            - 不可用的只有「自写 shell 命令」与「直调无障碍端点」——那两项要在自由模式下才开放，本档不要输出。
+            - 当前档位可用上面两张意图表的每一项（含点击/输入/打开/搜索/发送/确认/删除，以及全部 browse_* 网页操作）。
+            - 某个操作被端侧拒绝时，说明它超出当前档位（此操作需要更改模式）：用 say 告知用户即可，不要反复重试同类动作。
             """.trimIndent(),
             bodyEN = MODE_HEAD_EN + """
             - This mode allows every entry of the two intent tables above (tap/input/open/search/send/confirm/delete and all browse_* web operations).
-            - The only things unavailable are self-written shell commands and direct accessibility-endpoint calls; those require Free mode. Do not emit them here.
+            - When the device rejects an action, it is outside the current mode (the action requires a mode change): just tell the user with say, and never retry the same kind of action.
             """.trimIndent(),
         ),
         PromptBlock(
@@ -159,8 +157,8 @@ internal object PromptCatalog {
             exclusiveGroup = "action_mode",
             origin = "AgentPrompts.actionModeSection 自由档",
             bodyCN = MODE_HEAD_CN + """
-            - 本档在均衡的基础上额外放行两类能力：自写命令（intent=shell）与直调无障碍端点（intent=a11y）。
-            - 这两类是**兜底手段**：能用上面意图表说清楚的事，就用意图表；只有意图表确实表达不了时才动用它们。
+            - 当前档位可用上面两张意图表的每一项，并额外开放两类兜底能力：自写命令（intent=shell）与直调无障碍端点（intent=a11y）。
+            - 这两类是兜底手段：能用意图表说清楚的事，就用意图表；只有意图表确实表达不了时才动用它们。
             - 自写命令在本任务首次执行前会弹给用户确认一次（批准后本次任务内不再问；被拒后就别再发同一条命令，换个做法继续）。
 
             ## 自写命令（intent=shell）
@@ -181,8 +179,8 @@ internal object PromptCatalog {
             端点名与参数名写错会被端侧直接指出（不重试）；坐标类端点只在元素树确实没有该控件时才用。
             """.trimIndent(),
             bodyEN = MODE_HEAD_EN + """
-            - On top of Balanced, this mode also allows two extra capabilities: self-written commands (intent=shell) and direct accessibility-endpoint calls (intent=a11y).
-            - Both are **fallbacks**: if the intent tables above can express it, use them; reach for these only when the tables genuinely cannot.
+            - This mode allows every entry of the two intent tables above, plus two fallback capabilities: self-written commands (intent=shell) and direct accessibility-endpoint calls (intent=a11y).
+            - Both are fallbacks: if the intent tables can express it, use them; reach for these only when the tables genuinely cannot.
             - Your first self-written command in a task is confirmed with the user once (approved = never asked again within that task; if denied, do not resend the same command — take another route).
 
             ## Self-written command (intent=shell)
@@ -284,6 +282,34 @@ internal object PromptCatalog {
             origin = "AgentPrompts.skillSection 停用清单",
             bodyCN = "- 已停用（不可调用）：{disabled_names}\n",
             bodyEN = "- Disabled (not callable): {disabled_names}\n",
+        ),
+        PromptBlock(
+            id = "skills.macro", group = PromptGroup.SKILLS, order = 2,
+            requires = setOf(PromptFlag.MACRO_SKILLS),
+            origin = "AgentPrompts.skillSection 宏技能表（macroLines 非空）",
+            bodyCN = """
+            - 调用宏技能：intent 填宏 id，必填入参放进 args 对象，例如：
+              {"intent":"skill_macro_xxx","args":{"城市":"上海"},"reasoning":"执行回家模式","expected":"宏按顺序执行完毕","confidence":0.9}
+              宏由端侧按步骤顺序自动执行（每步照常过安全门控）；某一步失败即停，不会执行后续步骤，失败原因会回注给你。
+            | 宏 id | 名称 | 说明 | 入参 | 步骤 |
+            |---|---|---|---|---|
+            {macro_table}
+            """.trimIndent() + "\n",
+            bodyEN = """
+            - To call a macro skill: put the macro id in `intent` and the required inputs in an `args` object, e.g.
+              {"intent":"skill_macro_xxx","args":{"city":"Shanghai"},"reasoning":"run commute mode","expected":"macro finishes in order","confidence":0.9}
+              The device executes the macro step by step (each step still passes the safety gates); any failed step stops the rest — the reason is reported back to you.
+            | macro id | name | description | inputs | steps |
+            |---|---|---|---|---|
+            {macro_table}
+            """.trimIndent() + "\n",
+        ),
+        PromptBlock(
+            id = "skills.history", group = PromptGroup.SKILLS, order = 3,
+            requires = setOf(PromptFlag.SKILL_HISTORY),
+            origin = "AgentPrompts.skillSection 技能调用教训（SkillCallHistory 最近失败留档）",
+            bodyCN = "- 技能调用教训（端侧自动留档，供你规避同样失败，不要重蹈覆辙）：\n{skill_history}\n",
+            bodyEN = "- Skill call lessons (auto-recorded on-device; avoid repeating the same failure):\n{skill_history}\n",
         ),
     )
 

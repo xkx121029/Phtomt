@@ -88,6 +88,10 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     // 满屏浮层挂在里面拿不到高度约束；放骨架的 overlay 槽才能压住页眉与正文
     var editorOpen by remember { mutableStateOf(false) }
     var editingSkill by remember { mutableStateOf<Skill?>(null) }
+    // 宏编辑复用同一张 SkillEditorDialog（isMacro=true 切换表单形态）：
+    // availableSkills 供步骤选择器列出可引用的技能（编辑器自身不持有 ViewModel）
+    var editorIsMacro by remember { mutableStateOf(false) }
+    val availableSkills = vm.skillAll()
     GlassHeaderScaffold(
         modifier = modifier,
         header = {
@@ -102,6 +106,8 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 SkillEditorDialog(
                     initial = editing,
                     suggestedId = editing?.id ?: vm.nextSkillId(),
+                    isMacro = editorIsMacro,
+                    availableSkills = availableSkills,
                     onDismiss = { editorOpen = false },
                     onSave = { s ->
                         if (editing == null) vm.addSkill(s) else vm.updateSkill(s)
@@ -130,8 +136,18 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             when (tab) {
                 SkillTab.SKILLS -> SkillsTab(
                     vm = vm,
-                    // null = 新建，非 null = 编辑该技能
-                    onOpenEditor = { s -> editingSkill = s; editorOpen = true },
+                    // null = 新建（普通技能），非 null = 编辑该技能（isMacro 按其真实来源判定，
+                    // 否则点开一张宏卡再保存会被降级成普通技能）
+                    onOpenEditor = { s ->
+                        editorIsMacro = s?.source == SkillSource.MACRO
+                        editingSkill = s
+                        editorOpen = true
+                    },
+                    onOpenMacroEditor = { s ->
+                        editorIsMacro = true
+                        editingSkill = s
+                        editorOpen = true
+                    },
                 )
                 SkillTab.MCP -> McpTab(vm)
                 SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)

@@ -107,8 +107,11 @@ object PromptSnapshot {
             listOf(false, true).forEach { hasServer ->
                 listOf(emptyList(), listOf("filesystem_read | 读文件 | 读 | path")).forEach { mcp ->
                     listOf(emptyList(), listOf("打开应用", "点一下")).forEach { disabled ->
-                        map["skills/${lang}/${hasServer}/${mcp.size}/${disabled.size}"] =
-                            AgentPrompts.skillSection(lang, mcp, disabled, hasServer)
+                        listOf(emptyList(), listOf("skill_macro_home | 回家模式 | 通勤自动化 | 无参数 | 打开应用 → 回主页"))
+                            .forEach { macro ->
+                                map["skills/${lang}/${hasServer}/${mcp.size}/${disabled.size}/${macro.size}"] =
+                                    AgentPrompts.skillSection(lang, mcp, disabled, hasServer, macroLines = macro)
+                            }
                     }
                 }
             }

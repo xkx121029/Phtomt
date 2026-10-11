@@ -104,13 +104,14 @@ object ActionPolicy {
     )
 
     /**
-     * 中风险意图（14 项）：会改动设备/外部状态，但可见、可撤销，或本就是用户明确要求。
+     * 中风险意图（15 项）：会改动设备/外部状态，但可见、可撤销，或本就是用户明确要求。
      * 均衡模式起放行。
      */
     val midRisk: Set<String> = setOf(
         IntentType.OPEN_APP, IntentType.OPEN, IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT,
         IntentType.FETCH, IntentType.BROWSE_OPEN, IntentType.BROWSE_CLICK, IntentType.BROWSE_INPUT,
         IntentType.SEARCH, IntentType.SHARE, IntentType.DOWNLOAD, IntentType.ADD, IntentType.SWITCH,
+        IntentType.ASSISTANT,
     )
 
     /**
@@ -192,13 +193,13 @@ object ActionPolicy {
     }
 
     private fun freeModeOnlyReason(intent: String): String =
-        "意图「$intent」仅在自由模式下可用（自写命令 / 调用无障碍端点）。当前动作模式不允许它；" +
-            "请改用转译层既有意图完成当前目标；确实必须用到时，用 say 提示用户到「Agent 页输入栏下方的动作模式」切换到自由模式。"
+        "意图「$intent」超出当前动作模式的授权范围，此操作需要更改模式。端侧已拒绝，未对设备做任何操作。" +
+            "请改用当前可用的操作推进；确实必须用到它时，用 say 提示用户更改动作模式（Agent 页输入栏下方）。"
 
     private fun conservativeReason(intent: String): String =
-        "当前为保守模式（仅低风险命令），意图「$intent」属于中/高风险动作，端侧已拒绝，未对设备做任何操作。" +
-            "保守模式下可用：${lowRisk.joinToString("/")}。" +
-            "请改用上列意图推进任务；若确实必须点击或输入，用 give_up 说明需要用户把动作模式切换到均衡。"
+        "意图「$intent」超出当前动作模式（保守）的授权范围，此操作需要更改模式。端侧已拒绝，未对设备做任何操作。" +
+            "当前模式可用：${lowRisk.joinToString("/")}。" +
+            "请改用上列意图推进任务；确实必须用到被拒操作时，用 say 提示用户更改动作模式。"
 
     /**
      * 覆盖度自检：返回"已标注风险档但不在 [IntentType.ALL] 里"的意图（多余项）。

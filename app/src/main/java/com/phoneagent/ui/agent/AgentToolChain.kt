@@ -67,6 +67,7 @@ internal object AgentToolStyle {
         ActionType.SCROLL_TO -> AppIcons.ScrollSearch
         ActionType.WAIT -> AppIcons.Loading
         ActionType.LAUNCH -> AppIcons.Launch
+        ActionType.LAUNCH_ASSISTANT -> AppIcons.Launch
         ActionType.OPEN -> AppIcons.Globe
         ActionType.BACK -> AppIcons.ArrowBack
         ActionType.HOME -> AppIcons.Home

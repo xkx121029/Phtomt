@@ -8,6 +8,7 @@ import { downloadRouter } from './routes/download.js'
 import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
+import { renderHtml } from './lib/htmlShell.js'
 
 const app = express()
 
@@ -85,7 +86,11 @@ if (hasBuild) {
   app.get('*', (req, res, next) => {
     // 只有 /api 和 /api/xxx 才算 API 前缀，别把别的路径也吞掉
     if (req.path === '/api' || req.path.startsWith('/api/')) return next()
-    res.sendFile(path.join(distDir, 'index.html'))
+    // HTML 里烘了当前内容（见 lib/htmlShell.js）。max-age=0 让浏览器每次校验，
+    // s-maxage 允许 Cloudflare 在边缘短存 60s——源站（NAS）回源一次要 1.1s，
+    // 而原先 Cache-Control 是 max-age=0 且无 s-maxage，边缘一律 DYNAMIC、每请求都回源。
+    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=30')
+    res.type('html').send(renderHtml(req))
   })
 } else {
   app.get('/', (_req, res) => {

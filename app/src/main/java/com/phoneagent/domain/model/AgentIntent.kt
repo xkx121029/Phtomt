@@ -149,6 +149,7 @@ object IntentType {
     const val FETCH = "fetch"             // 获取网页/接口正文（uri），经转译层落到 Termux 命令行取数
     const val FINISH = "finish"           // 任务完成（summary）
     const val GIVE_UP = "give_up"         // 放弃（reason）
+    const val ASSISTANT = "assistant"     // 唤起系统语音助手（小爱/小艺/小布等），text=要传的话（可选）
 
     // ---- 内置浏览器（端侧 WebView 可见页，AI 能亲眼看到网页；不依赖 Termux、不操控用户设备） ----
     const val BROWSE_OPEN = "browse_open"     // 在内置浏览器打开网址（uri）
@@ -185,7 +186,7 @@ object IntentType {
      */
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
-        SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP,
+        SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,
         SWITCH, CLEAR_INPUT,
@@ -210,6 +211,7 @@ object IntentType {
         FETCH to ActionType.SHELL,
         FINISH to ActionType.TASK_DONE,
         GIVE_UP to ActionType.TASK_DONE,
+        ASSISTANT to ActionType.LAUNCH_ASSISTANT,
         // 自由模式专属：AI 自写命令落到 shell，无障碍端点落到 a11y_call
         SHELL to ActionType.SHELL,
         A11Y to ActionType.A11Y_CALL,

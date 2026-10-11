@@ -26,12 +26,15 @@ let width = 0
 let height = 0
 let pointer = { x: -9999, y: -9999, active: false }
 let colors = { base: '#b7bdb4', active: '#0e7c66' }
+/* 渐变量化档数：够密（肉眼看不出分档）又够省（取色不用再算） */
+let palette = []
 let visible = true
 let reduced = false
 let dpr = 1
 
 const GAP = 26
 const INFLUENCE = 148
+const PALETTE_STEPS = 24
 /* 点亮阈值：低于它的点算「暗」，不参与连线，也不画出来 */
 const LIT = 0.15
 /* 连线只认 1.6 格以内的邻居——刚好覆盖 8 邻域，再远就成蜘蛛网了 */
@@ -43,6 +46,7 @@ function readColors() {
     base: style.getPropertyValue('--line-2').trim() || '#b7bdb4',
     active: style.getPropertyValue('--brand').trim() || '#0e7c66'
   }
+  palette = buildPalette(colors.base, colors.active)
 }
 
 function build() {
@@ -71,21 +75,34 @@ function build() {
   }
 }
 
-function mix(hexA, hexB, t) {
-  const parse = (hex) => {
-    const value = hex.replace('#', '')
-    const full = value.length === 3 ? value.split('').map((c) => c + c).join('') : value
-    return [
-      parseInt(full.slice(0, 2), 16),
-      parseInt(full.slice(2, 4), 16),
-      parseInt(full.slice(4, 6), 16)
-    ]
+function parseHex(hex) {
+  const value = String(hex).replace('#', '')
+  const full = value.length === 3 ? value.split('').map((c) => c + c).join('') : value
+  return [
+    parseInt(full.slice(0, 2), 16) || 0,
+    parseInt(full.slice(2, 4), 16) || 0,
+    parseInt(full.slice(4, 6), 16) || 0
+  ]
+}
+
+/**
+ * 点亮强度 → 颜色。
+ *
+ * 曾是每帧对每个点现场算一遍：一次十六进制解析 + 六次 parseInt + 拼字符串。
+ * n≈1000、60fps，就是每秒六万次字符串分配，GC 压力直接反映在 Speed Index 上。
+ * 颜色只有「底色 → 品牌色」一条直线渐变，量化成定长表后取色退化成一次数组索引。
+ */
+function buildPalette(base, active) {
+  const a = parseHex(base)
+  const b = parseHex(active)
+  const out = new Array(PALETTE_STEPS)
+  for (let i = 0; i < PALETTE_STEPS; i += 1) {
+    const t = i / (PALETTE_STEPS - 1)
+    out[i] = `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(
+      a[1] + (b[1] - a[1]) * t
+    )},${Math.round(a[2] + (b[2] - a[2]) * t)})`
   }
-  const a = parse(hexA)
-  const b = parse(hexB)
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(
-    a[1] + (b[1] - a[1]) * t
-  )},${Math.round(a[2] + (b[2] - a[2]) * t)})`
+  return out
 }
 
 /**
@@ -152,7 +169,7 @@ function frame(time) {
     const r = 1 + dot.a * 2
     ctx.beginPath()
     ctx.arc(dot.x, dot.y, r, 0, Math.PI * 2)
-    ctx.fillStyle = mix(colors.base, colors.active, Math.min(1, dot.a))
+    ctx.fillStyle = palette[Math.min(PALETTE_STEPS - 1, Math.round(dot.a * (PALETTE_STEPS - 1)))]
     ctx.globalAlpha = 0.18 + dot.a * 0.72
     ctx.fill()
   }
@@ -232,7 +249,11 @@ onMounted(() => {
     attributeFilter: ['data-theme']
   })
 
-  raf = requestAnimationFrame(frame)
+  // 挂载期就开跑会和 LCP 抢主线程：等首帧画完（两帧）再起循环。
+  // 只是延后 2 帧，观感上仍然是「一进来就在动」。
+  raf = requestAnimationFrame(() => {
+    raf = requestAnimationFrame(frame)
+  })
 })
 
 onBeforeUnmount(() => {
