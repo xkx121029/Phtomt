@@ -19,3 +19,19 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+## 第三方代码声明（Third-party Notices）
+
+本软件包含以下第三方源码，随本仓库一并分发，各自的许可证与版权声明保留在对应目录内：
+
+- **Shizuku API**（目录 `third_party/shizuku/api`，构建模块 `:shizuku-aidl` / `:shizuku-shared` /
+  `:shizuku-api` / `:shizuku-provider`）
+  - 来源：https://github.com/RikkaApps/Shizuku-API
+  - 许可证：MIT License，Copyright (c) 2021 RikkaW
+  - 完整许可证文本：`third_party/shizuku/api/LICENSE`
+- **Shizuku**（目录 `third_party/shizuku`，仅作参考，不参与本应用构建）
+  - 来源：https://github.com/RikkaApps/Shizuku
+  - 许可证：Apache License 2.0
+  - 完整许可证文本：`third_party/shizuku/LICENSE`

@@ -28,6 +28,9 @@ import com.phoneagent.ui.components.rememberHapticClick
 private const val REPO_GITHUB = "https://github.com/xkx121029/Phtomt"
 private const val REPO_GITEE = "https://gitee.com/xkx1029/Phtomt"
 
+/** Shizuku API 上游仓库：应用内开源许可声明指向这里 */
+private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
+
 /**
  * 关于与帮助页：版本、开源仓库、使用说明与隐私边界。
  *
@@ -82,6 +85,18 @@ internal fun SettingsAbout(onBack: () -> Unit) {
             LinkRow("GitHub", REPO_GITHUB) { openLink(context, REPO_GITHUB) }
             GroupDivider()
             LinkRow("Gitee", REPO_GITEE) { openLink(context, REPO_GITEE) }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        GroupCard {
+            GroupHeader("开源许可", "本应用使用的第三方开源代码")
+            LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
+            GroupDivider()
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
+                Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
+            }
         }
 
         Spacer(Modifier.height(16.dp))
