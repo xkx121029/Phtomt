@@ -1,0 +1,38 @@
+plugins {
+    id('com.android.library')
+}
+
+android {
+    namespace 'rikka.shizuku.api'
+    // vendor 适配：同 aidl 模块，显式声明 compileSdk / minSdk
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
+    buildFeatures {
+        buildConfig false
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    // vendor 适配：模块名由 upstream 的 :aidl/:shared 改为宿主命名空间下的 :shizuku-aidl/:shizuku-shared
+    api project(':shizuku-aidl')
+    api project(':shizuku-shared')
+
+    implementation 'androidx.annotation:annotation:1.3.0'
+}
+
+ext {
+    publishLibrary = true
+    POM_NAME = "Shizuku API - API"
+    POM_DESCRIPTION = "API of Shizuku and Sui."
+}

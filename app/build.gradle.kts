@@ -161,8 +161,10 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
-    implementation(libs.shizuku.api)
-    implementation(libs.shizuku.provider)
+    // Shizuku 客户端库：本地源码模块（third_party/shizuku，vendor 自 RikkaApps/Shizuku-API），
+    // 不再依赖 dev.rikka.shizuku 的 Maven 产物；模块接线见 settings.gradle.kts
+    implementation(project(":shizuku-api"))
+    implementation(project(":shizuku-provider"))
 
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)

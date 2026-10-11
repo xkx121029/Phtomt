@@ -6,6 +6,32 @@
 
 ---
 
+## [v0.2.739] — 2026-10-11
+
+### 变更
+
+- **Shizuku 客户端库改为本地源码集成（移除 Maven 依赖）**：原 `dev.rikka.shizuku:api` /
+  `dev.rikka.shizuku:provider`（13.1.5）两个 Maven 产物不再被引用，客户端库整体 vendor 进仓库
+  - 克隆 https://github.com/RikkaApps/Shizuku 至 `third_party/shizuku`（其 `api` 子模块即
+    https://github.com/RikkaApps/Shizuku-API ，已一并克隆；均移除内嵌 `.git`，与
+    `third_party/llamacpp` 的 vendor 方式一致）
+  - 实际参与构建的是 Shizuku-API 的四个模块，以本地工程模块接入：
+    `:shizuku-aidl`（IShizukuService 等 AIDL）→ `:shizuku-shared` → `:shizuku-api`
+    （Shizuku/Sui 门面）→ `:shizuku-provider`（ShizukuProvider），接线见 `settings.gradle.kts`
+  - vendor 适配仅限四处构建脚本：显式补 `compileSdk 36` / `minSdk 24`（upstream 由其独立
+    settings 的 `com.android.settings` 注入，并入宿主后该机制不存在）、模块名映射为宿主
+    命名空间；Java 源码零改动，`rikka.shizuku.ShizukuProvider` 类名与包名不变，
+    `AndroidManifest` 的 provider 声明无需调整
+  - `gradle/libs.versions.toml` 移除 `shizuku` 版本与两个库条目；运行期行为（权限请求、
+    shell 执行、Binder 监听）不受影响
+
+### 验证
+
+- `:app:assembleDebug` 构建通过，release 依赖图中已无任何 `dev.rikka` 产物
+- Shizuku 相关单测（`com.phoneagent.shizuku.adb.*`、`ShellRulesTest`）全部通过
+
+---
+
 ## [v0.2.738] — 2026-10-07
 
 ### 变更

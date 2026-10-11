@@ -1,0 +1,32 @@
+plugins {
+    id('com.android.library')
+}
+
+android {
+    namespace 'rikka.shizuku.aidl'
+    // vendor 适配：upstream 由独立 settings.gradle 的 com.android.settings 统一注入，
+    // 并入宿主工程后需显式声明（compileSdk 与宿主 app 一致，minSdk 与 upstream 一致）
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
+    buildFeatures {
+        buildConfig false
+        aidl true
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+ext {
+    publishLibrary = true
+    POM_NAME = "Shizuku API - aidl"
+    POM_DESCRIPTION = "Low level aidl of Shizuku and Sui."
+}
