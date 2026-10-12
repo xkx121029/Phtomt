@@ -4,38 +4,32 @@ plugins {
 
 android {
     namespace 'rikka.rish'
+    // vendor 适配：upstream 由独立 settings.gradle 统一注入 compileSdk/minSdk
+    compileSdk 36
     defaultConfig {
-        externalNativeBuild {
-            cmake {
-                arguments '-DANDROID_STL=none'
-            }
-        }
-    }
-    buildFeatures {
-        prefab true
+        minSdk 24
     }
     buildTypes {
         release {
             minifyEnabled false
         }
     }
+    // vendor 适配：upstream 工具链为 Java 21，宿主工程统一 Java 17
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    externalNativeBuild {
-        cmake {
-            path 'src/main/cpp/CMakeLists.txt'
-            version "3.31.0+"
-        }
-    }
+    // vendor 适配：upstream 的 rish 依赖 NDK/CMake/libcxx 构建原生 librish.so
+    // （RishConfig.loadLibrary）。本工程不提供 rish 终端能力，故裁掉全部原生构建，
+    // 仅保留 Java 层 API（server 只调用 RishConfig.setLibraryPath，不会触发 loadLibrary）。
 }
 
 dependencies {
-    implementation project(':api')
+    // vendor 适配：模块名由 upstream 的 :api 改为宿主命名空间下的 :shizuku-api
+    implementation project(':shizuku-api')
 
     implementation 'androidx.annotation:annotation:1.3.0'
-    implementation 'org.lsposed.libcxx:libcxx:27.0.12077973'
+    // vendor 适配：org.lsposed.libcxx 仅原生构建需要，随原生构建一并裁掉
 }
 
 ext {

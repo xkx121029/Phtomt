@@ -6,6 +6,37 @@
 
 ---
 
+## [v0.2.787] — 2026-10-12
+
+### 新增
+
+- **内嵌 Shizuku server，免装官方 App**：把 Shizuku 主程序（`third_party/shizuku` 的
+  server/starter/common，Apache-2.0）vendor 进工程并接入构建，设备上不再需要安装
+  `moe.shizuku.privileged.api`（Shizuku 官方 App）即可使用 Shizuku 通路
+  - 构建接入：新增 5 个本地模块 `:shizuku-common` / `:shizuku-starter` / `:shizuku-server-shared` /
+    `:shizuku-rish` / `:shizuku-server`，与既有客户端四模块同一套 vendor 适配
+    （compileSdk 36、minSdk 24、Java 21→17、模块名映射）；`rish` 裁掉原生 librish.so
+    仅保留 Java 层（server 只调 `RishConfig.setLibraryPath`，不会触发 `loadLibrary`）
+  - server 改造（仅两处常量/字符串，均留「vendor 适配」注释）：`ServerConstants.MANAGER_APPLICATION_ID`
+    与 `ServiceStarter` 的 UserService 投递包名由 `moe.shizuku.privileged.api` 改为 `com.phoneagent`——
+    本应用接管原官方管理器角色（启动检查、Binder 直发目标、权限确认回调方全部指向自身）
+  - 启动命令（`AdbWirelessTransport.startShizukuService`）：无线 ADB 连接后以 shell uid 直接
+    `app_process` 从本 APK 拉起 `rikka.shizuku.server.ShizukuService`（`nohup` + 重定向后台化，
+    nice-name 带包名后缀避免与官方 Shizuku 冲突；启动前 `pkill` 清旧实例），不再依赖官方 start.sh
+  - 权限确认页（`ShizukuPermissionActivity`，新增）：对齐官方管理器 `RequestPermissionActivity` 流程
+    （等 binder 5s → 校验 `GRANT_RUNTIME_PERMISSIONS` → 允许(永久)/拒绝(一次性) → 结果回传 server），
+    UI 为应用内嵌入式卡片（透明窗口 + 居中 Material 3 卡片），Manifest 注册对应 action 与
+    `WRITE_SECURE_SETTINGS` / `moe.shizuku.manager.permission.API_V23` 声明
+  - Binder 交接链路不变：server 启动后主动向带 `.shizuku` provider 的应用 sendBinder，
+    vendored `ShizukuProvider` 收 binder，客户端代码零改动
+
+### 文档
+
+- LICENSE 第三方声明更新：Shizuku server/starter/common（Apache-2.0）为实际分发组件并注明修改点
+- 关于页开源许可卡片补充 Shizuku 主程序条目
+
+---
+
 ## [v0.2.783] — 2026-10-11
 
 ### 新增

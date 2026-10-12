@@ -6,8 +6,23 @@ plugins {
 
 android {
     namespace 'moe.shizuku.server'
+    // vendor 适配：upstream 由独立 settings.gradle 统一注入 compileSdk/minSdk
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
     buildFeatures {
         buildConfig = false
+    }
+    // vendor 适配：upstream 工具链为 Java 21，宿主工程统一 Java 17
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    // vendor 适配：upstream 由 com.android.settings 注入 kotlinOptions.jvmTarget，
+    // 并入宿主工程后需显式声明
+    kotlinOptions {
+        jvmTarget = '17'
     }
 }
 
@@ -16,13 +31,21 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.13.1'
     api 'dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1'
 
-    implementation project(':aidl')
-    implementation project(':common')
-    implementation project(':shared')
-    compileOnly project(':provider')
-    implementation project(':starter')
-    implementation project(':rish')
-    implementation project(':server-shared')
+    // vendor 适配：模块名由 upstream 的 :aidl/:common/:shared/:provider/:starter/:rish/:server-shared
+    // 改为宿主命名空间下的 :shizuku-*（接线见宿主 settings.gradle.kts）
+    implementation project(':shizuku-aidl')
+    implementation project(':shizuku-common')
+    implementation project(':shizuku-shared')
+    compileOnly project(':shizuku-provider')
+    implementation project(':shizuku-starter')
+    implementation project(':shizuku-rish')
+    implementation project(':shizuku-server-shared')
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
+}
+
+ext {
+    publishLibrary = false
+    POM_NAME = "Shizuku - server"
+    POM_DESCRIPTION = "Server of Shizuku."
 }

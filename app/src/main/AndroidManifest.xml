@@ -17,6 +17,12 @@
          com.termux.app.RunCommandService 下发命令；未安装 Termux 时该权限无法授予，不影响安装 -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
+    <!-- 内嵌 Shizuku server：本应用承担原 Shizuku 管理器角色。
+         WRITE_SECURE_SETTINGS 由 server（shell uid）在 attach 时经 grantRuntimePermission 授予本应用；
+         API_V23 是 Shizuku 客户端权限名（与 vendored API 常量一致），server 靠它识别可直发 binder 的应用 -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <!-- 包可见性：Termux 执行通道需要探测 com.termux 是否安装 -->
     <queries>
         <package android:name="com.termux" />
@@ -119,6 +125,18 @@
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- 内嵌 Shizuku server 的权限确认页：server 以 shell uid 拉起（须 exported），
+             action 与 vendored ServerConstants.REQUEST_PERMISSION_ACTION 一致 -->
+        <activity
+            android:name=".device.shell.ShizukuPermissionActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.PhoneAgent.ShizukuPermission">
+            <intent-filter>
+                <action android:name="com.phoneagent.intent.action.REQUEST_PERMISSION" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

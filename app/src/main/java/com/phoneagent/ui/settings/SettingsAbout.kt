@@ -30,6 +30,8 @@ private const val REPO_GITEE = "https://gitee.com/xkx1029/Phtomt"
 
 /** Shizuku API 上游仓库：应用内开源许可声明指向这里 */
 private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
+/** Shizuku 主程序上游仓库（server/starter 内嵌自这里） */
+private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
 
 /**
  * 关于与帮助页：版本、开源仓库、使用说明与隐私边界。
@@ -93,9 +95,12 @@ internal fun SettingsAbout(onBack: () -> Unit) {
             GroupHeader("开源许可", "本应用使用的第三方开源代码")
             LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
             GroupDivider()
+            LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
+            GroupDivider()
             Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
                 Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
+                Bullet("Shizuku 主程序（server/starter）亦内嵌于本应用，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
             }
         }
 

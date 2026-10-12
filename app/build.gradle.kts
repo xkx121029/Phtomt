@@ -165,6 +165,9 @@ dependencies {
     // 不再依赖 dev.rikka.shizuku 的 Maven 产物；模块接线见 settings.gradle.kts
     implementation(project(":shizuku-api"))
     implementation(project(":shizuku-provider"))
+    // Shizuku server 内嵌：server 类随本 APK 分发，由无线 ADB（shell uid）以
+    // app_process 从 APK 内拉起，设备上无需安装 Shizuku 官方 App
+    implementation(project(":shizuku-server"))
 
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)

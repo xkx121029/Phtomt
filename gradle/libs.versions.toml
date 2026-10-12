@@ -26,6 +26,11 @@ mlkitCommon = "18.11.0"
 junit = "4.13.2"
 mockk = "1.13.13"
 detekt = "1.23.8"
+# Shizuku server/starter 内嵌所需（upstream 版本，见 third_party/shizuku/settings.gradle）
+hiddenApi = "4.4.0"
+refine = "4.4.0"
+parcelablelist = "2.0.1"
+gson = "2.13.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -53,6 +58,13 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitText" }
 mlkit-common = { group = "com.google.mlkit", name = "common", version.ref = "mlkitCommon" }
 
+# Shizuku server/starter 内嵌所需（dev.rikka 系为 upstream 依赖，非 Shizuku artifact）
+hidden-compat = { group = "dev.rikka.hidden", name = "compat", version.ref = "hiddenApi" }
+hidden-stub = { group = "dev.rikka.hidden", name = "stub", version.ref = "hiddenApi" }
+refine-runtime = { group = "dev.rikka.tools.refine", name = "runtime", version.ref = "refine" }
+parcelablelist = { group = "dev.rikka.rikkax.parcelablelist", name = "parcelablelist", version.ref = "parcelablelist" }
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+
 # 单元测试
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
@@ -65,3 +77,5 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 # 静态检查：默认规则集 + 基线豁免存量问题，只拦新增（见 app/build.gradle.kts 的 detekt 块）
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+# Rikka refine：hidden API 类型擦除工具，shizuku server/starter/server-shared 模块使用
+rikka-refine = { id = "dev.rikka.tools.refine", version.ref = "refine" }

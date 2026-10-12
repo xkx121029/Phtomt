@@ -4,11 +4,28 @@ plugins {
 
 android {
     namespace 'rikka.shizuku.common'
+    // vendor 适配：upstream 由独立 settings.gradle 统一注入 compileSdk/minSdk，
+    // 并入宿主工程后需显式声明（compileSdk 与宿主 app 一致，minSdk 与 upstream 一致）
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
     buildFeatures {
         buildConfig = false
+    }
+    // vendor 适配：upstream 工程为 Java 21 工具链，宿主工程统一 Java 17
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
 dependencies {
     compileOnly libs.hidden.stub
+}
+
+ext {
+    publishLibrary = false
+    POM_NAME = "Shizuku - common"
+    POM_DESCRIPTION = "Common utilities for Shizuku server and manager."
 }

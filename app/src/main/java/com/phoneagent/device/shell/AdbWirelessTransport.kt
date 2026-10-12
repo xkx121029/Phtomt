@@ -122,21 +122,25 @@ class AdbWirelessTransport(
 
     override suspend fun startShizukuService(): AdbStartOutcome {
         val s = session ?: return AdbStartOutcome.Failure("无线 ADB 未连接")
-        // 标准 Shizuku 用户服务启动命令（免 Root）：从 APK 内启动服务（只跑一次）
-        val shizukuPkg = "moe.shizuku.privileged.api"
-        val startCmd = "pkg=$shizukuPkg sh /sdcard/Android/data/$shizukuPkg/start.sh"
-        val output = s.execShell(startCmd, ShellRules.SHELL_OUTPUT_BUDGET)
-        if (output.isBlank()) {
-            // 空输出可能是 PATH 问题，改用 app_process 标准命令重试一次
-            // pm path 输出 "package:<apk 路径>"，用 cut -d: -f2- 剥前缀（tr -d 会误删路径中的冒号字符）
-            val alt = s.execShell(
-                "CLASSPATH=$(pm path $shizukuPkg | cut -d: -f2-) app_process / $shizukuPkg.Main --start-service",
-                ShellRules.SHELL_OUTPUT_BUDGET,
-            )
-            if (alt.isBlank()) return AdbStartOutcome.Failure("Shizuku 启动无输出，可能未安装 ${'"'}Shizuku${'"'}")
-            return AdbStartOutcome.Success(alt)
+        // 内嵌 Shizuku server 启动（不依赖 Shizuku 官方 App）：
+        // server 类（rikka.shizuku.server.ShizukuService）已打包进本应用 APK，
+        // 以 shell uid 经 app_process 从本应用 APK 拉起，nice-name 加包名后缀避免与官方 Shizuku 冲突。
+        // nohup + 输出重定向 + & 后台化，使 shell 会话断开后 server 仍存活。
+        val pkg = context.packageName
+        // pm path 输出 "package:<apk 路径>"，用 cut -d: -f2- 剥前缀（tr -d 会误删路径中的冒号字符）
+        val apkPath = s.execShell("pm path $pkg | head -n 1 | cut -d: -f2-", ShellRules.SHELL_OUTPUT_BUDGET)
+        if (apkPath.isBlank()) {
+            return AdbStartOutcome.Failure("无法获取本应用 APK 路径，无法拉起内嵌 Shizuku server")
         }
-        return AdbStartOutcome.Success(output)
+        // 先杀旧实例（pkill 无匹配时非零退出码属预期，忽略），含官方 Shizuku 残留的同类进程
+        s.execShell("pkill -f rikka.shizuku.server.ShizukuService", ShellRules.SHELL_OUTPUT_BUDGET)
+        // 启动命令本身不产生输出，进程是否就绪由 ShizukuBootstrap 轮询 binder 确认
+        s.execShell(
+            "CLASSPATH=$apkPath nohup app_process -Djava.class.path=$apkPath /system/bin " +
+                "--nice-name=shizuku_server_$pkg rikka.shizuku.server.ShizukuService >/dev/null 2>&1 &",
+            ShellRules.SHELL_OUTPUT_BUDGET,
+        )
+        return AdbStartOutcome.Success("已下发内嵌 Shizuku server 启动命令")
     }
 
     /** 通过已建立的 ADB 连接执行真实 shell 命令并回读输出（复用原 Shizuku 命令通道） */

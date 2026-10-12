@@ -43,3 +43,23 @@ include(":shizuku-api")
 project(":shizuku-api").projectDir = file("third_party/shizuku/api/api")
 include(":shizuku-provider")
 project(":shizuku-provider").projectDir = file("third_party/shizuku/api/provider")
+
+// Shizuku 主程序（server/starter）内嵌：第三方应用无需安装 Shizuku 官方 App，
+// 由本应用 APK 内的 server 类以 app_process（shell uid）直接拉起。
+// 以下五个模块 vendor 自 https://github.com/RikkaApps/Shizuku（main repo）：
+//   common（BuildUtils/OsUtils 工具）、starter（UserService 启动器，也被 server 依赖）、
+//   server-shared（Service/ClientManager 等服务端公共层）、rish（Java 层 API，已裁掉原生 so）、
+//   server（ShizukuService 主入口，main() 由 app_process 调起）。
+// 与上面四个客户端模块同理：upstream 由独立 settings.gradle 注入的 compileSdk/minSdk
+// 改为各模块 build.gradle 显式声明；upstream 模块名（:aidl/:shared/:api…）改映射到
+// 本工程的 :shizuku-* 命名空间。
+include(":shizuku-common")
+project(":shizuku-common").projectDir = file("third_party/shizuku/common")
+include(":shizuku-starter")
+project(":shizuku-starter").projectDir = file("third_party/shizuku/starter")
+include(":shizuku-server-shared")
+project(":shizuku-server-shared").projectDir = file("third_party/shizuku/api/server-shared")
+include(":shizuku-rish")
+project(":shizuku-rish").projectDir = file("third_party/shizuku/api/rish")
+include(":shizuku-server")
+project(":shizuku-server").projectDir = file("third_party/shizuku/server")

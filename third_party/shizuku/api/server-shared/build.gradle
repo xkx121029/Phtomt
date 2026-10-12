@@ -5,14 +5,20 @@ plugins {
 
 android {
     namespace 'rikka.shizuku.server'
+    // vendor 适配：upstream 由独立 settings.gradle 统一注入 compileSdk/minSdk
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
     buildTypes {
         release {
             minifyEnabled false
         }
     }
+    // vendor 适配：upstream 工具链为 Java 21，宿主工程统一 Java 17
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
@@ -21,11 +27,18 @@ dependencies {
     implementation 'androidx.core:core:1.16.0'
     implementation 'dev.rikka.rikkax.parcelablelist:parcelablelist:2.0.1'
 
-    api project(':aidl')
-    api project(':shared')
-    api project(':rish')
+    // vendor 适配：模块名由 upstream 的 :aidl/:shared/:rish 改为宿主命名空间下的 :shizuku-*
+    api project(':shizuku-aidl')
+    api project(':shizuku-shared')
+    api project(':shizuku-rish')
 
     implementation libs.refine.runtime
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
+}
+
+ext {
+    publishLibrary = false
+    POM_NAME = "Shizuku API - server-shared"
+    POM_DESCRIPTION = "Shared parts of Shizuku server."
 }

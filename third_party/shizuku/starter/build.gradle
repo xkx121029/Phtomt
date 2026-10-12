@@ -5,18 +5,36 @@ plugins {
 
 android {
     namespace 'rikka.shizuku.starter'
+    // vendor 适配：upstream 由独立 settings.gradle 统一注入 compileSdk/minSdk
+    compileSdk 36
+    defaultConfig {
+        minSdk 24
+    }
     buildFeatures {
         buildConfig = false
+    }
+    // vendor 适配：upstream 工具链为 Java 21，宿主工程统一 Java 17
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
 dependencies {
-    implementation project(':common')
-    implementation project(':shared')
-    implementation project(':server-shared')
-    compileOnly project(':provider')
+    // vendor 适配：模块名由 upstream 的 :common/:shared/:server-shared/:provider
+    // 改为宿主命名空间下的 :shizuku-*（接线见宿主 settings.gradle.kts）
+    implementation project(':shizuku-common')
+    implementation project(':shizuku-shared')
+    implementation project(':shizuku-server-shared')
+    compileOnly project(':shizuku-provider')
     implementation 'androidx.annotation:annotation:1.3.0'
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
     implementation libs.refine.runtime
+}
+
+ext {
+    publishLibrary = false
+    POM_NAME = "Shizuku - starter"
+    POM_DESCRIPTION = "Starter for Shizuku server and user service."
 }

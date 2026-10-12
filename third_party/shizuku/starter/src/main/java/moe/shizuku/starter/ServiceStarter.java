@@ -92,7 +92,9 @@ public class ServiceStarter {
     }
 
     private static boolean sendBinder(IBinder binder, String token, boolean retry) {
-        String packageName = "moe.shizuku.privileged.api";
+        // vendor 适配（内嵌 server）：UserService binder 原发往官方管理器 "moe.shizuku.privileged.api"
+        // 的 .shizuku provider；内嵌后改发本应用（与 ServerConstants.MANAGER_APPLICATION_ID 一致）
+        String packageName = "com.phoneagent";
         String name = packageName + ".shizuku";
         int userId = 0;
         IContentProvider provider = null;

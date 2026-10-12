@@ -4,4 +4,11 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@android:color/white</item>
     </style>
+
+    <!-- Shizuku 权限确认页：透明窗口 + 系统压暗，让 Compose 里的居中卡片呈现嵌入式弹窗观感 -->
+    <style name="Theme.PhoneAgent.ShizukuPermission">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
 </resources>
