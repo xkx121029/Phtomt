@@ -145,5 +145,4 @@ private fun rawPermissionIcon(kind: PermissionKind): ImageVector = when (kind) {
     PermissionKind.OVERLAY -> AppIcons.Camera
     PermissionKind.AUTOSTART -> AppIcons.Bolt
     PermissionKind.QUERY_ALL_PACKAGES -> AppIcons.Memory
-    PermissionKind.SHIZUKU -> AppIcons.Terminal
 }

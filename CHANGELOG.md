@@ -25,6 +25,8 @@
     Shizuku binder → ADB 引导会话 → Termux；历史遗留偏好值 `"ADB"` 读取层与决策层双重归一 AUTO
   - `MainViewModel`：`ensureAdbReady`→`ensureShizukuReady`、`pairAdb`→`pairShizuku`，并清理重复方法块
   - 用户可见文案全面切换 Shizuku 视角（状态机 / 配对流程 / 关于页 / 引擎失败提示 / 入口副标题）
+  - 权限雷达移除独立「Shizuku」条目（原还跳官方 Shizuku 商店页）：状态与授权已由本页
+    「内置 Shizuku」通道卡统一覆盖，同页只保留一个 Shizuku 入口
   - 单测同步重写（`ShellRulesTest` 真值表、`ShizukuBootstrapTest` 归一用例）
 
 ---

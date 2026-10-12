@@ -290,12 +290,7 @@ class MainViewModel(
                 description = "用于识别并启动目标应用",
                 granted = hasQueryAllPackages(context),
             ),
-            PermissionItem(
-                kind = PermissionKind.SHIZUKU,
-                title = "Shizuku",
-                description = "ADB 级权限，执行 shell 命令",
-                granted = shizukuManager.isAvailable(),
-            ),
+            // Shizuku 不再进权限雷达：设置页下方的「内置 Shizuku」通道卡已覆盖其状态与授权
         )
     }
 
@@ -334,10 +329,6 @@ class MainViewModel(
             }
             PermissionKind.QUERY_ALL_PACKAGES ->
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
-            PermissionKind.SHIZUKU -> {
-                val intent = context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
-                intent ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api"))
-            }
         }.addFlags(flags)
         runCatching { context.startActivity(intent) }
     }
