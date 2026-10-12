@@ -119,12 +119,19 @@ object PromptSnapshot {
                 lang, "", hasVision = true, shizukuAvailable = true,
                 skills = AgentPrompts.skillSection(lang, emptyList(), emptyList(), false),
             )
+            // 语音助手直达引导块：task 命中 ASSISTANT_TASK 时注入，锁定新块的中英文正文
+            map["systemAssistant/${lang}"] = AgentPrompts.system(
+                lang, "", hasVision = true, shizukuAvailable = true,
+                task = "明早七点定一个闹钟",
+            )
             map["systemCustom/${lang}"] =
                 AgentPrompts.system(lang, "自定义系统提示", hasVision = false, shizukuAvailable = false)
 
             map["planning/${lang}"] =
                 AgentPrompts.planning(lang, "帮我在美团点一份黄焖鸡米饭", "用户常在美团点餐", "美团、微信、支付宝")
             map["planningEmptyProfile/${lang}"] = AgentPrompts.planning(lang, "查一下明天天气", "", "")
+            // 语音助手捷径块：task 命中 ASSISTANT_TASK 时注入，锁定规划提示词新节的中英文正文
+            map["planningAssistant/${lang}"] = AgentPrompts.planning(lang, "定一个10分钟以后的闹铃", "", "")
 
             map["decision/${lang}"] = AgentPrompts.decision(
                 lang, "帮我在美团点一份黄焖鸡米饭", 2, 5, "在搜索框输入关键词",

@@ -6,7 +6,8 @@ import com.phoneagent.engine.prompt.PromptFlag
  * 任务类型判定：**唯一判定点**。
  *
  * 两处消费它，必须同源，否则会出现"提示词按网页任务裁剪、附加指导却按普通任务注入"的错位：
- * - [AgentPrompts.system] 用它决定裁不裁 `sys.web_browse` / `sys.open_link` 两个大块；
+ * - [AgentPrompts.system] 用它决定裁不裁 `sys.web_browse` / `sys.open_link` 两个大块，
+ *   并决定是否注入 `sys.assistant`（语音助手直达引导）；
  * - [AgentPrompts.situationalExtras] 用它决定注入哪几段「当前任务附加指导」。
  *
  * 纯函数、无 Android 依赖，可 JVM 单测。
@@ -26,6 +27,7 @@ object TaskKindDetector {
         val openHit: Boolean,
         val browseHit: Boolean,
         val fetchHit: Boolean,
+        val assistantHit: Boolean,
     )
 
     fun detect(lang: PromptLang, task: String, termuxAvailable: Boolean = false): Kind {
@@ -40,7 +42,9 @@ object TaskKindDetector {
         val browseHit = hits(lang, task, BROWSE_WORDS)
         // 仅当「任务要从网络取内容」且「本机确有 Termux 命令行通道」时，fetch 才可用
         val fetchHit = termuxAvailable && hits(lang, task, FETCH_WORDS)
-        return Kind(known, docHit, openTargetHit, openHit, browseHit, fetchHit)
+        // 语音助手事务：定闹钟/打电话/发消息/控制硬件等系统级指令
+        val assistantHit = hits(lang, task, ASSISTANT_WORDS)
+        return Kind(known, docHit, openTargetHit, openHit, browseHit, fetchHit, assistantHit)
     }
 
     /**
@@ -49,12 +53,16 @@ object TaskKindDetector {
      * 关键约定：**任务文本未知时不裁**。[PromptFlag.WEB_TASK] / [PromptFlag.OPEN_TASK]
      * 表达的是"可能与网页/打开相关"，因此 `browseHit || !known` 才置位——
      * 文本为空时等于"无法判断"，此时保留对应区块，避免把能力说明整个裁掉。
+     *
+     * [PromptFlag.ASSISTANT_TASK] 则相反：它是**引导性块**而非能力声明，
+     * 只在任务明确命中语音助手事务时注入，未知任务不置位（省 token，也不误导）。
      */
     fun flagsOf(lang: PromptLang, task: String, termuxAvailable: Boolean = false): Set<PromptFlag> {
         val kind = detect(lang, task, termuxAvailable)
         val flags = LinkedHashSet<PromptFlag>()
         if (kind.browseHit || !kind.known) flags += PromptFlag.WEB_TASK
         if (kind.openHit || !kind.known) flags += PromptFlag.OPEN_TASK
+        if (kind.assistantHit) flags += PromptFlag.ASSISTANT_TASK
         return flags
     }
 
@@ -110,6 +118,26 @@ object TaskKindDetector {
         PromptLang.EN to listOf(
             "webpage", "url", "link", "api", "fetch", "scrape", "parse", "json",
             "exchange rate", "weather", "stock", "news", "request",
+        ),
+    )
+
+    private val ASSISTANT_WORDS = mapOf(
+        PromptLang.CN to listOf(
+            // 闹钟/计时/提醒
+            "闹钟", "闹铃", "定时", "倒计时", "提醒",
+            // 通讯
+            "打电话", "打给", "拨打", "拨号", "呼叫", "回电", "发消息", "发微信", "发短信", "回复消息",
+            // 媒体与硬件
+            "播放", "放歌", "放一首", "暂停", "手电筒", "截屏", "录屏", "音量", "静音", "飞行模式", "蓝牙", "亮度",
+        ),
+        PromptLang.EN to listOf(
+            // alarm / timer / reminder
+            "alarm", "timer", "countdown", "remind me", "reminder",
+            // communication
+            "call ", "dial", "text ", "send a message", "message to", "make a call",
+            // media & hardware
+            "play music", "play a song", "play the song", "pause the music", "flashlight",
+            "screenshot", "screen recording", "volume", "mute", "airplane mode", "bluetooth", "brightness",
         ),
     )
 }

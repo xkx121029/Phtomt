@@ -251,6 +251,28 @@ internal object PromptBodies {
     {"intent":"open","uri":"https://www.example.com/news","app":"browser","reasoning":"open the page in a browser for the user","expected":"the system browser loads that page","confidence":0.9}
     """.trimIndent()
 
+    // ---- sys.assistant ----
+    internal val SYS_ASSISTANT_CN: String = """
+    # 语音助手直达（可选捷径，用不用由你判断）
+    当前任务属于语音助手通常能直接办的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。这类系统级事务有一条捷径：输出 assistant 意图，把指令转交给系统语音助手执行，省去打开时钟/电话/微信等 App 逐步点击：
+    {"intent":"assistant","text":"明早七点定一个闹钟","reasoning":"定闹钟一句话能说清，交给语音助手直达","expected":"语音助手开始创建闹钟","confidence":0.9}
+    - 是否走捷径由你判断：指令一句话能说清、且不需要你盯着页面逐步确认时，assistant 更快；任务还需要看页面或持续交互（如浏览挑选后再下单）、或助手明显办不了时，照常走 open_app + 页面操作。
+    - 当前计划若走的是手动路径（如打开时钟 App 逐步设置），而你判断 assistant 能一步办成，可以直接改发 assistant，不必拘泥原计划；反之 assistant 被拒或传话失败时，回到手动路径。
+    - 用 assistant 时 text 写成一句完整、明确的指令：时间/联系人/内容/动作说清楚，助手会把这句话当作用户的原话执行；任务里有多件独立的事，分多步各发一条。
+    - 传话后语音助手的执行结果端侧**读不到**：上一步结果只会告诉你传话是否送达，不要臆造助手做了什么；需要向用户交代时用 say 说明。
+    - assistant 被端侧拒绝或传话失败时不要重试，改走手动路径（如打开时钟 App 逐步创建），或用 say 提示用户更改动作模式。
+    """.trimIndent()
+    internal val SYS_ASSISTANT_EN: String = """
+    # Voice Assistant Direct (optional shortcut; whether to use it is your call)
+    The current task is something a voice assistant can usually handle directly (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). For such system-level tasks there is a shortcut: emit the assistant intent and hand the instruction to the system voice assistant, instead of opening the Clock/Phone/WeChat app and tapping through:
+    {"intent":"assistant","text":"Set an alarm for 7 AM tomorrow","reasoning":"one clear instruction; the voice assistant is faster","expected":"the assistant starts creating the alarm","confidence":0.9}
+    - Whether to take the shortcut is your call: when one sentence covers it and you don't need to watch the page step by step, assistant is faster; when the task still needs page interaction (browsing and picking before ordering) or the assistant clearly can't do it, use the regular open_app + page-operations path.
+    - If the current plan takes the manual path (e.g. open the Clock app and set it step by step) but you judge the assistant can do it in one step, switch to assistant directly — the plan is not a cage; conversely, if assistant is rejected or the hand-off fails, return to the manual path.
+    - With assistant, write `text` as one complete, explicit instruction: spell out the time/contact/content/action; the assistant executes it as if the user said it. Several independent things in a task get one assistant step each.
+    - The assistant's execution result **cannot be read back on-device**: the previous step result only tells you whether the hand-off was delivered — never invent what the assistant did; use say to inform the user when needed.
+    - If assistant is rejected on-device or the hand-off fails, don't retry: fall back to the manual path (e.g. open the Clock app and create it step by step), or ask the user to change the mode with say.
+    """.trimIndent()
+
     // ---- sys.targeting ----
     internal val SYS_TARGETING_CN: String = """
     # 目标定位（target：tap/input/scroll_to/long_press 必填）
@@ -549,6 +571,24 @@ internal object PromptBodies {
     # Document-Type Tasks
     If the task requires generating/compiling a document (report, checklist, summary, notes, article, etc.), the plan should include one step "generate document (previewed on the Agent page)". Do NOT plan to open a notes/notepad app or type on screen.
     If that content must be read through on the spot (the user has switched to another app and is waiting, or it is long), add a final show_agent step (carry text with it — the device saves it as a document and shows it full screen); if the user is already waiting on the Agent page, don't use it — just output the document or finish.
+    """.trimIndent()
+
+    // ---- plan.assistant ----
+    internal val PLAN_ASSISTANT_CN: String = """
+    # 语音助手捷径（规划时优先权衡）
+    本任务属于系统语音助手通常能一步办成的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。规划时优先权衡这条捷径：整个任务可以只规划一步——输出 assistant 意图，把指令转交给语音助手执行，不必规划「打开时钟 App → 找到闹铃页 → 新建 → 设时间 → 保存」这类手动路径：
+    {"intent":"assistant","text":"定一个10分钟以后的闹铃","reasoning":"一句话能说清，语音助手可一步完成","expected":"语音助手开始创建闹铃","confidence":0.9}
+    - text 写成一句完整、明确的指令（时间/联系人/内容/动作说清楚），助手会把它当作用户原话执行；任务里有多件独立的事，各规划一步 assistant。
+    - 是否走捷径由你权衡：指令一句话能说清、且无需逐步看页面确认的任务用它最快；需要浏览挑选、持续页面交互或助手明显办不了时，再规划常规路径。
+    - 语音助手的执行结果端侧读不到：这一步的 expected 只写「指令已转交给语音助手」，不要写「闹钟已创建」这类端侧验证不了的结果。
+    """.trimIndent()
+    internal val PLAN_ASSISTANT_EN: String = """
+    # Voice Assistant Shortcut (weigh it first when planning)
+    This task is something the system voice assistant can usually do in one step (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). Weigh this shortcut first when planning: the whole task can be a single step — emit the assistant intent and hand the instruction to the voice assistant, instead of planning a manual path like "open the Clock app → alarm tab → add → set time → save":
+    {"intent":"assistant","text":"Set an alarm 10 minutes from now","reasoning":"one clear sentence; the voice assistant does it in one step","expected":"the assistant starts creating the alarm","confidence":0.9}
+    - Write `text` as one complete, explicit instruction (time/contact/content/action spelled out); the assistant executes it as if the user said it. Several independent things in a task get one assistant step each.
+    - Whether to take the shortcut is your call: tasks covered by one sentence that need no step-by-step page confirmation are fastest with assistant; for tasks needing browsing, sustained page interaction, or beyond the assistant, plan the regular path instead.
+    - The assistant's execution result cannot be read back on-device: this step's expected should only say "the instruction was handed to the voice assistant" — never "the alarm was created", which cannot be verified on-device.
     """.trimIndent()
 
     // ---- plan.ambiguity ----

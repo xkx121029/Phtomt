@@ -68,6 +68,14 @@ internal object PromptCatalog {
             bodyCN = PromptBodies.SYS_ROUTING_CN, bodyEN = PromptBodies.SYS_ROUTING_EN,
             origin = "AgentPrompts.systemCN/EN「# 独占路由规则」",
         ),
+        // 引导块：任务命中语音助手事务（定闹钟/打电话/发消息等系统级指令）时注入，
+        // 告知 assistant 这条捷径与它的代价，用不用由 AI 自行判断。任务文本未知时不注入（引导性块，非能力声明）。
+        PromptBlock(
+            id = "sys.assistant", group = PromptGroup.SYSTEM, order = 9, sep = "\n\n",
+            bodyCN = PromptBodies.SYS_ASSISTANT_CN, bodyEN = PromptBodies.SYS_ASSISTANT_EN,
+            requires = setOf(PromptFlag.ASSISTANT_TASK),
+            origin = "AgentPrompts.systemCN/EN「# 语音助手直达」（需 ASSISTANT_TASK）",
+        ),
         PromptBlock(
             id = "sys.countdown", group = PromptGroup.SYSTEM, order = 10, sep = "\n\n", safe = true,
             bodyCN = PromptBodies.SYS_COUNTDOWN_CN, bodyEN = PromptBodies.SYS_COUNTDOWN_EN,
@@ -345,6 +353,13 @@ internal object PromptCatalog {
             id = "plan.doc_task", group = PromptGroup.PLANNING, order = 5, sep = "\n\n",
             bodyCN = PromptBodies.PLAN_DOC_TASK_CN, bodyEN = PromptBodies.PLAN_DOC_TASK_EN,
             origin = "AgentPrompts.planning「# 文档类任务」",
+        ),
+        // 引导块：任务命中语音助手事务时注入，让规划器知道 assistant 这条单步捷径（用不用由 AI 权衡）
+        PromptBlock(
+            id = "plan.assistant", group = PromptGroup.PLANNING, order = 5, sep = "\n\n",
+            bodyCN = PromptBodies.PLAN_ASSISTANT_CN, bodyEN = PromptBodies.PLAN_ASSISTANT_EN,
+            requires = setOf(PromptFlag.ASSISTANT_TASK),
+            origin = "AgentPrompts.planning「# 语音助手捷径」（需 ASSISTANT_TASK）",
         ),
         PromptBlock(
             id = "plan.ambiguity", group = PromptGroup.PLANNING, order = 6, sep = "\n\n",

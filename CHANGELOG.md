@@ -6,7 +6,7 @@
 
 ---
 
-## [v0.2.793] — 2026-10-12
+## [v0.2.821] — 2026-10-12
 
 ### 修复
 
@@ -14,6 +14,14 @@
   `IllegalStateException`（`Shizuku.requireService` 明示该行为），从设置页 `LaunchedEffect` 的
   状态刷新路径炸穿进程。`ShizukuManager.refreshState()` / `isPermissionGranted()` 全程
   `runCatching` 收口，竞态窗口按「未就绪」降级而非崩溃
+
+### 新增
+
+- **语音助手捷径引导块**（`engine/prompt/PromptCatalog.kt`、`engine/TaskKindDetector.kt`、
+  `engine/AgentPrompts.kt`）：当任务文本命中系统级指令（定闹钟 / timer / reminder / 打电话 /
+  发消息 / 控制硬件等）时，给决策器注入一条引导性块，告知「assistant 单步捷径 + 它的代价」。
+  引导块只在任务明确命中时置位——任务文本未知时不注入（非能力声明，避免 AI
+  乱承诺）；规划组不裁块（`AgentPrompts.planFlags` 不走组裁逻辑，跟同页的 flags 注入并列）
 
 ### 变更
 

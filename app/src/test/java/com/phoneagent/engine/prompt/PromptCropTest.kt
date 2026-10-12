@@ -13,7 +13,7 @@ import org.junit.Test
  *
  * 三条不变式，缺一不可：
  * 1. **安全块恒在场**：铁律 / 授权范围 / 禁止输出 / 能力声明在任意合法标志组合下都不会缺席；
- * 2. **裁剪范围可控**：系统提示里会被裁掉的只有「网页浏览」「打开链接与文件」两个大块；
+ * 2. **裁剪范围可控**：系统提示里会被裁掉的只有「网页浏览」「打开链接与文件」「语音助手直达」三个大块；
  * 3. **判定同源**：裁块（[TaskKindDetector.flagsOf]）与附加指导（[TaskKindDetector.detect]）用同一套词表。
  */
 class PromptCropTest {
@@ -45,14 +45,14 @@ class PromptCropTest {
     }
 
     @Test
-    fun `系统提示只会裁掉网页浏览与打开链接两个大块`() {
+    fun `系统提示只会裁掉任务相关的三个可裁大块`() {
         val allIds = PromptAssembler.blocks(PromptGroup.SYSTEM).map { it.id }.toSet()
         val offenders = legalFlagSets().flatMap { flags ->
             val present = PromptAssembler.select(PromptGroup.SYSTEM, PromptContext(PromptLang.CN, flags)).map { it.id }.toSet()
             (allIds - present) - CROPPABLE
         }.distinct()
         assertTrue("系统提示出现了计划外的裁剪：$offenders", offenders.isEmpty())
-        // 反向确认：这两个块确实会被裁掉（否则上一条断言是"永远为真"的假保障）
+        // 反向确认：这三个块确实会被裁掉（否则上一条断言是"永远为真"的假保障）
         val plain = PromptContext(PromptLang.CN, setOf(PromptFlag.ACTION_BALANCED))
         assertEquals(CROPPABLE, (allIds - PromptAssembler.select(PromptGroup.SYSTEM, plain).map { it.id }.toSet()))
     }
@@ -109,6 +109,9 @@ class PromptCropTest {
             "帮我写一份周报",
             "用文档软件打开 /sdcard/Download/季度汇报.ppt",
             "打开美团 App",
+            "明早七点定一个闹钟",
+            "给妈妈打个电话",
+            "帮我在美团点一份黄焖鸡米饭然后提醒我取餐",
         )
         tasks.forEach { task ->
             val flags = TaskKindDetector.flagsOf(PromptLang.CN, task)
@@ -123,7 +126,51 @@ class PromptCropTest {
                 PromptFlag.OPEN_TASK in flags,
                 text.contains("# 打开链接与文件"),
             )
+            assertEquals(
+                "语音助手块的在/不在必须与 ASSISTANT_TASK 一致：$task",
+                PromptFlag.ASSISTANT_TASK in flags,
+                text.contains("# 语音助手直达"),
+            )
         }
+    }
+
+    @Test
+    fun `语音助手任务注入直达引导_普通任务不注入`() {
+        val alarm = AgentPrompts.system(
+            PromptLang.CN, "", hasVision = true, shizukuAvailable = true,
+            task = "明早七点定一个闹钟",
+        )
+        assertTrue("语音助手任务应注入直达引导块", alarm.contains("# 语音助手直达"))
+        assertTrue(alarm.contains("\"intent\":\"assistant\""))
+
+        val meituan = AgentPrompts.system(
+            PromptLang.CN, "", hasVision = true, shizukuAvailable = true,
+            task = "帮我在美团点一份黄焖鸡米饭",
+        )
+        assertFalse("普通 App 任务不该注入语音助手块", meituan.contains("# 语音助手直达"))
+
+        // 任务文本未知（task 为空）时不注入：引导性块仅命中才给，未知任务不误导也不占 token
+        val unknown = AgentPrompts.system(PromptLang.CN, "", hasVision = true, shizukuAvailable = true)
+        assertFalse(unknown.contains("# 语音助手直达"))
+
+        val en = AgentPrompts.system(
+            PromptLang.EN, "", hasVision = true, shizukuAvailable = true,
+            task = "set an alarm for 7 am tomorrow",
+        )
+        assertTrue(en.contains("# Voice Assistant Direct"))
+    }
+
+    @Test
+    fun `语音助手任务规划提示注入捷径_普通任务不注入`() {
+        val alarm = AgentPrompts.planning(PromptLang.CN, "定一个10分钟以后的闹铃", "", "")
+        assertTrue("语音助手任务的规划应注入捷径块", alarm.contains("# 语音助手捷径"))
+        assertTrue(alarm.contains("\"intent\":\"assistant\""))
+
+        val meituan = AgentPrompts.planning(PromptLang.CN, "帮我在美团点一份黄焖鸡米饭", "", "")
+        assertFalse("普通 App 任务的规划不该注入捷径块", meituan.contains("# 语音助手捷径"))
+
+        val en = AgentPrompts.planning(PromptLang.EN, "set an alarm 10 minutes from now", "", "")
+        assertTrue(en.contains("# Voice Assistant Shortcut"))
     }
 
     @Test
@@ -155,6 +202,7 @@ class PromptCropTest {
             PromptFlag.HAS_VISION,
             PromptFlag.WEB_TASK,
             PromptFlag.OPEN_TASK,
+            PromptFlag.ASSISTANT_TASK,
             PromptFlag.HAS_MEMORY,
             PromptFlag.HAS_EVOLVED_RULES,
             PromptFlag.MCP_TOOLS,
@@ -162,7 +210,7 @@ class PromptCropTest {
             PromptFlag.DISABLED_SKILLS,
         )
 
-        /** 唯一允许被裁的两个大块 */
-        val CROPPABLE = setOf("sys.web_browse", "sys.open_link")
+        /** 唯一允许被裁的三个大块 */
+        val CROPPABLE = setOf("sys.web_browse", "sys.open_link", "sys.assistant")
     }
 }

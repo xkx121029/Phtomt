@@ -76,8 +76,9 @@ object AgentPrompts {
     /**
      * 系统提示主体的装配上下文。
      *
-     * [task] 决定裁不裁「网页浏览」「打开链接与文件」两个大块（见 [TaskKindDetector.flagsOf]）；
-     * 任务文本为空（拿不到任务时的等价性回归 / 预热）一律不裁，宁可多给也不误裁。
+     * [task] 决定裁不裁「网页浏览」「打开链接与文件」两个大块、以及注不注入「语音助手直达」
+     * 引导块（见 [TaskKindDetector.flagsOf]）；
+     * 任务文本为空（拿不到任务时的等价性回归 / 预热）一律不裁、也不注入引导块，宁可少说不错说。
      */
     private fun systemCtx(lang: PromptLang, actionMode: ActionMode, task: String): PromptContext =
         PromptContext(
@@ -311,6 +312,8 @@ object AgentPrompts {
             PromptGroup.PLANNING,
             PromptContext(
                 lang = lang,
+                // 规划组不裁块：flags 只用于注入「语音助手捷径」等任务引导块（见 TaskKindDetector.flagsOf）
+                flags = TaskKindDetector.flagsOf(lang, task),
                 vars = PromptVars(
                     task = task,
                     profile = profile.ifBlank { if (lang == PromptLang.CN) "无" else "none" },
