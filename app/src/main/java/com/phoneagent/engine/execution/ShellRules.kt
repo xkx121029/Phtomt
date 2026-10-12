@@ -15,10 +15,13 @@ import com.phoneagent.core.text.HtmlToMarkdown
  */
 internal object ShellRules {
 
-    /** 执行通道偏好字面量（与设置里的 [com.phoneagent.data.prefs.AppSettings.Settings.executionChannel] 取值一致） */
-    const val CHANNEL_ADB = "ADB"
+    /** 执行通道偏好字面量（与设置里的 [com.phoneagent.data.prefs.AppSettings.Settings.executionChannel] 取值一致）。
+     *  无线 ADB 已砍为内置 Shizuku 的引导机制，不再是用户可选通道；历史遗留的 "ADB" 偏好值按 AUTO 归一。 */
     const val CHANNEL_SHIZUKU = "SHIZUKU"
     const val CHANNEL_TERMUX = "TERMUX"
+
+    /** 旧版持久化的「仅无线 ADB」偏好值：读取与决策时一律按 AUTO 归一 */
+    const val LEGACY_CHANNEL_ADB = "ADB"
 
     /**
      * shell 输出回注 AI 的字符预算。
@@ -41,9 +44,10 @@ internal object ShellRules {
         "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
     )
 
-    /** 真实 shell 通道。NONE = 当前偏好下没有任何可用通道 */
+    /** 真实 shell 通道。NONE = 当前偏好下没有任何可用通道。
+     *  ADB 是内置 Shizuku server 的引导会话（server 拉起前后都能执行 shell），对用户统一呈现为 Shizuku。 */
     enum class Channel(val label: String) {
-        ADB("无线 ADB"),
+        ADB("Shizuku（引导）"),
         SHIZUKU("Shizuku"),
         TERMUX("Termux"),
         NONE("无"),
@@ -67,7 +71,8 @@ internal object ShellRules {
 
     /**
      * 按执行通道偏好与三条通道的实时可用性，选出真正要用的那条。
-     * AUTO（偏好为其他值）：无线 ADB → Shizuku → Termux；显式偏好只认自己那条，不可用即 [Channel.NONE]。
+     * AUTO（偏好为其他值，含旧 "ADB"）：Shizuku binder → ADB 引导会话 → Termux；
+     * 显式偏好只认自己那条，不可用即 [Channel.NONE]。
      */
     fun pickChannel(
         preference: String,
@@ -75,13 +80,12 @@ internal object ShellRules {
         shizukuReady: Boolean,
         termuxReady: Boolean,
     ): Channel = when (preference) {
-        CHANNEL_ADB -> if (adbReady) Channel.ADB else Channel.NONE
         CHANNEL_SHIZUKU -> if (shizukuReady) Channel.SHIZUKU else Channel.NONE
         CHANNEL_TERMUX -> if (termuxReady) Channel.TERMUX else Channel.NONE
-        // AUTO：无线 ADB → Shizuku → Termux（普通应用权限，仅作第三顺位兜底）
+        // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，其次 ADB 引导会话（普通应用权限的 Termux 作第三顺位兜底）
         else -> when {
-            adbReady -> Channel.ADB
             shizukuReady -> Channel.SHIZUKU
+            adbReady -> Channel.ADB
             termuxReady -> Channel.TERMUX
             else -> Channel.NONE
         }
@@ -89,16 +93,14 @@ internal object ShellRules {
 
     /** [com.phoneagent.engine.AgentEngine.runRealShell] 的失败原因：说明"为什么没有真实通道" */
     fun noChannelReason(preference: String): String = when (preference) {
-        CHANNEL_ADB -> "无线 ADB 未连接，无真实 shell 通道"
-        CHANNEL_SHIZUKU -> "Shizuku 不可用，无真实 shell 通道"
+        CHANNEL_SHIZUKU -> "内置 Shizuku 未就绪，无真实 shell 通道"
         CHANNEL_TERMUX -> "Termux 不可用（未安装或未授予 RUN_COMMAND 权限）"
-        else -> "无可用 shell 通道"
+        else -> "无可用 shell 通道（内置 Shizuku 未启动）"
     }
 
     /** [com.phoneagent.engine.AgentEngine.execShellViaChannel] 的失败原因（端侧自发命令，不进 AI 上下文，简短即可） */
     fun noChannelReasonShort(preference: String): String = when (preference) {
-        CHANNEL_ADB -> "无线 ADB 未连接"
-        CHANNEL_SHIZUKU -> "Shizuku 不可用"
+        CHANNEL_SHIZUKU -> "内置 Shizuku 未就绪"
         CHANNEL_TERMUX -> "Termux 不可用"
         else -> "无可用 shell 通道"
     }

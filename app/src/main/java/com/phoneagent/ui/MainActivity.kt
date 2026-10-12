@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
 sealed class ExtrasPage {
     object Test : ExtrasPage()
     object Debug : ExtrasPage()
-    /** 技能与能力管理：Skill / MCP / 无线 ADB / 提示词（HPA 迭代 A7） */
+    /** 技能与能力管理：Skill / MCP（HPA 迭代 A7） */
     object Skill : ExtrasPage()
     /** 记忆：原底部 Tab 已并入 Agent 页，改由顶栏入口打开 */
     object Memory : ExtrasPage()

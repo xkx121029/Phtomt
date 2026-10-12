@@ -47,18 +47,31 @@ class ShizukuManager {
         refreshState()
     }
 
+    /**
+     * 刷新 Shizuku 可用状态。
+     *
+     * 全程 runCatching 收口：vendored Shizuku API 的约定是「binder 未收到时调用会抛
+     * IllegalStateException」（见 Shizuku.requireService），且静态 binder 字段与
+     * binder 死亡回调存在竞态窗口——pingBinder 为 true 的瞬间 binder 死亡，紧随的
+     * checkSelfPermission 就会抛。曾经该异常从设置页的 LaunchedEffect 直接炸穿进程
+     * （设置 → 权限与执行通道一打开就闪退），这里必须兜住，任何异常一律降级为不可用。
+     */
     fun refreshState() {
-        _state.value = when {
-            !Shizuku.pingBinder() -> State.UNAVAILABLE
-            !isPermissionGranted() -> State.PERMISSION_DENIED
-            else -> State.READY
-        }
+        _state.value = runCatching {
+            when {
+                !Shizuku.pingBinder() -> State.UNAVAILABLE
+                !isPermissionGranted() -> State.PERMISSION_DENIED
+                else -> State.READY
+            }
+        }.getOrElse { State.UNAVAILABLE }
     }
 
     fun isAvailable(): Boolean = _state.value == State.READY
 
-    fun isPermissionGranted(): Boolean =
+    /** binder 收发竞态下 vendored API 可能抛 IllegalStateException，统一兜住按未授权处理 */
+    fun isPermissionGranted(): Boolean = runCatching {
         Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+    }.getOrElse { false }
 
     /** 请求 Shizuku 权限，通过回调返回结果 */
     fun requestPermission(onResult: (Boolean) -> Unit) {

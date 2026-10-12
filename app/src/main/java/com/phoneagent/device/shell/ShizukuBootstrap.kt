@@ -7,15 +7,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 无线 ADB 为主、Shizuku 可选增强的执行通路启动器（执行层统一封装）。
+ * 内置 Shizuku 的执行通路启动器（执行层统一封装）。
  *
- * 上层业务只调 [ensureReady()]，无需关心底层是无线 ADB 还是 Shizuku：
- * - 无线 ADB 连接即具备真实 shell 能力（主通道），Shizuku 仅作可选增强。
- * - 执行通道三态：
- *   - `AUTO`（默认）：无线 ADB 优先，其次 Shizuku 直连。
- *   - `ADB`：仅用无线 ADB；未连接则无真实 shell（走无障碍）。
- *   - `SHIZUKU`：仅用 Shizuku；Shizuku 不可用则用无线 ADB 拉起（仍是 Shizuku 通路）。
- * - 任一环节失败 → 返回带用户可读错误的失败，绝不静默；但 ADB 已连接时，Shizuku 可选启动失败不阻塞 Ready。
+ * 上层业务只调 [ensureReady()]，无需关心底层实现：内置 Shizuku server 随本 APK 分发，
+ * 经无线 ADB（shell uid + app_process）拉起——无线 ADB 只是**启动引导机制**，不是独立通道。
+ * - 执行通道三态（旧 "ADB" 偏好已砍，读取时并入 AUTO）：
+ *   - `AUTO`（默认）：Shizuku binder 可用直接用；否则 ADB 会话可用即边引导边用（连接即具备 shell 能力）。
+ *   - `SHIZUKU`：仅认 Shizuku binder 就绪；未就绪则尝试经 ADB 拉起并等待。
+ *   - `TERMUX`：仅用 Termux。
+ * - 任一环节失败 → 返回带用户可读错误的失败，绝不静默；但 ADB 已连接时，server 拉起失败不阻塞 Ready。
  */
 class ShizukuBootstrap(
     private val shizukuManager: ShizukuManager,
@@ -39,6 +39,7 @@ class ShizukuBootstrap(
     /**
      * 确保底层可执行通路就绪。返回 [ReadyResult]；结果由调用方展示给用户。
      * 同步阻塞于协程内判定通道与（SHIZUKU 模式下）拉取 Shizuku 就绪（带超时）。
+     * 旧 "ADB" 偏好已并入 AUTO（内置 Shizuku 的引导机制不再是独立通道）。
      */
     suspend fun ensureReady(): ReadyResult {
         val channel = channelProvider()
@@ -46,31 +47,23 @@ class ShizukuBootstrap(
         val adbOk = transport.isConnected()
 
         return when (channel) {
-            "ADB" -> {
-                if (adbOk) {
-                    adbReadyThenOptionalEnhance()
-                    ReadyResult.Ready
-                } else {
-                    guidePairing()
-                }
-            }
             "SHIZUKU" -> {
                 if (shizukuOk) {
                     machine.onShizukuDirectReady(); emit()
                     ReadyResult.Ready
                 } else if (adbOk) {
-                    // 用无线 ADB 拉起 Shizuku（仍是 Shizuku 通路，需就绪才算 Ready）
+                    // 经 ADB 引导拉起内置 Shizuku server，需就绪才算 Ready
                     bootViaAdb()
                 } else {
                     guidePairing()
                 }
             }
-            else -> { // AUTO：无线 ADB 优先，其次 Shizuku 直连
-                if (adbOk) {
-                    adbReadyThenOptionalEnhance()
-                    ReadyResult.Ready
-                } else if (shizukuOk) {
+            else -> { // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，其次 ADB 会话（连接即具备 shell 能力）
+                if (shizukuOk) {
                     machine.onShizukuDirectReady(); emit()
+                    ReadyResult.Ready
+                } else if (adbOk) {
+                    adbReadyThenOptionalEnhance()
                     ReadyResult.Ready
                 } else {
                     guidePairing()
@@ -81,7 +74,7 @@ class ShizukuBootstrap(
 
     /**
      * 引导式配对入口：发现设备 → 输入配对码 → 配对 → 连接 → Ready。
-     * 配对成功后无线 ADB 即为主通道；SHIZUKU 模式下进一步拉起 Shizuku 并等待就绪。
+     * 配对成功后引导通路即就绪；SHIZUKU 模式下进一步拉起内置 server 并等待就绪。
      * UI 调用本方法传入用户在界面输入的 6 位配对码。
      */
     suspend fun pairAndEnsureReady(code: String): ReadyResult {
@@ -97,7 +90,7 @@ class ShizukuBootstrap(
                     return bootViaAdb()
                 }
                 machine.onAdbReady(); emit()
-                // 可选增强拉起 Shizuku（失败不阻塞 Ready）
+                // 可选增强：拉起内置 Shizuku server（失败不阻塞 Ready）
                 bootViaAdbEnhancement()
                 return ReadyResult.Ready
             }
@@ -165,7 +158,7 @@ class ShizukuBootstrap(
         machine.onWirelessDebugDisabled()
         emit()
         return ReadyResult.Error(
-            "未获得执行权限：请开启无障碍服务；或在本页完成无线 ADB 配对以启用 shell。",
+            "未获得执行权限：请开启无障碍服务；或在本页完成「内置 Shizuku」的首次启动引导。",
             AdbError.WIRELESS_DEBUG_DISABLED,
         )
     }

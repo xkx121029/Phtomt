@@ -93,7 +93,7 @@ class WirelessAdbPairingFlow(
             }
             setMsg(
                 when (r) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "Shizuku 已通过无线 ADB 就绪"
+                    is ShizukuBootstrap.ReadyResult.Ready -> "内置 Shizuku 已就绪"
                     is ShizukuBootstrap.ReadyResult.Error -> r.message
                 }
             )

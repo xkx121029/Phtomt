@@ -142,7 +142,7 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                 SettingsRow(
                     icon = AppIcons.Guard,
                     title = "权限与执行通道",
-                    subtitle = "无障碍 / 悬浮窗 / 无线 ADB / Shizuku / Termux",
+                    subtitle = "无障碍 / 悬浮窗 / Shizuku / Termux",
                     tone = SettingsTone.Warm,
                     summary = when {
                         permissions.isEmpty() -> "检测中"

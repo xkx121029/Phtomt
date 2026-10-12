@@ -6,6 +6,29 @@
 
 ---
 
+## [v0.2.793] — 2026-10-12
+
+### 修复
+
+- **设置 → 权限与执行通道点击崩溃**：内置（vendored）Shizuku API 在 binder 收发竞态窗口会抛
+  `IllegalStateException`（`Shizuku.requireService` 明示该行为），从设置页 `LaunchedEffect` 的
+  状态刷新路径炸穿进程。`ShizukuManager.refreshState()` / `isPermissionGranted()` 全程
+  `runCatching` 收口，竞态窗口按「未就绪」降级而非崩溃
+
+### 变更
+
+- **砍掉「无线 ADB」独立执行通道，统一为「内置 Shizuku」**：本应用内嵌 Shizuku server
+  （随 APK 分发，经无线 ADB 以 shell uid 拉起），无线 ADB 只是**启动引导机制**，不再单独暴露
+  - 设置页重写：新增 `ShizukuChannelCard`（状态 / 一键启动 / 授权 / 配对码引导一体），原技能页
+    `WirelessAdbTab` 整体删除（含 Termux 卡迁移），技能页 Tab 收敛为「技能 / MCP」
+  - 通道决策收口（`ShellRules.pickChannel`）：显式偏好只认 SHIZUKU/TERMUX；AUTO 顺位改为
+    Shizuku binder → ADB 引导会话 → Termux；历史遗留偏好值 `"ADB"` 读取层与决策层双重归一 AUTO
+  - `MainViewModel`：`ensureAdbReady`→`ensureShizukuReady`、`pairAdb`→`pairShizuku`，并清理重复方法块
+  - 用户可见文案全面切换 Shizuku 视角（状态机 / 配对流程 / 关于页 / 引擎失败提示 / 入口副标题）
+  - 单测同步重写（`ShellRulesTest` 真值表、`ShizukuBootstrapTest` 归一用例）
+
+---
+
 ## [v0.2.792] — 2026-10-12
 
 ### 新增

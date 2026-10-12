@@ -72,7 +72,8 @@ class AppSettings(private val context: Context) {
         val floatingWindowEnabled: Boolean = true,
         /** 是否启用 Shizuku shell 命令执行 */
         val shizukuEnabled: Boolean = true,
-        /** 执行通道偏好：AUTO=无线ADB优先其次Shizuku | ADB=仅无线ADB | SHIZUKU=仅Shizuku */
+        /** 执行通道偏好：AUTO=内置 Shizuku（binder 优先，ADB 引导会话其次） | SHIZUKU=仅 Shizuku | TERMUX=仅 Termux。
+         *  旧「无线ADB」独立通道已砍；历史遗留的 "ADB" 值读取时归一为 AUTO */
         val executionChannel: String = "AUTO",
         /**
          * 动作模式（授权范围，与执行通道正交）：CONSERVATIVE=仅低风险意图 | BALANCED=转译层全部意图 | FREE=额外允许自写命令与直调无障碍端点。
@@ -243,7 +244,8 @@ class AppSettings(private val context: Context) {
             chainOrder = (prefs[Keys.CHAIN_ORDER] ?: "main;vision;reason")
                 .split(";").map { it.trim() }.filter { it.isNotEmpty() },
             shizukuEnabled = prefs[Keys.SHIZUKU_ENABLED] ?: true,
-            executionChannel = prefs[Keys.EXECUTION_CHANNEL] ?: "AUTO",
+            // 旧「仅无线 ADB」通道已砍：历史遗留值按 AUTO 归一，避免设置页选中项落空
+            executionChannel = (prefs[Keys.EXECUTION_CHANNEL] ?: "AUTO").let { if (it == "ADB") "AUTO" else it },
             actionMode = prefs[Keys.ACTION_MODE] ?: "BALANCED",
             edgeInsetTop = prefs[Keys.EDGE_INSET_TOP] ?: 0,
             edgeInsetBottom = prefs[Keys.EDGE_INSET_BOTTOM] ?: 0,

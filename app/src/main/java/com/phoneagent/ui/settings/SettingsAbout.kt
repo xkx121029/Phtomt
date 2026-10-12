@@ -116,7 +116,7 @@ internal fun SettingsAbout(onBack: () -> Unit) {
         SettingsSection(title = "使用说明", tone = SettingsTone.Neutral) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Bullet("先在「AI 模型配置」里填好 API 地址与密钥并保存，配置未通过连接测试不会入库")
-                Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需配对无线 ADB 或启用 Shizuku")
+                Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需完成「内置 Shizuku」的首次启动引导")
                 Bullet("在 Agent 页直接说需求即可；执行中会先给计划，你确认后才动手")
                 Bullet("支付、删除、发布这类不可逆操作 AI 不会执行，会在动手前停下来交给你")
                 Bullet("任务执行期间的悬浮窗可随时停止任务、补充说明或接管操作")

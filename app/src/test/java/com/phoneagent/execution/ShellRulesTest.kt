@@ -12,7 +12,8 @@ import org.junit.Test
  * 覆盖三件事：
  * 1. Termux 工具链命令识别：白名单内命中、`raw ` 前缀 / 绝对路径 / `a && b` 组合都要认得出，
  *    系统命令（am/pm/settings）与撞名的 `curlx` 必须挡掉——判错会把 adb shell 里不存在的命令丢给 Shizuku；
- * 2. 通道选择：显式偏好只认自己那条，AUTO 按 无线ADB → Shizuku → Termux 顺位；
+ * 2. 通道选择：显式偏好只认自己那条，AUTO 按 Shizuku → ADB 引导会话 → Termux 顺位；
+ *    旧「仅无线ADB」偏好已砍，值归一 AUTO（无线 ADB 只是内置 Shizuku 的启动引导机制）；
  * 3. 输出整理：非 HTML 原样（只按预算截断），HTML 先转 Markdown 再加表头，空输入原样返回。
  */
 class ShellRulesTest {
@@ -81,28 +82,31 @@ class ShellRulesTest {
 
     @Test
     fun pickChannel_显式偏好只认自己那条() {
-        assertEquals(ShellRules.Channel.ADB, pick("ADB", adb = true, shizuku = true, termux = true))
         assertEquals(ShellRules.Channel.SHIZUKU, pick("SHIZUKU", adb = true, shizuku = true, termux = true))
         assertEquals(ShellRules.Channel.TERMUX, pick("TERMUX", adb = true, shizuku = true, termux = true))
     }
 
     @Test
     fun pickChannel_显式偏好自己那条不可用_即使别的通道可用也不顶替() {
-        assertEquals(ShellRules.Channel.NONE, pick("ADB", adb = false, shizuku = true, termux = true))
         assertEquals(ShellRules.Channel.NONE, pick("SHIZUKU", adb = true, shizuku = false, termux = true))
         assertEquals(ShellRules.Channel.NONE, pick("TERMUX", adb = true, shizuku = true, termux = false))
     }
 
     @Test
-    fun pickChannel_AUTO按无线ADB到Shizuku到Termux顺位() {
-        assertEquals(ShellRules.Channel.ADB, pick("AUTO", adb = true, shizuku = true, termux = true))
-        assertEquals(ShellRules.Channel.SHIZUKU, pick("AUTO", adb = false, shizuku = true, termux = true))
+    fun pickChannel_AUTO按Shizuku到引导会话到Termux顺位() {
+        // 内置 Shizuku binder 可用优先；未就绪时 ADB 引导会话（server 拉起前后均可执行）其次；Termux 兜底
+        assertEquals(ShellRules.Channel.SHIZUKU, pick("AUTO", adb = true, shizuku = true, termux = true))
+        assertEquals(ShellRules.Channel.ADB, pick("AUTO", adb = true, shizuku = false, termux = true))
         assertEquals(ShellRules.Channel.TERMUX, pick("AUTO", adb = false, shizuku = false, termux = true))
         assertEquals(ShellRules.Channel.NONE, pick("AUTO"))
     }
 
     @Test
-    fun pickChannel_未知偏好值回落AUTO() {
+    fun pickChannel_旧无线ADB偏好与未知值一律归一AUTO() {
+        // 「仅无线ADB」独立通道已砍：历史遗留值与脏数据都按 AUTO 归一，走 Shizuku 优先顺位
+        assertEquals(ShellRules.Channel.SHIZUKU, pick("ADB", adb = true, shizuku = true, termux = true))
+        assertEquals(ShellRules.Channel.ADB, pick("ADB", adb = true, shizuku = false, termux = true))
+        assertEquals(ShellRules.Channel.NONE, pick("ADB", adb = false, shizuku = false, termux = false))
         assertEquals(ShellRules.Channel.ADB, pick("GARBAGE", adb = true))
         assertEquals(ShellRules.Channel.TERMUX, pick("", termux = true))
         assertEquals(ShellRules.Channel.NONE, pick(""))
@@ -112,16 +116,16 @@ class ShellRulesTest {
 
     @Test
     fun noChannelReason_按偏好给出没有真实通道的原因() {
-        assertEquals("无线 ADB 未连接，无真实 shell 通道", ShellRules.noChannelReason("ADB"))
-        assertEquals("Shizuku 不可用，无真实 shell 通道", ShellRules.noChannelReason("SHIZUKU"))
+        assertEquals("内置 Shizuku 未就绪，无真实 shell 通道", ShellRules.noChannelReason("SHIZUKU"))
         assertEquals("Termux 不可用（未安装或未授予 RUN_COMMAND 权限）", ShellRules.noChannelReason("TERMUX"))
-        assertEquals("无可用 shell 通道", ShellRules.noChannelReason("AUTO"))
+        assertEquals("无可用 shell 通道（内置 Shizuku 未启动）", ShellRules.noChannelReason("AUTO"))
+        // 旧偏好值归一 AUTO，失败原因也走 AUTO 文案
+        assertEquals("无可用 shell 通道（内置 Shizuku 未启动）", ShellRules.noChannelReason("ADB"))
     }
 
     @Test
     fun noChannelReasonShort_端侧自发命令用简短版() {
-        assertEquals("无线 ADB 未连接", ShellRules.noChannelReasonShort("ADB"))
-        assertEquals("Shizuku 不可用", ShellRules.noChannelReasonShort("SHIZUKU"))
+        assertEquals("内置 Shizuku 未就绪", ShellRules.noChannelReasonShort("SHIZUKU"))
         assertEquals("Termux 不可用", ShellRules.noChannelReasonShort("TERMUX"))
         assertEquals("无可用 shell 通道", ShellRules.noChannelReasonShort("AUTO"))
     }

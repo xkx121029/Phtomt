@@ -74,11 +74,9 @@ import kotlinx.coroutines.launch
 
 /**
  * 技能与能力管理页（HPA 迭代 A7）。
- * Tab 栏布局：技能 / MCP / 无线 ADB / 提示词。
+ * Tab 栏布局：技能 / MCP（原「无线 ADB」Tab 已并入设置页的内置 Shizuku 通道卡）。
  * - 技能：Skill 卡片列表 + 批量增删 + 新建/编辑/详情
  * - MCP：配置服务器 + 有效性测试 + 绑定为 Skill
- * - 无线 ADB：Shizuku 状态 + 无线调试配对引导（配对码输入/连接状态/错误提示）
- * - 提示词：自定义可变提示词模板
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,7 +95,7 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         header = {
             AppTopBar(
                 title = "技能与能力",
-                subtitle = "Skill · MCP · 无线 ADB · 提示词",
+                subtitle = "Skill · MCP",
             )
         },
         overlay = {
@@ -150,7 +148,6 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     },
                 )
                 SkillTab.MCP -> McpTab(vm)
-                SkillTab.WIRELESS_ADB -> WirelessAdbTab(vm)
             }
         }
     }
@@ -159,5 +156,4 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 private enum class SkillTab(val label: String) {
     SKILLS("技能"),
     MCP("MCP"),
-    WIRELESS_ADB("无线ADB"),
 }

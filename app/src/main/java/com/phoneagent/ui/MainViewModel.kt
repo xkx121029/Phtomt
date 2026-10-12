@@ -711,22 +711,23 @@ class MainViewModel(
     fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = McpMarketplace.byCategory(category)
     fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = McpMarketplace.search(keyword)
 
-    // ---- Shizuku / 无线 ADB 状态 ----
+    // ---- 内置 Shizuku 启动状态（引导会话复用无线 ADB，仅作启动机制，不再作为独立通道暴露） ----
     val adbStatus: StateFlow<AdbStatus> = shizukuBootstrap.status
 
-    fun ensureAdbReady(onResult: (String) -> Unit) {
+    /** 一键启动/检测内置 Shizuku 通路：binder 可用直接就绪，否则经引导会话拉起内置 server */
+    fun ensureShizukuReady(onResult: (String) -> Unit) {
         viewModelScope.launch {
             onResult(
                 when (val r = shizukuBootstrap.ensureReady()) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "执行通路已就绪（无线 ADB / Shizuku）"
+                    is ShizukuBootstrap.ReadyResult.Ready -> "内置 Shizuku 已就绪，可执行 shell"
                     is ShizukuBootstrap.ReadyResult.Error -> r.message
                 }
             )
         }
     }
 
-    /** 用界面输入的 6 位配对码完成无线 ADB 配对并建立执行通路 */
-    fun pairAdb(code: String, onResult: (String) -> Unit) {
+    /** 用界面输入的 6 位配对码完成首次启动引导，并就绪内置 Shizuku 通路 */
+    fun pairShizuku(code: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
             if (code.length != 6 || !code.all { it.isDigit() }) {
                 onResult("配对码须为 6 位数字")
@@ -734,20 +735,20 @@ class MainViewModel(
             }
             onResult(
                 when (val r = shizukuBootstrap.pairAndEnsureReady(code)) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "配对成功，无线 ADB 执行通路已就绪"
+                    is ShizukuBootstrap.ReadyResult.Ready -> "启动成功，内置 Shizuku 已就绪"
                     is ShizukuBootstrap.ReadyResult.Error -> r.message
                 }
             )
         }
     }
 
-    // ---- 无线 ADB「开始配对」通知栏向导（模拟 Shizuku） ----
+    // ---- 首次启动引导的通知栏向导（沿用无线 ADB 配对流程，仅作为内置 Shizuku 的引导机制） ----
     val adbPairingMessage: String
         get() = adbPairingFlow.message
 
     val adbPairingMessageFlow: StateFlow<String> get() = adbPairingFlow.messageFlow
 
-    /** 点击「开始配对」：后台搜索无线调试服务，搜到后通过通知栏请求配对码 */
+    /** 点击「开始引导」：后台搜索系统无线调试服务，搜到后通过通知栏请求配对码 */
     fun startAdbDiscovery() = adbPairingFlow.startDiscovery(viewModelScope)
 
     fun cancelAdbPairing() = adbPairingFlow.cancel()

@@ -3624,7 +3624,7 @@ class AgentEngine(
         }
     }
 
-    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=无线ADB→Shizuku→Termux | ADB=仅无线ADB | SHIZUKU=仅Shizuku | TERMUX=仅Termux） */
+    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=Shizuku→ADB引导会话→Termux | SHIZUKU=仅Shizuku | TERMUX=仅Termux；旧"ADB"偏好归一 AUTO） */
     private suspend fun shellChannelAvailable(): Boolean =
         // 通道判据与真实执行共用同一份（ShellRules.pickChannel），避免"这里说可用、那里走不通"
         ShellRules.pickChannel(
@@ -3634,16 +3634,16 @@ class AgentEngine(
             termuxBridge?.isAvailable() == true,
         ) != ShellRules.Channel.NONE
 
-    /** 经无线 ADB 通道执行 shell：把字符串结果桥接成 Shizuku 的结果类型，供两条执行链共用 */
+    /** 经 ADB 引导会话执行 shell（内置 Shizuku server 拉起前后均可执行）：把字符串结果桥接成 Shizuku 的结果类型，供两条执行链共用 */
     private suspend fun runAdbShell(cmd: String): com.phoneagent.device.shell.ShizukuManager.ShellResult {
         val out = adbTransport?.executeShell(cmd)
-        return if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("无线 ADB 执行 shell 失败")
+        return if (out == null) com.phoneagent.device.shell.ShizukuManager.ShellResult.Failure("Shizuku 引导会话执行 shell 失败")
         else com.phoneagent.device.shell.ShizukuManager.ShellResult.Success(output = out)
     }
 
     /**
      * 按执行通道偏好选择真实 shell 通道执行命令并回传输出。
-     * AUTO 顺序：无线 ADB → Shizuku → Termux。
+     * AUTO 顺序：Shizuku binder → ADB 引导会话（内置 Shizuku 的启动机制）→ Termux。
      * 注意 Termux 是**普通应用权限**的 Linux 环境，只适合 curl/python/文本处理等工具链命令，
      * 系统命令（am/pm/settings）会失败——该边界在提示词里对 AI 显式声明。
      */
@@ -3675,7 +3675,7 @@ class AgentEngine(
      * 与 [runRealShell] 共用同一套通道选择，但产物不进「上一步 shell 输出」，
      * 因此适合任务开始/结束时由端侧自己发起的系统命令（如隐藏状态栏）——
      * 这类命令的返回值对 AI 没有意义，不该占用决策上下文。
-     * AUTO 顺序：无线 ADB → Shizuku → Termux。
+     * AUTO 顺序：Shizuku binder → ADB 引导会话 → Termux。
      */
     private suspend fun execShellViaChannel(cmd: String): com.phoneagent.device.shell.ShizukuManager.ShellResult {
         val preference = settings.settings.first().executionChannel
@@ -3811,7 +3811,7 @@ class AgentEngine(
             "RECENT", "RECENTS" -> executeNoVerify(executor) { executor.recents().isSuccess() }
             "ENTER" -> com.phoneagent.engine.execution.VerifyResult(
                 false,
-                "无障碍通道无法直接发送回车键：请改用点击页面上的发送/搜索按钮；若已开启 Shizuku/无线 ADB 可用 input keyevent 66",
+                "无障碍通道无法直接发送回车键：请改用点击页面上的发送/搜索按钮；若内置 Shizuku 可用可执行 input keyevent 66",
                 "",
                 "",
             )

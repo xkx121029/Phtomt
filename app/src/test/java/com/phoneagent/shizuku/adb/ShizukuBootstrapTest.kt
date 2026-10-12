@@ -41,7 +41,7 @@ class ShizukuBootstrapTest {
         val bootstrap = ShizukuBootstrap(sm, transport)
         val r = bootstrap.ensureReady()
         assertTrue(r is ShizukuBootstrap.ReadyResult.Error)
-        assertTrue((r as ShizukuBootstrap.ReadyResult.Error).message.contains("无线 ADB 配对"))
+        assertTrue((r as ShizukuBootstrap.ReadyResult.Error).message.contains("内置 Shizuku"))
     }
 
     @Test
@@ -78,8 +78,8 @@ class ShizukuBootstrapTest {
     }
 
     @Test
-    fun 无线ADB连接Shizuku不可用自动模式下就绪() = runTest {
-        // 主通道语义：AUTO 下无线 ADB 已连接，Shizuku 可选且未就绪，仍返回 Ready
+    fun AUTO模式ADB会话可用Shizuku未就绪仍就绪() = runTest {
+        // AUTO 语义：Shizuku binder 优先，未就绪时 ADB 引导会话已连接即具备 shell 能力，仍返回 Ready
         val sm = shizukuManager { false }
         val transport = mockk<AdbBootstrapTransport>().apply {
             coEvery { isConnected() } returns true
@@ -120,8 +120,8 @@ class ShizukuBootstrapTest {
     }
 
     @Test
-    fun ADB优先模式仅用无线ADB() = runTest {
-        // ADB 模式：ADB 已连接、Shizuku 不可用 → Ready
+    fun 旧ADB偏好值归一AUTO_引导会话可用即就绪() = runTest {
+        // 旧「仅无线ADB」独立通道已砍：历史遗留偏好值按 AUTO 归一，ADB 引导会话可用即 Ready
         val sm = shizukuManager { false }
         val transport = mockk<AdbBootstrapTransport>().apply {
             coEvery { isConnected() } returns true
@@ -133,9 +133,9 @@ class ShizukuBootstrapTest {
     }
 
     @Test
-    fun ADB优先模式未连接Shizuku可用仍引导配对() = runTest {
-        // ADB 模式：ADB 未连接，即便 Shizuku 可用也不走 Shizuku → 引导配对
-        val sm = shizukuManager { true }
+    fun 旧ADB偏好值归一AUTO_全部不可用则引导() = runTest {
+        // 旧偏好值归一 AUTO 后：Shizuku 与 ADB 会话都不可用 → 引导首次启动
+        val sm = shizukuManager { false }
         val transport = mockk<AdbBootstrapTransport>().apply {
             coEvery { isConnected() } returns false
         }
@@ -172,7 +172,7 @@ class ShizukuBootstrapTest {
 
         val first = bootstrap.ensureReady()
         assertTrue(first is ShizukuBootstrap.ReadyResult.Error)
-        assertTrue((first as ShizukuBootstrap.ReadyResult.Error).message.contains("无线 ADB 配对"))
+        assertTrue((first as ShizukuBootstrap.ReadyResult.Error).message.contains("内置 Shizuku"))
 
         // 用户补配后成功拉起（对应「断线→重新配对」场景）
         val second = bootstrap.pairAndEnsureReady("123456")
