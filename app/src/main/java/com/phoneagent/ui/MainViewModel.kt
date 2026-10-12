@@ -72,6 +72,7 @@ class MainViewModel(
     private val mcpStore: McpStore,
     private val shizukuBootstrap: ShizukuBootstrap,
     private val adbPairingFlow: WirelessAdbPairingFlow,
+    private val updateManager: com.phoneagent.feature.update.UpdateManager,
 ) : ViewModel() {
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
@@ -406,6 +407,24 @@ class MainViewModel(
 
     fun saveSettings(value: AppSettings.Settings) {
         viewModelScope.launch { settings.update(value) }
+    }
+
+    // ---- 自动更新：查询新版本、下载安装 ----
+    val updateState: StateFlow<com.phoneagent.feature.update.UpdateState> = updateManager.state
+
+    /**
+     * 查询更新。返回是否发现新版本——启动时的静默检查据此决定要不要打扰用户。
+     * @param baseUrl 官网地址，留空由更新模块回落到官方站点
+     */
+    suspend fun checkUpdate(baseUrl: String, channel: com.phoneagent.feature.update.UpdateChannel): Boolean =
+        updateManager.check(baseUrl, channel)
+
+    /** 下载并安装。下载跑在更新模块自己的作用域里，退出设置页也不会中断 */
+    fun downloadAndInstallUpdate(
+        release: com.phoneagent.feature.update.ReleaseInfo,
+        download: com.phoneagent.feature.update.DownloadInfo,
+    ) {
+        updateManager.downloadAndInstall(release, download)
     }
 
     /** 由 UI 在页面可见时调用，与 [refreshStatus] 走同一个口径（开关已开 + 实例已连接） */

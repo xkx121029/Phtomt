@@ -307,8 +307,13 @@ fun AgentScreen(
     // 整页交给统一的 GlassHeaderScaffold：它内部持有唯一的取样源、把页眉实测高度
     // 通过 PaddingValues 交给正文，并把底部浮层槽位与取样源一起递出来（dock）。
     // 这样"吸顶通栏 ↔ 离顶圆角浮板"的形态与其他主页面出自同一份实现，不再各写一套。
+    //
+    // 本页有单一的 LazyColumn（listState），直接传官网风格的绝对位置判定：
+    // 不在首项或首项 offset 过 8px → 浮起胶囊。比内部 NestedScrollConnection 更稳
+    // （不依赖手势方向约定，方向翻也不会反）。
     GlassHeaderScaffold(
         modifier = modifier,
+        floating = { listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 8 },
         header = {
             AgentHeaderBar(
                 running = agent.isRunning,

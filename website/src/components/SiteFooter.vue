@@ -136,10 +136,6 @@ onMounted(async () => {
   gap: 48px;
 }
 
-.foot__mark {
-  color: var(--brand);
-}
-
 .foot__desc {
   margin-top: 14px;
   max-width: 40ch;

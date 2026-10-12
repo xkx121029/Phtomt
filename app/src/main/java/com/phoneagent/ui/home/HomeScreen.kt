@@ -64,11 +64,16 @@ fun HomeScreen(
         vm.refreshPermissions(context)
     }
 
+    // 顶部滚动容器的状态：传给 GlassHeaderScaffold 做显式浮起判定（官网风格，比内部
+    // NestedScrollConnection 更稳——不依赖手势方向约定）。8px 阈值同官网，防手抖。
+    val scrollState = rememberScrollState()
+
     // 页眉是浮在正文之上的玻璃板：贴顶时通栏直角，离顶才收成圆角浮板。
     // 品牌信息搬进页眉后，它随着页面滚动一直悬在内容上方，与 Agent / 调试 / 技能页
     // 共用同一套骨架（GlassHeaderScaffold），不再各页自己摆一个标题行。
     GlassHeaderScaffold(
         modifier = modifier,
+        floating = { scrollState.value > 8 },
         header = {
             AppTopBar(
                 title = "手机智能体",
@@ -80,7 +85,7 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 // 页眉净空必须垫在滚动容器**内部**（verticalScroll 之后再 padding）：
                 // 垫在容器外面只是把内容整体压低，页眉背后永远是一块纯底色，
                 // 玻璃会退化成一条灰带，正文也不会从它下面穿过。

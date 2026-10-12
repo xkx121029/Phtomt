@@ -47,15 +47,16 @@ internal fun SettingsAbout(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsTopBar("关于与帮助", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader("关于与帮助", onBack, subtitle = "版本信息、开源仓库与隐私边界")
+        Spacer(Modifier.height(20.dp))
 
-        GroupCard {
-            Column(Modifier.padding(16.dp)) {
+        // 应用标识：不放进带色相的分区，独立成一张中性卡，作为页面的题头
+        SettingsPlainCard {
+            Column(Modifier.padding(18.dp)) {
                 Text(
                     "Happy Phone Agent",
                     style = MaterialTheme.typography.titleLarge,
@@ -82,22 +83,28 @@ internal fun SettingsAbout(onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("开源仓库", "代码、版本历史与更新日志都在这里")
+        SettingsSection(
+            title = "开源仓库",
+            subtitle = "代码、版本历史与更新日志都在这里",
+            tone = SettingsTone.Neutral,
+        ) {
             LinkRow("GitHub", REPO_GITHUB) { openLink(context, REPO_GITHUB) }
-            GroupDivider()
+            SettingsDivider(inset = false)
             LinkRow("Gitee", REPO_GITEE) { openLink(context, REPO_GITEE) }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("开源许可", "本应用使用的第三方开源代码")
+        SettingsSection(
+            title = "开源许可",
+            subtitle = "本应用使用的第三方开源代码",
+            tone = SettingsTone.Neutral,
+        ) {
             LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
-            GroupDivider()
+            SettingsDivider(inset = false)
             LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
-            GroupDivider()
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            SettingsDivider(inset = false)
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
                 Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
                 Bullet("Shizuku 主程序（server/starter）亦内嵌于本应用，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
@@ -106,9 +113,8 @@ internal fun SettingsAbout(onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("使用说明")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(title = "使用说明", tone = SettingsTone.Neutral) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Bullet("先在「AI 模型配置」里填好 API 地址与密钥并保存，配置未通过连接测试不会入库")
                 Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需配对无线 ADB 或启用 Shizuku")
                 Bullet("在 Agent 页直接说需求即可；执行中会先给计划，你确认后才动手")
@@ -119,9 +125,8 @@ internal fun SettingsAbout(onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("隐私说明")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(title = "隐私说明", tone = SettingsTone.Neutral) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Bullet("日志、记忆与任务记录只存在本机，不会上传到本项目自己的服务器")
                 Bullet("执行任务时，当前页面的控件文字与截图会发送给你所配置的模型服务，用于决策")
                 Bullet("支付、密码、验证码等敏感页面为只读，AI 不会读取或输入其中内容")
@@ -139,7 +144,7 @@ internal fun SettingsAbout(onBack: () -> Unit) {
 private fun LinkRow(label: String, url: String, onClick: () -> Unit) {
     val buzz = rememberHapticClick()
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {

@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
-enum class SettingsPage { HOME, THEME, AI_MODELS, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, ABOUT }
+enum class SettingsPage { HOME, THEME, AI_MODELS, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -121,8 +121,13 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 SettingsPage.AGENT -> SettingsAgent(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
                 SettingsPage.VISUAL -> SettingsVisual(st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
                 SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = { page = SettingsPage.HOME })
-                SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, onBack = { page = SettingsPage.HOME })
+                SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = ::saveNonAiSettings, onBack = { page = SettingsPage.HOME })
                 SettingsPage.DATA -> SettingsData(vm = vm, onBack = { page = SettingsPage.HOME })
+                SettingsPage.UPDATE -> SettingsUpdate(
+                    vm = vm, st = st,
+                    save = ::saveNonAiSettings,
+                    onBack = { page = SettingsPage.HOME },
+                )
                 SettingsPage.ABOUT -> SettingsAbout(onBack = { page = SettingsPage.HOME })
             }
         }
@@ -214,6 +219,10 @@ class SettingsState(initial: AppSettings.Settings) {
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
     var skipVisionDescWhenMainSees by mutableStateOf(initial.skipVisionDescWhenMainSees)
+    // 自动更新：服务地址 / 接收频道 / 启动时自动检查
+    var updateBaseUrl by mutableStateOf(initial.updateBaseUrl)
+    var updateChannel by mutableStateOf(initial.updateChannel)
+    var autoCheckUpdate by mutableStateOf(initial.autoCheckUpdate)
     var calibrationExpanded by mutableStateOf(false)
 
     fun applyFrom(s: AppSettings.Settings) {
@@ -265,6 +274,9 @@ class SettingsState(initial: AppSettings.Settings) {
         catalog.clear()
         catalog.addAll(s.catalog)
         skipVisionDescWhenMainSees = s.skipVisionDescWhenMainSees
+        updateBaseUrl = s.updateBaseUrl
+        updateChannel = s.updateChannel
+        autoCheckUpdate = s.autoCheckUpdate
     }
 
     /**
@@ -333,5 +345,8 @@ class SettingsState(initial: AppSettings.Settings) {
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,
+        updateBaseUrl = updateBaseUrl,
+        updateChannel = updateChannel,
+        autoCheckUpdate = autoCheckUpdate,
     )
 }

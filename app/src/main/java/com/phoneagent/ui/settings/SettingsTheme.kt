@@ -3,6 +3,7 @@ package com.phoneagent.ui.settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -29,17 +31,18 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.ui.components.GlassSurface
-import com.phoneagent.ui.components.GlassTokens
-import com.phoneagent.ui.components.rememberGlassState
-import dev.chrisbanes.haze.hazeSource
 import com.phoneagent.ui.components.AppCardBorder
 import com.phoneagent.ui.components.AppCardContainer
+import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.GlassTokens
 import com.phoneagent.ui.components.LocalNavClearance
+import com.phoneagent.ui.components.rememberGlassState
+import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.ThemePalette
 import com.phoneagent.ui.theme.glassTintPreview
+import dev.chrisbanes.haze.hazeSource
 
 /**
  * 主题页：选择整体视觉风格。
@@ -56,17 +59,20 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsTopBar("主题", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader("主题", onBack, subtitle = "配色、框线与磨砂浓淡，改完立即生效")
+        Spacer(Modifier.height(20.dp))
 
-        GroupCard {
-            GroupHeader("主题风格", "选择整体视觉风格，改完立即生效")
+        SettingsSection(
+            title = "主题风格",
+            subtitle = "卡片、面板与输入面的描边方式",
+            tone = SettingsTone.Brand,
+        ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ThemeOption(
@@ -93,7 +99,6 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         }
                     },
                 )
-                Spacer(Modifier.height(8.dp))
             }
         }
 
@@ -101,10 +106,13 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
 
         // 配色：整套品牌主色 + 底色（深浅跟随系统）。存 ThemePalette.id 字符串，
         // 落盘后 settingsFlow 驱动 PhoneAgentTheme 重组，整棵树立即换色，不用重启
-        GroupCard {
-            GroupHeader("配色", "品牌主色与底色，深浅跟随系统")
+        SettingsSection(
+            title = "配色",
+            subtitle = "品牌主色与底色，深浅跟随系统",
+            tone = SettingsTone.Brand,
+        ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 ThemePalette.entries.forEach { palette ->
@@ -119,7 +127,6 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         },
                     )
                 }
-                Spacer(Modifier.height(8.dp))
             }
         }
 
@@ -128,9 +135,12 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
         // 磨砂浓淡：微调玻璃 tint 的透明度（相对色板默认 ±25 个百分点点），
         // 拖动只更新本地编辑态（数值跟手），松手才落盘——落盘后 settingsFlow 驱动
         // PhoneAgentTheme 重组，整棵树的玻璃面立即跟着变，避免拖一次写几十次 DataStore
-        GroupCard {
-            GroupHeader("磨砂玻璃", "玻璃面板的透光度：向左更透，向右更实")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "磨砂玻璃",
+            subtitle = "玻璃面板的透光度：向左更透，向右更实",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp)) {
                 // 实时预览样片：上面是"滚过玻璃下的内容"（彩色渐变 + 文字），
                 // 下面浮一块小玻璃板模拟页眉——tint 直接取滑杆的调节值，拖动跟手，
                 // 不用等落盘。真正落盘后全局玻璃面走的是同一个 alpha 位移实现点，
@@ -235,13 +245,15 @@ private fun ThemeOption(
     showBorder: Boolean,
     onClick: () -> Unit,
 ) {
+    val buzz = rememberHapticClick()
     Surface(
         shape = RoundedCornerShape(AppRadii.Tile),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                 else BorderStroke(1.dp, AppCardBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable { buzz(); onClick() },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -305,13 +317,15 @@ private fun PaletteOption(
     selected: Boolean,
     onClick: () -> Unit,
 ) {
+    val buzz = rememberHapticClick()
     Surface(
         shape = RoundedCornerShape(AppRadii.Tile),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                 else BorderStroke(1.dp, AppCardBorder),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable { buzz(); onClick() },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -348,7 +362,7 @@ private fun PaletteOption(
 /** 色板预览：一枚小卡上并排四色圆点（抬升面 / 底色 / 主色 / 冷辅色），深浅跟当前系统模式走 */
 @Composable
 private fun PaletteSwatch(palette: ThemePalette) {
-    val c = if (androidx.compose.foundation.isSystemInDarkTheme()) palette.dark else palette.light
+    val c = if (isSystemInDarkTheme()) palette.dark else palette.light
     Surface(
         shape = RoundedCornerShape(AppRadii.Inline),
         color = AppCardContainer,
@@ -365,7 +379,7 @@ private fun PaletteSwatch(palette: ThemePalette) {
                     Modifier
                         .padding(horizontal = 2.dp)
                         .size(12.dp)
-                        .background(color, androidx.compose.foundation.shape.CircleShape),
+                        .background(color, CircleShape),
                 )
             }
         }

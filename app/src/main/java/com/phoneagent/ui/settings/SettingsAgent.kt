@@ -1,7 +1,6 @@
 package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,9 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -36,29 +32,40 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 
-/** Agent 运行页 */
+/**
+ * 运行与提示词页。
+ *
+ * 由旧「Agent 运行」页拆出「执行通道」后的剩余部分——执行通道的优先级开关与
+ * 「权限与执行通道」页里的配对界面原本说的是同一件事，现已统一收进后者。
+ * 本页只负责：跑多少步、要不要悬浮窗、要不要页面记忆，以及发给模型的提示词。
+ */
 @Composable
 internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
+            .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SettingsTopBar("Agent 运行", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader(
+            title = "运行与提示词",
+            onBack = onBack,
+            subtitle = "控制 Agent 的执行方式与发给模型的提示词",
+        )
 
-        GroupCard {
-            GroupHeader("运行参数", "控制 Agent 的执行方式")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                ToggleRow("限制最大步数", if (st.maxSteps > 0) "运行 ${st.maxSteps} 步后自动停止" else "不设限，直到任务完成或手动停止", st.maxSteps > 0) { enabled ->
-                    st.maxSteps = if (enabled) (if (st.maxSteps > 0) st.maxSteps else 20) else 0
-                    save()
-                }
-                if (st.maxSteps > 0) {
-                    Spacer(Modifier.height(8.dp))
+        SettingsSection(title = "运行参数", subtitle = "步数与悬浮窗", tone = SettingsTone.Cool) {
+            SettingsToggleRow(
+                title = "限制最大步数",
+                subtitle = if (st.maxSteps > 0) "运行 ${st.maxSteps} 步后自动停止" else "不设限，直到任务完成或手动停止",
+                value = st.maxSteps > 0,
+            ) { enabled ->
+                st.maxSteps = if (enabled) (if (st.maxSteps > 0) st.maxSteps else 20) else 0
+                save()
+            }
+            if (st.maxSteps > 0) {
+                Column(Modifier.padding(horizontal = 18.dp)) {
                     LabeledField("最大步数  ${st.maxSteps}") {
                         Slider(
                             // 拖动只更新本地编辑态（数值即时跟手），松手才落盘，
@@ -70,118 +77,88 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                             steps = 10,
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
-                Spacer(Modifier.height(4.dp))
-                ToggleRow(
-                    "启用桌面悬浮窗",
-                    "关闭后任务进度只在 App 内展示；悬浮窗为可选能力，不影响任务执行",
-                    st.floatingWindowEnabled,
-                ) { enabled ->
-                    st.floatingWindowEnabled = enabled
-                    save()
-                }
-                Spacer(Modifier.height(4.dp))
+            }
+            SettingsToggleRow(
+                title = "启用桌面悬浮窗",
+                subtitle = "关闭后任务进度只在 App 内展示；悬浮窗为可选能力，不影响任务执行",
+                value = st.floatingWindowEnabled,
+            ) { enabled ->
+                st.floatingWindowEnabled = enabled
+                save()
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        GroupCard {
-            GroupHeader("页面记忆", "任务执行时自动记忆页面热点与跳转路径")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                ToggleRow(
-                    "启用页面记忆",
-                    "执行任务时自动记忆遇到过的页面；屏幕以淡色圆环标记已知控件（不挡触摸），后续任务规划与决策可参考",
-                    st.pageMemoryEnabled,
-                ) { enabled ->
-                    st.pageMemoryEnabled = enabled
-                    save()
-                }
+        SettingsSection(title = "页面记忆", subtitle = "任务执行时自动记忆页面热点与跳转路径", tone = SettingsTone.Cool) {
+            SettingsToggleRow(
+                title = "启用页面记忆",
+                subtitle = "执行任务时自动记忆遇到过的页面；屏幕以淡色圆环标记已知控件（不挡触摸），后续任务规划与决策可参考",
+                value = st.pageMemoryEnabled,
+            ) { enabled ->
+                st.pageMemoryEnabled = enabled
+                save()
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        GroupCard {
-            GroupHeader("执行通道", "shell 执行通路的优先顺序（无线 ADB 为主，Shizuku / Termux 可选）")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                val channels = listOf(
-                    "AUTO" to "自动",
-                    "ADB" to "无线ADB",
-                    "SHIZUKU" to "Shizuku",
-                    "TERMUX" to "Termux",
-                )
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    channels.forEachIndexed { i, (key, label) ->
-                        SegmentedButton(
-                            selected = st.executionChannel == key,
-                            onClick = { st.executionChannel = key; save() },
-                            shape = SegmentedButtonDefaults.itemShape(index = i, count = channels.size),
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelLarge)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
+        SettingsSection(title = "提示词", subtitle = "提示词语言与系统提示词", tone = SettingsTone.Cool) {
+            Column(Modifier.padding(horizontal = 18.dp)) {
                 Text(
-                    when (st.executionChannel) {
-                        "ADB" -> "仅用无线 ADB；未连接时无真实 shell，走无障碍执行。"
-                        "SHIZUKU" -> "仅用 Shizuku；不可用时用无线 ADB 拉起。"
-                        "TERMUX" -> "仅用 Termux（普通应用权限）：可跑 curl / python / 文本处理，不能执行系统命令。"
-                        else -> "优先无线 ADB，其次 Shizuku，最后 Termux；都不可用则走无障碍执行。"
-                    },
+                    "提示词语言",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "选择发送给 AI 的提示词语言（系统/决策/验证等 8 组 Prompt）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        GroupCard {
-            GroupHeader("提示词语言", "选择发送给 AI 的提示词语言（系统/决策/验证等 8 组 Prompt）")
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                listOf("CN" to "中文", "EN" to "English").forEach { (code, label) ->
-                    val selected = st.promptLanguage == code
-                    Surface(
-                        shape = RoundedCornerShape(AppRadii.Tile),
-                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                st.promptLanguage = code
-                                save()
-                            },
-                    ) {
-                        Box(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center,
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    listOf("CN" to "中文", "EN" to "English").forEach { (code, label) ->
+                        val selected = st.promptLanguage == code
+                        Surface(
+                            shape = RoundedCornerShape(AppRadii.Tile),
+                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
+                            border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    st.promptLanguage = code
+                                    save()
+                                },
                         ) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                            )
+                            Box(
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                         }
                     }
                 }
+                Spacer(Modifier.height(14.dp))
             }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        GroupCard {
-            GroupHeader(
-                "系统提示词",
-                "留空 = 使用内置提示词（含执行铁律与动作格式）；填写后用你写的替换它，技能区块仍会追加在末尾",
-            )
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            SettingsDivider(inset = false)
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                Text(
+                    "系统提示词",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "留空 = 使用内置提示词（含执行铁律与动作格式）；填写后用你写的替换它，技能区块仍会追加在末尾",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
                 // 文本类改动不逐字落库：设置流会回灌编辑态，长文本（贴一段提示词）会与输入互抢光标
                 var draft by remember { mutableStateOf(st.systemPrompt) }
                 OutlinedTextField(

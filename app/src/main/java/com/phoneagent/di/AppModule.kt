@@ -12,6 +12,7 @@ import com.phoneagent.device.shell.ShizukuManager
 import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.device.shell.ShizukuBootstrap
 import com.phoneagent.device.shell.WirelessAdbPairingFlow
+import com.phoneagent.feature.update.UpdateManager
 import com.phoneagent.feature.skill.SkillCatalog
 import com.phoneagent.feature.skill.SkillExecutionGateway
 import com.phoneagent.feature.skill.SkillRegistry
@@ -57,7 +58,14 @@ private val appModule = module {
     // 无线 ADB「开始配对」通知栏向导
     single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
 
-    viewModel { MainViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    // 自动更新：查询官网版本、下载安装包，优先走 shell 静默装（无线 ADB / Shizuku）
+    single { UpdateManager(androidContext(), get<ShizukuManager>(), get<AdbWirelessTransport>()) }
+
+    viewModel {
+        MainViewModel(
+            get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+        )
+    }
 }
 
 fun initKoin(context: Context) {

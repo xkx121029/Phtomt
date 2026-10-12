@@ -6,6 +6,41 @@
 
 ---
 
+## [v0.2.791] — 2026-10-12
+
+### 新增
+
+- **客户端自动更新**：App 启动时按所在频道向官网查询新版本，发现后可在设置页一键下载安装
+  - 频道矩阵（`website/server/lib/update.js` 的 `CHANNEL_ORDER` 为唯一来源）：稳定版只收
+    stable；测试版收 beta+stable；开发版收 dev+beta+stable；每日构建收全部。版本更高、或版本号
+    相同但构建号更高即判定有更新
+  - 官网新增公开接口 `/api/update/check`（按频道 + 当前版本判定）与 `/api/update/download/:version`
+    （优先蓝奏云镜像、失败静默回落官网磁盘）
+  - 客户端 `feature/update/`：`UpdateManager` 负责检查/下载/校验/安装，下载到外部私有目录
+    （shell uid 可读以便静默安装），校验 SHA-256 后安装；有无线 ADB / Shizuku 通路则
+    `pm install -r -d` 静默装，否则回落系统安装器（FileProvider 授权）
+  - 设置页新增「软件更新」页：当前版本、检查按钮、实时状态（检查中/已是最新/可更新/下载进度/
+    安装中/失败）、接收渠道四选一、启动时自动检查开关、更新服务地址
+  - 设置项持久化：`updateBaseUrl` / `updateChannel` / `autoCheckUpdate`（`data/prefs/AppSettings.kt`）
+- **蓝奏云镜像**：上传 APK 时服务端自动打包成 zip（蓝奏云拦截 apk 后缀）上传至蓝奏云并登记分享链接
+  - 服务端零依赖 ZIP 读写（`website/server/lib/zip.js`）与蓝奏云客户端（`website/server/lib/lanzou.js`）
+  - 后台新增「蓝奏云镜像」页：配置账号/开关、测试登录、手动重新镜像、手工登记分享链接兜底
+  - 账号配置独立落在 `server/data/lanzou.json`（不进内容集合，口令只回 `passwordSet` 布尔）
+
+### 修复
+
+- **蓝奏云反爬挑战**：蓝奏云前置阿里云 ESA，对服务端请求返回 `acw_sc__v2` JS 挑战页
+  （`X-Tengine-Error: denied by http_custom`），导致登录/上传/解析全部被拦。
+  `server/lib/lanzou.js` 新增挑战求解：把挑战脚本丢进 `node:vm` 沙箱执行，
+  只提供假的 `document.cookie` 收集器与空的 `location.reload`，从副作用取回 cookie
+  并自动重放（约 1 小时有效）。不改写算法，升级也能自适应
+
+### 文档
+
+- `website/API.md` 补充 `/api/update/*` 公开端点与蓝奏云镜像管理端点说明
+
+---
+
 ## [v0.2.787] — 2026-10-12
 
 ### 新增

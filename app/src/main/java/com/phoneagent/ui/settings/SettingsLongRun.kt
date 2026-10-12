@@ -64,50 +64,51 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        Spacer(Modifier.height(8.dp))
-        SettingsTopBar("长线任务", onBack = onBack)
-        Spacer(Modifier.height(16.dp))
-
-        // ===== 执行策略热切换 =====
-        Text("执行策略", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        val options = listOf(
-            ExecutionStrategy.AUTO to "智能",
-            ExecutionStrategy.SCRIPT to "脚本",
-            ExecutionStrategy.REACT to "逐步",
-        )
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            options.forEachIndexed { i, (key, label) ->
-                SegmentedButton(
-                    selected = strategy == key,
-                    onClick = {
-                        strategy = key
-                        vm.setExecutionStrategy(key)
-                    },
-                    shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
-                    label = {
-                        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "智能=模板命中按脚本、否则逐步；脚本=复用已生成计划自主推进；逐步=每步云端决策（最稳）。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
+        SettingsPageHeader("长线任务", onBack, subtitle = "执行策略、断点续传与任务模板库")
         Spacer(Modifier.height(20.dp))
 
+        // ===== 执行策略热切换 =====
+        SettingsSection(
+            title = "执行策略",
+            subtitle = "智能=模板命中按脚本、否则逐步；脚本=复用已生成计划自主推进；逐步=每步云端决策（最稳）",
+            tone = SettingsTone.Cool,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                val options = listOf(
+                    ExecutionStrategy.AUTO to "智能",
+                    ExecutionStrategy.SCRIPT to "脚本",
+                    ExecutionStrategy.REACT to "逐步",
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    options.forEachIndexed { i, (key, label) ->
+                        SegmentedButton(
+                            selected = strategy == key,
+                            onClick = {
+                                strategy = key
+                                vm.setExecutionStrategy(key)
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
+                            label = {
+                                Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         // ===== 断点续传 =====
-        Text("断点续传", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(8.dp))
-        GroupCard {
+        SettingsSection(
+            title = "断点续传",
+            subtitle = "任务执行中会自动保存进度，中断后可从这里继续",
+            tone = SettingsTone.Cool,
+        ) {
             val ck = checkpoint
             if (ck != null) {
                 Text(
@@ -117,11 +118,11 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                         // 既不会改变显示，又会被 lint 判为 composable 内"不可观察地读取语言环境"
                         "\n保存于 ${timestampText(ck.updatedAt)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
                 OutlinedButton(
                     onClick = { vm.resumeFromCheckpoint() },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp),
                 ) {
                     Text("续传此任务")
                 }
@@ -130,32 +131,30 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                     "暂无已保存的任务检查点。任务执行中会自动保存进度。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
 
         // ===== 任务模板库 =====
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("任务模板库", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { refresh() }) { Text("刷新") }
-        }
-        Spacer(Modifier.height(8.dp))
-        GroupCard {
+        SettingsSection(
+            title = "任务模板库",
+            tone = SettingsTone.Cool,
+            trailing = { TextButton(onClick = { refresh() }) { Text("刷新") } },
+        ) {
             if (templates.isEmpty()) {
                 Text(
                     "暂无模板。软件内置了常用任务模板，任务完成后可经你确认把执行步骤保存为自定义模板，供下次复用。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             } else {
                 templates.forEachIndexed { i, t ->
-                    if (i > 0) GroupDivider()
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    if (i > 0) SettingsDivider(inset = false)
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text(t.goal, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                         Spacer(Modifier.height(4.dp))
                         Text(

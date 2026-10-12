@@ -98,8 +98,12 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
 
+    // 滚动状态：传给骨架做显式浮起判定（官网风格，比内部 NestedScrollConnection 更稳）
+    val scrollState = rememberScrollState()
+
     GlassHeaderScaffold(
         modifier = modifier,
+        floating = { scrollState.value > 8 },
         header = {
             // 标题 + 操作
             AppTopBar(
@@ -122,7 +126,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 // 顶部净空垫在滚动容器内部：图谱与明细滚动时会从玻璃页眉下穿过，
                 // 页眉才有真实内容可模糊；垫在外面就只是把内容整体压低
                 .padding(top = pad.calculateTopPadding()),

@@ -36,8 +36,8 @@ import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 
 /**
  * 数据与存储页：导出、清空与重置。
@@ -62,15 +62,18 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsTopBar("数据与存储", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader("数据与存储", onBack, subtitle = "导出、清空与恢复默认，清空后不可撤销")
+        Spacer(Modifier.height(20.dp))
 
-        GroupCard {
-            GroupHeader("导出", "保存到「下载/HappyPhoneAgent」，导出前自动脱敏手机号、身份证、银行卡")
+        SettingsSection(
+            title = "导出",
+            subtitle = "保存到「下载/HappyPhoneAgent」，导出前自动脱敏手机号、身份证、银行卡",
+            tone = SettingsTone.Neutral,
+        ) {
             DataActionRow(
                 icon = AppIcons.Description,
                 iconTint = MaterialTheme.colorScheme.primary,
@@ -79,7 +82,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                 actionLabel = "导出",
                 onAction = { message = vm.exportLogs(context, -1L, null) },
             )
-            GroupDivider()
+            SettingsDivider(inset = false)
             DataActionRow(
                 icon = AppIcons.FileDownload,
                 iconTint = MaterialTheme.colorScheme.primary,
@@ -88,7 +91,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                 actionLabel = "导出",
                 onAction = { message = vm.exportLogsJsonAll(context) },
             )
-            GroupDivider()
+            SettingsDivider(inset = false)
             DataActionRow(
                 icon = AppIcons.Report,
                 iconTint = MaterialTheme.colorScheme.primary,
@@ -101,8 +104,11 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("AI 记忆", "AI 在任务中记下的内容；清空后无法恢复")
+        SettingsSection(
+            title = "AI 记忆",
+            subtitle = "AI 在任务中记下的内容；清空后无法恢复",
+            tone = SettingsTone.Warm,
+        ) {
             DataActionRow(
                 icon = AppIcons.Report,
                 iconTint = MaterialTheme.colorScheme.error,
@@ -115,7 +121,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                     message = "已清空异常记忆"
                 },
             )
-            GroupDivider()
+            SettingsDivider(inset = false)
             DataActionRow(
                 icon = AppIcons.Person,
                 iconTint = MaterialTheme.colorScheme.error,
@@ -128,7 +134,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                     message = "已清空用户画像"
                 },
             )
-            GroupDivider()
+            SettingsDivider(inset = false)
             DataActionRow(
                 icon = AppIcons.ListTodo,
                 iconTint = MaterialTheme.colorScheme.error,
@@ -145,8 +151,11 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader("调试记录与任务", "调试页展示的日志 / 对话 / 指标 / 执行轨迹，以及断点续传记录")
+        SettingsSection(
+            title = "调试记录与任务",
+            subtitle = "调试页展示的日志 / 对话 / 指标 / 执行轨迹，以及断点续传记录",
+            tone = SettingsTone.Warm,
+        ) {
             DataActionRow(
                 icon = AppIcons.DeleteOutline,
                 iconTint = MaterialTheme.colorScheme.error,
@@ -159,7 +168,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                     message = "已清空调试记录"
                 },
             )
-            GroupDivider()
+            SettingsDivider(inset = false)
             DataActionRow(
                 icon = AppIcons.History,
                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -176,12 +185,12 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        GroupCard {
-            GroupHeader(
-                "恢复默认设置",
-                "清空 API 地址与密钥、模型库、执行与界面参数，回到首次安装的状态",
-            )
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "恢复默认设置",
+            subtitle = "清空 API 地址与密钥、模型库、执行与界面参数，回到首次安装的状态",
+            tone = SettingsTone.Neutral,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 // 整机重置不可撤销：按钮点一次变红字确认，再点才执行
                 var armed by remember { mutableStateOf(false) }
                 OutlinedButton(
@@ -194,7 +203,7 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
                             armed = true
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 ) {
                     Text(
                         if (armed) "再点一次确认恢复（不可撤销）" else "恢复默认设置",

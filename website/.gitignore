@@ -14,3 +14,7 @@ server/data/admin.json
 server/data/ai.json
 # 问答留痕：访客提问与回答的原文，属于访客内容，不入库
 server/data/ai-log.json
+# 蓝奏云镜像账号口令，明文存储。绝不能入库——仓库是公开的
+server/data/lanzou.json
+# 蓝奏云镜像登记表：绑定线上 APK 的运行时状态，不入库
+server/data/mirrors.json

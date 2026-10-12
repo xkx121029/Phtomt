@@ -99,6 +99,7 @@ export const routes = [
     children: [
       { path: '', name: 'admin-overview', component: () => import('../views/admin/AdminOverview.vue'), meta: { title: '概览', admin: true } },
       { path: 'releases', name: 'admin-releases', component: () => import('../views/admin/AdminReleases.vue'), meta: { title: '版本与 APK', admin: true } },
+      { path: 'lanzou', name: 'admin-lanzou', component: () => import('../views/admin/AdminLanzou.vue'), meta: { title: '蓝奏云镜像', admin: true } },
       { path: 'site', name: 'admin-site', component: () => import('../views/admin/AdminSite.vue'), meta: { title: '站点信息', admin: true } },
       { path: 'features', name: 'admin-features', component: () => import('../views/admin/AdminFeatures.vue'), meta: { title: '功能特性', admin: true } },
       { path: 'changelog', name: 'admin-changelog', component: () => import('../views/admin/AdminChangelog.vue'), meta: { title: '更新日志', admin: true } },

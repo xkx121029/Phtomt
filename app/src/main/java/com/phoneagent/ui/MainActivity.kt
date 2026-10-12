@@ -87,6 +87,7 @@ import com.phoneagent.ui.components.LocalIsLandscape
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarState
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
@@ -289,6 +290,27 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
     LaunchedEffect(Unit) {
         vm.refreshStatus(activity)
         vm.refreshA11yState(activity)
+    }
+
+    // 启动时自动检查更新：只查一次、静默查，发现新版本才用页内 Snackbar 提示一句。
+    // 不在启动阶段弹任何系统弹窗——更新是"顺带告知"的事，不该拦住用户用 App 的第一步。
+    var updateChecked by remember { mutableStateOf(false) }
+    LaunchedEffect(settings.autoCheckUpdate, settings.updateChannel) {
+        if (updateChecked || !settings.autoCheckUpdate) return@LaunchedEffect
+        updateChecked = true
+        val found = vm.checkUpdate(
+            settings.updateBaseUrl,
+            com.phoneagent.feature.update.UpdateChannel.of(settings.updateChannel),
+        )
+        val result = vm.updateState.value
+        if (found && result is com.phoneagent.feature.update.UpdateState.Available) {
+            snackbarState.show(
+                "发现新版本 ${result.release.version}",
+                SnackbarType.INFO,
+                actionLabel = "去更新",
+                onAction = { selected = 2 },
+            )
+        }
     }
 
     // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）；

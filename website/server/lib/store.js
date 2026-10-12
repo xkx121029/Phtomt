@@ -20,6 +20,12 @@ const COLLECTIONS = {
   scenarios: { file: 'scenarios.json', kind: 'array' },
   roadmap: { file: 'roadmap.json', kind: 'object' },
   stats: { file: 'stats.json', kind: 'object' },
+  /**
+   * 蓝奏云镜像登记表：{ [apkFileName]: { shareUrl, password, mirrorFile, size, uploadedAt } }。
+   * 单独一个集合而不是写进 releases：一个 APK 文件可能被多个版本引用，
+   * 镜像绑定的是「文件」而非「版本」，放 releases 里会随版本删除而丢。
+   */
+  mirrors: { file: 'mirrors.json', kind: 'object' },
   audit: { file: 'audit.json', kind: 'array' }
 }
 
@@ -33,6 +39,7 @@ const EMPTY = {
   scenarios: () => [],
   roadmap: () => ({ updatedAt: null, note: '', phases: [] }),
   stats: () => ({ totalDownloads: 0, byVersion: {}, byDay: {}, lastDownloadAt: null }),
+  mirrors: () => ({}),
   audit: () => []
 }
 

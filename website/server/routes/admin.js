@@ -6,6 +6,7 @@ import { config } from '../config.js'
 import * as store from '../lib/store.js'
 import { checkPassword, issueToken, requireAdmin } from '../lib/auth.js'
 import * as credentials from '../lib/credentials.js'
+import * as lanzou from '../lib/lanzou.js'
 import {
   apkInfo,
   apkPath,
@@ -379,8 +380,101 @@ adminRouter.post('/apk', requireAdmin, (req, res) => {
     if (!req.file) return fail(res, 400, 'no_file', '请求里没有 file 字段')
     const info = apkInfo(req.file.filename)
     audit(req, 'upload', `apk/${req.file.filename}`, `上传 APK（${info?.sizeText}）`)
+    // 上传即自动镜像到蓝奏云：打包上传要几十秒，不能卡住上传响应，异步跑并在登记表里跟踪结果
+    const mirror = lanzou.loadConfig()
+    if (mirror.enabled && mirror.autoMirror && info) {
+      const full = apkPath(req.file.filename)
+      lanzou
+        .mirrorApk(req.file.filename, full)
+        .then((m) => console.log(`[lanzou] 已镜像 ${req.file.filename} → ${m.shareUrl}`))
+        .catch((err) => console.error(`[lanzou] 镜像 ${req.file.filename} 失败：${err.message}`))
+    }
     res.status(201).json(info)
   })
+})
+
+// ---------- 蓝奏云镜像 ----------
+
+adminRouter.get('/lanzou', requireAdmin, (_req, res) => {
+  res.json({ config: lanzou.publicConfig(), mirrors: lanzou.listMirrors() })
+})
+
+adminRouter.put('/lanzou', requireAdmin, (req, res) => {
+  const body = req.body || {}
+  if (Array.isArray(body)) return fail(res, 400, 'bad_shape', '配置必须是对象')
+  const next = lanzou.saveConfig({
+    enabled: Boolean(body.enabled),
+    autoMirror: Boolean(body.autoMirror),
+    preferMirror: Boolean(body.preferMirror),
+    username: String(body.username ?? '').trim(),
+    password: typeof body.password === 'string' ? body.password : '',
+    folderId: Number.isFinite(Number(body.folderId)) ? Number(body.folderId) : -1,
+    domain: String(body.domain ?? '').trim()
+  })
+  audit(req, 'update', 'lanzou', '更新蓝奏云镜像配置')
+  res.json({ config: lanzou.publicConfig(), ok: true, folderId: next.folderId })
+})
+
+/** 用当前配置真登录一次，顺带把文件夹列表带回来供后台选择 */
+adminRouter.post('/lanzou/test', requireAdmin, async (req, res) => {
+  const body = req.body || {}
+  try {
+    const result = await lanzou.attemptLogin(body, {
+      captchaToken: String(body.captchaToken || ''),
+      verifycode: String(body.verifycode || '')
+    })
+    // 命中人机验证：把验证码图交回前端弹窗，人工输入后再带 token 续登
+    if (result.needCaptcha) {
+      return res.json({
+        ok: false,
+        needCaptcha: true,
+        token: result.token,
+        image: result.image,
+        hint: result.hint
+      })
+    }
+    audit(req, 'login', 'lanzou', '蓝奏云登录校验通过')
+    res.json({ ok: true, folders: result.folders })
+  } catch (err) {
+    res.status(400).json({ error: 'lanzou_login_failed', message: err.message })
+  }
+})
+
+/** 手动触发镜像（接口自动上传失败时的补传入口） */
+adminRouter.post('/lanzou/mirror', requireAdmin, async (req, res) => {
+  const file = path.basename(String(req.body?.file || ''))
+  const full = apkPath(file)
+  if (!full || !fs.existsSync(full)) return fail(res, 400, 'apk_missing', `APK 文件 ${file} 不在磁盘上`)
+  try {
+    const info = await lanzou.mirrorApk(file, full)
+    audit(req, 'mirror', `lanzou/${file}`, `镜像到蓝奏云：${info.shareUrl}`)
+    res.json(info)
+  } catch (err) {
+    res.status(400).json({ error: 'mirror_failed', message: err.message })
+  }
+})
+
+/** 手工登记分享信息：自动上传接口失效时的兜底 */
+adminRouter.put('/lanzou/mirror/:file', requireAdmin, (req, res) => {
+  const file = path.basename(req.params.file)
+  if (!apkPath(file)) return fail(res, 400, 'bad_file', '文件名不合法')
+  const info = lanzou.putMirror(file, {
+    shareUrl: String(req.body?.shareUrl || '').trim(),
+    password: String(req.body?.password || '').trim(),
+    mirrorFile: String(req.body?.mirrorFile || '').trim(),
+    apkFile: file,
+    uploadedAt: new Date().toISOString(),
+    source: 'manual'
+  })
+  audit(req, 'mirror', `lanzou/${file}`, '手工登记蓝奏云镜像')
+  res.json(info)
+})
+
+adminRouter.delete('/lanzou/mirror/:file', requireAdmin, (req, res) => {
+  const file = path.basename(req.params.file)
+  lanzou.removeMirror(file)
+  audit(req, 'delete', `lanzou/${file}`, '移除蓝奏云镜像登记')
+  res.json({ ok: true, removed: file })
 })
 
 adminRouter.delete('/apk/:file', requireAdmin, (req, res) => {
@@ -394,6 +488,8 @@ adminRouter.delete('/apk/:file', requireAdmin, (req, res) => {
     return fail(res, 409, 'in_use', `该文件被版本 ${usedBy.join(', ')} 引用，加 ?force=1 强制删除`, { usedBy })
   }
   fs.unlinkSync(full)
+  // 文件没了，镜像登记也一并清掉，否则更新接口会把客户端引到一个已失效的分享页
+  lanzou.removeMirror(path.basename(full))
   audit(req, 'delete', `apk/${path.basename(full)}`, '删除 APK 文件')
   res.json({ ok: true })
 })

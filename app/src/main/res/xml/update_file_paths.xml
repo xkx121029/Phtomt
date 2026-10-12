@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自动更新的安装包外传路径白名单（FileProvider）。
+  更新包默认下到「应用外部私有目录/updates」，那里的文件名对 shell 可读、能直接 pm install；
+  外部存储不可用时退回内部 files/updates，此时只能走系统安装器，故两条路径都要授权。
+-->
+<paths>
+    <external-files-path name="updates" path="updates/" />
+    <files-path name="internal-updates" path="updates/" />
+</paths>

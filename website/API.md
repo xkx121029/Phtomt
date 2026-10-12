@@ -52,7 +52,36 @@ curl -s -X POST "$BASE/api/admin/login" \
 | GET | `/api/openapi` | OpenAPI 3.1 规范（机器可读） |
 | GET | `/api/download/latest` | 重定向到最新版 APK |
 | GET | `/api/download/:version` | 下载指定版本 APK（计入统计） |
+| GET | `/api/update/check` | 客户端检查更新（频道 + 版本判定） |
+| GET | `/api/update/download/:version` | 客户端下载更新（优先蓝奏云镜像，失败回落官网） |
 | GET | `/apk/:file` | APK 静态直出（带 Range 与缓存） |
+
+### 客户端自动更新
+
+`/api/update/check` 与 `/api/releases` 的区别：后者给官网页面看（返回列表与装饰字段），前者给**装好的 App 自己**用——按客户端所在频道判定该不该升级，并给出一个拿得到就能装的下载地址。
+
+频道矩阵（`server/lib/update.js` 的 `CHANNEL_ORDER`）是产品约定，只在那一个文件里定义：
+
+| 客户端频道 | 可接收的发布渠道 |
+| --- | --- |
+| `stable` | stable |
+| `beta` | beta、stable |
+| `dev` | dev、beta、stable |
+| `nightly` | nightly、dev、beta、stable |
+
+```bash
+curl -s "$BASE/api/update/check?channel=beta&version=0.2.780&build=780"
+```
+
+| 参数 | 说明 |
+| --- | --- |
+| `channel` | 客户端接收频道，未知值按 `stable` 处理 |
+| `version` | 客户端当前 versionName；**留空则只回该频道可见范围内的最新一版，`hasUpdate` 恒为 false** |
+| `build` | 客户端当前 versionCode；版本号相同、构建号更高也算有更新 |
+
+响应字段：`channel` / `clientVersion` / `clientBuild` / `hasUpdate` / `latest` / `download`。`download.url` 恒为 `/api/update/download/:version`，客户端不必理解镜像细节；`download.mirror` 取 `lanzou` 或 `origin`，`shareUrl` / `password` 仅用于界面展示来源。
+
+`/api/update/download/:version` 命中蓝奏云镜像时由服务端取回 zip、解包后直出 APK 字节（响应头 `X-Update-Source: lanzou`）；镜像不可用则静默回落到官网磁盘上的那份（`X-Update-Source: origin`），并记一条服务端日志。
 
 ## 管理端点
 
@@ -73,7 +102,22 @@ curl -s -X POST "$BASE/api/admin/login" \
 | --- | --- | --- |
 | GET | `/api/admin/apk` | 磁盘上的 APK 文件清单 |
 | POST | `/api/admin/apk` | 上传 APK（multipart，字段名 `file`） |
-| DELETE | `/api/admin/apk/:file` | 删除 APK 文件 |
+| DELETE | `/api/admin/apk/:file` | 删除 APK 文件（连带清掉其蓝奏云镜像登记） |
+
+### 蓝奏云镜像
+
+上传 APK 后若镜像已启用且开启自动镜像，服务端会异步把它打包成 zip 上传到蓝奏云（蓝奏云拦截 apk 后缀，必须打 zip），并把分享链接登记到 `server/data/mirrors.json`。这一层随时可能因蓝奏云改版失效，因此下面同时提供「测试登录 / 手动补传 / 手填分享链接」三条自救路径。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/lanzou` | 读取配置（口令只回 `passwordSet` 布尔）与已登记镜像 |
+| PUT | `/api/admin/lanzou` | 更新配置（`enabled` / `autoMirror` / `preferMirror` / `username` / `password` / `folderId` / `domain`；口令留空表示不修改） |
+| POST | `/api/admin/lanzou/test` | 用提交的账号真登录一次，顺带返回文件夹列表 |
+| POST | `/api/admin/lanzou/mirror` | 手动触发某文件的镜像（`{"file":"xxx.apk"}`） |
+| PUT | `/api/admin/lanzou/mirror/:file` | 手工登记分享链接与提取码（兜底） |
+| DELETE | `/api/admin/lanzou/mirror/:file` | 移除镜像登记 |
+
+蓝奏云账号配置单独落在 `server/data/lanzou.json`（不进内容集合，避免随 `/api/admin/content` 或静态快照泄露）。
 
 ### 内容集合
 
@@ -198,6 +242,8 @@ curl -s "$BASE/api/stats"            # 下载统计
 | `docs.json` | 文档（`body` 为 Markdown） |
 | `faq.json` | 常见问题 |
 | `stats.json` | 下载计数 |
+| `mirrors.json` | APK 文件 → 蓝奏云镜像绑定（绑定「文件」而非「版本」） |
+| `lanzou.json` | 蓝奏云账号与镜像开关（独立文件，不入内容集合） |
 
 APK 文件放在 `public/apk/`。写入接口会先写临时文件再改名，避免中途失败留下半截 JSON。
 

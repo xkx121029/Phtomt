@@ -113,6 +113,13 @@ class AppSettings(private val context: Context) {
         val catalog: List<CatalogModel> = emptyList(),
         /** 主模型自身能识图时，跳过"视觉模型把截图转成文字描述"这一步（只省描述，不影响坐标框选） */
         val skipVisionDescWhenMainSees: Boolean = true,
+        // ---- 自动更新：向官网查询新版本，频道决定可接收的发布档位 ----
+        /** 更新服务地址（官网）。留空时由更新模块回落到官方默认站点 */
+        val updateBaseUrl: String = "https://hpa.linshuxu.us.kg",
+        /** 接收更新的频道：stable / beta / dev / nightly（见 com.phoneagent.feature.update.UpdateChannel） */
+        val updateChannel: String = "stable",
+        /** 启动时自动检查更新 */
+        val autoCheckUpdate: Boolean = true,
     )
 
     private object Keys {
@@ -171,6 +178,10 @@ class AppSettings(private val context: Context) {
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
         val CATALOG = stringPreferencesKey("model_catalog")
         val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
+        /** 自动更新：服务地址 / 接收频道 / 启动时自动检查 */
+        val UPDATE_BASE_URL = stringPreferencesKey("update_base_url")
+        val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
+        val AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -258,6 +269,9 @@ class AppSettings(private val context: Context) {
             endpoints = endpoints,
             catalog = catalog,
             skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
+            updateBaseUrl = prefs[Keys.UPDATE_BASE_URL] ?: "https://hpa.linshuxu.us.kg",
+            updateChannel = prefs[Keys.UPDATE_CHANNEL] ?: "stable",
+            autoCheckUpdate = prefs[Keys.AUTO_CHECK_UPDATE] ?: true,
         )
     }
 
@@ -313,6 +327,9 @@ class AppSettings(private val context: Context) {
                 settings.catalog.filter { it.endpointId in liveEndpointIds },
             )
             prefs[Keys.SKIP_VISION_DESC] = settings.skipVisionDescWhenMainSees
+            prefs[Keys.UPDATE_BASE_URL] = settings.updateBaseUrl.trim().trimEnd('/')
+            prefs[Keys.UPDATE_CHANNEL] = settings.updateChannel
+            prefs[Keys.AUTO_CHECK_UPDATE] = settings.autoCheckUpdate
         }
     }
 }

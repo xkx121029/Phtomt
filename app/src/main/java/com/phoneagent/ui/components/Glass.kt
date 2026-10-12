@@ -206,9 +206,12 @@ class HeaderLiftState internal constructor() : NestedScrollConnection {
         available: Offset,
         source: NestedScrollSource,
     ): Offset {
+        // Compose 的 consumed.y 方向：手指下拉（想让内容回到顶部）时 consumed.y 为正，
+        // 手指上推（想读下面的内容）时为负。骨架想要的"离开顶部 = 浮起"对应后者，
+        // 所以累加时反号（-consumed.y），才让"向下滚 → offsetPx 增加 → floating=true"。
+        // 往上滚（consumed.y > 0）时累加后会被扣回 0，floating 自然归 false。
         if (consumed.y != 0f) {
-            // 有位移被消费 → 页面不在最上方；累计真实滚动位置（往上滚会把它减回去）
-            offsetPx = (offsetPx + consumed.y).coerceAtLeast(0f)
+            offsetPx = (offsetPx - consumed.y).coerceAtLeast(0f)
         } else if (available.y < 0f) {
             // 想往页首滚却一点没被消费 → 已经在最上方，复位
             offsetPx = 0f
@@ -268,6 +271,14 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * 两态之间的转场由一根无回弹弹簧统一驱动（边距、圆角同步过渡），不跟滚动位置连续插值。
  * 页面不需要为此传任何参数，正文的滚动位移由骨架自己从嵌套滚动里听。
  *
+ * 如果页面有**单一顶层滚动容器**（`LazyColumn` / `verticalScroll` 包着的 `Column`），
+ * 传一个 [floating] 会比内部 NestedScrollConnection 判定更准确
+ * （官网做法：`listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 0`
+ * 或 `scrollState.value > 0`，绝对位置判断，不依赖手势符号约定）。
+ * 多面板 / 多 Tab 页（Debug / Skill）没有统一顶层状态，跳过这个参数，骨架内部用
+ * 修好方向的 NestedScrollConnection 兜底即可。
+ *
+ * @param floating 可选的显式浮起状态。非 null 时直接用它替换骨架内部的滚动监听。
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板。内层内容的左右留白由骨架通过
  *   [LocalHeaderContentPad] 下发，页眉里放 [AppTopBar] 时**不要再传 contentPadding**，
  *   否则标题会跟着面板边距一起横移。
@@ -282,6 +293,7 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
 @Composable
 fun GlassHeaderScaffold(
     modifier: Modifier = Modifier,
+    floating: (() -> Boolean)? = null,
     header: @Composable () -> Unit,
     dock: (@Composable BoxScope.(HazeState) -> Unit)? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
@@ -291,6 +303,16 @@ fun GlassHeaderScaffold(
     val glass = rememberGlassState()
     val density = LocalDensity.current
     val lift = rememberHeaderLiftState()
+    // 显式 provider 优先（单一滚动容器页的官网风格判定更稳），否则走 NestedScrollConnection
+    val isFloating by remember { androidx.compose.runtime.derivedStateOf { floating?.invoke() ?: lift.floating } }
+    val liftProgress by animateFloatAsState(
+        targetValue = if (isFloating) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "headerLiftProgress",
+    )
     // 实测高度回填给正文，首项不会被压在玻璃页眉下面
     var headerHeight by remember { mutableIntStateOf(0) }
     // 正文净空按"贴顶吸顶"的形态算，不跟着形态切换变：
@@ -303,18 +325,6 @@ fun GlassHeaderScaffold(
         maxOf(with(density) { headerHeight.toDp() / 2 }, AppRadii.Header)
     }
 
-    // 形态切换的唯一驱动：0 = 吸顶通栏直角，1 = 浮起胶囊。四条几何量全部由这一个进度
-    // 推导，一根无回弹弹簧拉着整段转场，四条曲线天然同步——不会出现"圆角先到位、
-    // 边距还在半路"的各走各的。无回弹是刻意的：页眉是承标题的 chrome，回弹会让文字
-    // 上下颠一下，读起来像 Bug。
-    val liftProgress by animateFloatAsState(
-        targetValue = if (lift.floating) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "headerLiftProgress",
-    )
     // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 GlassHeaderInset
     val sideInset = GlassHeaderInset * liftProgress
     /**

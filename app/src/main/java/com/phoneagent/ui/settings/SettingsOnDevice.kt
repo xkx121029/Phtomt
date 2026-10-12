@@ -71,17 +71,20 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsTopBar("端侧视觉", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader("端侧视觉", onBack, subtitle = "本地 3B 模型，识别在本机完成，截图不出设备")
+        Spacer(Modifier.height(20.dp))
 
         // ========== A 模型状态 ==========
-        GroupCard {
-            GroupHeader("模型状态", "Qwen2.5-VL-3B · llama.cpp 端侧推理，识别在本机完成，截图不出设备")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "模型状态",
+            subtitle = "Qwen2.5-VL-3B · llama.cpp 端侧推理",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 StatusRow("原生推理库", if (nativeOk) "可用" else "不可用（需 arm64 设备）")
                 Spacer(Modifier.height(8.dp))
                 StatusRow("模型文件", if (modelPresent) "已下载" else "未下载")
@@ -90,16 +93,18 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
                 StatusRow("视觉投影", formatBytes(fileStatus[NativeVisionEngine.MMPROJ_FILE] ?: 0L))
                 Spacer(Modifier.height(8.dp))
                 StatusRow("内存加载", if (loaded) "已加载" else "未加载")
-                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ========== B 下载与加载 ==========
-        GroupCard {
-            GroupHeader("下载与加载", "模型合计约 3.1GB，下载支持断点续传，中断后可继续")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "下载与加载",
+            subtitle = "模型合计约 3.1GB，下载支持断点续传，中断后可继续",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 if (downloading) {
                     Text(
                         "正在下载：$currentFile · ${formatBytes(progressBytes)} / ${formatBytes(totalBytes)}",
@@ -195,34 +200,29 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ========== C 运行开关 ==========
-        GroupCard {
-            GroupHeader("运行开关")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                ToggleRow(
-                    "启用端侧视觉",
-                    "用端侧 3B 模型框选控件，优先于云端与本地 OCR；不可用时自动回落",
-                    st.enableExternalVision,
-                ) {
-                    st.enableExternalVision = it
-                    save()
-                }
-                Spacer(Modifier.height(8.dp))
-                ToggleRow(
-                    "混合路由",
-                    "简单任务（元素树可读）走端侧 3B 省额度；复杂任务（如游戏/WebView）直接走云端视觉",
-                    st.smartVisionRoute,
-                ) {
-                    st.smartVisionRoute = it
-                    save()
-                }
-                Spacer(Modifier.height(4.dp))
+        SettingsSection(title = "运行开关", tone = SettingsTone.Brand) {
+            SettingsToggleRow(
+                title = "启用端侧视觉",
+                subtitle = "用端侧 3B 模型框选控件，优先于云端与本地 OCR；不可用时自动回落",
+                value = st.enableExternalVision,
+            ) {
+                st.enableExternalVision = it
+                save()
+            }
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "混合路由",
+                subtitle = "简单任务（元素树可读）走端侧 3B 省额度；复杂任务（如游戏/WebView）直接走云端视觉",
+                value = st.smartVisionRoute,
+            ) {
+                st.smartVisionRoute = it
+                save()
             }
         }
 

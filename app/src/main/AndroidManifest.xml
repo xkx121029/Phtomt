@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 自动更新：优先走 shell 静默安装；通道不可用时回落到系统安装器，
+         后者要求本应用持有「安装未知应用」权限（Android 8.0 起按来源应用单独授权） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Termux 执行通道：该权限由 Termux 声明（dangerous 级），授予后本 App 才能向
          com.termux.app.RunCommandService 下发命令；未安装 Termux 时该权限无法授予，不影响安装 -->
@@ -117,6 +120,17 @@
                 <action android:name="com.phoneagent.action.TERMUX_RESULT" />
             </intent-filter>
         </receiver>
+
+        <!-- 自动更新：把下载到私有目录的安装包授权给系统安装器（targetSdk 24 起禁止 file:// 外传） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

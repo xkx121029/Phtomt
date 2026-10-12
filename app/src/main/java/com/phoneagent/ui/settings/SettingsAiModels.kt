@@ -77,17 +77,20 @@ internal fun SettingsAiModels(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsTopBar("AI 模型配置", onBack)
-        Spacer(Modifier.height(16.dp))
+        SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
+        Spacer(Modifier.height(20.dp))
 
         // ========== A 端点 ==========
-        GroupCard {
-            GroupHeader("端点", "API 地址与密钥；一个端点下可以放多个模型")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "端点",
+            subtitle = "API 地址与密钥；一个端点下可以放多个模型",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 // 快捷预设：点一下填好地址 + 主/视觉/思考模型，并把它们写进端点与模型库
                 Text("快捷预设", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(6.dp))
@@ -117,7 +120,7 @@ internal fun SettingsAiModels(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "支持 http://、内网地址与 localhost（如 http://192.168.1.5:8000/v1），不写协议时自动补全",
                     style = MaterialTheme.typography.bodySmall,
@@ -186,16 +189,18 @@ internal fun SettingsAiModels(
                     enabled = !hasBlank,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (hasBlank) "请先填写上面新增的端点" else "添加端点") }
-                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ========== B 模型库 ==========
-        GroupCard {
-            GroupHeader("模型库", "能力徽章由真实请求探测得出；问号代表没测出，与「不支持」不是一回事")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(
+            title = "模型库",
+            subtitle = "能力徽章由真实请求探测得出；问号代表没测出，与「不支持」不是一回事",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 OutlinedTextField(
                     value = modelQuery,
                     onValueChange = { modelQuery = it },
@@ -268,37 +273,36 @@ internal fun SettingsAiModels(
                         }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ========== C 职责分配 ==========
-        GroupCard {
-            GroupHeader("职责分配", "点一行更换该职责使用的模型；长按拖动排序")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                ToggleRow(
-                    "主模型思考",
-                    "主模型支持深度思考时，规划/重规划直接由主模型完成",
-                    st.mainThinking,
-                ) { st.mainThinking = it }
-                Spacer(Modifier.height(8.dp))
+        SettingsSection(
+            title = "职责分配",
+            subtitle = "点一行更换该职责使用的模型；长按拖动排序",
+            tone = SettingsTone.Brand,
+        ) {
+            SettingsToggleRow(
+                title = "主模型思考",
+                subtitle = "主模型支持深度思考时，规划/重规划直接由主模型完成",
+                value = st.mainThinking,
+            ) { st.mainThinking = it }
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "执行审核（审核者）",
+                subtitle = "每个动作由审核者 AI 复核是否有页面依据，防止点到不存在的控件",
+                value = st.enableReview,
+            ) { st.enableReview = it }
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "链路聚合（增强）",
+                subtitle = "开启后思考模型参与规划/重规划等复杂任务",
+                value = st.enableChain,
+            ) { st.enableChain = it }
 
-                ToggleRow(
-                    "执行审核（审核者）",
-                    "每个动作由审核者 AI 复核是否有页面依据，防止点到不存在的控件",
-                    st.enableReview,
-                ) { st.enableReview = it }
-                Spacer(Modifier.height(8.dp))
-
-                ToggleRow(
-                    "链路聚合（增强）",
-                    "开启后思考模型参与规划/重规划等复杂任务",
-                    st.enableChain,
-                ) { st.enableChain = it }
-                Spacer(Modifier.height(10.dp))
-
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 val chainItems = remember { mutableStateListOf(*st.chainOrder.takeIf { it.isNotEmpty() }?.toTypedArray() ?: arrayOf("main", "vision", "reason")) }
                 ReorderableColumn(items = chainItems) { key, dragHandle ->
                     when (key) {
@@ -340,16 +344,14 @@ internal fun SettingsAiModels(
                 LaunchedEffect(chainItems.size, chainItems.toList()) {
                     st.chainOrder = chainItems.toList()
                 }
-                Spacer(Modifier.height(4.dp))
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
         // ========== D 功能选项 ==========
-        GroupCard {
-            GroupHeader("功能选项")
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        SettingsSection(title = "功能选项", tone = SettingsTone.Brand) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Text("主模型识图", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -371,12 +373,6 @@ internal fun SettingsAiModels(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                ToggleRow(
-                    "主模型识图时跳过视觉描述",
-                    "主模型能直接看图时不再额外调用视觉模型生成文字描述，省一次调用与等待",
-                    st.skipVisionDescWhenMainSees,
-                ) { st.skipVisionDescWhenMainSees = it }
-                Spacer(Modifier.height(8.dp))
                 Text("视觉读图方式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.height(2.dp))
                 Text(
@@ -396,9 +392,21 @@ internal fun SettingsAiModels(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                ToggleRow("附送屏幕截图", value = st.attachScreenshot) { st.attachScreenshot = it }
                 Spacer(Modifier.height(4.dp))
+            }
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "主模型识图时跳过视觉描述",
+                subtitle = "主模型能直接看图时不再额外调用视觉模型生成文字描述，省一次调用与等待",
+                value = st.skipVisionDescWhenMainSees,
+            ) { st.skipVisionDescWhenMainSees = it }
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "附送屏幕截图",
+                subtitle = "附带当前屏幕截图辅助模型判断",
+                value = st.attachScreenshot,
+            ) { st.attachScreenshot = it }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 // 端侧 3B 视觉模型已并入主程序进程内，下载/加载/启用收在「设置 → 端侧视觉」
                 Text(
                     "端侧 3B 视觉模型在「设置 → 端侧视觉」中下载与启用",
@@ -413,56 +421,57 @@ internal fun SettingsAiModels(
         // ---- 测试所有 API ----
         var testingAll by remember { mutableStateOf(false) }
         val apiResults = remember { mutableStateListOf<ApiTestItemResult>() }
-        OutlinedButton(
-            onClick = {
-                buzz()
-                apiResults.clear()
-                testingAll = true
-                scope.launch {
-                    buildApiTestTargets(st).forEach { t ->
-                        val r = try {
-                            vm.testConnection(t.baseUrl, t.apiKey, t.model)
-                        } catch (e: Exception) {
-                            Result.failure(e)
+        SettingsSection(
+            title = "连接测试",
+            subtitle = "按 主模型 / 视觉模型 / 思考模型 逐项验证连接",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        buzz()
+                        apiResults.clear()
+                        testingAll = true
+                        scope.launch {
+                            buildApiTestTargets(st).forEach { t ->
+                                val r = try {
+                                    vm.testConnection(t.baseUrl, t.apiKey, t.model)
+                                } catch (e: Exception) {
+                                    Result.failure(e)
+                                }
+                                apiResults.add(
+                                    ApiTestItemResult(
+                                        label = t.label,
+                                        ok = r.isSuccess,
+                                        detail = if (r.isSuccess) "连接正常" else (r.exceptionOrNull()?.message ?: "未知错误"),
+                                    )
+                                )
+                            }
+                            testingAll = false
                         }
-                        apiResults.add(
-                            ApiTestItemResult(
-                                label = t.label,
-                                ok = r.isSuccess,
-                                detail = if (r.isSuccess) "连接正常" else (r.exceptionOrNull()?.message ?: "未知错误"),
-                            )
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (testingAll) "正在测试所有 API…" else "测试所有 API")
+                }
+                apiResults.forEach { item ->
+                    // 上下排列：错误详情含完整返回正文，需占满整行换行展示，避免被单行布局挤出屏幕
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    ) {
+                        Text(item.label, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            (if (item.ok) "✓ " else "✗ ") + item.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (item.ok) AppTheme.colors.success else MaterialTheme.colorScheme.error,
                         )
                     }
-                    testingAll = false
                 }
-            },
-            colors = ButtonDefaults.outlinedButtonColors(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (testingAll) "正在测试所有 API…" else "测试所有 API")
-        }
-        if (testingAll) {
-            Text(
-                "按 主模型 / 视觉模型 / 思考模型 逐项验证连接…",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-        apiResults.forEach { item ->
-            // 上下排列：错误详情含完整返回正文，需占满整行换行展示，避免被单行布局挤出屏幕
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            ) {
-                Text(item.label, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    (if (item.ok) "✓ " else "✗ ") + item.detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (item.ok) AppTheme.colors.success else MaterialTheme.colorScheme.error,
-                )
             }
         }
-        Spacer(Modifier.height(12.dp))
+
+        Spacer(Modifier.height(16.dp))
 
         // 保存按钮
         var testing by remember { mutableStateOf(false) }
