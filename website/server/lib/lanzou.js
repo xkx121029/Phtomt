@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
+import { fetch as undiciFetch, Agent } from 'undici'
 import { config } from '../config.js'
 import * as store from './store.js'
 import { zipSingleFile, readFirstFile } from './zip.js'
@@ -150,6 +151,21 @@ function solveChallenge(html) {
 
 // ---------- HTTP 小工具（自带 cookie jar，Node 内置 fetch 不保留会话） ----------
 
+/**
+ * 蓝奏云专用的连接池。
+ *
+ * 为什么不用全局 fetch：Node 内置 fetch（undici）默认 headersTimeout / bodyTimeout 都是
+ * 300s。从 NAS 到蓝奏云的带宽实测只有百来 KB/s，一个 39MB 的包实测要 366s（原型验证），
+ * 跑到一半就被默认超时掐断，抛出来的还只是一句没有细节的 `fetch failed`——这就是
+ * 「自动打包不好使」的根因。这里单独接一个宽松超时的 Agent，只喂给蓝奏云的请求，
+ * 不动进程里其它 fetch。超时给「大但有限」的值（而非 0/无限），真遇到卡死仍能自己收场。
+ */
+const lanzouAgent = new Agent({
+  bodyTimeout: 1800000,
+  headersTimeout: 600000,
+  connect: { timeout: 30000 }
+})
+
 function client(initialCookies = '') {
   const jar = new Map()
   // 用历史会话预置 jar：命中就跳过登录，失败再由调用方回退账密
@@ -178,9 +194,10 @@ function client(initialCookies = '') {
    */
   async function request(url, { method = 'GET', headers = {}, body, redirect = 'follow' } = {}) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await fetch(url, {
+      const res = await undiciFetch(url, {
         method,
         redirect,
+        dispatcher: lanzouAgent,
         headers: {
           'User-Agent': UA,
           // 蓝奏云用 Accept-Language 判定「是不是浏览器」：缺了它，直链会返回「验证并下载」

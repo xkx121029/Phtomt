@@ -387,7 +387,13 @@ adminRouter.post('/apk', requireAdmin, (req, res) => {
       lanzou
         .mirrorApk(req.file.filename, full)
         .then((m) => console.log(`[lanzou] 已镜像 ${req.file.filename} → ${m.shareUrl}`))
-        .catch((err) => console.error(`[lanzou] 镜像 ${req.file.filename} 失败：${err.message}`))
+        // 带上 err.cause：蓝奏云的失败常是网络层（fetch failed），只打 message 看不到原因
+        .catch((err) =>
+          console.error(
+            `[lanzou] 镜像 ${req.file.filename} 失败：${err.message}` +
+              (err.cause ? `（cause: ${err.cause.code || err.cause.message}）` : '')
+          )
+        )
     }
     res.status(201).json(info)
   })
