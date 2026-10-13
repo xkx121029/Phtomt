@@ -380,64 +380,116 @@ class ActionExecutor(
     /**
      * 唤起系统语音助手（assistant 意图的执行出口）。
      *
-     * 流程：探测（[VoiceAssistantDetector]）→ 拉起 → text 非空时尽力传话。
-     * 传话是"尽力而为"：填入/发送失败只影响传话本身，不算整体失败（回退为仅拉起），
-     * 仅"本机探测不到语音助手"才返回 Failure。
+     * 多入口依次唤醒 + 拉起后验证：部分设备上后台 startActivity 会被**静默拦截**
+     * （不抛异常但窗口根本不出现），所以每个入口拉起后都确认助手窗口真的到了前台，
+     * 没到就换下一个入口（语音指令入口 → 默认助理入口 → 厂商助手兜底）。
+     * 唤醒成功后尽力传话；全部入口都失败才返回 Failure。
      */
     suspend fun launchAssistant(text: String?): Result {
-        val target = VoiceAssistantDetector(service.applicationContext).probe()
-            ?: return Result.Failure("本机未找到系统语音助手（已尝试语音指令、默认助理与常见厂商助手）；请确认设备已启用语音助手，或改用其他方式完成")
+        val targets = VoiceAssistantDetector(service.applicationContext).probeAll()
+        if (targets.isEmpty()) {
+            return Result.Failure("本机未找到系统语音助手（已尝试语音指令、默认助理与常见厂商助手）；请确认设备已启用语音助手，或改用其他方式完成")
+        }
+        var lastReason = "未知原因"
+        for (target in targets) {
+            if (wakeAssistant(target)) {
+                return Result.Success(passToAssistant(text))
+            }
+            lastReason = "「${target.via.label}」入口（${target.packageName ?: "系统默认"}）拉起后未见助手窗口"
+        }
+        return Result.Failure(
+            "无法唤醒语音助手：已尝试 ${targets.size} 个入口，最后失败原因——$lastReason。" +
+                "可在系统设置里把默认语音助手设为可用的助手应用后重试，或改用其他方式完成任务",
+        )
+    }
+
+    /** 供引擎在外部方式（如 shell 兜底）拉起助手后单独调用传话；返回中文结果说明 */
+    suspend fun handoffToAssistant(text: String?): String = passToAssistant(text)
+
+    /** 按包名轮询确认语音助手窗口已出现；pkg 未知时恒为 true（尽力而为）。供 shell 兜底路径复用 */
+    suspend fun assistantVisible(pkg: String?, timeoutMs: Long = ASSISTANT_WAKE_TIMEOUT_MS): Boolean =
+        assistantWindowVisible(pkg, timeoutMs)
+
+    /** 拉起单个助手入口并验证窗口真的出现；返回 false 表示这条路不通（没抛异常但窗口没来） */
+    private suspend fun wakeAssistant(target: VoiceAssistantDetector.Target): Boolean {
+        val ctx = service.applicationContext
+        val pm = ctx.packageManager
+        val intent = when (target.via) {
+            VoiceAssistantDetector.Via.VOICE_COMMAND ->
+                android.content.Intent(android.content.Intent.ACTION_VOICE_COMMAND)
+            VoiceAssistantDetector.Via.ASSIST ->
+                android.content.Intent(android.content.Intent.ACTION_ASSIST)
+            VoiceAssistantDetector.Via.VENDOR ->
+                pm.getLaunchIntentForPackage(target.packageName ?: return false)
+        }?.apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            // 系统入口探测到具体包名时钉住，避免被第三方应用抢答（厂商兜底自带包名，无需再钉）
+            if (target.via != VoiceAssistantDetector.Via.VENDOR && !target.packageName.isNullOrBlank()) {
+                setPackage(target.packageName)
+            }
+        } ?: return false
         return try {
-            val ctx = service.applicationContext
-            val pm = ctx.packageManager
-            val intent = when (target.via) {
-                VoiceAssistantDetector.Via.VOICE_COMMAND ->
-                    android.content.Intent(android.content.Intent.ACTION_VOICE_COMMAND)
-                VoiceAssistantDetector.Via.ASSIST ->
-                    android.content.Intent(android.content.Intent.ACTION_ASSIST)
-                VoiceAssistantDetector.Via.VENDOR ->
-                    pm.getLaunchIntentForPackage(target.packageName ?: return Result.Failure("厂商助手包名缺失，无法拉起"))
-            }?.apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                // 系统入口探测到具体包名时钉住，避免被第三方应用抢答（厂商兜底自带包名，无需再钉）
-                if (target.via != VoiceAssistantDetector.Via.VENDOR && !target.packageName.isNullOrBlank()) {
-                    setPackage(target.packageName)
-                }
-            } ?: return Result.Failure("无法拉起语音助手：未找到可启动入口")
             ctx.startActivity(intent)
-            Result.Success(passToAssistant(text))
+            assistantWindowVisible(target.packageName, ASSISTANT_WAKE_TIMEOUT_MS)
         } catch (e: Exception) {
-            Result.Failure("拉起语音助手失败：${e.message}")
+            false
+        }
+    }
+
+    /** 轮询确认助手窗口已出现；pkg 未知时视为成功（尽力而为，与原「仅拉起」语义一致） */
+    private suspend fun assistantWindowVisible(pkg: String?, timeoutMs: Long): Boolean {
+        if (pkg.isNullOrBlank()) return true
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (assistantInWindows(pkg)) return true
+            delay(ASSISTANT_WAKE_POLL_MS)
+        }
+        return assistantInWindows(pkg)
+    }
+
+    /** 助手包名的窗口是否已在无障碍窗口列表/活动窗口里（助手常以悬浮层出现，两个来源都要看） */
+    private fun assistantInWindows(pkg: String): Boolean =
+        windowRoots().any { it?.packageName == pkg }
+
+    /**
+     * 全部无障碍窗口的根节点（活动窗口在前，悬浮层在后）。
+     * 传话与唤醒验证共用：语音助手的输入框/窗口经常不在活动窗口里。
+     */
+    private fun windowRoots(): List<AccessibilityNodeInfo?> = buildList {
+        add(service.rootInActiveWindow)
+        runCatching { service.windows }.getOrNull()?.forEach { w ->
+            runCatching { w.root }.getOrNull()?.let { add(it) }
         }
     }
 
     /**
      * 传话（尽力而为）：等助手界面出现输入框 → 填入文字 → 找"发送"类控件点击。
-     * 任何一环失败都降级为"仅拉起"的中文说明，不抛失败。
+     * 任何一环失败都降级为"仅唤醒"的中文说明，不抛失败。
      */
     private suspend fun passToAssistant(text: String?): String {
-        if (text.isNullOrBlank()) return "已拉起语音助手"
-        // 等待助手窗口出现可编辑节点（语音优先的助手界面，输入框可能延迟渲染）
+        if (text.isNullOrBlank()) return "已唤醒语音助手"
+        // 等待助手界面出现可编辑节点（语音优先的助手界面，输入框可能延迟渲染）；
+        // 跨全部无障碍窗口扫描——助手的输入框常在悬浮层里，不一定在活动窗口
         var box: AccessibilityNodeInfo? = null
         for (attempt in 0 until ASSISTANT_PROBE_ROUNDS) {
-            box = findFirstEditable(service.rootInActiveWindow)
+            box = windowRoots().firstNotNullOfOrNull { findFirstEditable(it) }
             if (box != null) break
             delay(ASSISTANT_PROBE_INTERVAL_MS)
         }
         if (box == null || !setText(box, text)) {
-            return "已拉起语音助手（未能自动传话，请直接对它说话）"
+            return "已唤醒语音助手（未能自动传话，请直接对它说话）"
         }
         return if (tapSendControl()) {
-            "已拉起语音助手，并把「$text」转交给了它"
+            "已唤醒语音助手，并把「$text」转交给了它"
         } else {
-            "已拉起语音助手，已填入文字但未找到发送按钮，请在助手界面确认"
+            "已唤醒语音助手，已填入文字但未找到发送按钮，请在助手界面确认"
         }
     }
 
     /** 在活节点树里找"发送"类可点击控件并点击；找不到返回 false，由调用方降级为"已填入" */
     private suspend fun tapSendControl(): Boolean {
         val keywords = listOf("发送", "send", "搜索", "提问", "→", "➤")
-        val node = findSendNode(service.rootInActiveWindow, keywords, 0) ?: return false
+        val node = windowRoots().firstNotNullOfOrNull { findSendNode(it, keywords, 0) } ?: return false
         val r = Rect()
         node.getBoundsInScreen(r)
         // 部分助手"发送"控件自身不可点击但祖先容器可点，上溯兜底（层数与 clickNode 同源）
@@ -632,11 +684,18 @@ class ActionExecutor(
         /** 容器滚动示意轨迹在容器上下各留的边距比例，避开固定头部与悬浮按钮 */
         const val TRACE_INSET_RATIO = 0.22f
 
-        /** 传话等待助手界面出输入框的轮询轮数（5 × 500ms = 2.5s 内没等到就降级为仅拉起） */
-        const val ASSISTANT_PROBE_ROUNDS = 5
+        /** 传话等待助手界面出输入框的轮询轮数（10 × 600ms = 6s 内没等到就降级为仅唤醒；
+         *  语音优先的助手界面输入框渲染较慢，2.5s 经常不够） */
+        const val ASSISTANT_PROBE_ROUNDS = 10
 
         /** 传话轮询间隔（毫秒） */
-        const val ASSISTANT_PROBE_INTERVAL_MS = 500L
+        const val ASSISTANT_PROBE_INTERVAL_MS = 600L
+
+        /** 单个入口拉起后确认助手窗口出现的最长时间（毫秒；厂商助手冷启动较慢，2s 会误判） */
+        const val ASSISTANT_WAKE_TIMEOUT_MS = 3000L
+
+        /** 唤醒验证的轮询间隔（毫秒） */
+        const val ASSISTANT_WAKE_POLL_MS = 250L
     }
 }
 

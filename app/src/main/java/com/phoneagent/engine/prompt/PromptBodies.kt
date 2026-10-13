@@ -525,6 +525,7 @@ internal object PromptBodies {
     5. 禁止浅层步骤：❌"完成购物" ✅"打开美团 → 输入'无线耳机' → 点击搜索"。
     6. 数量：3~8 步，这是"宁少勿多"的参考区间，不是硬上限。只拆真正必要的步骤；已知不会出现的中间步骤不要规划（如已知无弹窗就别规划"关闭弹窗"）。若流程客观上超过 8 步，允许超过——**绝不能为了压进 8 步而跳步或省略必经页面**（与规则 2 冲突时以规则 2 为准）。
     7. 纯对话（打招呼、闲聊、咨询一个你直接就能答的问题、不需要碰手机的请求）：**不要拆步骤**，用输出格式里的 reply 形态直接回话。把问候语硬拆成"打开某应用/说一句话"之类的步骤是错的。
+    8. 语音助手捷径（见「语音助手捷径」节）：任务可由 assistant 一步办成时，**整个计划只规划这一步**，不受"落到具体应用/控件"（规则 1）与 3~8 步区间（规则 6）约束——传话即完成，无需后续步骤。
     """.trimIndent()
     internal val PLAN_DECOMPOSITION_EN: String = """
     # Decomposition Rules (violating any = rewrite)
@@ -535,6 +536,7 @@ internal object PromptBodies {
     5. No shallow steps: ❌"complete shopping" ✅"open Meituan → type 'wireless earbuds' → tap search".
     6. Count: 3~8 steps — a "fewer is better" reference range, not a hard cap. Only split truly necessary steps; do NOT plan intermediate steps you know won't occur (e.g. no dialog if none is expected). If the flow objectively needs more than 8 steps, exceeding it is fine — **NEVER skip a step or omit a required page just to squeeze under 8** (rule 2 wins on conflict).
     7. Pure conversation (greeting, small talk, a question you can answer directly, a request that needs no phone action): do NOT split into steps — answer directly with the `reply` form in the Output Format. Breaking a greeting into steps like "open some app / say a sentence" is wrong.
+    8. Voice assistant shortcut (see the "Voice Assistant Shortcut" section): when a task can be done in one assistant step, **the whole plan is that single step**, exempt from rule 1 (tie to app/control) and the 3~8 range (rule 6) — the hand-off IS the completion, no follow-up steps needed.
     """.trimIndent()
 
     // ---- plan.env_intents ----
@@ -542,7 +544,7 @@ internal object PromptBodies {
     # 环境与意图
     - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
     - 国产应用速查：{common_cn_apps}
-    - 可用意图：open_app(应用名启动，泛指类目优先系统自带) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / say(对用户说一句话，不操作屏幕，直接显示在任务流里) / write_doc(生成文档，结果在 Agent 页预览) / show_agent(把用户带回 Agent 页当面看结果，可带 text 全屏展示 Markdown) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文 Markdown + 可操作元素清单) / browse_click(点网页元素，target 取清单里的文字) / browse_input(填网页表单，下拉也用它) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
+    - 可用意图：open_app(应用名启动，泛指类目优先系统自带) / assistant(把一句完整指令转交给系统语音助手执行，定闹钟/打电话/发消息/放歌等系统级事务，端侧拉起助手并自动传话) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / say(对用户说一句话，不操作屏幕，直接显示在任务流里) / write_doc(生成文档，结果在 Agent 页预览) / show_agent(把用户带回 Agent 页当面看结果，可带 text 全屏展示 Markdown) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文 Markdown + 可操作元素清单) / browse_click(点网页元素，target 取清单里的文字) / browse_input(填网页表单，下拉也用它) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
     - 上网类任务（查资料、看资讯、在网页里搜索，需要你读页面内容）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。内置浏览器在后台静默加载（界面不切走、截图里看不到网页，内容一律用 browse_read 读），是独立通道，不依赖无障碍/Shizuku/无线 ADB；只有命中不可逆词表（{irreversible_words}）的网页操作会被端侧拒绝（被拒就换非不可逆路径，不要重试同一动作）。
     - 打开本地文件（用户给了 ppt/doc/pdf/图片路径，或说"用文档软件打开这个文件"）：规划一步 open + uri=文件路径；指定应用时才填 app。
     - 只是把网址打开给用户看（用户说"用浏览器打开这个网址"）：规划一步 open + uri=网址，不要规划 browse_open。
@@ -553,7 +555,7 @@ internal object PromptBodies {
     # Environment & Intents
     - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
     - Common Chinese apps: {common_cn_apps}
-    - Available intents: open_app(launch by app name; for a generic category the built-in system app wins) / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link into an in-app page, or hand a URL/local file to a system app — set app to pick a specific app) / say(say one sentence to the user; touches no screen, shown right in the task stream) / write_doc(generate document, previewed on the Agent page) / show_agent(bring the user back to the Agent page to read the result; text is shown full screen as Markdown) / remember / device_query / fetch(fetch a body, requires Termux; HTML responses are converted to Markdown) / browse_open(open a URL in the built-in browser) / browse_read(read current page body as Markdown + an actionable-element list) / browse_click(click a web element; take the target text from that list) / browse_input(fill a web form, also used to pick a dropdown option) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
+    - Available intents: open_app(launch by app name; for a generic category the built-in system app wins) / assistant(hand one complete instruction to the system voice assistant — alarms/calls/messages/music and other system-level tasks; the device launches the assistant and passes the text automatically) / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link into an in-app page, or hand a URL/local file to a system app — set app to pick a specific app) / say(say one sentence to the user; touches no screen, shown right in the task stream) / write_doc(generate document, previewed on the Agent page) / show_agent(bring the user back to the Agent page to read the result; text is shown full screen as Markdown) / remember / device_query / fetch(fetch a body, requires Termux; HTML responses are converted to Markdown) / browse_open(open a URL in the built-in browser) / browse_read(read current page body as Markdown + an actionable-element list) / browse_click(click a web element; take the target text from that list) / browse_input(fill a web form, also used to pick a dropdown option) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
     - Online-lookup tasks (research, news, search inside a website — you must read the page content): plan browse_open as the first step, then advance with browse_read / browse_click / browse_input. Do NOT plan "open the browser app" or "open a URL with open". When the URL is unknown, plan a browse_open that opens a search-engine results page. The built-in browser loads pages silently in the background (the UI is not switched and the page is NOT in screenshots — always read it with browse_read); it is an independent channel needing no accessibility/Shizuku/wireless ADB; only a web action hitting the irreversible word list ({irreversible_words}) is refused (when refused, switch to a non-irreversible path — never retry the same action).
     - Opening a local file (the user gave a ppt/doc/pdf/image path, or said "open this file with a document app"): plan one step of open + uri=file path; fill app only when a specific app is named.
     - Merely showing a URL to the user (the user said "open this URL in a browser"): plan one step of open + uri=URL, do NOT plan browse_open.
@@ -576,19 +578,19 @@ internal object PromptBodies {
     // ---- plan.assistant ----
     internal val PLAN_ASSISTANT_CN: String = """
     # 语音助手捷径（规划时优先权衡）
-    本任务属于系统语音助手通常能一步办成的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。规划时优先权衡这条捷径：整个任务可以只规划一步——输出 assistant 意图，把指令转交给语音助手执行，不必规划「打开时钟 App → 找到闹铃页 → 新建 → 设时间 → 保存」这类手动路径：
-    {"intent":"assistant","text":"定一个10分钟以后的闹铃","reasoning":"一句话能说清，语音助手可一步完成","expected":"语音助手开始创建闹铃","confidence":0.9}
-    - text 写成一句完整、明确的指令（时间/联系人/内容/动作说清楚），助手会把它当作用户原话执行；任务里有多件独立的事，各规划一步 assistant。
+    本任务属于系统语音助手通常能一步办成的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。规划时优先权衡这条捷径：整个计划只规划一步，description 写「调用语音助手…」，执行时端侧会拉起语音助手并把指令自动传话给它，不必规划「打开时钟 App → 找到闹铃页 → 新建 → 设时间 → 保存」这类手动路径：
+    {"needs_clarification":false,"plan":{"steps":[{"description":"调用语音助手创建一个10分钟以后的闹铃","intent":"语音助手界面出现，指令已转交"}],"estimated_time_seconds":20,"confidence":0.9}}
+    - description 里把指令内容写全（时间/联系人/内容/动作），执行者会把它整理成一句完整明确的指令传给助手；任务里有多件独立的事，各规划一步。
     - 是否走捷径由你权衡：指令一句话能说清、且无需逐步看页面确认的任务用它最快；需要浏览挑选、持续页面交互或助手明显办不了时，再规划常规路径。
-    - 语音助手的执行结果端侧读不到：这一步的 expected 只写「指令已转交给语音助手」，不要写「闹钟已创建」这类端侧验证不了的结果。
+    - 语音助手的执行结果端侧读不到：这一步的 intent 只写「语音助手界面出现，指令已转交」，不要写「闹钟已创建」这类端侧验证不了的结果。
     """.trimIndent()
     internal val PLAN_ASSISTANT_EN: String = """
     # Voice Assistant Shortcut (weigh it first when planning)
-    This task is something the system voice assistant can usually do in one step (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). Weigh this shortcut first when planning: the whole task can be a single step — emit the assistant intent and hand the instruction to the voice assistant, instead of planning a manual path like "open the Clock app → alarm tab → add → set time → save":
-    {"intent":"assistant","text":"Set an alarm 10 minutes from now","reasoning":"one clear sentence; the voice assistant does it in one step","expected":"the assistant starts creating the alarm","confidence":0.9}
-    - Write `text` as one complete, explicit instruction (time/contact/content/action spelled out); the assistant executes it as if the user said it. Several independent things in a task get one assistant step each.
+    This task is something the system voice assistant can usually do in one step (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). Weigh this shortcut first when planning: the whole plan is a single step whose description reads "use the voice assistant to…"; on execution the device launches the assistant and hands the instruction over automatically, instead of planning a manual path like "open the Clock app → alarm tab → add → set time → save":
+    {"needs_clarification":false,"plan":{"steps":[{"description":"Use the voice assistant to set an alarm 10 minutes from now","intent":"assistant UI appears, instruction handed over"}],"estimated_time_seconds":20,"confidence":0.9}}
+    - Put the full instruction (time/contact/content/action) in the description; the executor will turn it into one complete, explicit sentence for the assistant. Several independent things in a task get one step each.
     - Whether to take the shortcut is your call: tasks covered by one sentence that need no step-by-step page confirmation are fastest with assistant; for tasks needing browsing, sustained page interaction, or beyond the assistant, plan the regular path instead.
-    - The assistant's execution result cannot be read back on-device: this step's expected should only say "the instruction was handed to the voice assistant" — never "the alarm was created", which cannot be verified on-device.
+    - The assistant's execution result cannot be read back on-device: this step's intent should only say "assistant UI appears, instruction handed over" — never "the alarm was created", which cannot be verified on-device.
     """.trimIndent()
 
     // ---- plan.ambiguity ----

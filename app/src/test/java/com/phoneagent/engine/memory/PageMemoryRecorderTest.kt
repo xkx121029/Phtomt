@@ -42,15 +42,18 @@ class PageMemoryRecorderTest {
         override suspend fun upsertPageMemory(
             appPackage: String, fingerprint: String, pageType: String, title: String,
             hotspots: List<PageMemoryHotspot>,
+            shapes: List<com.phoneagent.data.store.PageShapeNode>,
         ): PageMemoryEntry? {
-            val (list, result) = PageMemoryOps.upsertEntry(pages, appPackage, fingerprint, pageType, title, hotspots, System.currentTimeMillis())
+            val (list, result) = PageMemoryOps.upsertEntry(pages, appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis())
                 ?: return null
             pages.clear(); pages.addAll(list)
             return result
         }
 
-        override suspend fun upsertPageEdge(appPackage: String, fromFp: String, toFp: String, actionLabel: String): PagePathEdge? {
-            val (list, result) = PageMemoryOps.upsertEdge(edges, appPackage, fromFp, toFp, actionLabel, System.currentTimeMillis())
+        override suspend fun upsertPageEdge(
+            appPackage: String, fromFp: String, toFp: String, actionLabel: String, fromControl: String,
+        ): PagePathEdge? {
+            val (list, result) = PageMemoryOps.upsertEdge(edges, appPackage, fromFp, toFp, actionLabel, fromControl, System.currentTimeMillis())
                 ?: return null
             edges.clear(); edges.addAll(list)
             return result
@@ -62,12 +65,12 @@ class PageMemoryRecorderTest {
 
     private fun element(
         label: String, x: Int, y: Int, type: String = "Button",
-        clickable: Boolean = true, semanticId: String? = null,
+        clickable: Boolean = true, semanticId: String? = null, editable: Boolean = false,
     ) = UiElement(
         index = 0, className = "android.widget.$type", type = type,
         text = label, x = x, y = y,
         left = x - 50, top = y - 20, right = x + 50, bottom = y + 20,
-        clickable = clickable, semanticId = semanticId,
+        clickable = clickable, editable = editable, semanticId = semanticId,
     )
 
     /** 一个可观测的页面快照：标题文字 + 若干可点击控件 */
@@ -232,5 +235,59 @@ class PageMemoryRecorderTest {
         val other = page(element("其他页", 100, 500), pkg = "app.two")
         r.onPageObserved(other.snapshot, other)
         assertTrue(store.edges.isEmpty())
+    }
+
+    // ---- 控件空间树（虚拟画面数据源）----
+
+    @Test
+    fun `观察页面时采集控件空间树_按kind归一化`() = runTest {
+        val store = FakeStore()
+        val r = recorder(store)
+        val p = page(
+            element("搜索", 300, 200, type = "Button", semanticId = "search_box"),
+            element("输入框", 300, 400, type = "EditText", clickable = false, editable = true, semanticId = "input_box"),
+        )
+        r.onPageObserved(p.snapshot, p)
+        val shapes = store.pages.single().shapes
+        assertEquals(2, shapes.size)
+        val button = shapes.first { it.label == "搜索" }
+        assertEquals("button", button.kind)
+        assertEquals("search_box", button.semanticId)
+        assertTrue(button.clickable)
+        // ratio 矩形与像素 bounds 对应（left=250 → 250/1080 ≈ 0.231）
+        assertEquals(250f / 1080f, button.l, 0.001f)
+        val input = shapes.first { it.label == "输入框" }
+        assertEquals("input", input.kind)
+    }
+
+    @Test
+    fun `出边带出发控件id_by_id直接采用_by_text反查semanticId`() = runTest {
+        val store = FakeStore()
+        val r = recorder(store)
+        val home = page(element("首页", 100, 200), element("搜索", 300, 200, semanticId = "search_box"))
+        r.onPageObserved(home.snapshot, home)
+
+        // by=id：端侧直接采信
+        r.onIntent(
+            AgentIntent(
+                intent = IntentType.TAP,
+                target = AgentIntentTarget(by = "id", value = "search_box"),
+            ),
+        )
+        r.onStepResult(verified = true)
+        val detail = page(element("详情", 100, 500))
+        r.onPageObserved(detail.snapshot, detail)
+        assertEquals("search_box", store.edges.single().fromControl)
+
+        // by=text：反查 lastSemanticIds 得到控件 id，而不是裸文字
+        // （by=id 与 by=text 的动作文案不同，是两条边，先清掉第一轮再验）
+        store.edges.clear()
+        r.onPageObserved(home.snapshot, home)
+        r.onIntent(tap("搜索"))
+        r.onStepResult(verified = true)
+        val detail2 = page(element("详情", 100, 500))
+        r.onPageObserved(detail2.snapshot, detail2)
+        assertEquals(1, store.edges.size)
+        assertEquals("search_box", store.edges.single().fromControl)
     }
 }

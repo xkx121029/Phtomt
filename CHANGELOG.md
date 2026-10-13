@@ -6,6 +6,33 @@
 
 ---
 
+## [v0.2.847] — 2026-10-13
+
+### 新增
+
+- **页面记忆重构：控件空间树 + 虚拟画面**——页面记忆从「热点坐标点」升级为
+  「AI 眼里的整页线框」，边执行边自动记忆空间形态，用户与 AI 看到同一份结构化画面
+  - 数据模型（`data/store/MemoryStore.kt`）：新增 `PageShapeNode`（label/kind/l/t/r/b/
+    clickable/semanticId，ratio 矩形坐标，≤32 个整页快照式存储）；`PagePathEdge` 增
+    `fromControl`（出发控件标识，semanticId 优先、文字兜底）；schema 版本迁移
+    （`page_shape_schema`，旧数据一次性清空重建）
+  - 采集增强（`engine/memory/PageMemoryRecorder.kt`）：观察页面时抽取控件空间树
+    （kind 归一化为 text/button/input/image/toggle/other，无字大容器按重叠面积淘汰，
+    全程 DataSanitizer 脱敏）；记边时反查 lastSemanticIds 带上出发控件 id，引擎接线点零改动
+  - AI 注入增强（`engine/AgentPrompts.kt`、`engine/AgentEngine.kt`）：路径提示升级为
+    「动作（id=出发控件）→ 下一页」，AI 可按控件 id 精确复用入口而非模糊文案匹配
+  - 虚拟画面渲染（`ui/memory/VirtualScreenCanvas.kt`）：纯线框重建（不存截图，隐私友好），
+    蓝图点阵底纹；button 品牌描边+四角角标、input 雾蓝下划线、image 对角叉线、
+    toggle 琥珀胶囊、text 直绘文字（过矮退化内容条）；有出边的控件品牌色高亮+导航三角，
+    可点控件支持点击命中
+  - 下钻面板（`ui/memory/PageShapePanel.kt`）：底部对齐嵌入式浮层（从下到上入场），
+    点高亮控件链式下钻、逐级返回，出边路径列表兜底
+  - 记忆页画廊化（`ui/memory/PageMemoryTab.kt`、`MemoryGraphScreen.kt`）：
+    页面记忆卡改为左缩略图（真实手机比例线框）+右元信息/路径流，点卡放大下钻
+  - 单测：shapes 整页替换/截断/重叠淘汰、schema 迁移判定、空间树采集、fromControl 反查
+
+---
+
 ## [v0.2.821] — 2026-10-12
 
 ### 修复

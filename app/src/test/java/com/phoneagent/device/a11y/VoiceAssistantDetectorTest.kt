@@ -62,4 +62,49 @@ class VoiceAssistantDetectorTest {
         )
         assertEquals(expected, VoiceAssistantDetector.VENDOR_ASSISTANTS.toSet())
     }
+
+    // ---- orderedTargets：多入口唤醒顺序（去重 + 上限）----
+
+    @Test
+    fun 唤醒顺序_系统入口在前_厂商兜底在后() {
+        val targets = VoiceAssistantDetector.orderedTargets(
+            voiceCommand = VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.VOICE_COMMAND, "com.miui.voiceassist", "VoiceCommandActivity"),
+            assist = VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.ASSIST, "com.miui.voiceassist", "AssistActivity"),
+            installedVendors = listOf("com.miui.voiceassist", "com.heytap.speechassist"),
+        )
+        // 同包名去重：语音指令入口最先命中 miui，后续 ASSIST 与厂商兜底里同包名的都去掉
+        assertEquals(
+            listOf(
+                VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.VOICE_COMMAND, "com.miui.voiceassist", "VoiceCommandActivity"),
+                VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.VENDOR, "com.heytap.speechassist", null),
+            ),
+            targets,
+        )
+    }
+
+    @Test
+    fun 唤醒顺序_系统入口包名未知时不被厂商兜底顶掉() {
+        val targets = VoiceAssistantDetector.orderedTargets(
+            voiceCommand = VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.VOICE_COMMAND, null, null),
+            assist = null,
+            installedVendors = listOf("com.miui.voiceassist"),
+        )
+        // 包名为空的系统入口（交给系统默认）与厂商兜底不冲突，两条都保留
+        assertEquals(2, targets.size)
+        assertEquals(VoiceAssistantDetector.Via.VOICE_COMMAND, targets[0].via)
+        assertEquals(VoiceAssistantDetector.Via.VENDOR, targets[1].via)
+    }
+
+    @Test
+    fun 唤醒顺序_全未命中返回空表() {
+        val targets = VoiceAssistantDetector.orderedTargets(null, null, emptyList())
+        assertEquals(emptyList<VoiceAssistantDetector.Target>(), targets)
+    }
+
+    @Test
+    fun 唤醒顺序_候选数有上限_失败要快() {
+        val vendors = listOf("a", "b", "c", "d", "e")
+        val targets = VoiceAssistantDetector.orderedTargets(null, null, vendors)
+        assertEquals(VoiceAssistantDetector.MAX_WAKE_CANDIDATES, targets.size)
+    }
 }

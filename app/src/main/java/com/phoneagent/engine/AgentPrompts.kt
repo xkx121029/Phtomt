@@ -55,6 +55,16 @@ data class PreviousTask(
  */
 object AgentPrompts {
 
+    /**
+     * 页面记忆可去路径提示：动作文案 + 出发控件标识（semanticId 优先，可为空）+ 下一页标题。
+     * 控件标识让 AI 能按 id 精确复用入口，而不是只靠动作文案模糊匹配。
+     */
+    data class PagePathHint(
+        val action: String,
+        val fromControl: String,
+        val toTitle: String,
+    )
+
     // ==================== 共享常量 ====================
 
     /** 国产应用速查（中文名=英文名/包名）。open_app 的 app 字段可直接写中文名，端侧负责转包名。 */
@@ -374,13 +384,13 @@ object AgentPrompts {
      * 每步决策的页面记忆块：当前页面命中已记忆页面时注入已知热点与可去路径。
      * 空内容返回空串（不占上下文）；文案中英双语，随 [lang] 切换。
      * @param hotspots 已记忆热点（label to semanticId，semanticId 可为空）
-     * @param paths 可去路径（动作文案 to 下一页标题）
+     * @param paths 可去路径（动作文案 + 出发控件标识 + 下一页标题）
      */
     fun pageMemoryBlock(
         lang: PromptLang,
         page: PageMemoryEntry,
         hotspots: List<Pair<String, String>>,
-        paths: List<Pair<String, String>>,
+        paths: List<PagePathHint>,
     ): String {
         if (hotspots.isEmpty() && paths.isEmpty()) return ""
         val sb = StringBuilder()
@@ -394,7 +404,10 @@ object AgentPrompts {
             }
             if (paths.isNotEmpty()) {
                 sb.append("\n- 可去路径：")
-                sb.append(paths.take(6).joinToString("；") { (action, to) -> "$action → $to" })
+                sb.append(paths.take(6).joinToString("；") { p ->
+                    // 控件标识让 AI 能按 id 精确复用入口；无标识（早期数据）退化为纯动作文案
+                    if (p.fromControl.isBlank()) "${p.action} → ${p.toTitle}" else "${p.action}(id=${p.fromControl}) → ${p.toTitle}"
+                })
             }
         } else {
             sb.append("\n\n## Page Memory\nThis page was memorized from previous task runs (visited ${page.visitCount}x); prefer the known entries:")
@@ -406,7 +419,9 @@ object AgentPrompts {
             }
             if (paths.isNotEmpty()) {
                 sb.append("\n- Known paths: ")
-                sb.append(paths.take(6).joinToString("; ") { (action, to) -> "$action -> $to" })
+                sb.append(paths.take(6).joinToString("; ") { p ->
+                    if (p.fromControl.isBlank()) "${p.action} -> ${p.toTitle}" else "${p.action} (id=${p.fromControl}) -> ${p.toTitle}"
+                })
             }
         }
         return sb.toString()

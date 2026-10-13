@@ -164,10 +164,13 @@ class PromptCropTest {
     fun `语音助手任务规划提示注入捷径_普通任务不注入`() {
         val alarm = AgentPrompts.planning(PromptLang.CN, "定一个10分钟以后的闹铃", "", "")
         assertTrue("语音助手任务的规划应注入捷径块", alarm.contains("# 语音助手捷径"))
-        assertTrue(alarm.contains("\"intent\":\"assistant\""))
+        assertTrue(alarm.contains("调用语音助手"))
 
         val meituan = AgentPrompts.planning(PromptLang.CN, "帮我在美团点一份黄焖鸡米饭", "", "")
         assertFalse("普通 App 任务的规划不该注入捷径块", meituan.contains("# 语音助手捷径"))
+
+        // 可用意图清单必须包含 assistant：规划器看不到它就不会走捷径
+        assertTrue("规划可用意图清单应包含 assistant", alarm.contains("assistant("))
 
         val en = AgentPrompts.planning(PromptLang.EN, "set an alarm 10 minutes from now", "", "")
         assertTrue(en.contains("# Voice Assistant Shortcut"))

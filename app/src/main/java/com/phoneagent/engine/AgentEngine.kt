@@ -3371,7 +3371,25 @@ class AgentEngine(
                 // 仅"本机探测不到语音助手"才是 Failure，走既有连续失败介入机制
                 val r = executor.launchAssistant(action.text)
                 if (r is com.phoneagent.device.a11y.ActionExecutor.Result.Failure) {
-                    com.phoneagent.engine.execution.VerifyResult(false, r.reason, "", "")
+                    // 无障碍多入口拉起全部失败 → shell 兜底：am start 不受后台启动限制，
+                    // 在不少机型上是无障碍 startActivity 被静默拦截时唯一能唤醒的通道。
+                    // 唤醒成功后回到无障碍传话（传话只能靠无障碍，与 AssistantStrategy 的双通道分工一致）
+                    val shellWoke = shellWakeAssistant(executor)
+                    if (!shellWoke) {
+                        com.phoneagent.engine.execution.VerifyResult(
+                            false,
+                            "${r.reason}；shell 兜底（am start）也未能唤醒语音助手。" +
+                                "请检查设备的默认语音助手设置，或改用其他方式完成任务",
+                            "", "",
+                        )
+                    } else {
+                        delay(600)
+                        val desc = executor.handoffToAssistant(action.text)
+                        delay(800)
+                        com.phoneagent.engine.execution.VerifyResult(
+                            true, "经 shell 兜底唤醒语音助手；$desc", snapshot.packageName ?: "", "",
+                        )
+                    }
                 } else {
                     val desc = (r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description
                     delay(800)
@@ -3694,6 +3712,49 @@ class AgentEngine(
             )
         }
     }
+
+    /**
+     * shell 兜底唤醒语音助手：无障碍 startActivity 被系统静默拦截时，
+     * shell 通道不受后台启动限制。三级尝试：语音指令 am start → 默认助理 am start →
+     * 长按电源键（ROM 设置了"长按电源键唤醒语音助手"时直达；未设置会弹电源菜单，
+     * 因此该级必须验证到助手窗口才算成功）。最后用无障碍窗口验证
+     * （探测不到包名时视为尽力而为的成功，与「仅拉起」语义一致）。
+     */
+    private suspend fun shellWakeAssistant(executor: com.phoneagent.device.a11y.ActionExecutor): Boolean {
+        val probePkg = runCatching {
+            com.phoneagent.device.a11y.VoiceAssistantDetector(appContext).probe()?.packageName
+        }.getOrNull()
+        // requireWindow：该入口拉起后必须验证到助手窗口才算成功。
+        // am start 失败多半是窗口没来但指令本身被接受，沿用尽力而为语义；
+        // 长按电源键在未配置"唤醒助手"的 ROM 上会弹电源菜单——必须验证窗口，否则会误报成功
+        val attempts = listOf(
+            ShellAttempt("am start -a android.intent.action.VOICE_COMMAND", requireWindow = false),
+            ShellAttempt("am start -a android.intent.action.ASSIST", requireWindow = false),
+            // KEYCODE_POWER=26 长按：ROM 设置了"长按电源键唤醒语音助手"时直达助手
+            ShellAttempt("input keyevent --longpress 26", requireWindow = true),
+        )
+        var anyAccepted = false
+        for (attempt in attempts) {
+            val out = runCatching { execShellViaChannel(attempt.cmd) }.getOrNull()
+            val accepted = when (out) {
+                is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success ->
+                    !out.output.contains("error", ignoreCase = true) &&
+                        !out.output.contains("exception", ignoreCase = true)
+                else -> false
+            }
+            if (accepted) {
+                // 拉起指令已被 shell 接受：稍候再验证窗口，冷启动的厂商助手需要时间
+                delay(1200)
+                if (executor.assistantVisible(probePkg)) return true
+                if (!attempt.requireWindow) anyAccepted = true
+            }
+        }
+        // 指令被接受但窗口验证不到（探测包名与实际助手不一致等）：仍按尽力而为放行传话
+        return anyAccepted
+    }
+
+    /** shell 唤醒尝试：一条命令 + 是否强制要求验证到助手窗口 */
+    private data class ShellAttempt(val cmd: String, val requireWindow: Boolean)
 
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
     private suspend fun finishShellResult(
@@ -4280,7 +4341,7 @@ class AgentEngine(
         val paths = edges.mapNotNull { e ->
             val to = pages.firstOrNull { it.appPackage == pkg && it.fingerprint == e.toFp }
             val toTitle = to?.title?.ifBlank { null } ?: to?.pageType?.ifBlank { null } ?: return@mapNotNull null
-            e.actionLabel to toTitle
+            AgentPrompts.PagePathHint(e.actionLabel, e.fromControl, toTitle)
         }
         val hotspots = entry.hotspots.map { it.label to it.semanticId }
         val text = runCatching {

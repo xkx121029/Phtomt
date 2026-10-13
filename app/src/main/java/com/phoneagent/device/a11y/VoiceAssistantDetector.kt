@@ -27,20 +27,23 @@ class VoiceAssistantDetector(private val context: Context) {
     /** 探测到的助手目标；packageName 可为空（系统入口未钉包名时交给系统默认） */
     data class Target(val via: Via, val packageName: String?, val activity: String?)
 
-    fun probe(): Target? {
+    /** 首选助手目标（= [probeAll] 的第一个；供只需单一目标的调用方使用） */
+    fun probe(): Target? = probeAll().firstOrNull()
+
+    /**
+     * 全部可用助手入口（按唤醒尝试顺序）：语音指令入口 → 默认助理入口 → 已安装的厂商助手。
+     * 同包名去重（系统入口命中的往往就是厂商助手本体），上限 [MAX_WAKE_CANDIDATES] 个，
+     * 避免多厂商兜底把串行唤醒拖成慢链。
+     */
+    fun probeAll(): List<Target> {
         val pm = context.packageManager
-        // 1) 语音指令入口
-        probeAction(pm, Intent.ACTION_VOICE_COMMAND)?.let { (pkg, activity) ->
-            return Target(Via.VOICE_COMMAND, pkg, activity)
-        }
-        // 2) 默认助理入口
-        probeAction(pm, Intent.ACTION_ASSIST)?.let { (pkg, activity) ->
-            return Target(Via.ASSIST, pkg, activity)
-        }
-        // 3) 厂商助手包名兜底
-        val installed = VENDOR_ASSISTANTS.filter { pm.getLaunchIntentForPackage(it) != null }.toSet()
-        vendorFallback(installed)?.let { return Target(Via.VENDOR, it, null) }
-        return null
+        return orderedTargets(
+            voiceCommand = probeAction(pm, Intent.ACTION_VOICE_COMMAND)
+                ?.let { (pkg, activity) -> Target(Via.VOICE_COMMAND, pkg, activity) },
+            assist = probeAction(pm, Intent.ACTION_ASSIST)
+                ?.let { (pkg, activity) -> Target(Via.ASSIST, pkg, activity) },
+            installedVendors = VENDOR_ASSISTANTS.filter { pm.getLaunchIntentForPackage(it) != null },
+        )
     }
 
     /** 探测单个 action 入口：返回 (包名, activity) 或 null（挑不出系统应用优先的候选时视为未命中） */
@@ -63,6 +66,9 @@ class VoiceAssistantDetector(private val context: Context) {
     }
 
     companion object {
+        /** 唤醒候选上限：入口再多也只串行尝试前几个，失败要快 */
+        const val MAX_WAKE_CANDIDATES = 3
+
         /** 常见厂商语音助手包名（兜底顺序即优先级，用户已确认以系统探测为主） */
         val VENDOR_ASSISTANTS = listOf(
             "com.miui.voiceassist",                     // 小米 小爱同学
@@ -74,9 +80,21 @@ class VoiceAssistantDetector(private val context: Context) {
         )
 
         /**
-         * 纯函数：从 action 候选中挑包名（系统应用优先，无系统应用取第一个）。
-         * 直接复用 AppNameResolver 的 [pickPreferredPackage] 语义，保证两处行为一致。
+         * 纯函数：把三类入口排成唤醒顺序并去重（同包名只保留靠前的入口）。
+         * 系统入口（语音指令/默认助理）在厂商兜底之前——它们本就是厂商助手的正规入口。
          */
+        internal fun orderedTargets(
+            voiceCommand: Target?,
+            assist: Target?,
+            installedVendors: List<String>,
+        ): List<Target> = buildList {
+            voiceCommand?.let { add(it) }
+            assist?.let { add(it) }
+            installedVendors.forEach { pkg -> add(Target(Via.VENDOR, pkg, null)) }
+        }.distinctBy { it.packageName }.take(MAX_WAKE_CANDIDATES)
+
+        /** 纯函数：从 action 候选中挑包名（系统应用优先，无系统应用取第一个）。
+         *  直接复用 AppNameResolver 的 [pickPreferredPackage] 语义，保证两处行为一致。 */
         internal fun pickHandler(candidates: List<Pair<String, Boolean>>): String? =
             pickPreferredPackage(candidates)
 

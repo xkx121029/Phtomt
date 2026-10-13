@@ -1,6 +1,7 @@
 package com.phoneagent.ui.memory
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,12 +35,14 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionCard
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
 import com.phoneagent.ui.icons.AppIcons
 
 /**
- * 「页面记忆」分栏：任务执行时自动沉淀的页面热点与跳转路径。
- * 按应用分组展示页面卡片（标题/类型/来过次数/热点控件），页面下挂出边路径流。
+ * 「页面记忆」分栏：任务执行时自动沉淀的页面形态与跳转路径。
+ * 按应用分组，每页一张「虚拟画面」卡：左侧线框缩略图（AI 眼里的手机画面），
+ * 右侧标题/来过次数/出边路径流；点卡片打开下钻面板看完整画面与可跳控件。
  * 单条删除走两步确认（点一次染红，再点才删），与任务记忆一致；不用系统弹窗。
  */
 @Composable
@@ -48,6 +51,7 @@ internal fun PageMemoryList(
     edges: List<PagePathEdge>,
     onDelete: (Long) -> Unit,
     onClear: () -> Unit,
+    onOpenPage: (PageMemoryEntry) -> Unit,
 ) {
     // 单条删除的两步确认：第一次点只把该行图标染红（armed），再点才真删；
     // 3 秒不点自动复位。armedId 记录当前处于确认态的行，同一时间只有一行
@@ -105,13 +109,14 @@ internal fun PageMemoryList(
                     armed = armedId == page.id,
                     onArmedChange = { armedId = if (it) page.id else null },
                     onDelete = { armedId = null; onDelete(page.id) },
+                    onOpen = { onOpenPage(page) },
                 )
             }
         }
     }
 }
 
-/** 单条页面记忆卡片：标题 + 类型/次数，热点控件 chips，出边路径流 */
+/** 单页画廊卡：左侧虚拟画面缩略图，右侧标题/次数/出边路径流，点卡片下钻 */
 @Composable
 private fun PageMemoryCard(
     page: PageMemoryEntry,
@@ -120,6 +125,7 @@ private fun PageMemoryCard(
     armed: Boolean,
     onArmedChange: (Boolean) -> Unit,
     onDelete: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -127,90 +133,92 @@ private fun PageMemoryCard(
             .padding(vertical = 5.dp)
             .clip(RoundedCornerShape(AppRadii.Tile))
             .appBorder(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(AppRadii.Tile))
+            .clickable(onClick = onOpen)
             .padding(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    page.title.ifBlank { "未命名页面" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+        Row {
+            // 左：虚拟画面缩略图（真实手机比例的线框重建，点卡片放大下钻）
+            Box(
+                modifier = Modifier
+                    .width(92.dp)
+                    .clip(RoundedCornerShape(AppRadii.Tile))
+                    .background(AppTheme.colors.surfaceSunken),
+            ) {
+                VirtualScreenCanvas(
+                    shapes = page.shapes,
+                    modifier = Modifier.width(92.dp),
                 )
+            }
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        page.title.ifBlank { "未命名页面" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    PressableScale(onClick = { onArmedChange(!armed) }) {
+                        Icon(
+                            AppIcons.DeleteOutline,
+                            // 视觉确认态：图标染红 + 读屏文案改为「再点确认删除」
+                            contentDescription = if (armed) "再点确认删除" else "删除",
+                            tint = if (armed) MaterialTheme.colorScheme.error
+                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(6.dp).size(16.dp),
+                        )
+                    }
+                }
                 Text(
                     buildString {
                         append(pageLabelOfType(page.pageType))
                         append(" · 来过 ${page.visitCount} 次")
-                        if (page.hotspots.isNotEmpty()) append(" · ${page.hotspots.size} 个已知控件")
+                        val controlCount = if (page.shapes.isNotEmpty()) page.shapes.size else page.hotspots.size
+                        if (controlCount > 0) append(" · $controlCount 个控件")
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Spacer(Modifier.width(8.dp))
-            PressableScale(onClick = { onArmedChange(!armed) }) {
-                Icon(
-                    AppIcons.DeleteOutline,
-                    // 视觉确认态：图标染红 + 读屏文案改为「再点确认删除」
-                    contentDescription = if (armed) "再点确认删除" else "删除",
-                    tint = if (armed) MaterialTheme.colorScheme.error
-                           else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(6.dp).size(16.dp),
-                )
-            }
-        }
 
-        // 热点控件 chips：只展示文字标签（执行时才在屏幕上按 ratio 画圈），每行最多 3 个
-        if (page.hotspots.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            page.hotspots.take(6).chunked(3).forEach { rowItems ->
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    rowItems.forEach { hs ->
-                        Text(
-                            hs.label,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(AppRadii.Chip))
-                                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
-                        )
+                // 出边路径流：这一页 —「动作」→ 下一页（带出发控件 id，与 AI 注入口径一致）
+                if (outEdges.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    outEdges.forEach { e ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 3.dp),
+                        ) {
+                            Icon(
+                                AppIcons.ChevronRight,
+                                contentDescription = null,
+                                tint = Accent,
+                                modifier = Modifier.size(12.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                buildString {
+                                    append(e.actionLabel)
+                                    if (e.fromControl.isNotBlank()) append("（id=${e.fromControl}）")
+                                    append(" → ")
+                                    append(titleOf[e.toFp]?.ifBlank { null } ?: "其他页面")
+                                    append("（走过 ${e.count} 次）")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                }
-                Spacer(Modifier.height(4.dp))
-            }
-            if (page.hotspots.size > 6) {
-                Text(
-                    "等 ${page.hotspots.size} 个控件",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        // 出边路径流：这一页 —「动作」→ 下一页
-        if (outEdges.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            outEdges.forEach { e ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 3.dp),
-                ) {
-                    Icon(
-                        AppIcons.ChevronRight,
-                        contentDescription = null,
-                        tint = Accent,
-                        modifier = Modifier.size(12.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
+                } else {
+                    Spacer(Modifier.height(6.dp))
                     Text(
-                        "${e.actionLabel} → ${titleOf[e.toFp]?.ifBlank { null } ?: "其他页面"}（走过 ${e.count} 次）",
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        "点画面可放大查看形态",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                     )
                 }
             }

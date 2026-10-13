@@ -2,6 +2,7 @@ package com.phoneagent.data.store
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
@@ -74,6 +75,25 @@ data class PageMemoryHotspot(
 )
 
 /**
+ * 页面形态节点：「AI 眼里」的一个控件框，虚拟画面的最小绘制单元。
+ * 坐标存 l/t/r/b 四边 ratio（0~1 相对屏幕）而非中心点：渲染画框与点击命中都需要矩形。
+ */
+@Serializable
+data class PageShapeNode(
+    /** 控件文字/内容描述（≤16 字，写入前经 DataSanitizer 脱敏） */
+    val label: String = "",
+    /** 归一化形态：text | button | input | image | toggle | other */
+    val kind: String = "text",
+    val l: Float,
+    val t: Float,
+    val r: Float,
+    val b: Float,
+    val clickable: Boolean = false,
+    /** 端侧语义 id（search_box 等）；出边高亮与命中匹配的第一优先键 */
+    val semanticId: String = "",
+)
+
+/**
  * 页面记忆条目：任务执行遇到页面时自动沉淀的「这一页长什么样、有哪些可用入口」。
  * 指纹用 PageFingerprint.computeMeaningful（仅 type+label+中心点粗坐标，忽略时钟/viewId 序号），
  * 跨会话命中率高；指纹不含包名，故条目单独存 appPackage，命中时先比包名。
@@ -87,6 +107,8 @@ data class PageMemoryEntry(
     /** 页面标题/首行文案，供记忆页展示 */
     val title: String = "",
     val hotspots: List<PageMemoryHotspot> = emptyList(),
+    /** 控件空间树（≤32 个，整体快照式更新）：供记忆页绘制线框虚拟画面 */
+    val shapes: List<PageShapeNode> = emptyList(),
     val visitCount: Int = 1,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
@@ -104,6 +126,8 @@ data class PagePathEdge(
     val toFp: String,
     /** 动作文案，如「点击『搜索』」 */
     val actionLabel: String,
+    /** 出发控件标识：semanticId 优先、控件文字兜底（"search_box" 或 "搜索"） */
+    val fromControl: String = "",
     val count: Int = 1,
     val updatedAt: Long = System.currentTimeMillis(),
 )
@@ -211,8 +235,15 @@ interface PageMemoryStore {
         pageType: String,
         title: String,
         hotspots: List<PageMemoryHotspot>,
+        shapes: List<PageShapeNode> = emptyList(),
     ): PageMemoryEntry?
-    suspend fun upsertPageEdge(appPackage: String, fromFp: String, toFp: String, actionLabel: String): PagePathEdge?
+    suspend fun upsertPageEdge(
+        appPackage: String,
+        fromFp: String,
+        toFp: String,
+        actionLabel: String,
+        fromControl: String = "",
+    ): PagePathEdge?
 }
 
 /**
@@ -247,6 +278,28 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
     private val evolvedRulesKey = stringPreferencesKey("evolved_rules")
     private val pageMemoryKey = stringPreferencesKey("page_memory")
     private val pagePathKey = stringPreferencesKey("page_path")
+
+    /** 页面形态 schema 版本：v1 = 热点中心点版，v2 = 控件空间树版（旧数据不兼容，一次性清空） */
+    private val pageShapeSchemaKey = intPreferencesKey("page_shape_schema")
+
+    /** 是否已做过 schema 检查（进程内一次；edit 原子串行，并发重复检查无害） */
+    @Volatile
+    private var shapeSchemaChecked = false
+
+    /** 懒迁移：首次读页面记忆/路径边时检查，旧 schema 一次性清空（UI 与引擎读取全经 load 入口，无遗漏） */
+    private suspend fun ensureShapeSchema() {
+        if (shapeSchemaChecked) return
+        shapeSchemaChecked = true
+        val stored = runCatching { context.memoryStore.data.first()[pageShapeSchemaKey] }.getOrNull()
+        if (!PageMemoryOps.needsShapeReset(stored)) return
+        runCatching {
+            context.memoryStore.edit {
+                it.remove(pageMemoryKey)
+                it.remove(pagePathKey)
+                it[pageShapeSchemaKey] = PageMemoryOps.PAGE_SHAPE_SCHEMA
+            }
+        }
+    }
 
     suspend fun loadAnomalies(): List<AnomalyMemoryEntry> {
         val raw = context.memoryStore.data.first()[anomaliesKey] ?: return emptyList()
@@ -496,6 +549,7 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
     // 纯合并/淘汰逻辑收口在 PageMemoryOps（可单测），这里只做 DataStore 读写
 
     override suspend fun loadPageMemories(): List<PageMemoryEntry> {
+        ensureShapeSchema()
         val raw = context.memoryStore.data.first()[pageMemoryKey] ?: return emptyList()
         return runCatching { json.decodeFromString<List<PageMemoryEntry>>(raw) }.getOrDefault(emptyList())
     }
@@ -512,7 +566,7 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
     /**
      * 写入一条页面记忆：同 包名+指纹 视为同一页面，命中则合并热点并集并累计访问次数。
      * 热点去重：同 label 且中心点粗坐标一致（ratio×20 取整）视为同一控件；单页封顶 [PageMemoryOps.MAX_PAGE_HOTSPOTS]。
-     * id 由本方法统一分配，调用方无需关心。
+     * shapes 为控件空间树整体快照（同指纹页面同构，整页替换而非并集）；id 由本方法统一分配，调用方无需关心。
      */
     override suspend fun upsertPageMemory(
         appPackage: String,
@@ -520,8 +574,10 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
         pageType: String,
         title: String,
         hotspots: List<PageMemoryHotspot>,
+        shapes: List<PageShapeNode>,
     ): PageMemoryEntry? {
-        val (list, result) = PageMemoryOps.upsertEntry(loadPageMemories(), appPackage, fingerprint, pageType, title, hotspots, System.currentTimeMillis())
+        ensureShapeSchema()
+        val (list, result) = PageMemoryOps.upsertEntry(loadPageMemories(), appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis())
             ?: return null
         savePageMemories(list)
         return result
@@ -543,6 +599,7 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
     }
 
     override suspend fun loadPageEdges(): List<PagePathEdge> {
+        ensureShapeSchema()
         val raw = context.memoryStore.data.first()[pagePathKey] ?: return emptyList()
         return runCatching { json.decodeFromString<List<PagePathEdge>>(raw) }.getOrDefault(emptyList())
     }
@@ -558,10 +615,17 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
 
     /**
      * 写入一条路径边：同 包名+from+to+动作 合并为一条并累计 count。
-     * id 由本方法统一分配，调用方无需关心。
+     * fromControl 非空覆盖空（补全早期无控件标识的数据）；id 由本方法统一分配，调用方无需关心。
      */
-    override suspend fun upsertPageEdge(appPackage: String, fromFp: String, toFp: String, actionLabel: String): PagePathEdge? {
-        val (list, result) = PageMemoryOps.upsertEdge(loadPageEdges(), appPackage, fromFp, toFp, actionLabel, System.currentTimeMillis())
+    override suspend fun upsertPageEdge(
+        appPackage: String,
+        fromFp: String,
+        toFp: String,
+        actionLabel: String,
+        fromControl: String,
+    ): PagePathEdge? {
+        ensureShapeSchema()
+        val (list, result) = PageMemoryOps.upsertEdge(loadPageEdges(), appPackage, fromFp, toFp, actionLabel, fromControl, System.currentTimeMillis())
             ?: return null
         savePageEdges(list)
         return result
@@ -582,6 +646,15 @@ internal object PageMemoryOps {
     /** 单页热点上限：只保留最有导航价值的可点击控件 */
     const val MAX_PAGE_HOTSPOTS = 12
 
+    /** 单页控件空间树上限：足够画出完整页面骨架，同时限制 DataStore 单条体积 */
+    const val MAX_PAGE_SHAPES = 32
+
+    /** 页面形态 schema 当前版本：v2 = 控件空间树版 */
+    const val PAGE_SHAPE_SCHEMA = 2
+
+    /** schema 迁移判定：从未写过版本号或版本低于当前 → 需清空旧页面记忆（纯函数，可单测） */
+    fun needsShapeReset(stored: Int?): Boolean = stored == null || stored < PAGE_SHAPE_SCHEMA
+
     /** 按时间淘汰：保留 updatedAt 最新的 [cap] 条 */
     fun <T> trimByUpdatedAt(list: List<T>, cap: Int, updatedAt: (T) -> Long): List<T> {
         if (list.size <= cap) return list
@@ -590,7 +663,8 @@ internal object PageMemoryOps {
 
     /**
      * 在 [list] 上写入一条页面记忆，返回 (新列表, 写入结果)；入参非法返回 null。
-     * 同 包名+指纹 命中则合并热点并集并 visitCount+1，否则新建（id = 现有最大 + 1）。
+     * 同 包名+指纹 命中则合并热点并集、visitCount+1，shapes 整页替换（空快照不覆盖旧值），
+     * 否则新建（id = 现有最大 + 1）。
      */
     fun upsertEntry(
         list: List<PageMemoryEntry>,
@@ -599,6 +673,7 @@ internal object PageMemoryOps {
         pageType: String,
         title: String,
         hotspots: List<PageMemoryHotspot>,
+        shapes: List<PageShapeNode>,
         now: Long,
     ): Pair<List<PageMemoryEntry>, PageMemoryEntry>? {
         if (appPackage.isBlank() || fingerprint.isBlank()) return null
@@ -610,6 +685,8 @@ internal object PageMemoryOps {
                 pageType = pageType.ifBlank { existing.pageType },
                 title = title.ifBlank { existing.title },
                 hotspots = mergeHotspots(existing.hotspots, hotspots),
+                // 整页快照替换：同指纹页面本应同构，并集会让页面改版后的残影控件永久残留
+                shapes = shapes.take(MAX_PAGE_SHAPES).ifEmpty { existing.shapes },
                 visitCount = existing.visitCount + 1,
                 updatedAt = now,
             )
@@ -622,6 +699,7 @@ internal object PageMemoryOps {
                 pageType = pageType.ifBlank { "generic" },
                 title = title,
                 hotspots = hotspots.take(MAX_PAGE_HOTSPOTS),
+                shapes = shapes.take(MAX_PAGE_SHAPES),
                 createdAt = now,
                 updatedAt = now,
             )
@@ -631,7 +709,7 @@ internal object PageMemoryOps {
 
     /**
      * 在 [list] 上写入一条路径边，返回 (新列表, 写入结果)；入参非法返回 null。
-     * 同 包名+from+to+动作 合并为一条并累计 count。
+     * 同 包名+from+to+动作 合并为一条并累计 count；fromControl 非空覆盖空（补全早期数据）。
      */
     fun upsertEdge(
         list: List<PagePathEdge>,
@@ -639,14 +717,20 @@ internal object PageMemoryOps {
         fromFp: String,
         toFp: String,
         actionLabel: String,
+        fromControl: String,
         now: Long,
     ): Pair<List<PagePathEdge>, PagePathEdge>? {
         if (appPackage.isBlank() || fromFp.isBlank() || toFp.isBlank() || fromFp == toFp) return null
         val label = actionLabel.trim().take(24)
         if (label.isEmpty()) return null
+        val control = fromControl.trim().take(40)
         val idx = list.indexOfFirst { it.appPackage == appPackage && it.fromFp == fromFp && it.toFp == toFp && it.actionLabel == label }
         return if (idx >= 0) {
-            val merged = list[idx].copy(count = list[idx].count + 1, updatedAt = now)
+            val merged = list[idx].copy(
+                fromControl = control.ifBlank { list[idx].fromControl },
+                count = list[idx].count + 1,
+                updatedAt = now,
+            )
             list.toMutableList().also { it[idx] = merged } to merged
         } else {
             val created = PagePathEdge(
@@ -655,10 +739,35 @@ internal object PageMemoryOps {
                 fromFp = fromFp,
                 toFp = toFp,
                 actionLabel = label,
+                fromControl = control,
                 updatedAt = now,
             )
             list + created to created
         }
+    }
+
+    /**
+     * 重叠大容器淘汰（纯函数，可单测）：按面积升序遍历（小控件优先保留），
+     * 无文字节点与任一已收节点重叠面积超过自身 60% 时跳过——
+     * 列表 item 的无文字容器被 item 内文字/按钮替代，自带文字的卡片容器仍保留。
+     */
+    fun dropOverlapping(list: List<PageShapeNode>): List<PageShapeNode> {
+        val kept = ArrayList<PageShapeNode>(list.size)
+        for (node in list.sortedBy { (it.r - it.l) * (it.b - it.t) }) {
+            if (node.label.isNotBlank()) {
+                kept += node
+                continue
+            }
+            val area = (node.r - node.l) * (node.b - node.t)
+            if (area <= 0f) continue
+            val covered = kept.any { k ->
+                val w = minOf(node.r, k.r) - maxOf(node.l, k.l)
+                val h = minOf(node.b, k.b) - maxOf(node.t, k.t)
+                w > 0f && h > 0f && (w * h) / area > 0.6f
+            }
+            if (!covered) kept += node
+        }
+        return kept
     }
 
     /** 热点合并：同 label 且粗坐标一致（ratio×20 取整）视为同一控件；合并后按上限截断 */
