@@ -258,6 +258,8 @@ class AgentEngine(
     )
     /** 决策链路模型配置：主模型识图/视觉端点/思考端点（重构批次 8，见 [com.phoneagent.engine.decision.DecisionConfig]） */
     private val decisionConfig = com.phoneagent.engine.decision.DecisionConfig()
+    /** 视觉结果缓存：页面未变时复用上一步视觉产物（阶段 B2，见 [com.phoneagent.engine.decision.VisionResultCache]） */
+    private val visionCache = com.phoneagent.engine.decision.VisionResultCache()
     /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用（存于 [EngineStore]） */
     private var lastVisualCoordinate: Pair<Int, Int>?
         get() = store.lastVisualCoordinate
@@ -788,6 +790,8 @@ class AgentEngine(
         pageMemoryRecorder.reset()
         pageMemoryHintFingerprint = ""
         pageMemoryHintText = ""
+        // 视觉缓存随任务复位：上一个任务的视觉产物（含任务目的性提问的描述）不带入本任务
+        visionCache.invalidate()
         // 任务记忆：任务原文既是既定目标，也是第一条用户要求。
         // 先落库再执行，任务跑到一半（甚至中断）时记忆页也能看到它到底要做什么
         val taskMemory = TaskMemoryEntry(
@@ -1034,7 +1038,15 @@ class AgentEngine(
             // 端侧决策异常（规则引擎内部越界等）不能让整个任务崩掉：降级为空，直接走云端决策。
             // 用回填过 semanticId 的快照决策：端侧 tapIntent 的 by="id" 定位依赖 semanticId
             // 宏接力轮不需要任何决策（端侧已定好做什么），local/cloud 决策双双跳过
-            val localIntent = if (macroIntent == null) tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) } else null
+            // 死循环强制复核（阶段 B3）：连续端侧决策达到阈值时跳过本轮端侧判定，强制走一次云端——
+            // 原先这里只发通知不干预，AI 仍会继续端侧空转；云端复核一轮后 streak 清零，端侧节流自然恢复
+            val forceCloudReview = com.phoneagent.engine.decision.DecisionPolicy.shouldForceCloudReview(localDecisionStreak)
+            val localIntent = if (macroIntent == null && !forceCloudReview) {
+                tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) }
+            } else {
+                if (forceCloudReview) log(AgentLog.Level.WARN, "连续 ${localDecisionStreak} 次端侧决策，本步强制云端复核")
+                null
+            }
             var decidedIntent: AgentIntent? = null
             var fromLocal = false
             if (macroIntent != null) {
@@ -1063,7 +1075,7 @@ class AgentEngine(
                 // 护栏只统计本次新增的异常降级路径：连续异常说明链路真的坏了（如 API 地址错误、
                 // 网络完全不可达），继续空转只会无限等待，需要收尾并告知用户
                 decisionFailureStreak = if (decisionThrew) decisionFailureStreak + 1 else 0
-                if (decisionFailureStreak >= MAX_DECISION_FAILURE_STREAK) {
+                if (com.phoneagent.engine.decision.DecisionPolicy.isDecisionFailureFatal(decisionFailureStreak)) {
                     log(AgentLog.Level.ERROR, "决策链路连续 $decisionFailureStreak 次异常，停止任务")
                     _state.value = _state.value.copy(
                         phase = AgentState.Phase.ERROR,
@@ -1787,7 +1799,23 @@ class AgentEngine(
         var externalUsed = false
         var pageText = safeText
         var desc: String? = null
-        if (screenshot != null) {
+        // 视觉缓存（阶段 B2）：页面指纹 + 截图尺寸 + 任务 id 命中时，整段跳过 3B/云端/OCR 视觉调用——
+        // 页面未变时连续两步决策的视觉产物完全相同，重跑只是白耗 10-40s 与模型额度
+        val visionFp = if (screenshot != null) {
+            runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }.getOrDefault("")
+        } else ""
+        val cachedVision = visionCache.get(
+            visionFp, screenshot?.width ?: 0, screenshot?.height ?: 0, store.currentTaskId,
+        )
+        if (cachedVision != null) {
+            desc = cachedVision.desc
+            localRegions = cachedVision.regions
+            externalUsed = cachedVision.usedExternal
+            if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
+            log(AgentLog.Level.INFO, "页面未变，复用上一步视觉结果（省一次视觉调用）")
+        }
+        val needVisionRun = cachedVision == null
+        if (screenshot != null && needVisionRun) {
             val shot = screenshot
             // 观察已结束、视觉分析还没开始时先切状态：视觉链路（端侧 3B / 云端视觉）可能耗时数十秒，
             // 之前界面一直停在“观察屏幕”，用户会以为卡死
@@ -1873,6 +1901,14 @@ class AgentEngine(
                     "元素树稀疏（${snapshot.elements.size} 个元素）且视觉链路未产出内容：" +
                         "元素树统计=${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}" +
                         "，请检查视觉模型配置",
+                )
+            }
+            // 本步视觉链路真实跑过 → 按页面指纹写入缓存，供下一步页面未变时复用
+            val shotForCache = screenshot
+            if (needVisionRun && shotForCache != null && visionFp.isNotBlank()) {
+                visionCache.put(
+                    visionFp, shotForCache.width, shotForCache.height, store.currentTaskId,
+                    com.phoneagent.engine.decision.VisionResultCache.Entry(desc, localRegions, externalUsed),
                 )
             }
         }
