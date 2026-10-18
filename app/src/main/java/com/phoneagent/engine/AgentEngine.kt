@@ -1035,7 +1035,7 @@ class AgentEngine(
             // 用回填过 semanticId 的快照决策：端侧 tapIntent 的 by="id" 定位依赖 semanticId
             // 宏接力轮不需要任何决策（端侧已定好做什么），local/cloud 决策双双跳过
             val localIntent = if (macroIntent == null) tryOrNull("端侧决策失败") { localDecision.decide(semanticSnapshot) } else null
-            var decidedIntent: AgentIntent?
+            var decidedIntent: AgentIntent? = null
             var fromLocal = false
             if (macroIntent != null) {
                 decidedIntent = macroIntent
@@ -1075,7 +1075,13 @@ class AgentEngine(
                     return
                 }
                 decidedIntent = if (decisionThrew) {
-                    AgentIntent(intent = IntentType.WAIT, waitMs = 1500, reasoning = "决策链路异常，等待后重试")
+                    // 决策链路异常（网络抖动/API 抖动）：本步**不计步**——异常等待原先照常 step++，
+                    // 连续抖动会把步数预算烧光、任务还没真正跑就到 maxSteps 收尾。
+                    // 这里回退步数并稍等重试，只有连续异常达到护栏上限才收尾（见上方 decisionFailureStreak）
+                    step--
+                    _state.value = _state.value.copy(stepCount = step.coerceAtLeast(0))
+                    delay(1500)
+                    continue
                 } else decided
             }
 
