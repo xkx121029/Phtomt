@@ -6,6 +6,46 @@
 
 ---
 
+## [v0.2.848] — 2026-10-18
+
+### 变更
+
+- **端侧 AI 逻辑重构（结构拆分）**：`AgentEngine` 从约 4950 行拆为 11 个协作类，
+  行为完全不变，全量单测护航；引擎本体收缩为「决策循环编排 + 薄门面」
+  - `runtime/EngineLimits`：约 40 个护栏/超时常量收口（原 companion）
+  - `runtime/EngineStore`：约 20 个 StateFlow 与全部任务级状态收口，字段名/初始化值不变，
+    引擎经委托属性裸名访问（@Volatile 字段用显式 get/set 保持语义）
+  - `runtime/UiBridge`：悬浮窗推送 / 日志环形缓冲 / 对话追加 / 清空调试
+  - `runtime/TelemetryRecorder`：指标聚合 / 每步调试轨迹 / 记忆与 say 事件流 / 会话归档 / 调试持久化
+  - `runtime/TaskLifecycle`：任务队列 / 队列 worker / 单任务协程启停（job 与 queueLock 随迁，
+    processQueue 的 `job === self` 归属判定原样保留）
+  - `runtime/UserGate`：三套互相独立的用户等待/确认信箱（指导 / 自写命令确认 / 不可逆动作确认）+ 搁置闸门
+  - `connect/AiTools`：翻译 / 连接测试 / 模型列表 / 能力探测
+  - `planning/PlanningFlow`：歧义检测 / 澄清 / 计划生成（含纠错重发）/ 模板复用 / 批准执行；
+    `ReasoningConfig` / `VisionConfig` 提为顶层供其引用
+  - `context/ContextInjector`：记忆简报 / 经验规则 / 异常经验 / 页面记忆 / 会话承接 / 环境事实 / 设备几何
+  - `skill/SkillRunner`：技能提示词区块 / 宏接力派发 / MCP 调用（含瞬时故障重试）/ 缺参自动推断
+  - `execution/ExecutionCore`：带验证执行 / shell 通道选择与执行 / 无障碍端点直调 / shell→无障碍翻译 / 光标回放
+  - `decision/DecisionConfig`：主模型识图 / 视觉端点 / 思考端点三份模型选路配置
+  - 决策主循环（runInner/cloudDecide）保留在引擎内：经 EngineStore 委托后它已是纯编排层，
+    物理搬移需 20+ 注入点而行为零变化，风险/收益比不佳，刻意不动
+
+### 新增
+
+- **决策逻辑改进（结构拆分后落地）**
+  - **视觉结果按页面指纹缓存**（`decision/VisionResultCache`）：页面未变（指纹 + 截图尺寸 +
+    任务 id 命中）时整段跳过端侧 3B/云端视觉/OCR 重跑，省 10-40s 延迟与模型额度；任务切换即失效
+  - **决策链路异常不计步**：网络抖动触发的异常等待原先照常消耗 maxSteps，会把步数预算烧光；
+    现改为回退步数、等待 1.5s 重试，仅连续异常达护栏上限才收尾
+  - **疑似死循环强制云端复核**（`decision/DecisionPolicy`）：连续端侧决策 ≥5 次时跳过本轮端侧判定、
+    强制走一次云端——原先只发通知不干预，AI 仍会继续端侧空转；复核一轮后计数清零自然恢复。
+    护栏阈值收口为纯函数并新增 `DecisionPolicyTest` 真值表单测
+- **核查确认已有**（本迭代计划内两项，验证无需重复实现）：决策 JSON 纠错重发已在
+  `AiClient.chatForAction`（附原文一次纠错）；记忆注入已有 `MemoryBrief.MAX_CHARS` 与
+  `RuleScoper.select` 双护栏；失败恢复路径 `reviewAction` 已接思考模型
+
+---
+
 ## [v0.2.847] — 2026-10-13
 
 ### 新增
