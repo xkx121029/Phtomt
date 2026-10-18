@@ -85,6 +85,43 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import kotlin.coroutines.coroutineContext
 import java.util.concurrent.atomic.AtomicLong
+import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.runtime.EngineLimits.ACTION_CONFIRM_TIMEOUT_MS
+import com.phoneagent.engine.runtime.EngineLimits.DECISION_TEMPERATURE
+import com.phoneagent.engine.runtime.EngineLimits.DISTILL_TIMEOUT_MS
+import com.phoneagent.engine.runtime.EngineLimits.EXTERNAL_VISION_TIMEOUT
+import com.phoneagent.engine.runtime.EngineLimits.LOCAL_DECISION_SOURCE
+import com.phoneagent.engine.runtime.EngineLimits.MAX_BROWSE_MISSING_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_CLARIFY_EVENTS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION
+import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION_CHATS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_FAILURE_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DEVICE_QUERY_OUTPUT
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DIALOG_TURNS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
+import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_MCP_OUTPUT
+import com.phoneagent.engine.runtime.EngineLimits.MAX_MEMORY_EVENTS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_MODE_DENY_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_PARAM_REFILL
+import com.phoneagent.engine.runtime.EngineLimits.MAX_PREVIOUS_TASKS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_EVENTS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_SENSITIVE_TAKEOVERS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_SKILL_ERROR_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_TASK_SESSIONS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_TRACES
+import com.phoneagent.engine.runtime.EngineLimits.MCP_CALL_RETRY_TIMEOUT_MS
+import com.phoneagent.engine.runtime.EngineLimits.MCP_CALL_TIMEOUT_MS
+import com.phoneagent.engine.runtime.EngineLimits.NO_PROGRESS_MS
+import com.phoneagent.engine.runtime.EngineLimits.PLANNING_TEMPERATURE
+import com.phoneagent.engine.runtime.EngineLimits.RELOCATE_BEFORE_TYPES
+import com.phoneagent.engine.runtime.EngineLimits.REPLAN_TEMPERATURE
+import com.phoneagent.engine.runtime.EngineLimits.SELF_DISMISS_HINT
+import com.phoneagent.engine.runtime.EngineLimits.STAGE_SIZE
+import com.phoneagent.engine.runtime.EngineLimits.VISION_FALLBACK_THRESHOLD
+import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_DECIDE_MS
+import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_VISION_MS
 
 /**
  * Agent 引擎：编排“观察 → 本地/云端决策 → 带验证执行 → 记录”的 ReAct 循环。
@@ -120,133 +157,8 @@ class AgentEngine(
     /** 设备与环境事实（应用清单 / 屏幕 / 网络 / 电量 / 存储）的读取入口，见 [DeviceFacts] */
     private val deviceFacts = DeviceFacts(appContext)
 
-    companion object {
-        /** 参数缺失追问的最大补全轮数：tap 缺 target / open_app 缺 app 时最多向 AI 追问几轮 */
-        private const val MAX_PARAM_REFILL = 3
-
-        /** 无障碍元素树精简阈值：小于等于该值时视为"无障碍读不到控件"，自动转视觉模型截图补足 */
-        private const val VISION_FALLBACK_THRESHOLD = 3
-
-        /** 端侧视觉单次识别的超时（ms）：3B 在 CPU 上较慢，超时回退云端/本地，避免阻塞决策循环 */
-        private const val EXTERNAL_VISION_TIMEOUT = 20_000L
-
-        /** 决策链路最多保留的近期对话轮次（每轮 user+assistant 各算一条）。超过则截断早期历史，
-         *  让长线任务上下文长度保持恒定，避免历史无限累积拖慢/带偏 AI */
-        private const val MAX_DIALOG_TURNS = 6
-
-        /** 单步云端决策看门狗（文档 v2.2 5.5）：超过则视为云端卡住，本步改为等待、下一轮重试，避免长线任务卡死 */
-        private const val WATCHDOG_DECIDE_MS = 45_000L
-
-        /** 单步视觉分析看门狗：云端视觉（OkHttp 读超时 120s）与端侧 3B（单次 20s）都可能长时间阻塞，
-         *  没有它界面会一直停在“观察屏幕”（视觉分析发生在决策状态切换之前），看起来像卡死 */
-        private const val WATCHDOG_VISION_MS = 25_000L
-
-        /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
-        private const val MAX_LOGS = 800
-
-        /** 敏感页接管连续次数上限：超了仍敏感就收尾，避免无限弹接管死循环 */
-        private const val MAX_SENSITIVE_TAKEOVERS = 5
-
-        /** 端侧决策来源标注（写入 StepTrace.visionSource，便于区分端侧/云端决策） */
-        private const val LOCAL_DECISION_SOURCE = "端侧决策"
-
-        /**
-         * 执行前需要"重新定位目标"的动作类型。
-         *
-         * 这些动作都依赖元素坐标（输入框中心、滚动容器中心、滑动起点），而坐标是按**观察那一刻**的
-         * 元素树算好的，中间隔着一次 AI 往返（可能数秒）：键盘顶起页面、列表滚动、弹窗落下之后，
-         * 坐标就指到别处了——典型表现是"文字填进了别的输入框""滚动的不是那个列表"。
-         * 点击类不在此列：[ClickRunner] 内部已经做了同一件事，且做得更细（活节点直点 → 手势 → 滚动查找）。
-         * 方向滑动（SWIPE_UP/DOWN/LEFT/RIGHT）也不在此列：它们按设计以屏幕中心为起点，不带元素目标。
-         */
-        private val RELOCATE_BEFORE_TYPES = setOf(
-            ActionType.TYPE_TEXT, ActionType.SCROLL, ActionType.SCROLL_TO, ActionType.SWIPE,
-        )
-
-        /** 调试轨迹（每步决策）最多保留条数：配图缩略化，双保险防内存溢出闪退 */
-        private const val MAX_TRACES = 300
-        /** 调试执行历史最多保留条数 */
-        private const val MAX_EXECUTION_HISTORY = 400
-        /** 对话历史（决策 prompt）最多保留条数：长线任务每步决策都 append，需上限防内存膨胀 */
-        private const val MAX_CONVERSATION = 200
-
-        /** 阶段切分粒度：每 [STAGE_SIZE] 步为一个阶段（文档 v2.2 5.1） */
-        private const val STAGE_SIZE = 6
-
-        /** 歧义检测 + 规划 */
-        const val PLANNING_TEMPERATURE = 0.3
-        /** 每步决策（正常）温度：引用 EngineRules，单一事实来源 */
-        @Suppress("unused")
-        const val DECISION_TEMPERATURE = EngineRules.DECISION_TEMPERATURE
-        /** 失败 3 次后重规划温度：引用 EngineRules，单一事实来源 */
-        @Suppress("unused")
-        const val REPLAN_TEMPERATURE = EngineRules.REPLAN_TEMPERATURE
-
-        /** 用户点「已手动处理」时发出的语义信号 */
-        // 文案铁律：不得出现"完成/已完成"等收尾暗示——这类词会诱导 AI 判定整项任务已达成、
-        // 直接下发 task_done，用户点一下"已手动处理"任务就退（2026-08-18 BUG-001 复盘）。
-        // 必须突出"仅处理了当前环节、继续剩余步骤"，并把 task_done 的门槛抬高到"亲眼看到目标达成"
-        const val SELF_DISMISS_HINT = "[[自处理]]用户已手动处理当前环节，请重新观察页面继续执行剩余步骤；只有亲眼看到任务目标已达成才允许输出 task_done"
-
-        /** 任务内记忆事件流的保留上限（只用于界面提示，超出丢弃最早的） */
-        private const val MAX_MEMORY_EVENTS = 20
-
-        /** say 事件流的保留上限（只用于界面实时气泡，超出丢弃最早的） */
-        private const val MAX_SAY_EVENTS = 20
-
-        /** 澄清往来（问题 + 选择）流的保留上限，只用于界面展示，超出丢弃最早的 */
-        private const val MAX_CLARIFY_EVENTS = 20
-
-        /** 本对话内纯对话往来（问答）的保留上限，只喂给会话承接块 */
-        private const val MAX_CONVERSATION_CHATS = 6
-
-        /** 连续 say 次数上限：超过即要求 AI 开始真正执行，避免"只聊天不干活"死循环 */
-        private const val MAX_SAY_STREAK = 3
-
-        /** 记忆提炼的超时：独立于主流程，超时直接放弃，不阻塞任务收尾 */
-        private const val DISTILL_TIMEOUT_MS = 12_000L
-
-        /** MCP 技能单次调用的超时：远端服务不可达时不能让主循环干等 */
-        private const val MCP_CALL_TIMEOUT_MS = 20_000L
-
-        /** MCP 技能重试那一遍的超时：缩到 10s，最坏总等待 ≈ 20+0.5+10 ≤ 31s，不放大用户等待 */
-        private const val MCP_CALL_RETRY_TIMEOUT_MS = 10_000L
-
-        /** MCP 技能返回值注入 AI 上下文的最大字符数（与 shell 输出一致，防长文撑爆上下文） */
-        private const val MAX_MCP_OUTPUT = 1200
-
-        /** 连续「技能调用被拒」（未知/停用/缺参）次数上限：达到即收尾，避免 AI 反复白试 */
-        private const val MAX_SKILL_ERROR_STREAK = 3
-
-        /**
-         * 连续「被动作模式拒绝」次数上限：达到即收尾。
-         * 保守模式下 AI 若反复尝试点击/输入这类被禁动作，只会把步数耗在无意义的往返上；
-         * 明确停下并告诉用户去换档，比让它空转到 maxSteps 更诚实。
-         */
-        private const val MAX_MODE_DENY_STREAK = 3
-
-        /** 连续「浏览器意图缺参」次数上限：达到即收尾，避免 AI 一直输出缺参的 browse_* */
-        private const val MAX_BROWSE_MISSING_STREAK = 3
-
-        /** 侧边栏保留的历史任务会话条数上限（只留任务级元数据，逐步明细另有环形上限） */
-        private const val MAX_TASK_SESSIONS = 30
-
-        /** 会话承接：最多回看几轮更早的任务（越靠前越近） */
-        private const val MAX_PREVIOUS_TASKS = 3
-
-        /** device_query 返回内容注入 AI 上下文的最大字符数（按需查询，可以给足；应用清单本身另有条数上限） */
-        private const val MAX_DEVICE_QUERY_OUTPUT = 9000
-
-        /**
-         * 连续「决策链路异常」次数上限。
-         * 主循环把决策抛出的异常降级为 `wait` 意图后，若链路持续不可用就会一直空转到最大步数；
-         * 这个计数器是异常隔离的护栏：连续异常到上限即收尾，避免任务在坏链路上无限打转。
-         */
-        private const val MAX_DECISION_FAILURE_STREAK = 5
-
-        /** 不可逆动作（needsUserConfirmation）确认等待的超时：超时视为用户取消，不让任务无限挂起 */
-        private const val ACTION_CONFIRM_TIMEOUT_MS = 120_000L
-    }
+    /** 引擎运行期状态仓：全部 StateFlow 与任务级 var 收口于此（重构批次 1，见 [EngineStore]） */
+    private val store = EngineStore()
 
     private val cloudAgent = CloudAgent(aiClient)
     private val localDecision = LocalDecisionEngine()
@@ -257,22 +169,15 @@ class AgentEngine(
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
     private val skillCallHistory = com.phoneagent.feature.skill.SkillCallHistory(appContext, scope)
-    /** 上一轮技能/MCP/查询返回文本（缺参自动推断的来源之一；随任务复位，见 run() 开头清空段） */
-    private var lastSkillOutput: String = ""
-    // ---- 宏技能接力执行状态（Normalized.Macro 启动时赋值，随任务复位）----
-    /** 待执行的宏步骤队列（剩余步骤，首元素 = 下一步） */
-    private var macroQueue: List<com.phoneagent.feature.skill.MacroStep> = emptyList()
-    /** 宏入参（AI 调宏时给的 args，供 {{参数名}} 占位符展开） */
-    private var macroArgs: Map<String, String> = emptyMap()
-    /** 已执行步骤的结果文本（下标 0 = 第 1 步，供 {{stepN}} 引用） */
-    private var macroResults: List<String> = emptyList()
-    /** 正在执行的宏名（日志与回注说明用） */
-    private var macroName = ""
-    /** 已派发的宏步骤数（0 = 尚未派发任何步骤；用于区分「收割上一步结果」与「宏刚启动」） */
-    private var macroDispatched = 0
-    /** 页面记忆提示缓存：按页面指纹缓存，换页才重查（与 anomalyHint 同款） */
-    private var pageMemoryHintFingerprint: String = ""
-    private var pageMemoryHintText: String = ""
+    // ---- 运行期状态收口到 [EngineStore]（重构批次 1）：以下为裸名委托，读写语义与迁移前一致 ----
+    private var lastSkillOutput by store::lastSkillOutput
+    private var macroQueue by store::macroQueue
+    private var macroArgs by store::macroArgs
+    private var macroResults by store::macroResults
+    private var macroName by store::macroName
+    private var macroDispatched by store::macroDispatched
+    private var pageMemoryHintFingerprint by store::pageMemoryHintFingerprint
+    private var pageMemoryHintText by store::pageMemoryHintText
 
     // ---- 意图化转译层（HPA动作执行逻辑优化文档 v2.1）：AI 输出意图，端侧按授权模式转译执行 ----
     private val capabilityManager = CapabilityManager(appContext, shizukuManager) { adbTransport?.isConnectedNow() == true }
@@ -291,14 +196,10 @@ class AgentEngine(
         // 主门控在上面 run() 里——只有那里才能一并覆盖不走转译层的 browse_* 通道。
         actionMode = { activeActionMode },
     )
-    /**
-     * 本次任务生效的动作模式（保守 / 均衡 / 自由）。
-     *
-     * 每步决策都读它，转译层与门控共用同一个值：一旦两处各取一次设置，
-     * 就会出现"提示词按 A 档说能用、端侧按 B 档拒掉"的错位。
-     */
-    @Volatile
-    private var activeActionMode: ActionMode = ActionMode.DEFAULT
+    /** 本次任务生效的动作模式（保守 / 均衡 / 自由）：每步决策都读它，转译层与门控共用同一个值（存于 [EngineStore]） */
+    private var activeActionMode: ActionMode
+        get() = store.activeActionMode
+        set(value) { store.activeActionMode = value }
     /**
      * 内置浏览器通道：**与 [intentTranslator] 同级**的独立通道，browse_* 意图在这里落地，
      * 不进转译层策略表。网页读写走本 App 自己的 WebView（DOM 脚本），因此不受无障碍 / Shizuku /
@@ -309,185 +210,118 @@ class AgentEngine(
     private val browserChannel = com.phoneagent.feature.browser.BrowserChannel(
         readOnly = { capabilityManager.currentMode() == CapabilityManager.Mode.READONLY },
     )
-    /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
-    @Volatile
-    private var lastVisualCoordinate: Pair<Int, Int>? = null
+    /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用（存于 [EngineStore]） */
+    private var lastVisualCoordinate: Pair<Int, Int>?
+        get() = store.lastVisualCoordinate
+        set(value) { store.lastVisualCoordinate = value }
 
-    private val _state = MutableStateFlow(AgentState())
+    private val _state by store::state
     val state: StateFlow<AgentState> get() = _state.asStateFlow()
 
-    /**
-     * 本次任务内 AI 写入记忆的事件流（内存态，供 Agent 页实时插卡）。
-     * 不读 DataStore：卡片要在写入瞬间出现，且撤销后立即消失。
-     */
-    private val _memoryEvents = MutableStateFlow<List<MemoryEvent>>(emptyList())
+    // ---- 以下 Flow / 序列号 / 计数器均存于 [EngineStore]，此处仅做裸名委托（重构批次 1）----
+
+    private val _memoryEvents by store::memoryEvents
     val memoryEvents: StateFlow<List<MemoryEvent>> get() = _memoryEvents.asStateFlow()
 
-    /**
-     * 本次任务内 AI "对用户说话"的事件流（内存态，供 Agent 页实时出气泡）。
-     * 只在实时任务流里出现：归档（[TaskSession]）不存，历史回看不回放这句话。
-     */
-    private val _sayEvents = MutableStateFlow<List<SayEvent>>(emptyList())
+    private val _sayEvents by store::sayEvents
     val sayEvents: StateFlow<List<SayEvent>> get() = _sayEvents.asStateFlow()
 
-    /** say 事件自增 id：不能用 text.hashCode() 当 key（重复内容会撞车） */
-    private val saySeq = AtomicLong(0L)
+    private val saySeq by store::saySeq
 
-    /** 澄清往来自增 id：问题气泡与答案气泡共用同一个 id 锚在同一组上 */
-    private val clarifySeq = AtomicLong(0L)
+    private val clarifySeq by store::clarifySeq
 
-    /** 本对话内的澄清往来（引擎内存态），Agent 页据此在任务流里保留 问题 + 选择 */
-    private val _clarifyEvents = MutableStateFlow<List<ClarifyAnswered>>(emptyList())
+    private val _clarifyEvents by store::clarifyEvents
     val clarifyEvents: StateFlow<List<ClarifyAnswered>> get() = _clarifyEvents.asStateFlow()
 
-    /** 连续 say 计数：达到 [MAX_SAY_STREAK] 即要求 AI 开始真正执行 */
-    @Volatile
-    private var sayStreak = 0
+    private var sayStreak: Int
+        get() = store.sayStreak
+        set(value) { store.sayStreak = value }
 
     /**
      * 任务会话归档（Agent 页侧边栏数据源），最新一次任务排在最前。
      * 任务开始时插入一条「进行中」记录，结束时按 taskId 就地收尾为终态。
      */
-    private val _taskSessions = MutableStateFlow<List<TaskSession>>(emptyList())
+    private val _taskSessions by store::taskSessions
     val taskSessions: StateFlow<List<TaskSession>> get() = _taskSessions.asStateFlow()
 
-    /** 同一任务只提炼一次记忆，避免重试/收尾分支重复写入 */
-    @Volatile
-    private var lastDistilledTaskId = -1L
+    private var lastDistilledTaskId: Long
+        get() = store.lastDistilledTaskId
+        set(value) { store.lastDistilledTaskId = value }
 
-    /**
-     * 本任务已加载的记忆素材缓存：画像 + AI 记忆 + 经验规则，每任务读一次库，逐步骤复用；
-     * null 表示尚未加载。**缓存的是原始素材而不是成品文本**——因为每步要用的经验规则
-     * 取决于该步的前台应用，而"记忆里要剔除哪些条目"又取决于命中了哪些规则，两者都得每步现算。
-     */
-    @Volatile
-    private var memoryRawCache: MemoryRaw? = null
+    private var memoryRawCache by store::memoryRawCache
 
-    /** 记忆素材三元组（画像 / 记忆 / 经验规则） */
-    private data class MemoryRaw(
-        val profile: List<ProfileEntry>,
-        val memories: List<AiMemoryEntry>,
-        val rules: List<EvolvedRule>,
-    )
+    private val foregroundPkgCounts by store::foregroundPkgCounts
 
-    /**
-     * 任务执行期间前台包名 → 出现次数。任务结束时据此推断经验规则的作用域：
-     * 待得最久的那个应用，就是这次经验真正的作用对象。
-     */
-    private val foregroundPkgCounts = mutableMapOf<String, Int>()
+    private val touchedRuleIds by store::touchedRuleIds
 
-    /** 本任务已经计入过命中次数的规则 id：同一任务内命中多次只算一次，防长线任务把计数刷爆 */
-    private val touchedRuleIds = mutableSetOf<Long>()
+    private var sessionContextCache: String?
+        get() = store.sessionContextCache
+        set(value) { store.sessionContextCache = value }
 
-    /**
-     * 本任务的会话承接块（本对话内更早的往来 + 是否为追问），每任务构建一次后逐步骤复用；
-     * 空串表示本对话里没有可承接的往来。规划与每步决策共用同一份，避免两处口径不一致。
-     */
-    @Volatile
-    private var sessionContextCache: String? = null
-
-    /**
-     * 当前对话的起点（毫秒时间戳）。
-     *
-     * 任务 id 就是任务开始时刻，因此「本对话」= taskId >= 起点的那些任务：
-     * 承接块只从这里取材，实时视图也只铺开这之后的执行痕迹。
-     * 「新建对话」把起点推到现在，上一段对话的聊天记录既不进上下文、也不再显示。
-     */
-    private val _conversationStart = MutableStateFlow(System.currentTimeMillis())
+    private val _conversationStart by store::conversationStart
     val conversationStart: StateFlow<Long> get() = _conversationStart.asStateFlow()
 
-    /**
-     * 本对话内的纯对话问答（无任务执行的那些轮次）。
-     * 只用于会话承接，不落库：新建对话时清空，应用重启后同样不复存在。
-     */
-    private val conversationChats = mutableListOf<ConversationChat>()
-    private val chatLock = Any()
+    private val conversationChats by store::conversationChats
+    private val chatLock by store::chatLock
 
-    /** 本对话内的一次问答往来 */
-    private data class ConversationChat(val at: Long, val question: String, val answer: String)
+    private var anomalyHintFingerprint: String
+        get() = store.anomalyHintFingerprint
+        set(value) { store.anomalyHintFingerprint = value }
 
-    /** 异常经验查询的页面指纹缓存：同一页面不重复查库 */
-    @Volatile
-    private var anomalyHintFingerprint: String = ""
+    private var currentAnomalyEntry: com.phoneagent.data.store.AnomalyMemoryEntry?
+        get() = store.currentAnomalyEntry
+        set(value) { store.currentAnomalyEntry = value }
 
-    /** 当前页面命中的异常经验条目（未命中为 null），供该步结束时回写使用效果 */
-    @Volatile
-    private var currentAnomalyEntry: com.phoneagent.data.store.AnomalyMemoryEntry? = null
-
-    private val _logs = MutableStateFlow<List<AgentLog>>(emptyList())
+    private val _logs by store::logs
     val logs: StateFlow<List<AgentLog>> get() = _logs.asStateFlow()
 
-    private val _conversation = MutableStateFlow<List<ConversationMessage>>(emptyList())
+    private val _conversation by store::conversation
     val conversation: StateFlow<List<ConversationMessage>> get() = _conversation.asStateFlow()
 
-    private val _metrics = MutableStateFlow(AgentMetrics())
+    private val _metrics by store::metrics
     val metrics: StateFlow<AgentMetrics> get() = _metrics.asStateFlow()
 
-    private val _executionHistory = MutableStateFlow<List<StepRecord>>(emptyList())
-    /** 当前任务最新一步的执行留档（截图+说明），新任务开始时清空 */
-    private val _stepShot = MutableStateFlow(StepShot())
+    private val _executionHistory by store::executionHistory
+    private val _stepShot by store::stepShot
     val executionHistory: StateFlow<List<StepRecord>> get() = _executionHistory.asStateFlow()
     val stepShot: StateFlow<StepShot> get() = _stepShot.asStateFlow()
-    /** 每步 AI 决策的详细追踪（Debug「按任务分类」页面展示） */
-    private val _traces = MutableStateFlow<List<com.phoneagent.domain.model.StepTrace>>(emptyList())
+    private val _traces by store::traces
     val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> get() = _traces.asStateFlow()
 
     // ---- 规划/澄清/批准流程 ----
-    private val _planPhase = MutableStateFlow<PlanPhase>(PlanPhase.Idle)
+    private val _planPhase by store::planPhase
     val planPhase: StateFlow<PlanPhase> get() = _planPhase.asStateFlow()
-    /** 规划阶段的流式输出文本（边思考边显示） */
-    private val _planStream = MutableStateFlow("")
+    private val _planStream by store::planStream
     val planStream: StateFlow<String> get() = _planStream.asStateFlow()
-    private var pendingTask = ""
-    private var activePlan: TaskPlan? = null
-    /** 若当前计划来自模板复用，记录其 id（用于健康状态回写） */
-    private var reusedTemplateId: String? = null
-    /** 任务完成后待用户确认入库的用户模板：task/plan（仅用户主动确认才写入模板库） */
-    private var pendingTemplateTask: String? = null
-    private var pendingTemplatePlan: TaskPlan? = null
-    /** 近最连续“命令不存在/参数无效”等结构性错误的次数；≥2 时强制 AI 改用无障碍动作并禁止继续 shell （防止一直编造不存在的命令） */
-    private var invalidCommandStreak = 0
-    /** 连续「技能调用被拒」次数（未知技能 / 已停用 / 缺必填参数）；达到上限即收尾，避免 AI 反复白试 */
-    private var skillErrorStreak = 0
-    /** 连续「浏览器意图缺参」次数（browse_open 没给 uri、browse_click 没给 target 等）；达到上限即收尾，避免反复追问 */
-    private var browseMissingStreak = 0
+    private var pendingTask by store::pendingTask
+    private var activePlan by store::activePlan
+    private var reusedTemplateId by store::reusedTemplateId
+    private var pendingTemplateTask by store::pendingTemplateTask
+    private var pendingTemplatePlan by store::pendingTemplatePlan
+    private var invalidCommandStreak by store::invalidCommandStreak
+    private var skillErrorStreak by store::skillErrorStreak
+    private var browseMissingStreak by store::browseMissingStreak
     private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    /** 当前任务 ID（每次 run 开始时生成，用于分任务日志/导出） */
-    @Volatile
-    private var currentTaskId: Long = -1
-    /** 执行审核运行期覆盖：null=跟随设置；否则本次任务强制开启/关闭审核 */
-    @Volatile
-    var reviewOverride: Boolean? = null
-    /** 当前任务描述 */
-    private var currentTaskName: String? = null
-    /** 连续拒绝 AI 提前"任务完成"的次数，防死循环 */
-    private var earlyDoneRejections = 0
+    private var currentTaskId: Long
+        get() = store.currentTaskId
+        set(value) { store.currentTaskId = value }
+    var reviewOverride: Boolean?
+        get() = store.reviewOverride
+        set(value) { store.reviewOverride = value }
+    private var currentTaskName by store::currentTaskName
+    private var earlyDoneRejections by store::earlyDoneRejections
 
-    // ---- 长线任务工作记忆（文档 v2.2 5.2）----
-    /**
-     * 本次任务的任务记忆：目标 / 用户要求 / 已验证做法。
-     * 旧的「最近 3 条进度摘要」是纯内存队列，轮转即丢，且长线任务的历史压缩会把更早的决策截掉，
-     * 导致 AI 跑到后半程看不到最初目标；任务记忆每轮完整注入并落库，中断后记忆页仍可查。
-     */
-    @Volatile
-    private var currentTaskMemory: TaskMemoryEntry? = null
-    /** 已完成（已验证生效）的步骤总数 */
-    private var completedSteps = 0
-    /** 本次计划的预计总步数（无计划则为 0，表示未知） */
-    private var totalPlannedSteps = 0
+    private var currentTaskMemory: com.phoneagent.data.store.TaskMemoryEntry?
+        get() = store.currentTaskMemory
+        set(value) { store.currentTaskMemory = value }
+    private var completedSteps by store::completedSteps
+    private var totalPlannedSteps by store::totalPlannedSteps
 
-    // ---- 主动反馈状态（v2.2.1 八）----
-    /** 最近一次"步骤生效"的时间戳，用于检测长时间无进展 */
-    private var lastProgressAt = 0L
-    /** 5 分钟无进展提醒是否已发（每个任务一次） */
-    private var noProgressNotified = false
-    /** 连续由端侧决策的次数，用于"疑似死循环"检测 */
-    private var localDecisionStreak = 0
-    /** 死循环提醒是否已发（每个任务一次） */
-    private var localLoopNotified = false
-    /** 长时间无进展判定阈值 */
-    private val NO_PROGRESS_MS = 5L * 60L * 1000L
+    private var lastProgressAt by store::lastProgressAt
+    private var noProgressNotified by store::noProgressNotified
+    private var localDecisionStreak by store::localDecisionStreak
+    private var localLoopNotified by store::localLoopNotified
 
     /** 若文本为中文则原样返回；否则调用 AI 翻译成简体中文（带缓存） */
     suspend fun translateText(text: String): String {
@@ -524,36 +358,21 @@ class AgentEngine(
     val taskQueue: StateFlow<List<String>> get() = pendingTasks.items
 
     // ---- 第 9 层：用户协作 ----
-    private val _userHintRequest = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    private val _userHintRequest by store::userHintRequest
     val userHintRequest: SharedFlow<String> get() = _userHintRequest.asSharedFlow()
-    private val _needsUser = MutableStateFlow(false)
+    private val _needsUser by store::needsUser
     val needsUser: StateFlow<Boolean> get() = _needsUser.asStateFlow()
-    /**
-     * 用户输入信箱：单槽缓冲（CONFLATED）。
-     * 原先用 `MutableSharedFlow`（无 replay），没有订阅者时 `tryEmit` 的值会被静默丢弃 ——
-     * 用户抢在 `awaitUserHint()` 订阅之前输入就丢了，主循环随后永久挂起在等待上。
-     * Channel 在无接收者时会把值缓存住，接收者一到就能取走。
-     */
-    private val userHintMailbox = Channel<String>(Channel.CONFLATED)
+    private val userHintMailbox by store::userHintMailbox
 
     // ---- 自由模式：AI 自写命令的首次确认 ----
-    /**
-     * 本任务内 AI 自写命令的确认状态：null = 还没问过；true = 已批准；false = 已拒绝。
-     * 用户既然选了自由模式，就由用户把最后一道关——但本任务内只问一次（问完记在这里，后续同类命令直接放行/拒掉）。
-     */
-    @Volatile
-    private var shellApprovedForTask: Boolean? = null
+    private var shellApprovedForTask: Boolean?
+        get() = store.shellApprovedForTask
+        set(value) { store.shellApprovedForTask = value }
 
-    /** 待确认的自写命令；非空表示悬浮窗 / App 内正等着用户点「批准执行 / 拒绝」 */
-    private val _pendingShellCommand = MutableStateFlow<String?>(null)
+    private val _pendingShellCommand by store::pendingShellCommand
     val pendingShellCommand: StateFlow<String?> get() = _pendingShellCommand.asStateFlow()
 
-    /**
-     * 用户对自写命令的答复信箱：单槽 CONFLATED。
-     * 用 Channel 而非 SharedFlow 的理由与 [userHintMailbox] 完全一致——用户抢在等待方订阅之前点按，
-     * 值也必须被缓存住，否则主循环会永久挂死在等待上。
-     */
-    private val shellApprovalMailbox = Channel<Boolean>(Channel.CONFLATED)
+    private val shellApprovalMailbox by store::shellApprovalMailbox
 
     // ---- 不可逆动作确认门（AgentAction.needsUserConfirmation）----
     /** 一条等待用户确认的不可逆动作摘要 */
@@ -569,15 +388,10 @@ class AgentEngine(
      * 与 [_needsUser]（用户指导等待）、[_pendingShellCommand]（自写命令确认）是三套互相独立的
      * 状态与信箱：确认等待若共用 needsUser 标志，一边收尾会把另一边的等待一起掐掉（互相覆盖）。
      */
-    private val _pendingActionConfirmation = MutableStateFlow<PendingActionConfirmation?>(null)
+    private val _pendingActionConfirmation by store::pendingActionConfirmation
     val pendingActionConfirmation: StateFlow<PendingActionConfirmation?> get() = _pendingActionConfirmation.asStateFlow()
 
-    /**
-     * 用户对不可逆动作的答复信箱：单槽 CONFLATED。
-     * 用 Channel 而非 SharedFlow 的理由与 [userHintMailbox] 完全一致——用户抢在等待方订阅之前点按，
-     * 值也必须被缓存住，否则主循环会永久挂死在等待上。
-     */
-    private val actionConfirmationMailbox = Channel<Boolean>(Channel.CONFLATED)
+    private val actionConfirmationMailbox by store::actionConfirmationMailbox
 
     /**
      * 用户对「不可逆动作确认」的答复（悬浮窗 / App 内确认面板的「允许执行 / 取消」按钮）。
@@ -588,40 +402,29 @@ class AgentEngine(
         actionConfirmationMailbox.trySend(allow)
     }
 
-    /** 连续「被动作模式拒绝」的次数；放行一次即清零 */
-    private var modeDenyStreak = 0
+    private var modeDenyStreak by store::modeDenyStreak
 
-    /**
-     * 任务是否被用户「搁置」（悬浮窗上的隐藏按钮）。
-     *
-     * 搁置不等于停止：主循环在每轮开始前挂在 [awaitResume] 上，用户点悬浮球唤出后从当前步继续。
-     * 这一层是必须的——只把面板藏起来的话，AI 依旧在屏幕上点来点去，那不叫"搁置"。
-     */
-    @Volatile
-    private var taskPaused = false
+    private var taskPaused: Boolean
+        get() = store.taskPaused
+        set(value) { store.taskPaused = value }
 
-    private var lastSnapshot: ScreenSnapshot = ScreenSnapshot()
-    private var currentLang = PromptLang.CN
-    private var consecutiveFailures = 0
+    private var lastSnapshot by store::lastSnapshot
+    private var currentLang by store::currentLang
+    private var consecutiveFailures by store::consecutiveFailures
 
-    /** 敏感页接管的连续次数：页面持续敏感时反复弹接管会变成死循环，超上限直接收尾 */
-    private var sensitiveTakeoverStreak = 0
-    /** 连续「决策链路异常」次数，达到 [MAX_DECISION_FAILURE_STREAK] 即收尾 */
-    private var decisionFailureStreak = 0
-    /** 上一次自动点击的广告关闭目标 key（centerX/20:centerY/20），供连续命中护栏使用 */
-    @Volatile
-    private var lastAdClickTargetKey: String? = null
-    /** 同一广告关闭目标被自动点击的连续次数 */
-    @Volatile
-    private var adAutoClickStreak = 0
-    /** 最近一次 shell 命令输出（查询类命令回传给 AI 上下文） */
-    private var lastShellOutput: String = ""
+    private var sensitiveTakeoverStreak by store::sensitiveTakeoverStreak
+    private var decisionFailureStreak by store::decisionFailureStreak
+    private var lastAdClickTargetKey: String?
+        get() = store.lastAdClickTargetKey
+        set(value) { store.lastAdClickTargetKey = value }
+    private var adAutoClickStreak: Int
+        get() = store.adAutoClickStreak
+        set(value) { store.adAutoClickStreak = value }
+    private var lastShellOutput by store::lastShellOutput
 
-    /** 本步 shell 输出的暂存：由 [finishShellResult] 写入、由 [recordStep] 消费进 StepRecord，供 Agent 页回显 */
-    private var pendingShellOutput: String = ""
+    private var pendingShellOutput by store::pendingShellOutput
 
-    /** 当前决策的流式输出（AI 正在生成的内容），用于在 Agent 页实时回显"AI 此刻在说什么" */
-    private val _decisionStream = MutableStateFlow("")
+    private val _decisionStream by store::decisionStream
     val decisionStream: StateFlow<String> = _decisionStream.asStateFlow()
 
     /**
@@ -909,7 +712,7 @@ class AgentEngine(
     private fun rememberChatTurn(question: String, answer: String) {
         if (question.isBlank() || answer.isBlank()) return
         synchronized(chatLock) {
-            conversationChats += ConversationChat(
+            conversationChats += EngineStore.ConversationChat(
                 at = System.currentTimeMillis(),
                 question = question.trim().take(200),
                 answer = answer.trim().take(200),
@@ -4328,8 +4131,8 @@ class AgentEngine(
      */
     private suspend fun memoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> {
         val raw = memoryRawCache ?: runCatching {
-            MemoryRaw(memory.loadProfile(), memory.loadAiMemories(), memory.loadEvolvedRules())
-        }.getOrDefault(MemoryRaw(emptyList(), emptyList(), emptyList())).also { memoryRawCache = it }
+            EngineStore.MemoryRaw(memory.loadProfile(), memory.loadAiMemories(), memory.loadEvolvedRules())
+        }.getOrDefault(EngineStore.MemoryRaw(emptyList(), emptyList(), emptyList())).also { memoryRawCache = it }
 
         val hit = RuleScoper.select(raw.rules, snapshot.packageName.orEmpty(), task)
         val memories = if (hit.isEmpty()) {
