@@ -86,6 +86,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlin.coroutines.coroutineContext
 import java.util.concurrent.atomic.AtomicLong
 import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.runtime.UiBridge
+import com.phoneagent.engine.runtime.TelemetryRecorder
 import com.phoneagent.engine.runtime.EngineLimits.ACTION_CONFIRM_TIMEOUT_MS
 import com.phoneagent.engine.runtime.EngineLimits.DECISION_TEMPERATURE
 import com.phoneagent.engine.runtime.EngineLimits.DISTILL_TIMEOUT_MS
@@ -165,6 +167,10 @@ class AgentEngine(
     private val memory = MemoryStore(appContext)
     private val anomalyEngine = AnomalyMemoryEngine(memory)
     private val profileLearner = ProfileLearner(memory)
+    /** UI 桥：悬浮窗推送 + 日志环形缓冲 + 对话追加（重构批次 2，见 [UiBridge]） */
+    private val uiBridge = UiBridge(appContext, settings, store)
+    /** 遥测记录器：指标 / 轨迹 / 事件流 / 会话归档 / 调试持久化（重构批次 2，见 [TelemetryRecorder]） */
+    private val telemetry = TelemetryRecorder(appContext, memory, store)
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
@@ -432,54 +438,16 @@ class AgentEngine(
      * 悬浮窗是可选能力——关闭或未授权时任务照常执行，进度只在 App 内展示。
      * （App 在后台时 startForegroundService 可能受限，需兜底防崩溃）
      */
-    private suspend fun maybeStartFloating() {
-        val enabled = settings.settings.first().floatingWindowEnabled
-        if (enabled && android.provider.Settings.canDrawOverlays(appContext)) {
-            runCatching { FloatingWindowService.start(appContext) }
-        }
-        // 点击光标覆盖层：与悬浮窗同为可选视觉反馈，同样受悬浮窗权限约束
-        val settingsVal = settings.settings.first()
-        if (settingsVal.cursorOverlayEnabled && android.provider.Settings.canDrawOverlays(appContext)) {
-            runCatching { com.phoneagent.overlay.CursorOverlayService.show(appContext, settingsVal.cursorClickSync) }
-        }
-    }
+    private suspend fun maybeStartFloating() = uiBridge.maybeStartFloating()
 
-    /** 实时推送进度到悬浮窗 */
-    private fun pushFloating(status: String, phase: String) {
-        val s = _state.value
-        FloatingWindowService.update(
-            status = status,
-            task = s.task ?: "Happy Agent",
-            reasoning = s.lastAction?.reasoning ?: s.message ?: status,
-            step = s.stepCount,
-            total = 0,
-            phase = phase,
-        )
-    }
+    private fun pushFloating(status: String, phase: String) = uiBridge.pushFloating(status, phase)
 
-    /** 实时推送 AI 思考（发送给 AI 的内容 + 流式返回的内容）到悬浮窗，并同步更新通知 */
-    private fun pushThinking(sent: String? = null, delta: String? = null) {
-        FloatingWindowService.updateThinking(sent = sent, delta = delta)
-    }
+    private fun pushThinking(sent: String? = null, delta: String? = null) = uiBridge.pushThinking(sent, delta)
 
-    /** 显示悬浮窗交互面板（批准/澄清/指导），用户可窗内直接操作 */
-    private fun showFloatingInteraction(type: String, title: String, content: String, options: List<String>? = null) {
-        FloatingWindowService.interaction(type, title, content, options)
-    }
+    private fun showFloatingInteraction(type: String, title: String, content: String, options: List<String>? = null) =
+        uiBridge.showFloatingInteraction(type, title, content, options)
 
-    /** 清空悬浮窗中的提问内容 */
-    private fun clearFloatingQuery() {
-        FloatingWindowService.interaction(null, null, null)
-        val s = _state.value
-        FloatingWindowService.update(
-            status = s.message ?: "执行中",
-            task = s.task ?: "Happy Agent",
-            reasoning = s.lastAction?.reasoning ?: s.message ?: "执行中",
-            step = s.stepCount,
-            total = 0,
-            phase = s.phase.name,
-        )
-    }
+    private fun clearFloatingQuery() = uiBridge.clearFloatingQuery()
 
     /**
      * 上一步执行结果文本（✅/⚠️/❌），供决策 Prompt 使用。
@@ -497,18 +465,8 @@ class AgentEngine(
         }
     }
 
-    private fun log(level: AgentLog.Level, message: String, detail: String? = null) {
-        // 环形缓冲（v2.2.1 LogCollector）：仅保留最近 [MAX_LOGS] 条，防长线任务内存无限增长
-        val next = _logs.value + AgentLog(
-            timestamp = System.currentTimeMillis(),
-            level = level,
-            message = message,
-            detail = detail,
-            taskId = currentTaskId,
-            taskName = currentTaskName,
-        )
-        _logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
-    }
+    private fun log(level: AgentLog.Level, message: String, detail: String? = null) =
+        uiBridge.log(level, message, detail)
 
     /**
      * 把「可能抛异常」的调用降级为 null，但显式放行协程取消。
@@ -553,70 +511,19 @@ class AgentEngine(
         runCatching { com.phoneagent.overlay.PageMarkOverlayService.hide() }
     }
 
-    /** 记录完整 API 请求/响应（用于调试页日志，可展开查看全文） */
-    private fun apiLog(request: String, response: String, latencyMs: Long) {
-        val summary = "API 调用 · ${latencyMs}ms"
-        val detail = "═══ 请求 ═══\n$request\n\n═══ 响应 ═══\n$response"
-        // 环形缓冲：与 log() 一致，携带完整请求/响应大文本，必须同样截断防长任务内存膨胀
-        val next = _logs.value + AgentLog(
-            timestamp = System.currentTimeMillis(),
-            level = AgentLog.Level.API,
-            message = summary,
-            detail = detail,
-            taskId = currentTaskId,
-            taskName = currentTaskName,
-        )
-        _logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
-    }
+    private fun apiLog(request: String, response: String, latencyMs: Long) =
+        uiBridge.apiLog(request, response, latencyMs)
 
-    private fun addConversation(role: String, content: String, hasImage: Boolean = false) {
-        // 环形缓冲：长线任务每步决策都 append 完整 prompt，需上限防内存膨胀
-        val next = _conversation.value + ConversationMessage(role, content, System.currentTimeMillis(), hasImage)
-        _conversation.value = if (next.size > MAX_CONVERSATION) next.takeLast(MAX_CONVERSATION) else next
-    }
+    private fun addConversation(role: String, content: String, hasImage: Boolean = false) =
+        uiBridge.addConversation(role, content, hasImage)
 
-    fun clearDebug() {
-        _logs.value = emptyList()
-        _conversation.value = emptyList()
-        _metrics.value = AgentMetrics()
-        _executionHistory.value = emptyList()
-        _traces.value = emptyList()
-        // 任务会话归档同步清空：明细都没了，侧边栏再留着任务条目只会点出空页面
-        replaceTaskSessions(emptyList())
-        // 同步清空磁盘持久化，避免重启后旧调试记录被再次回载
-        com.phoneagent.data.store.DebugRecordsStore.clear(appContext)
-    }
+    fun clearDebug() = uiBridge.clearDebug()
 
-    /** 把当前的日志/轨迹/执行历史/对话（含任务会话归档）持久化到磁盘（重启后 Debug 页/侧边栏回载查看） */
-    private fun persistDebug() {
-        runCatching {
-            com.phoneagent.data.store.DebugRecordsStore.save(
-                appContext, _logs.value, _traces.value, _executionHistory.value, _conversation.value,
-                _taskSessions.value,
-            )
-        }
-    }
+    private fun persistDebug() = telemetry.persistDebug()
 
     init {
-        // 启动时回载上次的调试记录：日志/轨迹（含截图缩略图）/执行历史/对话，实现持久化
-        runCatching {
-            val p = com.phoneagent.data.store.DebugRecordsStore.load(appContext) ?: return@runCatching
-            _logs.value = p.logs
-            _traces.value = p.traces
-            _executionHistory.value = p.history
-            _conversation.value = p.conversation
-            // 存档里还挂着「进行中」的，说明上次是没走完收尾就被杀进程了，回载时直接判为已中断，
-            // 否则侧边栏会永远显示一个不会结束的任务
-            replaceTaskSessions(
-                p.sessions.map {
-                    if (it.status == TaskSession.Status.RUNNING) {
-                        it.copy(status = TaskSession.Status.ABORTED, summary = it.summary.ifBlank { "应用重启，任务已中断" })
-                    } else {
-                        it
-                    }
-                },
-            )
-        }
+        // 启动时回载上次的调试记录（日志/轨迹/执行历史/对话/会话归档），实现持久化
+        telemetry.loadPersistedDebug()
     }
 
     /** 提交任务到队列并开始处理 */
@@ -3741,40 +3648,11 @@ class AgentEngine(
         return com.phoneagent.engine.execution.VerifyResult(ok, if (ok) "已执行" else "执行失败", "", "")
     }
 
-    private fun recordMetrics(decision: com.phoneagent.core.ai.AiDecision) {
-        val prev = _metrics.value
-        val requestCount = prev.requestCount + 1
-        val latencySum = prev.avgLatencyMs * prev.requestCount + decision.elapsedMs
-        val avgLatency = if (requestCount > 0) latencySum / requestCount else 0
-        val tps = if (decision.elapsedMs > 0) decision.completionTokens.toDouble() / decision.elapsedMs * 1000.0 else 0.0
-        _metrics.value = prev.copy(
-            totalTokens = prev.totalTokens + decision.totalTokens,
-            promptTokens = prev.promptTokens + decision.promptTokens,
-            completionTokens = prev.completionTokens + decision.completionTokens,
-            lastLatencyMs = decision.elapsedMs,
-            avgLatencyMs = avgLatency,
-            tokensPerSec = tps,
-            requestCount = requestCount,
-        )
-    }
+    private fun recordMetrics(decision: com.phoneagent.core.ai.AiDecision) = telemetry.recordMetrics(decision)
 
-    /** 观测性埋点：视觉环节单次耗时聚合（端侧3B/云端/本地识别 + 定位） */
-    private fun recordVisionMs(elapsedMs: Long) {
-        val prev = _metrics.value
-        _metrics.value = prev.copy(
-            visionCount = prev.visionCount + 1,
-            visionTotalMs = prev.visionTotalMs + elapsedMs,
-        )
-    }
+    private fun recordVisionMs(elapsedMs: Long) = telemetry.recordVisionMs(elapsedMs)
 
-    /** 观测性埋点：执行环节单次耗时聚合（无障碍点击/输入/滑动等） */
-    private fun recordExecMs(elapsedMs: Long) {
-        val prev = _metrics.value
-        _metrics.value = prev.copy(
-            execCount = prev.execCount + 1,
-            execTotalMs = prev.execTotalMs + elapsedMs,
-        )
-    }
+    private fun recordExecMs(elapsedMs: Long) = telemetry.recordExecMs(elapsedMs)
 
     private fun recordStepTrace(
         step: Int,
@@ -3784,56 +3662,9 @@ class AgentEngine(
         visionModel: String,
         visionDescription: String,
         screenshot: android.graphics.Bitmap?,
-    ) {
-        _traces.value = _traces.value + com.phoneagent.domain.model.StepTrace(
-            taskId = currentTaskId,
-            taskName = currentTaskName,
-            step = step,
-            sentText = sent,
-            receivedText = decision.rawContent,
-            promptTokens = decision.promptTokens,
-            completionTokens = decision.completionTokens,
-            totalTokens = decision.totalTokens,
-            latencyMs = decision.elapsedMs,
-            visionSource = visionSource,
-            visionModel = visionModel,
-            visionDescription = visionDescription,
-            thinking = decision.thinking,
-            // 截图入内存前缩略化（≤360px），配合 _traces 数量上限，避免多步全分辨率截图长期驻留导致 OOM 闪退
-            screenshot = com.phoneagent.data.store.DebugRecordsStore.thumb(screenshot),
-        )
-        // 数量上限：环形保留最近 N 条轨迹，防长线/多任务场景内存无限增长
-        if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
-    }
+    ) = telemetry.recordStepTrace(step, sent, decision, visionSource, visionModel, visionDescription, screenshot)
 
-    /**
-     * 端侧（本地）决策的步骤留档。
-     *
-     * 为什么必须留档：Agent 页任务流以 trace 为骨架（[AgentTimelineMapper.buildRuns]），
-     * 端侧决策走的是 `localDecision.decide()` 直通分支、不经过 cloudDecide，
-     * 若不在决策处补一条 trace，这一步在界面上完全不可见——用户的体感是"AI 没动，页面自己变了"。
-     *
-     * 与云端留档的差异：没有发给模型的上下文、没有 token 与延迟，用 [LOCAL_DECISION_SOURCE] 标注来源。
-     */
-    private fun recordLocalStepTrace(step: Int, intent: AgentIntent) {
-        _traces.value = _traces.value + com.phoneagent.domain.model.StepTrace(
-            taskId = currentTaskId,
-            taskName = currentTaskName,
-            step = step,
-            sentText = "",
-            receivedText = intent.toString(),
-            promptTokens = 0,
-            completionTokens = 0,
-            totalTokens = 0,
-            latencyMs = 0,
-            // 复用"视觉来源"字段标注决策来源，便于在调试页区分端侧/云端
-            visionSource = LOCAL_DECISION_SOURCE,
-            visionModel = "",
-            visionDescription = "",
-            thinking = false,
-        )
-        if (_traces.value.size > MAX_TRACES) _traces.value = _traces.value.takeLast(MAX_TRACES)
-    }
+    private fun recordLocalStepTrace(step: Int, intent: AgentIntent) = telemetry.recordLocalStepTrace(step, intent)
 
     // ==================== 记忆读写 ====================
 
@@ -4034,90 +3865,28 @@ class AgentEngine(
         return record to verify
     }
 
-    /** 记忆写入事件入流（内存态，供 Agent 页实时插卡；环形保留最近 N 条） */
-    private fun emitMemoryEvent(upsert: AiMemoryUpsert, runKey: String, step: Int) {
-        val event = MemoryEvent(
-            id = upsert.entry.id,
-            content = upsert.entry.content,
-            category = upsert.entry.category,
-            updated = upsert is AiMemoryUpsert.Updated,
-            runKey = runKey,
-            step = step,
-            createdAt = System.currentTimeMillis(),
-        )
-        _memoryEvents.value = (_memoryEvents.value + event).takeLast(MAX_MEMORY_EVENTS)
-        // 同步挂到本次任务会话上：新任务开始会清空 _memoryEvents，旧任务的记忆卡片
-        // 若不在此刻归到会话里，切回旧任务时就再也看不到了
-        updateTaskSession(runKey.removePrefix("r").toLongOrNull() ?: return) { cur ->
-            cur.copy(memoryEvents = cur.memoryEvents + event)
-        }
-    }
+    /** 记忆写入事件入流（转发 [TelemetryRecorder.emitMemoryEvent]，重构批次 2） */
+    private fun emitMemoryEvent(upsert: AiMemoryUpsert, runKey: String, step: Int) =
+        telemetry.emitMemoryEvent(upsert, runKey, step)
 
-    /** AI 说话事件入流（内存态，供 Agent 页实时出气泡；环形保留最近 N 条） */
-    private fun emitSayEvent(text: String, runKey: String, step: Int) {
-        val event = SayEvent(
-            id = saySeq.incrementAndGet(),
-            text = text,
-            runKey = runKey,
-            step = step,
-            createdAt = System.currentTimeMillis(),
-        )
-        _sayEvents.value = (_sayEvents.value + event).takeLast(MAX_SAY_EVENTS)
-    }
+    /** AI 说话事件入流（转发 [TelemetryRecorder.emitSayEvent]，重构批次 2） */
+    private fun emitSayEvent(text: String, runKey: String, step: Int) =
+        telemetry.emitSayEvent(text, runKey, step)
 
     // ==================== 任务会话归档（Agent 页侧边栏） ====================
 
-    /** 任务开始：插入一条「进行中」会话，最新在前 */
-    private fun startTaskSession(session: TaskSession) {
-        val next = (listOf(session) + _taskSessions.value.filterNot { it.taskId == session.taskId })
-        _taskSessions.value = if (next.size > MAX_TASK_SESSIONS) next.take(MAX_TASK_SESSIONS) else next
-    }
+    private fun startTaskSession(session: TaskSession) = telemetry.startTaskSession(session)
 
-    /**
-     * 任务结束：按 taskId 就地收尾会话。
-     *
-     * 必须按 taskId 而非"当前任务"归属：`stop()` 取消协程后 finally 是异步执行的，
-     * 用户若立刻发起新任务，旧任务的收尾会把新任务的会话误标成已结束。
-     */
-    private fun settleTaskSession(taskId: Long, cancelled: Boolean) {
-        val phase = _state.value.phase
-        val status = when {
-            phase == AgentState.Phase.DONE -> TaskSession.Status.DONE
-            cancelled -> TaskSession.Status.ABORTED
-            else -> TaskSession.Status.FAILED
-        }
-        val records = _executionHistory.value.filter { it.taskId == taskId }
-        updateTaskSession(taskId) { cur ->
-            cur.copy(
-                endedAt = System.currentTimeMillis(),
-                status = status,
-                summary = _state.value.message.orEmpty(),
-                steps = maxOf(cur.steps, records.size),
-                okSteps = maxOf(cur.okSteps, records.count { it.isConfirmed }),
-            )
-        }
-        persistDebug()
-    }
+    private fun settleTaskSession(taskId: Long, cancelled: Boolean) = telemetry.settleTaskSession(taskId, cancelled)
 
-    /** 就地改写一条会话（不存在则忽略） */
-    private fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) {
-        val current = _taskSessions.value
-        val idx = current.indexOfFirst { it.taskId == taskId }
-        if (idx < 0) return
-        _taskSessions.value = current.toMutableList().also { it[idx] = transform(it[idx]) }
-    }
+    private fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) =
+        telemetry.updateTaskSession(taskId, transform)
 
     /** 回载/清空会话归档（由持久化层调用） */
-    private fun replaceTaskSessions(list: List<TaskSession>) {
-        _taskSessions.value = list.take(MAX_TASK_SESSIONS)
-    }
+    private fun replaceTaskSessions(list: List<TaskSession>) = telemetry.replaceTaskSessions(list)
 
     /** 撤销一条刚写入的记忆：删库 + 从事件流移除（卡片随之消失） */
-    suspend fun dismissMemoryEvent(id: Long) {
-        runCatching { memory.deleteAiMemory(id) }
-        _memoryEvents.value = _memoryEvents.value.filterNot { it.id == id }
-        memoryRawCache = null
-    }
+    suspend fun dismissMemoryEvent(id: Long) = telemetry.dismissMemoryEvent(id)
 
     /**
      * 本步要注入的（记忆简报, 经验规则简报）。
