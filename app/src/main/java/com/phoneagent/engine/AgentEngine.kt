@@ -88,6 +88,7 @@ import java.util.concurrent.atomic.AtomicLong
 import com.phoneagent.engine.runtime.EngineStore
 import com.phoneagent.engine.runtime.UiBridge
 import com.phoneagent.engine.runtime.TelemetryRecorder
+import com.phoneagent.engine.runtime.TaskLifecycle
 import com.phoneagent.engine.runtime.EngineLimits.ACTION_CONFIRM_TIMEOUT_MS
 import com.phoneagent.engine.runtime.EngineLimits.DECISION_TEMPERATURE
 import com.phoneagent.engine.runtime.EngineLimits.DISTILL_TIMEOUT_MS
@@ -151,9 +152,6 @@ class AgentEngine(
     private val skillGateway: com.phoneagent.feature.skill.SkillExecutionGateway? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    /** 队列 worker；由主线程入队与 Default 线程的任务收尾共同读写，故需 @Volatile */
-    @Volatile
-    private var job: Job? = null
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
     /** 设备与环境事实（应用清单 / 屏幕 / 网络 / 电量 / 存储）的读取入口，见 [DeviceFacts] */
@@ -173,6 +171,12 @@ class AgentEngine(
     private val telemetry = TelemetryRecorder(appContext, memory, store)
     /** AI 连接工具：翻译 / 连接测试 / 模型列表 / 能力探测（重构批次 3，见 [com.phoneagent.engine.connect.AiTools]） */
     private val aiTools = com.phoneagent.engine.connect.AiTools(settings, aiClient)
+    /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]） */
+    private val lifecycle = TaskLifecycle(
+        appContext, settings, scope, store, uiBridge,
+        runTask = { task, plan -> run(task, plan) },
+        safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
+    )
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
@@ -351,18 +355,8 @@ class AgentEngine(
     /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
     private fun isMostlyChinese(text: String): Boolean = aiTools.isMostlyChinese(text)
 
-    // ---- 第 11 层：多任务队列 ----
-    /**
-     * 待执行任务队列。追加来自主线程（用户提交），取出在队列协程（Default 调度器）里，
-     * 原先用 `_taskQueue.value = _taskQueue.value + task` 的非原子读改写，并发提交会丢任务。
-     */
-    private val pendingTasks = PendingTaskQueue()
-    /**
-     * worker 生命周期互斥锁：队列协程的启停与队列内容必须一起原子判定，
-     * 否则「worker 判空退出」与「任务入队」并发时，两边都会以为对方会处理，任务就漏跑了。
-     */
-    private val queueLock = Any()
-    val taskQueue: StateFlow<List<String>> get() = pendingTasks.items
+    // ---- 第 11 层：多任务队列（队列与 worker 已收口到 runtime/TaskLifecycle，重构批次 5） ----
+    val taskQueue: StateFlow<List<String>> get() = lifecycle.taskQueue
 
     // ---- 第 9 层：用户协作 ----
     private val _userHintRequest by store::userHintRequest
@@ -527,64 +521,10 @@ class AgentEngine(
         telemetry.loadPersistedDebug()
     }
 
-    /** 提交任务到队列并开始处理 */
-    fun start(task: String) {
-        if (task.isBlank()) return
-        // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
-        scope.launch {
-            val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
-            if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
-        }
-        // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
-        _stepShot.value = StepShot()
-        // 队列入口（不经规划）也要作废上一轮的会话承接块，否则会拿上一轮的输入当上下文
-        sessionContextCache = null
-        pendingTasks.enqueue(task)
-        // 入队与 worker 启动必须一起判定：否则「worker 刚好判空退出」与本次入队并发时，
-        // 两边都以为对方会处理这个任务，它就永远不会被执行（漏跑）
-        ensureQueueWorker()
-        log(AgentLog.Level.INFO, "任务已加入队列：$task")
-    }
+    /** 提交任务到队列并开始处理（转发 [TaskLifecycle.start]，重构批次 5） */
+    fun start(task: String) = lifecycle.start(task)
 
-    /** 确保队列有 worker 在消费；入队与收尾补启动都走这里，幂等 */
-    private fun ensureQueueWorker() {
-        synchronized(queueLock) {
-            if (job?.isActive != true) job = scope.launch { processQueue() }
-        }
-    }
-
-    /**
-     * 启动一个直接执行单次任务的协程（如用户批准计划后立即执行）。
-     * 与队列 worker 共用同一个 job 槽位：同一时刻只允许一个任务在跑。
-     * 已有任务在跑时不再静默丢弃：把任务入队交给队列 worker 排队执行
-     * （队列只带任务文本，计划不随队带入，排队任务由 AI 现场决策）。
-     */
-    private fun launchSingleTask(task: String, plan: TaskPlan? = null) {
-        synchronized(queueLock) {
-            if (job?.isActive == true) {
-                // 入队 + 补启动 worker：若当前任务正好在收尾，没有这次补启动任务就漏跑了
-                pendingTasks.enqueue(task)
-                ensureQueueWorker()
-                log(AgentLog.Level.INFO, "已有任务在执行，已加入任务队列：$task")
-                // 任务改为排队执行，规划面板不能停留在「已批准」
-                _planPhase.value = PlanPhase.Idle
-                return
-            }
-            job = scope.launch {
-                val self = coroutineContext[Job]
-                try {
-                    run(task, plan)
-                } finally {
-                    // 兜底：单任务协程结束时补启动队列 worker，执行期间入队的任务不能没人消费。
-                    // 被取消（用户停止）时不续跑：stop() 的语义是残留队列留给下次提交一并处理
-                    if (coroutineContext.isActive) {
-                        synchronized(queueLock) { if (job === self) job = null }
-                        ensureQueueWorker()
-                    }
-                }
-            }
-        }
-    }
+    private fun launchSingleTask(task: String, plan: TaskPlan? = null) = lifecycle.launchSingleTask(task, plan)
 
     // ==================== 对话边界 ====================
 
@@ -700,10 +640,7 @@ class AgentEngine(
             .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
 
     fun stop() {
-        synchronized(queueLock) {
-            job?.cancel()
-            job = null
-        }
+        lifecycle.cancelWorker()
         // 用户主动停止：任务记忆收尾为「已中断」，否则记忆页会永远显示「进行中」。
         // 没有进行中的任务时 finishTaskMemory 内部直接返回，不会凭空写库
         finishTaskMemory(TaskMemoryEntry.STATUS_ABORTED)
@@ -856,42 +793,7 @@ class AgentEngine(
         return allowed
     }
 
-    private suspend fun processQueue() {
-        val self = coroutineContext[Job]
-        // 本 worker 最后执行的任务 id：作为兜底复位的归属凭据（见 safeResetRuntime）
-        var lastTaskId: Long? = null
-        var abnormal: String? = null
-        var cancelled = false
-        try {
-            while (coroutineContext.isActive) {
-                val task = pendingTasks.poll() ?: break
-                run(task, null)
-                lastTaskId = currentTaskId
-                // 调试记录（日志/轨迹/历史/对话）与任务会话归档的持久化已由 run() 的收尾统一完成：
-                // 放这里会与收尾再写一遍同样的整包数据（含全部截图缩略图与 API 原文），白写一倍磁盘
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            cancelled = true
-            throw e
-        } catch (e: Throwable) {
-            val reason = "任务队列异常退出：${e.message ?: e.javaClass.simpleName}"
-            abnormal = reason
-            log(AgentLog.Level.ERROR, reason)
-        } finally {
-            // 释放 worker 引用与「是否还有待执行任务」必须在同一把锁内判定：
-            // 否则入队方会在这个窗口里既看不到活着的 worker、也看不到非空队列，任务就此漏跑。
-            // 只清自己的引用（job === self），避免把入队方刚启动的新 worker 误清掉 → 双 worker 重复执行同一任务
-            val pending = synchronized(queueLock) {
-                if (job === self) job = null
-                pendingTasks.isNotEmpty()
-            }
-            // 用户主动停止（协程被取消）时既不复位也不续跑：stop() 已完成复位，
-            // 残留队列留待用户下次提交任务时一并带走，保持原有语义
-            if (!cancelled) {
-                if (pending) ensureQueueWorker() else safeResetRuntime(lastTaskId, abnormal)
-            }
-        }
-    }
+    // processQueue 已随任务队列收口到 runtime/TaskLifecycle（重构批次 5）
 
     /**
      * 执行任务。外层只做一件事：兜底收尾任务记忆。
