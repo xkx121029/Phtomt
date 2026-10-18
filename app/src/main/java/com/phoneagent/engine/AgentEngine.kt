@@ -187,6 +187,12 @@ class AgentEngine(
         },
         recordProgress = { step, action -> recordProgress(step, action) },
     )
+    /** 用户协作门：三套等待/确认信箱 + 搁置闸门（重构批次 7，见 [com.phoneagent.engine.runtime.UserGate]） */
+    private val userGate = com.phoneagent.engine.runtime.UserGate(
+        store, uiBridge,
+        mutateTaskMemory = { transform -> mutateTaskMemory(transform) },
+        actionLabel = { type -> actionLabel(type) },
+    )
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
     // ---- 运行期状态收口到 [EngineStore]（重构批次 1）：以下为裸名委托，读写语义与迁移前一致 ----
@@ -406,10 +412,7 @@ class AgentEngine(
      * 用户对「不可逆动作确认」的答复（悬浮窗 / App 内确认面板的「允许执行 / 取消」按钮）。
      * 与 [resolveShellApproval] 同理**不受 [_needsUser] 约束**；没有等待中的确认时调用是空操作。
      */
-    fun respondActionConfirmation(allow: Boolean) {
-        if (_pendingActionConfirmation.value == null) return
-        actionConfirmationMailbox.trySend(allow)
-    }
+    fun respondActionConfirmation(allow: Boolean) = userGate.respondActionConfirmation(allow)
 
     private var modeDenyStreak by store::modeDenyStreak
 
@@ -666,140 +669,34 @@ class AgentEngine(
         log(AgentLog.Level.WARN, "任务已停止")
     }
 
-    /**
-     * 用户搁置任务（悬浮窗上的「隐藏」按钮）：收起面板的同时把执行挂起。
-     *
-     * 立即生效是做不到的——AI 可能正卡在一次模型请求或动作里，所以闸门放在下一轮开头（[awaitResume]），
-     * 当前这一步会正常走完，之后不再观察/截图/决策。
-     */
+    // ---- 用户协作门已收口到 runtime/UserGate（重构批次 7），以下为转发 ----
+
+    /** 用户搁置任务（悬浮窗上的「隐藏」按钮）：收起面板的同时把执行挂起（转发 [UserGate]，重构批次 7） */
     fun pauseTask() {
-        if (taskPaused) return
-        taskPaused = true
+        if (store.taskPaused) return
+        store.taskPaused = true
         log(AgentLog.Level.INFO, "任务已搁置：等待用户唤出悬浮窗")
     }
 
     /** 用户唤出悬浮窗：解除搁置，任务从当前步继续 */
     fun resumeTask() {
-        if (!taskPaused) return
-        taskPaused = false
+        if (!store.taskPaused) return
+        store.taskPaused = false
         log(AgentLog.Level.INFO, "用户已唤出悬浮窗，任务继续执行")
     }
 
-    /**
-     * 搁置闸门：每轮开头调用，搁置期间只挂起、不干活。
-     *
-     * 用轮询而不是 CompletableDeferred：闸门会被反复经过，Deferred 需要额外的"谁来重建"约定，
-     * 一旦漏建就会永久挂死；300ms 的轮询代价可以忽略，且协程取消（stop）能直接打断它。
-     */
-    private suspend fun awaitResume() {
-        if (!taskPaused) return
-        while (taskPaused && coroutineContext.isActive) delay(300)
-    }
+    private suspend fun awaitResume() = userGate.awaitResume()
 
     /** 用户协作者：提供下一步指导 */
-    fun provideUserHint(hint: String) {
-        if (hint.isBlank()) return
-        // 只在「Agent 正在等待用户输入」时收：否则面板早已关闭，用户误触残留按钮送来的内容
-        // 会滞留在信箱里，害得下一次等待被立刻满足而跳过等待
-        if (!_needsUser.value) return
-        // 用户中途说的话就是新的任务要求，必须记进任务记忆并注入后续每一轮决策，
-        // 否则长线任务跑到后面会把它忘掉（历史压缩只保留最近几轮对话）；
-        // 「已手动处理」是语义信号不是要求，不记
-        if (hint != SELF_DISMISS_HINT) mutateTaskMemory { it.withRequirement(hint) }
-        clearFloatingQuery()
-        userHintMailbox.trySend(hint)
-    }
+    fun provideUserHint(hint: String) = userGate.provideUserHint(hint)
 
-    fun dismissUser() {
-        if (!_needsUser.value) return
-        _needsUser.value = false
-        clearFloatingQuery()
-        // 「已手动处理」：不退出，发送语义信号让 Agent 继续观察页面并重新决策下一步
-        userHintMailbox.trySend(SELF_DISMISS_HINT)
-    }
+    fun dismissUser() = userGate.dismissUser()
 
-    /**
-     * 用户对「AI 自写命令」的答复（悬浮窗 / App 内协助面板的「批准执行 / 拒绝」按钮）。
-     *
-     * 与 [provideUserHint] 的关键区别：这条答复**不受 [_needsUser] 约束**。
-     * 协助面板是由 [pendingShellCommand] 驱动的独立交互，若也挂到 needsUser 上，
-     * 两套等待就会互相覆盖（一边关掉标志，另一边永远等不到）。
-     */
-    fun resolveShellApproval(approve: Boolean) {
-        if (_pendingShellCommand.value == null) return
-        clearFloatingQuery()
-        shellApprovalMailbox.trySend(approve)
-    }
+    fun resolveShellApproval(approve: Boolean) = userGate.resolveShellApproval(approve)
 
-    /**
-     * 自由模式：AI 自写命令的首次确认闸门。
-     *
-     * 只在「本任务第一次真要执行 AI 亲自写的命令」时问一次：批准 → 本任务内后续自写命令直接放行；
-     * 拒绝 → 本任务内不再问，也不再执行任何自写命令（由调用方把拒绝结果回注给 AI 换路子）。
-     *
-     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）不带 [AgentAction.aiAuthored]，不走这里。
-     *
-     * @return true = 可以执行；false = 用户拒绝，调用方**不得**执行
-     */
-    private suspend fun ensureShellApproval(action: AgentAction): Boolean {
-        if (action.type != ActionType.SHELL || !action.aiAuthored) return true
-        shellApprovedForTask?.let { return it }
+    private suspend fun ensureShellApproval(action: AgentAction): Boolean = userGate.ensureShellApproval(action)
 
-        val cmd = action.command.orEmpty()
-        _pendingShellCommand.value = cmd
-        log(AgentLog.Level.WARN, "自由模式：等待用户确认 AI 自写命令：$cmd")
-        pushFloating("等待确认命令", "THINKING")
-        showFloatingInteraction("shellconfirm", "确认执行命令", cmd, listOf("批准执行", "拒绝"))
-        _state.value = _state.value.copy(message = "AI 想执行一条自己编写的命令，需要你确认：$cmd")
-        val approved = try {
-            shellApprovalMailbox.receive()
-        } finally {
-            _pendingShellCommand.value = null
-            // 排空：等待期间用户可能连点了两次，残留值会污染下一次等待
-            while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
-        }
-        shellApprovedForTask = approved
-        log(
-            AgentLog.Level.INFO,
-            if (approved) "用户已批准 AI 自写命令，本任务内不再确认" else "用户已拒绝 AI 自写命令，本任务内不再执行自写命令",
-        )
-        return approved
-    }
-
-    /**
-     * 不可逆动作（支付/删除/发送等，AI 或转译层标记 [AgentAction.needsUserConfirmation]）的确认闸门。
-     *
-     * 必须在动作**真正执行前**调用：置起待确认状态等待用户答复，[ACTION_CONFIRM_TIMEOUT_MS] 内
-     * 未答复视为取消。与自写命令确认（[ensureShellApproval]）互相独立，互不复用状态。
-     *
-     * @return true = 用户允许执行；false = 用户取消或超时，调用方不得执行该动作
-     */
-    private suspend fun awaitActionConfirmation(action: AgentAction): Boolean {
-        val summary = buildString {
-            append(actionLabel(action.type))
-            action.target?.value?.takeIf { it.isNotBlank() }?.let { append("：$it") }
-            action.text?.takeIf { it.isNotBlank() }?.let { append("（${it.take(30)}）") }
-        }
-        _pendingActionConfirmation.value = PendingActionConfirmation(
-            actionSummary = summary,
-            reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason.orEmpty(),
-        )
-        log(AgentLog.Level.WARN, "不可逆动作等待用户确认：$summary")
-        _state.value = _state.value.copy(message = "AI 想执行不可逆操作「$summary」，等待你确认")
-        pushFloating("等待确认操作", "THINKING")
-        val allowed = try {
-            withTimeoutOrNull(ACTION_CONFIRM_TIMEOUT_MS) { actionConfirmationMailbox.receive() } ?: false
-        } finally {
-            _pendingActionConfirmation.value = null
-            // 排空：等待期间用户可能连点了多次，残留值会污染下一次等待
-            while (actionConfirmationMailbox.tryReceive().isSuccess) { /* drain */ }
-        }
-        log(
-            AgentLog.Level.INFO,
-            if (allowed) "用户已允许执行不可逆操作：$summary" else "用户取消（或超时未确认）不可逆操作：$summary",
-        )
-        return allowed
-    }
+    private suspend fun awaitActionConfirmation(action: AgentAction): Boolean = userGate.awaitActionConfirmation(action)
 
     // processQueue 已随任务队列收口到 runtime/TaskLifecycle（重构批次 5）
 
@@ -1557,9 +1454,16 @@ class AgentEngine(
                 // 先记一遍会造成同一步双重留档；只有用户离开（本步直接 return）才补记
                 log(AgentLog.Level.ERROR, "动作 3 次未生效：${action.type}，请求用户介入")
                 pushFloating("需要指导", "ERROR")
-                showFloatingInteraction("guide", "需要你的协助", "动作「${action.type}」连续未能改变页面。请在窗内手动接管处理，或告诉 AI 该怎么做。")
+                // 协助文案必须带上真实失败原因与服务状态（真机 BUG 23）：
+                // 只说"连续未能改变页面"会把 wait/shell 这类本不期待页面变化的动作误报成异常，
+                // 用户也无从判断是页面问题还是服务掉了
+                val a11yState = if (AgentAccessibilityService.instance == null)
+                    "（无障碍服务已断开）" else ""
+                val lastReason = verify.reason.ifBlank { "页面未按预期变化" }
+                val stuckReason = "动作「${action.type}」连续 $consecutiveFailures 次未生效：$lastReason$a11yState。" +
+                    "请选择：手动接管 / 告诉 AI 怎么做。"
+                showFloatingInteraction("guide", "需要你的协助", stuckReason)
                 _needsUser.value = true
-                val stuckReason = "动作「${action.type}」连续未能改变页面，请选择：手动接管 / 告诉 AI 怎么做。"
                 _userHintRequest.tryEmit(stuckReason)
                 // 同敏感页分支：协作原因需要落到 agentState.message，界面才能显示出来
                 _state.value = _state.value.copy(message = stuckReason)
@@ -3619,16 +3523,7 @@ class AgentEngine(
      * 信箱是单槽缓冲（CONFLATED），且 [provideUserHint] / [dismissUser] 只在 [_needsUser] 为 true 时投递：
      * 用户抢在订阅之前输入的内容会被缓冲住，订阅一到就能取走，不会像原先 SharedFlow 那样被静默丢弃。
      */
-    private suspend fun awaitUserHint(): String {
-        _needsUser.value = true
-        return try {
-            userHintMailbox.receive()
-        } finally {
-            // 一次等待只消费一条：排掉可能重复投递的残留，免得下一轮等待被旧值立刻满足而跳过等待
-            while (userHintMailbox.tryReceive().isSuccess) { /* drain */ }
-            _needsUser.value = false
-        }
-    }
+    private suspend fun awaitUserHint(): String = userGate.awaitUserHint()
 
     private suspend fun observe(): ScreenSnapshot {
         // 无障碍服务可能在任务执行中途被系统回收/关闭，此时读取元素树会抛异常；
