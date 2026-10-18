@@ -107,6 +107,10 @@ class EdgeLightingView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
+        // 零尺寸（未布局/异常测量）提前退出：分段长度全为 0 时后续 dist/totalPath 是 0/0=NaN，
+        // Canvas 遇 NaN 坐标静默跳过绘制，表现为偶发缺绘（2026-08-15 深层排查 M3）
+        if (width <= 0 || height <= 0) return
+
         val now = System.nanoTime()
         val dt = (now - lastTime) / 1_000_000_000f
         lastTime = now

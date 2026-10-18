@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -109,6 +111,8 @@ data class PageMemoryEntry(
     val hotspots: List<PageMemoryHotspot> = emptyList(),
     /** 控件空间树（≤32 个，整体快照式更新）：供记忆页绘制线框虚拟画面 */
     val shapes: List<PageShapeNode> = emptyList(),
+    /** 控件空间树结构签名（PageMemoryOps.shapeSignature）：同应用内同形页面去重键 */
+    val shapeSig: String = "",
     val visitCount: Int = 1,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
@@ -236,6 +240,7 @@ interface PageMemoryStore {
         title: String,
         hotspots: List<PageMemoryHotspot>,
         shapes: List<PageShapeNode> = emptyList(),
+        shapeSig: String = "",
     ): PageMemoryEntry?
     suspend fun upsertPageEdge(
         appPackage: String,
@@ -575,9 +580,10 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
         title: String,
         hotspots: List<PageMemoryHotspot>,
         shapes: List<PageShapeNode>,
+        shapeSig: String,
     ): PageMemoryEntry? {
         ensureShapeSchema()
-        val (list, result) = PageMemoryOps.upsertEntry(loadPageMemories(), appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis())
+        val (list, result) = PageMemoryOps.upsertEntry(loadPageMemories(), appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis(), shapeSig)
             ?: return null
         savePageMemories(list)
         return result
@@ -663,7 +669,9 @@ internal object PageMemoryOps {
 
     /**
      * 在 [list] 上写入一条页面记忆，返回 (新列表, 写入结果)；入参非法返回 null。
-     * 同 包名+指纹 命中则合并热点并集、visitCount+1，shapes 整页替换（空快照不覆盖旧值），
+     * 同 包名+指纹 命中则合并热点并集、visitCount+1，shapes 整页替换（空快照不覆盖旧值）；
+     * 指纹未命中但 [shapeSig] 与同应用内已有条目一致（同形页面：结构相同、只有列表内容不同）
+     * 同样归并进旧条目——不记忆相同控件结构的页面，长期使用不再刷屏。
      * 否则新建（id = 现有最大 + 1）。
      */
     fun upsertEntry(
@@ -675,9 +683,14 @@ internal object PageMemoryOps {
         hotspots: List<PageMemoryHotspot>,
         shapes: List<PageShapeNode>,
         now: Long,
+        shapeSig: String = "",
     ): Pair<List<PageMemoryEntry>, PageMemoryEntry>? {
         if (appPackage.isBlank() || fingerprint.isBlank()) return null
         val idx = list.indexOfFirst { it.appPackage == appPackage && it.fingerprint == fingerprint }
+            .let { fpHit ->
+                if (fpHit >= 0 || shapeSig.isBlank()) fpHit
+                else list.indexOfFirst { it.appPackage == appPackage && it.shapeSig == shapeSig }
+            }
         return if (idx >= 0) {
             val existing = list[idx]
             // 迟到落库保护（与 upsertTaskMemory 同思路）：旧快照后到不回写
@@ -687,6 +700,7 @@ internal object PageMemoryOps {
                 hotspots = mergeHotspots(existing.hotspots, hotspots),
                 // 整页快照替换：同指纹页面本应同构，并集会让页面改版后的残影控件永久残留
                 shapes = shapes.take(MAX_PAGE_SHAPES).ifEmpty { existing.shapes },
+                shapeSig = shapeSig.ifBlank { existing.shapeSig },
                 visitCount = existing.visitCount + 1,
                 updatedAt = now,
             )
@@ -700,11 +714,27 @@ internal object PageMemoryOps {
                 title = title,
                 hotspots = hotspots.take(MAX_PAGE_HOTSPOTS),
                 shapes = shapes.take(MAX_PAGE_SHAPES),
+                shapeSig = shapeSig,
                 createdAt = now,
                 updatedAt = now,
             )
             list + created to created
         }
+    }
+
+    /**
+     * 控件空间树结构签名：同形页面去重键。
+     * 只取结构性控件（可交互或非纯文字），忽略自由文本 label——列表页每行内容不同
+     * 但控件结构完全一致，正是需要归并的主体；签名 = kind + semanticId + 粗坐标
+     * （ratio×10 取整，容忍轻微布局抖动）拼串取 hash。
+     * 结构性控件为空（纯文字页）返回空串：不参与去重，宁可多记不可错并。
+     */
+    fun shapeSignature(shapes: List<PageShapeNode>): String {
+        val structural = shapes.filter { it.clickable || it.kind != "text" }
+        if (structural.isEmpty()) return ""
+        return structural.joinToString(";") { n ->
+            "${n.kind}|${n.semanticId}|${(n.l * 10).toInt()}|${(n.t * 10).toInt()}|${(n.r * 10).toInt()}|${(n.b * 10).toInt()}"
+        }.hashCode().toUInt().toString(16)
     }
 
     /**
@@ -793,6 +823,9 @@ sealed interface AiMemoryUpsert {
  */
 class AnomalyMemoryEngine(private val store: MemoryStore) {
 
+    /** 异常记忆读改写的进程内互斥：load→modify→save 三步非原子，并发调用会互相覆盖丢计数 */
+    private val mutex = Mutex()
+
     suspend fun findSolution(fingerprint: String, labels: List<String>): AnomalyMemoryEntry? {
         val entries = store.loadAnomalies()
         // 精确匹配指纹；否则按标签重叠度匹配
@@ -803,24 +836,28 @@ class AnomalyMemoryEngine(private val store: MemoryStore) {
     }
 
     suspend fun recordUse(entry: AnomalyMemoryEntry, success: Boolean) {
-        val entries = store.loadAnomalies().toMutableList()
-        val idx = entries.indexOfFirst { it.id == entry.id }
-        if (idx >= 0) {
-            val cur = entries[idx]
-            entries[idx] = cur.copy(
-                hitCount = cur.hitCount + 1,
-                successCount = cur.successCount + (if (success) 1 else 0),
-                lastUsedAt = System.currentTimeMillis(),
-            )
-            store.saveAnomalies(entries)
+        mutex.withLock {
+            val entries = store.loadAnomalies().toMutableList()
+            val idx = entries.indexOfFirst { it.id == entry.id }
+            if (idx >= 0) {
+                val cur = entries[idx]
+                entries[idx] = cur.copy(
+                    hitCount = cur.hitCount + 1,
+                    successCount = cur.successCount + (if (success) 1 else 0),
+                    lastUsedAt = System.currentTimeMillis(),
+                )
+                store.saveAnomalies(entries)
+            }
         }
     }
 
     suspend fun saveSolution(entry: AnomalyMemoryEntry) {
-        val entries = store.loadAnomalies().toMutableList()
-        entries.removeAll { it.id == entry.id }
-        entries.add(entry)
-        store.saveAnomalies(entries)
+        mutex.withLock {
+            val entries = store.loadAnomalies().toMutableList()
+            entries.removeAll { it.id == entry.id }
+            entries.add(entry)
+            store.saveAnomalies(entries)
+        }
     }
 }
 

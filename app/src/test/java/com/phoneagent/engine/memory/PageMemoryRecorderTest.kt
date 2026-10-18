@@ -43,8 +43,9 @@ class PageMemoryRecorderTest {
             appPackage: String, fingerprint: String, pageType: String, title: String,
             hotspots: List<PageMemoryHotspot>,
             shapes: List<com.phoneagent.data.store.PageShapeNode>,
+            shapeSig: String,
         ): PageMemoryEntry? {
-            val (list, result) = PageMemoryOps.upsertEntry(pages, appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis())
+            val (list, result) = PageMemoryOps.upsertEntry(pages, appPackage, fingerprint, pageType, title, hotspots, shapes, System.currentTimeMillis(), shapeSig)
                 ?: return null
             pages.clear(); pages.addAll(list)
             return result
@@ -258,6 +259,27 @@ class PageMemoryRecorderTest {
         assertEquals(250f / 1080f, button.l, 0.001f)
         val input = shapes.first { it.label == "输入框" }
         assertEquals("input", input.kind)
+    }
+
+    @Test
+    fun `同形页面归并为一条_不重复记忆相同控件结构`() = runTest {
+        val store = FakeStore()
+        val r = recorder(store)
+        // 两个指纹不同（列表行内容不同）但控件结构一致的页面：签名忽略文字，只看结构
+        val listA = page(element("首页", 100, 200, clickable = false), element("搜索", 300, 200))
+        val listB = page(element("物品甲", 100, 200, clickable = false), element("搜索", 300, 200))
+        r.onPageObserved(listA.snapshot, listA)
+        r.onPageObserved(listB.snapshot, listB)
+        // 只落一条：B 按结构签名归并进 A
+        assertEquals(1, store.pages.size)
+        assertEquals(2, store.pages.single().visitCount)
+        // lastFingerprint 回写规范指纹：后续边 from 落在同一页面
+        r.onIntent(tap("搜索"))
+        r.onStepResult(verified = true)
+        val detail = page(element("详情", 100, 500))
+        r.onPageObserved(detail.snapshot, detail)
+        assertEquals(1, store.edges.size)
+        assertEquals(store.pages.first().fingerprint, store.edges.single().fromFp)
     }
 
     @Test

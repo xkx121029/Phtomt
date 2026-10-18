@@ -1,6 +1,9 @@
 package com.phoneagent.device.shell
 
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,6 +39,9 @@ class ShizukuManager {
     /** shell 命令最长等待（毫秒），超时强杀进程并按失败返回 */
     private companion object {
         const val SHELL_TIMEOUT_MS = 30_000L
+
+        /** 权限请求超时（毫秒）：Shizuku 无响应时 onRequestPermissionResult 可能永不回调，超时按未授权收口 */
+        const val REQUEST_PERMISSION_TIMEOUT_MS = 10_000L
     }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refreshState() }
@@ -80,14 +86,32 @@ class ShizukuManager {
             onResult(true)
             return
         }
-        Shizuku.addRequestPermissionResultListener(object : Shizuku.OnRequestPermissionResultListener {
+        // 回调统一切主线程：onRequestPermissionResult 跑在 Binder 线程，
+        // 调用方（MainViewModel）多是 UI 状态更新，直接回传有跨线程更新风险（2026-08-15 B11）
+        val mainHandler = Handler(Looper.getMainLooper())
+        var settled = false
+        val token = Any()
+        val listener = object : Shizuku.OnRequestPermissionResultListener {
             override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+                if (settled) return
+                settled = true
+                mainHandler.removeCallbacksAndMessages(token)
                 Shizuku.removeRequestPermissionResultListener(this)
                 val granted = grantResult == PackageManager.PERMISSION_GRANTED
                 _state.value = if (granted) State.READY else State.PERMISSION_DENIED
-                onResult(granted)
+                mainHandler.post { onResult(granted) }
             }
-        })
+        }
+        // 超时兜底：Shizuku 进程被杀/无响应时 onRequestPermissionResult 可能永不回调，
+        // 调用方（配对流程）会永久挂起。超时按未授权收口，让流程能继续往下走
+        mainHandler.postAtTime({
+            if (settled) return@postAtTime
+            settled = true
+            Shizuku.removeRequestPermissionResultListener(listener)
+            _state.value = State.UNAVAILABLE
+            onResult(false)
+        }, token, SystemClock.uptimeMillis() + REQUEST_PERMISSION_TIMEOUT_MS)
+        Shizuku.addRequestPermissionResultListener(listener)
         Shizuku.requestPermission(0)
     }
 

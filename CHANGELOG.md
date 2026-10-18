@@ -28,8 +28,14 @@
   - 下钻面板（`ui/memory/PageShapePanel.kt`）：底部对齐嵌入式浮层（从下到上入场），
     点高亮控件链式下钻、逐级返回，出边路径列表兜底
   - 记忆页画廊化（`ui/memory/PageMemoryTab.kt`、`MemoryGraphScreen.kt`）：
-    页面记忆卡改为左缩略图（真实手机比例线框）+右元信息/路径流，点卡放大下钻
-  - 单测：shapes 整页替换/截断/重叠淘汰、schema 迁移判定、空间树采集、fromControl 反查
+    页面记忆卡改为两列缩略图网格（线框虚拟画面 + 标题 + 一行元信息），面向长期累计设计，
+    点卡放大下钻；同应用分组头带页数
+  - 同形页面去重（`MemoryStore.kt`、`PageMemoryRecorder.kt`）：页面新增结构签名
+    `shapeSig`（只取结构性控件的 kind+semanticId+粗坐标，忽略列表文字），同应用内
+    指纹不同但控件结构相同的页面归并为一条（不记忆相同控件页面），路径边统一落在
+    规范指纹上不断线；纯文字页不参与去重
+  - 单测：shapes 整页替换/截断/重叠淘汰、schema 迁移判定、空间树采集、fromControl 反查、
+    结构签名相等性/区分度、同形归并与跨包隔离
 
 ---
 

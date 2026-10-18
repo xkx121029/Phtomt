@@ -90,15 +90,13 @@ class PageMemoryRecorder(
 
         val known = runCatching { findKnown(pkg, fp) }.getOrNull()
 
-        // 换页了：先把「上页 —[动作]→ 本页」的边记掉（仅当上一步真实生效、且跳转发生在同一应用内）
-        if (fp != lastFingerprint && pkg == lastPackage) {
-            commitPendingEdge(pkg, fp)
-        }
+        // 换页了且上一步动作真实生效 → 记「上页 —[动作]→ 本页」边；toFp 用本页规范指纹
+        val pageChanged = fp != lastFingerprint && pkg == lastPackage
         // 同一页面刷新（指纹相同）不重复入库，只刷新命中状态；
         // 指纹不含包名，跨应用的同构页面（fp 相同 pkg 不同）也要各自入库
         if (fp != lastFingerprint || pkg != lastPackage) {
-            lastFingerprint = fp
             lastPackage = pkg
+            val shapes = extractShapes(annotated)
             val entry = runCatching {
                 store.upsertPageMemory(
                     appPackage = pkg,
@@ -106,9 +104,16 @@ class PageMemoryRecorder(
                     pageType = annotated.pageType,
                     title = pageTitle(annotated),
                     hotspots = extractHotspots(annotated),
-                    shapes = extractShapes(annotated),
+                    shapes = shapes,
+                    shapeSig = PageMemoryOps.shapeSignature(shapes),
                 )
             }.getOrNull()
+            // 同形归并命中旧条目时返回的是旧页面（规范指纹）：回写 lastFingerprint，
+            // 后续路径边的 from/to 都落在规范条目上，图谱不会因别名指纹断线
+            lastFingerprint = entry?.fingerprint ?: fp
+            // 边在入库之后提交：toFp 取归并后的规范指纹（若目标页与本页同形归并，
+            // from == to 会被 commitPendingEdge 拒掉——相同结构的页面本就是同一页）
+            if (pageChanged) commitPendingEdge(pkg, lastFingerprint)
             if (known == null && entry != null) return null // 新页面首次入库不算「命中旧记忆」
         }
         return known

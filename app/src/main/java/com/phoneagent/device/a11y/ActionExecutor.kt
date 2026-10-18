@@ -488,7 +488,8 @@ class ActionExecutor(
 
     /** 在活节点树里找"发送"类可点击控件并点击；找不到返回 false，由调用方降级为"已填入" */
     private suspend fun tapSendControl(): Boolean {
-        val keywords = listOf("发送", "send", "搜索", "提问", "→", "➤")
+        // 词表覆盖文字按钮与图标 description 两种形态；"完成/确定/Go"是部分助手发送键的实际文案
+        val keywords = listOf("发送", "send", "搜索", "提问", "→", "➤", "完成", "确定", "go", "开始")
         val node = windowRoots().firstNotNullOfOrNull { findSendNode(it, keywords, 0) } ?: return false
         val r = Rect()
         node.getBoundsInScreen(r)
@@ -650,13 +651,18 @@ class ActionExecutor(
     /** 派发手势并等待结果 */
     private suspend fun dispatchGesture(gesture: GestureDescription): Result =
         suspendCancellableCoroutine { cont ->
+            // 取消标记：协程取消（任务 stop）后系统回调仍可能触发，
+            // 注册 invokeOnCancellation 把取消意图显式化，回调里双重判活，
+            // 避免取消后回调再走 resume 造成挂起/回调泄漏（2026-08-15 B12）
+            var cancelled = false
+            cont.invokeOnCancellation { cancelled = true }
             val callback = object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
-                    if (cont.isActive) cont.resume(Result.Success())
+                    if (!cancelled && cont.isActive) cont.resume(Result.Success())
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
-                    if (cont.isActive) cont.resume(Result.Failure("手势被取消"))
+                    if (!cancelled && cont.isActive) cont.resume(Result.Failure("手势被取消"))
                 }
             }
             val dispatched = service.dispatchGesture(gesture, callback, null)

@@ -65,6 +65,8 @@ internal fun VirtualScreenCanvas(
     linkedControls: Set<String> = emptySet(),
     onTapControl: ((PageShapeNode) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    /** 画布宽高比：默认真实手机比例；网格缩略图可换更方的比例以省纵向空间（形态会横向拉伸） */
+    screenAspect: Float = 9f / 19.5f,
 ) {
     val colors = AppTheme.colors
     val textMeasurer = rememberTextMeasurer()
@@ -108,7 +110,7 @@ internal fun VirtualScreenCanvas(
 
     Box(
         modifier = modifier
-            .aspectRatio(9f / 19.5f)
+            .aspectRatio(screenAspect)
             .clip(RoundedCornerShape(20.dp))
             .background(colors.surfaceSunken)
             .border(1.dp, colors.phoneShellBorder, RoundedCornerShape(20.dp))

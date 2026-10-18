@@ -144,6 +144,9 @@ class AgentEngine(
         /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
         private const val MAX_LOGS = 800
 
+        /** 敏感页接管连续次数上限：超了仍敏感就收尾，避免无限弹接管死循环 */
+        private const val MAX_SENSITIVE_TAKEOVERS = 5
+
         /** 端侧决策来源标注（写入 StepTrace.visionSource，便于区分端侧/云端决策） */
         private const val LOCAL_DECISION_SOURCE = "端侧决策"
 
@@ -180,7 +183,10 @@ class AgentEngine(
         const val REPLAN_TEMPERATURE = EngineRules.REPLAN_TEMPERATURE
 
         /** 用户点「已手动处理」时发出的语义信号 */
-        const val SELF_DISMISS_HINT = "[[自处理]]已手动处理完成，请继续观察当前页面并重新决策下一步"
+        // 文案铁律：不得出现"完成/已完成"等收尾暗示——这类词会诱导 AI 判定整项任务已达成、
+        // 直接下发 task_done，用户点一下"已手动处理"任务就退（2026-08-18 BUG-001 复盘）。
+        // 必须突出"仅处理了当前环节、继续剩余步骤"，并把 task_done 的门槛抬高到"亲眼看到目标达成"
+        const val SELF_DISMISS_HINT = "[[自处理]]用户已手动处理当前环节，请重新观察页面继续执行剩余步骤；只有亲眼看到任务目标已达成才允许输出 task_done"
 
         /** 任务内记忆事件流的保留上限（只用于界面提示，超出丢弃最早的） */
         private const val MAX_MEMORY_EVENTS = 20
@@ -597,6 +603,9 @@ class AgentEngine(
     private var lastSnapshot: ScreenSnapshot = ScreenSnapshot()
     private var currentLang = PromptLang.CN
     private var consecutiveFailures = 0
+
+    /** 敏感页接管的连续次数：页面持续敏感时反复弹接管会变成死循环，超上限直接收尾 */
+    private var sensitiveTakeoverStreak = 0
     /** 连续「决策链路异常」次数，达到 [MAX_DECISION_FAILURE_STREAK] 即收尾 */
     private var decisionFailureStreak = 0
     /** 上一次自动点击的广告关闭目标 key（centerX/20:centerY/20），供连续命中护栏使用 */
@@ -1524,6 +1533,10 @@ class AgentEngine(
         lastProgressAt = System.currentTimeMillis()
         noProgressNotified = false
         localDecisionStreak = 0
+        // 端侧决策引擎的连续本地计数也按任务复位：不清的话上一任务结尾的高计数
+        // 会让新任务开头被强制走一次云端（防死循环计数跨任务残留）
+        localDecision.reset()
+        sensitiveTakeoverStreak = 0
         localLoopNotified = false
         // 清空上一任务的记忆事件流（本任务产生的记忆卡片只发生在本次执行期间）
         _memoryEvents.value = emptyList()
@@ -1666,6 +1679,13 @@ class AgentEngine(
 
             // 2. 安全：敏感页只读
             if (SensitivePageDetector.isSensitive(snapshot)) {
+                sensitiveTakeoverStreak++
+                if (sensitiveTakeoverStreak > MAX_SENSITIVE_TAKEOVERS) {
+                    // 连续多轮仍是敏感页：要么用户已无意继续，要么页面判定过于敏感。
+                    // 明确失败收尾，而不是无限循环弹接管（用户每次都得手动点，体验死锁）
+                    log(AgentLog.Level.WARN, "敏感页接管连续 $sensitiveTakeoverStreak 次，结束任务")
+                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
+                }
                 log(AgentLog.Level.WARN, "检测到敏感页面，拒绝执行动作，需用户介入")
                 pushFloating("敏感页面", "ERROR")
                 showFloatingInteraction("guide", "敏感页面保护", "检测到敏感页面（${snapshot.packageName}），已进入只读保护。请手动操作后，在窗内告诉 AI 继续。")
@@ -2152,6 +2172,19 @@ class AgentEngine(
                 // 用户指导 → 加入上下文并让云端重新决策（失败自动重试一次）
                 messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "用户提示：$hint 请据此重新决策下一步动作。" ))))
                 pushThinking(sent = "用户提示：$hint")
+                // 用户给的指导沉淀为异常记忆：与 anomalyEngine.findSolution 配对，
+                // 下次同页再卡可直接端侧复用，不必再麻烦用户（2026-08-15 BUG-07 收尾：接线而非删除）
+                runCatching {
+                    profileLearner.learnAnomalySolution(
+                        fingerprint = runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }.getOrDefault(""),
+                        labels = snapshot.elements.mapNotNull { it.effectiveLabel() }.take(30),
+                        anomalyType = "stuck_${action.type}",
+                        description = stuckReason,
+                        solution = hint,
+                        resolvedAction = action.type,
+                        appPackage = snapshot.packageName.orEmpty(),
+                    )
+                }
                 var guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
                 if (guided == null || guided.intent == IntentType.FINISH || guided.intent == IntentType.GIVE_UP) {
                     // AI 调用失败或认为任务完成：重试一次
@@ -2221,6 +2254,13 @@ class AgentEngine(
                             }
                         }
                     }
+                } else {
+                    // 引导两次都失败 / AI 认为任务已完成：绝不再重放接管前的旧失败动作
+                    // （旧动作已验证失败，重放只会空转一回合并留下误导性留档，2026-08-18 BUG-004）。
+                    // 补一条失败留档后回到循环顶部，用全新观测重新决策
+                    log(AgentLog.Level.WARN, "用户引导后仍未获得有效动作（${guided?.intent ?: "调用失败"}），重新观测页面而非重放旧动作")
+                    recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+                    continue
                 }
             }
 
@@ -3384,14 +3424,14 @@ class AgentEngine(
                         )
                     } else {
                         delay(600)
-                        val desc = executor.handoffToAssistant(action.text)
+                        val desc = enterSendIfFillOnly(executor.handoffToAssistant(action.text))
                         delay(800)
                         com.phoneagent.engine.execution.VerifyResult(
                             true, "经 shell 兜底唤醒语音助手；$desc", snapshot.packageName ?: "", "",
                         )
                     }
                 } else {
-                    val desc = (r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description
+                    val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
                     com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
                 }
@@ -3755,6 +3795,18 @@ class AgentEngine(
 
     /** shell 唤醒尝试：一条命令 + 是否强制要求验证到助手窗口 */
     private data class ShellAttempt(val cmd: String, val requireWindow: Boolean)
+
+    /**
+     * 传话已填入文字但没点到发送时，用 shell 回车键补发（KEYCODE_ENTER=66）。
+     * 厂商助手的发送键常是输入法上的回车/或图标无文字描述，无障碍找不到时，
+     * 回车是最通用的发送兜底；指令未被 shell 接受时保留原说明让 AI/用户接手。
+     */
+    private suspend fun enterSendIfFillOnly(desc: String): String {
+        if (!desc.contains("未找到发送按钮")) return desc
+        val accepted = runCatching { execShellViaChannel("input keyevent 66") }.getOrNull()
+            .let { it is com.phoneagent.device.shell.ShizukuManager.ShellResult.Success }
+        return if (accepted) "$desc（已补按回车尝试发送）" else desc
+    }
 
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
     private suspend fun finishShellResult(

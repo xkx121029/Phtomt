@@ -2,6 +2,7 @@ package com.phoneagent.data.store
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -173,6 +174,70 @@ class PageMemoryStoreOpsTest {
         assertTrue(PageMemoryOps.needsShapeReset(1))
         assertTrue(!PageMemoryOps.needsShapeReset(PageMemoryOps.PAGE_SHAPE_SCHEMA))
         assertTrue(!PageMemoryOps.needsShapeReset(PageMemoryOps.PAGE_SHAPE_SCHEMA + 1))
+    }
+
+    // ---- shapeSignature：同形页面去重 ----
+
+    private fun buttonShape(label: String, sid: String = "", t: Float = 0.1f) =
+        PageShapeNode(kind = "button", label = label, semanticId = sid, l = 0.1f, t = t, r = 0.9f, b = t + 0.05f)
+
+    @Test
+    fun `结构签名忽略文字标签_结构相同同签名`() {
+        // 列表行内容不同（label 不同），控件结构一致 → 同签名
+        val sigA = PageMemoryOps.shapeSignature(
+            listOf(PageShapeNode(kind = "text", label = "首页", l = 0.1f, t = 0.02f, r = 0.9f, b = 0.06f), buttonShape("搜索")),
+        )
+        val sigB = PageMemoryOps.shapeSignature(
+            listOf(PageShapeNode(kind = "text", label = "物品甲", l = 0.1f, t = 0.02f, r = 0.9f, b = 0.06f), buttonShape("确认")),
+        )
+        assertEquals(sigA, sigB)
+    }
+
+    @Test
+    fun `结构签名_控件位置或类别不同则签名不同`() {
+        val base = PageMemoryOps.shapeSignature(listOf(buttonShape("搜索")))
+        assertNotEquals(base, PageMemoryOps.shapeSignature(listOf(buttonShape("搜索", t = 0.3f))))
+        assertNotEquals(base, PageMemoryOps.shapeSignature(listOf(buttonShape("搜索", sid = "s1"))))
+        assertNotEquals(base, PageMemoryOps.shapeSignature(listOf(PageShapeNode(kind = "input", label = "搜索", l = 0.1f, t = 0.1f, r = 0.9f, b = 0.15f))))
+    }
+
+    @Test
+    fun `纯文字页无结构签名_不参与去重`() {
+        assertEquals("", PageMemoryOps.shapeSignature(emptyList()))
+        assertEquals(
+            "",
+            PageMemoryOps.shapeSignature(listOf(PageShapeNode(kind = "text", label = "纯文字", l = 0.1f, t = 0.1f, r = 0.9f, b = 0.2f))),
+        )
+    }
+
+    @Test
+    fun `指纹未命中但同包名同结构签名则归并进旧条目`() {
+        val shapes = listOf(buttonShape("搜索"))
+        val sig = PageMemoryOps.shapeSignature(shapes)
+        val (list1, first) = PageMemoryOps.upsertEntry(
+            emptyList(), PKG, FP_A, "generic", "列表页", emptyList(), shapes = shapes, now = 1L, shapeSig = sig,
+        )!!
+        // 指纹不同（内容不同）、结构签名一致 → 归并，不新建
+        val (list2, merged) = PageMemoryOps.upsertEntry(
+            list1, PKG, FP_B, "generic", "另一列表页", emptyList(), shapes = shapes, now = 2L, shapeSig = sig,
+        )!!
+        assertEquals(1, list2.size)
+        assertEquals(2, merged.visitCount)
+        assertEquals(first.fingerprint, merged.fingerprint) // 规范指纹保持旧条目
+    }
+
+    @Test
+    fun `结构签名归并只在同包名内生效`() {
+        val shapes = listOf(buttonShape("搜索"))
+        val sig = PageMemoryOps.shapeSignature(shapes)
+        val (list1, _) = PageMemoryOps.upsertEntry(
+            emptyList(), "app.one", FP_A, "generic", "页", emptyList(), shapes = shapes, now = 1L, shapeSig = sig,
+        )!!
+        val (list2, second) = PageMemoryOps.upsertEntry(
+            list1, "app.two", FP_B, "generic", "页", emptyList(), shapes = shapes, now = 2L, shapeSig = sig,
+        )!!
+        assertEquals(2, list2.size)
+        assertEquals("app.two", second.appPackage)
     }
 
     // ---- upsertEdge：合并与新建 ----

@@ -1,5 +1,6 @@
 package com.phoneagent.engine.perception
 
+import com.phoneagent.core.security.DataSanitizer
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
 
@@ -302,7 +303,10 @@ object PageAnnotator {
         val known = elements.filter { !it.semanticId.isNullOrBlank() }
         if (known.isEmpty()) return ""
         val lines = known.joinToString("\n") { e ->
-            val label = (e.text ?: e.contentDescription)?.takeIf { it.isNotBlank() } ?: e.type
+            val raw = (e.text ?: e.contentDescription)?.takeIf { it.isNotBlank() } ?: e.type
+            // 脱敏铁律：控件文字与 toAiText 同路上云，必须过 DataSanitizer——
+            // 页面上的手机号/身份证/卡号若以原文进 prompt，等于绕过端侧脱敏明文外送
+            val label = DataSanitizer.sanitize(raw)
             "- ${e.semanticId}: $label（#${e.index}, viewId=${e.viewId ?: "-"}）"
         }
         return "\n# 端侧已识别控件（可直接用 target:{by:\"id\",value:\"语义id\"} 选择）\n$lines"
@@ -320,8 +324,11 @@ object PageAnnotator {
 
         // 倒计时广告：跳过按钮 + 数字
         val hasSkip = labels.any { it.contains("跳过") }
-        val hasCount = labels.any { it.contains(Regex("[0-9]+")) && countdownWords.any { w -> it.contains(w) } }
-        if (hasSkip && hasCount) return "ad_with_countdown"
+        // 数字与倒计时词分离判定："跳过"按钮和"5 秒"倒计时常常在不同控件上，
+        // 要求同一 label 同时含两者会漏判（2026-08-15 深层排查 L1）
+        val hasNumber = labels.any { it.contains(Regex("[0-9]+")) }
+        val hasCountdownWord = labels.any { l -> countdownWords.any { w -> l.contains(w) } }
+        if (hasSkip && hasNumber && hasCountdownWord) return "ad_with_countdown"
 
         // 加载中：加载关键词 + 元素少
         if (labels.any { loadingWords.any { w -> it.contains(w) } } && snapshot.elements.size < 3) return "loading"

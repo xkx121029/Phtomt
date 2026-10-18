@@ -23,6 +23,14 @@ class LocalDecisionEngine {
     private var consecutiveLocal = 0
 
     /**
+     * 新任务开始时调用：清零连续本地决策计数。
+     * 不清的话，上一个任务结尾的高计数会让新任务开头被强制走一次云端（防死循环计数跨任务残留）。
+     */
+    fun reset() {
+        consecutiveLocal = 0
+    }
+
+    /**
      * 返回本地生成的意图 [AgentIntent]；若无法本地处理返回 null（走云端）。
      * @param snapshot 当前页面快照
      */
@@ -64,9 +72,13 @@ class LocalDecisionEngine {
         // 优先点正向按钮（允许/同意），否则点关闭按钮。
         // 裸「确定」「ok」「continue」语义太泛（普通页确认按钮也会命中）移出正向词表；
         // 「知道了」是知晓类关闭，归入关闭词表
+        // 裸「x」只允许整 label 精确命中：子串匹配会把 "exit"/"next"/"Max"/"text" 全误判成关闭按钮
+        val dismissSubstrings = listOf("关闭", "取消", "以后再说", "跳过", "稍后", "知道了", "no", "cancel", "✕")
+        val dismissExact = listOf("x", "X")
         val target = positive ?: snapshot.elements.firstOrNull {
-            val label = it.effectiveLabel() ?: ""
-            listOf("关闭", "取消", "以后再说", "跳过", "稍后", "知道了", "no", "cancel", "x", "✕").any { k -> label.contains(k, ignoreCase = true) }
+            val label = it.effectiveLabel()?.trim() ?: ""
+            dismissSubstrings.any { k -> label.contains(k, ignoreCase = true) } ||
+                dismissExact.any { k -> label.equals(k, ignoreCase = true) }
         }
         val reason = if (positive != null && positive.index == target?.index) "点击允许/同意按钮" else "关闭弹窗"
         return target?.let { tapIntent(it, reason) }

@@ -767,7 +767,7 @@ class AiClient(
             val obj = json.parseToJsonElement(trimmed).jsonObject
             val x = obj["x"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
             val y = obj["y"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
-            if (x != null && y != null) return x to y
+            if (x != null && y != null) return clamp01(x) to clamp01(y)
         }
         // 兜底：提取首个 { 到最后一个 } 之间的内容再按逗号拆分
         val start = trimmed.indexOf('{')
@@ -775,9 +775,12 @@ class AiClient(
         val core = if (start >= 0 && end > start) trimmed.substring(start, end + 1) else trimmed
         val nums = core.replace("{", "").replace("}", "")
             .split(",").map { it.trim().toFloatOrNull() }
-        if (nums.size >= 2 && nums[0] != null && nums[1] != null) return nums[0]!! to nums[1]!!
+        if (nums.size >= 2 && nums[0] != null && nums[1] != null) return clamp01(nums[0]!!) to clamp01(nums[1]!!)
         error("无法解析坐标：$content")
     }
+
+    /** 比例坐标收敛到 0~1：模型偶尔吐出 >1 / 负值，不收敛会让点击落出屏幕（动作静默失效） */
+    private fun clamp01(v: Float): Float = v.coerceIn(0f, 1f)
 
     /**
      * 流式对话（SSE）：边生成边通过 onDelta 回调增量文本，返回完整正文。
