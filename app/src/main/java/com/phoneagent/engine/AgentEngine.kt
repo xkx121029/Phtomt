@@ -171,6 +171,8 @@ class AgentEngine(
     private val uiBridge = UiBridge(appContext, settings, store)
     /** 遥测记录器：指标 / 轨迹 / 事件流 / 会话归档 / 调试持久化（重构批次 2，见 [TelemetryRecorder]） */
     private val telemetry = TelemetryRecorder(appContext, memory, store)
+    /** AI 连接工具：翻译 / 连接测试 / 模型列表 / 能力探测（重构批次 3，见 [com.phoneagent.engine.connect.AiTools]） */
+    private val aiTools = com.phoneagent.engine.connect.AiTools(settings, aiClient)
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
@@ -307,7 +309,6 @@ class AgentEngine(
     private var invalidCommandStreak by store::invalidCommandStreak
     private var skillErrorStreak by store::skillErrorStreak
     private var browseMissingStreak by store::browseMissingStreak
-    private val translateCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private var currentTaskId: Long
         get() = store.currentTaskId
@@ -329,26 +330,13 @@ class AgentEngine(
     private var localDecisionStreak by store::localDecisionStreak
     private var localLoopNotified by store::localLoopNotified
 
+    // ---- 设置页工具型 AI 调用已收口到 connect/AiTools（重构批次 3），以下为转发 ----
+
     /** 若文本为中文则原样返回；否则调用 AI 翻译成简体中文（带缓存） */
-    suspend fun translateText(text: String): String {
-        if (text.isBlank() || isMostlyChinese(text)) return text
-        translateCache[text]?.let { return it }
-        val settingsVal = settings.settings.first()
-        val prompt = "请把下面内容翻译成简体中文。只输出译文本身，不要任何修饰或解释：\n\n$text"
-        val messages = listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = prompt))))
-        val translated = aiClient.chatText(
-            baseUrl = settingsVal.apiBaseUrl,
-            apiKey = settingsVal.apiKey,
-            model = settingsVal.model,
-            messages = messages,
-            temperature = 0.1,
-        ).getOrDefault("").ifBlank { text }
-        translateCache[text] = translated
-        return translated
-    }
+    suspend fun translateText(text: String): String = aiTools.translateText(text)
 
     /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
-    private fun isMostlyChinese(text: String): Boolean = EngineRules.isMostlyChinese(text)
+    private fun isMostlyChinese(text: String): Boolean = aiTools.isMostlyChinese(text)
 
     // ---- 第 11 层：多任务队列 ----
     /**
@@ -2528,29 +2516,14 @@ class AgentEngine(
     }
 
     /** 测试主模型连接是否可用（用于设置保存前的校验） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> {
-        val messages = listOf(
-            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
-        )
-        return aiClient.chat(
-            baseUrl = baseUrl.trim().trimEnd('/'),
-            apiKey = apiKey.trim(),
-            model = model.trim(),
-            messages = messages,
-            temperature = 0.1,
-        )
-    }
+    suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> =
+        aiTools.testConnection(baseUrl, apiKey, model)
 
-    /**
-     * 拉取端点可用模型列表（设置页"获取模型"用）。
-     * 只列表不探测：网关常返回上百条，逐条探测等于几百次请求。
-     */
     suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
-        aiClient.listModels(baseUrl.trim(), apiKey.trim())
+        aiTools.listModels(baseUrl, apiKey)
 
-    /** 真实请求探测单个模型的能力（识图 / 工具调用；文本能力用 Result 成败表达） */
     suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
-        aiClient.probeAbility(baseUrl.trim(), apiKey.trim(), model.trim())
+        aiTools.probeModel(baseUrl, apiKey, model)
 
     /**
      * 生成注入系统提示的技能区块：**只列出真正可被调用的技能**。
