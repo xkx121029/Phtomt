@@ -43,6 +43,12 @@ class EngineRulesTest {
         assertFalse(EngineRules.isFinalSubmit(action("swipe_up", "发送"), "swipe_up"))
     }
 
+    @Test
+    fun isFinalSubmit_无障碍端点点击发送_判为副作用操作() {
+        // 自由模式 a11y_call 的 click_node 同样可能触发提交/发送，必须纳入幂等保护，避免重复副作用
+        assertTrue(EngineRules.isFinalSubmit(action("a11y_call", "发送"), "a11y_call"))
+    }
+
     // ---- idempotencyDone ----
 
     private fun snapshotWith(text: String?) = ScreenSnapshot(

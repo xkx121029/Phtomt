@@ -10,6 +10,7 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -82,16 +83,24 @@ class ActionExecutor(
         })
     }
 
-    /** 长按 */
-    suspend fun longClick(x: Int, y: Int): Result {
+    /**
+     * 长按。
+     *
+     * @param durationMs 按压时长（毫秒）。上层（AI 决策）通过 AgentAction.durationMs 指定时按它执行；
+     *   传 null 时沿用默认 [LONG_PRESS_MS]，保证既有调用点的稳定性不变。
+     */
+    suspend fun longClick(x: Int, y: Int, durationMs: Long? = null): Result {
+        // 上层指定了时长就用它（让 AI 的 durationMs 生效）；未指定则沿用默认按压时长 [LONG_PRESS_MS]，
+        // 保证既有调用点的稳定性不变（800ms 足够长，必然触发长按）
+        val hold = durationMs ?: LONG_PRESS_MS
         // 光标形态为"按住不放 + 呼吸光环"，保持时长取真实按压时长，两者才对得上
-        com.phoneagent.overlay.CursorOverlayService.longPress(x, y, LONG_PRESS_MS)
+        com.phoneagent.overlay.CursorOverlayService.longPress(x, y, hold)
         return dispatchGesture(GestureDescription.Builder().run {
             addStroke(
                 GestureDescription.StrokeDescription(
                     Path().apply { moveTo(x.toFloat(), y.toFloat()) },
                     0,
-                    LONG_PRESS_MS,
+                    hold,
                 ),
             )
             build()
@@ -110,7 +119,7 @@ class ActionExecutor(
      * 出手前先把光标送到控件上：节点直点没有坐标手势，屏幕上不留任何痕迹，
      * 不补光标的话用户只看到页面自己变了。同步模式下与手势点击同规矩——等光标到位再点。
      */
-    suspend fun clickNode(selector: NodeSelector, longClick: Boolean = false): Result {
+    suspend fun clickNode(selector: NodeSelector, longClick: Boolean = false, durationMs: Long? = null): Result {
         val root = service.rootInActiveWindow
             ?: return Result.Failure("无障碍读不到当前页面节点树")
         val found = findNode(root, selector)
@@ -121,7 +130,8 @@ class ActionExecutor(
             val nx = bounds.centerX()
             val ny = bounds.centerY()
             if (longClick) {
-                com.phoneagent.overlay.CursorOverlayService.longPress(nx, ny, LONG_PRESS_MS)
+                // 光标"按住不放"的时长取上层指定值（无则默认），与坐标长按口径一致
+                com.phoneagent.overlay.CursorOverlayService.longPress(nx, ny, durationMs ?: LONG_PRESS_MS)
             } else {
                 com.phoneagent.overlay.CursorOverlayService.point(nx, ny)
             }
@@ -648,32 +658,40 @@ class ActionExecutor(
         return null
     }
 
-    /** 派发手势并等待结果 */
+    /** 派发手势并等待结果。
+     *  必须限时：服务被系统回收/授权被清（如 vivo 安全守护）后 dispatchGesture 可能返回 true
+     *  但回调永远不来，协程会在此永久挂起——任务表现为卡在某一步、无失败也无超时（真机 BUG 21）。
+     *  超时即按失败返回，交给上层「连续失败 → 请求介入」链路处理。 */
     private suspend fun dispatchGesture(gesture: GestureDescription): Result =
-        suspendCancellableCoroutine { cont ->
-            // 取消标记：协程取消（任务 stop）后系统回调仍可能触发，
-            // 注册 invokeOnCancellation 把取消意图显式化，回调里双重判活，
-            // 避免取消后回调再走 resume 造成挂起/回调泄漏（2026-08-15 B12）
-            var cancelled = false
-            cont.invokeOnCancellation { cancelled = true }
-            val callback = object : AccessibilityService.GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    if (!cancelled && cont.isActive) cont.resume(Result.Success())
-                }
+        withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
+            suspendCancellableCoroutine { cont ->
+                // 取消标记：协程取消（任务 stop）后系统回调仍可能触发，
+                // 注册 invokeOnCancellation 把取消意图显式化，回调里双重判活，
+                // 避免取消后回调再走 resume 造成挂起/回调泄漏（2026-08-15 B12）
+                var cancelled = false
+                cont.invokeOnCancellation { cancelled = true }
+                val callback = object : AccessibilityService.GestureResultCallback() {
+                    override fun onCompleted(gestureDescription: GestureDescription?) {
+                        if (!cancelled && cont.isActive) cont.resume(Result.Success())
+                    }
 
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    if (!cancelled && cont.isActive) cont.resume(Result.Failure("手势被取消"))
+                    override fun onCancelled(gestureDescription: GestureDescription?) {
+                        if (!cancelled && cont.isActive) cont.resume(Result.Failure("手势被取消"))
+                    }
+                }
+                val dispatched = service.dispatchGesture(gesture, callback, null)
+                if (!dispatched) {
+                    if (cont.isActive) cont.resume(Result.Failure("手势派发失败"))
                 }
             }
-            val dispatched = service.dispatchGesture(gesture, callback, null)
-            if (!dispatched) {
-                if (cont.isActive) cont.resume(Result.Failure("手势派发失败"))
-            }
-        }
+        } ?: Result.Failure("手势执行超时（${GESTURE_TIMEOUT_MS}ms 内无回调，无障碍服务可能已断开）")
 
     private companion object {
         /** 上溯可点击祖先的最大层数：再往上就是整卡片/整屏级容器，点它等于点错地方 */
         const val MAX_CLICKABLE_ANCESTOR_HOPS = 3
+
+        /** 手势派发的回调等待上限：正常手势 400~1500ms 内必有回调，5s 仍无回调即判定服务异常（见 dispatchGesture） */
+        const val GESTURE_TIMEOUT_MS = 5000L
 
         /** 活节点树遍历深度上限，防极深布局拖慢执行 */
         const val MAX_NODE_DEPTH = 64

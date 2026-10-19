@@ -33,9 +33,12 @@ object EngineRules {
 
     /** 生效判定：动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等） */
     fun isFinalSubmit(action: AgentAction, type: String): Boolean {
+        // 自由模式的无障碍端点直调（a11y_call）同样可能触发提交/发送/删除等副作用，必须纳入幂等保护；
+        // 否则同一副作用会在「页面已出现完成证据」时被重复执行（原先白名单漏了它，形成绕过口）
         if (type != ActionType.TAP && type != ActionType.CLICK &&
             type != ActionType.LONG_PRESS && type != ActionType.LONG_CLICK &&
-            type != ActionType.TYPE_TEXT && type != ActionType.SHELL
+            type != ActionType.TYPE_TEXT && type != ActionType.SHELL &&
+            type != ActionType.A11Y_CALL
         ) return false
         val target = action.target?.value ?: action.reason ?: action.reasoning
             ?: action.text ?: action.command ?: ""

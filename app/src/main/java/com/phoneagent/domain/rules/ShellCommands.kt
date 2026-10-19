@@ -157,9 +157,18 @@ object ShellCommands {
 
             // ====== 应用 ======
             "am" -> {
-                val intent = args.trim()
-                if (intent.isEmpty()) return null
-                "am start -n $intent"
+                val target = args.trim()
+                if (target.isEmpty()) return null
+                // am start -n 必须带完整组件路径（pkg/Activity）。AI 常写裸包名（如 "am com.taobao.taobao"），
+                // 直接拼 -n 会报 "Activity not specified" 而失败，AI 收到失败又重发同一条命令形成死循环
+                // （真机 BUG 23）。裸包名按"启动应用"语义处理（与 launch 同路）；带 -a 等 flag 的原样透传。
+                val isBarePackage = !target.startsWith("-") && !target.contains(" ") &&
+                    Regex("[A-Za-z][A-Za-z0-9._]*").matches(target)
+                when {
+                    isBarePackage -> "monkey -p $target 1"
+                    !target.startsWith("-") && target.contains('/') -> "am start -n $target"
+                    else -> "am $target"
+                }
             }
             "stop", "force_stop" -> {
                 val pkg = args.trim()

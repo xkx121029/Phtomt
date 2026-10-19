@@ -885,6 +885,9 @@ class AgentEngine(
         // 无障碍服务在本任务中是否观测到过在线：用于识别"任务中途掉线"（vivo 安全守护清除授权等）。
         // 服务一旦中途掉线，读屏与操作通道全断，继续跑只会变成"读不到→反复重启应用"的盲循环（真机 BUG 22）
         var a11ySeenAlive = false
+        // 决策循环熔断（BUG 24）：最近一次"成功"动作的签名与连续同签名计数，见主循环内注释
+        var lastVerifiedActionSig = ""
+        var verifiedSameSigStreak = 0
         AgentAccessibilityService.agentRunning = true
         _state.value = AgentState(
             isRunning = true,
@@ -1293,7 +1296,12 @@ class AgentEngine(
                     val minDoneThreshold = if (activePlan != null && activePlan!!.steps.isNotEmpty())
                         Math.ceil(activePlan!!.steps.size * 0.6).toInt()
                     else 3
-                    if (action!!.type == ActionType.TASK_DONE && step < minDoneThreshold) {
+                    // 证据优先：当前页面已出现明确的"完成"证据时（复用 EngineRules.idempotencyDone，
+                    // 与幂等保护同一口径；判定含稀疏守卫，普通列表页的历史"已完成"字样不算证据），
+                    // 即便提前宣称完成也直接放行，不再为凑步数空跑；无证据时才沿用上面的步数门槛照旧拦截。
+                    // 放弃（GIVE_UP）不属"完成"，不适用证据放行，仍按原门槛拦截。
+                    val hasDoneEvidence = intent.intent != IntentType.GIVE_UP && idempotencyDone(snapshot)
+                    if (action!!.type == ActionType.TASK_DONE && step < minDoneThreshold && !hasDoneEvidence) {
                         // 要求 AI 重新决策，并注入纠偏提示
                         earlyDoneRejections++
                         if (earlyDoneRejections >= 3) {
@@ -1461,6 +1469,39 @@ class AgentEngine(
             consecutiveFailures = if (verified) 0 else consecutiveFailures + 1
             // 命令成功执行后清零「无效命令」计数：成功说明链路已恢复正常，旧账不该累计
             if (verified) invalidCommandStreak = 0
+            // 决策循环熔断（真机 BUG 24 次因）：动作"成功"但同签名连续重复时，AI 会在同一位置打转
+            // （实测：美团购物车面板元素树为空，AI 反复点同一个购物车容器 6+ 步，页面纹丝不动）。
+            // 连续 4 次注入纠偏提示逼 AI 换方案；同签名出现 6 次则说明提示无效，升级为协助请求。
+            if (verified && action.type != ActionType.WAIT && action.type != ActionType.SAY &&
+                action.type != ActionType.REMEMBER && action.type != ActionType.DEVICE_QUERY &&
+                action.type != ActionType.TASK_DONE
+            ) {
+                val sig = buildString {
+                    append(action.type)
+                    append('|').append(action.target?.value.orEmpty())
+                    append('|').append(action.x).append(',').append(action.y)
+                    append('|').append(action.keycode.orEmpty()).append('|').append(action.command.orEmpty())
+                }
+                if (sig == lastVerifiedActionSig) verifiedSameSigStreak++ else {
+                    lastVerifiedActionSig = sig
+                    verifiedSameSigStreak = 1
+                }
+                if (verifiedSameSigStreak == 4 || verifiedSameSigStreak == 6) {
+                    val loopHint = if (verifiedSameSigStreak == 4) {
+                        "⚠️ 你已连续 $verifiedSameSigStreak 步执行完全相同的动作「${action.type}」而页面没有推进。" +
+                            "这个做法无效：请换一种完全不同的意图（如 scroll_to 滚动查找、see 看图确认、" +
+                            "say 向用户说明障碍、open/press 返回上一级），不要重复同一动作。"
+                    } else {
+                        "⚠️ 你已连续 $verifiedSameSigStreak 步重复同一动作且毫无进展。立即停止该做法：" +
+                            "要么换一种截然不同的方案，要么用 say 向用户说明当前卡点并请求指导。"
+                    }
+                    log(AgentLog.Level.WARN, "决策循环：连续 $verifiedSameSigStreak 步同签名动作「${action.type}」，注入纠偏提示")
+                    messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = loopHint))))
+                }
+            } else if (verified) {
+                lastVerifiedActionSig = ""
+                verifiedSameSigStreak = 0
+            }
             // 异常经验命中后回写使用效果（成功/失败计数），供后续按命中率判断是否还值得复用
             currentAnomalyEntry?.let { entry ->
                 runCatching { anomalyEngine.recordUse(entry, verified) }
@@ -1516,10 +1557,16 @@ class AgentEngine(
                         appPackage = snapshot.packageName.orEmpty(),
                     )
                 }
-                var guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                // 引导后决策同样有看门狗（BUG 24）：用户给完指导若云端挂起，任务会带着"需要你的协助"
+                // 的假象永久卡住，用户无从判断。超时按"引导失败"处理，走下方既有的收尾/重试分支。
+                var guided = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
+                    cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                }
                 if (guided == null || guided.intent == IntentType.FINISH || guided.intent == IntentType.GIVE_UP) {
                     // AI 调用失败或认为任务完成：重试一次
-                    guided = cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                    guided = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
+                        cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                    }
                 }
                 if (guided != null && guided.intent != IntentType.FINISH && guided.intent != IntentType.GIVE_UP) {
                     // 直接执行引导后的意图，不重走决策（避免变卦 + 节省一次云调用）。
@@ -1541,15 +1588,30 @@ class AgentEngine(
                         verify = browseVerify
                         verified = browseVerify.success
                     } else {
+                        // 视觉坐标与常规路径同口径「消费一次」：引导后 AI 若给的是 by=hint 的视觉定位，
+                        // 这里必须先取走上一步 see/视觉定位产出的坐标（取走即清空），否则会定位失败。
+                        // 原先写死 null，等于引导路径永远拿不到视觉坐标。
+                        val gCarry = lastVisualCoordinate
+                        lastVisualCoordinate = null
                         val gTranslate = tryOrNull("引导后意图转译失败") {
-                            intentTranslator.translate(gIntent, observe(), null)
+                            intentTranslator.translate(gIntent, observe(), gCarry)
                         } ?: IntentTranslator.TranslationResult.Failed("引导后意图转译异常")
                         when (gTranslate) {
                             is IntentTranslator.TranslationResult.Command -> {
                                 action = gTranslate.action
+                                // 不可逆动作确认门与常规路径同口径：引导回来的动作若带 needsUserConfirmation，
+                                // 执行前必须先问用户。原先这里直接执行，等于用户给一次指导就能越过确认门
+                                // 执行删除/发送等不可逆操作（转译层会给 DELETE 等语义控件自动打上该标志）。
+                                if (gTranslate.action.needsUserConfirmation && !awaitActionConfirmation(gTranslate.action)) {
+                                    log(AgentLog.Level.WARN, "用户取消引导后的不可逆操作，已跳过执行：${gTranslate.action.type}")
+                                    messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                                        text = "⚠️ 用户拒绝执行该不可逆操作，请改用其他方案或询问用户，不要重复请求同一操作。",
+                                    ))))
+                                    verify = com.phoneagent.engine.execution.VerifyResult(false, "用户取消了该操作", "", "")
+                                    verified = false
                                 // 自写命令的首次确认在这里同样不能绕：引导路径若把它跳过，
                                 // 等于「第一次自写命令」可以不被确认就执行
-                                if (ensureShellApproval(gTranslate.action)) {
+                                } else if (ensureShellApproval(gTranslate.action)) {
                                     verify = safeExecute(gTranslate.action, observe())
                                     verified = verify.success
                                     if (verified) {
@@ -1708,7 +1770,8 @@ class AgentEngine(
             val ask = "你上一步输出的意图缺少「$missingField」参数：$missingReason\n" +
                 "请只输出补全后的完整意图 JSON（保留原 intent 及已有字段，仅补上缺失的 target 或 app 字段），不要任何解释。\n" +
                 "例如 tap 需补 target:{\"by\":\"text\",\"value\":\"控件文字\"}；open_app 需补 app:\"应用名\"。\n原意图：$cur"
-            val refilled = runCatching {
+            // 看门狗（BUG 24）：补全请求若云端挂起，主循环会停在转译阶段；超时按补全失败处理
+            val refilled = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
                 aiClient.chatForAction(
                     baseUrl = settingsVal.apiBaseUrl, apiKey = settingsVal.apiKey, model = settingsVal.model,
                     messages = listOf(
@@ -1717,7 +1780,7 @@ class AgentEngine(
                     ),
                     screenshot = null, temperature = 0.2,
                 ).getOrNull()?.action
-            }.getOrNull()
+            }
             if (refilled == null) break
             cur = refilled
             result = tryOrNull("补全后转译失败") { intentTranslator.translate(refilled, snapshot, null) }
@@ -2142,10 +2205,19 @@ class AgentEngine(
             ChatMessageDto(role = "system", content = mutableListOf(ContentPart(type = "text", text = AgentPrompts.reviewSystem(currentLang)))),
             ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = user))),
         )
-        val raw = aiClient.chat(
-            baseUrl = baseUrl, apiKey = apiKey, model = model,
-            messages = messages, temperature = 0.1,
-        ).getOrNull() ?: return intent
+        // 看门狗（真机 BUG 24）：审核调用只有 OkHttp readTimeout 兜底，网关保活时永不触发——
+        // 美团外卖任务在第 39 步后的审核调用挂起，主循环静默卡死 15 分钟。
+        // 超时/失败一律降级放行执行者意图：审核是增强置信而非放行前置，不能反过来卡死任务。
+        val raw = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
+            aiClient.chat(
+                baseUrl = baseUrl, apiKey = apiKey, model = model,
+                messages = messages, temperature = 0.1,
+            ).getOrNull()
+        } ?: run {
+            FloatingWindowService.updateReviewText("审核超时或失败，沿用执行者「${intent.intent}」")
+            log(AgentLog.Level.WARN, "审核 AI 超时（${WATCHDOG_DECIDE_MS / 1000}s）或失败，降级放行执行者意图")
+            return intent
+        }
         val root = runCatching { json.parseToJsonElement(extractJsonObject(raw)).jsonObject }.getOrNull()
         if (root == null) {
             FloatingWindowService.updateReviewText("审核结果解析失败，沿用执行者「${intent.intent}」")

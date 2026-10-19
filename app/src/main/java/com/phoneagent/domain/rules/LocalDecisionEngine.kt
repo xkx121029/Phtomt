@@ -16,7 +16,14 @@ import com.phoneagent.engine.perception.effectiveLabel
  * 本地动作输出与 AI 一致的"意图"格式，由转译层统一转译执行。
  * 带回环保护：连续 N 次本地决策后强制走云端，避免死循环。
  */
-class LocalDecisionEngine {
+class LocalDecisionEngine(
+    /**
+     * 本应用自身的包名：Agent 自己的界面（时间线卡片里的"失败/重试"等文案）绝不能被当作
+     * "异常页/弹窗"来本地处理——真机实测（BUG 21）Agent 页横幅与卡片文字命中 errorWords，
+     * 端侧决策在自家页面上反复输出"按返回"，形成原地打转的盲循环。
+     */
+    private val selfPackage: String? = null,
+) {
 
     /** 连续本地决策达到该次数后强制走云端（与引擎侧"连续 5 次端侧决策"的死循环提醒错开一档，避免互相打死） */
     private val maxConsecutiveLocal = 6
@@ -35,6 +42,11 @@ class LocalDecisionEngine {
      * @param snapshot 当前页面快照
      */
     fun decide(snapshot: ScreenSnapshot): AgentIntent? {
+        // 本应用自己的界面不做本地决策：时间线/横幅里的"失败、重试、无法"等文案是 UI 词汇不是页面证据
+        if (selfPackage != null && snapshot.packageName == selfPackage) return null
+        // 元素树为空时同样不做本地决策：读不到页面 ≠ 页面是异常页，
+        // 此时凭空按返回/点关闭只会盲转（真机 BUG 21/22 的帮凶），交还给云端走视觉链路
+        if (snapshot.elements.isEmpty()) return null
         val pageType = PageAnnotator.inferPageType(snapshot)
         val action: AgentIntent? = when (pageType) {
             "dialog_overlay" -> handleDialog(snapshot)

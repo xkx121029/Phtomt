@@ -18,6 +18,7 @@ import com.phoneagent.domain.rules.ShellCommands.Motion
 import com.phoneagent.engine.VisionConfig
 import com.phoneagent.engine.context.ContextInjector
 import com.phoneagent.engine.isSuccess
+import com.phoneagent.engine.perception.PageFingerprint
 import com.phoneagent.engine.perception.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.RELOCATE_BEFORE_TYPES
 import com.phoneagent.engine.runtime.EngineStore
@@ -129,22 +130,26 @@ internal class ExecutionCore(
                 ClickRunner(service, executor, intentResolver) { msg -> ui.log(AgentLog.Level.INFO, msg) }
                     .run(action, snapshot, longClick = true)
             ActionType.SWIPE -> {
-                // swipe 常为纯手势（无 target），缺少坐标时以屏幕中心为起点，避免“无法定位动作目标”误判失败
+                // swipe 常为纯手势（无 target），缺少坐标时按方向给起点：
+                // 横向仍以屏幕中心为起点；竖向起点下移到屏幕高度的 SWIPE_START_Y_RATIO 倍，
+                // 避开顶部 1/3 的播放器/悬浮按钮热点区，降低误触中心热点控件的风险。
+                // 位移量仍保持「默认整屏」不变（效率优先）。
+                val horizontal = action.direction == "left" || action.direction == "right"
                 val px = x ?: (ctx.screenWidth() / 2)
-                val py = y ?: (ctx.screenHeight() / 2)
+                val py = y ?: if (horizontal) (ctx.screenHeight() / 2) else verticalSwipeStartY()
                 val dist = action.distancePx
-                    ?: if (action.direction == "left" || action.direction == "right") ctx.screenWidth() else ctx.screenHeight()
+                    ?: if (horizontal) ctx.screenWidth() else ctx.screenHeight()
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
                 verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (ctx.screenWidth() / 2)
-                val py = y ?: (ctx.screenHeight() / 2)
+                val py = y ?: verticalSwipeStartY()
                 verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py - ctx.screenHeight()).coerceIn(0, ctx.screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_DOWN -> {
                 val px = x ?: (ctx.screenWidth() / 2)
-                val py = y ?: (ctx.screenHeight() / 2)
+                val py = y ?: verticalSwipeStartY()
                 verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py + ctx.screenHeight()).coerceIn(0, ctx.screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_LEFT -> {
@@ -157,10 +162,10 @@ internal class ExecutionCore(
                 val py = y ?: (ctx.screenHeight() / 2)
                 verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px + ctx.screenWidth()).coerceIn(0, ctx.screenWidth() - 1), py).isSuccess() }
             }
-            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(baseline) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
+            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(baseline, target) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
                 if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(baseline) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
+                else verifier.executeAndVerify(baseline, target) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
@@ -173,8 +178,10 @@ internal class ExecutionCore(
                     recordExecMs((System.nanoTime() - execT0) / 1_000_000)
                 }
                 // launch 动作不依赖包名检测（无障碍服务在某些版本上无法正确报告前台切换），
-                // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面
-                delay(800)
+                // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面。
+                // 等待改为自适应：启动后轮询页面，目标应用页面（包名出现或页面指纹变化）一到位立即继续，
+                // 最长仍等 LAUNCH_SETTLE_MS（800ms）——启动快的场景不再干等，慢的保持原行为。
+                awaitLaunched(service, targetPkg, snapshot)
                 com.phoneagent.engine.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
             }
             ActionType.LAUNCH_ASSISTANT -> {
@@ -231,7 +238,7 @@ internal class ExecutionCore(
             ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.engine.execution.VerifyResult(true, "等待完成", "", "") }
             ActionType.REFRESH -> com.phoneagent.engine.execution.VerifyResult(
                 false,
-                "无障碍通道暂不支持直接刷新：请改用 refresh 意图点击页面刷新按钮，或下滑手势",
+                VerifyRules.NO_A11Y_REFRESH + "：请改用 refresh 意图点击页面刷新按钮，或下滑手势",
                 "",
                 "",
             )
@@ -384,6 +391,8 @@ internal class ExecutionCore(
             "long_click" -> wrap(executor.longClick(
                 intArg("x") ?: return fail("long_click 缺少参数 x"),
                 intArg("y") ?: return fail("long_click 缺少参数 y"),
+                // 端点直调同样透传上层指定的按压时长（无则默认），与 long_press 动作口径一致
+                action.durationMs,
             ))
             "click_node" -> {
                 val raw = strArg("target") ?: return fail("click_node 缺少参数 target")
@@ -489,8 +498,12 @@ internal class ExecutionCore(
         )
         val result: ShizukuManager.ShellResult = when (channel) {
             ShellRules.Channel.ADB -> runAdbShell(resolved)
-            ShellRules.Channel.SHIZUKU -> shizukuManager!!.executeShell(resolved)
-            ShellRules.Channel.TERMUX -> termuxBridge!!.executeShell(resolved)
+            // 通道状态与实际调用之间可能发生 binder death / 桥断开，用安全调用兜住竞态窗口，
+            // 避免 !! 在同一窗口内抛 NPE 穿透主循环（NONE 已另有分支，但状态可能在两次读取间变化）
+            ShellRules.Channel.SHIZUKU -> shizukuManager?.executeShell(resolved)
+                ?: ShizukuManager.ShellResult.Failure("Shizuku 通道当前不可用")
+            ShellRules.Channel.TERMUX -> termuxBridge?.executeShell(resolved)
+                ?: ShizukuManager.ShellResult.Failure("Termux 通道当前不可用")
             ShellRules.Channel.NONE -> return com.phoneagent.engine.execution.VerifyResult(
                 false, ShellRules.noChannelReason(preference), "", "",
             )
@@ -516,8 +529,11 @@ internal class ExecutionCore(
         )
         return when (channel) {
             ShellRules.Channel.ADB -> runAdbShell(cmd)
-            ShellRules.Channel.SHIZUKU -> shizukuManager!!.executeShell(cmd)
-            ShellRules.Channel.TERMUX -> termuxBridge!!.executeShell(cmd)
+            // 同 runRealShell：通道可能在 pickChannel 与实际调用之间失效，安全调用兜住竞态
+            ShellRules.Channel.SHIZUKU -> shizukuManager?.executeShell(cmd)
+                ?: ShizukuManager.ShellResult.Failure("Shizuku 通道当前不可用")
+            ShellRules.Channel.TERMUX -> termuxBridge?.executeShell(cmd)
+                ?: ShizukuManager.ShellResult.Failure("Termux 通道当前不可用")
             ShellRules.Channel.NONE -> ShizukuManager.ShellResult.Failure(
                 ShellRules.noChannelReasonShort(preference),
             )
@@ -632,7 +648,13 @@ internal class ExecutionCore(
             "lp", "long_press" -> coordOp { x, y -> executor.longClick(x, y) }
             "dt", "double_tap" -> coordOp { x, y ->
                 val first = executor.click(x, y)
-                if (first is ActionExecutor.Result.Success) executor.click(x, y) else first
+                if (first is ActionExecutor.Result.Success) {
+                    // 两次点击之间插入间隔：零间隔会被系统识别成连点而非双击，间隔之后才稳定判为双击
+                    delay(DOUBLE_TAP_INTERVAL_MS)
+                    executor.click(x, y)
+                } else {
+                    first
+                }
             }
             "su", "swipe_up" -> coordOp { x, y -> executor.swipe(x, y, x, (y - h * 0.25f).toInt().coerceAtLeast(0), 400) }
             "sd", "swipe_down" -> coordOp { x, y -> executor.swipe(x, y, x, (y + h * 0.25f).toInt().coerceAtMost(h), 400) }
@@ -681,6 +703,33 @@ internal class ExecutionCore(
     fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> =
         EngineRules.swipeEndpoints(x, y, direction, distanceArg, ctx.screenWidth(), ctx.screenHeight())
 
+    /**
+     * 竖向滑动起点的默认 y：屏幕高度的 [SWIPE_START_Y_RATIO] 倍。
+     * 不取几何中心，是为了避开顶部 1/3 的播放器/悬浮按钮等中心热点区，降低误触。
+     */
+    private fun verticalSwipeStartY(): Int = (ctx.screenHeight() * SWIPE_START_Y_RATIO).toInt()
+
+    /**
+     * 启动应用后等待目标页面出现（自适应，最长 [LAUNCH_SETTLE_MS]）。
+     * 复用感知层的 captureScreen 与 PageFingerprint：目标应用包名出现、或页面指纹相对启动前发生变化，
+     * 即视为页面已到位、立即返回；超时仍未变化也照常返回，保持原「启动即成功」的语义不变。
+     */
+    private suspend fun awaitLaunched(
+        service: AgentAccessibilityService,
+        targetPkg: String,
+        before: ScreenSnapshot,
+    ) {
+        val beforeFp = PageFingerprint.computeMeaningful(before)
+        var waited = 0L
+        while (waited < LAUNCH_SETTLE_MS) {
+            delay(LAUNCH_POLL_MS)
+            waited += LAUNCH_POLL_MS
+            val now = runCatching { service.captureScreen() }.getOrNull() ?: continue
+            if (now.missingAccessibility) continue
+            if (now.packageName == targetPkg || PageFingerprint.computeMeaningful(now) != beforeFp) return
+        }
+    }
+
     private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.engine.execution.VerifyResult {
         return when (keycode.uppercase()) {
             "BACK" -> executeNoVerify(executor) { executor.back().isSuccess() }
@@ -700,5 +749,19 @@ internal class ExecutionCore(
         val ok = block()
         delay(500)
         return com.phoneagent.engine.execution.VerifyResult(ok, if (ok) "已执行" else "执行失败", "", "")
+    }
+
+    private companion object {
+        /** 竖向滑动起点默认 y 占屏幕高度的比例：避开顶部 1/3 的播放器/悬浮按钮热点区 */
+        const val SWIPE_START_Y_RATIO = 0.62f
+
+        /** 双击两次点击之间的间隔（毫秒）：零间隔会被系统当成连点，间隔之后才稳定判为双击 */
+        const val DOUBLE_TAP_INTERVAL_MS = 120L
+
+        /** launch 后等待目标页面出现的最长时间（毫秒）：等于原固定等待，保证慢启动场景行为不变 */
+        const val LAUNCH_SETTLE_MS = 800L
+
+        /** launch 后轮询页面是否变化的间隔（毫秒） */
+        const val LAUNCH_POLL_MS = 100L
     }
 }

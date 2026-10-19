@@ -24,6 +24,15 @@ internal object VerifyRules {
     const val MAX_ATTEMPTS = 3
 
     /**
+     * 「无障碍通道不支持直接刷新」的统一文案。
+     *
+     * 判定方（[isStructuralError]）与产出方（ExecutionCore 的 REFRESH 分支）共用同一常量：
+     * 原先两侧各写一份字面量，产出方一旦改字，这里的 contains 判定就会失效，
+     * 本不该重试的结构性错误会被外层重试最多 [MAX_ATTEMPTS] 次。
+     */
+    const val NO_A11Y_REFRESH = "无障碍通道暂不支持直接刷新"
+
+    /**
      * 结构性错误的文案特征：重跑同一串动作**不会自己变好**，继续重试只是白等两轮。
      *
      * 这类错误全部来自端侧自己的校验（命令表里没有这条命令、必填参数没给、端点名写错），
@@ -41,7 +50,7 @@ internal object VerifyRules {
         "缺少参数",
         "缺少 endpoint",
         // 无障碍通道能力缺口：ENTER/REFRESH 这类通道本身不支持的直接操作，重试也不会变好
-        "无障碍通道暂不支持直接刷新",
+        NO_A11Y_REFRESH,
     )
 
     /** 该失败是否属于"重试也不会变好"的结构性错误 */

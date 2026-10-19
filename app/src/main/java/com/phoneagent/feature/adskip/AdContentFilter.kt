@@ -42,13 +42,21 @@ object AdContentFilter {
      */
     private val adLatinRegex = Regex("""\b(ads?|promotion|sponsored)\b""", RegexOption.IGNORE_CASE)
 
-    /** 广告关闭按钮中文核心词（剔除倒计时/括号等干扰后匹配；"取消"是用户选择权，绝不是广告关闭钮，故不收） */
+    /**
+     * 广告关闭/跳过按钮中文核心词（剔除倒计时/括号等干扰后匹配）。
+     * 「取消」是用户选择权，绝不是广告关闭钮，故不收；
+     * 「知道了 / 我知道了 / 暂不开启」是**正常按钮语义**（信息提示的确认、「我先不开」），
+     * 极易误触正常按钮，已移出自动点击词表，只保留明确的广告跳过/关闭语义。
+     */
     private val closeMarks = listOf(
-        "跳过", "跳過", "略过", "跳过广告", "关闭", "知道了", "我知道了", "暂不开启",
+        "跳过", "跳過", "略过", "跳过广告", "关闭",
     )
 
-    /** 广告关闭按钮拉丁词，走 \b 词边界匹配（大小写不敏感），避免 close/done 误伤页面正文 */
-    private val closeLatinRegex = Regex("""\b(skip|skip ad|close|done)\b""", RegexOption.IGNORE_CASE)
+    /**
+     * 广告关闭按钮拉丁词，走 \b 词边界匹配（大小写不敏感），避免误伤页面正文。
+     * 「done」= 完成/知道了，同属正常按钮语义，一并移出，只留明确的关闭/跳过词。
+     */
+    private val closeLatinRegex = Regex("""\b(skip|skip ad|close)\b""", RegexOption.IGNORE_CASE)
 
     /** 单字符叉号：仅当为图片类控件时才视为广告关闭按钮，避免误触输入框清除/标签页关闭 */
     private val singleCloseChars = setOf("✕", "×", "X", "x")

@@ -2,6 +2,7 @@ package com.phoneagent.engine.execution
 
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.model.UiElement
 import com.phoneagent.engine.perception.PageFingerprint
 import kotlinx.coroutines.delay
 
@@ -36,6 +37,15 @@ internal object VerifyTiming {
 }
 
 /**
+ * 控件的"关键状态"字符串：选中态 / 当前值 / 文字 / 无障碍描述。
+ *
+ * [ClickRunner] 与 [VerifiedClickExecutor] **共用这一份口径**：两处各写一份的后果很实际——
+ * 同一个动作在点击链路上判"已生效"、在滑动/输入链路上却因指纹未变被判失败，标准不一致。
+ */
+internal fun controlStateOf(element: UiElement): String =
+    "${element.isSelected}|${element.currentValue}|${element.text}|${element.contentDescription}"
+
+/**
  * 带验证的执行器：执行动作并通过页面指纹对比确认是否生效。
  * 对应文档“第 4 层 带验证的点击执行器”。
  *
@@ -45,11 +55,16 @@ internal object VerifyTiming {
  * 读不到页面时按"已执行但未确认"算成功：此时报失败会误触发"连续失败请求用户介入"，
  * 而下一步的观察本来就会给出真实结果。与 [ClickRunner] 同一口径。
  */
-class VerifiedClickExecutor {
+class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolver()) {
 
-    /** 执行动作并验证页面是否发生变化 */
+    /**
+     * 执行动作并验证页面是否发生变化。
+     *
+     * @param target 本次动作的目标控件；指纹未变时用它兜底判定（见下）。为 null 表示无特定目标（如纯手势滑动）。
+     */
     suspend fun executeAndVerify(
         snapshot: ScreenSnapshot,
+        target: UiElement? = null,
         perform: suspend () -> Boolean,
     ): VerifyResult {
         val before = PageFingerprint.computeMeaningful(snapshot)
@@ -67,6 +82,16 @@ class VerifiedClickExecutor {
             captured = true
             after = PageFingerprint.computeMeaningful(afterSnapshot)
             if (before != after) return VerifyResult(true, "页面已变化", before, after)
+            // 指纹未变时的兜底：目标控件自身关键状态变化也算已生效。
+            // 勾选/滑块/纯动画页不会改变整页指纹，只看指纹会把成功误判成失败——
+            // 这里与 ClickRunner.judge 的控件态口径保持一致（共用 controlStateOf）。
+            if (target != null) {
+                resolver.matchInFresh(target, afterSnapshot)?.let { now ->
+                    if (controlStateOf(target) != controlStateOf(now)) {
+                        return VerifyResult(true, "目标控件状态已变化", before, after)
+                    }
+                }
+            }
         }
         if (!captured) {
             return VerifyResult(true, "已执行；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")

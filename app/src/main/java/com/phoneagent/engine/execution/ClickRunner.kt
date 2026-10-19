@@ -55,6 +55,9 @@ class ClickRunner(
         val targetName = action.target?.value?.takeIf { it.isNotBlank() }
             ?: resolved.element?.effectiveLabel()
             ?: "坐标"
+        // 长按采用上层（AI 决策）指定的按压时长，无则交由 ActionExecutor 用默认 800ms；
+        // 非长按不动这个值
+        val holdMs = if (longClick) action.durationMs else null
 
         var element = resolved.element
         var selector = resolver.nodeSelectorOf(action, element)
@@ -119,7 +122,7 @@ class ClickRunner(
 
         // ① 活节点直点：交付到控件本身，不受坐标漂移影响，代价也最小
         if (selector != null) {
-            when (val r = executor.clickNode(selector, longClick)) {
+            when (val r = executor.clickNode(selector, longClick, holdMs)) {
                 is ActionExecutor.Result.Success -> {
                     val v = confirm(baseline, baselineState, verb)
                     if (v.success) return v
@@ -163,7 +166,7 @@ class ClickRunner(
                     (hit?.let { "；落点命中 ${it.describe()}" } ?: "；该点下读不到控件（按坐标盲点）"),
             )
             val dispatched = if (longClick) {
-                executor.longClick(point.first, point.second)
+                executor.longClick(point.first, point.second, holdMs)
             } else {
                 executor.click(point.first, point.second)
             }
@@ -248,16 +251,12 @@ class ClickRunner(
         // 列表内勾选/切换这类操作不会改变整页指纹，只看指纹会误判成"没生效"
         if (beforeState != null) {
             val now = resolver.matchInFresh(beforeState, after)
-            if (now != null && stateOf(beforeState) != stateOf(now)) return true to "目标控件状态已变化"
+            if (now != null && controlStateOf(beforeState) != controlStateOf(now)) return true to "目标控件状态已变化"
         }
         // 第三层：整页指纹
         if (beforeFp != afterFp) return true to "页面已变化"
         return false to "页面与控件状态均无变化"
     }
-
-    /** 控件的"可比较状态"：选中态 / 当前值 / 文字 / 无障碍描述 */
-    private fun stateOf(element: UiElement): String =
-        "${element.isSelected}|${element.currentValue}|${element.text}|${element.contentDescription}"
 
     /**
      * 滚动一屏查找目标：优先在页面里的**可滚动容器**内滚（精确，不受坐标与手势落点影响），
@@ -279,16 +278,36 @@ class ClickRunner(
         runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
 
     /**
-     * 把落点夹进屏幕可见区。
+     * 把落点夹进屏幕的**安全区**（而非整块物理屏）。
      *
      * 元素树里的"可见"只保证它露了一部分：列表底部半截可见的行，中心点可能已经在屏幕外，
      * 手势派发到屏幕外的点要么被系统拒绝、要么落在别处，表现出来就是"点了没反应"。
+     *
+     * 并且不能退而求其次夹到 y=0（状态栏）或 y=h-1（导航条）：那等于把"点不到目标"变成"误触系统栏"，
+     * 失败之外还多一点副作用。故把越界/贴边（<8px）的落点收进四边各留余量的安全区，
+     * 取屏幕内最近的有效位置——左右各留 [EDGE_SAFE_MARGIN]，上下避开状态栏/导航条高度，
+     * 这样落点不会再等于 0 或 h-1。
      */
     private fun clampToScreen(point: Pair<Int, Int>, snapshot: ScreenSnapshot): Pair<Int, Int> {
         val w = snapshot.screenWidth.takeIf { it > 0 } ?: DEFAULT_SCREEN_W
         val h = snapshot.screenHeight.takeIf { it > 0 } ?: DEFAULT_SCREEN_H
-        return point.first.coerceIn(0, w - 1) to point.second.coerceIn(0, h - 1)
+        val left = EDGE_SAFE_MARGIN
+        val right = (w - 1 - EDGE_SAFE_MARGIN).coerceAtLeast(left)
+        // 上下避开系统栏：读到状态栏/导航条高度就用它；读不到时退回最小边距，保证落点不为 0 / h-1
+        val top = maxOf(systemBarInsetPx("status_bar_height"), EDGE_SAFE_MARGIN)
+        val bottom = (h - 1 - maxOf(systemBarInsetPx("navigation_bar_height"), EDGE_SAFE_MARGIN)).coerceAtLeast(top)
+        return point.first.coerceIn(left, right) to point.second.coerceIn(top, bottom)
     }
+
+    /**
+     * 读取系统栏（状态栏 [status_bar_height] / 导航条 [navigation_bar_height]）高度（像素）。
+     * 先按系统资源名取；部分 ROM / 高版本系统取不到（返回 0），此时由调用方退回最小边距，不阻断点击。
+     */
+    private fun systemBarInsetPx(resName: String): Int = runCatching {
+        val res = service.resources
+        val id = res.getIdentifier(resName, "dimen", "android")
+        if (id > 0) res.getDimensionPixelSize(id) else 0
+    }.getOrDefault(0)
 
     /**
      * 落点命中的控件是不是"我们要点的那个"。
@@ -363,5 +382,8 @@ class ClickRunner(
         /** 屏幕尺寸读不到时的兜底尺寸（仅用于把落点夹进屏幕内） */
         const val DEFAULT_SCREEN_W = 1080
         const val DEFAULT_SCREEN_H = 2400
+
+        /** 落点安全区的左右最小边距（像素）：避开屏幕左右边缘，防止贴边误触 */
+        const val EDGE_SAFE_MARGIN = 24
     }
 }
