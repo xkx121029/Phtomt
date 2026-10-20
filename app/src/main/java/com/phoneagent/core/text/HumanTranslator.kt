@@ -46,6 +46,8 @@ object HumanTranslator {
         "say" to "说",
         "see" to "看图追问",
         "launch_assistant" to "唤起语音助手",
+        "read_notifs" to "读取通知",
+        "clear_notifs" to "清理通知",
         "assistant" to "唤起语音助手",
         "a11y" to "无障碍端点调用",
         "a11y_call" to "无障碍端点调用",

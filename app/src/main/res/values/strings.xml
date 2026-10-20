@@ -3,4 +3,15 @@
     <string name="app_name">Happy Agent</string>
     <string name="a11y_service_label">Happy Agent 无障碍服务</string>
     <string name="a11y_service_description">读取屏幕可交互元素并执行点击、滑动等操作，以协助 AI 控制手机完成任务。</string>
+    <!-- 长按图标的静态快捷方式 -->
+    <string name="shortcut_new_task">新任务</string>
+    <string name="shortcut_new_task_long">开始一个新任务</string>
+    <string name="shortcut_resume">继续上次任务</string>
+    <string name="shortcut_resume_long">从最近的检查点继续上次任务</string>
+    <string name="shortcut_memory">记忆页</string>
+    <string name="shortcut_memory_long">打开页面记忆</string>
+    <string name="notification_listener_label">Happy Agent 通知感知</string>
+    <string name="notification_listener_description">让 AI 读取当前通知（验证码、消息提醒），并支持读取/清理通知技能。通知内容仅在本机处理。</string>
+    <string name="voice_interaction_label">Happy Agent 语音助理</string>
+    <string name="voice_interaction_description">作为系统数字助理被唤起（长按电源键），把当前屏幕内容带给任务。</string>
 </resources>

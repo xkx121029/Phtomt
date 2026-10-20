@@ -143,6 +143,8 @@ object ActionType {
 
     /** 唤起系统语音助手（packageName=探测到的助手包名，可为空；text=要传的话，可选） */
     const val LAUNCH_ASSISTANT = "launch_assistant"
+    const val READ_NOTIFS = "read_notifs"
+    const val CLEAR_NOTIFS = "clear_notifs"
 
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(

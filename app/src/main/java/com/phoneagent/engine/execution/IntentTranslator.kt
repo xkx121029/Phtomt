@@ -185,6 +185,15 @@ internal class AssistantStrategy(
 }
 
 /**
+ * 通知读取/清理策略：notif_read / notif_clear → 本地动作。
+ * 无参数；权限是否具备由执行层（NotificationFeed.connected）判定并给出中文原因。
+ */
+internal class NotifStrategy(private val type: String) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult =
+        IntentTranslator.TranslationResult.Command(ctx.base.copy(type = type, reason = reasonOf(intent)))
+}
+
+/**
  * 目标型定位策略（tap / long_press / input 共用）：定位目标控件 → 组装带 elementIndex/x/y/target 的动作。
  * @param withDepth 命中后填充该意图的专属字段（long_press 时长 / input 文本）
  */
@@ -585,6 +594,9 @@ class IntentTranslator(
         put(IntentType.SHOW_AGENT, passthrough(ActionType.SHOW_AGENT) { i, a -> a.copy(text = i.text, summary = i.summary) })
 
         put(IntentType.DEVICE_QUERY, DeviceQueryStrategy())
+        // 通知读取/清理（数据来自通知监听缓存，纯本地，不触碰设备）
+        put(IntentType.NOTIF_READ, NotifStrategy(ActionType.READ_NOTIFS))
+        put(IntentType.NOTIF_CLEAR, NotifStrategy(ActionType.CLEAR_NOTIFS))
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，

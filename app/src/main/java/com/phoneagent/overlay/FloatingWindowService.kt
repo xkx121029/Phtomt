@@ -100,6 +100,9 @@ class FloatingWindowService : Service() {
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
     private var taskTitle: TextView? = null
+
+    /** 最近一次任务名（来自 updateStatus）：销毁时供状态总线做 Widget 空闲摘要 */
+    private var currentTask: String? = null
     private var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
 
     /** 头部「详情/收起」按钮：控制 AI 详情区是否占位 */
@@ -1268,6 +1271,8 @@ class FloatingWindowService : Service() {
         handler.post {
             // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
             resetPanel()
+            // 记录最近一次任务名：悬浮窗销毁时状态总线要拿它做 Widget 的空闲摘要
+            currentTask = task
             // 跑马灯底色随阶段变化（跟随状态）或保持用户自定义配色
             currentPhase = phase
             marquee?.setColors(marqueeGradient(phase))
@@ -1855,7 +1860,11 @@ class FloatingWindowService : Service() {
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         removeWindow()
         scope.cancel()
-        if (instance === this) instance = null
+        if (instance === this) {
+            instance = null
+            // 悬浮窗退场即复位状态总线：桌面 Widget 跟着回到空闲态（保留最后任务名做摘要）
+            AgentStatusStore.idle(currentTask)
+        }
         super.onDestroy()
     }
 
@@ -1896,6 +1905,17 @@ class FloatingWindowService : Service() {
 
         /** 任务完成后：悬浮窗清空内容显示打勾动效 */
         fun showDone(message: String) {
+            // 完成态先落状态总线（Widget 用），再走悬浮窗的打勾动效；
+            // 悬浮窗关闭时（instance 为空）总线也要拿到完成事件
+            AgentStatusStore.update(
+                AgentStatusStore.Snapshot(
+                    task = instance?.currentTask ?: "任务",
+                    status = message,
+                    reasoning = message,
+                    phase = "DONE",
+                    done = true,
+                ),
+            )
             instance?.showDone(message)
         }
 
@@ -1912,6 +1932,16 @@ class FloatingWindowService : Service() {
             total: Int,
             phase: String,
         ) {
+            // 状态总线随每次引擎推送同步（Widget 数据源）——无论悬浮窗是否开着，引擎都会走到这里
+            AgentStatusStore.update(
+                AgentStatusStore.Snapshot(
+                    task = task,
+                    status = status,
+                    reasoning = reasoning,
+                    step = step,
+                    phase = phase,
+                ),
+            )
             instance?.updateStatus(status, task, reasoning, step, total, phase)
         }
 

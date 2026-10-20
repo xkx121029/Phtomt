@@ -26,6 +26,9 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- 端侧语音输入：SpeechRecognizer（Android 11 起强制要求 RECORD_AUDIO） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- 包可见性：Termux 执行通道需要探测 com.termux 是否安装 -->
     <queries>
         <package android:name="com.termux" />
@@ -54,12 +57,37 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.PhoneAgent"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 深链：hpa://task?text=… 开任务、hpa://resume 续跑（website 任务卡片/厂商助手训练计划共用） -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hpa" android:host="task" />
+                <data android:scheme="hpa" android:host="resume" />
+            </intent-filter>
+            <!-- 分享目标：任何 App 分享文字/链接 → 交给 Agent -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- 文本选择处理：任何 App 选中文字 →「问 Happy Agent」 -->
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- 长按图标快捷方式 + Google App Actions capability -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <service
@@ -109,6 +137,70 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 快速设置磁贴：下拉通知栏一键唤起/收起任务悬浮窗 -->
+        <service
+            android:name=".overlay.AgentTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- 任务状态 Widget：引擎每步推送状态时经 AgentStatusStore 刷新 -->
+        <receiver
+            android:name=".overlay.AgentStatusWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/agent_status_widget_info" />
+        </receiver>
+
+        <!-- 通知感知：AI 的通知维度上下文（验证码/提醒）+ 读取/清理通知技能 -->
+        <service
+            android:name=".feature.notify.AgentNotificationListener"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- 数字助理：注册为默认助理后，长按电源键/边缘手势唤起（携带当前屏幕上下文） -->
+        <service
+            android:name=".feature.assistant.HpaVoiceInteractionService"
+            android:exported="true"
+            android:label="@string/voice_interaction_label"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.voiceinteraction"
+                android:resource="@xml/voice_interaction_service" />
+        </service>
+        <service
+            android:name=".feature.assistant.HpaVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+        <!-- 对外控制接口：Tasker/MacroDroid 等广播下发任务/查询状态（设置里开关+口令双闸门） -->
+        <receiver
+            android:name=".feature.entry.TaskControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.phoneagent.action.EXTERNAL_RUN_TASK" />
+                <action android:name="com.phoneagent.action.EXTERNAL_STOP_TASK" />
+                <action android:name="com.phoneagent.action.EXTERNAL_QUERY_STATUS" />
             </intent-filter>
         </receiver>
 

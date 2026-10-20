@@ -149,9 +149,13 @@ class MainActivity : ComponentActivity() {
      */
     private val pageSignal = MutableStateFlow(0)
 
+    /** 外部入口（深链/分享/文本选择/快捷方式）的信号：onCreate 与 onNewIntent 各自增一次 */
+    private val entrySignal = MutableStateFlow(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        entrySignal.value++
         setContent {
             val vm: MainViewModel = koinViewModel()
             // 主题设置：配色 / 无框线 / 磨砂浓淡实时驱动 PhoneAgentTheme，改完立即生效
@@ -162,7 +166,7 @@ class MainActivity : ComponentActivity() {
                 // 磨砂浓淡微调：同样实时驱动，主题页拖动滑杆立即看到玻璃变化
                 glassTintOffset = settings.glassTintOffset,
             ) {
-                ActivityContent(vm, pageSignal)
+                ActivityContent(vm, pageSignal, entrySignal)
             }
         }
     }
@@ -171,6 +175,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pageSignal.value++
+        entrySignal.value++
     }
 }
 
@@ -215,7 +220,11 @@ private data class TabItem(val label: String, val icon: ImageVector)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>) {
+private fun ActivityContent(
+    vm: MainViewModel,
+    pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
+    entrySignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
+) {
     var selected by rememberSaveable { mutableStateOf(0) }
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
@@ -334,6 +343,31 @@ private fun ActivityContent(vm: MainViewModel, pageSignal: kotlinx.coroutines.fl
             selected = 0
             if (showDoc && doc != null) docFullscreen = true
         }
+    }
+
+    // 系统级入口统一消费：深链 hpa://task / 分享 / 选中文字处理 / 快捷方式。
+    // 任务文本按「运行中 → 追加队列；空闲 → 开新任务」路由，与悬浮窗排队模式同源；
+    // 消费完即清掉 data 与 extra，避免 onNewIntent 复用同一 Intent 时重复起任务。
+    val entryTick by entrySignal.collectAsState()
+    LaunchedEffect(entryTick) {
+        val intent = activity.intent ?: return@LaunchedEffect
+        val target = com.phoneagent.feature.entry.TaskEntry.fromDeepLink(intent.data)
+            ?: com.phoneagent.feature.entry.TaskEntry.fromGoogleAction(intent)
+            ?: com.phoneagent.feature.entry.TaskEntry.fromShareIntent(intent)
+            ?: com.phoneagent.feature.entry.TaskEntry.fromExtras(intent)
+            ?: return@LaunchedEffect
+        when (target) {
+            is com.phoneagent.feature.entry.TaskEntry.Target.Task -> {
+                if (vm.agentState.value.isRunning) vm.startAgent(target.text) else vm.startPlanning(target.text)
+            }
+            is com.phoneagent.feature.entry.TaskEntry.Target.Navigate -> {
+                if (target.memory) extrasPage = ExtrasPage.Memory
+                if (target.resume) vm.resumeFromCheckpoint()
+            }
+        }
+        intent.data = null
+        intent.replaceExtras(null)
+        if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) selected = 0
     }
 
     // 全局返回手势返回上一层：

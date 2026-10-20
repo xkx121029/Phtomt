@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  静态快捷方式（长按图标）+ Google App Actions capability。
+  - 快捷方式 extra 与 TaskEntry.EXTRA_* 契约一致（改名必改两处）。
+  - capability 走 keyless fulfillment：语音 query 经 parameter-mapping 落到 text extra，
+    由 TaskEntry.fromGoogleAction 消费（VIEW hpa://task + text extra）。
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="new_task"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_task"
+        android:shortcutLongLabel="@string/shortcut_new_task_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.phoneagent"
+            android:targetClass="com.phoneagent.ui.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="resume_last"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_resume"
+        android:shortcutLongLabel="@string/shortcut_resume_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.phoneagent"
+            android:targetClass="com.phoneagent.ui.MainActivity">
+            <extra
+                android:name="com.phoneagent.extra.RESUME"
+                android:value="true" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_memory"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_memory"
+        android:shortcutLongLabel="@string/shortcut_memory_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.phoneagent"
+            android:targetClass="com.phoneagent.ui.MainActivity">
+            <extra
+                android:name="com.phoneagent.extra.OPEN_MEMORY"
+                android:value="true" />
+        </intent>
+    </shortcut>
+
+    <!-- Google 助理语音直达（海外 / 有 GMS 设备）：
+         「Hey Google, 用 Happy Agent 打开<查询>」→ text extra → 开任务 -->
+    <capability android:name="actions.intent.GET_THING">
+        <fulfillment>
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="hpa://task"
+                android:targetPackage="com.phoneagent"
+                android:targetClass="com.phoneagent.ui.MainActivity">
+                <parameter-mapping
+                    android:name="thing.name"
+                    android:key="text" />
+            </intent>
+        </fulfillment>
+    </capability>
+</shortcuts>

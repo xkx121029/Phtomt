@@ -99,6 +99,8 @@ object ActionPolicy {
         IntentType.BACK, IntentType.HOME, IntentType.REFRESH,
         // 页内低副作用操作
         IntentType.CLOSE, IntentType.COLLECT, IntentType.COPY, IntentType.CLEAR_INPUT,
+        // 本地读取通知（不操作设备）
+        IntentType.NOTIF_READ,
         // 只读浏览网页
         IntentType.BROWSE_READ, IntentType.BROWSE_SCROLL, IntentType.BROWSE_BACK,
     )
@@ -111,7 +113,7 @@ object ActionPolicy {
         IntentType.OPEN_APP, IntentType.OPEN, IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT,
         IntentType.FETCH, IntentType.BROWSE_OPEN, IntentType.BROWSE_CLICK, IntentType.BROWSE_INPUT,
         IntentType.SEARCH, IntentType.SHARE, IntentType.DOWNLOAD, IntentType.ADD, IntentType.SWITCH,
-        IntentType.ASSISTANT,
+        IntentType.ASSISTANT, IntentType.NOTIF_CLEAR,
     )
 
     /**

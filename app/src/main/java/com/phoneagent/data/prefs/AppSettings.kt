@@ -121,6 +121,11 @@ class AppSettings(private val context: Context) {
         val updateChannel: String = "stable",
         /** 启动时自动检查更新 */
         val autoCheckUpdate: Boolean = true,
+        // ---- 对外控制接口（Tasker / MacroDroid / 自动化工具广播下发任务） ----
+        /** 是否接受外部广播下发任务（默认关闭；开启后任何应用都能按 [externalControlToken] 校验驱动本应用） */
+        val externalControlEnabled: Boolean = false,
+        /** 外部控制口令：调用方广播里带 token 字段与之全等才放行；空串表示仅靠开关（不推荐） */
+        val externalControlToken: String = "",
     )
 
     private object Keys {
@@ -183,6 +188,9 @@ class AppSettings(private val context: Context) {
         val UPDATE_BASE_URL = stringPreferencesKey("update_base_url")
         val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         val AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
+        /** 对外控制：开关与口令，见 [Settings.externalControlEnabled] */
+        val EXTERNAL_CONTROL_ENABLED = booleanPreferencesKey("external_control_enabled")
+        val EXTERNAL_CONTROL_TOKEN = stringPreferencesKey("external_control_token")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -274,6 +282,8 @@ class AppSettings(private val context: Context) {
             updateBaseUrl = prefs[Keys.UPDATE_BASE_URL] ?: "https://hpa.linshuxu.us.kg",
             updateChannel = prefs[Keys.UPDATE_CHANNEL] ?: "stable",
             autoCheckUpdate = prefs[Keys.AUTO_CHECK_UPDATE] ?: true,
+            externalControlEnabled = prefs[Keys.EXTERNAL_CONTROL_ENABLED] ?: false,
+            externalControlToken = prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: "",
         )
     }
 
@@ -332,6 +342,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.UPDATE_BASE_URL] = settings.updateBaseUrl.trim().trimEnd('/')
             prefs[Keys.UPDATE_CHANNEL] = settings.updateChannel
             prefs[Keys.AUTO_CHECK_UPDATE] = settings.autoCheckUpdate
+            prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled
+            prefs[Keys.EXTERNAL_CONTROL_TOKEN] = settings.externalControlToken
         }
     }
 }

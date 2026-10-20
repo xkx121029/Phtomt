@@ -214,6 +214,33 @@ internal class ExecutionCore(
                     com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
                 }
             }
+            ActionType.READ_NOTIFS -> {
+                // 读取通知：数据来自通知监听缓存（纯本地）。监听未授权时明确告知如何开启
+                val text = com.phoneagent.feature.notify.NotificationFeed.readText()
+                if (text == null) {
+                    com.phoneagent.engine.execution.VerifyResult(
+                        false,
+                        "通知监听未开启，读不到任何通知。请引导用户到系统设置开启本应用的通知使用权后重试",
+                        snapshot.packageName ?: "", "",
+                    )
+                } else {
+                    com.phoneagent.engine.execution.VerifyResult(true, text, snapshot.packageName ?: "", "")
+                }
+            }
+            ActionType.CLEAR_NOTIFS -> {
+                // 清理通知：ongoing（常驻）不动；返回成功条数，-1 表示监听未开启
+                val cleared = com.phoneagent.feature.notify.NotificationFeed.cancelAll()
+                when {
+                    cleared < 0 -> com.phoneagent.engine.execution.VerifyResult(
+                        false,
+                        "通知监听未开启，无法清理通知。请引导用户到系统设置开启本应用的通知使用权后重试",
+                        snapshot.packageName ?: "", "",
+                    )
+                    else -> com.phoneagent.engine.execution.VerifyResult(
+                        true, "已清理 $cleared 条通知（常驻通知保留）", snapshot.packageName ?: "", "",
+                    )
+                }
+            }
             ActionType.OPEN -> executeNoVerify(executor) {
                 // 优先直接深链 uri；否则按软件页面直达索引(app+page)解析直达方式
                 val uri = action.uri

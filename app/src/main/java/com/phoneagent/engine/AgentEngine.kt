@@ -1996,6 +1996,12 @@ class AgentEngine(
             taskMemoryText() +
             // 页面记忆：命中已记忆页面时注入已知热点与可去路径（空串不占上下文）
             pageMemoryHint +
+            // 通知感知：通知监听开启时注入最新通知（验证码/提醒），屏幕元素树读不到的事实（空串不占上下文）
+            com.phoneagent.feature.notify.NotificationFeed.decisionText(appContext.packageName) +
+            // 数字助理上下文：用户刚从系统助理唤起（<90s）时带着当时正看着的页面，任务往往与它相关
+            com.phoneagent.feature.assistant.AssistContextStore.freshText().let { assist ->
+                if (assist.isBlank()) "" else "\n## 用户唤起助理时正看着的页面\n$assist\n"
+            } +
             // 环境上下文（时间/前台应用/网络/电量）+ 会话承接（上一轮任务）：页面元素树里读不到的事实
             AgentPrompts.environment(currentLang, envFacts(snapshot)) +
             sessionContextText(task, currentLang)

@@ -39,6 +39,7 @@ import com.composables.icons.lucide.LoaderCircle
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Maximize
 import com.composables.icons.lucide.Menu
+import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.MousePointerClick
 import com.composables.icons.lucide.Palette
 import com.composables.icons.lucide.Pencil
@@ -163,6 +164,8 @@ object AppIcons {
     val Store: ImageVector get() = Lucide.Store
     /** 清单 / 任务队列 */
     val ListTodo: ImageVector get() = Lucide.ListTodo
+    /** 麦克风 / 语音输入 */
+    val Mic: ImageVector get() = Lucide.Mic
 
     // ── 权限与设备 ──────────────────────────────────────────────
     /** 无障碍 / 触控（原 Icons.Rounded.TouchApp） */

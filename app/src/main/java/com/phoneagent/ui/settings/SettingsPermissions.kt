@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -84,6 +85,83 @@ internal fun SettingsPermissions(
                     Spacer(Modifier.height(6.dp))
                     PermissionRadar(permissions, context, vm)
                     Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            // 系统级入口：数字助理角色（长按电源键唤起）与通知感知（AI 的通知维度上下文）。
+            // 两者都是系统授权，不进权限雷达（雷达枚举的是运行时权限），单独给一区引导。
+            SettingsSection(title = "系统级入口", subtitle = "数字助理唤起与通知感知", tone = SettingsTone.Warm) {
+                val activity = androidx.activity.compose.LocalActivity.current
+                val roleLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                ) { }
+                var assistantHeld by androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf(
+                        com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context),
+                    )
+                }
+                val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                    Text(
+                        "数字助理：设为默认助理后，长按电源键或边缘手势直接唤起 Happy Agent，" +
+                            "唤起时的屏幕内容会带给任务（原来占这个位置的语音助手仍有各自的专属入口）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.material3.Button(
+                        enabled = !assistantHeld,
+                        onClick = {
+                            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                                com.phoneagent.feature.assistant.AssistantRole.requestRole(activity)?.let {
+                                    roleLauncher.launch(it)
+                                    assistantHeld = com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context)
+                                }
+                            }
+                        },
+                    ) {
+                        Text(if (assistantHeld) "已是默认数字助理" else "设为系统数字助理")
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "通知感知：开启后 AI 能读到通知（验证码/提醒），并支持「读取通知/清理通知」技能。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(
+                        enabled = !notifEnabled,
+                        onClick = { context.startActivity(android.content.Intent("android.settings.NOTIFICATION_LISTENER_SETTINGS")) },
+                    ) { Text(if (notifEnabled) "通知使用权已开启" else "开启通知使用权") }
+                    Spacer(Modifier.height(12.dp))
+                    // 对外控制接口：广播契约在 TaskControlReceiver（下发任务/停止/查询状态）
+                    Text(
+                        "对外控制接口：允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    androidx.compose.material3.Switch(
+                        checked = st.externalControlEnabled,
+                        onCheckedChange = { st.externalControlEnabled = it; save() },
+                    )
+                    if (st.externalControlEnabled) {
+                        Spacer(Modifier.height(6.dp))
+                        androidx.compose.material3.OutlinedTextField(
+                            value = st.externalControlToken,
+                            onValueChange = { st.externalControlToken = it; save() },
+                            label = { Text("广播口令（token）") },
+                            placeholder = { Text("留空=仅靠开关（不推荐）") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "广播示例：action=com.phoneagent.action.EXTERNAL_RUN_TASK，extras：text=任务内容、token=口令",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 

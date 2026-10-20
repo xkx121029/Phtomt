@@ -6,6 +6,51 @@
 
 ---
 
+## [v0.2.896] — 2026-10-20
+
+### 新增
+
+- **系统级集成批次（14 项，对应《HPA系统级集成可发展项目清单》除"远程下发任务"外全部落地）**
+  - **入口统一解析**（`feature/entry/TaskEntry`）：深链 / Google App Actions / 分享 /
+    文本选择 / 快捷方式五种外部入口归一为任务文本或页面跳转；运行中自动进队列、空闲开新任务，
+    与悬浮窗排队模式同源；解析核心为纯函数（`parseDeepLink` / `parseShare` / `parseExtras`，JVM 单测覆盖）
+  - **Deep Link**（#10）：`hpa://task?text=…` 开任务、`hpa://resume` 从最近检查点续跑；
+    website 任务卡片 / 厂商助手训练计划 / 更新推送可直达
+  - **分享目标**（#3）：ACTION_SEND text/plain + ACTION_PROCESS_TEXT，任何 App 选中文字或分享链接即可交给 Agent
+  - **快速设置磁贴**（#1，`AgentTileService`）：下拉通知栏一键唤起/收起任务悬浮窗
+    （刻意只做悬浮窗开关，不做启停任务——高频误触位上不放破坏性动作）
+  - **App Shortcuts**（#2）：静态快捷方式「新任务 / 继续上次任务 / 打开记忆页」（`res/xml/shortcuts.xml`）
+  - **桌面 Widget**（#4，`AgentStatusWidgetProvider` + `AgentStatusStore` 状态总线）：
+    引擎每步推送状态时经 `FloatingWindowService.update` 汇入总线并刷新 Widget（RemoteViews，无新依赖）；
+    显示任务名 + 阶段/状态 + 步数，点击打开 App
+  - **端侧语音输入**（#5，`feature/voice/SpeechInput`）：Agent 页输入栏新增麦克风按钮，
+    走系统 SpeechRecognizer 内嵌识别（不弹系统全屏对话框），说完回填输入框由用户过目后再发送；
+    新增 RECORD_AUDIO 权限（运行时请求）
+  - **通知感知**（#6，`feature/notify`）：`AgentNotificationListener` 把本机活动通知汇入
+    `NotificationFeed` 环形缓存（30 条，本 App 通知不入缓存）；
+    ① 决策上下文注入最新通知块（引擎侧字符串追加，提示词模板零改动）；
+    ② 新增 `notif_read`（读取通知，低风险）与 `notif_clear`（清理通知，中风险、需 needs_confirmation）
+    两个意图/技能全链路（IntentType → ActionPolicy → IntentTranslator → ExecutionCore → SkillCatalog）
+  - **用量统计交叉验证**（#7，`device/perception/ForegroundProbe`）：无障碍读不到前台应用时用
+    UsageStatsManager 兜底、两侧不一致时标注过渡态；未授权时零开销跳过
+  - **数字助理注册**（#8，`feature/assistant`）：`HpaVoiceInteractionService/SessionService/Session`
+    三件套 + `AssistantRole`（RoleManager 请求角色）；注册为默认助理后长按电源键唤起，
+    AssistStructure 屏幕文本暂存 `AssistContextStore`（90s 新鲜度）注入决策上下文；
+    设置 → 权限与执行通道新增「系统级入口」区（含通知使用权引导）
+  - **Google App Actions**（#9）：shortcuts.xml 声明 GET_THING capability，语音 query 经
+    text extra → 开任务（海外/GMS 设备收益）
+  - **厂商助手反向承接**（#11）：依赖 Deep Link 已通——小爱「训练计划」/ 小艺技能配置深链即可把指令传给 HPA
+  - **对外控制接口**（#12，`feature/entry/TaskControlReceiver`）：广播契约
+    EXTERNAL_RUN_TASK / EXTERNAL_STOP_TASK / EXTERNAL_QUERY_STATUS（ordered 返回状态 JSON）；
+    双闸门安全模型——设置页总开关（默认关）+ 口令校验；Tasker / MacroDroid 可直接接入
+  - **Shizuku 深化**（#14，`device/shell/ShizukuSystemOps`）：pm 多用户 / appops / dumpsys 分节 /
+    运行时权限授予 / secure 设置读取的类型化门面
+  - **助理槽位精确检测**（#15）：`VoiceAssistantDetector` 优先读 Settings.Secure 的
+    `assistant` / `voice_interaction_service`（读操作无需额外权限），已配置的默认助理去重置顶
+  - 新增单测：`TaskEntryTest`（13 例）；提示词金样本已重导（新增两个技能）
+
+---
+
 ## [v0.2.881] — 2026-10-19
 
 ### 变更

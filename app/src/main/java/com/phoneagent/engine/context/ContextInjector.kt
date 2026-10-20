@@ -35,6 +35,11 @@ internal class ContextInjector(
     fun screenWidth(): Int = store.lastSnapshot.screenWidth.takeIf { it > 0 } ?: realScreenWidth()
     fun screenHeight(): Int = store.lastSnapshot.screenHeight.takeIf { it > 0 } ?: realScreenHeight()
 
+    /** 用量统计前台探针：按需惰性创建（多数用户不会授予该权限，别在构造期白做系统服务调用） */
+    private val foregroundProbe by lazy {
+        com.phoneagent.device.perception.ForegroundProbe(appContext)
+    }
+
     // 真实屏幕尺寸（不依赖无障碍服务）：直接问 WindowManager，取数细节见 DeviceFacts
     fun realScreenWidth(): Int = deviceFacts.realScreenSize().first
 
@@ -64,10 +69,22 @@ internal class ContextInjector(
         noteForeground(pkg)
         // 取不到显示名时退回包名：宁可给 AI 一个能搜的串，也不要留空让它以为"没有前台应用"
         val label = if (pkg.isBlank()) "" else deviceFacts.appLabelOf(pkg)
-        val foreground = when {
+        var foreground = when {
             pkg.isBlank() -> ""
             label.isBlank() || label == pkg -> pkg
             else -> "$label($pkg)"
+        }
+        // 用量统计交叉验证（可选能力，未授权时零开销跳过）：
+        // ① 无障碍没读到前台应用 → 用最近 usage 事件兜底；② 两侧读到的不一致 → 标注过渡态
+        val probePkg = foregroundProbe.latestForeground()
+        if (probePkg != null && probePkg != appContext.packageName) {
+            when {
+                pkg.isBlank() -> {
+                    val pl = deviceFacts.appLabelOf(probePkg)
+                    foreground = if (pl.isBlank() || pl == probePkg) "$probePkg（据用量统计）" else "$pl($probePkg)（据用量统计）"
+                }
+                probePkg != pkg -> foreground += "（用量统计显示 ${deviceFacts.appLabelOf(probePkg).ifBlank { probePkg }}，可能正在切换）"
+            }
         }
         return EnvFacts(
             dateTime = deviceFacts.dateTimeText(),

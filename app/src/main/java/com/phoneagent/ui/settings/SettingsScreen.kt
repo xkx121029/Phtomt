@@ -223,6 +223,9 @@ class SettingsState(initial: AppSettings.Settings) {
     var updateBaseUrl by mutableStateOf(initial.updateBaseUrl)
     var updateChannel by mutableStateOf(initial.updateChannel)
     var autoCheckUpdate by mutableStateOf(initial.autoCheckUpdate)
+    // 对外控制接口：Tasker 等广播下发任务的开关与口令
+    var externalControlEnabled by mutableStateOf(initial.externalControlEnabled)
+    var externalControlToken by mutableStateOf(initial.externalControlToken)
     var calibrationExpanded by mutableStateOf(false)
 
     fun applyFrom(s: AppSettings.Settings) {
@@ -277,6 +280,8 @@ class SettingsState(initial: AppSettings.Settings) {
         updateBaseUrl = s.updateBaseUrl
         updateChannel = s.updateChannel
         autoCheckUpdate = s.autoCheckUpdate
+        externalControlEnabled = s.externalControlEnabled
+        externalControlToken = s.externalControlToken
     }
 
     /**
@@ -348,5 +353,7 @@ class SettingsState(initial: AppSettings.Settings) {
         updateBaseUrl = updateBaseUrl,
         updateChannel = updateChannel,
         autoCheckUpdate = autoCheckUpdate,
+        externalControlEnabled = externalControlEnabled,
+        externalControlToken = externalControlToken.trim(),
     )
 }

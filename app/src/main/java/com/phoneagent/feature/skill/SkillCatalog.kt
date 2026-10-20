@@ -45,6 +45,20 @@ object SkillCatalog {
             ),
         )
         put(
+            IntentType.NOTIF_READ, Skill(
+                id = "skill_notif_read", name = "读取通知", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "取数", legacyIntent = IntentType.NOTIF_READ,
+                description = "读取当前通知栏的全部通知（应用名/标题/正文）。验证码、消息提醒、支付结果这类屏幕上没有的信息用它；需要本机已开启通知使用权。纯本地读取、不操作设备、无参数。",
+            ),
+        )
+        put(
+            IntentType.NOTIF_CLEAR, Skill(
+                id = "skill_notif_clear", name = "清理通知", source = SkillSource.INTENT, isBuiltIn = true,
+                category = "操作", legacyIntent = IntentType.NOTIF_CLEAR,
+                description = "清掉通知栏里的全部通知（常驻通知保留）。会清掉用户未读内容，必须标 needs_confirmation；需要本机已开启通知使用权。",
+            ),
+        )
+        put(
             IntentType.OPEN, Skill(
                 id = "skill_open_deeplink", name = "打开链接/文件", source = SkillSource.INTENT, isBuiltIn = true,
                 category = "导航", legacyIntent = IntentType.OPEN,

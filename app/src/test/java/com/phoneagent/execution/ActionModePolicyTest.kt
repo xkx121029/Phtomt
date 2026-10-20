@@ -35,11 +35,12 @@ class ActionModePolicyTest {
 
     @Test
     fun 风险分档_三档之和等于全集() {
-        // 低 22 + 中 15 + 高 3 = 40 = IntentType.ALL；自由专属的两项不计入风险档
-        assertEquals(40, ActionPolicy.tiered.size)
-        assertEquals(40, (IntentType.ALL - ActionPolicy.freeOnly).size)
-        assertEquals(22, ActionPolicy.lowRisk.size)
-        assertEquals(15, ActionPolicy.midRisk.size)
+        // 低 23 + 中 16 + 高 3 = 42 = IntentType.ALL；自由专属的两项不计入风险档
+        // （notif_read 属低风险本地读取，notif_clear 属中风险改动通知栏状态）
+        assertEquals(42, ActionPolicy.tiered.size)
+        assertEquals(42, (IntentType.ALL - ActionPolicy.freeOnly).size)
+        assertEquals(23, ActionPolicy.lowRisk.size)
+        assertEquals(16, ActionPolicy.midRisk.size)
         assertEquals(3, ActionPolicy.highRisk.size)
     }
 

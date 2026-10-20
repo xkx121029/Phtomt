@@ -1,5 +1,7 @@
 package com.phoneagent.ui.agent
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -33,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +57,7 @@ import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
@@ -546,6 +550,52 @@ internal fun AgentComposer(
                 )
 
                 else -> Unit
+            }
+
+            // 语音输入：端侧 SpeechRecognizer 内嵌识别（不弹系统全屏对话框），说完自动回填输入框，
+            // 由用户过目后再发送——语音只负责"把话递进来"，不代替"发送"这个决定。
+            // 仅新任务与排队两个写任务的形态给入口；回答澄清/指导 AI 是打字更快的短句场景。
+            if (mode == ComposerMode.NEW_TASK || mode == ComposerMode.QUEUE_FOLLOW_UP) {
+                val snackbar = LocalSnackbar.current
+                var listening by remember { mutableStateOf(false) }
+                // rememberUpdatedState：识别回调持有最新草稿，追加时不丢用户刚打的字
+                val currentDraft by androidx.compose.runtime.rememberUpdatedState(draft)
+                val speech = remember {
+                    com.phoneagent.feature.voice.SpeechInput(
+                        onResult = { text ->
+                            listening = false
+                            onDraftChange(if (currentDraft.isBlank()) text else "$currentDraft$text")
+                        },
+                        onError = { msg ->
+                            listening = false
+                            snackbar?.show(msg)
+                        },
+                    )
+                }
+                DisposableEffect(Unit) { onDispose { speech.release() } }
+                val micLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission(),
+                ) { granted ->
+                    if (granted) {
+                        listening = true
+                        speech.start()
+                    } else {
+                        snackbar?.show("需要麦克风权限才能语音输入")
+                    }
+                }
+                ComposerActionButton(
+                    icon = AppIcons.Mic,
+                    description = if (listening) "聆听中…" else "语音输入",
+                    enabled = !listening,
+                    onClick = {
+                        if (!speech.hasPermission()) {
+                            micLauncher.launch(speech.requiredPermission())
+                        } else {
+                            listening = true
+                            speech.start()
+                        }
+                    },
+                )
             }
 
             when (mode) {

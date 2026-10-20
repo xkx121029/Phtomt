@@ -37,13 +37,35 @@ class VoiceAssistantDetector(private val context: Context) {
      */
     fun probeAll(): List<Target> {
         val pm = context.packageManager
+        // 系统设置里的「默认助理」是最权威的依据：写死的 component 不用猜，排最前
+        val configured = configuredAssistant()
         return orderedTargets(
             voiceCommand = probeAction(pm, Intent.ACTION_VOICE_COMMAND)
                 ?.let { (pkg, activity) -> Target(Via.VOICE_COMMAND, pkg, activity) },
             assist = probeAction(pm, Intent.ACTION_ASSIST)
                 ?.let { (pkg, activity) -> Target(Via.ASSIST, pkg, activity) },
             installedVendors = VENDOR_ASSISTANTS.filter { pm.getLaunchIntentForPackage(it) != null },
-        )
+        ).let { list ->
+            if (configured == null) list else {
+                // 已配置的默认助理去重后置顶；它就是系统长按电源键真正会拉起的那个
+                (listOf(Target(Via.ASSIST, configured, null)) + list).distinctBy { it.packageName }
+                    .take(MAX_WAKE_CANDIDATES)
+            }
+        }
+    }
+
+    /**
+     * 读系统设置里登记的默认助理组件（Settings.Secure）。
+     * 读操作不需要 WRITE_SECURE_SETTINGS；值为 "pkg/cls" 或 "pkg" 形态，取包名部分。
+     * assistant（默认助理）与 voice_interaction_service（语音交互服务）都查——
+     * 部分厂商只写后者。
+     */
+    private fun configuredAssistant(): String? {
+        val raw = android.provider.Settings.Secure.getString(context.contentResolver, "assistant")
+            ?: android.provider.Settings.Secure.getString(context.contentResolver, "voice_interaction_service")
+            ?: return null
+        val pkg = raw.substringBefore('/').trim()
+        return pkg.ifEmpty { null }
     }
 
     /** 探测单个 action 入口：返回 (包名, activity) 或 null（挑不出系统应用优先的候选时视为未命中） */
