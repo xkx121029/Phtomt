@@ -69,7 +69,7 @@ import androidx.core.content.ContextCompat
 import com.phoneagent.ui.voice.SpeechRecognizerEngine
 import com.phoneagent.ui.voice.VoiceFinishMode
 import com.phoneagent.ui.voice.VoiceRecordGestureBox
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -539,26 +539,30 @@ internal fun AgentComposer(
                 voiceEnabled = !locked && !focused,
                 onTap = { focusRequester.requestFocus() },
                 onFinishRecord = { _, _, finishMode ->
-                    // 松手浮层立即消失；识别文本经 finalText 流异步到达
+                    // 松手浮层立即消失；识别文本与错误谁先到谁生效
                     scope.launch {
-                        val text = withTimeoutOrNull(8_000) {
-                            voiceEngine.finalText.filterNotNull().first { it.isNotEmpty() }
+                        val outcome = withTimeoutOrNull(8_000) {
+                            combine(voiceEngine.finalText, voiceEngine.error) { t, e -> t to e }
+                                .first { (t, e) -> !t.isNullOrEmpty() || !e.isNullOrEmpty() }
                         }
+                        val text = outcome?.first
+                        val err = outcome?.second
                         when {
-                            text.isNullOrEmpty() -> snackbar?.show("未识别到内容")
-                            finishMode == VoiceFinishMode.SEND -> {
+                            !text.isNullOrEmpty() && finishMode == VoiceFinishMode.SEND -> {
                                 // 原地松手：识别结果并入输入框后直接作为任务发出
                                 onDraftChange(
                                     if (currentDraft.isBlank()) text else "$currentDraft $text",
                                 )
                                 onSend()
                             }
-                            else -> {
+                            !text.isNullOrEmpty() -> {
                                 // 上滑预览：填入输入框由用户编辑后再发
                                 onDraftChange(
                                     if (currentDraft.isBlank()) text else "$currentDraft $text",
                                 )
                             }
+                            !err.isNullOrEmpty() -> snackbar?.show(err)
+                            else -> snackbar?.show("未识别到内容")
                         }
                     }
                 },

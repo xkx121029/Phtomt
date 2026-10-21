@@ -48,7 +48,7 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.PhoneAgentTheme
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -174,18 +174,20 @@ private fun VoiceDemoScreen() {
             onFinishRecord = { _, _, mode ->
                 recording = false
                 scope.launch {
-                    // 松手浮层已消失；识别文本经 finalText 流异步到达（超时 8s 兜底）
-                    val text = withTimeoutOrNull(8_000) {
-                        engine.finalText.filterNotNull().first { it.isNotEmpty() }
+                    // 松手浮层已消失；识别文本与错误谁先到谁生效（超时 8s 兜底）
+                    val outcome = withTimeoutOrNull(8_000) {
+                        combine(engine.finalText, engine.error) { t, e -> t to e }
+                            .first { (t, e) -> !t.isNullOrEmpty() || !e.isNullOrEmpty() }
                     }
+                    val text = outcome?.first
+                    val err = outcome?.second
                     when {
-                        text.isNullOrEmpty() ->
+                        !text.isNullOrEmpty() && mode == VoiceFinishMode.SEND -> messages.add(text)
+                        !text.isNullOrEmpty() -> draft = (draft + " " + text).trim()
+                        !err.isNullOrEmpty() ->
+                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                        else ->
                             Toast.makeText(context, "未识别到内容", Toast.LENGTH_SHORT).show()
-                        mode == VoiceFinishMode.SEND -> messages.add(text)
-                        else -> {
-                            // 预览编辑：识别结果填入输入框，追加在已有文字之后
-                            draft = (draft + " " + text).trim()
-                        }
                     }
                 }
             },
