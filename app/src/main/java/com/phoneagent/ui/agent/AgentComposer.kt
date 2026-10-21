@@ -572,8 +572,8 @@ internal fun AgentComposer(
                     .weight(1f)
                     .heightIn(min = ComposerActionSize),
             ) {
+                // 包裹内容而非 fillMaxSize：父级高度约束无上限，填满会把输入行撑到异常高
                 Box(
-                    modifier = Modifier.fillMaxSize(),
                     // CenterStart 而不是 Center：只借它把单行文字在 40dp 高度里竖直居中，
                     // 水平方向必须贴左——占位文案与真正输入的文字得落在同一条竖线上
                     contentAlignment = Alignment.CenterStart,
