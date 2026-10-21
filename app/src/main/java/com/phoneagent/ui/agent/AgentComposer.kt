@@ -1,5 +1,6 @@
 package com.phoneagent.ui.agent
 
+import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -39,6 +40,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +54,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.ClarificationOption
@@ -61,6 +65,14 @@ import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
+import androidx.core.content.ContextCompat
+import com.phoneagent.ui.voice.SpeechRecognizerEngine
+import com.phoneagent.ui.voice.VoiceFinishMode
+import com.phoneagent.ui.voice.VoiceRecordGestureBox
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -402,6 +414,26 @@ internal fun AgentComposer(
     val locked = mode == ComposerMode.LOCKED
     var focused by remember { mutableStateOf(false) }
 
+    // 语音录入：长按输入框进入录音（取代原麦克风按钮）；引擎随组合销毁释放
+    val context = LocalContext.current
+    val snackbar = LocalSnackbar.current
+    val voiceEngine = remember { SpeechRecognizerEngine(context) }
+    DisposableEffect(voiceEngine) { onDispose { voiceEngine.destroy() } }
+    val scope = rememberCoroutineScope()
+    var micPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val micLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        micPermission = granted
+        if (!granted) snackbar?.show("需要麦克风权限才能语音输入")
+    }
+    val currentDraft by rememberUpdatedState(draft)
+
     val fieldShape = RoundedCornerShape(if (focused && !locked) AppRadii.Hero else AppRadii.Card)
     val fieldPad by animateDpAsState(
         targetValue = if (focused && !locked) AppSpacing.Lg else AppSpacing.Md,
@@ -502,17 +534,54 @@ internal fun AgentComposer(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {
-            Box(
+            VoiceRecordGestureBox(
+                engine = voiceEngine,
+                voiceEnabled = !locked && !focused,
+                onTap = { focusRequester.requestFocus() },
+                onFinishRecord = { _, _, finishMode ->
+                    // 松手浮层立即消失；识别文本经 finalText 流异步到达
+                    scope.launch {
+                        val text = withTimeoutOrNull(8_000) {
+                            voiceEngine.finalText.filterNotNull().first { it.isNotEmpty() }
+                        }
+                        when {
+                            text.isNullOrEmpty() -> snackbar?.show("未识别到内容")
+                            finishMode == VoiceFinishMode.SEND -> {
+                                // 原地松手：识别结果并入输入框后直接作为任务发出
+                                onDraftChange(
+                                    if (currentDraft.isBlank()) text else "$currentDraft $text",
+                                )
+                                onSend()
+                            }
+                            else -> {
+                                // 上滑预览：填入输入框由用户编辑后再发
+                                onDraftChange(
+                                    if (currentDraft.isBlank()) text else "$currentDraft $text",
+                                )
+                            }
+                        }
+                    }
+                },
+                onStartFailed = {
+                    if (!micPermission) micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    else snackbar?.show("系统语音识别服务不可用")
+                },
+                onCancelRecord = { snackbar?.show("已取消发送") },
+                onRecordTooShort = { snackbar?.show("说话时间太短") },
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = ComposerActionSize),
-                // CenterStart 而不是 Center：只借它把单行文字在 40dp 高度里竖直居中，
-                // 水平方向必须贴左——占位文案与真正输入的文字得落在同一条竖线上
-                contentAlignment = Alignment.CenterStart,
             ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    // CenterStart 而不是 Center：只借它把单行文字在 40dp 高度里竖直居中，
+                    // 水平方向必须贴左——占位文案与真正输入的文字得落在同一条竖线上
+                    contentAlignment = Alignment.CenterStart,
+                ) {
                 if (draft.isEmpty()) {
                     Text(
-                        text = placeholder,
+                        // 键盘未拉起时提示语音手势；聚焦后（长按让位文本选择）只留纯占位
+                        text = if (!locked && !focused) "$placeholder · 长按语音" else placeholder,
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurfaceRaised,
                     )
@@ -531,6 +600,7 @@ internal fun AgentComposer(
                         .focusRequester(focusRequester)
                         .onFocusChanged { focused = it.isFocused },
                 )
+                }
             }
 
             // 次要动作跟主操作挤在同一行：停止 / 已手动处理是"运行中才会出现"的旁路出口，
@@ -550,52 +620,6 @@ internal fun AgentComposer(
                 )
 
                 else -> Unit
-            }
-
-            // 语音输入：端侧 SpeechRecognizer 内嵌识别（不弹系统全屏对话框），说完自动回填输入框，
-            // 由用户过目后再发送——语音只负责"把话递进来"，不代替"发送"这个决定。
-            // 仅新任务与排队两个写任务的形态给入口；回答澄清/指导 AI 是打字更快的短句场景。
-            if (mode == ComposerMode.NEW_TASK || mode == ComposerMode.QUEUE_FOLLOW_UP) {
-                val snackbar = LocalSnackbar.current
-                var listening by remember { mutableStateOf(false) }
-                // rememberUpdatedState：识别回调持有最新草稿，追加时不丢用户刚打的字
-                val currentDraft by androidx.compose.runtime.rememberUpdatedState(draft)
-                val speech = remember {
-                    com.phoneagent.feature.voice.SpeechInput(
-                        onResult = { text ->
-                            listening = false
-                            onDraftChange(if (currentDraft.isBlank()) text else "$currentDraft$text")
-                        },
-                        onError = { msg ->
-                            listening = false
-                            snackbar?.show(msg)
-                        },
-                    )
-                }
-                DisposableEffect(Unit) { onDispose { speech.release() } }
-                val micLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission(),
-                ) { granted ->
-                    if (granted) {
-                        listening = true
-                        speech.start()
-                    } else {
-                        snackbar?.show("需要麦克风权限才能语音输入")
-                    }
-                }
-                ComposerActionButton(
-                    icon = AppIcons.Mic,
-                    description = if (listening) "聆听中…" else "语音输入",
-                    enabled = !listening,
-                    onClick = {
-                        if (!speech.hasPermission()) {
-                            micLauncher.launch(speech.requiredPermission())
-                        } else {
-                            listening = true
-                            speech.start()
-                        }
-                    },
-                )
             }
 
             when (mode) {
