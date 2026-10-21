@@ -90,6 +90,12 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <!-- 语音输入交互 Demo：长按录音 → 音量气泡 → 上滑预览/取消 → 松手分发 -->
+        <activity
+            android:name=".ui.voice.VoiceDemoActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".device.a11y.AgentAccessibilityService"
             android:exported="true"
