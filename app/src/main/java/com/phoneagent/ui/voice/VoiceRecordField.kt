@@ -10,12 +10,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,7 +42,6 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -54,17 +50,14 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.EaseOut
 import kotlinx.coroutines.isActive
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** 松手后的去向：原地松手直接发送；上滑至左区松手进入预览编辑；上滑至右区松手取消 */
@@ -83,21 +76,14 @@ private val ZONE_OFFSET_DP = 112.dp         // 左右分区中心相对气泡中
 private const val SILENCE_LEVEL = 0.08f     // 静音电平阈值（监听态判定）
 private const val SILENCE_MS = 300L         // 静音持续时长（纳秒比较用，单位 ms）
 
-private val BubbleDiameter = 88.dp          // 气泡本体直径
-private val BubbleGapAboveField = 24.dp     // 气泡底部距输入框顶部的间隙
-private val RingMin = 44.dp                 // 外圈环最小半径
-private val RingMax = 62.dp                 // 外圈环最大半径（随音量）
-private val PressCircleDiameter = 150.dp    // 按压处深色径向渐变圆直径
-private val TipGapAboveBubble = 12.dp       // 提示胶囊距气泡顶部间隙
+private val GlowCoreBlue = Color(0xFF5B8DEF)    // 光晕核心蓝（参考图取色）
+private val GlowPreviewGreen = Color(0xFF3FBB8F) // 预览态光晕
+private val CancelRed = Color(0xFFE65C53)        // 取消态光晕
 
-private val CancelRed = Color(0xFFE65C53)   // 取消态主色（规格指定）
-private val TipBgNeutral = Color(0xFF454545) // 提示胶囊中性底色（规格指定）
-private val BubbleCenterNeutral = Color(0xFF8E939B)
-private val BubbleEdgeNeutral = Color(0xFF53575E)
-private val BubbleCenterCancel = Color(0xFFEF7A72)
-private val BubbleEdgeCancel = Color(0xFFC94740)
-private val BubbleCenterPreview = Color(0xFF7FA0E8)
-private val BubbleEdgePreview = Color(0xFF46689F)
+private val DotsCount = 36                // 声波圆点数量
+private val DotsSpacing = 5.dp            // 圆点间距
+private val DotsYFromBottom = 44.dp       // 圆点条距屏幕底部
+private val TipYFromBottom = 96.dp        // 提示文字距屏幕底部
 
 /** Popup 定位到窗口 (0,0) 并铺满：独立 window 层级，键盘弹出/列表滚动不会裁剪或抖动浮层 */
 private object FullWindowPopupProvider : PopupPositionProvider {
@@ -138,7 +124,6 @@ fun VoiceRecordGestureBox(
     var hoverZone by remember { mutableStateOf(Zone.NONE) }
     var slideActive by remember { mutableStateOf(false) }
     var fieldBounds by remember { mutableStateOf(Rect.Zero) }
-    var pressPoint by remember { mutableStateOf(Offset.Zero) } // 窗口坐标（root 坐标）
     val haptic = LocalHapticFeedback.current
     val currentEngine by rememberUpdatedState(engine)
 
@@ -190,7 +175,6 @@ fun VoiceRecordGestureBox(
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            pressPoint = down.position + fieldBounds.topLeft
                             // 250ms 内抬起 → 普通点击，唤出键盘；超时未抬起 → 进入录音；
                             // 期间事件被系统消费（来电/弹窗）→ 视为取消
                             var tap = false
@@ -293,8 +277,6 @@ fun VoiceRecordGestureBox(
 
     if (recState == RecState.RECORDING) {
         RecordingOverlay(
-            anchor = fieldBounds,
-            pressPoint = pressPoint,
             level = smoothedLevel,
             silent = silent,
             frameNanos = frameNanos,
@@ -368,11 +350,12 @@ fun VoiceRecordField(
     }
 }
 
-/** 录音浮层：全屏透明 Popup，按压深色圆 + 音量气泡 + 提示胶囊 + 左右分区 */
+/**
+ * 录音浮层：全屏透明 Popup，参考图样式 ——
+ * 底部锚定的大半径蓝色光晕（随音量呼吸、分区变色）+ 居中白色提示文字 + 底部圆点声波条。
+ */
 @Composable
 private fun RecordingOverlay(
-    anchor: Rect,
-    pressPoint: Offset,
     level: Float,
     silent: Boolean,
     frameNanos: Long,
@@ -383,18 +366,12 @@ private fun RecordingOverlay(
         popupPositionProvider = FullWindowPopupProvider,
         properties = PopupProperties(focusable = false),
     ) {
-        val density = LocalDensity.current
-        val primary = MaterialTheme.colorScheme.primary
-        // 入场：opacity 0→1 + scale 0.82→1.0，160ms（规格第一节.1）
-        val enterScale = remember { Animatable(0.82f) }
+        // 入场：整体淡入 160ms（光晕从底部"升起"的观感由渐变本身给出，不做位移）
         val enterAlpha = remember { Animatable(0f) }
-        LaunchedEffect(Unit) {
-            enterScale.animateTo(1f, tween(160, easing = EaseOut))
-        }
         LaunchedEffect(Unit) {
             enterAlpha.animateTo(1f, tween(160, easing = EaseOut))
         }
-        // 状态切换 120ms 渐变（规格第一节.2：禁止瞬间跳变）
+        // 分区着色：0 中性 / 1 取消 / -1 预览，120ms 渐变（禁止瞬间跳变）
         val zoneTint by animateFloatAsState(
             targetValue = when (hoverZone) {
                 Zone.CANCEL -> 1f
@@ -404,208 +381,81 @@ private fun RecordingOverlay(
             animationSpec = tween(120),
             label = "zoneTint",
         )
-        val zonesAlpha by animateFloatAsState(
-            targetValue = if (slideActive) 1f else 0f,
-            animationSpec = tween(120),
-            label = "zonesAlpha",
-        )
-
-        val bubbleCenter = with(density) {
-            Offset(
-                anchor.center.x,
-                anchor.top - (BubbleGapAboveField + BubbleDiameter / 2).toPx(),
-            )
-        }
 
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    alpha = enterAlpha.value
-                    scaleX = enterScale.value
-                    scaleY = enterScale.value
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                        bubbleCenter.x / size.width,
-                        bubbleCenter.y / size.height,
-                    )
-                },
+                .graphicsLayer { alpha = enterAlpha.value },
         ) {
-            // 按压区域：150dp 径向渐变深色圆，随浮层淡入淡出，无位移、无系统 Ripple
+            // 底部光晕：圆心沉到屏幕底边之外，径向渐变三段过渡；音量驱动轻微呼吸
             Canvas(Modifier.fillMaxSize()) {
-                val r = PressCircleDiameter.toPx() / 2
+                val baseR = size.width * 0.72f
+                val breathe = 1f + level * 0.06f
+                val core = when {
+                    zoneTint > 0.5f -> CancelRed
+                    zoneTint < -0.5f -> GlowPreviewGreen
+                    else -> GlowCoreBlue
+                }
+                val center = Offset(size.width / 2, size.height + baseR * 0.45f)
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x33000000), Color.Transparent),
-                        center = pressPoint,
+                        colors = listOf(
+                            core.copy(alpha = 0.95f),
+                            core.copy(alpha = 0.55f),
+                            Color.Transparent,
+                        ),
+                        center = center,
+                        radius = baseR * breathe,
+                    ),
+                    radius = baseR * breathe,
+                    center = center,
+                )
+            }
+
+            // 圆点声波条：中央驻波，半径随音量起伏；静音时压平成静止小点
+            Canvas(Modifier.fillMaxSize()) {
+                val spacing = DotsSpacing.toPx()
+                val totalW = (DotsCount - 1) * spacing
+                val startX = (size.width - totalW) / 2
+                val y = size.height - DotsYFromBottom.toPx()
+                val baseR = 1.6.dp.toPx()
+                val phase = frameNanos / 1_000_000_000f
+                val mid = (DotsCount - 1) / 2f
+                for (i in 0 until DotsCount) {
+                    val dist = (i - mid) / mid // 0 中央 → 1 端点
+                    val falloff = 1f - dist * 0.75f
+                    val wave = if (silent) 0f
+                    else 0.5f + 0.5f * sin(i * 0.55f - phase * 7f)
+                    val r = baseR * (0.55f + 1.6f * falloff * (0.25f + 0.75f * level) * wave)
+                    drawCircle(
+                        color = Color.White.copy(alpha = (0.35f + 0.65f * falloff).coerceAtMost(1f)),
                         radius = r,
-                    ),
-                    radius = r,
-                    center = pressPoint,
-                )
-            }
-
-            // 气泡：外圈描边环（44~62dp，透明度 0.2~0.55）+ 内圆径向渐变（缩放 0.95~1.15）
-            Canvas(Modifier.fillMaxSize()) {
-                val baseR = (BubbleDiameter / 2).toPx()
-                val ringR = lerp(RingMin, RingMax, level).toPx()
-                val ringAlpha = androidx.compose.ui.util.lerp(0.2f, 0.55f, level)
-                val innerScale = androidx.compose.ui.util.lerp(0.95f, 1.15f, level)
-                val centerColor = when {
-                    zoneTint > 0.5f -> BubbleCenterCancel
-                    zoneTint < -0.5f -> BubbleCenterPreview
-                    else -> BubbleCenterNeutral
-                }
-                val edgeColor = when {
-                    zoneTint > 0.5f -> BubbleEdgeCancel
-                    zoneTint < -0.5f -> BubbleEdgePreview
-                    else -> BubbleEdgeNeutral
-                }
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(centerColor, edgeColor),
-                        center = bubbleCenter,
-                        radius = baseR * innerScale,
-                    ),
-                    radius = baseR * innerScale,
-                    center = bubbleCenter,
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = ringAlpha),
-                    radius = ringR,
-                    center = bubbleCenter,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5.dp.toPx()),
-                )
-            }
-
-            // 麦克风图标
-            Icon(
-                imageVector = AppIcons.Mic,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier
-                    .offset {
-                        val icon = 26.dp.toPx()
-                        IntOffset(
-                            (bubbleCenter.x - icon / 2).roundToInt(),
-                            (bubbleCenter.y - icon / 2).roundToInt(),
-                        )
-                    }
-                    .size(26.dp),
-            )
-
-            // 监听态：静音持续 300ms 后，小波浪从左到右循环移动（规格第五节.4）
-            if (silent) {
-                Canvas(
-                    Modifier
-                        .offset {
-                            IntOffset(
-                                (bubbleCenter.x - 32.dp.toPx()).roundToInt(),
-                                (bubbleCenter.y - 34.dp.toPx()).roundToInt(),
-                            )
-                        }
-                        .size(64.dp, 10.dp),
-                ) {
-                    val phase = frameNanos / 1_000_000_000f * 4f
-                    val step = 3.dp.toPx()
-                    var x = 0f
-                    val path = androidx.compose.ui.graphics.Path()
-                    while (x <= size.width) {
-                        val y = size.height / 2 + sin(x / 9.dp.toPx() + phase * 6f) * size.height / 2.4f
-                        if (x == 0f) path.moveTo(x, y) else path.lineTo(x, y)
-                        x += step
-                    }
-                    drawPath(
-                        path,
-                        color = Color.White.copy(alpha = 0.85f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()),
+                        center = Offset(startX + i * spacing, y),
                     )
                 }
             }
 
-            // 提示胶囊：气泡上方 12dp，深色底 #454545，取消态 #E65C53
-            val tipText = when (hoverZone) {
-                Zone.CANCEL -> "松开手指，取消发送"
-                Zone.PREVIEW -> "松手后可编辑文字"
-                Zone.NONE -> if (silent) "没听到声音" else "松手发送 · 上滑预览或取消"
-            }
-            val tipBg = when {
-                hoverZone == Zone.CANCEL -> CancelRed
-                hoverZone == Zone.PREVIEW -> primary
-                else -> TipBgNeutral
+            // 提示文字：白色居中，位于声波条上方
+            val tipText = when {
+                hoverZone == Zone.CANCEL -> "松开手指，取消发送"
+                hoverZone == Zone.PREVIEW -> "松手后可编辑文字"
+                slideActive -> "左滑预览 · 右滑取消"
+                silent -> "没听到声音"
+                else -> "松手发送 · 上滑预览或取消"
             }
             Box(
-                Modifier
-                    .offset {
-                        val tipY = bubbleCenter.y -
-                            (BubbleDiameter / 2 + TipGapAboveBubble + 24.dp).toPx()
-                        IntOffset(
-                            (bubbleCenter.x - 88.dp.toPx()).roundToInt(),
-                            tipY.roundToInt(),
-                        )
-                    }
-                    .size(176.dp, 24.dp)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                    .background(tipBg),
-                contentAlignment = Alignment.Center,
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter,
             ) {
                 Text(
                     text = tipText,
                     color = Color.White,
-                    fontSize = 11.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                )
-            }
-
-            // 上滑后的左右分区：左「预览编辑」右「取消发送」，悬停高亮
-            val zoneOffsetPx = with(density) { ZONE_OFFSET_DP.toPx() }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = zonesAlpha },
-            ) {
-                ZonePill(
-                    label = "预览编辑",
-                    center = Offset(bubbleCenter.x - zoneOffsetPx, bubbleCenter.y),
-                    selected = hoverZone == Zone.PREVIEW,
-                    selectedColor = primary,
-                )
-                ZonePill(
-                    label = "取消发送",
-                    center = Offset(bubbleCenter.x + zoneOffsetPx, bubbleCenter.y),
-                    selected = hoverZone == Zone.CANCEL,
-                    selectedColor = CancelRed,
+                    modifier = Modifier.padding(bottom = TipYFromBottom),
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ZonePill(
-    label: String,
-    center: Offset,
-    selected: Boolean,
-    selectedColor: Color,
-) {
-    Box(
-        Modifier
-            .offset {
-                IntOffset(
-                    (center.x - 48.dp.toPx()).roundToInt(),
-                    (center.y - 20.dp.toPx()).roundToInt(),
-                )
-            }
-            .size(96.dp, 40.dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
-            .background(if (selected) selectedColor else Color(0x99000000)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-        )
     }
 }
