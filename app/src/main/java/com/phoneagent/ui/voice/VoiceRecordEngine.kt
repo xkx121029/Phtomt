@@ -34,11 +34,13 @@ data class VoiceCapture(
  * 约定：
  * - [level] 返回已做 dB 归一化的原始电平 0..1，一阶低通平滑由 UI 帧循环完成（见组件注释）；
  * - [finalText] 为松手后异步产出的最终识别文本（start 时必须清空）；
+ * - [error] 为中文错误消息（识别服务缺失/出错/没听清等），先于 finalText 到达时由调用方直接提示；
  * - [stop] 立即同步返回捕获元数据，识别文本允许晚于松手到达（浮层不等待识别结果）。
  */
 interface VoiceRecordEngine {
     val level: StateFlow<Float>
     val finalText: StateFlow<String?>
+    val error: StateFlow<String?>
     fun start(): Boolean
     fun stop(): VoiceCapture?
     fun cancel()
@@ -55,6 +57,9 @@ class FakeVoiceEngine : VoiceRecordEngine {
 
     private val _finalText = MutableStateFlow<String?>(null)
     override val finalText: StateFlow<String?> = _finalText
+
+    private val _error = MutableStateFlow<String?>(null)
+    override val error: StateFlow<String?> = _error
 
     private var scope: CoroutineScope? = null
     private var startAt = 0L
@@ -114,11 +119,30 @@ class SpeechRecognizerEngine(private val context: Context) : VoiceRecordEngine {
     private val _finalText = MutableStateFlow<String?>(null)
     override val finalText: StateFlow<String?> = _finalText
 
+    private val _error = MutableStateFlow<String?>(null)
+    override val error: StateFlow<String?> = _error
+
+    // recognizer 复用单例：每次 start 都新建会导致部分 ROM 泄漏/拒绝服务
     private var recognizer: SpeechRecognizer? = null
     private var fallbackJob: Job? = null
     private var startAt = 0L
     private var cancelled = false
     private var lastRmsAt = 0L
+    private var lastPartial: String? = null
+
+    /** SpeechRecognizer 错误码 → 中文提示 */
+    private fun errorMessage(code: Int): String = when (code) {
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "网络超时，请检查网络后重试"
+        SpeechRecognizer.ERROR_NETWORK -> "网络错误，请检查网络后重试"
+        SpeechRecognizer.ERROR_AUDIO -> "录音出错，请检查麦克风"
+        SpeechRecognizer.ERROR_SERVER -> "识别服务出错，请稍后重试"
+        SpeechRecognizer.ERROR_CLIENT -> "设备缺少可用的语音识别服务组件"
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "没听到说话声"
+        SpeechRecognizer.ERROR_NO_MATCH -> "没听清，请靠近一点再说一次"
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "识别服务繁忙，请稍后重试"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少麦克风权限"
+        else -> "识别失败（错误码 $code）"
+    }
 
     private val listener = object : RecognitionListener {
         override fun onRmsChanged(rmsdB: Float) {
@@ -127,42 +151,67 @@ class SpeechRecognizerEngine(private val context: Context) : VoiceRecordEngine {
             _level.value = ((rmsdB + 60f) / 60f).coerceIn(0f, 1f)
         }
 
+        override fun onPartialResults(partialResults: Bundle?) {
+            if (cancelled) return
+            // 记录最后一次部分识别：最终结果为空时兜底
+            lastPartial = partialResults
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+        }
+
         override fun onResults(results: Bundle) {
             if (cancelled) return
-            _finalText.value = results
+            val text = results
                 .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull().orEmpty()
+                ?.firstOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: lastPartial?.takeIf { it.isNotBlank() }
+            if (text == null) {
+                _error.value = "没听清，请再试一次"
+            } else {
+                _finalText.value = text
+            }
             _level.value = 0f
         }
 
         override fun onError(error: Int) {
-            if (!cancelled) _finalText.value = "" // 识别失败：给空串，由调用方提示
+            if (cancelled) return
+            _error.value = errorMessage(error)
+            _level.value = 0f
         }
 
         override fun onReadyForSpeech(params: Bundle?) {}
         override fun onBeginningOfSpeech() {}
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
-        override fun onPartialResults(partialResults: Bundle?) {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
     override fun start(): Boolean {
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) return false
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            _error.value = "系统没有可用的语音识别服务（国产 ROM 普遍缺少 Google 语音组件）"
+            return false
+        }
         cancelled = false
         _finalText.value = null
+        _error.value = null
+        lastPartial = null
         _level.value = 0f
         lastRmsAt = SystemClock.elapsedRealtime()
         startAt = lastRmsAt
-        recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+        val rec = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context)
+            .also { recognizer = it }
+        rec.apply {
             setRecognitionListener(listener)
             startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             })
         }
-        // 兜底：部分 ROM 不回调 onRmsChanged，用轻脉冲动效保持气泡活性
+        // 兜底：部分 ROM 不回调 onRmsChanged，用轻脉冲动效保持光晕活性
+        fallbackJob?.cancel()
         fallbackJob = CoroutineScope(Dispatchers.Default + Job()).launch {
             while (isActive) {
                 if (SystemClock.elapsedRealtime() - lastRmsAt > 400) {
