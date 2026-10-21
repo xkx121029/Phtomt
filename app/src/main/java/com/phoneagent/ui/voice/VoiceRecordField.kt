@@ -110,37 +110,35 @@ private object FullWindowPopupProvider : PopupPositionProvider {
 }
 
 /**
- * 语音输入输入框：长按 250ms 进入录音 → 气泡随音量鼓动 → 上滑出现「预览/取消」分区 → 松手分发结果。
+ * 语音录入手势容器：包裹任意内容，提供「长按 250ms 录音 → 音量气泡 → 上滑预览/取消 → 松手分发」交互。
  *
  * 解耦点：
  * - 音频采集与识别全部在 [VoiceRecordEngine] 实现里，本组件不出现 AudioRecord / ASR / 网络；
  * - [onFinishRecord] 只拿到 (filePath, durationMs, mode)，识别文本经 engine.finalText 异步到达，
  *   由调用方决定「自动发送」还是「填入输入框预览编辑」；
- * - 手势规则：键盘收起时长按=录音、短按=唤出键盘；键盘拉起后语音逻辑完全不生效（让位系统文本选择）。
+ * - 手势规则：[voiceEnabled] 为 false 时手势层不存在（键盘拉起后长按让位系统文本选择）。
  *
  * 其余调参常量见文件顶部「调参区」。
  */
 @Composable
-fun VoiceRecordField(
+fun VoiceRecordGestureBox(
     engine: VoiceRecordEngine,
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: (String) -> Unit,
+    voiceEnabled: Boolean,
+    /** 短按（未达长按阈值抬起）回调：通常用于唤出键盘 */
+    onTap: () -> Unit,
     onFinishRecord: (filePath: String?, durationMs: Long, mode: VoiceFinishMode) -> Unit,
     modifier: Modifier = Modifier,
-    placeholder: String = "按住说话",
     onStartRecord: () -> Unit = {},
     onCancelRecord: () -> Unit = {},
     onRecordTooShort: () -> Unit = {},
     onStartFailed: () -> Unit = {},
+    content: @Composable () -> Unit,
 ) {
     var recState by remember { mutableStateOf(RecState.IDLE) }
     var hoverZone by remember { mutableStateOf(Zone.NONE) }
     var slideActive by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
     var fieldBounds by remember { mutableStateOf(Rect.Zero) }
     var pressPoint by remember { mutableStateOf(Offset.Zero) } // 窗口坐标（root 坐标）
-    val focusRequester = remember { FocusRequester() }
     val haptic = LocalHapticFeedback.current
     val currentEngine by rememberUpdatedState(engine)
 
@@ -182,39 +180,10 @@ fun VoiceRecordField(
     Box(
         modifier = modifier.onGloballyPositioned { fieldBounds = it.boundsInRoot() },
     ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .onFocusChanged { focused = it.isFocused },
-            textStyle = TextStyle(
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 15.sp,
-            ),
-            decorationBox = { inner ->
-                Box(
-                        Modifier
-                            .clip(RoundedCornerShape(AppRadii.Inline))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                    ) {
-                    Box(Modifier.padding(AppSpacing.Md)) {
-                        if (value.isEmpty()) {
-                            Text(
-                                text = if (focused) placeholder else "$placeholder · 长按语音",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        inner()
-                    }
-                }
-            },
-        )
+        content()
 
-        // 长按手势拦截层：仅在键盘收起时存在 —— 键盘拉起后长按走系统文本选择（交互确认项）
-        if (!focused) {
+        // 长按手势拦截层：仅 voiceEnabled 时存在 —— 键盘拉起后长按走系统文本选择（交互确认项）
+        if (voiceEnabled) {
             Box(
                 Modifier
                     .matchParentSize()
@@ -240,7 +209,7 @@ fun VoiceRecordField(
                                     }
                                 }
                             }
-                            if (tap) focusRequester.requestFocus()
+                            if (tap) onTap()
                             if (tap || lost) return@awaitEachGesture
                             if (!currentEngine.start()) {
                                 onStartFailed() // 权限/识别服务不可用，由调用方引导授权
@@ -331,6 +300,70 @@ fun VoiceRecordField(
             frameNanos = frameNanos,
             slideActive = slideActive,
             hoverZone = hoverZone,
+        )
+    }
+}
+
+/**
+ * 语音输入输入框：[VoiceRecordGestureBox] 的输入框特例，自带 BasicTextField。
+ * 手势规则：键盘收起时长按=录音、短按=唤出键盘；键盘拉起后语音逻辑完全不生效。
+ */
+@Composable
+fun VoiceRecordField(
+    engine: VoiceRecordEngine,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSend: (String) -> Unit,
+    onFinishRecord: (filePath: String?, durationMs: Long, mode: VoiceFinishMode) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "按住说话",
+    onStartRecord: () -> Unit = {},
+    onCancelRecord: () -> Unit = {},
+    onRecordTooShort: () -> Unit = {},
+    onStartFailed: () -> Unit = {},
+) {
+    var focused by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    VoiceRecordGestureBox(
+        engine = engine,
+        voiceEnabled = !focused,
+        onTap = { focusRequester.requestFocus() },
+        onFinishRecord = onFinishRecord,
+        modifier = modifier,
+        onStartRecord = onStartRecord,
+        onCancelRecord = onCancelRecord,
+        onRecordTooShort = onRecordTooShort,
+        onStartFailed = onStartFailed,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { focused = it.isFocused },
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+            ),
+            decorationBox = { inner ->
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(AppRadii.Inline))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                ) {
+                    Box(Modifier.padding(AppSpacing.Md)) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = if (focused) placeholder else "$placeholder · 长按语音",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        inner()
+                    }
+                }
+            },
         )
     }
 }
