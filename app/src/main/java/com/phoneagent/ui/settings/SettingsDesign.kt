@@ -1,5 +1,6 @@
 package com.phoneagent.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,8 +37,8 @@ import com.phoneagent.ui.components.AppCardBorder
 import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
-import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorderStroke
 
 // ========== 设置页设计语言（Material 3 Expressive） ==========
@@ -310,5 +311,44 @@ internal fun LabeledField(label: String, content: @Composable () -> Unit) {
             modifier = Modifier.padding(bottom = 6.dp),
         )
         content()
+    }
+}
+
+/**
+ * 选择芯片：设置页所有「单选胶囊」的统一语言（提示词语言 / 更新渠道等）。
+ *
+ * 选中 = 主色 14% 底 + 1.5dp 主色描边 + 主色文字；未选中 = 通用卡片面 + 发丝描边。
+ * 与主题页 ThemeOption / PaletteOption 的选择语言同源——此前提示词语言与更新渠道
+ * 各写一套（实底 primaryContainer vs 主色描边），选中观感在两页之间对不上，故收口于此。
+ */
+@Composable
+internal fun SettingsChoiceChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val buzz = rememberHapticClick()
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Tile),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                 else appBorderStroke(1.dp, AppCardBorder),
+        modifier = modifier.clickable {
+            buzz()
+            onClick()
+        },
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+        }
     }
 }

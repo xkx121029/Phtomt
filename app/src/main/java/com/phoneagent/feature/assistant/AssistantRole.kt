@@ -43,4 +43,18 @@ object AssistantRole {
             ?.let { role -> runCatching { role.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT) }.getOrNull() }
         return intent
     }
+
+    /**
+     * 兜底跳转：系统授权框拿不到（API < 29 / 机型不支持该角色 / createRequestRoleIntent 抛异常）时，
+     * 引导用户到系统「数字助理应用」设置页手动指定；连该页也没有的 ROM 再回退到系统设置首页。
+     * 返回是否成功拉起了任意一页。
+     */
+    fun openAssistantSettings(context: Context): Boolean =
+        listOf(
+            Intent(android.provider.Settings.ACTION_VOICE_INPUT_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS),
+        ).any { intent ->
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(intent) }.isSuccess
+        }
 }

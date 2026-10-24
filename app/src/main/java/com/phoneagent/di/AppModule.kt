@@ -33,7 +33,7 @@ private val appModule = module {
     single { MemoryStore(androidContext()) }
     single { DocumentEngine(androidContext()) }
     single { TermuxBridge(androidContext()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get(), get()) }
+    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get(), get(), get()) }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====
@@ -60,6 +60,12 @@ private val appModule = module {
 
     // 自动更新：查询官网版本、下载安装包，优先走 shell 静默装（无线 ADB / Shizuku）
     single { UpdateManager(androidContext(), get<ShizukuManager>(), get<AdbWirelessTransport>()) }
+
+    // 编码运行时管理器：Node 宿主随主 APK 内置（app/src/main/jniLibs），只做就绪探测
+    single { com.phoneagent.coding.CodingRuntimeManager(androidContext()) }
+
+    // 编码 agent 委托桥（Superagent 融合 Phase 4）：引擎路由与 Phase 5 编码页共享同一实例
+    single { com.phoneagent.engine.coding.CodingAgentBridge(androidContext(), get(), get()) }
 
     viewModel {
         MainViewModel(

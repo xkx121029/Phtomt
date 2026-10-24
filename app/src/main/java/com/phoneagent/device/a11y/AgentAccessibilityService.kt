@@ -3,6 +3,7 @@ package com.phoneagent.device.a11y
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.annotation.SuppressLint
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -55,12 +56,20 @@ class AgentAccessibilityService : AccessibilityService() {
 
         /** 无障碍服务是否已在系统设置中开启 */
         fun isServiceEnabled(context: Context): Boolean {
-            val expected = context.packageName + "/" + AgentAccessibilityService::class.java.name
             val enabled = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ) ?: return false
-            return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+            val pkg = context.packageName
+            val cls = AgentAccessibilityService::class.java.name
+            // 系统设置里手动开启通常写入全量形式（pkg/pkg.cls），但部分 ROM、备份恢复或
+            // 第三方工具会写短形式（pkg/.cls）或大小写不一致——逐条反解成 ComponentName
+            // 再比对，避免「开关明明开着却检测为关」
+            return enabled.split(':').any { entry ->
+                val cn = ComponentName.unflattenFromString(entry.trim()) ?: return@any false
+                cn.packageName.equals(pkg, ignoreCase = true) &&
+                    cn.className.equals(cls, ignoreCase = true)
+            }
         }
 
         /** 跳转无障碍设置页 */

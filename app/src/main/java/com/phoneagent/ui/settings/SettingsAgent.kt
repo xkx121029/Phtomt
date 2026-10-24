@@ -1,9 +1,6 @@
 package com.phoneagent.ui.settings
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,12 +9,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.LocalNavClearance
-import com.phoneagent.ui.theme.AppRadii
 
 /**
  * 运行与提示词页。
@@ -47,13 +41,15 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             .verticalScroll(rememberScrollState())
             .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         SettingsPageHeader(
             title = "运行与提示词",
             onBack = onBack,
             subtitle = "控制 Agent 的执行方式与发给模型的提示词",
         )
+        // 与全设置流程同一条骨架节奏：页头后 20 / 分区之间 16 / 结尾 28（不再用 spacedBy，
+        // 否则页头与首区之间只有 16，和其他二级页对不上）
+        Spacer(Modifier.height(20.dp))
 
         SettingsSection(title = "运行参数", subtitle = "步数与悬浮窗", tone = SettingsTone.Cool) {
             SettingsToggleRow(
@@ -90,6 +86,8 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             }
         }
 
+        Spacer(Modifier.height(16.dp))
+
         SettingsSection(title = "页面记忆", subtitle = "任务执行时自动记忆页面热点与跳转路径", tone = SettingsTone.Cool) {
             SettingsToggleRow(
                 title = "启用页面记忆",
@@ -100,6 +98,8 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 save()
             }
         }
+
+        Spacer(Modifier.height(16.dp))
 
         SettingsSection(title = "提示词", subtitle = "提示词语言与系统提示词", tone = SettingsTone.Cool) {
             Column(Modifier.padding(horizontal = 18.dp)) {
@@ -119,29 +119,16 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     listOf("CN" to "中文", "EN" to "English").forEach { (code, label) ->
-                        val selected = st.promptLanguage == code
-                        Surface(
-                            shape = RoundedCornerShape(AppRadii.Tile),
-                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant,
-                            border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable {
-                                    st.promptLanguage = code
-                                    save()
-                                },
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                )
-                            }
-                        }
+                        // 单选胶囊统一走 SettingsChoiceChip（与更新渠道/主题选择同一套语言）
+                        SettingsChoiceChip(
+                            label = label,
+                            selected = st.promptLanguage == code,
+                            onClick = {
+                                st.promptLanguage = code
+                                save()
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
                 Spacer(Modifier.height(14.dp))

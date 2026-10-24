@@ -1,0 +1,1002 @@
+[
+  {
+    "name": "tools-unicodetools",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-unicodetools",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-unicodetools",
+    "commit": {
+      "sha": "86d89f0c5c459003e3616c90e48353894e546193",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/86d89f0c5c459003e3616c90e48353894e546193"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXVuaWNvZGV0b29scw=="
+  },
+  {
+    "name": "tools-release-58",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-58",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-58",
+    "commit": {
+      "sha": "56b8004cfdf5da18ef6420258b3ed4401d96f958",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/56b8004cfdf5da18ef6420258b3ed4401d96f958"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTg="
+  },
+  {
+    "name": "tools-release-57",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-57",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-57",
+    "commit": {
+      "sha": "3d2a24da5b9a39ef614a832c77aae8fb93d5cb85",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/3d2a24da5b9a39ef614a832c77aae8fb93d5cb85"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTc="
+  },
+  {
+    "name": "tools-release-56",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-56",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-56",
+    "commit": {
+      "sha": "da93ebafda7e722d488bc9d5ce734216f339b393",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/da93ebafda7e722d488bc9d5ce734216f339b393"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTY="
+  },
+  {
+    "name": "tools-release-55",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-55",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-55",
+    "commit": {
+      "sha": "cd1851be466374aa9090cff134db255454acf233",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/cd1851be466374aa9090cff134db255454acf233"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTU="
+  },
+  {
+    "name": "tools-release-54",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-54",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-54",
+    "commit": {
+      "sha": "f687a15b9592f98e6ae6537a5bb7c055af9423d5",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/f687a15b9592f98e6ae6537a5bb7c055af9423d5"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTQ="
+  },
+  {
+    "name": "tools-release-53",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-53",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-53",
+    "commit": {
+      "sha": "cb88896dff9bae51a29e8fa16cf45d31b8579310",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/cb88896dff9bae51a29e8fa16cf45d31b8579310"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTM="
+  },
+  {
+    "name": "tools-release-52",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-52",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-52",
+    "commit": {
+      "sha": "7acc03d8d522debbec9c4217c00cdfab4063eb5a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/7acc03d8d522debbec9c4217c00cdfab4063eb5a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTI="
+  },
+  {
+    "name": "tools-release-51",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-51",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-51",
+    "commit": {
+      "sha": "52762fcad5bc353e5024007cd6208942e1172a01",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/52762fcad5bc353e5024007cd6208942e1172a01"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTE="
+  },
+  {
+    "name": "tools-release-50",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-50",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-50",
+    "commit": {
+      "sha": "61898749088a9f66efcfbea16e6b24f7c97cbaad",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/61898749088a9f66efcfbea16e6b24f7c97cbaad"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNTA="
+  },
+  {
+    "name": "tools-release-49-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-49-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-49-1",
+    "commit": {
+      "sha": "105626f0f7e89a7a7e7d9f2fb748a0865e6a4dc8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/105626f0f7e89a7a7e7d9f2fb748a0865e6a4dc8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNDktMQ=="
+  },
+  {
+    "name": "tools-release-4-8",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-4-8",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-4-8",
+    "commit": {
+      "sha": "ea68faad747db5c1c1ebb3fb123b8cac546a5e5a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ea68faad747db5c1c1ebb3fb123b8cac546a5e5a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNC04"
+  },
+  {
+    "name": "tools-release-4-6",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-release-4-6",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-release-4-6",
+    "commit": {
+      "sha": "65a70a4a2dfc9724b49166372f989d1570db1ce3",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/65a70a4a2dfc9724b49166372f989d1570db1ce3"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXJlbGVhc2UtNC02"
+  },
+  {
+    "name": "tools-post-cvs2svn-cleanedup",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-post-cvs2svn-cleanedup",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-post-cvs2svn-cleanedup",
+    "commit": {
+      "sha": "ab70952faf12d32bf8284f03d31f1356519f329c",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ab70952faf12d32bf8284f03d31f1356519f329c"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXBvc3QtY3ZzMnN2bi1jbGVhbmVkdXA="
+  },
+  {
+    "name": "tools-post-cvs2svn",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-post-cvs2svn",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-post-cvs2svn",
+    "commit": {
+      "sha": "9faf4228400cf33a053311289fc960055f8cbe0b",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/9faf4228400cf33a053311289fc960055f8cbe0b"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLXBvc3QtY3ZzMnN2bg=="
+  },
+  {
+    "name": "tools-milestone-49-0-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/tools-milestone-49-0-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/tools-milestone-49-0-2",
+    "commit": {
+      "sha": "98c4ad90f66722a4c3f1ebd292ec42ec56bb5aec",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/98c4ad90f66722a4c3f1ebd292ec42ec56bb5aec"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3Rvb2xzLW1pbGVzdG9uZS00OS0wLTI="
+  },
+  {
+    "name": "release-79.1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-79.1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-79.1",
+    "commit": {
+      "sha": "ddc6b66926bfac6036144ca9902992a0d6d50af9",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ddc6b66926bfac6036144ca9902992a0d6d50af9"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzkuMQ=="
+  },
+  {
+    "name": "release-79.1rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-79.1rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-79.1rc",
+    "commit": {
+      "sha": "c4eb46bbb0da3b06ed1f6975babddd593ce4514e",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c4eb46bbb0da3b06ed1f6975babddd593ce4514e"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzkuMXJj"
+  },
+  {
+    "name": "release-78.3",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-78.3",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-78.3",
+    "commit": {
+      "sha": "21d1eb0f306e1141c10931e914dfc038c06121da",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/21d1eb0f306e1141c10931e914dfc038c06121da"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzguMw=="
+  },
+  {
+    "name": "release-78.2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-78.2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-78.2",
+    "commit": {
+      "sha": "f1b3db8ecd39d5b3a6eff4d5641b176c7f914dfb",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/f1b3db8ecd39d5b3a6eff4d5641b176c7f914dfb"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzguMg=="
+  },
+  {
+    "name": "release-78.1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-78.1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-78.1",
+    "commit": {
+      "sha": "049e0d6a420629ac7db77256987d083a563287b5",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/049e0d6a420629ac7db77256987d083a563287b5"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzguMQ=="
+  },
+  {
+    "name": "release-78.1rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-78.1rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-78.1rc",
+    "commit": {
+      "sha": "cd53e184b1d5fed67ffc88e3c74ae9d81abf84d5",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/cd53e184b1d5fed67ffc88e3c74ae9d81abf84d5"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzguMXJj"
+  },
+  {
+    "name": "release-77-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-77-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-77-rc",
+    "commit": {
+      "sha": "950ddc299b62c922e396c922dcbe61077e1ccc97",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/950ddc299b62c922e396c922dcbe61077e1ccc97"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzctcmM="
+  },
+  {
+    "name": "release-77-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-77-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-77-1",
+    "commit": {
+      "sha": "457157a92aa053e632cc7fcfd0e12f8a943b2d11",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/457157a92aa053e632cc7fcfd0e12f8a943b2d11"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzctMQ=="
+  },
+  {
+    "name": "release-76-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-76-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-76-rc",
+    "commit": {
+      "sha": "61bbeb88989e9f837032dbd20cbabb5903b63558",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/61bbeb88989e9f837032dbd20cbabb5903b63558"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzYtcmM="
+  },
+  {
+    "name": "release-76-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-76-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-76-1",
+    "commit": {
+      "sha": "8eca245c7484ac6cc179e3e5f7c1ea7680810f39",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/8eca245c7484ac6cc179e3e5f7c1ea7680810f39"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzYtMQ=="
+  },
+  {
+    "name": "release-75-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-75-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-75-rc",
+    "commit": {
+      "sha": "97335dfa7e323f41b46918bbf5cad95c5e521268",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/97335dfa7e323f41b46918bbf5cad95c5e521268"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzUtcmM="
+  },
+  {
+    "name": "release-75-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-75-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-75-1",
+    "commit": {
+      "sha": "7750081bda4b3bc1768ae03849ec70f67ea10625",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/7750081bda4b3bc1768ae03849ec70f67ea10625"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzUtMQ=="
+  },
+  {
+    "name": "release-74-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-74-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-74-rc",
+    "commit": {
+      "sha": "2e9d1288dd2f627227ff7a34c64905d3c92eb643",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/2e9d1288dd2f627227ff7a34c64905d3c92eb643"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzQtcmM="
+  },
+  {
+    "name": "release-74-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-74-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-74-2",
+    "commit": {
+      "sha": "2d029329c82c7792b985024b2bdab5fc7278fbc8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/2d029329c82c7792b985024b2bdab5fc7278fbc8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzQtMg=="
+  },
+  {
+    "name": "release-74-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-74-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-74-1",
+    "commit": {
+      "sha": "9edac7b78327a1cb58db29e2714b15f9fa14e4d7",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/9edac7b78327a1cb58db29e2714b15f9fa14e4d7"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzQtMQ=="
+  },
+  {
+    "name": "release-73-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-73-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-73-rc",
+    "commit": {
+      "sha": "b31579920e11fe42eca67ccebe58d9dfd33edd80",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/b31579920e11fe42eca67ccebe58d9dfd33edd80"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzMtcmM="
+  },
+  {
+    "name": "release-73-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-73-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-73-2",
+    "commit": {
+      "sha": "680f521746a3bd6a86f25f25ee50a62d88b489cf",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/680f521746a3bd6a86f25f25ee50a62d88b489cf"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzMtMg=="
+  },
+  {
+    "name": "release-73-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-73-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-73-1",
+    "commit": {
+      "sha": "5861e1fd52f1d7673eee38bc3c965aa18b336062",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/5861e1fd52f1d7673eee38bc3c965aa18b336062"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzMtMQ=="
+  },
+  {
+    "name": "release-72-rc-cldr-beta3",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-72-rc-cldr-beta3",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-72-rc-cldr-beta3",
+    "commit": {
+      "sha": "ff4ecd9f5017b940a7a29e5a25a70289dc3652db",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ff4ecd9f5017b940a7a29e5a25a70289dc3652db"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzItcmMtY2xkci1iZXRhMw=="
+  },
+  {
+    "name": "release-72-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-72-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-72-rc",
+    "commit": {
+      "sha": "123e5c1cd6f033a1f52f71c879cf93228d2f7387",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/123e5c1cd6f033a1f52f71c879cf93228d2f7387"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzItcmM="
+  },
+  {
+    "name": "release-72-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-72-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-72-1",
+    "commit": {
+      "sha": "ff3514f257ea10afe7e710e9f946f68d256704b1",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ff3514f257ea10afe7e710e9f946f68d256704b1"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzItMQ=="
+  },
+  {
+    "name": "release-71-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-71-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-71-rc",
+    "commit": {
+      "sha": "ee6433c297477453bf12cd1cdb83a58ef74aea4e",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ee6433c297477453bf12cd1cdb83a58ef74aea4e"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzEtcmM="
+  },
+  {
+    "name": "release-71-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-71-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-71-1",
+    "commit": {
+      "sha": "c205e7ee49a7086a28b9c275fcfdac9ca3dc815d",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c205e7ee49a7086a28b9c275fcfdac9ca3dc815d"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzEtMQ=="
+  },
+  {
+    "name": "release-70-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-70-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-70-rc",
+    "commit": {
+      "sha": "60c1857f9692811fb677a16d3591a145ecf2c9a2",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/60c1857f9692811fb677a16d3591a145ecf2c9a2"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzAtcmM="
+  },
+  {
+    "name": "release-70-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-70-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-70-1",
+    "commit": {
+      "sha": "a56dde820dc35665a66f2e9ee8ba58e75049b668",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/a56dde820dc35665a66f2e9ee8ba58e75049b668"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNzAtMQ=="
+  },
+  {
+    "name": "release-69-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-69-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-69-rc",
+    "commit": {
+      "sha": "0bd125eb4569aa74408fbf7dee3c6b318799134a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/0bd125eb4569aa74408fbf7dee3c6b318799134a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjktcmM="
+  },
+  {
+    "name": "release-69-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-69-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-69-1",
+    "commit": {
+      "sha": "0e7b4428866f3133b4abba2d932ee3faa708db1d",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/0e7b4428866f3133b4abba2d932ee3faa708db1d"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjktMQ=="
+  },
+  {
+    "name": "release-68-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-68-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-68-rc",
+    "commit": {
+      "sha": "d1dcb6931884dcf4b8b9a88fa17d19159a95a04c",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/d1dcb6931884dcf4b8b9a88fa17d19159a95a04c"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjgtcmM="
+  },
+  {
+    "name": "release-68-alpha",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-68-alpha",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-68-alpha",
+    "commit": {
+      "sha": "c0d4065607b9edde49a6799e609a33b87fe4409f",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c0d4065607b9edde49a6799e609a33b87fe4409f"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjgtYWxwaGE="
+  },
+  {
+    "name": "release-68-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-68-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-68-2",
+    "commit": {
+      "sha": "84e1f26ea77152936e70d53178a816dbfbf69989",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/84e1f26ea77152936e70d53178a816dbfbf69989"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjgtMg=="
+  },
+  {
+    "name": "release-68-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-68-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-68-1",
+    "commit": {
+      "sha": "5d81f6f9a0edc47892a1d2af7024f835b47deb82",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/5d81f6f9a0edc47892a1d2af7024f835b47deb82"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjgtMQ=="
+  },
+  {
+    "name": "release-67-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-67-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-67-rc",
+    "commit": {
+      "sha": "628a935488a8ff9ca26fcb0b02da1b0bd2b52a94",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/628a935488a8ff9ca26fcb0b02da1b0bd2b52a94"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjctcmM="
+  },
+  {
+    "name": "release-67-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-67-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-67-1",
+    "commit": {
+      "sha": "125e29d54990e74845e1546851b5afa3efab06ce",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/125e29d54990e74845e1546851b5afa3efab06ce"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjctMQ=="
+  },
+  {
+    "name": "release-66-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-66-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-66-rc",
+    "commit": {
+      "sha": "e1aa9119ad37ff1ea727ee42afb13c64d7f14170",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/e1aa9119ad37ff1ea727ee42afb13c64d7f14170"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjYtcmM="
+  },
+  {
+    "name": "release-66-preview",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-66-preview",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-66-preview",
+    "commit": {
+      "sha": "ffbc8cf85f1379a1461b6928d40cfd6ae2464694",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ffbc8cf85f1379a1461b6928d40cfd6ae2464694"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjYtcHJldmlldw=="
+  },
+  {
+    "name": "release-66-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-66-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-66-1",
+    "commit": {
+      "sha": "5f681ecbc75898a6484217b322f3883b6d1b2049",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/5f681ecbc75898a6484217b322f3883b6d1b2049"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjYtMQ=="
+  },
+  {
+    "name": "release-65-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-65-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-65-rc",
+    "commit": {
+      "sha": "417254f66a39319591aa03626cc000fce99619fa",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/417254f66a39319591aa03626cc000fce99619fa"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjUtcmM="
+  },
+  {
+    "name": "release-65-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-65-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-65-1",
+    "commit": {
+      "sha": "fd123bf023882f07bfacf51c39111be2f946d8f8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/fd123bf023882f07bfacf51c39111be2f946d8f8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjUtMQ=="
+  },
+  {
+    "name": "release-64-rc2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-64-rc2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-64-rc2",
+    "commit": {
+      "sha": "67d218f2476ac543de2ed843fa080892972c604a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/67d218f2476ac543de2ed843fa080892972c604a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjQtcmMy"
+  },
+  {
+    "name": "release-64-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-64-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-64-rc",
+    "commit": {
+      "sha": "099ec53635af00c49084066c97d32887e7e4ac18",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/099ec53635af00c49084066c97d32887e7e4ac18"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjQtcmM="
+  },
+  {
+    "name": "release-64-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-64-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-64-2",
+    "commit": {
+      "sha": "e2d85306162d3a0691b070b4f0a73e4012433444",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/e2d85306162d3a0691b070b4f0a73e4012433444"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjQtMg=="
+  },
+  {
+    "name": "release-64-2-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-64-2-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-64-2-rc",
+    "commit": {
+      "sha": "cc8946607a5ae93e919b76001afa0506785996a8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/cc8946607a5ae93e919b76001afa0506785996a8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjQtMi1yYw=="
+  },
+  {
+    "name": "release-64-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-64-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-64-1",
+    "commit": {
+      "sha": "2f2aec5f91cffe49b7526d9b0d18a9acbdd0cc89",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/2f2aec5f91cffe49b7526d9b0d18a9acbdd0cc89"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjQtMQ=="
+  },
+  {
+    "name": "release-63-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-63-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-63-rc",
+    "commit": {
+      "sha": "bcd0a4165cec39e15cee45b1ea81c669974514e9",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/bcd0a4165cec39e15cee45b1ea81c669974514e9"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjMtcmM="
+  },
+  {
+    "name": "release-63-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-63-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-63-2",
+    "commit": {
+      "sha": "4f715ae124c418a15a3fa4d8fb14f406576a7ee5",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/4f715ae124c418a15a3fa4d8fb14f406576a7ee5"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjMtMg=="
+  },
+  {
+    "name": "release-63-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-63-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-63-1",
+    "commit": {
+      "sha": "46895456ad1b6660d17eaeba2c101600ad8d8eb8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/46895456ad1b6660d17eaeba2c101600ad8d8eb8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjMtMQ=="
+  },
+  {
+    "name": "release-62-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-62-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-62-rc",
+    "commit": {
+      "sha": "c0f9d2eeefd6c979cd4a178f6fdfb924d7fd2bbf",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c0f9d2eeefd6c979cd4a178f6fdfb924d7fd2bbf"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjItcmM="
+  },
+  {
+    "name": "release-62-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-62-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-62-2",
+    "commit": {
+      "sha": "7c7b8bd5702310b972f888299169bc3cc88bf0a6",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/7c7b8bd5702310b972f888299169bc3cc88bf0a6"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjItMg=="
+  },
+  {
+    "name": "release-62-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-62-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-62-1",
+    "commit": {
+      "sha": "4a3ba8eee90ea1414d4f7ee36563e6c9b28fda96",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/4a3ba8eee90ea1414d4f7ee36563e6c9b28fda96"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjItMQ=="
+  },
+  {
+    "name": "release-61-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-61-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-61-rc",
+    "commit": {
+      "sha": "8da6ef17765ec98742186ad8a6b8379cfb74dd81",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/8da6ef17765ec98742186ad8a6b8379cfb74dd81"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjEtcmM="
+  },
+  {
+    "name": "release-61-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-61-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-61-2",
+    "commit": {
+      "sha": "b7e6e9b84b7a210fb3a541ffef792a744c45d20a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/b7e6e9b84b7a210fb3a541ffef792a744c45d20a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjEtMg=="
+  },
+  {
+    "name": "release-61-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-61-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-61-1",
+    "commit": {
+      "sha": "b3054b334d8cf84dcae12df7e1a4f1f5c0997445",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/b3054b334d8cf84dcae12df7e1a4f1f5c0997445"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjEtMQ=="
+  },
+  {
+    "name": "release-60-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-60-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-60-rc",
+    "commit": {
+      "sha": "bb430ebdf1b0aeadbadb5f926f9c8272137f2975",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/bb430ebdf1b0aeadbadb5f926f9c8272137f2975"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjAtcmM="
+  },
+  {
+    "name": "release-60-3",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-60-3",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-60-3",
+    "commit": {
+      "sha": "dcae2a648060dce170fc47f37dbe40e1ec9db394",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/dcae2a648060dce170fc47f37dbe40e1ec9db394"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjAtMw=="
+  },
+  {
+    "name": "release-60-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-60-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-60-2",
+    "commit": {
+      "sha": "e387c69929ca8efd74b18c003818eaf1aa72796e",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/e387c69929ca8efd74b18c003818eaf1aa72796e"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjAtMg=="
+  },
+  {
+    "name": "release-60-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-60-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-60-1",
+    "commit": {
+      "sha": "89bae57bd0570109ca997e8b6b887f851b9c26e0",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/89bae57bd0570109ca997e8b6b887f851b9c26e0"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNjAtMQ=="
+  },
+  {
+    "name": "release-59-rc",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-59-rc",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-59-rc",
+    "commit": {
+      "sha": "9c4ef576779222bc812ed08c5b265a22f9a08e52",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/9c4ef576779222bc812ed08c5b265a22f9a08e52"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTktcmM="
+  },
+  {
+    "name": "release-59-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-59-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-59-2",
+    "commit": {
+      "sha": "c8bc56ee0cda8803dd820252917434304a37d66c",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c8bc56ee0cda8803dd820252917434304a37d66c"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTktMg=="
+  },
+  {
+    "name": "release-59-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-59-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-59-1",
+    "commit": {
+      "sha": "906906c3d9ba7f5292ed0b44a017fe16e0440aea",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/906906c3d9ba7f5292ed0b44a017fe16e0440aea"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTktMQ=="
+  },
+  {
+    "name": "release-58-3",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-58-3",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-58-3",
+    "commit": {
+      "sha": "9248183bc6ab67503d03d4a6b4c842e77e3fd1b8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/9248183bc6ab67503d03d4a6b4c842e77e3fd1b8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTgtMw=="
+  },
+  {
+    "name": "release-58-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-58-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-58-2",
+    "commit": {
+      "sha": "409ddcd4596f13863e7c9ec20f48f2fc0021fffc",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/409ddcd4596f13863e7c9ec20f48f2fc0021fffc"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTgtMg=="
+  },
+  {
+    "name": "release-58-2-eclipse-20170118",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-58-2-eclipse-20170118",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-58-2-eclipse-20170118",
+    "commit": {
+      "sha": "dd5d75d17ec303c8f978a3e9c3a169e9b0cbd019",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/dd5d75d17ec303c8f978a3e9c3a169e9b0cbd019"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTgtMi1lY2xpcHNlLTIwMTcwMTE4"
+  },
+  {
+    "name": "release-58-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-58-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-58-1",
+    "commit": {
+      "sha": "4f4208391a67752287ff4c73238bb91d33917c23",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/4f4208391a67752287ff4c73238bb91d33917c23"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTgtMQ=="
+  },
+  {
+    "name": "release-57-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-57-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-57-2",
+    "commit": {
+      "sha": "b7c2034642ce01ba6ffb9418f26234efb2549d08",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/b7c2034642ce01ba6ffb9418f26234efb2549d08"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTctMg=="
+  },
+  {
+    "name": "release-57-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-57-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-57-1",
+    "commit": {
+      "sha": "0c5873f89bf64f6bbc0a24b84f07d79b25785a42",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/0c5873f89bf64f6bbc0a24b84f07d79b25785a42"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTctMQ=="
+  },
+  {
+    "name": "release-56-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-56-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-56-2",
+    "commit": {
+      "sha": "74be8178cdef930f5041609e20e5685854472c2d",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/74be8178cdef930f5041609e20e5685854472c2d"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTYtMg=="
+  },
+  {
+    "name": "release-56-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-56-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-56-1",
+    "commit": {
+      "sha": "24c90c0693a0ba7aea00986c34676b55f766cfac",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/24c90c0693a0ba7aea00986c34676b55f766cfac"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTYtMQ=="
+  },
+  {
+    "name": "release-55-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-55-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-55-2",
+    "commit": {
+      "sha": "4cc636cb8e12794b2b2d695cfbb02135f5700f3f",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/4cc636cb8e12794b2b2d695cfbb02135f5700f3f"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTUtMg=="
+  },
+  {
+    "name": "release-55-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-55-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-55-1",
+    "commit": {
+      "sha": "dd8356c7545a570b56136d3e44c62f7efdf5495f",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/dd8356c7545a570b56136d3e44c62f7efdf5495f"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTUtMQ=="
+  },
+  {
+    "name": "release-54-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-54-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-54-2",
+    "commit": {
+      "sha": "434a3b4763af47b8b66f7af6e4092b4feb3c97b8",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/434a3b4763af47b8b66f7af6e4092b4feb3c97b8"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTQtMg=="
+  },
+  {
+    "name": "release-54-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-54-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-54-1",
+    "commit": {
+      "sha": "32d9621614f83d8ea78004254fb4230f5aa2caf4",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/32d9621614f83d8ea78004254fb4230f5aa2caf4"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTQtMQ=="
+  },
+  {
+    "name": "release-54-1-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-54-1-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-54-1-1",
+    "commit": {
+      "sha": "e7322befb7a4a23262f50a1fb3cace75bf9f591d",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/e7322befb7a4a23262f50a1fb3cace75bf9f591d"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTQtMS0x"
+  },
+  {
+    "name": "release-53-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-53-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-53-2",
+    "commit": {
+      "sha": "ba0126468579e2245f1dd3754799cbb1259abc03",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ba0126468579e2245f1dd3754799cbb1259abc03"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTMtMg=="
+  },
+  {
+    "name": "release-53-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-53-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-53-1",
+    "commit": {
+      "sha": "630bd3010ea6018d10e3ae91e7ae94ac08d0ebe4",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/630bd3010ea6018d10e3ae91e7ae94ac08d0ebe4"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTMtMQ=="
+  },
+  {
+    "name": "release-52-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-52-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-52-2",
+    "commit": {
+      "sha": "574e7d9d55760680ea14dbfc4908429a58c5d544",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/574e7d9d55760680ea14dbfc4908429a58c5d544"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTItMg=="
+  },
+  {
+    "name": "release-52-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-52-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-52-1",
+    "commit": {
+      "sha": "7532b172ee963268015cce900f9cf90d13a8a739",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/7532b172ee963268015cce900f9cf90d13a8a739"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTItMQ=="
+  },
+  {
+    "name": "release-52-1-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-52-1-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-52-1-1",
+    "commit": {
+      "sha": "7bd54e9fa1d1d44f73c259db274d29d44440c9e4",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/7bd54e9fa1d1d44f73c259db274d29d44440c9e4"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTItMS0x"
+  },
+  {
+    "name": "release-51-3",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-51-3",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-51-3",
+    "commit": {
+      "sha": "574b0441da4ca3ac91c3a18bdf06a6237538543d",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/574b0441da4ca3ac91c3a18bdf06a6237538543d"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTEtMw=="
+  },
+  {
+    "name": "release-51-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-51-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-51-2",
+    "commit": {
+      "sha": "909df9d00b6bea0b971275692c38a9c9cbd12ea7",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/909df9d00b6bea0b971275692c38a9c9cbd12ea7"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTEtMg=="
+  },
+  {
+    "name": "release-50-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-50-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-50-2",
+    "commit": {
+      "sha": "10b3805c9fe212dc0509914bb6fd5c2860246f0a",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/10b3805c9fe212dc0509914bb6fd5c2860246f0a"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTAtMg=="
+  },
+  {
+    "name": "release-50-1-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-50-1-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-50-1-2",
+    "commit": {
+      "sha": "c49438c8a6025afc8b4bc2eada580e27b9070226",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c49438c8a6025afc8b4bc2eada580e27b9070226"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNTAtMS0y"
+  },
+  {
+    "name": "release-4-8-2",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/release-4-8-2",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/release-4-8-2",
+    "commit": {
+      "sha": "ca6a2dd0325f5436487f1028242b66f8c852aa24",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/ca6a2dd0325f5436487f1028242b66f8c852aa24"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL3JlbGVhc2UtNC04LTI="
+  },
+  {
+    "name": "milestone-60-0-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/milestone-60-0-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/milestone-60-0-1",
+    "commit": {
+      "sha": "39312f8fac5c97c223b0f3ceafd38b7f82a16eab",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/39312f8fac5c97c223b0f3ceafd38b7f82a16eab"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL21pbGVzdG9uZS02MC0wLTE="
+  },
+  {
+    "name": "milestone-59-0-1",
+    "zipball_url": "https://api.github.com/repos/unicode-org/icu/zipball/refs/tags/milestone-59-0-1",
+    "tarball_url": "https://api.github.com/repos/unicode-org/icu/tarball/refs/tags/milestone-59-0-1",
+    "commit": {
+      "sha": "c3ad2fabfb9275737a3b0c1fea490b2b1a95de10",
+      "url": "https://api.github.com/repos/unicode-org/icu/commits/c3ad2fabfb9275737a3b0c1fea490b2b1a95de10"
+    },
+    "node_id": "MDM6UmVmNDkyNDQ3NjY6cmVmcy90YWdzL21pbGVzdG9uZS01OS0wLTE="
+  }
+]

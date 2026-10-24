@@ -5,8 +5,7 @@ import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
-import com.phoneagent.engine.perception.PageAnnotator
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 
 /**
  * 端侧决策引擎：对弹窗/加载/异常/完成四类场景直接给出意图，不消耗云端调用。
@@ -47,7 +46,7 @@ class LocalDecisionEngine(
         // 元素树为空时同样不做本地决策：读不到页面 ≠ 页面是异常页，
         // 此时凭空按返回/点关闭只会盲转（真机 BUG 21/22 的帮凶），交还给云端走视觉链路
         if (snapshot.elements.isEmpty()) return null
-        val pageType = PageAnnotator.inferPageType(snapshot)
+        val pageType = PageTypeRules.inferPageType(snapshot)
         val action: AgentIntent? = when (pageType) {
             "dialog_overlay" -> handleDialog(snapshot)
             "ad_with_countdown" -> handleAd(snapshot)

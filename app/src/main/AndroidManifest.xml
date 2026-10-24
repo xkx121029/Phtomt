@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 编码 Agent 宿主前台服务：targetSdk 34 起，dataSync 型 FGS 必须显式声明该权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -122,6 +124,27 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="com.phoneagent.agent_progress_overlay" />
         </service>
+
+        <!-- 编码 Agent 宿主：前台服务保活 node 编码进程（vibecoding 模式，com.phoneagent.coding 嵌入层） -->
+        <service
+            android:name=".coding.CodingAgentService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 代码编辑器（coding 嵌入层）：WebView 里跑随包发布的编辑页面，读写 happy_ACA 工作区 -->
+        <activity
+            android:name=".coding.EditorActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 代码预览（coding 嵌入层）：渲染工作区里的 HTML，或 agent 起的本地预览服务 -->
+        <activity
+            android:name=".coding.PreviewActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <service
             android:name=".feature.edge.EdgeLightingService"

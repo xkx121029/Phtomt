@@ -13,7 +13,8 @@ import org.junit.Test
  *
  * 三条不变式，缺一不可：
  * 1. **安全块恒在场**：铁律 / 授权范围 / 禁止输出 / 能力声明在任意合法标志组合下都不会缺席；
- * 2. **裁剪范围可控**：系统提示里会被裁掉的只有「网页浏览」「打开链接与文件」「语音助手直达」三个大块；
+ * 2. **裁剪范围可控**：系统提示里会被裁掉的只有「网页浏览」「打开链接与文件」「语音助手直达」三个大块，
+ *    外加仅任务命中才注入的引导块「编码任务」「普通对话」（Superagent 融合 Phase 4）；
  * 3. **判定同源**：裁块（[TaskKindDetector.flagsOf]）与附加指导（[TaskKindDetector.detect]）用同一套词表。
  */
 class PromptCropTest {
@@ -206,6 +207,8 @@ class PromptCropTest {
             PromptFlag.WEB_TASK,
             PromptFlag.OPEN_TASK,
             PromptFlag.ASSISTANT_TASK,
+            PromptFlag.CODE_TASK,
+            PromptFlag.CHAT_TASK,
             PromptFlag.HAS_MEMORY,
             PromptFlag.HAS_EVOLVED_RULES,
             PromptFlag.MCP_TOOLS,
@@ -213,7 +216,10 @@ class PromptCropTest {
             PromptFlag.DISABLED_SKILLS,
         )
 
-        /** 唯一允许被裁的三个大块 */
-        val CROPPABLE = setOf("sys.web_browse", "sys.open_link", "sys.assistant")
+        /** 唯一允许被裁的大块（三块按任务裁，两块引导块仅任务命中才注入，Superagent 融合 Phase 4） */
+        val CROPPABLE = setOf(
+            "sys.web_browse", "sys.open_link", "sys.assistant",
+            "sys.coding", "sys.chat",
+        )
     }
 }

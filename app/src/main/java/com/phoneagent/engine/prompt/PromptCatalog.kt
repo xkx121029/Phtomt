@@ -76,6 +76,22 @@ internal object PromptCatalog {
             requires = setOf(PromptFlag.ASSISTANT_TASK),
             origin = "AgentPrompts.systemCN/EN「# 语音助手直达」（需 ASSISTANT_TASK）",
         ),
+        // 引导块（Superagent 融合 Phase 4）：任务命中编码类（写代码/脚本/调试等）时注入，
+        // 说明 vibecoding 委托模式——编码 agent 独立执行，主引擎只转达意图与展示进度。
+        PromptBlock(
+            id = "sys.coding", group = PromptGroup.SYSTEM, order = 9, sep = "\n\n",
+            bodyCN = PromptBodies.SYS_CODING_CN, bodyEN = PromptBodies.SYS_CODING_EN,
+            requires = setOf(PromptFlag.CODE_TASK),
+            origin = "Superagent 融合 Phase 4「# 编码任务（vibecoding 委托模式）」（需 CODE_TASK）",
+        ),
+        // 引导块（Superagent 融合 Phase 4）：任务是纯对话（无任何操作类命中）时注入，
+        // 说明直答模式——不操作手机、不需要规划步骤。
+        PromptBlock(
+            id = "sys.chat", group = PromptGroup.SYSTEM, order = 9, sep = "\n\n",
+            bodyCN = PromptBodies.SYS_CHAT_CN, bodyEN = PromptBodies.SYS_CHAT_EN,
+            requires = setOf(PromptFlag.CHAT_TASK),
+            origin = "Superagent 融合 Phase 4「# 普通对话（直答模式）」（需 CHAT_TASK）",
+        ),
         PromptBlock(
             id = "sys.countdown", group = PromptGroup.SYSTEM, order = 10, sep = "\n\n", safe = true,
             bodyCN = PromptBodies.SYS_COUNTDOWN_CN, bodyEN = PromptBodies.SYS_COUNTDOWN_EN,
@@ -485,7 +501,7 @@ internal object PromptCatalog {
         ),
     )
 
-    /** 全部区块（53 块），按组拼接，组内已按 order 排序 */
+    /** 全部区块（55 块），按组拼接，组内已按 order 排序 */
     val all: List<PromptBlock> =
         SYSTEM + ACTION_MODE + CAPABILITIES + SKILLS + PLANNING + DECISION + REVIEW + DISTILL
 

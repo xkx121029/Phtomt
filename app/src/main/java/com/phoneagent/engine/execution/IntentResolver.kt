@@ -5,7 +5,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 
 /**
  * 目标定位器（对应 HPA动作执行逻辑优化文档 v2.1 六、IntentResolver 三级定位）。

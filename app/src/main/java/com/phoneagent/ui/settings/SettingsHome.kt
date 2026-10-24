@@ -114,6 +114,19 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                     summary = if (st.enableExternalVision) "已启用" else "已关闭",
                     onClick = { onOpen(SettingsPage.ONDEVICE) },
                 )
+                SettingsDivider()
+                SettingsRow(
+                    icon = AppIcons.Code,
+                    title = "编码 Agent",
+                    subtitle = "运行时 / 审批档位 / 工作区",
+                    tone = SettingsTone.Brand,
+                    summary = when (st.codingApprovalMode) {
+                        "ask" -> "审批：询问"
+                        "bypass" -> "审批：全自动"
+                        else -> "审批：默认放行"
+                    },
+                    onClick = { onOpen(SettingsPage.CODING) },
+                )
             }
 
             // ---- 运行行为：AI 怎么干活 ----
@@ -171,6 +184,15 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                     tone = SettingsTone.Brand,
                     summary = if (st.edgeLightingEnabled) "光效开" else "光效关",
                     onClick = { onOpen(SettingsPage.VISUAL) },
+                )
+                SettingsDivider()
+                SettingsRow(
+                    icon = AppIcons.Reorder,
+                    title = "底部选项卡",
+                    subtitle = "可见性 / 排序",
+                    tone = SettingsTone.Brand,
+                    summary = "${com.phoneagent.ui.MainTabs.visibleTabs(st.tabOrder, st.tabVisible).size} 个可见",
+                    onClick = { onOpen(SettingsPage.TABS) },
                 )
             }
 

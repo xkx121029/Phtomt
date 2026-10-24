@@ -80,6 +80,8 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.agent.DocViewerScreen
+import com.phoneagent.ui.chat.ChatScreen
+import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
@@ -93,6 +95,8 @@ import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
 import com.phoneagent.ui.home.HomeScreen
 import com.phoneagent.ui.memory.MemoryGraphScreen
+import com.phoneagent.ui.onboarding.OnboardingPermissionScreen
+import com.phoneagent.ui.onboarding.OnboardingScreen
 import com.phoneagent.ui.settings.SettingsScreen
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -225,18 +229,43 @@ private fun ActivityContent(
     pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
     entrySignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
 ) {
+    // 新手引导门控：状态为 null 说明还没从 DataStore 读到真实值，先铺纯底色，
+    // 避免老用户冷启动时默认值（onboardingDone=false）抢先一帧、闪一下引导页
+    val onboardingDone by vm.onboardingState.collectAsState()
+    var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
+    // 开屏引导阶段标记：false = 欢迎介绍，true = 权限配置
+    var onboardingPermsStage by rememberSaveable { mutableStateOf(false) }
+    when {
+        onboardingDone == null -> {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            )
+            return
+        }
+
+        onboardingDone == false && !onboardingDismissed -> {
+            // 两阶段开屏引导：先欢迎介绍，后权限配置；返回手势可回退上一阶段
+            if (!onboardingPermsStage) {
+                OnboardingScreen(onFinish = { onboardingPermsStage = true })
+            } else {
+                OnboardingPermissionScreen(
+                    vm = vm,
+                    onFinish = {
+                        vm.completeOnboarding()
+                        onboardingDismissed = true
+                    },
+                    onBack = { onboardingPermsStage = false },
+                )
+            }
+            return
+        }
+    }
+
     var selected by rememberSaveable { mutableStateOf(0) }
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
-    // 记忆已并入 Agent 页（顶栏入口 + 任务流内嵌卡片），不再占底部 Tab
-    val tabs = listOf(
-        TabItem("Agent", AppIcons.Bolt),
-        TabItem("概览", AppIcons.Home),
-        TabItem("设置", AppIcons.Settings),
-    )
-    // Compose 1.11 / activity-compose 1.12 起 lint 禁止把 LocalContext 强转成 Activity
-    // （[ContextCastToActivity]）：LocalContext 不保证是 Activity，且强转在预览/测试环境会崩。
-    // LocalActivity 就是宿主 Activity 本身，这里再收敛到 ComponentActivity 以取 intent / 系统服务。
     val activity = androidx.activity.compose.LocalActivity.current as ComponentActivity
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
@@ -245,6 +274,16 @@ private fun ActivityContent(
     val agentState by vm.agentState.collectAsState()
     val settings by vm.settingsFlow.collectAsState()
     val overlayGranted by vm.overlayGranted.collectAsState()
+
+    // 可配置 Tab（Superagent 融合 Phase 5）：顺序与可见性由 AppSettings.tab_order/tab_visible 决定，
+    // 设置页改动后 settings 流更新，这里即时重排；selected 是「可见 Tab 列表的索引」。
+    val visibleTabs = remember(settings.tabOrder, settings.tabVisible) {
+        MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible)
+    }
+    val tabs = visibleTabs.map { TabItem(it.title, it.icon) }
+    // 配置变化后索引可能越界（比如当前 Tab 被隐藏）：先夹回有效范围，防止 when 落空白屏
+    val safeSelected = selected.coerceIn(0, tabs.lastIndex.coerceAtLeast(0))
+    LaunchedEffect(tabs.size) { if (selected > tabs.lastIndex) selected = tabs.lastIndex }
 
     LaunchedEffect(agentState.isRunning, settings.edgeLightingEnabled, overlayGranted) {
         val shouldShow = agentState.isRunning && settings.edgeLightingEnabled && overlayGranted
@@ -317,7 +356,7 @@ private fun ActivityContent(
                 "发现新版本 ${result.release.version}",
                 SnackbarType.INFO,
                 actionLabel = "去更新",
-                onAction = { selected = 2 },
+                onAction = { selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS) },
             )
         }
     }
@@ -340,7 +379,7 @@ private fun ActivityContent(
             intent.removeExtra(MainActivity.EXTRA_AGENT_DOC)
             // 二级页也一并退掉：AI 请用户回来看结果，落点必须是 Agent 页本身
             extrasPage = null
-            selected = 0
+            selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
             if (showDoc && doc != null) docFullscreen = true
         }
     }
@@ -367,17 +406,19 @@ private fun ActivityContent(
         }
         intent.data = null
         intent.replaceExtras(null)
-        if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) selected = 0
+        if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) {
+            selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
+        }
     }
 
     // 全局返回手势返回上一层：
     // 1) 二级页（测试/调试/技能与能力）→ 关闭二级页回到当前 Tab；
-    // 2) 非 Agent Tab → 回到 Agent（主界面）；
-    // 3) Agent → 保持系统默认行为（退出应用）
+    // 2) 非首个可见 Tab → 回到首个可见 Tab（默认主页）；
+    // 3) 已在首个 Tab → 保持系统默认行为（退出应用）
     BackHandler(enabled = extrasPage != null) {
         extrasPage = null
     }
-    BackHandler(enabled = extrasPage == null && selected != 0) {
+    BackHandler(enabled = extrasPage == null && safeSelected != 0) {
         selected = 0
     }
     // 全屏阅读是最上层的一层，返回手势先关它（放在最后注册，优先级最高）
@@ -478,30 +519,45 @@ private fun ActivityContent(
                             )
                         } else {
                             AnimatedContent(
-                                targetState = selected,
+                                targetState = safeSelected,
                                 transitionSpec = transitionSpec,
                                 label = "screen-switch",
                             ) { screenIndex ->
                                 val contentMod = Modifier.fillMaxSize()
-                                when (screenIndex) {
-                                    0 -> AgentScreen(
+                                // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
+                                // 排序变化只改索引不改落点（与 floating 导航共用同一份可见列表）
+                                when (visibleTabs.getOrNull(screenIndex)?.id) {
+                                    MainTabs.AGENT -> AgentScreen(
                                         vm, contentMod,
                                         onOpenMemory = { extrasPage = ExtrasPage.Memory },
                                         onOpenDocFullscreen = { docFullscreen = true },
                                         onDrawerOpenChange = { taskDrawerOpen = it },
                                     )
 
-                                    1 -> HomeScreen(
+                                    MainTabs.HOME -> HomeScreen(
                                         vm, contentMod,
                                         onRequestScreenshot = {
                                             val mpm = activity.getSystemService(MediaProjectionManager::class.java)
                                             screenshotLauncher.launch(mpm.createScreenCaptureIntent())
                                         },
-                                        onNavigate = { selected = it },
+                                        // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
+                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
+                                        onNavigate = { legacy ->
+                                            val s = vm.settingsFlow.value
+                                            selected = when (legacy) {
+                                                0 -> tabIndex(s, MainTabs.AGENT)
+                                                2 -> tabIndex(s, MainTabs.SETTINGS)
+                                                else -> legacy.coerceIn(0, tabs.lastIndex)
+                                            }
+                                        },
                                         onOpenExtras = { extrasPage = it },
                                     )
 
-                                    2 -> SettingsScreen(vm, contentMod)
+                                    MainTabs.SETTINGS -> SettingsScreen(vm, contentMod)
+                                    MainTabs.CHAT -> ChatScreen(vm, contentMod)
+                                    MainTabs.CODING -> CodingScreen(vm, contentMod)
+                                    MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
+                                    else -> {}
                                 }
                             }
 
@@ -537,7 +593,7 @@ private fun ActivityContent(
                         FloatingNavRail(
                             hazeState = navGlass,
                             tabs = tabs,
-                            selected = selected,
+                            selected = safeSelected,
                             onSelect = { selected = it },
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -547,7 +603,7 @@ private fun ActivityContent(
                         FloatingNavBar(
                             hazeState = navGlass,
                             tabs = tabs,
-                            selected = selected,
+                            selected = safeSelected,
                             onSelect = { selected = it },
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -780,6 +836,12 @@ private fun FloatingNavItem(
         )
     }
 }
+
+/** 由当前设置算出指定 Tab 在可见列表中的索引（找不到或被隐藏时回退 0=首个可见 Tab） */
+internal fun tabIndex(settings: com.phoneagent.data.prefs.AppSettings.Settings, id: String): Int =
+    MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible)
+        .indexOfFirst { it.id == id }
+        .takeIf { it >= 0 } ?: 0
 
 /** 全屏二级页内容：顶部返回栏 + 对应页面 */
 @Composable

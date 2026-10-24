@@ -1,6 +1,7 @@
 package com.phoneagent.engine.perception
 
 import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.rules.effectiveLabel
 import java.security.MessageDigest
 
 /**
