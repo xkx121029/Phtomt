@@ -1,7 +1,12 @@
 package com.phoneagent.ui.voice
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Bundle
 import android.os.SystemClock
 import android.speech.RecognitionListener
@@ -16,6 +21,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
+import java.io.File
+import java.io.RandomAccessFile
+import java.util.concurrent.TimeUnit
+import kotlin.math.log10
 import kotlin.math.sin
 
 /** 一次有效录音的捕获结果（松手时由引擎同步返回） */
@@ -243,5 +259,220 @@ class SpeechRecognizerEngine(private val context: Context) : VoiceRecordEngine {
         fallbackJob?.cancel()
         recognizer?.destroy()
         recognizer = null
+    }
+}
+
+/** 云端语音输入 API 配置：OpenAI 兼容 /audio/transcriptions 格式 */
+data class CloudAsrConfig(
+    /** 形如 https://api.siliconflow.cn/v1（末尾 / 会裁掉） */
+    val baseUrl: String,
+    val apiKey: String,
+    val model: String,
+)
+
+/**
+ * 云端识别引擎：AudioRecord 真实录 16kHz/单声道/PCM16 → WAV 文件，
+ * 松手后 multipart 上传到 OpenAI 兼容的 /audio/transcriptions 端点，取回文本。
+ *
+ * 电平来源：录音线程里按 50ms 窗口算 RMS，规格公式归一化后发给光晕动画。
+ * 上传在松手后异步进行：finalText/error 谁先到谁生效（与调用方既有约定一致）。
+ * 录音上限 60s：到点自动停采，文件不再增长，等待松手分发。
+ */
+class CloudAsrEngine(
+    private val context: Context,
+    private val config: CloudAsrConfig,
+) : VoiceRecordEngine {
+
+    private val _level = MutableStateFlow(0f)
+    override val level: StateFlow<Float> = _level
+
+    private val _finalText = MutableStateFlow<String?>(null)
+    override val finalText: StateFlow<String?> = _finalText
+
+    private val _error = MutableStateFlow<String?>(null)
+    override val error: StateFlow<String?> = _error
+
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    private var recordThread: Thread? = null
+    private var uploadJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private var wavFile: File? = null
+    private var startAt = 0L
+    private var cancelled = false
+
+    @Volatile private var stopRequested = false
+
+    override fun start(): Boolean {
+        _finalText.value = null
+        _error.value = null
+        _level.value = 0f
+        if (config.baseUrl.isBlank() || config.model.isBlank() || config.apiKey.isBlank()) {
+            _error.value = "请先在「云端模型 → 语音输入」里配置 API 地址、密钥与模型"
+            return false
+        }
+        if (ContextCompat_checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            _error.value = "缺少麦克风权限"
+            return false
+        }
+        cancelled = false
+        stopRequested = false
+        startAt = SystemClock.elapsedRealtime()
+        val file = File(context.cacheDir, "voice_input_${startAt}.wav")
+        wavFile = file
+
+        val minBuf = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val audioRecord = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBuf * 2,
+            )
+        } catch (e: Exception) {
+            _error.value = "录音启动失败：${e.message ?: "麦克风被占用"}"
+            return false
+        }
+        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+            audioRecord.release()
+            _error.value = "录音启动失败：麦克风不可用或权限未授予"
+            return false
+        }
+
+        recordThread = Thread {
+            audioRecord.startRecording()
+            val buf = ShortArray(SAMPLE_RATE / 20) // 50ms 窗口，与规格一致
+            var pcmBytes = 0L
+            RandomAccessFile(file, "rw").use { out ->
+                out.setLength(0)
+                out.write(ByteArray(WAV_HEADER_SIZE)) // 先占头，停止时回填
+                while (!stopRequested && pcmBytes < MAX_BYTES) {
+                    val n = audioRecord.read(buf, 0, buf.size)
+                    if (n <= 0) break
+                    // RMS → 归一化电平（规格公式：level = clamp((20*log10(rms)+60)/60, 0, 1)）
+                    var sum = 0.0
+                    for (i in 0 until n) sum += buf[i] * buf[i]
+                    val rms = kotlin.math.sqrt(sum / n)
+                    _level.value = if (rms < 1.0) 0f
+                    else ((20 * log10(rms) + 60) / 60).toFloat().coerceIn(0f, 1f)
+                    val bytes = ByteArray(n * 2)
+                    for (i in 0 until n) {
+                        bytes[i * 2] = (buf[i].toInt() and 0xFF).toByte()
+                        bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte()
+                    }
+                    out.write(bytes)
+                    pcmBytes += bytes.size
+                }
+            }
+            audioRecord.stop()
+            audioRecord.release()
+            writeWavHeader(file, pcmBytes)
+        }.also { it.start() }
+        return true
+    }
+
+    override fun stop(): VoiceCapture? {
+        recordThread?.join(1000)
+        recordThread = null
+        _level.value = 0f
+        val file = wavFile ?: return null
+        val durationMs = SystemClock.elapsedRealtime() - startAt
+        // 松手即返回；上传异步跑，结果经 finalText/error 流回调用方
+        uploadJob = scope.launch {
+            try {
+                val url = "${config.baseUrl.trimEnd('/')}/audio/transcriptions"
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType()))
+                    .addFormDataPart("model", config.model)
+                    .build()
+                val resp = http.newCall(
+                    Request.Builder()
+                        .url(url)
+                        .header("Authorization", "Bearer ${config.apiKey}")
+                        .post(body)
+                        .build(),
+                ).execute()
+                resp.use { r ->
+                    val text = withContext(Dispatchers.Default) {
+                        JSONObject(r.body?.string() ?: "{}").optString("text", "").trim()
+                    }
+                    if (!r.isSuccessful) {
+                        _error.value = "识别请求失败（HTTP ${r.code}），请检查 API 配置与额度"
+                    } else if (text.isEmpty()) {
+                        _error.value = "没听清，请再试一次"
+                    } else {
+                        _finalText.value = text
+                    }
+                }
+            } catch (e: Exception) {
+                if (!cancelled) _error.value = "识别请求失败：${e.message ?: "网络异常"}"
+            } finally {
+                file.delete() // 识别完成后音频即弃，不留残留
+                wavFile = null
+            }
+        }
+        return VoiceCapture(filePath = file.absolutePath, durationMs = durationMs)
+    }
+
+    override fun cancel() {
+        cancelled = true
+        stopRequested = true
+        recordThread?.join(1000)
+        recordThread = null
+        uploadJob?.cancel()
+        wavFile?.delete()
+        wavFile = null
+        _level.value = 0f
+    }
+
+    /** 界面销毁时调用：停录音、断上传、清理协程 */
+    fun destroy() {
+        stopRequested = true
+        recordThread?.join(500)
+        uploadJob?.cancel()
+        wavFile?.delete()
+        wavFile = null
+        scope.cancel()
+    }
+
+    private fun ContextCompat_checkSelfPermission(): Int =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+
+    /** 44 字节标准 WAV 头回填（16kHz / 单声道 / 16bit） */
+    private fun writeWavHeader(file: File, pcmBytes: Long) {
+        val total = pcmBytes + 36
+        RandomAccessFile(file, "rw").use { out ->
+            out.seek(0)
+            out.writeBytes("RIFF")
+            out.writeLe(total.toInt())
+            out.writeBytes("WAVE")
+            out.writeBytes("fmt ")
+            out.writeLe(16)
+            out.writeLe(1) // PCM
+            out.writeLe(1) // mono
+            out.writeLe(SAMPLE_RATE)
+            out.writeLe(SAMPLE_RATE * 2)
+            out.writeLe(2) // block align
+            out.writeLe(16) // bits
+            out.writeBytes("data")
+            out.writeLe(pcmBytes.toInt())
+        }
+    }
+
+    private fun RandomAccessFile.writeLe(v: Int) {
+        write(v); write(v shr 8); write(v shr 16); write(v shr 24)
+    }
+
+    private companion object {
+        const val SAMPLE_RATE = 16_000
+        const val WAV_HEADER_SIZE = 44
+        // 60 秒上限：16bit 单声道 = 32KB/s，封顶防异常时长把文件撑爆
+        const val MAX_BYTES = 16_000L * 2 * 60
     }
 }

@@ -11,6 +11,7 @@ import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelCatalogCodec
+import com.phoneagent.ui.TabPrefsCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -55,6 +56,11 @@ class AppSettings(private val context: Context) {
         val reasonApiKey: String = "",
         /** 链路聚合：启用后思考模型参与规划等复杂任务（可选增强，默认关闭） */
         val enableChain: Boolean = false,
+        // ---- 语音输入：OpenAI 兼容 /audio/transcriptions 端点（硅基流动 / Groq / 自建 whisper 均适用）----
+        // baseUrl 为空 = 未配置，语音输入回退系统 SpeechRecognizer
+        val asrBaseUrl: String = "",
+        val asrModel: String = "",
+        val asrApiKey: String = "",
         /** 主模型是否支持思考能力：开启后规划等复杂任务直接用主模型 + thinking，无需独立思考模型 */
         val mainThinking: Boolean = false,
         /** 模型链路顺序：main / vision / reason（图形化拖动自定义） */
@@ -126,6 +132,20 @@ class AppSettings(private val context: Context) {
         val externalControlEnabled: Boolean = false,
         /** 外部控制口令：调用方广播里带 token 字段与之全等才放行；空串表示仅靠开关（不推荐） */
         val externalControlToken: String = "",
+        /** 首次进入的新手引导是否已完成（完成前主界面被引导页整体覆盖） */
+        val onboardingDone: Boolean = false,
+        /**
+         * 编码 agent 审批档位：ask / risky / bypass（见 agent-core 三档审批，Superagent 融合 Phase 4）。
+         * 经 CodingAgentBridge 注入 agent-core 环境变量；存字符串避免脏数据反序列化失败。
+         */
+        val codingApprovalMode: String = "risky",
+        /**
+         * 底部 Tab 顺序（Tab id 分号分隔，见 [com.phoneagent.ui.MainTabs]，Superagent 融合 Phase 5）。
+         * 与 chainOrder 同构：存分号串避免 List 直落库；脏 id 由 UI 层合成可见列表时兜底滤掉。
+         */
+        val tabOrder: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
+        /** 底部 Tab 可见性（可见 Tab 的 id 列表；home 与 settings 不可隐藏，UI 层保证） */
+        val tabVisible: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
     )
 
     private object Keys {
@@ -151,6 +171,9 @@ class AppSettings(private val context: Context) {
         val REASON_BASE_URL = stringPreferencesKey("reason_base_url")
         val REASON_MODEL = stringPreferencesKey("reason_model")
         val REASON_API_KEY = stringPreferencesKey("reason_api_key")
+        val ASR_BASE_URL = stringPreferencesKey("asr_base_url")
+        val ASR_MODEL = stringPreferencesKey("asr_model")
+        val ASR_API_KEY = stringPreferencesKey("asr_api_key")
         val ENABLE_CHAIN = booleanPreferencesKey("enable_chain")
         val MAIN_THINKING = booleanPreferencesKey("main_thinking")
         val CHAIN_ORDER = stringPreferencesKey("chain_order")
@@ -191,6 +214,13 @@ class AppSettings(private val context: Context) {
         /** 对外控制：开关与口令，见 [Settings.externalControlEnabled] */
         val EXTERNAL_CONTROL_ENABLED = booleanPreferencesKey("external_control_enabled")
         val EXTERNAL_CONTROL_TOKEN = stringPreferencesKey("external_control_token")
+        /** 新手引导完成标记，见 [Settings.onboardingDone] */
+        val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        /** 编码 agent 审批档位（ask/risky/bypass），见 [Settings.codingApprovalMode] */
+        val CODING_APPROVAL_MODE = stringPreferencesKey("coding_approval_mode")
+        /** 底部 Tab 顺序 / 可见性（分号分隔 Tab id），见 [Settings.tabOrder] */
+        val TAB_ORDER = stringPreferencesKey("tab_order")
+        val TAB_VISIBLE = stringPreferencesKey("tab_visible")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -243,6 +273,9 @@ class AppSettings(private val context: Context) {
             reasonBaseUrl = reasonBaseUrl,
             reasonModel = reasonModel,
             reasonApiKey = reasonApiKey,
+            asrBaseUrl = prefs[Keys.ASR_BASE_URL] ?: "",
+            asrModel = prefs[Keys.ASR_MODEL] ?: "",
+            asrApiKey = prefs[Keys.ASR_API_KEY] ?: "",
             visionEnabled = prefs[Keys.VISION_ENABLED] ?: true,
             visionMode = prefs[Keys.VISION_MODE] ?: "AUTO",
             enableExternalVision = prefs[Keys.EXTERNAL_VISION] ?: true,
@@ -284,6 +317,10 @@ class AppSettings(private val context: Context) {
             autoCheckUpdate = prefs[Keys.AUTO_CHECK_UPDATE] ?: true,
             externalControlEnabled = prefs[Keys.EXTERNAL_CONTROL_ENABLED] ?: false,
             externalControlToken = prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: "",
+            onboardingDone = prefs[Keys.ONBOARDING_DONE] ?: false,
+            codingApprovalMode = prefs[Keys.CODING_APPROVAL_MODE] ?: "risky",
+            tabOrder = TabPrefsCodec.decode(prefs[Keys.TAB_ORDER]),
+            tabVisible = TabPrefsCodec.decode(prefs[Keys.TAB_VISIBLE]),
         )
     }
 
@@ -304,6 +341,9 @@ class AppSettings(private val context: Context) {
             prefs[Keys.REASON_BASE_URL] = settings.reasonBaseUrl.trim().trimEnd('/')
             prefs[Keys.REASON_MODEL] = settings.reasonModel.trim()
             prefs[Keys.REASON_API_KEY] = settings.reasonApiKey.trim()
+            prefs[Keys.ASR_BASE_URL] = settings.asrBaseUrl.trim().trimEnd('/')
+            prefs[Keys.ASR_MODEL] = settings.asrModel.trim()
+            prefs[Keys.ASR_API_KEY] = settings.asrApiKey.trim()
             prefs[Keys.VISION_ENABLED] = settings.visionEnabled
             prefs[Keys.VISION_MODE] = settings.visionMode
             prefs[Keys.EXTERNAL_VISION] = settings.enableExternalVision
@@ -344,6 +384,10 @@ class AppSettings(private val context: Context) {
             prefs[Keys.AUTO_CHECK_UPDATE] = settings.autoCheckUpdate
             prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled
             prefs[Keys.EXTERNAL_CONTROL_TOKEN] = settings.externalControlToken
+            prefs[Keys.ONBOARDING_DONE] = settings.onboardingDone
+            prefs[Keys.CODING_APPROVAL_MODE] = settings.codingApprovalMode
+            prefs[Keys.TAB_ORDER] = TabPrefsCodec.encode(settings.tabOrder)
+            prefs[Keys.TAB_VISIBLE] = TabPrefsCodec.encode(settings.tabVisible)
         }
     }
 }

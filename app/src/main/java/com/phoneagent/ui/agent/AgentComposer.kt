@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,6 +67,8 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import androidx.core.content.ContextCompat
+import com.phoneagent.ui.voice.CloudAsrConfig
+import com.phoneagent.ui.voice.CloudAsrEngine
 import com.phoneagent.ui.voice.SpeechRecognizerEngine
 import com.phoneagent.ui.voice.VoiceFinishMode
 import com.phoneagent.ui.voice.VoiceRecordGestureBox
@@ -414,11 +417,29 @@ internal fun AgentComposer(
     val locked = mode == ComposerMode.LOCKED
     var focused by remember { mutableStateOf(false) }
 
-    // 语音录入：长按输入框进入录音（取代原麦克风按钮）；引擎随组合销毁释放
+    // 语音录入：长按输入框进入录音（取代原麦克风按钮）；引擎随组合销毁释放。
+    // 配置了语音输入 API（云端模型页）走 CloudAsrEngine，否则回退系统 SpeechRecognizer
     val context = LocalContext.current
     val snackbar = LocalSnackbar.current
-    val voiceEngine = remember { SpeechRecognizerEngine(context) }
-    DisposableEffect(voiceEngine) { onDispose { voiceEngine.destroy() } }
+    val asrSettings by vm.settingsFlow.collectAsState()
+    val voiceEngine = remember(
+        asrSettings.asrBaseUrl, asrSettings.asrApiKey, asrSettings.asrModel,
+    ) {
+        if (asrSettings.asrBaseUrl.isNotBlank()) {
+            CloudAsrEngine(
+                context,
+                CloudAsrConfig(asrSettings.asrBaseUrl, asrSettings.asrApiKey, asrSettings.asrModel),
+            )
+        } else {
+            SpeechRecognizerEngine(context)
+        }
+    }
+    DisposableEffect(voiceEngine) {
+        onDispose {
+            (voiceEngine as? SpeechRecognizerEngine)?.destroy()
+            (voiceEngine as? CloudAsrEngine)?.destroy()
+        }
+    }
     val scope = rememberCoroutineScope()
     var micPermission by remember {
         mutableStateOf(
