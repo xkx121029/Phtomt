@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 // ========== 分层导航：设置主页 → 各分类详情页 ==========
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
-enum class SettingsPage { HOME, THEME, AI_MODELS, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT }
+enum class SettingsPage { HOME, THEME, AI_MODELS, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT, CODING, TABS }
 
 @Composable
 fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
@@ -129,6 +129,16 @@ fun SettingsScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     onBack = { page = SettingsPage.HOME },
                 )
                 SettingsPage.ABOUT -> SettingsAbout(onBack = { page = SettingsPage.HOME })
+                SettingsPage.CODING -> SettingsCoding(
+                    st = st,
+                    save = ::saveNonAiSettings,
+                    onBack = { page = SettingsPage.HOME },
+                )
+                SettingsPage.TABS -> SettingsTabs(
+                    st = st,
+                    save = ::saveNonAiSettings,
+                    onBack = { page = SettingsPage.HOME },
+                )
             }
         }
 
@@ -183,6 +193,10 @@ class SettingsState(initial: AppSettings.Settings) {
     var reasonBaseUrl by mutableStateOf(initial.reasonBaseUrl)
     var reasonModel by mutableStateOf(initial.reasonModel)
     var reasonApiKey by mutableStateOf(initial.reasonApiKey)
+    // 语音输入：OpenAI 兼容 /audio/transcriptions；留空回退系统识别
+    var asrBaseUrl by mutableStateOf(initial.asrBaseUrl)
+    var asrModel by mutableStateOf(initial.asrModel)
+    var asrApiKey by mutableStateOf(initial.asrApiKey)
     var mainThinking by mutableStateOf(initial.mainThinking)
     var enableReview by mutableStateOf(initial.enableReview)
     var visionEnabled by mutableStateOf(initial.visionEnabled)
@@ -227,6 +241,11 @@ class SettingsState(initial: AppSettings.Settings) {
     var externalControlEnabled by mutableStateOf(initial.externalControlEnabled)
     var externalControlToken by mutableStateOf(initial.externalControlToken)
     var calibrationExpanded by mutableStateOf(false)
+    // 编码 agent 审批档位（ask/risky/bypass，Superagent 融合 Phase 6）
+    var codingApprovalMode by mutableStateOf(initial.codingApprovalMode)
+    // 底部 Tab 顺序与可见性（Tab id 列表，Superagent 融合 Phase 6）
+    var tabOrder by mutableStateOf(initial.tabOrder)
+    var tabVisible by mutableStateOf(initial.tabVisible)
 
     fun applyFrom(s: AppSettings.Settings) {
         baseUrl = s.apiBaseUrl
@@ -243,6 +262,9 @@ class SettingsState(initial: AppSettings.Settings) {
         reasonBaseUrl = s.reasonBaseUrl
         reasonModel = s.reasonModel
         reasonApiKey = s.reasonApiKey
+        asrBaseUrl = s.asrBaseUrl
+        asrModel = s.asrModel
+        asrApiKey = s.asrApiKey
         mainThinking = s.mainThinking
         enableReview = s.enableReview
         visionEnabled = s.visionEnabled
@@ -282,6 +304,10 @@ class SettingsState(initial: AppSettings.Settings) {
         autoCheckUpdate = s.autoCheckUpdate
         externalControlEnabled = s.externalControlEnabled
         externalControlToken = s.externalControlToken
+        // 审批档位与 Tab 配置同回填：漏了的话任一设置页保存一次就会把它们打回默认值
+        codingApprovalMode = s.codingApprovalMode
+        tabOrder = s.tabOrder
+        tabVisible = s.tabVisible
     }
 
     /**
@@ -320,6 +346,9 @@ class SettingsState(initial: AppSettings.Settings) {
         reasonBaseUrl = reasonBaseUrl,
         reasonModel = reasonModel,
         reasonApiKey = reasonApiKey,
+        asrBaseUrl = asrBaseUrl,
+        asrModel = asrModel,
+        asrApiKey = asrApiKey,
         mainThinking = mainThinking,
         enableReview = enableReview,
         visionEnabled = visionEnabled,
@@ -355,5 +384,8 @@ class SettingsState(initial: AppSettings.Settings) {
         autoCheckUpdate = autoCheckUpdate,
         externalControlEnabled = externalControlEnabled,
         externalControlToken = externalControlToken.trim(),
+        codingApprovalMode = codingApprovalMode,
+        tabOrder = tabOrder,
+        tabVisible = tabVisible,
     )
 }

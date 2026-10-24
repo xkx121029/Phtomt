@@ -41,6 +41,7 @@ import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
@@ -473,49 +474,114 @@ internal fun SettingsAiModels(
 
         Spacer(Modifier.height(16.dp))
 
-        // 保存按钮
+        // 保存按钮：收进与分区同语言的中性卡（原先裸露在卡片外，与全页节奏对不上）
         var testing by remember { mutableStateOf(false) }
         var testError by remember { mutableStateOf<String?>(null) }
-        Button(
-            onClick = {
-                buzz()
-                testError = null
-                scope.launch {
-                    testing = true
-                    try {
-                        val r = vm.testConnection(st.baseUrl, st.apiKey, st.model)
-                        testing = false
-                        if (r.isSuccess) {
-                            vm.saveSettings(st.toSettings())
-                        } else {
-                            testError = "模型连接失败：${r.exceptionOrNull()?.message ?: "未知错误"}"
-                        }
-                    } catch (e: Exception) {
-                        testing = false
-                        testError = "模型连接失败：${e.message}"
-                    }
-                }
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (testing) "正在测试连接…" else "保存 AI 配置")
-        }
-        testError?.let {
-            Column(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                // 测试失败不堵死保存：部分供应商只在特定模型/地区放行，
-                // 连接测试通不过但配置本身可用，给出「仍要保存」逃生门
-                TextButton(
+        SettingsPlainCard {
+            Column(Modifier.padding(16.dp)) {
+                Button(
                     onClick = {
+                        buzz()
                         testError = null
-                        vm.saveSettings(st.toSettings())
+                        scope.launch {
+                            testing = true
+                            try {
+                                val r = vm.testConnection(st.baseUrl, st.apiKey, st.model)
+                                testing = false
+                                if (r.isSuccess) {
+                                    vm.saveSettings(st.toSettings())
+                                } else {
+                                    testError = "模型连接失败：${r.exceptionOrNull()?.message ?: "未知错误"}"
+                                }
+                            } catch (e: Exception) {
+                                testing = false
+                                testError = "模型连接失败：${e.message}"
+                            }
+                        }
                     },
-                ) { Text("仍要保存") }
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (testing) "正在测试连接…" else "保存 AI 配置")
+                }
+                testError?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    // 测试失败不堵死保存：部分供应商只在特定模型/地区放行，
+                    // 连接测试通不过但配置本身可用，给出「仍要保存」逃生门
+                    TextButton(
+                        onClick = {
+                            testError = null
+                            vm.saveSettings(st.toSettings())
+                        },
+                    ) { Text("仍要保存") }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ========== E 语音输入 ==========
+        // OpenAI 兼容 /audio/transcriptions 格式：硅基流动 / Groq / OpenAI / 自建 whisper 都适用
+        var asrHint by remember { mutableStateOf<String?>(null) }
+        SettingsSection(
+            title = "语音输入",
+            subtitle = "长按聊天输入框说话后，用这个 API 转文字；留空则回退系统语音识别",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Text(
+                    "填到版本号为止（如 https://api.siliconflow.cn/v1），请求会打到其下的 /audio/transcriptions",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = st.asrBaseUrl,
+                    onValueChange = { st.asrBaseUrl = it },
+                    singleLine = true,
+                    placeholder = { Text("API 地址，如 https://api.siliconflow.cn/v1") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = st.asrApiKey,
+                    onValueChange = { st.asrApiKey = it },
+                    singleLine = true,
+                    placeholder = { Text("API 密钥") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = st.asrModel,
+                    onValueChange = { st.asrModel = it },
+                    singleLine = true,
+                    placeholder = { Text("模型名，如 FunAudioLLM/SenseVoiceSmall") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        buzz()
+                        scope.launch {
+                            vm.saveSettings(st.toSettings())
+                            asrHint = if (st.asrBaseUrl.isBlank()) "已保存：语音输入走系统识别"
+                            else "已保存：长按输入框即可语音输入"
+                        }
+                    },
+                ) { Text("保存语音配置") }
+                asrHint?.let { hint ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        hint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
@@ -533,7 +599,8 @@ private fun CatalogModelRow(
 ) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        // 与端点卡同一块「下沉面」：模型条目和端点卡是同一层级的列表行，底色不能各写一套
+        color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
