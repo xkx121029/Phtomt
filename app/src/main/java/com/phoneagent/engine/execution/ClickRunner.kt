@@ -8,7 +8,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
 import com.phoneagent.engine.perception.PageFingerprint
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 import kotlinx.coroutines.delay
 
 /**

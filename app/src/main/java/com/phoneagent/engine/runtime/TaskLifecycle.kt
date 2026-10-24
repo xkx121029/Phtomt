@@ -5,6 +5,7 @@ import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.StepShot
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.PendingTaskQueue
+import com.phoneagent.engine.RouteDecision
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.AgentLog
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,10 @@ import kotlinx.coroutines.launch
  *
  * 执行体（run/runInner 主循环）仍留 AgentEngine（重构批次 8 随 DecisionLoop 走），
  * 经 [runTask] 钩子接入；异常复位经 [safeReset] 钩子回调引擎。
+ *
+ * Superagent 融合 Phase 4：任务入执行体前先经 [router] 分流（普通对话/编码委托/原链路），
+ * 分流决策由 AgentEngine 组装注入，本类不感知三形态的执行细节；Coding/Chat 决策自带执行体，
+ * 在队列 worker 的 job 协程内挂起执行，保持"同一时刻只允许一个任务"的语义。
  */
 internal class TaskLifecycle(
     private val appContext: Context,
@@ -33,6 +38,11 @@ internal class TaskLifecycle(
     private val runTask: suspend (task: String, plan: TaskPlan?) -> Unit,
     /** 异常/收尾复位：引擎的 safeResetRuntime(taskId, message) */
     private val safeReset: (taskId: Long?, message: String?) -> Unit,
+    /**
+     * 任务路由（Superagent 融合 Phase 4）：由 AgentEngine 组装注入。
+     * 返回 [RouteDecision.Agent] 时走原 runTask 链路，行为与迁移前完全一致。
+     */
+    private val router: suspend (task: String) -> RouteDecision = { RouteDecision.Agent },
 ) {
     /** 队列 worker；由主线程入队与 Default 线程的任务收尾共同读写，故需 @Volatile */
     @Volatile
@@ -92,7 +102,7 @@ internal class TaskLifecycle(
             job = scope.launch {
                 val self = coroutineContext[Job]
                 try {
-                    runTask(task, plan)
+                    dispatch(task, plan)
                 } finally {
                     // 兜底：单任务协程结束时补启动队列 worker，执行期间入队的任务不能没人消费。
                     // 被取消（用户停止）时不续跑：stop() 的语义是残留队列留给下次提交一并处理
@@ -105,6 +115,20 @@ internal class TaskLifecycle(
         }
     }
 
+    /**
+     * 按路由决策分发执行体（Superagent 融合 Phase 4）：
+     * Coding/Chat 决策的执行体在本协程（队列 worker 的 job 协程）内挂起执行——
+     * 不占用 runTask 的 ReAct 主循环，但同样维持 worker 单任务语义（后续任务排队等待）；
+     * Agent 决策走原 runTask 链路，行为不变。
+     */
+    private suspend fun dispatch(task: String, plan: TaskPlan?) {
+        when (val decision = router(task)) {
+            is RouteDecision.Coding -> decision.run()
+            is RouteDecision.Chat -> decision.run()
+            RouteDecision.Agent -> runTask(task, plan)
+        }
+    }
+
     private suspend fun processQueue() {
         val self = coroutineContext[Job]
         // 本 worker 最后执行的任务 id：作为兜底复位的归属凭据（见 safeReset）
@@ -114,7 +138,7 @@ internal class TaskLifecycle(
         try {
             while (coroutineContext.isActive) {
                 val task = pendingTasks.poll() ?: break
-                runTask(task, null)
+                dispatch(task, null)
                 lastTaskId = store.currentTaskId
                 // 调试记录（日志/轨迹/历史/对话）与任务会话归档的持久化已由 run() 的收尾统一完成：
                 // 放这里会与收尾再写一遍同样的整包数据（含全部截图缩略图与 API 原文），白写一倍磁盘

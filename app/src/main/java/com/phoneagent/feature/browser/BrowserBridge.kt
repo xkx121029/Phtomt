@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import android.webkit.WebView
+import com.phoneagent.core.AgentBudgets
 import com.phoneagent.feature.browser.script.NavScripts
 import com.phoneagent.feature.browser.script.ReadScript
 import com.phoneagent.feature.browser.script.InteractScripts
@@ -55,8 +56,8 @@ object BrowserBridge {
     private const val LOAD_TIMEOUT_MS = 25_000L
     /** 单条注入脚本的执行超时 */
     private const val JS_TIMEOUT_MS = 8_000L
-    /** 回注给 AI 的内容上限（与 shell 输出同一量级：网页正文转 Markdown 后需要更多空间） */
-    const val MAX_RESULT_CHARS = 4000
+    /** 回注给 AI 的内容上限（与 shell 输出同一量级：网页正文转 Markdown 后需要更多空间；数值唯一来源 AgentBudgets） */
+    const val MAX_RESULT_CHARS = AgentBudgets.REINJECT_MAX_CHARS
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 

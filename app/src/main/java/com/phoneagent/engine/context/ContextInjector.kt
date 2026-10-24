@@ -13,7 +13,7 @@ import com.phoneagent.engine.PromptLang
 import com.phoneagent.engine.RuleScoper
 import com.phoneagent.engine.TaskSession
 import com.phoneagent.engine.execution.AppNameResolver
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.MAX_PREVIOUS_TASKS
 import com.phoneagent.engine.runtime.EngineStore
 import com.phoneagent.domain.model.ScreenSnapshot

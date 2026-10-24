@@ -1,7 +1,6 @@
 package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,9 +41,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
-import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
 import kotlinx.coroutines.launch
@@ -146,8 +143,10 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                     UpdateChannel.entries.forEach { ch ->
-                        ChannelChip(
-                            channel = ch,
+                        // 渠道芯片统一走 SettingsChoiceChip（与提示词语言/主题选择同一套选中语言，
+                        // 原先这里是 primaryContainer 实底，与其他页的描边选中态对不上）
+                        SettingsChoiceChip(
+                            label = ch.label,
                             selected = st.updateChannel == ch.id,
                             onClick = {
                                 st.updateChannel = ch.id
@@ -388,31 +387,6 @@ private fun StatusCard(
                 )
             }
         }
-    }
-}
-
-/** 频道胶囊：选中态走主色实底，未选中走描边 */
-@Composable
-private fun ChannelChip(channel: UpdateChannel, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Chip)
-    Surface(
-        shape = shape,
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-        border = if (selected) null else appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = modifier.clickable {
-            buzz()
-            onClick()
-        },
-    ) {
-        Text(
-            channel.label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp).fillMaxWidth(),
-        )
     }
 }
 

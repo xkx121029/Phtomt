@@ -28,6 +28,10 @@ object TaskKindDetector {
         val browseHit: Boolean,
         val fetchHit: Boolean,
         val assistantHit: Boolean,
+        /** 普通对话类词命中（什么是/为什么/讲讲/翻译…→ 直答形态） */
+        val chatHit: Boolean,
+        /** 编码类词命中（写代码/脚本/编程/调试…→ vibecoding 委托形态） */
+        val codingHit: Boolean,
     )
 
     fun detect(lang: PromptLang, task: String, termuxAvailable: Boolean = false): Kind {
@@ -44,7 +48,11 @@ object TaskKindDetector {
         val fetchHit = termuxAvailable && hits(lang, task, FETCH_WORDS)
         // 语音助手事务：定闹钟/打电话/发消息/控制硬件等系统级指令
         val assistantHit = hits(lang, task, ASSISTANT_WORDS)
-        return Kind(known, docHit, openTargetHit, openHit, browseHit, fetchHit, assistantHit)
+        // 普通对话（直答）与编码（vibecoding 委托）两类新词表：与旧词表同构，互不改动旧字段语义；
+        // chat 与 coding 同时命中视为多需求，由路由侧（见 AgentEngine.routeTask）按命中数取舍
+        val chatHit = hits(lang, task, CHAT_WORDS)
+        val codingHit = hits(lang, task, CODING_WORDS)
+        return Kind(known, docHit, openTargetHit, openHit, browseHit, fetchHit, assistantHit, chatHit, codingHit)
     }
 
     /**
@@ -63,11 +71,44 @@ object TaskKindDetector {
         if (kind.browseHit || !kind.known) flags += PromptFlag.WEB_TASK
         if (kind.openHit || !kind.known) flags += PromptFlag.OPEN_TASK
         if (kind.assistantHit) flags += PromptFlag.ASSISTANT_TASK
+        // 引导块（与 ASSISTANT_TASK 同策略）：仅任务明确命中时置位，未知任务不误导也不占 token
+        if (kind.codingHit) flags += PromptFlag.CODE_TASK
+        // 纯对话：chat 命中且无任何其他形态命中（doc/open/browse/fetch/assistant/coding 全 false）
+        if (kind.chatHit && !kind.codingHit && !kind.docHit && !kind.openHit &&
+            !kind.browseHit && !kind.fetchHit && !kind.assistantHit
+        ) {
+            flags += PromptFlag.CHAT_TASK
+        }
         return flags
     }
 
+    /** 三形态的命中词数计分（Superagent 融合 Phase 4 多需求路由的简单置信度，见 AgentEngine.routeTask） */
+    data class Scores(
+        /** 编码词表命中数 */
+        val coding: Int,
+        /** 对话词表命中数 */
+        val chat: Int,
+        /** 操作类词表（doc/open/browse/fetch/assistant）命中数合计 */
+        val agentOps: Int,
+    )
+
+    /** 按词表命中词数给三形态计分：多需求并存时路由侧据此取最高置信度者 */
+    fun scores(lang: PromptLang, task: String, termuxAvailable: Boolean = false): Scores = Scores(
+        coding = count(lang, task, CODING_WORDS),
+        chat = count(lang, task, CHAT_WORDS),
+        agentOps = count(lang, task, DOC_WORDS) +
+            count(lang, task, OPEN_TARGET_WORDS) +
+            count(lang, task, OPEN_WORDS) +
+            count(lang, task, BROWSE_WORDS) +
+            (if (termuxAvailable) count(lang, task, FETCH_WORDS) else 0) +
+            count(lang, task, ASSISTANT_WORDS),
+    )
+
     private fun hits(lang: PromptLang, task: String, words: Map<PromptLang, List<String>>): Boolean =
         words.getValue(lang).any { task.contains(it, ignoreCase = true) }
+
+    private fun count(lang: PromptLang, task: String, words: Map<PromptLang, List<String>>): Int =
+        words.getValue(lang).count { task.contains(it, ignoreCase = true) }
 
     private val DOC_WORDS = mapOf(
         PromptLang.CN to listOf(
@@ -138,6 +179,29 @@ object TaskKindDetector {
             // media & hardware
             "play music", "play a song", "play the song", "pause the music", "flashlight",
             "screenshot", "screen recording", "volume", "mute", "airplane mode", "bluetooth", "brightness",
+        ),
+    )
+
+    /** 编码类词（vibecoding 委托形态）。与 DOC_WORDS 等旧词表重叠时（如「代码」）由多需求路由按命中数取舍，不改旧词表。 */
+    private val CODING_WORDS = mapOf(
+        PromptLang.CN to listOf(
+            "写代码", "写个脚本", "写个程序", "编程", "跑一下", "运行脚本", "脚本",
+            "函数", "报错", "调试", "代码", "算法", "斐波那契", "爬虫", "正则",
+        ),
+        PromptLang.EN to listOf(
+            "python", "node", "javascript", "hello world", "algorithm",
+            "compile", "debug", "script", "bug", "regex",
+        ),
+    )
+
+    /** 普通对话类词（直答形态）。与 coding 的边界：「写一篇文章」→ 对话直答，「写个脚本」→ 编码；两表同时命中视为多需求。 */
+    private val CHAT_WORDS = mapOf(
+        PromptLang.CN to listOf(
+            "什么是", "为什么", "怎么理解", "解释一下", "帮我写一篇文章", "写一篇文章",
+            "讲讲", "介绍一下", "翻译", "是什么意思",
+        ),
+        PromptLang.EN to listOf(
+            "who is", "what is", "why", "explain", "translate",
         ),
     )
 }

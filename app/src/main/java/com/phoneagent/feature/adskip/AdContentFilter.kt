@@ -2,7 +2,7 @@ package com.phoneagent.feature.adskip
 
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 
 /**
  * 广告内容过滤结果。

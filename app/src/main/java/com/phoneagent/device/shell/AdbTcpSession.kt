@@ -1,5 +1,6 @@
 package com.phoneagent.device.shell
 
+import com.phoneagent.core.AgentBudgets
 import com.phoneagent.device.shell.AdbProtocol.CMD_AUTH
 import com.phoneagent.device.shell.AdbProtocol.CMD_CLSE
 import com.phoneagent.device.shell.AdbProtocol.CMD_CNXN
@@ -171,8 +172,8 @@ class AdbTcpSession(
     }
 
     companion object {
-        /** shell 输出默认上限（与 ShellRules.SHELL_OUTPUT_BUDGET 对齐） */
-        const val DEFAULT_MAX_CHARS = 4000
+        /** shell 输出默认上限（数值唯一来源：core.AgentBudgets.REINJECT_MAX_CHARS） */
+        const val DEFAULT_MAX_CHARS = AgentBudgets.REINJECT_MAX_CHARS
 
         /** 排空残留帧的上限，防止对端异常时死循环 */
         private const val DRAIN_MAX_FRAMES = 64

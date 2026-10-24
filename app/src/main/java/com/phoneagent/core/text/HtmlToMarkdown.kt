@@ -1,5 +1,7 @@
 package com.phoneagent.core.text
 
+import com.phoneagent.core.AgentBudgets
+
 /**
  * 自研 HTML → Markdown 转换器：让 AI 读网页时拿到结构化正文，而不是一坨压平的纯文本。
  *
@@ -22,8 +24,8 @@ object HtmlToMarkdown {
 
     // ==================== 对外常量 ====================
 
-    /** AI 可见预算：Markdown 超过这个长度就按块边界截断 */
-    const val BUDGET = 4000
+    /** AI 可见预算：Markdown 超过这个长度就按块边界截断（数值唯一来源：AgentBudgets.REINJECT_MAX_CHARS） */
+    const val BUDGET = AgentBudgets.REINJECT_MAX_CHARS
 
     /** 生成上限：转换阶段最多产出多少字符（留出截断提示行的余量） */
     const val HARD_CAP = 8000

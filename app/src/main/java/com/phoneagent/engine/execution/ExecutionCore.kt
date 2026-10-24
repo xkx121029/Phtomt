@@ -19,7 +19,7 @@ import com.phoneagent.engine.VisionConfig
 import com.phoneagent.engine.context.ContextInjector
 import com.phoneagent.engine.isSuccess
 import com.phoneagent.engine.perception.PageFingerprint
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.RELOCATE_BEFORE_TYPES
 import com.phoneagent.engine.runtime.EngineStore
 import com.phoneagent.engine.runtime.UiBridge

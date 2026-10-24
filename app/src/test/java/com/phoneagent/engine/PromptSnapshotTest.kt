@@ -124,6 +124,16 @@ object PromptSnapshot {
                 lang, "", hasVision = true, shizukuAvailable = true,
                 task = "明早七点定一个闹钟",
             )
+            // 编码 / 普通对话引导块：task 命中 CODE_TASK / CHAT_TASK 时注入，
+            // 锁定 Superagent 融合新增两块（sys.coding / sys.chat）的中英文正文
+            map["systemCoding/${lang}"] = AgentPrompts.system(
+                lang, "", hasVision = true, shizukuAvailable = true,
+                task = "用 python 写个脚本算斐波那契前 10 项",
+            )
+            map["systemChat/${lang}"] = AgentPrompts.system(
+                lang, "", hasVision = true, shizukuAvailable = true,
+                task = "什么是量子计算",
+            )
             map["systemCustom/${lang}"] =
                 AgentPrompts.system(lang, "自定义系统提示", hasVision = false, shizukuAvailable = false)
 

@@ -1,5 +1,6 @@
 package com.phoneagent.engine.execution
 
+import com.phoneagent.core.AgentBudgets
 import com.phoneagent.core.text.HtmlToMarkdown
 
 /**
@@ -27,8 +28,9 @@ internal object ShellRules {
      * shell 输出回注 AI 的字符预算。
      * 与内置浏览器的 `BrowserBridge.MAX_RESULT_CHARS` 同量级：网页 `curl` 回来要先转成
      * Markdown 再回传，原来的 1200 只够看到 `<head>` 开头。
+     * 数值唯一来源：core.AgentBudgets.REINJECT_MAX_CHARS。
      */
-    const val SHELL_OUTPUT_BUDGET = 4000
+    const val SHELL_OUTPUT_BUDGET = AgentBudgets.REINJECT_MAX_CHARS
 
     /** 转 Markdown 时给"网页标题 / 网页正文（已自动转为 Markdown）"两行表头留的余量 */
     const val SHELL_MD_HEADER_RESERVE = 300

@@ -8,7 +8,6 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.phoneagent.R
-import com.phoneagent.ui.MainActivity
 
 /**
  * 独立的任务进度通知：任务运行时在系统通知栏显示带进度条的任务进度，点击可回到 App。
@@ -63,10 +62,12 @@ object TaskProgressNotifier {
 
     /** 每个任务一个独立通知 ID（顺序分配，见 [notifyId]），避免多任务互相覆盖 */
 
-    private fun contentIntent(context: Context): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java).apply {
+    private fun contentIntent(context: Context): PendingIntent? {
+        // 不直接引用 ui.MainActivity（core 不得反向依赖 ui）：改经 PackageManager 取本应用启动意图，
+        // 行为等价（回到主界面），core 层保持对上层零感知
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
+        } ?: return null
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 

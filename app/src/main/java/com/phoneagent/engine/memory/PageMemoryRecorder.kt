@@ -12,7 +12,7 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.engine.perception.AnnotatedPage
 import com.phoneagent.engine.perception.PageFingerprint
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

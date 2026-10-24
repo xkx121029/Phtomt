@@ -1,6 +1,5 @@
 package com.phoneagent.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,19 +54,21 @@ internal fun SettingsPermissions(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .padding(horizontal = SettingsScreenPad)
+            // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = SettingsScreenPad),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            SettingsPageHeader(
-                title = "权限与执行通道",
-                onBack = onBack,
-                subtitle = "授予系统权限，配置 shell 执行通路",
-            )
+        // 骨架节奏与全设置流程一致：页头后 20 / 分区之间 16 / 结尾 28。
+        // 原先这里套了两层 Column，Shizuku/Termux 卡放在无横向留白的外层，
+        // 铺满到屏幕边缘，与其他页的 20dp 栅格对不上——已拍平收进同一层。
+        SettingsPageHeader(
+            title = "权限与执行通道",
+            onBack = onBack,
+            subtitle = "授予系统权限，配置 shell 执行通路",
+        )
+        Spacer(Modifier.height(20.dp))
 
-            SettingsSection(title = "系统权限", subtitle = "点击未授权项跳转对应授权页", tone = SettingsTone.Warm) {
+        SettingsSection(title = "系统权限", subtitle = "点击未授权项跳转对应授权页", tone = SettingsTone.Warm) {
                 Column(Modifier.padding(horizontal = 16.dp)) {
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -88,20 +89,25 @@ internal fun SettingsPermissions(
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
             // 系统级入口：数字助理角色（长按电源键唤起）与通知感知（AI 的通知维度上下文）。
             // 两者都是系统授权，不进权限雷达（雷达枚举的是运行时权限），单独给一区引导。
             SettingsSection(title = "系统级入口", subtitle = "数字助理唤起与通知感知", tone = SettingsTone.Warm) {
                 val activity = androidx.activity.compose.LocalActivity.current
-                val roleLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
-                ) { }
                 var assistantHeld by androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf(
                         com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context),
                     )
                 }
+                val roleLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+                ) {
+                    // 授权框关闭后回读状态（授权/拒绝都要刷新，否则按钮文案停在旧状态）
+                    assistantHeld = com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context)
+                }
                 val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
                     Text(
                         "数字助理：设为默认助理后，长按电源键或边缘手势直接唤起 Happy Agent，" +
                             "唤起时的屏幕内容会带给任务（原来占这个位置的语音助手仍有各自的专属入口）。",
@@ -109,16 +115,25 @@ internal fun SettingsPermissions(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
+                    // 区块内的主操作统一满宽按钮，与端侧视觉/数据页的行动按钮同一语言
                     androidx.compose.material3.Button(
                         enabled = !assistantHeld,
                         onClick = {
-                            if (android.os.Build.VERSION.SDK_INT >= 29) {
-                                com.phoneagent.feature.assistant.AssistantRole.requestRole(activity)?.let {
-                                    roleLauncher.launch(it)
-                                    assistantHeld = com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context)
-                                }
+                            val host = activity ?: context as? android.app.Activity
+                            // 拿得到系统授权框就弹框授权；拿不到（API<29 / 机型不支持该角色）时
+                            // 兜底跳系统「数字助理应用」设置页手动指定——不再静默无反应
+                            val request = if (android.os.Build.VERSION.SDK_INT >= 29) {
+                                com.phoneagent.feature.assistant.AssistantRole.requestRole(host)
+                            } else {
+                                null
+                            }
+                            if (request != null) {
+                                roleLauncher.launch(request)
+                            } else {
+                                com.phoneagent.feature.assistant.AssistantRole.openAssistantSettings(host ?: context)
                             }
                         },
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(if (assistantHeld) "已是默认数字助理" else "设为系统数字助理")
                     }
@@ -129,24 +144,28 @@ internal fun SettingsPermissions(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    TextButton(
+                    androidx.compose.material3.OutlinedButton(
                         enabled = !notifEnabled,
-                        onClick = { context.startActivity(android.content.Intent("android.settings.NOTIFICATION_LISTENER_SETTINGS")) },
+                        onClick = {
+                            // 裸 startActivity 在没有该设置页的 ROM 上会 ActivityNotFoundException 崩溃，
+                            // 收口到带回退链与 NEW_TASK 标记的封装
+                            com.phoneagent.feature.notify.openNotificationAccessSettings(context)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (notifEnabled) "通知使用权已开启" else "开启通知使用权") }
-                    Spacer(Modifier.height(12.dp))
-                    // 对外控制接口：广播契约在 TaskControlReceiver（下发任务/停止/查询状态）
-                    Text(
-                        "对外控制接口：允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    androidx.compose.material3.Switch(
-                        checked = st.externalControlEnabled,
-                        onCheckedChange = { st.externalControlEnabled = it; save() },
-                    )
-                    if (st.externalControlEnabled) {
-                        Spacer(Modifier.height(6.dp))
+                }
+                // 对外控制接口：广播契约在 TaskControlReceiver（下发任务/停止/查询状态）。
+                // 开关统一走 SettingsToggleRow（原先是一颗裸 Switch，与全页开关语言不一致）
+                SettingsToggleRow(
+                    title = "对外控制接口",
+                    subtitle = "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）",
+                    value = st.externalControlEnabled,
+                ) {
+                    st.externalControlEnabled = it
+                    save()
+                }
+                if (st.externalControlEnabled) {
+                    Column(Modifier.padding(horizontal = 18.dp)) {
                         androidx.compose.material3.OutlinedTextField(
                             value = st.externalControlToken,
                             onValueChange = { st.externalControlToken = it; save() },
@@ -161,9 +180,12 @@ internal fun SettingsPermissions(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
+
+            Spacer(Modifier.height(16.dp))
 
             SettingsSection(
                 title = "执行通道优先级",
@@ -200,10 +222,11 @@ internal fun SettingsPermissions(
                     Spacer(Modifier.height(8.dp))
                 }
             }
-        }
+
+            Spacer(Modifier.height(16.dp))
 
         // 执行通道：内置 Shizuku（一键启动 / 首次引导）+ Termux 探测。
-        // 该区块自带 20dp 横向留白，放在外层避免与外层内边距叠加成 40dp。
+        // 收进与分区同层的 20dp 栅格，卡片不再铺到屏幕边缘
         ShizukuChannelCard(vm)
         Spacer(Modifier.height(12.dp))
         TermuxChannelCard(vm)

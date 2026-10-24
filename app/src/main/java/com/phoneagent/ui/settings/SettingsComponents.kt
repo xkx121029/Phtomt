@@ -666,7 +666,8 @@ internal fun RoleRow(
     val buzz = rememberHapticClick()
     Surface(
         shape = RoundedCornerShape(AppRadii.Item),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        // 与端点卡/模型行同一块「下沉面」：职责行也是设置页的列表行，底色统一走 AppSurfaceMuted
+        color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(

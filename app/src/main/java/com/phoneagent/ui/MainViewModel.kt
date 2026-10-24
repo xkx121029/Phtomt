@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -77,6 +78,22 @@ class MainViewModel(
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings.Settings())
+
+    /**
+     * 新手引导状态：null = 尚未从 DataStore 读到真实值。
+     *
+     * 不能直接用 [settingsFlow] 判定——它的初始值是默认 Settings（onboardingDone=false），
+     * 老用户冷启动会先闪一帧引导页再跳回主界面；这里用 null 表示"还没读盘"，
+     * 首帧只铺纯底色，读到真实值后才决定渲染引导页还是主界面。
+     */
+    val onboardingState: StateFlow<Boolean?> = settings.settings
+        .map { it.onboardingDone as Boolean? }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** 结束新手引导：把完成标记落盘，下次启动直接进主界面 */
+    fun completeOnboarding() {
+        saveSettings(settingsFlow.value.copy(onboardingDone = true))
+    }
 
     val agentState: StateFlow<AgentState> = engine.state
 
@@ -115,6 +132,15 @@ class MainViewModel(
         engine.probeModel(baseUrl, apiKey, model)
 
     fun startPlanning(task: String) = engine.startPlanning(task)
+
+    /**
+     * 对话页直提（Superagent 融合）：跳过规划流，直接进任务队列由三形态路由分流——
+     * 纯对话 → 主模型直答，回答写入对话区（对话页消费）；编码 → 委托编码 agent；
+     * 操控 → 原链路走 Agent 页。规划流的 Reply 只会落到 Agent 页 say 气泡，
+     * 对话页从这里拿不到回答，因此对话页的输入不走 startPlanning。
+     */
+    fun submitChatTurn(task: String) = engine.start(task)
+
     fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
     fun approvePlan() = engine.approvePlan()
     fun cancelPlanning() = engine.cancelPlanning()
@@ -316,19 +342,33 @@ class MainViewModel(
     /** 一键跳转到对应权限授权页 */
     fun openPermissionSettings(context: Context, kind: PermissionKind) {
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        // 自启动与后台：优先拉起「允许应用忽略电池优化」的系统确认弹窗
+        //（清单已声明 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS，允许直接弹窗）；
+        // 被机型拦截/无弹窗时回退厂商自启动管理页，最后回退电池优化白名单列表页
+        if (kind == PermissionKind.AUTOSTART) {
+            // 关键：从 Activity 上下文启动时不加 NEW_TASK——该弹窗的 taskAffinity 归系统设置，
+            // 加了 NEW_TASK 会把设置任务切到前台、弹窗盖在设置上而不是本应用上
+            val fromActivity = context is Activity
+            val fallbacks = listOfNotNull(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}")),
+                getAutostartIntent(context),
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            )
+            fallbacks.any {
+                if (!fromActivity) it.addFlags(flags)
+                runCatching { context.startActivity(it) }.isSuccess
+            }
+            return
+        }
         val intent = when (kind) {
             PermissionKind.ACCESSIBILITY ->
                 Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             PermissionKind.OVERLAY ->
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-            PermissionKind.AUTOSTART -> {
-                // 先尝试厂商自启动管理页，失败则回退到电池优化白名单页
-                val manufacturerIntent = getAutostartIntent(context)
-                manufacturerIntent ?: Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:${context.packageName}"))
-            }
             PermissionKind.QUERY_ALL_PACKAGES ->
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+            else -> return
         }.addFlags(flags)
         runCatching { context.startActivity(intent) }
     }

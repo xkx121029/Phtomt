@@ -4,6 +4,8 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 
 /**
@@ -72,3 +74,17 @@ class AgentNotificationListener : NotificationListenerService() {
 fun notificationListenerEnabled(context: Context): Boolean =
     NotificationManagerCompat.getEnabledListenerPackages(context)
         .contains(context.packageName)
+
+/**
+ * 引导开启通知使用权：部分 ROM 没有「通知使用权」独立页（startActivity 抛 ActivityNotFoundException），
+ * 回退到系统设置首页；统一加 NEW_TASK 标记兜底非 Activity 上下文调用，避免 AndroidRuntimeException 崩溃。
+ * 返回是否成功拉起了任意一页。
+ */
+fun openNotificationAccessSettings(context: Context): Boolean =
+    listOf(
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
+        Intent(Settings.ACTION_SETTINGS),
+    ).any { intent ->
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }.isSuccess
+    }

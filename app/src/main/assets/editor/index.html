@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>编辑器</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #191c21;
+    --line: #262a30;
+    --fg: #c8ccd4;
+    --muted: #7d8590;
+    --accent: #6ea8dc;
+    --danger: #d98a8a;
+    --ok: #8fbf8f;
+    --comment: #5f6a76;
+    --string: #b0c99a;
+    --number: #d3b183;
+    --keyword: #a3b8e8;
+    --tag: #dda6a6;
+    --attr: #cdc08c;
+    --prop: #96c6cf;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  body { font: 13px/1.5 var(--mono); overscroll-behavior: none; }
+  #app { display: flex; height: 100%; }
+
+  /* ---- 文件树 ---- */
+  #side { width: 42%; max-width: 320px; min-width: 180px; background: var(--panel);
+          border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+  #side.hidden { display: none; }
+  #sideHead { padding: 8px; border-bottom: 1px solid var(--line); }
+  #rootPath { font-size: 10px; color: var(--muted); word-break: break-all; margin-bottom: 6px; }
+  #filter { width: 100%; background: #101317; color: var(--fg); border: 1px solid var(--line);
+            border-radius: 3px; padding: 5px 7px; font: inherit; font-size: 12px; outline: none; }
+  #filter:focus { border-color: var(--accent); }
+  #tree { flex: 1; overflow: auto; padding: 4px 0 40px; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 3px 8px; white-space: nowrap;
+         cursor: pointer; font-size: 12px; }
+  .row:hover { background: #1f2329; }
+  .row.sel { background: #232a33; }
+  .row .nm { overflow: hidden; text-overflow: ellipsis; }
+  .row.dir .nm { color: var(--fg); }
+  .row.file .nm { color: var(--muted); }
+  .row.sel .nm { color: var(--fg); }
+  .mark { width: 10px; flex: none; color: var(--accent); }
+  .tw { width: 8px; flex: none; color: var(--muted); font-size: 9px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; }
+
+  /* ---- 编辑区 ---- */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+         border-bottom: 1px solid var(--line); background: var(--panel); }
+  #bar button { background: #22262d; color: var(--fg); border: 1px solid var(--line);
+                border-radius: 3px; padding: 5px 9px; font: inherit; font-size: 12px; }
+  #bar button:active { background: #2b3038; }
+  #bar button.pri { border-color: #35506b; color: #cfe2f5; }
+  #bar button:disabled { opacity: .4; }
+  #name { flex: 1; min-width: 0; font-size: 12px; color: var(--muted);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  #msg { font-size: 11px; color: var(--muted); padding: 0 2px; }
+  #msg.err { color: var(--danger); }
+  #msg.ok { color: var(--ok); }
+
+  #pad { position: relative; flex: 1; overflow: hidden; display: flex; }
+  #gutter { width: 42px; flex: none; overflow: hidden; background: #16181c;
+            border-right: 1px solid var(--line); color: #4d555f;
+            font: 13px/1.5 var(--mono); text-align: right; padding: 8px 6px 200px 0; }
+  #scroll { position: relative; flex: 1; overflow: auto; }
+  #hl, #ta { margin: 0; padding: 8px 10px 200px; font: 13px/1.5 var(--mono);
+             white-space: pre; tab-size: 2; border: 0; }
+  #hl { position: absolute; inset: 0; color: var(--fg); pointer-events: none; min-width: 100%; }
+  #ta { position: relative; width: 100%; min-height: 100%; background: transparent;
+        color: transparent; caret-color: var(--accent); resize: none; outline: none; }
+  #ta::selection { background: #2f4d6b; color: transparent; }
+
+  /* ---- 补全 ---- */
+  #pop { position: absolute; z-index: 9; background: #1e232a; border: 1px solid #333a44;
+         border-radius: 3px; max-height: 168px; overflow: auto; display: none; min-width: 140px; }
+  #pop div { padding: 4px 9px; font-size: 12px; white-space: nowrap; }
+  #pop div.on { background: #2b3644; }
+
+  #empty { flex: 1; display: flex; align-items: center; justify-content: center;
+           color: var(--muted); font-size: 12px; text-align: center; padding: 20px; }
+  #empty.hidden { display: none; }
+  .snippet { color: var(--muted); margin-left: 10px; font-size: 11px; }
+
+  .c-comment { color: var(--comment); font-style: italic; }
+  .c-string  { color: var(--string); }
+  .c-number  { color: var(--number); }
+  .c-keyword { color: var(--keyword); }
+  .c-tag     { color: var(--tag); }
+  .c-attr    { color: var(--attr); }
+  .c-prop    { color: var(--prop); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <div id="sideHead">
+      <div id="rootPath">…</div>
+      <input id="filter" placeholder="过滤文件名" autocomplete="off" spellcheck="false">
+    </div>
+    <div id="tree"></div>
+  </div>
+  <div id="main">
+    <div id="bar">
+      <button id="toggle" title="文件树">☰</button>
+      <button id="save" class="pri" disabled>保存</button>
+      <button id="newFile">新建</button>
+      <button id="preview" disabled>预览</button>
+      <span id="name">未打开文件</span>
+      <span id="msg"></span>
+    </div>
+    <div id="pad" style="display:none">
+      <div id="gutter"></div>
+      <div id="scroll">
+        <pre id="hl"></pre>
+        <textarea id="ta" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+      </div>
+    </div>
+    <div id="empty">从左边选一个文件开始编辑<br><span class="snippet">长按 ☰ 可以收起文件树</span></div>
+  </div>
+</div>
+<div id="pop"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var bridge = window.ACAEditor || null;
+  var el = function (id) { return document.getElementById(id); };
+  var state = { path: null, dirty: false, lang: 'txt', files: [], open: {} };
+  var view = null;   // 当前 textarea 与其高亮层
+
+  // ---------- 语法高亮 ----------
+  // 规则注册表：加一门语言是加一行，不是在 highlight() 里再塞一个 if。
+  // 每条都以 ^ 锚定——扫描器在当前位置按顺序试，先命中的先吃字符。
+  var RULES = {
+    js: [
+      ['c-comment', /^\/\/[^\n]*/],
+      ['c-comment', /^\/\*[\s\S]*?\*\//],
+      ['c-string', /^`(?:\\.|[^`\\])*`/],
+      ['c-string', /^'(?:\\.|[^'\\])*'/],
+      ['c-string', /^"(?:\\.|[^"\\])*"/],
+      ['c-number', /^0[xX][0-9a-fA-F]+/],
+      ['c-number', /^\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?/],
+      ['c-keyword', /^(?:const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|default|import|export|from|as|class|extends|new|delete|typeof|instanceof|in|of|try|catch|finally|throw|await|async|yield|this|super|static|get|set|null|undefined|true|false|void)\b/]
+    ],
+    html: [
+      ['c-comment', /^<!--[\s\S]*?-->/],
+      ['c-tag', /^<\/?[a-zA-Z][\w:-]*/],
+      ['c-tag', /^\/?>/],
+      ['c-attr', /^[a-zA-Z-]+(?==)/],
+      ['c-string', /^"(?:[^"\\]|\\.)*"/],
+      ['c-string', /^'(?:[^'\\]|\\.)*'/]
+    ],
+    css: [
+      ['c-comment', /^\/\*[\s\S]*?\*\//],
+      ['c-tag', /^[@.#]?[-a-zA-Z_][\w-]*/],
+      ['c-string', /^"(?:[^"\\]|\\.)*"/],
+      ['c-string', /^'(?:[^'\\]|\\.)*'/],
+      ['c-number', /^-?\d[\d.]*(?:px|em|rem|%|vh|vw|s|ms|deg|fr)?/],
+      ['c-keyword', /^[a-zA-Z-]+(?=\s*:)/]
+    ],
+    py: [
+      ['c-comment', /^#[^\n]*/],
+      ['c-string', /^[rbfu]{0,2}'''[\s\S]*?'''/],
+      ['c-string', /^[rbfu]{0,2}"""[\s\S]*?"""/],
+      ['c-string', /^[rbfu]{0,2}'(?:\\.|[^'\\])*'/],
+      ['c-string', /^[rbfu]{0,2}"(?:\\.|[^"\\])*"/],
+      ['c-number', /^\d[\d_]*(?:\.\d+)?/],
+      ['c-keyword', /^(?:def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|lambda|yield|await|async|pass|break|continue|global|nonlocal|assert|del|in|is|not|and|or|None|True|False|self)\b/]
+    ],
+    json: [
+      ['c-string', /^"(?:[^"\\]|\\.)*"(?=\s*:)/],
+      ['c-string', /^"(?:[^"\\]|\\.)*"/],
+      ['c-number', /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/],
+      ['c-keyword', /^(?:true|false|null)\b/]
+    ],
+    md: [
+      ['c-keyword', /^#{1,6}\s[^\n]*/],
+      ['c-string', /^`[^`]*`/],
+      ['c-comment', /^\s*[-*+]\s/],
+      ['c-tag', /^\[[^\]]*\]\([^)]*\)/]
+    ],
+    txt: [
+      ['c-comment', /^#[^\n]*/],
+      ['c-string', /^"(?:[^"\\]|\\.)*"/],
+      ['c-string', /^'(?:[^'\\]|\\.)*'/],
+      ['c-number', /^\d+(?:\.\d+)?/]
+    ]
+  };
+  RULES.ts = RULES.js;
+  RULES.jsx = RULES.js;
+  RULES.kotlin = RULES.js;
+  RULES.java = RULES.js;
+  RULES.dart = RULES.js;
+
+  var EXT_LANG = {
+    js: 'js', mjs: 'js', cjs: 'js', jsx: 'jsx', ts: 'ts', tsx: 'ts', json: 'json',
+    html: 'html', htm: 'html', xml: 'html', vue: 'html', svg: 'html',
+    css: 'css', scss: 'css', less: 'css',
+    py: 'py', kt: 'kotlin', kts: 'kotlin', java: 'java', dart: 'dart',
+    md: 'md', markdown: 'md', sh: 'txt', yml: 'txt', yaml: 'txt', toml: 'txt', gradle: 'txt'
+  };
+
+  var WORDS = {
+    js: ['const', 'let', 'function', 'return', 'if', 'else', 'for', 'while', 'import', 'export',
+         'default', 'async', 'await', 'class', 'try', 'catch', 'new', 'typeof', 'console.log',
+         'addEventListener', 'require', 'module.exports', 'document.querySelector'],
+    ts: ['interface', 'type', 'implements', 'readonly', 'enum', 'as', 'export', 'import', 'const'],
+    kotlin: ['fun', 'val', 'var', 'class', 'object', 'interface', 'companion', 'data class',
+             'suspend', 'override', 'private', 'public', 'internal', 'when', 'return'],
+    java: ['public', 'private', 'protected', 'static', 'final', 'class', 'void', 'new', 'return', 'import'],
+    dart: ['final', 'const', 'class', 'widget', 'build', 'Widget', 'StatelessWidget', 'StatefulWidget'],
+    py: ['def', 'class', 'return', 'import', 'from', 'as', 'if', 'elif', 'else', 'for', 'while',
+         'with', 'try', 'except', 'lambda', 'self', 'None', 'True', 'False', 'print'],
+    html: ['div', 'span', 'section', 'header', 'main', 'button', 'input', 'script', 'style',
+           'meta', 'link', 'class=', 'id=', 'href=', 'src='],
+    css: ['display', 'flex', 'grid', 'position', 'absolute', 'relative', 'color', 'background',
+          'margin', 'padding', 'border', 'font-size', 'align-items', 'justify-content', 'gap'],
+    json: ['true', 'false', 'null'],
+    md: ['# ', '## ', '### ', '**', '- ', '```'],
+    txt: []
+  };
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /** 单行高亮。逐位置贪心吃 token，所以字符串里的 // 不会被当成注释。 */
+  function highlightLine(line, lang) {
+    var rules = RULES[lang] || RULES.txt;
+    var out = '', i = 0, guard = 0;
+    while (i < line.length && guard++ < 4000) {
+      var hit = null;
+      for (var r = 0; r < rules.length; r++) {
+        var m = rules[r][1].exec(line.slice(i));
+        if (m && m[0].length) { hit = [rules[r][0], m[0]]; break; }
+      }
+      if (hit) {
+        out += '<span class="' + hit[0] + '">' + esc(hit[1]) + '</span>';
+        i += hit[1].length;
+      } else {
+        out += esc(line[i]);
+        i++;
+      }
+    }
+    return out;
+  }
+
+  // ---------- 渲染编辑区 ----------
+  function langOf(path) {
+    var ext = (path.split('.').pop() || '').toLowerCase();
+    return EXT_LANG[ext] || 'txt';
+  }
+
+  function render() {
+    var text = view.ta.value;
+    var lines = text.split('\n');
+    var hl = '';
+    for (var i = 0; i < lines.length; i++) hl += highlightLine(lines[i], state.lang) + '\n';
+    view.hl.innerHTML = hl;
+    var g = '';
+    for (var j = 0; j < lines.length; j++) g += (j + 1) + '\n';
+    el('gutter').textContent = g;
+    el('gutter').scrollTop = el('scroll').scrollTop;
+    el('save').disabled = !state.dirty;
+    markName();
+  }
+
+  function markName() {
+    el('name').textContent = (state.path || '未打开文件') + (state.dirty ? ' •' : '');
+  }
+
+  function openFile(path) {
+    if (!bridge) { say('编辑器运行在应用内才有文件访问权限', 'err'); return; }
+    var res = safe(function () { return JSON.parse(bridge.read(path)); });
+    if (!res || !res.ok) { say((res && res.error) || '读取失败', 'err'); return; }
+    state.path = res.path;
+    state.lang = langOf(res.path);
+    state.dirty = false;
+    view.ta.value = res.content;
+    state.open[res.path] = true;
+    el('pad').style.display = 'flex';
+    el('empty').classList.add('hidden');
+    el('preview').disabled = !/\.html?$/i.test(res.path);
+    render();
+    renderTree();
+    view.ta.scrollTop = 0;
+    el('scroll').scrollTop = 0;
+    say(res.truncated ? '文件较大，只载入了前 512KB' : '', res.truncated ? 'err' : '');
+    view.ta.focus();
+  }
+
+  function saveFile() {
+    if (!state.path) return;
+    var res = safe(function () { return JSON.parse(bridge.write(state.path, view.ta.value)); });
+    if (!res || !res.ok) { say((res && res.error) || '保存失败', 'err'); return; }
+    state.dirty = false;
+    markName();
+    el('save').disabled = true;
+    say('已保存 ' + res.bytes + ' 字节', 'ok');
+    setTimeout(function () { say(''); }, 1600);
+  }
+
+  function say(text, cls) {
+    var m = el('msg');
+    m.textContent = text || '';
+    m.className = cls || '';
+  }
+
+  function safe(fn) {
+    try { return fn(); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+
+  // ---------- 文件树 ----------
+  function loadTree() {
+    if (!bridge) return;
+    el('rootPath').textContent = safe(function () { return bridge.root(); }) || '';
+    var arr = safe(function () { return JSON.parse(bridge.tree()); });
+    state.files = Array.isArray(arr) ? arr : [];
+    renderTree();
+  }
+
+  function renderTree() {
+    var q = el('filter').value.trim().toLowerCase();
+    var box = el('tree');
+    var html = '';
+    var folders = {};
+    for (var i = 0; i < state.files.length; i++) {
+      var f = state.files[i];
+      if (q && f.path.toLowerCase().indexOf(q) < 0) continue;
+      if (f.dir) {
+        var key = f.path;
+        var shut = state.open[key] === false;
+        html += '<div class="row dir" data-dir="' + esc(f.path) + '" style="padding-left:' +
+                (8 + (f.depth - 1) * 12) + 'px">' +
+                '<span class="tw">' + (shut ? '›' : '⌄') + '</span>' +
+                '<span class="nm">' + esc(f.name) + '</span></div>';
+        if (shut) folders[key] = true;
+      }
+    }
+    // 第二遍：文件（目录折叠时 subtree 也要藏起来）
+    for (var j = 0; j < state.files.length; j++) {
+      var g = state.files[j];
+      if (g.dir) continue;
+      if (q && g.path.toLowerCase().indexOf(q) < 0) continue;
+      if (hiddenByFolder(g.path, folders)) continue;
+      html += '<div class="row file' + (g.path === state.path ? ' sel' : '') + '" data-file="' +
+              esc(g.path) + '" style="padding-left:' + (8 + (g.depth - 1) * 12) + 'px">' +
+              '<span class="mark">' + (state.open[g.path] && g.path !== state.path ? '·' : '') + '</span>' +
+              '<span class="nm">' + esc(g.name) + '</span></div>';
+    }
+    box.innerHTML = html || '<div class="row"><span class="nm">（没有文件）</span></div>';
+  }
+
+  function hiddenByFolder(path, folders) {
+    for (var k in folders) {
+      if (path.length > k.length + 1 && path.indexOf(k + '/') === 0) return true;
+    }
+    return false;
+  }
+
+  el('tree').addEventListener('click', function (e) {
+    var row = e.target.closest ? e.target.closest('.row') : null;
+    if (!row) return;
+    if (row.dataset.dir) {
+      var p = row.dataset.dir;
+      state.open[p] = state.open[p] === false;
+      renderTree();
+    } else if (row.dataset.file) {
+      if (state.dirty && !confirm('当前文件还没保存，确定要切换吗？')) return;
+      openFile(row.dataset.file);
+    }
+  });
+  el('filter').addEventListener('input', renderTree);
+
+  el('toggle').addEventListener('click', function () {
+    el('side').classList.toggle('hidden');
+    setTimeout(render, 0);
+  });
+
+  el('save').addEventListener('click', saveFile);
+
+  el('preview').addEventListener('click', function () {
+    if (state.path) bridge.preview(state.path);
+  });
+
+  el('newFile').addEventListener('click', function () {
+    var p = prompt('新文件的路径（相对工作区）', '');
+    if (!p) return;
+    var res = safe(function () { return JSON.parse(bridge.create(p)); });
+    if (!res || !res.ok) { say((res && res.error) || '新建失败', 'err'); return; }
+    loadTree();
+    openFile(res.path);
+  });
+
+  // ---------- 编辑与补全 ----------
+  function mountEditor() {
+    view = { ta: el('ta'), hl: el('hl') };
+
+    view.ta.addEventListener('input', function () { state.dirty = true; render(); autoComplete(); });
+    view.ta.addEventListener('scroll', function () {
+      el('gutter').scrollTop = el('scroll').scrollTop;
+      el('hl').scrollTop = view.ta.scrollTop;
+      el('hl').scrollLeft = view.ta.scrollLeft;
+    });
+    el('scroll').addEventListener('scroll', function () {
+      el('gutter').scrollTop = el('scroll').scrollTop;
+      el('hl').scrollTop = el('scroll').scrollTop;
+      el('hl').scrollLeft = el('scroll').scrollLeft;
+      view.ta.scrollTop = el('scroll').scrollTop;
+      view.ta.scrollLeft = el('scroll').scrollLeft;
+    });
+
+    view.ta.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); return; }
+      if (pop.style.display === 'block') {
+        if (e.key === 'ArrowDown') { e.preventDefault(); movePop(1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); movePop(-1); return; }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applyPop(); return; }
+        if (e.key === 'Escape') { pop.style.display = 'none'; return; }
+      }
+      if (e.key === 'Tab') { e.preventDefault(); insert('  '); }
+      else if (e.key === 'Enter') { e.preventDefault(); autoIndent(); }
+      else if (AUTO_CLOSE[e.key]) { e.preventDefault(); pair(e.key, AUTO_CLOSE[e.key]); }
+      else if (e.key === 'Backspace') { e.preventDefault(); backspacePair(); }
+    });
+    view.ta.addEventListener('blur', function () { setTimeout(function () { pop.style.display = 'none'; }, 120); });
+  }
+
+  var pad = el('pad'), pop = el('pop');
+  var popItems = [], popIndex = 0;
+  var AUTO_CLOSE = { '(': ')', '[': ']', '{': '}', '"': '"', "'": "'", '`': '`' };
+
+  function val() { return view.ta.value; }
+  function caret() { return view.ta.selectionStart; }
+
+  function insert(text, moveBy) {
+    var v = val(), c = caret();
+    view.ta.value = v.slice(0, c) + text + v.slice(view.ta.selectionEnd);
+    view.ta.selectionStart = view.ta.selectionEnd = c + (moveBy == null ? text.length : moveBy);
+    state.dirty = true;
+    render();
+  }
+
+  /** 输入左括号/引号时成对补上，光标停中间；引号紧跟字母时不补（缩写上下文）。 */
+  function pair(open, close) {
+    var v = val(), c = caret();
+    var next = v[c] || '';
+    if (open === close) {
+      if (next === close) { view.ta.selectionStart = view.ta.selectionEnd = c + 1; return; }
+      var prev = v[c - 1] || '';
+      if (/[\w$]/.test(prev)) { insert(open); return; }
+    }
+    if (next === close) { view.ta.selectionStart = view.ta.selectionEnd = c + 1; return; }
+    insert(open + close, 1);
+  }
+
+  function backspacePair() {
+    var v = val(), c = caret();
+    var prev = v[c - 1] || '', next = v[c] || '';
+    if (c === view.ta.selectionEnd && AUTO_CLOSE[prev] === next) {
+      view.ta.value = v.slice(0, c - 1) + v.slice(c + 1);
+      view.ta.selectionStart = view.ta.selectionEnd = c - 1;
+      state.dirty = true;
+      render();
+      return;
+    }
+    view.ta.value = v.slice(0, c - 1) + v.slice(view.ta.selectionEnd);
+    view.ta.selectionStart = view.ta.selectionEnd = Math.max(0, c - 1);
+    state.dirty = true;
+    render();
+  }
+
+  function autoIndent() {
+    var v = val(), c = caret();
+    var start = v.lastIndexOf('\n', c - 1) + 1;
+    var line = v.slice(start, c);
+    var indent = (line.match(/^[ \t]*/) || [''])[0];
+    if (/[{([:]\s*$/.test(line.trim())) {
+      var closer = { '{': '}', '[': ']', '(': ')' };
+      var ch = line.trim().slice(-1);
+      insert('\n' + indent + '  ', 2 + indent.length);
+      return;
+    }
+    insert('\n' + indent);
+  }
+
+  function wordBefore() {
+    var v = val(), c = caret();
+    var m = /[A-Za-z_$][\w$.-]*$/.exec(v.slice(Math.max(0, c - 40), c));
+    return m ? m[0] : '';
+  }
+
+  function autoComplete() {
+    var w = wordBefore();
+    if (w.length < 2) { pop.style.display = 'none'; return; }
+    var list = WORDS[state.lang] || [];
+    var low = w.toLowerCase();
+    popItems = list.filter(function (x) { return x.toLowerCase().indexOf(low) === 0 && x !== w; }).slice(0, 8);
+    if (!popItems.length) { pop.style.display = 'none'; return; }
+    popIndex = 0;
+    var html = '';
+    for (var i = 0; i < popItems.length; i++) {
+      html += '<div class="' + (i === 0 ? 'on' : '') + '">' + esc(popItems[i]) + '</div>';
+    }
+    pop.innerHTML = html;
+    var r = view.ta.getBoundingClientRect();
+    pop.style.display = 'block';
+    pop.style.left = Math.min(r.left + 12, window.innerWidth - 170) + 'px';
+    pop.style.top = Math.min(r.top + 40, window.innerHeight - 180) + 'px';
+  }
+
+  function movePop(d) {
+    popIndex = (popIndex + d + popItems.length) % popItems.length;
+    var kids = pop.children;
+    for (var i = 0; i < kids.length; i++) kids[i].className = i === popIndex ? 'on' : '';
+  }
+
+  function applyPop() {
+    var item = popItems[popIndex];
+    var v = val(), c = caret();
+    var w = wordBefore();
+    view.ta.value = v.slice(0, c - w.length) + item + v.slice(view.ta.selectionEnd);
+    view.ta.selectionStart = view.ta.selectionEnd = c - w.length + item.length;
+    pop.style.display = 'none';
+    state.dirty = true;
+    render();
+  }
+
+  pop.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('div') : null;
+    if (!t) return;
+    popIndex = Array.prototype.indexOf.call(pop.children, t);
+    applyPop();
+  });
+
+  // ---------- 启动 ----------
+  mountEditor();
+  if (!bridge) {
+    el('empty').innerHTML = '这个页面需要在 happy_ACA 应用内打开<br>' +
+      '<span class="snippet">（浏览器里没有文件访问接口）</span>';
+  } else {
+    loadTree();
+    var init = safe(function () { return bridge.initialPath(); });
+    if (init) openFile(init);
+    window.onbeforeunload = function () {
+      return state.dirty ? '还有未保存的修改' : undefined;
+    };
+  }
+})();
+</script>
+</body>
+</html>

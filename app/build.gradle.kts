@@ -117,6 +117,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // 编码运行时（libnode.so + 依赖闭包）随主 APK 打包：so 必须是磁盘上的真实文件
+        // （Android 10+ 只允许从 nativeLibraryDir 执行），不能 zip 内存映射
+        jniLibs.useLegacyPackaging = true
     }
     testOptions {
         unitTests {
@@ -193,3 +196,22 @@ tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") 
             runCatching { versionPropsFile.outputStream().use { props.store(it, "Auto-incremented by Gradle") } }
         }
     }
+
+// ---------------------------------------------------------------------------
+// 编码 agent host 同步：从 happy_ACA 上游仓库单向同步 agent-core 源码到
+// assets/agent-host（tool/bundle_host.mjs 生成 VERSION 内容指纹，RuntimeBootstrap
+// 据指纹决定是否重新解压）。只经脚本单向流动，assets/agent-host 不手改、不提交。
+// HACA 检出不存在时跳过（CI/纯 HPA 开发者无需克隆上游仓库），路径可用
+// HACA_ROOT 环境变量覆盖，默认 ../happy_ACA。
+// ---------------------------------------------------------------------------
+val hacaRoot = System.getenv("HACA_ROOT") ?: rootProject.file("../happy_ACA").absolutePath
+val bundleHost by tasks.registering(Exec::class) {
+    workingDir = rootProject.projectDir
+    environment("HACA_ROOT", hacaRoot)
+    commandLine("node", "tool/bundle_host.mjs")
+    onlyIf { file("$hacaRoot/packages/agent-core/src/index.js").exists() }
+}
+
+tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.configureEach {
+    dependsOn(bundleHost)
+}

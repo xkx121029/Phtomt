@@ -29,7 +29,9 @@ import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.ShellRules
 import com.phoneagent.engine.execution.VerifiedClickExecutor
 import com.phoneagent.engine.execution.VerifyRules
+import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.overlay.FloatingWindowService
+import com.phoneagent.overlay.AgentStatusStore
 import com.phoneagent.data.store.AiMemoryDedupe
 import com.phoneagent.data.store.AiMemoryEntry
 import com.phoneagent.data.store.AiMemoryUpsert
@@ -61,7 +63,7 @@ import com.phoneagent.domain.model.StepShot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.network.CloudAgent
 import com.phoneagent.engine.perception.PageAnnotator
-import com.phoneagent.engine.perception.effectiveLabel
+import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.device.screen.ScreenCapture
 import com.phoneagent.core.security.DataSanitizer
 import com.phoneagent.core.security.SensitivePageDetector
@@ -150,6 +152,11 @@ class AgentEngine(
     private val mcpManager: com.phoneagent.feature.mcp.McpManager? = null,
     /** 技能执行网关：把 AI 输出的"技能名/技能 id"归一化为意图或 MCP 调用（见 [SkillCompat.normalize]） */
     private val skillGateway: com.phoneagent.feature.skill.SkillExecutionGateway? = null,
+    /**
+     * 编码 agent 委托桥（Superagent 融合 Phase 4）：AppModule 注入的共享单例（Phase 5 编码页复用同一实例）。
+     * 缺省时就地构造兜底；路由（router）的组装在本类内部完成，不经 AppModule 传参。
+     */
+    codingBridge: CodingAgentBridge? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -171,11 +178,23 @@ class AgentEngine(
     private val telemetry = TelemetryRecorder(appContext, memory, store)
     /** AI 连接工具：翻译 / 连接测试 / 模型列表 / 能力探测（重构批次 3，见 [com.phoneagent.engine.connect.AiTools]） */
     private val aiTools = com.phoneagent.engine.connect.AiTools(settings, aiClient)
-    /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]） */
+    /**
+     * 编码 agent 委托桥（Superagent 融合 Phase 4）：vibecoding 任务的启动/委托/停止编排。
+     * 优先用 AppModule 注入的共享单例；未注入时就地组装（运行时随主包内置，管理器只需 context）。
+     */
+    private val codingAgentBridge = codingBridge ?: CodingAgentBridge(
+        appContext, settings,
+        com.phoneagent.coding.CodingRuntimeManager(appContext),
+    )
+    /** 停止旗标（Superagent 融合 Phase 4）：stop() 置位，编码委托/直答的挂起点轮询到即自行收尾 */
+    @Volatile private var stopCodingRequested = false
+    @Volatile private var chatStopRequested = false
+    /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]）；router 为三形态分流 */
     private val lifecycle = TaskLifecycle(
         appContext, settings, scope, store, uiBridge,
         runTask = { task, plan -> run(task, plan) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
+        router = { task -> routeTask(task) },
     )
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
     private val skillCallHistory = com.phoneagent.feature.skill.SkillCallHistory(appContext, scope)
@@ -662,6 +681,10 @@ class AgentEngine(
             .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
 
     fun stop() {
+        // 编码委托/直答会话的停止旗标（Superagent 融合 Phase 4）：这两个形态不走 ReAct 主循环，
+        // cancelWorker 取消 job 协程同样能打断它们，但旗标能让挂起点先做状态复位（桥停止/状态中心清零）
+        stopCodingRequested = true
+        chatStopRequested = true
         lifecycle.cancelWorker()
         // 用户主动停止：任务记忆收尾为「已中断」，否则记忆页会永远显示「进行中」。
         // 没有进行中的任务时 finishTaskMemory 内部直接返回，不会凭空写库
@@ -3002,6 +3025,90 @@ class AgentEngine(
     private fun deviceQueryText(kind: String, filter: String) = contextInjector.deviceQueryText(kind, filter)
 
     private fun sessionContextText(task: String, lang: PromptLang) = contextInjector.sessionContextText(task, lang)
+
+    // ---- 任务路由（Superagent 融合 Phase 4）：普通对话 / 编码委托 / 原操控链路 ----
+
+    /**
+     * 纯对话直答：跳过感知循环，主模型一次问答完成。回答写入对话区，并按现有
+     * 「上一问一答」承接机制留档（[rememberChatTurn]）。不适用「≥3 步」完成判定。
+     * 系统提示照常走 [AgentPrompts.system]（task=任务原文）：flagsOf 判出纯对话后注入
+     * sys.chat 区块并裁掉无关大块，与主链路的提示词装配同源。
+     * TODO(Superagent Phase 5+): 换成主模型流式输出，把 token 增量实时推进对话区。
+     */
+    private suspend fun chatDirectAnswer(task: String) {
+        chatStopRequested = false
+        val settingsVal = settings.settings.first()
+        val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
+        val system = AgentPrompts.system(
+            lang, settingsVal.systemPrompt,
+            hasVision = false, shizukuAvailable = false,
+            actionMode = ActionMode.BALANCED, task = task,
+        )
+        val answer = aiClient.chat(
+            baseUrl = settingsVal.apiBaseUrl,
+            apiKey = settingsVal.apiKey,
+            model = settingsVal.model,
+            messages = listOf(
+                ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = system))),
+                ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = task))),
+            ),
+            temperature = CHAT_TEMPERATURE,
+        ).getOrElse { "抱歉，这次没有答上来（${it.message ?: "网络或模型异常"}）。请稍后再试。" }
+        addConversation("assistant", answer)
+        rememberChatTurn(task, answer)
+        AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = answer.take(80)))
+        log(AgentLog.Level.INFO, "对话直答完成")
+    }
+
+    /**
+     * 三形态路由（Superagent 融合 Phase 4）：在任务进入执行体前判定一次。
+     * - Coding：命中编码词且置信度最高 → 委托设备端编码 agent（不进 ReAct 感知循环），
+     *   在队列 worker 的 job 协程内挂起等待会话结束，保持「同一时刻只允许一个任务」语义；
+     * - Chat：命中对话词且无任何其他形态命中 → 主模型直答一步完成；
+     * - Agent：其余情况走原 runTask 链路，行为不变。
+     * 多需求并存时按各词表命中词数取置信度最高者，并在时间线提示其余需求可再下一道指令。
+     * 判定唯一走 [TaskKindDetector]，与提示词裁块（[TaskKindDetector.flagsOf]）同源。
+     */
+    private suspend fun routeTask(task: String): RouteDecision {
+        val settingsVal = settings.settings.first()
+        val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
+        val termux = termuxBridge?.isAvailable() == true
+        val scores = TaskKindDetector.scores(lang, task, termux)
+        val kind = TaskKindDetector.detect(lang, task, termux)
+        val codingHit = kind.codingHit
+        val chatPure = kind.chatHit && !codingHit && !kind.docHit && !kind.openHit &&
+            !kind.browseHit && !kind.fetchHit && !kind.assistantHit
+        // 多需求并存（chat+coding、coding+其他操作类）：取命中词数最高者，时间线提示其余需求
+        val maxOps = maxOf(scores.chat, scores.agentOps)
+        val multiNeeds = codingHit && maxOps > 0
+        if (multiNeeds) {
+            val chosen = if (scores.coding >= maxOps) "编码任务" else "手机操控任务"
+            log(AgentLog.Level.INFO, "检测到多种需求，已按$chosen 处理，其余可再下一道指令")
+        }
+        return when {
+            codingHit && scores.coding >= maxOf(scores.chat, scores.agentOps) -> RouteDecision.Coding {
+                stopCodingRequested = false
+                try {
+                    codingAgentBridge.prompt(task)
+                } finally {
+                    if (stopCodingRequested) {
+                        codingAgentBridge.stop()
+                        AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = "已停止", done = true))
+                    }
+                }
+            }
+            chatPure -> RouteDecision.Chat {
+                try {
+                    chatDirectAnswer(task)
+                } finally {
+                    if (chatStopRequested) {
+                        AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = "已停止", done = true))
+                    }
+                }
+            }
+            else -> RouteDecision.Agent
+        }
+    }
 }
 
 /**
@@ -3037,6 +3144,9 @@ internal class PendingTaskQueue {
 }
 
 internal fun ActionExecutor.Result.isSuccess(): Boolean = this is ActionExecutor.Result.Success
+
+/** 纯对话直答的采样温度（Superagent 融合 Phase 4）：略低于决策温度，稳定输出自然语言回答 */
+private const val CHAT_TEMPERATURE = 0.3
 
 /**
  * 一次记忆写入事件（引擎内存态），供 Agent 页在任务流里实时插入记忆卡片。
