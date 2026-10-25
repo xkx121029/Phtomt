@@ -103,6 +103,9 @@ internal fun SettingsPermissions(
             // 真实的通道状态：只显示「已安装」会让用户误以为能用（安装 ≠ 绑定 ≠ 无障碍已开启）
             val channelConnected by ProviderManager.connected.collectAsState()
             val channelError by ProviderManager.lastError.collectAsState()
+            // 自检：把「装 / 开 / 绑 / 读树 / 截图」拆成五步实测，结果留在页面上
+            var selfTestRunning by remember { mutableStateOf(false) }
+            var selfTestSteps by remember { mutableStateOf<List<ProviderManager.SelfTestStep>?>(null) }
             // ---- 看门狗：配置与状态都持久化在 Provider 侧，经 AIDL 读写（两应用不共享 prefs）----
             val scope = rememberCoroutineScope()
             var watchdog by remember { mutableStateOf<WatchdogUi?>(null) }
@@ -215,6 +218,49 @@ internal fun SettingsPermissions(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+
+                    // ---- 执行通道自检：五步实测，每步给出真实数值，不用对着「已安装」猜 ----
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (selfTestRunning) return@OutlinedButton
+                            selfTestRunning = true
+                            scope.launch {
+                                selfTestSteps = ProviderManager.selfTest(context, a11yEnabled)
+                                selfTestRunning = false
+                            }
+                        },
+                        enabled = !selfTestRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(if (selfTestRunning) "正在自检…" else "运行执行通道自检") }
+                    selfTestSteps?.let { steps ->
+                        Spacer(Modifier.height(8.dp))
+                        steps.forEach { step ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.Top,
+                            ) {
+                                Text(
+                                    text = if (step.ok) "✓" else "✕",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = if (step.ok) Success else MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(end = 8.dp),
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        step.title,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                    Text(
+                                        step.detail,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // ---- 看门狗 / 保活配置：写入 Provider 立即生效 ----
