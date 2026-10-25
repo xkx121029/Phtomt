@@ -6,7 +6,10 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.DeadObjectException
 import android.os.IBinder
+import android.os.RemoteException
+import android.os.TransactionTooLargeException
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.phoneagent.provider.IDeviceProvider
@@ -19,6 +22,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.coroutines.resume
 
@@ -68,11 +72,18 @@ object ProviderManager {
     /** Provider 是否已连上（UI 可观察） */
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
 
-    /** binder 死亡回调：Provider 进程被杀时清空代理，下次 [call] 触发重绑 */
+    private val _lastError = MutableStateFlow<String?>(null)
+
+    /** 最近一次通道异常的中文说明（UI 直接展示，避免「显示已连接却不能用」） */
+    val lastError: StateFlow<String?> = _lastError.asStateFlow()
+
+    /** 分片拉取的单片大小：远低于 Binder 约 1MB 的事务上限 */
+    private const val PAYLOAD_CHUNK = 128 * 1024
+
+    /** binder 死亡回调：Provider 进程被杀时清空代理并解绑，下次 [call] 才能重新绑定 */
     private val deathRecipient = IBinder.DeathRecipient {
         Log.w(TAG, "Provider binder 已断开，等待重连")
-        provider = null
-        _connected.value = false
+        invalidate("服务组件连接已断开")
     }
 
     private val connection = object : ServiceConnection {
@@ -81,22 +92,24 @@ object ProviderManager {
             runCatching { service?.linkToDeath(deathRecipient, 0) }
             provider = remote
             _connected.value = true
+            _lastError.value = null
             Log.i(TAG, "已绑定 Provider（apiVersion=${runCatching { remote?.apiVersion() }.getOrNull()}）")
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             provider = null
             _connected.value = false
+            _lastError.value = "服务组件进程已断开"
         }
 
         override fun onBindingDied(name: ComponentName?) {
-            provider = null
-            _connected.value = false
+            invalidate("服务组件绑定已失效")
         }
 
         override fun onNullBinding(name: ComponentName?) {
             provider = null
             _connected.value = false
+            _lastError.value = "服务组件拒绝绑定（签名或版本不匹配）"
         }
     }
 
@@ -165,7 +178,12 @@ object ProviderManager {
      * Provider 未安装时返回 null，不抛异常。
      */
     suspend fun ensureBound(context: Context = requireNotNull(appContext) { "ProviderManager 未初始化" }): IDeviceProvider? {
-        provider?.let { return it }
+        // 代理存在但 binder 已死（Provider 进程被回收）：先真正解绑，否则系统认为仍连着，
+        // 再次 bindService 不会回调 onServiceConnected，代理会一直是空
+        provider?.let { p ->
+            if (runCatching { p.asBinder().isBinderAlive }.getOrDefault(false)) return p
+            invalidate("服务组件连接已失效")
+        }
         if (!isInstalled(context)) return null
 
         return bindMutex.withLock {
@@ -180,6 +198,9 @@ object ProviderManager {
     private suspend fun bindAwait(ctx: Context): IDeviceProvider? = suspendCancellableCoroutine { cont ->
         appContext = ctx
         connecting = true
+        // 清掉可能残留的旧绑定：Android 的 bindService 是引用计数，
+        // 同一 connection 重复绑定不会重新回调 onServiceConnected
+        runCatching { ctx.unbindService(connection) }
         val intent = Intent(ACTION).setPackage(PACKAGE)
         val ok = runCatching {
             ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
@@ -211,6 +232,10 @@ object ProviderManager {
     /**
      * 带超时与断连兜底的远程调用：Provider 不可用、超时、DeadObject 一律返回 null。
      * 调用方按“不可用”处理即可（例如回落为「请先安装/授权服务组件」提示）。
+     *
+     * 关键区分：**只有通道真的死了才清代理**。业务层异常（尤其是回包过大导致的
+     * TransactionTooLargeException）说明 Provider 活得好好的，若也清代理并保留旧绑定，
+     * 之后既拿不到回调也发不出请求 —— 这正是「显示已连接但命令全废」的成因。
      */
     suspend fun <T> call(
         context: Context = requireNotNull(appContext) { "ProviderManager 未初始化" },
@@ -220,15 +245,76 @@ object ProviderManager {
         val remote = ensureBound(context) ?: return null
         return withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
-                runCatching { block(remote) }.getOrElse { e ->
-                    // DeadObjectException / RemoteException：失效代理并等下次重绑
-                    Log.w(TAG, "Provider 调用失败：${e.message}")
-                    provider = null
-                    _connected.value = false
+                try {
+                    val result = block(remote)
+                    _lastError.value = null
+                    result
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    // 超时/取消必须原样抛出，否则 withTimeoutOrNull 会失去意义
+                    throw e
+                } catch (e: Throwable) {
+                    if (isTransportDead(e)) {
+                        Log.w(TAG, "Provider 通道断开：${e.javaClass.simpleName} ${e.message}")
+                        invalidate("服务组件连接已断开")
+                    } else {
+                        // Provider 仍在，只是这次请求失败（如回包超过 Binder 上限）；
+                        // 保留连接，下一次请求照常可用
+                        Log.w(TAG, "Provider 调用失败：${e.javaClass.simpleName} ${e.message}")
+                        _lastError.value = "调用失败：${e.message ?: e.javaClass.simpleName}"
+                    }
                     null
                 }
             }
         }
+    }
+
+    /**
+     * 分片拉取 Provider 暂存的大块数据（截图 / 元素树）。
+     * 返回 null 表示 Provider 不支持该接口或数据已失效，调用方自行决定是否回退旧接口。
+     *
+     * 必须在 [call] 的超时窗口内调用；单片 128KB，40 次往返也远低于默认 5s 预算。
+     */
+    suspend fun readPayload(remote: IDeviceProvider, kind: Int): ByteArray? {
+        val token = runCatching { remote.beginPayload(kind) }.getOrDefault(-1)
+        if (token <= 0) return null
+        try {
+            val length = runCatching { remote.payloadLength(token) }.getOrDefault(-1)
+            if (length <= 0) return null
+            val out = ByteArrayOutputStream(length)
+            var offset = 0
+            while (offset < length) {
+                val chunk = runCatching { remote.readPayload(token, offset, PAYLOAD_CHUNK) }.getOrNull()
+                    ?: return null
+                if (chunk.isEmpty()) break
+                out.write(chunk)
+                offset += chunk.size
+            }
+            return if (offset >= length) out.toByteArray() else null
+        } finally {
+            runCatching { remote.endPayload(token) }
+        }
+    }
+
+    /** 通道是否真的断了：通信异常且不是「请求太大」这类业务性失败 */
+    private fun isTransportDead(e: Throwable): Boolean = when (e) {
+        is DeadObjectException -> true
+        is TransactionTooLargeException -> false
+        is RemoteException -> true
+        else -> false
+    }
+
+    /**
+     * 作废当前代理：清空引用 + **真正解绑** + 记录原因。
+     * 只清引用而不解绑，系统仍视连接为活动状态，下次 bindService 不会再回调
+     * onServiceConnected —— 代理就再也拿不回来了。
+     */
+    private fun invalidate(reason: String) {
+        val ctx = appContext
+        provider = null
+        _connected.value = false
+        _lastError.value = reason
+        connecting = false
+        if (ctx != null) runCatching { ctx.unbindService(connection) }
     }
 
     /** 主动解绑并清空代理（进程退出或 Provider 被卸载时调用） */

@@ -40,6 +40,24 @@ class ProviderService : Service() {
         override fun takeScreenshot(): ByteArray? =
             runBlockingBridge { A11yBridge.takeScreenshotPng() }
 
+        override fun beginPayload(kind: Int): Int = runCatching {
+            val bytes = when (kind) {
+                ProviderApi.KIND_TREE -> runBlockingBridge { A11yBridge.captureScreenJson() }?.toByteArray(Charsets.UTF_8)
+                ProviderApi.KIND_SCREENSHOT -> runBlockingBridge { A11yBridge.takeScreenshotPng() }
+                else -> null
+            } ?: return -1
+            PayloadStore.put(bytes)
+        }.getOrDefault(-1)
+
+        override fun payloadLength(token: Int): Int = PayloadStore.length(token)
+
+        override fun readPayload(token: Int, offset: Int, maxBytes: Int): ByteArray? =
+            PayloadStore.read(token, offset, maxBytes)
+
+        override fun endPayload(token: Int) {
+            PayloadStore.remove(token)
+        }
+
         override fun hitTest(x: Int, y: Int): String? =
             runBlockingBridge { A11yBridge.hitTestJson(x, y) }
 
@@ -139,7 +157,7 @@ class ProviderService : Service() {
     }
 
     companion object {
-        /** 契约版本：增删 IDeviceProvider 方法时递增（v3：新增看门狗配置/状态） */
-        const val API_VERSION = 3
+        /** 契约版本（与 [ProviderApi.API_VERSION] 保持一致，v4：新增大块数据分片传输） */
+        const val API_VERSION = ProviderApi.API_VERSION
     }
 }

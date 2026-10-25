@@ -100,6 +100,9 @@ internal fun SettingsPermissions(
             var bundledVersion by remember { mutableStateOf(ProviderManager.bundledVersion(context)) }
             var needsInstall by remember { mutableStateOf(ProviderManager.needsInstall(context)) }
             var a11yEnabled by remember { mutableStateOf(AgentAccessibilityService.isServiceEnabled(context)) }
+            // 真实的通道状态：只显示「已安装」会让用户误以为能用（安装 ≠ 绑定 ≠ 无障碍已开启）
+            val channelConnected by ProviderManager.connected.collectAsState()
+            val channelError by ProviderManager.lastError.collectAsState()
             // ---- 看门狗：配置与状态都持久化在 Provider 侧，经 AIDL 读写（两应用不共享 prefs）----
             val scope = rememberCoroutineScope()
             var watchdog by remember { mutableStateOf<WatchdogUi?>(null) }
@@ -161,6 +164,23 @@ internal fun SettingsPermissions(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (installedVersion != null) {
+                    // 把「已安装」与「真的能用」分开说：安装完但无障碍没开、或绑定失败时，
+                    // 这里要直接给出原因，而不是让用户对着一个绿色标题猜
+                    val ready = a11yEnabled && channelConnected && channelError == null
+                    val status = when {
+                        !a11yEnabled -> "通道未就绪：无障碍服务未开启"
+                        channelError != null -> "通道未就绪：$channelError"
+                        !channelConnected -> "通道未就绪：正在连接服务组件…"
+                        else -> "通道已就绪"
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (ready) Success else MaterialTheme.colorScheme.error,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {

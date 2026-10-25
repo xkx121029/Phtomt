@@ -92,6 +92,10 @@ dependencies {
 val writeProviderVersion by tasks.registering {
     val outDir = layout.buildDirectory.dir("provider")
     outputs.file(outDir.map { it.file("version.txt") })
+    // 版本号在配置阶段读取，但任务本身没有可追踪的输入文件：
+    // 一旦被 Gradle 判为 UP-TO-DATE，就会一直沿用旧的 version.txt，
+    // 主应用据此误判「已是最新」而永远不提示更新服务组件。故强制每次重写。
+    outputs.upToDateWhen { false }
     doLast {
         val dir = outDir.get().asFile
         dir.mkdirs()

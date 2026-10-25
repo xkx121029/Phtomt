@@ -56,8 +56,33 @@ interface IDeviceProvider {
      */
     String captureScreen();
 
-    /** 无障碍截图（API 30+），返回 PNG 字节；不支持或失败返回 null */
+    /**
+     * 无障碍截图（API 30+），返回 PNG 字节；不支持或失败返回 null。
+     *
+     * 旧接口：全屏 PNG 通常 2~6MB，超过 Binder 单次事务上限（约 1MB）会抛
+     * TransactionTooLargeException。新代码请改用 [beginPayload] + [readPayload] 分片拉取。
+     */
     byte[] takeScreenshot();
+
+    // ==================== 大块数据传输（分片） ====================
+
+    /**
+     * 在 Provider 进程内暂存一份大块数据并返回 token（>0）；不够用/失败返回 -1。
+     * kind：0=屏幕元素树 JSON（UTF-8），1=无障碍截图 PNG。
+     *
+     * 为什么不直接回包：Binder 单次事务约 1MB，全屏 PNG 必然超限；
+     * 超限异常还会被调用方误判成「连接已断」，一声不响地把整条通道废掉。
+     */
+    int beginPayload(int kind);
+
+    /** token 对应数据的总字节数；token 失效返回 -1 */
+    int payloadLength(int token);
+
+    /** 读取 [offset, offset+maxBytes) 分片；token 失效返回 null（单次上限 256KB） */
+    byte[] readPayload(int token, int offset, int maxBytes);
+
+    /** 释放 token 暂存的字节 */
+    void endPayload(int token);
 
     /** 落点审计：屏幕上承接 (x,y) 的控件是谁；返回 JSON NodeHit 或 null */
     String hitTest(int x, int y);
