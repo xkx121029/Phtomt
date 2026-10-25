@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="provider_app_name">Happy Agent 服务组件</string>
+    <string name="a11y_service_label">Happy Agent 自动操作</string>
+    <string name="a11y_service_description">读取屏幕内容并代替你执行点击、滑动、输入等操作，供 Happy Agent 完成 AI 任务。服务运行在独立的服务组件应用中。</string>
+</resources>

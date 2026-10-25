@@ -6,10 +6,13 @@ import com.phoneagent.device.a11y.ActionExecutor
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.device.a11y.NodeSelector
 import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.ChatMessageDto
+import com.phoneagent.engine.prompt.AgentHookRegistry
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelAbility
+import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.VisionRouting
 import com.phoneagent.data.prefs.AppSettings
 import kotlinx.serialization.json.jsonObject
@@ -902,6 +905,10 @@ class AgentEngine(
                 PromptLang.EN -> "Execution channel (accessibility/Shizuku) is auto-selected on-device; you never specify it. Open apps with open_app (write the app name); target location and coordinate computing are all handled on-device — you never output pixel coordinates."
             }))))
         }
+        // Hook 管线：任务级系统提示扩展（记忆/环境摘要等增强件在此注入；单个 hook 失败不影响其余）
+        AgentHookRegistry.runSystemHooks(
+            AgentHookRegistry.HookContext(task, lang, step = 0, actionModeKey = activeActionMode.key),
+        ).forEach { messages.add(it) }
 
         val maxSteps = settingsVal.maxSteps
         var step = 0
@@ -1583,12 +1590,12 @@ class AgentEngine(
                 // 引导后决策同样有看门狗（BUG 24）：用户给完指导若云端挂起，任务会带着"需要你的协助"
                 // 的假象永久卡住，用户无从判断。超时按"引导失败"处理，走下方既有的收尾/重试分支。
                 var guided = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
-                    cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                    cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }, protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal)).getOrNull()
                 }
                 if (guided == null || guided.intent == IntentType.FINISH || guided.intent == IntentType.GIVE_UP) {
                     // AI 调用失败或认为任务完成：重试一次
                     guided = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
-                        cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }).getOrNull()
+                        cloudAgent.decideWithUserHint(settingsVal.apiBaseUrl, settingsVal.apiKey, settingsVal.model, messages, hint, onDelta = { pushThinking(delta = it) }, protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal)).getOrNull()
                     }
                 }
                 if (guided != null && guided.intent != IntentType.FINISH && guided.intent != IntentType.GIVE_UP) {
@@ -1802,6 +1809,7 @@ class AgentEngine(
                         ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = ask))),
                     ),
                     screenshot = null, temperature = 0.2,
+                    protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
                 ).getOrNull()?.action
             }
             if (refilled == null) break
@@ -1942,6 +1950,7 @@ class AgentEngine(
                         model = visionCfg?.model ?: "",
                         screenshot = shot,
                         purpose = "根据用户任务「$task」，找出当前页面上可用于推进任务的操作目标",
+                        protocol = protocolOf(visionCfg?.baseUrl ?: "", settingsVal),
                     ).getOrNull()?.text
                     recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 }
@@ -2045,11 +2054,16 @@ class AgentEngine(
                 baseUrl = settingsVal.apiBaseUrl,
                 apiKey = settingsVal.apiKey,
                 model = settingsVal.model,
-                // 长线任务历史压缩：只带系统消息 + 最近几轮 + 当前轮，避免上下文无限累积
-                messages = chatHistory(messages, userMsg),
+                // 长线任务历史压缩：只带系统消息 + 最近几轮 + 当前轮，避免上下文无限累积；
+                // 发送前过 Hook 出口管线（脱敏/翻译等增强件在此改写，失败保持原样）
+                messages = AgentHookRegistry.runMessagePipeline(
+                    chatHistory(messages, userMsg),
+                    AgentHookRegistry.HookContext(task, currentLang, _state.value.stepCount, activeActionMode.key),
+                ),
                 screenshot = if (mainGetsImage) screenshot else null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
+                protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
                 onRetry = {
                     FloatingWindowService.resetThinking()
                     // 重试会重放文本，流式回显同步清零，避免界面叠加两遍
@@ -2129,6 +2143,7 @@ class AgentEngine(
                                 screenshot = screenshot,
                                 purpose = "定位用户任务「$task」中需要的目标「$targetText」",
                                 target = targetText,
+                                protocol = protocolOf(visionCfg?.baseUrl ?: "", settingsVal),
                             ).getOrNull()
                             recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                             val ax = ans?.x
@@ -2241,6 +2256,7 @@ class AgentEngine(
             aiClient.chat(
                 baseUrl = baseUrl, apiKey = apiKey, model = model,
                 messages = messages, temperature = 0.1,
+                protocol = protocolOf(baseUrl, settingsVal),
             ).getOrNull()
         } ?: run {
             FloatingWindowService.updateReviewText("审核超时或失败，沿用执行者「${intent.intent}」")
@@ -2274,14 +2290,14 @@ class AgentEngine(
     }
 
     /** 测试主模型连接是否可用（用于设置保存前的校验） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> =
-        aiTools.testConnection(baseUrl, apiKey, model)
+    suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<String> =
+        aiTools.testConnection(baseUrl, apiKey, model, protocol)
 
-    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
-        aiTools.listModels(baseUrl, apiKey)
+    suspend fun listModels(baseUrl: String, apiKey: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<List<String>> =
+        aiTools.listModels(baseUrl, apiKey, protocol)
 
-    suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
-        aiTools.probeModel(baseUrl, apiKey, model)
+    suspend fun probeModel(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<ModelAbility> =
+        aiTools.probeModel(baseUrl, apiKey, model, protocol)
 
     // ---- 技能 / 宏 / MCP 已收口到 skill/SkillRunner（重构批次 6），以下为转发 ----
 
@@ -2362,6 +2378,7 @@ class AgentEngine(
                 purpose = question,
                 target = target,
                 jsonMode = target != null,
+                protocol = protocolOf(cfg.baseUrl, settingsVal),
             )
         }
         recordVisionMs((System.nanoTime() - t0) / 1_000_000)
@@ -2427,6 +2444,15 @@ class AgentEngine(
 
     private fun reasoningConfig(settingsVal: AppSettings.Settings): ReasoningConfig? =
         decisionConfig.reasoningConfig(settingsVal)
+
+    /**
+     * 端点协议解析：按归一化 URL 匹配模型库端点的协议档位。
+     * 未入库的地址（旧三槽遗留配置等）一律回落 OpenAI 兼容，行为与历史版本一致。
+     */
+    private fun protocolOf(baseUrl: String, settingsVal: AppSettings.Settings): ApiProtocol =
+        ApiProtocol.fromId(
+            settingsVal.endpoints.firstOrNull { it.id == AiClient.normalizeBaseUrl(baseUrl) }?.protocol,
+        )
 
     /** 每步决策温度：失败越频繁越鼓励换思路（对应温度文档第三节，逻辑下沉 EngineRules） */
     private fun decisionTemperature(): Double = EngineRules.decisionTemperature(consecutiveFailures)
@@ -2737,6 +2763,7 @@ class AgentEngine(
                     ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = prompt))),
                 ),
                 temperature = 0.2,
+                protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
             ).getOrNull()
         } ?: return
         val items = parseDistilledMemories(reply)
@@ -3031,19 +3058,16 @@ class AgentEngine(
     /**
      * 纯对话直答：跳过感知循环，主模型一次问答完成。回答写入对话区，并按现有
      * 「上一问一答」承接机制留档（[rememberChatTurn]）。不适用「≥3 步」完成判定。
-     * 系统提示照常走 [AgentPrompts.system]（task=任务原文）：flagsOf 判出纯对话后注入
-     * sys.chat 区块并裁掉无关大块，与主链路的提示词装配同源。
+     * 系统提示走 [AgentPrompts.chatSystem]：直答端侧不解析意图、回答原样展示，
+     * 操控链路的铁律/意图表/动作模式/技能表一概不注入（注入了会把直答模型带偏
+     * 去输出意图 JSON 而不是回答本身），只保留身份与直答规则。
      * TODO(Superagent Phase 5+): 换成主模型流式输出，把 token 增量实时推进对话区。
      */
     private suspend fun chatDirectAnswer(task: String) {
         chatStopRequested = false
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
-        val system = AgentPrompts.system(
-            lang, settingsVal.systemPrompt,
-            hasVision = false, shizukuAvailable = false,
-            actionMode = ActionMode.BALANCED, task = task,
-        )
+        val system = AgentPrompts.chatSystem(lang, settingsVal.systemPrompt)
         val answer = aiClient.chat(
             baseUrl = settingsVal.apiBaseUrl,
             apiKey = settingsVal.apiKey,
@@ -3053,6 +3077,7 @@ class AgentEngine(
                 ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = task))),
             ),
             temperature = CHAT_TEMPERATURE,
+            protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
         ).getOrElse { "抱歉，这次没有答上来（${it.message ?: "网络或模型异常"}）。请稍后再试。" }
         addConversation("assistant", answer)
         rememberChatTurn(task, answer)
@@ -3118,6 +3143,15 @@ class AgentEngine(
  * 原先 AgentEngine 直接对 `MutableStateFlow.value` 做「读—改—写」，而读改写在并发时
  * 会互相覆盖，任务就此丢失；这里用一把锁把入队 / 出队 / 判空收敛为原子操作。
  */
+/**
+ * 解析某次调用应使用的 API 协议档位：按 baseUrl 在模型库端点表里查 protocol 字段
+ * （用户在模型库编辑端点时选定），查不到（脏 URL / 端点已删）回落 OpenAI 兼容。
+ */
+internal fun protocolOf(baseUrl: String, settings: AppSettings.Settings): ApiProtocol =
+    settings.endpoints.firstOrNull { it.id == ModelCatalogCodec.endpointId(baseUrl) }
+        ?.let { ApiProtocol.fromId(it.protocol) }
+        ?: ApiProtocol.OPENAI
+
 internal class PendingTaskQueue {
     private val lock = Any()
     private val _items = MutableStateFlow<List<String>>(emptyList())

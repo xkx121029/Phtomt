@@ -1,6 +1,7 @@
 package com.phoneagent.engine.connect
 
 import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.core.ai.ModelAbility
@@ -33,6 +34,7 @@ internal class AiTools(
             model = settingsVal.model,
             messages = messages,
             temperature = 0.1,
+            protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
         ).getOrDefault("").ifBlank { text }
         translateCache[text] = translated
         return translated
@@ -42,7 +44,7 @@ internal class AiTools(
     fun isMostlyChinese(text: String): Boolean = EngineRules.isMostlyChinese(text)
 
     /** 测试主模型连接是否可用（设置保存前校验用） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> {
+    suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<String> {
         val messages = listOf(
             ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
         )
@@ -52,6 +54,7 @@ internal class AiTools(
             model = model.trim(),
             messages = messages,
             temperature = 0.1,
+            protocol = protocol,
         )
     }
 
@@ -59,10 +62,16 @@ internal class AiTools(
      * 拉取端点可用模型列表（设置页"获取模型"用）。
      * 只列表不探测：网关常返回上百条，逐条探测等于几百次请求。
      */
-    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
-        aiClient.listModels(baseUrl.trim(), apiKey.trim())
+    suspend fun listModels(baseUrl: String, apiKey: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<List<String>> =
+        aiClient.listModels(baseUrl.trim(), apiKey.trim(), protocol)
 
     /** 真实请求探测单个模型的能力（识图 / 工具调用；文本能力用 Result 成败表达） */
-    suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
-        aiClient.probeAbility(baseUrl.trim(), apiKey.trim(), model.trim())
+    suspend fun probeModel(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<ModelAbility> =
+        aiClient.probeAbility(baseUrl.trim(), apiKey.trim(), model.trim(), protocol)
+
+    /** 端点协议解析：按归一化 URL 匹配模型库端点；未入库回落 OpenAI 兼容 */
+    private fun protocolOf(baseUrl: String, settingsVal: AppSettings.Settings): ApiProtocol =
+        ApiProtocol.fromId(
+            settingsVal.endpoints.firstOrNull { it.id == AiClient.normalizeBaseUrl(baseUrl) }?.protocol,
+        )
 }

@@ -291,6 +291,22 @@ internal object PromptBodies {
     - Fallback: when the coding agent is unavailable (runtime not installed, connection failed), use say to tell the user to install or check the runtime under Settings → Coding; never substitute phone control for writing code.
     """.trimIndent()
 
+    // ---- 纯对话直答系统提示（AgentPrompts.chatSystem 专用，独立于操控系统主体） ----
+    // 直答不走感知循环、不解析意图，回答原样展示给用户，因此铁律/意图表/动作模式等
+    // 操控语义一概不注入——注入了反而会把直答模型带偏去输出意图 JSON 而不是回答本身。
+    internal val CHAT_DIRECT_CN: String = """
+    你是 Phantom，用户的手机助手。当前任务是普通对话：直接回答，不操作手机。
+    - 直接输出回答正文：不要输出 JSON、意图指令或任何结构化标记，你的输出会原样展示给用户。
+    - 语言与用户保持一致（默认中文）；内容长就分点，保持自然，不要套话。
+    - 需要实际操作手机才能完成的事，如实说明，并请用户到 Agent 页下达。
+    """.trimIndent()
+    internal val CHAT_DIRECT_EN: String = """
+    You are Phantom, the user's phone assistant. The current task is plain conversation: answer directly, no device operations.
+    - Output the answer text itself: no JSON, no intents, no structured markers — your output is shown to the user verbatim.
+    - Match the user's language (Chinese by default); use bullets for long content and keep it natural.
+    - If something needs actual device control, say so honestly and ask the user to issue it on the Agent page.
+    """.trimIndent()
+
     // ---- sys.chat ----
     internal val SYS_CHAT_CN: String = """
     # 普通对话（直答模式）

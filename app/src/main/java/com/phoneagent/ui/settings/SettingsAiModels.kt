@@ -137,6 +137,8 @@ internal fun SettingsAiModels(
                         modelCount = st.catalog.count { it.endpointId == ep.id },
                         fetching = fetchingEndpointId == ep.id,
                         hint = fetchHint.takeIf { fetchHintFor == ep.id },
+                        protocol = ep.protocol,
+                        onProtocol = { st.endpoints.setProtocol(ep.id, it) },
                         onBaseUrl = { renameEndpoint(st, ep.id, it) },
                         onApiKey = { st.endpoints.setKey(ep.id, it) },
                         onFetch = {
@@ -148,7 +150,7 @@ internal fun SettingsAiModels(
                                 scope.launch {
                                     fetchingEndpointId = target.id
                                     fetchHint = "正在获取模型列表…"
-                                    val r = vm.listModels(target.baseUrl, target.apiKey)
+                                    val r = vm.listModels(target.baseUrl, target.apiKey, target.protocol)
                                     fetchHint = r.fold(
                                         onSuccess = { names ->
                                             val clean = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
@@ -247,7 +249,7 @@ internal fun SettingsAiModels(
                                             if (owner == null) {
                                                 probeHint = "该模型所属端点已被删除"
                                             } else {
-                                                val r = vm.probeModel(owner.baseUrl, owner.apiKey, m.name)
+                                                val r = vm.probeModel(owner.baseUrl, owner.apiKey, m.name, owner.protocol)
                                                 probeHint = r.fold(
                                                     onSuccess = { ability ->
                                                         updateCatalogModel(st, m.endpointId, m.name) {
@@ -436,7 +438,7 @@ internal fun SettingsAiModels(
                         scope.launch {
                             buildApiTestTargets(st).forEach { t ->
                                 val r = try {
-                                    vm.testConnection(t.baseUrl, t.apiKey, t.model)
+                                    vm.testConnection(t.baseUrl, t.apiKey, t.model, st.protocolOf(t.baseUrl))
                                 } catch (e: Exception) {
                                     Result.failure(e)
                                 }
@@ -486,7 +488,7 @@ internal fun SettingsAiModels(
                         scope.launch {
                             testing = true
                             try {
-                                val r = vm.testConnection(st.baseUrl, st.apiKey, st.model)
+                                val r = vm.testConnection(st.baseUrl, st.apiKey, st.model, st.protocolOf(st.baseUrl))
                                 testing = false
                                 if (r.isSuccess) {
                                     vm.saveSettings(st.toSettings())
@@ -653,6 +655,16 @@ private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setKe
     val i = indexOfFirst { it.id == id }
     if (i >= 0) this[i] = this[i].copy(apiKey = key)
 }
+
+/** 改协议档位：同 Key，id 不变 */
+private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setProtocol(id: String, protocol: String) {
+    val i = indexOfFirst { it.id == id }
+    if (i >= 0) this[i] = this[i].copy(protocol = protocol)
+}
+
+/** 按归一化地址查端点协议；未入库（如尚未保存的地址）回落 OpenAI 兼容 */
+internal fun SettingsState.protocolOf(baseUrl: String): String =
+    endpoints.firstOrNull { it.id == ModelCatalogCodec.endpointId(baseUrl) }?.protocol ?: "openai"
 
 /** 就地更新模型库条目 */
 private fun updateCatalogModel(

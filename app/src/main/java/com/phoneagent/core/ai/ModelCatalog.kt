@@ -18,6 +18,8 @@ data class Endpoint(
     val id: String,
     val baseUrl: String,
     val apiKey: String,
+    /** API 协议档位（[ApiProtocol.id]）；旧数据无此字段默认 OpenAI 兼容 */
+    val protocol: String = "openai",
 )
 
 /**

@@ -11,7 +11,7 @@ package com.phoneagent.core.ai
  */
 data class ProviderPreset(
     val name: String,
-    /** OpenAI 兼容端点根路径，不含 /chat/completions */
+    /** API 端点根路径（不含动作路径；OpenAI 兼容端点不含 /chat/completions） */
     val baseUrl: String,
     /** 主模型：每步执行决策 */
     val model: String,
@@ -19,6 +19,8 @@ data class ProviderPreset(
     val visionModel: String = "",
     /** 思考模型：规划与重规划。为空表示与主模型同款 */
     val reasonModel: String = "",
+    /** API 协议档位（[ApiProtocol.id]），默认 OpenAI 兼容 */
+    val protocol: String = "openai",
 )
 
 object ProviderPresets {
@@ -79,6 +81,24 @@ object ProviderPresets {
             model = "Qwen/Qwen3-32B",
             visionModel = "Qwen/Qwen3-VL-8B-Instruct",
             reasonModel = "Qwen/Qwen3-32B",
+        ),
+        ProviderPreset(
+            name = "Claude 官方",
+            baseUrl = "https://api.anthropic.com",
+            model = "claude-sonnet-4-5",
+            visionModel = "claude-sonnet-4-5",
+            reasonModel = "claude-sonnet-4-5",
+            // Anthropic Messages 原生协议（非 OpenAI 兼容网关）
+            protocol = "anthropic",
+        ),
+        ProviderPreset(
+            name = "Gemini 官方",
+            baseUrl = "https://generativelanguage.googleapis.com",
+            model = "gemini-2.5-flash",
+            visionModel = "gemini-2.5-flash",
+            reasonModel = "gemini-2.5-flash",
+            // generateContent 原生协议
+            protocol = "gemini",
         ),
     )
 }

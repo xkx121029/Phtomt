@@ -101,6 +101,14 @@ object LocalAgent {
                 // HAPPY_ACA_SESSIONS_DIR，变量名对不上 → 本地模式其实什么都没落盘
                 // （会话、记忆、用量账本、模型档位重启全丢）。
                 "HAPPY_ACA_STATE_DIR" to File(context.filesDir, "state").apply { mkdirs() }.absolutePath,
+                // Skill 包根目录（agent-host/skills.js 的 SkillManager）：不传的话
+                // skillsRoot 为 null，list_skills/activate_skill 等元工具根本不会
+                // 注册，编码模式的 skill 机制等于不存在。目录空也没关系——
+                // agent 会拿到 "(no skills installed)"，用户往里放包即可生效。
+                // 路径统一取 AcaSkillCatalog.skillsDir：主页的技能扫描读的是
+                // 同一个目录，两处各写一份迟早失配。
+                "HAPPY_ACA_SKILLS_DIR" to com.phoneagent.coding.skill.AcaSkillCatalog
+                    .skillsDir(context).apply { mkdirs() }.absolutePath,
                 "HOME" to context.filesDir.absolutePath,
                 "TMPDIR" to context.cacheDir.absolutePath,
                 // Tells the agent it is on a phone, so it plans accordingly

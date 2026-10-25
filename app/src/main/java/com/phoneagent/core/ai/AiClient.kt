@@ -204,7 +204,10 @@ class AiClient(
         onDelta: (String) -> Unit = {},
         /** 流式中断准备重试时回调：上层可借此重置展示（如清空思考面板），避免重放内容重复累积 */
         onRetry: (() -> Unit)? = null,
+        /** API 协议档位；非 OpenAI 兼容端点由对应协议适配器转译线格式 */
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<AiDecision> = withContext(Dispatchers.IO) {
+        val adapter = ChatProtocols.of(protocol)
         // 显式标注泛型：while(true) 循环体里有面向 for 的 break，编译器把 lambda
         // 返回类型推成 AiDecision | Unit（= Any），这里收口回 AiDecision
         runCatching<AiDecision> {
@@ -220,11 +223,16 @@ class AiClient(
             // 上限一次 —— 纠错后仍解析不了就走既有 give_up 兜底，避免与模型死循环
             var activeMessages = finalMessages
             var jsonRepairUsed = false
-            fun actionRequest(msgs: List<ChatMessageDto>): Request = Request.Builder()
-                .url(chatCompletionsUrl(baseUrl))
-                .header("Authorization", "Bearer $apiKey")
-                .post(buildStreamRequestBody(msgs, model, temperature, thinking = false, streamOptions = StreamOptions()))
-                .build()
+            fun actionRequest(msgs: List<ChatMessageDto>): Request =
+                if (adapter != null) {
+                    protocolStreamRequest(adapter, baseUrl, apiKey, model, msgs, temperature)
+                } else {
+                    Request.Builder()
+                        .url(chatCompletionsUrl(baseUrl))
+                        .header("Authorization", "Bearer $apiKey")
+                        .post(buildStreamRequestBody(msgs, model, temperature, thinking = false, streamOptions = StreamOptions()))
+                        .build()
+                }
             var request = actionRequest(activeMessages)
 
             val full = StringBuilder()
@@ -261,6 +269,19 @@ class AiClient(
                                         if (line.isBlank() || !line.startsWith("data:")) continue
                                         val payload = line.removePrefix("data:").trim()
                                         if (payload == "[DONE]") break
+                                        if (adapter != null) {
+                                            // 协议适配器路径：Claude/Gemini 的 SSE 帧
+                                            if (adapter.isTerminal(payload)) break
+                                            val content = adapter.extractDelta(payload)
+                                            if (content.isNotEmpty()) {
+                                                onDelta(content)
+                                                full.append(content)
+                                            }
+                                            adapter.extractUsageFrame(payload)?.let {
+                                                lastUsage = combineUsage(lastUsage, it)
+                                            }
+                                            continue
+                                        }
                                         val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
                                         val delta = chunk?.choices?.firstOrNull()?.delta
                                         val content = delta?.content.orEmpty()
@@ -290,13 +311,20 @@ class AiClient(
                         if (content.isBlank()) {
                             // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
                             lastErr = null
-                            val fallbackBody = buildRequestBody(messages, screenshot, model, temperature)
-                            val fallbackRequest = Request.Builder()
-                                .url(chatCompletionsUrl(baseUrl))
-                                .header("Authorization", "Bearer $apiKey")
-                                .post(fallbackBody)
-                                .build()
-                            val fbContent = executeWithRetry(fallbackRequest)
+                            val fallbackRequest = if (adapter != null) {
+                                // 协议适配器路径：非流式请求（finalMessages 已含截图部件）
+                                protocolRequest(
+                                    adapter, baseUrl, apiKey, model, finalMessages, temperature,
+                                    maxTokens = 4096, stream = false,
+                                )
+                            } else {
+                                Request.Builder()
+                                    .url(chatCompletionsUrl(baseUrl))
+                                    .header("Authorization", "Bearer $apiKey")
+                                    .post(buildRequestBody(messages, screenshot, model, temperature))
+                                    .build()
+                            }
+                            val fbContent = executeWithRetry(fallbackRequest, adapter?.let { a -> a::extractText })
                             return@runCatching AiDecision(
                                 action = parseAgentIntent(fbContent),
                                 promptTokens = 0,
@@ -374,7 +402,8 @@ class AiClient(
         model: String,
         messages: List<ChatMessageDto>,
         temperature: Double,
-    ): Result<String> = chatText(baseUrl, apiKey, model, messages, temperature)
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<String> = chatText(baseUrl, apiKey, model, messages, temperature, protocol)
 
     /**
      * 普通文本对话（不强制 json_object）：返回模型原始输出。
@@ -386,16 +415,20 @@ class AiClient(
         model: String,
         messages: List<ChatMessageDto>,
         temperature: Double,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val requestBody = buildRawRequestBody(messages, model, temperature)
-            val request = Request.Builder()
-                .url(chatCompletionsUrl(baseUrl))
-                .header("Authorization", "Bearer $apiKey")
-                .post(requestBody)
-                .build()
-
-            executeWithRetry(request)
+            val adapter = ChatProtocols.of(protocol)
+            val request = if (adapter != null) {
+                protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature, maxTokens = 4096, stream = false)
+            } else {
+                Request.Builder()
+                    .url(chatCompletionsUrl(baseUrl))
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(buildRawRequestBody(messages, model, temperature))
+                    .build()
+            }
+            executeWithRetry(request, adapter?.let { a -> a::extractText })
         }.onFailure { if (it is CancellationException) throw it }
     }
 
@@ -431,6 +464,7 @@ class AiClient(
         purpose: String,
         target: String? = null,
         jsonMode: Boolean = false,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<VisionAnswer> = withContext(Dispatchers.IO) {
         runCatching {
             val wantCoord = !target.isNullOrBlank() || jsonMode
@@ -453,10 +487,19 @@ class AiClient(
                     ),
                 ),
             )
-            val content = postCompat(
-                baseUrl, apiKey, model, messages, 0.1,
-                if (wantCoord) ResponseFormat(type = "json_object") else null,
-            )
+            val adapter = ChatProtocols.of(protocol)
+            val content = if (adapter != null) {
+                // 协议适配器路径：Claude/Gemini 无 OpenAI 的 response_format，坐标靠提示词约束 + 兜底解析
+                executeWithRetry(
+                    protocolRequest(adapter, baseUrl, apiKey, model, messages, 0.1, maxTokens = 2048, stream = false),
+                    adapter::extractText,
+                )
+            } else {
+                postCompat(
+                    baseUrl, apiKey, model, messages, 0.1,
+                    if (wantCoord) ResponseFormat(type = "json_object") else null,
+                )
+            }
             // 要坐标时解析失败不算整体失败：正文照旧带回去，让调用方按"没拿到坐标"降级处理
             val coord = if (wantCoord) runCatching { parseCoordinate(content) }.getOrNull() else null
             VisionAnswer(text = content, x = coord?.first, y = coord?.second)
@@ -473,21 +516,31 @@ class AiClient(
      *
      * 只写库、不做能力探测：网关常返回上百条模型，逐条探测等于几百次请求。
      */
-    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
+    suspend fun listModels(
+        baseUrl: String,
+        apiKey: String,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<List<String>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val request = Request.Builder()
-                    .url(modelsUrl(baseUrl))
-                    .header("Authorization", "Bearer $apiKey")
-                    .get()
-                    .build()
+                val adapter = ChatProtocols.of(protocol)
+                val url = adapter?.modelsUrl(baseUrl) ?: modelsUrl(baseUrl)
+                val request = Request.Builder().url(url).get().apply {
+                    if (adapter != null) {
+                        adapter.headers(apiKey).forEach { (k, v) -> header(k, v) }
+                    } else {
+                        header("Authorization", "Bearer $apiKey")
+                    }
+                }.build()
                 probeClient.newCall(request).execute().use { resp ->
                     val body = resp.body?.string().orEmpty()
                     if (resp.code == 404) error("该服务未提供模型列表接口（HTTP 404），请手动填写模型名")
                     if (!resp.isSuccessful) error(httpErrorText(resp, body))
-                    val parsed = runCatching { json.decodeFromString<ModelListResponse>(body) }.getOrNull()
-                        ?: error("模型列表返回格式不认识（HTTP ${resp.code}）\n返回内容：${snippet(body)}")
-                    parsed.data.mapNotNull { it.id?.trim()?.takeIf(String::isNotEmpty) }.distinct().sorted()
+                    val models = adapter?.parseModels(body) ?: runCatching {
+                        json.decodeFromString<ModelListResponse>(body).data
+                            .mapNotNull { it.id?.trim()?.takeIf(String::isNotEmpty) }
+                    }.getOrElse { error("模型列表返回格式不认识（HTTP ${resp.code}）\n返回内容：${snippet(body)}") }
+                    models.distinct().sorted()
                 }
             }
         }
@@ -499,65 +552,57 @@ class AiClient(
      * 「`finish_reason=tool_calls` + `content=null`」误判成"AI 返回空内容"。
      * 能力值 `null` = 未测出（服务端 400/5xx、网关改写、200 但空正文），与"不支持"（`false`）区分开。
      */
-    suspend fun probeAbility(baseUrl: String, apiKey: String, model: String): Result<ModelAbility> =
+    suspend fun probeAbility(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<ModelAbility> =
         withContext(Dispatchers.IO) {
             runCatching {
+                val adapter = ChatProtocols.of(protocol)
                 val notes = mutableListOf<String>()
 
                 // 1) 文本：这一步失败说明地址 / Key / 模型名有问题，整体失败
-                val textCall = rawPost(
-                    baseUrl, apiKey,
-                    ChatRequest(
-                        model = model,
-                        messages = listOf(
-                            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
-                        ),
-                        max_tokens = 8,
-                    ),
+                val textMsgs = listOf(
+                    ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
                 )
+                val textCall = rawPost(baseUrl, apiKey, model, textMsgs, null, adapter)
                 probeBlocker(textCall)?.let { error(it) }
                 if (textCall.status !in 200..299) error("文本请求失败（HTTP ${textCall.status}）：${snippet(textCall.body)}")
 
                 // 2) 识图：200 且正文非空才算测出支持
                 val shot = probeImageBitmap()
-                val visionCall = try {
-                    rawPost(
-                        baseUrl, apiKey,
-                        ChatRequest(
-                            model = model,
-                            messages = listOf(
-                                ChatMessageDto(
-                                    role = "user",
-                                    content = listOf(
-                                        ContentPart(type = "text", text = "这张图是什么颜色？只回答颜色。"),
-                                        ContentPart(type = "image_url", image_url = ImageUrl(base64Image(shot))),
-                                    ),
-                                ),
-                            ),
-                            max_tokens = 16,
+                val visionMsgs = listOf(
+                    ChatMessageDto(
+                        role = "user",
+                        content = listOf(
+                            ContentPart(type = "text", text = "这张图是什么颜色？只回答颜色。"),
+                            ContentPart(type = "image_url", image_url = ImageUrl(base64Image(shot))),
                         ),
-                    )
+                    ),
+                )
+                val visionCall = try {
+                    rawPost(baseUrl, apiKey, model, visionMsgs, null, adapter)
                 } finally {
                     shot.recycle()
                 }
                 probeBlocker(visionCall)?.let { error(it) }
+                val extract = adapter?.let { a: ChatProtocolAdapter -> a::extractText }
                 val vision: Boolean? = when {
                     visionCall.status !in 200..299 -> probeVerdict(visionCall.status)
-                    hasContent(visionCall) -> true
+                    hasContent(visionCall, extract) -> true
                     else -> null
                 }
                 if (vision == null) notes += "识图：${probeNote(visionCall)}"
 
-                // 3) 工具调用：成功响应通常是 content=null + finish_reason=tool_calls，故只看状态码
-                val toolsCall = rawPost(
-                    baseUrl, apiKey,
-                    ChatRequest(
-                        model = model,
-                        messages = listOf(
-                            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请调用 noop_ping 工具。"))),
-                        ),
-                        max_tokens = 64,
-                        tools = listOf(
+                // 3) 工具调用：仅 OpenAI 兼容协议可探测（Claude/Gemini 原生协议的工具线格式不同，不做探测）
+                var tools: Boolean? = null
+                if (adapter == null) {
+                    val toolsCall = rawPost(
+                        baseUrl, apiKey, model,
+                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请调用 noop_ping 工具。")))),
+                        listOf(
                             ToolSpec(
                                 function = FunctionSpec(
                                     name = "noop_ping",
@@ -566,24 +611,48 @@ class AiClient(
                                 ),
                             ),
                         ),
-                        tool_choice = "auto",
-                    ),
-                )
-                probeBlocker(toolsCall)?.let { error(it) }
-                val tools = probeVerdict(toolsCall.status)
-                if (tools == null) notes += "工具：${probeNote(toolsCall)}"
+                        adapter,
+                    )
+                    probeBlocker(toolsCall)?.let { error(it) }
+                    tools = probeVerdict(toolsCall.status)
+                    if (tools == null) notes += "工具：${probeNote(toolsCall)}"
+                } else {
+                    notes += "工具：该协议未探测（真实可用性以实际调用为准）"
+                }
 
                 ModelAbility(vision = vision, tools = tools, note = notes.joinToString("；"))
             }
         }
 
-    /** 单发 POST（无重试）：探测走这条，不做退避 */
-    private fun rawPost(baseUrl: String, apiKey: String, body: ChatRequest): RawResponse {
-        val request = Request.Builder()
-            .url(chatCompletionsUrl(baseUrl))
-            .header("Authorization", "Bearer $apiKey")
-            .post(buildRequest(body))
-            .build()
+    /**
+     * 单发 POST（无重试）：探测走这条，不做退避。
+     * [adapter] 为 null 时按 OpenAI ChatRequest 构建（[tools] 仅此路径有意义）；
+     * 非 null 时由协议适配器构建线格式。
+     */
+    private fun rawPost(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessageDto>,
+        tools: List<ToolSpec>?,
+        adapter: ChatProtocolAdapter?,
+    ): RawResponse {
+        val request = if (adapter != null) {
+            protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature = 0.4, maxTokens = 64, stream = false)
+        } else {
+            Request.Builder()
+                .url(chatCompletionsUrl(baseUrl))
+                .header("Authorization", "Bearer $apiKey")
+                .post(
+                    buildRequest(
+                        ChatRequest(
+                            model = model, messages = messages, temperature = 0.4, max_tokens = 64,
+                            tools = tools, tool_choice = if (tools != null) "auto" else null,
+                        ),
+                    ),
+                )
+                .build()
+        }
         return try {
             probeClient.newCall(request).execute().use { resp ->
                 RawResponse(resp.code, resp.body?.string().orEmpty())
@@ -610,8 +679,10 @@ class AiClient(
     }
 
     /** 200 但可能是空 choices（网关改写），进一步确认真的有正文 */
-    private fun hasContent(resp: RawResponse): Boolean {
-        val parsed = runCatching { json.decodeFromString<ChatResponse>(resp.body) }.getOrNull() ?: return false
+    private fun hasContent(resp: RawResponse, extractText: ((String) -> String?)? = null): Boolean {
+        val body = resp.body
+        if (extractText != null) return !extractText(body).isNullOrBlank()
+        val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull() ?: return false
         return !parsed.choices.firstOrNull()?.message?.content.isNullOrBlank()
     }
 
@@ -640,11 +711,12 @@ class AiClient(
 
     /**
      * 执行非流式请求并返回模型正文，带 429 退避重试。
+     * - [extractText] 为 null 时按 OpenAI ChatResponse 解析；非空时交给协议适配器解析
      * - 429（限流）：指数退避 4s/8s/16s/32s，最多 5 次尝试
      * - 401/403/404（鉴权/地址错误）：不重试，直接失败（对齐能力探测链路 probeBlocker 的"整体失败"口径）
      * - 其他失败：快速重试 1 次（800ms）
      */
-    private suspend fun executeWithRetry(request: Request): String {
+    private suspend fun executeWithRetry(request: Request, extractText: ((String) -> String?)? = null): String {
         var status = -1
         var lastErr: String? = null
         for (attempt in 0 until MAX_RETRIES) {
@@ -665,19 +737,25 @@ class AiClient(
                             failed = true
                             return@use
                         }
-                        val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull()
-                        if (parsed == null) {
-                            // 200 但正文不是预期 JSON（网关改写 / HTML 提示页）：保留原始返回，避免只剩解析异常
-                            lastErr = httpErrorText(resp, body)
-                            failed = true
-                            return@use
+                        val content = if (extractText != null) {
+                            // 协议适配器解析（Claude / Gemini）；解析不出按失败处理
+                            extractText(body)
+                        } else {
+                            val parsed = runCatching { json.decodeFromString<ChatResponse>(body) }.getOrNull()
+                            if (parsed == null) {
+                                // 200 但正文不是预期 JSON（网关改写 / HTML 提示页）：保留原始返回，避免只剩解析异常
+                                lastErr = httpErrorText(resp, body)
+                                failed = true
+                                null
+                            } else if (parsed.error != null) {
+                                lastErr = httpErrorText(resp, body)
+                                failed = true
+                                null
+                            } else {
+                                parsed.choices.firstOrNull()?.message?.content?.trim()
+                            }
                         }
-                        if (parsed.error != null) {
-                            lastErr = httpErrorText(resp, body)
-                            failed = true
-                            return@use
-                        }
-                        val content = parsed.choices.firstOrNull()?.message?.content?.trim()
+                        if (failed) return@use
                         if (content != null) return content
                         lastErr = "AI 返回空内容\n返回内容：${body.trim().ifEmpty { "（响应体为空）" }}"
                         failed = true
@@ -699,6 +777,45 @@ class AiClient(
             }
         }
         error(lastErr ?: "AI 未返回内容")
+    }
+
+    // ==================== 协议适配器请求构建 ====================
+
+    /** 按协议适配器构建非流式请求（Claude / Gemini 原生端点） */
+    private fun protocolRequest(
+        adapter: ChatProtocolAdapter,
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessageDto>,
+        temperature: Double,
+        maxTokens: Int,
+        stream: Boolean,
+    ): Request {
+        val url = adapter.endpointUrl(baseUrl, model, stream)
+        val body = adapter.body(model, messages, temperature, maxTokens, stream)
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        val builder = Request.Builder().url(url).post(body)
+        adapter.headers(apiKey).forEach { (k, v) -> builder.header(k, v) }
+        return builder.build()
+    }
+
+    /** 按协议适配器构建流式请求（max_tokens 与决策链路对齐取 4096） */
+    private fun protocolStreamRequest(
+        adapter: ChatProtocolAdapter,
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        messages: List<ChatMessageDto>,
+        temperature: Double,
+    ): Request = protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature, maxTokens = 4096, stream = true)
+
+    /** 合并分帧到达的用量统计（如 Anthropic 的 message_start / message_delta 各带一半） */
+    private fun combineUsage(a: Usage?, b: Usage): Usage {
+        if (a == null) return b
+        val prompt = maxOf(a.promptTokens, b.promptTokens)
+        val completion = maxOf(a.completionTokens, b.completionTokens)
+        return Usage(prompt, completion, prompt + completion)
     }
 
     /**
@@ -796,14 +913,19 @@ class AiClient(
         /** 流式中断准备重试时回调：上层可借此重置展示，避免重放内容重复累积 */
         onRetry: (() -> Unit)? = null,
         thinking: Boolean = false,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val requestBody = buildStreamRequestBody(messages, model, temperature, thinking)
-            val request = Request.Builder()
-                .url(chatCompletionsUrl(baseUrl))
-                .header("Authorization", "Bearer $apiKey")
-                .post(requestBody)
-                .build()
+            val adapter = ChatProtocols.of(protocol)
+            val request = if (adapter != null) {
+                protocolStreamRequest(adapter, baseUrl, apiKey, model, messages, temperature)
+            } else {
+                Request.Builder()
+                    .url(chatCompletionsUrl(baseUrl))
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(buildStreamRequestBody(messages, model, temperature, thinking))
+                    .build()
+            }
 
             val full = StringBuilder()
             var status = -1
@@ -835,6 +957,16 @@ class AiClient(
                                     if (line.isBlank() || !line.startsWith("data:")) continue
                                     val payload = line.removePrefix("data:").trim()
                                     if (payload == "[DONE]") break
+                                    if (adapter != null) {
+                                        // 协议适配器路径：Claude/Gemini 的 SSE 帧
+                                        if (adapter.isTerminal(payload)) break
+                                        val content = adapter.extractDelta(payload)
+                                        if (content.isNotEmpty()) {
+                                            onDelta(content)
+                                            full.append(content)
+                                        }
+                                        continue
+                                    }
                                     val delta = runCatching {
                                         json.decodeFromString<StreamChunk>(payload).choices.firstOrNull()?.delta
                                     }.getOrNull()

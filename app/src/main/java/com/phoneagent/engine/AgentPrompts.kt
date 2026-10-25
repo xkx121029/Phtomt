@@ -6,6 +6,7 @@ import com.phoneagent.data.store.PageMemoryEntry
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.prompt.PromptAssembler
+import com.phoneagent.engine.prompt.PromptBodies
 import com.phoneagent.engine.prompt.PromptContext
 import com.phoneagent.engine.prompt.PromptFlag
 import com.phoneagent.engine.prompt.PromptGroup
@@ -150,6 +151,21 @@ object AgentPrompts {
         val withMode = "$base\n\n${actionModeSection(lang, actionMode)}"
         return if (skills.isBlank()) withMode else "$withMode\n\n$skills"
     }
+
+    /**
+     * 纯对话直答的系统提示（Superagent 融合 Phase 4 修正）：**不携带任何操控语义**。
+     *
+     * 直答不走感知循环、端侧不解析意图，模型输出原样展示给用户——
+     * 操控链路的铁律 / 意图表 / 动作模式 / 技能表在这里全是噪声，
+     * 注入了反而会把直答模型带偏去输出意图 JSON 而不是回答本身
+     * （此前 chatDirectAnswer 复用 [system]，正是"对话模式仍注入操控提示词"的根源）。
+     *
+     * @param custom 用户自定义系统提示：非空时完全以它为准（只去掉操控附录，不叠加内置正文）
+     */
+    fun chatSystem(lang: PromptLang, custom: String): String =
+        custom.ifBlank {
+            if (lang == PromptLang.CN) PromptBodies.CHAT_DIRECT_CN else PromptBodies.CHAT_DIRECT_EN
+        }
 
     /**
      * 动作模式（授权范围）区块：三档各写一份，与 [ActionPolicy] 的判定逐条对应。

@@ -8,8 +8,29 @@
 
 ## [未发布]
 
+### 修复
+
+- **对话页不再注入操控提示词（纯对话直答改用专用系统提示）**
+  - 纯对话直答此前复用 `AgentPrompts.system(task = …)`，会连带装配操控链路的铁律 /
+    意图表 / 动作模式（授权范围）/ 技能表 / 目标定位等区块。直答端侧不解析意图、
+    回答原样展示给用户，这些区块只会把模型带偏去输出意图 JSON 而不是回答本身
+  - 新增 `PromptBodies.CHAT_DIRECT_CN / CHAT_DIRECT_EN` 与
+    `AgentPrompts.chatSystem(lang, custom)`：只保留身份与直答规则；用户配置了自定义
+    系统提示时完全以其为准，不再叠加任何操控附录
+  - `AgentEngine.chatDirectAnswer` 改走 `chatSystem`；单测断言直答提示不含铁律 /
+    动作模式 / 意图 / 技能表等操控区块，且英文档不含中文字符
+
 ### 变更
 
+- **上次会话遗留件收尾（恢复整仓可编译）**
+  - `ChatProtocols.kt`：`str/obj/arr` 三个 JSON 取值扩展原声明为 `Json` 的成员扩展
+    （object 内成员扩展对外不可见），改为 `JsonObject` 顶层扩展，与全部调用点一致
+  - 新增顶层 `provider/…/shell/ShellResult.kt`：`TermuxBridge` / `ShellBridge` 引用的
+    公共结果类型缺失，导致 provider 模块无法编译
+  - `AgentHooks.kt` 补 `PromptLang` 导入；`AgentEngine` 的 HookContext 入参改用
+    该作用域内真实存在的 `currentLang` / `_state.value.stepCount`
+  - `provider/build.gradle.kts`：`java.io.File` 显式导入，避免 Gradle `java` 扩展遮蔽
+    `java` 包名导致构建脚本解析失败
 - **编码模块健壮性与资源优化批次（4 项）**
   - **挂起 RPC 断线落空（AgentClient）**：`disconnect` / `onClosed` / `onFailure` / `stopLocalAgent`
     原先 `pending.clear()` 静默丢弃界面 RPC 回调，调用方 `onResult` 永不触发、UI 卡在加载态；

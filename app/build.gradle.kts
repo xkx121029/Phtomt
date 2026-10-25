@@ -215,3 +215,23 @@ val bundleHost by tasks.registering(Exec::class) {
 tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.configureEach {
     dependsOn(bundleHost)
 }
+
+// ---------------------------------------------------------------------------
+// 权限 Provider APK 嵌入：:provider 模块构建出可安装的 APK 后，连同版本文件
+// 复制进主应用 generated assets，首次打开时由主应用引导安装（Operit 式独立
+// Provider 方案）。Provider APK 始终取 debug 变体（release 未接签名配置无法
+// 安装，debug 签名对发布包同样可用）；后续接发布签名时改这里即可。
+// ---------------------------------------------------------------------------
+val providerBuildDir = project(":provider").layout.buildDirectory
+android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/providerAssets"))
+
+val embedProviderApk by tasks.registering(Copy::class) {
+    dependsOn(":provider:assembleDebug", ":provider:writeProviderVersion")
+    from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
+    from(providerBuildDir.file("provider/version.txt"))
+    into(layout.buildDirectory.dir("generated/providerAssets/provider"))
+}
+
+tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.configureEach {
+    dependsOn(embedProviderApk)
+}
