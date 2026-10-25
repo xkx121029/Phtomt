@@ -13,6 +13,8 @@ import android.os.TransactionTooLargeException
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.phoneagent.provider.IDeviceProvider
+import com.phoneagent.provider.ProviderApi
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -323,6 +325,114 @@ object ProviderManager {
         runCatching { ctx.unbindService(connection) }
         provider = null
         _connected.value = false
+    }
+
+    // ==================== 自检 ====================
+
+    /** 自检单步结果：UI 逐行展示，[ok]=false 时 [detail] 就是原因本身 */
+    data class SelfTestStep(val title: String, val ok: Boolean, val detail: String)
+
+    /**
+     * 执行通道自检：把「装没装 → 开没开 → 绑没绑 → 树能不能读 → 图能不能截」
+     * 拆成五步可观察的结果。
+     *
+     * 存在的意义是终结「界面说已连接、实际一条命令都发不出去」只能靠猜的排障：
+     * 每步给出实际数值（版本号 / apiVersion / 字节数 / 元素个数 / 异常），
+     * 结果直接渲染在设置页，不需要连 adb 抓 logcat。
+     *
+     * [a11yEnabled] 由调用方传入：无障碍开关要从系统设置读，那份实现属于 a11y 包，
+     * 本类不反向依赖它。
+     */
+    suspend fun selfTest(context: Context, a11yEnabled: Boolean): List<SelfTestStep> {
+        val steps = mutableListOf<SelfTestStep>()
+        val installed = installedVersionName(context)
+        val bundled = bundledVersion(context)
+        steps += SelfTestStep(
+            title = "服务组件安装",
+            ok = installed != null && !needsInstall(context),
+            detail = when {
+                installed == null -> "未安装（随包 v${bundled ?: "未知"}）"
+                needsInstall(context) -> "已安装 v$installed，随包 v${bundled ?: "未知"}，需更新"
+                else -> "已安装 v$installed（随包同版本）"
+            },
+        )
+        steps += SelfTestStep(
+            title = "无障碍服务开关",
+            ok = a11yEnabled,
+            detail = if (a11yEnabled) "系统设置中已开启" else "未开启：读不到元素树，只能靠截图",
+        )
+
+        val remote = ensureBound(context)
+        if (remote == null) {
+            steps += SelfTestStep(
+                title = "AIDL 绑定",
+                ok = false,
+                detail = lastError.value ?: "绑定超时（服务组件未安装或签名不一致）",
+            )
+            steps += SelfTestStep("服务侧无障碍实例", false, "未绑定，无法查询")
+            steps += SelfTestStep("元素树读取", false, "未绑定，无法读取")
+            steps += SelfTestStep("截图读取", false, "未绑定，无法读取")
+            return steps
+        }
+
+        val api = runCatching { remote.apiVersion() }.getOrNull()
+        val alive = runCatching { remote.asBinder().isBinderAlive }.getOrDefault(false)
+        steps += SelfTestStep(
+            title = "AIDL 绑定",
+            ok = api != null && alive,
+            detail = "apiVersion=${api ?: "读取失败"} · binderAlive=$alive",
+        )
+        val remoteEnabled = runCatching { remote.isA11yEnabled() }.getOrNull()
+        val remoteConnected = runCatching { remote.isA11yConnected() }.getOrNull()
+        steps += SelfTestStep(
+            title = "服务侧无障碍实例",
+            ok = remoteEnabled == true && remoteConnected == true,
+            detail = "开关=${remoteEnabled ?: "读取失败"} · 实例已连接=${remoteConnected ?: "读取失败"}",
+        )
+
+        // 元素树：优先分片（与引擎实际路径一致），旧组件才回退一次性接口
+        val treeStep = call<SelfTestStep>(context, 20_000L) { r ->
+            val sharded = readPayload(r, ProviderApi.KIND_TREE)
+            val raw = sharded ?: r.captureScreen()?.toByteArray(Charsets.UTF_8)
+            if (raw == null) {
+                SelfTestStep("元素树读取", false, "Provider 返回空：无障碍实例未连接")
+            } else {
+                val json = runCatching { JSONObject(String(raw, Charsets.UTF_8)) }.getOrNull()
+                val count = json?.optJSONArray("elements")?.length() ?: -1
+                val stats = json?.optString("stats").orEmpty()
+                SelfTestStep(
+                    title = "元素树读取",
+                    ok = count > 0,
+                    detail = "${if (sharded != null) "分片" else "一次性"} ${raw.size} 字节 · " +
+                        "元素 $count" + if (stats.isNotBlank()) " · $stats" else "",
+                )
+            }
+        }
+        steps += treeStep ?: SelfTestStep(
+            title = "元素树读取",
+            ok = false,
+            detail = "调用超时或通道异常：${lastError.value ?: "无响应"}",
+        )
+
+        val shotStep = call<SelfTestStep>(context, 20_000L) { r ->
+            val sharded = readPayload(r, ProviderApi.KIND_SCREENSHOT)
+            val size = sharded?.size ?: r.takeScreenshot()?.size ?: -1
+            SelfTestStep(
+                title = "截图读取",
+                ok = size > 0,
+                detail = if (size > 0) {
+                    "${if (sharded != null) "分片" else "一次性"} $size 字节（${size / 1024} KB）"
+                } else {
+                    "Provider 返回空：无障碍截图不可用（需 API 30+ 且实例已连接）"
+                },
+            )
+        }
+        steps += shotStep ?: SelfTestStep(
+            title = "截图读取",
+            ok = false,
+            detail = "调用超时或通道异常：${lastError.value ?: "无响应"}",
+        )
+        return steps
     }
 
     /** 版本比较：按 '.' 分段，缺省段补 0；非数字段按 0 处理 */

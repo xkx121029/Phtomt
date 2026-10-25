@@ -86,6 +86,9 @@ dependencies {
     implementation(project(":shizuku-api"))
     implementation(project(":shizuku-provider"))
     implementation(project(":shizuku-server"))
+
+    // 分片传输的边界行为（越界 / 淘汰 / 逐片拼回）用纯 JVM 单测覆盖，不需要真机
+    testImplementation(libs.junit)
 }
 
 // 版本文件：主应用嵌入 assets 后，用于「已安装版本 vs 内置版本」的更新判断

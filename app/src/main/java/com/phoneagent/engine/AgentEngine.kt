@@ -3119,8 +3119,18 @@ class AgentEngine(
         }
         // 无障碍服务可能在任务执行中途被系统回收/关闭，此时读取元素树会抛异常；
         // 观察是每一步的起点，异常必须降级为「空快照」而不是终止任务
+        val a11y = AgentAccessibilityService.instance
+        if (a11y == null) {
+            // 「只截图不读树」的直接证据：说明是会话没连上，而不是元素树被筛选条件清空
+            log(
+                AgentLog.Level.WARN,
+                "无障碍会话未连接：" +
+                    (com.phoneagent.device.provider.ProviderManager.lastError.value
+                        ?: "服务组件未绑定或无障碍服务未开启") + "，本轮只能靠截图",
+            )
+        }
         val snapshot = tryOrNull("读取无障碍元素树失败") {
-            AgentAccessibilityService.instance?.captureScreen()
+            a11y?.captureScreen()
         } ?: ScreenSnapshot(
             missingAccessibility = true,
             // 无障碍不可用时也填充真实屏幕尺寸（供 ShellCommands 比例坐标换算）

@@ -49,8 +49,8 @@ class AgentAccessibilityService private constructor(
         /** 轻量状态查询的超时：超时视为「暂时查不到」，保持现状而不是误判断开 */
         private const val PROBE_TIMEOUT_MS = 2_000L
 
-        /** 读屏超时：元素树遍历在 Provider 侧完成，超时按「无障碍不可用」降级 */
-        private const val CAPTURE_TIMEOUT_MS = 6_000L
+        /** 读屏超时：元素树遍历在 Provider 侧完成，分片回传要多次往返；超时按「无障碍不可用」降级 */
+        private const val CAPTURE_TIMEOUT_MS = 10_000L
 
         /** 截图超时：Provider 自身 2.5s 超时 + 分片回传（40 次往返），留足余量 */
         private const val SCREENSHOT_TIMEOUT_MS = 12_000L
@@ -145,11 +145,21 @@ class AgentAccessibilityService private constructor(
 
     /** [captureScreen] 的挂起版本：协程内调用不阻塞所在线程 */
     internal suspend fun captureScreenAsync(): ScreenSnapshot {
-        val raw = ProviderManager.call(applicationContext, CAPTURE_TIMEOUT_MS) { it.captureScreen() }
+        // 元素树同样可能超 Binder 事务上限（长列表 / WebView 页面的 JSON 可达数百 KB 到数 MB），
+        // 与截图一样优先走分片拉取；旧版服务组件不支持分片时才回退一次性回包
+        val raw = ProviderManager.call(applicationContext, CAPTURE_TIMEOUT_MS) { remote ->
+            ProviderManager.readPayload(remote, ProviderApi.KIND_TREE)?.toString(Charsets.UTF_8)
+                ?: remote.captureScreen()
+        }
         val decoded = SnapshotJsonCodec.decode(raw)
         if (decoded == null) {
             // 空树必须留下证据：否则只能看到「未检测到可交互元素」，分不清是系统不给节点还是被筛选条件挡掉
             if (raw != null) AppLog.w(TAG, "captureScreen JSON 解析失败（${raw.length} 字节）")
+            else AppLog.w(
+                TAG,
+                "元素树读取失败：${ProviderManager.lastError.value ?: "Provider 无回包"}" +
+                    if (instance == null) "（无障碍会话未连接）" else "",
+            )
             lastTreeStats = "无统计"
             return ScreenSnapshot(packageName = null, missingAccessibility = true)
         }
