@@ -38,6 +38,7 @@ import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.ThemePalette
@@ -247,7 +248,7 @@ private fun ReadinessStrip(
     onPermission: () -> Unit,
 ) {
     androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
         border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),

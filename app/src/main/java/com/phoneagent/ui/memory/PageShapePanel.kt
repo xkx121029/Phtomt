@@ -142,7 +142,7 @@ internal fun PageShapePanel(
                         Modifier
                             .width(36.dp)
                             .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .clip(RoundedCornerShape(AppRadii.Chip))
                             .background(AppTheme.colors.outlineSoft)
                             .align(Alignment.CenterHorizontally),
                     )

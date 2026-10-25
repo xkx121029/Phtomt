@@ -18,6 +18,9 @@ import java.net.URL
  */
 object VisionModelDownloader {
 
+    /** 下载连接建立超时（毫秒）：TCP 握手超过该时长即视为服务不可达 */
+    private const val DOWNLOAD_TIMEOUT_MS = 20_000
+
     /** 下载中断的标记，置 true 请求停止 */
     @Volatile
     var cancelled: Boolean = false
@@ -92,7 +95,7 @@ object VisionModelDownloader {
 
             val conn = URL(urlStr).openConnection() as HttpURLConnection
             try {
-                conn.connectTimeout = 20_000
+                conn.connectTimeout = DOWNLOAD_TIMEOUT_MS
                 conn.readTimeout = 30_000
                 if (existing > 0) {
                     conn.setRequestProperty("Range", "bytes=$existing-")
@@ -108,7 +111,7 @@ object VisionModelDownloader {
                             // 关闭旧连接，重新以非 Range 打开
                             conn.disconnect()
                             val c2 = URL(urlStr).openConnection() as HttpURLConnection
-                            c2.connectTimeout = 20_000
+                            c2.connectTimeout = DOWNLOAD_TIMEOUT_MS
                             c2.readTimeout = 30_000
                             c2.inputStream
                         }

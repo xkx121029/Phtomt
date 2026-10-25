@@ -2,9 +2,9 @@ package com.phoneagent.feature.browser
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import android.webkit.WebView
 import com.phoneagent.core.AgentBudgets
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.feature.browser.script.NavScripts
 import com.phoneagent.feature.browser.script.ReadScript
 import com.phoneagent.feature.browser.script.InteractScripts
@@ -324,7 +324,7 @@ object BrowserBridge {
         }
         if (raw.isNullOrBlank() || raw == "null") return null
         return runCatching { json.parseToJsonElement(raw).jsonObject }
-            .onFailure { Log.w(TAG, "脚本结果解析失败：${raw.take(200)}") }
+            .onFailure { AppLog.w(TAG, "脚本结果解析失败：${raw.take(200)}") }
             .getOrNull()
     }
 
@@ -332,7 +332,7 @@ object BrowserBridge {
         try {
             evaluateJavascript(js) { value -> if (cont.isActive) cont.resume(value) }
         } catch (e: Throwable) {
-            Log.w(TAG, "注入脚本失败：${e.message}")
+            AppLog.w(TAG, "注入脚本失败：${e.message}")
             if (cont.isActive) cont.resume(null)
         }
     }

@@ -1,6 +1,6 @@
 package com.phoneagent.engine.execution
 
-import android.util.Log
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.device.a11y.VoiceAssistantDetector
 import com.phoneagent.engine.execution.CapabilityManager.Mode
 import com.phoneagent.domain.model.ActionTarget
@@ -121,7 +121,7 @@ internal class OpenAppStrategy(private val appNameResolver: AppNameResolver) : I
             ?: return IntentTranslator.TranslationResult.Failed(
                 "无法解析应用「${intent.app}」的包名（未匹配到已安装应用）。请确认该应用已安装，或直接在 app 字段填包名，例如 \"com.tencent.mm\"",
             )
-        Log.d(TAG, "open_app 解析成功: app=${intent.app} → pkg=$pkg mode=${ctx.mode}")
+        AppLog.d(TAG, "open_app 解析成功: app=${intent.app} → pkg=$pkg mode=${ctx.mode}")
         return when (ctx.mode) {
             Mode.SHIZUKU -> IntentTranslator.TranslationResult.Command(
                 ctx.base.copy(
@@ -649,7 +649,7 @@ class IntentTranslator(
         )
         val ctx = TranslationContext(mode, snapshot, visualCoordinate, base)
 
-        Log.d(TAG, "translate: intent=${intent.intent} app=${intent.app} target=${intent.target} mode=$mode")
+        AppLog.d(TAG, "translate: intent=${intent.intent} app=${intent.app} target=${intent.target} mode=$mode")
 
         val strategy = strategies[intent.intent]
         val result = if (strategy != null) {

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.theme.AppRadii
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED
 import rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_IS_ONETIME
@@ -167,7 +168,7 @@ class ShizukuPermissionActivity : ComponentActivity() {
                 modifier = Modifier
                     .padding(horizontal = 32.dp)
                     .widthIn(max = 420.dp),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(AppRadii.Card),
             ) {
                 Column(Modifier.padding(24.dp)) {
                     if (ui == null) {

@@ -2,7 +2,7 @@ package com.phoneagent.device.vision
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import com.phoneagent.core.log.AppLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -90,14 +90,14 @@ object NativeVisionEngine {
             return runCatching {
                 handle = nativeInit(textModelPath(context), mmprojPath(context), nThreads(context))
                 if (handle != 0L) {
-                    Log.i(TAG, "3B 视觉模型加载成功")
+                    AppLog.i(TAG, "3B 视觉模型加载成功")
                     true
                 } else {
-                    Log.e(TAG, "nativeInit 返回 0: $lastRuntimeError")
+                    AppLog.e(TAG, "nativeInit 返回 0: $lastRuntimeError")
                     false
                 }
             }.getOrElse { e ->
-                Log.e(TAG, "init failed", e)
+                AppLog.e(TAG, "init failed", e)
                 false
             }
         }
@@ -122,7 +122,7 @@ object NativeVisionEngine {
                 val text = runCatching {
                     nativeDetectSignal(bitmap)
                 }.getOrElse { e ->
-                    Log.e(TAG, "3B 推理失败，回退 OCR: $e")
+                    AppLog.e(TAG, "3B 推理失败，回退 OCR: $e")
                     null
                 }
 

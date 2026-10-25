@@ -102,7 +102,8 @@ class CodingAgentBridge(
         }
     }
 
-    /** 把编码会话状态同步到状态总线（busy / 最新 assistant 文本 / 等待审批 / 出错） */
+    /** 把编码会话状态同步到状态总线（busy / 最新 assistant 文本 / 等待审批 / 出错）。
+     *  轮询每 250ms 触发一次，状态没变就跳过——磁贴/Widget 读的是快照流，重复写会引发无谓刷新。 */
     private fun syncCodingProgress() {
         val st = client.state.value
         val status = when {
@@ -115,8 +116,13 @@ class CodingAgentBridge(
     }
 
     private fun sync(status: String) {
+        if (status == lastSyncedStatus) return
+        lastSyncedStatus = status
         AgentStatusStore.update(AgentStatusStore.Snapshot(task = "编码 Agent", status = status))
     }
+
+    /** 最近一次写入状态总线的状态文本（去重用；null 表示从未写过）。 */
+    private var lastSyncedStatus: String? = null
 
     private companion object {
         const val TOKEN = "phoneagent-bridge"

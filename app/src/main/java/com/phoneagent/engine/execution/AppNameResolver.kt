@@ -2,7 +2,7 @@ package com.phoneagent.engine.execution
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.phoneagent.core.log.AppLog
 
 /**
  * 应用名 → 包名解析器（对应 HPA动作执行逻辑优化文档 v2.1 六、6.3）。
@@ -24,11 +24,11 @@ class AppNameResolver(private val context: Context) {
     fun resolve(appName: String?): String? {
         if (appName.isNullOrBlank()) return null
         val name = appName.trim()
-        Log.d(TAG, "resolve app: '$name'")
+        AppLog.d(TAG, "resolve app: '$name'")
 
         // 本身是包名（含 '.'，非中文）
         if (name.contains('.') && !name.any { it.code in 0x4E00..0x9FFF }) {
-            Log.d(TAG, "  -> 视为包名直接返回: $name")
+            AppLog.d(TAG, "  -> 视为包名直接返回: $name")
             return name
         }
 
@@ -39,7 +39,7 @@ class AppNameResolver(private val context: Context) {
         pickPreferredPackage(
             installed.filter { it.appName.equals(name, ignoreCase = true) }.map { it.packageName to it.isSystem },
         )?.let {
-            Log.d(TAG, "  -> 精确匹配: '$name' => $it")
+            AppLog.d(TAG, "  -> 精确匹配: '$name' => $it")
             return it
         }
 
@@ -51,13 +51,13 @@ class AppNameResolver(private val context: Context) {
                 cleanLabel.contains(cleanName) || cleanName.contains(cleanLabel)
             }.map { it.packageName to it.isSystem },
         )?.let {
-            Log.d(TAG, "  -> 模糊匹配: '$name' => $it")
+            AppLog.d(TAG, "  -> 模糊匹配: '$name' => $it")
             return it
         }
 
         // 提示：列出所有已安装应用的名称和包名，供 AI 参考
         val allApps = installed.take(20).joinToString(", ") { "${it.appName} (${it.packageName})" }
-        Log.w(TAG, "无法解析应用「$name」，已安装应用: $allApps")
+        AppLog.w(TAG, "无法解析应用「$name」，已安装应用: $allApps")
         return null
     }
 

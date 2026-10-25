@@ -11,6 +11,7 @@ import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,7 @@ import kotlin.coroutines.resume
 class AgentAccessibilityService : AccessibilityService() {
 
     companion object {
-        private const val TAG = "AgentA11y"
+        private const val TAG = "AgentAccessibilityService"
 
         @Volatile
         var instance: AgentAccessibilityService? = null
@@ -136,7 +137,7 @@ class AgentAccessibilityService : AccessibilityService() {
         lastTreeStats = scan.describe(root)
         if (elements.isEmpty()) {
             // 空树必须留下证据：否则只能看到「未检测到可交互元素」，分不清是系统不给节点还是被筛选条件挡掉
-            android.util.Log.w(TAG, "元素树为空：$lastTreeStats")
+            AppLog.w(TAG, "元素树为空：$lastTreeStats")
         }
         val (w, h) = screenSize()
         return ScreenSnapshot(

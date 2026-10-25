@@ -77,6 +77,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.agent.DocViewerScreen
@@ -143,7 +144,7 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }.isSuccess
-            if (!started) android.util.Log.w("MainActivity", "拉起 Agent 页失败（系统可能限制了后台启动）")
+            if (!started) AppLog.w("MainActivity", "拉起 Agent 页失败（系统可能限制了后台启动）")
         }
     }
 

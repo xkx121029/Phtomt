@@ -51,7 +51,10 @@ class AgentProcess(
         val targets: List<(String) -> Unit>
         synchronized(bufferLock) {
             if (lineListeners.isEmpty()) {
-                if (earlyLines.size < EARLY_BUFFER_CAP) earlyLines.addLast(line)
+                // 环形语义：满时丢最旧的（启动阶段最早的那批通常是重试可恢复的探测行），
+                // 永远给最新的行留位置——首启宽限期里能力探测回包不能被早期噪音挤掉。
+                if (earlyLines.size >= EARLY_BUFFER_CAP) earlyLines.removeFirst()
+                earlyLines.addLast(line)
                 return
             }
             targets = lineListeners.toList()
@@ -101,19 +104,37 @@ class AgentProcess(
     }
 
     private fun pumpStderr(proc: java.lang.Process) {
+        // 长会话下 host 会持续输出，只在启动时检查一次挡不住无限增长：
+        // 按写入字节计数，超限就关当前 writer、把文件挪到 .old（至多保留一份）、续写新文件。
+        var out: java.io.FileWriter? = null
+        var written = 0L
         try {
             stderrLog.parentFile?.mkdirs()
-            val out = java.io.FileWriter(stderrLog, true)
             val reader = BufferedReader(InputStreamReader(proc.errorStream, Charsets.UTF_8))
             while (true) {
                 val line = reader.readLine() ?: break
+                if (out != null && written > STDERR_ROTATE_BYTES) {
+                    runCatching { out.close() }
+                    out = null
+                }
+                if (out == null) {
+                    if (written > STDERR_ROTATE_BYTES || stderrLog.length() > STDERR_ROTATE_BYTES) {
+                        val old = File(stderrLog.parentFile, stderrLog.name + ".old")
+                        old.delete()
+                        stderrLog.renameTo(old)
+                    }
+                    out = java.io.FileWriter(stderrLog, true)
+                    written = 0L
+                }
                 out.appendLine(line)
+                written += line.length + 1
                 Log.d(TAG, "host: $line")
             }
-            out.flush()
-            out.close()
         } catch (e: Exception) {
             Log.w(TAG, "stderr pump ended: ${e.message}")
+        } finally {
+            runCatching { out?.flush() }
+            runCatching { out?.close() }
         }
     }
 
@@ -141,7 +162,10 @@ class AgentProcess(
     }
 
     companion object {
-        private const val TAG = "phoneagent-coding"
+        private const val TAG = "AgentProcess"
         private const val EARLY_BUFFER_CAP = 500
+
+        /** stderr 日志轮转阈值：超过即挪到 .old（至多保留一份，上限 2 × 该值）。 */
+        private const val STDERR_ROTATE_BYTES = 1L * 1024 * 1024
     }
 }

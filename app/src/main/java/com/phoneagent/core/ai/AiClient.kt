@@ -3,7 +3,7 @@ package com.phoneagent.core.ai
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.Base64
-import android.util.Log
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
 import kotlinx.coroutines.CancellationException
@@ -311,7 +311,7 @@ class AiClient(
                         val action = parseAgentIntentOrNull(content)
                         if (action == null && !jsonRepairUsed) {
                             jsonRepairUsed = true
-                            Log.w("AiClient", "决策输出无法解析为标准 JSON，附上原文纠错重发（仅一次）")
+                            AppLog.w("AiClient", "决策输出无法解析为标准 JSON，附上原文纠错重发（仅一次）")
                             // 重发前清空流式回显（与网络重试同一口径），避免界面上内容叠加两遍
                             onRetry?.invoke()
                             // 附上「上一轮信息无法识别」：assistant 带原文 + user 要求只输出标准 JSON
@@ -898,7 +898,7 @@ class AiClient(
         try {
             return json.decodeFromString(AgentIntent.serializer(), extractJson(content))
         } catch (e: Exception) {
-            Log.w("AiClient", "Step1 parse failed: ${e.message}, content: ${content.take(200)}")
+            AppLog.w("AiClient", "Step1 parse failed: ${e.message}, content: ${content.take(200)}")
         }
         // Step 2：平衡花括号提取第一个完整 JSON 对象（支持嵌套）
         val balanced = extractBalancedJson(content)
@@ -906,7 +906,7 @@ class AiClient(
             try {
                 return json.decodeFromString(AgentIntent.serializer(), balanced)
             } catch (e: Exception) {
-                Log.w("AiClient", "Step2 balanced parse failed: ${e.message}, balanced: ${balanced.take(200)}")
+                AppLog.w("AiClient", "Step2 balanced parse failed: ${e.message}, balanced: ${balanced.take(200)}")
             }
         }
         // Step 3：尝试 JSON 数组（意图合并）
@@ -920,11 +920,11 @@ class AiClient(
                 )
                 if (arr.isNotEmpty()) return arr.first()
             } catch (e: Exception) {
-                Log.w("AiClient", "Step3 array parse failed: ${e.message}")
+                AppLog.w("AiClient", "Step3 array parse failed: ${e.message}")
             }
         }
         // Step 4：全部失败 → 返回 null，由调用方决定纠错重发或 give_up 兜底
-        Log.e("AiClient", "All parse steps failed. Raw content: ${content.take(300)}")
+        AppLog.e("AiClient", "All parse steps failed. Raw content: ${content.take(300)}")
         return null
     }
 
