@@ -10,6 +10,28 @@
 
 ### 修复
 
+- **「服务组件已连接」却一条命令都发不出去（Provider 通道一次异常后永久失效）**
+  - 现象：设置页显示服务组件已安装（绿色），但所有动作都回「Provider 未安装或无障碍通道未连接」，
+    重启应用也不恢复，只有卸载重装服务组件才偶尔能撑几步
+  - 根因链：每步自动截图把整张全屏 PNG（2~6MB）当 AIDL 回包直传，超过 Binder 单次事务上限
+    （约 1MB）抛 `TransactionTooLargeException`；旧版 `ProviderManager.call` 对**任何**异常
+    都执行「清空代理」，却**不解绑**——而 `bindService` 是引用计数，同一 `ServiceConnection`
+    已绑定时系统不会再回调 `onServiceConnected`。于是代理永远为空、旧绑定又占着名额，
+    之后每次调用在 `ensureBound` 就直接返回 null，界面上的「已安装」却始终是绿的
+  - 修复三层：
+    - **大块数据改分片传输**：`IDeviceProvider` 增至 v4，新增 `beginPayload` / `payloadLength` /
+      `readPayload` / `endPayload`，Provider 侧用 `PayloadStore` 暂存并按 128KB 分片回传
+      （读屏元素树与截图都走这条路），彻底不再出现超大事务；旧版服务组件仍回退一次性接口
+    - **区分通道死亡与业务失败**：只有 `DeadObjectException` 等真正的通信异常才作废代理，
+      `TransactionTooLargeException` 一律视为单次请求失败，连接保留
+    - **作废即真正解绑**：`invalidate()` 清代理的同时 `unbindService`，并新挂 `linkToDeath`、
+      实现 `onBindingDied` / `onNullBinding`，补齐 `asBinder().isBinderAlive` 探活与重绑前的
+      残留绑定清理——通道断掉之后能自己重新绑定回来
+  - 权限页把「已安装」与「真的能用」分开显示：未开无障碍 / 绑定失败 / 正在连接各有独立文案，
+    不再用一个绿色标题掩盖通道不可用
+  - `provider/build.gradle.kts` 的 `writeProviderVersion` 加 `upToDateWhen { false }`：
+    版本文件此前一旦被判 UP-TO-DATE 就永远停在旧值，主应用据此误判「已是最新」，
+    从不提示更新服务组件（本机就停在 v0.2.1075）
 - **任务执行时用户点不动屏幕（Android 12+ 不受信任触摸拦截）**
   - 现象：任务一开跑，屏幕边缘的彩色跑马光效出现后，用户手动点击/滑动全部无响应，
     而 Agent 的无障碍手势照常执行 —— 看起来像"只有 AI 能操作手机"

@@ -8,6 +8,7 @@ import android.graphics.BitmapFactory
 import android.provider.Settings
 import com.phoneagent.core.log.AppLog
 import com.phoneagent.device.provider.ProviderManager
+import com.phoneagent.provider.ProviderApi
 import com.phoneagent.domain.model.ScreenSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,8 +52,8 @@ class AgentAccessibilityService private constructor(
         /** 读屏超时：元素树遍历在 Provider 侧完成，超时按「无障碍不可用」降级 */
         private const val CAPTURE_TIMEOUT_MS = 6_000L
 
-        /** 截图超时：Provider 自身 2.5s 超时，这里留出跨进程往返余量 */
-        private const val SCREENSHOT_TIMEOUT_MS = 6_000L
+        /** 截图超时：Provider 自身 2.5s 超时 + 分片回传（40 次往返），留足余量 */
+        private const val SCREENSHOT_TIMEOUT_MS = 12_000L
 
         @Volatile
         var instance: AgentAccessibilityService? = null
@@ -167,7 +168,12 @@ class AgentAccessibilityService private constructor(
 
     suspend fun takeScreenshotBitmap(): Bitmap? {
         if (!canScreenshot()) return null
-        val png = ProviderManager.call(applicationContext, SCREENSHOT_TIMEOUT_MS) { it.takeScreenshot() }
+        // 全屏 PNG 有 2~6MB，直接当 AIDL 回包会超 Binder 事务上限；优先走分片拉取，
+        // 只有旧版服务组件（不支持分片）才回退到一次性回包
+        val png = ProviderManager.call(applicationContext, SCREENSHOT_TIMEOUT_MS) { remote ->
+            ProviderManager.readPayload(remote, ProviderApi.KIND_SCREENSHOT)
+                ?: remote.takeScreenshot()
+        }
         if (png == null || png.isEmpty()) return null
         return runCatching { BitmapFactory.decodeByteArray(png, 0, png.size) }.getOrNull()
     }
