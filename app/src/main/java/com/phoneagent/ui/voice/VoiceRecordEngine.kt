@@ -1,5 +1,7 @@
 package com.phoneagent.ui.voice
 
+// JSON 解析说明：原用 org.json 解析 ASR 响应，为统一项目序列化方案改为 kotlinx.serialization，字段取值与容错行为保持等价
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -22,12 +24,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import org.json.JSONObject
 import java.io.File
 import java.io.RandomAccessFile
 import java.util.concurrent.TimeUnit
@@ -400,7 +406,16 @@ class CloudAsrEngine(
                 ).execute()
                 resp.use { r ->
                     val text = withContext(Dispatchers.Default) {
-                        JSONObject(r.body?.string() ?: "{}").optString("text", "").trim()
+                        // 等价原 org.json 的 optString("text", "")：字符串取内容，数字/布尔取字面文本，
+                        // 复合值取原始 JSON 文本，字段缺失或为 null 回退空串；非法响应抛异常交外层错误提示
+                        val root = Json.parseToJsonElement(r.body?.string() ?: "{}") as? JsonObject
+                            ?: throw IllegalArgumentException("ASR 响应不是 JSON 对象")
+                        val field = root.get("text")
+                        when {
+                            field is JsonPrimitive && field !is JsonNull -> field.content
+                            field is JsonObject || field is JsonArray -> field.toString()
+                            else -> ""
+                        }.trim()
                     }
                     if (!r.isSuccessful) {
                         _error.value = "识别请求失败（HTTP ${r.code}），请检查 API 配置与额度"

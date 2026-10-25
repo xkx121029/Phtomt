@@ -19,9 +19,9 @@ import android.media.projection.MediaProjectionManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.overlay.FloatingWindowService
 import com.phoneagent.ui.MainActivity
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -34,7 +34,7 @@ import kotlin.coroutines.resume
 class ScreenSharingService : Service() {
 
     companion object {
-        private const val TAG = "ScreenSharing"
+        private const val TAG = "ScreenSharingService"
         private const val CHANNEL_ID = "screen_capture"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
@@ -150,7 +150,7 @@ class ScreenSharingService : Service() {
         mediaProjection = mpm.getMediaProjection(resultCode, data)?.also { mp ->
             mp.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
-                    Log.i(TAG, "MediaProjection stopped")
+                    AppLog.i(TAG, "MediaProjection stopped")
                     stopSelf()
                 }
             }, captureHandler)

@@ -10,6 +10,17 @@
 
 ### 变更
 
+- **编码模块健壮性与资源优化批次（4 项）**
+  - **挂起 RPC 断线落空（AgentClient）**：`disconnect` / `onClosed` / `onFailure` / `stopLocalAgent`
+    原先 `pending.clear()` 静默丢弃界面 RPC 回调，调用方 `onResult` 永不触发、UI 卡在加载态；
+    现在断线时全部以 `type:"error"` 回包收尾（回调自带主线程投递，线程安全）
+  - **stderr 日志轮转（AgentProcess）**：`agent-host/stderr.log` 只追加不轮转，长会话下
+    filesDir 无限增长；现按写入字节计数，超 1MB 挪到 `.old`（至多保留一份，上限 2MB）再续写新文件
+  - **状态总线去重（CodingAgentBridge）**：250ms 轮询里 `syncCodingProgress` 无条件写
+    `AgentStatusStore` 快照（每秒 4 次重复写引发磁贴/Widget 无谓刷新）；现仅在状态文本变化时写入
+  - **早启缓冲环形化（AgentProcess）**：`earlyLines` 满 500 行后原先丢弃新行，
+    host 启动慢时可能挤掉能力探测回包；现改为环形语义（满时丢最旧，永远给最新行留位置）
+
 - **设置二级页 UI 统一（Material 3 Expressive 设计语言收口）**
   - **骨架节奏统一**：「运行与提示词」「权限与执行通道」两页原先用 `spacedBy(16)` 排版，
     页头与首分区之间只有 16dp、与其他页的「页头后 20 / 分区间 16 / 结尾 28」对不上，已改为统一显式间距

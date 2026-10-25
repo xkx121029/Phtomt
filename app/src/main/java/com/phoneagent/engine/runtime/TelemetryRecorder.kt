@@ -1,14 +1,17 @@
 package com.phoneagent.engine.runtime
 
 import android.content.Context
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.engine.runtime.EngineLimits.LOCAL_DECISION_SOURCE
+import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_MEMORY_EVENTS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_EVENTS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TASK_SESSIONS
@@ -23,6 +26,33 @@ internal class TelemetryRecorder(
     private val memory: MemoryStore,
     private val store: EngineStore,
 ) {
+    init {
+        // 日志双轨修复：把非 engine 层（core/device/feature 等）经 AppLog 写 logcat 的日志
+        // 也收进应用内环形缓冲（调试页可见）。复用 UiBridge.log 同款 append 形态与 MAX_LOGS
+        // 环形上限；引擎多次重建（TelemetryRecorder 多次构造）时直接覆盖 sink 取最后实例，
+        // 天然避免重复挂接。TAG 以 "[tag] " 前缀并入正文，日志归属信息不丢失。
+        AppLog.sink = { level, tag, msg, tr ->
+            val text = buildString {
+                append("[").append(tag).append("] ").append(msg)
+                if (tr != null) append('\n').append(android.util.Log.getStackTraceString(tr))
+            }
+            val lvl = when (level) {
+                android.util.Log.WARN -> AgentLog.Level.WARN
+                android.util.Log.ERROR -> AgentLog.Level.ERROR
+                else -> AgentLog.Level.INFO
+            }
+            val next = store.logs.value + AgentLog(
+                timestamp = System.currentTimeMillis(),
+                level = lvl,
+                message = text,
+                detail = null,
+                taskId = store.currentTaskId,
+                taskName = store.currentTaskName,
+            )
+            store.logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
+        }
+    }
+
     fun recordMetrics(decision: com.phoneagent.core.ai.AiDecision) {
         val prev = store.metrics.value
         val requestCount = prev.requestCount + 1

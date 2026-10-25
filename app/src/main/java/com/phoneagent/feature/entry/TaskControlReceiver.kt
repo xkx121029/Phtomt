@@ -3,6 +3,7 @@ package com.phoneagent.feature.entry
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.overlay.AgentStatusStore
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,7 @@ class TaskControlReceiver : BroadcastReceiver() {
         // runCatching 兜底：对外广播内容不可信，任何解析/分发异常都不能崩溃应用
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
             runCatching { handle(intent) }.onFailure {
-                android.util.Log.w(TAG, "对外控制处理失败：${it.message}")
+                AppLog.w(TAG, "对外控制处理失败：${it.message}")
             }
             result.finish()
         }
@@ -45,7 +46,7 @@ class TaskControlReceiver : BroadcastReceiver() {
         val settings = koin.get<AppSettings>().settings.first()
         val reject = rejectReason(settings, intent)
         if (reject != null) {
-            android.util.Log.i(TAG, reject)
+            AppLog.i(TAG, reject)
             return
         }
         val engine = koin.get<com.phoneagent.engine.AgentEngine>()
@@ -87,7 +88,7 @@ class TaskControlReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        private const val TAG = "TaskControl"
+        private const val TAG = "TaskControlReceiver"
 
         /** 口令 extra（对外契约） */
         const val EXTRA_TOKEN = "token"

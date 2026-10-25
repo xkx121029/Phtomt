@@ -7,7 +7,6 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Point
-import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -15,6 +14,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.feature.browser.script.NavScripts
 
 private const val TAG = "HeadlessWebHost"
@@ -56,7 +56,7 @@ internal object HeadlessWebHost {
         val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return null
         val size = realSize(ctx)
         val web = runCatching { createBrowserWebView(ctx) }.getOrElse {
-            Log.w(TAG, "静默 WebView 创建失败：${it.message}")
+            AppLog.w(TAG, "静默 WebView 创建失败：${it.message}")
             return null
         }
         // 不参与无障碍：AI 的元素树来自"当前前台窗口"，网页节点混进去只会污染感知
@@ -83,7 +83,7 @@ internal object HeadlessWebHost {
         try {
             wm.addView(web, lp)
         } catch (e: Throwable) {
-            Log.w(TAG, "静默浏览器宿主窗口创建失败（可能缺少悬浮窗权限）：${e.message}")
+            AppLog.w(TAG, "静默浏览器宿主窗口创建失败（可能缺少悬浮窗权限）：${e.message}")
             runCatching { web.destroy() }
             return null
         }
@@ -123,7 +123,7 @@ internal object HeadlessWebHost {
         lp.width = size.x
         lp.height = size.y
         runCatching { wm.updateViewLayout(web, lp) }
-            .onFailure { Log.w(TAG, "宿主窗口旋转重排失败：${it.message}") }
+            .onFailure { AppLog.w(TAG, "宿主窗口旋转重排失败：${it.message}") }
     }
 
     /** 从系统 WindowManager 取真实屏幕尺寸（失败才退回资源尺寸） */

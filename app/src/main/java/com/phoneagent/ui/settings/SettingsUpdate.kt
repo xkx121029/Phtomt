@@ -42,6 +42,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
 import kotlinx.coroutines.launch
@@ -358,7 +359,7 @@ private fun StatusCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
 ) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(AppRadii.Card),
         color = accent.copy(alpha = 0.08f),
         border = appBorderStroke(1.dp, accent.copy(alpha = 0.2f)),
         modifier = Modifier.fillMaxWidth(),

@@ -146,7 +146,7 @@ fun MarkdownPreview(
                         modifier = Modifier
                             .width(3.dp)
                             .padding(top = 2.dp, bottom = 2.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(AppRadii.Chip)),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(

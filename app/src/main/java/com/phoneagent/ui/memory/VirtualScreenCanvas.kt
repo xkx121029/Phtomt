@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phoneagent.data.store.PageShapeNode
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppTheme
 
 /**
@@ -111,9 +112,9 @@ internal fun VirtualScreenCanvas(
     Box(
         modifier = modifier
             .aspectRatio(screenAspect)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(AppRadii.Item))
             .background(colors.surfaceSunken)
-            .border(1.dp, colors.phoneShellBorder, RoundedCornerShape(20.dp))
+            .border(1.dp, colors.phoneShellBorder, RoundedCornerShape(AppRadii.Item))
             .onSizeChanged { canvasPx = it }
             .then(
                 if (onTapControl != null) {

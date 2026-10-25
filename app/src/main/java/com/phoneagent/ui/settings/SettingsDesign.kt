@@ -52,9 +52,6 @@ import com.phoneagent.ui.theme.appBorderStroke
 /** 设置页统一横向留白，与全站页面栅格一致 */
 internal val SettingsScreenPad = 20.dp
 
-/** 分区容器圆角：比通用卡片（24dp）再大一档，读起来更"整块" */
-private val SectionShape = RoundedCornerShape(28.dp)
-
 /**
  * 分区色调（语义分组色）。
  *
@@ -90,7 +87,8 @@ internal fun SettingsSection(
 ) {
     val accent = tone.accent()
     Surface(
-        shape = SectionShape,
+        // 分区容器圆角走 Hero 档：比通用卡片（24dp）再大一档，读起来更"整块"
+        shape = RoundedCornerShape(AppRadii.Hero),
         color = accent.copy(alpha = 0.06f),
         border = appBorderStroke(1.dp, accent.copy(alpha = 0.15f)),
         modifier = Modifier.fillMaxWidth(),
@@ -107,7 +105,7 @@ internal fun SettingsSection(
                 Box(
                     Modifier
                         .size(width = 4.dp, height = 20.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(RoundedCornerShape(AppRadii.Chip))
                         .background(accent),
                 )
                 Column(Modifier.weight(1f)) {
@@ -139,7 +137,7 @@ internal fun SettingsPlainCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
         border = appBorderStroke(1.dp, AppCardBorder),
         modifier = modifier.fillMaxWidth(),

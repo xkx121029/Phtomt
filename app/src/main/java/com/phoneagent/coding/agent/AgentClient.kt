@@ -55,8 +55,20 @@ class AgentClient(private val context: Context) {
      *  入站请求必须带当前配置的 token（见 HostBridgeServer.handle）。 */
     private val hostBridge = HostBridgeServer(context) { token }
 
-    /** 界面主动发起的 RPC 的回调表，按 id 索引；断线时整体丢弃。 */
+    /** 界面主动发起的 RPC 的回调表，按 id 索引；断线时整体以错误回包落空（不能静默丢弃，否则 UI 卡在加载态）。 */
     private val pending = java.util.concurrent.ConcurrentHashMap<String, (JSONObject) -> Unit>()
+
+    /**
+     * 断线时把所有挂起的界面 RPC 以错误回包收尾。回调内部自带主线程投递，
+     * 从读线程/连接线程直接调用也安全——调用方 onResult 能立刻收到失败而不是永远挂起。
+     */
+    private fun failPending(reason: String) {
+        for (id in pending.keys.toList()) {
+            pending.remove(id)?.let { cb ->
+                runCatching { cb(JSONObject().put("id", id).put("type", "error").put("error", reason)) }
+            }
+        }
+    }
 
     /** 回包统一投到主线程，调用方可以直接改 Compose 状态。 */
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
@@ -78,6 +90,7 @@ class AgentClient(private val context: Context) {
 
         override fun onClosed(reason: String) {
             update { it.copy(conn = ConnState.DISCONNECTED, busy = false) }
+            failPending("连接已断开：$reason")
             // 连接断开要自愈（host 进程被杀很常见）。用户主动断开时
             // lastConnect 已被清空，这里自然不会重连。
             scheduleReconnect()
@@ -85,6 +98,7 @@ class AgentClient(private val context: Context) {
 
         override fun onFailure(message: String) {
             update { it.copy(conn = ConnState.DISCONNECTED, busy = false, error = message) }
+            failPending(message)
             scheduleReconnect()
         }
     }
@@ -182,7 +196,7 @@ class AgentClient(private val context: Context) {
         reconnectAttempts = 0
         transport?.disconnect()
         transport = null
-        pending.clear()
+        failPending("已断开连接")
         update { it.copy(conn = ConnState.DISCONNECTED, busy = false) }
     }
 
@@ -193,6 +207,7 @@ class AgentClient(private val context: Context) {
             android.content.Intent(context, CodingAgentService::class.java).setAction(CodingAgentService.ACTION_STOP),
         )
         LocalAgent.stop()
+        failPending("编码 agent 已停止")
         update { it.copy(conn = ConnState.DISCONNECTED, busy = false) }
     }
 

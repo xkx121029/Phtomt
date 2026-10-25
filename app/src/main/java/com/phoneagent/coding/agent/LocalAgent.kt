@@ -12,7 +12,7 @@ import java.util.concurrent.Executors
  * A singleton is fine: service, activity and transports live in one app process.
  */
 object LocalAgent {
-    private const val TAG = "coding-local"
+    private const val TAG = "LocalAgent"
 
     @Volatile
     var process: AgentProcess? = null

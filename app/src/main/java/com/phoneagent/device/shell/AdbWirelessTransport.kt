@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.util.Log
+import com.phoneagent.core.log.AppLog
 import com.phoneagent.engine.execution.ShellRules
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,7 +100,7 @@ class AdbWirelessTransport(
                 if (!ok) return@withContext AdbPairOutcome.Failure(AdbError.ADB_DISCONNECTED, "配对成功但连接主调试端口失败")
                 AdbPairOutcome.Success(productId = groomed)
             } catch (e: Exception) {
-                Log.e(TAG, "pair failed", e)
+                AppLog.e(TAG, "pair failed", e)
                 AdbPairOutcome.Failure(AdbError.PAIRING_FAILED, e.message ?: "配对异常")
             }
         }
@@ -223,7 +223,7 @@ class AdbWirelessTransport(
         try {
             nsd.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
         } catch (e: Exception) {
-            Log.e(TAG, "discover failed", e)
+            AppLog.e(TAG, "discover failed", e)
             if (cont.isActive) cont.resume(null)
             return@suspendCancellableCoroutine
         }
@@ -264,7 +264,7 @@ class AdbWirelessTransport(
                 }
             })
         } catch (e: Exception) {
-            Log.e(TAG, "resolveService failed", e)
+            AppLog.e(TAG, "resolveService failed", e)
             if (cont.isActive) cont.resume(null)
         }
     }

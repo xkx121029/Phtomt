@@ -64,12 +64,15 @@ data class AdbPairingService(
     val salt: ByteArray? = null,
 )
 
+/** mDNS 配对服务发现超时（毫秒）：停留在「使用配对码配对设备」界面等待服务出现的上限 */
+private const val PAIR_DISCOVER_TIMEOUT_MS = 20_000L
+
 /**
  * 无线 ADB 各阶段可配置超时（健壮性优化）。
  * 构造参数均带默认值，便于测试注入短超时。
  */
 data class AdbTimeouts(
-    val discoverMs: Long = 20_000L,   // mDNS 发现超时
+    val discoverMs: Long = PAIR_DISCOVER_TIMEOUT_MS,   // mDNS 发现超时
     val connectMs: Long = 6_000L,     // TCP 连接超时
     val soTimeoutMs: Long = 15_000L,  // socket 读超时（对端静默时抛 SocketTimeoutException）
     val authMs: Long = 8_000L,        // AUTH/握手超时
