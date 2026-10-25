@@ -432,6 +432,39 @@ object ProviderManager {
             ok = false,
             detail = "调用超时或通道异常：${lastError.value ?: "无响应"}",
         )
+
+        // ---- Termux 通道：装没装 → 授权落在谁身上 → 能否实跑 ----
+        val termuxInstalled = runCatching { remote.termuxInstalled() }.getOrNull() == true
+        val termuxGranted = runCatching { remote.termuxPermissionGranted() }.getOrNull() == true
+        steps += SelfTestStep(
+            title = "Termux 安装",
+            ok = termuxInstalled,
+            detail = if (termuxInstalled) "已安装 com.termux" else "未安装：Termux 通道需要先安装 Termux 应用",
+        )
+        steps += SelfTestStep(
+            title = "Termux 执行权限",
+            ok = termuxGranted,
+            detail = if (termuxGranted) {
+                "服务组件已持有 com.termux.permission.RUN_COMMAND"
+            } else {
+                // 授权对象是 Provider 而非主应用：主应用里申请不到这个权限
+                "服务组件未持有 RUN_COMMAND：点卡片里的「授予执行权限」（经 Shizuku 静默授予）"
+            },
+        )
+        if (termuxInstalled && termuxGranted) {
+            val probe = call(context, 20_000L) { r -> r.termuxProbe() }
+            steps += SelfTestStep(
+                title = "Termux 实跑探测",
+                ok = probe?.success == true,
+                detail = when {
+                    probe == null -> "调用超时或通道异常：${lastError.value ?: "无响应"}"
+                    probe.success -> probe.output.ifBlank { "探测通过" }
+                    else -> probe.reason
+                },
+            )
+        } else {
+            steps += SelfTestStep("Termux 实跑探测", false, "前置条件未满足，跳过")
+        }
         return steps
     }
 

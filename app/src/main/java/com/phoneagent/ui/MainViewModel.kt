@@ -271,6 +271,31 @@ class MainViewModel(
         }
     }
 
+    /**
+     * 静默授予 Termux 执行权限（RUN_COMMAND）给服务组件。
+     *
+     * 授权对象必须是 Provider：真正调 Termux 的进程是它，主应用自己申请不到。
+     * 走 Shizuku 的 `pm grant`，不需要用户翻系统设置；Shizuku 没启动时直接给出原因。
+     */
+    fun grantTermuxPermission() {
+        viewModelScope.launch {
+            val result = termuxBridge.grantRunCommandPermission()
+            val message = when (result) {
+                is ShizukuManager.ShellResult.Success ->
+                    if (termuxBridge.hasRunCommandPermission()) "已授予执行权限，可点「实跑探测」确认"
+                    else "命令已执行但权限仍未生效，请改用「在系统设置中授权」"
+                is ShizukuManager.ShellResult.Failure -> "授权失败：${result.reason}"
+            }
+            _termuxStatus.value = TermuxStatus(
+                installed = termuxBridge.isInstalled(),
+                permissionGranted = termuxBridge.hasRunCommandPermission(),
+                probed = false,
+                ready = false,
+                message = message,
+            )
+        }
+    }
+
     fun refreshOverlayPermission(context: Context) {
         _overlayGranted.value = android.provider.Settings.canDrawOverlays(context)
     }
