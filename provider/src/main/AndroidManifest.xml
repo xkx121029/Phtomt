@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 无障碍 / 截图由无障碍服务承载，无独立权限；联网仅用于将来扩展 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Termux 执行通道：RUN_COMMAND 权限由 Provider 持有（原主应用职责整体迁入） -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- 内嵌 Shizuku server：Provider 承担原 Shizuku 管理器角色
+         WRITE_SECURE_SETTINGS 由 server（shell uid）在 attach 时经 grantRuntimePermission 授予本应用；
+         API_V23 是 Shizuku 客户端权限名（与 vendored API 常量一致），server 靠它识别可直发 binder 的应用 -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- 只允许同签名的主应用绑定 AIDL 服务 -->
+    <permission
+        android:name="com.phoneagent.permission.BIND_PROVIDER"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.phoneagent.permission.BIND_PROVIDER" />
+
+    <!-- 包可见性：Termux 通道探测 com.termux；launchApp 需要 LAUNCHER 意图可见性；
+         语音助手探测需要 voice-command / assist 意图可见性（Android 11+ 按需声明） -->
+    <queries>
+        <package android:name="com.termux" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VOICE_COMMAND" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.ASSIST" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/provider_app_name">
+
+        <!-- 无障碍服务（从主应用整体迁入）：读屏 + 手势 + 截图 -->
+        <service
+            android:name=".a11y.ProviderAccessibilityService"
+            android:exported="true"
+            android:label="@string/a11y_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- AIDL 入口：主应用绑定后远程调用三条通道 -->
+        <service
+            android:name=".ProviderService"
+            android:exported="true"
+            android:permission="com.phoneagent.permission.BIND_PROVIDER">
+            <intent-filter>
+                <action android:name="com.phoneagent.provider.IDeviceProvider" />
+            </intent-filter>
+        </service>
+
+        <!-- Shizuku 客户端 binder 接收器：server 启动后向所有持有 API_V23 权限的应用
+             （含本 Provider）经 <pkg>.shizuku authority 下发 binder，缺此声明 Provider 进程
+             永远收不到 binder（Shizuku.pingBinder 恒 false）。与主应用同名声明，authority 随本包名 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- 内嵌 Shizuku server 的权限确认页：server 以 shell uid 拉起（须 exported），
+             action 与 vendored ServerConstants.REQUEST_PERMISSION_ACTION 一致。
+             Provider 无主题资源，用系统半透明主题：确认卡片自绘遮罩 + 圆角浮层（纯 View 实现） -->
+        <activity
+            android:name=".shell.ShizukuPermissionActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.phoneagent.provider.intent.action.REQUEST_PERMISSION" />
+            </intent-filter>
+        </activity>
+
+        <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器（引导机制 UI 在主应用，落地执行在 Provider） -->
+        <receiver
+            android:name=".shell.AdbPairingReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Termux 执行通道：接收 Termux 通过 PendingIntent 回传的命令结果（自收自发，无需 exported） -->
+        <receiver
+            android:name=".shell.TermuxResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.phoneagent.action.TERMUX_RESULT" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

@@ -56,12 +56,17 @@ fun HomeScreen(
     val agent by vm.agentState.collectAsState()
     val permissions by vm.permissions.collectAsState()
     val screenshotActive by vm.screenshotActive.collectAsState()
+    // ACA（编码 agent）可用技能：流式扫描，列表逐条增长
+    val acaSkills by vm.acaSkills.collectAsState()
+    val acaScanning by vm.acaScanning.collectAsState()
+    val acaSkillErrors by vm.acaSkillErrors.collectAsState()
 
     // 视觉模型入口已收进 设置 → 端侧视觉，主页不再展示
     LaunchedEffect(Unit) {
         vm.refreshStatus(context)
         vm.refreshA11yState(context)
         vm.refreshPermissions(context)
+        vm.refreshAcaSkills(context)
     }
 
     // 顶部滚动容器的状态：传给 GlassHeaderScaffold 做显式浮起判定（官网风格，比内部
@@ -226,6 +231,41 @@ fun HomeScreen(
                 onPress = { pressHaptic() },
                 onClick = { onOpenExtras(ExtrasPage.Browser) },
             )
+
+            // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
+            // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
+            // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
+            SectionHeader("编码技能")
+            if (acaSkills.isEmpty()) {
+                Text(
+                    text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+            }
+            acaSkills.forEachIndexed { index, skill ->
+                AcaSkillCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateListItem(index),
+                    icon = AppIcons.Code,
+                    name = skill.name,
+                    description = skill.description,
+                    meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
+                    iconColor = MaterialTheme.colorScheme.secondary,
+                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                    translate = { vm.translate(it) },
+                )
+            }
+            if (acaSkillErrors.isNotEmpty()) {
+                Text(
+                    text = "无效技能包：${acaSkillErrors.joinToString("；")}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
 
             // 权限雷达
             SectionHeader("权限雷达")

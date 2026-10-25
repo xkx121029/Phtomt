@@ -1,6 +1,7 @@
 package com.phoneagent.engine.planning
 
 import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.data.prefs.AppSettings
@@ -244,6 +245,7 @@ internal class PlanningFlow(
             },
             // 思考模型开启深度思考
             thinking = reason != null,
+            protocol = protocolOf(planBase.baseUrl, settingsVal),
         ).getOrElse { throw it }
         // 流式只产出了思考内容、正文为空时，回退到非流式，避免解析失败
         if (content.isBlank()) {
@@ -253,12 +255,19 @@ internal class PlanningFlow(
                 model = planBase.model,
                 messages = messages,
                 temperature = PLANNING_TEMPERATURE,
+                protocol = protocolOf(planBase.baseUrl, settingsVal),
             ).getOrElse { throw it }
         }
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
         ui.apiLog(text, content, latencyMs)
         return content
     }
+
+    /** 端点协议解析：按归一化 URL 匹配模型库端点；未入库回落 OpenAI 兼容 */
+    private fun protocolOf(baseUrl: String, settingsVal: AppSettings.Settings): ApiProtocol =
+        ApiProtocol.fromId(
+            settingsVal.endpoints.firstOrNull { it.id == AiClient.normalizeBaseUrl(baseUrl) }?.protocol,
+        )
 
     /**
      * 规划调用 + 解析，解析失败时纠错重发一次。

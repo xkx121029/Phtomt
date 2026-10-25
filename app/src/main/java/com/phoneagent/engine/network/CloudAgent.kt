@@ -1,6 +1,7 @@
 package com.phoneagent.engine.network
 
 import com.phoneagent.core.ai.AiClient
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.ChatMessageDto
 import com.phoneagent.core.ai.ContentPart
 import com.phoneagent.domain.model.AgentIntent
@@ -26,11 +27,12 @@ class CloudAgent(private val aiClient: AiClient) {
         messages: List<ChatMessageDto>,
         userHint: String,
         onDelta: (String) -> Unit = {},
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<AgentIntent> {
         val hintMsg = ChatMessageDto(
             role = "user",
             content = listOf(ContentPart(type = "text", text = "用户提示：$userHint\n请据此重新决策下一步动作。" )),
         )
-        return aiClient.chatForAction(baseUrl, apiKey, model, messages + hintMsg, null, 0.15, onDelta = onDelta).map { it.action }
+        return aiClient.chatForAction(baseUrl, apiKey, model, messages + hintMsg, null, 0.15, onDelta = onDelta, protocol = protocol).map { it.action }
     }
 }

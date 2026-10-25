@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
@@ -132,18 +134,19 @@ internal fun applyProviderPreset(st: SettingsState, preset: ProviderPreset) {
         st.reasonBaseUrl = preset.baseUrl
         st.reasonModel = preset.reasonModel
     }
-    ensureEndpoint(st, preset.baseUrl, st.apiKey)
+    ensureEndpoint(st, preset.baseUrl, st.apiKey, preset.protocol)
     listOf(preset.model, preset.visionModel, preset.reasonModel).forEach {
         ensureCatalogModel(st, preset.baseUrl, it)
     }
 }
 
-/** 端点按归一化 URL 去重入库（地址为空则不建），返回端点 id 供调用方继续用 */
-internal fun ensureEndpoint(st: SettingsState, baseUrl: String, apiKey: String): String? {
+/** 端点按归一化 URL 去重入库（地址为空则不建），返回端点 id 供调用方继续用；已存在的端点协议保持不变 */
+internal fun ensureEndpoint(st: SettingsState, baseUrl: String, apiKey: String, protocol: String = "openai"): String? {
     val id = ModelCatalogCodec.endpointId(baseUrl)
     if (id.isBlank()) return null
-    if (st.endpoints.none { it.id == id }) {
-        st.endpoints.add(Endpoint(id = id, baseUrl = baseUrl.trim(), apiKey = apiKey.trim()))
+    val existing = st.endpoints.firstOrNull { it.id == id }
+    if (existing == null) {
+        st.endpoints.add(Endpoint(id = id, baseUrl = baseUrl.trim(), apiKey = apiKey.trim(), protocol = protocol))
     }
     return id
 }
@@ -573,6 +576,8 @@ internal fun EndpointCard(
     modelCount: Int,
     fetching: Boolean,
     hint: String?,
+    protocol: String = "openai",
+    onProtocol: ((String) -> Unit)? = null,
     onBaseUrl: (String) -> Unit,
     onApiKey: (String) -> Unit,
     onFetch: () -> Unit,
@@ -609,6 +614,20 @@ internal fun EndpointCard(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            if (onProtocol != null) {
+                Spacer(Modifier.height(8.dp))
+                LabeledField("接口协议") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ApiProtocol.entries.forEach { p ->
+                            FilterChip(
+                                selected = protocol == p.id,
+                                onClick = { buzz(); onProtocol(p.id) },
+                                label = { Text(p.label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                            )
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(10.dp))
             Row(

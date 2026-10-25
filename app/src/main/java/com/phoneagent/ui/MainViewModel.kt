@@ -12,6 +12,7 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
@@ -120,16 +121,16 @@ class MainViewModel(
     suspend fun translate(text: String): String = engine.translateText(text)
 
     /** 测试主模型连接是否可用（设置保存前校验用） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String): Result<String> =
-        engine.testConnection(baseUrl, apiKey, model)
+    suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<String> =
+        engine.testConnection(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
 
     /** 拉取端点可用模型列表（设置页"获取模型"） */
-    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> =
-        engine.listModels(baseUrl, apiKey)
+    suspend fun listModels(baseUrl: String, apiKey: String, protocol: String = "openai"): Result<List<String>> =
+        engine.listModels(baseUrl, apiKey, ApiProtocol.fromId(protocol))
 
     /** 探测单个模型的能力（识图 / 工具调用） */
-    suspend fun probeModel(baseUrl: String, apiKey: String, model: String): Result<com.phoneagent.core.ai.ModelAbility> =
-        engine.probeModel(baseUrl, apiKey, model)
+    suspend fun probeModel(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<com.phoneagent.core.ai.ModelAbility> =
+        engine.probeModel(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
 
     fun startPlanning(task: String) = engine.startPlanning(task)
 
@@ -640,6 +641,43 @@ class MainViewModel(
     fun skillAll(): List<Skill> = skillRegistry.all()
 
     private fun refreshSkills() { _skills.value = skillRegistry.all() }
+
+    // ---- ACA（编码 agent）可用技能：流式扫描 filesDir/skills，逐条刷入列表 ----
+    private val _acaSkills = MutableStateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>>(emptyList())
+    val acaSkills: StateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>> = _acaSkills.asStateFlow()
+
+    /** 扫描进行中（true 时主页显示"正在扫描"占位） */
+    private val _acaScanning = MutableStateFlow(false)
+    val acaScanning: StateFlow<Boolean> = _acaScanning.asStateFlow()
+
+    /** 损坏包的「目录名：原因」列表，主页以弱化文本提示 */
+    private val _acaSkillErrors = MutableStateFlow<List<String>>(emptyList())
+    val acaSkillErrors: StateFlow<List<String>> = _acaSkillErrors.asStateFlow()
+
+    private var acaScanJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * 重新扫描 ACA 技能目录。流式：每发现一个有效包就立刻追加进 [_acaSkills]，
+     * 配合主页的级联入场动画形成逐条流出的效果；扫描期间重入直接忽略。
+     */
+    fun refreshAcaSkills(context: Context) {
+        if (_acaScanning.value) return
+        acaScanJob?.cancel()
+        acaScanJob = viewModelScope.launch {
+            _acaScanning.value = true
+            _acaSkills.value = emptyList()
+            _acaSkillErrors.value = emptyList()
+            // 扫盘在 Default 线程，回调里只做状态追加（StateFlow 写是线程安全的）
+            val errors = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                com.phoneagent.coding.skill.AcaSkillCatalog.streamScan(context.applicationContext) { info ->
+                    _acaSkills.value = _acaSkills.value + info
+                }
+            }
+            _acaSkillErrors.value = errors.map { (dir, err) -> "$dir：$err" }
+            _acaScanning.value = false
+        }
+    }
+
 
     /** 在新增时自动分配一个未占用的 id */
     fun nextSkillId(prefix: String = "skill_user"): String {

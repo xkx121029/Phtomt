@@ -146,4 +146,22 @@ class AgentPromptsContextTest {
         val cjk = free.filter { it.code in 0x4E00..0x9FFF }.take(20)
         assertFalse("英文提示词混入中文字符：$cjk", free.any { it.code in 0x4E00..0x9FFF })
     }
+
+    @Test
+    fun `纯对话直答系统提示不注入任何操控语义`() {
+        val text = AgentPrompts.chatSystem(PromptLang.CN, "")
+        assertTrue("应保留直答规则", text.contains("直接回答"))
+        // 操控链路的各大块一个都不该出现：直答不解析意图，这些全是把模型带偏的噪声
+        assertFalse("不得混入铁律", text.contains("# 铁律"))
+        assertFalse("不得混入动作模式", text.contains("# 动作模式"))
+        assertFalse("不得混入意图指令", text.contains("intent"))
+        assertFalse("不得混入技能表", text.contains("# 技能"))
+        assertFalse("不得混入目标定位", text.contains("# 目标定位"))
+
+        // 自定义系统提示：完全以用户为准，不叠加操控附录
+        assertEquals("自定义", AgentPrompts.chatSystem(PromptLang.CN, "自定义"))
+
+        val en = AgentPrompts.chatSystem(PromptLang.EN, "")
+        assertFalse("英文直答提示混入中文字符", en.any { it.code in 0x4E00..0x9FFF })
+    }
 }

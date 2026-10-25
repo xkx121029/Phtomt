@@ -318,7 +318,7 @@ class SettingsState(initial: AppSettings.Settings) {
         .mapNotNull { ep ->
             val id = ModelCatalogCodec.endpointId(ep.baseUrl)
             if (id.isBlank()) null
-            else Endpoint(id = id, baseUrl = ep.baseUrl.trim(), apiKey = ep.apiKey.trim())
+            else Endpoint(id = id, baseUrl = ep.baseUrl.trim(), apiKey = ep.apiKey.trim(), protocol = ep.protocol)
         }
         .distinctBy { it.id }
 
