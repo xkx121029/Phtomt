@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.phoneagent.BuildConfig
-import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.device.shell.ShizukuManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,14 +28,13 @@ import java.util.concurrent.TimeUnit
  *
  * 三条设计取舍：
  * 1. 下载跑在应用级协程（不绑视图生命周期），退到后台也能下完；
- * 2. 安装优先走 shell 静默装（无线 ADB / Shizuku 任一可用），装不了才回落系统安装器；
+ * 2. 安装优先走 shell 静默装（内置 Shizuku 通道，经 AIDL 在 Provider 进程执行），装不了才回落系统安装器；
  * 3. 蓝奏云镜像的解析与解包全在服务端完成，这里只面对一个普通的 APK 下载地址，
  *    不必理解镜像页面与提取码，也就不会因为蓝奏云改版而连带失效。
  */
 class UpdateManager(
     private val context: Context,
     private val shizuku: ShizukuManager,
-    private val adb: AdbWirelessTransport,
 ) {
     private companion object {
         /** 下载缓冲：64KB 是 OkHttp/文件 IO 的常用档位，再大只是多占内存 */
@@ -156,11 +154,12 @@ class UpdateManager(
         _state.value = UpdateState.Done(silent = false)
     }
 
-    /** 依次尝试无线 ADB 与 Shizuku；两者都不可用或都失败时返回 false */
+    /**
+     * 试 shell 静默装；通道不可用或失败时返回 false，交给系统安装器兜底。
+     * 不先看 [ShizukuManager.isAvailable]：迁移后该状态是 Provider 轮询过来的缓存，
+     * 首启可能尚未刷新；直接看 execShizuku 的回执才是最终事实。
+     */
     private suspend fun silentInstall(command: String): Boolean {
-        val adbOutput = runCatching { adb.executeShell(command) }.getOrNull()
-        if (adbOutput?.contains("Success", ignoreCase = true) == true) return true
-        if (!shizuku.isAvailable()) return false
         val result = runCatching { shizuku.executeShell(command) }.getOrNull()
         return result is ShizukuManager.ShellResult.Success &&
             result.output.contains("Success", ignoreCase = true)

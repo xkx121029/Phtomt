@@ -41,8 +41,12 @@ internal class TaskLifecycle(
     /**
      * 任务路由（Superagent 融合 Phase 4）：由 AgentEngine 组装注入。
      * 返回 [RouteDecision.Agent] 时走原 runTask 链路，行为与迁移前完全一致。
+     *
+     * 第二个参数是「对话页提交」标记：为 true 时路由必须只作答、不进任何执行体
+     * （对话模式不开启任务执行链路，见 [start]）。
      */
-    private val router: suspend (task: String) -> RouteDecision = { RouteDecision.Agent },
+    private val router: suspend (task: String, chatOnly: Boolean) -> RouteDecision =
+        { _, _ -> RouteDecision.Agent },
 ) {
     /** 队列 worker；由主线程入队与 Default 线程的任务收尾共同读写，故需 @Volatile */
     @Volatile
@@ -56,23 +60,32 @@ internal class TaskLifecycle(
 
     val taskQueue: StateFlow<List<String>> get() = pendingTasks.items
 
-    /** 提交任务到队列并开始处理 */
-    fun start(task: String) {
+    /**
+     * 提交任务到队列并开始处理。
+     *
+     * @param chatOnly 对话页提交：只作答、不执行。此时连「执行前预热」与执行留档复位一律跳过——
+     *   对话不该预热端侧视觉模型，也不该冲掉上一轮任务的截图留档；
+     *   路由侧见到该标记必须直接给 [RouteDecision.Chat]（对话模式不开启任务执行模式：
+     *   不设 isRunning、不开悬浮窗/跑马灯、不亮边缘光效、不碰无障碍操控）。
+     */
+    fun start(task: String, chatOnly: Boolean = false) {
         if (task.isBlank()) return
-        // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
-        scope.launch {
-            val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
-            if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
+        if (!chatOnly) {
+            // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
+            scope.launch {
+                val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
+                if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
+            }
+            // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
+            store.stepShot.value = StepShot()
         }
-        // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
-        store.stepShot.value = StepShot()
         // 队列入口（不经规划）也要作废上一轮的会话承接块，否则会拿上一轮的输入当上下文
         store.sessionContextCache = null
-        pendingTasks.enqueue(task)
+        pendingTasks.enqueue(task, chatOnly)
         // 入队与 worker 启动必须一起判定：否则「worker 刚好判空退出」与本次入队并发时，
         // 两边都以为对方会处理这个任务，它就永远不会被执行（漏跑）
         ensureQueueWorker()
-        ui.log(AgentLog.Level.INFO, "任务已加入队列：$task")
+        ui.log(AgentLog.Level.INFO, if (chatOnly) "对话已加入队列：$task" else "任务已加入队列：$task")
     }
 
     /** 确保队列有 worker 在消费；入队与收尾补启动都走这里，幂等 */
@@ -92,7 +105,7 @@ internal class TaskLifecycle(
         synchronized(queueLock) {
             if (job?.isActive == true) {
                 // 入队 + 补启动 worker：若当前任务正好在收尾，没有这次补启动任务就漏跑了
-                pendingTasks.enqueue(task)
+                pendingTasks.enqueue(task, chatOnly = false)
                 ensureQueueWorker()
                 ui.log(AgentLog.Level.INFO, "已有任务在执行，已加入任务队列：$task")
                 // 任务改为排队执行，规划面板不能停留在「已批准」
@@ -121,8 +134,8 @@ internal class TaskLifecycle(
      * 不占用 runTask 的 ReAct 主循环，但同样维持 worker 单任务语义（后续任务排队等待）；
      * Agent 决策走原 runTask 链路，行为不变。
      */
-    private suspend fun dispatch(task: String, plan: TaskPlan?) {
-        when (val decision = router(task)) {
+    private suspend fun dispatch(task: String, plan: TaskPlan?, chatOnly: Boolean = false) {
+        when (val decision = router(task, chatOnly)) {
             is RouteDecision.Coding -> decision.run()
             is RouteDecision.Chat -> decision.run()
             RouteDecision.Agent -> runTask(task, plan)
@@ -137,8 +150,8 @@ internal class TaskLifecycle(
         var cancelled = false
         try {
             while (coroutineContext.isActive) {
-                val task = pendingTasks.poll() ?: break
-                dispatch(task, null)
+                val item = pendingTasks.poll() ?: break
+                dispatch(item.text, null, item.chatOnly)
                 lastTaskId = store.currentTaskId
                 // 调试记录（日志/轨迹/历史/对话）与任务会话归档的持久化已由 run() 的收尾统一完成：
                 // 放这里会与收尾再写一遍同样的整包数据（含全部截图缩略图与 API 原文），白写一倍磁盘

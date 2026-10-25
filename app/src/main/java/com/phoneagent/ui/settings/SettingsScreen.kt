@@ -223,6 +223,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var cursorClickSync by mutableStateOf(initial.cursorClickSync)
     /** 页面记忆：自动记忆页面热点与路径，屏幕标记 + AI 参考 */
     var pageMemoryEnabled by mutableStateOf(initial.pageMemoryEnabled)
+    /** 副屏模式：任务在模拟辅助显示上运行，不抢用户前台 */
+    var virtualDisplayEnabled by mutableStateOf(initial.virtualDisplayEnabled)
     /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画 */
     var borderless by mutableStateOf(initial.borderless)
     /** 主题：配色方案（ThemePalette.id） */
@@ -290,6 +292,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorOverlayEnabled = s.cursorOverlayEnabled
         cursorClickSync = s.cursorClickSync
         pageMemoryEnabled = s.pageMemoryEnabled
+        virtualDisplayEnabled = s.virtualDisplayEnabled
         borderless = s.borderless
         palette = s.palette
         glassTintOffset = s.glassTintOffset
@@ -373,6 +376,7 @@ class SettingsState(initial: AppSettings.Settings) {
         cursorOverlayEnabled = cursorOverlayEnabled,
         cursorClickSync = cursorClickSync,
         pageMemoryEnabled = pageMemoryEnabled,
+        virtualDisplayEnabled = virtualDisplayEnabled,
         borderless = borderless,
         palette = palette,
         glassTintOffset = glassTintOffset,

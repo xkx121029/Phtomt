@@ -304,7 +304,7 @@ class ClickRunner(
      * 先按系统资源名取；部分 ROM / 高版本系统取不到（返回 0），此时由调用方退回最小边距，不阻断点击。
      */
     private fun systemBarInsetPx(resName: String): Int = runCatching {
-        val res = service.resources
+        val res = service.applicationContext.resources
         val id = res.getIdentifier(resName, "dimen", "android")
         if (id > 0) res.getDimensionPixelSize(id) else 0
     }.getOrDefault(0)

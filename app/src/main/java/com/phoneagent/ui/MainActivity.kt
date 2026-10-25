@@ -52,6 +52,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -76,8 +77,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.log.AppLog
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.agent.DocViewerScreen
@@ -86,6 +89,7 @@ import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.LocalIsLandscape
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
@@ -268,6 +272,9 @@ private fun ActivityContent(
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
     val activity = androidx.activity.compose.LocalActivity.current as ComponentActivity
+    // 首次打开的服务组件安装提示：Provider 未安装/版本落后，且没对当前随包版本点过「稍后」
+    // 才出现；只在进入应用时判断一次，点「稍后」后记住该版本，不再每次冷启动都弹。
+    var providerPromptVisible by remember { mutableStateOf(shouldShowProviderInstallPrompt(activity)) }
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
 
@@ -626,6 +633,28 @@ private fun ActivityContent(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                // 首次打开的服务组件安装提示：应用内浮层（复用 InlineOverlay），不用系统弹窗。
+                // 挂在最外层 Box，压住悬浮导航栏，保证启动时一眼就能看到。
+                if (providerPromptVisible) {
+                    ProviderInstallPrompt(
+                        onInstall = {
+                            providerPromptVisible = false
+                            val result = ProviderManager.install(activity)
+                            if (result is ProviderManager.InstallLaunch.Failed) {
+                                snackbarState.show(
+                                    "安装服务组件失败：${result.reason}",
+                                    SnackbarType.ERROR,
+                                )
+                            }
+                        },
+                        onDismiss = {
+                            // 「稍后」记住当前随包版本：同一版本不再提示，Provider 版本变化后会再提示
+                            markProviderInstallPromptDismissed(activity)
+                            providerPromptVisible = false
+                        },
+                    )
+                }
             }
         }
     }
@@ -903,4 +932,52 @@ private fun ExtrasPageContent(
         }
         Spacer(Modifier.height(12.dp))
     }
+}
+
+/**
+ * 首次使用安装提示面板：页内浮层（复用 [InlineOverlay]），不用系统弹窗。
+ * 文案只讲「能力跑在独立服务组件里、安装后才能操作手机」这一件事。
+ */
+@Composable
+private fun ProviderInstallPrompt(onInstall: () -> Unit, onDismiss: () -> Unit) {
+    InlineOverlay(onDismiss = onDismiss) {
+        Text(
+            "首次使用需要安装服务组件",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Happy Agent 的无障碍、Shizuku、Termux 能力运行在独立的服务组件里，安装后才能操作手机。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        ) {
+            Button(onClick = onInstall, modifier = Modifier.weight(1f)) { Text("立即安装") }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("稍后") }
+        }
+    }
+}
+
+// ========== 服务组件安装提示的「稍后」记录 ==========
+
+private const val PROVIDER_PROMPT_PREFS = "provider_install_prompt"
+private const val PROVIDER_PROMPT_KEY = "dismissed_bundled_version"
+
+private fun providerPromptPrefs(context: android.content.Context) =
+    context.getSharedPreferences(PROVIDER_PROMPT_PREFS, android.content.Context.MODE_PRIVATE)
+
+/** Provider 未安装/版本落后，且没对当前随包版本点过「稍后」时才提示 */
+internal fun shouldShowProviderInstallPrompt(context: android.content.Context): Boolean {
+    if (!ProviderManager.needsInstall(context)) return false
+    val bundled = ProviderManager.bundledVersion(context) ?: return false
+    return providerPromptPrefs(context).getString(PROVIDER_PROMPT_KEY, null) != bundled
+}
+
+/** 记住「稍后」对应的随包版本；Provider 随包版本变化后会重新提示 */
+internal fun markProviderInstallPromptDismissed(context: android.content.Context) {
+    val bundled = ProviderManager.bundledVersion(context) ?: return
+    providerPromptPrefs(context).edit().putString(PROVIDER_PROMPT_KEY, bundled).apply()
 }

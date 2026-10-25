@@ -7,4 +7,6 @@
 <paths>
     <external-files-path name="updates" path="updates/" />
     <files-path name="internal-updates" path="updates/" />
+    <!-- 权限 Provider 安装包：从 assets 解到 cache/provider 后交给系统安装器 -->
+    <cache-path name="provider" path="provider/" />
 </paths>

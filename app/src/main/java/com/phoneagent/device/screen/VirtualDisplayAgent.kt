@@ -22,6 +22,10 @@ import kotlinx.coroutines.sync.withLock
 class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
 
     companion object {
+        /** 模拟副屏逻辑宽（与 OVERLAY_SPEC 一致，坐标按此换算） */
+        const val WIDTH = 1080
+        /** 模拟副屏逻辑高 */
+        const val HEIGHT = 1920
         /** 模拟副屏规格：1080x1920 / 160dpi（写进 overlay_display_devices 的标准格式） */
         private const val OVERLAY_SPEC = "1080x1920/160"
         private const val SETTINGS_KEY = "overlay_display_devices"
@@ -82,14 +86,27 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
     }
 
     /**
-     * 在副屏上启动应用：`am start --display <id> -p <pkg>`。
-     * [pkg] 支持包名或包名/Activity 全名；包名时系统自选入口 Activity。
+     * 在副屏上启动应用：先 `cmd package resolve-activity` 解析入口 Activity，再
+     * `am start --display <id> -n pkg/Act` 指定副屏启动。
+     * （`am start` 没有 `-p` 选项，直接传包名会解析失败；解析不到入口时退回 monkey）
+     * [pkg] 支持包名，或已是 `包名/Activity` 全名。
      */
     suspend fun launch(pkg: String): Outcome {
         val id = displayId ?: return Outcome.Fail("虚拟副屏未创建")
         val target = pkg.trim().trim('"')
         if (target.isBlank()) return Outcome.Fail("应用包名为空")
-        return run("am start --display $id -p $target")
+        if (target.contains('/')) return run("am start --display $id -n $target")
+        val resolved = when (val r = shizuku.executeShell("cmd package resolve-activity --brief $target")) {
+            is ShizukuManager.ShellResult.Success ->
+                r.output.lineSequence().map { it.trim() }.lastOrNull { it.contains('/') }
+            is ShizukuManager.ShellResult.Failure -> null
+        }
+        return if (resolved != null) {
+            run("am start --display $id -n $resolved")
+        } else {
+            // 解析不到入口（少数 ROM 的 resolve-activity 行为差异）：monkey 同样支持指定 display
+            run("monkey -p $target --display $id -c android.intent.category.LAUNCHER 1")
+        }
     }
 
     /** 副屏触控：tap / swipe（坐标按 1080x1920） */
@@ -137,7 +154,7 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
     }
 
     /** 列出当前全部 displayId（dumpsys display 解析；失败返回空集） */
-    private fun listDisplayIds(): Set<Int> = runCatching {
+    private suspend fun listDisplayIds(): Set<Int> = runCatching {
         val out = when (val r = shizuku.executeShell("dumpsys display displays")) {
             is ShizukuManager.ShellResult.Success -> r.output
             is ShizukuManager.ShellResult.Failure -> return emptySet()
@@ -147,7 +164,7 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
     }.getOrDefault(emptySet())
 
     /** shell 执行包装：Shizuku 结果 → Outcome */
-    private fun run(command: String): Outcome = when (val r = shizuku.executeShell(command)) {
+    private suspend fun run(command: String): Outcome = when (val r = shizuku.executeShell(command)) {
         is ShizukuManager.ShellResult.Success -> Outcome.Ok(r.output)
         is ShizukuManager.ShellResult.Failure -> Outcome.Fail(r.reason)
     }

@@ -9,7 +9,6 @@ import com.phoneagent.data.store.McpStore
 import com.phoneagent.feature.mcp.OkHttpMcpTransportFactory
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.device.shell.ShizukuManager
-import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.device.shell.ShizukuBootstrap
 import com.phoneagent.device.shell.WirelessAdbPairingFlow
 import com.phoneagent.feature.update.UpdateManager
@@ -22,18 +21,18 @@ import com.phoneagent.feature.document.DocumentEngine
 import com.phoneagent.device.shell.TermuxBridge
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
-import kotlinx.coroutines.flow.first
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
 private val appModule = module {
     single { AppSettings(androidContext()) }
     single { AiClient.create() }
-    single { ShizukuManager() }
+    // shell 通道实现已迁入 Provider 应用：以下三者都是经 AIDL 远程调用的门面
+    single { ShizukuManager(androidContext()) }
     single { MemoryStore(androidContext()) }
     single { DocumentEngine(androidContext()) }
     single { TermuxBridge(androidContext()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get<AdbWirelessTransport>(), get(), get(), get(), get(), get()) }
+    single { AgentEngine(get(), get(), androidContext(), get(), get<ShizukuBootstrap>(), get(), get(), get(), get(), get()) }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====
@@ -45,21 +44,13 @@ private val appModule = module {
     single { McpStore(androidContext()) }
     // 执行网关：统一 Skill/MCP 解析入口
     single { SkillExecutionGateway(get(), get()) }
-    // 无线 ADB 传输（共享单例：ShizukuBootstrap 直连 / WirelessAdbPairingFlow 发现共用）
-    single { AdbWirelessTransport(androidContext()) }
-    // 执行通路启动器：无线 ADB 为主、Shizuku 可选；通道偏好取自 AppSettings.executionChannel
-    single {
-        ShizukuBootstrap(
-            get(),
-            get<AdbWirelessTransport>(),
-            channelProvider = { get<AppSettings>().settings.first().executionChannel },
-        )
-    }
+    // 执行通路启动器门面：无线 ADB 引导与状态机在 Provider 内，主应用只轮询 adbStatus
+    single { ShizukuBootstrap(androidContext()) }
     // 无线 ADB「开始配对」通知栏向导
-    single { WirelessAdbPairingFlow(androidContext(), get<AdbWirelessTransport>(), get()) }
+    single { WirelessAdbPairingFlow(androidContext(), get<ShizukuBootstrap>()) }
 
-    // 自动更新：查询官网版本、下载安装包，优先走 shell 静默装（无线 ADB / Shizuku）
-    single { UpdateManager(androidContext(), get<ShizukuManager>(), get<AdbWirelessTransport>()) }
+    // 自动更新：查询官网版本、下载安装包，优先走 shell 静默装（经 Provider 的内置 Shizuku）
+    single { UpdateManager(androidContext(), get<ShizukuManager>()) }
 
     // 编码运行时管理器：Node 宿主随主 APK 内置（app/src/main/jniLibs），只做就绪探测
     single { com.phoneagent.coding.CodingRuntimeManager(androidContext()) }

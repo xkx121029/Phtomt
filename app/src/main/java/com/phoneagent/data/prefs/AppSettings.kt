@@ -103,6 +103,12 @@ class AppSettings(private val context: Context) {
          * 屏幕淡色圆环标记记忆控件（不挡触摸），后续任务决策与规划可参考。
          */
         val pageMemoryEnabled: Boolean = true,
+        /**
+         * 副屏模式：任务在模拟辅助显示（overlay_display_devices）上运行，不抢占用户前台。
+         * 开启后截图改走 `screencap -d`、点击输入改走 `input -d`；读不到无障碍元素树，决策只能依赖视觉。
+         * 需要 Shizuku 通道，且设备未禁用系统「模拟辅助显示」。
+         */
+        val virtualDisplayEnabled: Boolean = false,
         /** 主题：无框线模式。开启后卡片 / 面板 / 输入面的装饰性描边一律不画，层次只靠底色差 */
         val borderless: Boolean = false,
         /** 主题：配色方案（[com.phoneagent.ui.theme.ThemePalette.id]，存字符串避免脏数据反序列化失败） */
@@ -197,6 +203,8 @@ class AppSettings(private val context: Context) {
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
         /** 页面记忆总开关，见 [Settings.pageMemoryEnabled] */
         val PAGE_MEMORY_ENABLED = booleanPreferencesKey("page_memory_enabled")
+        /** 副屏模式开关，见 [Settings.virtualDisplayEnabled] */
+        val VIRTUAL_DISPLAY_ENABLED = booleanPreferencesKey("virtual_display_enabled")
         /** 主题：无框线模式，见 [Settings.borderless] */
         val BORDERLESS = booleanPreferencesKey("theme_borderless")
         /** 主题：配色方案，见 [Settings.palette] */
@@ -306,6 +314,7 @@ class AppSettings(private val context: Context) {
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
             pageMemoryEnabled = prefs[Keys.PAGE_MEMORY_ENABLED] ?: true,
+            virtualDisplayEnabled = prefs[Keys.VIRTUAL_DISPLAY_ENABLED] ?: false,
             borderless = prefs[Keys.BORDERLESS] ?: false,
             palette = prefs[Keys.PALETTE] ?: "ink_green",
             glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
@@ -369,6 +378,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
             prefs[Keys.PAGE_MEMORY_ENABLED] = settings.pageMemoryEnabled
+            prefs[Keys.VIRTUAL_DISPLAY_ENABLED] = settings.virtualDisplayEnabled
             prefs[Keys.BORDERLESS] = settings.borderless
             prefs[Keys.PALETTE] = settings.palette
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)

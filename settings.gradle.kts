@@ -31,10 +31,15 @@ include(":app")
 
 // 权限 Provider 应用：承载无障碍 / 内置 Shizuku / Termux 三条通道的独立 APK。
 // 主应用首次打开时引导安装（参考 Operit 的独立 Provider 方案），并通过 AIDL
-// （com.phoneagent.provider.IDeviceProvider）远程调用；Provider APK 构建后
-// 自动嵌入主应用 assets（见 app/build.gradle.kts 的 embedProvider 任务）。
+// （com.phoneagent.provider.IDeviceProvider）远程调用。Provider 构建产物作为
+// 静态资产提交在 app/src/{debug,release}/assets/provider/ 下，主应用构建不依赖
+// :provider；改了 Provider 后执行 .\gradlew.bat :app:syncProviderAssets 同步。
 include(":provider")
 project(":provider").projectDir = file("provider")
+
+// 跨进程契约（AIDL + Parcelable）：主应用与 Provider 共用同一份，避免序列化漂移
+include(":provider-api")
+project(":provider-api").projectDir = file("provider-api")
 
 // Shizuku 客户端库本地源码集成（vendor 自 https://github.com/RikkaApps/Shizuku-API，
 // 主仓库 https://github.com/RikkaApps/Shizuku 保留在 third_party/shizuku 作参考）。

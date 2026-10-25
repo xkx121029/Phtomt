@@ -5,7 +5,7 @@ import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.device.a11y.ActionExecutor
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.device.a11y.NodeSelector
-import com.phoneagent.device.shell.AdbBootstrapTransport
+import com.phoneagent.device.shell.ShizukuBootstrap
 import com.phoneagent.device.shell.ShizukuManager
 import com.phoneagent.device.shell.TermuxBridge
 import com.phoneagent.domain.model.ActionType
@@ -39,7 +39,8 @@ internal class ExecutionCore(
     private val appContext: android.content.Context,
     private val settings: AppSettings,
     private val shizukuManager: ShizukuManager?,
-    private val adbTransport: AdbBootstrapTransport?,
+    /** 执行通路启动器（原 AdbBootstrapTransport 位置）：无线 ADB 会话判定与引导 shell 均经 AIDL 转 Provider */
+    private val adbTransport: ShizukuBootstrap?,
     private val termuxBridge: TermuxBridge?,
     private val documentEngine: com.phoneagent.feature.document.DocumentEngine?,
     private val intentResolver: IntentResolver,
@@ -51,6 +52,11 @@ internal class ExecutionCore(
     private val recordExecMs: (Long) -> Unit,
     /** 引擎钩子：重新观察当前页面（AgentEngine.observe，capture_tree 端点用） */
     private val observe: suspend () -> ScreenSnapshot,
+    /**
+     * 副屏模式代理：返回非空且已就绪时，触摸/按键/输入/启动类动作改下发到副屏。
+     * 由引擎按「本任务是否启用副屏」动态提供，未启用时返回 null（走原无障碍链路）。
+     */
+    private val virtualDisplay: () -> com.phoneagent.device.screen.VirtualDisplayAgent? = { null },
 ) {
     suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         val execT0 = System.nanoTime()
@@ -74,6 +80,14 @@ internal class ExecutionCore(
         // 无障碍端点直调（自由模式专属）：绕过语义策略，按 AI 指定的端点与参数直接落到底层接口
         if (type == ActionType.A11Y_CALL) {
             return executeA11yEndpoint(action, snapshot).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
+        }
+
+        // 副屏模式：动作下发到模拟副屏（input -d / am --display），不经过无障碍服务。
+        // 副屏读不到元素树，定位只可能来自动作自带的坐标（含 by=coordinate 比例坐标）
+        virtualDisplay()?.takeIf { it.isReady }?.let { vd ->
+            return executeOnVirtualDisplay(vd, action, type, snapshot).also {
                 recordExecMs((System.nanoTime() - execT0) / 1_000_000)
             }
         }
@@ -292,6 +306,101 @@ internal class ExecutionCore(
             com.phoneagent.engine.execution.VerifyResult(
                 false, "执行异常：${e.message ?: e.javaClass.simpleName}（无障碍服务可能已断开）", "", "",
             )
+        }
+    }
+
+    /**
+     * 副屏执行分支：把动作翻译成 `input -d` / `am start --display` 命令。
+     *
+     * 与主屏链路的差异（副屏模式的固有限制）：
+     * - 没有元素树，定位只认动作自带坐标（`target.method=coordinate` 的比例/像素值，或 x/y 字段）；
+     * - 不经过无障碍，因此没有控件级确认，结果只按命令是否被 shell 接受来判定；
+     * - 读屏类动作（scroll/scroll_to）用等距滑动近似。
+     */
+    private suspend fun executeOnVirtualDisplay(
+        vd: com.phoneagent.device.screen.VirtualDisplayAgent,
+        action: AgentAction,
+        type: String,
+        snapshot: ScreenSnapshot,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val fail = { reason: String -> com.phoneagent.engine.execution.VerifyResult(false, reason, "", "") }
+        val ok = { msg: String -> com.phoneagent.engine.execution.VerifyResult(true, msg, "", "") }
+        fun wrap(r: com.phoneagent.device.screen.VirtualDisplayAgent.Outcome, successMsg: String) = when (r) {
+            is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Ok -> ok(successMsg)
+            is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail -> fail("副屏执行失败：${r.reason}")
+        }
+
+        // 坐标解析与主屏同一口径：IntentResolver（支持 by=coordinate 比例值 / x,y 字段）
+        val resolved = intentResolver.resolveAction(action, snapshot)
+        val x = resolved.x ?: action.x
+        val y = resolved.y ?: action.y
+        val vdW = if (snapshot.screenWidth > 0) snapshot.screenWidth else ctx.screenWidth()
+        val vdH = if (snapshot.screenHeight > 0) snapshot.screenHeight else ctx.screenHeight()
+
+        return when (type) {
+            ActionType.CLICK, ActionType.TAP -> {
+                if (x == null || y == null) return fail("副屏模式下点击缺少坐标：请用 target{method:\"coordinate\",value:\"比例x,比例y\"} 指定落点")
+                delay(120)
+                wrap(vd.tap(x, y), "已在副屏点击 ($x,$y)")
+            }
+            ActionType.LONG_CLICK, ActionType.LONG_PRESS -> {
+                if (x == null || y == null) return fail("副屏模式下长按缺少坐标")
+                // 副屏没有长按命令：同点滑动 + 时长即可被判为长按
+                wrap(vd.swipe(x, y, x, y, (action.durationMs ?: 800L).toInt()), "已在副屏长按 ($x,$y)")
+            }
+            ActionType.SWIPE -> {
+                val px = x ?: (vdW / 2)
+                val py = y ?: verticalSwipeStartY()
+                val dist = action.distancePx ?: if (action.direction in listOf("left", "right")) vdW else vdH
+                val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
+                wrap(vd.swipe(px, py, ex, ey, (action.durationMs ?: 400L).toInt()), "已在副屏滑动 ($px,$py)→($ex,$ey)")
+            }
+            ActionType.SWIPE_UP, ActionType.SWIPE_DOWN, ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT -> {
+                val direction = type.removePrefix("swipe_")
+                val px = x ?: (vdW / 2)
+                val py = y ?: if (direction == "up" || direction == "down") verticalSwipeStartY() else (vdH / 2)
+                val (ex, ey) = swipeEndpoints(px, py, direction, action.distancePx)
+                wrap(vd.swipe(px, py, ex, ey, (action.durationMs ?: 400L).toInt()), "已在副屏向$direction 滑动")
+            }
+            ActionType.SCROLL, ActionType.SCROLL_TO -> {
+                // 副屏读不到滚动容器：用半屏等距滑动近似一次滚动
+                val up = (action.direction ?: action.text ?: "up").let { it != "down" }
+                val px = vdW / 2
+                val py = if (up) (vdH * 0.7f).toInt() else (vdH * 0.3f).toInt()
+                val ey = if (up) (vdH * 0.3f).toInt() else (vdH * 0.7f).toInt()
+                wrap(vd.swipe(px, py, px, ey, 400), "已在副屏滚动（${if (up) "上" else "下"}滑）")
+            }
+            ActionType.TYPE_TEXT -> {
+                val text = action.text ?: return fail("type 缺少要输入的文字")
+                // 输入注入到副屏当前焦点控件：AI 需先点击输入框
+                wrap(vd.typeText(text), "已在副屏输入：${text.take(30)}")
+            }
+            ActionType.KEY -> when ((action.keycode ?: "").uppercase()) {
+                "BACK" -> wrap(vd.keyevent(4), "已在副屏按返回")
+                "HOME" -> wrap(vd.keyevent(3), "已在副屏按主页")
+                "RECENT", "RECENTS", "APP_SWITCH" -> wrap(vd.keyevent(187), "已在副屏打开最近任务")
+                "ENTER" -> wrap(vd.keyevent(66), "已在副屏按回车")
+                else -> fail("副屏模式不支持按键 ${action.keycode}")
+            }
+            ActionType.BACK -> wrap(vd.keyevent(4), "已在副屏按返回")
+            ActionType.HOME -> wrap(vd.keyevent(3), "已在副屏按主页")
+            ActionType.RECENTS -> wrap(vd.keyevent(187), "已在副屏打开最近任务")
+            ActionType.LAUNCH -> {
+                val pkg = action.packageName
+                if (pkg.isNullOrBlank()) return fail("launch 缺少包名")
+                val r = vd.launch(pkg)
+                if (r is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Ok) {
+                    delay(LAUNCH_SETTLE_MS)
+                    ok("已在副屏启动应用: $pkg")
+                } else {
+                    fail("副屏启动应用失败: ${(r as com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail).reason}")
+                }
+            }
+            ActionType.WAIT -> {
+                delay(action.timeoutMs ?: action.durationMs ?: 1000)
+                ok("等待完成")
+            }
+            else -> fail("副屏模式暂不支持动作 $type（可用：click/long_click/swipe/swipe_*/scroll/type/key/back/home/recents/launch/wait）")
         }
     }
 

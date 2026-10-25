@@ -134,7 +134,13 @@ internal fun applyProviderPreset(st: SettingsState, preset: ProviderPreset) {
         st.reasonBaseUrl = preset.baseUrl
         st.reasonModel = preset.reasonModel
     }
-    ensureEndpoint(st, preset.baseUrl, st.apiKey, preset.protocol)
+    ensureEndpoint(st, preset.baseUrl, st.apiKey, preset.protocol)?.let { id ->
+        // 端点已存在时也要把协议刷成预设值：用户先手填过该地址、后点预设，协议不能停在 OpenAI 兼容
+        val i = st.endpoints.indexOfFirst { it.id == id }
+        if (i >= 0 && st.endpoints[i].protocol != preset.protocol) {
+            st.endpoints[i] = st.endpoints[i].copy(protocol = preset.protocol)
+        }
+    }
     listOf(preset.model, preset.visionModel, preset.reasonModel).forEach {
         ensureCatalogModel(st, preset.baseUrl, it)
     }

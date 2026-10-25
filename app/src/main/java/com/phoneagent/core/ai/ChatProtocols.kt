@@ -353,7 +353,13 @@ internal class GeminiAdapter(private val json: Json) : ChatProtocolAdapter {
         Usage(prompt, completion, usage.str("totalTokenCount")?.toIntOrNull() ?: (prompt + completion))
     }.getOrNull()
 
-    override fun extractUsageFrame(ssePayload: String): Usage? = null
+    override fun extractUsageFrame(ssePayload: String): Usage? = runCatching {
+        // Gemini 的用量只挂在末帧的 usageMetadata 上，多数帧无此字段
+        val usage = json.parseToJsonElement(ssePayload).jsonObject.obj("usageMetadata") ?: return null
+        val prompt = usage.str("promptTokenCount")?.toIntOrNull() ?: 0
+        val completion = usage.str("candidatesTokenCount")?.toIntOrNull() ?: 0
+        Usage(prompt, completion, usage.str("totalTokenCount")?.toIntOrNull() ?: (prompt + completion))
+    }.getOrNull()
 
     override fun modelsUrl(baseUrl: String): String {
         val base = AiClient.normalizeBaseUrl(baseUrl)

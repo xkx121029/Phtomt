@@ -10,6 +10,8 @@ class PhoneAgentApp : Application() {
         super.onCreate()
         appContext = this
         initKoin(this)
+        // 远程无障碍会话：注入 appContext，观察 Provider 绑定与无障碍连接状态
+        com.phoneagent.device.a11y.AgentAccessibilityService.install(this)
         // 内置浏览器桥：AI 执行 browse_* 时在后台静默宿主里加载网页（不切前台；无悬浮窗权限才回退到可见浏览器页）
         com.phoneagent.feature.browser.BrowserBridge.init(this)
     }

@@ -3,6 +3,7 @@ package com.phoneagent.provider
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import com.phoneagent.provider.watchdog.WatchdogConfig
 
 /**
  * Provider 的 AIDL 入口：主应用绑定后远程调用三条通道（无障碍 / Shizuku / Termux）。
@@ -25,6 +26,9 @@ class ProviderService : Service() {
         override fun isA11yConnected(): Boolean = A11yBridge.isConnected()
 
         override fun shizukuState(): Int = ShellBridge.shizukuState()
+
+        override fun shizukuRequestPermission(): Boolean =
+            runBlockingBridge { ShellBridge.shizukuRequestPermission() }
 
         override fun termuxInstalled(): Boolean = ShellBridge.termuxInstalled()
 
@@ -94,6 +98,22 @@ class ProviderService : Service() {
 
         override fun adbPairAndEnsureReady(code: String): ShellResultParcel =
             runBlockingBridge { ShellBridge.adbPairAndEnsureReady(code) }
+
+        override fun setWatchdogConfig(enabled: Boolean, autoRepairA11y: Boolean, autoRepairShizuku: Boolean): Boolean =
+            runCatching {
+                val cfg = WatchdogConfig.Config(enabled, autoRepairA11y, autoRepairShizuku)
+                WatchdogConfig.save(applicationContext, cfg)
+                if (enabled) {
+                    // 启动/保持前台服务（幂等）；策略即时生效，无需重启
+                    WatchdogConfig.startIfEnabled(applicationContext)
+                } else {
+                    WatchdogConfig.stop(applicationContext)
+                }
+                true
+            }.getOrDefault(false)
+
+        override fun watchdogStatus(): String =
+            runCatching { WatchdogConfig.statusJson(applicationContext) }.getOrDefault("{}")
     }
 
     /** Binder 线程阻塞等待 Bridge 的挂起实现；异常一律收口成失败回执，不允许炸穿 Binder 线程。
@@ -108,6 +128,9 @@ class ProviderService : Service() {
         super.onCreate()
         A11yBridge.init(applicationContext)
         ShellBridge.init(applicationContext)
+        // 主应用绑定即唤醒看门狗（配置开启时）：主应用重启/升级期间保活不断档。
+        // 注意看门狗不随 onDestroy 停止——主应用解绑/被杀后仍需继续看护
+        runCatching { WatchdogConfig.startIfEnabled(applicationContext) }
     }
 
     override fun onDestroy() {
@@ -116,7 +139,7 @@ class ProviderService : Service() {
     }
 
     companion object {
-        /** 契约版本：增删 IDeviceProvider 方法时递增 */
-        const val API_VERSION = 1
+        /** 契约版本：增删 IDeviceProvider 方法时递增（v3：新增看门狗配置/状态） */
+        const val API_VERSION = 3
     }
 }

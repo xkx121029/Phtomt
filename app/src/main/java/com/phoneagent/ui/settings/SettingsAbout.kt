@@ -107,7 +107,7 @@ internal fun SettingsAbout(onBack: () -> Unit) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
                 Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
-                Bullet("Shizuku 主程序（server/starter）亦内嵌于本应用，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
+                Bullet("Shizuku 主程序（server/starter）亦随「服务组件」一并分发，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
             }
         }
 

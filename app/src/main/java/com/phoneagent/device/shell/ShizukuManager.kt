@@ -1,26 +1,36 @@
 package com.phoneagent.device.shell
 
-import android.content.pm.PackageManager
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
+import com.phoneagent.device.provider.ProviderManager
+import com.phoneagent.provider.ShellResultParcel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import rikka.shizuku.Shizuku
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
- * Shizuku 管理器：封装生命周期、权限检查、shell 命令执行。
+ * Shizuku 管理器（主应用侧门面）。
  *
- * State 三态：
- * - UNAVAILABLE: Shizuku 未安装或未运行
+ * 真正的 Shizuku 客户端、内置 server 与授权交互都已迁入独立 Provider 应用
+ * （com.phoneagent.provider.shell.ShizukuManager），本类只做三件事：
+ * 1. 把 Provider 的 shizukuState() 轮询成 [State] 三态（替换原来的 binder 收发监听）；
+ * 2. 把 [executeShell] 转发成 AIDL 的 execShizuku（Provider 内 30s 强杀超时不变）；
+ * 3. 把 [requestPermission] 转发成 AIDL 的 shizukuRequestPermission（授权页在 Provider 内唤起）。
+ *
+ * State 三态语义与迁移前一致：
+ * - UNAVAILABLE: Shizuku 未安装或未运行（含 Provider 不可用/未连接）
  * - PERMISSION_DENIED: Shizuku 运行中但未授权
  * - READY: 可用
  */
-class ShizukuManager {
+class ShizukuManager(private val context: Context) {
 
     enum class State {
         UNAVAILABLE,
@@ -33,153 +43,111 @@ class ShizukuManager {
         data class Failure(val reason: String, val exitCode: Int = -1) : ShellResult()
     }
 
+    private companion object {
+        /** 状态轮询间隔：替代原 binder 监听，保证引擎侧读到的可用性不会长期陈旧 */
+        const val STATE_POLL_MS = 3_000L
+
+        /** 单次状态查询的超时（Provider 未安装时 3s 绑定超时内直接返回） */
+        const val STATE_TIMEOUT_MS = 2_500L
+
+        /** shell 命令等待上限：Provider 内 30s 强杀，这里留出 binder 往返余量 */
+        const val SHELL_TIMEOUT_MS = 35_000L
+
+        /** 权限请求等待上限：Provider 内 10s 超时兜底，这里不再无限挂起 */
+        const val REQUEST_PERMISSION_TIMEOUT_MS = 15_000L
+    }
+
+    private val appContext = context.applicationContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private val _state = MutableStateFlow(State.UNAVAILABLE)
     val state: StateFlow<State> get() = _state.asStateFlow()
 
-    /** shell 命令最长等待（毫秒），超时强杀进程并按失败返回 */
-    private companion object {
-        const val SHELL_TIMEOUT_MS = 30_000L
-
-        /** 权限请求超时（毫秒）：Shizuku 无响应时 onRequestPermissionResult 可能永不回调，超时按未授权收口 */
-        const val REQUEST_PERMISSION_TIMEOUT_MS = 10_000L
-    }
-
-    private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refreshState() }
-    private val binderDeadListener = Shizuku.OnBinderDeadListener { _state.value = State.UNAVAILABLE }
-
     init {
-        Shizuku.addBinderReceivedListener(binderReceivedListener)
-        Shizuku.addBinderDeadListener(binderDeadListener)
-        refreshState()
+        scope.launch {
+            while (isActive) {
+                applyRemoteState()
+                delay(STATE_POLL_MS)
+            }
+        }
     }
 
     /**
-     * 刷新 Shizuku 可用状态。
+     * 刷新 Shizuku 可用状态（异步）。
      *
-     * 全程 runCatching 收口：vendored Shizuku API 的约定是「binder 未收到时调用会抛
-     * IllegalStateException」（见 Shizuku.requireService），且静态 binder 字段与
-     * binder 死亡回调存在竞态窗口——pingBinder 为 true 的瞬间 binder 死亡，紧随的
-     * checkSelfPermission 就会抛。曾经该异常从设置页的 LaunchedEffect 直接炸穿进程
-     * （设置 → 权限与执行通道一打开就闪退），这里必须兜住，任何异常一律降级为不可用。
+     * 迁移后状态唯一来源是 Provider 的 shizukuState()，旧实现里
+     * "pingBinder 与 checkSelfPermission 之间的竞态异常"由 Provider 进程内兜住，
+     * 这里只需把 AIDL 结果映射成三态；调用失败一律降级为不可用。
      */
     fun refreshState() {
-        _state.value = runCatching {
-            when {
-                !Shizuku.pingBinder() -> State.UNAVAILABLE
-                !isPermissionGranted() -> State.PERMISSION_DENIED
-                else -> State.READY
-            }
-        }.getOrElse { State.UNAVAILABLE }
+        scope.launch { applyRemoteState() }
     }
+
+    /** 与 [refreshState] 等价（保持旧调用点可读性） */
+    fun refresh() = refreshState()
 
     fun isAvailable(): Boolean = _state.value == State.READY
 
-    /** binder 收发竞态下 vendored API 可能抛 IllegalStateException，统一兜住按未授权处理 */
-    fun isPermissionGranted(): Boolean = runCatching {
-        Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-    }.getOrElse { false }
+    /** 权限是否已授予（binder 场景下等价于 READY） */
+    fun isPermissionGranted(): Boolean = _state.value == State.READY
 
-    /** 请求 Shizuku 权限，通过回调返回结果 */
+    /**
+     * 请求 Shizuku 权限。
+     *
+     * 迁入 Provider 后，授权页由 Provider 内的 server 拉起；这里仅转发 AIDL 调用，
+     * 回调统一切主线程（与旧实现一致，调用方多是 UI 状态更新）。
+     */
     fun requestPermission(onResult: (Boolean) -> Unit) {
-        if (isPermissionGranted()) {
-            _state.value = State.READY
-            onResult(true)
-            return
+        scope.launch {
+            val granted = ProviderManager.call(appContext, timeoutMs = REQUEST_PERMISSION_TIMEOUT_MS) {
+                it.shizukuRequestPermission()
+            } ?: false
+            applyRemoteState()
+            mainHandler.post { onResult(granted) }
         }
-        // 回调统一切主线程：onRequestPermissionResult 跑在 Binder 线程，
-        // 调用方（MainViewModel）多是 UI 状态更新，直接回传有跨线程更新风险（2026-08-15 B11）
-        val mainHandler = Handler(Looper.getMainLooper())
-        var settled = false
-        val token = Any()
-        val listener = object : Shizuku.OnRequestPermissionResultListener {
-            override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
-                if (settled) return
-                settled = true
-                mainHandler.removeCallbacksAndMessages(token)
-                Shizuku.removeRequestPermissionResultListener(this)
-                val granted = grantResult == PackageManager.PERMISSION_GRANTED
-                _state.value = if (granted) State.READY else State.PERMISSION_DENIED
-                mainHandler.post { onResult(granted) }
-            }
-        }
-        // 超时兜底：Shizuku 进程被杀/无响应时 onRequestPermissionResult 可能永不回调，
-        // 调用方（配对流程）会永久挂起。超时按未授权收口，让流程能继续往下走
-        mainHandler.postAtTime({
-            if (settled) return@postAtTime
-            settled = true
-            Shizuku.removeRequestPermissionResultListener(listener)
-            _state.value = State.UNAVAILABLE
-            onResult(false)
-        }, token, SystemClock.uptimeMillis() + REQUEST_PERMISSION_TIMEOUT_MS)
-        Shizuku.addRequestPermissionResultListener(listener)
-        Shizuku.requestPermission(0)
     }
 
-    /** 通过 Shizuku 执行 shell 命令（反射调用受限 API） */
-    @Suppress("UNCHECKED_CAST")
-    fun executeShell(command: String): ShellResult {
-        if (!isAvailable()) {
-            return ShellResult.Failure("Shizuku 不可用: ${_state.value}")
+    /** 通过 Provider 的内置 Shizuku 通道执行 shell 命令 */
+    suspend fun executeShell(command: String): ShellResult {
+        if (command.isBlank()) return ShellResult.Failure("命令为空")
+        val parcel = ProviderManager.call(appContext, timeoutMs = SHELL_TIMEOUT_MS) {
+            it.execShizuku(command)
         }
-        return try {
-            val method = Shizuku::class.java.getDeclaredMethod(
-                "newProcess",
-                Array<String>::class.java,
-                Array<String>::class.java,
-                String::class.java,
-            )
-            method.isAccessible = true
-            val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as? java.lang.Process
-                ?: return ShellResult.Failure("newProcess 返回 null")
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            // stderr 由独立线程持续读入缓冲：主线程若先读 stderr 再读 stdout，
-            // 两条管道任一写满都会让子进程写阻塞，主线程又等不到退出 → 死锁
-            val errorBuilder = StringBuilder()
-            val errorThread = Thread {
-                runCatching {
-                    BufferedReader(InputStreamReader(process.errorStream)).use { er ->
-                        val buf = CharArray(8192)
-                        while (true) {
-                            val n = er.read(buf)
-                            if (n < 0) break
-                            errorBuilder.append(buf, 0, n)
-                        }
-                    }
-                }
-            }.apply {
-                isDaemon = true
-                start()
-            }
-            val output = reader.readText()
-            errorThread.join(5_000)
-            // 带超时等待退出：命令卡死时强杀并按失败返回，而不是永久挂死调用线程
-            val finished = process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!finished) {
-                process.destroy()
-                runCatching { reader.close() }
-                return ShellResult.Failure(
-                    reason = "命令执行超时（${SHELL_TIMEOUT_MS / 1000} 秒），已强制终止",
-                    exitCode = -1,
-                )
-            }
-            val exitCode = process.exitValue()
-            runCatching { reader.close() }
-            process.destroy()
-            if (exitCode == 0) {
-                ShellResult.Success(output = output)
-            } else {
-                ShellResult.Failure(
-                    reason = errorBuilder.toString().ifBlank { "命令退出码: $exitCode" },
-                    exitCode = exitCode,
-                )
-            }
-        } catch (e: Exception) {
-            ShellResult.Failure(reason = "shell 执行异常: ${e.message}")
-        }
+        return parcel.toShellResult()
     }
 
     fun destroy() {
-        Shizuku.removeBinderReceivedListener(binderReceivedListener)
-        Shizuku.removeBinderDeadListener(binderDeadListener)
+        scope.cancel()
+    }
+
+    private suspend fun applyRemoteState() {
+        // AIDL 约定：0=UNAVAILABLE 1=PERMISSION_DENIED 2=READY；调用失败（Provider 未装/被杀）按不可用处理
+        _state.value = when (
+            ProviderManager.call(appContext, timeoutMs = STATE_TIMEOUT_MS) { it.shizukuState() }
+        ) {
+            1 -> State.PERMISSION_DENIED
+            2 -> State.READY
+            else -> State.UNAVAILABLE
+        }
+    }
+}
+
+/**
+ * AIDL shell 回执 → 主应用内的 Shizuku 结果类型。
+ *
+ * Termux / 无线 ADB 引导共用同一份回执，统一在这里收口，避免各 facade 各写一套映射。
+ */
+internal fun ShellResultParcel?.toShellResult(): ShizukuManager.ShellResult {
+    val parcel = this
+    val unavailable = "执行通道不可用：请先安装并授权服务组件（Provider）"
+    return when {
+        parcel == null -> ShizukuManager.ShellResult.Failure(unavailable)
+        parcel.success ->
+            ShizukuManager.ShellResult.Success(output = parcel.output, exitCode = parcel.exitCode)
+        else -> ShizukuManager.ShellResult.Failure(
+            reason = parcel.reason.ifBlank { "命令执行失败（退出码 ${parcel.exitCode}）" },
+            exitCode = parcel.exitCode,
+        )
     }
 }

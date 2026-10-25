@@ -104,6 +104,8 @@ class FloatingWindowService : Service() {
     /** 最近一次任务名（来自 updateStatus）：销毁时供状态总线做 Widget 空闲摘要 */
     private var currentTask: String? = null
     private var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
+    /** 状态行：阶段徽章 + 步骤文字 + 详情/隐藏。完成态整行让位给打勾面板 */
+    private var statusRow: LinearLayout? = null
 
     /** 头部「详情/收起」按钮：控制 AI 详情区是否占位 */
     private var expandChip: TextView? = null
@@ -729,11 +731,13 @@ class FloatingWindowService : Service() {
         // 跑马灯已拆成独立的底部窗口（见 showMarquee），卡片里不再有色带：
         // 卡片只有 300dp 宽，跑马灯挂在里面会跟着卡片一起被拖走
 
-        // 头部：状态点 + 任务标题 + 详情开关 + 关闭（仅头部可拖动；轻点头部也可切换详情）
+        // 头部：状态呼吸点 + 任务标题 + 关闭（仅头部可拖动；轻点头部也可切换详情）。
+        // 三个操作都保留，只重新分层：「详情 / 隐藏」下移到状态行右侧，
+        // 标题因此独占整行，不会被三枚按钮挤成一截。
         header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(FloatingUi.PAD_S, FloatingUi.PAD, FloatingUi.PAD_S, FloatingUi.PAD_S)
+            setPadding(FloatingUi.PAD_L, FloatingUi.PAD, FloatingUi.PAD_S, 0)
             setOnTouchListener { _, event ->
                 onTouchDrag(event)
                 true
@@ -744,15 +748,17 @@ class FloatingWindowService : Service() {
             setBackgroundResource(0)
             val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(FloatingUi.phaseColor("PENDING")) }
             background = d
-            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9))
+            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
         }
-        // 任务标题
+        // 任务标题：单行省略，长任务名不会把右侧的出口按钮顶出卡片
         taskTitle = TextView(this).apply {
             text = "Happy Agent"
-            textSize = 15f
+            textSize = 14f
             setTextColor(FloatingUi.ON_BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(FloatingUi.PAD, 0, 0, 0)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         // 关闭按钮：圆形胶囊，按压有反馈。
@@ -805,12 +811,11 @@ class FloatingWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(26),
-            ).apply { marginEnd = FloatingUi.PAD_S }
+            ).apply { marginStart = dp(6) }
             setOnClickListener { toggleThinking() }
         }
         header?.addView(dot)
         header?.addView(taskTitle)
-        header?.addView(expandChip)
         // 隐藏按钮：收起整套面板、只留一个悬浮球，同时把任务搁置（引擎在下一轮开始前挂起）；
         // 用户点悬浮球即可原样唤出并继续执行
         val hideChip = TextView(this).apply {
@@ -823,21 +828,21 @@ class FloatingWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(26),
-            ).apply { marginEnd = FloatingUi.PAD_S }
+            ).apply { marginStart = dp(6) }
             setOnClickListener {
                 hideForUser()
                 onInteraction?.invoke("hide", "")
             }
         }
-        header?.addView(hideChip)
         header?.addView(close)
         panel.addView(header)
 
-        // 状态行：阶段徽章 + 步骤/状态文字
-        val statusRow = LinearLayout(this).apply {
+        // 状态行：阶段徽章 + 步骤文字 + 次要操作（详情 / 隐藏）。
+        // 完成态整行让位给打勾面板，所以它单独存一份引用。
+        statusRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, FloatingUi.PAD_S)
+            setPadding(FloatingUi.PAD_L, dp(2), FloatingUi.PAD, FloatingUi.PAD_S)
         }
         phaseChip = TextView(this).apply {
             text = "待命"
@@ -855,12 +860,16 @@ class FloatingWindowService : Service() {
             text = "等待任务..."
             textSize = 12f
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(FloatingUi.PAD, 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        statusRow.addView(phaseChip)
-        statusRow.addView(stepText)
-        panel.addView(statusRow)
+        statusRow?.addView(phaseChip)
+        statusRow?.addView(stepText)
+        statusRow?.addView(expandChip)
+        statusRow?.addView(hideChip)
+        statusRow?.let { panel.addView(it) }
         // 进度条：用户反馈无用，始终保持隐藏（不占悬浮窗空间）
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -1278,7 +1287,8 @@ class FloatingWindowService : Service() {
             marquee?.setColors(marqueeGradient(phase))
             marquee?.setText(reasoning.ifBlank { status })
             taskTitle?.text = task
-            stepText?.text = "第 $step 步 · $status"
+            // 总步数已知时给出「第 3/8 步」，用户能一眼看出还剩多少
+            stepText?.text = if (total > 0) "第 $step/$total 步 · $status" else "第 $step 步 · $status"
             // 阶段徽章：实心阶段色胶囊 + 白字（卡片是实色主题色，徽章也必须实色才压得住）
             val ph = FloatingUi.phaseColor(phase)
             phaseChip?.text = phaseLabel(phase)
@@ -1393,7 +1403,7 @@ class FloatingWindowService : Service() {
         successMark?.reset()
         dot?.visibility = View.VISIBLE
         marquee?.visibility = View.VISIBLE
-        stepText?.visibility = View.VISIBLE
+        statusRow?.visibility = View.VISIBLE
         progressBar?.visibility = View.GONE
         interactPanel?.visibility = View.GONE
         // 详情区按用户的展开状态恢复：折叠时保持 GONE，否则窗口会在每步更新后突然变高
@@ -1823,10 +1833,10 @@ class FloatingWindowService : Service() {
             // 隐藏常规内容（保留 header，使 × 关闭按钮始终可用）
             dot?.visibility = View.GONE
             marquee?.visibility = View.GONE
-            stepText?.visibility = View.GONE
+            statusRow?.visibility = View.GONE
             progressBar?.visibility = View.GONE
             // 完成时收起 AI 详情与底部选项卡（若还开着）；详情同时复位为折叠，
-            // 下一个任务从最小的三行窗口开始
+            // 下一个任务从最小的两行窗口开始
             collapseThinking()
             hideSheet()
             // 显示打勾面板（淡入 + 自下而上位移动画）

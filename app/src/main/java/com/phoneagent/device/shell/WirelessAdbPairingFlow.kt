@@ -1,36 +1,38 @@
 package com.phoneagent.device.shell
 
 import android.content.Context
+import com.phoneagent.core.notify.AdbPairingNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * 无线 ADB「开始配对」编排流程（模拟 Shizuku 的通知栏向导）。
+ * 无线 ADB「开始配对」编排流程（主应用侧门面，通知栏向导）。
  *
- * 时序：
- * 1. [startDiscovery]：发"正在搜索无线调试服务"通知，在同一 Looper 线程协程上跑 Nsd 发现
- * 2. 搜索到 → 发"已发现"通知 + 弹出带内联输入框的通知请求 6 位配对码
- * 3. 用户在通知栏输入提交 → [AdbPairingReceiver] 回调 [onPairingCode]
- * 4. 校验码 → 发"正在配对"通知 → 配对并拉起 Shizuku（阻塞线程内 runBlocking 跑 suspend）
- * 5. 就绪/失败 → 通知栏反馈结果
+ * 时序（迁移后）：
+ * 1. [startDiscovery]：发"正在搜索无线调试服务"通知，并让 Provider 检查底层通路是否已就绪
+ *    （已配对过的设备可直接复用密钥连回来）
+ * 2. 未就绪 → 发"已发现"提示，用户在设置页下方输入 6 位配对码
+ *    （配对/mDNS 发现/拉起 Shizuku server 全部在 Provider 内执行）
+ * 3. `MainViewModel.pairShizuku` → [ShizukuBootstrap.pairAndEnsureReady] → 结果经 [messageFlow] 与通知栏反馈
  *
- * 作为 [active] 注册，供 [AdbPairingReceiver] 路由；同一时刻仅允许一条配对流程。
+ * 通知栏内联输入配对码的静态接收器已整体迁入 Provider（Provider Manifest 已声明同名 receiver），
+ * 主应用不再注册该接收器，配对码统一在设置页输入。
  */
 class WirelessAdbPairingFlow(
     private val context: Context,
-    private val transport: AdbWirelessTransport,
     private val bootstrap: ShizukuBootstrap,
-    private val timeouts: AdbTimeouts = AdbTimeouts(),
 ) {
-    companion object {
-        @Volatile
-        var active: WirelessAdbPairingFlow? = null
+    private companion object {
+        /** 发现标记自动复位时间：避免流程长期占用，期间用户仍可在界面输入配对码 */
+        const val RESET_AFTER_MS = 60_000L
+        /** 就绪探测上限：Provider 内若需连接已配对设备，通常几秒内返回 */
+        const val CHECK_READY_TIMEOUT_MS = 12_000L
     }
 
     private var discoverJob: Job? = null
@@ -38,7 +40,6 @@ class WirelessAdbPairingFlow(
     @Volatile
     private var discovering = false
 
-    private var lastMessage: String = ""
     val message: String get() = _message.value
 
     /** 供 UI 观察到的人话进度 */
@@ -49,7 +50,7 @@ class WirelessAdbPairingFlow(
         _message.value = msg
     }
 
-    /** 开始搜索并走通知栏向导。callerScope 为主线程协程作用域（Nsd 需在带 Looper 线程）。 */
+    /** 开始搜索并走通知栏向导。callerScope 为主线程协程作用域（通知与 UI 更新都在其中）。 */
     fun startDiscovery(callerScope: CoroutineScope) {
         if (discovering) return
         if (bootstrap.status.value.phase == AdbPhase.READY) {
@@ -57,51 +58,36 @@ class WirelessAdbPairingFlow(
             return
         }
         discovering = true
-        active = this
-        val ip = AdbWirelessTransport.localIpv4Address()
-        setMsg(if (ip != null) "本机 IP $ip，正在搜索无线配对服务…" else "正在搜索无线配对服务…")
-        com.phoneagent.core.notify.AdbPairingNotifier.notifyDiscovering(context)
+        setMsg("正在检查执行通道…请保持设备「无线调试 · 使用配对码配对设备」界面")
+        AdbPairingNotifier.notifyDiscovering(context)
 
         discoverJob = callerScope.launch {
-            // 在 callerScope（主线程）执行，NsdManager 才算合法
-            val svc = withTimeoutOrNull(timeouts.discoverMs) { transport.discoverService() }
-            if (svc == null) {
-                discovering = false
-                setMsg("未找到无线调试服务，请保持「使用配对码配对设备」界面")
-                com.phoneagent.core.notify.AdbPairingNotifier.notifyError(context, _message.value)
-                return@launch
-            }
-            setMsg("已发现设备 ${svc.host}:${svc.port}，请在通知中输入配对码")
-            com.phoneagent.core.notify.AdbPairingNotifier.notifyFound(context)
-            com.phoneagent.core.notify.AdbPairingNotifier.notifyRequestCode(context)
-            // 通知输入走回调；此处仅保留发现标记超时复位
-            delay(60_000)
-            discovering = false
-        }
-    }
-
-    /** 收到通知栏提交的配对码后继续流程（配对为网络+等待 binder，放后台线程执行） */
-    fun onPairingCode(code: String) {
-        discoverJob?.cancel()
-        discovering = false
-        com.phoneagent.core.notify.AdbPairingNotifier.notifyPairing(context, "已收到配对码，正在配对并拉起 Shizuku…")
-        kotlin.concurrent.thread {
-            val r = runCatching {
-                kotlinx.coroutines.runBlocking { bootstrap.pairAndEnsureReady(code) }
-            }.getOrElse {
-                ShizukuBootstrap.ReadyResult.Error("配对流程异常：${it.message}", AdbError.UNKNOWN)
-            }
-            setMsg(
-                when (r) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "内置 Shizuku 已就绪"
-                    is ShizukuBootstrap.ReadyResult.Error -> r.message
+            val ready = withTimeoutOrNull(CHECK_READY_TIMEOUT_MS) { bootstrap.ensureReady() }
+            when {
+                ready is ShizukuBootstrap.ReadyResult.Ready -> {
+                    discovering = false
+                    setMsg("内置 Shizuku 已就绪，无需配对")
+                    AdbPairingNotifier.notifySuccess(context, _message.value)
                 }
-            )
-            when (r) {
-                is ShizukuBootstrap.ReadyResult.Ready ->
-                    com.phoneagent.core.notify.AdbPairingNotifier.notifySuccess(context, _message.value)
-                is ShizukuBootstrap.ReadyResult.Error ->
-                    com.phoneagent.core.notify.AdbPairingNotifier.notifyError(context, _message.value)
+                ready is ShizukuBootstrap.ReadyResult.Error && ready.message.contains("Provider") -> {
+                    // Provider 未安装/不可用：配对无从谈起，直接给安装引导而不是假的"已发现"
+                    discovering = false
+                    setMsg(ready.message)
+                    AdbPairingNotifier.notifyError(context, ready.message)
+                }
+                ready == null -> {
+                    // 探测超时：多为无线调试未开或 Provider 无响应，不能谎报"已发现"
+                    discovering = false
+                    setMsg("检查执行通道超时：请确认已在开发者选项开启「无线调试」并保持配对界面")
+                    AdbPairingNotifier.notifyError(context, _message.value)
+                }
+                else -> {
+                    // 进入"等待配对码"阶段：保留发现标记一段时间，用户可随时在界面输入 6 位码
+                    setMsg("已发现无线调试设备，请在下方输入 6 位配对码")
+                    AdbPairingNotifier.notifyFound(context)
+                    delay(RESET_AFTER_MS)
+                    discovering = false
+                }
             }
         }
     }
@@ -109,11 +95,10 @@ class WirelessAdbPairingFlow(
     fun cancel() {
         discoverJob?.cancel()
         discovering = false
-        com.phoneagent.core.notify.AdbPairingNotifier.cancel(context)
+        AdbPairingNotifier.cancel(context)
     }
 
     private fun post(msg: String) {
-        lastMessage = msg
-        com.phoneagent.core.notify.AdbPairingNotifier.notifySuccess(context, msg)
+        AdbPairingNotifier.notifySuccess(context, msg)
     }
 }

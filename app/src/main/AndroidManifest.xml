@@ -18,22 +18,27 @@
          后者要求本应用持有「安装未知应用」权限（Android 8.0 起按来源应用单独授权） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- Termux 执行通道：该权限由 Termux 声明（dangerous 级），授予后本 App 才能向
-         com.termux.app.RunCommandService 下发命令；未安装 Termux 时该权限无法授予，不影响安装 -->
-    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Termux 执行通道已迁入 Provider（com.phoneagent.provider）：
+         RUN_COMMAND 权限、RunCommandService 调用与结果回传接收器都在 Provider 内，
+         主应用不再声明该权限 -->
+    <!-- 内置 Shizuku 已迁入 Provider：WRITE_SECURE_SETTINGS 与 moe.shizuku.manager.permission.API_V23
+         由 Provider 应用声明，主应用只经 AIDL 远程调用 -->
 
-    <!-- 内嵌 Shizuku server：本应用承担原 Shizuku 管理器角色。
-         WRITE_SECURE_SETTINGS 由 server（shell uid）在 attach 时经 grantRuntimePermission 授予本应用；
-         API_V23 是 Shizuku 客户端权限名（与 vendored API 常量一致），server 靠它识别可直发 binder 的应用 -->
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
-    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- 绑定 Provider 的 AIDL 服务所需：Provider 侧把 ProviderService 声明为
+         android:permission="com.phoneagent.permission.BIND_PROVIDER"（signature 级），
+         不声明此 uses-permission 会在 bindService 时直接抛 SecurityException -->
+    <uses-permission android:name="com.phoneagent.permission.BIND_PROVIDER" />
 
     <!-- 端侧语音输入：SpeechRecognizer（Android 11 起强制要求 RECORD_AUDIO） -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- 包可见性：Termux 执行通道需要探测 com.termux 是否安装 -->
+    <!-- 包可见性：Termux 探测已迁入 Provider（Provider 自行声明对 com.termux 的可见性），
+         主应用无需再查询该包。
+         Provider 自身必须可见：主应用要查询其安装状态/版本并 bindService，Android 11+
+         未在 <queries> 声明时 getPackageInfo 会抛 NameNotFoundException（isInstalled 恒 false），
+         表现为「服务组件永远显示未安装、无障碍永远连不上」 -->
     <queries>
-        <package android:name="com.termux" />
+        <package android:name="com.phoneagent.provider" />
     </queries>
 
     <!-- 明文 HTTP：API 地址允许指向自建/内网服务（http://192.168.1.5:8000、http://nas.local、
@@ -98,18 +103,9 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 
-        <service
-            android:name=".device.a11y.AgentAccessibilityService"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:label="@string/a11y_service_label">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
-        </service>
+        <!-- 无障碍服务已迁入 Provider（com.phoneagent.provider）：
+             AgentAccessibilityService 与 accessibility_service_config 的声明在 Provider Manifest 中，
+             主应用只经 AIDL 读取元素树 / 执行动作 -->
 
         <service
             android:name=".device.screen.ScreenSharingService"
@@ -160,14 +156,8 @@
             android:name=".overlay.PageMarkOverlayService"
             android:exported="false" />
 
-        <!-- 无线 ADB 配对：通知栏内联输入配对码的回调接收器 -->
-        <receiver
-            android:name=".device.shell.AdbPairingReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.phoneagent.action.RECEIVE_PAIRING_CODE" />
-            </intent-filter>
-        </receiver>
+        <!-- 无线 ADB 配对接收器已迁入 Provider（com.phoneagent.provider）：
+             通知栏内联输入配对码的回调在 Provider 进程内处理，主应用的配对码改在设置页输入 -->
 
         <!-- 快速设置磁贴：下拉通知栏一键唤起/收起任务悬浮窗 -->
         <service
@@ -233,14 +223,8 @@
             </intent-filter>
         </receiver>
 
-        <!-- Termux 执行通道：接收 Termux 通过 PendingIntent 回传的命令结果（自收自发，无需 exported） -->
-        <receiver
-            android:name=".device.shell.TermuxResultReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.phoneagent.action.TERMUX_RESULT" />
-            </intent-filter>
-        </receiver>
+        <!-- Termux 结果回传接收器已迁入 Provider（com.phoneagent.provider）：
+             PendingIntent 回传的 TERMUX_RESULT 广播由 Provider 内的接收器处理 -->
 
         <!-- 自动更新：把下载到私有目录的安装包授权给系统安装器（targetSdk 24 起禁止 file:// 外传） -->
         <provider
@@ -253,25 +237,9 @@
                 android:resource="@xml/update_file_paths" />
         </provider>
 
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
-
-        <!-- 内嵌 Shizuku server 的权限确认页：server 以 shell uid 拉起（须 exported），
-             action 与 vendored ServerConstants.REQUEST_PERMISSION_ACTION 一致 -->
-        <activity
-            android:name=".device.shell.ShizukuPermissionActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:theme="@style/Theme.PhoneAgent.ShizukuPermission">
-            <intent-filter>
-                <action android:name="com.phoneagent.intent.action.REQUEST_PERMISSION" />
-            </intent-filter>
-        </activity>
+        <!-- ShizukuProvider 与权限确认页已迁入 Provider（com.phoneagent.provider）：
+             rikka.shizuku.ShizukuProvider 与 ShizukuPermissionActivity 在 Provider Manifest 中声明，
+             主应用不再打包 Shizuku 客户端库 -->
     </application>
 
 </manifest>

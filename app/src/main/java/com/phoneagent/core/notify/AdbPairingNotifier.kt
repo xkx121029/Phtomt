@@ -3,24 +3,21 @@ package com.phoneagent.core.notify
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 
 /**
  * 无线 ADB 配对的通知栏向导（模拟 Shizuku 的交互体验）。
  *
- * 流程：
- * 1. 开始配对 → 持续推送"正在搜索无线调试服务"的实时进度通知
- * 2. 发现服务 → 推送"已发现"提示
- * 3. 请求配对码 → 弹出一条带内联输入框（RemoteInput）的通知，用户可直接在通知栏输入 6 位配对码并提交
- * 4. 提交后经 [AdbPairingReceiver] 回调，继续配对与拉起 Shizuku
- * 5. 各阶段结果（成功/失败/断开）同样走通知栏，避免用户一直停留在 App 内
+ * 流程（shell 通道迁入 Provider 后，通知仍由主应用发——UI 在主应用）：
+ * 1. 开始配对 → 推送"正在搜索无线调试服务"的实时进度通知
+ * 2. 进入等待配对码阶段 → 推送"已发现"提示，用户在设置页输入 6 位配对码
+ * 3. 各阶段结果（成功/失败/断开）同样走通知栏，避免用户一直停留在 App 内
+ *
+ * 注：通知栏内联输入配对码的接收器已随 shell 通道迁入 Provider，主应用不再注册。
  */
 object AdbPairingNotifier {
 
@@ -29,10 +26,6 @@ object AdbPairingNotifier {
 
     // 一条固定 id 的通知，随阶段刷新文本，避免刷屏
     const val ID_PAIRING = 3101
-
-    const val ACTION_RECEIVE_CODE = "com.phoneagent.action.RECEIVE_PAIRING_CODE"
-    const val EXTRA_RESULT = "pairing_code"
-    private const val RC_RECEIVE = 0x1001
 
     private fun nm(context: Context): NotificationManager? =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -69,35 +62,9 @@ object AdbPairingNotifier {
         post(context, base(context, "正在搜索无线调试服务", "请保持设备「无线调试 · 使用配对码配对设备」界面"))
     }
 
-    /** 已发现设备 */
+    /** 已发现设备 / 等待配对码 */
     fun notifyFound(context: Context) {
-        post(context, base(context, "已发现无线调试设备", "正在准备配对，请在通知中输入 6 位配对码"))
-    }
-
-    /**
-     * 请求配对码：推一条带内联输入框的通知，用户输入后提交触发 [AdbPairingReceiver]。
-     * 未授予通知权限时静默跳过（用户可回 App 手动输入）。
-     */
-    fun notifyRequestCode(context: Context) {
-        if (!canNotify(context)) return
-        ensureChannel(context)
-        val pending = PendingIntent.getBroadcast(
-            context,
-            RC_RECEIVE,
-            Intent(ACTION_RECEIVE_CODE).setPackage(context.packageName),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val remoteInput = RemoteInput.Builder(EXTRA_RESULT)
-            .setLabel("输入 6 位配对码")
-            .build()
-        val action = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send,
-            "提交配对码",
-            pending,
-        ).addRemoteInput(remoteInput).build()
-        val builder = base(context, "无线调试已就绪，请输入配对码", "输入设备「使用配对码配对设备」界面显示的 6 位数字")
-            .addAction(action)
-        runCatching { nm(context)?.notify(ID_PAIRING, builder.build()) }
+        post(context, base(context, "已发现无线调试设备", "请回到应用输入「使用配对码配对设备」界面显示的 6 位数字"))
     }
 
     /** 配对中 */

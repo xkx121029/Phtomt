@@ -57,7 +57,6 @@ import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
 import com.phoneagent.device.shell.AdbError
 import com.phoneagent.device.shell.AdbPhase
-import com.phoneagent.device.shell.AdbWirelessTransport
 import com.phoneagent.feature.skill.Skill
 import com.phoneagent.feature.skill.SkillParam
 import com.phoneagent.feature.skill.SkillSource
