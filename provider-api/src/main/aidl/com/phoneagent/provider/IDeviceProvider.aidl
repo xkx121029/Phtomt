@@ -33,6 +33,12 @@ interface IDeviceProvider {
     /** 内置 Shizuku 三态：0=UNAVAILABLE 1=PERMISSION_DENIED 2=READY */
     int shizukuState();
 
+    /**
+     * 请求 Shizuku 权限（授权确认页由 Provider 内的 server 拉起）。
+     * 已授权直接返回 true；无响应/超时/失败返回 false（主应用按未授权处理）。
+     */
+    boolean shizukuRequestPermission();
+
     /** Termux 是否已安装 */
     boolean termuxInstalled();
 
@@ -121,4 +127,24 @@ interface IDeviceProvider {
 
     /** 引导式配对：用户在主应用界面输入 6 位配对码，落地执行在 Provider */
     ShellResultParcel adbPairAndEnsureReady(String code);
+
+    // ==================== 看门狗 / 保活 ====================
+
+    /**
+     * 写入看门狗配置并即时生效（配置持久化在 Provider 侧）。
+     * enabled=false 时立即停止看门狗前台服务；true 时启动（已运行则只更新策略）。
+     * autoRepairA11y：无障碍掉线且 Provider 持有 WRITE_SECURE_SETTINGS 时自动重写启用；
+     * autoRepairShizuku：检测到 Shizuku 不在线时经无线 ADB 引导自动重拉（已配对可静默，未配对失败后退避）。
+     * 返回是否成功应用配置。
+     */
+    boolean setWatchdogConfig(boolean enabled, boolean autoRepairA11y, boolean autoRepairShizuku);
+
+    /**
+     * 看门狗状态快照 JSON：
+     * {"enabled","autoRepairA11y","autoRepairShizuku","running","a11yConnected",
+     *  "shizukuState",  // 0/1/2，同 shizukuState()
+     *  "canRepairA11y", // 当前进程是否已获授 WRITE_SECURE_SETTINGS（决定自动修复是否可用）
+     *  "repairCount","lastRepairMessage","lastRepairAtMs"}
+     */
+    String watchdogStatus();
 }

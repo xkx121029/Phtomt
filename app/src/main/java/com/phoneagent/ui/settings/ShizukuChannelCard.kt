@@ -83,7 +83,7 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
                 TextButton(onClick = { msg = null; vm.ensureShizukuReady { msg = it } }) { Text("一键启动") }
             }
             Text(
-                "Shizuku 服务内置于本应用，无需安装其他软件；首次启动需完成一次配对引导，之后开机自动可用。",
+                "Shizuku 服务随「服务组件」一起安装，无需另外安装软件；首次启动需完成一次配对引导，之后开机自动可用。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

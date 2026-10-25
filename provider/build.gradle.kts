@@ -17,9 +17,28 @@ fun loadBuildNumber(): Int {
     return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 1
 }
 
+/**
+ * 发布签名：与主应用共用同一份 upload-signing.properties / keystore。
+ * 必须同签名——Provider 的 AIDL 服务挂 signature 级权限 BIND_PROVIDER，
+ * 签名不同则 release 主应用绑定不上（表现为服务组件「已安装但永远连不上」）。
+ */
+val uploadSigningPropsFile = rootProject.file("app/upload-signing.properties")
+
 android {
     namespace = "com.phoneagent.provider"
     compileSdk = 36
+
+    if (uploadSigningPropsFile.exists()) {
+        val props = Properties().apply { uploadSigningPropsFile.inputStream().use { load(it) } }
+        signingConfigs {
+            create("release") {
+                storeFile = rootProject.file("app/${props["storeFile"] as? String ?: "upload-keystore.jks"}")
+                storePassword = props["storePassword"] as? String ?: ""
+                keyAlias = props["keyAlias"] as? String ?: ""
+                keyPassword = props["keyPassword"] as? String ?: ""
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.phoneagent.provider"
@@ -34,6 +53,8 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // 有上传密钥时同主应用签名（signature 级 BIND_PROVIDER 要求两边同证书）
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
         debug {
             isMinifyEnabled = false
@@ -57,6 +78,9 @@ kotlin {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+
+    // 跨进程契约与主应用共享同一份 AIDL/Parcelable 定义
+    implementation(project(":provider-api"))
 
     // 与主应用共用 vendored Shizuku 客户端 + 内嵌 server（third_party/shizuku）
     implementation(project(":shizuku-api"))

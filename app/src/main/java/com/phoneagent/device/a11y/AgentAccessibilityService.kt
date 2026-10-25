@@ -1,75 +1,118 @@
 package com.phoneagent.device.a11y
 
-import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Rect
+import android.graphics.BitmapFactory
 import android.provider.Settings
-import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
 import com.phoneagent.core.log.AppLog
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.domain.model.ScreenSnapshot
-import com.phoneagent.domain.model.UiElement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.asExecutor
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import java.util.concurrent.Executor
-import kotlin.coroutines.resume
+import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 无障碍服务：读取屏幕可交互元素，并执行点击/滑动等手势。
+ * 远程无障碍会话（主应用侧 facade）。
  *
- * 通过 [AgentAccessibilityService.instance] 供 Agent 引擎访问。
- * 未连接时调用 [isServiceEnabled] 检查系统设置中的开关状态。
- * 同时承载内置跳广告功能：在 Agent 空闲且开关开启时，事件驱动地自动点击广告跳过/关闭按钮。
+ * 无障碍能力已整体迁入独立 Provider 应用（`com.phoneagent.provider`），本类不再继承
+ * AccessibilityService，只保留原有公开入口：上层（AgentEngine、execution 下的执行器、CapabilityManager 等）
+ * 继续以 `AgentAccessibilityService.instance` 的形态访问，内部一律经 [ProviderManager] 调 AIDL。
+ *
+ * [instance] 的语义：Provider 已绑定且其无障碍服务已连接时为非 null（惰性构造），否则 null。
+ * 实例由 [install] 启动的观察协程维持：应用启动时由 Application 注入 appContext，
+ * 之后按秒级节奏查询 Provider 的 isA11yConnected，连接/断开即时反映到 [instance]。
  */
-class AgentAccessibilityService : AccessibilityService() {
+class AgentAccessibilityService private constructor(
+    /** 应用上下文：每次远程调用都显式传给 ProviderManager，不依赖 ProviderManager 的默认初始化 */
+    val applicationContext: Context,
+) {
 
     companion object {
         private const val TAG = "AgentAccessibilityService"
+
+        /** Provider 无障碍服务的完整类名（与 provider 模块里 ProviderAccessibilityService 一致） */
+        private const val PROVIDER_SERVICE_CLASS = "com.phoneagent.provider.a11y.ProviderAccessibilityService"
+
+        /** Provider 已连接时的状态轮询间隔：服务被系统杀掉后要尽快把 instance 置空，避免上层继续空转 */
+        private const val ACTIVE_POLL_MS = 1_000L
+
+        /** Provider 未安装时的重试间隔：不反复做包查询与绑定尝试 */
+        private const val IDLE_POLL_MS = 3_000L
+
+        /** 轻量状态查询的超时：超时视为「暂时查不到」，保持现状而不是误判断开 */
+        private const val PROBE_TIMEOUT_MS = 2_000L
+
+        /** 读屏超时：元素树遍历在 Provider 侧完成，超时按「无障碍不可用」降级 */
+        private const val CAPTURE_TIMEOUT_MS = 6_000L
+
+        /** 截图超时：Provider 自身 2.5s 超时，这里留出跨进程往返余量 */
+        private const val SCREENSHOT_TIMEOUT_MS = 6_000L
 
         @Volatile
         var instance: AgentAccessibilityService? = null
             private set
 
-        /** 无障碍截图最长等待时间：系统限流/内部错误时不回调，超时即放弃，避免 Agent 卡在“观察屏幕” */
-        private const val SCREENSHOT_TIMEOUT_MS = 2500L
-
-        /**
-         * 非可交互纯文字节点的收录上限。
-         * 收它们是为了让 AI 能"读"页面（正文、列表项文字），但正文页动辄上百条，
-         * 全塞进决策上下文会明显推高成本，这里只保留遍历顺序靠前的部分。
-         */
-        private const val MAX_PLAIN_NODES = 80
-
-        /** Agent 是否正在执行任务：为 true 时内置跳广告暂停，避免与 Agent 的广告处理冲突 */
+        /** Agent 是否正在执行任务：Provider 已不消费该标志，保留仅为源码兼容 */
         @Volatile
         var agentRunning = false
 
-        /** 无障碍服务是否已在系统设置中开启 */
+        private val watcherStarted = AtomicBoolean(false)
+
+        private val watcherScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /**
+         * 应用级注入：记下 appContext 并启动 Provider 状态观察（幂等）。
+         * 由 Application.onCreate 调用；不在此处绑定，观察协程会按需触发 ProviderManager 绑定。
+         */
+        fun install(context: Context) {
+            val ctx = context.applicationContext
+            if (!watcherStarted.compareAndSet(false, true)) return
+            watcherScope.launch { watch(ctx) }
+        }
+
+        /** 观察 Provider 绑定与无障碍连接状态，维护 [instance]（[lastTreeStats] 随各实例的读屏更新） */
+        private suspend fun watch(context: Context) {
+            while (true) {
+                if (!ProviderManager.isInstalled(context)) {
+                    instance = null
+                    delay(IDLE_POLL_MS)
+                    continue
+                }
+                val connected = ProviderManager.call(context, PROBE_TIMEOUT_MS) { it.isA11yConnected() }
+                when (connected) {
+                    true -> if (instance == null) {
+                        instance = AgentAccessibilityService(context)
+                        AppLog.i(TAG, "Provider 无障碍通道已连接")
+                    }
+
+                    false -> instance = null
+                    // binder 暂时不可用：只有确认 Provider 代理已失效才置空，避免瞬断误伤
+                    null -> if (!ProviderManager.connected.value) instance = null
+                }
+                delay(ACTIVE_POLL_MS)
+            }
+        }
+
+        /** 无障碍服务是否已在系统设置中开启（同步读系统设置，不能走 AIDL） */
         fun isServiceEnabled(context: Context): Boolean {
             val enabled = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
             ) ?: return false
-            val pkg = context.packageName
-            val cls = AgentAccessibilityService::class.java.name
+            val expected = ComponentName(ProviderManager.PACKAGE, PROVIDER_SERVICE_CLASS)
             // 系统设置里手动开启通常写入全量形式（pkg/pkg.cls），但部分 ROM、备份恢复或
             // 第三方工具会写短形式（pkg/.cls）或大小写不一致——逐条反解成 ComponentName
             // 再比对，避免「开关明明开着却检测为关」
             return enabled.split(':').any { entry ->
                 val cn = ComponentName.unflattenFromString(entry.trim()) ?: return@any false
-                cn.packageName.equals(pkg, ignoreCase = true) &&
-                    cn.className.equals(cls, ignoreCase = true)
+                cn.packageName.equals(expected.packageName, ignoreCase = true) &&
+                    cn.className.equals(expected.className, ignoreCase = true)
             }
         }
 
@@ -80,256 +123,52 @@ class AgentAccessibilityService : AccessibilityService() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
-    }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
-        serviceInfo = serviceInfo.apply {
-            flags = flags or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
-    }
-
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // no-op：Agent 任务内的广告处理由引擎侧 AdContentFilter 完成；
-        // 「Agent 空闲时自动跳广告」是面向日常使用的独立能力，已移除
-    }
-
-    override fun onInterrupt() {
-        // no-op
-    }
-
-    override fun onUnbind(intent: Intent?): Boolean {
-        instance = null
-        return super.onUnbind(intent)
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        instance = null
-        // 主动反馈（v2.2.1 八）：无障碍服务被系统杀掉时，提示用户重新开启
-        runCatching {
-            com.phoneagent.core.notify.ActiveNotifier.notify(
-                applicationContext, com.phoneagent.core.notify.ActiveNotifier.ID_A11Y_KILLED,
-                "无障碍服务已断开",
-                "AI 控制手机的通道被系统关闭了，请重新开启无障碍服务以继续自动操作。",
-            )
-        }
-        super.onDestroy()
     }
 
     /**
-     * 抓取当前屏幕元素树，生成 [ScreenSnapshot]。
-     * 若 rootInActiveWindow 为 null（如屏幕锁定），返回空快照并标记缺少无障碍。
-     */
-    fun captureScreen(): ScreenSnapshot {
-        val root = rootInActiveWindow ?: return ScreenSnapshot(
-            packageName = null,
-            missingAccessibility = true,
-        )
-        val elements = mutableListOf<UiElement>()
-        val scan = TreeScan()
-        collectElements(root, true, 0, elements, scan)
-        lastTreeStats = scan.describe(root)
-        if (elements.isEmpty()) {
-            // 空树必须留下证据：否则只能看到「未检测到可交互元素」，分不清是系统不给节点还是被筛选条件挡掉
-            AppLog.w(TAG, "元素树为空：$lastTreeStats")
-        }
-        val (w, h) = screenSize()
-        return ScreenSnapshot(
-            packageName = root.packageName?.toString(),
-            screenWidth = w,
-            screenHeight = h,
-            elements = elements,
-        )
-    }
-
-    private fun screenSize(): Pair<Int, Int> {
-        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-        val point = android.graphics.Point()
-        wm.defaultDisplay.getRealSize(point)
-        return point.x to point.y
-    }
-
-    /**
-     * 一次抓取的统计：元素树为空时用它判断"是系统不给节点"还是"被我们的筛选条件挡掉"。
-     * 计数只服务诊断，不参与决策。
-     */
-    private class TreeScan {
-        var visited = 0
-        var invisible = 0
-        var zeroSize = 0
-        var noLabel = 0
-        var deduped = 0
-
-        /** 已收录的"非可交互纯文字"节点数：上限 [MAX_PLAIN_NODES]，防止正文页把整页文字灌进 AI 上下文 */
-        var plainCollected = 0
-
-        fun describe(root: AccessibilityNodeInfo?): String =
-            "访问=$visited 不可见=$invisible 无标签=$noLabel 尺寸为0=$zeroSize 容器内重复=$deduped" +
-                " 纯文字收录=$plainCollected 根节点子数=${root?.childCount ?: -1}"
-    }
-
-    /**
-     * 最近一次抓取的统计摘要，元素为空时由引擎写进任务日志（排查"读不到控件"用）。
+     * 最近一次抓取的统计摘要（由 Provider 的 captureScreen JSON 带回），
+     * 元素树为空时由引擎写进任务日志（排查"读不到控件"用）；取不到时为「无统计」。
      */
     @Volatile
-    var lastTreeStats: String = ""
+    var lastTreeStats: String = "无统计"
         private set
 
-    private fun collectElements(
-        node: AccessibilityNodeInfo,
-        isRoot: Boolean,
-        counterHolder: Int,
-        out: MutableList<UiElement>,
-        scan: TreeScan,
-        depth: Int = 0,
-        insideInteractive: Boolean = false,
-    ): Int {
-        var counter = counterHolder
-        // 限制递归深度（80 层）和节点总数（500 个），防止 StackOverflow 和性能问题
-        if (depth > 80 || counter > 500) return counter
-        scan.visited++
-        val isInteractive = node.isClickable ||
-            node.isScrollable ||
-            node.isEditable ||
-            node.isLongClickable
-        val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        // 收录条件：① 可交互的控件（点击目标）；② 自带文字的可见节点（页面内容，供 AI 阅读与按文字定位）。
-        // 已在可交互容器内的普通子节点不再重复收录——它的文字已经补到容器标签上，
-        // 重复收录只会让 AI 在同一位置看到两个目标（微信聊天列表就是这种结构）。
-        val plainText = !isInteractive && (ownText != null || ownDesc != null)
-        val keep = node.isVisibleToUser && (isInteractive ||
-            (plainText && !insideInteractive && scan.plainCollected < MAX_PLAIN_NODES))
-        // 可点击容器常常自身没有文字（文字挂在不可点击的子控件上，微信就是这么做的）：
-        // 这类容器用后代文字补一个标签，否则 AI 只拿到一堆无名方框，按 by=text 定位必然失败。
-        // 拼接规则与执行层的 [DerivedLabel] 同源（元素树里看得见的标签，执行层也必须匹配得到）；
-        // 放在 keep 之后算，被筛掉的节点不必再花时间翻它的后代
-        val derivedLabel = if (keep) DerivedLabel.of(node, recycleChildren = true) else null
-        if (!isRoot && keep) {
-            val bounds = Rect()
-            node.getBoundsInScreen(bounds)
-            if (bounds.width() > 0 && bounds.height() > 0) {
-                if (plainText) scan.plainCollected++
-                val cls = node.className?.toString() ?: "Unknown"
-                // 标签落在 contentDescription：text 保持节点真实文字，派生标签不污染它，
-                // 而 effectiveLabel() = text ?: contentDescription 仍能被 AI 与定位层看到
-                out += UiElement(
-                    index = counter,
-                    className = cls,
-                    type = classify(cls),
-                    text = ownText,
-                    contentDescription = ownDesc ?: derivedLabel,
-                    isSelected = node.isSelected,
-                    currentValue = if (node.isEditable) node.text?.toString() else null,
-                    x = bounds.centerX(),
-                    y = bounds.centerY(),
-                    left = bounds.left,
-                    top = bounds.top,
-                    right = bounds.right,
-                    bottom = bounds.bottom,
-                    clickable = node.isClickable,
-                    longClickable = node.isLongClickable,
-                    scrollable = node.isScrollable,
-                    editable = node.isEditable,
-                    viewId = node.viewIdResourceName?.substringAfterLast('/'),
-                    packageName = node.packageName?.toString(),
-                    isEnabled = node.isEnabled,
-                    isVisibleToUser = node.isVisibleToUser,
-                    childCount = node.childCount,
-                )
-                counter++
-            } else {
-                scan.zeroSize++
-            }
-        } else if (!isRoot) {
-            if (!node.isVisibleToUser) scan.invisible++
-            else if (!isInteractive && (ownText != null || ownDesc != null)) scan.deduped++
-            else scan.noLabel++
+    /**
+     * 抓取当前屏幕元素树，生成 [ScreenSnapshot]（语义与原本地实现一致）。
+     *
+     * 保持同步签名以兼容既有调用点：内部用 runBlocking 等 Provider 回包，
+     * 读屏本身是毫秒级操作；协程内调用时优先走 [captureScreenAsync]。
+     */
+    fun captureScreen(): ScreenSnapshot = runBlocking { captureScreenAsync() }
+
+    /** [captureScreen] 的挂起版本：协程内调用不阻塞所在线程 */
+    internal suspend fun captureScreenAsync(): ScreenSnapshot {
+        val raw = ProviderManager.call(applicationContext, CAPTURE_TIMEOUT_MS) { it.captureScreen() }
+        val decoded = SnapshotJsonCodec.decode(raw)
+        if (decoded == null) {
+            // 空树必须留下证据：否则只能看到「未检测到可交互元素」，分不清是系统不给节点还是被筛选条件挡掉
+            if (raw != null) AppLog.w(TAG, "captureScreen JSON 解析失败（${raw.length} 字节）")
+            lastTreeStats = "无统计"
+            return ScreenSnapshot(packageName = null, missingAccessibility = true)
         }
-        val childInside = insideInteractive || (!isRoot && isInteractive)
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { child ->
-                counter = collectElements(child, false, counter, out, scan, depth + 1, childInside)
-                // 每个 getChild 获取的节点只由其调用方回收一次，避免双重 recycle（API 33+ 框架自动回收）
-                if (android.os.Build.VERSION.SDK_INT < 33) child.recycle()
-            }
+        lastTreeStats = decoded.stats
+        if (decoded.snapshot.elements.isEmpty()) {
+            AppLog.w(TAG, "元素树为空：$lastTreeStats")
         }
-        return counter
+        return decoded.snapshot
     }
 
     /**
-     * 每步自动截图（不依赖 MediaProjection 屏幕共享）：改用无障碍服务的 takeScreenshot（API 30+）。
-     *  无需额外权限，复用已开启的无障碍通道；结果经 HardwareBuffer → Bitmap 拷贝，可安全复用。 */
-    fun canScreenshot(): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < 30) return false
-        val cap = serviceInfo?.capabilities ?: return false
-        return cap and AccessibilityServiceInfo.CAPABILITY_CAN_TAKE_SCREENSHOT != 0
-    }
+     * 每步自动截图（不依赖 MediaProjection 屏幕共享）：由 Provider 的无障碍服务执行 takeScreenshot（API 30+）。
+     * 结果以 PNG 字节跨进程回传，这里解成 Bitmap。
+     */
+    fun canScreenshot(): Boolean = android.os.Build.VERSION.SDK_INT >= 30
 
-    @SuppressLint("NewApi") // takeScreenshot 系列 API30+，由 canScreenshot() 运行时守卫；此处抑制静态误报
     suspend fun takeScreenshotBitmap(): Bitmap? {
         if (!canScreenshot()) return null
-        // 必须限时：系统限流（间隔过短）/内部错误/个别机型回调丢失时，回调可能不来，
-        // 协程会永久挂起（此时悬浮窗已隐藏），表现为 Agent 一直卡在“观察屏幕”这一步，故加超时兜底
-        return withTimeoutOrNull(SCREENSHOT_TIMEOUT_MS) {
-            try {
-                suspendCancellableCoroutine { cont ->
-                    val executor: Executor = Dispatchers.Main.asExecutor()
-                    try {
-                        takeScreenshot(
-                            android.view.Display.DEFAULT_DISPLAY,
-                            executor,
-                            object : TakeScreenshotCallback {
-                            override fun onSuccess(screenshot: ScreenshotResult) {
-                                val bmp = hardwareToBitmap(screenshot)
-                                if (cont.isActive) cont.resume(bmp)
-                            }
-
-                            override fun onFailure(errorCode: Int) {
-                                if (cont.isActive) cont.resume(null)
-                            }
-                        })
-                    } catch (e: Exception) {
-                        if (cont.isActive) cont.resume(null)
-                    }
-                }
-            } catch (e: Exception) {
-                null
-            }
-        }
-    }
-
-    /** 将无障碍截图结果（HardwareBuffer）转为可复用的 ARGB Bitmap 拷贝 */
-    @SuppressLint("NewApi")
-    private fun hardwareToBitmap(result: AccessibilityService.ScreenshotResult): Bitmap? {
-        val hb = runCatching { result.hardwareBuffer }.getOrNull() ?: return null
-        val wrapped = runCatching { Bitmap.wrapHardwareBuffer(hb, result.colorSpace) }.getOrNull()
-        hb.close()
-        val copied = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
-        if (wrapped != null && wrapped !== copied) runCatching { wrapped.recycle() }
-        return copied
-    }
-    private fun classify(className: String): String = when {
-        className.contains("Button") -> "Button"
-        className.contains("ImageButton") -> "ImageButton"
-        className.contains("EditText") -> "EditText"
-        className.contains("CheckBox") -> "CheckBox"
-        className.contains("RadioButton") -> "RadioButton"
-        className.contains("Switch") -> "Switch"
-        className.contains("SeekBar") || className.contains("Slider") -> "Slider"
-        className.contains("Tab") -> "Tab"
-        className.contains("MenuItem") -> "MenuItem"
-        className.contains("RecyclerView") || className.contains("ListView") ||
-            className.contains("ScrollView") -> "Scrollable"
-        className.contains("ImageView") -> "ImageView"
-        className.contains("TextView") -> "TextView"
-        className.contains("Image") -> "Image"
-        else -> "View"
+        val png = ProviderManager.call(applicationContext, SCREENSHOT_TIMEOUT_MS) { it.takeScreenshot() }
+        if (png == null || png.isEmpty()) return null
+        return runCatching { BitmapFactory.decodeByteArray(png, 0, png.size) }.getOrNull()
     }
 }

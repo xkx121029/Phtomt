@@ -64,9 +64,9 @@ private val ChatBubblesSaver = listSaver<List<ChatBubble>, List<String>>(
  *
  * 数据来源：引擎对话区（[MainViewModel].conversation）——chat 直答把回答写进这里，
  * 页面直接消费展示。没有感知循环、没有计划卡：对话气泡 + 底部输入框，比 Agent 页轻一档。
- * 提交走 [MainViewModel].submitChatTurn 直进任务队列（不经过规划流）：规划流的 Reply
- * 只落 Agent 页 say 气泡，对话页拿不到；队列路由的 chat 直答回答落回本页，
- * 其余形态的结果仍在 Agent 页时间线里。
+ * 提交走 [MainViewModel].submitChatTurn（引擎的对话入口）：**只作答、不执行**——
+ * 对话页里发一句话不会开启任务执行模式（不设 isRunning、不开悬浮窗 / 跑马灯、
+ * 不亮边缘光效）。需要实操手机的请求由直答如实说明，用户到 Agent 页下达。
  *
  * 用户气泡留在页面本地（带进程级保存）：引擎对话区的 user 角色存的是发给模型的
  * 决策 prompt，不适合直接展示，与 Agent 页的理由相同。

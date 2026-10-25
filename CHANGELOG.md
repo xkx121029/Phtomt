@@ -10,6 +10,37 @@
 
 ### 修复
 
+- **任务执行时用户点不动屏幕（Android 12+ 不受信任触摸拦截）**
+  - 现象：任务一开跑，屏幕边缘的彩色跑马光效出现后，用户手动点击/滑动全部无响应，
+    而 Agent 的无障碍手势照常执行 —— 看起来像"只有 AI 能操作手机"
+  - 根因：Android 12 起系统会丢弃「穿过不受信任覆盖层」的触摸事件，判定依据是所有覆盖层
+    **叠加后的组合不透明度**（`1 - Π(1 - alpha)`，默认上限 0.8）；`FLAG_NOT_TOUCHABLE` 并不豁免，
+    它判定的恰恰就是穿透行为。任务期间常驻的三层全屏覆盖层（`EdgeLightingService` 边缘光效、
+    `CursorOverlayService` 虚拟光标、`PageMarkOverlayService` 页面标记）此前只设了
+    `FLAG_NOT_TOUCHABLE`，窗口 `alpha` 仍是默认 1.0 —— 单层就已超过阈值
+  - 修复：三层覆盖层的窗口 `alpha` 统一压到 0.4。按任务期间最多三层同时在场的预算，
+    组合不透明度 ≈ 0.784，低于 0.8，触摸恢复穿透；光效/光标/标记整体更通透
+- **边缘光效的「设置页预览」与「任务实际效果」不是同一个东西**
+  - 现象：在「界面效果 → 光效标定」里看到的是明亮完整的四边彩色边框，
+    任务一跑起来却只剩一圈几乎透明的淡色描边加几个光点，两处观感对不上
+  - 根因：`EdgeLightingView` 按 `previewMode` 分了两套绘制——预览走 `drawPreviewMode`
+    （光晕 160 / 亮线 255、四边完整铺色），实际走 `drawRunningMode`
+    （光晕 20 / 亮线 50），两套代码各自演化，必然越走越偏
+  - 修复：删掉预览分支，合并成唯一的 `drawLighting`——整圈彩色渐变边框 + 沿边框流动的 5 个光点，
+    预览与任务运行时共用这一份代码，标定所见即任务所得（窗口 `alpha` 0.4 对两者同样生效）
+- **对话页发送消息不再开启任务执行模式（对话模式只作答、不执行）**
+  - 对话页此前走 `engine.start()` 进任务队列后仍按三形态词表分流：只有命中「什么是 / 讲讲 / 翻译…」
+    这类对话词的消息才走直答，**其余（例如只说「你好」「帮我看看」）会滑进 Agent 执行链路**——
+    屏幕上随之出现悬浮任务卡片、底部彩色跑马灯，`isRunning` 置位后又点亮四边的跑马光效
+    （`EdgeLightingService`），AI 还会去读屏、点按，完全不是对话页该有的样子
+  - 新增「对话页提交」标记：`AgentEngine.chatTurn()` → `TaskLifecycle.start(chatOnly = true)`，
+    队列项（`PendingTask`）自带该标记并随文本先进先出；路由侧 `routeTask` 见到标记**不判定词表**，
+    直接给纯对话直答决策（`chatRoute`）
+  - 标记为 true 时同时跳过「执行前 3B 视觉预热」与「执行留档复位」：对话不该拉端侧模型，
+    也不该冲掉上一轮任务的截图留档
+  - `MainViewModel.submitChatTurn` 改走 `engine.chatTurn`（原为 `engine.start`）；
+    需要实操手机的请求由直答如实说明并引导到 Agent 页（`chatSystem` 已约定）
+  - 单测：`PendingTaskQueueTest` 增「对话页标记随队列项一起先进先出」，既有断言改为取 `.text`
 - **对话页不再注入操控提示词（纯对话直答改用专用系统提示）**
   - 纯对话直答此前复用 `AgentPrompts.system(task = …)`，会连带装配操控链路的铁律 /
     意图表 / 动作模式（授权范围）/ 技能表 / 目标定位等区块。直答端侧不解析意图、
@@ -31,6 +62,11 @@
     该作用域内真实存在的 `currentLang` / `_state.value.stepCount`
   - `provider/build.gradle.kts`：`java.io.File` 显式导入，避免 Gradle `java` 扩展遮蔽
     `java` 包名导致构建脚本解析失败
+  - `AgentAccessibilityService.kt`：KDoc 里的 `execution/*` 触发了 Kotlin 的嵌套块注释
+    （第二个 `/*` 没有闭合），文件末尾报「Unclosed comment」并连带拖垮全部引用方；改为文字描述
+  - `ActionExecutor.kt`：`"$action失败"` 里的 `$action失败` 被当成一个标识符，改为 `${action}失败`
+  - `ClickRunner.kt`：facade 已不再继承 Service，`service.resources` 改为
+    `service.applicationContext.resources`
 - **编码模块健壮性与资源优化批次（4 项）**
   - **挂起 RPC 断线落空（AgentClient）**：`disconnect` / `onClosed` / `onFailure` / `stopLocalAgent`
     原先 `pending.clear()` 静默丢弃界面 RPC 回调，调用方 `onResult` 永不触发、UI 卡在加载态；
@@ -56,6 +92,89 @@
     与端侧视觉、数据页的区块内行动按钮同一语言
   - **AI 模型页**：「保存 AI 配置」按钮收进 `SettingsPlainCard`（原先裸露在卡片外）；
     模型库行与职责行底色统一为 `AppSurfaceMuted`，与端点卡同一块「下沉面」
+
+- **悬浮任务卡片重排信息层级（主题色不变）**
+  - 头部只保留「状态呼吸点 + 任务标题 + ✕」：标题单行省略并独占整行，
+    原先挤在同一行的「详情 / 隐藏」下移到状态行右侧 —— 三个操作全部保留，只重排层级
+  - 状态行改为「阶段徽章 + 第 N/总 步 · 状态 + 详情 + 隐藏」，步骤文字单行末尾省略；
+    总步数已知时显示「第 3/8 步」，长任务名或长状态不再把操作按钮顶出卡片
+  - 完成态整条状态行让位给打勾面板（原先只隐藏步骤文字，徽章与两个操作仍留在卡上），
+    新任务开始时由 `resetPanel` 一并恢复
+
+---
+
+## [v0.2.1080] — 2026-10-26
+
+### 变更
+
+- **执行通道整体迁入独立 Provider APK**——主应用不再自带无障碍 / Shizuku / Termux 实现，
+  改为绑定同签名的 `com.phoneagent.provider` 应用，经 AIDL（`IDeviceProvider`）远程调用
+  - 新增 `:provider-api` 模块：AIDL 契约（`IDeviceProvider` / `A11ySelector` / `ActionResult` /
+    `ShellResultParcel`）与 Parcelable 由主应用与 Provider 共用同一份，避免两端序列化漂移
+  - 主应用侧新增 `device/provider/ProviderManager`：内置 APK（`assets/provider/provider.apk`）
+    安装引导 + 版本比对 + `bindService`（3s 超时、断连自动重绑）+ 带超时的 `call()`
+    收口（Provider 被杀时 binder 可能抛 `DeadObjectException` 或永久挂起）
+  - 绑定权限为 signature 级（`com.phoneagent.permission.BIND_PROVIDER`），只有同签名应用可绑定
+  - 主应用移除 `:shizuku-api` / `:shizuku-provider` / `:shizuku-server` 三个依赖，
+    `app/build.gradle.kts` 不再为每次迭代编译 Shizuku 源码
+- **Provider 构建产物改为仓库内静态资产**（`app/build.gradle.kts`）——原方案每次主应用构建都
+  先编译 `:provider`（`embedProviderApk` + `preBuild` 依赖），Provider 变更频率低却让每次迭代
+  都买单。现改为 `src/{debug,release}/assets/provider/` 下的提交产物，主应用构建不依赖 `:provider`
+  - 新增 `:app:syncProviderAssets` 任务（Provider 改动后手动执行）：按变体分目录，
+    debug 主应用配 debug 证书 Provider、release 配 upload 证书
+    （签名不一致会让 signature 级绑定被拒）
+  - 未配置 `upload-signing.properties` 时 release 回落 debug 包，本地 release 构建同样可用
+- **删除整套无线 ADB 通道**（`device/shell/` 下 9 个类 + 6 个单测，约 −1400 行）
+  - `AdbBootstrapTransport` / `AdbKeyStore` / `AdbPairingReceiver` / `AdbProtocol` /
+    `AdbSocket` / `AdbTcpSession` / `AdbWirelessTransport` / `MdnsAdbResolver` /
+    `WirelessAdbModels` / `WirelessAdbStateMachine` 全部移除
+  - 内嵌 Shizuku server 的拉起改由 Provider 侧负责（Provider 内 `ShizukuBootstrap` 重写），
+    主应用只经 AIDL 请求 shell 能力，不再自己维护 socket / 配对 / mDNS
+  - `ShizukuPermissionActivity` 删除（授权界面由 Provider 承担）；
+    `accessibility_service_config.xml` 随之移除（无障碍服务实现在 Provider）
+  - 新增轻量 `device/shell/AdbStatus` 描述通道可用性，供 UI 与决策层读取
+- **对话页与任务执行彻底分离**（承接上一轮的对话直答改造）
+  - `AgentEngine.chatTurn()` → `TaskLifecycle.start(chatOnly = true)`，队列项自带标记并随
+    文本先进先出；路由侧见到标记不判定词表，直接走纯对话直答（`chatRoute`）
+  - 对话标记同时跳过「执行前 3B 视觉预热」与「执行留档复位」：对话不拉端侧模型，
+    也不冲掉上一轮任务截图
+  - 纯对话改用专用系统提示（`PromptBodies.CHAT_DIRECT_CN / CHAT_DIRECT_EN` +
+    `AgentPrompts.chatSystem`）：只保留身份与直答规则，不再装配操控链路的铁律 / 意图表 /
+    动作模式 / 技能表——这些区块只会把模型带偏去输出意图 JSON 而不是回答本身
+  - `MainViewModel.submitChatTurn` 改走 `engine.chatTurn`；需要实操手机的请求由直答
+    如实说明并引导到 Agent 页
+
+### 修复
+
+- **任务运行时用户点不动屏幕（Android 12+ 不受信任触摸拦截）**
+  - 根因：Android 12 起系统丢弃「穿过不受信任覆盖层」的触摸，判定依据是所有覆盖层
+    **叠加后的组合不透明度**（`1 - Π(1 - alpha)`，上限 0.8）；`FLAG_NOT_TOUCHABLE` 不豁免，
+    它判定的恰是穿透行为。任务期间常驻三层全屏覆盖层（边缘光效 / 虚拟光标 / 页面标记）
+    此前只设了 `FLAG_NOT_TOUCHABLE`，窗口 `alpha` 仍是 1.0，单层就已超阈值
+  - 修复：三层覆盖层窗口 `alpha` 统一压到 0.4，按三层同时在场的预算组合不透明度 ≈ 0.784
+- **边缘光效「设置页预览」与「任务实际效果」不是同一个东西**：`EdgeLightingView` 原按
+  `previewMode` 分两套绘制（预览光晕 160 / 亮线 255，实际 20 / 50），越走越偏；
+  删掉预览分支合并为唯一的 `drawLighting`（整圈彩色渐变边框 + 5 个流动光点），
+  标定所见即任务所得
+- **悬浮任务卡片信息层级重排**：标题单行独占整行，「详情 / 隐藏」下移到状态行右侧；
+  状态行改为「阶段徽章 + 第 N/总 步 · 状态 + 详情 + 隐藏」；完成态整条状态行让位给打勾面板
+- **上次会话遗留件收尾**（恢复整仓可编译）：`ChatProtocols` 的 JSON 取值扩展由
+  `Json` 成员扩展改为 `JsonObject` 顶层扩展；补 `ShellResult` 公共结果类型；
+  `AgentHooks` 补 `PromptLang` 导入；`AgentAccessibilityService` KDoc 里 `execution/*`
+  触发 Kotlin 嵌套块注释（第二个 `/*` 未闭合）导致 Unclosed comment；`ActionExecutor`
+  的 `"$action失败"` 被当成单个标识符改 `${action}失败`
+- **编码模块健壮性批次**：`AgentClient` 断线时 pending RPC 以 `type:"error"` 回包收尾
+  （原先静默丢弃导致 UI 卡加载态）；`AgentProcess` stderr 日志按 1MB 轮转到 `.old`；
+  `CodingAgentBridge` 状态总线去重（250ms 轮询原先每秒 4 次重复写）；
+  早启缓冲 `earlyLines` 改环形语义（满时丢最旧，不再挤掉能力探测回包）
+
+### 优化
+
+- **设置二级页 UI 统一（Material 3 Expressive 收口）**：页头 / 分区间距统一为
+  「页头后 20 / 分区间 16 / 结尾 28」；权限页拍平双层嵌套；新增共享选择芯片
+  `SettingsChoiceChip`（提示词语言与更新渠道统一为「主色 14% 底 + 1.5dp 主色描边」）；
+  对外控制接口改用 `SettingsToggleRow`；权限页行动按钮统一满宽；AI 模型页保存按钮
+  收进 `SettingsPlainCard`
 
 ---
 

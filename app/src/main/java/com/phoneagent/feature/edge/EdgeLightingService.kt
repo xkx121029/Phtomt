@@ -13,7 +13,7 @@ import android.view.WindowManager
  * 跑马光效服务：在 Agent 执行任务时显示全屏边缘光效 Overlay。
  *
  * 使用 TYPE_APPLICATION_OVERLAY 实现系统级覆盖层。
- * 通过 FLAG_NOT_TOUCHABLE 和 FLAG_NOT_FOCUSABLE 确保不影响用户操作。
+ * 通过 FLAG_NOT_TOUCHABLE / FLAG_NOT_FOCUSABLE / 窗口 alpha 0.4 确保不影响用户操作。
  */
 class EdgeLightingService : Service() {
 
@@ -54,16 +54,13 @@ class EdgeLightingService : Service() {
                 val speed = intent.getFloatExtra("speed", 0.3f)
                 val width = intent.getIntExtra("edge_width", 20)
                 updateCalibration(top, bottom, left, right, radius, width, speed)
-                lightingView?.setPreviewMode(true)
                 return START_STICKY
             }
             ACTION_PREVIEW_STOP -> {
                 if (isRunning) {
-                    // 任务运行中的光效不应被设置页收起标定误关，仅退出预览模式
-                    lightingView?.setPreviewMode(false)
+                    // 任务运行中的光效不应被设置页收起标定误关
                     return START_STICKY
                 }
-                lightingView?.setPreviewMode(false)
                 removeOverlay()
                 stopSelf()
                 return START_NOT_STICKY
@@ -90,7 +87,6 @@ class EdgeLightingService : Service() {
                 val speed = intent.getFloatExtra("speed", 0.3f)
                 val width = intent.getIntExtra("edge_width", 20)
                 updateCalibration(top, bottom, left, right, radius, width, speed)
-                lightingView?.setPreviewMode(false)
             }
         }
         return START_STICKY
@@ -121,6 +117,13 @@ class EdgeLightingService : Service() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            // Android 12+ 的「不受信任的触摸」拦截：系统按**所有覆盖层叠加后**的组合不透明度判定，
+            // 组合值超过系统上限（默认 0.8）时，穿过它们的用户触摸会被整条丢弃 —— 点击/滑动全部无响应，
+            // 而 Agent 自己走的无障碍手势不经过这道判定，于是只剩 AI 能操作手机。
+            // 注意 FLAG_NOT_TOUCHABLE 并不能豁免：被判定的正是"触摸是否穿过这层窗口"。
+            // 任务期间最多三层全屏覆盖层同时在场（本光效 + 虚拟光标 + 页面标记），
+            // 每层取 0.4 时组合值 = 1 - 0.6³ ≈ 0.784，仍在阈值之下。
+            alpha = OVERLAY_ALPHA
         }
 
         try {
@@ -167,6 +170,13 @@ class EdgeLightingService : Service() {
         const val ACTION_PREVIEW_START = "com.phoneagent.edge.PREVIEW_START"
         const val ACTION_PREVIEW_STOP = "com.phoneagent.edge.PREVIEW_STOP"
         const val ACTION_UPDATE_CALIBRATION = "com.phoneagent.edge.UPDATE_CALIBRATION"
+
+        /**
+         * 单层窗口不透明度上限：系统按覆盖层的**组合**不透明度判定（1 - Π(1 - alpha)），
+         * 超过 0.8 就会丢弃穿透它们的用户触摸（见 [showOverlay]）。
+         * 任务期间最多三层全屏覆盖层同时在场，取 0.4 → 组合 0.784，低于阈值且留有余量。
+         */
+        private const val OVERLAY_ALPHA = 0.4f
 
         @Volatile
         var instance: EdgeLightingService? = null

@@ -149,7 +149,8 @@ class AgentEngine(
     private val aiClient: AiClient,
     private val appContext: android.content.Context,
     private val shizukuManager: com.phoneagent.device.shell.ShizukuManager? = null,
-    private val adbTransport: com.phoneagent.device.shell.AdbBootstrapTransport? = null,
+    /** 执行通路启动器（原 AdbBootstrapTransport 位置，迁移后由 ShizukuBootstrap 门面承担） */
+    private val adbTransport: com.phoneagent.device.shell.ShizukuBootstrap? = null,
     private val termuxBridge: com.phoneagent.device.shell.TermuxBridge? = null,
     private val documentEngine: com.phoneagent.feature.document.DocumentEngine? = null,
     private val mcpManager: com.phoneagent.feature.mcp.McpManager? = null,
@@ -197,7 +198,7 @@ class AgentEngine(
         appContext, settings, scope, store, uiBridge,
         runTask = { task, plan -> run(task, plan) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
-        router = { task -> routeTask(task) },
+        router = { task, chatOnly -> routeTask(task, chatOnly) },
     )
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
     private val skillCallHistory = com.phoneagent.feature.skill.SkillCallHistory(appContext, scope)
@@ -277,7 +278,15 @@ class AgentEngine(
         intentResolver, appNameResolver, store, uiBridge, contextInjector,
         recordExecMs = { ms -> recordExecMs(ms) },
         observe = { observe() },
+        // 副屏模式：只有本任务真正挂上副屏时动作才走副屏通道
+        virtualDisplay = { if (virtualDisplayActive) virtualDisplay else null },
     )
+    /** 副屏模式代理（仅 Shizuku 通道可用时才有实例，见 [com.phoneagent.device.screen.VirtualDisplayAgent]） */
+    private val virtualDisplay: com.phoneagent.device.screen.VirtualDisplayAgent? by lazy {
+        shizukuManager?.let { com.phoneagent.device.screen.VirtualDisplayAgent(it) }
+    }
+    /** 本任务是否在副屏上运行：`ensure()` 成功才为 true，失败自动降级主屏模式 */
+    private var virtualDisplayActive = false
     /** 决策链路模型配置：主模型识图/视觉端点/思考端点（重构批次 8，见 [com.phoneagent.engine.decision.DecisionConfig]） */
     private val decisionConfig = com.phoneagent.engine.decision.DecisionConfig()
     /** 视觉结果缓存：页面未变时复用上一步视觉产物（阶段 B2，见 [com.phoneagent.engine.decision.VisionResultCache]） */
@@ -548,6 +557,8 @@ class AgentEngine(
         FloatingWindowService.stop(appContext)
         runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
         runCatching { com.phoneagent.overlay.PageMarkOverlayService.hide() }
+        // 副屏随任务生命周期收尾：残留的 overlay_display_devices 会让系统一直挂着一块黑屏
+        scope.launch { releaseVirtualDisplay() }
     }
 
     private fun apiLog(request: String, response: String, latencyMs: Long) =
@@ -567,6 +578,16 @@ class AgentEngine(
 
     /** 提交任务到队列并开始处理（转发 [TaskLifecycle.start]，重构批次 5） */
     fun start(task: String) = lifecycle.start(task)
+
+    /**
+     * 对话页提交（对话模式）：只作答、不执行。
+     *
+     * 与 [start] 的唯一区别是带上了「对话页提交」标记，路由侧据此强制走纯对话直答，
+     * 绝不分流到 Coding / Agent 执行体——对话页里说一句话不该开启任务执行模式
+     * （不设 isRunning、不开悬浮窗 / 跑马灯、不亮边缘光效、不碰无障碍操控）。
+     * 需要实操手机的请求由直答如实说明，并请用户到 Agent 页下达（见 chatSystem）。
+     */
+    fun chatTurn(task: String) = lifecycle.start(task, chatOnly = true)
 
     private fun launchSingleTask(task: String, plan: TaskPlan? = null) = lifecycle.launchSingleTask(task, plan)
 
@@ -910,6 +931,32 @@ class AgentEngine(
             AgentHookRegistry.HookContext(task, lang, step = 0, actionModeKey = activeActionMode.key),
         ).forEach { messages.add(it) }
 
+        // 副屏模式：任务全程在模拟副屏上进行（不抢用户前台）。
+        // 创建失败一律降级为主屏模式继续执行 —— 副屏是增强能力，不能成为任务的前置阻断
+        virtualDisplayActive = prepareVirtualDisplay(settingsVal)
+        if (virtualDisplayActive) {
+            messages.add(
+                ChatMessageDto(
+                    role = "system",
+                    content = listOf(
+                        ContentPart(
+                            type = "text",
+                            text = if (lang == PromptLang.CN) {
+                                "【副屏模式】任务运行在独立副屏（1080x1920）上：你读不到页面元素树，只能看到截图。" +
+                                    "所有触摸动作必须给坐标 —— click/long_click 用 target={method:\"coordinate\",value:\"比例x,比例y\"}（0~1 之间）；" +
+                                    "输入文字前先点击输入框使其获得焦点；启动应用仍用 launch（包名）。"
+                            } else {
+                                "[Virtual display mode] The task runs on a separate virtual display (1080x1920): no element tree is available, only screenshots. " +
+                                    "All touch actions must carry coordinates — click/long_click use target={method:\"coordinate\",value:\"ratioX,ratioY\"} (0..1). " +
+                                    "Tap an input field before typing. Launch apps with launch (package name)."
+                            },
+                        ),
+                    ),
+                ),
+            )
+            log(AgentLog.Level.INFO, "副屏模式已启用：任务在模拟副屏上运行（display=${virtualDisplay?.displayId}）")
+        }
+
         val maxSteps = settingsVal.maxSteps
         var step = 0
         // 无障碍服务在本任务中是否观测到过在线：用于识别"任务中途掉线"（vivo 安全守护清除授权等）。
@@ -947,7 +994,8 @@ class AgentEngine(
             // 而不是继续消耗步数盲跑——那段盲循环每一步都在浪费 Token 与用户耐心。
             if (AgentAccessibilityService.instance != null) {
                 a11ySeenAlive = true
-            } else if (a11ySeenAlive) {
+            } else if (a11ySeenAlive && !virtualDisplayActive) {
+                // 副屏模式不依赖无障碍服务（截图 + input 注入），服务掉线不构成中断条件
                 log(AgentLog.Level.ERROR, "无障碍服务已断开（任务执行中途），暂停任务等待用户处理")
                 pushFloating("无障碍服务已断开", "ERROR")
                 val dropReason = "无障碍服务已断开，AI 读不到页面也无法操作。请到 系统设置→无障碍→已下载的服务 " +
@@ -1012,7 +1060,7 @@ class AgentEngine(
             // 元素树稀疏/为空时无条件截图：这时元素树已经不足以支撑决策，视觉是唯一的信息来源，
             // 不能再被「截图总开关」「视觉总开关」卡住（否则页面在 AI 眼里完全不可见）
             val screenshot = if (settingsVal.attachScreenshot || needExternal3b || treeSparse)
-                tryOrNull("截图失败") { com.phoneagent.device.screen.ScreenCapture.capture() } else null
+                tryOrNull("截图失败") { captureScreenshot() } else null
             if (snapshot.elements.isEmpty()) {
                 // 元素树为空的直接证据：区分"系统没给节点"与"被筛选条件挡掉"
                 log(AgentLog.Level.WARN, "元素树为空：${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}")
@@ -2953,7 +3001,7 @@ class AgentEngine(
         showFloatingInteraction(
             type = "savetemplate",
             title = "保存执行模板",
-            content = "本次任务已成功完成，是否将执行步骤保存为模板，供下次直接复用？",
+            content = "本次任务已完成，是否将步骤保存为模板，供下次复用？",
         )
     }
 
@@ -3014,7 +3062,61 @@ class AgentEngine(
      */
     private suspend fun awaitUserHint(): String = userGate.awaitUserHint()
 
+    /**
+     * 截图：副屏模式读副屏（screencap -d），否则读主屏。
+     * 副屏截图失败（少数 ROM 的 screencap 不支持 -d）时回落主屏截图，
+     * 让决策至少还能看到点什么，而不是彻底失明。
+     */
+    private suspend fun captureScreenshot(): Bitmap? {
+        if (virtualDisplayActive) {
+            virtualDisplay?.screenshot()?.let { bytes ->
+                val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                if (bmp != null) return bmp
+            }
+            log(AgentLog.Level.WARN, "副屏截图不可用，回退主屏截图")
+        }
+        return com.phoneagent.device.screen.ScreenCapture.capture()
+    }
+
+    /**
+     * 准备副屏：开关打开且 Shizuku 可用时创建模拟副屏。
+     * 任何环节失败都返回 false（降级主屏），并在日志里留下可读原因。
+     */
+    private suspend fun prepareVirtualDisplay(settingsVal: AppSettings.Settings): Boolean {
+        if (!settingsVal.virtualDisplayEnabled) return false
+        val vd = virtualDisplay
+        if (vd == null) {
+            log(AgentLog.Level.WARN, "副屏模式需要 Shizuku 通道，当前不可用，已降级主屏模式")
+            return false
+        }
+        return when (val r = vd.ensure()) {
+            is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Ok -> true
+            is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail -> {
+                log(AgentLog.Level.WARN, "副屏创建失败，已降级主屏模式：${r.reason}")
+                false
+            }
+        }
+    }
+
+    /** 释放副屏（任务结束/停止时调用；未启用时无副作用） */
+    private suspend fun releaseVirtualDisplay() {
+        if (!virtualDisplayActive) return
+        virtualDisplayActive = false
+        runCatching { virtualDisplay?.destroy() }
+    }
+
     private suspend fun observe(): ScreenSnapshot {
+        // 副屏模式：副屏上的元素树读不到（无障碍只覆盖主屏活动窗口），观察结果只有「副屏尺寸 + 截图」。
+        // 元素列表留空会命中引擎既有的"元素稀疏 → 自动走视觉"分支，决策因此拿到副屏截图
+        if (virtualDisplayActive) {
+            return ScreenSnapshot(
+                packageName = null,
+                missingAccessibility = false,
+                screenWidth = com.phoneagent.device.screen.VirtualDisplayAgent.WIDTH,
+                screenHeight = com.phoneagent.device.screen.VirtualDisplayAgent.HEIGHT,
+                hasScreenshot = true,
+            )
+        }
         // 无障碍服务可能在任务执行中途被系统回收/关闭，此时读取元素树会抛异常；
         // 观察是每一步的起点，异常必须降级为「空快照」而不是终止任务
         val snapshot = tryOrNull("读取无障碍元素树失败") {
@@ -3093,8 +3195,13 @@ class AgentEngine(
      * - Agent：其余情况走原 runTask 链路，行为不变。
      * 多需求并存时按各词表命中词数取置信度最高者，并在时间线提示其余需求可再下一道指令。
      * 判定唯一走 [TaskKindDetector]，与提示词裁块（[TaskKindDetector.flagsOf]）同源。
+     *
+     * [chatOnly] 为「对话页提交」标记：置位时**不判定词表**、直接给 Chat 决策。
+     * 对话页里发一句话是聊天，不该因为词表没命中（例如只说「你好」）就滑进执行链路。
      */
-    private suspend fun routeTask(task: String): RouteDecision {
+    private suspend fun routeTask(task: String, chatOnly: Boolean = false): RouteDecision {
+        // 对话页提交：只作答、不执行（对话模式不开启任务执行模式）
+        if (chatOnly) return chatRoute(task)
         val settingsVal = settings.settings.first()
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         val termux = termuxBridge?.isAvailable() == true
@@ -3122,16 +3229,19 @@ class AgentEngine(
                     }
                 }
             }
-            chatPure -> RouteDecision.Chat {
-                try {
-                    chatDirectAnswer(task)
-                } finally {
-                    if (chatStopRequested) {
-                        AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = "已停止", done = true))
-                    }
-                }
-            }
+            chatPure -> chatRoute(task)
             else -> RouteDecision.Agent
+        }
+    }
+
+    /** 纯对话决策：主模型直答一步完成；收尾按停止旗标补「已停止」状态 */
+    private fun chatRoute(task: String) = RouteDecision.Chat {
+        try {
+            chatDirectAnswer(task)
+        } finally {
+            if (chatStopRequested) {
+                AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = "已停止", done = true))
+            }
         }
     }
 }
@@ -3152,24 +3262,33 @@ internal fun protocolOf(baseUrl: String, settings: AppSettings.Settings): ApiPro
         ?.let { ApiProtocol.fromId(it.protocol) }
         ?: ApiProtocol.OPENAI
 
+/** 队列项：任务文本 + 是否来自对话页（对话页提交只作答、不进执行体，见 [TaskLifecycle.start]） */
+internal data class PendingTask(val text: String, val chatOnly: Boolean)
+
 internal class PendingTaskQueue {
     private val lock = Any()
     private val _items = MutableStateFlow<List<String>>(emptyList())
 
+    /** 与 [_items] 一一对应的「对话页提交」标记：与队列内容在同一把锁内增删，下标始终对齐 */
+    private val chatOnlyFlags = ArrayList<Boolean>()
+
     /** 队列快照（供界面展示，只读） */
     val items: StateFlow<List<String>> get() = _items.asStateFlow()
 
-    /** 追加一个待执行任务 */
-    fun enqueue(task: String) {
-        synchronized(lock) { _items.value = _items.value + task }
+    /** 追加一个待执行任务；[chatOnly] 语义见 [TaskLifecycle.start] */
+    fun enqueue(task: String, chatOnly: Boolean = false) {
+        synchronized(lock) {
+            _items.value = _items.value + task
+            chatOnlyFlags += chatOnly
+        }
     }
 
-    /** 取出队首任务；队列为空返回 null */
-    fun poll(): String? = synchronized(lock) {
+    /** 取出队首任务（连同其队列标记）；队列为空返回 null */
+    fun poll(): PendingTask? = synchronized(lock) {
         val cur = _items.value
         if (cur.isEmpty()) null else {
             _items.value = cur.drop(1)
-            cur.first()
+            PendingTask(cur.first(), chatOnlyFlags.removeAt(0))
         }
     }
 

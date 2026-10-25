@@ -74,6 +74,9 @@ class PageMarkOverlayService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 fitInsetsTypes = 0
             }
+            // 窗口不透明度压到 0.4：系统按多层覆盖层的组合不透明度判定，超过 0.8 就会丢弃穿透它们的用户触摸，
+            // 任务期间屏幕点不动（AI 的无障碍手势不受影响）。详见 EdgeLightingService.showOverlay。
+            alpha = OVERLAY_ALPHA
         }
         try {
             windowManager?.addView(view, params)
@@ -107,6 +110,9 @@ class PageMarkOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
 
     companion object {
+        /** 窗口不透明度：多层覆盖层按组合不透明度判定（阈值 0.8），三层预算下每层取 0.4（见 showOverlay） */
+        private const val OVERLAY_ALPHA = 0.4f
+
         /** 待绘制的标记：挂载前暂存（服务还没起时先记下），挂载后直接刷到 View */
         @Volatile
         private var pendingMarks: List<PageMemoryHotspot> = emptyList()

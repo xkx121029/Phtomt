@@ -135,12 +135,14 @@ class MainViewModel(
     fun startPlanning(task: String) = engine.startPlanning(task)
 
     /**
-     * 对话页直提（Superagent 融合）：跳过规划流，直接进任务队列由三形态路由分流——
-     * 纯对话 → 主模型直答，回答写入对话区（对话页消费）；编码 → 委托编码 agent；
-     * 操控 → 原链路走 Agent 页。规划流的 Reply 只会落到 Agent 页 say 气泡，
-     * 对话页从这里拿不到回答，因此对话页的输入不走 startPlanning。
+     * 对话页直提（对话模式）：**只作答、不执行**。
+     *
+     * 走引擎的对话入口 [com.phoneagent.engine.AgentEngine.chatTurn]，由路由侧强制纯对话直答：
+     * 在对话页说一句话不该开启任务执行模式（不设 isRunning、不开悬浮窗 / 跑马灯、
+     * 不亮边缘光效、不碰无障碍操控）。需要操控手机的请求由直答如实说明，
+     * 用户到 Agent 页下达即可。回答写入对话区（本页消费）。
      */
-    fun submitChatTurn(task: String) = engine.start(task)
+    fun submitChatTurn(task: String) = engine.chatTurn(task)
 
     fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
     fun approvePlan() = engine.approvePlan()
@@ -230,6 +232,15 @@ class MainViewModel(
 
     /** 刷新 Termux 安装 / 授权状态（不实跑，开销小，进页面时调用） */
     fun refreshTermuxStatus() {
+        // 状态在 Provider 进程内采集：先回显缓存，再异步经 AIDL 拉一次最新值
+        applyTermuxStatus()
+        viewModelScope.launch {
+            termuxBridge.refresh()
+            applyTermuxStatus()
+        }
+    }
+
+    private fun applyTermuxStatus() {
         _termuxStatus.value = TermuxStatus(
             installed = termuxBridge.isInstalled(),
             permissionGranted = termuxBridge.hasRunCommandPermission(),

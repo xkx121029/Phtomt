@@ -101,6 +101,20 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
 
         Spacer(Modifier.height(16.dp))
 
+        SettingsSection(title = "副屏模式", subtitle = "任务在模拟副屏上运行，不抢占当前屏幕", tone = SettingsTone.Cool) {
+            SettingsToggleRow(
+                title = "启用副屏模式",
+                subtitle = "通过 Shizuku 挂一块 1080x1920 模拟副屏，任务的应用、点击、输入与截图全部在副屏上进行，" +
+                    "你可以继续正常使用主屏。限制：读不到无障碍元素树，决策只能依赖视觉；部分厂商系统会禁用模拟辅助显示",
+                value = st.virtualDisplayEnabled,
+            ) { enabled ->
+                st.virtualDisplayEnabled = enabled
+                save()
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         SettingsSection(title = "提示词", subtitle = "提示词语言与系统提示词", tone = SettingsTone.Cool) {
             Column(Modifier.padding(horizontal = 18.dp)) {
                 Text(

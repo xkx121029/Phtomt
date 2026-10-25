@@ -13,7 +13,10 @@ import com.phoneagent.engine.execution.pickPreferredPackage
  * 3. 常见厂商助手包名兜底（小爱/小布/Jovi/小艺/荣耀 YOYO/Google 助理）
  *
  * 探测挑选逻辑抽成纯函数（[pickHandler] / [vendorFallback]）以便 JVM 单测，
- * 与 OpenTarget.kt 的做法一致。
+ * 与 Provider 侧 OpenTarget 的做法一致。
+ *
+ * 说明：无障碍执行通道已迁入 Provider，但 shell 兜底与意图转译（AgentEngine / IntentTranslator）
+ * 仍在本进程探测助手入口，故保留本类。
  */
 class VoiceAssistantDetector(private val context: Context) {
 

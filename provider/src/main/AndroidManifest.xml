@@ -14,6 +14,13 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- 看门狗保活：FGS 常驻把 Provider 进程钉在后台（无障碍服务同进程受益）；
+         specialUse 是无 UI 组件唯一可用的 FGS 类型（targetSdk 34+ 强制声明 subtype）；
+         开机自启在重启后第一时间恢复看门狗（重拉 Shizuku server / 修复无障碍） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- 只允许同签名的主应用绑定 AIDL 服务 -->
     <permission
         android:name="com.phoneagent.permission.BIND_PROVIDER"
@@ -103,6 +110,28 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="com.phoneagent.action.TERMUX_RESULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 看门狗前台服务：进程保活锚点 + 无障碍/Shizuku 掉线自动修复。
+             exported=false（仅本应用与系统拉起）；specialUse 需声明 subtype 供应用市场审核 -->
+        <service
+            android:name=".watchdog.WatchdogService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="keeps accessibility and shizuku channels alive for the agent app" />
+        </service>
+
+        <!-- 开机自启：配置开启时恢复看门狗 -->
+        <receiver
+            android:name=".watchdog.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
     </application>

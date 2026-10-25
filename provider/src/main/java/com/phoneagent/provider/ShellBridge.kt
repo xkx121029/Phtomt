@@ -6,7 +6,10 @@ import com.phoneagent.provider.shell.ShellResult
 import com.phoneagent.provider.shell.ShizukuBootstrap
 import com.phoneagent.provider.shell.ShizukuManager
 import com.phoneagent.provider.shell.TermuxBridge
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import kotlin.coroutines.resume
 
 /**
  * shell 通道 Bridge：IDeviceProvider 中 Shizuku / Termux / 无线 ADB 引导部分的实现载体。
@@ -19,6 +22,9 @@ import org.json.JSONObject
  * 的 onCreate/onDestroy（init 创建并注册 binder 监听，destroy 注销并关闭连接）。
  */
 object ShellBridge {
+
+    /** 权限请求等待上限：与 ShizukuManager 内部的 10s 兜底对齐，留 1s 余量 */
+    private const val REQUEST_PERMISSION_TIMEOUT_MS = 11_000L
 
     private var shizukuManager: ShizukuManager? = null
     private var adbTransport: AdbWirelessTransport? = null
@@ -56,6 +62,28 @@ object ShellBridge {
     fun termuxInstalled(): Boolean = termuxBridge?.isInstalled() ?: false
 
     fun termuxPermissionGranted(): Boolean = termuxBridge?.hasRunCommandPermission() ?: false
+
+    /**
+     * 请求 Shizuku 权限：授权确认页由本 Provider 内的 server 拉起（主应用拿不到该 Activity）。
+     * 已授权直接返回 true；Provider 未初始化返回 false；等待超时按未授权收口，
+     * 避免 Shizuku 无响应时调用方（主应用设置页）永久挂起。
+     */
+    suspend fun shizukuRequestPermission(): Boolean {
+        val manager = shizukuManager
+        // Shizuku binder 未就绪时 requestPermission 会抛 IllegalStateException，
+        // 这里必须收口成 false，异常不能炸穿 Binder 线程；已授权直接返回 true
+        return runCatching {
+            when {
+                manager == null -> false
+                manager.isPermissionGranted() -> true
+                else -> withTimeoutOrNull(REQUEST_PERMISSION_TIMEOUT_MS) {
+                    suspendCancellableCoroutine { cont ->
+                        manager.requestPermission { granted -> if (cont.isActive) cont.resume(granted) }
+                    }
+                } ?: false
+            }
+        }.getOrDefault(false)
+    }
 
     suspend fun execShizuku(command: String): ShellResultParcel =
         mapShizukuResult(shizukuManager?.executeShell(command))

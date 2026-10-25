@@ -51,7 +51,6 @@ class EdgeLightingView @JvmOverloads constructor(
     private var speed = 0.3f
     private var lastTime = 0L
     private var isRunning = false
-    private var previewMode = false
 
     // 标定参数
     private var insetTop = 0f
@@ -87,11 +86,6 @@ class EdgeLightingView @JvmOverloads constructor(
 
     fun setSpeed(s: Float) {
         speed = s.coerceIn(0.05f, 2f)
-    }
-
-    fun setPreviewMode(enabled: Boolean) {
-        previewMode = enabled
-        invalidate()
     }
 
     fun start() {
@@ -140,18 +134,17 @@ class EdgeLightingView @JvmOverloads constructor(
             0f
         }
 
-        if (previewMode) {
-            drawPreviewMode(canvas, rect, radius)
-        } else {
-            drawRunningMode(canvas, rect, radius)
-        }
+        drawLighting(canvas, rect, radius)
     }
 
     /**
-     * 预览模式：绘制完整的彩色渐变边框
-     * 按边+角分段绘制，每段使用独立的 LinearGradient
+     * 唯一的绘制实现：整圈彩色渐变边框 + 沿边框流动的光点。
+     *
+     * 任务运行时和设置页标定预览共用这一份代码——早先拆成 `drawRunningMode` / `drawPreviewMode`
+     * 两个分支，实际是「近乎透明的边框 + 几个光点」，预览却是「明亮完整的彩色边框」，
+     * 于是设置页调出来的样子跟任务里看到的根本不是同一个东西。现在预览即实际。
      */
-    private fun drawPreviewMode(canvas: Canvas, rect: RectF, radius: Float) {
+    private fun drawLighting(canvas: Canvas, rect: RectF, radius: Float) {
         val w = rect.width()
         val h = rect.height()
         val segTop = w - 2 * radius
@@ -184,6 +177,35 @@ class EdgeLightingView @JvmOverloads constructor(
         paint.strokeWidth = coreStrokeWidth * strokeScale
         paint.alpha = 255
         drawSegmentedBorder(canvas, rect, radius, colorAtDist, totalPath)
+
+        // 3. 流动光点：沿边框匀速跑圈，预览与任务运行时是同一套位置/颜色算法
+        val cometCount = 5
+        for (i in 0 until cometCount) {
+            val offset = (progress + i.toFloat() / cometCount) % 1f
+            val distance = offset * totalPath
+            val pos = getPointOnBorder(rect, radius, distance)
+            val colorIndex = (offset * colorCycle.size).toInt() % colorCycle.size
+            val mainColor = colorCycle[colorIndex]
+
+            paint.style = Paint.Style.FILL
+            paint.shader = null
+
+            paint.color = mainColor
+            paint.maskFilter = BlurMaskFilter(14f * strokeScale, BlurMaskFilter.Blur.NORMAL)
+            paint.alpha = 40
+            canvas.drawCircle(pos.x, pos.y, 18f * strokeScale, paint)
+
+            paint.alpha = 100
+            canvas.drawCircle(pos.x, pos.y, 10f * strokeScale, paint)
+
+            paint.maskFilter = null
+            paint.alpha = 255
+            canvas.drawCircle(pos.x, pos.y, 5f * strokeScale, paint)
+
+            paint.style = Paint.Style.STROKE
+        }
+
+        paint.shader = null
     }
 
     /**
@@ -346,69 +368,6 @@ class EdgeLightingView @JvmOverloads constructor(
             Shader.TileMode.CLAMP
         )
         canvas.drawPath(path, paint)
-    }
-
-    /**
-     * 正常运行模式：绘制流动的光点沿边框移动
-     */
-    private fun drawRunningMode(canvas: Canvas, rect: RectF, radius: Float) {
-        val w = rect.width()
-        val h = rect.height()
-        val segTop = w - 2 * radius
-        val segRight = h - 2 * radius
-        val segBottom = w - 2 * radius
-        val segLeft = h - 2 * radius
-        val arcLength = (Math.PI * radius / 2).toFloat()
-        val totalPath = segTop + arcLength + segRight + arcLength + segBottom + arcLength + segLeft + arcLength
-
-        // 背景光晕（低透明度整圈）
-        val colorAtDist: (Float) -> Int = { dist ->
-            val normalized = (dist / totalPath + progress) % 1f
-            val p = if (normalized < 0) normalized + 1f else normalized
-            val index = (p * colorCycle.size).toInt() % colorCycle.size
-            val nextIndex = (index + 1) % colorCycle.size
-            val t = (p * colorCycle.size) % 1f
-            lerpColor(colorCycle[index], colorCycle[nextIndex], t)
-        }
-
-        paint.strokeWidth = glowStrokeWidth * strokeScale * 0.7f
-        paint.alpha = 20
-        paint.maskFilter = BlurMaskFilter(10f * strokeScale, BlurMaskFilter.Blur.NORMAL)
-        drawSegmentedBorder(canvas, rect, radius, colorAtDist, totalPath)
-        paint.maskFilter = null
-
-        paint.strokeWidth = coreStrokeWidth * strokeScale
-        paint.alpha = 50
-        drawSegmentedBorder(canvas, rect, radius, colorAtDist, totalPath)
-
-        // 流动光点
-        val cometCount = 5
-        for (i in 0 until cometCount) {
-            val offset = (progress + i.toFloat() / cometCount) % 1f
-            val distance = offset * totalPath
-            val pos = getPointOnBorder(rect, radius, distance)
-            val colorIndex = (offset * colorCycle.size).toInt() % colorCycle.size
-            val mainColor = colorCycle[colorIndex]
-
-            paint.style = Paint.Style.FILL
-            paint.shader = null
-
-            paint.color = mainColor
-            paint.maskFilter = BlurMaskFilter(14f * strokeScale, BlurMaskFilter.Blur.NORMAL)
-            paint.alpha = 40
-            canvas.drawCircle(pos.x, pos.y, 18f * strokeScale, paint)
-
-            paint.alpha = 100
-            canvas.drawCircle(pos.x, pos.y, 10f * strokeScale, paint)
-
-            paint.maskFilter = null
-            paint.alpha = 255
-            canvas.drawCircle(pos.x, pos.y, 5f * strokeScale, paint)
-
-            paint.style = Paint.Style.STROKE
-        }
-
-        paint.shader = null
     }
 
     /**

@@ -164,13 +164,13 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
-    // Shizuku 客户端库：本地源码模块（third_party/shizuku，vendor 自 RikkaApps/Shizuku-API），
-    // 不再依赖 dev.rikka.shizuku 的 Maven 产物；模块接线见 settings.gradle.kts
-    implementation(project(":shizuku-api"))
-    implementation(project(":shizuku-provider"))
-    // Shizuku server 内嵌：server 类随本 APK 分发，由无线 ADB（shell uid）以
-    // app_process 从 APK 内拉起，设备上无需安装 Shizuku 官方 App
-    implementation(project(":shizuku-server"))
+    // Shizuku 客户端库与内嵌 server 已随 shell 通道迁入 Provider 应用（:provider 模块），
+    // 主应用不再直接引用 rikka.shizuku API，:shizuku-api / :shizuku-provider / :shizuku-server
+    // 三个依赖一并移除（减小 APK 体积）；shell 能力改经 :provider-api 的 AIDL 远程调用
+
+    // 权限 Provider 跨进程契约（IDeviceProvider AIDL + Parcelable）：
+    // 与 :provider 共享同一份定义，序列化两端严格一致
+    implementation(project(":provider-api"))
 
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)
@@ -217,21 +217,42 @@ tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.config
 }
 
 // ---------------------------------------------------------------------------
-// 权限 Provider APK 嵌入：:provider 模块构建出可安装的 APK 后，连同版本文件
-// 复制进主应用 generated assets，首次打开时由主应用引导安装（Operit 式独立
-// Provider 方案）。Provider APK 始终取 debug 变体（release 未接签名配置无法
-// 安装，debug 签名对发布包同样可用）；后续接发布签名时改这里即可。
+// 权限 Provider APK（assets 内静态资产）：Provider 构建产物直接提交在
+// src/{debug,release}/assets/provider/ 下，普通主应用构建【不再】先编译
+// :provider——Provider 变更频率低，避免每次迭代都为它买单。
+// 按变体分目录保证签名一致：debug 主应用 ↔ debug 证书 Provider，release ↔
+// upload 证书；签名不一致会导致 signature 级 BIND_PROVIDER 绑定被拒。
+// Provider 模块有改动后手动执行一次：
+//   .\gradlew.bat :app:syncProviderAssets
 // ---------------------------------------------------------------------------
 val providerBuildDir = project(":provider").layout.buildDirectory
-android.sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/providerAssets"))
 
-val embedProviderApk by tasks.registering(Copy::class) {
+val syncProviderDebug by tasks.registering(Copy::class) {
+    group = "provider"
+    description = "把最新 provider-debug.apk 同步进主应用 debug assets（提交进仓库）"
     dependsOn(":provider:assembleDebug", ":provider:writeProviderVersion")
     from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
     from(providerBuildDir.file("provider/version.txt"))
-    into(layout.buildDirectory.dir("generated/providerAssets/provider"))
+    into(file("src/debug/assets/provider"))
 }
 
-tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.configureEach {
-    dependsOn(embedProviderApk)
+val syncProviderRelease by tasks.registering(Copy::class) {
+    group = "provider"
+    description = "把最新 provider-release.apk 同步进主应用 release assets（提交进仓库）"
+    if (rootProject.file("app/upload-signing.properties").exists()) {
+        dependsOn(":provider:assembleRelease", ":provider:writeProviderVersion")
+        from(providerBuildDir.file("outputs/apk/release/provider-release.apk")) { rename { "provider.apk" } }
+    } else {
+        // 未配置上传密钥时回落 debug 包（本地 release 构建同样用 debug 证书）
+        dependsOn(":provider:assembleDebug", ":provider:writeProviderVersion")
+        from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
+    }
+    from(providerBuildDir.file("provider/version.txt"))
+    into(file("src/release/assets/provider"))
+}
+
+tasks.register("syncProviderAssets") {
+    group = "provider"
+    description = "同步两个变体的 Provider APK 到主应用 assets（Provider 改动后手动执行）"
+    dependsOn(syncProviderDebug, syncProviderRelease)
 }

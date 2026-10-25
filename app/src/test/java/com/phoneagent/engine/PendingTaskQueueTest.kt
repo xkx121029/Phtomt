@@ -24,9 +24,9 @@ class PendingTaskQueueTest {
         queue.enqueue("任务B")
 
         assertEquals(listOf("任务A", "任务B"), queue.items.value)
-        assertEquals("任务A", queue.poll())
+        assertEquals("任务A", queue.poll()?.text)
         assertEquals(listOf("任务B"), queue.items.value)
-        assertEquals("任务B", queue.poll())
+        assertEquals("任务B", queue.poll()?.text)
     }
 
     @Test
@@ -43,7 +43,7 @@ class PendingTaskQueueTest {
         val queue = PendingTaskQueue()
         queue.enqueue("唯一任务")
         assertTrue(queue.isNotEmpty())
-        assertEquals("唯一任务", queue.poll())
+        assertEquals("唯一任务", queue.poll()?.text)
         assertFalse(queue.isNotEmpty())
     }
 
@@ -74,7 +74,7 @@ class PendingTaskQueueTest {
         val polled = mutableListOf<String>()
         while (true) {
             val next = queue.poll() ?: break
-            polled.add(next)
+            polled.add(next.text)
         }
         assertEquals(threads * perThread, polled.size)
         assertEquals(threads * perThread, polled.toSet().size)
@@ -91,11 +91,27 @@ class PendingTaskQueueTest {
         producer.start()
         // 消费者与生产者并发：在队列短暂为空时允许 poll 返回 null（退出条件以「生产者已结束且队列已空」为准）
         while (producer.isAlive || queue.isNotEmpty()) {
-            queue.poll()?.let { consumed.add(it) }
+            queue.poll()?.let { consumed.add(it.text) }
         }
         producer.join()
 
         assertEquals(total, consumed.size)
         assertEquals(total, consumed.toSet().size)
+    }
+
+    @Test
+    fun 对话页标记随队列项一起先进先出() {
+        val queue = PendingTaskQueue()
+        queue.enqueue("你好", chatOnly = true)
+        queue.enqueue("打开微信", chatOnly = false)
+
+        // 标记必须在同一把锁内跟着文本走：取出的第一项是对话页提交，第二项才是普通任务
+        val first = queue.poll()
+        assertEquals("你好", first?.text)
+        assertTrue(first?.chatOnly == true)
+        val second = queue.poll()
+        assertEquals("打开微信", second?.text)
+        assertFalse(second?.chatOnly == true)
+        assertNull(queue.poll())
     }
 }

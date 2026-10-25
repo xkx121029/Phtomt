@@ -99,6 +99,11 @@ class CursorOverlayService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 fitInsetsTypes = 0
             }
+            // 窗口不透明度必须压到 0.4（不是 0.8）：系统判定的是多层覆盖层的**组合**不透明度，
+            // 超过 0.8 就会丢弃穿透它们的用户触摸 —— 任务期间用户点不动屏幕，而 AI 的无障碍手势不受影响，
+            // 看起来就像"只有 AI 能操作"。任务期间最多三层全屏覆盖层同时在场，0.4 时组合≈0.784。
+            // 详见 EdgeLightingService.showOverlay。
+            alpha = OVERLAY_ALPHA
         }
         try {
             windowManager?.addView(view, params)
@@ -126,6 +131,9 @@ class CursorOverlayService : Service() {
 
     companion object {
         private const val ACTION_HIDE = "com.phoneagent.cursor.HIDE"
+
+        /** 窗口不透明度：多层覆盖层按组合不透明度判定（阈值 0.8），三层预算下每层取 0.4（见 showOverlay） */
+        private const val OVERLAY_ALPHA = 0.4f
 
         @Volatile
         var instance: CursorOverlayService? = null

@@ -1,23 +1,20 @@
 package com.phoneagent.device.a11y
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.GestureDescription
-import android.graphics.Path
-import android.graphics.Rect
-import android.os.Bundle
-import android.view.accessibility.AccessibilityNodeInfo
-import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.provider.A11ySelector
+import com.phoneagent.provider.ActionResult
+import com.phoneagent.provider.IDeviceProvider
+import com.phoneagent.overlay.CursorOverlayService
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.resume
+import kotlinx.coroutines.runBlocking
 
 /**
  * 活节点定位线索。
  *
  * 元素树里的 [UiElement] 只是"值快照"，手里没有无障碍节点句柄；要直接对控件 performAction，
- * 只能拿这些线索到**当前活节点树**上重新找一次。字段按 viewId → 文字 → 位置 逐级降级。
+ * 只能拿这些线索交给 Provider，由它在**当前活节点树**上重新找一次。字段按 viewId → 文字 → 位置 逐级降级。
  */
 data class NodeSelector(
     /** 控件 view id 资源名；匹配按后缀，兼容 "com.x:id/btn" 与 "btn" 两种写法 */
@@ -38,6 +35,14 @@ data class NodeSelector(
         if (parts.isEmpty()) centerHint?.let { parts += "位置=(${it.first},${it.second})" }
         return parts.joinToString(" ").ifEmpty { "坐标" }
     }
+
+    /** 转成跨进程定位线索（Provider 侧字段同名同义） */
+    internal fun toRemote(): A11ySelector = A11ySelector(
+        viewId = viewId?.takeIf { it.isNotBlank() },
+        label = label?.takeIf { it.isNotBlank() },
+        hintX = centerHint?.first ?: -1,
+        hintY = centerHint?.second ?: -1,
+    )
 }
 
 /**
@@ -47,7 +52,7 @@ data class NodeSelector(
  * （该重新定位）还是**控件本身无响应**（该换意图），而不是笼统报"未生效"。
  */
 data class NodeHit(
-    /** 控件标签：自身文字/描述，没有则由后代文字拼出（与 [DerivedLabel] 同源） */
+    /** 控件标签：自身文字/描述，没有则由后代文字拼出（与 Provider 侧 DerivedLabel 同源） */
     val label: String?,
     val viewId: String?,
     val className: String,
@@ -61,8 +66,12 @@ data class NodeHit(
 }
 
 /**
- * 通过无障碍服务执行具体的屏幕动作。
- * 点击/滑动使用手势，返回键/主页/最近任务使用全局按键，文本输入使用 ACTION_SET_TEXT。
+ * 通过 Provider 的远程无障碍通道执行具体的屏幕动作。
+ *
+ * 公开名称与签名保持与迁移前一致，内部全部改为经 [ProviderManager] 调 IDeviceProvider：
+ * 点击/滑动/节点操作/全局键/输入/启动应用/打开链接/语音助手都映射到 AIDL 同名方法。
+ * 光标绘制仍留在主应用：Provider 在 ActionResult 里回传真实落点中心（画在 Provider 进程里没有意义），
+ * 本类按原实现继续调用 [CursorOverlayService] 的 point/longPress/swipe。
  */
 class ActionExecutor(
     private val service: AgentAccessibilityService,
@@ -76,11 +85,9 @@ class ActionExecutor(
     /** 点击屏幕坐标 */
     suspend fun click(x: Int, y: Int): Result {
         // 让用户看到光标飞向点击点（并行/同步由设置驱动态控制闭环内）
-        com.phoneagent.overlay.CursorOverlayService.point(x, y)
-        return dispatchGesture(GestureDescription.Builder().run {
-            addStroke(GestureDescription.StrokeDescription(Path().apply { moveTo(x.toFloat(), y.toFloat()) }, 0, 60))
-            build()
-        })
+        CursorOverlayService.point(x, y)
+        val result = remote { it.click(x, y) } ?: return unavailable("点击")
+        return result.toResult("已点击", "点击")
     }
 
     /**
@@ -94,120 +101,47 @@ class ActionExecutor(
         // 保证既有调用点的稳定性不变（800ms 足够长，必然触发长按）
         val hold = durationMs ?: LONG_PRESS_MS
         // 光标形态为"按住不放 + 呼吸光环"，保持时长取真实按压时长，两者才对得上
-        com.phoneagent.overlay.CursorOverlayService.longPress(x, y, hold)
-        return dispatchGesture(GestureDescription.Builder().run {
-            addStroke(
-                GestureDescription.StrokeDescription(
-                    Path().apply { moveTo(x.toFloat(), y.toFloat()) },
-                    0,
-                    hold,
-                ),
-            )
-            build()
-        })
+        CursorOverlayService.longPress(x, y, hold)
+        // durationMs <= 0 交给 Provider 用其默认按压时长
+        val result = remote { it.longClick(x, y, hold.toInt()) } ?: return unavailable("长按")
+        return result.toResult("已长按", "长按")
     }
 
     /**
-     * 按控件的定位线索，在**活节点树**上找到它并直接 `performAction(ACTION_CLICK)`。
+     * 按控件的定位线索，让 Provider 在**活节点树**上找到它并直接 `performAction(ACTION_CLICK)`。
      *
      * 相比坐标手势：手势点的是"像素"，控件被弹窗/键盘/系统栏顶动几像素就落到旁边去了；
-     * 节点直点交给系统分发到控件本身，不受坐标漂移影响，也无需等待手势回调。
-     *
-     * 命中的可能是"没有文字的容器"（真正的可点击控件在它祖先上），所以失败时沿父链
-     * **上溯最近的可点击祖先**；仍不行才返回失败，由上层降级为坐标手势。
-     *
-     * 出手前先把光标送到控件上：节点直点没有坐标手势，屏幕上不留任何痕迹，
-     * 不补光标的话用户只看到页面自己变了。同步模式下与手势点击同规矩——等光标到位再点。
+     * 节点直点交给系统分发到控件本身，不受坐标漂移影响。Provider 命中后会把控件中心回传，
+     * 主应用据此补光标——节点直点没有坐标手势，不补光标的话用户只看到页面自己变了。
      */
     suspend fun clickNode(selector: NodeSelector, longClick: Boolean = false, durationMs: Long? = null): Result {
-        val root = service.rootInActiveWindow
-            ?: return Result.Failure("无障碍读不到当前页面节点树")
-        val found = findNode(root, selector)
-            ?: return Result.Failure("活节点树中没有控件(${selector.describe()})")
-        val bounds = Rect()
-        found.getBoundsInScreen(bounds)
-        if (bounds.width() > 0 && bounds.height() > 0) {
-            val nx = bounds.centerX()
-            val ny = bounds.centerY()
+        val hold = durationMs ?: LONG_PRESS_MS
+        val result = remote {
+            it.clickNode(selector.toRemote(), longClick, if (longClick) hold.toInt() else 0)
+        } ?: return unavailable("节点${if (longClick) "长按" else "点击"}")
+        if (result.success && result.x >= 0 && result.y >= 0) {
             if (longClick) {
-                // 光标"按住不放"的时长取上层指定值（无则默认），与坐标长按口径一致
-                com.phoneagent.overlay.CursorOverlayService.longPress(nx, ny, durationMs ?: LONG_PRESS_MS)
+                CursorOverlayService.longPress(result.x, result.y, hold)
             } else {
-                com.phoneagent.overlay.CursorOverlayService.point(nx, ny)
+                CursorOverlayService.point(result.x, result.y)
             }
         }
-        val action = if (longClick) AccessibilityNodeInfo.ACTION_LONG_CLICK else AccessibilityNodeInfo.ACTION_CLICK
-        var node: AccessibilityNodeInfo? = found
-        var hops = 0
-        while (node != null && hops <= MAX_CLICKABLE_ANCESTOR_HOPS) {
-            if (node.performAction(action)) {
-                return Result.Success("已${if (longClick) "长按" else "点击"}控件(${selector.describe()})")
-            }
-            node = node.parent
-            hops++
-        }
-        return Result.Failure("控件(${selector.describe()})不可点击（已上溯 $MAX_CLICKABLE_ANCESTOR_HOPS 层祖先）")
-    }
-
-    /** 在活节点树上按线索找目标控件：viewId → 文字精确 → 文字包含 → 位置兜底，逐级降级 */
-    private fun findNode(root: AccessibilityNodeInfo, selector: NodeSelector): AccessibilityNodeInfo? {
-        val all = collectVisibleNodes(root) ?: return null
-
-        // 逐级降级：只有上一级完全没命中才启用下一级，避免"id 明明在、却被同文字的别的控件抢先"
-        selector.viewId?.takeIf { it.isNotBlank() }?.let { id ->
-            pickBy(all.filter { (it.viewIdResourceName ?: "").endsWith(id, ignoreCase = true) }, selector)?.let { return it }
-        }
-        selector.label?.trim()?.takeIf { it.isNotEmpty() }?.let { label ->
-            pickBy(labelCandidates(all, label, exact = true), selector)?.let { return it }
-            // 容器自身没有文字、标签由后代拼出来的情况，只能按"包含"兜底
-            pickBy(labelCandidates(all, label, exact = false), selector)?.let { return it }
-        }
-        selector.centerHint?.let { hint ->
-            pickBy(NodesAtPoint.of(all, hint.first, hint.second), selector)?.let { return it }
-        }
-        return null
-    }
-
-    /** 活节点树上的可见节点（遍历一次）；读不到节点树返回 null */
-    private fun collectVisibleNodes(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo>? {
-        val all = mutableListOf<AccessibilityNodeInfo>()
-        collectVisible(root, 0, all)
-        return all.ifEmpty { null }
+        return result.toResult(
+            "已${if (longClick) "长按" else "点击"}控件(${selector.describe()})",
+            "节点${if (longClick) "长按" else "点击"}",
+        )
     }
 
     /**
-     * 按标签挑候选：节点的**自身**文字/描述，或**后代文字拼出的派生标签**（[DerivedLabel]）命中即可。
-     *
-     * 派生标签这一层不能少：可点击容器常常没有自己的文字（微信聊天列表行就是这样，标签挂在
-     * 不可点击的子控件上），元素树里 AI 看到的标签正是拼出来的那串。只比节点自身文字，
-     * 这类目标在活节点树上永远匹配不到，「节点直点」这一级就静默失效，退化成按坐标猜。
-     */
-    private fun labelCandidates(
-        all: List<AccessibilityNodeInfo>,
-        label: String,
-        exact: Boolean,
-    ): List<AccessibilityNodeInfo> = all.filter { node ->
-        val texts = textsOf(node) + listOfNotNull(DerivedLabel.of(node))
-        texts.any { if (exact) it.equals(label, ignoreCase = true) else it.contains(label, ignoreCase = true) }
-    }
-
-    private fun textsOf(node: AccessibilityNodeInfo): List<String> =
-        listOfNotNull(node.text?.toString(), node.contentDescription?.toString()).filter { it.isNotBlank() }
-
-    /**
-     * 目标控件**此刻**的中心点：把定位线索重新落到活节点树上，取命中节点自身的中心。
+     * 目标控件**此刻**的中心点：把定位线索重新落到 Provider 的活节点树上，取命中节点自身的中心。
      *
      * 供上层在手势点击前取最新落点——AI 思考的数秒里页面可能已滚动/被顶动，
      * 快照坐标早已偏离；活节点位置才是"现在它到底在哪"。
-     * 命中的是内层图标也无妨：其中心必然落在承接点击的祖先容器内。
      */
     fun liveCenter(selector: NodeSelector): Pair<Int, Int>? {
-        val root = service.rootInActiveWindow ?: return null
-        val node = findNode(root, selector) ?: return null
-        val rect = Rect()
-        node.getBoundsInScreen(rect)
-        if (rect.width() <= 0 || rect.height() <= 0) return null
-        return rect.centerX() to rect.centerY()
+        val center = blocking(LIVE_QUERY_TIMEOUT_MS) { it.liveCenter(selector.toRemote()) } ?: return null
+        if (center.size < 2 || center[0] < 0 || center[1] < 0) return null
+        return center[0] to center[1]
     }
 
     /**
@@ -215,66 +149,15 @@ class ActionExecutor(
      *
      * 只读探测，不派发任何动作；读不到节点树时返回 null（调用方按"无法审计"处理）。
      */
-    fun hitTest(x: Int, y: Int): NodeHit? {
-        val root = service.rootInActiveWindow ?: return null
-        val all = collectVisibleNodes(root) ?: return null
-        val node = pickBy(NodesAtPoint.of(all, x, y), NodeSelector(centerHint = x to y)) ?: return null
-        return NodeHit(
-            label = textsOf(node).firstOrNull() ?: DerivedLabel.of(node),
-            viewId = node.viewIdResourceName?.substringAfterLast('/'),
-            className = node.className?.toString() ?: "Unknown",
-            clickable = node.isClickable,
-        )
-    }
-
-    private fun collectVisible(node: AccessibilityNodeInfo, depth: Int, out: MutableList<AccessibilityNodeInfo>) {
-        if (depth > MAX_NODE_DEPTH || out.size >= MAX_COLLECT_NODES) return
-        if (node.isVisibleToUser) out += node
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { collectVisible(it, depth + 1, out) }
-        }
-    }
-
-    /**
-     * 候选取舍：可点击的优先（那才是能按的），其次面积最小的优先（越具体越贴近视觉位置），
-     * 最后取离快照位置最近的（同一 viewId / 同一段文字会出现在列表的每一行上）。
-     */
-    private fun pickBy(candidates: List<AccessibilityNodeInfo>, selector: NodeSelector): AccessibilityNodeInfo? {
-        if (candidates.isEmpty()) return null
-        val hint = selector.centerHint
-        val rect = Rect()
-        return candidates.minWithOrNull(
-            compareBy(
-                { if (it.isClickable) 0 else 1 },
-                { node -> node.getBoundsInScreen(rect); rect.width() * rect.height() },
-                { node ->
-                    if (hint == null) {
-                        0
-                    } else {
-                        node.getBoundsInScreen(rect)
-                        val dx = rect.centerX() - hint.first
-                        val dy = rect.centerY() - hint.second
-                        dx * dx + dy * dy
-                    }
-                },
-            ),
-        )
-    }
+    fun hitTest(x: Int, y: Int): NodeHit? =
+        SnapshotJsonCodec.decodeNodeHit(blocking(LIVE_QUERY_TIMEOUT_MS) { it.hitTest(x, y) })
 
     /** 滑动 */
     suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result {
         // 光标沿轨迹推进，时长与手势一致，轨迹才和手指同步
-        com.phoneagent.overlay.CursorOverlayService.swipe(x1, y1, x2, y2, durationMs)
-        return dispatchGesture(GestureDescription.Builder().run {
-            addStroke(
-                GestureDescription.StrokeDescription(
-                    Path().apply { moveTo(x1.toFloat(), y1.toFloat()); lineTo(x2.toFloat(), y2.toFloat()) },
-                    0,
-                    durationMs,
-                ),
-            )
-            build()
-        })
+        CursorOverlayService.swipe(x1, y1, x2, y2, durationMs)
+        val result = remote { it.swipe(x1, y1, x2, y2, durationMs.toInt()) } ?: return unavailable("滑动")
+        return result.toResult("已滑动", "滑动")
     }
 
     /** 方向滑动（补齐屏幕中心点） */
@@ -282,7 +165,7 @@ class ActionExecutor(
 
     /** 滚动（在元素范围内纵向滑动） */
     suspend fun scroll(elem: UiElement?, direction: String): Result {
-        val metrics = service.resources.displayMetrics
+        val metrics = service.applicationContext.resources.displayMetrics
         val x1 = elem?.centerX ?: metrics.widthPixels / 2
         val y1 = elem?.centerY ?: metrics.heightPixels / 2
         // ±600px 的终点可能越出屏幕边界，越界手势会被系统拒绝：钳制在屏内
@@ -301,403 +184,155 @@ class ActionExecutor(
      * 比坐标滑动精确：坐标滑动是从屏幕中心盲划，碰到横向轮播、悬浮按钮、非滚动区域时要么划不动、
      * 要么划错容器；直接对容器下发滚动动作，完全不受坐标与手势落点影响。
      *
-     * 这条路径没有手势，但**不能因此没有光标**：AI 表达滚动时并不给坐标（`swipe` 只说方向，
-     * `scroll_to` 只说"要找什么控件"），而"滚动查找"走的正是这里。不补一段轨迹，
-     * 用户看到的就是"列表自己跳了一下"，看不出 AI 在动手机。
-     * 轨迹按容器 bounds 现场推导——AI 不给坐标，几何就由本机自己补。
+     * 这条路径没有手势，但**不能因此没有光标**：Provider 回传容器中心，主应用据此补一段
+     * "滚了一下"的示意轨迹（Provider 只给中心，上下留边由本机按屏高比例推导）。
      *
      * @param direction up=往下翻看后面的内容；down=往上翻回前面的内容
      */
     suspend fun scrollContainer(direction: String): Result {
-        val root = service.rootInActiveWindow ?: return Result.Failure("无障碍读不到当前页面节点树")
-        val container = findScrollable(root) ?: return Result.Failure("当前页面没有可滚动容器")
-        val action = if (direction == "down") {
-            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-        } else {
-            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-        }
-        if (!container.performAction(action)) return Result.Failure("容器不接受滚动动作")
-        // 滚动是内容动、手指不动，这次没有手势可跟——轨迹只是"滚了一下"的可视回执，
-        // 容器自己的滚动动画与本轨迹同时在跑，看起来是一回事
-        val rect = Rect()
-        container.getBoundsInScreen(rect)
-        if (rect.width() > 0 && rect.height() > 0) {
+        val result = remote { it.scrollContainer(direction) } ?: return unavailable("滚动")
+        if (result.success && result.x >= 0 && result.y >= 0) {
+            val h = service.applicationContext.resources.displayMetrics.heightPixels
             // 上下各留一段边距：容器边缘常有固定头部或悬浮按钮，那里本来就不跟着滚
-            val inset = (rect.height() * TRACE_INSET_RATIO).toInt()
-            val top = rect.top + inset
-            val bottom = rect.bottom - inset
-            val cx = rect.centerX()
+            val half = (h * CONTAINER_TRACE_HALF_RATIO).toInt().coerceAtLeast(1)
+            val top = (result.y - half).coerceIn(0, h - 1)
+            val bottom = (result.y + half).coerceIn(0, h - 1)
             // up（往下翻看后面的内容）= 手指自下而上带；down 反之
             val fromY = if (direction == "down") top else bottom
             val toY = if (direction == "down") bottom else top
-            com.phoneagent.overlay.CursorOverlayService.swipe(cx, fromY, cx, toY, CONTAINER_TRACE_MS)
+            if (fromY != toY) CursorOverlayService.swipe(result.x, fromY, result.x, toY, CONTAINER_TRACE_MS)
         }
-        return Result.Success("已在可滚动容器内滚动")
-    }
-
-    /** 找页面里最像"主内容区"的可滚动容器：可见且可滚动，取面积最大的那个 */
-    private fun findScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val all = mutableListOf<AccessibilityNodeInfo>()
-        collectVisible(root, 0, all)
-        val rect = Rect()
-        return all.filter { it.isScrollable }.maxByOrNull {
-            it.getBoundsInScreen(rect)
-            rect.width() * rect.height()
-        }
+        return result.toResult("已在可滚动容器内滚动", "滚动")
     }
 
     /** 全局按键 */
     fun globalAction(action: Int): Result {
-        return if (service.performGlobalAction(action)) {
-            Result.Success()
-        } else {
-            Result.Failure("全局按键执行失败")
-        }
+        val ok = blocking(GLOBAL_TIMEOUT_MS) { it.globalAction(action) } ?: return unavailable("全局按键")
+        return if (ok) Result.Success("已执行全局按键") else Result.Failure("全局按键执行失败")
     }
 
     fun back() = globalAction(AccessibilityService.GLOBAL_ACTION_BACK)
     fun home() = globalAction(AccessibilityService.GLOBAL_ACTION_HOME)
     fun recents() = globalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
 
-    /** 启动应用（多种策略兜底，确保兼容不同 Android 版本） */
+    /** 启动应用（Provider 内按 LAUNCHER activity 精确拉起，失败原因中文回传） */
     fun launchApp(packageName: String): Result {
-        return try {
-            val pm = service.applicationContext.packageManager
-            // 策略1：精确查找 LAUNCHER activity
-            val query = pm.queryIntentActivities(
-                android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                    addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-                    setPackage(packageName)
-                },
-                0,
-            )
-            if (query.isNotEmpty()) {
-                val ri = query[0]
-                val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
-                    .setClassName(ri.activityInfo.packageName, ri.activityInfo.name)
-                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                service.applicationContext.startActivity(intent)
-                return Result.Success("已启动 $packageName（activity=${ri.activityInfo.name}）")
-            }
-            // 无 LAUNCHER 入口时直接诚实失败：发 MAIN+LAUNCHER 广播并不会启动 Activity，
-            // 无论应用是否存在 sendBroadcast 都"成功"，会让 AI 误以为已打开而不再换方案
-            return Result.Failure("无法启动：未找到该应用的可启动入口（LAUNCHER Activity）")
-        } catch (e: Exception) {
-            Result.Failure("启动应用失败：${e.message} (pkg=$packageName)")
-        }
+        val result = blocking(APP_TIMEOUT_MS) { it.launchApp(packageName) } ?: return unavailable("启动应用")
+        return result.toResult("已启动应用 $packageName", "启动应用")
     }
 
     /**
      * 唤起系统语音助手（assistant 意图的执行出口）。
-     *
-     * 多入口依次唤醒 + 拉起后验证：部分设备上后台 startActivity 会被**静默拦截**
-     * （不抛异常但窗口根本不出现），所以每个入口拉起后都确认助手窗口真的到了前台，
-     * 没到就换下一个入口（语音指令入口 → 默认助理入口 → 厂商助手兜底）。
-     * 唤醒成功后尽力传话；全部入口都失败才返回 Failure。
+     * 多入口依次唤醒 + 拉起后验证全部在 Provider 内完成，主应用只收成功/失败回执。
      */
     suspend fun launchAssistant(text: String?): Result {
-        val targets = VoiceAssistantDetector(service.applicationContext).probeAll()
-        if (targets.isEmpty()) {
-            return Result.Failure("本机未找到系统语音助手（已尝试语音指令、默认助理与常见厂商助手）；请确认设备已启用语音助手，或改用其他方式完成")
-        }
-        var lastReason = "未知原因"
-        for (target in targets) {
-            if (wakeAssistant(target)) {
-                return Result.Success(passToAssistant(text))
-            }
-            lastReason = "「${target.via.label}」入口（${target.packageName ?: "系统默认"}）拉起后未见助手窗口"
-        }
-        return Result.Failure(
-            "无法唤醒语音助手：已尝试 ${targets.size} 个入口，最后失败原因——$lastReason。" +
-                "可在系统设置里把默认语音助手设为可用的助手应用后重试，或改用其他方式完成任务",
-        )
+        val result = remote(ASSISTANT_TIMEOUT_MS) { it.launchAssistant(text) }
+            ?: return unavailable("唤醒语音助手")
+        return result.toResult("已唤醒语音助手", "唤醒语音助手")
     }
 
     /** 供引擎在外部方式（如 shell 兜底）拉起助手后单独调用传话；返回中文结果说明 */
-    suspend fun handoffToAssistant(text: String?): String = passToAssistant(text)
+    suspend fun handoffToAssistant(text: String?): String =
+        ProviderManager.call(service.applicationContext, HANDOFF_TIMEOUT_MS) { it.handoffToAssistant(text) }
+            ?: "无障碍通道不可用，未能向语音助手传话"
 
-    /** 按包名轮询确认语音助手窗口已出现；pkg 未知时恒为 true（尽力而为）。供 shell 兜底路径复用 */
-    suspend fun assistantVisible(pkg: String?, timeoutMs: Long = ASSISTANT_WAKE_TIMEOUT_MS): Boolean =
-        assistantWindowVisible(pkg, timeoutMs)
-
-    /** 拉起单个助手入口并验证窗口真的出现；返回 false 表示这条路不通（没抛异常但窗口没来） */
-    private suspend fun wakeAssistant(target: VoiceAssistantDetector.Target): Boolean {
-        val ctx = service.applicationContext
-        val pm = ctx.packageManager
-        val intent = when (target.via) {
-            VoiceAssistantDetector.Via.VOICE_COMMAND ->
-                android.content.Intent(android.content.Intent.ACTION_VOICE_COMMAND)
-            VoiceAssistantDetector.Via.ASSIST ->
-                android.content.Intent(android.content.Intent.ACTION_ASSIST)
-            VoiceAssistantDetector.Via.VENDOR ->
-                pm.getLaunchIntentForPackage(target.packageName ?: return false)
-        }?.apply {
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            // 系统入口探测到具体包名时钉住，避免被第三方应用抢答（厂商兜底自带包名，无需再钉）
-            if (target.via != VoiceAssistantDetector.Via.VENDOR && !target.packageName.isNullOrBlank()) {
-                setPackage(target.packageName)
-            }
-        } ?: return false
-        return try {
-            ctx.startActivity(intent)
-            assistantWindowVisible(target.packageName, ASSISTANT_WAKE_TIMEOUT_MS)
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    /** 轮询确认助手窗口已出现；pkg 未知时视为成功（尽力而为，与原「仅拉起」语义一致） */
-    private suspend fun assistantWindowVisible(pkg: String?, timeoutMs: Long): Boolean {
+    /**
+     * 按包名轮询确认语音助手窗口已出现；pkg 未知时恒为 true（尽力而为）。
+     *
+     * 跨进程后读不到 Provider 的窗口列表，只能以「当前活动窗口的包名」作为近似判据；
+     * 以悬浮层形态出现的助手可能漏判，此时由上层按"仅拉起"处理。
+     */
+    suspend fun assistantVisible(pkg: String?, timeoutMs: Long = ASSISTANT_WAKE_TIMEOUT_MS): Boolean {
         if (pkg.isNullOrBlank()) return true
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (assistantInWindows(pkg)) return true
+            if (assistantInForeground(pkg)) return true
             delay(ASSISTANT_WAKE_POLL_MS)
         }
-        return assistantInWindows(pkg)
+        return assistantInForeground(pkg)
     }
 
-    /** 助手包名的窗口是否已在无障碍窗口列表/活动窗口里（助手常以悬浮层出现，两个来源都要看） */
-    private fun assistantInWindows(pkg: String): Boolean =
-        windowRoots().any { it?.packageName == pkg }
-
-    /**
-     * 全部无障碍窗口的根节点（活动窗口在前，悬浮层在后）。
-     * 传话与唤醒验证共用：语音助手的输入框/窗口经常不在活动窗口里。
-     */
-    private fun windowRoots(): List<AccessibilityNodeInfo?> = buildList {
-        add(service.rootInActiveWindow)
-        runCatching { service.windows }.getOrNull()?.forEach { w ->
-            runCatching { w.root }.getOrNull()?.let { add(it) }
-        }
-    }
-
-    /**
-     * 传话（尽力而为）：等助手界面出现输入框 → 填入文字 → 找"发送"类控件点击。
-     * 任何一环失败都降级为"仅唤醒"的中文说明，不抛失败。
-     */
-    private suspend fun passToAssistant(text: String?): String {
-        if (text.isNullOrBlank()) return "已唤醒语音助手"
-        // 等待助手界面出现可编辑节点（语音优先的助手界面，输入框可能延迟渲染）；
-        // 跨全部无障碍窗口扫描——助手的输入框常在悬浮层里，不一定在活动窗口
-        var box: AccessibilityNodeInfo? = null
-        for (attempt in 0 until ASSISTANT_PROBE_ROUNDS) {
-            box = windowRoots().firstNotNullOfOrNull { findFirstEditable(it) }
-            if (box != null) break
-            delay(ASSISTANT_PROBE_INTERVAL_MS)
-        }
-        if (box == null || !setText(box, text)) {
-            return "已唤醒语音助手（未能自动传话，请直接对它说话）"
-        }
-        return if (tapSendControl()) {
-            "已唤醒语音助手，并把「$text」转交给了它"
-        } else {
-            "已唤醒语音助手，已填入文字但未找到发送按钮，请在助手界面确认"
-        }
-    }
-
-    /** 在活节点树里找"发送"类可点击控件并点击；找不到返回 false，由调用方降级为"已填入" */
-    private suspend fun tapSendControl(): Boolean {
-        // 词表覆盖文字按钮与图标 description 两种形态；"完成/确定/Go"是部分助手发送键的实际文案
-        val keywords = listOf("发送", "send", "搜索", "提问", "→", "➤", "完成", "确定", "go", "开始")
-        val node = windowRoots().firstNotNullOfOrNull { findSendNode(it, keywords, 0) } ?: return false
-        val r = Rect()
-        node.getBoundsInScreen(r)
-        // 部分助手"发送"控件自身不可点击但祖先容器可点，上溯兜底（层数与 clickNode 同源）
-        var target = node
-        var hops = 0
-        while (!target.isClickable && hops < MAX_CLICKABLE_ANCESTOR_HOPS) {
-            target = target.parent ?: break
-            hops++
-        }
-        return if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            true
-        } else {
-            click(r.centerX(), r.centerY()) is Result.Success
-        }
-    }
-
-    /** 递归找文字/描述命中发送词表且可见的节点（深度上限与活节点遍历同源） */
-    private fun findSendNode(node: AccessibilityNodeInfo?, keywords: List<String>, depth: Int): AccessibilityNodeInfo? {
-        if (node == null || depth > MAX_NODE_DEPTH) return null
-        if (node.isVisibleToUser) {
-            val label = (node.text?.toString() ?: "") + (node.contentDescription?.toString() ?: "")
-            if (keywords.any { label.contains(it, ignoreCase = true) }) return node
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { child ->
-                findSendNode(child, keywords, depth + 1)?.let { return it }
-            }
-        }
-        return null
-    }
+    private suspend fun assistantInForeground(pkg: String): Boolean =
+        service.captureScreenAsync().packageName == pkg
 
     /**
      * 用系统应用打开链接/文件（ACTION_VIEW）——"交给系统软件打开"的统一出口。
+     * 目标归一化（本地文件转 content://、按扩展名补 MIME）与系统应用优选都在 Provider 内完成。
      *
-     * 三类目标都由 [OpenTarget] 归一化后交给系统：
-     * 1. 网址（http/https）→ 系统浏览器；
-     * 2. 本地文件（`/sdcard/x.ppt`、`file://…`）→ 转 `content://` + 按扩展名补 MIME，
-     *    否则文档软件不会被列为候选（详见 [OpenTarget]）；
-     * 3. App 私有 scheme / 系统页 → 原样直发。
-     *
-     * @param pkg 指定用哪个应用打开（已解析的包名）；为空时**优先系统自带应用**，
-     *            没有任何系统应用可处理才交回系统默认/选择器
+     * @param pkg 指定用哪个应用打开（已解析的包名）；为空时**优先系统自带应用**
      */
     fun openUri(uri: String, pkg: String? = null): Result {
         val raw = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("打开目标为空")
-        val data = android.net.Uri.parse(OpenTarget.normalize(raw))
-        val base = android.content.Intent(android.content.Intent.ACTION_VIEW, data).apply {
-            addFlags(
-                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-            OpenTarget.mimeOf(raw)?.let { setDataAndType(data, it) }
-        }
-        val target = pkg?.trim()?.takeIf { it.isNotBlank() } ?: systemHandlerOf(base)
-        return try {
-            service.applicationContext.startActivity(if (target != null) android.content.Intent(base).setPackage(target) else base)
-            Result.Success(if (target != null) "已用 $target 打开 $raw" else "已打开 $raw")
-        } catch (e: Exception) {
-            // 没有任何应用能处理这个链接/文件（如本机没装文档阅读器）——给出可执行的中文原因
-            Result.Failure("没有应用能打开 $raw（${e.javaClass.simpleName}）：本机可能缺少能处理该类型的应用")
-        }
-    }
-
-    /**
-     * 未指定应用时优先挑**系统自带**应用（用户偏好：打开软件优先用系统软件）。
-     * 查不到系统应用（或 Android 11+ 未授予包可见性）返回 null，交回系统的默认应用/选择器。
-     */
-    private fun systemHandlerOf(intent: android.content.Intent): String? {
-        val pm = service.applicationContext.packageManager
-        val hits = runCatching {
-            pm.queryIntentActivities(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-        }.getOrDefault(emptyList())
-        return hits.firstOrNull { ri ->
-            val app = ri.activityInfo?.applicationInfo ?: return@firstOrNull false
-            app.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
-        }?.activityInfo?.packageName
+        val result = blocking(APP_TIMEOUT_MS) {
+            it.openUri(raw, pkg?.trim()?.takeIf { target -> target.isNotBlank() })
+        } ?: return unavailable("打开 $raw")
+        return result.toResult("已打开 $raw", "打开 $raw")
     }
 
     /** 用系统 Intent Action 直达指定设置页（如 Wi-Fi/蓝牙/显示） */
     fun openSettingsAction(action: String): Result {
-        return try {
-            val intent = android.content.Intent(action).apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            service.applicationContext.startActivity(intent)
-            Result.Success("已直达系统设置页")
-        } catch (e: Exception) {
-            Result.Failure("打开设置页失败：${e.message}")
-        }
+        val result = blocking(APP_TIMEOUT_MS) { it.openSettingsAction(action) } ?: return unavailable("打开设置页")
+        return result.toResult("已直达系统设置页", "打开设置页")
     }
 
     /**
      * 向输入框填充文本（整段覆写，ACTION_SET_TEXT）。
      *
-     * 两层策略：
-     * 1. 若元素树中能找到目标坐标/控件处的可编辑节点 → 直接对其填充。
-     * 2. 若无障碍读不到输入框（如 WebView/自绘控件）：先点击坐标聚焦，
-     *    等待聚焦后再查可编辑节点并填充。
+     * 两层策略（Provider 内实现）：能按坐标/控件定位到可编辑节点就直接填充；
+     * 读不到输入框（如 WebView/自绘控件）时先点击坐标聚焦，等聚焦后再填充。
      */
     suspend fun typeText(text: String, target: UiElement?, x: Int? = null, y: Int? = null): Result {
         val cx = x ?: target?.centerX
         val cy = y ?: target?.centerY
-        // 策略1：直接命中元素树中的可编辑节点
-        findEditableNode(target, cx, cy)?.let { node ->
-            if (setText(node, text)) return Result.Success("已向输入框填充文本")
+        // x/y < 0 表示无坐标线索，仅靠元素树定位
+        val result = remote(TYPE_TIMEOUT_MS) { it.typeText(text, cx ?: -1, cy ?: -1) }
+            ?: return unavailable("输入文本")
+        if (result.success && result.x >= 0 && result.y >= 0) {
+            CursorOverlayService.point(result.x, result.y)
         }
-        // 策略2：点击坐标聚焦后填充（弥补元素树读不到输入框的场景）
-        if (cx != null && cy != null) {
-            click(cx, cy)
-            delay(350)
-            val root = service.rootInActiveWindow
-            findFirstEditable(root)?.let { node ->
-                if (setText(node, text)) return Result.Success("已聚焦输入框并填充文本")
-            }
-        }
-        return Result.Failure("未找到可输入文本的输入框")
+        return result.toResult("已向输入框填充文本", "输入文本")
     }
 
-    private fun setText(node: AccessibilityNodeInfo, text: String): Boolean {
-        if (!node.isEditable) return false
-        val bundle = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
-        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, bundle)
-    }
+    // ==================== AIDL 调用与结果映射 ====================
 
-    private fun findEditableNode(target: UiElement?, x: Int?, y: Int?): AccessibilityNodeInfo? {
-        val root = service.rootInActiveWindow ?: return null
-        if (x != null && y != null) {
-            findNodeAt(root, x, y)?.let { return it }
-        }
-        return findFirstEditable(root)
-    }
+    /** 挂起调用：Provider 不可用/超时/断连一律返回 null，由各方法转成中文失败 */
+    private suspend fun remote(
+        timeoutMs: Long = ACTION_TIMEOUT_MS,
+        block: (IDeviceProvider) -> ActionResult,
+    ): ActionResult? = ProviderManager.call(service.applicationContext, timeoutMs) { block(it) }
 
-    private fun findNodeAt(node: AccessibilityNodeInfo, x: Int, y: Int): AccessibilityNodeInfo? {
-        if (node.isEditable) {
-            val r = android.graphics.Rect()
-            node.getBoundsInScreen(r)
-            if (r.contains(x, y)) return node
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { child ->
-                findNodeAt(child, x, y)?.let { return it }
-            }
-        }
-        return null
-    }
+    /** 同步方法（globalAction / launchApp / openUri / liveCenter / hitTest）的阻塞兜底 */
+    private fun <T> blocking(timeoutMs: Long, block: (IDeviceProvider) -> T): T? =
+        runBlocking { ProviderManager.call(service.applicationContext, timeoutMs) { block(it) } }
 
-    private fun findFirstEditable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        if (node == null) return null
-        if (node.isEditable && node.isVisibleToUser) return node
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { child ->
-                findFirstEditable(child)?.let { return it }
-            }
-        }
-        return null
-    }
+    /** provider.ActionResult → 本地 Result（成功描述统一用中文文案，失败原因直接沿用 Provider 的中文 reason） */
+    private fun ActionResult.toResult(description: String, action: String): Result =
+        if (success) Result.Success(description) else Result.Failure(reason.ifBlank { "${action}失败" })
 
-    /** 派发手势并等待结果。
-     *  必须限时：服务被系统回收/授权被清（如 vivo 安全守护）后 dispatchGesture 可能返回 true
-     *  但回调永远不来，协程会在此永久挂起——任务表现为卡在某一步、无失败也无超时（真机 BUG 21）。
-     *  超时即按失败返回，交给上层「连续失败 → 请求介入」链路处理。 */
-    private suspend fun dispatchGesture(gesture: GestureDescription): Result =
-        withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
-            suspendCancellableCoroutine { cont ->
-                // 取消标记：协程取消（任务 stop）后系统回调仍可能触发，
-                // 注册 invokeOnCancellation 把取消意图显式化，回调里双重判活，
-                // 避免取消后回调再走 resume 造成挂起/回调泄漏（2026-08-15 B12）
-                var cancelled = false
-                cont.invokeOnCancellation { cancelled = true }
-                val callback = object : AccessibilityService.GestureResultCallback() {
-                    override fun onCompleted(gestureDescription: GestureDescription?) {
-                        if (!cancelled && cont.isActive) cont.resume(Result.Success())
-                    }
-
-                    override fun onCancelled(gestureDescription: GestureDescription?) {
-                        if (!cancelled && cont.isActive) cont.resume(Result.Failure("手势被取消"))
-                    }
-                }
-                val dispatched = service.dispatchGesture(gesture, callback, null)
-                if (!dispatched) {
-                    if (cont.isActive) cont.resume(Result.Failure("手势派发失败"))
-                }
-            }
-        } ?: Result.Failure("手势执行超时（${GESTURE_TIMEOUT_MS}ms 内无回调，无障碍服务可能已断开）")
+    private fun unavailable(action: String): Result =
+        Result.Failure("${action}失败：Provider 未安装或无障碍通道未连接")
 
     private companion object {
-        /** 上溯可点击祖先的最大层数：再往上就是整卡片/整屏级容器，点它等于点错地方 */
-        const val MAX_CLICKABLE_ANCESTOR_HOPS = 3
+        /** 手势类动作的等待上限：Provider 内手势回执超时 5s，这里留出跨进程往返余量 */
+        const val ACTION_TIMEOUT_MS = 8_000L
 
-        /** 手势派发的回调等待上限：正常手势 400~1500ms 内必有回调，5s 仍无回调即判定服务异常（见 dispatchGesture） */
-        const val GESTURE_TIMEOUT_MS = 5000L
+        /** 输入文本会先点击聚焦并等待 350ms 再找输入框，比单纯点击慢 */
+        const val TYPE_TIMEOUT_MS = 8_000L
 
-        /** 活节点树遍历深度上限，防极深布局拖慢执行 */
-        const val MAX_NODE_DEPTH = 64
+        /** 全局按键回执在毫秒级 */
+        const val GLOBAL_TIMEOUT_MS = 5_000L
 
-        /** 活节点树单次遍历收录的节点数上限，防超长列表把遍历拖成秒级 */
-        const val MAX_COLLECT_NODES = 800
+        /** 启动应用 / 打开链接 / 设置页：startActivity 很快，超时只防 binder 卡死 */
+        const val APP_TIMEOUT_MS = 8_000L
+
+        /** 活节点查询（liveCenter / hitTest）为只读遍历，不需要长时间等待 */
+        const val LIVE_QUERY_TIMEOUT_MS = 4_000L
+
+        /** 语音助手多入口唤醒：Provider 内最多尝试数个入口，每个含 3s 唤醒验证 + 6s 传话 */
+        const val ASSISTANT_TIMEOUT_MS = 30_000L
+
+        /** 单独传话：等待助手出现输入框最多 6s，再找发送键 */
+        const val HANDOFF_TIMEOUT_MS = 15_000L
 
         /** 长按手势的按压时长；光标"按住不放"的动效时长与它同源，改一处即可两处对齐 */
         const val LONG_PRESS_MS = 800L
@@ -705,86 +340,13 @@ class ActionExecutor(
         /** 容器滚动示意轨迹的时长：这条路径没有真实手势可同步，只是一个"滚了一下"的可视回执 */
         const val CONTAINER_TRACE_MS = 300L
 
-        /** 容器滚动示意轨迹在容器上下各留的边距比例，避开固定头部与悬浮按钮 */
-        const val TRACE_INSET_RATIO = 0.22f
-
-        /** 传话等待助手界面出输入框的轮询轮数（10 × 600ms = 6s 内没等到就降级为仅唤醒；
-         *  语音优先的助手界面输入框渲染较慢，2.5s 经常不够） */
-        const val ASSISTANT_PROBE_ROUNDS = 10
-
-        /** 传话轮询间隔（毫秒） */
-        const val ASSISTANT_PROBE_INTERVAL_MS = 600L
+        /** 容器滚动示意轨迹的纵向半径（屏高比例）：Provider 只回传容器中心，几何由本机推导 */
+        const val CONTAINER_TRACE_HALF_RATIO = 0.2f
 
         /** 单个入口拉起后确认助手窗口出现的最长时间（毫秒；厂商助手冷启动较慢，2s 会误判） */
         const val ASSISTANT_WAKE_TIMEOUT_MS = 3000L
 
         /** 唤醒验证的轮询间隔（毫秒） */
         const val ASSISTANT_WAKE_POLL_MS = 250L
-    }
-}
-
-/** "这一屏上压在某个点上的节点"的唯一判定点（位置兜底定位与落点审计共用） */
-internal object NodesAtPoint {
-    fun of(nodes: List<AccessibilityNodeInfo>, x: Int, y: Int): List<AccessibilityNodeInfo> {
-        val rect = Rect()
-        return nodes.filter { node ->
-            node.getBoundsInScreen(rect)
-            rect.contains(x, y)
-        }
-    }
-}
-
-/**
- * 派生标签（容器标签）：可点击容器自身没有文字时，用后代文字拼一个标签
- * （如微信聊天列表行 →「末影箱 / 测试消息 / 昨天」）。
- *
- * 感知层（[AgentAccessibilityService] 收录元素）与执行层（[ActionExecutor] 回到活节点树定位）
- * **共用这一份定义**：两边各写一份的后果很实际——拼接规则稍有出入，元素树里 AI 看得见的标签
- * 在执行层就永远匹配不到，点击只能退化成按坐标猜。
- */
-internal object DerivedLabel {
-
-    /** 最多拼接的后代文字段数 / 总字数 / 递归深度：防止列表容器把整页文字拼成一大串 */
-    const val MAX_PARTS = 3
-    const val MAX_CHARS = 60
-    const val MAX_DEPTH = 3
-    const val SEPARATOR = " / "
-
-    /**
-     * 取容器的派生标签；自身已有文字、或不是可点击/可长按/可编辑的容器则返回 null
-     * （前者标签就是它自己，后者不是点击目标、不需要名字）。
-     *
-     * @param recycleChildren 取完是否回收子节点（API 33+ 框架自动回收）。感知层只取文字、之后
-     *   不再持有节点，传 true 避免 API<33 上的泄漏；执行层要把命中的**节点句柄**交给上层
-     *   performAction，一旦回收就会点到已失效的节点上，故必须传 false。
-     */
-    fun of(node: AccessibilityNodeInfo, recycleChildren: Boolean = false): String? {
-        val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-        if (ownText != null || ownDesc != null) return null
-        if (!node.isClickable && !node.isLongClickable && !node.isEditable) return null
-        val parts = ArrayList<String>(MAX_PARTS)
-        collect(node, 0, parts, recycleChildren)
-        if (parts.isEmpty()) return null
-        val joined = parts.joinToString(SEPARATOR)
-        return if (joined.length > MAX_CHARS) joined.take(MAX_CHARS) else joined
-    }
-
-    private fun collect(
-        node: AccessibilityNodeInfo,
-        depth: Int,
-        out: MutableList<String>,
-        recycleChildren: Boolean,
-    ) {
-        if (depth >= MAX_DEPTH || out.size >= MAX_PARTS) return
-        for (i in 0 until node.childCount) {
-            if (out.size >= MAX_PARTS) return
-            val child = node.getChild(i) ?: continue
-            val text = child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-            text?.let { out += it }
-            collect(child, depth + 1, out, recycleChildren)
-            if (recycleChildren && android.os.Build.VERSION.SDK_INT < 33) child.recycle()
-        }
     }
 }
