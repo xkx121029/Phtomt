@@ -32,10 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import com.phoneagent.device.shell.AdbPhase
-import com.phoneagent.device.shell.TermuxBridge
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.StatusPill
@@ -178,17 +175,8 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
 internal fun TermuxChannelCard(vm: MainViewModel) {
     val context = LocalContext.current
     val status by vm.termuxStatus.collectAsState()
-    var msg by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) { vm.refreshTermuxStatus() }
-
-    // RUN_COMMAND 权限由 Termux 声明，需运行时授予；Termux 未安装时无法授予
-    val permLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        msg = if (granted) "已授予 Termux 执行权限，建议再点一次「实跑探测」确认" else "授权被拒绝，Termux 通道不可用"
-        vm.refreshTermuxStatus()
-    }
 
     AppCard {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -211,7 +199,7 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = { msg = null; vm.refreshTermuxStatus() }) { Text("重新检测") }
+                TextButton(onClick = { vm.refreshTermuxStatus() }) { Text("重新检测") }
             }
 
             AdbStepRow(1, "已安装 Termux", if (status.installed) AdbStepStatus.DONE else AdbStepStatus.PENDING)
@@ -234,17 +222,29 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                     Text("前往 F-Droid 安装 Termux")
                 }
 
-                !status.permissionGranted -> Button(
-                    onClick = { msg = null; permLauncher.launch(TermuxBridge.RUN_COMMAND_PERMISSION) },
-                    modifier = Modifier.fillMaxWidth(),
+                // 权限属于服务组件（真正调 Termux 的是它）。主应用已不声明 RUN_COMMAND，
+                // 在主应用里弹运行时授权框只会被判为拒绝——这正是「点授予执行权限没反应、
+                // 永远停在未授权」的原因。改为借内置 Shizuku 的 shell uid 直接 pm grant
+                !status.permissionGranted -> Column(
+                    Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Icon(AppIcons.Key, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("授予执行权限")
+                    Button(
+                        onClick = { vm.grantTermuxPermission() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(AppIcons.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("授予执行权限")
+                    }
+                    TextButton(
+                        onClick = { openProviderPermissions(context) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("改为在系统设置中授权") }
                 }
 
                 else -> Button(
-                    onClick = { msg = null; vm.probeTermux() },
+                    onClick = { vm.probeTermux() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(AppIcons.Play, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -268,15 +268,22 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (msg != null) {
-                StatusPill(
-                    msg!!,
-                    if (msg!!.contains("已授予")) Success else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
         }
     }
+}
+
+/**
+ * 打开服务组件的应用详情页。
+ *
+ * RUN_COMMAND 是 Termux 声明的运行时权限，授权对象必须是**服务组件**（真正调 Termux 的进程），
+ * 主应用自己的权限页对它无效；部分 ROM 不在设置里单列该权限，这条路是 Shizuku 不可用时的兜底。
+ */
+private fun openProviderPermissions(context: android.content.Context) {
+    val intent = android.content.Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.parse("package:${com.phoneagent.device.provider.ProviderManager.PACKAGE}"),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
 }
 
 // ============ 分步引导的共用小组件（原技能页 WirelessAdbTab 迁入） ============

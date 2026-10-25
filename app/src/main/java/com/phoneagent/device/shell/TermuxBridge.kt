@@ -36,6 +36,8 @@ class TermuxBridge(private val context: Context) {
         private const val STATUS_TIMEOUT_MS = 3_000L
         /** 执行/探测的 binder 往返余量：Provider 内已有自己的超时兜底 */
         private const val BINDER_MARGIN_MS = 5_000L
+        /** 授权经 Shizuku 执行 pm grant，冷启动 binder 往返较慢，留足余量 */
+        private const val GRANT_TIMEOUT_MS = 8_000L
     }
 
     private val appContext = context.applicationContext
@@ -91,6 +93,22 @@ class TermuxBridge(private val context: Context) {
         if (command.isBlank()) return ShellResult.Failure("命令为空")
         val result = ProviderManager.call(appContext, timeoutMs = timeoutMs + BINDER_MARGIN_MS) {
             it.execTermux(command, timeoutMs.toInt())
+        }.toShellResult()
+        refresh()
+        return result
+    }
+
+    /**
+     * 静默授予**服务组件**的 Termux 执行权限（RUN_COMMAND）。
+     *
+     * 权限必须落在 Provider 上：真正向 Termux 的 RunCommandService 发命令的是它。
+     * 主应用已不再声明该权限（见 app/AndroidManifest.xml），在主应用里弹运行时授权框
+     * 只会被判为拒绝——这就是「点授予执行权限没反应、永远停在未授权」的成因。
+     * 唯一无需用户翻系统设置的办法：借内置 Shizuku 的 shell uid 执行 pm grant。
+     */
+    suspend fun grantRunCommandPermission(): ShellResult {
+        val result = ProviderManager.call(appContext, timeoutMs = GRANT_TIMEOUT_MS) { remote ->
+            remote.execShizuku("pm grant ${ProviderManager.PACKAGE} $RUN_COMMAND_PERMISSION")
         }.toShellResult()
         refresh()
         return result
