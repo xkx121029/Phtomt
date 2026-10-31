@@ -1,3 +1,5 @@
+import java.io.File
+import java.security.MessageDigest
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -17,6 +19,8 @@ detekt {
     buildUponDefaultConfig = true
     parallel = true
     baseline = file("$rootDir/config/detekt/baseline.xml")
+    // 项目级规则微调（Compose 命名、文件末尾换行等），见文件内注释
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
@@ -31,17 +35,46 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     }
 }
 
-// 版本号文件：读取在配置阶段（只读），自增推迟到构建执行阶段，
-// 避免 IDE 同步/任意 Gradle 配置触发版本号无意义上涨
-val versionPropsFile = rootProject.file("version.properties")
+// ---------------------------------------------------------------------------
+// detekt 基线只减不增：baseline 是存量问题的豁免名单，随修复变小是正常的，
+// 但靠往基线里追加条目来"绕过闸门"会让闸门彻底失效（新问题一律能被一键豁免）。
+// 记录条目数在 config/detekt/baseline-count.txt：超出即失败；变小则回写更小的值，
+// 防止之后又悄悄长回去。
+// ---------------------------------------------------------------------------
+val detektBaselineFile = rootProject.file("config/detekt/baseline.xml")
+val detektBaselineCountFile = rootProject.file("config/detekt/baseline-count.txt")
 
-fun loadBuildNumber(): Int {
-    if (!versionPropsFile.exists()) return 1
-    val props = Properties().apply {
-        runCatching { versionPropsFile.inputStream().use { load(it) } }
+fun countDetektBaselineEntries(file: File): Int =
+    if (!file.exists()) 0 else file.readLines().count { it.trimStart().startsWith("<ID>") }
+
+val checkDetektBaseline by tasks.registering {
+    group = "verification"
+    description = "校验 detekt 基线只减不增（新增豁免条目会让构建失败）"
+    doLast {
+        val actual = countDetektBaselineEntries(detektBaselineFile)
+        val recorded = detektBaselineCountFile.takeIf { it.exists() }
+            ?.readText()?.trim()?.toIntOrNull()
+            ?: throw GradleException(
+                "缺少 ${detektBaselineCountFile.relativeTo(rootProject.projectDir)}；" +
+                    "请写入当前基线条目数（$actual）。",
+            )
+        if (actual > recorded) {
+            throw GradleException(
+                "detekt 基线条目从 $recorded 增加到 $actual：请修复新问题而不是把新条目写进基线。",
+            )
+        }
+        // 修掉存量问题后条目只会变少：把新的下限写回，避免下次重新长回去
+        if (actual < recorded) detektBaselineCountFile.writeText("$actual\n")
     }
-    return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 1
 }
+
+tasks.named("check") { dependsOn(checkDetektBaseline) }
+
+/**
+ * 版本号由根 build.gradle.kts 统一计算（每次产出 APK 的构建自增一次并回写
+ * version.properties），这里只读取同一个值，保证 :app 与 :provider 版本一致。
+ */
+val buildNumber: Int = rootProject.extra["buildNumber"] as Int
 
 android {
     namespace = "com.phoneagent"
@@ -65,8 +98,8 @@ android {
         applicationId = "com.phoneagent"
         minSdk = 26
         targetSdk = 36
-        versionCode = loadBuildNumber()
-        versionName = "0.2.${loadBuildNumber()}"
+        versionCode = buildNumber
+        versionName = "0.2.$buildNumber"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -184,18 +217,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
-// 版本号自增仅在真正执行构建（assemble/bundle）时发生，避免配置阶段误增
-tasks.matching { it.name.startsWith("assemble") || it.name.startsWith("bundle") }
-    .configureEach {
-        doFirst {
-            val props = Properties().apply {
-                if (versionPropsFile.exists()) runCatching { versionPropsFile.inputStream().use { load(it) } }
-            }
-            val next = (props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0) + 1
-            props.setProperty("BUILD_NUMBER", next.toString())
-            runCatching { versionPropsFile.outputStream().use { props.store(it, "Auto-incremented by Gradle") } }
-        }
-    }
+// 版本号已由根 build.gradle.kts 统一计算并回写 version.properties
 
 // ---------------------------------------------------------------------------
 // 编码 agent host 同步：从 happy_ACA 上游仓库单向同步 agent-core 源码到
@@ -234,6 +256,13 @@ val syncProviderDebug by tasks.registering(Copy::class) {
     from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
     from(providerBuildDir.file("provider/version.txt"))
     into(file("src/debug/assets/provider"))
+    // 同步完成即记下"这份 APK 对应哪份源码"（见下方 verifyProviderAssets）
+    doLast {
+        providerStampFiles.getValue("debug").apply {
+            parentFile.mkdirs()
+            writeText(providerSourceDigest())
+        }
+    }
 }
 
 val syncProviderRelease by tasks.registering(Copy::class) {
@@ -249,6 +278,13 @@ val syncProviderRelease by tasks.registering(Copy::class) {
     }
     from(providerBuildDir.file("provider/version.txt"))
     into(file("src/release/assets/provider"))
+    // 同 debug：记下这份 APK 对应的源码指纹
+    doLast {
+        providerStampFiles.getValue("release").apply {
+            parentFile.mkdirs()
+            writeText(providerSourceDigest())
+        }
+    }
 }
 
 tasks.register("syncProviderAssets") {
@@ -256,3 +292,80 @@ tasks.register("syncProviderAssets") {
     description = "同步两个变体的 Provider APK 到主应用 assets（Provider 改动后手动执行）"
     dependsOn(syncProviderDebug, syncProviderRelease)
 }
+
+// ---------------------------------------------------------------------------
+// Provider 资产新鲜度闸门
+//
+// assets/provider 里的 APK 是"构建产物直接提交进仓库"，因此它天然会落后于源码：
+// 改了 provider / provider-api 却忘了同步时，主应用会静默地把旧 Provider 打进包，
+// 表现为"线上行为还是老版本"，且没有任何编译期信号。
+//
+// 这里用源码指纹兜住：syncProviderAssets 时把当前指纹写进 config/provider-assets/<variant>.sha256，
+// 每次合并 assets 前比对一次，不一致即构建失败并提示执行同步。
+// 指纹覆盖 provider / provider-api 的 src/main 与各自的构建脚本（依赖/开关变化同样需要重新打包）。
+// ---------------------------------------------------------------------------
+val providerStampDir = rootProject.file("config/provider-assets")
+
+fun providerSourceDigest(): String {
+    // 注意：不要写 java.security.MessageDigest——脚本里的 `java` 指向 JavaPluginExtension，会解析失败
+    val digest = MessageDigest.getInstance("SHA-256")
+    val sourceRoots = listOf(
+        project(":provider").file("src/main"),
+        project(":provider-api").file("src/main"),
+    )
+    sourceRoots.flatMap { root ->
+        root.walkTopDown().filter { it.isFile && !it.name.endsWith(".apk") }
+            .sortedBy { it.absolutePath }.toList()
+    }.forEach { f ->
+        digest.update(f.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
+        digest.update(f.readBytes())
+    }
+    listOf("provider", "provider-api").forEach { name ->
+        project(":$name").file("build.gradle.kts").takeIf { it.exists() }?.let {
+            digest.update(it.relativeTo(rootProject.projectDir).invariantSeparatorsPath.toByteArray())
+            digest.update(it.readBytes())
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+// 两个变体的资产各自独立（签名/版本不同），因此各存一份指纹
+val providerStampFiles = mapOf(
+    "debug" to providerStampDir.resolve("debug.sha256"),
+    "release" to providerStampDir.resolve("release.sha256"),
+)
+
+val verifyProviderAssets by tasks.registering {
+    group = "provider"
+    description = "校验 assets 内 Provider APK 是否与当前 Provider 源码一致（不一致请执行 :app:syncProviderAssets）"
+    doLast {
+        val expected = providerSourceDigest()
+        val problems = providerStampFiles.mapNotNull { (variant, stampFile) ->
+            when {
+                !stampFile.exists() -> "$variant：缺少源码指纹记录（从未同步过 Provider 资产）"
+                stampFile.readText().trim() != expected -> "$variant：Provider 源码已变更，assets 内的 APK 是旧版本"
+                else -> null
+            }
+        }
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("Provider 资产与源码不一致：")
+                    problems.forEach { appendLine("  - $it") }
+                    appendLine("当前源码指纹：$expected")
+                    appendLine("请执行 .\\gradlew.bat :app:syncProviderAssets 重新打包后再构建。")
+                },
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach { dependsOn(verifyProviderAssets) }
+tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { dependsOn(verifyProviderAssets) }
+// 同一次调用里先同步再校验：syncProviderAssets 会刷新指纹，不应被校验当成旧版本
+verifyProviderAssets.configure { mustRunAfter(syncProviderDebug, syncProviderRelease) }
+
+// 同一次调用里跑 syncProviderAssets + assemble* 时，assets 合并必须等同步落盘完成
+// （两个任务共同读写 src/{debug,release}/assets/provider，Gradle 无法自动推断顺序）
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(syncProviderDebug) }
+tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncProviderRelease) }

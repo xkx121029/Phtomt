@@ -7,15 +7,9 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
-// 与主应用共享版本号（只读，不自增：自增闸门只挂在主应用的 assemble/bundle 上）
-val versionPropsFile = rootProject.file("version.properties")
-fun loadBuildNumber(): Int {
-    if (!versionPropsFile.exists()) return 1
-    val props = Properties().apply {
-        runCatching { versionPropsFile.inputStream().use { load(it) } }
-    }
-    return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 1
-}
+// 与主应用共享版本号：由根 build.gradle.kts 统一计算（自增闸门只在 root，
+// 这里只读），避免并行构建时两边各自计算导致版本错位
+val buildNumber: Int = rootProject.extra["buildNumber"] as Int
 
 /**
  * 发布签名：与主应用共用同一份 upload-signing.properties / keystore。
@@ -44,8 +38,8 @@ android {
         applicationId = "com.phoneagent.provider"
         minSdk = 26
         targetSdk = 36
-        versionCode = loadBuildNumber()
-        versionName = "0.2.${loadBuildNumber()}"
+        versionCode = buildNumber
+        versionName = "0.2.$buildNumber"
     }
 
     // 无 UI：无 launcher activity，只有无障碍服务 + AIDL 服务 + 授权页
