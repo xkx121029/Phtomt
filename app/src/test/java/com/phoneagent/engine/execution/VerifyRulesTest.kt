@@ -95,6 +95,27 @@ class VerifyRulesTest {
         assertFalse(VerifyRules.shouldRetry(ActionType.SCROLL, "页面未变化", attempt = 1, active = false))
     }
 
+    // ---- 步后等待 ----
+
+    @Test
+    fun stepSettleMs_不碰界面的动作_只等极短时间() {
+        // 说一句 / 记一条 / 查设备信息都不会让页面变化，陪着空等 400ms 是纯浪费
+        assertEquals(VerifyRules.NO_SETTLE_MS, VerifyRules.stepSettleMs(ActionType.SAY))
+        assertEquals(VerifyRules.NO_SETTLE_MS, VerifyRules.stepSettleMs(ActionType.REMEMBER))
+        assertEquals(VerifyRules.NO_SETTLE_MS, VerifyRules.stepSettleMs(ActionType.DEVICE_QUERY))
+    }
+
+    @Test
+    fun stepSettleMs_改变界面的动作_保留完整等待() {
+        // 动画/转场没走完就去观察，会读到"画了一半"的页面，宁可多等一会
+        assertEquals(VerifyRules.SETTLE_MS, VerifyRules.stepSettleMs(ActionType.CLICK))
+        assertEquals(VerifyRules.SETTLE_MS, VerifyRules.stepSettleMs(ActionType.SWIPE))
+        assertEquals(VerifyRules.SETTLE_MS, VerifyRules.stepSettleMs(ActionType.TYPE_TEXT))
+        assertEquals(VerifyRules.SETTLE_MS, VerifyRules.stepSettleMs(ActionType.SHELL))
+        // 未知类型保守处理：走完整等待，不能因为不认识就抢跑
+        assertEquals(VerifyRules.SETTLE_MS, VerifyRules.stepSettleMs("unknown_type"))
+    }
+
     // ---- 留档 ----
 
     @Test

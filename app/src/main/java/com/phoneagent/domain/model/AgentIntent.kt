@@ -196,6 +196,18 @@ object IntentType {
         SHELL, A11Y,
     )
 
+    /**
+     * 不经过转译层的意图：内置浏览器（browse_*）由 BrowserChannel 的 DOM 脚本直接落地，
+     * see（看图追问）由引擎就地调用视觉模型——它们都不产生 [ActionType]，因此不会出现在转译层分派表里。
+     *
+     * 与 [ALL] 一样是「唯一登记点」：新增意图若既没接转译表、也没登记在这里，
+     * IntentTypeCoverageTest 会直接红（否则 AI 输出该意图后只会得到一句"未知意图"）。
+     */
+    val VIA_OTHER_CHANNELS: Set<String> = setOf(
+        SEE,
+        BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
+    )
+
     /** 意图 → 内部执行动作（AgentAction.type）的映射。供转译层把意图变成命令。 */
     val TO_ACTION: Map<String, String> = mapOf(
         OPEN_APP to ActionType.LAUNCH,

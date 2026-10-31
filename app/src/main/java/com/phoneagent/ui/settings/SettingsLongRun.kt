@@ -28,12 +28,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.data.store.ExecutionStrategy
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /** 长线任务设置页：执行策略热切换 + 断点续传 + 任务模板库 */
@@ -195,4 +194,4 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
  * 是为了让"读取语言环境"这件事离开组合过程，而不是靠 suppress 把提示压掉。
  */
 private fun timestampText(updatedAt: Long): String =
-    SimpleDateFormat("MM-dd HH:mm", Locale.ROOT).format(Date(updatedAt))
+    TimeFormats.format("MM-dd HH:mm", updatedAt, Locale.ROOT)

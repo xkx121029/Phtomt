@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.ui.components.StatusPill
@@ -42,16 +43,6 @@ import com.phoneagent.ui.theme.EaseInOut
 import com.phoneagent.ui.theme.appBorder
 import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.delay
-
-/** 相位中文名（与列表项 LiveStatus 保持一致，不另造词） */
-private fun stripPhaseWord(phase: AgentState.Phase): String = when (phase) {
-    AgentState.Phase.IDLE -> "空闲"
-    AgentState.Phase.OBSERVING -> "观察页面"
-    AgentState.Phase.THINKING -> "思考下一步"
-    AgentState.Phase.ACTING -> "执行动作"
-    AgentState.Phase.DONE -> "已完成"
-    AgentState.Phase.ERROR -> "出错"
-}
 
 /** 用时人话化：小于 1 分钟只报秒，超过则报分秒 */
 private fun formatElapsed(ms: Long): String {
@@ -83,6 +74,9 @@ internal fun AgentRunStatusStrip(
     previewVisible: Boolean,
     onTogglePreview: () -> Unit,
     onStop: () -> Unit,
+    /** 暂停 / 继续（运行中才有意义）：引擎在下一轮开头挂起，不消耗步数 */
+    paused: Boolean = false,
+    onTogglePause: () -> Unit = {},
     /** 规划期：状态条照常出现，出口按钮变成「取消规划」 */
     planning: Boolean = false,
     modifier: Modifier = Modifier,
@@ -141,9 +135,12 @@ internal fun AgentRunStatusStrip(
     val stepText = when {
         // 规划期执行还没开始：agent 的相位仍是 IDLE，直接照搬会显示"空闲"，改为明说在规划
         planning -> "AI 正在规划任务"
-        total > 0 -> "第 ${state.stepCount.coerceAtMost(total)} 步 / 共 $total 步 · ${stripPhaseWord(state.phase)}"
-        else -> stripPhaseWord(state.phase)
+        total > 0 -> "第 ${state.stepCount.coerceAtMost(total)} 步 / 共 $total 步 · ${agentPhaseWord(state.phase)}"
+        else -> agentPhaseWord(state.phase)
     }
+    // 重试提示优先于常规步数文案：任务并没有「停住」，只是在等下一次重试，
+    // 不说明的话用户看到的就是进度条不动
+    val headline = state.retryingNote.takeIf { it.isNotBlank() } ?: stepText
 
     Column(
         modifier = modifier
@@ -174,9 +171,12 @@ internal fun AgentRunStatusStrip(
             )
             Spacer(Modifier.width(AppSpacing.Sm))
             Text(
-                text = stepText,
+                text = headline,
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = if (needsUser) colors.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                // 重试说明可能较长（含原因与秒数），允许折行，避免被省略号截断成看不懂的半句
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (state.isRunning) {
@@ -208,6 +208,15 @@ internal fun AgentRunStatusStrip(
                 onClick = onTogglePreview,
             )
             Spacer(Modifier.weight(1f))
+            // 暂停只在真正执行中给：规划期没有"步"可暂停，暂停按钮会变成假按钮
+            if (state.isRunning && !planning) {
+                AgentActionButton(
+                    text = if (paused) "继续" else "暂停",
+                    icon = if (paused) AppIcons.Play else AppIcons.Pause,
+                    tone = if (paused) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
+                    onClick = onTogglePause,
+                )
+            }
             if (state.isRunning || planning) {
                 AgentActionButton(
                     text = if (planning && !state.isRunning) "取消规划" else "停止",

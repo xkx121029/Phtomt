@@ -3,12 +3,15 @@ package com.phoneagent.ui.voice
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -104,6 +107,15 @@ private fun VoiceDemoScreen() {
 
     var draft by remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf("帮我看看今天的日程") }
+    // 页内提示：原来用系统 Toast 的几条短反馈（取消 / 太短 / 启动失败 / 未识别）
+    // 统一改成本页底部一行文字，2.2 秒后自动消失，不弹系统胶囊也不遮输入区。
+    var hint by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(hint) {
+        if (hint != null) {
+            kotlinx.coroutines.delay(2_200)
+            hint = null
+        }
+    }
 
     Column(
         Modifier
@@ -146,6 +158,22 @@ private fun VoiceDemoScreen() {
             }
         }
 
+        // 提示行：只在有短反馈时出现，自下而上淡入
+        AnimatedVisibility(
+            visible = hint != null,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut(),
+        ) {
+            Text(
+                text = hint.orEmpty(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = AppSpacing.Lg),
+            )
+        }
+
         // 底部语音输入栏
         VoiceRecordField(
             engine = engine,
@@ -161,14 +189,14 @@ private fun VoiceDemoScreen() {
             onStartRecord = { recording = true },
             onCancelRecord = {
                 recording = false
-                Toast.makeText(context, "已取消发送", Toast.LENGTH_SHORT).show()
+                hint = "已取消发送"
             },
             onRecordTooShort = {
                 recording = false
-                Toast.makeText(context, "说话时间太短", Toast.LENGTH_SHORT).show()
+                hint = "说话时间太短"
             },
             onStartFailed = {
-                Toast.makeText(context, "无法启动录音，请检查权限与系统识别服务", Toast.LENGTH_SHORT).show()
+                hint = "无法启动录音，请检查权限与系统识别服务"
                 if (!permissionGranted) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             },
             onFinishRecord = { _, _, mode ->
@@ -184,10 +212,8 @@ private fun VoiceDemoScreen() {
                     when {
                         !text.isNullOrEmpty() && mode == VoiceFinishMode.SEND -> messages.add(text)
                         !text.isNullOrEmpty() -> draft = (draft + " " + text).trim()
-                        !err.isNullOrEmpty() ->
-                            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
-                        else ->
-                            Toast.makeText(context, "未识别到内容", Toast.LENGTH_SHORT).show()
+                        !err.isNullOrEmpty() -> hint = err
+                        else -> hint = "未识别到内容"
                     }
                 }
             },

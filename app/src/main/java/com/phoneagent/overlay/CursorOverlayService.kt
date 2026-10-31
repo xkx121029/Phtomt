@@ -3,12 +3,9 @@ package com.phoneagent.overlay
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.PixelFormat
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.view.Gravity
 import android.view.WindowManager
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -75,36 +72,10 @@ class CursorOverlayService : Service() {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             alpha = 0f
         }
-        params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
-            // 不拦截触摸（否则会吃掉用户与 AI 的点击）、不抢焦点、允许绘制到系统栏区域
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 关键（与 FloatingWindowService 同源修复）：API 30+ 默认 fitInsetsTypes = systemBars()，
-            // 会把窗口内容整体推到状态栏下方——窗口内画在 (x,y) 的像素实际落在物理屏 y+状态栏高度 处，
-            // 表现为「光标总比 AI 的真实点击点偏低一截（≈状态栏高度）」。清空后坐标系才从物理屏顶开始，
-            // 与 dispatchGesture / Shizuku input tap 使用的物理屏幕坐标一致。
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                fitInsetsTypes = 0
-            }
-            // 窗口不透明度必须压到 0.4（不是 0.8）：系统判定的是多层覆盖层的**组合**不透明度，
-            // 超过 0.8 就会丢弃穿透它们的用户触摸 —— 任务期间用户点不动屏幕，而 AI 的无障碍手势不受影响，
-            // 看起来就像"只有 AI 能操作"。任务期间最多三层全屏覆盖层同时在场，0.4 时组合≈0.784。
-            // 详见 EdgeLightingService.showOverlay。
-            alpha = OVERLAY_ALPHA
-        }
+        // 不拦截触摸（否则会吃掉用户与 AI 的点击）、不抢焦点；
+        // API 30+ 清空 fitInsetsTypes，窗口坐标才与 dispatchGesture / input tap 的物理坐标一致；
+        // 不透明度按「三层组合不超过 0.8」口径统一由 OverlayWindowSpec 给出
+        params = com.phoneagent.core.window.OverlayWindowSpec.passiveFullScreen(clearInsets = true)
         try {
             windowManager?.addView(view, params)
             pointerView = view
@@ -131,9 +102,6 @@ class CursorOverlayService : Service() {
 
     companion object {
         private const val ACTION_HIDE = "com.phoneagent.cursor.HIDE"
-
-        /** 窗口不透明度：多层覆盖层按组合不透明度判定（阈值 0.8），三层预算下每层取 0.4（见 showOverlay） */
-        private const val OVERLAY_ALPHA = 0.4f
 
         @Volatile
         var instance: CursorOverlayService? = null

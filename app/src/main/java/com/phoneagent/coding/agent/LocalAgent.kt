@@ -71,6 +71,9 @@ object LocalAgent {
             val node = runtime.nodePath
             val entry = RuntimeBootstrap.ensureHost(context)
             val workspace = Workspace.resolve(context)
+            // 状态目录跟随工作区：会话/记忆/用量/模型档位都落在 <工作区>/.happyac/agent，
+            // 切工作区就是切一整套记忆，互不串线（以前固定 filesDir/state，所有工作区共用一份）。
+            val stateDir = File(workspace, CodingWorkspaces.META_DIR).resolve("agent").apply { mkdirs() }
             // node 自带的 Mozilla CA 包缺部分国内网关的根证书（实测 model.iepose.cn 的
             // Xcc Trust 直接 fetch failed），而主 app 的 OkHttp 走 Android 系统信任库。
             // 把系统 CA 拼成 PEM 传给 NODE_EXTRA_CA_CERTS（在自带根上"叠加"，不替换），
@@ -100,7 +103,7 @@ object LocalAgent {
                 // host-stdio.js 读的是 HAPPY_ACA_STATE_DIR；以前这里写成
                 // HAPPY_ACA_SESSIONS_DIR，变量名对不上 → 本地模式其实什么都没落盘
                 // （会话、记忆、用量账本、模型档位重启全丢）。
-                "HAPPY_ACA_STATE_DIR" to File(context.filesDir, "state").apply { mkdirs() }.absolutePath,
+                "HAPPY_ACA_STATE_DIR" to stateDir.absolutePath,
                 // Skill 包根目录（agent-host/skills.js 的 SkillManager）：不传的话
                 // skillsRoot 为 null，list_skills/activate_skill 等元工具根本不会
                 // 注册，编码模式的 skill 机制等于不存在。目录空也没关系——

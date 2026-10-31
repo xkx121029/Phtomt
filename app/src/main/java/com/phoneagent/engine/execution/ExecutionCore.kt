@@ -1,6 +1,9 @@
 package com.phoneagent.engine.execution
 
+import android.content.Intent
+import android.net.Uri
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.log.runCatchingLogged
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.device.a11y.ActionExecutor
 import com.phoneagent.device.a11y.AgentAccessibilityService
@@ -57,7 +60,17 @@ internal class ExecutionCore(
      * 由引擎按「本任务是否启用副屏」动态提供，未启用时返回 null（走原无障碍链路）。
      */
     private val virtualDisplay: () -> com.phoneagent.device.screen.VirtualDisplayAgent? = { null },
+    /**
+     * 任务级设置快照：引擎在主循环入口已读过一次设置，这里直接复用，
+     * 避免每条 shell 命令都挂起读一次 DataStore（单任务上百步时是纯浪费的 IPC）。
+     * 返回 null（引擎尚未读到）时回退到实时读取，行为与改造前一致。
+     */
+    private val settingsSnapshot: () -> AppSettings.Settings? = { null },
 ) {
+    /** 当前执行通道偏好：优先用任务级快照，读不到再回退 DataStore */
+    private suspend fun channelPreference(): String =
+        settingsSnapshot()?.executionChannel ?: settings.settings.first().executionChannel
+
     suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         val execT0 = System.nanoTime()
         // 规范化文档动作词汇
@@ -84,6 +97,14 @@ internal class ExecutionCore(
             }
         }
 
+        // 等待类动作不依赖任何通道：放在无障碍判定之前，避免"服务临时断开"把纯等待也判失败
+        if (type == ActionType.WAIT) {
+            delay(action.timeoutMs ?: action.durationMs ?: 1000)
+            return com.phoneagent.engine.execution.VerifyResult(true, "等待完成", "", "").also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
+        }
+
         // 副屏模式：动作下发到模拟副屏（input -d / am --display），不经过无障碍服务。
         // 副屏读不到元素树，定位只可能来自动作自带的坐标（含 by=coordinate 比例坐标）
         virtualDisplay()?.takeIf { it.isReady }?.let { vd ->
@@ -99,14 +120,22 @@ internal class ExecutionCore(
             }
         }
 
-        val service = AgentAccessibilityService.instance ?: return com.phoneagent.engine.execution.VerifyResult(false, "无障碍服务不可用", "", "").also {
+        // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
+        val resolved = intentResolver.resolveAction(action, snapshot)
+
+        // 无障碍不可用时不再直接判死：先尝试切换可用通道（shell / 本应用直启）。
+        // 这与转译层的通道判据是两件事——转译只决定"首选用哪条"，执行失败后仍要能换通道兜底。
+        val service = AgentAccessibilityService.instance
+        if (service == null) {
+            val out = channelFallback(action, type, snapshot, resolved.x, resolved.y, "无障碍服务不可用")
+                ?: com.phoneagent.engine.execution.VerifyResult(
+                    false, "无障碍服务不可用", "", "", notDelivered = true,
+                )
             recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            return out
         }
         val executor = ActionExecutor(service)
         val verifier = VerifiedClickExecutor()
-
-        // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
-        val resolved = intentResolver.resolveAction(action, snapshot)
         var target = resolved.element
         var x = resolved.x
         var y = resolved.y
@@ -117,7 +146,8 @@ internal class ExecutionCore(
         // 指纹基准同步换成"此刻"的页面：否则这期间页面自身的漂移会被当成"动作已生效"。
         var baseline = snapshot
         if (type in RELOCATE_BEFORE_TYPES) {
-            val fresh = runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
+            val fresh = runCatchingLogged(TAG, "执行前重定位截图") { service.captureScreen() }
+                .getOrNull()?.takeUnless { it.missingAccessibility }
             if (fresh != null && fresh.packageName == snapshot.packageName) {
                 baseline = fresh
                 intentResolver.relocateOnLatest(resolved.element, snapshot, fresh)?.let { relocated ->
@@ -183,20 +213,15 @@ internal class ExecutionCore(
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
+                // 启动应用必须"真的到前台"才算成功：部分 ROM 会静默拦截 Provider 的后台 startActivity
+                // （不抛异常、窗口根本不出现）。因此按 无障碍 → shell → 本应用直启 逐级切换，
+                // 只有确认不到目标应用前台才如实报失败，避免 AI 反复用同一条失败通道重试。
                 val targetPkg = action.packageName
-                if (targetPkg.isNullOrBlank()) return com.phoneagent.engine.execution.VerifyResult(false, "launch 缺少包名", "", "").also {
-                    recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+                if (targetPkg.isNullOrBlank()) {
+                    com.phoneagent.engine.execution.VerifyResult(false, "launch 缺少包名", "", "", notDelivered = true)
+                } else {
+                    launchAppRobust(service, targetPkg, snapshot)
                 }
-                val launched = executor.launchApp(targetPkg).isSuccess()
-                if (!launched) return com.phoneagent.engine.execution.VerifyResult(false, "启动应用失败: $targetPkg", "", "").also {
-                    recordExecMs((System.nanoTime() - execT0) / 1_000_000)
-                }
-                // launch 动作不依赖包名检测（无障碍服务在某些版本上无法正确报告前台切换），
-                // 只要启动指令发出就视为成功，让 AI 在下一轮观察新页面。
-                // 等待改为自适应：启动后轮询页面，目标应用页面（包名出现或页面指纹变化）一到位立即继续，
-                // 最长仍等 LAUNCH_SETTLE_MS（800ms）——启动快的场景不再干等，慢的保持原行为。
-                awaitLaunched(service, targetPkg, snapshot)
-                com.phoneagent.engine.execution.VerifyResult(true, "已启动应用: $targetPkg", snapshot.packageName ?: "", targetPkg)
             }
             ActionType.LAUNCH_ASSISTANT -> {
                 // 唤起系统语音助手：description 原样透传（AI 能区分"已传话 / 已填入 / 仅拉起"）；
@@ -285,8 +310,14 @@ internal class ExecutionCore(
             )
             else -> com.phoneagent.engine.execution.VerifyResult(false, "未知动作", "", "")
         }
+        // 通道自动切换：只对"没交付"的失败换通道重试；"已交付但未确认"再执行一次就是重复副作用
+        val finalResult = if (!result.success && result.notDelivered && type != ActionType.LAUNCH) {
+            channelFallback(action, type, snapshot, x, y, result.reason) ?: result
+        } else {
+            result
+        }
         recordExecMs((System.nanoTime() - execT0) / 1_000_000)
-        return result
+        return finalResult
     }
 
     /**
@@ -455,7 +486,19 @@ internal class ExecutionCore(
             ?: if (action.aiAuthored) cmd
             else return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
         triggerCursorForShell(resolved)
-        return runRealShell(resolved, action.uri)
+        val real = runRealShell(resolved, action.uri)
+        if (real.success) return real
+        // shell 通道在通道选择之后失效（binder 死亡/ADB 会话断开），或该通道不支持这条系统命令
+        // （例如仅 Termux 可用时 monkey/am 执行不了）→ 自动切到无障碍通道再试一次
+        val viaA11y = executeShellViaAccessibility(cmd)
+        return if (viaA11y.success) {
+            // 通道切换已经产生实际结果：上一步结果改写成无障碍通道的说明，避免 AI 读到旧的失败文案
+            store.lastShellOutput = viaA11y.reason
+            store.pendingShellOutput = viaA11y.reason
+            viaA11y.copy(reason = "shell 通道执行失败（${real.reason}），已自动切换无障碍通道完成：${viaA11y.reason}")
+        } else {
+            real
+        }
     }
 
     /**
@@ -602,7 +645,7 @@ internal class ExecutionCore(
     suspend fun shellChannelAvailable(): Boolean =
         // 通道判据与真实执行共用同一份（ShellRules.pickChannel），避免"这里说可用、那里走不通"
         ShellRules.pickChannel(
-            settings.settings.first().executionChannel,
+            channelPreference(),
             adbTransport?.isConnected() == true,
             shizukuManager?.isAvailable() == true,
             termuxBridge?.isAvailable() == true,
@@ -625,7 +668,7 @@ internal class ExecutionCore(
         resolved: String,
         baseUrl: String? = null,
     ): com.phoneagent.engine.execution.VerifyResult {
-        val preference = settings.settings.first().executionChannel
+        val preference = channelPreference()
         val channel = ShellRules.pickChannel(
             preference,
             adbTransport?.isConnected() == true,
@@ -656,7 +699,7 @@ internal class ExecutionCore(
      * AUTO 顺序：Shizuku binder → ADB 引导会话 → Termux。
      */
     suspend fun execShellViaChannel(cmd: String): ShizukuManager.ShellResult {
-        val preference = settings.settings.first().executionChannel
+        val preference = channelPreference()
         val channel = ShellRules.pickChannel(
             preference,
             adbTransport?.isConnected() == true,
@@ -684,8 +727,8 @@ internal class ExecutionCore(
      * （探测不到包名时视为尽力而为的成功，与「仅拉起」语义一致）。
      */
     private suspend fun shellWakeAssistant(executor: ActionExecutor): Boolean {
-        val probePkg = runCatching {
-            com.phoneagent.device.a11y.VoiceAssistantDetector(appContext).probe()?.packageName
+        val probePkg = runCatchingLogged(TAG, "探测语音助手包名") {
+            com.phoneagent.provider.a11y.VoiceAssistantDetector(appContext).probe()?.packageName
         }.getOrNull()
         // requireWindow：该入口拉起后必须验证到助手窗口才算成功。
         // am start 失败多半是窗口没来但指令本身被接受，沿用尽力而为语义；
@@ -698,7 +741,7 @@ internal class ExecutionCore(
         )
         var anyAccepted = false
         for (attempt in attempts) {
-            val out = runCatching { execShellViaChannel(attempt.cmd) }.getOrNull()
+            val out = runCatchingLogged(TAG, "shell 唤醒助手 ${attempt.cmd}") { execShellViaChannel(attempt.cmd) }.getOrNull()
             val accepted = when (out) {
                 is ShizukuManager.ShellResult.Success ->
                     !out.output.contains("error", ignoreCase = true) &&
@@ -726,7 +769,7 @@ internal class ExecutionCore(
      */
     private suspend fun enterSendIfFillOnly(desc: String): String {
         if (!desc.contains("未找到发送按钮")) return desc
-        val accepted = runCatching { execShellViaChannel("input keyevent 66") }.getOrNull()
+        val accepted = runCatchingLogged(TAG, "回车补发") { execShellViaChannel("input keyevent 66") }.getOrNull()
             .let { it is ShizukuManager.ShellResult.Success }
         return if (accepted) "$desc（已补按回车尝试发送）" else desc
     }
@@ -795,7 +838,7 @@ internal class ExecutionCore(
             "su", "swipe_up" -> coordOp { x, y -> executor.swipe(x, y, x, (y - h * 0.25f).toInt().coerceAtLeast(0), 400) }
             "sd", "swipe_down" -> coordOp { x, y -> executor.swipe(x, y, x, (y + h * 0.25f).toInt().coerceAtMost(h), 400) }
             "sl", "swipe_left" -> coordOp { x, y -> executor.swipe(x, y, (x - w * 0.25f).toInt().coerceAtLeast(0), y, 400) }
-            "sr", "swipe_right" -> coordOp { x, y -> executor.swipe(x, y, (x + w * 0.25f).toInt().coerceAtMost(h), y, 400) }
+            "sr", "swipe_right" -> coordOp { x, y -> executor.swipe(x, y, (x + w * 0.25f).toInt().coerceAtMost(w), y, 400) }
             "sw", "swipe" -> {
                 val c = ShellCommands.coords(args, w, h)
                 if (c == null) fail("Shizuku 不可用，滑动参数无效: $cmd")
@@ -846,25 +889,292 @@ internal class ExecutionCore(
     private fun verticalSwipeStartY(): Int = (ctx.screenHeight() * SWIPE_START_Y_RATIO).toInt()
 
     /**
-     * 启动应用后等待目标页面出现（自适应，最长 [LAUNCH_SETTLE_MS]）。
-     * 复用感知层的 captureScreen 与 PageFingerprint：目标应用包名出现、或页面指纹相对启动前发生变化，
-     * 即视为页面已到位、立即返回；超时仍未变化也照常返回，保持原「启动即成功」的语义不变。
+     * 启动应用的**多通道**执行：无障碍(Provider) → shell(Shizuku/ADB) → 本应用直启。
+     *
+     * 为什么不能只看接口返回值：部分 ROM 会静默拦截 Provider 的后台 startActivity
+     * （不抛异常、窗口根本不出现），接口"成功"但应用没起来。只认返回值的话，AI 会一直
+     * 以为"已打开"而反复用同一条无效通道（真机表现就是"不停用无障碍转译执行"）。
+     * 因此每一级发出启动指令后都验证目标应用是否真的到了前台；某一级失败就换下一级。
+     *
+     * @return true=已确认前台；false=整个观察窗都没见到变化；null=读不到页面，无法确认（按尽力而为放行）
      */
     private suspend fun awaitLaunched(
         service: AgentAccessibilityService,
         targetPkg: String,
         before: ScreenSnapshot,
-    ) {
+    ): Boolean? {
         val beforeFp = PageFingerprint.computeMeaningful(before)
+        var observed = false
         var waited = 0L
         while (waited < LAUNCH_SETTLE_MS) {
             delay(LAUNCH_POLL_MS)
             waited += LAUNCH_POLL_MS
-            val now = runCatching { service.captureScreen() }.getOrNull() ?: continue
+            val now = runCatchingLogged(TAG, "启动后轮询截图") { service.captureScreen() }.getOrNull() ?: continue
             if (now.missingAccessibility) continue
-            if (now.packageName == targetPkg || PageFingerprint.computeMeaningful(now) != beforeFp) return
+            observed = true
+            if (now.packageName == targetPkg || PageFingerprint.computeMeaningful(now) != beforeFp) return true
+        }
+        return if (observed) false else null
+    }
+
+    /**
+     * 启动应用的多通道阶梯（见 [awaitLaunched] 对"静默拦截"的说明）。
+     * 只要某一级确认到前台就立即返回，不再做后面的尝试；三级都确认不到才如实报失败，
+     * 让外层失败链路（重试/请求介入）接管，而不是让 AI 在无效通道上无限重试。
+     */
+    private suspend fun launchAppRobust(
+        service: AgentAccessibilityService,
+        pkg: String,
+        snapshot: ScreenSnapshot,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val attempts = mutableListOf<String>()
+
+        // ① 无障碍 / Provider
+        val a11y = runCatchingLogged(TAG, "无障碍启动应用 $pkg") { ActionExecutor(service).launchApp(pkg) }.getOrNull()
+        when (a11y) {
+            is ActionExecutor.Result.Success -> when (awaitLaunched(service, pkg, snapshot)) {
+                true -> return VerifyResult(true, "已启动应用: $pkg", snapshot.packageName ?: "", pkg)
+                null -> return VerifyResult(true, "已启动应用: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
+                false -> attempts += "无障碍启动指令已发出但目标应用未到前台"
+            }
+            is ActionExecutor.Result.Failure -> attempts += "无障碍启动失败：${a11y.reason}"
+            null -> attempts += "无障碍启动异常"
+        }
+
+        // ② shell：am/monkey 不受后台启动限制，是多数 ROM 上真正能拉起应用的通道
+        if (shellChannelAvailable()) {
+            val r = runCatchingLogged(TAG, "shell 启动应用 $pkg") { execShellViaChannel("monkey -p $pkg 1") }.getOrNull()
+            if (r is ShizukuManager.ShellResult.Success) {
+                when (awaitLaunched(service, pkg, snapshot)) {
+                    true -> return VerifyResult(true, "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg", snapshot.packageName ?: "", pkg)
+                    null -> return VerifyResult(true, "已自动切换 shell 通道启动应用: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
+                    false -> attempts += "shell 启动指令已被接受但目标应用未到前台"
+                }
+            } else {
+                attempts += "shell 启动失败：${(r as? ShizukuManager.ShellResult.Failure)?.reason ?: "通道无响应"}"
+            }
+        } else {
+            attempts += "shell 通道不可用"
+        }
+
+        // ③ 本应用直启：主应用持有悬浮窗权限时不受后台启动限制（最后一道兜底）
+        if (launchLocally(pkg)) {
+            when (awaitLaunched(service, pkg, snapshot)) {
+                true -> return VerifyResult(true, "已自动切换本应用直启打开: $pkg", snapshot.packageName ?: "", pkg)
+                null -> return VerifyResult(true, "已切换本应用直启打开: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
+                false -> attempts += "本应用直启请求已发出但目标应用未到前台"
+            }
+        } else {
+            attempts += "本应用直启：未找到可启动入口"
+        }
+
+        return VerifyResult(
+            false,
+            "启动应用失败: $pkg（${attempts.joinToString("；")}）",
+            "",
+            "",
+            notDelivered = true,
+        )
+    }
+
+    /**
+     * 执行通道自动切换：把一条"没交付"的动作换成另一条通道再执行一次。
+     *
+     * - 设备动作（点/滑/长按/输入/按键/滚动）→ 切到真实 shell（input / keyevent）；
+     * - 启动与深链 → shell（monkey / am start）失败后还有"本应用直启"兜底；
+     * - 没有任何可用替代通道时返回 null，由调用方保留原始失败原因。
+     */
+    private suspend fun channelFallback(
+        action: AgentAction,
+        type: String,
+        snapshot: ScreenSnapshot,
+        x: Int?,
+        y: Int?,
+        originalReason: String,
+    ): com.phoneagent.engine.execution.VerifyResult? {
+        val w = ctx.screenWidth().takeIf { it > 0 } ?: snapshot.screenWidth.takeIf { it > 0 } ?: 1080
+        val h = ctx.screenHeight().takeIf { it > 0 } ?: snapshot.screenHeight.takeIf { it > 0 } ?: 2400
+        val commands = buildFallbackCommands(action, type, w, h, x, y)
+
+        var shellFailure: String? = null
+        if (commands != null && shellChannelAvailable()) {
+            var failed: String? = null
+            for ((index, cmd) in commands.withIndex()) {
+                val r = runCatchingLogged(TAG, "通道切换兜底 $cmd") { execShellViaChannel(cmd) }.getOrNull()
+                if (r !is ShizukuManager.ShellResult.Success) {
+                    failed = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "shell 通道无响应"
+                    break
+                }
+                // 光标回放让用户看到"这一下落到哪"；只对第一条（真正的触摸动作）回放
+                if (index == 0) triggerCursorForShell(cmd)
+            }
+            if (failed == null) {
+                delay(300)
+                return VerifyResult(
+                    true,
+                    "$originalReason；已自动切换 shell 通道执行: ${commands.joinToString(" && ")}",
+                    "",
+                    "",
+                )
+            }
+            shellFailure = failed
+        }
+
+        // 启动/深链：shell 也失败时再试主应用自己的 startActivity（有悬浮窗权限时不受后台启动限制）
+        fallbackLocally(action, type, originalReason)?.let { return it }
+
+        return shellFailure?.let {
+            VerifyResult(false, "$originalReason；已尝试切换 shell 通道仍失败（$it）", "", "", notDelivered = true)
         }
     }
+
+    /** 把动作翻译成替代通道的 shell 命令；无对应命令返回 null */
+    private fun buildFallbackCommands(
+        action: AgentAction,
+        type: String,
+        w: Int,
+        h: Int,
+        x: Int?,
+        y: Int?,
+    ): List<String>? = when (type) {
+        ActionType.LAUNCH -> action.packageName?.takeIf { PACKAGE_RE.matches(it) }?.let { listOf("monkey -p $it 1") }
+
+        ActionType.OPEN -> buildOpenCommands(action)
+
+        ActionType.CLICK, ActionType.TAP -> point(x, y, w, h)?.let { (cx, cy) -> listOf("input tap $cx $cy") }
+
+        ActionType.LONG_CLICK, ActionType.LONG_PRESS -> point(x, y, w, h)?.let { (cx, cy) ->
+            listOf("input swipe $cx $cy $cx $cy ${action.durationMs ?: 800L}")
+        }
+
+        ActionType.SWIPE -> {
+            val horizontal = action.direction == "left" || action.direction == "right"
+            val px = x ?: (w / 2)
+            val py = y ?: if (horizontal) (h / 2) else (h * SWIPE_START_Y_RATIO).toInt()
+            val dist = action.distancePx ?: if (horizontal) w else h
+            val (ex, ey) = EngineRules.swipeEndpoints(px, py, action.direction, dist, w, h)
+            listOf("input swipe ${clampX(px, w)} ${clampY(py, h)} ${clampX(ex, w)} ${clampY(ey, h)} ${action.durationMs ?: 400L}")
+        }
+
+        ActionType.SWIPE_UP -> verticalSwipe(x, y, -h, w, h)
+        ActionType.SWIPE_DOWN -> verticalSwipe(x, y, h, w, h)
+        ActionType.SWIPE_LEFT -> horizontalSwipe(x, y, -w, w, h)
+        ActionType.SWIPE_RIGHT -> horizontalSwipe(x, y, w, w, h)
+
+        ActionType.SCROLL, ActionType.SCROLL_TO -> {
+            val up = (action.direction ?: action.text ?: "up") != "down"
+            val px = clampX(x ?: (w / 2), w)
+            val py = if (up) (h * 0.7f).toInt() else (h * 0.3f).toInt()
+            val ey = if (up) (h * 0.3f).toInt() else (h * 0.7f).toInt()
+            listOf("input swipe $px $py $px $ey 400")
+        }
+
+        ActionType.TYPE_TEXT -> {
+            val text = action.text.orEmpty()
+            // Android 的 input text 只支持 ASCII 可见字符；中文/emoji 必须走无障碍或输入法，
+            // 硬切 shell 只会把半句话丢在输入框里，所以这类内容不做 shell 兜底
+            when {
+                text.isEmpty() || text.any { it.code !in 32..126 } -> null
+                else -> ShellCommands.resolve("text $text")?.let { typed ->
+                    point(x, y, w, h)?.let { (cx, cy) -> listOf("input tap $cx $cy", typed) } ?: listOf(typed)
+                }
+            }
+        }
+
+        ActionType.KEY -> ShellCommands.resolve("key ${action.keycode ?: "BACK"}")?.let { listOf(it) }
+        ActionType.BACK -> listOf("input keyevent 4")
+        ActionType.HOME -> listOf("input keyevent 3")
+        ActionType.RECENTS -> listOf("input keyevent 187")
+
+        else -> null
+    }
+
+    /** OPEN 的 shell 等价命令：深链 → am start -d；页面索引 → am start -a / monkey */
+    private fun buildOpenCommands(action: AgentAction): List<String>? {
+        val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
+        val uri = action.uri?.takeIf { isShellSafe(it) } ?: entry?.uri?.takeIf { isShellSafe(it) }
+        return when {
+            uri != null -> listOf("am start -a android.intent.action.VIEW -d '$uri'")
+            entry?.intentAction != null && INTENT_ACTION_RE.matches(entry.intentAction) ->
+                listOf("am start -a ${entry.intentAction}")
+            entry?.packageName != null && PACKAGE_RE.matches(entry.packageName) ->
+                listOf("monkey -p ${entry.packageName} 1")
+            else -> null
+        }
+    }
+
+    /**
+     * 本应用直启（最后一道通道）：主应用若持有悬浮窗权限，就不受 Android 10+ 的后台
+     * Activity 启动限制，能拉起 shell 与 Provider 都被拦下的场景。
+     */
+    private fun fallbackLocally(
+        action: AgentAction,
+        type: String,
+        originalReason: String,
+    ): com.phoneagent.engine.execution.VerifyResult? = when (type) {
+        ActionType.LAUNCH -> action.packageName
+            ?.takeIf { launchLocally(it) }
+            ?.let { VerifyResult(true, "$originalReason；已自动切换本应用直启打开: $it", "", "") }
+        ActionType.OPEN -> {
+            val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
+            when {
+                action.uri != null && openLocally(action.uri, action.app?.let { appNameResolver.resolve(it) }) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: ${action.uri}", "", "")
+                entry?.uri != null && openLocally(entry.uri, null) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: ${entry.uri}", "", "")
+                entry?.intentAction != null && openActionLocally(entry.intentAction) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启: ${entry.intentAction}", "", "")
+                else -> null
+            }
+        }
+        else -> null
+    }
+
+    private fun launchLocally(pkg: String): Boolean {
+        if (!PACKAGE_RE.matches(pkg)) return false
+        val intent = runCatching { appContext.packageManager.getLaunchIntentForPackage(pkg) }.getOrNull() ?: return false
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return runCatching { appContext.startActivity(intent); true }.getOrDefault(false)
+    }
+
+    private fun openLocally(uri: String, pkg: String?): Boolean = runCatching {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        pkg?.takeIf { PACKAGE_RE.matches(it) }?.let { intent.setPackage(it) }
+        appContext.startActivity(intent)
+        true
+    }.getOrDefault(false)
+
+    private fun openActionLocally(action: String): Boolean {
+        if (!INTENT_ACTION_RE.matches(action)) return false
+        return runCatching {
+            appContext.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 坐标取整并钳进屏幕（像素坐标） */
+    private fun point(x: Int?, y: Int?, w: Int, h: Int): Pair<Int, Int>? =
+        if (x == null || y == null) null else clampX(x, w) to clampY(y, h)
+
+    private fun verticalSwipe(x: Int?, y: Int?, dy: Int, w: Int, h: Int): List<String> {
+        val px = clampX(x ?: (w / 2), w)
+        val py = clampY(y ?: (h * SWIPE_START_Y_RATIO).toInt(), h)
+        return listOf("input swipe $px $py $px ${clampY(py + dy, h)} 400")
+    }
+
+    private fun horizontalSwipe(x: Int?, y: Int?, dx: Int, w: Int, h: Int): List<String> {
+        val px = clampX(x ?: (w / 2), w)
+        val py = clampY(y ?: (h / 2), h)
+        return listOf("input swipe $px $py ${clampX(px + dx, w)} $py 400")
+    }
+
+    private fun clampX(v: Int, w: Int): Int = v.coerceIn(0, (w - 1).coerceAtLeast(0))
+    private fun clampY(v: Int, h: Int): Int = v.coerceIn(0, (h - 1).coerceAtLeast(0))
+
+    /** 单引号包裹后能安全交给 shell 的 URI：只排除会破坏引号/换行的字符 */
+    private fun isShellSafe(uri: String): Boolean =
+        uri.isNotBlank() && uri.none { it == '\'' || it == '\n' || it == '\r' }
+
 
     private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.engine.execution.VerifyResult {
         return when (keycode.uppercase()) {
@@ -876,6 +1186,7 @@ internal class ExecutionCore(
                 "无障碍通道无法直接发送回车键：请改用点击页面上的发送/搜索按钮；若内置 Shizuku 可用可执行 input keyevent 66",
                 "",
                 "",
+                notDelivered = true,
             )
             else -> com.phoneagent.engine.execution.VerifyResult(false, "未知按键 $keycode", "", "")
         }
@@ -884,20 +1195,39 @@ internal class ExecutionCore(
     private suspend fun executeNoVerify(executor: ActionExecutor, block: suspend () -> Boolean): com.phoneagent.engine.execution.VerifyResult {
         val ok = block()
         delay(500)
-        return com.phoneagent.engine.execution.VerifyResult(ok, if (ok) "已执行" else "执行失败", "", "")
+        return com.phoneagent.engine.execution.VerifyResult(
+            ok,
+            if (ok) "已执行" else "执行失败",
+            "", "",
+            // 接口返回失败＝动作没交付，允许上层换通道（如 shell keyevent / am start）
+            notDelivered = !ok,
+        )
     }
 
     private companion object {
+        /** 日志标签：执行链路里被降级吞掉的失败统一挂这个标签，便于在调试页过滤 */
+        const val TAG = "ExecutionCore"
+
         /** 竖向滑动起点默认 y 占屏幕高度的比例：避开顶部 1/3 的播放器/悬浮按钮热点区 */
         const val SWIPE_START_Y_RATIO = 0.62f
 
         /** 双击两次点击之间的间隔（毫秒）：零间隔会被系统当成连点，间隔之后才稳定判为双击 */
         const val DOUBLE_TAP_INTERVAL_MS = 120L
 
-        /** launch 后等待目标页面出现的最长时间（毫秒）：等于原固定等待，保证慢启动场景行为不变 */
-        const val LAUNCH_SETTLE_MS = 800L
+        /**
+         * launch 后等待目标页面出现的最长时间（毫秒）。
+         * 从 800ms 提到 1200ms：冷启动普遍超过 800ms，观察窗太短会把"启动成功但还没画出来"
+         * 误判成失败，进而触发不必要的通道切换。轮询一旦确认会立即返回，正常启动不受影响。
+         */
+        const val LAUNCH_SETTLE_MS = 1200L
 
         /** launch 后轮询页面是否变化的间隔（毫秒） */
         const val LAUNCH_POLL_MS = 100L
+
+        /** 合法的包名形态：通道切换拼 shell 命令前必须校验，避免把 AI/解析结果里的任意串拼进命令 */
+        val PACKAGE_RE = Regex("^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$")
+
+        /** 合法的系统 Intent action（如 android.settings.WIFI_SETTINGS） */
+        val INTENT_ACTION_RE = Regex("^[A-Za-z0-9_.]+$")
     }
 }

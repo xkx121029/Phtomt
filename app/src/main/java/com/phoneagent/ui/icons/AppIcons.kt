@@ -43,6 +43,7 @@ import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.MousePointerClick
 import com.composables.icons.lucide.Palette
 import com.composables.icons.lucide.Pencil
+import com.composables.icons.lucide.Pause
 import com.composables.icons.lucide.Play
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.Pointer
@@ -116,6 +117,8 @@ object AppIcons {
     // ── 运行控制 ────────────────────────────────────────────────
     val Play: ImageVector get() = Lucide.Play
     val Stop: ImageVector get() = Lucide.Square
+    /** 暂停任务（引擎搁置闸门） */
+    val Pause: ImageVector get() = Lucide.Pause
     val Send: ImageVector get() = Lucide.Send
     val Loading: ImageVector get() = Lucide.LoaderCircle
 

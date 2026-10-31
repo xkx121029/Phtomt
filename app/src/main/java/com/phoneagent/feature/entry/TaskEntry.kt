@@ -38,6 +38,11 @@ object TaskEntry {
         data class Task(val text: String) : Target()
         /** 只导航：memory=打开记忆页；resume=从最近检查点续跑 */
         data class Navigate(val memory: Boolean = false, val resume: Boolean = false) : Target()
+        /**
+         * 分享进来的文件（content:// URI）：落进临时编码区交给编码页，
+         * 不当作任务文本——文件解读走编码 agent 的读写工具，不走操控引擎。
+         */
+        data class SharedFiles(val uris: List<String>) : Target()
     }
 
     /** hpa://task?text=… / hpa://resume：非法或空文本返回 null */
@@ -79,20 +84,44 @@ object TaskEntry {
     }
 
     /**
-     * 分享 / 文本选择（ACTION_SEND text/plain、ACTION_PROCESS_TEXT）→ 任务文本。
-     * 链接原样透传：AI 收到网址自会走 browse_* 通道，端侧不再包一层指令。
+     * 分享 / 文本选择（ACTION_SEND、ACTION_SEND_MULTIPLE、ACTION_PROCESS_TEXT）→ 目标。
+     *
+     * 带文件时（EXTRA_STREAM / ClipData）一律走 [Target.SharedFiles]：微信、相册这类分享
+     * 常会顺带塞一句配文，那句配文只是说明，把文件当任务文本发出去等于把附件丢了。
+     * 纯文本/链接仍按任务文本透传：AI 收到网址自会走 browse_* 通道，端侧不再包一层指令。
      */
     fun fromShareIntent(intent: Intent?): Target? = parseShare(
         action = intent?.action,
         extraText = intent?.getStringExtra(Intent.EXTRA_TEXT)
             ?: intent?.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString(),
+        streamUris = intent?.let { streamUris(it) }.orEmpty(),
     )
 
-    /** 纯函数核心（JVM 可测）：action + 文本 → 目标 */
-    internal fun parseShare(action: String?, extraText: String?): Target? {
-        val matched = action == Intent.ACTION_SEND || action == Intent.ACTION_PROCESS_TEXT
+    /** 纯函数核心（JVM 可测）：action + 文本 + 文件清单 → 目标（文件优先于配文） */
+    internal fun parseShare(action: String?, extraText: String?, streamUris: List<String>): Target? {
+        val isShare = action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+        val files = streamUris.map { it.trim() }.filter { it.isNotEmpty() }
+        if (isShare && files.isNotEmpty()) return Target.SharedFiles(files)
         val text = extraText?.trim().orEmpty()
-        return if (matched && text.isNotEmpty()) Target.Task(text) else null
+        val textAction = isShare || action == Intent.ACTION_PROCESS_TEXT
+        return if (textAction && text.isNotEmpty()) Target.Task(text) else null
+    }
+
+    /** 从分享 Intent 里收文件 URI：EXTRA_STREAM 与 ClipData 都看，去重保序 */
+    @Suppress("DEPRECATION")
+    private fun streamUris(intent: Intent): List<String> {
+        val uris = LinkedHashSet<String>()
+        if (intent.action == Intent.ACTION_SEND) {
+            intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris += it.toString() }
+        } else if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                ?.forEach { uris += it.toString() }
+        }
+        // ClipData 是更现代、也更可靠的来源（部分 ROM 只填它不填 EXTRA_STREAM）
+        intent.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { uris += it.toString() }
+        }
+        return uris.toList()
     }
 
     /** 快捷方式 / 引擎内部跳转 extra → 任务或页面目标；无有效 extra 返回 null */

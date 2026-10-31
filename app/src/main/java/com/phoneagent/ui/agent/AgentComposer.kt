@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -57,11 +58,14 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.ComposerActionButton
+import com.phoneagent.ui.components.ComposerActionSize
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
@@ -96,7 +100,7 @@ import com.phoneagent.ui.theme.appBorder
  */
 internal enum class ComposerMode { NEW_TASK, QUEUE_FOLLOW_UP, GUIDE_AGENT, ANSWER_CLARIFY, LOCKED, PLAN_APPROVAL }
 
-/** 细行开关：比 M3 默认 Switch 紧凑，匹配 28dp 行高 */
+/** 细行开关：比 M3 默认 Switch 紧凑，匹配 28dp 行高；语义上仍是标准开关 */
 @Composable
 private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
     val colors = AppTheme.colors
@@ -112,14 +116,18 @@ private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
             .size(width = 40.dp, height = 22.dp)
             .clip(trackShape)
             .background(if (checked) colors.brand else colors.surfaceSunken)
-            .border(1.dp, if (checked) colors.brand else colors.outlineSoft, trackShape)
-            .clickable(
+            // toggleable 而非 clickable：读屏能念出「开关 / 已开启」，且带 Role.Switch，
+            // 双击即可切换，不再靠视觉去理解这一颗小圆点是什么。
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
             ) {
                 buzz()
-                onToggle(!checked)
-            },
+                onToggle(it)
+            }
+            .border(1.dp, if (checked) colors.brand else colors.outlineSoft, trackShape),
     ) {
         Box(
             modifier = Modifier
@@ -162,53 +170,7 @@ private fun QueueStrip(count: Int, onOpen: () -> Unit) {
     }
 }
 
-/**
- * 输入面内主操作的尺寸。
- * 与 [AgentActionButton] 的高度（20sp 行高 + 上下各 10dp）对齐，
- * 一行的两个按钮底边齐平，不会一个高一个矮。
- */
-private val ComposerActionSize = 40.dp
-
-/**
- * 输入面内的主操作：方块图标按钮。
- *
- * 为什么不是通栏文字按钮：主操作属于"输入框的一部分"——按下的对象是刚写完的这句话，
- * 不是页面底部的一个独立表单按钮。收进输入面之后，底部浮层从"输入框 + 一行按钮"
- * 压回单段高度，动作与文本在同一个容器里，视线不用来回跳。
- * 禁用态用下沉底色而不是降透明度：纸白底上一团半透明的主色会发浑，换底色更干净。
- */
-@Composable
-private fun ComposerActionButton(
-    icon: ImageVector,
-    description: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-) {
-    val colors = AppTheme.colors
-    val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Tile)
-    PressableScale(
-        onPress = buzz,
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier
-            .size(ComposerActionSize)
-            .clip(shape)
-            .background(if (enabled) colors.brand else colors.surfaceSunken),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = icon,
-                contentDescription = description,
-                tint = if (enabled) colors.onBrand else colors.outlineStrong,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-    }
-}
-
-/**
- * 澄清态的候选答案：竖排铺在输入面正上方，一行一个，点一下即答。
+/** 澄清态的候选答案：竖排铺在输入面正上方，一行一个，点一下即答。
  *
  * 规划期 AI 反问时，"问题 + 选项"整个落在输入栏里，任务流与浮层都不再重复——
  * 使用者看到的就是"该我答了"，而不是"列表里多了一条记录"。
@@ -400,7 +362,14 @@ internal fun AgentComposer(
     onOpenQueue: () -> Unit,
     reviewEnabled: Boolean,
     onToggleReview: (Boolean) -> Unit,
-    onSend: () -> Unit,
+    /**
+     * 发送：回传待发文本，而不是让宿主读自己的 draft。
+     *
+     * 语音"松手即发"这条路径上，识别结果是在 composer 内部拿到的，宿主的 draft 还停在
+     * 上一帧的值；若宿主自己读 draft，就会把空串（或上一次的旧草稿）发出去。
+     * 由调用方接收文本，谁先算出文本谁传参，就不存在读到旧状态的问题。
+     */
+    onSend: (String) -> Unit,
     onStop: () -> Unit,
     onDismissUser: () -> Unit,
     /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */
@@ -548,8 +517,10 @@ internal fun AgentComposer(
                 .padding(
                     start = fieldPad,
                     end = AppSpacing.Sm,
-                    top = AppSpacing.Sm,
-                    bottom = AppSpacing.Sm,
+                    // 单行高度统一为 40dp 动作键 + 上下 4dp = 48dp；
+                    // 原先上下各 8dp 会撑到 56dp，三页输入框高度不一致
+                    top = AppSpacing.Xs,
+                    bottom = AppSpacing.Xs,
                 )
                 .alpha(if (locked) 0.7f else 1f),
             verticalAlignment = Alignment.Bottom,
@@ -570,11 +541,10 @@ internal fun AgentComposer(
                         val err = outcome?.second
                         when {
                             !text.isNullOrEmpty() && finishMode == VoiceFinishMode.SEND -> {
-                                // 原地松手：识别结果并入输入框后直接作为任务发出
-                                onDraftChange(
-                                    if (currentDraft.isBlank()) text else "$currentDraft $text",
-                                )
-                                onSend()
+                                // 原地松手：识别结果并入输入框后直接作为任务发出。
+                                // 直接把这段文本交给 onSend，不走 onDraftChange 转手——
+                                // 那是异步的，下一帧宿主才看得到，当帧就发会用旧草稿
+                                onSend(if (currentDraft.isBlank()) text else "$currentDraft $text")
                             }
                             !text.isNullOrEmpty() -> {
                                 // 上滑预览：填入输入框由用户编辑后再发
@@ -678,21 +648,21 @@ internal fun AgentComposer(
                     icon = AppIcons.Send,
                     description = "发送",
                     enabled = draft.isNotBlank(),
-                    onClick = onSend,
+                    onClick = { onSend(draft) },
                 )
 
                 ComposerMode.ANSWER_CLARIFY -> ComposerActionButton(
                     icon = AppIcons.Send,
                     description = "提交回答",
                     enabled = draft.isNotBlank(),
-                    onClick = onSend,
+                    onClick = { onSend(draft) },
                 )
 
                 ComposerMode.GUIDE_AGENT -> ComposerActionButton(
                     icon = AppIcons.Send,
                     description = "指导 AI",
                     enabled = draft.isNotBlank(),
-                    onClick = onSend,
+                    onClick = { onSend(draft) },
                 )
 
                 // 排队用「加号」：它的含义是"把这条追加到队列末尾"，不是"发出去"
@@ -700,7 +670,7 @@ internal fun AgentComposer(
                     icon = AppIcons.Add,
                     description = "排队执行下一条",
                     enabled = draft.isNotBlank(),
-                    onClick = onSend,
+                    onClick = { onSend(draft) },
                 )
 
                 // 计划面板不走这一行（上面已经整块替换掉了），这里只为穷尽分支

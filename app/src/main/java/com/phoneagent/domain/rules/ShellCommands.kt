@@ -8,6 +8,29 @@ package com.phoneagent.domain.rules
  */
 object ShellCommands {
 
+    /** 反查正则：命令解析每步都会调用，编译一次长期复用 */
+    private val TAP_MOTION_RE = Regex("""input\s+tap\s+(\d+)\s+(\d+)""")
+    private val SWIPE_MOTION_RE = Regex("""input\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)""")
+    /** 裸包名判定（`am com.taobao.taobao` 这类） */
+    private val PACKAGE_NAME_RE = Regex("[A-Za-z][A-Za-z0-9._]*")
+
+    /**
+     * 按任意空白切分（替代 `split("\\s+".toRegex())`）：参数解析是热路径，
+     * 手写扫描避免每次调用走正则引擎；空串与连续空白的行为与原正则一致。
+     */
+    private fun splitWhitespace(s: String): List<String> {
+        val out = ArrayList<String>()
+        var i = 0
+        val n = s.length
+        while (i < n) {
+            while (i < n && s[i].isWhitespace()) i++
+            val start = i
+            while (i < n && !s[i].isWhitespace()) i++
+            if (i > start) out += s.substring(start, i)
+        }
+        return out
+    }
+
     /**
      * 从已解析的 ADB 命令里反查"这一下动了什么"，供光标按形态回放。
      *
@@ -29,12 +52,12 @@ object ShellCommands {
      * 反查命令对应的动作形态；按键、文本、raw 透传等非触摸命令返回 null。
      */
     fun parseMotion(cmd: String): Motion? {
-        Regex("""input\s+tap\s+(\d+)\s+(\d+)""").find(cmd)?.let { m ->
+        TAP_MOTION_RE.find(cmd)?.let { m ->
             val x = m.groupValues[1].toIntOrNull() ?: return null
             val y = m.groupValues[2].toIntOrNull() ?: return null
             return Motion.Tap(x, y)
         }
-        Regex("""input\s+swipe\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)""").find(cmd)?.let { m ->
+        SWIPE_MOTION_RE.find(cmd)?.let { m ->
             val x1 = m.groupValues[1].toIntOrNull() ?: return null
             val y1 = m.groupValues[2].toIntOrNull() ?: return null
             val x2 = m.groupValues[3].toIntOrNull() ?: return null
@@ -88,7 +111,7 @@ object ShellCommands {
 
             // ====== 滑动 ======
             "sw", "swipe" -> {
-                val coords = args.trim().split("\\s+".toRegex())
+                val coords = splitWhitespace(args)
                 if (coords.size < 4) return null
                 val x1 = toPixel(coords[0], w) ?: return null
                 val y1 = toPixel(coords[1], h) ?: return null
@@ -163,7 +186,7 @@ object ShellCommands {
                 // 直接拼 -n 会报 "Activity not specified" 而失败，AI 收到失败又重发同一条命令形成死循环
                 // （真机 BUG 23）。裸包名按"启动应用"语义处理（与 launch 同路）；带 -a 等 flag 的原样透传。
                 val isBarePackage = !target.startsWith("-") && !target.contains(" ") &&
-                    Regex("[A-Za-z][A-Za-z0-9._]*").matches(target)
+                    PACKAGE_NAME_RE.matches(target)
                 when {
                     isBarePackage -> "monkey -p $target 1"
                     !target.startsWith("-") && target.contains('/') -> "am start -n $target"
@@ -224,7 +247,7 @@ object ShellCommands {
     /** 解析 "x y" 双坐标（比例/百分比/像素）为像素坐标；无效返回 null。
      *  供 Shizuku 不可用时无障碍动作换算坐标。 */
     fun coord(input: String, w: Int, h: Int): Pair<Int, Int>? {
-        val parts = input.trim().split("\\s+".toRegex())
+        val parts = splitWhitespace(input)
         if (parts.size < 2) return null
         val x = toPixel(parts[0], w) ?: return null
         val y = toPixel(parts[1], h) ?: return null
@@ -234,7 +257,7 @@ object ShellCommands {
     /** 解析 "x1 y1 x2 y2" 四坐标（比例/百分比/像素）为像素列表；无效返回 null。
      *  供 Shizuku 不可用时无障碍滑动换算坐标。 */
     fun coords(input: String, w: Int, h: Int): List<Int>? {
-        val parts = input.trim().split("\\s+".toRegex())
+        val parts = splitWhitespace(input)
         if (parts.size < 4) return null
         val out = mutableListOf<Int>()
         for (i in parts.indices) {
@@ -246,7 +269,7 @@ object ShellCommands {
 
     /** 解析 "x y" 格式的坐标（支持比例/百分比/像素），返回像素坐标 */
     private fun parseCoord(input: String, w: Int, h: Int): Pair<Int, Int>? {
-        val parts = input.trim().split("\\s+".toRegex())
+        val parts = splitWhitespace(input)
         if (parts.size < 2) return null
         val x = toPixel(parts[0], w) ?: return null
         val y = toPixel(parts[1], h) ?: return null

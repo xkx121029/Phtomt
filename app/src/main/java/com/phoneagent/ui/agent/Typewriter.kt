@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 private const val TICK_MS = 40L
 private const val BASE_CPS = 30          // 常态 30 字/秒
@@ -27,25 +29,28 @@ private const val CATCH_UP_THRESHOLD = 80
  *
  * 状态必须留在**调用它的 item 组件内部**：提到 AgentScreen 的 items 计算里
  * 会导致每 tick 重建整条 LazyColumn。
+ *
+ * tick 只在"追平有积压"期间运行：文本追平后协程挂起等下一段流式文本，
+ * 不再每 40ms 醒一次（原先 while(true) 会让停顿期也常驻一个定时器）。
  */
 @Composable
 internal fun rememberTypedText(target: String, key: Any = Unit): String {
     val latest by rememberUpdatedState(target)
     var shown by remember(key) { mutableStateOf("") }
     LaunchedEffect(key) {
-        while (true) {
-            val wanted = latest
-            when {
+        snapshotFlow { latest }.collectLatest { wanted ->
+            if (!wanted.startsWith(shown)) {
                 // 丢头（截断）或换任务：直接切换，不回退打字
-                !wanted.startsWith(shown) -> shown = wanted
-                wanted.length > shown.length -> {
-                    val backlog = wanted.length - shown.length
-                    val cps = if (backlog > CATCH_UP_THRESHOLD) CATCH_UP_CPS else BASE_CPS
-                    val step = (cps * TICK_MS / 1000).toInt().coerceAtLeast(1)
-                    shown = wanted.substring(0, (shown.length + step).coerceAtMost(wanted.length))
-                }
+                shown = wanted
+                return@collectLatest
             }
-            delay(TICK_MS)
+            while (shown.length < wanted.length) {
+                val backlog = wanted.length - shown.length
+                val cps = if (backlog > CATCH_UP_THRESHOLD) CATCH_UP_CPS else BASE_CPS
+                val step = (cps * TICK_MS / 1000).toInt().coerceAtLeast(1)
+                shown = wanted.substring(0, (shown.length + step).coerceAtMost(wanted.length))
+                delay(TICK_MS)
+            }
         }
     }
     return shown

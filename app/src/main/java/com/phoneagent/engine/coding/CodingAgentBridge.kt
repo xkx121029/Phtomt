@@ -32,7 +32,19 @@ class CodingAgentBridge(
     private val runtimeManager: CodingRuntimeManager,
 ) {
 
-    val client = AgentClient(appContext)
+    /**
+     * 后台编码引擎的连接：固定挂在 engine 会话上。
+     *
+     * 编码页现在有自己独立的连接与独立会话（[uiClient]），两条连接共享同一个 host 进程，
+     * 事件按 sessionId 分流，操控页的编码委托不会再把编码页的对话冲掉，反之亦然。
+     * 会话 id 带进程时间戳：每次冷启动都是一套干净上下文（与改造前的行为一致），
+     * 同时又能和编码页的会话彻底分开。
+     */
+    private val engineSessionId = "engine_${System.currentTimeMillis().toString(36)}"
+    val client = AgentClient(appContext, fixedSessionId = engineSessionId)
+
+    /** 编码页专用连接：会话由工作区里的会话列表决定，和引擎完全隔离。 */
+    val uiClient = AgentClient(appContext)
 
     /**
      * 委托一个编码任务：确保运行时已装 → 连接本地 agent → sendPrompt → 挂起等待会话结束
@@ -42,17 +54,9 @@ class CodingAgentBridge(
     suspend fun prompt(text: String) {
         sync("编码中…")
         ensureRuntimeInstalled()
-        val s = settings.settings.first()
-        val config = CodingAgentConfig(
-            provider = "openai",
-            baseUrl = s.apiBaseUrl,
-            apiKey = s.apiKey,
-            model = s.model,
-            approval = s.codingApprovalMode,
-            token = TOKEN,
-        )
+        val config = currentConfig()
         client.connectLocal(config)
-        awaitConnected()
+        awaitConnected(client)
         client.sendPrompt(text)
         // 任务进度通知：total<=0 → 不确定进度条（编码时长不可预估）
         TaskProgressNotifier.show(appContext, CODING_TASK_ID, "编码 Agent", 0, 0)
@@ -75,11 +79,63 @@ class CodingAgentBridge(
         client.newSession()
     }
 
+    /**
+     * 给编码页建立它自己的连接：不碰引擎那条，编码页的会话与消息完全独立。
+     * 连接失败/超时抛中文错误，由界面提示，不静默卡住。
+     */
+    suspend fun ensureUiConnected() {
+        if (uiClient.state.value.conn == ConnState.CONNECTED) return
+        ensureRuntimeInstalled()
+        // keepUi：切工作区/重连后要保留已装回的历史会话，
+        // 默认 false 会把列表清空（那是引擎侧「换任务就换对话」的语义）
+        uiClient.connectLocal(currentConfig(), keepUi = true)
+        awaitConnected(uiClient)
+    }
+
+    /**
+     * 切工作区后重启 agent 宿主：进程的 cwd 与 state 目录在启动时确定，
+     * 不重启的话新工作区只会"看起来"切了，实际还写旧目录。
+     */
+    fun restartForWorkspaceChange() {
+        client.disconnect()
+        uiClient.disconnect()
+        com.phoneagent.coding.agent.LocalAgent.stop()
+    }
+
+    /**
+     * 模型 / 端点 / Key 改了之后让宿主真正用上新配置：这些值以环境变量形式
+     * 在进程启动时注入，进程活着时 connectLocal 只会复用旧进程（看起来连上了，
+     * 实际还在用旧模型）。所以先停宿主再按新设置重连。
+     *
+     * uiClient 的 keepUi=true 会保留编码页已装回的历史消息；会话本身落在
+     * state 目录里，重连后按 sessionId 继续，上下文不会断。
+     * 调用方必须先把新设置落盘（update 是挂起函数，写完再调这里），
+     * 否则 currentConfig() 读到的还是旧值。
+     */
+    suspend fun applyConfigChange() {
+        client.disconnect()
+        uiClient.disconnect()
+        com.phoneagent.coding.agent.LocalAgent.stop()
+        ensureUiConnected()
+    }
+
+    private suspend fun currentConfig(): CodingAgentConfig {
+        val s = settings.settings.first()
+        return CodingAgentConfig(
+            provider = "openai",
+            baseUrl = s.apiBaseUrl,
+            apiKey = s.apiKey,
+            model = s.model,
+            approval = s.codingApprovalMode,
+            token = TOKEN,
+        )
+    }
+
     /** 等待编码 agent 连接就绪；连接失败（带 error）或超时则明确抛错，不让任务无声卡死 */
-    private suspend fun awaitConnected() {
+    private suspend fun awaitConnected(target: AgentClient) {
         val deadline = System.currentTimeMillis() + CONNECT_TIMEOUT_MS
-        while (client.state.value.conn != ConnState.CONNECTED) {
-            val st = client.state.value
+        while (target.state.value.conn != ConnState.CONNECTED) {
+            val st = target.state.value
             if (st.conn == ConnState.DISCONNECTED && st.error != null) {
                 error("编码 agent 连接失败：${st.error}")
             }

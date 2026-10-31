@@ -32,7 +32,24 @@ private val appModule = module {
     single { MemoryStore(androidContext()) }
     single { DocumentEngine(androidContext()) }
     single { TermuxBridge(androidContext()) }
-    single { AgentEngine(get(), get(), androidContext(), get(), get<ShizukuBootstrap>(), get(), get(), get(), get(), get()) }
+    // 末位注入 MemoryStore 单例：引擎与 UI 记忆页共用同一实例（消除双实例与各自缓存不一致）。
+    // 全部用具名参数：11 个 get() 的位置参数一旦有人调整构造顺序就会静默错配，
+    // 具名后编译器会直接报错（这是 AgentEngine 这种长参数列表唯一的静态保障）。
+    single {
+        AgentEngine(
+            settings = get(),
+            aiClient = get(),
+            appContext = androidContext(),
+            shizukuManager = get(),
+            adbTransport = get(),
+            termuxBridge = get(),
+            documentEngine = get(),
+            mcpManager = get(),
+            skillGateway = get(),
+            codingBridge = get(),
+            memoryStore = get(),
+        )
+    }
     single { TestEngine(get()) }
 
     // ===== HPA 迭代：Skill / MCP / 提示词 / 双通路 =====

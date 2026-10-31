@@ -19,7 +19,9 @@ import org.koin.mp.KoinPlatformTools
  *
  * 安全模型：接收器 exported，**任何应用都能发广播**，因此双闸门：
  * 1. 设置页「对外控制」总开关（默认关闭）；
- * 2. 口令校验：广播 extra `token` 与设置里的口令全等才放行（空口令时仅靠开关，不推荐）。
+ * 2. 口令校验：广播 extra `token` 与设置里的口令全等才放行。
+ *    口令必须达到 [MIN_TOKEN_LENGTH] 位——空口令等于没有闸门，
+ *    任何知道 action 名的应用都能下发任务、停止任务，因此这里硬性拒绝（设置页同口径提示）。
  * 未授权一律静默拒绝（不 setResult 错误详情给陌生调用方），只在日志留痕。
  *
  * 广播契约（对外保持稳定，勿改字段名）：
@@ -60,10 +62,29 @@ class TaskControlReceiver : BroadcastReceiver() {
     /** 授权判定收口：返回拒绝原因（供日志）；放行返回 null */
     private fun rejectReason(settings: AppSettings.Settings, intent: Intent): String? = when {
         !settings.externalControlEnabled -> "拒绝外部请求（对外控制未开启）：${intent.action}"
-        settings.externalControlToken.isNotEmpty() &&
-            intent.getStringExtra(EXTRA_TOKEN) != settings.externalControlToken ->
+        // 口令过短等同没有闸门：exported 接收器上任何应用都能猜 action 名来下发任务，
+        // 这里硬性拒绝而不是"仅靠开关"，避免用户以为设了开关就安全了
+        settings.externalControlToken.length < MIN_TOKEN_LENGTH ->
+            "拒绝外部请求（口令未设置或少于 $MIN_TOKEN_LENGTH 位）：${intent.action}"
+
+        !tokenEquals(intent.getStringExtra(EXTRA_TOKEN), settings.externalControlToken) ->
             "拒绝外部请求（口令不符）：${intent.action}"
+
         else -> null
+    }
+
+    /**
+     * 口令比较：逐字节比较且不提前返回。
+     *
+     * 普通 `==` 在首个不同字符处返回，理论上可被计时侧信道逐位试探；
+     * 虽然广播本身有系统开销、时序噪声很大，但比较是零成本的，没有理由留这个口子。
+     */
+    private fun tokenEquals(input: String?, expected: String): Boolean {
+        // 长度不同直接判否（长度本身不是秘密）；null 与空串同理
+        if (input == null || input.length != expected.length) return false
+        var diff = 0
+        for (i in input.indices) diff = diff or (input[i].code xor expected[i].code)
+        return diff == 0
     }
 
     /** 任务文本：内部契约 EXTRA_TASK_TEXT 优先，外部习惯的 text 兼容 */
@@ -89,6 +110,14 @@ class TaskControlReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "TaskControlReceiver"
+
+        /**
+         * 口令最小长度：短于此长度一律拒绝。
+         *
+         * exported 接收器等于对全机应用开放入口，空口令/4 位口令实际上等于没有闸门；
+         * 8 位是"随手设一个也不至于被秒猜"的下限，设置页用同一常量做提示。
+         */
+        const val MIN_TOKEN_LENGTH = 8
 
         /** 口令 extra（对外契约） */
         const val EXTRA_TOKEN = "token"

@@ -26,6 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -71,6 +73,7 @@ import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
@@ -171,6 +174,27 @@ internal fun ensureCatalogModel(st: SettingsState, baseUrl: String, name: String
 
 // 说明：二级页页头 / 分区容器 / 导航条目 / 开关行 / 标签字段已迁移到 SettingsDesign.kt，
 // 由全设置流程统一引用（Material 3 Expressive 设计语言）。
+
+/** 只读状态行：左侧名称，右侧取值。运行时状态、设备信息、编码环境的清单共用。 */
+@Composable
+internal fun SettingsStatusRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
 
 /** 可折叠卡片 */
 @Composable
@@ -383,7 +407,9 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
             Text(
                 marqueePreviewText,
                 style = marqueePreviewTextStyle,
-                color = Color.White,
+                // 胶囊底色是主题品牌色（跑马灯阶段色），前景必须跟着主题走：
+                // 深色主题下 onBrand 是近黑，写死白色会糊成一团
+                color = AppTheme.colors.onBrand,
                 maxLines = 1,
             )
         }
@@ -501,7 +527,8 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
                                     "${idx + 1}",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White,
+                                    // 选中序号压在品牌色圆点上，前景随主题
+                                    color = AppTheme.colors.onBrand,
                                 )
                             }
                         }
@@ -527,6 +554,59 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
 /** 端点显示名：去掉协议头，够短且能区分同名服务（如 open.bigmodel.cn/api/paas/v4） */
 internal fun endpointHost(baseUrl: String): String =
     baseUrl.trim().removePrefix("https://").removePrefix("http://").trimEnd('/')
+
+/** 审批档位中文短名：编码页选择器、设置页与状态摘要共用同一份文案，避免两处漂移 */
+internal fun approvalModeLabel(mode: String): String = when (mode) {
+    "ask" -> "询问"
+    "bypass" -> "全自动"
+    else -> "默认放行"
+}
+
+/** 审批档位说明：三档各自含义，选择后显示在控件下方 */
+internal fun approvalModeHint(mode: String): String = when (mode) {
+    "ask" -> "每个敏感工具都先在编码页的审批卡里等你确认"
+    "bypass" -> "所有工具直接执行，不再询问（谨慎使用）"
+    else -> "多数工具自动执行，高危动作仍会请求确认"
+}
+
+/**
+ * 审批档位三选一分段控件：ask / risky / bypass。
+ * 设置页与编码页共用（编码页直接切换档位，宿主侧热更新即时生效）。
+ */
+@Composable
+internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
+    val modes = listOf("ask", "risky", "bypass")
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Chip))
+            .background(AppTheme.colors.surfaceRaised)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        modes.forEach { id ->
+            val selected = current == id
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(AppRadii.Chip))
+                    .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .clickable { onSelect(id) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    approvalModeLabel(id),
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    ),
+                    color = if (selected) MaterialTheme.colorScheme.onPrimary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 /** 能力徽章：识图 / 纯文字 / 工具。null = 未测出，与"不支持"分开显示 */
 @Composable
@@ -573,7 +653,7 @@ private fun CapChip(text: String, state: Boolean?) {
 
 /**
  * 端点卡片：一行一个 API 端点。
- * 「获取模型」拉 /models 写入模型库；删除端点会连带清掉它的模型条目（在页面侧级联）。
+ * 「拉取模型」拉 /models 后弹勾选浮层，勾中的才进模型库；删除端点会连带清掉它的模型条目（在页面侧级联）。
  */
 @Composable
 internal fun EndpointCard(
@@ -644,7 +724,7 @@ internal fun EndpointCard(
                 OutlinedButton(
                     onClick = { buzz(); onFetch() },
                     enabled = !fetching && apiKey.isNotBlank(),
-                ) { Text(if (fetching) "获取中…" else "获取模型") }
+                ) { Text(if (fetching) "拉取中…" else "拉取模型") }
                 Text(
                     "已入库 $modelCount 个",
                     style = MaterialTheme.typography.bodySmall,
@@ -737,28 +817,33 @@ internal fun RoleRow(
 }
 
 /**
- * 模型选择弹层：列出模型库里已探测的模型（带能力徽章），也允许直接手填模型名。
- * 内嵌 Dialog（非系统弹窗），样式与技能编辑弹层一致。
+ * 拉取结果入库浮层：「拉取模型」拿到服务端模型列表后立刻弹出，勾中的才写进模型库。
+ *
+ * 不做静默全量入库：一个端点动辄几十上百个模型，一次全塞进去，模型库就挑不动了。
+ * 已入库的条目置灰不可选，避免重复追加。
+ * 页内浮层（非系统 Dialog），列表用 weight 撑开所以面板要 fillHeight。
  */
 @Composable
-internal fun ModelPickerDialog(
-    title: String,
-    models: List<CatalogModel>,
-    endpointLabelOf: (CatalogModel) -> String,
-    current: String,
-    onPickModel: (CatalogModel) -> Unit,
-    onPickManual: (String) -> Unit,
+internal fun ModelImportDialog(
+    endpointLabel: String,
+    names: List<String>,
+    existing: Set<String>,
+    onConfirm: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val buzz = rememberHapticClick()
     var query by remember { mutableStateOf("") }
-    var manual by remember { mutableStateOf("") }
-    // 页内浮层，不用系统 Dialog：样式与技能编辑浮层同一套，跟着页面走
-    // 列表用 weight 撑开，所以面板要 fillHeight（高度不定时权重拿不到空间）
+    // 默认勾选所有「新增」模型；键只用 names，existing 每次重组都会重建，不能当键
+    val picked = remember(names) {
+        mutableStateListOf<String>().apply { addAll(names.filter { it !in existing }) }
+    }
+    val fresh = names.filter { it !in existing }
+    val filtered = names.filter { query.isBlank() || it.contains(query, ignoreCase = true) }
+
     InlineOverlay(onDismiss = onDismiss, fillHeight = true) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text("拉取到 ${names.size} 个模型", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(
-            "选择模型库中的模型，或直接手填模型名（手填的能力徽章需要重新探测）",
+            "$endpointLabel · 勾选要加入模型库的模型（已入库的不再重复添加）",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -769,44 +854,80 @@ internal fun ModelPickerDialog(
             placeholder = { Text("筛选模型名") },
             modifier = Modifier.fillMaxWidth(),
         )
-        val filtered = models.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            androidx.compose.material3.TextButton(
+                onClick = {
+                    buzz()
+                    val add = fresh.filter { it !in picked }
+                    picked.addAll(add)
+                },
+                enabled = picked.size < fresh.size,
+            ) { Text("全选新增") }
+            androidx.compose.material3.TextButton(
+                onClick = { buzz(); picked.clear() },
+                enabled = picked.isNotEmpty(),
+            ) { Text("清空") }
+            Text(
+                "已选 ${picked.size} 个",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+        }
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
         ) {
             if (filtered.isEmpty()) {
                 Text(
-                    if (models.isEmpty()) "模型库为空：先在「端点」里点「获取模型」"
-                    else "没有匹配的模型",
+                    if (names.isEmpty()) "服务端没有返回任何模型" else "没有匹配的模型",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            filtered.forEach { m ->
-                Surface(
-                    shape = RoundedCornerShape(AppRadii.Item),
-                    color = if (m.name == current) MaterialTheme.colorScheme.primaryContainer
-                            else AppSurfaceMuted,
-                    modifier = Modifier.fillMaxWidth(),
+            filtered.forEach { name ->
+                val already = name in existing
+                val checked = name in picked
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !already) {
+                            buzz()
+                            if (checked) picked.remove(name) else picked.add(name)
+                        }
+                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { buzz(); onPickModel(m) }
-                            .padding(AppSpacing.Md),
-                    ) {
-                        Text(m.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(AppSpacing.Xs))
-                        AbilityBadges(m.vision, m.tools)
-                        Spacer(Modifier.height(AppSpacing.Xs))
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            endpointLabelOf(m),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (already) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.onSurface,
                         )
+                        if (already) {
+                            Text(
+                                "已入库",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            )
+                        }
                     }
+                    Checkbox(
+                        checked = already || checked,
+                        onCheckedChange = if (already) {
+                            null
+                        } else {
+                            { on -> if (on) picked.add(name) else picked.remove(name) }
+                        },
+                        enabled = !already,
+                    )
                 }
             }
         }
@@ -815,21 +936,15 @@ internal fun ModelPickerDialog(
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
-                value = manual,
-                onValueChange = { manual = it },
-                singleLine = true,
-                placeholder = { Text("手填模型名") },
+            androidx.compose.material3.TextButton(
+                onClick = { buzz(); onDismiss() },
                 modifier = Modifier.weight(1f),
-            )
+            ) { Text("取消") }
             Button(
-                onClick = { buzz(); if (manual.isNotBlank()) onPickManual(manual.trim()) },
-                enabled = manual.isNotBlank(),
-            ) { Text("使用") }
+                onClick = { buzz(); onConfirm(picked.toList()) },
+                enabled = picked.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+            ) { Text("入库选中（${picked.size}）") }
         }
-        androidx.compose.material3.TextButton(
-            onClick = { buzz(); onDismiss() },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("关闭") }
     }
 }

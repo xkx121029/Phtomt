@@ -34,6 +34,11 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         private const val POLL_INTERVAL_MS = 300L
         /** 截图暂存路径（app 外部缓存，shell 可读） */
         private const val SHOT_PATH = "/data/local/tmp/phoneagent_vd_shot.png"
+
+        /** base64 输出清洗与 displayId 解析正则（预编译，避免每次截图/轮询都构造） */
+        private val WHITESPACE_RE = Regex("\\s")
+        private val DISPLAY_ID_RE = Regex("""mDisplayId=(\d+)""")
+        private val DISPLAY_ID_ALT_RE = Regex("""Display id=(\d+)""")
     }
 
     /** 已创建的副屏 displayId；null 表示未创建 */
@@ -143,7 +148,7 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
             is ShizukuManager.ShellResult.Failure -> return null
         }
         return runCatching {
-            android.util.Base64.decode(text.replace("\\s".toRegex(), ""), android.util.Base64.DEFAULT)
+            android.util.Base64.decode(text.replace(WHITESPACE_RE, ""), android.util.Base64.DEFAULT)
         }.getOrNull()
     }
 
@@ -159,8 +164,8 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
             is ShizukuManager.ShellResult.Success -> r.output
             is ShizukuManager.ShellResult.Failure -> return emptySet()
         }
-        Regex("""mDisplayId=(\d+)""").findAll(out).map { it.groupValues[1].toInt() }.toSet()
-            .ifEmpty { Regex("""Display id=(\d+)""").findAll(out).map { it.groupValues[1].toInt() }.toSet() }
+        DISPLAY_ID_RE.findAll(out).map { it.groupValues[1].toInt() }.toSet()
+            .ifEmpty { DISPLAY_ID_ALT_RE.findAll(out).map { it.groupValues[1].toInt() }.toSet() }
     }.getOrDefault(emptySet())
 
     /** shell 执行包装：Shizuku 结果 → Outcome */

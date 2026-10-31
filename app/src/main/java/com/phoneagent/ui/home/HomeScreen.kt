@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
+import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
@@ -87,19 +90,9 @@ fun HomeScreen(
             )
         },
     ) { contentPad ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                // 页眉净空必须垫在滚动容器**内部**（verticalScroll 之后再 padding）：
-                // 垫在容器外面只是把内容整体压低，页眉背后永远是一块纯底色，
-                // 玻璃会退化成一条灰带，正文也不会从它下面穿过。
-                // 再多让出 8dp 呼吸，与 Agent 页正文的上缘留白对齐
-                .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
-                .padding(horizontal = 20.dp)
-                // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
-                .padding(LocalNavClearance.current),
-        ) {
+        // 两组区块：横屏时左右并排，竖屏时仍按原顺序单列往下排。
+        // 组内顺序不变，所以竖屏的阅读节奏与改动前完全一致。
+        val primarySections: @Composable ColumnScope.() -> Unit = {
             // 运行状态卡
             AnimatedVisibility(
                 visible = agent.isRunning,
@@ -154,12 +147,23 @@ fun HomeScreen(
                     // 设置 Tab 索引（去掉记忆 Tab 后为 2）
                     onClick = { onNavigate(2) },
                 ) {
+                    val configured = settings.apiKey.isNotBlank()
                     StatusCard(
                         icon = AppIcons.Key,
-                        title = if (settings.apiKey.isNotBlank()) "AI 已配置" else "未配置",
-                        subtitle = settings.model,
-                        iconColor = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (settings.apiKey.isNotBlank()) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f) else AppSurfaceMuted,
+                        title = if (configured) "AI 已配置" else "未配置",
+                        // 未配置时给一句"下一步做什么"：副标题留空的话，用户点进去只看到一整页设置，
+                        // 不知道该填哪一项（这是首屏最需要说清的一件事）
+                        subtitle = if (configured) settings.model else "接入模型后即可开始",
+                        iconColor = if (configured) {
+                            MaterialTheme.colorScheme.tertiary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        iconBackground = if (configured) {
+                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
+                        } else {
+                            AppSurfaceMuted
+                        },
                     )
                 }
             }
@@ -190,29 +194,10 @@ fun HomeScreen(
                     // 设置 Tab 索引（去掉记忆 Tab 后为 2）
                     onClick = { onNavigate(2) },
                 )
+                // 调试 / 测试不再占首页位置：它们是排查工具，入口收进「设置 → 关于」，
+                // 首屏这几个位置留给用户真正会天天用的入口
                 QuickEntry(
                     modifier = Modifier.weight(1f).animateListItem(6),
-                    icon = AppIcons.Code,
-                    tint = MaterialTheme.colorScheme.secondary,
-                    title = "调试",
-                    subtitle = "日志与指标",
-                    onPress = { pressHaptic() },
-                    onClick = { onOpenExtras(ExtrasPage.Debug) },
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                QuickEntry(
-                    modifier = Modifier.weight(1f).animateListItem(7),
-                    icon = AppIcons.Science,
-                    tint = MaterialTheme.colorScheme.primary,
-                    title = "测试",
-                    subtitle = "模型回归校验",
-                    onPress = { pressHaptic() },
-                    onClick = { onOpenExtras(ExtrasPage.Test) },
-                )
-                QuickEntry(
-                    modifier = Modifier.weight(1f).animateListItem(8),
                     icon = AppIcons.Memory,
                     tint = MaterialTheme.colorScheme.tertiary,
                     title = "技能&能力",
@@ -231,7 +216,9 @@ fun HomeScreen(
                 onPress = { pressHaptic() },
                 onClick = { onOpenExtras(ExtrasPage.Browser) },
             )
+        }
 
+        val secondarySections: @Composable ColumnScope.() -> Unit = {
             // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
             // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
             // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
@@ -280,6 +267,36 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                // 页眉净空必须垫在滚动容器**内部**（verticalScroll 之后再 padding）：
+                // 垫在容器外面只是把内容整体压低，页眉背后永远是一块纯底色，
+                // 玻璃会退化成一条灰带，正文也不会从它下面穿过。
+                // 再多让出 8dp 呼吸，与 Agent 页正文的上缘留白对齐
+                .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
+                .padding(horizontal = 20.dp)
+                // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
+                .padding(LocalNavClearance.current),
+        ) {
+            // 宽屏左右并排、窄屏单列往下排。判定按宽度而不是方向：
+            // 平板竖屏同样够宽、单列会把一块留白拉得很难看
+            if (LocalIsExpanded.current) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(modifier = Modifier.weight(1f), content = primarySections)
+                    Column(modifier = Modifier.weight(1f), content = secondarySections)
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth(), content = primarySections)
+                Column(modifier = Modifier.fillMaxWidth(), content = secondarySections)
+            }
 
             Spacer(Modifier.height(28.dp))
         }

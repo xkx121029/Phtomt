@@ -127,6 +127,15 @@ class FloatingWindowService : Service() {
     private var reviewText: TextView? = null
     private var lastSentShown = ""
 
+    /**
+     * 流式返回区的累积缓冲。
+     *
+     * 原实现每个增量都做 `(cur + delta).takeLast(3000)`：每来一个 token 就要整体复制一次
+     * 3000 字的字符串（O(n²) 的总拷贝量）。改为 StringBuilder 追加 + 超限截头，
+     * 只有真正写回 TextView 时才 toString 一次。
+     */
+    private val thinkingBuffer = StringBuilder(THINKING_DISPLAY_MAX)
+
     /** 上次推送 AI 思考通知的时间：流式输出每秒数次，逐条 notify 是跨进程调用，必须节流 */
     private var lastThinkNotifyAt = 0L
 
@@ -341,14 +350,14 @@ class FloatingWindowService : Service() {
             taskTitle?.text = "Happy Agent"
             stepText?.text = "等待任务..."
             phaseChip?.text = "待命"
-            phaseChip?.background = FloatingUi.capsule(
+            phaseChip?.background = FloatingUi.capsule(this@FloatingWindowService, 
                 FloatingUi.RADIUS_CHIP / 2,
                 FloatingUi.phaseColor("PENDING"),
             )
             dot?.setBackgroundColor(dotColor("PENDING"))
             stopDotPulse()
             thinkingSentText?.text = ""
-            thinkingReturnText?.text = ""
+            clearThinkingReturn()
             lastSentShown = ""
             marquee?.setText("等待任务...")
             currentPhase = "PENDING"
@@ -509,7 +518,7 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(999f, FloatingUi.BRAND)
+            background = FloatingUi.capsule(this@FloatingWindowService, 999f, FloatingUi.BRAND)
             elevation = dp(6).toFloat()
             setOnClickListener {
                 showFromUser()
@@ -627,7 +636,7 @@ class FloatingWindowService : Service() {
             // 与面板里的主操作同一支主色：它按下去就是"继续回答"，属于同一条动线
             themed { p ->
                 setTextColor(p.onBrand)
-                background = FloatingUi.capsule(FloatingUi.RADIUS_PILL, p.brand)
+                background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, p.brand)
             }
         }
         collapsedPill?.let { pill ->
@@ -720,8 +729,8 @@ class FloatingWindowService : Service() {
         // **没有背景模糊**——卡片曾经配过窗口的 blurBehindRadius，但那个 API 糊的是整块屏幕，
         // 不是卡片这 300dp 见方（见类注释）；悬浮窗拿不到"只糊窗口范围"的 setBackgroundBlurRadius。
         // 留着半透明是因为它仍有层次：透出来的底图是清晰的原样，不是磨砂。
-        panel.background = FloatingUi.capsule(
-            dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
+        panel.background = FloatingUi.capsule(this@FloatingWindowService,
+            FloatingUi.RADIUS_CARD,
             FloatingUi.BRAND_GLASS,
             FloatingUi.GLASS_EDGE,
             dp(1),
@@ -769,7 +778,7 @@ class FloatingWindowService : Service() {
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
             var closeArmed = false
             setOnClickListener {
@@ -806,7 +815,7 @@ class FloatingWindowService : Service() {
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -823,7 +832,7 @@ class FloatingWindowService : Service() {
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
             setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -850,7 +859,7 @@ class FloatingWindowService : Service() {
             // 主题色底上用实心阶段色胶囊 + 白字：半透明的淡色底在深色卡片上读不出层次
             setTextColor(FloatingUi.ON_BRAND)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(
+            background = FloatingUi.capsule(this@FloatingWindowService, 
                 FloatingUi.RADIUS_CHIP / 2,
                 FloatingUi.phaseColor("PENDING"),
             )
@@ -885,7 +894,7 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
-            themed { p -> background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, p.panel) }
+            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL, p.panel) }
         }
         // 内容可滚动，限制高度避免悬浮窗过大（折叠时整块不占位）
         thinkingScroll = ScrollView(this).apply {
@@ -954,7 +963,7 @@ class FloatingWindowService : Service() {
             visibility = View.GONE
             setPadding(dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL))
             themed { p ->
-                background = FloatingUi.capsule(
+                background = FloatingUi.capsule(this@FloatingWindowService, 
                     FloatingUi.RADIUS_CARD,
                     p.panel,
                     p.panelEdge,
@@ -973,7 +982,7 @@ class FloatingWindowService : Service() {
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
             setPadding(dp(FloatingUi.PAD), dp(3), dp(FloatingUi.PAD), dp(3))
         }
         interactTitle = TextView(this).apply {
@@ -997,7 +1006,7 @@ class FloatingWindowService : Service() {
             setOnClickListener { setInteractCollapsed(true) }
             themed { p ->
                 setTextColor(p.brand)
-                background = FloatingUi.capsule(
+                background = FloatingUi.capsule(this@FloatingWindowService, 
                     FloatingUi.RADIUS_PILL,
                     p.panelSunken,
                     p.panelEdge,
@@ -1049,7 +1058,7 @@ class FloatingWindowService : Service() {
             themed { p ->
                 setTextColor(p.textPrimary)
                 setHintTextColor(p.textTertiary)
-                background = FloatingUi.capsule(
+                background = FloatingUi.capsule(this@FloatingWindowService, 
                     FloatingUi.RADIUS_TILE,
                     p.panelSunken,
                     p.panelEdge,
@@ -1071,7 +1080,7 @@ class FloatingWindowService : Service() {
             gravity = Gravity.CENTER
             visibility = View.GONE
             setPadding(0, dp(16), 0, dp(16))
-            themed { p -> background = FloatingUi.capsule(FloatingUi.RADIUS_PANEL, p.panel) }
+            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL, p.panel) }
         }
         successMark = SuccessMarkView(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
@@ -1095,7 +1104,7 @@ class FloatingWindowService : Service() {
                 topMargin = dp(12)
             }
             layoutParams = lp
-            background = FloatingUi.capsule(999f, FloatingUi.BRAND)
+            background = FloatingUi.capsule(this@FloatingWindowService, 999f, FloatingUi.BRAND)
             setPadding(FloatingUi.PAD_XL, 0, FloatingUi.PAD_XL, 0)
             setOnClickListener { stopSelf(); removeWindow() }
         }
@@ -1293,7 +1302,7 @@ class FloatingWindowService : Service() {
             val ph = FloatingUi.phaseColor(phase)
             phaseChip?.text = phaseLabel(phase)
             phaseChip?.setTextColor(FloatingUi.ON_BRAND)
-            phaseChip?.background = FloatingUi.capsule(FloatingUi.RADIUS_CHIP / 2, ph)
+            phaseChip?.background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP / 2, ph)
             // 进度条已隐藏（用户反馈无用），仅显示步骤文字
             dot?.setBackgroundColor(dotColor(phase))
             startDotPulse()
@@ -1317,9 +1326,15 @@ class FloatingWindowService : Service() {
     /** 清空思考显示区：流式请求中断自动重试前调用，避免重放内容与旧文本重复累积 */
     fun resetThinking() {
         handler.post {
-            thinkingReturnText?.text = ""
+            clearThinkingReturn()
             thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
         }
+    }
+
+    /** 清空流式返回区：TextView 与累积缓冲必须一起清，否则下一轮会把旧内容再接上 */
+    private fun clearThinkingReturn() {
+        thinkingBuffer.setLength(0)
+        thinkingReturnText?.text = ""
     }
 
     /**
@@ -1342,10 +1357,14 @@ class FloatingWindowService : Service() {
                 thinkingSentText?.text = sent!!.take(600) + if (sent!!.length > 600) "…" else ""
             }
             if (hasDelta) {
-                val cur = thinkingReturnText?.text?.toString().orEmpty()
                 // 限制展示长度，避免内容无限增长（完整内容由 AI 客户端保留用于解析）；
-                // 返回区是流式追加，用户要看的是最新内容，超限时保留**尾部**（takeLast）
-                thinkingReturnText?.text = (cur + delta).takeLast(3000)
+                // 返回区是流式追加，用户要看的是最新内容，超限时保留**尾部**。
+                // 用 StringBuilder 累积：逐增量做字符串拼接是 O(n²) 的拷贝量
+                thinkingBuffer.append(delta)
+                if (thinkingBuffer.length > THINKING_DISPLAY_MAX) {
+                    thinkingBuffer.delete(0, thinkingBuffer.length - THINKING_DISPLAY_MAX)
+                }
+                thinkingReturnText?.text = thinkingBuffer.toString()
                 // 只有展开时才需要滚动到底：折叠状态下滚动位置没人看，做了也是白做
                 if (thinkingExpanded) {
                     thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
@@ -1409,7 +1428,7 @@ class FloatingWindowService : Service() {
         // 详情区按用户的展开状态恢复：折叠时保持 GONE，否则窗口会在每步更新后突然变高
         thinkingPanel?.visibility = if (thinkingExpanded) View.VISIBLE else View.GONE
         thinkingSentText?.text = ""
-        thinkingReturnText?.text = ""
+        clearThinkingReturn()
         reviewText?.text = ""
         lastSentShown = ""
         lastThinkNotifyAt = 0L
@@ -1729,9 +1748,9 @@ class FloatingWindowService : Service() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setTextColor(if (primary) palette.onBrand else palette.textPrimary)
             background = if (primary) {
-                FloatingUi.capsule(FloatingUi.RADIUS_PILL, palette.brand)
+                FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, palette.brand)
             } else {
-                FloatingUi.capsule(
+                FloatingUi.capsule(this@FloatingWindowService, 
                     FloatingUi.RADIUS_PILL,
                     palette.panelSunken,
                     palette.panelEdge,
@@ -1781,7 +1800,7 @@ class FloatingWindowService : Service() {
             text = label
             textSize = 12f
             setTextColor(if (highlight) palette.brand else palette.textPrimary)
-            background = FloatingUi.capsule(
+            background = FloatingUi.capsule(this@FloatingWindowService, 
                 FloatingUi.RADIUS_TILE,
                 palette.panelSunken,
                 palette.panelEdge,
@@ -1886,6 +1905,9 @@ class FloatingWindowService : Service() {
 
         /** AI 思考写通知的最小间隔：流式增量每秒数次，逐条 notify 是跨进程调用 */
         private const val NOTIFY_THROTTLE_MS = 700L
+
+        /** 流式返回区最多展示的字符数（保留尾部最新内容） */
+        private const val THINKING_DISPLAY_MAX = 3000
 
         /** 关闭按钮两段式确认：第一段显示的待确认文案 */
         private const val CLOSE_CONFIRM_LABEL = "再点确认停止"

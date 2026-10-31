@@ -9,9 +9,9 @@ import com.phoneagent.data.store.PageMemoryOps
 import com.phoneagent.data.store.PageShapeNode
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.ScreenSnapshot
-import com.phoneagent.domain.model.IntentType
 import com.phoneagent.engine.perception.AnnotatedPage
 import com.phoneagent.engine.perception.PageFingerprint
+import com.phoneagent.domain.rules.PageActionLabels
 import com.phoneagent.domain.rules.effectiveLabel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -244,34 +244,7 @@ class PageMemoryRecorder(
         }
     }
 
-    /** 意图 → 一句动作文案（≤24 字，记忆页与提示注入共用）。
-     *  by=id 定位的 value（semanticId）经正查表还原成控件文字：同一控件用 id 或文字定位，
-     *  动作文案一致，路径边才能按同 文案+起止 合并为一条。 */
-    private fun actionLabel(intent: AgentIntent): String {
-        val raw = intent.target?.value?.take(12).orEmpty()
-        val target = if (intent.target?.by == "id") {
-            lastIdsToLabel[intent.target?.value]?.take(12) ?: raw
-        } else {
-            raw
-        }
-        val quoted = if (target.isBlank()) "" else "『$target』"
-        return when (intent.intent) {
-            IntentType.TAP, IntentType.LONG_PRESS,
-            IntentType.SEARCH, IntentType.SEND, IntentType.CONFIRM, IntentType.CLOSE,
-            IntentType.SHARE, IntentType.COLLECT, IntentType.COPY, IntentType.DELETE,
-            IntentType.DOWNLOAD, IntentType.ADD, IntentType.SWITCH, IntentType.CLEAR_INPUT,
-            IntentType.REFRESH, IntentType.SCROLL_TO,
-            -> "点击$quoted"
-            IntentType.INPUT -> "输入$quoted"
-            IntentType.OPEN_APP -> "打开${intent.app.orEmpty().take(12)}"
-            IntentType.OPEN -> "直达页面"
-            IntentType.SWIPE -> "滑动${intent.direction.orEmpty()}"
-            IntentType.PRESS -> "按键${intent.key.orEmpty()}"
-            IntentType.BACK -> "返回"
-            IntentType.HOME -> "回桌面"
-            IntentType.BROWSE_OPEN -> "打开网页"
-            IntentType.BROWSE_CLICK -> "点击网页元素$quoted"
-            else -> ""
-        }
-    }
+    /** 意图 → 一句动作文案（≤24 字）；口径收口在 [PageActionLabels]（纯函数、可单测） */
+    private fun actionLabel(intent: AgentIntent): String =
+        PageActionLabels.of(intent, lastIdsToLabel)
 }

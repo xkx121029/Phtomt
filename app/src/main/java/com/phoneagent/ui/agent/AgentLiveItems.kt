@@ -7,8 +7,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,16 +40,6 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.motionSettings
 
-/** 相位中文名 */
-private fun phaseWord(phase: AgentState.Phase): String = when (phase) {
-    AgentState.Phase.IDLE -> "空闲"
-    AgentState.Phase.OBSERVING -> "观察页面"
-    AgentState.Phase.THINKING -> "思考下一步"
-    AgentState.Phase.ACTING -> "执行动作"
-    AgentState.Phase.DONE -> "已完成"
-    AgentState.Phase.ERROR -> "出错"
-}
-
 /**
  * 实时中间状态：无论中间刷过多少条，列表里恒定只有这一条，
  * 被折叠掉的条数用「另有 N 条动态」告知，避免刷屏。
@@ -64,7 +56,7 @@ internal fun LiveStatusItem(item: AgentTimelineItem.LiveStatus, vm: MainViewMode
     val colors = AppTheme.colors
     val reduceMotion = motionSettings().reduceMotion
 
-    val headline = item.message.ifBlank { phaseWord(item.phase) }
+    val headline = item.message.ifBlank { agentPhaseWord(item.phase) }
     val thinking = item.phase == AgentState.Phase.THINKING
     // 打字机：流式正文分块到达，这里摊成连续吐字（key 恒定，换任务不残留上一条的打字状态）
     val typed = rememberTypedText(item.streaming, key = "decision")
@@ -199,6 +191,37 @@ private fun ShimmerStatusText(text: String, modifier: Modifier = Modifier) {
 @Composable
 internal fun NeedsUserItem(item: AgentTimelineItem.NeedsUser) {
     val colors = AppTheme.colors
+    AlertCard(
+        title = "需要你的协助",
+        trailing = { StatusPill(text = "第 ${item.step} 步", color = colors.onErrorContainer) },
+    ) {
+        Spacer(Modifier.height(AppSpacing.Xs))
+        Text(
+            text = item.reason,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.onErrorContainer,
+        )
+        Spacer(Modifier.height(AppSpacing.Md))
+        Text(
+            text = "在下方输入框告诉我该怎么做，或点「已手动处理」让 AI 继续",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = colors.onErrorContainer.copy(alpha = 0.85f),
+        )
+    }
+}
+
+/**
+ * 警示卡外壳：「需要你的协助」与「等待确认执行」共用同一套容器与标题行，
+ * 只有正文与右侧尾部徽标不同。视觉口径收口在这里，改配色/间距不会改漏一处。
+ */
+@Suppress("FunctionNaming") // Compose 约定：可组合函数首字母大写
+@Composable
+internal fun AlertCard(
+    title: String,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = AppTheme.colors
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -215,25 +238,16 @@ internal fun NeedsUserItem(item: AgentTimelineItem.NeedsUser) {
             )
             Spacer(Modifier.width(AppSpacing.Xs))
             Text(
-                text = "需要你的协助",
+                text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.onErrorContainer,
             )
-            Spacer(Modifier.weight(1f))
-            StatusPill(text = "第 ${item.step} 步", color = colors.onErrorContainer)
+            if (trailing != null) {
+                Spacer(Modifier.weight(1f))
+                trailing()
+            }
         }
-        Spacer(Modifier.height(AppSpacing.Xs))
-        Text(
-            text = item.reason,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onErrorContainer,
-        )
-        Spacer(Modifier.height(AppSpacing.Md))
-        Text(
-            text = "在下方输入框告诉我该怎么做，或点「已手动处理」让 AI 继续",
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = colors.onErrorContainer.copy(alpha = 0.85f),
-        )
+        content()
     }
 }
 
@@ -298,14 +312,32 @@ private fun summaryLine(item: AgentTimelineItem.Done): String {
     return if (parts.isEmpty()) "本次任务未产生额外消耗" else parts.joinToString(" · ")
 }
 
-/** 任务失败 / 达到步数上限 */
+/**
+ * 任务失败 / 达到步数上限。
+ *
+ * 标题按 [AgentTimelineItem.Failed.kind] 分类：步数用尽、AI 链路异常、配置缺失、用户取消
+ * 这四种的处置完全不同，一律写「任务已停止」等于什么也没告诉用户。
+ * 卡片底部按分类给出对应出口：链路类问题给「重试」，配置类问题给「去配置」。
+ */
 @Composable
 internal fun FailedItem(
-    message: String,
+    item: AgentTimelineItem.Failed,
     vm: MainViewModel,
+    onOpenSettings: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    val text = rememberTranslated(message, vm)
+    val text = rememberTranslated(item.message, vm)
+    val title = when (item.kind) {
+        AgentState.FailureKind.MAX_STEPS -> "步数用完了"
+        AgentState.FailureKind.DECISION -> "AI 链路中断"
+        AgentState.FailureKind.CONFIG -> "还没配置模型"
+        AgentState.FailureKind.USER_STOPPED -> "已停止"
+        AgentState.FailureKind.UNKNOWN -> "任务未完成"
+    }
+    // 只有「链路/步数/未分类」才值得重试：配置问题重试还是同一个结果，取消则不需要重试
+    val canRetry = item.kind == AgentState.FailureKind.MAX_STEPS ||
+        item.kind == AgentState.FailureKind.DECISION ||
+        item.kind == AgentState.FailureKind.UNKNOWN
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -322,7 +354,7 @@ internal fun FailedItem(
             )
             Spacer(Modifier.width(AppSpacing.Sm))
             Text(
-                text = "任务已停止",
+                text = title,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = colors.onErrorContainer,
             )
@@ -333,6 +365,27 @@ internal fun FailedItem(
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onErrorContainer,
         )
+        if (canRetry || item.kind == AgentState.FailureKind.CONFIG) {
+            Spacer(Modifier.height(AppSpacing.Md))
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+                if (canRetry) {
+                    AgentActionButton(
+                        text = "重试",
+                        icon = AppIcons.Refresh,
+                        tone = AgentButtonTone.PRIMARY,
+                        onClick = { vm.retryLastTask() },
+                    )
+                }
+                if (item.kind == AgentState.FailureKind.CONFIG) {
+                    AgentActionButton(
+                        text = "去配置",
+                        icon = AppIcons.Settings,
+                        tone = AgentButtonTone.NEUTRAL,
+                        onClick = onOpenSettings,
+                    )
+                }
+            }
+        }
     }
 }
 

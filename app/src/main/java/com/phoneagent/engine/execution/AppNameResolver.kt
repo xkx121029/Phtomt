@@ -3,6 +3,8 @@ package com.phoneagent.engine.execution
 import android.content.Context
 import android.content.Intent
 import com.phoneagent.core.log.AppLog
+// 候选挑选与助手探测共用同一份实现（provider-api），保证两处"优先系统应用"的规则不会漂移
+import com.phoneagent.provider.a11y.pickPreferredPackage
 
 /**
  * 应用名 → 包名解析器（对应 HPA动作执行逻辑优化文档 v2.1 六、6.3）。
@@ -19,6 +21,11 @@ import com.phoneagent.core.log.AppLog
  * （如"微信"这类无系统版的第三方应用不受影响）。
  */
 class AppNameResolver(private val context: Context) {
+
+    private companion object {
+        /** 模糊匹配前的空白剔除；已装应用可达数百个，逐条编译正则代价明显 */
+        val WS_RE = Regex("\\s+")
+    }
 
     /** 解析应用名 → 包名。传入参数为合法包名时原样返回；找不到返回 null */
     fun resolve(appName: String?): String? {
@@ -44,10 +51,10 @@ class AppNameResolver(private val context: Context) {
         }
 
         // 模糊匹配：去掉空格和特殊字符后做子串匹配；同样优先系统自带
-        val cleanName = name.replace("\\s+".toRegex(), "").lowercase()
+        val cleanName = WS_RE.replace(name, "").lowercase()
         pickPreferredPackage(
             installed.filter { app ->
-                val cleanLabel = app.appName.replace("\\s+".toRegex(), "").lowercase()
+                val cleanLabel = WS_RE.replace(app.appName, "").lowercase()
                 cleanLabel.contains(cleanName) || cleanName.contains(cleanLabel)
             }.map { it.packageName to it.isSystem },
         )?.let {
@@ -80,12 +87,5 @@ class AppNameResolver(private val context: Context) {
 
     private data class InstalledApp(val appName: String, val packageName: String, val isSystem: Boolean)
 }
-
-/**
- * 候选挑选：优先系统自带应用，没有系统应用才取第一个候选。
- * 抽成纯函数是为了可单测——[AppNameResolver] 本身依赖 PackageManager 无法在纯 JVM 里跑。
- */
-internal fun pickPreferredPackage(candidates: List<Pair<String, Boolean>>): String? =
-    candidates.firstOrNull { it.second }?.first ?: candidates.firstOrNull()?.first
 
 private const val TAG = "AppNameResolver"

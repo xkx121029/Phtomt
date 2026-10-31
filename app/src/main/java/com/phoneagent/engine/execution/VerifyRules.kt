@@ -76,6 +76,26 @@ internal object VerifyRules {
     fun shouldRetry(type: String, reason: String, attempt: Int, active: Boolean): Boolean =
         active && attempt < MAX_ATTEMPTS && !isStructuralError(reason) && !isClickLike(type)
 
+    /**
+     * 动作执行后的界面稳定等待（毫秒）。
+     *
+     * 主循环原先固定 `delay(400)`：不管这一步有没有碰界面，都一律空等 400ms。
+     * 但 SAY / REMEMBER / DEVICE_QUERY 这三类只是"说一句 / 记一条 / 查设备信息"，
+     * 页面根本不会因为执行它们而改变，等待 400ms 纯属白等（长任务里累积起来很可观）。
+     * 其余动作涉及动画与页面切换，必须保留完整等待，否则下一步会读到画了一半的页面。
+     */
+    fun stepSettleMs(type: String): Long =
+        if (type in NO_SETTLE_TYPES) NO_SETTLE_MS else SETTLE_MS
+
+    /** 会改变界面的动作：执行后等动画/转场走完再观察 */
+    const val SETTLE_MS = 400L
+
+    /** 不改变界面的动作：只留极短的让出时间，够日志刷一帧即可 */
+    const val NO_SETTLE_MS = 60L
+
+    /** 不触碰 UI 的动作类型：执行它们不会让页面发生任何变化 */
+    private val NO_SETTLE_TYPES = setOf(ActionType.SAY, ActionType.REMEMBER, ActionType.DEVICE_QUERY)
+
     // ---- 呈现 ----
 
     /** 执行历史里的验证结论（[StepRecord.isConfirmed] 以同一口径判定"是否确认生效"） */

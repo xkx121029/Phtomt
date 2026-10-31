@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -165,12 +167,6 @@ fun GlassSurface(
 }
 
 /**
- * 页眉浮起时在上缘额外让出的距离：浮起时上缘外边距是
- * [GlassHeaderInset] + [HeaderLiftAmount]，吸顶时归 0。
- */
-internal val HeaderLiftAmount = 12.dp
-
-/**
  * 页眉状态：**页面在最上方时是一条通栏直角的吸顶栏，只要离开了最上方就收成一颗圆形胶囊浮板**。
  *
  * 两端形态是**离散**的两个状态，[floating] 就是那把总开关。不做"跟着滚动位置连续插值"：
@@ -233,7 +229,7 @@ fun rememberHeaderLiftState(): HeaderLiftState = remember { HeaderLiftState() }
 fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
 
 /**
- * 玻璃页眉板**浮起后**距屏幕左右的外边距（上缘还要再加 [HeaderLiftAmount]）；
+ * 玻璃页眉板**浮起后**距屏幕左右的外边距（吸附 / 浮起两态共用同一个值，只是浮起时才生效）；
  * 吸顶时这一段收为 0，页眉通栏。
  * 页眉内容若要与其他页面 20dp 的内容留白落在同一条竖直线上，
  * 得把这段外边距从内容留白里减掉——骨架用 [LocalHeaderContentPad] 自动做这件事，
@@ -289,6 +285,10 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  *   槽位只负责"画在正文之上、页内浮层之下"，位置由页内自己 align。
  * @param overlay 页内浮层（如内嵌确认层）。给的是骨架最外层的 Box 作用域，
  *   所以它压得住玻璃页眉——浮层不该在页眉下面断开。底部浮层也在它之下。
+ *
+ * 宽屏（[LocalIsExpanded]）下正文收口到 [ContentMaxWidth] 并居中，玻璃页眉同步让出
+ * 两侧空档、与正文列对齐：通栏页眉里标题飘在正文之外，是平板布局最容易露馅的地方。
+ * 这个收口只在骨架里做一次，各页不写 widthIn。
  */
 @Composable
 fun GlassHeaderScaffold(
@@ -303,6 +303,7 @@ fun GlassHeaderScaffold(
     val glass = rememberGlassState()
     val density = LocalDensity.current
     val lift = rememberHeaderLiftState()
+    val expanded = LocalIsExpanded.current
     // 显式 provider 优先（单一滚动容器页的官网风格判定更稳），否则走 NestedScrollConnection
     val isFloating by remember { androidx.compose.runtime.derivedStateOf { floating?.invoke() ?: lift.floating } }
     val liftProgress by animateFloatAsState(
@@ -325,31 +326,46 @@ fun GlassHeaderScaffold(
         maxOf(with(density) { headerHeight.toDp() / 2 }, AppRadii.Header)
     }
 
-    // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 GlassHeaderInset
-    val sideInset = GlassHeaderInset * liftProgress
-    /**
-     * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
-     * [GlassHeaderDefaultContentPad]。转场全程面板两沿在动、文字原地不动。
-     */
-    val contentPad = GlassHeaderDefaultContentPad - sideInset
-    // 上缘外边距：吸顶 0（贴住内容区上沿）→ 浮起 GlassHeaderInset + HeaderLiftAmount
-    val topInset = (GlassHeaderInset + HeaderLiftAmount) * liftProgress
-    // 四角圆角：吸顶 0（四角全直角）→ 浮起 capsuleRadius（真胶囊）
-    val cornerRadius = capsuleRadius * liftProgress
-
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(colors.surfaceBase)
             .headerLift(lift),
     ) {
+        // 宽屏下正文列的左右空档：正文收口居中，页眉跟着退到同一条列上
+        val columnInset = if (expanded) {
+            ((maxWidth - ContentMaxWidth) / 2).coerceAtLeast(0.dp)
+        } else {
+            0.dp
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .hazeSource(glass),
         ) {
-            content(PaddingValues(top = contentTopPad))
+            // 正文列：宽度上限由这里统一收口，页面内不再各自写 widthIn
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = columnInset),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                content(PaddingValues(top = contentTopPad))
+            }
         }
+
+        // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 GlassHeaderInset
+        val sideInset = GlassHeaderInset * liftProgress
+        /**
+         * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
+         * [GlassHeaderDefaultContentPad]。转场全程面板两沿在动、文字原地不动。
+         */
+        val contentPad = GlassHeaderDefaultContentPad - sideInset
+        // 四角圆角：吸顶 0（四角全直角）→ 浮起 capsuleRadius（真胶囊）
+        // 上缘外边距固定 0：页眉始终贴在内容区上沿，只做形态切换（通栏直角 ↔ 胶囊 + 左右缩进），
+        // 不再额外向下飘移一段距离
+        val cornerRadius = capsuleRadius * liftProgress
 
         GlassSurface(
             hazeState = glass,
@@ -359,7 +375,7 @@ fun GlassHeaderScaffold(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
-                .padding(start = sideInset, end = sideInset, top = topInset)
+                .padding(start = sideInset + columnInset, end = sideInset + columnInset)
                 .onSizeChanged { headerHeight = it.height },
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -379,3 +395,12 @@ fun GlassHeaderScaffold(
         overlay?.invoke(this)
     }
 }
+
+/**
+ * 正文列的宽度约束：最多 [ContentMaxWidth]，窄屏时铺满。
+ *
+ * 给骨架 `dock` 槽位里的浮层用——玻璃骨架只收口正文，底部输入区由页面自己 align，
+ * 得手动套一层才和正文列等宽。写法顺序不能反：先 `widthIn` 收紧约束，再 `fillMaxWidth`
+ * 填满它，反过来 min 宽已经被撑到整屏，收不回来。
+ */
+fun Modifier.contentColumn(): Modifier = widthIn(max = ContentMaxWidth).fillMaxWidth()

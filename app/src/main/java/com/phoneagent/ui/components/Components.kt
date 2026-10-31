@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -91,6 +93,53 @@ val LocalNavClearance = staticCompositionLocalOf { PaddingValues(0.dp) }
 val LocalIsLandscape = staticCompositionLocalOf { false }
 
 /**
+ * 宽屏断点：可用宽度达到这一档即视为平板/折叠屏展开态。
+ *
+ * 840dp 是 Material 3 窗口尺寸分级里 expanded 的起点。达到它才做"双栏 + 正文收口"，
+ * 再按手机排版拉伸会让每行过长、控件过扁。
+ */
+val WindowWidthExpanded = 840.dp
+
+/**
+ * 侧栏断点：宽度达到 600dp（Material 3 的 medium 档）且高度不低于 [WindowHeightRail]，
+ * 就把底部导航条换成左侧竖栏。
+ *
+ * 导航形态跟**可用空间**走，不跟方向走：手机横屏宽度够了但高度只有 400 出头，
+ * 6 个条目竖排会溢出；平板竖屏宽度 800 却正是适合侧栏的形态。
+ */
+val WindowWidthRail = 600.dp
+
+/** 侧栏需要的最小高度：6 个条目 + 上下呼吸，低于这一档改用底部条 */
+val WindowHeightRail = 480.dp
+
+/**
+ * 当前是否宽屏（≥ [WindowWidthExpanded]）。由宿主读一次后 provide，
+ * 页面里要"双栏 / 收口"时只读这一份，不再各自去量屏幕。
+ */
+val LocalIsExpanded = staticCompositionLocalOf { false }
+
+/**
+ * 当前是否用左侧竖栏导航（≥ [WindowWidthRail]）。由宿主读一次后 provide。
+ *
+ * 竖栏与底部条不是"两种皮肤"，而是同一套导航的两个形态：
+ * 竖栏常驻并**占住**左侧一条空间（内容整体右移），底部条则浮在内容之上。
+ * 页面只关心 [LocalNavClearance] 已归零——内容不会被导航压住，无需自己避让。
+ */
+val LocalRailNav = staticCompositionLocalOf { false }
+
+/**
+ * 宽屏下正文的最大宽度。
+ *
+ * 超宽屏上内容若铺满整屏，设置项会被拉到一米长、对话每行 100+ 字，
+ * 视线回行极易串行。统一收口到这一档并居中：手机窄屏时该值大于可用宽度，行为不变。
+ * 收口点只有 [Glass.kt] 的玻璃骨架一处，各页不必自己写 widthIn。
+ *
+ * 900dp 是按「一行 45~55 个汉字」反推的阅读舒适上限，也是 1280dp 宽平板减去
+ * 侧栏后仍能真正生效的值——定到 1100 以上，在多数平板上等于没限。
+ */
+val ContentMaxWidth = 900.dp
+
+/**
  * 全局 Snackbar：宿主（MainActivity）注入，页面内直接取用。
  *
  * 项目铁律是不使用系统 Toast——它的字体、圆角、位置全由系统决定，
@@ -143,6 +192,50 @@ fun PressableScale(
             ),
         content = { content() },
     )
+}
+
+/**
+ * 输入面主操作的边长。与单行输入的最小高度（40dp）对齐，
+ * 一行的输入框与按钮底边齐平，不会一个高一个矮。
+ */
+val ComposerActionSize = 40.dp
+
+/**
+ * 输入面内的主操作：40dp 方块图标按钮。
+ *
+ * 对话、编码、操控三个输入面共用这一颗，样式与状态语义只在这里定义一次：
+ * 可用 = 品牌色底 + 品牌前景；禁用 = 下沉底 + 弱化的图标色（不用降透明度，
+ * 纸白底上半透明的主色会发浑）。尺寸与 40dp 的行高对齐，多行输入时按钮贴行底。
+ */
+@Composable
+fun ComposerActionButton(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppRadii.Tile)
+    PressableScale(
+        onPress = buzz,
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .size(ComposerActionSize)
+            .clip(shape)
+            .background(if (enabled) colors.brand else colors.surfaceSunken),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = if (enabled) colors.onBrand else colors.outlineStrong,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
 }
 
 /**
@@ -777,5 +870,37 @@ fun SectionCard(
             Spacer(Modifier.height(AppSpacing.Sm))
             content()
         }
+    }
+}
+
+/**
+ * 全屏二级页的唯一出口：底部大圆角按钮。
+ *
+ * 测试 / 调试 / 技能 / 记忆 / 浏览器 / 文档全屏阅读共用这一颗，不再各页复制一份
+ * 按钮几何（56dp 高、Hero 圆角、整行留白）。文案与图标由调用方给：落到主页时是
+ * 「返回主页」，落到某个标签时是「返回 + 标签名」，避免按钮写着"主页"却回到别处。
+ */
+@Composable
+fun HomeBackButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "返回主页",
+    icon: ImageVector = AppIcons.Home,
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        ),
+        shape = RoundedCornerShape(AppRadii.Hero),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .height(56.dp),
+    ) {
+        Icon(icon, contentDescription = null)
+        Spacer(Modifier.width(AppSpacing.Sm))
+        Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }

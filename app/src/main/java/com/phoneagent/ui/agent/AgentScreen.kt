@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,7 +45,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +59,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalHeaderContentPad
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
+import com.phoneagent.ui.components.contentColumn
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -106,12 +105,15 @@ fun AgentScreen(
     onOpenMemory: () -> Unit = {},
     /** 全屏阅读 AI 生成的内容（任务流里的文档卡片只能限高内滚，通读要走整屏） */
     onOpenDocFullscreen: () -> Unit = {},
+    /** 打开设置页（失败卡「去配置」出口） */
+    onOpenSettings: () -> Unit = {},
     /** 任务抽屉开合变化：抽屉是盖住整页的，打开时外层要让悬浮导航栏让位，别浮在抽屉上 */
     onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
     val agent by vm.agentState.collectAsState()
     val queue by vm.taskQueue.collectAsState()
     val needsUser by vm.needsUser.collectAsState()
+    val paused by vm.paused.collectAsState()
     val pendingShellCommand by vm.pendingShellCommand.collectAsState()
     val a11yEnabled by vm.a11yEnabled.collectAsState()
     val planPhase by vm.planPhase.collectAsState()
@@ -341,9 +343,9 @@ fun AgentScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        // 横屏时导航是左侧竖栏，任务流跟着从栏右侧起排
-                        start = AppSpacing.Lg +
-                            LocalNavClearance.current.calculateStartPadding(LocalLayoutDirection.current),
+                        // 侧栏已占住左侧空间（内容整体右移），这里只需常规呼吸；
+                        // 底部条形态下导航是浮层，净空由 LocalNavClearance 垫在末尾
+                        start = AppSpacing.Lg,
                         end = if (railVisible) 22.dp else AppSpacing.Lg,
                         // 页眉净空（含上缘外边距）由骨架下发；任务流再多让出 8dp 呼吸
                         top = headerPad.calculateTopPadding() + AppSpacing.Sm,
@@ -368,6 +370,7 @@ fun AgentScreen(
                                 item = item,
                                 vm = vm,
                                 onOpenDocFullscreen = onOpenDocFullscreen,
+                                onOpenSettings = onOpenSettings,
                             )
                         }
                         Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
@@ -408,13 +411,13 @@ fun AgentScreen(
                 hazeState = glass,
                 shape = RoundedCornerShape(AppRadii.Hero),
                 modifier = Modifier
-                    .fillMaxWidth()
+                    // 宽屏下输入面与正文列等宽居中，不再整屏拉通
+                    .contentColumn()
                     .align(Alignment.BottomCenter)
                     .imePadding()
                     .padding(
-                        // 横屏时输入区从左侧竖栏右侧起排，避免与竖栏叠在一起
-                        start = AgentGlassInset +
-                            LocalNavClearance.current.calculateStartPadding(LocalLayoutDirection.current),
+                        // 侧栏已占位，左右只留面板自身的外边距
+                        start = AgentGlassInset,
                         end = AgentGlassInset,
                         bottom = LocalNavClearance.current.calculateBottomPadding(),
                     )
@@ -440,6 +443,8 @@ fun AgentScreen(
                             onStop = {
                                 if (planPhase is PlanPhase.Planning) vm.cancelPlanning() else vm.stopAgent()
                             },
+                            paused = paused,
+                            onTogglePause = { if (paused) vm.resumeAgent() else vm.pauseAgent() },
                             planning = planPhase is PlanPhase.Planning,
                         )
                     }
@@ -465,8 +470,9 @@ fun AgentScreen(
                             plan = (planPhase as? PlanPhase.AwaitingApproval)?.plan,
                             onApprovePlan = { vm.approvePlan() },
                             onCancelPlan = { vm.cancelPlanning() },
-                            onSend = {
-                                val text = draft.trim()
+                            onSend = { raw ->
+                                // 文本由 composer 回传（语音松手即发时宿主 draft 还是旧值）
+                                val text = raw.trim()
                                 if (text.isNotEmpty()) {
                                     when (mode) {
                                         ComposerMode.NEW_TASK -> {
@@ -652,27 +658,7 @@ private fun PendingActionConfirmCard(
     onDeny: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
-            .background(colors.errorContainer)
-            .padding(AppSpacing.Lg),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = AppIcons.TouchApp,
-                contentDescription = null,
-                tint = colors.onErrorContainer,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(AppSpacing.Xs))
-            Text(
-                text = "等待确认执行",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.onErrorContainer,
-            )
-        }
+    AlertCard(title = "等待确认执行") {
         Spacer(Modifier.height(AppSpacing.Xs))
         Text(
             text = summary,
@@ -711,6 +697,7 @@ private fun AgentTimelineItemView(
     item: AgentTimelineItem,
     vm: MainViewModel,
     onOpenDocFullscreen: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
@@ -725,7 +712,7 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.LiveStatus -> LiveStatusItem(item, vm)
         is AgentTimelineItem.NeedsUser -> NeedsUserItem(item)
         is AgentTimelineItem.Done -> DoneItem(item)
-        is AgentTimelineItem.Failed -> FailedItem(item.message, vm)
+        is AgentTimelineItem.Failed -> FailedItem(item, vm, onOpenSettings = onOpenSettings)
         is AgentTimelineItem.Notice -> NoticeItem(item)
         is AgentTimelineItem.DocPreview -> DocPreviewItem(
             item,

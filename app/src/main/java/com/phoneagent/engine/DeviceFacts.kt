@@ -10,8 +10,7 @@ import android.os.BatteryManager
 import android.os.Environment
 import android.os.StatFs
 import android.view.WindowManager
-import java.text.SimpleDateFormat
-import java.util.Date
+import com.phoneagent.core.text.TimeFormats
 import java.util.Locale
 
 /**
@@ -68,7 +67,7 @@ internal class DeviceFacts(private val context: Context) {
 
     /** 当前时间（`2026-09-29 周二 20:00`）：元素树里读不到，"明天""下周"这类说法全靠它 */
     fun dateTimeText(): String = runCatching {
-        SimpleDateFormat("yyyy-MM-dd E HH:mm", Locale.CHINA).format(Date())
+        TimeFormats.format("yyyy-MM-dd E HH:mm", locale = Locale.CHINA)
     }.getOrDefault("")
 
     /**

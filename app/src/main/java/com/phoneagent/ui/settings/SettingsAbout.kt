@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.BuildConfig
 import com.phoneagent.ui.components.LocalNavClearance
+import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.components.rememberHapticClick
 
 /** 开源仓库地址：与推送远端一致（见项目 git remote） */
@@ -38,9 +39,18 @@ private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
  *
  * 使用说明只写「不看就会踩坑」的几条（先给权限、配模型、AI 不做不可逆操作），
  * 不复述 README——复述一遍等于给用户多一层要读的文档。
+ *
+ * 「调试与测试」入口也收在这里：它们是开发工具，不该和 Agent / 设置这类日常入口
+ * 并排出现在首屏；需要的人知道到「关于」里找。
  */
 @Composable
-internal fun SettingsAbout(onBack: () -> Unit) {
+internal fun SettingsAbout(
+    onBack: () -> Unit,
+    /** 打开调试页（日志 / 指标 / 轨迹） */
+    onOpenDebug: () -> Unit = {},
+    /** 打开模型回归测试页 */
+    onOpenTest: () -> Unit = {},
+) {
     val context = LocalContext.current
 
     Column(
@@ -133,6 +143,32 @@ internal fun SettingsAbout(onBack: () -> Unit) {
                 Bullet("导出的日志与诊断报告会先脱敏手机号、身份证、银行卡再落盘")
                 Bullet("清除 AI 记忆、调试记录或恢复默认设置后不可撤销，见「数据与存储」")
             }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 开发者工具：调试页与模型回归测试属于排查手段，不是日常功能，
+        // 放在「关于」里而不是首页快捷入口——首页那几个位置应该留给用户真正会用的东西
+        SettingsSection(
+            title = "开发者工具",
+            subtitle = "排查问题、验证模型能力时使用",
+            tone = SettingsTone.Neutral,
+        ) {
+            SettingsRow(
+                icon = AppIcons.Code,
+                title = "调试",
+                subtitle = "日志 / 指标 / 执行轨迹",
+                tone = SettingsTone.Neutral,
+                onClick = onOpenDebug,
+            )
+            SettingsDivider()
+            SettingsRow(
+                icon = AppIcons.Science,
+                title = "测试",
+                subtitle = "模型回归校验",
+                tone = SettingsTone.Neutral,
+                onClick = onOpenTest,
+            )
         }
 
         Spacer(Modifier.height(28.dp))

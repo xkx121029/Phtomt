@@ -22,6 +22,12 @@ data class VerifyResult(
      * note 是"这步算成了，但下一步要留意"——混在一起会让成功文案带上一串解释。
      */
     val note: String = "",
+    /**
+     * 动作是否**根本没交付到设备**（无障碍服务不可用 / 手势被系统拒绝 / 启动指令未被接受）。
+     * 只有"未交付"才允许换执行通道重试；"已交付但未确认"再走一遍就是重复副作用
+     * （对发送/提交/删除这类按钮尤其致命）。
+     */
+    val notDelivered: Boolean = false,
 )
 
 /**
@@ -69,7 +75,8 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
     ): VerifyResult {
         val before = PageFingerprint.computeMeaningful(snapshot)
         val executed = perform()
-        if (!executed) return VerifyResult(false, "动作执行返回失败", before, before)
+        // 执行调用本身返回失败 = 动作没交付出去，允许上层换通道重试
+        if (!executed) return VerifyResult(false, "动作执行返回失败", before, before, notDelivered = true)
 
         var after = before
         var captured = false

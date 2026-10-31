@@ -291,6 +291,22 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
     @Volatile
     private var shapeSchemaChecked = false
 
+    /**
+     * 页面记忆 / 路径边的进程内缓存。
+     *
+     * DataStore 把整份列表存成一个 JSON blob，一次 load 就是一次全量反序列化；
+     * 而页面记忆在任务执行中**每步**都要查一次命中（[PageMemoryRecorder.findKnown]）。
+     * 缓存后只有真正写入时才重新解码；写入方与读取方现已统一为同一个 MemoryStore 实例
+     * （AppModule 注入引擎），因此不存在跨实例读到旧数据的问题。
+     *
+     * 线程安全：只做引用替换（@Volatile），列表本身不可变；写入后先落盘再更新缓存。
+     */
+    @Volatile
+    private var pageMemoryCache: List<PageMemoryEntry>? = null
+
+    @Volatile
+    private var pageEdgeCache: List<PagePathEdge>? = null
+
     /** 懒迁移：首次读页面记忆/路径边时检查，旧 schema 一次性清空（UI 与引擎读取全经 load 入口，无遗漏） */
     private suspend fun ensureShapeSchema() {
         if (shapeSchemaChecked) return
@@ -303,6 +319,8 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
                 it.remove(pagePathKey)
                 it[pageShapeSchemaKey] = PageMemoryOps.PAGE_SHAPE_SCHEMA
             }
+            pageMemoryCache = null
+            pageEdgeCache = null
         }
     }
 
@@ -555,17 +573,25 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
 
     override suspend fun loadPageMemories(): List<PageMemoryEntry> {
         ensureShapeSchema()
-        val raw = context.memoryStore.data.first()[pageMemoryKey] ?: return emptyList()
-        return runCatching { json.decodeFromString<List<PageMemoryEntry>>(raw) }.getOrDefault(emptyList())
+        val cached = pageMemoryCache
+        if (cached != null) return cached
+        val raw = context.memoryStore.data.first()[pageMemoryKey]
+        val list: List<PageMemoryEntry> = if (raw == null) {
+            emptyList()
+        } else {
+            runCatching { json.decodeFromString<List<PageMemoryEntry>>(raw) }.getOrDefault(emptyList())
+        }
+        pageMemoryCache = list
+        return list
     }
 
     private suspend fun savePageMemories(list: List<PageMemoryEntry>) {
+        // 落盘与缓存必须用同一份（同样的裁剪结果），否则缓存会比磁盘多出被淘汰的条目
+        val capped = PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_MEMORIES) { it.updatedAt }
         context.memoryStore.edit {
-            it[pageMemoryKey] = json.encodeToString(
-                ListSerializer(PageMemoryEntry.serializer()),
-                PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_MEMORIES) { it.updatedAt },
-            )
+            it[pageMemoryKey] = json.encodeToString(ListSerializer(PageMemoryEntry.serializer()), capped)
         }
+        pageMemoryCache = capped
     }
 
     /**
@@ -606,17 +632,24 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
 
     override suspend fun loadPageEdges(): List<PagePathEdge> {
         ensureShapeSchema()
-        val raw = context.memoryStore.data.first()[pagePathKey] ?: return emptyList()
-        return runCatching { json.decodeFromString<List<PagePathEdge>>(raw) }.getOrDefault(emptyList())
+        val cached = pageEdgeCache
+        if (cached != null) return cached
+        val raw = context.memoryStore.data.first()[pagePathKey]
+        val list: List<PagePathEdge> = if (raw == null) {
+            emptyList()
+        } else {
+            runCatching { json.decodeFromString<List<PagePathEdge>>(raw) }.getOrDefault(emptyList())
+        }
+        pageEdgeCache = list
+        return list
     }
 
     private suspend fun savePageEdges(list: List<PagePathEdge>) {
+        val capped = PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_EDGES) { it.updatedAt }
         context.memoryStore.edit {
-            it[pagePathKey] = json.encodeToString(
-                ListSerializer(PagePathEdge.serializer()),
-                PageMemoryOps.trimByUpdatedAt(list, PageMemoryOps.MAX_PAGE_EDGES) { it.updatedAt },
-            )
+            it[pagePathKey] = json.encodeToString(ListSerializer(PagePathEdge.serializer()), capped)
         }
+        pageEdgeCache = capped
     }
 
     /**

@@ -63,17 +63,23 @@ data class UiElement(
     val width: Int get() = right - left
     val height: Int get() = bottom - top
 
-    /** 生成供 AI 阅读的一行描述 */
-    fun describe(): String {
-        val parts = mutableListOf<String>()
-        parts += "[#$index] $className($type)"
-        // viewId 是控件自身的稳定标识（资源名），不受同名文字的干扰：把它给 AI 看到，
-        // 它才能对更多控件用 by=id 精确定位，而不是只能靠 label 匹配——
-        // 同一段文字常常同时挂在容器与内层控件上，靠文字选目标本来就要靠端侧再挑一次
-        viewId?.takeIf { it.isNotBlank() }?.let { parts += "id=$it" }
+    /**
+     * 生成供 AI 阅读的一行描述。
+     *
+     * 每步都要为整页元素各调用一次（200+ 元素），所以直接用 StringBuilder 拼接：
+     * 原实现用「List<String> + joinToString」，会额外产生一圈中间字符串与一个列表对象。
+     *
+     * viewId 是控件自身的稳定标识（资源名），不受同名文字的干扰：把它给 AI 看到，
+     * 它才能对更多控件用 by=id 精确定位，而不是只能靠 label 匹配——
+     * 同一段文字常常同时挂在容器与内层控件上，靠文字选目标本来就要靠端侧再挑一次。
+     */
+    fun describe(): String = buildString {
+        append("[#").append(index).append("] ").append(className).append('(').append(type).append(')')
+        viewId?.takeIf { it.isNotBlank() }?.let { append(" id=").append(it) }
         val label = text?.takeIf { it.isNotBlank() } ?: contentDescription?.takeIf { it.isNotBlank() }
-        if (!label.isNullOrBlank()) parts += "label=\"$label\""
-        parts += "center=(${centerX},${centerY}) bounds=($left,$top)-($right,$bottom)"
-        return parts.joinToString(" ")
+        if (!label.isNullOrBlank()) append(" label=\"").append(label).append('"')
+        append(" center=(").append(centerX).append(',').append(centerY)
+        append(") bounds=(").append(left).append(',').append(top)
+        append(")-(").append(right).append(',').append(bottom).append(')')
     }
 }

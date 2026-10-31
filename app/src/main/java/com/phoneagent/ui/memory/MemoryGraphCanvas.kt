@@ -71,9 +71,6 @@ import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
 import com.phoneagent.ui.theme.MemoryProfileSoft
 import com.phoneagent.ui.theme.MemoryRoot
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -89,54 +86,44 @@ internal data class GraphNode(
     val radius: Float,
 )
 
-/** 构建图谱节点布局：中心 + 分类环 + 条目层 */
+/**
+ * 构建图谱节点布局：根节点居中，两侧各一个分类节点，条目按数量在纵轴上等距铺开。
+ *
+ * 旧实现把条目塞进两个各约 50° 的窄扇形，半径固定 0.16，条目一多就叠在一起；
+ * 现在改成「分类 → 条目垂直列」，条目间距只由条目数决定，左右两侧完全对称。
+ * 坐标用 0~1 的比例表达，画布再按实际尺寸换算，横竖屏都不会挤。
+ */
 internal fun buildGraphNodes(
     anomalies: List<AnomalyMemoryEntry>,
     profiles: List<ProfileEntry>,
 ): List<GraphNode> {
     val nodes = mutableListOf<GraphNode>()
 
-    // 中心根节点
+    nodes.add(GraphNode("root", "AI 记忆", "共 ${anomalies.size + profiles.size} 条", MemoryRoot, 0.5f, 0.5f, 0.085f))
     nodes.add(
-        GraphNode("root", "AI 记忆", "", MemoryRoot, 0.5f, 0.5f, 0.09f),
+        GraphNode("cat-anomaly", "异常经验", "${anomalies.size} 条", MemoryAnomaly, 0.30f, 0.5f, 0.065f),
+    )
+    nodes.add(
+        GraphNode("cat-profile", "用户画像", "${profiles.size} 条", MemoryProfile, 0.70f, 0.5f, 0.065f),
     )
 
-    // 异常记忆分类节点（中心左侧）
-    val anomalyCat = GraphNode(
-        "cat-anomaly", "异常经验", "${anomalies.size} 条",
-        MemoryAnomaly, 0.22f, 0.30f, 0.07f,
-    )
-    nodes.add(anomalyCat)
+    // 条目在 0.10~0.90 之间等距分布；只有一条时落在正中，避免看起来"偏上/偏下"
+    fun itemY(index: Int, count: Int): Float =
+        if (count <= 1) 0.5f else 0.10f + 0.80f * index / (count - 1)
 
-    // 用户画像分类节点（中心右侧）
-    val profileCat = GraphNode(
-        "cat-profile", "用户画像", "${profiles.size} 条",
-        MemoryProfile, 0.78f, 0.30f, 0.07f,
-    )
-    nodes.add(profileCat)
-
-    // 异常条目：围绕左下象限
     anomalies.forEachIndexed { i, a ->
-        val angle = Math.PI * (0.6 + 0.28 * i / maxOf(anomalies.size - 1, 1))
         nodes.add(
             GraphNode(
-                "anomaly-$i", a.anomalyType.take(12), a.appPackage.take(10),
-                MemoryAnomalySoft, 0.22f + 0.16f * cos(angle).toFloat(),
-                0.55f + 0.16f * sin(angle).toFloat(),
-                0.045f,
+                "anomaly-$i", a.anomalyType, a.appPackage,
+                MemoryAnomalySoft, 0.11f, itemY(i, anomalies.size), 0.04f,
             ),
         )
     }
-
-    // 画像条目：围绕右下象限
     profiles.forEachIndexed { i, p ->
-        val angle = Math.PI * (0.28 + 0.28 * i / maxOf(profiles.size - 1, 1))
         nodes.add(
             GraphNode(
-                "profile-$i", p.key.take(12), p.value.take(10),
-                MemoryProfileSoft, 0.62f + 0.16f * cos(angle).toFloat(),
-                0.55f + 0.16f * sin(angle).toFloat(),
-                0.045f,
+                "profile-$i", p.key, p.value,
+                MemoryProfileSoft, 0.89f, itemY(i, profiles.size), 0.04f,
             ),
         )
     }
@@ -153,7 +140,17 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
     var selectedNode by remember { mutableStateOf<GraphNode?>(null) }
     val textMeasurer = rememberTextMeasurer()
 
+    // 画布高度跟随条目数增长：每个条目占 64dp（节点 30dp + 两行标签），
+    // 条目多时只拉高画布（外层页面可滚动），不会互相压叠
+    val sideMax = maxOf(
+        nodes.count { it.id.startsWith("anomaly-") },
+        nodes.count { it.id.startsWith("profile-") },
+    )
+    val canvasHeight = maxOf(320f, 120f + sideMax * 64f).coerceAtMost(900f).dp
+
     val colors = AppTheme.colors
+    // 绘制 lambda 不是 @Composable 作用域，主题色要在这里先取出来
+    val itemLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val animatedScale by animateFloatAsState(
         targetValue = scale,
         animationSpec = tween(DurationFast, easing = EaseOut),
@@ -163,7 +160,7 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(320.dp)
+            .height(canvasHeight)
             .clip(RoundedCornerShape(AppRadii.Card))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .pointerInput(Unit) {
@@ -211,21 +208,29 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
             drawContext.canvas.translate(w / 2 + offsetX, h / 2 + offsetY)
             drawContext.canvas.scale(animatedScale, animatedScale)
 
-            // 连线段：从中心到分类，分类到条目
-            val center = nodes.firstOrNull { it.id == "root" }
-            if (center != null) {
-                val cx = center.xRatio * w - w / 2
-                val cy = center.yRatio * h - h / 2
-                nodes.filter { it.id != "root" }.forEach { n ->
-                    val px = n.xRatio * w - w / 2
-                    val py = n.yRatio * h - h / 2
+            // 连线段：根 → 分类，分类 → 自己的条目（旧实现是根直连所有节点，
+            // 关系层级看不出来，条目多时还像一团放射线）
+            fun centerOf(n: GraphNode): Offset =
+                Offset(n.xRatio * w - w / 2, n.yRatio * h - h / 2)
+
+            nodes.firstOrNull { it.id == "root" }?.let { root ->
+                nodes.filter { it.id.startsWith("cat-") }.forEach { cat ->
                     drawLine(
-                        // 连线是结构线，不是语义色：取描边令牌并压淡，
-                        // 随四套配色/深色自动跟随（原先写死的蓝紫在深色下会发亮）
                         color = colors.outlineSoft.copy(alpha = 0.6f),
-                        start = Offset(cx, cy),
-                        end = Offset(px, py),
-                        strokeWidth = 2f,
+                        start = centerOf(root),
+                        end = centerOf(cat),
+                        strokeWidth = 2.5f,
+                    )
+                }
+            }
+            listOf("cat-anomaly" to "anomaly-", "cat-profile" to "profile-").forEach { (catId, prefix) ->
+                val cat = nodes.firstOrNull { it.id == catId } ?: return@forEach
+                nodes.filter { it.id.startsWith(prefix) }.forEach { child ->
+                    drawLine(
+                        color = colors.outlineSoft.copy(alpha = 0.35f),
+                        start = centerOf(cat),
+                        end = centerOf(child),
+                        strokeWidth = 1.5f,
                     )
                 }
             }
@@ -236,6 +241,7 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                 val py = n.yRatio * h - h / 2
                 val r = n.radius * min(w, h)
                 val isSelected = selectedNode?.id == n.id
+                val isItem = n.id.startsWith("anomaly-") || n.id.startsWith("profile-")
 
                 // 选中光环
                 if (isSelected) {
@@ -264,31 +270,39 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                     center = Offset(px, py),
                 )
 
-                // 中文标签（使用 DrawScope.drawText）
                 val labelStyle = TextStyle(
                     color = Color.White,
-                    fontSize = if (n.id == "root") 16.sp else 12.sp,
-                    fontWeight = if (n.id == "root") FontWeight.Bold else FontWeight.Medium,
+                    fontSize = if (n.id == "root") 15.sp else 11.sp,
+                    fontWeight = if (isItem) FontWeight.Medium else FontWeight.Bold,
                     fontFamily = FontFamily.SansSerif,
                 )
+                val labelText = n.label.take(if (isItem) 7 else 8)
+                val label = textMeasurer.measure(labelText, labelStyle)
+                // 条目节点小、文字放不进圆内，统一画在圆下方；分类/根节点文字居中压在圆上
+                val labelTop = if (isItem) py + r + 3f else py - label.size.height / 2f
+                val labelLeft = (px - label.size.width / 2f)
+                    .coerceIn(2f, (w - label.size.width - 2f).coerceAtLeast(2f))
                 drawText(
-                    text = n.label.take(8),
-                    textMeasurer = textMeasurer,
-                    topLeft = Offset(px - 40, py - 8),
-                    style = labelStyle,
+                    textLayoutResult = label,
+                    topLeft = Offset(labelLeft, labelTop),
                 )
-                // 子标签
+                // 子标签：条目的说明放在名称下一行
                 if (n.subLabel.isNotBlank()) {
                     val subStyle = TextStyle(
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 10.sp,
+                        color = if (isItem) itemLabelColor else Color.White.copy(alpha = 0.85f),
+                        fontSize = 9.sp,
                         fontFamily = FontFamily.SansSerif,
                     )
+                    val subText = n.subLabel.take(if (isItem) 9 else 10)
+                    val sub = textMeasurer.measure(subText, subStyle)
+                    val subTop = if (isItem) labelTop + label.size.height + 1f else py + r + 2f
                     drawText(
-                        text = n.subLabel.take(10),
-                        textMeasurer = textMeasurer,
-                        topLeft = Offset(px - 40, py + r / 2 + 2),
-                        style = subStyle,
+                        textLayoutResult = sub,
+                        topLeft = Offset(
+                            (px - sub.size.width / 2f)
+                                .coerceIn(2f, (w - sub.size.width - 2f).coerceAtLeast(2f)),
+                            subTop,
+                        ),
                     )
                 }
             }

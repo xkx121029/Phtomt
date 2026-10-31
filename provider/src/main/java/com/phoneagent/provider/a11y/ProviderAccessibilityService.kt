@@ -82,12 +82,14 @@ class ProviderAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        instance = this
-        serviceInfo = serviceInfo.apply {
-            flags = flags or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
+        // 框架回调里抛异常会被 system_server 视为服务崩溃，直接从启用列表摘除
+        // （表现即"无障碍开关开了又自己关"），所有回调一律 runCatching 兜底。
+        // 与 Operit 授权器一致：这里只登记实例，【不】运行时改写 serviceInfo——
+        // 所有能力/flag 已在 accessibility_service_config.xml 声明，连接后再
+        // setServiceInfo 会触发 AMS 的 info 更新周期，部分 ROM（HyperOS 等）
+        // 在该竞态下会直接停用服务，这正是"开了又自动关"的一个来源
+        runCatching { instance = this }
+            .onFailure { Log.e(TAG, "onServiceConnected 异常已拦截", it) }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -100,11 +102,13 @@ class ProviderAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
-        return super.onUnbind(intent)
+        // 返回 false：告知 AMS 服务不需要重连。返回 true 的语义是"有未投递的事件
+        // 想绑定重连"（配合 onRebind），我们用不到，乱返回 true 会干扰 AMS 的重绑决策
+        return false
     }
 
     override fun onDestroy() {
-        scope.cancel()
+        runCatching { scope.cancel() }
         instance = null
         // 「服务被杀」不再由本进程发通知提示用户：主应用检测到绑定断开（DeadObjectException）
         // 后自行负责提示与引导重开，Provider 保持无 UI 纯通道形态

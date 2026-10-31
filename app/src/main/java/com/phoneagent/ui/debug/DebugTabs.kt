@@ -76,9 +76,6 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.appBorderStroke
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable

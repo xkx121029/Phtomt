@@ -1,5 +1,6 @@
 package com.phoneagent.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +31,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.os.Build
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -218,6 +223,31 @@ internal fun SettingsPermissions(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        // vivo/OriginOS + Android 13+ 专属：侧载应用的无障碍开关会被系统
+                        // 自动撤销（受限设置），这是"开了又自动关"的首要根因，必须先解除
+                        if (Build.MANUFACTURER.contains("vivo", ignoreCase = true) ||
+                            Build.MANUFACTURER.contains("iqoo", ignoreCase = true) ||
+                            Build.VERSION.SDK_INT >= 33
+                        ) {
+                            Spacer(Modifier.height(8.dp))
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f))
+                                    .padding(10.dp),
+                            ) {
+                                Text(
+                                    "若开关开了又被自动弹回（vivo/OriginOS 及 Android 13+ 常见）：\n" +
+                                        "1. 系统设置 → 应用 → 服务组件 → 右上角菜单 → 允许受限设置\n" +
+                                        "2. i管家 → 应用管理 → 服务组件：允许自启动、后台高耗电\n" +
+                                        "3. 多任务卡片下拉锁定本应用与服务组件\n" +
+                                        "完成后再回来开启无障碍即可，之后掉线会自动恢复。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                            }
+                        }
                     }
 
                     // ---- 执行通道自检：五步实测，每步给出真实数值，不用对着「已安装」猜 ----
@@ -309,6 +339,34 @@ internal fun SettingsPermissions(
                             checked = w.autoRepairShizuku,
                             onChecked = { applyWatchdog(w.copy(autoRepairShizuku = it)) },
                         )
+                        // 自动修复整条链路失效的明确告警：直写无授权 + Shizuku 不在线时，
+                        // 看门狗对无障碍掉线无能为力（静默 no-op）——必须让用户看见这一点，
+                        // 否则表现为"开了自动修复但开关还是被关"且毫无线索
+                        if (!w.canRepairA11y && w.shizukuState != 2) {
+                            Spacer(Modifier.height(8.dp))
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
+                                    .padding(10.dp),
+                            ) {
+                                Text(
+                                    "自动修复当前不可用：既无安全设置写入授权，Shizuku 也未连接。无障碍被系统关闭后将无法自动恢复。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                // 最省事的修复路径：电脑连一次手机执行一条 adb 授权，
+                                // 此后直写链路永久生效（无需 Shizuku 常驻）
+                                Text(
+                                    "连接电脑后执行：adb shell pm grant com.phoneagent.provider android.permission.WRITE_SECURE_SETTINGS",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
                         if (w.lastRepairMessage.isNotBlank()) {
                             Spacer(Modifier.height(4.dp))
                             Text(
@@ -317,6 +375,118 @@ internal fun SettingsPermissions(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        // 崩溃现场：无障碍"开了又自己关"多数是服务进程异常被系统停用，
+                        // 这里透出 Provider 全局兜底记录的最近一次异常，便于定位根因
+                        if (w.lastCrashMessage.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "最近一次异常（第 ${w.crashCount} 次，已被兜底拦截）：${w.lastCrashMessage.lineSequence().firstOrNull()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        // ---- 故障态识别：开关在列但服务不运行（小米「此服务出现故障无法运行」）----
+                        // 此时看门狗会自动重置最多 3 次；仍失败说明是被 ROM 冻结/省电策略杀掉，
+                        // 只能靠系统级保活设置解决，必须明确告知用户下一步动作
+                        if (w.a11yEnabledInList && !w.a11yConnected) {
+                            Spacer(Modifier.height(8.dp))
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
+                                    .padding(10.dp),
+                            ) {
+                                Text(
+                                    if (w.a11yMasterEnabled) {
+                                        "无障碍开关处于开启状态，但服务未在运行（系统显示「此服务出现故障无法运行」）。" +
+                                            "常见原因是系统冻结/清理了服务组件的后台进程。看门狗会自动重置；" +
+                                            "若反复失败，请按下方系统保活设置处理。"
+                                    } else {
+                                        "无障碍总开关已被系统关闭（服务组件仍在启用列表中）。看门狗会尝试自动补开。"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                                // 无安全设置写入授权、又没有 Shizuku 时，看门狗无法自行重置故障态，
+                                // 唯一可靠的恢复手段就是用户手动关再开一次——给出一键跳转，别让用户自己找
+                                Spacer(Modifier.height(8.dp))
+                                androidx.compose.material3.OutlinedButton(
+                                    onClick = {
+                                        runCatching { AgentAccessibilityService.openSettings(context) }
+                                            .onFailure { snackbar?.show("无法打开无障碍设置", SnackbarType.ERROR) }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("打开无障碍设置（关闭再开启一次）") }
+                                // 小米/红米/HyperOS：进程被安全中心冻结是「服务故障」的首因，
+                                // 自启动开关只有系统界面能改（无公开 API），直接跳到对应设置页
+                                val miui = Build.MANUFACTURER.contains("xiaomi", ignoreCase = true) ||
+                                    Build.MANUFACTURER.contains("redmi", ignoreCase = true) ||
+                                    Build.BRAND.contains("redmi", ignoreCase = true) ||
+                                    Build.BRAND.contains("poco", ignoreCase = true)
+                                if (miui) {
+                                    Spacer(Modifier.height(6.dp))
+                                    androidx.compose.material3.OutlinedButton(
+                                        onClick = {
+                                            val jumped = runCatching {
+                                                context.startActivity(
+                                                    android.content.Intent().apply {
+                                                        component = android.content.ComponentName(
+                                                            "com.miui.securitycenter",
+                                                            "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                                                        )
+                                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                    },
+                                                )
+                                            }.isSuccess
+                                            if (!jumped) {
+                                                snackbar?.show(
+                                                    "未找到小米自启动管理页，请在安全中心/手机管家里手动允许服务组件自启动",
+                                                    SnackbarType.ERROR,
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) { Text("打开自启动管理（允许服务组件自启动）") }
+                                }
+                            }
+                        }
+
+                        // ---- 系统保活设置：ROM 的进程冻结是无障碍"故障"的首因，应用无法自行设置 ----
+                        Spacer(Modifier.height(12.dp))
+                        Text("系统保活设置", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "在服务组件（无界面应用）的应用信息里把「省电策略」设为「无限制」，并在 i管家/安全中心里允许自启动。这些设置只能由系统界面完成。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }.onFailure { snackbar?.show("无法打开电池优化设置", SnackbarType.ERROR) }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("打开电池优化设置") }
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            android.net.Uri.parse("package:${ProviderManager.PACKAGE}"),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }.onFailure { snackbar?.show("无法打开服务组件应用信息", SnackbarType.ERROR) }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("打开服务组件应用信息（省电策略/自启动）") }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
@@ -412,13 +582,26 @@ internal fun SettingsPermissions(
                     ) { Text(if (notifEnabled) "通知使用权已开启" else "开启通知使用权") }
                 }
                 // 对外控制接口：广播契约在 TaskControlReceiver（下发任务/停止/查询状态）。
-                // 开关统一走 SettingsToggleRow（原先是一颗裸 Switch，与全页开关语言不一致）
+                // 开关统一走 SettingsToggleRow（原先是一颗裸 Switch，与全页开关语言不一致）。
+                // 口令不足 8 位时开关不可开：空口令的 exported 接收器等于没有闸门
+                val tokenTooShort = st.externalControlToken.trim().length <
+                    com.phoneagent.feature.entry.TaskControlReceiver.MIN_TOKEN_LENGTH
                 SettingsToggleRow(
                     title = "对外控制接口",
-                    subtitle = "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）",
+                    subtitle = if (tokenTooShort && !st.externalControlEnabled) {
+                        "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（先设置至少 8 位口令才能开启）"
+                    } else {
+                        "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）"
+                    },
                     value = st.externalControlEnabled,
-                ) {
-                    st.externalControlEnabled = it
+                ) { want ->
+                    // 想开但口令不够：只把开关打回关闭，并把焦点引到口令框（下方红字说明原因），
+                    // 不做静默忽略——否则用户会以为开关坏了
+                    if (want && tokenTooShort) {
+                        st.externalControlEnabled = false
+                    } else {
+                        st.externalControlEnabled = want
+                    }
                     save()
                 }
                 if (st.externalControlEnabled) {
@@ -427,11 +610,19 @@ internal fun SettingsPermissions(
                             value = st.externalControlToken,
                             onValueChange = { st.externalControlToken = it; save() },
                             label = { Text("广播口令（token）") },
-                            placeholder = { Text("留空=仅靠开关（不推荐）") },
+                            placeholder = { Text("至少 8 位，用于校验广播来源") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(4.dp))
+                        if (tokenTooShort) {
+                            Text(
+                                "口令少于 8 位时，任何应用都能伪造广播下发任务；请补足后再使用。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                        }
                         Text(
                             "广播示例：action=com.phoneagent.action.EXTERNAL_RUN_TASK，extras：text=任务内容、token=口令",
                             style = MaterialTheme.typography.bodySmall,
@@ -503,6 +694,12 @@ private data class WatchdogUi(
     val canRepairA11y: Boolean,
     val repairCount: Int,
     val lastRepairMessage: String,
+    val shizukuState: Int = 0,
+    val crashCount: Int = 0,
+    val lastCrashMessage: String = "",
+    val a11yConnected: Boolean = false,
+    val a11yEnabledInList: Boolean = false,
+    val a11yMasterEnabled: Boolean = false,
 )
 
 /** 解析 Provider 回的看门狗状态 JSON；空串/格式错误返回 null（面板按未连接处理） */
@@ -510,13 +707,19 @@ private fun parseWatchdogStatus(json: String): WatchdogUi? = runCatching {
     val o = org.json.JSONObject(json)
     if (o.length() == 0) return null
     WatchdogUi(
-        enabled = o.optBoolean("enabled", false),
+        enabled = o.optBoolean("enabled", true),
         autoRepairA11y = o.optBoolean("autoRepairA11y", true),
         autoRepairShizuku = o.optBoolean("autoRepairShizuku", false),
         running = o.optBoolean("running", false),
         canRepairA11y = o.optBoolean("canRepairA11y", false),
         repairCount = o.optInt("repairCount", 0),
         lastRepairMessage = o.optString("lastRepairMessage", ""),
+        shizukuState = o.optInt("shizukuState", 0),
+        crashCount = o.optInt("crashCount", 0),
+        lastCrashMessage = o.optString("lastCrashMessage", ""),
+        a11yConnected = o.optBoolean("a11yConnected", false),
+        a11yEnabledInList = o.optBoolean("a11yEnabledInList", false),
+        a11yMasterEnabled = o.optBoolean("a11yMasterEnabled", false),
     )
 }.getOrNull()
 

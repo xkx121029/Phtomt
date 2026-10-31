@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +28,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,7 +51,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -63,14 +64,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -89,9 +94,14 @@ import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
 import com.phoneagent.ui.components.GlassTokens
+import com.phoneagent.ui.components.HomeBackButton
 import com.phoneagent.ui.components.InlineOverlay
+import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.LocalIsLandscape
 import com.phoneagent.ui.components.LocalNavClearance
+import com.phoneagent.ui.components.WindowHeightRail
+import com.phoneagent.ui.components.WindowWidthExpanded
+import com.phoneagent.ui.components.WindowWidthRail
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarState
 import com.phoneagent.ui.components.SnackbarType
@@ -293,6 +303,17 @@ private fun ActivityContent(
     val safeSelected = selected.coerceIn(0, tabs.lastIndex.coerceAtLeast(0))
     LaunchedEffect(tabs.size) { if (selected > tabs.lastIndex) selected = tabs.lastIndex }
 
+    // Tab 级状态容器：底部 Tab 是手写路由，页面离开组合即被销毁，页面内的
+    // rememberSaveable（输入草稿、滚动位置、对话气泡、选中任务）会跟着丢。
+    // 按 Tab id 存取后，切走再回来仍是原来的样子。
+    val tabState = rememberSaveableStateHolder()
+
+    // 二级页出口的落点：二级页只关闭自己、回到「当前 Tab」，所以按钮文案必须跟着当前 Tab 走，
+    // 否则会出现写着「返回主页」却回到操控页的情况。只有当前就在主页时才叫「返回主页」。
+    val backTabId = visibleTabs.getOrNull(safeSelected)?.id ?: MainTabs.HOME
+    val backLabel = if (backTabId == MainTabs.HOME) "返回主页" else "返回${MainTabs.titleOf(backTabId)}"
+    val backIcon = if (backTabId == MainTabs.HOME) AppIcons.Home else AppIcons.ArrowBack
+
     LaunchedEffect(agentState.isRunning, settings.edgeLightingEnabled, overlayGranted) {
         val shouldShow = agentState.isRunning && settings.edgeLightingEnabled && overlayGranted
         if (shouldShow) {
@@ -396,10 +417,12 @@ private fun ActivityContent(
     // 任务文本按「运行中 → 追加队列；空闲 → 开新任务」路由，与悬浮窗排队模式同源；
     // 消费完即清掉 data 与 extra，避免 onNewIntent 复用同一 Intent 时重复起任务。
     val entryTick by entrySignal.collectAsState()
+    val entryScope = rememberCoroutineScope()
     LaunchedEffect(entryTick) {
         val intent = activity.intent ?: return@LaunchedEffect
         val target = com.phoneagent.feature.entry.TaskEntry.fromDeepLink(intent.data)
             ?: com.phoneagent.feature.entry.TaskEntry.fromGoogleAction(intent)
+            // 分享（带文件优先于配文）在 TaskEntry 内部已成一条判定
             ?: com.phoneagent.feature.entry.TaskEntry.fromShareIntent(intent)
             ?: com.phoneagent.feature.entry.TaskEntry.fromExtras(intent)
             ?: return@LaunchedEffect
@@ -410,6 +433,26 @@ private fun ActivityContent(
             is com.phoneagent.feature.entry.TaskEntry.Target.Navigate -> {
                 if (target.memory) extrasPage = ExtrasPage.Memory
                 if (target.resume) vm.resumeFromCheckpoint()
+            }
+            is com.phoneagent.feature.entry.TaskEntry.Target.SharedFiles -> {
+                // 文件先落进临时编码区，再切到编码页——编码页在那里把附件挂进输入区。
+                // 编码页被用户在设置里隐藏时无处可落，明确告知而不是静默吞掉文件。
+                val codingIndex = MainTabs.visibleTabs(
+                    vm.settingsFlow.value.tabOrder,
+                    vm.settingsFlow.value.tabVisible,
+                ).indexOfFirst { it.id == MainTabs.CODING }
+                if (codingIndex < 0) {
+                    snackbarState.show("请先在「设置 → 页面」里打开编码页，再分享文件", SnackbarType.WARNING)
+                } else {
+                    // 落盘是 IO，放到协程里做，别在主线程抠住第一帧
+                    extrasPage = null
+                    selected = codingIndex
+                    entryScope.launch {
+                        com.phoneagent.coding.SharedFiles
+                            .import(activity, target.uris.map { android.net.Uri.parse(it) })
+                            .onFailure { snackbarState.show(it.message ?: "文件导入失败", SnackbarType.ERROR) }
+                    }
+                }
             }
         }
         intent.data = null
@@ -448,37 +491,12 @@ private fun ActivityContent(
     // 与 keyboardUp 同理在内容层读一次，避免在 bottomBar 的子组合里读到旧值。
     val systemNavInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    // 横竖屏判断全项目只在这里读一次（收口到 LocalIsLandscape，其余页面不得直读 LocalConfiguration）。
-    // 横屏时悬浮导航从底部横条换成左侧竖栏，系统手势条也转到屏幕两侧，
-    // 让位方向跟着从 bottom inset 换成 start inset。
+    // 横竖屏判断：收口到 LocalIsLandscape（其余页面不得直读 LocalConfiguration）。
+    // 导航形态不按它来定——那由可用宽高决定（见下方 BoxWithConstraints）。
+    // 横屏时系统手势条转到屏幕两侧，侧栏要让开 start inset。
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val startNavInset = WindowInsets.navigationBars.asPaddingValues()
         .calculateStartPadding(LocalLayoutDirection.current)
-
-    // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
-    var taskDrawerOpen by remember { mutableStateOf(false) }
-
-    // 悬浮导航的净空 = 导航本体 + 上下（左右）呼吸间距 + 系统手势区。
-    // 竖屏：条下方那段（[NavBarGap]）同时也是条自身的 bottom padding；条上方再留同样一段，
-    // 页面末项与 Agent 页输入区才不会贴着玻璃上沿——两层面板贴在一起会糊成一块。
-    // 横屏：竖栏与屏幕左缘之间留 [NavBarGap]，栏右侧再留同样一段给内容。
-    // 键盘弹出或进全屏二级页时，这层 chrome 整块不占位，净空归零。
-    val navSpaceReserved = extrasPage == null && !keyboardUp
-    // Agent 页把任务抽屉拉出来时只是导航让位（抽屉盖住整页，别浮一层玻璃在它上面），
-    // 净空照旧：净空一变，页面末项与输入区会在抽屉底下整段跳一下。
-    val navBarVisible = navSpaceReserved && !taskDrawerOpen
-    val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
-    val railClearanceStart = RailWidth + NavBarGap * 2 + startNavInset
-    val navClearance = when {
-        !navSpaceReserved -> PaddingValues(0.dp)
-        landscape -> PaddingValues(start = railClearanceStart)
-        else -> PaddingValues(bottom = barClearanceBottom)
-    }
-
-    // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
-    // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
-    // 与 Agent 页顶栏/输入区各自持有的 HazeState 相互独立，不要混用。
-    val navGlass = rememberGlassState()
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
@@ -500,161 +518,236 @@ private fun ActivityContent(
                     .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                     .background(MaterialTheme.colorScheme.surface),
             )
-            // 内容与悬浮导航栏同层：内容铺满到屏幕底，导航栏画在它上面
-            Box(Modifier.fillMaxSize()) {
-                // 内容层整体作为毛玻璃取样源：导航栏玻璃要从这里取像素做模糊，
-                // 所以它必须是玻璃面的兄弟节点、且在玻璃面之前绘制
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .hazeSource(navGlass),
-                ) {
-                    CompositionLocalProvider(
-                        LocalNavClearance provides navClearance,
-                        LocalIsLandscape provides landscape,
-                        // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
-                        // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
-                        LocalSnackbar provides snackbarState,
-                    ) {
-                        val currentExtras = extrasPage
-                        if (currentExtras != null) {
-                            // 全屏二级页：返回栏 + 对应页面
-                            ExtrasPageContent(
-                                page = currentExtras,
-                                vm = vm,
-                                modifier = Modifier.fillMaxSize(),
-                                onBack = { extrasPage = null },
-                            )
-                        } else {
-                            AnimatedContent(
-                                targetState = safeSelected,
-                                transitionSpec = transitionSpec,
-                                label = "screen-switch",
-                            ) { screenIndex ->
-                                val contentMod = Modifier.fillMaxSize()
-                                // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
-                                // 排序变化只改索引不改落点（与 floating 导航共用同一份可见列表）
-                                when (visibleTabs.getOrNull(screenIndex)?.id) {
-                                    MainTabs.AGENT -> AgentScreen(
-                                        vm, contentMod,
-                                        onOpenMemory = { extrasPage = ExtrasPage.Memory },
-                                        onOpenDocFullscreen = { docFullscreen = true },
-                                        onDrawerOpenChange = { taskDrawerOpen = it },
-                                    )
+            // 导航形态由**可用宽度 + 高度**一起决定：
+            // 平板竖屏（800×1280）宽度够，但一列只放得下图标，用收起侧栏；
+            // 平板横屏（1280×800）宽高都够，侧栏展开成「图标 + 文字」；
+            // 手机横屏（891×411）宽度够了但高度只有 411，6 个条目竖排必然溢出，
+            // 仍是底部条。
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val width = maxWidth
+                val height = maxHeight
+                val railNav = width >= WindowWidthRail && height >= WindowHeightRail
+                val expanded = width >= WindowWidthExpanded
 
-                                    MainTabs.HOME -> HomeScreen(
-                                        vm, contentMod,
-                                        onRequestScreenshot = {
-                                            val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                            screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                                        },
-                                        // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
-                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
-                                        onNavigate = { legacy ->
-                                            val s = vm.settingsFlow.value
-                                            selected = when (legacy) {
-                                                0 -> tabIndex(s, MainTabs.AGENT)
-                                                2 -> tabIndex(s, MainTabs.SETTINGS)
-                                                else -> legacy.coerceIn(0, tabs.lastIndex)
+                // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
+                var taskDrawerOpen by remember { mutableStateOf(false) }
+
+                // 键盘弹出或进全屏二级页时，底部条整块不占位，净空归零。
+                val navSpaceReserved = extrasPage == null && !keyboardUp
+                val navBarVisible = !railNav && navSpaceReserved && !taskDrawerOpen
+
+                // 竖栏是**占位**的（内容整体右移，不是浮在内容上），
+                // 因此侧栏形态下页面净空一律为 0——页面本来就压不到导航。
+                // 底部条是浮层，才需要下面这套底部净空。
+                val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
+                val navClearance = if (navSpaceReserved && !railNav) {
+                    PaddingValues(bottom = barClearanceBottom)
+                } else {
+                    PaddingValues(0.dp)
+                }
+
+                // 二级页是全屏的（自带返回出口），侧栏整块让开
+                val railVisible = railNav && extrasPage == null
+                // 宽屏侧栏展开成「图标 + 文字」，中窄屏只留图标列
+                val railWidth = if (expanded) RailExtendedWidth else RailCollapsedWidth
+
+                // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
+                // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
+                // 与 Agent 页顶栏/输入区各自持有的 HazeState 相互独立，不要混用。
+                val navGlass = rememberGlassState()
+
+                // 侧栏与内容之间的发丝分隔线（在 Composable 上下文里取值，drawBehind 里直接用）
+                val railDivider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+
+                Row(Modifier.fillMaxSize()) {
+                    if (railVisible) {
+                        // 侧栏是常驻导航、占住左侧一条空间，不浮在内容之上，
+                        // 所以不用毛玻璃（背后没有可模糊的东西）
+                        NavRail(
+                            tabs = tabs,
+                            selected = safeSelected,
+                            onSelect = { selected = it },
+                            extended = expanded,
+                            modifier = Modifier
+                                .width(railWidth)
+                                .fillMaxHeight()
+                                .padding(start = startNavInset)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .drawBehind {
+                                    // 与内容区之间一道发丝线：两栏是同层内容，不用投影分层
+                                    val x = size.width - 0.5.dp.toPx()
+                                    drawLine(
+                                        color = railDivider,
+                                        start = Offset(x, 0f),
+                                        end = Offset(x, size.height),
+                                        strokeWidth = 1.dp.toPx(),
+                                    )
+                                },
+                        )
+                    }
+
+                    // 内容区：底部条形态下导航浮在它上面（毛玻璃取样源），侧栏形态下导航在它旁边
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .hazeSource(navGlass),
+                        ) {
+                            CompositionLocalProvider(
+                                LocalNavClearance provides navClearance,
+                                LocalIsLandscape provides landscape,
+                                LocalIsExpanded provides expanded,
+                                // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
+                                // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
+                                LocalSnackbar provides snackbarState,
+                            ) {
+                                val currentExtras = extrasPage
+                                if (currentExtras != null) {
+                                    // 全屏二级页：返回栏 + 对应页面
+                                    ExtrasPageContent(
+                                        page = currentExtras,
+                                        vm = vm,
+                                        modifier = Modifier.fillMaxSize(),
+                                        backLabel = backLabel,
+                                        backIcon = backIcon,
+                                        onBack = { extrasPage = null },
+                                    )
+                                } else {
+                                    AnimatedContent(
+                                        targetState = safeSelected,
+                                        transitionSpec = transitionSpec,
+                                        label = "screen-switch",
+                                    ) { screenIndex ->
+                                        val contentMod = Modifier.fillMaxSize()
+                                        val pageId = visibleTabs.getOrNull(screenIndex)?.id ?: MainTabs.HOME
+                                        // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
+                                        // 排序变化只改索引不改落点（与导航共用同一份可见列表）
+                                        tabState.SaveableStateProvider(pageId) {
+                                            when (visibleTabs.getOrNull(screenIndex)?.id) {
+                                                MainTabs.AGENT -> AgentScreen(
+                                                    vm, contentMod,
+                                                    // 记忆页优先当 Tab 打开（与其它 Tab 同一套 chrome）；
+                                                    // 只有用户把记忆 Tab 隐藏时，才退回全屏二级页
+                                                    onOpenMemory = {
+                                                        val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
+                                                        if (idx >= 0) {
+                                                            extrasPage = null
+                                                            selected = idx
+                                                        } else {
+                                                            extrasPage = ExtrasPage.Memory
+                                                        }
+                                                    },
+                                                    onOpenDocFullscreen = { docFullscreen = true },
+                                                    // 失败卡「去配置」：直接切到设置 Tab（不叠二级页，
+                                                    // 用户配置完按返回就回到 Agent 页继续重试）
+                                                    onOpenSettings = {
+                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
+                                                    },
+                                                    onDrawerOpenChange = { taskDrawerOpen = it },
+                                                )
+
+                                                MainTabs.HOME -> HomeScreen(
+                                                    vm, contentMod,
+                                                    onRequestScreenshot = {
+                                                        val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                                        screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                                    },
+                                                    // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
+                                                    // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
+                                                    onNavigate = { legacy ->
+                                                        val s = vm.settingsFlow.value
+                                                        selected = when (legacy) {
+                                                            0 -> tabIndex(s, MainTabs.AGENT)
+                                                            2 -> tabIndex(s, MainTabs.SETTINGS)
+                                                            else -> legacy.coerceIn(0, tabs.lastIndex)
+                                                        }
+                                                    },
+                                                    onOpenExtras = { extrasPage = it },
+                                                )
+
+                                                MainTabs.SETTINGS -> SettingsScreen(
+                                                    vm, contentMod,
+                                                    // 调试 / 测试从「关于」页进入，仍由这里统一接管二级页
+                                                    onOpenExtras = { extrasPage = it },
+                                                )
+                                                MainTabs.CHAT -> ChatScreen(vm, contentMod)
+                                                MainTabs.CODING -> CodingScreen(vm, contentMod)
+                                                MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
+                                                else -> {}
                                             }
-                                        },
-                                        onOpenExtras = { extrasPage = it },
-                                    )
-
-                                    MainTabs.SETTINGS -> SettingsScreen(vm, contentMod)
-                                    MainTabs.CHAT -> ChatScreen(vm, contentMod)
-                                    MainTabs.CODING -> CodingScreen(vm, contentMod)
-                                    MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
-                                    else -> {}
+                                        }
+                                    }
                                 }
-                            }
 
+                                // 全局 Snackbar：垫在导航之上。二级页同样要能弹反馈；
+                                // 侧栏占位、压不到内容，只有底部条形态才需要让出高度
+                                AppSnackbar(
+                                    state = snackbarState,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(
+                                            bottom = if (navSpaceReserved && !railNav) {
+                                                barClearanceBottom + AppSpacing.Md
+                                            } else {
+                                                AppSpacing.Md
+                                            },
+                                        ),
+                                )
+                            }
                         }
 
-                            // 全局 Snackbar 覆盖层：垫在悬浮导航之上。
-                            // 不放在 else 分支里：二级页（extrasPage 非空）同样要能弹反馈，
-                            // 竖屏贴底居中、垫在导航条净空之上；横屏从竖栏右侧起排
-                            AppSnackbar(
-                                state = snackbarState,
+                        // 底部悬浮导航条：只有窄到放不下侧栏时才存在
+                        if (navBarVisible) {
+                            FloatingNavBar(
+                                hazeState = navGlass,
+                                tabs = tabs,
+                                selected = safeSelected,
+                                onSelect = { selected = it },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(
-                                        start = if (landscape && navSpaceReserved) {
-                                            railClearanceStart + AppSpacing.Md
-                                        } else {
-                                            0.dp
-                                        },
-                                        bottom = if (!landscape && navSpaceReserved) {
-                                            barClearanceBottom + AppSpacing.Md
-                                        } else {
-                                            AppSpacing.Md
-                                        },
+                                        start = AppSpacing.Lg,
+                                        end = AppSpacing.Lg,
+                                        bottom = systemNavInset + NavBarGap,
                                     ),
                             )
+                        }
                     }
                 }
+            }
 
-                // 悬浮导航本身：毛玻璃画在内容之上，内容从它下面透出来。
-                // 竖屏是底部横向条；横屏换成左侧竖栏，手势条转到屏幕两侧，导航跟着搬家。
-                if (navBarVisible) {
-                    if (landscape) {
-                        FloatingNavRail(
-                            hazeState = navGlass,
-                            tabs = tabs,
-                            selected = safeSelected,
-                            onSelect = { selected = it },
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = startNavInset + NavBarGap),
-                        )
-                    } else {
-                        FloatingNavBar(
-                            hazeState = navGlass,
-                            tabs = tabs,
-                            selected = safeSelected,
-                            onSelect = { selected = it },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(
-                                    start = AppSpacing.Lg,
-                                    end = AppSpacing.Lg,
-                                    bottom = systemNavInset + NavBarGap,
-                                ),
-                        )
-                    }
-                }
+            // 全屏阅读：AI 回返的 Markdown 整屏通读。画在所有 chrome 之上（含导航），
+            // 出口只有底部大圆角按钮与返回手势
+            if (docFullscreen) {
+                DocViewerScreen(
+                    doc = doc,
+                    backLabel = backLabel,
+                    backIcon = backIcon,
+                    onClose = { docFullscreen = false },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-                // 全屏阅读：AI 回返的 Markdown 整屏通读。画在所有 chrome 之上（含悬浮导航栏），
-                // 出口只有底部大圆角按钮与返回手势
-                if (docFullscreen) {
-                    DocViewerScreen(
-                        doc = doc,
-                        onClose = { docFullscreen = false },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                // 首次打开的服务组件安装提示：应用内浮层（复用 InlineOverlay），不用系统弹窗。
-                // 挂在最外层 Box，压住悬浮导航栏，保证启动时一眼就能看到。
-                if (providerPromptVisible) {
-                    ProviderInstallPrompt(
-                        onInstall = {
-                            providerPromptVisible = false
-                            val result = ProviderManager.install(activity)
-                            if (result is ProviderManager.InstallLaunch.Failed) {
-                                snackbarState.show(
-                                    "安装服务组件失败：${result.reason}",
-                                    SnackbarType.ERROR,
-                                )
-                            }
-                        },
-                        onDismiss = {
-                            // 「稍后」记住当前随包版本：同一版本不再提示，Provider 版本变化后会再提示
-                            markProviderInstallPromptDismissed(activity)
-                            providerPromptVisible = false
-                        },
-                    )
-                }
+            // 首次打开的服务组件安装提示：应用内浮层（复用 InlineOverlay），不用系统弹窗。
+            // 挂在最外层，压住导航，保证启动时一眼就能看到。
+            if (providerPromptVisible) {
+                ProviderInstallPrompt(
+                    onInstall = {
+                        providerPromptVisible = false
+                        val result = ProviderManager.install(activity)
+                        if (result is ProviderManager.InstallLaunch.Failed) {
+                            snackbarState.show(
+                                "安装服务组件失败：${result.reason}",
+                                SnackbarType.ERROR,
+                            )
+                        }
+                    },
+                    onDismiss = {
+                        // 「稍后」记住当前随包版本：同一版本不再提示，Provider 版本变化后会再提示
+                        markProviderInstallPromptDismissed(activity)
+                        providerPromptVisible = false
+                    },
+                )
             }
         }
     }
@@ -664,10 +757,13 @@ private fun ActivityContent(
 private val NavBarHeight = 64.dp
 
 /**
- * 横屏左侧竖向导航栏的本体宽度。页面净空与栏自身布局共用同一常量，
- * 与 [NavBarHeight] 同理：两边各写一个数字，改的时候必漏一边。
+ * 侧栏 / 底部条两种导航形态的本体尺寸。
+ *
+ * 侧栏展开态（≥ [WindowWidthExpanded]）显示「图标 + 文字」，收起态只留图标列；
+ * 两者都**占位**——内容从栏右侧开始，不存在被导航压住的情况。
  */
-private val RailWidth = 72.dp
+private val RailExtendedWidth = 208.dp
+private val RailCollapsedWidth = 80.dp
 
 /**
  * 悬浮导航栏的呼吸间距：条下方到系统手势区、条上方到页面末项，用同一个值。
@@ -676,48 +772,133 @@ private val RailWidth = 72.dp
 private val NavBarGap = AppSpacing.Md
 
 /**
- * 左侧导航：横屏专用的竖向悬浮栏。
+ * 左侧常驻导航栏（平板 / 折叠屏展开态）。
  *
- * 与底部条同一套材质语言——[GlassSurface] 毛玻璃、同圆角、同悬浮投影；
- * 不另起一套样式，横竖屏切换时导航只是"搬家"，不是"换装"。
- * 栏内条目竖排（图标上、文字下），沿用 [FloatingNavItem] 的胶囊指示器与弹簧手感，
- * 无水平位移动效（动效铁律：入场一律自下而上）。
+ * 它不是"底部条的竖向版本"：底部条浮在内容之上、靠毛玻璃透出下面的内容；
+ * 侧栏占住左侧一条空间、内容在它旁边，背后没有可模糊的东西，所以用实色面 +
+ * 一道发丝分隔线，符合 Glass.kt 里"只有浮在滚动内容之上的 chrome 才用玻璃"的规矩。
+ *
+ * 宽度够时展开成「图标 + 文字」——平板横屏正文字数本来就多，导航再只给图标是把
+ * 屏幕空间浪费在留白上；条目高度按可用高度均分，屏幕矮也不会把最后一项挤出屏幕。
  */
 @Composable
-private fun FloatingNavRail(
-    hazeState: HazeState,
+private fun NavRail(
     tabs: List<TabItem>,
     selected: Int,
     onSelect: (Int) -> Unit,
+    extended: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(AppRadii.Hero)
-    GlassSurface(
-        hazeState = hazeState,
-        shape = shape,
-        blurRadius = GlassTokens.Blur,
-        // 与底部条同理：四边都不贴屏幕边，顶部受光高光没有光源可言，不画
-        showSheen = false,
-        modifier = modifier.shadow(elevation = 12.dp, shape = shape, clip = false),
-    ) {
+    BoxWithConstraints(modifier = modifier) {
+        // 6 个条目 + 上下呼吸：矮屏（横屏平板 600dp 高）下按 56dp 硬排会溢出，
+        // 这里按实际可用高度均分，上限 56dp、下限 40dp
+        val itemHeight = (
+            (maxHeight - AppSpacing.Md * 2) / tabs.size.coerceAtLeast(1)
+            ).coerceIn(40.dp, 56.dp)
         Column(
             modifier = Modifier
-                .width(RailWidth)
-                .padding(vertical = AppSpacing.Sm)
+                .fillMaxSize()
+                .padding(vertical = AppSpacing.Md)
                 .selectableGroup(),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = if (extended) Alignment.Start else Alignment.CenterHorizontally,
         ) {
             tabs.forEachIndexed { index, tab ->
-                FloatingNavItem(
+                RailNavItem(
                     tab = tab,
                     selected = selected == index,
                     onClick = { onSelect(index) },
+                    extended = extended,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(NavBarHeight),
-                    vertical = true,
+                        .height(itemHeight)
+                        .padding(horizontal = if (extended) AppSpacing.Md else AppSpacing.Sm),
                 )
             }
+        }
+    }
+}
+
+/**
+ * 侧栏条目：主色胶囊指示器 + 图标 +（展开时）文字。
+ *
+ * 指示器是整条横向胶囊（展开态包住「图标 + 文字」），比底部条那枚 56×30 的图标胶囊
+ * 更适合侧栏的长条形；按压回弹与底部条同源（[PressScale] + 按下即触觉）。
+ */
+@Composable
+private fun RailNavItem(
+    tab: TabItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+    extended: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val hapticPress = rememberHapticPress()
+    LaunchedEffect(pressed) { if (pressed) hapticPress() }
+
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) PressScale else 1f,
+        animationSpec = pressScaleSpec(),
+        label = "rail-item-press",
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.1f else 1f,
+        animationSpec = contentSpringSpec(),
+        label = "rail-icon-scale",
+    )
+    val indicatorColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = tween(DurationFast, easing = EaseOut),
+        label = "rail-indicator",
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(DurationFast, easing = EaseOut),
+        label = "rail-icon-color",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(DurationFast, easing = EaseOut),
+        label = "rail-label-color",
+    )
+
+    val shape = RoundedCornerShape(percent = 50)
+    Row(
+        modifier = modifier
+            .scale(pressScale)
+            .clip(shape)
+            .background(indicatorColor)
+            .selectable(
+                selected = selected,
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick,
+            )
+            .padding(horizontal = if (extended) AppSpacing.Md else 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (extended) Arrangement.Start else Arrangement.Center,
+    ) {
+        Icon(
+            imageVector = tab.icon,
+            // 展开态文字就在旁边，不必让读屏把标签念两遍
+            contentDescription = if (extended) null else tab.label,
+            tint = iconColor,
+            modifier = Modifier
+                .size(22.dp)
+                .scale(iconScale),
+        )
+        if (extended) {
+            Spacer(Modifier.width(AppSpacing.Md))
+            Text(
+                text = tab.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = labelColor,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -770,10 +951,7 @@ private fun FloatingNavBar(
 }
 
 /**
- * 悬浮导航的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪）。
- *
- * [vertical] 只决定"撑满哪个方向"：底部横条里撑满条高（fillMaxHeight），
- * 左侧竖栏里撑满栏宽（fillMaxWidth）；内部布局（图标上、文字下）两种形态通用。
+ * 底部条里的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪）。
  */
 @Composable
 private fun FloatingNavItem(
@@ -781,7 +959,6 @@ private fun FloatingNavItem(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    vertical: Boolean = false,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -825,7 +1002,7 @@ private fun FloatingNavItem(
 
     Column(
         modifier = modifier
-            .then(if (vertical) Modifier.fillMaxWidth() else Modifier.fillMaxHeight())
+            .fillMaxHeight()
             .scale(pressScale)
             .selectable(
                 selected = selected,
@@ -873,12 +1050,14 @@ internal fun tabIndex(settings: com.phoneagent.data.prefs.AppSettings.Settings, 
         .indexOfFirst { it.id == id }
         .takeIf { it >= 0 } ?: 0
 
-/** 全屏二级页内容：顶部返回栏 + 对应页面 */
+/** 全屏二级页内容：对应页面 + 底部大圆角出口 */
 @Composable
 private fun ExtrasPageContent(
     page: ExtrasPage,
     vm: MainViewModel,
     modifier: Modifier,
+    backLabel: String,
+    backIcon: ImageVector,
     onBack: () -> Unit,
 ) {
     androidx.compose.foundation.layout.Column(
@@ -907,29 +1086,13 @@ private fun ExtrasPageContent(
                 Modifier.weight(1f).padding(horizontal = 0.dp),
             )
         }
-        // 底部大圆角返回主页按钮
+        // 底部大圆角出口：文案跟着落点走（主页 / 当前 Tab）
         Spacer(Modifier.height(4.dp))
-        Button(
-            onClick = {
-                onBack()
-            },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            ),
-            shape = RoundedCornerShape(AppRadii.Hero),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .height(56.dp),
-        ) {
-            Icon(AppIcons.Home, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "返回主页",
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
+        HomeBackButton(
+            onClick = onBack,
+            label = backLabel,
+            icon = backIcon,
+        )
         Spacer(Modifier.height(12.dp))
     }
 }

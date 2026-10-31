@@ -2,6 +2,7 @@ package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -21,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,34 +31,79 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
 /**
- * AI 模型配置页：端点（地址 + 密钥）→ 模型库（能力徽章）→ 职责分配（哪个职责用哪个模型）。
- * 职责行只记「模型名」，地址与 Key 一律由所属端点提供，避免同一个地址在页面里填三遍。
+ * AI 模型配置页：端点（地址 + 密钥）→ 模型库入口 → 职责分配（哪个职责用哪个模型）。
+ *
+ * 填好地址与 Key 点「拉取模型」后立刻弹选择浮层，勾中的才进模型库；
+ * 模型库本身收进二级页 [SettingsModelCatalog]——库里动辄几十上百个模型，
+ * 平铺在本页会把「端点 / 职责」两件事挤散。职责行只记「模型名」，
+ * 地址与 Key 一律由所属端点提供，避免同一个地址在页面里填三遍。
  */
 @Composable
 internal fun SettingsAiModels(
     vm: MainViewModel,
     st: SettingsState,
     onBack: () -> Unit,
+    onOpenCatalog: () -> Unit,
     // 模型选择浮层由 SettingsScreen 在页面根节点上渲染：本页根容器是可滚动的，
     // 浮层挂在这里拿不到「满屏」的高度约束，会被压成 0
     onPickRole: (String) -> Unit,
+) {
+    // 拉取结果 → 勾选入库浮层。浮层挂在本页自己的满屏 Box 上：主体是可滚动 Column，
+    // 直接挂进去同样拿不到高度约束，列表的 weight 会塌成 0
+    var fetched by remember { mutableStateOf<FetchedModels?>(null) }
+    Box(Modifier.fillMaxSize()) {
+        AiModelsPage(
+            vm = vm,
+            st = st,
+            onBack = onBack,
+            onOpenCatalog = onOpenCatalog,
+            onPickRole = onPickRole,
+            onFetched = { fetched = it },
+        )
+        fetched?.let { f ->
+            ModelImportDialog(
+                endpointLabel = f.endpointLabel,
+                names = f.names,
+                existing = st.catalog.filter { it.endpointId == f.endpointId }.map { it.name }.toSet(),
+                onConfirm = { picked ->
+                    picked.forEach { name ->
+                        if (st.catalog.none { it.endpointId == f.endpointId && it.name == name }) {
+                            st.catalog.add(CatalogModel(endpointId = f.endpointId, name = name))
+                        }
+                    }
+                    fetched = null
+                },
+                onDismiss = { fetched = null },
+            )
+        }
+    }
+}
+
+/** 一次「拉取模型」的结果：端点 + 服务端返回的模型名，交给根节点浮层勾选入库 */
+private data class FetchedModels(val endpointId: String, val endpointLabel: String, val names: List<String>)
+
+@Composable
+private fun AiModelsPage(
+    vm: MainViewModel,
+    st: SettingsState,
+    onBack: () -> Unit,
+    onOpenCatalog: () -> Unit,
+    onPickRole: (String) -> Unit,
+    onFetched: (FetchedModels) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val buzz = rememberHapticClick()
@@ -68,11 +112,6 @@ internal fun SettingsAiModels(
     var fetchingEndpointId by remember { mutableStateOf<String?>(null) }
     var fetchHintFor by remember { mutableStateOf<String?>(null) }
     var fetchHint by remember { mutableStateOf<String?>(null) }
-    // 能力探测：按「端点 id/模型名」定位提示
-    var probingKey by remember { mutableStateOf<String?>(null) }
-    var probeHintFor by remember { mutableStateOf<String?>(null) }
-    var probeHint by remember { mutableStateOf<String?>(null) }
-    var modelQuery by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -151,20 +190,18 @@ internal fun SettingsAiModels(
                                     fetchingEndpointId = target.id
                                     fetchHint = "正在获取模型列表…"
                                     val r = vm.listModels(target.baseUrl, target.apiKey, target.protocol)
-                                    fetchHint = r.fold(
-                                        onSuccess = { names ->
-                                            val clean = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-                                            var added = 0
-                                            clean.forEach { n ->
-                                                if (st.catalog.none { it.endpointId == target.id && it.name == n }) {
-                                                    st.catalog.add(CatalogModel(endpointId = target.id, name = n))
-                                                    added++
-                                                }
-                                            }
-                                            "已获取 ${clean.size} 个模型，新增 $added 个"
-                                        },
-                                        onFailure = { it.message ?: "获取模型列表失败" },
-                                    )
+                                    if (r.isSuccess) {
+                                        val clean = r.getOrDefault(emptyList())
+                                            .map { it.trim() }
+                                            .filter { it.isNotBlank() }
+                                            .distinct()
+                                        fetchHint = null
+                                        // 拉到就直接给勾选浮层：不再静默全量入库——
+                                        // 几十上百个模型一次全塞进去，模型库立刻没法挑
+                                        onFetched(FetchedModels(target.id, endpointHost(target.baseUrl), clean))
+                                    } else {
+                                        fetchHint = r.exceptionOrNull()?.message ?: "获取模型列表失败"
+                                    }
                                     fetchingEndpointId = null
                                 }
                             }
@@ -197,86 +234,21 @@ internal fun SettingsAiModels(
 
         Spacer(Modifier.height(16.dp))
 
-        // ========== B 模型库 ==========
+        // ========== B 模型库（入口） ==========
+        // 库里的模型通常几十上百条，平铺在本页会把端点与职责两件事挤散，故收进二级页
         SettingsSection(
             title = "模型库",
-            subtitle = "能力徽章由真实请求探测得出；问号代表没测出，与「不支持」不是一回事",
+            subtitle = "已入库的模型与能力徽章",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                OutlinedTextField(
-                    value = modelQuery,
-                    onValueChange = { modelQuery = it },
-                    singleLine = true,
-                    placeholder = { Text("筛选模型名") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                val visible = st.catalog.toList().filter {
-                    modelQuery.isBlank() || it.name.contains(modelQuery, ignoreCase = true)
-                }
-                if (visible.isEmpty()) {
-                    Text(
-                        if (st.catalog.isEmpty()) "模型库为空：先在「端点」里点「获取模型」" else "没有匹配的模型",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 6.dp),
-                    )
-                } else {
-                    st.endpoints.toList().forEach { ep ->
-                        val items = visible.filter { it.endpointId == ep.id }
-                        if (items.isNotEmpty()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                endpointHost(ep.baseUrl),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            items.forEach { m ->
-                                val key = "${m.endpointId}/${m.name}"
-                                CatalogModelRow(
-                                    model = m,
-                                    probing = probingKey == key,
-                                    hint = probeHint.takeIf { probeHintFor == key },
-                                    onProbe = {
-                                        buzz()
-                                        probeHintFor = key
-                                        scope.launch {
-                                            probingKey = key
-                                            probeHint = "正在探测能力…"
-                                            val owner = st.endpoints.firstOrNull { it.id == m.endpointId }
-                                            if (owner == null) {
-                                                probeHint = "该模型所属端点已被删除"
-                                            } else {
-                                                val r = vm.probeModel(owner.baseUrl, owner.apiKey, m.name, owner.protocol)
-                                                probeHint = r.fold(
-                                                    onSuccess = { ability ->
-                                                        updateCatalogModel(st, m.endpointId, m.name) {
-                                                            it.copy(
-                                                                vision = ability.vision,
-                                                                tools = ability.tools,
-                                                                note = ability.note,
-                                                                probedAt = System.currentTimeMillis(),
-                                                            )
-                                                        }
-                                                        // 这里不再顺手改写"视觉理解"档位：三态下的「自动」本就看探测结果，
-                                                        // 再写一手会在用户明确选了「强制关」时把设置偷偷翻回去
-                                                        ability.note.ifBlank { "探测完成" }
-                                                    },
-                                                    onFailure = { it.message ?: "探测失败" },
-                                                )
-                                            }
-                                            probingKey = null
-                                        }
-                                    },
-                                )
-                                Spacer(Modifier.height(8.dp))
-                            }
-                        }
-                    }
-                }
-            }
+            SettingsRow(
+                icon = AppIcons.ListTodo,
+                title = "已入库模型",
+                subtitle = "查看能力徽章 / 重新探测",
+                tone = SettingsTone.Brand,
+                summary = "${st.catalog.size} 个 · ${st.endpoints.size} 个端点",
+                onClick = onOpenCatalog,
+            )
         }
 
         Spacer(Modifier.height(16.dp))
@@ -591,52 +563,6 @@ internal fun SettingsAiModels(
     }
 }
 
-/** 模型库单行：模型名 + 能力徽章 + 重新探测 */
-@Composable
-private fun CatalogModelRow(
-    model: CatalogModel,
-    probing: Boolean,
-    hint: String?,
-    onProbe: () -> Unit,
-) {
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Item),
-        // 与端点卡同一块「下沉面」：模型条目和端点卡是同一层级的列表行，底色不能各写一套
-        color = AppSurfaceMuted,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        model.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    AbilityBadges(model.vision, model.tools)
-                }
-                TextButton(onClick = onProbe, enabled = !probing) {
-                    Text(if (probing) "探测中…" else "重新探测")
-                }
-            }
-            val line = hint ?: model.note.ifBlank { null }
-            line?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
 /** 改地址时同步推导端点 id，并把该端点下的模型条目一起迁到新 id，避免模型变成孤儿 */
 private fun renameEndpoint(st: SettingsState, oldId: String, newUrl: String) {
     val newId = ModelCatalogCodec.endpointId(newUrl)
@@ -665,17 +591,6 @@ private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setPr
 /** 按归一化地址查端点协议；未入库（如尚未保存的地址）回落 OpenAI 兼容 */
 internal fun SettingsState.protocolOf(baseUrl: String): String =
     endpoints.firstOrNull { it.id == ModelCatalogCodec.endpointId(baseUrl) }?.protocol ?: "openai"
-
-/** 就地更新模型库条目 */
-private fun updateCatalogModel(
-    st: SettingsState,
-    endpointId: String,
-    name: String,
-    transform: (CatalogModel) -> CatalogModel,
-) {
-    val i = st.catalog.indexOfFirst { it.endpointId == endpointId && it.name == name }
-    if (i >= 0) st.catalog[i] = transform(st.catalog[i])
-}
 
 /** 端点显示名；地址为空或端点已删则返回空串（职责行会退化成只显示职责说明） */
 private fun endpointLabelOf(st: SettingsState, baseUrl: String): String {

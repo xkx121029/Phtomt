@@ -36,6 +36,7 @@ class HpaVoiceInteractionSessionService : VoiceInteractionSessionService() {
 class HpaVoiceInteractionSession(service: VoiceInteractionSessionService) :
     VoiceInteractionSession(service) {
 
+
     override fun onHandleAssist(data: Bundle?, structure: AssistStructure?, content: AssistContent?) {
         super.onHandleAssist(data, structure, content)
         structure?.let { AssistContextStore.put(extractText(it)) }
@@ -64,7 +65,7 @@ class HpaVoiceInteractionSession(service: VoiceInteractionSessionService) :
         for (w in 0 until structure.windowNodeCount) {
             walk(structure.getWindowNodeAt(w).rootViewNode, 0, this)
         }
-    }.replace(Regex("\\s+"), " ").trim()
+    }.replace(WS_RUN_RE, " ").trim()
 
     /** 深度优先摘文本：深度限 [MAX_TREE_DEPTH]、总长由 [AssistContextStore] 截断 */
     private fun walk(node: AssistStructure.ViewNode?, depth: Int, out: StringBuilder) {
@@ -80,5 +81,8 @@ class HpaVoiceInteractionSession(service: VoiceInteractionSessionService) :
     companion object {
         /** AssistStructure 遍历深度上限：防巨型页面撑爆摘要 */
         private const val MAX_TREE_DEPTH = 40
+
+        /** 空白归并正则：每次唤起助理都会走一次，预编译复用 */
+        private val WS_RUN_RE = Regex("\\s+")
     }
 }

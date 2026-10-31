@@ -30,6 +30,10 @@ object McpRetryPolicy {
         "unauthorized", "forbidden", "invalid", "not found", "malformed",
     )
 
+    /** HTTP 状态码识别正则（每次失败判定都会用到，预编译避免重复构造） */
+    private val HTTP_5XX_RE = Regex("\\b5\\d{2}\\b")
+    private val HTTP_4XX_RE = Regex("\\b4\\d{2}\\b")
+
     /** 判定一次失败是否值得重试；[timedOut] 为端侧 withTimeout 主动中断（视为瞬时故障） */
     fun shouldRetry(errText: String, timedOut: Boolean): Boolean {
         if (timedOut) return true
@@ -37,8 +41,8 @@ object McpRetryPolicy {
         if (NON_RETRYABLE_KEYWORDS.any { text.contains(it) }) return false
         if (RETRYABLE_KEYWORDS.any { text.contains(it) }) return true
         // 5xx 服务端错误视为瞬时故障；4xx 客户端错误不重试
-        if (Regex("\\b5\\d{2}\\b").containsMatchIn(text)) return true
-        if (Regex("\\b4\\d{2}\\b").containsMatchIn(text)) return false
+        if (HTTP_5XX_RE.containsMatchIn(text)) return true
+        if (HTTP_4XX_RE.containsMatchIn(text)) return false
         return false
     }
 }
