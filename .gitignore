@@ -49,6 +49,10 @@ Desktop.ini
 # Project specific
 version.properties
 BUGS/
+# 推广物料：演示视频体积大，不进源码库（单文件 HTML 复刻仍入库）
+promo/*.webm
+# 截图产物（UI 验收临时输出）
+.screenshots/
 # 编码 agent host 由 tool/bundle_host.mjs 从 happy_ACA 上游单向同步生成，不提交
 app/src/main/assets/agent-host/
 # 编码运行时 so 由 tool/bundle_runtime.py 生成，打进主包 app/src/main/jniLibs（*.so 已全局忽略）
