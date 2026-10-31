@@ -61,6 +61,10 @@ object AdContentFilter {
     /** 单字符叉号：仅当为图片类控件时才视为广告关闭按钮，避免误触输入框清除/标签页关闭 */
     private val singleCloseChars = setOf("✕", "×", "X", "x")
 
+    /** 关闭文案清洗正则（每个候选按钮都要洗一次，预编译避免逐元素构造） */
+    private val COUNTDOWN_SUFFIX_RE = Regex("""\s*[\d一二三四五六七八九十]+\s*s?$""")
+    private val BRACKET_RE = Regex("""[()（）\[\]]""")
+
     /**
      * 扫描快照，识别广告内容并返回：
      * - 可点击的广告关闭/跳过按钮（存在时）
@@ -130,8 +134,8 @@ object AdContentFilter {
                 el.type.contains("image", ignoreCase = true)
         }
         val clean = raw
-            .replace(Regex("""\s*[\d一二三四五六七八九十]+\s*s?$"""), "")
-            .replace(Regex("""[()（）\[\]]"""), "")
+            .replace(COUNTDOWN_SUFFIX_RE, "")
+            .replace(BRACKET_RE, "")
             .trim()
         return closeMarks.any { it == clean || (it.length > 1 && clean.contains(it)) } ||
             closeLatinRegex.containsMatchIn(clean)

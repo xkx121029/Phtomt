@@ -277,15 +277,24 @@ object HumanTranslator {
         }
     }
 
+    /**
+     * 流式回显时同一批模式会被反复使用（每个增量片段都要抽字段），
+     * 模式集合是封闭的，按 pattern 缓存编译结果即可。并发安全：多线程都会调用。
+     */
+    private val regexCache = java.util.concurrent.ConcurrentHashMap<String, Regex>()
+
+    private fun cachedRegex(pattern: String): Regex =
+        regexCache.getOrPut(pattern) { Regex(pattern, RegexOption.IGNORE_CASE) }
+
     /** 从原始文本中抽出某 JSON 字段的字符串值（正则） */
     private fun regexValue(text: String, pattern: String): String? {
-        val m = Regex(pattern, RegexOption.IGNORE_CASE).find(text) ?: return null
+        val m = cachedRegex(pattern).find(text) ?: return null
         return m.groupValues[1].replace("\\\"", "\"").take(40)
     }
 
     /** 从原始文本中抽出某 JSON 字段的 double 值（正则） */
     private fun regexDouble(text: String, pattern: String): Double? {
-        val m = Regex(pattern, RegexOption.IGNORE_CASE).find(text) ?: return null
+        val m = cachedRegex(pattern).find(text) ?: return null
         return m.groupValues[1].toDoubleOrNull()
     }
 }

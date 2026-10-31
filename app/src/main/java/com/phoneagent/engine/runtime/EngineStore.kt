@@ -189,6 +189,12 @@ internal class EngineStore {
     var reviewOverride: Boolean? = null
     /** 当前任务描述 */
     var currentTaskName: String? = null
+    /**
+     * 最近一次任务的**完整**原文（[currentTaskName] 只留 60 字，用于标题展示）。
+     * 「重试」按钮要把原任务原样再跑一遍，截断过的名字不够用。
+     */
+    @Volatile
+    var lastFullTask: String = ""
     /** 连续拒绝 AI 提前"任务完成"的次数，防死循环 */
     var earlyDoneRejections = 0
 
@@ -274,6 +280,21 @@ internal class EngineStore {
      */
     @Volatile
     var taskPaused = false
+
+    /**
+     * 搁置状态的对外可观察版本（供状态条切换「暂停 / 继续」）。
+     *
+     * 运行期仍以 [taskPaused] 为准（主循环每轮直接读字段，不做流收集）；
+     * 这里只是把同一事实暴露给 UI，两处由 pauseTask/resumeTask 一起维护。
+     */
+    private val _pausedState = MutableStateFlow(false)
+    val pausedState: MutableStateFlow<Boolean> get() = _pausedState
+
+    /** 同步搁置标志与对外状态，避免"字段改了、界面没变" */
+    fun setPaused(paused: Boolean) {
+        taskPaused = paused
+        _pausedState.value = paused
+    }
 
     var lastSnapshot: ScreenSnapshot = ScreenSnapshot()
     var currentLang = PromptLang.CN

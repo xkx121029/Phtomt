@@ -331,7 +331,7 @@ class IntentTranslatorTest {
 
     /** 按探测结果与无障碍在线状态构造被测转译器（探测/无障碍均为注入的假实现） */
     private fun assistantTranslator(
-        probe: com.phoneagent.device.a11y.VoiceAssistantDetector.Target?,
+        probe: com.phoneagent.provider.a11y.VoiceAssistantDetector.Target?,
         a11y: Boolean,
     ): IntentTranslator = IntentTranslator(
         capabilityManager, appNameResolver, IntentResolver(),
@@ -343,8 +343,8 @@ class IntentTranslatorTest {
     fun assistant_a11y在线_转译为LAUNCH_ASSISTANT且text透传() {
         mode(Mode.ACCESSIBILITY)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
             ),
             a11y = true,
         )
@@ -360,8 +360,8 @@ class IntentTranslatorTest {
     fun assistant_text缺省_action_text为null() {
         mode(Mode.ACCESSIBILITY)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.ASSIST, null, null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.ASSIST, null, null,
             ),
             a11y = true,
         )
@@ -374,8 +374,8 @@ class IntentTranslatorTest {
     fun assistant_shizuku无a11y_厂商助手降级为shell拉起() {
         mode(Mode.SHIZUKU)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
             ),
             a11y = false,
         )
@@ -388,8 +388,8 @@ class IntentTranslatorTest {
     fun assistant_shizuku无a11y_系统入口降级为raw_am_start() {
         mode(Mode.SHIZUKU)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
             ),
             a11y = false,
         )
@@ -409,8 +409,8 @@ class IntentTranslatorTest {
     fun assistant_无障碍离线且非shizuku_转译失败() {
         mode(Mode.ACCESSIBILITY)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VENDOR, "com.miui.voiceassist", null,
             ),
             a11y = false,
         )
@@ -422,8 +422,8 @@ class IntentTranslatorTest {
     fun 只读模式_assistant被拒绝() {
         mode(Mode.READONLY)
         val t = assistantTranslator(
-            com.phoneagent.device.a11y.VoiceAssistantDetector.Target(
-                com.phoneagent.device.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
             ),
             a11y = true,
         )

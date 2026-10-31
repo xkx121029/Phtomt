@@ -14,6 +14,11 @@ import java.io.File
  */
 class DocumentEngine(private val context: Context) {
 
+    private companion object {
+        /** 文件名非法字符（Windows/Android 文件系统通用）；预编译避免每次落盘都构造 */
+        val ILLEGAL_FILENAME_CHARS = Regex("[/\\\\:*?\"<>|]")
+    }
+
     /** 文档根目录（应用专属外部存储，无需运行时权限，用户可经文件管理器访问） */
     private val rootDir: File
         get() = File(context.getExternalFilesDir(null), "documents").apply { mkdirs() }
@@ -70,7 +75,7 @@ class DocumentEngine(private val context: Context) {
         if (n.isBlank()) n = "document.md"
         // 无后缀时按文档补 .md
         if (!n.endsWith(".md") && !n.endsWith(".txt") && !n.contains(".")) n += ".md"
-        return n.replace(Regex("[/\\\\:*?\"<>|]"), "_")
+        return n.replace(ILLEGAL_FILENAME_CHARS, "_")
     }
 }
 

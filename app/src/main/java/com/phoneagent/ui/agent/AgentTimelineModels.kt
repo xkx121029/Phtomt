@@ -96,8 +96,17 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "live#done"
     }
 
-    /** 任务失败/放弃 */
-    data class Failed(val message: String) : AgentTimelineItem {
+    /**
+     * 任务失败/放弃。
+     *
+     * [kind] 决定卡片标题与可用的出口：步数用尽、AI 链路异常、配置缺失、用户取消，
+     * 这四种的处置完全不同（重跑 / 修网络 / 去配置 / 无需处理），旧实现一律写「任务已停止」，
+     * 用户看不出到底发生了什么。
+     */
+    data class Failed(
+        val message: String,
+        val kind: AgentState.FailureKind = AgentState.FailureKind.UNKNOWN,
+    ) : AgentTimelineItem {
         override val key: String get() = "live#failed"
     }
 
@@ -220,6 +229,21 @@ internal data class StepCall(
 ) {
     /** 稳定 key：同一步在同一任务内唯一（供 rememberSaveable 记住展开状态） */
     val key: String get() = "sc#$runKey#$step"
+}
+
+/**
+ * 失败卡片在「没有可读原因」时的兜底文案。
+ *
+ * 之前这三种情况各写各的（归档中断、归档失败、实时错误），改了其中一处，
+ * 另外两处就会留成另一种说法，用户看到的口径也就不一致。集中在这里一处改全改。
+ */
+internal object AgentFallbackCopy {
+    /** 归档会话：用户主动停止且没有摘要 */
+    const val ABORTED = "任务已停止"
+    /** 归档会话：失败且没有摘要 */
+    const val FAILED = "任务未完成"
+    /** 实时错误：状态里没带消息 */
+    const val ERROR = "任务执行出错，已停止"
 }
 
 /**

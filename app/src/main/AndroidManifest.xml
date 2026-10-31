@@ -17,6 +17,10 @@
     <!-- 自动更新：优先走 shell 静默安装；通道不可用时回落到系统安装器，
          后者要求本应用持有「安装未知应用」权限（Android 8.0 起按来源应用单独授权） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 编码工作区：用户可以选择设备上的任意目录作为工作区，agent（node 子进程）
+         按真实路径读写它，因此需要「所有文件访问」。授权走系统设置页，不做自弹窗。 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <!-- Termux 执行通道已迁入 Provider（com.phoneagent.provider）：
          RUN_COMMAND 权限、RunCommandService 调用与结果回传接收器都在 Provider 内，
@@ -43,10 +47,15 @@
 
     <!-- 明文 HTTP：API 地址允许指向自建/内网服务（http://192.168.1.5:8000、http://nas.local、
          http://localhost:11434 等）。targetSdk 28 起系统默认禁止明文流量，不放开时 OkHttp 会直接抛
-         "CLEARTEXT communication to xxx not permitted by network security policy"。 -->
+         "CLEARTEXT communication to xxx not permitted by network security policy"。
+         这里保留全局放行（内网 IP 段无法用 network_security_config 通配），
+         改由请求层把关：AiClient 对「公网域名 + http」直接拒绝并给出明确错误，
+         避免用户误填的公网 http 地址把 API Key 明文发出去。
+
+         allowBackup=false：设置里存着模型 API Key，允许云备份/换机迁移等于把凭据一起带走。 -->
     <application
         android:name=".PhoneAgentApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -79,11 +88,14 @@
                 <data android:scheme="hpa" android:host="task" />
                 <data android:scheme="hpa" android:host="resume" />
             </intent-filter>
-            <!-- 分享目标：任何 App 分享文字/链接 → 交给 Agent -->
+            <!-- 分享目标：任何 App 分享文字/链接/文件 → 交给 Agent。
+                 带文件的（EXTRA_STREAM / ClipData）落在临时编码区并附上文件，
+                 纯文本/链接仍按任务文本交给 Agent。 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
+                <data android:mimeType="*/*" />
             </intent-filter>
             <!-- 文本选择处理：任何 App 选中文字 →「问 Happy Agent」 -->
             <intent-filter>

@@ -1,7 +1,9 @@
 package com.phoneagent.engine.runtime
 
 import android.content.Context
+import com.phoneagent.core.log.runCatchingLogged
 import com.phoneagent.data.prefs.AppSettings
+import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.StepShot
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.PendingTaskQueue
@@ -47,6 +49,8 @@ internal class TaskLifecycle(
      */
     private val router: suspend (task: String, chatOnly: Boolean) -> RouteDecision =
         { _, _ -> RouteDecision.Agent },
+    /** 当前设置快照（同步读缓存值）：start() 是同步入口，不能在这里挂起读 DataStore */
+    private val settingsSnapshot: () -> AppSettings.Settings? = { null },
 ) {
     /** 队列 worker；由主线程入队与 Default 线程的任务收尾共同读写，故需 @Volatile */
     @Volatile
@@ -70,10 +74,31 @@ internal class TaskLifecycle(
      */
     fun start(task: String, chatOnly: Boolean = false) {
         if (task.isBlank()) return
+        // 执行前先确认模型配置可用：否则任务会一路跑到"决策链路连续异常"才收尾，
+        // 用户拿到的结论是「AI 出问题了」，而真实原因只是还没填 Key —— 这两者的处置完全不同
+        if (!chatOnly) {
+            val missing = settingsSnapshot()?.configProblem
+            if (missing != null) {
+                ui.log(AgentLog.Level.ERROR, "任务未启动：$missing")
+                store.state.value = store.state.value.copy(
+                    isRunning = false,
+                    task = task,
+                    phase = AgentState.Phase.ERROR,
+                    message = missing,
+                    startedAtMillis = System.currentTimeMillis(),
+                    // 归类为「配置缺失」：失败卡据此给「去配置」而不是「重试」
+                    failureKind = AgentState.FailureKind.CONFIG,
+                )
+                ui.pushFloating("配置未完成", "ERROR")
+                return
+            }
+        }
         if (!chatOnly) {
             // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
             scope.launch {
-                val ext = runCatching { settings.settings.first().enableExternalVision }.getOrDefault(true)
+                val ext = runCatchingLogged("TaskLifecycle", "读取端侧视觉开关") {
+                    settings.settings.first().enableExternalVision
+                }.getOrDefault(true)
                 if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
             }
             // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖

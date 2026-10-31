@@ -171,7 +171,7 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
-                    CalibrationSlider("粗细", st.edgeLightingWidth, 5f..50f, onChange = { st.edgeLightingWidth = it }, onCommit = save)
+                    CalibrationSlider("粗细", st.edgeLightingWidth, 5f..80f, onChange = { st.edgeLightingWidth = it }, onCommit = save)
                 }
             }
         }

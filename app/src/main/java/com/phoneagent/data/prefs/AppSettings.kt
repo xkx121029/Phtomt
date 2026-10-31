@@ -11,6 +11,7 @@ import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelCatalogCodec
+import com.phoneagent.core.security.SecretCodec
 import com.phoneagent.ui.TabPrefsCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -152,7 +153,22 @@ class AppSettings(private val context: Context) {
         val tabOrder: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
         /** 底部 Tab 可见性（可见 Tab 的 id 列表；home 与 settings 不可隐藏，UI 层保证） */
         val tabVisible: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
-    )
+    ) {
+        /**
+         * 模型配置是否可用；返回阻断原因（null = 可以执行）。
+         *
+         * 执行与规划两条入口共用这一份判定：两处各写一遍迟早会漂移，
+         * 出现「规划拦住了、执行照跑」这种前后不一致。
+         */
+        val configProblem: String?
+            get() = when {
+                model.isBlank() -> "还没有选择模型。请到「设置 → 模型与接入」选择主模型后再下达任务。"
+                apiKey.isBlank() -> "还没有填写 API Key。请到「设置 → 模型与接入」填写后再下达任务。"
+                apiBaseUrl.isBlank() -> "还没有填写接口地址。请到「设置 → 模型与接入」填写后再下达任务。"
+                // 公网 + http 会把 Key 明文发出去：拦下来并说清怎么改，比静默泄露强
+                else -> com.phoneagent.core.ai.AiClient.cleartextProblem(apiBaseUrl)
+            }
+    }
 
     private object Keys {
         val BASE_URL = stringPreferencesKey("api_base_url")
@@ -232,16 +248,17 @@ class AppSettings(private val context: Context) {
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
-        // 旧三槽（主 / 视觉 / 思考）的扁平字段仍是引擎契约，这里先取出来，既构造 Settings 也用于模型库合成
+        // 旧三槽（主 / 视觉 / 思考）的扁平字段仍是引擎契约，这里先取出来，既构造 Settings 也用于模型库合成。
+        // 敏感字段统一过 SecretCodec.decrypt：老版本写下的明文没有前缀，会原样返回，升级不失效
         val apiBaseUrl = prefs[Keys.BASE_URL] ?: GlmDefaults.BASE_URL
-        val apiKey = prefs[Keys.API_KEY] ?: ""
+        val apiKey = SecretCodec.decrypt(prefs[Keys.API_KEY] ?: "")
         val model = prefs[Keys.MODEL] ?: GlmDefaults.MODEL
         val visionBaseUrl = prefs[Keys.VISION_BASE_URL] ?: GlmDefaults.BASE_URL
         val visionModel = prefs[Keys.VISION_MODEL] ?: GlmDefaults.VISION_MODEL
-        val visionApiKey = prefs[Keys.VISION_API_KEY] ?: ""
+        val visionApiKey = SecretCodec.decrypt(prefs[Keys.VISION_API_KEY] ?: "")
         val reasonBaseUrl = prefs[Keys.REASON_BASE_URL] ?: GlmDefaults.BASE_URL
         val reasonModel = prefs[Keys.REASON_MODEL] ?: GlmDefaults.REASON_MODEL
-        val reasonApiKey = prefs[Keys.REASON_API_KEY] ?: ""
+        val reasonApiKey = SecretCodec.decrypt(prefs[Keys.REASON_API_KEY] ?: "")
 
         // 模型库：从未写过（键为空）才由老配置合成 —— 纯函数、不写回，避免读时写竞态；
         // 用户手动删空后存的是 "[]"（非空字符串），不会被误当作"没写过"而复活
@@ -259,8 +276,11 @@ class AppSettings(private val context: Context) {
                 reasonModel = reasonModel,
             )
         } else {
-            ModelCatalogCodec.decodeEndpoints(endpointsRaw) to
-                ModelCatalogCodec.decodeModels(prefs[Keys.CATALOG] ?: "")
+            // 端点里的 apiKey 同样逐条解密：整表 JSON 落盘，密文只加在 Key 字段上，
+            // 这样地址/模型名仍可直接查看，导出配置也不至于整块不可读
+            ModelCatalogCodec.decodeEndpoints(endpointsRaw).map { ep ->
+                ep.copy(apiKey = SecretCodec.decrypt(ep.apiKey))
+            } to ModelCatalogCodec.decodeModels(prefs[Keys.CATALOG] ?: "")
         }
 
         Settings(
@@ -325,7 +345,7 @@ class AppSettings(private val context: Context) {
             updateChannel = prefs[Keys.UPDATE_CHANNEL] ?: "stable",
             autoCheckUpdate = prefs[Keys.AUTO_CHECK_UPDATE] ?: true,
             externalControlEnabled = prefs[Keys.EXTERNAL_CONTROL_ENABLED] ?: false,
-            externalControlToken = prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: "",
+            externalControlToken = SecretCodec.decrypt(prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: ""),
             onboardingDone = prefs[Keys.ONBOARDING_DONE] ?: false,
             codingApprovalMode = prefs[Keys.CODING_APPROVAL_MODE] ?: "risky",
             tabOrder = TabPrefsCodec.decode(prefs[Keys.TAB_ORDER]),
@@ -333,10 +353,20 @@ class AppSettings(private val context: Context) {
         )
     }
 
+    /**
+     * 只落盘「新手引导已完成」这一个键：设置表单整体回写时不带该字段，
+     * 若也参与回写就会把 true 覆盖成 false，教程因此反复弹出。
+     */
+    suspend fun markOnboardingDone() {
+        context.agentStore.edit { prefs -> prefs[Keys.ONBOARDING_DONE] = true }
+    }
+
     suspend fun update(settings: Settings) {
         context.agentStore.edit { prefs ->
             prefs[Keys.BASE_URL] = settings.apiBaseUrl.trim().trimEnd('/')
-            prefs[Keys.API_KEY] = settings.apiKey.trim()
+            // 凭据类字段落盘前加密（AES-GCM，密钥由系统 Keystore 托管）：
+            // 读路径对应 SecretCodec.decrypt，老明文没有前缀会被原样读出，升级不失效
+            prefs[Keys.API_KEY] = SecretCodec.encrypt(settings.apiKey.trim())
             prefs[Keys.MODEL] = settings.model.trim()
             prefs[Keys.MAIN_VISION_MODE] = settings.mainVisionMode
             prefs[Keys.TEMPERATURE] = settings.temperature
@@ -346,13 +376,13 @@ class AppSettings(private val context: Context) {
             prefs[Keys.PROMPT_LANGUAGE] = settings.promptLanguage
             prefs[Keys.VISION_BASE_URL] = settings.visionBaseUrl.trim().trimEnd('/')
             prefs[Keys.VISION_MODEL] = settings.visionModel.trim()
-            prefs[Keys.VISION_API_KEY] = settings.visionApiKey.trim()
+            prefs[Keys.VISION_API_KEY] = SecretCodec.encrypt(settings.visionApiKey.trim())
             prefs[Keys.REASON_BASE_URL] = settings.reasonBaseUrl.trim().trimEnd('/')
             prefs[Keys.REASON_MODEL] = settings.reasonModel.trim()
-            prefs[Keys.REASON_API_KEY] = settings.reasonApiKey.trim()
+            prefs[Keys.REASON_API_KEY] = SecretCodec.encrypt(settings.reasonApiKey.trim())
             prefs[Keys.ASR_BASE_URL] = settings.asrBaseUrl.trim().trimEnd('/')
             prefs[Keys.ASR_MODEL] = settings.asrModel.trim()
-            prefs[Keys.ASR_API_KEY] = settings.asrApiKey.trim()
+            prefs[Keys.ASR_API_KEY] = SecretCodec.encrypt(settings.asrApiKey.trim())
             prefs[Keys.VISION_ENABLED] = settings.visionEnabled
             prefs[Keys.VISION_MODE] = settings.visionMode
             prefs[Keys.EXTERNAL_VISION] = settings.enableExternalVision
@@ -382,7 +412,10 @@ class AppSettings(private val context: Context) {
             prefs[Keys.BORDERLESS] = settings.borderless
             prefs[Keys.PALETTE] = settings.palette
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
-            prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(settings.endpoints)
+            // 端点表整体落盘，但每条 Key 先单独加密（地址/模型名保持可读）
+            prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(
+                settings.endpoints.map { ep -> ep.copy(apiKey = SecretCodec.encrypt(ep.apiKey)) },
+            )
             // 端点被删除后，指向它的模型条目即孤儿，落库前先滤掉，避免模型库越来越脏
             val liveEndpointIds = settings.endpoints.map { it.id }.toSet()
             prefs[Keys.CATALOG] = ModelCatalogCodec.encodeModels(
@@ -393,8 +426,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.UPDATE_CHANNEL] = settings.updateChannel
             prefs[Keys.AUTO_CHECK_UPDATE] = settings.autoCheckUpdate
             prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled
-            prefs[Keys.EXTERNAL_CONTROL_TOKEN] = settings.externalControlToken
-            prefs[Keys.ONBOARDING_DONE] = settings.onboardingDone
+            prefs[Keys.EXTERNAL_CONTROL_TOKEN] = SecretCodec.encrypt(settings.externalControlToken)
+            // onboardingDone 不在这里整体回写：设置表单没有该字段，会把 true 覆盖成 false
             prefs[Keys.CODING_APPROVAL_MODE] = settings.codingApprovalMode
             prefs[Keys.TAB_ORDER] = TabPrefsCodec.encode(settings.tabOrder)
             prefs[Keys.TAB_VISIBLE] = TabPrefsCodec.encode(settings.tabVisible)

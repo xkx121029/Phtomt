@@ -60,6 +60,16 @@ object DataSanitizer {
     private val idRegex = Regex("(?<!\\d)\\d{17}[0-9Xx](?!\\d)")
 
     fun sanitize(text: String): String {
+        // 快速通道：手机号 11 位、身份证 17 位起、银行卡 16 位起——少于 11 个数字的文本
+        // 不可能命中任何一条脱敏规则，直接返回。控件标签/日志正文绝大多数不含数字，
+        // 这一步省掉的是每步数百次无意义的正则扫描。
+        var digits = 0
+        for (c in text) {
+            if (c in '0'..'9') digits++
+            if (digits >= 11) break
+        }
+        if (digits < 11) return text
+
         var out = text
         // 先脱敏最长的身份证号（18 位），避免其 16~19 位数字被银行卡正则先行匹配而残留
         out = idRegex.replace(out) { it.value.take(6) + "********" + it.value.takeLast(4) }

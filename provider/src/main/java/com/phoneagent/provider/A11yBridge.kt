@@ -1,9 +1,7 @@
 package com.phoneagent.provider
 
-import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
-import android.provider.Settings
 import com.phoneagent.provider.a11y.ProviderAccessibilityService
 import com.phoneagent.provider.a11y.ProviderActionExecutor
 import java.io.ByteArrayOutputStream
@@ -32,22 +30,8 @@ object A11yBridge {
     }
 
     /** 无障碍服务是否已在系统设置中开启（开关开着但实例可能尚未连接，两态分开报） */
-    fun isEnabled(context: Context): Boolean {
-        val enabled = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ) ?: return false
-        val pkg = context.packageName
-        val cls = ProviderAccessibilityService::class.java.name
-        // 系统设置里手动开启通常写入全量形式（pkg/pkg.cls），但部分 ROM、备份恢复或
-        // 第三方工具会写短形式（pkg/.cls）或大小写不一致——逐条反解成 ComponentName
-        // 再比对，避免「开关明明开着却检测为关」
-        return enabled.split(':').any { entry ->
-            val cn = ComponentName.unflattenFromString(entry.trim()) ?: return@any false
-            cn.packageName.equals(pkg, ignoreCase = true) &&
-                cn.className.equals(cls, ignoreCase = true)
-        }
-    }
+    fun isEnabled(context: Context): Boolean =
+        com.phoneagent.provider.watchdog.WatchdogConfig.isInA11yList(context)
 
     /** 无障碍服务实例是否已连接（可执行） */
     fun isConnected(): Boolean = ProviderAccessibilityService.instance != null

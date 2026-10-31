@@ -7,6 +7,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.phoneagent.core.security.DataSanitizer
 import com.phoneagent.core.text.HumanTranslator
+import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.StepTrace
@@ -14,8 +15,6 @@ import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /**
@@ -25,6 +24,9 @@ import java.util.Locale
  * 落盘统一走「下载/HappyPhoneAgent」目录（MediaStore，Android 10+ 无需存储权限）。
  */
 object LogExporter {
+
+    /** 导出文件名清洗：只保留中英文/数字/下划线/连字符（预编译，批量导出时按任务重复使用） */
+    private val FILE_NAME_UNSAFE_RE = Regex("[^\\w\\u4e00-\\u9fa5-]")
 
     /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。
      *  @return 成功返回保存路径，失败返回错误信息（以 "ERR:" 开头） */
@@ -45,7 +47,7 @@ object LogExporter {
                 sb.appendLine()
             }
 
-            val fileName = "hpa_logs_${taskName?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "all"}_${fileStamp()}.txt"
+            val fileName = "hpa_logs_${taskName?.take(12)?.replace(FILE_NAME_UNSAFE_RE, "_") ?: "all"}_${fileStamp()}.txt"
             if (!writeToDownloads(context, downloadValues(fileName, "text/plain"), sb.toString().toByteArray(Charsets.UTF_8)))
                 return@runCatching "ERR:无法写入导出文件（需 Android 10 及以上）"
             "已导出到 下载/HappyPhoneAgent/$fileName"
@@ -67,7 +69,7 @@ object LogExporter {
             val stamp = fileStamp()
             val written = mutableListOf<String>()
             groups.forEach { (tid, name, list) ->
-                val safeName = name?.take(12)?.replace(Regex("[^\\w\\u4e00-\\u9fa5-]"), "_") ?: "task"
+                val safeName = name?.take(12)?.replace(FILE_NAME_UNSAFE_RE, "_") ?: "task"
                 val fileName = if (tid < 0) "hpa_logs_system_$stamp.json" else "hpa_logs_${tid}_${safeName}_$stamp.json"
                 val jsonObj = buildJsonObject {
                     put("app", "Happy Phone Agent")
@@ -160,14 +162,11 @@ object LogExporter {
 
     // ---- 以下为原 MainViewModel 内的私有实现，随导出逻辑一并外迁 ----
 
-    private fun formatNow(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    private fun formatNow(): String = TimeFormats.format("yyyy-MM-dd HH:mm:ss")
 
-    private fun fileStamp(): String =
-        SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+    private fun fileStamp(): String = TimeFormats.format("yyyyMMdd_HHmmss", locale = Locale.US)
 
-    private fun formatTimestamp(t: Long): String =
-        SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(t))
+    private fun formatTimestamp(t: Long): String = TimeFormats.format("MM-dd HH:mm:ss.SSS", t)
 
     /** 组装 MediaStore 写入参数（统一下载目录 HappyPhoneAgent） */
     private fun downloadValues(fileName: String, mimeType: String): ContentValues =

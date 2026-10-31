@@ -103,7 +103,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
                 },
             )
             if (!hasPage) {
-                EmptyHint(Modifier.align(Alignment.Center))
+                BrowserEmptyHint(Modifier.align(Alignment.Center))
             }
         }
     }
@@ -153,7 +153,7 @@ private fun AddressStrip(title: String, url: String) {
 }
 
 @Composable
-private fun EmptyHint(modifier: Modifier = Modifier) {
+private fun BrowserEmptyHint(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.padding(AppSpacing.Lg),
         color = MaterialTheme.colorScheme.surfaceContainerLow,

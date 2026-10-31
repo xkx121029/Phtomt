@@ -66,6 +66,7 @@ import com.phoneagent.domain.model.StepShot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.network.CloudAgent
 import com.phoneagent.engine.perception.PageAnnotator
+import com.phoneagent.engine.perception.PageFingerprint
 import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.device.screen.ScreenCapture
 import com.phoneagent.core.security.DataSanitizer
@@ -91,6 +92,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlin.coroutines.coroutineContext
 import java.util.concurrent.atomic.AtomicLong
 import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.runtime.StepTexts
 import com.phoneagent.engine.runtime.UiBridge
 import com.phoneagent.engine.runtime.TelemetryRecorder
 import com.phoneagent.engine.runtime.TaskLifecycle
@@ -161,9 +163,26 @@ class AgentEngine(
      * 缺省时就地构造兜底；路由（router）的组装在本类内部完成，不经 AppModule 传参。
      */
     codingBridge: CodingAgentBridge? = null,
+    /**
+     * 记忆存储：AppModule 注入 Koin 单例，与记忆页/设置页读写的是**同一个实例**。
+     *
+     * 原实现引擎内自建一份，与 UI 各持一份互不相干的内存态（页面记忆每步解码、UI 删除后引擎读不到新版）；
+     * 缺省时就地构造只作为构造点兜底（测试/独立构造场景），生产装配始终显式注入。
+     */
+    memoryStore: MemoryStore? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    /**
+     * 最近一次读到的设置快照。
+     *
+     * 规划入口是同步函数（UI 直接调用），不能在那里挂起读 DataStore；
+     * 由 init 的订阅持续刷新，供配置预检这类"必须先同步判定"的场景使用。
+     * null = 尚未读到，预检此时放行（不能因为没读到就拦住用户）。
+     */
+    @Volatile
+    private var latestSettings: com.phoneagent.data.prefs.AppSettings.Settings? = null
 
     /** 设备与环境事实（应用清单 / 屏幕 / 网络 / 电量 / 存储）的读取入口，见 [DeviceFacts] */
     private val deviceFacts = DeviceFacts(appContext)
@@ -173,13 +192,18 @@ class AgentEngine(
 
     private val cloudAgent = CloudAgent(aiClient)
     private val localDecision = LocalDecisionEngine(selfPackage = appContext.packageName)
-    private val memory = MemoryStore(appContext)
+    private val memory = memoryStore ?: MemoryStore(appContext)
     private val anomalyEngine = AnomalyMemoryEngine(memory)
     private val profileLearner = ProfileLearner(memory)
     /** UI 桥：悬浮窗推送 + 日志环形缓冲 + 对话追加（重构批次 2，见 [UiBridge]） */
     private val uiBridge = UiBridge(appContext, settings, store)
     /** 遥测记录器：指标 / 轨迹 / 事件流 / 会话归档 / 调试持久化（重构批次 2，见 [TelemetryRecorder]） */
     private val telemetry = TelemetryRecorder(appContext, memory, store)
+    /** 任务收尾：任务记忆终态 / 模板健康回写 / 记忆提炼（重构批次 8，见 [TaskFinalizer]） */
+    private val finalizer = com.phoneagent.engine.runtime.TaskFinalizer(
+        store, memory, settings, aiClient, appContext, deviceFacts, telemetry, scope,
+        log = { level, message, detail -> log(level, message, detail) },
+    )
     /** AI 连接工具：翻译 / 连接测试 / 模型列表 / 能力探测（重构批次 3，见 [com.phoneagent.engine.connect.AiTools]） */
     private val aiTools = com.phoneagent.engine.connect.AiTools(settings, aiClient)
     /**
@@ -199,6 +223,8 @@ class AgentEngine(
         runTask = { task, plan -> run(task, plan) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
         router = { task, chatOnly -> routeTask(task, chatOnly) },
+        // 配置预检要同步拿到当前设置（start 是同步入口）；极早期读不到时返回 null，预检放行
+        settingsSnapshot = { latestSettings },
     )
     /** 技能调用历史：fire-and-forget 留档每次技能调用（成功/失败/耗时/参数），供缺参推断与「上次教训」注入 */
     private val skillCallHistory = com.phoneagent.feature.skill.SkillCallHistory(appContext, scope)
@@ -213,7 +239,7 @@ class AgentEngine(
     /** 用户协作门：三套等待/确认信箱 + 搁置闸门（重构批次 7，见 [com.phoneagent.engine.runtime.UserGate]） */
     private val userGate = com.phoneagent.engine.runtime.UserGate(
         store, uiBridge,
-        mutateTaskMemory = { transform -> mutateTaskMemory(transform) },
+        mutateTaskMemory = { transform -> finalizer.mutateTaskMemory(transform) },
         actionLabel = { type -> actionLabel(type) },
     )
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
@@ -233,7 +259,7 @@ class AgentEngine(
     private val appNameResolver = AppNameResolver(appContext)
     private val intentResolver = IntentResolver()
     /** 本机语音助手探测：assistant 意图据此拉起系统智能助手（系统入口优先、厂商包名兜底） */
-    private val assistantDetector = com.phoneagent.device.a11y.VoiceAssistantDetector(appContext)
+    private val assistantDetector = com.phoneagent.provider.a11y.VoiceAssistantDetector(appContext)
     private val intentTranslator = IntentTranslator(
         capabilityManager, appNameResolver, intentResolver,
         // Termux 命令行通道可用性：转译层据此决定 fetch 这类"命令行取数"意图能否落地
@@ -271,6 +297,8 @@ class AgentEngine(
         emitSay = { text, runKey, step -> emitSayEvent(text, runKey, step) },
         rememberChatTurn = { q, a -> rememberChatTurn(q, a) },
         launchTask = { t, p -> launchSingleTask(t, p) },
+        // 配置预检要同步拿到当前设置：读不到（极早期）时返回默认值，让预检不阻断正常流程
+        settingsSnapshot = { latestSettings ?: com.phoneagent.data.prefs.AppSettings.Settings() },
     )
     /** 执行核心：带验证执行 / shell 通道 / 无障碍端点直调（重构批次 7b，见 [com.phoneagent.engine.execution.ExecutionCore]） */
     private val executionCore = com.phoneagent.engine.execution.ExecutionCore(
@@ -280,6 +308,8 @@ class AgentEngine(
         observe = { observe() },
         // 副屏模式：只有本任务真正挂上副屏时动作才走副屏通道
         virtualDisplay = { if (virtualDisplayActive) virtualDisplay else null },
+        // 执行通道偏好复用引擎持续缓存的设置快照，避免每条 shell 命令都挂起读 DataStore
+        settingsSnapshot = { latestSettings },
     )
     /** 副屏模式代理（仅 Shizuku 通道可用时才有实例，见 [com.phoneagent.device.screen.VirtualDisplayAgent]） */
     private val virtualDisplay: com.phoneagent.device.screen.VirtualDisplayAgent? by lazy {
@@ -440,6 +470,11 @@ class AgentEngine(
         val reason: String,
     )
 
+    companion object {
+        /** 暂停态的状态条文案：暂停与"在思考"必须一眼可分，否则用户会以为任务卡住 */
+        const val PAUSED_NOTE = "任务已暂停，点「继续」从当前步接着跑"
+    }
+
     /**
      * 待确认的不可逆动作；null = 没有正在等待的确认。
      * 与 [_needsUser]（用户指导等待）、[_pendingShellCommand]（自写命令确认）是三套互相独立的
@@ -463,6 +498,11 @@ class AgentEngine(
         set(value) { store.taskPaused = value }
 
     private var lastSnapshot by store::lastSnapshot
+
+    /** 上一轮截图与其页面指纹：指纹未变时直接复用，省掉一次抓帧与位图分配 */
+    private var cachedShot: Bitmap? = null
+    private var cachedShotSig: String? = null
+
     private var currentLang by store::currentLang
     private var consecutiveFailures by store::consecutiveFailures
 
@@ -502,16 +542,8 @@ class AgentEngine(
      * 必须跟随提示词语言：英文提示词的三态段写作 verified / sent but unverified / failed，
      * 若这里仍回中文，模型得自己做一次中英映射，等于人为制造歧义。
      */
-    private fun lastStepResultText(lang: PromptLang): String {
-        val last = _executionHistory.value.lastOrNull() ?: return ""
-        val action = last.action?.run { "${type}${reason?.let { "($it)" } ?: ""}" } ?: "-"
-        val cn = lang == PromptLang.CN
-        return when {
-            last.isConfirmed -> if (cn) "✅ 已确认成功: $action" else "✅ verified: $action"
-            last.verificationResult == "failed" -> if (cn) "❌ 未生效: $action" else "❌ failed: $action"
-            else -> if (cn) "⚠️ 已发送但未确认: $action" else "⚠️ sent but unverified: $action"
-        }
-    }
+    private fun lastStepResultText(lang: PromptLang): String =
+        StepTexts.lastStepResult(_executionHistory.value, lang)
 
     private fun log(level: AgentLog.Level, message: String, detail: String? = null) =
         uiBridge.log(level, message, detail)
@@ -553,6 +585,9 @@ class AgentEngine(
             isRunning = false,
             phase = if (message != null) AgentState.Phase.ERROR else AgentState.Phase.IDLE,
             message = message ?: s.message,
+            // 走到这里 message 非空就是"异常终止"，归为未分类失败：失败卡会给「重试」出口
+            failureKind = AgentState.FailureKind.UNKNOWN,
+            retryingNote = "",
         )
         FloatingWindowService.stop(appContext)
         runCatching { com.phoneagent.overlay.CursorOverlayService.hide() }
@@ -574,10 +609,55 @@ class AgentEngine(
     init {
         // 启动时回载上次的调试记录（日志/轨迹/执行历史/对话/会话归档），实现持久化
         telemetry.loadPersistedDebug()
+        // 持续缓存设置快照：供同步入口（规划预检）读取，避免在那里挂起读 DataStore
+        scope.launch {
+            settings.settings.collect { latestSettings = it }
+        }
+        // 悬浮窗交互回调挂在引擎上而不是 ViewModel：引擎是单例、随进程存活，
+        // 界面销毁后后台任务仍能在悬浮窗上点「停止 / 批准 / 澄清」。
+        // 旧实现挂在 MainViewModel.init，onCleared 一清空，后台任务就再也收不到这些操作。
+        FloatingWindowService.onInteraction = { action, payload ->
+            when (action) {
+                "approve" -> approvePlan()
+                "cancel" -> cancelPlanning()
+                "clarify" -> answerClarification(
+                    com.phoneagent.domain.model.ClarificationOption(
+                        id = payload,
+                        label = payload,
+                        description = payload,
+                    ),
+                )
+                "hint" -> provideUserHint(payload)
+                "dismiss" -> dismissUser()
+                // 自由模式：AI 自写命令的首次确认（与 hint/dismiss 分开，见 resolveShellApproval 的说明）
+                "shell_approve" -> resolveShellApproval(payload == "yes")
+                // 任务完成：用户确认是否保存执行模板（主动确认才入库）
+                "save_template" -> confirmSaveTemplate(payload == "yes")
+                // 关闭悬浮窗 → 同步停止正在运行的任务（用户显式操作）
+                "close" -> stop()
+                // 收起悬浮窗（只留悬浮球）→ 搁置任务；点悬浮球唤出 → 从当前步继续
+                "hide" -> pauseTask()
+                "resume" -> resumeTask()
+            }
+        }
     }
 
     /** 提交任务到队列并开始处理（转发 [TaskLifecycle.start]，重构批次 5） */
     fun start(task: String) = lifecycle.start(task)
+
+    /**
+     * 重试最近一次任务：把它的**完整原文**重新提交一次。
+     *
+     * 失败卡上的「重试」走这里。任务原文由 [EngineStore.lastFullTask] 保留，
+     * 不复用 [currentTaskName]（只留 60 字，重跑会丢需求细节）。
+     * 没有可重试的任务时是空操作。
+     */
+    fun retryLastTask() {
+        val task = store.lastFullTask
+        if (task.isBlank()) return
+        log(AgentLog.Level.INFO, "用户选择重试上一次任务")
+        start(task)
+    }
 
     /**
      * 对话页提交（对话模式）：只作答、不执行。
@@ -712,35 +792,57 @@ class AgentEngine(
         lifecycle.cancelWorker()
         // 用户主动停止：任务记忆收尾为「已中断」，否则记忆页会永远显示「进行中」。
         // 没有进行中的任务时 finishTaskMemory 内部直接返回，不会凭空写库
-        finishTaskMemory(TaskMemoryEntry.STATUS_ABORTED)
+        finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_ABORTED)
         // 停止即彻底结束：搁置标志必须一并清掉，否则下一个任务会带着上一个任务的搁置态起不来
-        taskPaused = false
+        store.setPaused(false)
         // 停止时若正卡在「等待确认自写命令」，把待确认命令一并清掉：
         // 否则面板已收，协助面板仍挂着一个再也等不到答复的确认框
         _pendingShellCommand.value = null
         // 不可逆动作确认门同理：停止后不能再挂着一个等不到答复的确认面板
         _pendingActionConfirmation.value = null
         // 先把状态落到 IDLE 再走统一复位：safeResetRuntime 带 DONE 终态守卫，
-        // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板
-        _state.value = _state.value.copy(isRunning = false, phase = AgentState.Phase.IDLE)
+        // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板。
+        // failureKind 只在 ERROR 相位有意义：这里落 IDLE，顺手清掉上一轮的分类，
+        // 否则下一个任务若因别的原因失败，界面可能读到残留分类
+        _state.value = _state.value.copy(
+            isRunning = false,
+            phase = AgentState.Phase.IDLE,
+            retryingNote = "",
+            failureKind = AgentState.FailureKind.UNKNOWN,
+        )
         safeResetRuntime(null, null)
+        // 复用的截图缓存必须随任务结束释放：一张全屏位图动辄 8MB 原生内存，
+        // 留在引擎单例上等于任务结束后还占着不放
+        cachedShot = null
+        cachedShotSig = null
         log(AgentLog.Level.WARN, "任务已停止")
     }
 
     // ---- 用户协作门已收口到 runtime/UserGate（重构批次 7），以下为转发 ----
 
-    /** 用户搁置任务（悬浮窗上的「隐藏」按钮）：收起面板的同时把执行挂起（转发 [UserGate]，重构批次 7） */
+    /** 当前任务是否处于用户暂停（搁置）态，供状态条切换「暂停 / 继续」 */
+    val paused: StateFlow<Boolean> get() = store.pausedState.asStateFlow()
+
+    /** 用户搁置任务（悬浮窗上的「隐藏」按钮 / App 内状态条的「暂停」）：把执行挂起 */
     fun pauseTask() {
         if (store.taskPaused) return
-        store.taskPaused = true
-        log(AgentLog.Level.INFO, "任务已搁置：等待用户唤出悬浮窗")
+        store.setPaused(true)
+        // 搁置是用户主动行为，界面上必须看得见：否则状态条仍显示「第 N 步」，用户以为还在跑
+        store.state.value = store.state.value.copy(message = PAUSED_NOTE)
+        pushFloating("已暂停", "OBSERVING")
+        log(AgentLog.Level.INFO, "任务已搁置：等待用户恢复")
     }
 
-    /** 用户唤出悬浮窗：解除搁置，任务从当前步继续 */
+    /** 用户恢复：解除搁置，任务从当前步继续 */
     fun resumeTask() {
         if (!store.taskPaused) return
-        store.taskPaused = false
-        log(AgentLog.Level.INFO, "用户已唤出悬浮窗，任务继续执行")
+        store.setPaused(false)
+        // 撤掉暂停提示：主循环下一轮会重新写回真实阶段文案
+        if (store.state.value.message == PAUSED_NOTE) {
+            store.state.value = store.state.value.copy(message = "")
+        }
+        pushFloating("继续执行", "OBSERVING")
+        log(AgentLog.Level.INFO, "用户已恢复任务，从当前步继续执行")
     }
 
     private suspend fun awaitResume() = userGate.awaitResume()
@@ -773,7 +875,7 @@ class AgentEngine(
         var cancelled = false
         try {
             // 新任务一律从「未搁置」开始：上一个任务的搁置标志不能带过来，否则任务起来就挂住
-            taskPaused = false
+            store.setPaused(false)
             runInner(task, plan) { owned = it }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // 用户停止 / 协程取消属于正常控制流，必须原样抛出：
@@ -787,7 +889,7 @@ class AgentEngine(
             safeResetRuntime(owned?.taskId, "任务异常终止：${e.message ?: e.javaClass.simpleName}")
         } finally {
             val mem = owned
-            if (mem != null) finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
+            if (mem != null) finalizer.finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
             // 归档本次任务会话（侧边栏数据源）。与上面同理按 taskId 归属，
             // 且不能有挂起调用：协程已被取消时挂起点会直接抛出，收尾就丢了
             mem?.taskId?.let { settleTaskSession(it, cancelled) }
@@ -803,16 +905,17 @@ class AgentEngine(
         }
     }
 
-    private suspend fun runInner(
-        task: String,
-        plan: TaskPlan? = null,
-        onMemoryCreated: (TaskMemoryEntry) -> Unit = {},
-    ) {
-        // 每次任务开始生成独立任务 ID，用于分任务日志查看与导出
-        currentTaskId = System.currentTimeMillis()
-        currentTaskName = task.take(60)
-        // 每次任务开始彻底清空 AI 上下文：对话历史、失败/提前完成/无效命令计数、“上一条 shell 输出”、
-        // 上一页截图快照与上一任务计划，避免上一个任务的指令/决策/命令串扰本任务（防止 AI 沿用不存在/失效的命令）
+    /**
+     * 把「属于一次任务」的内存状态全部归零。
+     *
+     * 这些字段原先散落在 [runInner] 开头，几十行首尾无关的手工赋值；新增任务级字段时
+     * 很容易漏掉一处，而漏掉的表现就是上一任务的残留串进下一任务（旧的已批准命令、
+     * 旧的视觉坐标、旧的会话上下文）。收成一个方法后，加字段只需要改这里。
+     *
+     * 注意：依赖入参的状态（计划本身、步数上限）不在此处，留在 [runInner] 里按 plan 赋值。
+     */
+    private fun resetTaskScopedState() {
+        // AI 上下文与各类连续计数
         _conversation.value = emptyList()
         consecutiveFailures = 0
         earlyDoneRejections = 0
@@ -829,41 +932,13 @@ class AgentEngine(
         macroName = ""
         macroDispatched = 0
         lastSnapshot = ScreenSnapshot()
-        activePlan = plan
-        // 新任务重置长线工作记忆
-        completedSteps = 0
-        totalPlannedSteps = plan?.steps?.size ?: 0
         // 页面记忆：清上一任务的内存快照与提示缓存（DataStore 里的历史记忆保留，供本任务命中参考）
         pageMemoryRecorder.reset()
         pageMemoryHintFingerprint = ""
         pageMemoryHintText = ""
         // 视觉缓存随任务复位：上一个任务的视觉产物（含任务目的性提问的描述）不带入本任务
         visionCache.invalidate()
-        // 任务记忆：任务原文既是既定目标，也是第一条用户要求。
-        // 先落库再执行，任务跑到一半（甚至中断）时记忆页也能看到它到底要做什么
-        val taskMemory = TaskMemoryEntry(
-            taskId = currentTaskId,
-            taskName = task,
-            goal = task,
-            requirements = listOf(task),
-            status = TaskMemoryEntry.STATUS_RUNNING,
-        )
-        currentTaskMemory = taskMemory
-        onMemoryCreated(taskMemory)
-        scope.launch { runCatching { memory.upsertTaskMemory(taskMemory) } }
-        // 侧边栏：任务一开跑就先占一条「进行中」会话，用户随时能在任务列表里看到它
-        startTaskSession(
-            TaskSession(
-                taskId = currentTaskId,
-                title = task,
-                plan = plan,
-                status = TaskSession.Status.RUNNING,
-            ),
-        )
-        reusedTemplateId = null
-        // 新任务清掉上一份文档预览，避免旧结果被误认为本次任务的产出
-        documentEngine?.dismiss()
-        // 重置主动反馈状态
+        // 主动反馈的计时与阈值
         lastProgressAt = System.currentTimeMillis()
         noProgressNotified = false
         localDecisionStreak = 0
@@ -899,6 +974,51 @@ class AgentEngine(
         // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
         deviceFacts.resetAppCache()
         sessionContextCache = null
+    }
+
+    private suspend fun runInner(
+        task: String,
+        plan: TaskPlan? = null,
+        onMemoryCreated: (TaskMemoryEntry) -> Unit = {},
+    ) {
+        // 每次任务开始生成独立任务 ID，用于分任务日志查看与导出
+        currentTaskId = System.currentTimeMillis()
+        currentTaskName = task.take(60)
+        // 完整原文单独留一份：「重试」要原样重跑，不能拿截断过的标题
+        store.lastFullTask = task
+        // 每次任务开始彻底清空 AI 上下文：对话历史、失败/提前完成/无效命令计数、“上一条 shell 输出”、
+        // 上一页截图快照与上一任务计划，避免上一个任务的指令/决策/命令串扰本任务（防止 AI 沿用不存在/失效的命令）
+        resetTaskScopedState()
+        activePlan = plan
+        // 新任务重置长线工作记忆
+        completedSteps = 0
+        totalPlannedSteps = plan?.steps?.size ?: 0
+        // 任务记忆：任务原文既是既定目标，也是第一条用户要求。
+        // 先落库再执行，任务跑到一半（甚至中断）时记忆页也能看到它到底要做什么
+        val taskMemory = TaskMemoryEntry(
+            taskId = currentTaskId,
+            taskName = task,
+            goal = task,
+            requirements = listOf(task),
+            status = TaskMemoryEntry.STATUS_RUNNING,
+        )
+        currentTaskMemory = taskMemory
+        onMemoryCreated(taskMemory)
+        scope.launch { runCatching { memory.upsertTaskMemory(taskMemory) } }
+        // 侧边栏：任务一开跑就先占一条「进行中」会话，用户随时能在任务列表里看到它
+        startTaskSession(
+            TaskSession(
+                taskId = currentTaskId,
+                title = task,
+                plan = plan,
+                status = TaskSession.Status.RUNNING,
+            ),
+        )
+        reusedTemplateId = null
+        // 新任务清掉上一份文档预览，避免旧结果被误认为本次任务的产出
+        documentEngine?.dismiss()
+        // 重置主动反馈状态
+        lastProgressAt = System.currentTimeMillis()
         // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
         val strategy = runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
             .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
@@ -1005,7 +1125,7 @@ class AgentEngine(
                 _state.value = _state.value.copy(message = dropReason)
                 val hint = awaitUserHint()
                 if (hint.isBlank()) {
-                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
+                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
                 }
                 // 用户已处理：重新观测在线状态，避免一次瞬时未重连就再次误触暂停
                 a11ySeenAlive = AgentAccessibilityService.instance != null
@@ -1045,9 +1165,8 @@ class AgentEngine(
             // 语义 id 回填：annotate() 把 semanticId 标在它**新建的元素列表**（annotated.elements）里，
             // 原始 snapshot 的元素里 semanticId 全为 null；不回填的话，端侧决策的 by="id" 语义定位
             // 与转译层的语义控件命中（send/confirm/close/delete 等）就永远失败
-            val semanticIndex = annotated.elements.mapNotNull { e -> e.semanticId?.let { e.index to it } }.toMap()
             val semanticSnapshot = snapshot.copy(
-                elements = snapshot.elements.map { it.copy(semanticId = semanticIndex[it.index]) },
+                elements = snapshot.elements.map { it.copy(semanticId = annotated.semanticIds[it.index]) },
             )
             // 无障碍读不到控件（元素树稀疏，如游戏/WebView/in-app 渲染界面）时，即使未开启截图开关也自动截图，
             // 交给视觉模型（glm-4.6v-flash）描述+坐标定位，弥补元素树缺失
@@ -1059,8 +1178,22 @@ class AgentEngine(
             // 截图只是增强信息，失败即降级为「本轮无截图」，用无障碍元素树继续决策。
             // 元素树稀疏/为空时无条件截图：这时元素树已经不足以支撑决策，视觉是唯一的信息来源，
             // 不能再被「截图总开关」「视觉总开关」卡住（否则页面在 AI 眼里完全不可见）
-            val screenshot = if (settingsVal.attachScreenshot || needExternal3b || treeSparse)
-                tryOrNull("截图失败") { captureScreenshot() } else null
+            //
+            // 页面指纹与上一轮完全一致时直接复用上一帧：此时元素树一字未变，画面内容也基本没变，
+            // 重拍一次是纯粹的浪费（一次 MediaProjection 抓帧几十毫秒 + 每帧几 MB 的位图分配）。
+            // 指纹一旦变化立即重拍，所以不会把过期画面喂给视觉模型。
+            // 复用同一个 Bitmap 实例还有额外收益：AiClient 的 base64 缓存按对象身份命中，连编码都省了。
+            val shotNeeded = settingsVal.attachScreenshot || needExternal3b || treeSparse
+            val pageSig = if (shotNeeded) PageFingerprint.computeMeaningful(snapshot) else ""
+            val reuseShot = shotNeeded && pageSig == cachedShotSig && cachedShot?.isRecycled == false
+            val screenshot = when {
+                !shotNeeded -> null
+                reuseShot -> cachedShot
+                else -> tryOrNull("截图失败") { captureScreenshot() }?.also {
+                    cachedShot = it
+                    cachedShotSig = pageSig
+                }
+            }
             if (snapshot.elements.isEmpty()) {
                 // 元素树为空的直接证据：区分"系统没给节点"与"被筛选条件挡掉"
                 log(AgentLog.Level.WARN, "元素树为空：${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}")
@@ -1075,7 +1208,7 @@ class AgentEngine(
                     // 连续多轮仍是敏感页：要么用户已无意继续，要么页面判定过于敏感。
                     // 明确失败收尾，而不是无限循环弹接管（用户每次都得手动点，体验死锁）
                     log(AgentLog.Level.WARN, "敏感页接管连续 $sensitiveTakeoverStreak 次，结束任务")
-                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
+                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
                 }
                 log(AgentLog.Level.WARN, "检测到敏感页面，拒绝执行动作，需用户介入")
                 pushFloating("敏感页面", "ERROR")
@@ -1087,7 +1220,7 @@ class AgentEngine(
                 // 不同步写入的话用户只会看到一个没有任何说明的协作面板
                 _state.value = _state.value.copy(message = sensitiveReason)
                 val hint = awaitUserHint()
-                if (hint.isBlank()) { finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return }
+                if (hint.isBlank()) { finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return }
                 continue
             }
 
@@ -1161,9 +1294,11 @@ class AgentEngine(
                     _state.value = _state.value.copy(
                         phase = AgentState.Phase.ERROR,
                         message = "AI 决策链路持续异常，已停止任务",
+                        // 归类为「链路异常」：失败卡据此给「重试」，而不是让用户重新描述需求
+                        failureKind = AgentState.FailureKind.DECISION,
                     )
                     pushFloating("决策链路异常，已停止", "ERROR")
-                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
                     stop()
                     return
                 }
@@ -1180,7 +1315,7 @@ class AgentEngine(
 
             if (decidedIntent == null || decidedIntent.intent.isEmpty()) {
                 log(AgentLog.Level.ERROR, "决策为空，停止")
-                finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
                 stop()
                 return
             }
@@ -1286,7 +1421,7 @@ class AgentEngine(
                                     _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = normalized.reason)
                                     pushFloating("技能不可用，已停止", "ERROR")
                                     log(AgentLog.Level.ERROR, "连续 $skillErrorStreak 次技能调用被拒绝，停止任务：${normalized.reason}")
-                                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
                                     stop()
                                     return
                                 }
@@ -1311,7 +1446,7 @@ class AgentEngine(
                     _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = stopReason)
                     pushFloating("动作模式不允许，已停止", "ERROR")
                     log(AgentLog.Level.ERROR, stopReason)
-                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
                     stop()
                     return
                 }
@@ -1407,7 +1542,7 @@ class AgentEngine(
                             // 放弃收尾：不学模板（learnTemplate）、不弹保存模板确认，收尾提示文案用「任务已放弃」
                             FloatingWindowService.showDone("任务已放弃")
                             // 任务记忆走失败口径，结论带「已放弃」前缀，会话承接时能看出是主动放弃
-                            finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, "已放弃：$doneSummary")
+                            finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, "已放弃：$doneSummary")
                             return
                         }
                         log(AgentLog.Level.INFO, "任务完成：$doneSummary")
@@ -1415,7 +1550,7 @@ class AgentEngine(
                         _state.value = _state.value.copy(phase = AgentState.Phase.DONE, message = doneSummary, isRunning = false)
                         AgentAccessibilityService.agentRunning = false
                         // 任务完成后的收尾：模板处理（复用模板回写健康；全新计划经用户确认才入库）+ 检查点清空
-                        runCatching { learnTemplate(task) }
+                        runCatching { finalizer.learnTemplate() }
                         runCatching { com.phoneagent.data.store.TaskStore.clearCheckpoint(appContext) }
                         runCatching {
                             val planSteps = activePlan?.steps?.size ?: 0
@@ -1429,10 +1564,10 @@ class AgentEngine(
                         }
                         // 任务记忆先收尾（目标已达成）：提炼再慢也不影响记忆页立刻变成「已完成」
                         // 完成说明一并落库，作为会话承接时"上一轮任务"的结论
-                        finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, doneSummary)
+                        finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, doneSummary)
                         // 记忆提炼放最后：完成提示先给到用户，提炼再慢也不影响「已完成」的观感
                         // （独立调用一次模型，不写 conversation，因此不污染主决策上下文）
-                        runCatching { distillMemories(task, doneSummary) }
+                        runCatching { finalizer.distillMemories(task, doneSummary, settingsVal) }
                         return
                     }
                     // 记忆写入：纯本地写库，不操作屏幕，不走通道/不截图/不重试
@@ -1617,7 +1752,7 @@ class AgentEngine(
                 if (hint.isBlank()) {
                     // 用户离开：这一步在 return，不会再走到下方统一留档，先补一条失败记录
                     recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
-                    finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
+                    finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED); stop(); return
                 }
                 // 用户指导 → 加入上下文并让云端重新决策（失败自动重试一次）
                 messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "用户提示：$hint 请据此重新决策下一步动作。" ))))
@@ -1787,9 +1922,15 @@ class AgentEngine(
                 )))
             }
             messages.add(ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = action.type))))
-            delay(400)
+            // 界面稳定等待按动作类型取（见 VerifyRules.stepSettleMs）：
+            // 说话/记忆/设备查询不会改页面，不必陪着空等 400ms
+            delay(VerifyRules.stepSettleMs(action.type))
         }
-        _state.value = _state.value.copy(phase = AgentState.Phase.ERROR, message = "达到最大步数限制")
+        _state.value = _state.value.copy(
+            phase = AgentState.Phase.ERROR,
+            message = "达到最大步数限制",
+            failureKind = AgentState.FailureKind.MAX_STEPS,
+        )
         log(AgentLog.Level.WARN, "达到最大步数限制，自动停止")
         pushFloating("达到最大步数限制", "ERROR")
         // 复用模板执行失败：回写健康状态，连续 3 次失效时主动反馈（v2.2.1 八）
@@ -1806,9 +1947,9 @@ class AgentEngine(
             }
         }
         // 达到最大步数：任务没做完，任务记忆同样要收尾，不能停在「进行中」
-        finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+        finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
         // 未完成的任务同样提炼一次记忆：失败路径里的经验（哪个入口走不通）往往更值得留
-        runCatching { distillMemories(task, "未完成（达到最大步数限制）") }
+        runCatching { finalizer.distillMemories(task, "未完成（达到最大步数限制）", settingsVal) }
         stop()
     }
 
@@ -2112,10 +2253,15 @@ class AgentEngine(
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
                 protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
-                onRetry = {
+                onRetry = { reason, waitMs ->
                     FloatingWindowService.resetThinking()
                     // 重试会重放文本，流式回显同步清零，避免界面叠加两遍
                     _decisionStream.value = ""
+                    // 把「在等什么、等多久」透到状态条：否则用户只看到界面停住，以为卡死
+                    val note = if (waitMs > 0) "$reason，${(waitMs / 1000).coerceAtLeast(1)} 秒后重试" else reason
+                    _state.value = _state.value.copy(retryingNote = note, message = note)
+                    pushFloating(note, "THINKING")
+                    log(AgentLog.Level.WARN, "AI 调用重试：$note")
                 },
                 onDelta = {
                     pushThinking(delta = it)
@@ -2144,6 +2290,11 @@ class AgentEngine(
         }
         // 决策已完成：正文已落 trace（可在步骤卡的"原始数据"里回看），清空流式回显避免与下一步混淆
         _decisionStream.value = ""
+        // 重试提示同理只在"正在等"时成立：这一轮既然拿到了结果，提示必须撤掉，
+        // 否则状态条会一直挂着一条已经过去的重试说明
+        if (_state.value.retryingNote.isNotEmpty()) {
+            _state.value = _state.value.copy(retryingNote = "")
+        }
         apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
         recordMetrics(decision)
         var intent = decision.action
@@ -2725,7 +2876,7 @@ class AgentEngine(
                 message = "浏览器意图连续缺少必要参数，已停止任务",
             )
             pushFloating("浏览器意图缺参，已停止", "ERROR")
-            finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+            finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
             stop()
         }
         delay(200)
@@ -2781,74 +2932,6 @@ class AgentEngine(
 
     private suspend fun pageMemoryPlanningLines(task: String, lang: PromptLang): List<String> =
         contextInjector.pageMemoryPlanningLines(task, lang)
-
-    /**
-     * 任务结束后的记忆提炼：独立调用一次模型，**不写 conversation、不进 chatHistory**，
-     * 因此不污染主决策上下文。同一任务只跑一次；结果经内容去重合并写入，重复不会堆成多条。
-     */
-    private suspend fun distillMemories(task: String, outcome: String) {
-        if (currentTaskId == lastDistilledTaskId) return
-        lastDistilledTaskId = currentTaskId
-        val settingsVal = runCatching { settings.settings.first() }.getOrNull() ?: return
-        if (settingsVal.apiKey.isBlank()) return
-        val stepsSummary = runCatching {
-            _executionHistory.value.takeLast(12).joinToString("\n") { rec ->
-                val verb = com.phoneagent.core.text.HumanTranslator.actionVerb(rec.action?.type.orEmpty())
-                val target = rec.action?.target?.value
-                    ?: rec.action?.text?.take(30)
-                    ?: rec.action?.summary?.take(30)
-                    ?: ""
-                "- $verb$target"
-            }.take(1500)
-        }.getOrDefault("")
-        val prompt = AgentPrompts.memoryDistill(currentLang, task, outcome, stepsSummary)
-        val reply = withTimeoutOrNull(DISTILL_TIMEOUT_MS) {
-            aiClient.chat(
-                baseUrl = settingsVal.apiBaseUrl,
-                apiKey = settingsVal.apiKey,
-                model = settingsVal.model,
-                messages = listOf(
-                    ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = prompt))),
-                ),
-                temperature = 0.2,
-                protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
-            ).getOrNull()
-        } ?: return
-        val items = parseDistilledMemories(reply)
-        if (items.isEmpty()) return
-        // 同一条提炼产物同时落两边：
-        // - AI 记忆：全量注入，承担"用户画像 + 通用记忆"（客观事实类）；
-        // - 经验规则：带作用域注入，承担"与某个应用/任务相关的做法类经验"。
-        // 作用域由本次执行的前台应用分布推断（见 RuleScoper），推断不出来就退化成 GLOBAL。
-        val scope = RuleScoper.inferScope(
-            task,
-            foregroundPkgCounts.toMap(),
-            appContext.packageName,
-            deviceFacts.launcherAppNames(),
-        )
-        items.forEach { item ->
-            val upsert = runCatching {
-                memory.upsertAiMemory(item.content, item.category, task, "distill", item.confidence)
-            }.getOrNull() ?: return@forEach
-            emitMemoryEvent(upsert, "r$currentTaskId", completedSteps)
-            runCatching {
-                memory.upsertEvolvedRule(
-                    content = item.content,
-                    kind = item.category,
-                    scopeKind = scope.kind,
-                    scopeValue = scope.value,
-                    sourceTask = task,
-                    confidence = item.confidence,
-                )
-            }
-        }
-        memoryRawCache = null
-        log(AgentLog.Level.INFO, "记忆提炼完成：新增/更新 ${items.size} 条（作用域=${scope.kind}${scope.value})")
-    }
-
-    /** 解析提炼输出 {"memories":[{content,category,confidence}]}，格式解析见 [AgentResponseParser] */
-    private fun parseDistilledMemories(raw: String): List<AgentResponseParser.DistilledMemory> =
-        AgentResponseParser.parseDistilledMemories(raw)
 
     private fun recordStep(
         step: Int,
@@ -2925,76 +3008,12 @@ class AgentEngine(
         val reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason?.takeIf { it.isNotBlank() }
         val note = if (reason != null) "第${step}步: $label（$reason）" else "第${step}步: $label"
         // 写进任务记忆而不是易失的内存队列：记忆会落库并注入每轮决策，中途被压缩掉的历史也能找回来
-        mutateTaskMemory { it.withMethod(note).copy(completedSteps = completedSteps) }
+        finalizer.mutateTaskMemory { it.withMethod(note).copy(completedSteps = completedSteps) }
     }
 
-    /** 渲染任务记忆，注入每轮决策上下文（目标与用户要求是固定部分，进度是滚动的） */
-    private fun taskMemoryText(): String {
-        val mem = currentTaskMemory ?: return ""
-        val sb = StringBuilder()
-        sb.append("\n## 任务记忆（本次任务的既定目标与用户要求，全程不可偏离）")
-        sb.append("\n目标：${mem.goal}")
-        if (mem.requirements.isNotEmpty()) {
-            sb.append("\n用户要求：")
-            mem.requirements.forEachIndexed { i, r -> sb.append("\n${i + 1}. $r") }
-        }
-        if (completedSteps > 0) {
-            val total = if (totalPlannedSteps > 0) "/$totalPlannedSteps" else ""
-            val stage = if (totalPlannedSteps > 0) {
-                val totalStages = (totalPlannedSteps + STAGE_SIZE - 1) / STAGE_SIZE
-                val cur = ((completedSteps + STAGE_SIZE - 1) / STAGE_SIZE).coerceIn(1, totalStages)
-                " 阶段 $cur/$totalStages。"
-            } else ""
-            sb.append("\n## 执行进度（概览即可，勿重复执行已完成步骤）")
-            sb.append("\n已完成 ${completedSteps}${total} 步。${stage}")
-            if (mem.methods.isNotEmpty()) {
-                sb.append("\n已验证有效的做法：")
-                mem.methods.forEachIndexed { i, m -> sb.append("\n${i + 1}. $m") }
-            }
-        }
-        return sb.toString()
-    }
-
-    /**
-     * 对任务记忆做一次「读-改-写」并异步落库。
-     * 加锁是因为用户指导来自悬浮窗（主线程），而进度记录在主循环线程，
-     * 并发写入会丢掉其中一方刚追加的要求/做法。
-     */
-    private fun mutateTaskMemory(transform: (TaskMemoryEntry) -> TaskMemoryEntry) {
-        val updated = synchronized(this) {
-            val cur = currentTaskMemory ?: return
-            transform(cur).also { currentTaskMemory = it }
-        }
-        scope.launch { runCatching { memory.upsertTaskMemory(updated) } }
-    }
-
-    /**
-     * 任务收尾：写入终态并落库。
-     * 只允许「进行中 → 终态」单向推进，重复收尾（如 stop() 之后主循环异常退出走到 finally）不会覆盖已定状态。
-     */
-    private fun finishTaskMemory(status: String, conclusion: String = "") {
-        val cur = currentTaskMemory ?: return
-        if (cur.status != TaskMemoryEntry.STATUS_RUNNING) return
-        mutateTaskMemory { it.withStatus(status, cur.completedSteps, conclusion) }
-    }
-
-    /** 按 taskId 收尾：只动指定任务的记忆，用于 run() 的兜底 finally（见 run() 注释里的竞态说明） */
-    private fun finishTaskMemory(taskId: Long, status: String) {
-        val cur = currentTaskMemory ?: return
-        if (cur.taskId != taskId) return
-        finishTaskMemory(status)
-    }
-
-    /**
-     * 任务成功后的模板处理：
-     * - 复用了既有模板 → 回写健康状态（失败归零）
-     * - 全新计划 → 不自动入库，由 completion 流程调用 requestConfirmSaveTemplate() 请用户确认
-     */
-    private suspend fun learnTemplate(task: String) {
-        reusedTemplateId?.let { tid ->
-            runCatching { com.phoneagent.data.store.TaskStore.updateTemplateHealth(appContext, tid, success = true) }
-        }
-    }
+    /** 渲染任务记忆，注入每轮决策上下文（拼装规则下沉 [StepTexts]，可单测） */
+    private fun taskMemoryText(): String =
+        StepTexts.taskMemory(currentTaskMemory, completedSteps, totalPlannedSteps)
 
     /** 任务完成后，通过悬浮窗交互请用户确认是否保存为模板（不自动入库） */
     private fun requestConfirmSaveTemplate() {

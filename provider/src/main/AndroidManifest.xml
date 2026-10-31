@@ -44,6 +44,7 @@
     </queries>
 
     <application
+        android:name=".ProviderApplication"
         android:allowBackup="false"
         android:label="@string/provider_app_name">
 

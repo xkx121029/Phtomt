@@ -6,6 +6,7 @@ import android.util.Base64
 import com.phoneagent.core.log.AppLog
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
+import com.phoneagent.domain.rules.EngineRules
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +21,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSource
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
@@ -46,6 +48,28 @@ class AiClient(
         private const val BASE_429_DELAY_MS = 2000L
         private const val MAX_RETRIES = 5
         private const val MAX_NON_429_RETRIES = 2
+        /**
+         * 429（限流）最多尝试次数。
+         *
+         * 与决策看门狗（[com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_DECIDE_MS] = 45s）对齐：
+         * 旧实现按 `2000 shl attempt` 退避，4 次退避合计 60s，已经超过看门狗，
+         * 结果「重试还没跑完就被看门狗打断 → 本步降级为 wait → 下一轮再重来」，
+         * 用户看到的是任务原地卡住且没有任何提示。现在退避封顶 8s、429 最多 3 次，
+         * 总预算（约 20s 退避 + 响应）稳定落在看门狗之内。
+         */
+        private const val MAX_429_RETRIES = 3
+
+        /** 单次退避上限：指数退避不能无限增长，否则会把调用方的超时预算吃光 */
+        private const val MAX_BACKOFF_MS = 8_000L
+
+        /** HTTP 408 Request Timeout / 504 Gateway Timeout：都归为「等太久」 */
+        private const val HTTP_REQUEST_TIMEOUT = 408
+        private const val HTTP_GATEWAY_TIMEOUT = 504
+        /** 5xx 区间：服务端自身错误，值得重试 */
+        private const val HTTP_SERVER_ERROR_MIN = 500
+        private const val HTTP_SERVER_ERROR_MAX = 599
+        /** 错误正文截断长度：够看清原因，又不至于把整段 HTML 错误页塞进界面 */
+        private const val MAX_ERROR_SNIPPET = 60
 
         fun create(): AiClient {
             val http = OkHttpClient.Builder()
@@ -78,6 +102,24 @@ class AiClient(
             if (base.isEmpty()) return base
             if (base.startsWith("http://", true) || base.startsWith("https://", true)) return base
             return if (isLocalHost(base)) "http://$base" else "https://$base"
+        }
+
+        /**
+         * 校验地址是否会把 API Key 明文发到公网：返回问题描述（null = 可以发）。
+         *
+         * 清单里 `usesCleartextTraffic=true` 是为了让自建服务可用，但它对公网域名一视同仁——
+         * 用户把某个服务商地址误填成 `http://api.xxx.com/v1` 时，`Authorization: Bearer <key>`
+         * 会整段明文上路，且不会有任何提示。这里在发请求前拦掉这类配置：
+         * 内网/本机仍然允许 http（那正是明文放行的目的），公网一律要求 https。
+         */
+        internal fun cleartextProblem(baseUrl: String): String? {
+            val base = baseUrl.trim()
+            val plainHttp = base.startsWith("http://", ignoreCase = true)
+            // 不是明文 http，或目标是本机/内网：都属于「明文放行」的本意，不拦
+            if (!plainHttp || isLocalHost(base.substringAfter("://"))) return null
+            val host = base.substringAfter("://").substringBefore('/').substringBefore(':')
+            return "接口地址「$host」是公网地址却用了 http，API Key 会明文传输。" +
+                "请把地址改成 https:// 开头；只有本机与内网服务才建议用 http。"
         }
 
         /** 从 URL 取出主机名，判断是否属于「本机/内网」：localhost、私有网段、单段主机名、内网后缀。 */
@@ -202,8 +244,12 @@ class AiClient(
         screenshot: Bitmap?,
         temperature: Double,
         onDelta: (String) -> Unit = {},
-        /** 流式中断准备重试时回调：上层可借此重置展示（如清空思考面板），避免重放内容重复累积 */
-        onRetry: (() -> Unit)? = null,
+        /**
+         * 流式中断准备重试时回调：上层可借此重置展示（如清空思考面板），避免重放内容重复累积。
+         * 参数为本次重试的人话原因（如「服务端限流」）与等待时长，供 UI 明确告知用户
+         * 「不是卡住，是在等 8 秒后重试」。
+         */
+        onRetry: ((reason: String, delayMs: Long) -> Unit)? = null,
         /** API 协议档位；非 OpenAI 兼容端点由对应协议适配器转译线格式 */
         protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<AiDecision> = withContext(Dispatchers.IO) {
@@ -243,8 +289,10 @@ class AiClient(
             loop@ while (true) {
                 for (attempt in 0 until MAX_RETRIES) {
                     if (attempt > 0) {
-                        onRetry?.invoke()
-                        if (!backoffSleep(status, attempt)) break
+                        // 先算退避时长：算不出来说明已到上限，这一轮不再重试，也就不该先回调"重试中"
+                        val waitMs = backoffDelayMs(status, attempt) ?: break
+                        onRetry?.invoke(retryReason(status, lastErr), waitMs)
+                        delay(waitMs)
                     }
                     try {
                         full.setLength(0)
@@ -264,37 +312,8 @@ class AiClient(
                                     return@use
                                 }
                                 resp.body?.source()?.use { source ->
-                                    while (!source.exhausted()) {
-                                        val line = source.readUtf8Line() ?: break
-                                        if (line.isBlank() || !line.startsWith("data:")) continue
-                                        val payload = line.removePrefix("data:").trim()
-                                        if (payload == "[DONE]") break
-                                        if (adapter != null) {
-                                            // 协议适配器路径：Claude/Gemini 的 SSE 帧
-                                            if (adapter.isTerminal(payload)) break
-                                            val content = adapter.extractDelta(payload)
-                                            if (content.isNotEmpty()) {
-                                                onDelta(content)
-                                                full.append(content)
-                                            }
-                                            adapter.extractUsageFrame(payload)?.let {
-                                                lastUsage = combineUsage(lastUsage, it)
-                                            }
-                                            continue
-                                        }
-                                        val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
-                                        val delta = chunk?.choices?.firstOrNull()?.delta
-                                        val content = delta?.content.orEmpty()
-                                        val reasoning = delta?.reasoning_content.orEmpty()
-                                        if (reasoning.isNotEmpty()) sawReasoning = true
-                                        // 思考内容优先展示（边思考边输出）
-                                        val display = if (content.isNotEmpty()) content else reasoning
-                                        if (display.isNotEmpty()) onDelta(display)
-                                        // 完整正文只累积 content（用于最终解析 JSON）
-                                        if (content.isNotEmpty()) full.append(content)
-                                        // 末块可能携带 usage（stream_options.include_usage）
-                                        runCatching { json.decodeFromString<ChatResponse>(payload).usage }
-                                            ?.getOrNull()?.let { lastUsage = it }
+                                    sawReasoning = pumpSse(source, adapter, full, onDelta) { usage ->
+                                        lastUsage = combineUsage(lastUsage, usage)
                                     }
                                 }
                             }
@@ -341,7 +360,7 @@ class AiClient(
                             jsonRepairUsed = true
                             AppLog.w("AiClient", "决策输出无法解析为标准 JSON，附上原文纠错重发（仅一次）")
                             // 重发前清空流式回显（与网络重试同一口径），避免界面上内容叠加两遍
-                            onRetry?.invoke()
+                            onRetry?.invoke("返回格式无法解析，正在重新生成", 0L)
                             // 附上「上一轮信息无法识别」：assistant 带原文 + user 要求只输出标准 JSON
                             activeMessages = activeMessages + listOf(
                                 ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = content))),
@@ -710,6 +729,80 @@ class AiClient(
     }
 
     /**
+     * 消费一段 SSE 流：增量文本交给 [onDelta]，正文累积到 [full]，[onUsage] 非空时解析 usage 帧。
+     *
+     * `chatForAction`（决策）与 `chatStream`（规划/思考）原先各写一份逐行解析，两处逐行逻辑完全同构，
+     * 只在"是否解析 usage"上有差异。抽成一处后，SSE 帧格式（adapter 原生帧 / OpenAI data 帧）的
+     * 解析口径只有一份；各调用点的重试、401/403/404 快速失败、空正文回退等策略仍留在调用点。
+     *
+     * @return 本次流是否出现过思考内容（reasoning_content）
+     */
+    internal fun pumpSse(
+        source: BufferedSource,
+        adapter: ChatProtocolAdapter?,
+        full: StringBuilder,
+        onDelta: (String) -> Unit,
+        onUsage: ((Usage) -> Unit)? = null,
+    ): Boolean {
+        var sawReasoning = false
+        while (!source.exhausted()) {
+            val line = source.readUtf8Line() ?: break
+            if (line.isBlank() || !line.startsWith("data:")) continue
+            val payload = line.removePrefix("data:").trim()
+            if (payload == "[DONE]") break
+            if (adapter != null) {
+                // 协议适配器路径：Claude/Gemini 的 SSE 帧；终止帧由适配器自己判定
+                if (pumpAdapterFrame(adapter, payload, full, onDelta, onUsage)) break
+            } else if (pumpOpenAiFrame(payload, full, onDelta, onUsage)) {
+                sawReasoning = true
+            }
+        }
+        return sawReasoning
+    }
+
+    /** 协议适配器的 SSE 帧；返回 true 表示命中终止帧，调用方应停止消费 */
+    private fun pumpAdapterFrame(
+        adapter: ChatProtocolAdapter,
+        payload: String,
+        full: StringBuilder,
+        onDelta: (String) -> Unit,
+        onUsage: ((Usage) -> Unit)?,
+    ): Boolean {
+        if (adapter.isTerminal(payload)) return true
+        val content = adapter.extractDelta(payload)
+        if (content.isNotEmpty()) {
+            onDelta(content)
+            full.append(content)
+        }
+        if (onUsage != null) adapter.extractUsageFrame(payload)?.let(onUsage)
+        return false
+    }
+
+    /** OpenAI data 帧；返回 true 表示本帧出现过 reasoning 内容 */
+    private fun pumpOpenAiFrame(
+        payload: String,
+        full: StringBuilder,
+        onDelta: (String) -> Unit,
+        onUsage: ((Usage) -> Unit)?,
+    ): Boolean {
+        val chunk = runCatching { json.decodeFromString<StreamChunk>(payload) }.getOrNull()
+        val delta = chunk?.choices?.firstOrNull()?.delta
+        val content = delta?.content.orEmpty()
+        val reasoning = delta?.reasoning_content.orEmpty()
+        // 思考内容优先展示（边思考边输出）
+        val display = if (content.isNotEmpty()) content else reasoning
+        if (display.isNotEmpty()) onDelta(display)
+        // 完整正文只累积 content（用于最终解析 JSON）
+        if (content.isNotEmpty()) full.append(content)
+        if (onUsage != null) {
+            // 末块可能携带 usage（stream_options.include_usage）
+            runCatching { json.decodeFromString<ChatResponse>(payload).usage }
+                .getOrNull()?.let(onUsage)
+        }
+        return reasoning.isNotEmpty()
+    }
+
+    /**
      * 执行非流式请求并返回模型正文，带 429 退避重试。
      * - [extractText] 为 null 时按 OpenAI ChatResponse 解析；非空时交给协议适配器解析
      * - 429（限流）：指数退避 4s/8s/16s/32s，最多 5 次尝试
@@ -721,7 +814,8 @@ class AiClient(
         var lastErr: String? = null
         for (attempt in 0 until MAX_RETRIES) {
             if (attempt > 0) {
-                if (!backoffSleep(status, attempt)) break
+                val waitMs = backoffDelayMs(status, attempt) ?: break
+                delay(waitMs)
             }
             try {
                 var failed = false
@@ -848,15 +942,27 @@ class AiClient(
         json.encodeToString(ChatRequest.serializer(), request).toRequestBody(jsonMediaType)
 
     /**
-     * 退避等待：429 指数退避（4s/8s/16s/32s，随 attempt 递增），其他最多重试 1 次。
-     * 返回 false 表示不再重试。用 suspend delay 而非 Thread.sleep，保证协程取消能即时生效。
+     * 计算下一次重试的退避时长；返回 null 表示不再重试。
+     *
+     * 429 限流按 2s/4s/8s 递增并封顶 [MAX_BACKOFF_MS]，最多 [MAX_429_RETRIES] 次；
+     * 其他错误最多 [MAX_NON_429_RETRIES] 次。用 suspend delay 而非 Thread.sleep，保证协程取消能即时生效。
      */
-    private suspend fun backoffSleep(status: Int, attempt: Int): Boolean {
-        return when {
-            status == 429 -> { delay(BASE_429_DELAY_MS shl attempt); true }
-            attempt >= MAX_NON_429_RETRIES -> false
-            else -> { delay(INITIAL_DELAY_MS); true }
-        }
+    private fun backoffDelayMs(status: Int, attempt: Int): Long? = when {
+        status == 429 ->
+            if (attempt >= MAX_429_RETRIES) null
+            else (BASE_429_DELAY_MS shl (attempt - 1).coerceAtLeast(0)).coerceAtMost(MAX_BACKOFF_MS)
+
+        attempt >= MAX_NON_429_RETRIES -> null
+        else -> INITIAL_DELAY_MS
+    }
+
+    /** 重试原因的人话描述：用户看到的应该是「被限流」而不是「正在思考」 */
+    private fun retryReason(status: Int, err: String?): String = when {
+        status == 429 -> "服务端限流"
+        status == HTTP_REQUEST_TIMEOUT || status == HTTP_GATEWAY_TIMEOUT -> "请求超时"
+        status in HTTP_SERVER_ERROR_MIN..HTTP_SERVER_ERROR_MAX -> "服务端错误（HTTP $status）"
+        status > 0 -> "请求失败（HTTP $status）"
+        else -> err?.take(MAX_ERROR_SNIPPET)?.takeIf { it.isNotBlank() } ?: "网络连接失败"
     }
 
     private fun buildCompatRequestBody(
@@ -910,8 +1016,11 @@ class AiClient(
         messages: List<ChatMessageDto>,
         temperature: Double,
         onDelta: (String) -> Unit,
-        /** 流式中断准备重试时回调：上层可借此重置展示，避免重放内容重复累积 */
-        onRetry: (() -> Unit)? = null,
+        /**
+         * 流式中断准备重试时回调：上层可借此重置展示，避免重放内容重复累积。
+         * 参数为本次重试的人话原因与等待时长（0 表示立即重发）。
+         */
+        onRetry: ((reason: String, delayMs: Long) -> Unit)? = null,
         thinking: Boolean = false,
         protocol: ApiProtocol = ApiProtocol.OPENAI,
     ): Result<String> = withContext(Dispatchers.IO) {
@@ -932,8 +1041,10 @@ class AiClient(
             var lastErr: String? = null
             for (attempt in 0 until MAX_RETRIES) {
                 if (attempt > 0) {
-                    onRetry?.invoke()
-                    if (!backoffSleep(status, attempt)) break
+                    // 与 chatForAction 同一口径：先算退避，算不出来说明已到上限，不再回调"重试中"
+                    val waitMs = backoffDelayMs(status, attempt) ?: break
+                    onRetry?.invoke(retryReason(status, lastErr), waitMs)
+                    delay(waitMs)
                 }
                 try {
                     // 每次尝试独立累积，避免流中断重试后新旧内容拼接导致重复
@@ -952,32 +1063,8 @@ class AiClient(
                                 return@use
                             }
                             resp.body?.source()?.use { source ->
-                                while (!source.exhausted()) {
-                                    val line = source.readUtf8Line() ?: break
-                                    if (line.isBlank() || !line.startsWith("data:")) continue
-                                    val payload = line.removePrefix("data:").trim()
-                                    if (payload == "[DONE]") break
-                                    if (adapter != null) {
-                                        // 协议适配器路径：Claude/Gemini 的 SSE 帧
-                                        if (adapter.isTerminal(payload)) break
-                                        val content = adapter.extractDelta(payload)
-                                        if (content.isNotEmpty()) {
-                                            onDelta(content)
-                                            full.append(content)
-                                        }
-                                        continue
-                                    }
-                                    val delta = runCatching {
-                                        json.decodeFromString<StreamChunk>(payload).choices.firstOrNull()?.delta
-                                    }.getOrNull()
-                                    val content = delta?.content.orEmpty()
-                                    val reasoning = delta?.reasoning_content.orEmpty()
-                                    // 思考内容优先展示（边思考边输出）
-                                    val display = if (content.isNotEmpty()) content else reasoning
-                                    if (display.isNotEmpty()) onDelta(display)
-                                    // 完整正文只累积 content（用于最终解析 JSON）
-                                    if (content.isNotEmpty()) full.append(content)
-                                }
+                                // 规划/思考链路不消费 usage，传 null 即跳过 usage 帧解析
+                                pumpSse(source, adapter, full, onDelta, onUsage = null)
                             }
                         }
                     } finally {
@@ -1028,7 +1115,7 @@ class AiClient(
     internal fun parseAgentIntentOrNull(content: String): AgentIntent? {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
-            return json.decodeFromString(AgentIntent.serializer(), extractJson(content))
+            return json.decodeFromString(AgentIntent.serializer(), EngineRules.extractJsonObject(content))
         } catch (e: Exception) {
             AppLog.w("AiClient", "Step1 parse failed: ${e.message}, content: ${content.take(200)}")
         }
@@ -1102,59 +1189,8 @@ class AiClient(
         )
     }
 
-    /** 从模型输出中提取 JSON 对象（含反向搜索兜底） */
-    private fun extractJson(content: String): String {
-        val trimmed = content.trim()
-        // 处理 ```json ... ``` 或 ``` ... ``` 代码块包裹
-        if (trimmed.startsWith("```")) {
-            val firstNewline = trimmed.indexOf("\n")
-            val lastFence = trimmed.lastIndexOf("```")
-            if (firstNewline > 0 && lastFence > firstNewline) {
-                return trimmed.substring(firstNewline + 1, lastFence).trim()
-            }
-        }
-        // 处理中间出现代码块的情况（前有文字+```json）
-        val codeBlockStart = trimmed.indexOf("```json")
-        if (codeBlockStart >= 0) {
-            val afterMarker = trimmed.indexOf("\n", codeBlockStart)
-            val blockEnd = trimmed.indexOf("```", afterMarker)
-            if (afterMarker > 0 && blockEnd > afterMarker) {
-                return trimmed.substring(afterMarker + 1, blockEnd).trim()
-            }
-        }
-        // 反向搜索：从末尾 '}' 向前匹配最外层完整 JSON 对象
-        val backward = extractJsonBackward(trimmed)
-        if (backward != null) return backward
-        // 兜底：提取第一个 { 到最后一个 }
-        val start = trimmed.indexOf('{')
-        val end = trimmed.lastIndexOf('}')
-        return if (start >= 0 && end > start) trimmed.substring(start, end + 1) else trimmed
-    }
-
-    /** 从字符串末尾反向搜索最外层完整 JSON 对象 */
-    private fun extractJsonBackward(text: String): String? {
-        val lastBrace = text.lastIndexOf('}')
-        if (lastBrace < 0) return null
-        var depth = 0
-        var inString = false
-        var escape = false
-        for (i in lastBrace downTo 0) {
-            val c = text[i]
-            if (escape) { escape = false; continue }
-            if (c == '\\' && inString) { escape = true; continue }
-            if (c == '"') { inString = !inString; continue }
-            if (inString) continue
-            if (c == '}') depth++
-            else if (c == '{') {
-                depth--
-                if (depth == 0) {
-                    val extracted = text.substring(i, lastBrace + 1).trim()
-                    return if (extracted.length >= 2) extracted else null
-                }
-            }
-        }
-        return null
-    }
+    // JSON 提取逻辑已统一收敛到 domain.rules.EngineRules.extractJsonObject / extractJsonBackward，
+    // 原先这里的两份私有副本与之一字不差，重复维护只会在两侧行为漂移。
 
     /**
      * 同一张截图的 base64 单槽缓存。

@@ -38,6 +38,7 @@ import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 
 /**
@@ -315,9 +316,10 @@ private fun shizukuStepStatuses(
 @Composable
 internal fun AdbStepRow(index: Int, title: String, status: AdbStepStatus) {
     val (bg, fg) = when (status) {
-        AdbStepStatus.DONE -> Success to Color.White
-        AdbStepStatus.ACTIVE -> MaterialTheme.colorScheme.primary to Color.White
-        AdbStepStatus.ERROR -> MaterialTheme.colorScheme.error to Color.White
+        // 前景色随语义色走（深浅主题各有一版），不写死白色
+        AdbStepStatus.DONE -> Success to AppTheme.colors.onSuccess
+        AdbStepStatus.ACTIVE -> MaterialTheme.colorScheme.primary to MaterialTheme.colorScheme.onPrimary
+        AdbStepStatus.ERROR -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
         AdbStepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant to MaterialTheme.colorScheme.surface
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

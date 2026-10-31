@@ -1,8 +1,6 @@
 package com.phoneagent.ui.components
 
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.phoneagent.core.text.TimeFormats
 
 /**
  * UI 层共享格式化工具（纯 Kotlin，无 Compose 依赖，可单测）。
@@ -15,17 +13,13 @@ import java.util.Locale
  */
 
 /** 时钟时刻："HH:mm:ss"（当日日志流展示） */
-fun formatClock(t: Long): String =
-    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(t))
+fun formatClock(t: Long): String = TimeFormats.format("HH:mm:ss", t)
 
 /** 文件修改时间：24 小时内显示 "HH:mm"，更早显示 "MM-dd" */
 fun formatFileTime(millis: Long): String {
     val now = System.currentTimeMillis()
-    val fmt = if (now - millis < 24 * 3600 * 1000L)
-        SimpleDateFormat("HH:mm", Locale.getDefault())
-    else
-        SimpleDateFormat("MM-dd", Locale.getDefault())
-    return fmt.format(Date(millis))
+    val pattern = if (now - millis < 24 * 3600 * 1000L) "HH:mm" else "MM-dd"
+    return TimeFormats.format(pattern, millis)
 }
 
 /** 文件大小："512 B" / "1.2 KB" / "3.4 MB" */

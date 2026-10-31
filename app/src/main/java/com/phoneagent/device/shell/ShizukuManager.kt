@@ -47,6 +47,14 @@ class ShizukuManager(private val context: Context) {
         /** 状态轮询间隔：替代原 binder 监听，保证引擎侧读到的可用性不会长期陈旧 */
         const val STATE_POLL_MS = 3_000L
 
+        /**
+         * 界面无人观察时的轮询间隔。
+         *
+         * 原先固定 3 秒轮询在后台常驻时毫无意义：每次都是一次跨进程 AIDL 往返，
+         * 只是把一个不会变的状态再读一遍。降频后后台几乎不唤醒，界面一订阅又回到 3 秒。
+         */
+        const val IDLE_POLL_MS = 30_000L
+
         /** 单次状态查询的超时（Provider 未安装时 3s 绑定超时内直接返回） */
         const val STATE_TIMEOUT_MS = 2_500L
 
@@ -66,9 +74,12 @@ class ShizukuManager(private val context: Context) {
 
     init {
         scope.launch {
+            // 界面可见时有人订阅 state，按 3 秒细粒度刷新；无人观察时降到 30 秒。
+            // 用轮询间隔做自适应，而不是彻底停掉：引擎在执行任务时读的是 isAvailable()，
+            // 那条路径不经过 collect，完全停掉会让它读到过期状态
             while (isActive) {
                 applyRemoteState()
-                delay(STATE_POLL_MS)
+                delay(if (_state.subscriptionCount.value > 0) STATE_POLL_MS else IDLE_POLL_MS)
             }
         }
     }

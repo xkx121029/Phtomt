@@ -206,6 +206,7 @@ class ClickRunner(
             "当前页面($pkg)的控件($targetName)${verb}未能交付（${lastReason.ifBlank { "无可用的点击方式" }}）：" +
                 "目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件",
             "", "",
+            notDelivered = true,
         )
     }
 

@@ -1,22 +1,24 @@
-package com.phoneagent.device.a11y
+package com.phoneagent.provider.a11y
 
 import android.content.Context
 import android.content.Intent
-import com.phoneagent.engine.execution.pickPreferredPackage
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 
 /**
  * 系统语音助手探测器：为 assistant 意图找到本机可拉起的语音助手。
+ *
+ * **为什么放在 provider-api**：这套探测原先在主应用与 Provider 各有一份实现，
+ * 两份要分别维护（选包规则、厂商兜底名单、唤醒顺序上限），任何一边改了名单另一边就悄悄落后，
+ * 表现为"主应用算出来的助手"和"Provider 真正拉起的助手"不是同一个。
+ * 探测结果必须是同一份事实，因此实现只留这里一份，两端各自依赖 provider-api 共用。
  *
  * 探测顺序（命中即返回）：
  * 1. [Intent.ACTION_VOICE_COMMAND]（语音指令入口，绝大多数厂商助手都会注册）
  * 2. [Intent.ACTION_ASSIST]（默认助理入口）
  * 3. 常见厂商助手包名兜底（小爱/小布/Jovi/小艺/荣耀 YOYO/Google 助理）
  *
- * 探测挑选逻辑抽成纯函数（[pickHandler] / [vendorFallback]）以便 JVM 单测，
- * 与 Provider 侧 OpenTarget 的做法一致。
- *
- * 说明：无障碍执行通道已迁入 Provider，但 shell 兜底与意图转译（AgentEngine / IntentTranslator）
- * 仍在本进程探测助手入口，故保留本类。
+ * 挑选逻辑抽成纯函数（[pickHandler] / [vendorFallback]）以便 JVM 单测。
  */
 class VoiceAssistantDetector(private val context: Context) {
 
@@ -72,7 +74,7 @@ class VoiceAssistantDetector(private val context: Context) {
     }
 
     /** 探测单个 action 入口：返回 (包名, activity) 或 null（挑不出系统应用优先的候选时视为未命中） */
-    private fun probeAction(pm: android.content.pm.PackageManager, action: String): Pair<String?, String?>? {
+    private fun probeAction(pm: PackageManager, action: String): Pair<String?, String?>? {
         val resolves = runCatching {
             pm.queryIntentActivities(Intent(action), 0)
         }.getOrDefault(emptyList())
@@ -80,7 +82,7 @@ class VoiceAssistantDetector(private val context: Context) {
         val candidates = resolves.mapNotNull {
             val pkg = it.activityInfo?.packageName ?: return@mapNotNull null
             val system = it.activityInfo?.applicationInfo
-                ?.let { ai -> ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0 } == true
+                ?.let { ai -> ai.flags and ApplicationInfo.FLAG_SYSTEM != 0 } == true
             pkg to system
         }.distinctBy { it.first }
         if (candidates.isEmpty()) return null
@@ -108,7 +110,7 @@ class VoiceAssistantDetector(private val context: Context) {
          * 纯函数：把三类入口排成唤醒顺序并去重（同包名只保留靠前的入口）。
          * 系统入口（语音指令/默认助理）在厂商兜底之前——它们本就是厂商助手的正规入口。
          */
-        internal fun orderedTargets(
+        fun orderedTargets(
             voiceCommand: Target?,
             assist: Target?,
             installedVendors: List<String>,
@@ -118,13 +120,22 @@ class VoiceAssistantDetector(private val context: Context) {
             installedVendors.forEach { pkg -> add(Target(Via.VENDOR, pkg, null)) }
         }.distinctBy { it.packageName }.take(MAX_WAKE_CANDIDATES)
 
-        /** 纯函数：从 action 候选中挑包名（系统应用优先，无系统应用取第一个）。
-         *  直接复用 AppNameResolver 的 [pickPreferredPackage] 语义，保证两处行为一致。 */
-        internal fun pickHandler(candidates: List<Pair<String, Boolean>>): String? =
+        /** 纯函数：从 action 候选中挑包名（系统应用优先，无系统应用取第一个） */
+        fun pickHandler(candidates: List<Pair<String, Boolean>>): String? =
             pickPreferredPackage(candidates)
 
         /** 纯函数：厂商兜底——按 [VENDOR_ASSISTANTS] 顺序返回第一个已安装的包名 */
-        internal fun vendorFallback(installed: Set<String>): String? =
+        fun vendorFallback(installed: Set<String>): String? =
             VENDOR_ASSISTANTS.firstOrNull { it in installed }
     }
 }
+
+/**
+ * 候选挑选：优先系统自带应用，没有系统应用才取第一个候选。
+ *
+ * 应用名解析（主应用 AppNameResolver）与助手探测都按这条同一规则选包：
+ * 同一台机器上往往同时装着系统应用与第三方同类应用，按安装顺序取第一个会让结果随机。
+ * 抽成纯函数是为了可单测——调用方都依赖 PackageManager，无法在纯 JVM 里跑。
+ */
+fun pickPreferredPackage(candidates: List<Pair<String, Boolean>>): String? =
+    candidates.firstOrNull { it.second }?.first ?: candidates.firstOrNull()?.first

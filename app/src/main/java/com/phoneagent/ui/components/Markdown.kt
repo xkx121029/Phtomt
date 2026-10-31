@@ -176,6 +176,12 @@ private val MD_BLOCK_MARKERS = listOf(
     Regex("(?m)^\\s*(-{3,}|\\*{3,}|_{3,})\\s*$"),
 )
 
+// 行级解析正则：流式输出时每来一小段文本就会整篇重解析，逐行构造正则的开销会被放大——
+// 这三处都是封闭模式，编译一次长期复用。
+private val MD_RULE_LINE = Regex("^(---|\\*\\*\\*|___)\\s*$")
+private val MD_ORDERED_ITEM = Regex("^\\d+\\.\\s+(.*)$")
+private val MD_IMAGE_LINE = Regex("^!\\[([^]]*)\\]\\(([^)\\s]+)\\)\\s*$")
+
 /**
  * 是否"看起来像 Markdown"。
  *
@@ -246,7 +252,7 @@ private fun parseBlocks(text: String, keepLineBreaks: Boolean = false): List<MdB
         val heading = headingOf(rawLine)
         if (heading != null) { flushPara(); flushBullets(); out += MdB.Heading(heading.first, stripInline(heading.second)); i++; continue }
 
-        if (line.matches(Regex("^(---|\\*\\*\\*|___)\\s*$"))) { flushPara(); flushBullets(); out += MdB.Rule; i++; continue }
+        if (MD_RULE_LINE.matches(line)) { flushPara(); flushBullets(); out += MdB.Rule; i++; continue }
 
         val image = parseImage(rawLine)
         if (image != null) { flushPara(); flushBullets(); out += MdB.Image(image.first, image.second); i++; continue }
@@ -296,7 +302,7 @@ private fun bulletOf(line: String): Pair<String, Boolean>? {
         else -> false
     }
     if (unordered) return t.drop(2).trim() to false
-    val ordered = Regex("^\\d+\\.\\s+(.*)$").find(t)
+    val ordered = MD_ORDERED_ITEM.find(t)
     if (ordered != null) return ordered.groupValues[1].trim() to true
     return null
 }
@@ -306,7 +312,7 @@ private fun stripInline(s: String): String = s.replace("**", "").replace("`", ""
 /** 识别独立一行的 markdown 图片：![alt](src) */
 private fun parseImage(line: String): Pair<String, String>? {
     val t = line.trimStart()
-    val m = Regex("^!\\[([^]]*)\\]\\(([^)\\s]+)\\)\\s*$").find(t)
+    val m = MD_IMAGE_LINE.find(t)
     return m?.let { it.groupValues[2] to it.groupValues[1] }
 }
 

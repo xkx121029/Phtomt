@@ -184,12 +184,6 @@ class IntentResolver {
     }
 }
 
-/** 元素标签是否包含目标文字（忽略大小写） */
-internal fun labelContains(elem: UiElement, value: String): Boolean {
-    val label = elem.effectiveLabel() ?: return false
-    return label.contains(value, ignoreCase = true)
-}
-
 /**
  * 多个候选里挑最像"用户看到的那个控件"的一个。
  *
@@ -207,13 +201,29 @@ internal fun pickMostSpecific(elements: List<UiElement>): UiElement? =
         ),
     )
 
-/** 按文字挑目标：标签与目标文字完全相等的最优先，其余交给 [pickMostSpecific] 取舍 */
+/**
+ * 按文字挑目标：标签与目标文字完全相等的最优先，其余交给 [pickMostSpecific] 取舍。
+ *
+ * 单次遍历完成"包含匹配 + 精确匹配"两件事：原实现每个元素要算两次 effectiveLabel()
+ * （一次过滤、一次判精确），长列表页（200+ 元素）会白白多生成数百个字符串。
+ */
 internal fun pickBestByLabel(elements: List<UiElement>, value: String): UiElement? {
-    val hits = elements.filter { labelContains(it, value) }
-    if (hits.isEmpty()) return null
     val wanted = value.trim()
-    val exact = hits.filter { it.effectiveLabel()?.trim().equals(wanted, ignoreCase = true) }
-    return pickMostSpecific(exact.ifEmpty { hits })
+    var hits: MutableList<UiElement>? = null
+    var exact: MutableList<UiElement>? = null
+    for (e in elements) {
+        val label = e.effectiveLabel()
+        if (label != null && label.contains(value, ignoreCase = true)) {
+            val hitList = hits ?: ArrayList<UiElement>().also { hits = it }
+            hitList.add(e)
+            if (label.trim().equals(wanted, ignoreCase = true)) {
+                val exactList = exact ?: ArrayList<UiElement>().also { exact = it }
+                exactList.add(e)
+            }
+        }
+    }
+    val found = hits ?: return null
+    return pickMostSpecific(exact ?: found)
 }
 
 /**

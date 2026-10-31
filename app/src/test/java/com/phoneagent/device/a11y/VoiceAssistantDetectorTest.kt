@@ -1,5 +1,6 @@
 package com.phoneagent.device.a11y
 
+import com.phoneagent.provider.a11y.VoiceAssistantDetector
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -7,6 +8,7 @@ import org.junit.Test
 /**
  * 语音助手探测顺序纯函数测试：不依赖 PackageManager，
  * 只验证「系统入口优先、厂商兜底按序、全未命中返回 null」的挑选逻辑。
+ * 被测实现位于 provider-api（主应用与 Provider 共用），测试留在调用方一侧。
  */
 class VoiceAssistantDetectorTest {
 

@@ -244,13 +244,27 @@ private fun ThemeOption(
     selected: Boolean,
     showBorder: Boolean,
     onClick: () -> Unit,
+) = SelectableOption(title, subtitle, selected, onClick) { ThemeSwatch(showBorder = showBorder) }
+
+/**
+ * 可选项行（主题 / 配色共用）：左侧自定义预览块，右侧标题与说明，选中时主色描边 + 勾选。
+ * 两份选项原本各写一份同构布局，只有预览块不同；差异通过 [swatch] 传入。
+ */
+@Suppress("FunctionNaming") // Compose 约定：可组合函数首字母大写
+@Composable
+private fun SelectableOption(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    swatch: @Composable () -> Unit,
 ) {
     val buzz = rememberHapticClick()
     Surface(
         shape = RoundedCornerShape(AppRadii.Tile),
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
         border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                 else BorderStroke(1.dp, AppCardBorder),
+        else BorderStroke(1.dp, AppCardBorder),
         modifier = Modifier
             .fillMaxWidth()
             .clickable { buzz(); onClick() },
@@ -260,7 +274,7 @@ private fun ThemeOption(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            ThemeSwatch(showBorder = showBorder)
+            swatch()
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
@@ -316,48 +330,7 @@ private fun PaletteOption(
     palette: ThemePalette,
     selected: Boolean,
     onClick: () -> Unit,
-) {
-    val buzz = rememberHapticClick()
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Tile),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
-        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                 else BorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { buzz(); onClick() },
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            PaletteSwatch(palette)
-            Column(Modifier.weight(1f)) {
-                Text(
-                    palette.label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    palette.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (selected) {
-                Icon(
-                    AppIcons.CheckCircle,
-                    contentDescription = "已选中",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
+) = SelectableOption(palette.label, palette.subtitle, selected, onClick) { PaletteSwatch(palette) }
 
 /** 色板预览：一枚小卡上并排四色圆点（抬升面 / 底色 / 主色 / 冷辅色），深浅跟当前系统模式走 */
 @Composable

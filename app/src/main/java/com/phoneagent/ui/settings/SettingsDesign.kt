@@ -53,6 +53,15 @@ import com.phoneagent.ui.theme.appBorderStroke
 internal val SettingsScreenPad = 20.dp
 
 /**
+ * 设置是否处于「左列表 + 右详情」的双栏形态（平板宽屏）。
+ *
+ * 双栏下分类常驻在左侧，右侧直接翻页，右侧页面的返回按钮就没有意义了——
+ * 页头据此自行收掉返回键。用 CompositionLocal 传，是因为它有 11 个二级页，
+ * 逐个加参数只会让签名膨胀。手机窄屏恒为 false，行为与改动前完全一致。
+ */
+internal val LocalSettingsTwoPane = androidx.compose.runtime.compositionLocalOf { false }
+
+/**
  * 分区色调（语义分组色）。
  *
  * 四系对应色板里的品牌 / 冷辅 / 暖辅 / 中性——不是随手挑的彩虹。
@@ -231,25 +240,31 @@ internal fun SettingsRow(
  *
  * 标题用 headlineMedium（28sp）而不是旧的 titleLarge：设置是"进到某一类里做事"，
  * 大标题给出明确的落点感，也让二级页与主页页头共用同一种typography体质。
+ *
+ * 双栏形态（[LocalSettingsTwoPane]）下不画返回键：左侧分类栏常驻，右侧就是"当前页"，
+ * 一个退回空白的返回箭头在这里是假动作。
  */
 @Composable
 internal fun SettingsPageHeader(title: String, onBack: () -> Unit, subtitle: String? = null) {
     val buzz = rememberHapticClick()
+    val twoPane = LocalSettingsTwoPane.current
     Column(Modifier.fillMaxWidth()) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .clickable {
-                    buzz()
-                    onBack()
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(AppIcons.ArrowBack, contentDescription = "返回", modifier = Modifier.size(22.dp))
+        if (!twoPane) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clickable {
+                        buzz()
+                        onBack()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(AppIcons.ArrowBack, contentDescription = "返回", modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.height(16.dp))
         }
-        Spacer(Modifier.height(16.dp))
         Text(
             title,
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),

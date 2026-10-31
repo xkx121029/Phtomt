@@ -64,10 +64,10 @@ internal object ShellRules {
         // raw 前缀大小写不敏感，命中后按固定长度剥前缀（removePrefix 只认小写，会漏掉 RAW 前缀）
         val body = if (t.startsWith("raw ", ignoreCase = true)) t.substring(4).trim() else t
         if (body.isBlank()) return false
-        val head = body.split(Regex("[\\s;&|]+")).firstOrNull()
-            ?.substringAfterLast('/')
-            ?.lowercase()
-            .orEmpty()
+        // 取首个 token：手写扫描代替 split(Regex)（本方法每条 shell 命令都会走一次）
+        val head = body.takeWhile { !it.isWhitespace() && it != ';' && it != '&' && it != '|' }
+            .substringAfterLast('/')
+            .lowercase()
         return head in TERMUX_TOOL_COMMANDS
     }
 

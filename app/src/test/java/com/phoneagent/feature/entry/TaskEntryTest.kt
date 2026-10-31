@@ -66,7 +66,7 @@ class TaskEntryTest {
 
     @Test
     fun `share plain text`() {
-        val t = TaskEntry.parseShare(Intent.ACTION_SEND, "https://example.com/article")
+        val t = TaskEntry.parseShare(Intent.ACTION_SEND, "https://example.com/article", emptyList())
         assertEquals(
             "https://example.com/article",
             (t as TaskEntry.Target.Task).text,
@@ -75,16 +75,49 @@ class TaskEntryTest {
 
     @Test
     fun `process text`() {
-        val t = TaskEntry.parseShare(Intent.ACTION_PROCESS_TEXT, "总结这段话")
+        val t = TaskEntry.parseShare(Intent.ACTION_PROCESS_TEXT, "总结这段话", emptyList())
         assertEquals("总结这段话", (t as TaskEntry.Target.Task).text)
     }
 
     @Test
     fun `share without text is null`() {
-        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, null))
-        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, ""))
-        assertNull(TaskEntry.parseShare(Intent.ACTION_MAIN, "x"))
-        assertNull(TaskEntry.parseShare(null, "x"))
+        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, null, emptyList()))
+        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, "", emptyList()))
+        assertNull(TaskEntry.parseShare(Intent.ACTION_MAIN, "x", emptyList()))
+        assertNull(TaskEntry.parseShare(null, "x", emptyList()))
+    }
+
+    // ---- 分享文件 ----
+
+    @Test
+    fun `share single file`() {
+        val t = TaskEntry.parseShare(Intent.ACTION_SEND, null, listOf("content://media/1"))
+        assertEquals(listOf("content://media/1"), (t as TaskEntry.Target.SharedFiles).uris)
+    }
+
+    @Test
+    fun `share multiple files keeps order`() {
+        val t = TaskEntry.parseShare(
+            Intent.ACTION_SEND_MULTIPLE,
+            null,
+            listOf("content://a", "content://b"),
+        )
+        assertEquals(listOf("content://a", "content://b"), (t as TaskEntry.Target.SharedFiles).uris)
+    }
+
+    @Test
+    fun `file wins over caption`() {
+        // 微信分享文件会带一句配文：配文不能顶掉附件
+        val t = TaskEntry.parseShare(Intent.ACTION_SEND, "看看这个", listOf("content://a"))
+        assertEquals(listOf("content://a"), (t as TaskEntry.Target.SharedFiles).uris)
+    }
+
+    @Test
+    fun `share files without streams is null`() {
+        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, null, emptyList()))
+        assertNull(TaskEntry.parseShare(Intent.ACTION_SEND, null, listOf("  ")))
+        // 文本选择不该被当成文件分享
+        assertNull(TaskEntry.parseShare(Intent.ACTION_PROCESS_TEXT, null, listOf("content://a")))
     }
 
     // ---- 快捷方式 / extras ----

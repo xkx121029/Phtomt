@@ -195,10 +195,10 @@ internal object AgentTimelineMapper {
                 )
 
                 TaskSession.Status.ABORTED ->
-                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { "任务已停止" })
+                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { AgentFallbackCopy.ABORTED })
 
                 TaskSession.Status.FAILED ->
-                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { "任务未完成" })
+                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { AgentFallbackCopy.FAILED })
 
                 TaskSession.Status.RUNNING, null -> Unit
             }
@@ -217,7 +217,7 @@ internal object AgentTimelineMapper {
         if (state.isRunning && state.phase != AgentState.Phase.ERROR) {
             items += AgentTimelineItem.LiveStatus(
                 phase = state.phase,
-                message = state.message.ifBlank { phaseLabel(state.phase) },
+                message = state.message.ifBlank { agentPhaseWord(state.phase) },
                 foldedCount = fold.observe(focusRun?.runKey ?: "", state.message),
                 // AI 正在生成的正文：把半截 JSON 译成人话后**全量**交给打字机。
                 // 这里不能先 takeLast 截断——截断会破坏"前缀单调"，打字机只能整段跳变，
@@ -242,7 +242,10 @@ internal object AgentTimelineMapper {
             }
 
             AgentState.Phase.ERROR -> {
-                items += AgentTimelineItem.Failed(state.message.ifBlank { "任务执行出错，已停止" })
+                items += AgentTimelineItem.Failed(
+                    message = state.message.ifBlank { AgentFallbackCopy.ERROR },
+                    kind = state.failureKind,
+                )
             }
 
             else -> Unit
@@ -338,16 +341,6 @@ internal object AgentTimelineMapper {
             runKey = runKey,
             step = step,
         )
-
-    /** 相位中文名（消息为空时的兜底文案，不编造内容） */
-    private fun phaseLabel(phase: AgentState.Phase): String = when (phase) {
-        AgentState.Phase.IDLE -> "空闲"
-        AgentState.Phase.OBSERVING -> "观察页面"
-        AgentState.Phase.THINKING -> "思考下一步"
-        AgentState.Phase.ACTING -> "执行动作"
-        AgentState.Phase.DONE -> "已完成"
-        AgentState.Phase.ERROR -> "出错"
-    }
 
     private fun stepItem(runKey: String, step: MergedStep): StepCall {
         val action: AgentAction? = step.record?.action
@@ -479,4 +472,18 @@ internal object AgentTimelineMapper {
         val tokens: Int
             get() = trace?.totalTokens ?: 0
     }
+}
+
+/**
+ * 相位中文名（流列表项、底部状态条、空消息兜底共用）。
+ *
+ * 曾经在三个 UI 文件里各写一份，改文案时容易只改一处；收敛到此处作为唯一定义点。
+ */
+internal fun agentPhaseWord(phase: AgentState.Phase): String = when (phase) {
+    AgentState.Phase.IDLE -> "空闲"
+    AgentState.Phase.OBSERVING -> "观察页面"
+    AgentState.Phase.THINKING -> "思考下一步"
+    AgentState.Phase.ACTING -> "执行动作"
+    AgentState.Phase.DONE -> "已完成"
+    AgentState.Phase.ERROR -> "出错"
 }

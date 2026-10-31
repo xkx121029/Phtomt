@@ -1,7 +1,8 @@
 package com.phoneagent.engine.execution
 
 import com.phoneagent.core.log.AppLog
-import com.phoneagent.device.a11y.VoiceAssistantDetector
+// 助手探测实现与 Provider 共用同一份（见 provider-api 的同名类），避免两端候选名单漂移
+import com.phoneagent.provider.a11y.VoiceAssistantDetector
 import com.phoneagent.engine.execution.CapabilityManager.Mode
 import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.ActionType
@@ -625,6 +626,9 @@ class IntentTranslator(
         put(IntentType.SHELL, ShellCommandStrategy(actionMode))
         put(IntentType.A11Y, A11yEndpointStrategy(actionMode))
     }
+
+    /** 已接入转译层的意图（供覆盖度自检：与 [IntentType.ALL] 应等于 [IntentType.VIA_OTHER_CHANNELS] 的补集） */
+    internal val handledIntents: Set<String> get() = strategies.keys
 
     /**
      * 把意图转译为内部执行命令。

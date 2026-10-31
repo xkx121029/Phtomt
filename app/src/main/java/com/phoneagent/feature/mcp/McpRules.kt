@@ -13,6 +13,9 @@ object McpRules {
     /** 支持的协议版本集合（MCP 2025-03-26 为当前规范版本） */
     val supportedProtocolVersions = setOf("2025-03-26")
 
+    /** 工具名合法字符集（预编译，避免每次校验都构造正则） */
+    private val TOOL_NAME_RE = Regex("[\\w.-]+")
+
     // ==================== 验证规则 ====================
 
     /** 校验服务器名：非空且不含非法字符 */
@@ -86,7 +89,7 @@ object McpRules {
 
     /** 工具名合法性：非空且仅含常见标识符字符 */
     fun validateToolName(name: String): McpValidation =
-        if (name.isBlank() || !name.matches(Regex("[\\w.-]+"))) {
+        if (name.isBlank() || !name.matches(TOOL_NAME_RE)) {
             McpValidation(false, "非法工具名「$name」")
         } else McpValidation(true)
 

@@ -29,9 +29,17 @@ class CodingEventReducerTest {
         tool: String = "",
         code: Int = 0,
         argsPreview: String = "",
+        durationMs: Long = 0L,
+        subagentId: String = "",
+        subagentLabel: String = "",
+        subagentPersona: String = "",
+        promptPreview: String = "",
+        iteration: Int = 0,
+        errorDetail: String = "",
     ): CodingEventReducer.Result = CodingEventReducer.apply(
         type, messages, assistantKey, ::nextId,
         delta, name, ok, approved, why, callId, tool, code, argsPreview,
+        durationMs, subagentId, subagentLabel, subagentPersona, promptPreview, iteration, errorDetail,
     )
 
     private fun toolCard(name: String, text: String = "", toolOk: Boolean? = null) =
@@ -193,6 +201,135 @@ class CodingEventReducerTest {
         assertNull(r.conn)
         assertNull(r.error)
         assertFalse(r.hostExited)
+    }
+
+    // ==================== 并发工具 ====================
+
+    private fun callCard(name: String, callId: String) =
+        ChatMessage(key = "t_$callId", role = "tool", toolName = name, toolCallId = callId)
+
+    @Test
+    fun `并行同名工具按callId分账_不会串卡`() {
+        // 同轮两个 read_file：先结束的是第二个发起的那个
+        val msgs = listOf(callCard("read_file", "c1"), callCard("read_file", "c2"))
+        val r = apply("tool_end", messages = msgs, name = "read_file", callId = "c2", ok = true, durationMs = 120)
+        assertEquals(true, r.messages[1].toolOk)
+        assertNull("按 id 匹配，第一张卡必须还是运行中", r.messages[0].toolOk)
+        assertEquals(120L, r.messages[1].durationMs)
+    }
+
+    @Test
+    fun `tool_end无callId时退回按名字置最后一张未结卡`() {
+        val msgs = listOf(callCard("read_file", "c1"), callCard("read_file", "c2"))
+        val r = apply("tool_end", messages = msgs, name = "read_file", ok = true)
+        assertEquals(true, r.messages[1].toolOk)
+        assertNull(r.messages[0].toolOk)
+    }
+
+    @Test
+    fun `tool_start记下callId与阶段`() {
+        val r = apply("tool_start", name = "read_files", callId = "c7", argsPreview = "3 个文件")
+        assertEquals("c7", r.messages.single().toolCallId)
+        assertEquals("执行 read_files", r.phase)
+    }
+
+    // ==================== 阶段与耗时 ====================
+
+    @Test
+    fun `模型阶段事件更新phase与轮次`() {
+        var r = apply("run_start")
+        assertEquals(true, r.busy)
+        assertEquals("启动中", r.phase)
+        r = apply("iteration", iteration = 2)
+        assertEquals(2, r.iteration)
+        assertEquals("第 2 轮", r.phase)
+        r = apply("provider_request")
+        assertEquals("等待模型响应", r.phase)
+        r = apply("provider_first_token")
+        assertEquals("接收输出", r.phase)
+        r = apply("provider_stream_end")
+        assertEquals("", r.phase)
+    }
+
+    @Test
+    fun `心跳只更新时间不改消息也不清阶段`() {
+        val msgs = listOf(toolCard("ls", toolOk = true))
+        val r = apply("heartbeat", messages = msgs, durationMs = 30_000)
+        assertEquals(msgs, r.messages)
+        assertNull("长工具执行中心跳不能把「执行 xxx」阶段清掉", r.phase)
+        assertNull("心跳不改 busy", r.busy)
+    }
+
+    @Test
+    fun `done清空阶段且置闲`() {
+        val r = apply("done", assistantKey = "a_1", durationMs = 4200)
+        assertEquals(false, r.busy)
+        assertEquals("", r.phase)
+    }
+
+    // ==================== 并行子 agent ====================
+
+    @Test
+    fun `子agent生命周期_从起卡到收尾`() {
+        var r = apply("subagent_start", subagentId = "s1", subagentLabel = "模块A", promptPreview = "实现模块 A")
+        val card = r.messages.single()
+        assertEquals("subagent", card.role)
+        assertEquals("模块A", card.subagentLabel)
+        assertEquals("实现模块 A", card.text)
+        assertNull("未结束的子 agent 卡保持运行态", card.toolOk)
+        assertEquals("子 agent 模块A", r.phase)
+
+        r = apply("subagent_text", messages = r.messages, subagentId = "s1", delta = "正在写文件")
+        assertEquals("实现模块 A正在写文件", r.messages.single().text)
+        assertNull("子 agent 正文不能接进主 assistant 气泡", r.assistantKey)
+
+        r = apply("subagent_end", messages = r.messages, subagentId = "s1", ok = true, durationMs = 900)
+        assertEquals(true, r.messages.single().toolOk)
+        assertEquals(900L, r.messages.single().durationMs)
+        assertTrue(r.messages.single().text.startsWith("完成"))
+        assertEquals("", r.phase)
+    }
+
+    @Test
+    fun `子agent失败写明原因`() {
+        val msgs = listOf(
+            ChatMessage(key = "s1", role = "subagent", subagentId = "s1", subagentLabel = "模块B"),
+        )
+        val r = apply("subagent_end", messages = msgs, subagentId = "s1", ok = false, errorDetail = "超时")
+        assertEquals(false, r.messages.single().toolOk)
+        assertTrue(r.messages.single().text.contains("超时"))
+    }
+
+    @Test
+    fun `子agent卡带上人设与阶段`() {
+        val r = apply(
+            "subagent_start",
+            subagentId = "s1",
+            subagentPersona = "审查者",
+            subagentLabel = "安全审计",
+            promptPreview = "检查权限校验",
+        )
+        val card = r.messages.single()
+        assertEquals("审查者", card.subagentPersona)
+        assertEquals("安全审计", card.subagentLabel)
+        assertEquals("子 agent 审查者 · 安全审计", r.phase)
+    }
+
+    @Test
+    fun `没有人设的老事件仍能起卡`() {
+        val r = apply("subagent_start", subagentId = "s1", subagentLabel = "模块A")
+        assertNull(r.messages.single().subagentPersona)
+        assertEquals("子 agent 模块A", r.phase)
+    }
+
+    @Test
+    fun `两个子agent各自独立成卡`() {
+        var r = apply("subagent_start", subagentId = "a", subagentLabel = "A")
+        r = apply("subagent_start", messages = r.messages, subagentId = "b", subagentLabel = "B")
+        r = apply("subagent_end", messages = r.messages, subagentId = "a", ok = true)
+        assertEquals(2, r.messages.size)
+        assertEquals(true, r.messages[0].toolOk)
+        assertNull("b 还没结束", r.messages[1].toolOk)
     }
 
     // ==================== 组合回合 ====================

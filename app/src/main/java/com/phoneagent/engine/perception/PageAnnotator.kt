@@ -20,6 +20,8 @@ data class AnnotatedPage(
     val elements: List<UiElement>,
     /** fingerprint 字符串，供执行前后验证 */
     val fingerprint: String,
+    /** 元素 index → 语义 id（由 [PageAnnotator.assignSemanticIds] 一次算出，供引擎回填原始快照） */
+    val semanticIds: Map<Int, String> = emptyMap(),
 )
 
 /**
@@ -83,7 +85,7 @@ object PageAnnotator {
             )
         }.sortedWith(compareByDescending<UiElement> { priorityRank(it.priority) }.thenBy { it.index })
         val fingerprint = PageFingerprint.compute(snapshot)
-        return AnnotatedPage(snapshot, pageType, contextHint, annotated, fingerprint)
+        return AnnotatedPage(snapshot, pageType, contextHint, annotated, fingerprint, semanticIds)
     }
 
     /**
@@ -99,180 +101,146 @@ object PageAnnotator {
      */
     private fun assignSemanticIds(snapshot: ScreenSnapshot): Map<Int, String> {
         val ids = LinkedHashMap<Int, String>()
-        fun putOnce(value: String, pred: (UiElement) -> Boolean) {
-            val first = snapshot.elements.firstOrNull(pred) ?: return
-            ids.putIfAbsent(first.index, value)
+        // 元素特征一次性提取：原实现按 26 个类别各做一次全量扫描，谓词里反复调用 effectiveLabel()；
+        // 长列表页（200+ 元素）会重复生成数千个字符串。这里预计算一次，后续判定只读字段。
+        val sigs = snapshot.elements.map { e -> ElementSig(e, e.effectiveLabel() ?: "") }
+        fun putOnce(value: String, pred: (ElementSig) -> Boolean) {
+            val first = sigs.firstOrNull(pred) ?: return
+            ids.putIfAbsent(first.element.index, value)
         }
-        // 可点击（操作类）元素的快捷谓词
-        fun UiElement.isAction(): Boolean = clickable || longClickable
 
         // 1) 弹窗正向按钮（允许/同意/确定/授权…）
-        putOnce("dlg_allow") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                PageTypeRules.dialogPositive.any { PageTypeRules.matchesWord(l, it) }
-            }
+        putOnce("dlg_allow") { s ->
+            s.action && PageTypeRules.dialogPositive.any { PageTypeRules.matchesWord(s.label, it) }
         }
         // 2) 弹窗关闭按钮：仅当确认为"真弹窗"（有正向按钮且元素稀疏）才标定，避免误判普通页"取消"
         val isDialog = ids.values.contains("dlg_allow") && snapshot.elements.size <= 8
         if (isDialog) {
-            putOnce("dlg_dismiss") { e ->
-                e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                    PageTypeRules.dialogDismiss.any { PageTypeRules.matchesWord(l, it) }
-                }
+            putOnce("dlg_dismiss") { s ->
+                s.action && PageTypeRules.dialogDismiss.any { PageTypeRules.matchesWord(s.label, it) }
             }
         }
         // 3) 跳过广告（倒计时/广告页）
-        putOnce("ad_skip") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").contains("跳过")
-        }
+        putOnce("ad_skip") { s -> s.action && s.label.contains("跳过") }
         // 4) 返回键（图标/文字）
-        putOnce("back_btn") { e ->
-            val label = e.effectiveLabel() ?: ""
-            val vi = e.viewId ?: ""
-            e.isAction() &&
-                (backWords.any { label.contains(it, ignoreCase = true) && !label.contains("退回") } ||
-                    vi.endsWith("back", ignoreCase = true) ||
-                    vi == "home_up")
+        putOnce("back_btn") { s ->
+            s.action &&
+                (backWords.any { s.label.contains(it, ignoreCase = true) && !s.label.contains("退回") } ||
+                    s.viewId.endsWith("back", ignoreCase = true) ||
+                    s.viewId == "home_up")
         }
         // 5) 页面内关闭按钮（非弹窗的右上角关闭/×）
-        putOnce("close_btn") { e ->
-            val label = e.effectiveLabel() ?: ""
-            val vi = e.viewId ?: ""
-            e.isAction() && (closeWords.any { label.contains(it) } ||
-                vi.contains("close", ignoreCase = true) && vi.contains("btn", ignoreCase = true))
+        putOnce("close_btn") { s ->
+            s.action && (closeWords.any { s.label.contains(it) } ||
+                s.viewId.contains("close", ignoreCase = true) && s.viewId.contains("btn", ignoreCase = true))
         }
         // 6) 搜索框：可编辑输入框，语义含"搜索"
-        putOnce("search_box") { e ->
-            e.editable && (e.effectiveLabel() ?: e.viewId ?: "").let { l ->
+        putOnce("search_box") { s ->
+            s.element.editable && s.label.ifEmpty { s.viewId }.let { l ->
                 l.contains("搜索") || l.contains("search", ignoreCase = true)
             }
         }
         // 7) 搜索按钮：可点击非输入，文字为"搜索"
-        putOnce("search_btn") { e ->
-            e.isAction() && !e.editable && (e.effectiveLabel() ?: "").let { l ->
-                l.contains("搜索") || l.equals("search", ignoreCase = true)
-            }
+        putOnce("search_btn") { s ->
+            s.action && !s.element.editable &&
+                (s.label.contains("搜索") || s.label.equals("search", ignoreCase = true))
         }
         // 8) 刷新（下拉刷新/重新加载入口）
-        putOnce("refresh_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                refreshWords.any { l.contains(it, ignoreCase = true) }
-            }
+        putOnce("refresh_btn") { s ->
+            s.action && refreshWords.any { s.label.contains(it, ignoreCase = true) }
         }
         // 9) 发送（聊天/评论）
-        putOnce("send_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                sendWords.any { l.contains(it, ignoreCase = true) }
-            }
+        putOnce("send_btn") { s ->
+            s.action && sendWords.any { s.label.contains(it, ignoreCase = true) }
         }
         // 10) 确认/保存（区别于弹窗 dlg_allow：弹窗类已被优先占用同一元素，此处捕获普通页的确认/保存）
-        putOnce("confirm_btn") { e ->
-            e.isAction() && ids[e.index] == null && (e.effectiveLabel() ?: "").let { l ->
-                confirmWords.any { l.contains(it, ignoreCase = true) }
-            }
+        putOnce("confirm_btn") { s ->
+            s.action && ids[s.element.index] == null &&
+                confirmWords.any { s.label.contains(it, ignoreCase = true) }
         }
         // 11) 结算/去支付（购物场景）
-        putOnce("checkout_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                checkoutWords.any { l.contains(it, ignoreCase = true) }
-            }
+        putOnce("checkout_btn") { s ->
+            s.action && checkoutWords.any { s.label.contains(it, ignoreCase = true) }
         }
         // 12) 删除/移除
-        putOnce("delete_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                deleteWords.any { l.contains(it, ignoreCase = true) }
-            }
+        putOnce("delete_btn") { s ->
+            s.action && deleteWords.any { s.label.contains(it, ignoreCase = true) }
         }
         // 13) 开关（Switch/Toggle）
-        putOnce("switch_toggle") { e ->
-            val cn = e.className ?: ""
-            val vi = e.viewId ?: ""
-            (cn.contains("switch", ignoreCase = true) || cn.contains("toggle", ignoreCase = true) ||
-                vi.contains("switch", ignoreCase = true)) && (e.clickable || e.isEnabled)
+        putOnce("switch_toggle") { s ->
+            (s.className.contains("switch", ignoreCase = true) || s.className.contains("toggle", ignoreCase = true) ||
+                s.viewId.contains("switch", ignoreCase = true)) && (s.element.clickable || s.element.isEnabled)
         }
         // 14) 勾选（CheckBox/Radio/多选）
-        putOnce("select_box") { e ->
-            val cn = e.className ?: ""
-            val typ = e.type ?: ""
-            (cn.contains("checkbox", ignoreCase = true) || cn.contains("radio", ignoreCase = true) ||
-                typ.contains("checkbox", ignoreCase = true)) && e.clickable
+        putOnce("select_box") { s ->
+            (s.className.contains("checkbox", ignoreCase = true) || s.className.contains("radio", ignoreCase = true) ||
+                s.type.contains("checkbox", ignoreCase = true)) && s.element.clickable
         }
         // 15) 更多/展开（更多操作区）
-        putOnce("more_btn") { e ->
-            val label = e.effectiveLabel() ?: ""
-            e.isAction() && moreWords.any { label.contains(it) || label == it }
+        putOnce("more_btn") { s ->
+            s.action && moreWords.any { s.label.contains(it) || s.label == it }
         }
         // 16) 添加/新建（含图标加号）
-        putOnce("add_btn") { e ->
-            val label = e.effectiveLabel() ?: ""
-            val cd = e.contentDescription ?: ""
-            val vi = e.viewId ?: ""
-            e.isAction() && (addWords.any { label.contains(it) } ||
-                cd.contains("加") || vi.contains("fab", ignoreCase = true) || vi.endsWith("add", ignoreCase = true))
+        putOnce("add_btn") { s ->
+            s.action && (addWords.any { s.label.contains(it) } ||
+                s.desc.contains("加") || s.viewId.contains("fab", ignoreCase = true) ||
+                s.viewId.endsWith("add", ignoreCase = true))
         }
         // 17) 下一步/继续
-        putOnce("next_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                nextWords.any { l.contains(it) && !l.contains("取消") }
-            }
+        putOnce("next_btn") { s ->
+            s.action && nextWords.any { s.label.contains(it) && !s.label.contains("取消") }
         }
         // 18) 登录/注册
-        putOnce("login_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                loginWords.any { l.contains(it) }
-            }
+        putOnce("login_btn") { s ->
+            s.action && loginWords.any { s.label.contains(it) }
         }
         // 19) 分享/转发
-        putOnce("share_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                shareWords.any { l.contains(it) }
-            }
+        putOnce("share_btn") { s ->
+            s.action && shareWords.any { s.label.contains(it) }
         }
         // 20) 收藏
-        putOnce("collect_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                collectWords.any { l.contains(it) }
-            }
+        putOnce("collect_btn") { s ->
+            s.action && collectWords.any { s.label.contains(it) }
         }
         // 21) 复制
-        putOnce("copy_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                copyWords.any { l.contains(it) }
-            }
+        putOnce("copy_btn") { s ->
+            s.action && copyWords.any { s.label.contains(it) }
         }
         // 22) 下载
-        putOnce("download_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                downloadWords.any { l.contains(it) }
-            }
+        putOnce("download_btn") { s ->
+            s.action && downloadWords.any { s.label.contains(it) }
         }
         // 23) 上传
-        putOnce("upload_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                uploadWords.any { l.contains(it) }
-            }
+        putOnce("upload_btn") { s ->
+            s.action && uploadWords.any { s.label.contains(it) }
         }
         // 24) 设置入口（齿轮/更多设置）
-        putOnce("settings_btn") { e ->
-            val label = e.effectiveLabel() ?: ""
-            val vi = e.viewId ?: ""
-            e.isAction() && (settingsWords.any { label.contains(it) } ||
-                vi.contains("settings", ignoreCase = true))
+        putOnce("settings_btn") { s ->
+            s.action && (settingsWords.any { s.label.contains(it) } ||
+                s.viewId.contains("settings", ignoreCase = true))
         }
         // 25) 排序/筛选
-        putOnce("sort_btn") { e ->
-            e.isAction() && (e.effectiveLabel() ?: "").let { l ->
-                sortWords.any { l.contains(it) }
-            }
+        putOnce("sort_btn") { s ->
+            s.action && sortWords.any { s.label.contains(it) }
         }
         // 26) 清除输入（输入框内 X；不含 delete——btn_delete_item 这类删除按钮不是清空输入框）
-        putOnce("clear_input") { e ->
-            val label = e.effectiveLabel() ?: ""
-            val vi = e.viewId ?: ""
-            e.clickable && (label.contains("清除") || label.contains("清空") ||
-                vi.contains("clear", ignoreCase = true))
+        putOnce("clear_input") { s ->
+            s.element.clickable && (s.label.contains("清除") || s.label.contains("清空") ||
+                s.viewId.contains("clear", ignoreCase = true))
         }
         return ids
+    }
+
+    /**
+     * 元素特征快照：只缓存"需要拼接才能得到"的 label，其余字段直接读原元素（纯字段访问、不分配）。
+     * 供 26 个语义类别复用，避免谓词里重复生成 label 字符串。
+     */
+    private class ElementSig(val element: UiElement, val label: String) {
+        val desc: String get() = element.contentDescription ?: ""
+        val viewId: String get() = element.viewId ?: ""
+        val className: String get() = element.className
+        val type: String get() = element.type
+        val action: Boolean get() = element.clickable || element.longClickable
     }
 
     /**

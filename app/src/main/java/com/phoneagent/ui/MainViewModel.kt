@@ -58,6 +58,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** ACA 技能目录扫描结果的有效期：切 Tab 回来的重复触发走缓存，不重复扫盘 */
+private const val ACA_SKILLS_TTL_MS = 60_000L
+
 /**
  * 全局共享 ViewModel：设置、Agent 运行状态、无障碍/截图权限。
  */
@@ -93,7 +96,7 @@ class MainViewModel(
 
     /** 结束新手引导：把完成标记落盘，下次启动直接进主界面 */
     fun completeOnboarding() {
-        saveSettings(settingsFlow.value.copy(onboardingDone = true))
+        viewModelScope.launch { settings.markOnboardingDone() }
     }
 
     val agentState: StateFlow<AgentState> = engine.state
@@ -158,26 +161,9 @@ class MainViewModel(
     }
 
     // ---- 悬浮窗交互桥接：气泡窗按钮动作转发到引擎 ----
+    // 注册动作在 AgentEngine.init 里（引擎是单例，注册生命周期必须跟引擎走）：
+    // 旧实现挂在这里，界面一销毁回调就被清空，后台任务在悬浮窗上点「停止 / 批准」会没反应。
     init {
-        com.phoneagent.overlay.FloatingWindowService.onInteraction = { action, payload ->
-            when (action) {
-                "approve" -> approvePlan()
-                "cancel" -> cancelPlanning()
-                "clarify" -> answerClarification(com.phoneagent.domain.model.ClarificationOption(id = payload, label = payload, description = payload))
-                "hint" -> provideUserHint(payload)
-                "dismiss" -> dismissUser()
-                // 自由模式：AI 自写命令的首次确认（与 hint/dismiss 分开，见 engine.resolveShellApproval 的说明）
-                "shell_approve" -> resolveShellApproval(payload == "yes")
-                // 任务完成：用户确认是否保存执行模板（主动确认才入库）
-                "save_template" -> engine.confirmSaveTemplate(payload == "yes")
-                // 关闭悬浮窗 → 同步停止正在运行的任务
-                "close" -> engine.stop()
-                // 收起悬浮窗（只留悬浮球）→ 搁置任务，AI 在下一轮前挂起；
-                // 点悬浮球唤出 → 解除搁置，从当前步继续
-                "hide" -> engine.pauseTask()
-                "resume" -> engine.resumeTask()
-            }
-        }
         // 启动时加载持久化的 MCP 服务器配置
         viewModelScope.launch {
             val saved = mcpStore.load()
@@ -188,8 +174,9 @@ class MainViewModel(
     }
 
     override fun onCleared() {
-        com.phoneagent.overlay.FloatingWindowService.onInteraction = null
-        engine.stop()
+        // 只做解绑，不停任务：引擎是 Koin 单例，任务生命周期不归界面管。
+        // 旧实现在这里 engine.stop()，导致「退出界面 / 系统回收 Activity」= 任务被中断——
+        // 长线任务只要切走就白跑。停止任务必须由用户显式操作（Agent 页停止 / 悬浮窗 / 通知栏）。
         super.onCleared()
     }
 
@@ -507,6 +494,18 @@ class MainViewModel(
 
     fun stopAgent() = engine.stop()
 
+    /** 当前任务是否被用户暂停；驱动状态条在「暂停 / 继续」之间切换 */
+    val paused: StateFlow<Boolean> = engine.paused
+
+    /** 暂停当前任务（主循环在下一轮开头挂起，不消耗步数） */
+    fun pauseAgent() = engine.pauseTask()
+
+    /** 从暂停处继续执行 */
+    fun resumeAgent() = engine.resumeTask()
+
+    /** 重试最近一次任务（失败卡的「重试」出口） */
+    fun retryLastTask() = engine.retryLastTask()
+
     // ---- 长线任务：执行策略 / 断点续传 / 模板库 ----
     suspend fun currentStrategy(): com.phoneagent.data.store.ExecutionStrategy = engine.currentStrategy()
     fun setExecutionStrategy(s: com.phoneagent.data.store.ExecutionStrategy) {
@@ -692,12 +691,22 @@ class MainViewModel(
 
     private var acaScanJob: kotlinx.coroutines.Job? = null
 
+    /** 上次扫描完成的时间；0 表示从未扫过 */
+    private var acaScannedAt = 0L
+
     /**
      * 重新扫描 ACA 技能目录。流式：每发现一个有效包就立刻追加进 [_acaSkills]，
      * 配合主页的级联入场动画形成逐条流出的效果；扫描期间重入直接忽略。
+     *
+     * 60 秒内已经扫过且没有强制刷新时直接复用上次结果：主页的 LaunchedEffect
+     * 每次切回 Tab 都会调用一次，而扫盘是真 IO，没必要为同一份目录反复跑。
+     *
+     * @param force 目录刚被改动（装上/删掉技能包）时传 true，跳过缓存
      */
-    fun refreshAcaSkills(context: Context) {
+    fun refreshAcaSkills(context: Context, force: Boolean = false) {
         if (_acaScanning.value) return
+        val fresh = System.currentTimeMillis() - acaScannedAt < ACA_SKILLS_TTL_MS
+        if (!force && acaScannedAt != 0L && fresh) return
         acaScanJob?.cancel()
         acaScanJob = viewModelScope.launch {
             _acaScanning.value = true
@@ -710,6 +719,7 @@ class MainViewModel(
                 }
             }
             _acaSkillErrors.value = errors.map { (dir, err) -> "$dir：$err" }
+            acaScannedAt = System.currentTimeMillis()
             _acaScanning.value = false
         }
     }

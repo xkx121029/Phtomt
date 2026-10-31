@@ -10,18 +10,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,10 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
+import com.phoneagent.ui.components.ComposerActionButton
 import com.phoneagent.ui.components.GlassHeaderScaffold
+import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.rememberHapticClick
@@ -109,7 +112,7 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         }
     }
 
-    var draft by remember { mutableStateOf("") }
+    var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val buzz = rememberHapticClick()
 
@@ -155,7 +158,7 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = AppSpacing.Md),
                 ) {
-                    items(bubbles) { bubble ->
+                    itemsIndexed(bubbles, key = { index, _ -> "bubble-$index" }) { _, bubble ->
                         when (bubble.role) {
                             "user" -> UserBubble(bubble.text)
                             else -> AssistantBubble(bubble.text)
@@ -191,43 +194,52 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     .clip(RoundedCornerShape(AppRadii.Card))
                     .background(colors.surfaceRaised)
                     .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
-                    .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                    .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Xs),
+                // 与操控页同一套几何：单行文字在 40dp 高里竖直居中，多行时发送键贴行底
                 verticalAlignment = Alignment.Bottom,
             ) {
-                BasicTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    maxLines = 4,
-                    modifier = Modifier.weight(1f),
-                    decorationBox = { inner ->
-                        Box {
-                            if (draft.isEmpty()) {
-                                Text(
-                                    "说点什么…",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            Box {
+                                if (draft.isEmpty()) {
+                                    Text(
+                                        "说点什么…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                inner()
                             }
-                            inner()
-                        }
-                    },
-                )
-                IconButton(onClick = { submit() }, enabled = draft.isNotBlank()) {
-                    Icon(
-                        AppIcons.Send,
-                        contentDescription = "发送",
-                        tint = if (draft.isNotBlank()) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        },
                     )
                 }
+                ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = "发送",
+                    onClick = { submit() },
+                    enabled = draft.isNotBlank(),
+                )
             }
             Spacer(Modifier.height(AppSpacing.Sm))
         }
     }
 }
+
+/** 宽屏下单条气泡的最大宽度：正文列再宽，气泡也不该拉成一整条 */
+private val ChatBubbleMaxWidth = 420.dp
 
 /** 用户气泡：右对齐的主色胶囊面 */
 @Composable
@@ -235,7 +247,9 @@ private fun UserBubble(text: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         Box(
             modifier = Modifier
-                .widthIn(max = 300.dp)
+                // 窄屏沿用 300dp（占满可用宽度的手感），宽屏放宽到固定上限，
+                // 否则平板上一句话会拉成横贯整屏的一条色带
+                .widthIn(max = if (LocalIsExpanded.current) ChatBubbleMaxWidth else 300.dp)
                 .clip(RoundedCornerShape(AppRadii.Card))
                 .background(MaterialTheme.colorScheme.primaryContainer)
                 .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
@@ -254,11 +268,20 @@ private fun UserBubble(text: String) {
 private fun AssistantBubble(text: String) {
     Box(
         modifier = Modifier
+            // 宽屏下气泡不跟着正文列一起拉满：留一段留白，读起来仍是"一条消息"。
+            // 顺序必须是先 widthIn 再 fillMaxWidth——反过来 min 宽已被撑满，收不回来
+            .widthIn(max = if (LocalIsExpanded.current) 720.dp else Dp.Infinity)
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Card))
             .background(AppTheme.colors.surfaceRaised)
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {
-        MarkdownPreview(content = text, modifier = Modifier.fillMaxWidth())
+        // 正文另有 640dp 的阅读上限：再宽每行会到 70+ 字，视线回行极易串行
+        MarkdownPreview(
+            content = text,
+            modifier = Modifier
+                .widthIn(max = 640.dp)
+                .fillMaxWidth(),
+        )
     }
 }

@@ -46,7 +46,15 @@ internal class PlanningFlow(
     private val rememberChatTurn: (question: String, answer: String) -> Unit,
     /** 引擎侧钩子：批准后启动执行（与队列 worker 共用 job 槽位） */
     private val launchTask: (task: String, plan: com.phoneagent.domain.model.TaskPlan?) -> Unit,
+    /** 引擎侧钩子：当前设置快照（同步读缓存值，配置预检用） */
+    private val settingsSnapshot: () -> AppSettings.Settings,
 ) {
+    /**
+     * 配置预检：返回阻断原因（null = 可以规划）。
+     * 判定口径收口在 [AppSettings.Settings.configProblem]，与执行侧共用同一份。
+     */
+    private fun configProblem(): String? = runCatching { settingsSnapshot().configProblem }.getOrNull()
+
     /** 记下一次澄清往来（问题 + 选择），供 Agent 页在任务流里成组保留；新一轮输入时清空 */
     private fun rememberClarify(question: String, answer: String) {
         if (answer.isBlank()) return
@@ -62,6 +70,16 @@ internal class PlanningFlow(
     /** 开始规划：AI 流式思考并检测歧义。不直接执行。 */
     fun startPlanning(task: String) {
         if (task.isBlank()) return
+        // 规划同样要调模型：配置缺失时直接给出可执行的结论，而不是先转一圈再报「规划出错」
+        val missing = configProblem()
+        if (missing != null) {
+            store.pendingTask = task
+            store.planStream.value = ""
+            store.planPhase.value = PlanPhase.Error(missing)
+            ui.log(com.phoneagent.domain.model.AgentLog.Level.ERROR, "未开始规划：$missing")
+            ui.pushFloating("配置未完成", "ERROR")
+            return
+        }
         store.pendingTask = task
         store.planStream.value = ""
         // 上一轮任务里 AI 说过的话先清掉：纯对话不会进 run()，靠它清就太晚了，
@@ -237,8 +255,16 @@ internal class PlanningFlow(
             messages = messages,
             // 温度 v0.1 文档：歧义检测+规划合并 = 0.3
             temperature = PLANNING_TEMPERATURE,
-            // 边思考边把增量内容实时显示到悬浮窗 + 通知
-            onRetry = { com.phoneagent.overlay.FloatingWindowService.resetThinking() },
+            // 边思考边把增量内容实时显示到悬浮窗 + 通知。
+            // 重试时同样把「在等什么」写进规划流：规划期没有步数进度，用户唯一的信号就是这段文本
+            onRetry = { reason, waitMs ->
+                com.phoneagent.overlay.FloatingWindowService.resetThinking()
+                store.planStream.value = if (waitMs > 0) {
+                    "（$reason，${(waitMs / 1000).coerceAtLeast(1)} 秒后重试…）"
+                } else {
+                    "（$reason…）"
+                }
+            },
             onDelta = { d ->
                 onDelta(d)
                 ui.pushThinking(delta = d)

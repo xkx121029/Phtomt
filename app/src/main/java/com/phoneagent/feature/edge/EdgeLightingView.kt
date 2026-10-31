@@ -61,10 +61,10 @@ class EdgeLightingView @JvmOverloads constructor(
     // 光带粗细缩放（由设置"光带粗细"换算，基准 glow 20dp）
     private var strokeScale = 1f
 
-    // 光晕配置
-    private val coreStrokeWidth = 5f
-    private val glowStrokeWidth = 20f
-    private val blurRadius = 14f
+    // 光晕配置（以「光带粗细」基准 20 换算：glow 20→32、core 5→9，整体加厚后边缘更成"带"而不是一根细线）
+    private val coreStrokeWidth = 9f
+    private val glowStrokeWidth = 32f
+    private val blurRadius = 18f
 
     fun setCalibration(
         top: Int,
@@ -80,7 +80,7 @@ class EdgeLightingView @JvmOverloads constructor(
         insetLeft = left * density
         insetRight = right * density
         cornerRadius = radius * density
-        strokeScale = (width / 20f).coerceIn(0.3f, 3f)
+        strokeScale = (width / 20f).coerceIn(0.3f, 4f)
         invalidate()
     }
 
@@ -138,11 +138,11 @@ class EdgeLightingView @JvmOverloads constructor(
     }
 
     /**
-     * 唯一的绘制实现：整圈彩色渐变边框 + 沿边框流动的光点。
+     * 唯一的绘制实现：整圈流动的彩色渐变边框（外层柔光 + 核心亮线）。
      *
-     * 任务运行时和设置页标定预览共用这一份代码——早先拆成 `drawRunningMode` / `drawPreviewMode`
-     * 两个分支，实际是「近乎透明的边框 + 几个光点」，预览却是「明亮完整的彩色边框」，
-     * 于是设置页调出来的样子跟任务里看到的根本不是同一个东西。现在预览即实际。
+     * 三层覆盖层同时在场时窗口 alpha 被压到 0.4，边框本身已经很通透了，
+     * 再叠离散的"光点"只会变成一圈醒目的色斑 —— 那些色点就是这样来的，已移除。
+     * 现在效果只由渐变本身沿边框流动来体现，预览与任务运行时是同一份代码。
      */
     private fun drawLighting(canvas: Canvas, rect: RectF, radius: Float) {
         val w = rect.width()
@@ -177,33 +177,6 @@ class EdgeLightingView @JvmOverloads constructor(
         paint.strokeWidth = coreStrokeWidth * strokeScale
         paint.alpha = 255
         drawSegmentedBorder(canvas, rect, radius, colorAtDist, totalPath)
-
-        // 3. 流动光点：沿边框匀速跑圈，预览与任务运行时是同一套位置/颜色算法
-        val cometCount = 5
-        for (i in 0 until cometCount) {
-            val offset = (progress + i.toFloat() / cometCount) % 1f
-            val distance = offset * totalPath
-            val pos = getPointOnBorder(rect, radius, distance)
-            val colorIndex = (offset * colorCycle.size).toInt() % colorCycle.size
-            val mainColor = colorCycle[colorIndex]
-
-            paint.style = Paint.Style.FILL
-            paint.shader = null
-
-            paint.color = mainColor
-            paint.maskFilter = BlurMaskFilter(14f * strokeScale, BlurMaskFilter.Blur.NORMAL)
-            paint.alpha = 40
-            canvas.drawCircle(pos.x, pos.y, 18f * strokeScale, paint)
-
-            paint.alpha = 100
-            canvas.drawCircle(pos.x, pos.y, 10f * strokeScale, paint)
-
-            paint.maskFilter = null
-            paint.alpha = 255
-            canvas.drawCircle(pos.x, pos.y, 5f * strokeScale, paint)
-
-            paint.style = Paint.Style.STROKE
-        }
 
         paint.shader = null
     }
@@ -371,86 +344,6 @@ class EdgeLightingView @JvmOverloads constructor(
     }
 
     /**
-     * 计算边框上指定距离的点坐标
-     */
-    private fun getPointOnBorder(rect: RectF, radius: Float, distance: Float): PointF {
-        val w = rect.width()
-        val h = rect.height()
-        val segTop = w - 2 * radius
-        val segRight = h - 2 * radius
-        val segBottom = w - 2 * radius
-        val segLeft = h - 2 * radius
-        val arcLength = (Math.PI * radius / 2).toFloat()
-
-        var d = distance
-
-        // 上边
-        if (d <= segTop) {
-            val t = d / segTop
-            return PointF(rect.left + radius + t * segTop, rect.top)
-        }
-        d -= segTop
-
-        // 右上角
-        if (d <= arcLength) {
-            val angle = -Math.PI / 2 + (d / arcLength) * (Math.PI / 2)
-            return PointF(
-                rect.right - radius + radius * kotlin.math.cos(angle.toFloat()),
-                rect.top + radius + radius * kotlin.math.sin(angle.toFloat())
-            )
-        }
-        d -= arcLength
-
-        // 右边
-        if (d <= segRight) {
-            val t = d / segRight
-            return PointF(rect.right, rect.top + radius + t * segRight)
-        }
-        d -= segRight
-
-        // 右下角
-        if (d <= arcLength) {
-            val angle = (d / arcLength) * (Math.PI / 2)
-            return PointF(
-                rect.right - radius + radius * kotlin.math.cos(angle.toFloat()),
-                rect.bottom - radius + radius * kotlin.math.sin(angle.toFloat())
-            )
-        }
-        d -= arcLength
-
-        // 下边
-        if (d <= segBottom) {
-            val t = d / segBottom
-            return PointF(rect.right - radius - t * segBottom, rect.bottom)
-        }
-        d -= segBottom
-
-        // 左下角
-        if (d <= arcLength) {
-            val angle = Math.PI / 2 + (d / arcLength) * (Math.PI / 2)
-            return PointF(
-                rect.left + radius + radius * kotlin.math.cos(angle.toFloat()),
-                rect.bottom - radius + radius * kotlin.math.sin(angle.toFloat())
-            )
-        }
-        d -= arcLength
-
-        // 左边
-        if (d <= segLeft) {
-            val t = d / segLeft
-            return PointF(rect.left, rect.bottom - radius - t * segLeft)
-        }
-        d -= segLeft
-
-        // 左上角
-        val angle = Math.PI + (d / arcLength) * (Math.PI / 2)
-        return PointF(
-            rect.left + radius + radius * kotlin.math.cos(angle.toFloat()),
-            rect.top + radius + radius * kotlin.math.sin(angle.toFloat())
-        )
-    }
-
-    /**
      * 颜色线性插值
      */
     private fun lerpColor(a: Int, b: Int, t: Float): Int {
@@ -464,6 +357,4 @@ class EdgeLightingView @JvmOverloads constructor(
 
         return Color.argb(al, r, g, bl)
     }
-
-    private data class PointF(val x: Float, val y: Float)
 }

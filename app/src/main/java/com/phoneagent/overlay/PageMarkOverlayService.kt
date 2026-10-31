@@ -5,12 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.PixelFormat
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import com.phoneagent.data.store.PageMemoryHotspot
@@ -52,32 +49,9 @@ class PageMarkOverlayService : Service() {
         if (markView != null) return
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         val view = PageMarkView(this)
-        params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
-            // 不拦截触摸（标记绝不挡住用户与真实控件的交互）、不抢焦点、允许绘制到系统栏区域
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 与 CursorOverlayService 同源修复：API 30+ 清空 fitInsetsTypes，
-            // 坐标系才从物理屏顶开始，与元素树/手势使用的物理坐标一致
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                fitInsetsTypes = 0
-            }
-            // 窗口不透明度压到 0.4：系统按多层覆盖层的组合不透明度判定，超过 0.8 就会丢弃穿透它们的用户触摸，
-            // 任务期间屏幕点不动（AI 的无障碍手势不受影响）。详见 EdgeLightingService.showOverlay。
-            alpha = OVERLAY_ALPHA
-        }
+        // 不拦截触摸（标记绝不挡住用户与真实控件的交互）、不抢焦点、坐标系从物理屏顶开始；
+        // 不透明度与「组合覆盖层不得超过 0.8」的口径统一收口在 OverlayWindowSpec
+        params = com.phoneagent.core.window.OverlayWindowSpec.passiveFullScreen(clearInsets = true)
         try {
             windowManager?.addView(view, params)
             markView = view
@@ -110,9 +84,6 @@ class PageMarkOverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
 
     companion object {
-        /** 窗口不透明度：多层覆盖层按组合不透明度判定（阈值 0.8），三层预算下每层取 0.4（见 showOverlay） */
-        private const val OVERLAY_ALPHA = 0.4f
-
         /** 待绘制的标记：挂载前暂存（服务还没起时先记下），挂载后直接刷到 View */
         @Volatile
         private var pendingMarks: List<PageMemoryHotspot> = emptyList()

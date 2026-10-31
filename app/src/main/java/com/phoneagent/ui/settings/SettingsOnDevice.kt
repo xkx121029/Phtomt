@@ -85,14 +85,14 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             tone = SettingsTone.Brand,
         ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                StatusRow("原生推理库", if (nativeOk) "可用" else "不可用（需 arm64 设备）")
+                SettingsStatusRow("原生推理库", if (nativeOk) "可用" else "不可用（需 arm64 设备）")
                 Spacer(Modifier.height(8.dp))
-                StatusRow("模型文件", if (modelPresent) "已下载" else "未下载")
+                SettingsStatusRow("模型文件", if (modelPresent) "已下载" else "未下载")
                 // 两个模型文件的本地体积：未下载时显示 0 B，下载中断时能看到已落盘的部分
-                StatusRow("主权重", formatBytes(fileStatus[NativeVisionEngine.TEXT_MODEL_FILE] ?: 0L))
-                StatusRow("视觉投影", formatBytes(fileStatus[NativeVisionEngine.MMPROJ_FILE] ?: 0L))
+                SettingsStatusRow("主权重", formatBytes(fileStatus[NativeVisionEngine.TEXT_MODEL_FILE] ?: 0L))
+                SettingsStatusRow("视觉投影", formatBytes(fileStatus[NativeVisionEngine.MMPROJ_FILE] ?: 0L))
                 Spacer(Modifier.height(8.dp))
-                StatusRow("内存加载", if (loaded) "已加载" else "未加载")
+                SettingsStatusRow("内存加载", if (loaded) "已加载" else "未加载")
             }
         }
 
@@ -227,27 +227,6 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
         }
 
         Spacer(Modifier.height(28.dp))
-    }
-}
-
-/** 状态行：左侧名称，右侧取值 */
-@Composable
-private fun StatusRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

@@ -3,6 +3,9 @@ package com.phoneagent.overlay
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.drawable.GradientDrawable
+import androidx.compose.ui.graphics.toArgb
+import com.phoneagent.ui.theme.DarkAppColors
+import com.phoneagent.ui.theme.LightAppColors
 
 /**
  * 悬浮窗 UI 设计令牌（Material 3 Expressive 质感，原生 View 实现）。
@@ -32,24 +35,26 @@ object FloatingUi {
 
     // 圆角（dp）：三层口径，与 ui/theme 的 AppRadii 同源（Hero 28 / Tile 14 / Chip 10 的胶囊化）
     // 同一块面板内只允许出现这三档，不许再混进 12 / 18 / 20 这类"感觉差不多"的数字——
-    // 圆角不一致时，读起来像几个不同来源的控件拼在一起
+    // 圆角不一致时，读起来像几个不同来源的控件拼在一起。
+    // 单位是 dp，[capsule] 内部按屏幕密度换算成 px，调用方不要再自己 dp() 一遍。
     const val RADIUS_CARD = 28f       // 第一层：顶层面板（状态卡 / 答疑选项卡 / App 底部浮层）
     const val RADIUS_PANEL = 18f      // 第二层：面板内的内层卡片（AI 详情 / 完成面板）
     const val RADIUS_TILE = 14f       // 第三层：选项行 / 输入框（对应 AppRadii.Tile）
     const val RADIUS_CHIP = 12f       // 状态卡头部的 26dp 小徽章（小尺寸下 12 已接近整圆）
     const val RADIUS_PILL = 999f      // 胶囊：出口按钮 / 徽章 —— 全圆，不参与上面的层级
 
-    // 窗口底色：应用主题色实色（与 ui/theme 的「玄青」品牌色同源）
-    const val BRAND = 0xFF0E7C66.toInt()            // 品牌主色
-    const val BRAND_DEEP = 0xFF0A5F4E.toInt()       // 深一档：按下态 / 细描边
+    // 窗口底色：直接取自 ui/theme 的主题色板（同一模块，直接引用），
+    // 不再手抄十六进制——改主题时悬浮窗自动跟着变，不会一边改了另一边还是老颜色
+    val BRAND: Int = LightAppColors.brand.toArgb()              // 品牌主色
+    val BRAND_DEEP: Int = 0xFF0A5F4E.toInt()                    // 深一档：按下态 / 细描边
 
     // 任务卡片底色：品牌色 85% 不透明度（0xD9）。
     // 不做到更透是刻意的：卡片坐在别的 App 画面之上，这块底色就是白字唯一的背景，
     // 85% 的玄青在任何底图上都压得住字。注意这里没有模糊可配，见类注释。
-    const val BRAND_GLASS = 0xD90E7C66.toInt()
+    val BRAND_GLASS: Int = (0xD9 shl 24) or (BRAND and 0xFFFFFF)
     /** 玻璃收边的细描边：只在浅色底图上才看得出来 */
     const val GLASS_EDGE = 0x2EFFFFFF.toInt()
-    const val ON_BRAND = 0xFFFFFFFF.toInt()         // 主题色底上的主文字
+    val ON_BRAND: Int = LightAppColors.onBrand.toArgb()         // 主题色底上的主文字
     const val ON_BRAND_SECONDARY = 0xFFC6E8DD.toInt()
     const val ON_BRAND_TERTIARY = 0xFF93C7B8.toInt()
     /** 主题色底上的状态层：只做层次，不改变窗口整体不透明度 */
@@ -59,25 +64,25 @@ object FloatingUi {
     // 内层卡片底色（AI 详情 / 交互 / 完成）：暖纸白实色，与 App 主体底色一致。
     // 浅底上一律用「实色 + 发丝描边」做层次，不再叠半透明黑（0x0F000000 那种）——
     // 叠层会让表面变成半透明，坐在别的 App 画面上时底色透出来，读起来脏
-    const val PANEL = 0xFFF7F6F3.toInt()
-    const val PANEL_SUNKEN = 0xFFE3E6E0.toInt()
+    val PANEL: Int = LightAppColors.surfaceBase.toArgb()
+    val PANEL_SUNKEN: Int = LightAppColors.surfaceSunken.toArgb()
     /** 浅底上的发丝描边：替代半透明叠层做层次，保证表面全不透明 */
     const val PANEL_EDGE = 0x141A1D1B.toInt()
 
     // 深色主题下的一整套对应色：内层卡片从暖纸白翻成近黑，文字同步翻白。
-    // 取值与 ui/theme 的 DarkAppColors 同源（surfaceBase / surfaceSunken / onSurfaceBase …），
+    // 取值直接取 ui/theme 的 DarkAppColors（surfaceBase / surfaceSunken / onSurfaceBase …），
     // 这样悬浮窗与 App 在同一个系统开关下呈现的是同一套黑白
-    const val PANEL_DARK = 0xFF121513.toInt()
-    const val PANEL_SUNKEN_DARK = 0xFF0C0F0D.toInt()
+    val PANEL_DARK: Int = DarkAppColors.surfaceBase.toArgb()
+    val PANEL_SUNKEN_DARK: Int = DarkAppColors.surfaceSunken.toArgb()
     /** 深底上的发丝描边：与浅色的 8% 黑同强度，换成 8% 白 */
     const val PANEL_EDGE_DARK = 0x14FFFFFF.toInt()
-    const val TEXT_PRIMARY_DARK = 0xFFE8EAE6.toInt()
-    const val TEXT_SECONDARY_DARK = 0xFFB7BDB6.toInt()
-    const val TEXT_TERTIARY_DARK = 0xFF8B928A.toInt()
+    val TEXT_PRIMARY_DARK: Int = DarkAppColors.onSurfaceBase.toArgb()
+    val TEXT_SECONDARY_DARK: Int = DarkAppColors.onSurfaceRaised.toArgb()
+    val TEXT_TERTIARY_DARK: Int = DarkAppColors.outlineStrong.toArgb()
     // 深色主题下的主色：与 DarkAppColors 同为「流萤青」，且底/字关系随之翻转
     // （深色下主色是亮青、压在上面的字是深墨）—— 深绿 #0E7C66 画在近黑面板上会糊掉
-    const val BRAND_DARK = 0xFF5FD9B4.toInt()
-    const val ON_BRAND_DARK = 0xFF04302A.toInt()
+    val BRAND_DARK: Int = DarkAppColors.brand.toArgb()
+    val ON_BRAND_DARK: Int = DarkAppColors.onBrand.toArgb()
 
     /**
      * 悬浮窗当前该用哪一套「黑 / 白」。
@@ -138,13 +143,13 @@ object FloatingUi {
         }
     }
 
-    // 文字（画在暖纸白内层卡片上）
-    const val TEXT_PRIMARY = 0xFF1A1D1B.toInt()
-    const val TEXT_SECONDARY = 0xFF4B514C.toInt()
-    const val TEXT_TERTIARY = 0xFF838A83.toInt()
+    // 文字（画在暖纸白内层卡片上），与主题的 onSurfaceBase / onSurfaceRaised / emptyStateText 同源
+    val TEXT_PRIMARY: Int = LightAppColors.onSurfaceBase.toArgb()
+    val TEXT_SECONDARY: Int = LightAppColors.onSurfaceRaised.toArgb()
+    val TEXT_TERTIARY: Int = LightAppColors.emptyStateText.toArgb()
 
     // 暖色辅色（与主题调色板一致），用于「助手」徽章
-    const val ACCENT_WARM = 0xFFB4632A.toInt()
+    val ACCENT_WARM: Int = LightAppColors.accentWarm.toArgb()
 
     // 阶段色（观察/思考/执行/完成/错误）——克制的语义色
     fun phaseColor(phase: String): Int = when (phase) {
@@ -156,12 +161,24 @@ object FloatingUi {
         else -> 0xFFF59E0B.toInt()
     }
 
-    /** 胶囊形背景（圆角可再放大） */
-    fun capsule(radius: Float = 999f, color: Int, stroke: Int? = null, strokeW: Int = 1): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = radius
-            setColor(color)
-            if (stroke != null) setStroke(strokeW, stroke)
-        }
+    /**
+     * 胶囊形背景。
+     *
+     * [radiusDp] 用 dp 声明（取上面 RADIUS_* 之一），这里按屏幕密度换算成 px 后交给
+     * GradientDrawable —— 它只认像素。此前调用方一半传 dp 值、一半自己再 dp() 一遍，
+     * 同一个 RADIUS_CARD 在外层面板上是 28dp、在内层卡片上却只有 28px，
+     * 两档圆角在不同屏幕上差出 3 倍；现在只在本函数里换算一次。
+     */
+    fun capsule(
+        context: Context,
+        radiusDp: Float = RADIUS_PILL,
+        color: Int,
+        stroke: Int? = null,
+        strokeW: Int = 1,
+    ): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = radiusDp * context.resources.displayMetrics.density
+        setColor(color)
+        if (stroke != null) setStroke(strokeW, stroke)
+    }
 }

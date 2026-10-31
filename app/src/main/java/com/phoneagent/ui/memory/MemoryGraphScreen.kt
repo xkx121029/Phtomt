@@ -74,9 +74,6 @@ import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
 import com.phoneagent.ui.theme.MemoryProfileSoft
 import com.phoneagent.ui.theme.MemoryRoot
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin

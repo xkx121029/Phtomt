@@ -1,8 +1,6 @@
 package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -29,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.coding.CodingRuntimeState
@@ -41,8 +37,6 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
-import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import org.koin.compose.koinInject
 
@@ -83,13 +77,13 @@ internal fun SettingsCoding(st: SettingsState, save: () -> Unit, onBack: () -> U
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                 when (val stt = runtimeState) {
                     is CodingRuntimeState.Installed -> {
-                        StatusRow("状态", "内置就绪")
+                        SettingsStatusRow("状态", "内置就绪")
                         Spacer(Modifier.height(8.dp))
-                        StatusRow("版本", "v${stt.versionName} (${stt.versionCode})")
+                        SettingsStatusRow("版本", "v${stt.versionName} (${stt.versionCode})")
                     }
 
                     is CodingRuntimeState.NotReady -> {
-                        StatusRow("状态", "未就绪")
+                        SettingsStatusRow("状态", "未就绪")
                         Spacer(Modifier.height(8.dp))
                         Text(
                             stt.reason,
@@ -120,11 +114,7 @@ internal fun SettingsCoding(st: SettingsState, save: () -> Unit, onBack: () -> U
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    when (st.codingApprovalMode) {
-                        "ask" -> "每个敏感工具都先在编码页的审批卡里等你确认"
-                        "bypass" -> "所有工具直接执行，不再询问（谨慎使用）"
-                        else -> "多数工具自动执行，高危动作仍会请求确认"
-                    },
+                    approvalModeHint(st.codingApprovalMode),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -191,58 +181,5 @@ internal fun SettingsCoding(st: SettingsState, save: () -> Unit, onBack: () -> U
         }
 
         Spacer(Modifier.height(28.dp))
-    }
-}
-
-/** 审批档位三选一分段控件：ask / risky / bypass */
-@Composable
-private fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
-    val modes = listOf(
-        "ask" to "询问",
-        "risky" to "默认放行",
-        "bypass" to "全自动",
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Chip))
-            .background(AppTheme.colors.surfaceRaised)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        modes.forEach { (id, label) ->
-            val selected = current == id
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(AppRadii.Chip))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary
-                        else androidx.compose.ui.graphics.Color.Transparent,
-                    )
-                    .clickable { onSelect(id) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
-                    color = if (selected) MaterialTheme.colorScheme.onPrimary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-/** 状态行：左侧名称，右侧取值 */
-@Composable
-private fun StatusRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
