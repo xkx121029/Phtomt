@@ -6,9 +6,242 @@
 
 ---
 
+## [v0.2.1248] — 2026-10-31
+
+### 新增
+
+- **单文件 HTML 交互式 UI 复刻**（`promo/app.html`）：按仓库里的 Compose 源码 1:1 复刻整套界面并可
+  真实交互——主页、对话、编码、操控（计划审批 / 执行 / 完成）、记忆图谱与页面记忆下钻、设置全套二级页、
+  技能与 MCP 管理、内置浏览器、文档阅读、测试工作台、调试页，以及开屏引导、协助浮层、
+  不可逆动作确认卡、语音录入浮层。零外部依赖，图标与插画全部内联 SVG，浏览器双击即开
+- **整机模拟外壳，去掉全部响应式断点**：整个应用装入 412×892 逻辑屏（434×914 机身 + 圆角 + 侧键 +
+  底部指示条），窗口尺寸变化只对整机等比缩放，不再按窗口宽度重排布局
+- **深浅主题 + 四套色板**：跟随系统深浅色，玄青 / 赭石 / 黛蓝 / 绛紫四套色板在「设置 → 主题」即时切换
+
+### 变更（本批一并发布的工作区改动）
+
+细节见下方 [未发布] 一节，这里只归纳方向：
+
+- **UI 宽屏布局重构**：导航形态改由可用宽高决定（常驻侧栏 / 底部悬浮条），正文收口到
+  `ContentMaxWidth`，设置页宽屏改「左分类 + 右详情」双栏，对话气泡按宽度限宽
+- **执行 / 感知链路性能优化**：语义 ID 分配改元素特征预计算、页面指纹去掉逐次格式化、脱敏加快捷通道、
+  正则全面预编译、截图按页面指纹复用、步后等待按动作类型取值
+- **执行链收尾与留痕**：抽出 `TaskFinalizer`，新增 `core/log/runCatchingLogged`，
+  执行通道设置快照化，语音助手探测规则下沉 `provider-api` 供主应用与 Provider 共用
+- **构建与质量闸门**：新增 `verifyProviderAssets`（Provider 资产指纹不一致即构建失败）与
+  `checkDetektBaseline`（基线只减不增），detekt 基线按现状重生成，补齐编码事件归约、
+  意图表闭合性等单测
+
 ## [未发布]
 
+### 变更
+
+- **拉取模型改为勾选入库**：端点里点「拉取模型」拿到服务端列表后直接弹勾选浮层（默认勾选全部新增项，
+  已入库的置灰不可选），只有勾中的模型才写进模型库。原先静默全量入库，一个端点几十上百个模型会
+  立刻把模型库塞爆、挑不动
+- **模型库收进二级页**：新增「云端模型 → 模型库」二级页（`SettingsModelCatalog`），筛选、按端点分组的
+  模型列表与能力探测都搬到这里；「云端模型」页只留一行入口与「N 个 · M 个端点」摘要。职责行换模型也
+  跳该页选择，不再弹模型列表浮层
+- **构建期闸门：Provider 资产新鲜度**：`assets/provider` 内的 APK 是构建产物直接入库，改了 `provider` /
+  `provider-api` 却忘了同步时，旧版 Provider 会被静默打进包。新增 `:app:verifyProviderAssets`，
+  在 `mergeDebugAssets` / `mergeReleaseAssets` 前比对源码指纹（`config/provider-assets/<variant>.sha256`），
+  不一致直接构建失败并提示执行 `:app:syncProviderAssets`；`syncProviderAssets` 完成时自动写入新指纹
+- **detekt 基线只减不增**：条目数记录在 `config/detekt/baseline-count.txt`，新增 `:app:checkDetektBaseline`
+  （已挂到 `check`、CI 单独跑一步）：追加豁免条目即失败，修掉问题后条目变少会自动回写更小的下限
+- **静默失败留痕**：新增 `core/log/runCatchingLogged`（行为与 `runCatching` 一致，失败时额外记一条带堆栈的
+  WARN 进 logcat 与调试页），替换执行链路核心路径的裸 `runCatching`（ExecutionCore 截图/唤醒助手/回车补发、
+  TaskLifecycle 端侧视觉开关）
+- **执行通道设置快照**：`ExecutionCore` 新增 `settingsSnapshot` 注入，每条 shell 命令不再各自挂起读一次
+  DataStore，改用主循环已读的任务级设置（读不到时回退实时读取）
+- **截图按页面指纹复用**：页面指纹与上一轮一致时复用上一帧 Bitmap（同时命中 `AiClient` 的 base64 缓存），
+  指纹变化立即重拍；任务 stop 时释放缓存，避免单例长期持有 8MB 级位图
+- **步后等待按动作类型取值**：`VerifyRules.stepSettleMs` 让 SAY / REMEMBER / DEVICE_QUERY 这类不碰界面的动作
+  只等 60ms，其余动作保持 400ms（原先是固定 `delay(400)`）
+- **Koin 具名注入**：`AgentEngine` 的 11 个同类型参数改为具名实参，构造顺序变动由编译器报错而不是静默错配
+- **文档校正**：README 与 `杂项/项目完整流程说明.md`（v2.2）按实际模块结构重写（engine 子包、`coding/`、
+  `feature/browser|assistant|notify|entry|voice`、模块划分表），修正代码规模与依赖版本
+
+### 重构
+
+- **平板 / 横屏布局整体重构**（导航、正文收口、设置双栏）
+  - **导航形态改由可用宽高决定，不再看方向**：`WindowWidthRail = 600dp` 且
+    `WindowHeightRail = 480dp` 时换成**常驻左侧侧栏**（`NavRail`），宽屏展开成「图标 + 文字」
+    （208dp）、中窄屏只留图标列（80dp）；否则仍是底部悬浮条。原 `FloatingNavRail`
+    （72dp 毛玻璃竖栏、条目图标上文字下）删除——侧栏是**占位**的常驻导航，内容在它旁边，
+    背后没有可模糊的东西，不该用毛玻璃
+  - **净空语义简化**：侧栏形态下 `LocalNavClearance` 一律为 0（页面压不到导航），
+    只有底部条形态才垫底部净空。Agent 页任务流与输入区不再手工避让 `start` 侧栏
+  - **正文收口唯一收口点**：`GlassHeaderScaffold` 在 `LocalIsExpanded`（≥ 840dp）时把正文列
+    收口到 `ContentMaxWidth = 900dp` 并居中，玻璃页眉同步让出两侧空档与正文对齐
+    （此前页眉通栏、标题飘在正文之外）；新增 `Modifier.contentColumn()` 供底部浮层
+    （Agent 输入区）与全屏阅读（`DocViewerScreen`）套用同一约束
+  - **设置页改为「左分类 + 右详情」双栏**（宽屏）：新增 `SettingsCatalogRail` /
+    `SettingsOverviewPane`，11 个二级页在双栏下不再画返回键（`LocalSettingsTwoPane`）；
+    设置入口定义收口成 `settingsGroups()` 一份数据（图标 / 文案 / 摘要取数），
+    主页分区卡与左栏共用，杜绝两处漂移；单栏与双栏共用同一个 `SettingsPageContent`
+    以免路由分叉。双栏默认落在第一个分类（不是空白总览）
+  - **首页 / 对话**：首页左右分栏改按宽度判定（平板竖屏同样够宽）；对话页 AI 气泡宽屏
+    限宽 720dp、用户气泡 420dp，不再拉成横贯整屏的色带
+  - 新增 `LocalIsExpanded` / `LocalRailNav` / `WindowWidthExpanded` / `WindowWidthRail` /
+    `WindowHeightRail` / `ContentMaxWidth`，横竖屏与宽屏判定继续只在宿主读一次
+- **抽出 `TaskFinalizer`**（`engine/runtime/TaskFinalizer.kt`）：任务记忆终态、模板健康回写、记忆提炼从
+  `AgentEngine` 迁移出去。收尾所需状态都在 `EngineStore` 上，无需回调钩子；引擎只保留「何时收尾」的判断，
+  「先落终态、再做耗时提炼」的时序不变
+- **语音助手探测与选包规则下沉 `provider-api`**：`VoiceAssistantDetector`（系统入口优先 / 厂商兜底 /
+  候选上限）与 `pickPreferredPackage` 原先在主应用与 Provider 各有一份，改一处漏一处就会让「算出来的助手」
+  和「真正拉起的助手」不是同一个；现在两端共用同一实现，纯函数部分可直接 JVM 单测
+- **意图表闭合性自检**（`IntentTypeCoverageTest`）：反射比对「源码常量 = `ALL`」、`TO_ACTION` 键合法、
+  `ALL` = 转译表 ∪ 新增的 `IntentType.VIA_OTHER_CHANNELS`。新增意图忘了接转译层会直接红，
+  而不是等 AI 输出该意图时才得到「未知意图」。这是替代「把所有 intent 改成枚举」的低风险方案
+  （`intent` 是 AI 的 JSON 输出，枚举化会把未知值判定挪进宽容的隐式分支）
+
+### 性能
+
+- **全链路热点优化（行为等价，728 个单测全绿 + detekt 通过）**
+  - 感知层：`PageTypeRules` 英文词正则改缓存、倒计时三项判定合并为单次遍历；
+    `PageAnnotator.assignSemanticIds` 由「26 类各扫一遍 + 每谓词重复算 label」改为「元素特征预计算一次」，
+    单步 label 计算从 26×N 降到 N；`AgentEngine` 语义回填不再额外建索引 Map
+  - 指纹：`PageFingerprint` 去掉 32 次 `String.format`，`MessageDigest` 改线程级复用
+  - 脱敏：`DataSanitizer` 增加「不足 11 位数字直接返回」快速通道（三条规则最短也要 11 位），单步省数百次正则扫描
+  - 规则/执行：`ShellCommands`、`ShellRules`、`AppNameResolver`、`McpRetryPolicy`、`McpRules`、
+    `AdContentFilter`、`DocumentEngine`、`VirtualDisplayAgent`、`LogExporter` 的正则全部预编译；
+    shell 坐标切分与首 token 提取改为手写扫描；`IntentResolver.pickBestByLabel` 单遍历完成两级匹配
+  - 流式：`HumanTranslator` 正则按 pattern 缓存；悬浮窗返回区改 `StringBuilder` 累积（消除 O(n²) 拼接）
+  - UI：Markdown 行级正则预编译；新增 `core/text/TimeFormats` 统一缓存格式化器，清理 8 个文件的未使用日期导入
+
+### 变更
+
+- **静态检查闸门恢复**：detekt 基线在先前多次文件搬移后已失效（1145 条存量告警全部外溢），
+  先修掉本轮新增代码的告警，再按项目既定口径「基线只固化今天已存在的问题」重生成 `config/detekt/baseline.xml`；
+  现在 `:app:detekt` 与 `:app:compileDebugKotlin` 同时通过，后续改动重新受闸门约束
+- **页面路径动作文案下沉**：`PageMemoryRecorder` 内联的「意图 → 动作文案」when（复杂度 15）抽到
+  `domain/rules/PageActionLabels`（纯函数），新增 `PageActionLabelsTest` 5 例锁住措辞与 id 反查口径
+- **警示卡与选项行去重**：`NeedsUserItem` 与 `PendingActionConfirmCard` 共用 `AlertCard` 外壳；
+  `ThemeOption` 与 `PaletteOption` 共用 `SelectableOption`（差异只由预览块 lambda 提供）
+- **修复设置页权限文件缺失导入**：`SettingsPermissions` 引用 `background / clip / RoundedCornerShape / FontFamily`
+  但未导入，导致主源码无法编译；补齐导入（并行会话遗留）
+- **记忆存储单实例**：`AgentEngine` 改为接收 AppModule 注入的 `MemoryStore` 单例（与记忆页共用同一实例），
+  不再各自持有一份；页面记忆 / 路径边新增进程内缓存（写入后更新、schema 迁移时失效），
+  任务执行中每步查页面命中的全量 JSON 反序列化降到「任务首次读取一次」
+- **SSE 解析单点**：`AiClient` 决策流与规划流的逐行 SSE 解析抽成 `pumpSse`（adapter 原生帧 / OpenAI data 帧
+  同一口径），两处调用点各自的重试、401/403/404 快速失败、空正文回退策略保持不变；新增 `AiSsePumpTest` 5 例
+- **决策文本拼装下沉**：`lastStepResultText` 与 `taskMemoryText` 移入 `engine/runtime/StepTexts`（纯函数、可单测），
+  `AgentEngine` 只负责取数；新增 `StepTextsTest` 7 例锁住中英三态文案与阶段进度口径
+- **覆盖层窗口参数收口**：光效 / 虚拟光标 / 页面标记三层原本各写一份全屏参数（TYPE 兼容分支、4 个 FLAG、
+  0.4 组合不透明度），统一到 `core/window/OverlayWindowSpec`；`EdgeLightingService` 三处标定参数解析合并为一个方法
+- **相位中文名收口**：任务流、底部状态条、空消息兜底三份 `phaseWord` 合并为 `agentPhaseWord()`
+- **消除重复实现**：`AiClient` 内与 `EngineRules` 一字不差的 JSON 提取（52 行）删除，统一调用 `EngineRules.extractJsonObject`
+- **新增回归测试**：`PageAnnotatorTest`（6 例，锁语义 id 判定口径）、`DataSanitizerTest`（5 例，锁脱敏与快速通道边界）、
+  `AiSsePumpTest`（5 例，锁 SSE 帧解析）、`StepTextsTest`（7 例，锁决策文本拼装）、
+  `UiElementDescribeTest`（3 例，锁提示词里的元素行格式）
+
+### 新增
+
+- **编码页：工作区 × 多会话，按工作区隔离对话与记忆**
+  - 工作区既可以是 HPA 私有目录（`files/workspaces/<id>`），也可以是用户用系统选择器挑的设备目录；
+    每个工作区里自动建 `.happyac/`：`sessions.json`（会话索引）、`sessions/<id>.json`（对话）、
+    `agent/`（agent 的 state：上下文、记忆、用量账本）。agent 的 cwd 与 `HAPPY_ACA_STATE_DIR`
+    都指向该工作区，所以切工作区就是切一整套记忆
+  - 一个工作区可开多个会话，会话面板提供**列表 / 图谱**双视图（图谱把工作区画成中心节点、会话环绕），
+    点节点或列表项即切会话，可删除；会话标题自动取首条用户消息
+  - 编码页改用独立连接（`CodingAgentBridge.uiClient`），操控页委托的编码任务固定走 engine 会话，
+    两条连接按 `sessionId` 分流事件，互不冲掉对方对话
+  - 升级迁移：老的 `files/state` 一次性拷进默认工作区的 `.happyac/agent`（后台线程，标记文件防重）；
+    老的 `happy_ACA`/内置工作区目录登记成可选工作区，不移动文件
+  - 新增 `MANAGE_EXTERNAL_STORAGE`，用于 agent 按真实路径读写用户选定的目录；未授权时引导到系统设置页
+- **编码页顶部新增工作区行与「打开工作区目录」**
+  - 左侧文件夹图标直接调起文件管理器定位到工作区（仅共享存储内的路径；私有目录会给出页内提示），
+    右侧「切换」打开工作区面板
+
+### 变更
+
+- **三页输入框高度统一为 48dp，文字垂直居中**
+  - 操控页、对话页、编码页统一为「40dp 动作键 + 上下 4dp」= 单行 48dp；此前是
+    操控页 56dp（上下 8dp）、对话页 64dp（48dp 图标按钮 + 上下 8dp）、编码页各不相同
+  - 垂直对齐统一为居中：之前对话/编码页按 Bottom 对齐，单行文字压在 48dp 按钮底部显得偏下；
+    操控页文字在更高的容器里显得偏上
+- **记忆图谱改为「分类 → 条目」垂直列布局**
+  - 条目不再塞进两个各约 50° 的窄扇形（半径固定 0.16，条目一多就叠在一起），
+    改为在 0.10~0.90 纵轴上等距铺开，左右两侧对称，间距只由条目数决定
+  - 画布高度随条目数增长（每条约 64dp，最高 900dp，外层页面可滚动）；连线改为
+    根 → 分类 → 该分类的条目，层级关系一眼可见
+- **边缘光带整体加厚，并放宽「光带粗细」上限**
+  - 基础厚度：光带 20 → 32、核心亮线 5 → 9、柔光半径 14 → 18（`EdgeLightingView`）。
+    去掉离散光点后只剩渐变边框，原厚度在 0.4 窗口不透明度下太细，更像一条细线而不是「带」
+  - 设置里的「光带粗细」可调上限 50 → 80、缩放上限 3× → 4×，需要更厚时不必再改代码
+
 ### 修复
+
+- **无障碍通道「假装成功」导致 AI 反复无效重试（执行通道不能就地换路）**
+  - 现象：部分 ROM 的无障碍权限不支持拉起应用（`startActivity` 被后台启动限制静默拦截，
+    接口照样返回成功），引擎判定「已打开」后一直在无障碍通道上重试，任务卡死
+  - 根因：`ProviderActionExecutor.launchApp` 只看 `startActivity` 有没有抛异常，不校验前台；
+    `ExecutionCore` 也只认接口返回值，没有「这一步到底有没有交付出去」的概念，
+    更没有任何换通道的机制——失败就是失败，AI 只能拿着同一条无效通道一直试
+  - 修复：引入「未交付」语义（`VerifyResult.notDelivered`），把「动作没发出去」与
+    「已发出去但页面没变化」严格分开。只有前者允许换通道重试，避免对发送/提交这类
+    已有副作用的动作重复执行
+  - `launchAppRobust`：启动应用改为三级兜底并逐步确认前台（无障碍 → `monkey -p pkg 1`
+    shell → 本应用持悬浮窗权限直启），任一级确认到前台即成功
+  - `channelFallback`：点击/长按/滑动/滚动/输入/按键/深链在「未交付」时自动改走 shell
+    (`input tap|swipe|text|keyevent`、`am start`) 或本应用直启；无障碍服务整体不可用时
+    直接在入口换路，不再把动作一路判失败
+  - 反向兜底：真实 shell 通道失败时改由无障碍翻译执行，成功则把输出改写为通道切换说明
+  - `LAUNCH_SETTLE_MS` 800 → 1200ms（冷启动常超过 800ms，原来的窗口会把成功误判为失败）；
+    同时修正无障碍滑动执行里 `sr` 方向的 x 终点钳制（误用屏幕高度，越界时坐标被压到错误位置）
+  - 文档：`杂项/项目完整流程说明.md` 新增「6.1 运行期通道切换（失败即换路）」，
+    列出启动 / 深链 / 设备动作 / shell 命令的首试与切换顺序
+- **点击「编码」页直接闪退**
+  - 现象：从底部导航点「编码」，页面还没来得及显示就整个应用崩溃
+  - 根因：`CodingScreen` 用 `rememberSaveable { mutableStateOf(CodingWorkspaces.active(context)) }`
+    保存当前工作区；`CodingWorkspaces.Entry` 是带 `File`/路径字段的 data class，进不了 Bundle。
+    Compose 在首次组合注册保存值时即抛
+    `IllegalArgumentException: MutableState containing Entry(...) cannot be saved using the current SaveableStateRegistry`
+    （栈帧 `SaveableHolder.register → requireCanBeSaved`）
+  - 修复：`rememberSaveable` 只存 `workspaceId: String`，真实的 `Entry` 由工作区列表
+    `remember(workspaces, workspaceId)` 按 id 还原；切工作区与删除活动工作区两处赋值同步改为写 id。
+    Tab 来回切换仍能还原上一次的工作区，且不再有不可序列化对象进入保存状态
+  - 验证：x86_64 模拟器（临时去掉 arm64 原生库以便安装）先复现到 FATAL EXCEPTION 栈，
+    修复后重装：编码页正常渲染、工作区/会话面板可用、Tab 反复切换无崩溃，`logcat -b crash` 为空
+- **新手教程反复自己弹出（不是只在首次启动显示）**
+  - 现象：已经走完引导，之后仍然经常冷启动就看到引导页
+  - 根因：`AppSettings.update()` 会把整个 `Settings` 回写一遍，而设置页/模型页的表单
+    构造 `Settings` 时没有 `onboardingDone` 字段 → 取默认值 `false`，把已完成的 `true`
+    覆盖掉；设置页又是自动保存，于是「改任何设置 → 下次冷启动重新开始教程」
+  - 修复：`update()` 不再写 `ONBOARDING_DONE`；新增 `markOnboardingDone()` 只改这一个键，
+    `MainViewModel.completeOnboarding()` 改调它
+- **编码页删除运行时状态框**
+  - 移除输入区上方的 runtime 状态条（安装/版本提示），入口统一留在「设置 → 编码」；
+    运行时未就绪时改为禁用输入并给出占位提示
+- **编码页没有流式输出（网关把 SSE 攒成整份 JSON）**
+  - 现象：发消息后页面停在「编码中…」，一个字的回答都看不到，最后也没有任何内容落地
+  - 根因：部分中转网关只看请求头 `Accept`，不认 `stream:true`，会把整段回复缓冲成一份
+    `application/json`；`parseSSE` 只认 `data:` 行，这种回包一个 chunk 都解析不出来 →
+    provider 没有 text 事件 → 界面无从显示（且不报错，看起来就是"没有输出"）
+  - 修复：`providers/openai-compatible.js` 请求显式带 `accept: text/event-stream`；
+    回包 `content-type` 不是 SSE 时按普通 completion 兜底，把正文/工具调用翻译成同一套
+    事件（文字一次性吐出，工具循环照样能跑）
+  - 兜底：`AgentClient.sendPrompt()` 收尾时若本轮没有任何 assistant 正文落地，
+    用回包里的完整 `text` 补一条消息——事件丢了也不会出现「消息发出去了但没有回答」
+- **编码页第一次发消息报 `unknown session`**
+  - 现象：新工作区/新会话里发第一条消息，红色提示 `unknown session: u_xxx`，消息发不出去
+  - 根因：编码页的会话 id 由界面按工作区生成（`u_<hex>`，落在 `.happyac/sessions.json`），
+    但 host 的 `prompt` 只认自己内存里已有的会话，未知 id 直接抛错 → 这个 id 永远建不出来
+  - 修复：`agent-core/packages/agent-core/src/rpc.js` 的 `prompt` 分支改为「未知 sessionId
+    就地按该 id 创建会话」；客户端自带的会话 id 因此在 host 重启 / 切工作区后也能直接续上
+  - 注意：`app/src/main/assets/agent-host/` 是 `bundleHost` 从 `../happy_ACA` 单向同步的产物，
+    不能直接改 assets 里的 js（下次构建会被覆盖），改动必须落在 happy_ACA 源仓库
+
+- **编码请求失败后卡在「编码中…」，停止键无效、发不出新消息**
+  - 现象：模型请求报 `network error … fetch failed` 后，红色错误已显示，但底部一直转
+    「编码中…」，点「停止」没反应，输入框也锁着
+  - 根因：provider 抛错时 `agent.prompt()` 直接抛出，host 只回一个 `type:"error"` 回包，
+    **不会补 `done` 事件**；客户端原先不认领 prompt 的回包 → `busy` 永远停在 true。
+    此时 host 侧的 abortController 已在 `finally` 里删掉，`cancel` 只会返回
+    `no active run`（且这份回包也没人读），于是停止键看着毫无作用
+  - 修复：`AgentClient.sendPrompt()` 认领本轮 prompt 回包，成功/失败都把 `busy` 放下；
+    `cancel()` 也认领回包，`cancelled=false`（没有活动 run）时自行退出「编码中」。
+    顺带在回包里继续认领 `sessionId` / `runId`，避免 pending 先消费回包后丢掉会话 id
 
 - **Termux 通道永远停在「未授权」（权限申请对象搞错了）**
   - 现象：点「授予执行权限」没有任何授权框出现，状态一直是不授权；Termux 明明装了也连不上
@@ -153,6 +386,48 @@
     总步数已知时显示「第 3/8 步」，长任务名或长状态不再把操作按钮顶出卡片
   - 完成态整条状态行让位给打勾面板（原先只隐藏步骤文字，徽章与两个操作仍留在卡上），
     新任务开始时由 `resetPanel` 一并恢复
+
+- **UI 层全量走查：去重、统一落点、补齐语义**
+  - **三页输入面的主操作收敛为一颗 `ComposerActionButton`**：操控 / 对话 / 编码原先各写一套
+    40dp 方块发送键，禁用色三处各不相同（下沉底 / onSurfaceVariant / `Color.Gray`）。现统一为
+    「可用 = 品牌底 + onBrand；禁用 = 下沉底 + outlineStrong」，边长由 `ComposerActionSize` 单一给出
+  - **全屏二级页出口收敛为 `HomeBackButton`**：测试 / 调试 / 技能 / 记忆 / 浏览器 / 文档阅读
+    原先各复制一份 56dp 大圆角按钮。按钮文案不再写死「返回主页」，改由宿主按**实际落点**传入
+    （`返回主页` 或 `返回操控/对话/…`）——此前从操控页打开记忆或全屏文档，按钮写着「主页」却回到操控页
+  - **记忆页默认按 Tab 打开**：原先 Agent 页的「记忆」入口固定走全屏二级页，与底部记忆 Tab
+    形成两套导航；现优先切到记忆 Tab（用户把该 Tab 隐藏时才回退为全屏页）
+  - **悬浮任务卡片的色板与圆角改为引用主题令牌**：`FloatingUi` 不再手抄十六进制色值，
+    `BRAND / PANEL / TEXT_* / ACCENT_WARM` 直接取自 `LightAppColors` 与 `DarkAppColors`；
+    `capsule()` 改为接收 dp 并按屏幕密度换算（此前调用方一半传 dp 一倍传 px，
+    同一个 `RADIUS_CARD` 在内层卡片上只有 28px，跨屏差出三倍）
+  - **设置页同名组件去重**：`StatusRow` 两处私有实现合并为 `SettingsStatusRow`；
+    浏览器页的 `EmptyHint` 改名 `BrowserEmptyHint`，与通用空状态区分
+
+### 修复
+
+- **切换底部 Tab 后页面状态丢失**
+  - 现象：在对话页问一句、切到别的 Tab 再切回来，自己发的提问没了，只剩 AI 的回答；
+    操控页的输入草稿、选中的历史任务、编码页选中的工作区/会话也同样被清空
+  - 根因：底部 Tab 是手写路由，`AnimatedContent` 离开组合即销毁页面，页面里的
+    `rememberSaveable` 没有容器承接，自然一起丢掉
+  - 修复：`MainActivity` 用 `rememberSaveableStateHolder()` 按 Tab id 包住页面内容
+    （`tabState.SaveableStateProvider(pageId)`），切走再回来还原；对话 / 编码页的草稿、
+    工作区 / 会话选择一并从 `remember` 改为 `rememberSaveable`
+- **语音「松手即发」发出的是旧草稿**
+  - 现象：语音识别成功后直接发送，偶尔发出空消息或上一句内容
+  - 根因：composer 先 `onDraftChange(识别文本)` 再调宿主 `onSend()`，而宿主读的是
+    闭包里上一帧的 `draft`
+  - 修复：`AgentComposer.onSend` 改为 `(String) -> Unit`，由 composer 把**当帧算出的文本**
+    直接传给宿主；宿主 `draft = ""` 只负责清空
+- **语音演示页的 5 处系统 Toast 清零**
+  - 取消发送 / 说话太短 / 启动失败 / 识别报错 / 未识别，统一改为页内一行提示（2.2s 自动消失，
+    自下而上淡入），不再弹系统胶囊
+- **输入面开关对读屏不可用**
+  - 「自动检查」这类 40×22dp 细行开关原为 `clickable` 的裸 Box，读屏念不出「开关」，
+    也没有开关角色。改为 `toggleable(role = Role.Switch)`，双击即可切换
+- **打字机在停顿期空转**
+  - 原实现 `while (true) { … delay(40) }`，文本追平后仍每 40ms 醒一次（与注释「无新增不空转」
+    不符）。改为 `snapshotFlow` 驱动：只在有积压的字符时 tick，追平即挂起等下一段流式文本
 
 ---
 
