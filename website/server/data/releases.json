@@ -1,5 +1,62 @@
 [
   {
+    "version": "v0.2.1248",
+    "build": 1248,
+    "channel": "beta",
+    "date": "2026-10-31",
+    "published": true,
+    "title": "测试版",
+    "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+    "apk": {
+      "file": "HappyAgent-0.2.1248.apk",
+      "size": 69587050,
+      "sizeText": "66 MB",
+      "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb\r",
+      "updatedAt": "2026-10-31T13:50:46.566Z"
+    },
+    "notes": [
+      "DEV 构建"
+    ]
+  },
+  {
+    "version": "v0.2.1231",
+    "build": 1231,
+    "channel": "dev",
+    "date": "2026-10-29",
+    "published": true,
+    "title": "开发版",
+    "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+    "apk": {
+      "file": "HappyAgent-0.2.1231.apk",
+      "size": 69430446,
+      "sizeText": "66 MB",
+      "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150\r",
+      "updatedAt": "2026-10-29T12:38:53.649Z"
+    },
+    "notes": [
+      "DEV 构建"
+    ]
+  },
+  {
+    "version": "v0.2.1128",
+    "build": 1128,
+    "channel": "dev",
+    "date": "2026-10-26",
+    "published": true,
+    "title": "开发版",
+    "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+    "apk": {
+      "file": "HappyAgent-0.2.1128.apk",
+      "size": 69400718,
+      "sizeText": "66 MB",
+      "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031\r",
+      "updatedAt": "2026-10-26T13:49:09.315Z"
+    },
+    "notes": [
+      "开发版构建"
+    ]
+  },
+  {
     "version": "v0.1.384",
     "build": 384,
     "channel": "stable",

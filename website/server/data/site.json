@@ -4,9 +4,9 @@
   "slug": "phtomt",
   "tagline": "让手机自己动手",
   "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。",
-  "version": "0.1.384",
-  "buildNumber": 384,
-  "updatedAt": "2026-09-20T13:40:27.690Z",
+  "version": "0.2.1248",
+  "buildNumber": 1248,
+  "updatedAt": "2026-10-31T13:50:46.570Z",
   "links": {
     "github": "https://github.com/xkx121029/Phtomt",
     "gitee": "https://gitee.com/xkx1029/Phtomt",

@@ -37,6 +37,9 @@ jobs:
       - name: Detekt (static analysis)
         run: ./gradlew detekt --stacktrace
 
+      - name: Detekt baseline guard (fail if exemptions grow)
+        run: ./gradlew :app:checkDetektBaseline --stacktrace
+
       - name: Unit Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
@@ -63,7 +66,9 @@ jobs:
         run: ./gradlew :app:lintDebug --stacktrace
 
       - name: Assemble Debug
-        run: ./gradlew :app:assembleDebug --stacktrace
+        # 版本号由 CI 注入：run_number 全局递增且可追溯到本次工作流，
+        # 不再依赖构建时回写 version.properties（见 app/build.gradle.kts 的 loadBuildNumber）
+        run: ./gradlew :app:assembleDebug -PbuildNumber=${{ github.run_number }} --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

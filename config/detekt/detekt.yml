@@ -1,0 +1,25 @@
+# detekt 规则微调（叠加在默认规则集之上，见 app/build.gradle.kts 的 detekt 配置）
+#
+# 原则：只关掉「在本项目里必然误报或毫无价值」的规则，其余靠 baseline 管存量。
+# 关掉一条规则后，baseline.xml 中对应的历史条目会一并删除，避免基线里堆着
+# 永远匹配不上的死条目、把「基线还剩多少真问题」这件事搅浑。
+
+naming:
+  # Compose 约定组件函数用 PascalCase；默认规则按 Java 方法命名（小驼峰）判定，
+  # 等于让全项目的 @Composable 全部违规。关掉，命名规范交给 Compose 自己的约定。
+  FunctionNaming:
+    active: false
+
+style:
+  # 文件末尾换行对 Kotlin 编译与工具链没有任何影响，却贡献了上百条基线。
+  # 与其让基线替一堆无害差异背书，不如不检。
+  NewLineAtEndOfFile:
+    active: false
+
+  # 数字字面量在 UI（dp / alpha / 动画时长）与协议代码里到处都是，硬阈值只产生噪音。
+  # 这里放宽常见取值，保留「明显该抽常量」的场景。
+  MagicNumber:
+    ignoreNumbers: ['-1', '0', '1', '2']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotated: ['Composable']
