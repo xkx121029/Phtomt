@@ -28,18 +28,18 @@
 
 | 类别 | 技术 | 版本 |
 |------|------|------|
-| 语言 | Kotlin | 2.0.21 |
-| UI | Jetpack Compose | 2024.12.01 |
-| 设计 | Material 3 | 1.3.1 |
-| 架构 | MVVM + 状态流 | StateFlow / Co-routines |
+| 语言 | Kotlin | 2.4.20 |
+| UI | Jetpack Compose | 2026.06.01 (BOM) |
+| 设计 | Material 3 | 1.4.0 |
+| 架构 | MVVM + 状态流 | StateFlow / Coroutines |
 | 依赖注入 | Koin | 4.0.0 |
 | 网络 | OkHttp | 4.12.0 |
 | 序列化 | kotlinx-serialization | 1.7.3 |
 | 存储 | DataStore | 1.1.1 |
-| 本地 OCR | External Vision App（IPC/AIDL） | 外挂端侧 3B 模型 + ML Kit（已从主程序移除以减小包体） |
-| ADB 执行 | Shizuku | 高权限 Shell 通道 |
+| 本地视觉 | 端侧 3B（GGUF + JNI）+ ML Kit 中文 OCR 兜底 | 双通路 |
+| 权限通道 | 独立 Provider APK（内置 Shizuku server / 无线 ADB / Termux） | AIDL 跨进程 |
 | 最低 SDK | Android 8.0 (API 26) | — |
-| 目标 SDK | Android 15 (API 35) | — |
+| 目标 SDK | Android 16 (API 36) | — |
 
 ## 项目结构
 
@@ -59,6 +59,8 @@ happy_phone agent/
 │       │   │   │   └── SensitivePageDetector.kt   # 敏感页检测 + DataSanitizer 脱敏
 │       │   │   ├── text/
 │       │   │   │   └── HumanTranslator.kt         # 动作 / 错误 / 置信度 → 人话
+│       │   │   ├── log/AppLog.kt                  # 统一日志门面（logcat + 应用内调试页同源）
+│       │   │   ├── window/OverlayWindowSpec.kt    # 悬浮窗规格（尺寸/位置/类型）
 │       │   │   └── notify/
 │       │   │       ├── TaskProgressNotifier.kt    # 任务进度通知
 │       │   │       ├── AdbPairingNotifier.kt      # 无线配对通知栏向导
@@ -104,11 +106,16 @@ happy_phone agent/
 │       │   │       ├── ExternalVisionProvider.kt  # 外挂视觉服务 IPC 调用方
 │       │   │       └── DetectedControl.kt
 │       │   ├── engine/                     # Agent 编排
-│       │   │   ├── AgentEngine.kt                 # ReAct 主循环
+│       │   │   ├── AgentEngine.kt                 # ReAct 主循环（约 3390 行，其余阶段已拆子包）
 │       │   │   ├── AgentPrompts.kt                # 系统 / 规划 / 决策提示词
+│       │   │   ├── runtime/                       # EngineStore / TaskLifecycle / UserGate / UiBridge / TelemetryRecorder / TaskFinalizer
+│       │   │   ├── planning/PlanningFlow.kt       # 歧义检测 / 澄清 / 计划生成 / 批准
+│       │   │   ├── decision/                      # 决策配置 / 决策策略 / 视觉结果缓存
 │       │   │   ├── execution/
 │       │   │   │   ├── IntentTranslator.kt        # 意图 → 端侧动作转译层
 │       │   │   │   ├── IntentResolver.kt
+│       │   │   │   ├── ExecutionCore.kt           # 动作落地（带验证执行 / shell / 端点直调）
+│       │   │   │   ├── ShellRules.kt              # 通道选择唯一判据
 │       │   │   │   ├── AppNameResolver.kt
 │       │   │   │   ├── CapabilityManager.kt
 │       │   │   │   └── VerifiedClickExecutor.kt   # 带验证的点击执行器
@@ -116,10 +123,15 @@ happy_phone agent/
 │       │   │   │   ├── PageAnnotator.kt           # 语义 ID 标注
 │       │   │   │   ├── ControlTreeBuilder.kt
 │       │   │   │   └── PageFingerprint.kt
+│       │   │   ├── context/ContextInjector.kt     # 记忆/规则/环境事实注入提示词
+│       │   │   ├── memory/PageMemoryRecorder.kt   # 页面记忆采集
+│       │   │   ├── connect/AiTools.kt             # 连接测试 / 模型列表 / 能力探测
+│       │   │   ├── skill/SkillRunner.kt           # 技能 / 宏 / MCP 执行
+│       │   │   ├── coding/CodingAgentBridge.kt    # vibecoding 委托桥
 │       │   │   ├── network/
 │       │   │   │   └── CloudAgent.kt
-│       │   │   └── prompt/
-│       │   │       └── PromptTemplate.kt          # 模板 + 变量引擎
+│       │   │   └── prompt/                        # 提示词装配（Assembler / Block / Bodies / Catalog）
+│       │   ├── coding/                     # 端侧编码 agent（Node host / 进程传输 / 工作区 / 编辑器）
 │       │   ├── overlay/                    # 悬浮窗
 │       │   │   ├── FloatingWindowService.kt
 │       │   │   ├── FloatingUi.kt
@@ -146,6 +158,15 @@ happy_phone agent/
 │       │   │   ├── edge/
 │       │   │   │   ├── EdgeLightingService.kt
 │       │   │   │   └── EdgeLightingView.kt
+│       │   │   ├── browser/                       # 内置浏览器通道（WebView DOM 脚本，browse_* 意图）
+│       │   │   │   ├── BrowserChannel.kt / BrowserExecutor.kt
+│       │   │   │   ├── BrowserBridge.kt / HeadlessWebHost.kt
+│       │   │   │   └── script/                    # 导航 / 交互 / 读取脚本
+│       │   │   ├── assistant/                     # 语音助手角色 + Assist 上下文（含 VoiceInteractionService）
+│       │   │   ├── notify/                        # 通知监听与通知流
+│       │   │   ├── entry/                         # 任务入口 + 通知栏控制接收器
+│       │   │   ├── update/                        # 官网版本查询与安装
+│       │   │   ├── voice/                         # 语音输入通道
 │       │   │   └── test/
 │       │   │       ├── TestEngine.kt / TestModels.kt
 │       │   │       ├── TestPresets.kt
@@ -169,6 +190,12 @@ happy_phone agent/
 │       │   └── di/
 │       │       └── AppModule.kt                   # Koin 依赖注入
 │       └── res/                    # 资源文件
+├── provider/                       # 独立权限服务 APK（无障碍 + 内置 Shizuku server + 无线 ADB + Termux）
+├── provider-api/                   # 跨进程契约（AIDL IDeviceProvider + Parcelable）+ 两端共用的事实层（助手探测/选包规则）
+├── third_party/shizuku/            # vendor 自 RikkaApps/Shizuku 的 9 个 Gradle 模块
+├── config/
+│   ├── detekt/                     # detekt 规则 + 基线（只减不增）
+│   └── provider-assets/            # Provider 资产源码指纹（构建时校验）
 ├── gradle/
 │   ├── libs.versions.toml          # 版本目录
 │   └── wrapper/
@@ -185,9 +212,9 @@ happy_phone agent/
 
 - Android Studio Hedgehog 或更新版本
 - JDK 17
-- Android SDK 35
+- Android SDK 36
 - 一台 Android 手机（需开启开发者选项）
-- （可选）安装 Shizuku 以启用 ADB 高权限执行
+- 无需单独安装 Shizuku：内置 server 随 Provider 应用一起安装
 
 ### 2. 构建步骤
 
@@ -203,6 +230,15 @@ cd happy_phone-agent
 # app/build/outputs/apk/debug/app-debug.apk
 ```
 
+> **改了 `provider` / `provider-api` 之后**：主应用包内的 Provider APK 是构建产物直接入库的，
+> 必须重新打包同步（`./gradlew :app:syncProviderAssets`）。
+> 忘了同步不会静默通过——`mergeDebugAssets` / `mergeReleaseAssets` 会先比对 Provider 源码指纹
+> （`config/provider-assets/*.sha256`），不一致直接构建失败并提示执行同步，避免把旧版 Provider 打进包里。
+
+> **detekt 基线只减不增**：`config/detekt/baseline.xml` 是存量问题的豁免名单，
+> 条目数记录在 `config/detekt/baseline-count.txt`。往基线里追加条目会让 `:app:checkDetektBaseline`
+> （已挂到 `check`）失败，必须真正修掉问题；修掉后条目变少会自动回写更小的下限。
+
 ### 3. 安装与配置
 
 1. 安装 APK 到手机
@@ -216,6 +252,23 @@ cd happy_phone-agent
 3. 在 **设置** 页面配置 AI 模型（API Base URL、API Key、Model Name）
 4. 点击 **测试连接** 验证模型可用性
 5. 开始使用！
+
+## 在线 UI 演示
+
+不想装设备先看界面，可以直接打开 [promo/app.html](promo/app.html) —— 一份**零依赖的单文件**交互式复刻：
+浏览器双击即开，图标与插画全为内联 SVG，不联网、不引任何 CDN。
+
+- **整机外壳**：整个应用被装进 412×892 的逻辑屏（434×914 机身 + 圆角 + 侧键 + 底部指示条），
+  窗口变化只做整机等比缩放，不做响应式重排——看到的版式与真机一致
+- **页面覆盖**：主页、对话、编码、操控（计划审批 / 执行 / 完成）、记忆图谱与页面记忆下钻、
+  设置全套二级页、技能与 MCP 管理、内置浏览器、文档阅读、测试工作台、调试页，
+  以及开屏引导、协助浮层、不可逆动作确认卡、语音录入浮层
+- **主题与色板**：跟随系统深浅色，内置四套色板（玄青 / 赭石 / 黛蓝 / 绛紫），
+  在「设置 → 主题」里切换即时生效
+- **与源码对齐**：设计令牌取自 `Color.kt` / `Theme.kt` / `Type.kt` / `Motion.kt`，
+  页面结构与各 `ui/` 下的 Compose 源码一一对应，用于在没有真机时评审 UI
+
+同目录下 `promo/index.html`、`promo/ui-film.html` 为宣传片分镜页面（演示视频不入库）。
 
 ## 核心模块详解
 
@@ -275,12 +328,18 @@ AI 不再需要记忆复杂的 ADB 语法，只需使用简洁的命名命令：
 - 高德地图：地图首页、路线规划、附近
 - 支持 URI 深链 > Intent Action > 包名直达的降级策略
 
-### LocalVisionEngine — 本地 OCR
+### NativeVisionEngine — 端侧视觉（JNI + 3B，OCR 兜底）
 
-基于 Google ML Kit 的端侧文字识别：
-- 支持中文 Text Recognition
-- 返回归一化坐标（cx, cy）供视觉定位使用
-- 离线运行，无网络延迟
+`device/vision/` 下是两个引擎，按可用性自动降级：
+
+- **NativeVisionEngine**：进程内直跑 Qwen2.5-VL-3B（GGUF + mmproj），经 JNI 垫片
+  `libvisionbridge` 调用 `libllama` / `libmtmd`；返回控件坐标与用途描述，原生层带 120s 推理看门狗
+- **LocalDetector**：ML Kit 中文 OCR，文字区域聚类成控件并按关键词推断类型；
+  在模型未下载、加载失败或推理超时时由 NativeVisionEngine 自动回退
+- 两者对上层暴露同一份 `DetectedControl`，云端视觉模型不可用时仍能完成定位
+
+> 早期版本曾有一个 `LocalVisionEngine`（纯 ML Kit OCR），该实现已并入
+> `LocalDetector`，类名不再存在——README 与代码以此处为准。
 
 ### DocumentEngine — 文档结果
 
