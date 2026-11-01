@@ -50,11 +50,11 @@ curl -s -X POST "$BASE/api/admin/login" \
 | GET | `/api/stats` | 下载统计：总量 / 分版本 / 近 14 天 |
 | GET | `/api/routes` | 站点路由表与端点清单 |
 | GET | `/api/openapi` | OpenAPI 3.1 规范（机器可读） |
-| GET | `/api/download/latest` | 重定向到最新版 APK |
+| GET | `/api/download/latest` | 重定向到最新版 APK（中枢启用时 302 到签名直链） |
 | GET | `/api/download/:version` | 下载指定版本 APK（计入统计） |
 | GET | `/api/update/check` | 客户端检查更新（频道 + 版本判定） |
-| GET | `/api/update/download/:version` | 客户端下载更新（优先蓝奏云镜像，失败回落官网） |
-| GET | `/apk/:file` | APK 静态直出（带 Range 与缓存） |
+| GET | `/api/update/download/:version` | 客户端下载更新（优先蓝奏云镜像，其次中枢，最后官网本地） |
+| GET | `/apk/:file` | APK 直出；中枢启用时 302 到签名直链，否则本地静态文件 |
 
 ### 客户端自动更新
 
@@ -81,7 +81,7 @@ curl -s "$BASE/api/update/check?channel=beta&version=0.2.780&build=780"
 
 响应字段：`channel` / `clientVersion` / `clientBuild` / `hasUpdate` / `latest` / `download`。`download.url` 恒为 `/api/update/download/:version`，客户端不必理解镜像细节；`download.mirror` 取 `lanzou` 或 `origin`，`shareUrl` / `password` 仅用于界面展示来源。
 
-`/api/update/download/:version` 命中蓝奏云镜像时由服务端取回 zip、解包后直出 APK 字节（响应头 `X-Update-Source: lanzou`）；镜像不可用则静默回落到官网磁盘上的那份（`X-Update-Source: origin`），并记一条服务端日志。
+`/api/update/download/:version` 命中蓝奏云镜像时由服务端取回 zip、解包后直出 APK 字节（响应头 `X-Update-Source: lanzou`）；镜像未启用或解析失败时，若配置了 happy-hub 且包体已在中枢，会 302 到中枢签名直链（`X-Update-Source: hub`）；最后才回落官网本地文件（`X-Update-Source: origin`），并记一条服务端日志。
 
 ## 管理端点
 
@@ -246,6 +246,22 @@ curl -s "$BASE/api/stats"            # 下载统计
 | `lanzou.json` | 蓝奏云账号与镜像开关（独立文件，不入内容集合） |
 
 APK 文件放在 `public/apk/`。写入接口会先写临时文件再改名，避免中途失败留下半截 JSON。
+
+### happy-hub 文件中枢
+
+配置以下环境变量后，后台上传 APK 时会同步一份到中枢，官网下载直接 302 到中枢签名直链：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `HUB_URL` | 空 | 中枢地址，如 `http://192.168.2.16:8090` |
+| `HUB_TOKEN` | 空 | 官网应用令牌，在 hub 管理台创建应用时一次性返回 |
+| `HUB_BUCKET` | `packages` | 存放包体的桶，首次上传会自动创建 |
+| `HUB_PREFIX` | `apk` | 对象键前缀，最终键为 `apk/<文件名>`；留空则直接用文件名 |
+
+- `POST /api/admin/apk` 的 201 响应新增 `hub` 字段（`objectId` / `sha256` / `size` / `deduped`）；上传失败时返回 `hub_error`，包体仍保留在本地，下载自动回落本地文件。
+- `/api/download/*`、`/api/update/download/*`、`/apk/*` 在中枢有对应对象时返回 302，字节流量不经过本服务。
+- `DELETE /api/admin/apk/:file` 会同时删除中枢对象；中枢不可用时只记日志，不影响删除结果。
+- 接入前已经上传过的本地包不会自动迁移，重新上传一次同一个文件即可写入中枢（中枢按 sha256 去重，不会多占空间）。
 
 ## 静态导出
 

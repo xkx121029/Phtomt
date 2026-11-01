@@ -8,6 +8,12 @@ import { checkPassword, issueToken, requireAdmin } from '../lib/auth.js'
 import * as credentials from '../lib/credentials.js'
 import * as lanzou from '../lib/lanzou.js'
 import {
+  hubDeleteApk,
+  hubEnabled,
+  hubPutApk,
+  hubSummary
+} from '../lib/hub.js'
+import {
   apkInfo,
   apkPath,
   audit,
@@ -101,6 +107,7 @@ adminRouter.get('/overview', requireAdmin, (_req, res) => {
     latest: releases.slice().sort((a, b) => compareVersion(a.version, b.version)).pop() || null,
     stats: store.read('stats'),
     storage: { apkBytes: totalBytes, apkText: humanSize(totalBytes) },
+    hub: hubSummary(),
     apkFiles,
     recent: store.read('audit').slice(0, 12),
     dataDir: path.relative(config.dataDir, config.dataDir) || '.',
@@ -367,7 +374,7 @@ adminRouter.get('/apk', requireAdmin, (_req, res) => {
 })
 
 adminRouter.post('/apk', requireAdmin, (req, res) => {
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
       const tooBig = err.code === 'LIMIT_FILE_SIZE'
       return fail(
@@ -379,6 +386,26 @@ adminRouter.post('/apk', requireAdmin, (req, res) => {
     }
     if (!req.file) return fail(res, 400, 'no_file', '请求里没有 file 字段')
     const info = apkInfo(req.file.filename)
+
+    // 先把包体同步到文件中枢：上传成功时下载接口就能 302 到签名直链。
+    // 中枢不可用不阻断上传，官网继续用本地磁盘上的这份。
+    let hub = null
+    let hubError = ''
+    if (hubEnabled() && info) {
+      try {
+        const remote = await hubPutApk(apkPath(req.file.filename), req.file.filename)
+        hub = {
+          objectId: remote.id,
+          sha256: remote.sha256 || '',
+          size: remote.size || info.size,
+          deduped: Boolean(remote.deduped)
+        }
+      } catch (e) {
+        hubError = e?.message || '文件中枢上传失败'
+        console.error(`[hub] 上传 ${req.file.filename} 失败：${hubError}`)
+      }
+    }
+
     audit(req, 'upload', `apk/${req.file.filename}`, `上传 APK（${info?.sizeText}）`)
     // 上传即自动镜像到蓝奏云：打包上传要几十秒，不能卡住上传响应，异步跑并在登记表里跟踪结果
     const mirror = lanzou.loadConfig()
@@ -395,7 +422,10 @@ adminRouter.post('/apk', requireAdmin, (req, res) => {
           )
         )
     }
-    res.status(201).json(info)
+
+    const body = { ...info, hub }
+    if (hubError) body.hub_error = `${hubError}，下载将回退本地文件`
+    res.status(201).json(body)
   })
 })
 
@@ -496,6 +526,14 @@ adminRouter.delete('/apk/:file', requireAdmin, (req, res) => {
   fs.unlinkSync(full)
   // 文件没了，镜像登记也一并清掉，否则更新接口会把客户端引到一个已失效的分享页
   lanzou.removeMirror(path.basename(full))
+  // 中枢对象同步回收；失败只记日志，不阻断删除响应
+  if (hubEnabled()) {
+    hubDeleteApk(path.basename(full))
+      .then((removed) => {
+        if (removed) console.log(`[hub] 已回收 ${path.basename(full)} 的中枢对象`)
+      })
+      .catch((err) => console.error(`[hub] 回收 ${path.basename(full)} 失败：${err.message}`))
+  }
   audit(req, 'delete', `apk/${path.basename(full)}`, '删除 APK 文件')
   res.json({ ok: true })
 })

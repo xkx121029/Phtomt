@@ -18,6 +18,11 @@ services:
       SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:5180}
       MAX_APK_MB: ${MAX_APK_MB:-200}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # 可选：包体存到 happy-hub 后，下载直接 302 到签名直链
+      HUB_URL: ${HUB_URL:-}
+      HUB_TOKEN: ${HUB_TOKEN:-}
+      HUB_BUCKET: ${HUB_BUCKET:-packages}
+      HUB_PREFIX: ${HUB_PREFIX:-apk}
 
     volumes:
       # 内容与 APK 都落在这两个卷里，重建容器不会丢

@@ -10,6 +10,7 @@ import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
 import { renderHtml } from './lib/htmlShell.js'
+import { hubDownloadUrl, hubEnabled } from './lib/hub.js'
 
 const app = express()
 
@@ -47,6 +48,24 @@ app.get('/api/openapi', (req, res) => {
 })
 
 // ---------- APK 静态直出 ----------
+
+// 包体在文件中枢时直接跳转签名直链，本地文件只作为中枢故障时的兜底。
+app.get('/apk/:file', async (req, res, next) => {
+  const file = path.basename(req.params.file)
+  if (file !== req.params.file || !/\.apk$/i.test(file)) return next()
+  if (hubEnabled()) {
+    try {
+      const url = await hubDownloadUrl(file, 900)
+      if (url) {
+        res.setHeader('Cache-Control', 'no-store')
+        return res.redirect(302, url)
+      }
+    } catch (err) {
+      console.warn(`[apk] 中枢签名失败，回落本地文件：${err.message}`)
+    }
+  }
+  return next()
+})
 
 // 运行时上传的包写在 public/apk，与构建产物解耦：重新构建前端不会丢包。
 app.use(

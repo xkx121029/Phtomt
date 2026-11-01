@@ -1,11 +1,30 @@
 import fs from 'node:fs'
 import { Router } from 'express'
 import { apkPath, fail, findRelease, latestRelease, recordDownload } from '../lib/helpers.js'
+import { hubDownloadUrl, hubEnabled } from '../lib/hub.js'
 
 export const downloadRouter = Router()
 
-function send(req, res, release) {
-  const full = apkPath(release.apk?.file)
+async function send(req, res, release) {
+  const file = release.apk?.file
+  const full = apkPath(file)
+
+  // 包体在中枢：只做 302，下载流量不经过官网服务；签名直链默认 15 分钟有效
+  if (hubEnabled() && file) {
+    try {
+      const url = await hubDownloadUrl(file, 900)
+      if (url) {
+        recordDownload(release.version)
+        res.setHeader('X-Release-Version', release.version)
+        if (release.apk?.sha256) res.setHeader('X-Checksum-Sha256', release.apk.sha256)
+        return res.redirect(302, url)
+      }
+    } catch (err) {
+      // 中枢故障时静默回落本地文件，保证官网下载可用
+      console.warn(`[download] 中枢签名失败，回落本地文件：${err.message}`)
+    }
+  }
+
   if (!full || !fs.existsSync(full)) {
     return fail(res, 404, 'apk_missing', `版本 ${release.version} 的安装包尚未上传`)
   }

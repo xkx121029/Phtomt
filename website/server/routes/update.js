@@ -10,6 +10,7 @@ import {
 } from '../lib/helpers.js'
 import { buildOf, normalizeChannel, pickUpdate, latestVisible } from '../lib/update.js'
 import * as lanzou from '../lib/lanzou.js'
+import { hubDownloadUrl, hubEnabled } from '../lib/hub.js'
 import { originOf } from '../config.js'
 
 /**
@@ -94,10 +95,7 @@ updateRouter.get('/download/:version', async (req, res) => {
     return fail(res, 404, 'not_found', `未找到可下载的版本 ${req.params.version}`)
   }
   const full = apkPath(release.apk.file)
-  if (!full || !fs.existsSync(full)) {
-    return fail(res, 404, 'apk_missing', `版本 ${release.version} 的安装包尚未上传`)
-  }
-  recordDownload(release.version)
+  const hasLocal = Boolean(full && fs.existsSync(full))
 
   const fileName = `HappyAgent-${release.version.replace(/^v/i, '')}.apk`
   const headers = (info) => {
@@ -108,11 +106,13 @@ updateRouter.get('/download/:version', async (req, res) => {
     if (release.apk?.sha256) res.setHeader('X-Checksum-Sha256', release.apk.sha256)
   }
 
+  // 蓝奏云镜像优先：它能绕开官网带宽；本地文件缺失时这条链路无从打包，直接跳过
   const cfg = lanzou.loadConfig()
   const mirror = lanzou.getMirror(release.apk.file)
-  if (cfg.enabled && cfg.preferMirror && mirror?.shareUrl) {
+  if (hasLocal && cfg.enabled && cfg.preferMirror && mirror?.shareUrl) {
     try {
       const { content } = await lanzou.fetchMirrorApk(release.apk.file, full)
+      recordDownload(release.version)
       headers('lanzou')
       return res.end(content)
     } catch (err) {
@@ -121,6 +121,24 @@ updateRouter.get('/download/:version', async (req, res) => {
     }
   }
 
+  // 包体在中枢：直接 302 到签名直链，客户端只需跟随跳转
+  if (hubEnabled()) {
+    try {
+      const url = await hubDownloadUrl(release.apk.file, 900)
+      if (url) {
+        recordDownload(release.version)
+        headers('hub')
+        return res.redirect(302, url)
+      }
+    } catch (err) {
+      console.warn(`[update] 中枢签名失败，回落本地文件：${err.message}`)
+    }
+  }
+
+  if (!hasLocal) {
+    return fail(res, 404, 'apk_missing', `版本 ${release.version} 的安装包尚未上传`)
+  }
+  recordDownload(release.version)
   headers('origin')
   return res.sendFile(full)
 })
