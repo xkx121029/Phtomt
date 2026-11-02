@@ -5,12 +5,24 @@ import { applySiteMeta } from '../lib/siteMeta.js'
  *
  * 两条运行路径：
  *  - 有后端（Express 托管 / Vite 代理）：所有内容走 /api/*，后台可写。
- *  - 纯静态导出（GitHub Pages）：没有后端，读操作回落到构建期快照，
- *    写操作直接抛错——后台会据此显示「当前为静态站，无法编辑」。
+ *  - 静态导出：没有后端时读操作回落到构建期快照、写操作直接抛错；
+ *    若构建时注入了 VITE_API_BASE（GitHub Pages 回连主站），则照常走真实接口，
+ *    仅在接口不可达时回落到快照。
  */
 
 const TOKEN_KEY = 'phtomt-admin-token'
+/** 构建期注入的主站地址：静态托管（GitHub Pages）靠它回连后端 */
+const remoteApiBase = String(import.meta.env.VITE_API_BASE || '').trim().replace(/\/$/, '')
 export const isStaticBuild = Boolean(__STATIC_EXPORT__)
+/** 静态导出但配置了主站地址：读写真接口，只有接口不可达才回快照 */
+export const hasRemoteApi = Boolean(remoteApiBase)
+/** 纯静态、没有任何后端：读走快照，写操作与问答直接拒绝 */
+export const staticOnly = isStaticBuild && !hasRemoteApi
+
+/** 接口根地址（未配置时为空串，即同源） */
+export function apiBaseUrl() {
+  return remoteApiBase
+}
 
 /**
  * 构建期内容快照（216KB）。
@@ -61,7 +73,7 @@ export function setToken(token) {
   }
 }
 
-const base = () => import.meta.env.VITE_API_BASE || ''
+const base = () => remoteApiBase
 
 async function request(path, { method = 'GET', body, auth = false } = {}) {
   const headers = {}
@@ -137,7 +149,7 @@ export const assistant = {
    * @returns {Promise<{text:string, sources:string[], chars:number}>}
    */
   async chat(messages, { onDelta, signal } = {}) {
-    if (isStaticBuild) throw new ApiError('当前是静态站点，没有可用的问答后端', 0, 'static')
+    if (staticOnly) throw new ApiError('当前是静态站点，没有可用的问答后端', 0, 'static')
 
     let res
     try {
@@ -213,7 +225,7 @@ export const assistant = {
  * 静态站直接返回快照；有后端时若请求失败也回落到快照，页面不至于白屏。
  */
 async function read(path, pick) {
-  if (isStaticBuild) return pick(await loadSnapshot())
+  if (staticOnly) return pick(await loadSnapshot())
   try {
     return await api.get(path)
   } catch (err) {

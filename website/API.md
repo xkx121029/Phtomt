@@ -266,3 +266,14 @@ APK 文件放在 `public/apk/`。写入接口会先写临时文件再改名，�
 ## 静态导出
 
 `npm run build:static` 会把 `server/data` 烘成前端快照 `src/data/fallback.js`（由 `scripts/snapshot.mjs` 生成，勿手工编辑），供 GitHub Pages / Gitee Pages 这类没有后端的部署使用。快照里不含管理端点，也不含任何令牌。
+
+构建时若注入 `VITE_API_BASE`（例如 `https://hpa.linshuxu.us.kg`），静态站会直接请求主站的真实接口，更新日志、发布信息与问答都实时同步；接口不可达（网络失败或 5xx）时自动回落到快照，页面不会白屏。
+
+跨域回连需要主站放行来源，否则浏览器会拦截读请求：
+
+```bash
+# 主站（Cloudflare 等）环境变量
+CORS_ORIGINS=https://xkx121029.github.io
+```
+
+未配置 `VITE_API_BASE` 时行为不变：读快照、隐藏写操作与问答入口。

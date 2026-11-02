@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import { ApiError, assistant, isStaticBuild } from '../api/client.js'
+import { ApiError, assistant, staticOnly } from '../api/client.js'
 import router from '../router/index.js'
 import { splitNavs } from '../lib/navMark.js'
 
@@ -27,6 +27,8 @@ const status = ref({ enabled: false, name: '项目助手', greeting: '', suggest
 const sending = ref(false)
 const probed = ref(false)
 const lastError = ref('')
+/** 探测请求本身失败（主站不可达），与「主站明确说没启用」区分开 */
+const unreachable = ref(false)
 
 let controller = null
 let seq = 0
@@ -34,7 +36,7 @@ let restored = false
 let saveTimer = null
 let lastNav = { path: '', at: 0 }
 
-const available = computed(() => !isStaticBuild && status.value.enabled)
+const available = computed(() => !staticOnly && status.value.enabled)
 
 // ---------- 本地留痕 ----------
 
@@ -104,7 +106,7 @@ function restore() {
 // ---------- 状态 ----------
 
 async function loadStatus(force = false) {
-  if (isStaticBuild || (probed.value && !force)) return status.value
+  if (staticOnly || (probed.value && !force)) return status.value
   try {
     const next = await assistant.status()
     status.value = {
@@ -114,9 +116,11 @@ async function loadStatus(force = false) {
       suggestions: Array.isArray(next?.suggestions) ? next.suggestions : [],
       guide: Boolean(next?.guide)
     }
+    unreachable.value = false
   } catch {
     // 探测失败按「未启用」处理：拿不到状态时不该凭空长出一个入口
     status.value = { ...status.value, enabled: false, suggestions: [], guide: false }
+    unreachable.value = true
   } finally {
     probed.value = true
   }
@@ -281,6 +285,7 @@ export function useAssistant() {
     sending,
     probed,
     lastError,
+    unreachable,
     available,
     ask,
     stop,

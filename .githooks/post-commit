@@ -1,0 +1,15 @@
+#!/bin/sh
+# 提交后自动把当前提交推送到 nightly（gitee 远程配了 Gitee + GitHub 双推送地址）。
+# 推送失败不阻断提交流程，稍后可手动执行：git push gitee HEAD:nightly
+if ! git config --get remote.gitee.url >/dev/null 2>&1; then
+    exit 0
+fi
+
+head_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [ "$head_branch" = "nightly" ]; then
+    git push gitee nightly >/dev/null 2>&1 || echo "[hook] nightly 推送失败，请稍后手动执行：git push gitee nightly"
+else
+    git push gitee "HEAD:nightly" >/dev/null 2>&1 || echo "[hook] 推送 nightly 失败，请稍后手动执行：git push gitee HEAD:nightly"
+fi
+
+exit 0

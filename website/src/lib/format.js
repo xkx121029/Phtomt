@@ -1,4 +1,4 @@
-import { isStaticBuild } from '../api/client.js'
+import { apiBaseUrl, staticOnly } from '../api/client.js'
 import { channelLabels, sectionTones } from './siteMeta.js'
 
 export function formatDate(input) {
@@ -39,8 +39,8 @@ export function compactNumber(value) {
 export function downloadUrl(release, site) {
   const fallback = site?.links?.releases || site?.links?.github || '#'
   if (!release?.apk) return fallback
-  if (isStaticBuild) return `${import.meta.env.BASE_URL}apk/${release.apk.file}`
-  return `/api/download/${encodeURIComponent(release.version)}`
+  if (staticOnly) return `${import.meta.env.BASE_URL}apk/${release.apk.file}`
+  return `${apiBaseUrl()}/api/download/${encodeURIComponent(release.version)}`
 }
 
 export function isExternalDownload(release) {

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { ApiError, api, isStaticBuild } from '../../api/client.js'
+import { ApiError, api, staticOnly } from '../../api/client.js'
 
 /**
  * 集合 CRUD 的公共逻辑。
@@ -26,7 +26,7 @@ export function useCollection(name, idKey) {
   }
 
   async function load() {
-    if (isStaticBuild) {
+    if (staticOnly) {
       error.value = '当前是静态构建，没有可写的后端。请在部署了 Node 服务的环境下使用后台。'
       return
     }

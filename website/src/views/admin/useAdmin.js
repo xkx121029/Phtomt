@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { ApiError, api, getToken, isStaticBuild, setToken } from '../../api/client.js'
+import { ApiError, api, getToken, setToken, staticOnly } from '../../api/client.js'
 
 /**
  * 后台登录态。
@@ -11,12 +11,12 @@ export const authed = ref(Boolean(getToken()))
 export const checking = ref(authed.value)
 export const loginError = ref('')
 
-export const staticBlocked = isStaticBuild
+export const staticBlocked = staticOnly
 
-export const canWrite = computed(() => authed.value && !isStaticBuild)
+export const canWrite = computed(() => authed.value && !staticOnly)
 
 export async function ensureSession() {
-  if (isStaticBuild) {
+  if (staticOnly) {
     checking.value = false
     return
   }

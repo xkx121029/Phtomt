@@ -44,6 +44,10 @@ jobs:
 
       - name: Build (snapshot + static export)
         working-directory: website
+        env:
+          # 静态站回连主站后端：更新日志 / 发布信息 / 问答都走真实接口，
+          # 接口不可达时前端自动回落到构建期快照。可用仓库变量 SITE_API_BASE 覆盖。
+          VITE_API_BASE: ${{ vars.SITE_API_BASE || 'https://hpa.linshuxu.us.kg' }}
         run: npm run build:static
 
       - name: Configure Pages
