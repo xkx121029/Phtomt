@@ -2,10 +2,14 @@ package com.phoneagent.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -76,7 +82,12 @@ fun toolStatusStyle(
 }
 
 /** 一个工具在卡片上的身份：图标 + 中文名。两页的卡片标题、图标、图标连排都从这里取 */
-data class ToolIdentity(val icon: ImageVector, val label: String)
+data class ToolIdentity(
+    val icon: ImageVector,
+    val label: String,
+    /** 参数/输出是否按等宽正文排版（命令类工具有此标记，避免页面自己再列一遍工具名） */
+    val monospace: Boolean = false,
+)
 
 /**
  * Agent 侧工具（按动作类型识别）。
@@ -131,7 +142,12 @@ fun codingToolIdentity(name: String?): ToolIdentity = ToolIdentity(
         else -> AppIcons.Terminal
     },
     label = CodingToolNames.label(name),
+    // 命令类工具的参数与输出必须等宽照排（Markdown 会把 * 与 - 当格式吃掉）
+    monospace = name in CommandTools,
 )
+
+/** 命令类工具：参数与回传输出按等宽排版 */
+private val CommandTools = setOf("run_command", "bash", "shell")
 
 /**
  * 工具图标方块：卡片左侧识别位。
@@ -251,4 +267,86 @@ fun ToolIconStrip(
             )
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 执行证据块：Agent 页的"命令/输出/原始数据"与编码页的"参数/执行结果"
+// 此前各写一套容器（圆角、底色、内边距、标题字重各自硬编），这里收成同一份。
+// ---------------------------------------------------------------------------
+
+/** 证据块的容器：下沉底色 + Tile 圆角 + 统一内边距 */
+@Composable
+fun ToolEvidenceBlock(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = AppTheme.colors
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Tile))
+            .background(colors.surfaceSunken)
+            .padding(AppSpacing.Md),
+        content = content,
+    )
+}
+
+/** 证据块的小标题：等宽/普通正文共用这一层字重与颜色 */
+@Composable
+fun ToolEvidenceTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+        color = AppTheme.colors.onSurfaceRaised,
+    )
+}
+
+/** 证据块的正文：默认纯文本；[monospace] 用于命令/输出原文 */
+@Composable
+fun ToolEvidenceBody(
+    text: String,
+    modifier: Modifier = Modifier,
+    monospace: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    Text(
+        text = text,
+        style = if (monospace) {
+            MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+        } else {
+            MaterialTheme.typography.bodySmall
+        },
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+
+/** 一组「小标题 + 正文」，多段证据（执行的命令 / 输出）直接按顺序拼进同一个容器 */
+@Composable
+fun ToolEvidenceSection(
+    title: String,
+    body: String,
+    monospace: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    ToolEvidenceTitle(title)
+    Spacer(Modifier.height(AppSpacing.Xs))
+    ToolEvidenceBody(body, monospace = monospace, maxLines = maxLines)
+}
+
+/** 耗时的统一口径：只有跑完（`null` / 0 视为未完成）才给数字，运行中的跳数读起来是噪声 */
+fun toolTimingText(durationMs: Long?): String? =
+    durationMs?.takeIf { it > 0 }?.let { formatDuration(it) }
+
+/** 卡片正文里的耗时脚注：Agent 页与编码页共用字号与弱化色 */
+@Composable
+fun ToolTimingLabel(timing: String, modifier: Modifier = Modifier) {
+    Text(
+        text = "耗时 $timing",
+        style = MaterialTheme.typography.labelSmall,
+        color = AppTheme.colors.onSurfaceRaised,
+        modifier = modifier,
+    )
 }

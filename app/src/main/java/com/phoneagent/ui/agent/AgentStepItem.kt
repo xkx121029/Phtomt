@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,14 +32,17 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.ToolEvidenceBlock
+import com.phoneagent.ui.components.ToolEvidenceBody
+import com.phoneagent.ui.components.ToolEvidenceSection
+import com.phoneagent.ui.components.ToolEvidenceTitle
 import com.phoneagent.ui.components.ToolRunState
 import com.phoneagent.ui.components.agentToolIdentity
-import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.components.looksLikeMarkdown
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.components.toolStatusStyle
+import com.phoneagent.ui.components.toolTimingText
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -245,44 +246,14 @@ internal fun ToolStepRow(
  */
 @Composable
 private fun CommandBlock(command: String, output: String) {
-    val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Tile))
-            .background(colors.surfaceSunken)
-            .padding(AppSpacing.Md),
-    ) {
+    // 容器/标题/正文统一来自 ToolAtoms，与编码页"完整执行内容"同一套排版
+    ToolEvidenceBlock {
         if (command.isNotBlank()) {
-            Text(
-                text = "执行的命令",
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.onSurfaceRaised,
-            )
-            Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = command,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ToolEvidenceSection(title = "执行的命令", body = command, maxLines = 3)
         }
         if (output.isNotBlank()) {
             if (command.isNotBlank()) Spacer(Modifier.height(AppSpacing.Sm))
-            Text(
-                text = "输出",
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.onSurfaceRaised,
-            )
-            Spacer(Modifier.height(AppSpacing.Xs))
-            Text(
-                text = output,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 8,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ToolEvidenceSection(title = "输出", body = output, maxLines = 8)
         }
     }
 }
@@ -296,19 +267,8 @@ private fun CommandBlock(command: String, output: String) {
  */
 @Composable
 private fun RawBlock(title: String, body: String) {
-    val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Tile))
-            .background(colors.surfaceSunken)
-            .padding(AppSpacing.Md),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.onSurfaceRaised,
-        )
+    ToolEvidenceBlock {
+        ToolEvidenceTitle(title)
         Spacer(Modifier.height(AppSpacing.Xs))
         if (looksLikeMarkdown(body)) {
             MarkdownPreview(
@@ -317,13 +277,7 @@ private fun RawBlock(title: String, body: String) {
                 keepLineBreaks = true,
             )
         } else {
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 60,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ToolEvidenceBody(text = body, maxLines = 60)
         }
     }
 }
@@ -331,7 +285,8 @@ private fun RawBlock(title: String, body: String) {
 /** 步内元信息（弱化层）：耗时 / token / 置信度 / 是否留档截图 */
 private fun metaLine(step: StepCall): String {
     val parts = ArrayList<String>(4)
-    if (step.durationMs > 0) parts += "耗时 ${formatDuration(step.durationMs)}"
+    // 耗时口径与编码页一致：只有真正跑完（>0）才计入
+    toolTimingText(step.durationMs)?.let { parts += "耗时 $it" }
     if (step.tokens > 0) parts += "消耗 ${step.tokens} 词元"
     step.confidence?.let { parts += "置信度 ${(it * 100).toInt()}%" }
     if (step.hasScreenshot) parts += "有截图留档"

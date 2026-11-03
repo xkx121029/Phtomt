@@ -84,6 +84,7 @@ import com.phoneagent.ui.components.SkillDetailBlock
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.ToolIconBadge
 import com.phoneagent.ui.components.ToolStatusTrail
+import com.phoneagent.ui.components.ToolTimingLabel
 import com.phoneagent.ui.components.approvalDialOptions
 import com.phoneagent.ui.components.codingToolIdentity
 import com.phoneagent.ui.components.formatDuration
@@ -828,12 +829,11 @@ private fun firstLine(text: String): String = text.lineSequence().firstOrNull()?
  */
 @Composable
 private fun ToolCard(msg: ChatMessage) {
-    val colors = AppTheme.colors
     var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
     val status = toolStatusStyle(toolRunState(msg.toolOk))
     // 耗时只在结束后显示：运行中的数字每帧都在跳，读起来是噪声。
     val timing = msg.durationMs?.takeIf { msg.toolOk != null }?.let { formatDuration(it) }
-    val isCommand = msg.toolName?.let { it == "run_command" || it == "bash" || it == "shell" } == true
+    // 工具身份自带"是否命令类"标记，页面不再自己列 run_command/bash/shell
     val identity = codingToolIdentity(msg.toolName)
 
     SkillCard(
@@ -849,7 +849,7 @@ private fun ToolCard(msg: ChatMessage) {
             SkillDetailBlock(
                 title = "完整执行内容",
                 body = msg.text,
-                monospace = isCommand,
+                monospace = identity.monospace,
             )
             // 回填给 AI 的那段输出：以前展开只有参数，看完还得猜这条命令到底跑出了什么
             msg.outputPreview?.takeIf { it.isNotBlank() }?.let { out ->
@@ -857,16 +857,12 @@ private fun ToolCard(msg: ChatMessage) {
                 SkillDetailBlock(
                     title = "执行结果（回传给 AI）",
                     body = out,
-                    monospace = isCommand,
+                    monospace = identity.monospace,
                 )
             }
             if (timing != null) {
                 Spacer(Modifier.height(AppSpacing.Xs))
-                Text(
-                    text = "耗时 $timing",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceRaised,
-                )
+                ToolTimingLabel(timing)
             }
         }
     }
@@ -875,7 +871,6 @@ private fun ToolCard(msg: ChatMessage) {
 /** 子任务卡：并行子 agent 的独立进度（人设 · 任务名 + 当前动作 + 成败 / 耗时） */
 @Composable
 private fun SubagentCard(msg: ChatMessage) {
-    val colors = AppTheme.colors
     var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
     val status = toolStatusStyle(
         state = toolRunState(msg.toolOk),
@@ -899,11 +894,7 @@ private fun SubagentCard(msg: ChatMessage) {
             SkillDetailBlock(title = "任务说明", body = msg.text)
             if (timing != null) {
                 Spacer(Modifier.height(AppSpacing.Xs))
-                Text(
-                    text = "耗时 $timing",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceRaised,
-                )
+                ToolTimingLabel(timing)
             }
         }
     }

@@ -188,28 +188,15 @@ fun SkillDetailBlock(
     body: String,
     monospace: Boolean = false,
 ) {
-    val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Tile))
-            .background(colors.surfaceSunken)
-            .padding(AppSpacing.Md),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.onSurfaceRaised,
-        )
+    // 容器、标题字重、正文弱化色都在 ToolAtoms：与 Agent 页的命令/输出块同一份排版
+    ToolEvidenceBlock {
+        ToolEvidenceTitle(title)
         Spacer(Modifier.height(AppSpacing.Xs))
         if (monospace) {
             // 命令/输出原文一字不改：等宽照排，交给 Markdown 解析会把 * 与 - 当格式吃掉
-            Text(
+            ToolEvidenceBody(
                 text = body.ifBlank { "（这一步没有留下执行内容）" },
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                ),
-                color = MaterialTheme.colorScheme.onSurface,
+                monospace = true,
             )
         } else {
             // AI 回返的正文按 Markdown 排：工具参数/子任务说明里常带列表、代码块与小标题

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -308,7 +309,7 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
 private fun summaryLine(item: AgentTimelineItem.Done): String {
     val parts = ArrayList<String>(2)
     if (item.tokens > 0) parts += "${item.tokens} tokens"
-    if (item.avgLatencyMs > 0) parts += "平均响应 ${formatMs(item.avgLatencyMs)}"
+    if (item.avgLatencyMs > 0) parts += "平均响应 ${formatDuration(item.avgLatencyMs)}"
     return if (parts.isEmpty()) "本次任务未产生额外消耗" else parts.joinToString(" · ")
 }
 
@@ -417,9 +418,4 @@ internal fun NoticeItem(item: AgentTimelineItem.Notice) {
     }
 }
 
-/** 毫秒 → 人话时长 */
-private fun formatMs(ms: Long): String = when {
-    ms <= 0 -> "—"
-    ms >= 1000 -> "${"%.1f".format(ms / 1000.0)} 秒"
-    else -> "$ms 毫秒"
-}
+/** 毫秒 → 人话时长已统一到 Formatters.formatDuration（与工具卡耗时同一口径） */
