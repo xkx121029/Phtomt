@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.WindowManager
+import com.phoneagent.ui.theme.DurationFast
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -80,7 +81,8 @@ class CursorOverlayService : Service() {
             windowManager?.addView(view, params)
             pointerView = view
             // 首次出现淡入，避免生硬闪现
-            view.animate()?.alpha(1f)?.setDuration(160)?.start()
+            // 动效时长走令牌：160ms = DurationFast
+            view.animate()?.alpha(1f)?.setDuration(DurationFast.toLong())?.start()
         } catch (_: WindowManager.BadTokenException) {
             // 没有悬浮窗权限时静默失败
         } catch (_: Exception) {

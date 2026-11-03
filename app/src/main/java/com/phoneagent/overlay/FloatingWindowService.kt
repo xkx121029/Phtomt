@@ -6,12 +6,21 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.Shader
+import android.graphics.Typeface
 import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -20,6 +29,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
+import android.util.Log
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
@@ -27,20 +37,30 @@ import android.view.VelocityTracker
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.view.animation.PathInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.OverScroller
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import com.phoneagent.BuildConfig
 import com.phoneagent.R
 import com.phoneagent.data.prefs.AppSettings
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.DurationNormal
+import com.phoneagent.ui.theme.DurationPulse
+import com.phoneagent.ui.theme.DurationSlow
+import com.phoneagent.ui.theme.PressScale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -142,10 +162,38 @@ class FloatingWindowService : Service() {
     // 头部（可拖动区域）
     private var header: LinearLayout? = null
 
-    // 完成动效：打勾视图 + 完成文字
-    private var successMark: SuccessMarkView? = null
-    private var doneText: TextView? = null
-    private var donePanel: LinearLayout? = null
+    // ==================== 任务完成卡片（独立底部窗口） ====================
+    // 原实现是在顶部任务卡里换一块 donePanel；卡片只有 300dp 宽，长结果没地方放，
+    // 也没有「复制 / 完成 / 打开」这类下一步动作。现在改为底部独立窗口：
+    // 层级 = 拖拽把手 → 状态行（圆点 + 标题）→ 可滚动正文 → 一行三键。
+    private var doneRoot: LinearLayout? = null
+    private var doneCard: LinearLayout? = null
+    private var doneTitle: TextView? = null
+    private var doneStatusDot: TextView? = null
+    private var doneBody: TextView? = null
+    private var doneScroll: MaxHeightScrollView? = null
+    private var doneFade: DoneFadeView? = null
+    private var doneCopy: TextView? = null
+    /** 卡片当前展示的完整结果文本（「复制」写剪贴板用） */
+    private var doneMessage = ""
+    /** 结果是否按失败/放弃处理：决定标题与状态圆点的语义色 */
+    private var doneFailed = false
+    /** 用户正在按住/滚动/拖拽卡片：期间暂停 8s 自动关闭，松手后重新计时 */
+    private var doneInteracting = false
+    /** 下滑关闭：按下时的 rawY 与已累计的下移量（只允许向下） */
+    private var doneDragStartRawY = 0f
+    private var doneDragOffset = 0f
+    /** 截图隐藏前完成卡片是否可见，用于截图后原样恢复 */
+    private var doneVisibleBeforeHide = false
+    private val doneAutoClose = Runnable { closeDoneCard() }
+
+    /**
+     * 仅 debug 包：用 adb 广播直接拉起完成卡片，供 UI 走查与首帧耗时量化。
+     *
+     * `adb shell am broadcast -a com.phoneagent.DEBUG_DONE --es message "..." -p com.phoneagent`
+     * 真实任务链路不会触发它，release 包也不会注册。
+     */
+    private var debugDoneReceiver: BroadcastReceiver? = null
 
     // 交互区域：批准/澄清/指导
     private var interactPanel: LinearLayout? = null
@@ -248,6 +296,7 @@ class FloatingWindowService : Service() {
         // 起始配色取当下的系统深浅色；之后由 onConfigurationChanged 跟随翻面
         palette = FloatingUi.Palette.of(FloatingUi.isNightMode(this))
         startForegroundCompat()
+        registerDebugDoneReceiver()
         // 监听跑马灯设置：内边距/配色方式修改后即时生效
         scope.launch {
             appSettings.settings.collect { s ->
@@ -400,8 +449,12 @@ class FloatingWindowService : Service() {
 
     private fun showWindow() {
         if (root != null) return
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        // 量化埋点起点：从建视图到首个绘制帧（含 addView + 一次测量/布局）
+        val startedAt = SystemClock.uptimeMillis()
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+        windowManager = wm
         val layout = buildPanel()
+        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "task-card-build=${SystemClock.uptimeMillis() - startedAt}ms")
         // 获取当前屏幕尺寸，根据横竖屏调整初始位置，避免旋转后悬浮窗位置出屏
         val point = android.graphics.Point()
         runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
@@ -431,7 +484,6 @@ class FloatingWindowService : Service() {
             // 任务一跑整屏发灰。悬浮窗又没有 Window 对象，拿不到"只糊窗口范围"的
             // Window#setBackgroundBlurRadius，所以卡片就只是一块半透明品牌色。
         }
-        root = layout
         // 真实投影：让卡片浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
         layout.elevation = dp(FloatingUi.ELEVATION).toFloat()
         layout.outlineProvider = object : ViewOutlineProvider() {
@@ -439,11 +491,22 @@ class FloatingWindowService : Service() {
                 outline.setRoundRect(0, 0, view.width, view.height, dp(FloatingUi.RADIUS_CARD.toInt()).toFloat())
             }
         }
-        try {
-            windowManager?.addView(layout, params)
-        } catch (_: Exception) {}
+        // 先 addView、成功后再记 root。以前先赋 root 再 try/catch 吞掉失败，
+        // 一旦 addView 抛异常（悬浮窗权限被收回、window token 失效），root 仍是
+        // 非空、后续 showWindow 全部被开头那行 return 挡掉，悬浮窗就永久起不来。
+        val added = runCatching { wm.addView(layout, params) }.isSuccess
+        if (!added) {
+            Log.w("FloatingWindowService", "悬浮窗添加失败，等待下次重试")
+            return
+        }
+        root = layout
+        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "task-card-add=${SystemClock.uptimeMillis() - startedAt}ms")
+        logFirstFrame("task-card-first-frame", layout, startedAt)
         showMarquee()
         showSheetWindow()
+        // 预热完成卡片：任务一开始就把底部卡片窗口建好（隐藏、0 高、不吃触摸），
+        // 收尾时只翻可见性。放到首帧之后再建，避免和任务卡自己抢这一帧的时间。
+        layout.post { ensureDoneWindow() }
     }
 
     /**
@@ -685,8 +748,8 @@ class FloatingWindowService : Service() {
             container.translationY = h
             container.animate()
                 .translationY(0f)
-                .setDuration(260)
-                .setInterpolator(android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                .setDuration(DurationNormal.toLong())
+                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
                 .start()
         }
     }
@@ -697,8 +760,8 @@ class FloatingWindowService : Service() {
         if (container.visibility != View.VISIBLE) return
         container.animate()
             .translationY(container.height.toFloat())
-            .setDuration(200)
-            .setInterpolator(android.view.animation.PathInterpolator(0.4f, 0f, 1f, 1f))
+            .setDuration(DurationFast.toLong())
+            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
             .withEndAction {
                 container.visibility = View.GONE
                 container.translationY = 0f
@@ -1074,43 +1137,6 @@ class FloatingWindowService : Service() {
         // 交互面板不再挂进顶部窗口：它由底部选项卡承载（见 showSheetWindow），
         // 顶部只保留任务状态与跑马灯，两边职责不重叠
 
-        // 完成面板：打勾动效 + 完成文字（默认隐藏，任务完成后显示）
-        donePanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-            setPadding(0, dp(16), 0, dp(16))
-            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL, p.panel) }
-        }
-        successMark = SuccessMarkView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
-        }
-        donePanel?.addView(successMark)
-        doneText = TextView(this).apply {
-            text = "任务完成"
-            textSize = 14f
-            setTextColor(FloatingUi.phaseColor("DONE"))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6), 0, 0)
-        }
-        donePanel?.addView(doneText)
-        // 完成后删除按钮：胶囊实心主色
-        val doneClose = Button(this).apply {
-            text = "移除悬浮窗"
-            textSize = 12f
-            isAllCaps = false
-            setTextColor(0xFFFFFFFF.toInt())
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply {
-                topMargin = dp(12)
-            }
-            layoutParams = lp
-            background = FloatingUi.capsule(this@FloatingWindowService, 999f, FloatingUi.BRAND)
-            setPadding(FloatingUi.PAD_XL, 0, FloatingUi.PAD_XL, 0)
-            setOnClickListener { stopSelf(); removeWindow() }
-        }
-        donePanel?.addView(doneClose)
-        panel.addView(donePanel)
-
         return panel
     }
 
@@ -1214,7 +1240,7 @@ class FloatingWindowService : Service() {
         val sx = p.x
         val sy = p.y
         ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 220
+            duration = DurationNormal.toLong()
             interpolator = DecelerateInterpolator()
             addUpdateListener { anim ->
                 val t = anim.animatedValue as Float
@@ -1390,7 +1416,8 @@ class FloatingWindowService : Service() {
     private fun startDotPulse() {
         if (dotPulseAnimator?.isRunning == true) return
         dotPulseAnimator = ValueAnimator.ofFloat(0.45f, 1f).apply {
-            duration = 800
+            // 循环动效统一走 DurationPulse：与骨架/运行指示同一个节拍
+            duration = DurationPulse.toLong()
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             interpolator = DecelerateInterpolator()
@@ -1418,8 +1445,11 @@ class FloatingWindowService : Service() {
      * 用于新任务开始时清除上一个任务完成态的残留。
      */
     private fun resetPanel() {
-        donePanel?.visibility = View.GONE
-        successMark?.reset()
+        // 新任务开始时把上一次的完成卡片收起来（它可能还在 8s 自动关闭倒计时里）。
+        // 只隐藏不销毁：窗口在任务开始时已预热，留着下次完成态直接复用
+        hideDoneCardNow()
+        // 完成态会把顶部任务卡整块让位给完成卡片；新任务必须把它放回来
+        root?.visibility = View.VISIBLE
         dot?.visibility = View.VISIBLE
         marquee?.visibility = View.VISIBLE
         statusRow?.visibility = View.VISIBLE
@@ -1464,7 +1494,7 @@ class FloatingWindowService : Service() {
         view.animate()
             .alpha(1f)
             .translationY(0f)
-            .setDuration(180)
+            .setDuration(DurationFast.toLong())
             .setInterpolator(DecelerateInterpolator())
             .start()
     }
@@ -1829,6 +1859,36 @@ class FloatingWindowService : Service() {
         }
     }
 
+    /**
+     * 正文底部的渐变遮罩：从透明过渡到卡片底色，提示"下面还有内容"。
+     *
+     * 它只盖在滚动区最后 28dp 上，不改卡片本身的实色——遮罩之外仍是完整不透明的面板底，
+     * 不会出现"半透明长条"。
+     */
+    private class DoneFadeView(context: Context) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var fadeColor = Color.TRANSPARENT
+
+        fun setFadeColor(color: Int) {
+            if (fadeColor == color) return
+            fadeColor = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (height <= 0 || width <= 0) return
+            paint.shader = LinearGradient(
+                0f, 0f, 0f, height.toFloat(),
+                fadeColor and 0x00FFFFFF,
+                fadeColor,
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            paint.shader = null
+        }
+    }
+
     private fun dotColor(phase: String): Int = FloatingUi.phaseColor(phase)
 
     private fun hideKeyboard() {
@@ -1839,31 +1899,539 @@ class FloatingWindowService : Service() {
         if (focused != null) imm?.hideSoftInputFromWindow(focused.windowToken, 0)
     }
 
+    private fun registerDebugDoneReceiver() {
+        if (!BuildConfig.DEBUG) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.getStringExtra("mode")) {
+                    // 拉起空任务卡：量化「首次显示到首帧」
+                    "show" -> {
+                        showFromUser()
+                        updateNotification("任务执行中", "正在分析页面")
+                    }
+                    // 模拟截图前后隐藏/恢复：量化「隐藏与恢复 ≤0.3s」
+                    "hide" -> setVisible(false)
+                    "restore" -> setVisible(true)
+                    else -> showDone(
+                        intent.getStringExtra("message")
+                            ?: "已关闭蓝牙并回到桌面。共执行 3 步，用时 12 秒。",
+                    )
+                }
+            }
+        }
+        // debug-only 预览入口：不参与发布包，也不改变真实任务链路
+        ContextCompat.registerReceiver(
+            this,
+            receiver,
+            IntentFilter(DEBUG_DONE_ACTION),
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        debugDoneReceiver = receiver
+    }
+
     /**
-     * 任务完成：清空面板所有内容，仅显示打勾动效 + 完成文字，并更新通知。
-     * @param message 完成提示文字
+     * 任务完成：顶部任务卡让位，底部拉起独立的完成卡片，并同步通知。
+     *
+     * @param message 引擎给的完成摘要（可能只有一行，也可能包含多行结果）
      */
     fun showDone(message: String) {
         handler.post {
-            // 用户收起面板时任务恰好收尾：把面板放回来，否则屏幕上只有一个悬浮球，
-            // 用户看不到"任务完成"，还得自己去点一下才知道
+            val startedAt = SystemClock.uptimeMillis()
+            // 用户收起面板时任务恰好收尾：先复位收起态（下一个任务开始时面板要能自己回来）
             showFromUser()
             stopDotPulse()
-            // 隐藏常规内容（保留 header，使 × 关闭按钮始终可用）
-            dot?.visibility = View.GONE
-            marquee?.visibility = View.GONE
-            statusRow?.visibility = View.GONE
-            progressBar?.visibility = View.GONE
-            // 完成时收起 AI 详情与底部选项卡（若还开着）；详情同时复位为折叠，
-            // 下一个任务从最小的两行窗口开始
             collapseThinking()
             hideSheet()
-            // 显示打勾面板（淡入 + 自下而上位移动画）
-            doneText?.text = message
-            showPanelWithAnim(donePanel)
-            successMark?.start()
+            hideKeyboard()
+            // 完成卡片独占屏幕：顶部任务卡 / 跑马灯 / 悬浮球全部让位，
+            // 否则底部卡片会和顶部卡片同时压在同一块画面上
+            miniRoot?.visibility = View.GONE
+            root?.visibility = View.GONE
+            marquee?.visibility = View.GONE
+            showDoneCard(message, startedAt)
             updateNotification("任务完成：$message", "Happy Agent")
         }
+    }
+
+    /**
+     * 构建任务完成卡片（对标 Eta 的 result card，视觉仍用本项目令牌）。
+     *
+     * 刻意不照搬 Eta 的两点：
+     * - 不用「50% 屏高 + 固定 420dp」双约束：卡片高度随内容自适应，正文最大
+     *   [DONE_BODY_MAX_HEIGHT]dp 内部滚动，矮屏 / 大字号下正文不会被压没；
+     * - 不从屏幕顶部滑入：进入方向固定自下而上（项目动效铁律）。
+     *
+     * 层级：拖拽把手 → 状态行（20dp 圆点 + 15sp 半粗标题）→ 可滚动正文（底部渐变遮罩）
+     *       → 一行三键（复制 / 完成 / 打开 Agent）。
+     */
+    private fun buildDoneCard(): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            // 左右 16 / 底部 16：与 App 一级内容留白一致；顶部留给拖拽把手
+            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL))
+            // 与任务卡同一档浮起高度：卡片是"贴着屏幕底部的一层"，不是贴在底图上的补丁
+            elevation = dp(16).toFloat()
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(
+                        0, 0, view.width, view.height,
+                        dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
+                    )
+                }
+            }
+            themed { p ->
+                background = FloatingUi.capsule(
+                    this@FloatingWindowService,
+                    FloatingUi.RADIUS_CARD,
+                    p.panel,
+                    p.panelEdge,
+                    dp(1),
+                )
+            }
+        }
+
+        // 1) 拖拽把手 36×4dp：只在这条上响应下滑，避免和正文滚动抢手势
+        val handle = View(this).apply {
+            themed { p ->
+                // 与标题同色系、30% 透明：只做"可以拖"的暗示，不抢视觉
+                background = FloatingUi.capsule(
+                    this@FloatingWindowService,
+                    FloatingUi.RADIUS_PILL,
+                    (p.textTertiary and 0x00FFFFFF) or 0x33000000,
+                )
+            }
+            setOnTouchListener { _, ev ->
+                onDoneDrag(ev)
+                true
+            }
+        }
+        card.addView(
+            handle,
+            LinearLayout.LayoutParams(dp(36), dp(4)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(FloatingUi.PAD)
+                bottomMargin = dp(FloatingUi.PAD_L)
+            },
+        )
+
+        // 2) 状态行：20dp 圆点（14% 语义色底 + 语义色勾/叉）+ 15sp 半粗标题
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        doneStatusDot = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        statusRow.addView(doneStatusDot, LinearLayout.LayoutParams(dp(20), dp(20)))
+        doneTitle = TextView(this).apply {
+            textSize = 15f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setPadding(dp(10), 0, 0, 0)
+            themed { p -> setTextColor(p.textPrimary) }
+        }
+        statusRow.addView(
+            doneTitle,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        card.addView(statusRow)
+
+        // 3) 正文：内容自适应、超长时限高内部滚动；底部渐变遮罩只在真的滚得动时出现
+        val bodyFrame = FrameLayout(this)
+        doneScroll = MaxHeightScrollView(this, dp(DONE_BODY_MAX_HEIGHT)).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            // 滚动期间暂停自动关闭；松手后重新计时（Eta 的 interacting 语义）
+            setOnScrollChangeListener { _, _, _, _, _ -> restartDoneAutoClose() }
+        }
+        doneBody = TextView(this).apply {
+            textSize = 13f
+            setLineSpacing(dp(3).toFloat(), 1f)
+            setPadding(0, dp(10), 0, dp(12))
+            themed { p -> setTextColor(p.textSecondary) }
+        }
+        doneBody?.let { body -> doneScroll?.addView(body) }
+        bodyFrame.addView(
+            doneScroll,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        doneFade = DoneFadeView(this).apply { visibility = View.GONE }
+        bodyFrame.addView(
+            doneFade,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(28)).apply {
+                gravity = Gravity.BOTTOM
+            },
+        )
+        themed { p -> doneFade?.setFadeColor(p.panel) }
+        card.addView(bodyFrame)
+
+        // 4) 一行三键：复制（结果写剪贴板）/ 完成（关卡片）/ 打开 Agent（回到会话看完整过程）
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        doneCopy = TextView(this).apply {
+            text = "复制"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
+            isClickable = true
+            setOnClickListener { copyDoneResult() }
+            themed { p ->
+                setTextColor(p.textSecondary)
+                background = FloatingUi.capsule(
+                    this@FloatingWindowService,
+                    FloatingUi.RADIUS_PILL,
+                    p.panelSunken,
+                    p.panelEdge,
+                    dp(1),
+                )
+            }
+        }
+        actions.addView(
+            doneCopy,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = dp(FloatingUi.PAD) },
+        )
+        val doneBtn = TextView(this).apply {
+            text = "完成"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(12))
+            isClickable = true
+            setOnClickListener { closeDoneCard() }
+            themed { p -> setTextColor(p.textSecondary) }
+        }
+        actions.addView(
+            doneBtn,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        val openBtn = TextView(this).apply {
+            text = "打开 Agent"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(12))
+            isClickable = true
+            setOnClickListener { openAgentFromDone() }
+            themed { p ->
+                setTextColor(p.onBrand)
+                background = FloatingUi.capsule(
+                    this@FloatingWindowService,
+                    FloatingUi.RADIUS_PILL,
+                    p.brand,
+                )
+            }
+        }
+        actions.addView(
+            openBtn,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { marginStart = dp(FloatingUi.PAD) },
+        )
+        card.addView(
+            actions,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(FloatingUi.PAD_L) },
+        )
+        bindPressFeedback(doneCopy!!, doneBtn, openBtn)
+        return card
+    }
+
+    /**
+     * 创建并显示完成卡片窗口。
+     *
+     * 任务开始时预热（见 [showWindow]），完成时只翻可见性——新建一个覆盖层窗口要等完整的
+     * measure / layout / 一次合成（实测首帧 1.6s+，窗口已存在时 341ms），这笔开销不能
+     * 落在"任务刚结束"的那一刻。
+     *
+     * 不被系统栏裁切的三条保证：
+     * 1. `gravity = BOTTOM` + **不清空** `fitInsetsTypes`：内容区停在导航栏之上，
+     *    贴底卡片既不会被手势条压住，也不会被系统栏切掉；左右/底部留白由根容器 padding 负责。
+     * 2. 高度 `WRAP_CONTENT`：卡片长多高长多高，永远不需要「先占屏再裁」。
+     * 3. 正文限高滚动：长结果在卡片内部滚，卡片本身不会长到屏幕外。
+     */
+    private fun ensureDoneWindow(): Boolean {
+        if (doneRoot != null) return true
+        val wm = windowManager ?: return false
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+            // 留白放在根容器的 padding 上：卡片隐藏/移除时窗口高度为 0，不留透明触摸区
+            setPadding(
+                dp(FloatingUi.PAD_XL),
+                0,
+                dp(FloatingUi.PAD_XL),
+                dp(FloatingUi.PAD),
+            )
+            visibility = View.GONE
+        }
+        val card = buildDoneCard()
+        container.addView(
+            card,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        }
+        val added = runCatching { wm.addView(container, lp) }.isSuccess
+        if (!added) {
+            Log.w("FloatingWindowService", "完成卡片添加失败")
+            doneCard = null
+            return false
+        }
+        doneRoot = container
+        return true
+    }
+
+    private fun showDoneCard(message: String, startedAt: Long) {
+        val t0 = SystemClock.uptimeMillis()
+        doneMessage = message
+        doneFailed = message.contains("失败") ||
+            message.contains("放弃") ||
+            message.contains("未完成")
+        if (!ensureDoneWindow()) return
+        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "done-card-build=${SystemClock.uptimeMillis() - t0}ms")
+        applyDoneContent(message)
+        val rv = doneRoot ?: return
+        rv.visibility = View.VISIBLE
+        rv.post {
+            if (BuildConfig.DEBUG) Log.d(PERF_TAG, "done-card-post=${SystemClock.uptimeMillis() - t0}ms")
+            val card = doneCard ?: return@post
+            val h = card.height.coerceAtLeast(dp(1)).toFloat()
+            card.animate().cancel()
+            card.translationY = h
+            card.alpha = 0f
+            // 进入：自下而上 + 淡入，ease-out；时长收敛到 DurationSlow（≤300ms）
+            card.animate()
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(DurationSlow.toLong())
+                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                .start()
+            // 正文真的超出限高才显示渐变遮罩（短结果下不出现多余的灰带）
+            val scroll = doneScroll
+            val body = doneBody
+            doneFade?.visibility =
+                if (scroll != null && body != null && body.height > scroll.height) {
+                    View.VISIBLE
+                } else {
+                    View.GONE
+                }
+            logFirstFrame("done-card-first-frame", rv, startedAt)
+            restartDoneAutoClose()
+        }
+    }
+
+    /** 把结果写进卡片：标题/状态色/正文/复制按钮复位 */
+    private fun applyDoneContent(message: String) {
+        val success = !doneFailed
+        val tone = if (success) FloatingUi.phaseColor("DONE") else FloatingUi.phaseColor("ERROR")
+        doneTitle?.text = if (success) "已完成" else "未完成"
+        doneStatusDot?.apply {
+            text = if (success) "✓" else "✕"
+            setTextColor(tone)
+            background = FloatingUi.capsule(
+                this@FloatingWindowService,
+                FloatingUi.RADIUS_PILL,
+                // 14% 语义色底：色点只做状态标记，不把整张卡片染成红/绿
+                (tone and 0x00FFFFFF) or 0x24000000,
+            )
+        }
+        val raw = message.trim()
+        // 引擎只给了一行"任务完成"时，补一句可执行的下一步；有细节就原样展示
+        doneBody?.text = if (raw.isEmpty() || raw == "任务完成" || raw == "任务已完成") {
+            "任务已结束。打开 Agent 可以查看完整过程与结果。"
+        } else {
+            raw
+        }
+        doneCopy?.text = "复制"
+        doneScroll?.scrollTo(0, 0)
+    }
+
+    /** 复制完整结果到剪贴板；1.4s 内按钮显示"已复制"（状态保持，不是动效） */
+    private fun copyDoneResult() {
+        val text = doneBody?.text?.toString().orEmpty().ifBlank { doneMessage }
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        runCatching { cm?.setPrimaryClip(ClipData.newPlainText("任务结果", text)) }
+        doneCopy?.text = "已复制"
+        handler.postDelayed({ doneCopy?.text = "复制" }, COPY_FEEDBACK_MS)
+        restartDoneAutoClose()
+    }
+
+    /** 「打开 Agent」：回到 App 的会话页看完整过程；随后收起完成卡片 */
+    private fun openAgentFromDone() {
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                ),
+            )
+        }
+        closeDoneCard()
+    }
+
+    /** 下滑关闭（≥96dp 才算关闭，否则回弹）+ 按住/滚动期间暂停自动关闭 */
+    private fun onDoneDrag(ev: MotionEvent) {
+        val card = doneCard ?: return
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                doneDragStartRawY = ev.rawY
+                doneDragOffset = 0f
+                pauseDoneAutoClose()
+                card.animate().cancel()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                // 只允许向下：向上位移会让卡片跑到状态栏下面，与"不碰系统栏"的约束冲突
+                doneDragOffset = (ev.rawY - doneDragStartRawY).coerceAtLeast(0f)
+                card.translationY = doneDragOffset
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (doneDragOffset >= dp(DONE_SWIPE_CLOSE_DP)) {
+                    closeDoneCard()
+                } else {
+                    card.animate()
+                        .translationY(0f)
+                        .setDuration(DurationNormal.toLong())
+                        .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                        .start()
+                    restartDoneAutoClose()
+                }
+            }
+        }
+    }
+
+    /** 退场：200ms 淡出 + 下沉，动画结束后才移除窗口（避免卡片被瞬间抽走） */
+    private fun closeDoneCard() {
+        handler.removeCallbacks(doneAutoClose)
+        val card = doneCard
+        val rootView = doneRoot
+        if (card == null || rootView == null) {
+            removeDoneCardNow()
+            return
+        }
+        card.animate().cancel()
+        card.animate()
+            .translationY(card.height.coerceAtLeast(dp(1)).toFloat())
+            .alpha(0f)
+            .setDuration(DurationNormal.toLong())
+            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
+            .withEndAction {
+                // 退场动画 200ms 内可能有新任务接管（resetPanel 已把卡片摘掉）：
+                // 只有"卡片还挂在这个窗口上"时才认为整场任务真正结束并退出服务，
+                // 否则只清理旧窗口，别把新任务的悬浮窗一起带走
+                if (doneRoot === rootView) {
+                    removeDoneCardNow()
+                    stopSelf()
+                    removeWindow()
+                } else {
+                    runCatching { windowManager?.removeView(rootView) }
+                }
+            }
+            .start()
+    }
+
+    /** 立即移除完成卡片窗口（不做退场动画）：新任务开始 / 服务销毁时用 */
+    private fun removeDoneCardNow() {
+        handler.removeCallbacks(doneAutoClose)
+        doneRoot?.let { runCatching { windowManager?.removeView(it) } }
+        doneRoot = null
+        doneCard = null
+        doneTitle = null
+        doneStatusDot = null
+        doneBody = null
+        doneScroll = null
+        doneFade = null
+        doneCopy = null
+        doneInteracting = false
+        doneDragOffset = 0f
+    }
+
+    /**
+     * 只收起、不销毁：完成卡片窗口留给下一次任务复用（它是任务开始时预热好的）。
+     * 8s 自动关闭的计时必须在这里取消，否则下一次任务进行到一半会被上一个倒计时掐掉。
+     */
+    private fun hideDoneCardNow() {
+        handler.removeCallbacks(doneAutoClose)
+        doneRoot?.visibility = View.GONE
+        doneCard?.translationY = 0f
+        doneCard?.alpha = 1f
+        doneInteracting = false
+        doneDragOffset = 0f
+    }
+
+    /** 静止 8s 自动关；任何按压 / 滚动 / 拖拽都会重置计时 */
+    private fun restartDoneAutoClose() {
+        handler.removeCallbacks(doneAutoClose)
+        doneInteracting = false
+        if (doneRoot == null) return
+        handler.postDelayed(doneAutoClose, DONE_AUTO_CLOSE_MS)
+    }
+
+    private fun pauseDoneAutoClose() {
+        doneInteracting = true
+        handler.removeCallbacks(doneAutoClose)
+    }
+
+    /** 三键的按压反馈：ACTION_DOWN 立刻缩到 PressScale，抬手回弹（时长走 DurationFast） */
+    private fun bindPressFeedback(vararg views: View) {
+        views.forEach { v ->
+            v.setOnTouchListener { _, ev ->
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        pauseDoneAutoClose()
+                        v.animate().cancel()
+                        v.scaleX = PressScale
+                        v.scaleY = PressScale
+                        logFirstFrame("press-feedback", v, ev.eventTime)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(DurationFast.toLong())
+                            .start()
+                        restartDoneAutoClose()
+                    }
+                }
+                // 返回 false：不影响 TextView 自身的点击回调
+                false
+            }
+        }
+    }
+
+    /**
+     * 调试期量化埋点：从 [since] 到该视图下一次真正绘制（onPreDraw）的毫秒数。
+     * 只打在 debug 包上，release 不做任何额外遍历。
+     */
+    private fun logFirstFrame(tag: String, view: View, since: Long) {
+        if (!BuildConfig.DEBUG) return
+        view.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                val observer = view.viewTreeObserver
+                if (observer.isAlive) observer.removeOnPreDrawListener(this)
+                Log.d(PERF_TAG, "$tag=${SystemClock.uptimeMillis() - since}ms")
+                return true
+            }
+        })
     }
 
     private fun removeWindow() {
@@ -1880,9 +2448,13 @@ class FloatingWindowService : Service() {
         sheetRoot?.let { runCatching { windowManager?.removeView(it) } }
         sheetRoot = null
         sheetParams = null
+        // 完成卡片同样是独立窗口：任务结束/服务退出后不能留在屏幕上
+        removeDoneCardNow()
     }
 
     override fun onDestroy() {
+        debugDoneReceiver?.let { runCatching { unregisterReceiver(it) } }
+        debugDoneReceiver = null
         // 清理拖动物理动画与回调
         isFlinging = false
         flingScroller?.forceFinished(true)
@@ -1917,6 +2489,24 @@ class FloatingWindowService : Service() {
 
         /** 悬浮球直径（dp）：小到不挡操作，大到手指点得到 */
         private const val MINI_BALL_SIZE = 44
+
+        /** 完成卡片正文最大高度（dp）：超过则在卡片内部滚动，卡片本身不长出屏幕 */
+        private const val DONE_BODY_MAX_HEIGHT = 220
+
+        /** 完成卡片下滑关闭阈值（dp）：与 Eta 的 96dp 对齐 */
+        private const val DONE_SWIPE_CLOSE_DP = 96
+
+        /** 完成卡片静止自动关闭时长（毫秒）：按压/滚动/拖拽期间暂停计时 */
+        private const val DONE_AUTO_CLOSE_MS = 8000L
+
+        /** 「复制」按钮显示"已复制"的保持时长（毫秒）：状态保持，不属于动效 */
+        private const val COPY_FEEDBACK_MS = 1400L
+
+        /** 调试期量化埋点 tag（仅 debug 包输出，release 不打印） */
+        private const val PERF_TAG = "HPA_PERF"
+
+        /** debug 预览完成卡片的广播 action（见 [registerDebugDoneReceiver]） */
+        private const val DEBUG_DONE_ACTION = "com.phoneagent.DEBUG_DONE"
 
         /** 悬浮窗交互动作回调（由 MainViewModel 注册，转发到 AgentEngine） */
         @Volatile
@@ -2008,7 +2598,9 @@ class FloatingWindowService : Service() {
                 val marqueeShown = svc.marquee?.visibility == View.VISIBLE
                 val miniShown = svc.miniRoot?.visibility == View.VISIBLE
                 val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
-                if (!rootShown && !marqueeShown && !miniShown && !sheetShown) return false
+                val doneShown = svc.doneRoot?.visibility == View.VISIBLE
+                if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown) return false
+                val hideStartedAt = SystemClock.uptimeMillis()
                 svc.handler.post {
                     svc.root?.visibility = View.GONE
                     // 跑马灯是独立窗口，截图时同样要藏起来（它浮在屏幕底部，一定会被截进画面）；
@@ -2022,9 +2614,18 @@ class FloatingWindowService : Service() {
                     // 截图前先记下它本来是否可见，截完按原样恢复
                     svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
                     svc.sheetRoot?.visibility = View.GONE
+                    // 完成卡片也是独立窗口：截图时藏起来，截完按原样恢复
+                    svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
+                    svc.doneRoot?.visibility = View.GONE
+                    // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
+                    // 因此这里直接记「调用 → 落位」的耗时（要求 ≤0.3s）
+                    if (BuildConfig.DEBUG) {
+                        Log.d(PERF_TAG, "screenshot-hide=${SystemClock.uptimeMillis() - hideStartedAt}ms")
+                    }
                 }
                 return true
             }
+            val restoreStartedAt = SystemClock.uptimeMillis()
             svc.handler.post {
                 // 用户主动收起（userHidden）时面板保持隐藏：截图恢复不能推翻用户的收起操作
                 svc.root?.visibility = if (svc.userHidden) View.GONE else View.VISIBLE
@@ -2039,6 +2640,13 @@ class FloatingWindowService : Service() {
                 if (svc.sheetVisibleBeforeHide) {
                     svc.sheetRoot?.visibility = View.VISIBLE
                     svc.sheetVisibleBeforeHide = false
+                }
+                if (svc.doneVisibleBeforeHide) {
+                    svc.doneRoot?.visibility = View.VISIBLE
+                    svc.doneVisibleBeforeHide = false
+                }
+                if (BuildConfig.DEBUG) {
+                    Log.d(PERF_TAG, "screenshot-restore=${SystemClock.uptimeMillis() - restoreStartedAt}ms")
                 }
             }
             return true

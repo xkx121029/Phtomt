@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.view.WindowManager
+import com.phoneagent.ui.theme.DurationEmphasis
 
 /**
  * 跑马光效服务：在 Agent 执行任务时显示全屏边缘光效 Overlay。
@@ -105,7 +106,8 @@ class EdgeLightingService : Service() {
             windowManager?.addView(lightingView, params)
             // 光效覆盖层淡入，避免生硬闪现
             lightingView?.alpha = 0f
-            lightingView?.animate()?.alpha(1f)?.setDuration(400)?.start()
+            // 动效时长走令牌：400ms = DurationEmphasis（庆祝/强调类，仍受 300ms 常规上限约束之外）
+            lightingView?.animate()?.alpha(1f)?.setDuration(DurationEmphasis.toLong())?.start()
             lightingView?.start()
         } catch (_: WindowManager.BadTokenException) {
             // 没有权限时静默失败
