@@ -340,10 +340,18 @@ val verifyProviderAssets by tasks.registering {
     description = "校验 assets 内 Provider APK 是否与当前 Provider 源码一致（不一致请执行 :app:syncProviderAssets）"
     doLast {
         val expected = providerSourceDigest()
+        val apkFiles = mapOf(
+            "debug" to file("src/debug/assets/provider/provider.apk"),
+            "release" to file("src/release/assets/provider/provider.apk"),
+        )
         val problems = providerStampFiles.mapNotNull { (variant, stampFile) ->
             when {
                 !stampFile.exists() -> "$variant：缺少源码指纹记录（从未同步过 Provider 资产）"
                 stampFile.readText().trim() != expected -> "$variant：Provider 源码已变更，assets 内的 APK 是旧版本"
+                // 指纹只能证明"同步过"，不能证明"文件还在"：*.apk 被 .gitignore 忽略，
+                // 干净检出后 assets 里往往只剩 version.txt，打包出去就是"装得上、直连全废"的坏包
+                !apkFiles.getValue(variant).exists() ->
+                    "$variant：assets 内缺少 provider.apk（干净检出后需执行 :app:syncProviderAssets）"
                 else -> null
             }
         }
