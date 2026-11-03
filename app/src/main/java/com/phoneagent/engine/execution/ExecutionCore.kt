@@ -71,8 +71,55 @@ internal class ExecutionCore(
     private suspend fun channelPreference(): String =
         settingsSnapshot()?.executionChannel ?: settings.settings.first().executionChannel
 
+    // ---- 设备能力快照与通道健康度（重构批次：统一通道/执行抽象） ----
+    /** 同一步决策共用一份能力快照，避免动作前后读到不同时刻的可用性 */
+    private val capabilityReader = com.phoneagent.device.capability.DeviceCapabilityReader(
+        appContext,
+        shizukuReady = { shizukuManager?.isAvailable() == true },
+        adbConnected = { adbTransport?.isConnectedNow() == true },
+    )
+    /** 同一任务内按（目标, 通道）记录连续失败：连续失败的通道降权，而不是反复撞同一堵墙 */
+    private val channelHealth = ChannelHealth()
+    private val channelLadder = ChannelLadder(channelHealth)
+    private var healthTaskId: Long = Long.MIN_VALUE
+
+    /** 任务切换时清空通道健康度统计，避免上一个任务的失败记录拖累新任务 */
+    private fun syncChannelHealth() {
+        val taskId = store.currentTaskId
+        if (taskId != healthTaskId) {
+            healthTaskId = taskId
+            channelHealth.reset()
+        }
+    }
+
+    /**
+     * 当前真正可用的系统 shell 通道（按用户偏好与能力快照一次性定档）。
+     * 启动/指针类的降级候选里只保留**这一条**：三个候选同时存在会把同一套命令执行两遍。
+     */
+    private fun activeSystemShellKind(): ChannelKind? {
+        val snapshot = capabilityReader.snapshot()
+        val shizuku = snapshot.isUsable(com.phoneagent.device.capability.DeviceCapability.SHELL_SHIZUKU)
+        val adb = snapshot.isUsable(com.phoneagent.device.capability.DeviceCapability.SHELL_ADB)
+        return when (settingsChannelPreferenceSnapshot()) {
+            ShellRules.CHANNEL_SHIZUKU -> if (shizuku) ChannelKind.SHELL_SHIZUKU else null
+            // 显式偏好 Termux 时不提供系统命令兜底：Termux 跑不了 am/input，硬走只会失败
+            ShellRules.CHANNEL_TERMUX -> null
+            else -> when {
+                shizuku -> ChannelKind.SHELL_SHIZUKU
+                adb -> ChannelKind.SHELL_ADB
+                else -> null
+            }
+        }
+    }
+
+    /** 同步读偏好的快照值（执行层拿不到 suspend 的 DataStore 时按 AUTO 处理） */
+    private fun settingsChannelPreferenceSnapshot(): String =
+        settingsSnapshot()?.executionChannel ?: "AUTO"
+
     suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         val execT0 = System.nanoTime()
+        // 任务边界切换时清空通道健康度：上一任务的连续失败不该拖累新任务的首选通道
+        syncChannelHealth()
         // 规范化文档动作词汇
         val type = ActionType.ALIAS[action.type] ?: action.type
 
@@ -129,7 +176,13 @@ internal class ExecutionCore(
         if (service == null) {
             val out = channelFallback(action, type, snapshot, resolved.x, resolved.y, "无障碍服务不可用")
                 ?: com.phoneagent.engine.execution.VerifyResult(
-                    false, "无障碍服务不可用", "", "", notDelivered = true,
+                    false,
+                    "无障碍服务不可用",
+                    "",
+                    "",
+                    notDelivered = true,
+                    // 稳定能力编号：外层可据此给出"去开无障碍"的指引，不必解析文案
+                    capabilityCode = com.phoneagent.device.capability.DeviceCapability.ACCESSIBILITY.code,
                 )
             recordExecMs((System.nanoTime() - execT0) / 1_000_000)
             return out
@@ -315,6 +368,16 @@ internal class ExecutionCore(
             channelFallback(action, type, snapshot, x, y, result.reason) ?: result
         } else {
             result
+        }
+        // 通道轨迹只在真的发生选择/降级时进日志：正常首通道成功不刷屏
+        if (finalResult.trace.isNotBlank()) {
+            com.phoneagent.core.log.AppLog.i(
+                TAG,
+                "动作 $type 通道轨迹：${finalResult.trace}；交付通道=${finalResult.channel.ifBlank { "默认" }}",
+            )
+        }
+        if (!finalResult.success && finalResult.capabilityCode.isNotBlank()) {
+            com.phoneagent.core.log.AppLog.w(TAG, "动作 $type 因能力缺失失败：${finalResult.capabilityCode}")
         }
         recordExecMs((System.nanoTime() - execT0) / 1_000_000)
         return finalResult
@@ -919,61 +982,133 @@ internal class ExecutionCore(
 
     /**
      * 启动应用的多通道阶梯（见 [awaitLaunched] 对"静默拦截"的说明）。
-     * 只要某一级确认到前台就立即返回，不再做后面的尝试；三级都确认不到才如实报失败，
-     * 让外层失败链路（重试/请求介入）接管，而不是让 AI 在无效通道上无限重试。
+     *
+     * 改造点：候选与顺序不再写死在函数里，而是由 [ChannelPolicy] 按能力快照生成、
+     * 由 [ChannelLadder] 执行；同一目标连续失败的通道会在本任务内自动后移。
+     * 语义保持不变：只要某一级确认到前台就立即停止，三级都确认不到才如实报失败。
      */
     private suspend fun launchAppRobust(
         service: AgentAccessibilityService,
         pkg: String,
         snapshot: ScreenSnapshot,
     ): com.phoneagent.engine.execution.VerifyResult {
-        val attempts = mutableListOf<String>()
-
-        // ① 无障碍 / Provider
-        val a11y = runCatchingLogged(TAG, "无障碍启动应用 $pkg") { ActionExecutor(service).launchApp(pkg) }.getOrNull()
-        when (a11y) {
-            is ActionExecutor.Result.Success -> when (awaitLaunched(service, pkg, snapshot)) {
-                true -> return VerifyResult(true, "已启动应用: $pkg", snapshot.packageName ?: "", pkg)
-                null -> return VerifyResult(true, "已启动应用: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
-                false -> attempts += "无障碍启动指令已发出但目标应用未到前台"
+        val shellKind = activeSystemShellKind()
+        // shell 候选收敛成"当前真正可用的那一条"，避免把同一套 am/monkey 重复执行两遍
+        val candidates = ChannelPolicy.candidates(
+            goal = ChannelGoal.LAUNCH,
+            snapshot = capabilityReader.snapshot(),
+            includeLocalLaunch = true,
+        ).mapNotNull { candidate ->
+            when (candidate.kind) {
+                ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_ADB ->
+                    shellKind?.let { ChannelCandidate(it, candidate.reason) }
+                ChannelKind.ACCESSIBILITY, ChannelKind.LOCAL_ACTIVITY -> candidate
+                else -> null
             }
-            is ActionExecutor.Result.Failure -> attempts += "无障碍启动失败：${a11y.reason}"
-            null -> attempts += "无障碍启动异常"
         }
 
-        // ② shell：am/monkey 不受后台启动限制，是多数 ROM 上真正能拉起应用的通道
-        if (shellChannelAvailable()) {
-            val r = runCatchingLogged(TAG, "shell 启动应用 $pkg") { execShellViaChannel("monkey -p $pkg 1") }.getOrNull()
-            if (r is ShizukuManager.ShellResult.Success) {
-                when (awaitLaunched(service, pkg, snapshot)) {
-                    true -> return VerifyResult(true, "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg", snapshot.packageName ?: "", pkg)
-                    null -> return VerifyResult(true, "已自动切换 shell 通道启动应用: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
-                    false -> attempts += "shell 启动指令已被接受但目标应用未到前台"
+        var delivered: com.phoneagent.engine.execution.VerifyResult? = null
+        val ladder = channelLadder.run(ChannelGoal.LAUNCH, candidates) { candidate ->
+            when (candidate.kind) {
+                ChannelKind.ACCESSIBILITY -> {
+                    val a11y = runCatchingLogged(TAG, "无障碍启动应用 $pkg") { ActionExecutor(service).launchApp(pkg) }
+                        .getOrNull()
+                    when (a11y) {
+                        is ActionExecutor.Result.Success -> when (awaitLaunched(service, pkg, snapshot)) {
+                            true -> {
+                                delivered = VerifyResult(true, "已启动应用: $pkg", snapshot.packageName ?: "", pkg)
+                                ChannelStepResult.Delivered(confirmed = true)
+                            }
+                            null -> {
+                                delivered = VerifyResult(
+                                    true,
+                                    "已启动应用: $pkg（未能确认前台，以下一步观察为准）",
+                                    snapshot.packageName ?: "",
+                                    pkg,
+                                )
+                                ChannelStepResult.Delivered(confirmed = false)
+                            }
+                            false -> ChannelStepResult.NotDelivered("无障碍启动指令已发出但目标应用未到前台")
+                        }
+                        is ActionExecutor.Result.Failure -> ChannelStepResult.NotDelivered("无障碍启动失败：${a11y.reason}")
+                        null -> ChannelStepResult.NotDelivered("无障碍启动异常")
+                    }
                 }
-            } else {
-                attempts += "shell 启动失败：${(r as? ShizukuManager.ShellResult.Failure)?.reason ?: "通道无响应"}"
+
+                ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_ADB -> {
+                    val r = runCatchingLogged(TAG, "shell 启动应用 $pkg") { execShellViaChannel("monkey -p $pkg 1") }
+                        .getOrNull()
+                    if (r is ShizukuManager.ShellResult.Success) {
+                        when (awaitLaunched(service, pkg, snapshot)) {
+                            true -> {
+                                delivered = VerifyResult(
+                                    true,
+                                    "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg",
+                                    snapshot.packageName ?: "",
+                                    pkg,
+                                )
+                                ChannelStepResult.Delivered(confirmed = true)
+                            }
+                            null -> {
+                                delivered = VerifyResult(
+                                    true,
+                                    "已自动切换 shell 通道启动应用: $pkg（未能确认前台，以下一步观察为准）",
+                                    snapshot.packageName ?: "",
+                                    pkg,
+                                )
+                                ChannelStepResult.Delivered(confirmed = false)
+                            }
+                            false -> ChannelStepResult.NotDelivered("shell 启动指令已被接受但目标应用未到前台")
+                        }
+                    } else {
+                        val reason = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "通道无响应"
+                        ChannelStepResult.NotDelivered("shell 启动失败：$reason")
+                    }
+                }
+
+                ChannelKind.LOCAL_ACTIVITY -> {
+                    if (!launchLocally(pkg)) {
+                        ChannelStepResult.Skipped("未找到可启动入口")
+                    } else {
+                        when (awaitLaunched(service, pkg, snapshot)) {
+                            true -> {
+                                delivered = VerifyResult(
+                                    true,
+                                    "已自动切换本应用直启打开: $pkg",
+                                    snapshot.packageName ?: "",
+                                    pkg,
+                                )
+                                ChannelStepResult.Delivered(confirmed = true)
+                            }
+                            null -> {
+                                delivered = VerifyResult(
+                                    true,
+                                    "已切换本应用直启打开: $pkg（未能确认前台，以下一步观察为准）",
+                                    snapshot.packageName ?: "",
+                                    pkg,
+                                )
+                                ChannelStepResult.Delivered(confirmed = false)
+                            }
+                            false -> ChannelStepResult.NotDelivered("本应用直启请求已发出但目标应用未到前台")
+                        }
+                    }
+                }
+
+                else -> ChannelStepResult.Skipped("不适用于启动")
             }
-        } else {
-            attempts += "shell 通道不可用"
         }
 
-        // ③ 本应用直启：主应用持有悬浮窗权限时不受后台启动限制（最后一道兜底）
-        if (launchLocally(pkg)) {
-            when (awaitLaunched(service, pkg, snapshot)) {
-                true -> return VerifyResult(true, "已自动切换本应用直启打开: $pkg", snapshot.packageName ?: "", pkg)
-                null -> return VerifyResult(true, "已切换本应用直启打开: $pkg（未能确认前台，以下一步观察为准）", snapshot.packageName ?: "", pkg)
-                false -> attempts += "本应用直启请求已发出但目标应用未到前台"
-            }
-        } else {
-            attempts += "本应用直启：未找到可启动入口"
-        }
-
-        return VerifyResult(
+        val result = delivered ?: VerifyResult(
             false,
-            "启动应用失败: $pkg（${attempts.joinToString("；")}）",
+            "启动应用失败: $pkg（${ladder.detail}）",
             "",
             "",
             notDelivered = true,
+        )
+        return result.copy(
+            channel = ladder.channel?.id ?: "",
+            fallbackFrom = ladder.degradedFrom()?.id ?: "",
+            trace = ladder.trace(),
         )
     }
 
@@ -992,39 +1127,83 @@ internal class ExecutionCore(
         y: Int?,
         originalReason: String,
     ): com.phoneagent.engine.execution.VerifyResult? {
+        val goal = ChannelGoal.of(type) ?: return null
         val w = ctx.screenWidth().takeIf { it > 0 } ?: snapshot.screenWidth.takeIf { it > 0 } ?: 1080
         val h = ctx.screenHeight().takeIf { it > 0 } ?: snapshot.screenHeight.takeIf { it > 0 } ?: 2400
         val commands = buildFallbackCommands(action, type, w, h, x, y)
-
-        var shellFailure: String? = null
-        if (commands != null && shellChannelAvailable()) {
-            var failed: String? = null
-            for ((index, cmd) in commands.withIndex()) {
-                val r = runCatchingLogged(TAG, "通道切换兜底 $cmd") { execShellViaChannel(cmd) }.getOrNull()
-                if (r !is ShizukuManager.ShellResult.Success) {
-                    failed = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "shell 通道无响应"
-                    break
-                }
-                // 光标回放让用户看到"这一下落到哪"；只对第一条（真正的触摸动作）回放
-                if (index == 0) triggerCursorForShell(cmd)
+        val shellKind = commands?.let { activeSystemShellKind() }
+        // 候选同样由 ChannelPolicy 的"目标"口径推出；这里只有 shell 与本应用直启两类
+        val candidates = buildList {
+            if (commands != null && shellKind != null) {
+                add(ChannelCandidate(shellKind, "系统命令兜底"))
             }
-            if (failed == null) {
-                delay(300)
-                return VerifyResult(
-                    true,
-                    "$originalReason；已自动切换 shell 通道执行: ${commands.joinToString(" && ")}",
-                    "",
-                    "",
-                )
+            if (type == ActionType.LAUNCH || type == ActionType.OPEN) {
+                add(ChannelCandidate(ChannelKind.LOCAL_ACTIVITY, "本应用直启兜底"))
             }
-            shellFailure = failed
         }
 
-        // 启动/深链：shell 也失败时再试主应用自己的 startActivity（有悬浮窗权限时不受后台启动限制）
-        fallbackLocally(action, type, originalReason)?.let { return it }
+        var delivered: com.phoneagent.engine.execution.VerifyResult? = null
+        val ladder = channelLadder.run(goal, candidates) { candidate ->
+            when (candidate.kind) {
+                ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_ADB -> {
+                    // 走到这里时 commands 必非空（候选构造时已判定）
+                    var failed: String? = null
+                    for ((index, cmd) in commands.orEmpty().withIndex()) {
+                        val r = runCatchingLogged(TAG, "通道切换兜底 $cmd") { execShellViaChannel(cmd) }.getOrNull()
+                        if (r !is ShizukuManager.ShellResult.Success) {
+                            failed = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "shell 通道无响应"
+                            break
+                        }
+                        // 光标回放让用户看到"这一下落到哪"；只对第一条（真正的触摸动作）回放
+                        if (index == 0) triggerCursorForShell(cmd)
+                    }
+                    if (failed == null) {
+                        delay(300)
+                        delivered = VerifyResult(
+                            true,
+                            "$originalReason；已自动切换 shell 通道执行: ${commands.orEmpty().joinToString(" && ")}",
+                            "",
+                            "",
+                        )
+                        ChannelStepResult.Delivered(confirmed = true)
+                    } else {
+                        ChannelStepResult.NotDelivered(failed)
+                    }
+                }
 
-        return shellFailure?.let {
-            VerifyResult(false, "$originalReason；已尝试切换 shell 通道仍失败（$it）", "", "", notDelivered = true)
+                // 启动/深链：shell 也失败时再试主应用自己的 startActivity（有悬浮窗权限时不受后台启动限制）
+                ChannelKind.LOCAL_ACTIVITY -> {
+                    val local = fallbackLocally(action, type, originalReason)
+                    if (local != null) {
+                        delivered = local
+                        ChannelStepResult.Delivered(confirmed = true)
+                    } else {
+                        ChannelStepResult.Skipped("本应用无法直接拉起")
+                    }
+                }
+
+                else -> ChannelStepResult.Skipped("该目标没有此类通道")
+            }
+        }
+
+        val out = delivered
+        return when {
+            out != null -> out.copy(
+                channel = ladder.channel?.id ?: "",
+                fallbackFrom = ladder.degradedFrom()?.id ?: "",
+                trace = ladder.trace(),
+            )
+            // 只有真的"未交付"才报"切换失败"；纯不可用（skipped）保持原有 null 语义
+            ladder.attempts.any { it.outcome == ChannelOutcome.NOT_DELIVERED } ->
+                VerifyResult(
+                    false,
+                    "$originalReason；已尝试切换 shell 通道仍失败（${ladder.detail}）",
+                    "",
+                    "",
+                    notDelivered = true,
+                    trace = ladder.trace(),
+                )
+            else -> null
         }
     }
 

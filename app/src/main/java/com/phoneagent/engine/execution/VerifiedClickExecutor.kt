@@ -28,6 +28,18 @@ data class VerifyResult(
      * （对发送/提交/删除这类按钮尤其致命）。
      */
     val notDelivered: Boolean = false,
+    /**
+     * 实际交付动作的通道 id（`a11y` / `shizuku` / `adb` / `termux` / `local`）。
+     * 空串表示该动作没有经过通道选择（纯端侧动作或首通道直接成功且未走统一阶梯）。
+     * 仅用于日志、遥测与排障，**不进提示词**——执行通道对 AI 保持透明是本项目的既有契约。
+     */
+    val channel: String = "",
+    /** 发生过降级时，首次未交付的通道 id；未降级为空串 */
+    val fallbackFrom: String = "",
+    /** 通道尝试轨迹（中文，逐条列出"哪条通道、结果、原因"），进日志不进提示词 */
+    val trace: String = "",
+    /** 因某项设备能力缺失而失败时的稳定编号（见 `DeviceCapability.code`），便于统一回注原因 */
+    val capabilityCode: String = "",
 )
 
 /**
