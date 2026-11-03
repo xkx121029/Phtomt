@@ -55,6 +55,9 @@ enum class CapabilityChannel(val key: String) {
 
     /** 端侧视觉模型 */
     VISION("vision"),
+
+    /** 系统直连（AudioManager / Settings / Clipboard / PackageManager / 副屏 / 时钟数据库等，不经 GUI） */
+    DEVICE("device"),
 }
 
 /** 能力所需的本机权限（NONE = 无固定权限要求，可用性由通道探测决定） */
@@ -90,6 +93,12 @@ data class CapabilityParam(
     val defaultValue: String? = null,
     /** type=select 时的候选项 */
     val options: List<String> = emptyList(),
+    /** type=number 时的最小值（含） */
+    val min: Double? = null,
+    /** type=number 时的最大值（含） */
+    val max: Double? = null,
+    /** type=text 时的正则约束（端侧校验，失败直接回中文原因） */
+    val pattern: String? = null,
 )
 
 /** 一项能力的完整声明 */
@@ -218,6 +227,16 @@ object CapabilityRegistry {
             risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.WAIT,
         ),
         CapabilitySpec(
+            intent = IntentType.WAIT_FOR, name = "等待出现", category = "操作",
+            summary = "等到目标出现再继续（比盲等可靠）：text 给页面要出现的文字，app 给要进入前台的包名/应用名，wait_ms 给超时上限（默认 10000）。到点没出现会返回当前前台应用与页面摘要，不静默失败。",
+            params = listOf(
+                CapabilityParam("text", "等到的文字", "text", description = "页面里要出现的文字；与 app 二选一"),
+                CapabilityParam("app", "等到的应用", "text", description = "要进入前台的包名或应用名；与 text 二选一"),
+                CapabilityParam("wait_ms", "超时毫秒", "number", defaultValue = "10000", min = 500.0, max = 60000.0),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.SCREEN, action = ActionType.WAIT_FOR,
+        ),
+        CapabilitySpec(
             intent = IntentType.SAY, name = "回话", category = "沟通",
             summary = "对用户说一句话（不操作屏幕、不碰设备）：解释、汇报、反问都走它，会直接显示在任务流的对话里。",
             params = listOf(CapabilityParam("text", "要说的话", "text", required = true, description = "一句话，支持 Markdown")),
@@ -240,6 +259,26 @@ object CapabilityRegistry {
                 CapabilityParam("filter", "过滤关键词", "text", description = "仅 kind=apps 时生效，如「相机」"),
             ),
             risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_QUERY,
+        ),
+        CapabilitySpec(
+            intent = IntentType.DEVICE_INFO, name = "设备详情", category = "取数",
+            summary = "读系统详情（不操作屏幕、不碰 GUI）：op=status 汇总 / network 网络 / storage 存储 / memory 内存 / battery 电量 / display 屏幕 / sound 声音 / apps 应用清单 / inspect_app 应用详情。inspect_app 需要 app（包名或应用名），可同时给 text=权限/版本等关注点。",
+            params = listOf(
+                CapabilityParam("op", "查询项", "select", required = true, defaultValue = "status",
+                    options = listOf("status", "network", "storage", "memory", "battery", "display", "sound", "apps", "inspect_app")),
+                CapabilityParam("app", "目标应用", "text", description = "op=inspect_app 时必填：包名或应用名"),
+                CapabilityParam("text", "补充关键词", "text", description = "op=inspect_app 时可写 permissions/version/source"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.MEMORY_GET, name = "检索记忆", category = "记忆",
+            summary = "按需检索本地长期记忆（不操作屏幕）：query 关键词匹配内容/分类，limit 返回条数（默认 8）。只读。",
+            params = listOf(
+                CapabilityParam("query", "关键词", "text", description = "留空则按最近写入排序返回"),
+                CapabilityParam("limit", "条数", "number", defaultValue = "8", min = 1.0, max = 30.0),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
             intent = IntentType.SEE, name = "看图追问", category = "取数",
@@ -476,6 +515,59 @@ object CapabilityRegistry {
             needsConfirmation = true, action = ActionType.CLEAR_NOTIFS,
         ),
         CapabilitySpec(
+            intent = IntentType.DEVICE_CONTROL, name = "设备直控", category = "设备",
+            summary = "直接改设备状态（不经过 GUI、不模拟点击）：op=flashlight_on/flashlight_off 手电筒，brightness 亮度（level 0~100），volume 音量（stream/level），media 媒体键（action=play/pause/next/prev/stop），sound_mode 响铃模式（mode=ring/vibrate/silent），dnd 勿扰（enable=true/false），screen_timeout 息屏时间（seconds），rotation 旋转（enable=true/false），wifi/bluetooth/airplane/location/nfc 系统开关（enable=true/false，需 shell）。缺权限/通道时会回中文原因与替代做法。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true,
+                    options = listOf(
+                        "flashlight_on", "flashlight_off", "brightness", "volume", "media",
+                        "sound_mode", "dnd", "screen_timeout", "rotation",
+                        "wifi", "bluetooth", "airplane", "location", "nfc",
+                    )),
+                CapabilityParam("enable", "开关", "boolean", description = "op=dnd/rotation/wifi/bluetooth/airplane/location/nfc 时用"),
+                CapabilityParam("level", "数值", "number", description = "brightness 0~100；volume 为百分比 0~100", min = 0.0, max = 100.0),
+                CapabilityParam("stream", "音量通道", "select", defaultValue = "music", options = listOf("music", "ring", "notification", "alarm", "call")),
+                CapabilityParam("mode", "模式", "select", options = listOf("ring", "vibrate", "silent"), description = "op=sound_mode"),
+                CapabilityParam("action", "媒体动作", "select", options = listOf("play", "pause", "next", "prev", "stop"), description = "op=media"),
+                CapabilityParam("seconds", "秒数", "number", min = 5.0, max = 1800.0, description = "op=screen_timeout"),
+            ),
+            risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.SYSTEM_SETTINGS, name = "系统设置读写", category = "设备",
+            summary = "读写系统设置项：op=get 读（namespace/key），op=set 写（namespace/key/value）。namespace=system/secure/global。写 secure/global 通常需要 shell（Shizuku/无线 ADB）；写 system 需「修改系统设置」授权。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("get", "set")),
+                CapabilityParam("namespace", "命名空间", "select", required = true, defaultValue = "system", options = listOf("system", "secure", "global")),
+                CapabilityParam("key", "设置项", "text", required = true, description = "如 screen_brightness / font_scale", pattern = "[A-Za-z0-9_.]+"),
+                CapabilityParam("value", "值", "text", description = "op=set 时必填"),
+            ),
+            risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.CLIPBOARD, name = "剪贴板", category = "设备",
+            summary = "读写系统剪贴板（不经过 GUI）：op=get 读取当前内容，op=set 写入 text，op=clear 清空。Android 10+ 限制后台读剪贴板；读不到时会如实说明并建议先让本应用在前台。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("get", "set", "clear")),
+                CapabilityParam("text", "内容", "text", required = false, description = "op=set 时必填"),
+            ),
+            risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.ALARM_MANAGE, name = "管理闹钟", category = "时钟",
+            summary = "管理时钟应用里已有的闹钟：op=list 列出，op=enable 开关（hour/minute/enable），op=delete 删除（hour/minute），op=update 改时间（hour/minute/new_hour/new_minute）。读取/修改他人时钟数据需要 Root 或 Shizuku；没有时会回中文原因，并建议改走 GUI 或重新新增。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "enable", "delete", "update")),
+                CapabilityParam("hour", "小时", "number", min = 0.0, max = 23.0, description = "定位已有闹钟"),
+                CapabilityParam("minute", "分钟", "number", min = 0.0, max = 59.0),
+                CapabilityParam("enable", "启用", "boolean", description = "op=enable"),
+                CapabilityParam("new_hour", "新小时", "number", min = 0.0, max = 23.0, description = "op=update"),
+                CapabilityParam("new_minute", "新分钟", "number", min = 0.0, max = 59.0, description = "op=update"),
+            ),
+            risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, permission = CapabilityPermission.SHELL,
+            action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
 
         // ---- 高风险（不可逆，需用户确认） ----
             intent = IntentType.SEND, name = "发送", category = "操作",
@@ -506,6 +598,26 @@ object CapabilityRegistry {
             params = listOf(CapabilityParam("command", "命令原文", "text", required = true, description = "如 pm list packages | grep 相机；也可写友好命令")),
             risk = RiskTier.EXTENDED, channel = CapabilityChannel.SHELL, permission = CapabilityPermission.SHELL,
             needsConfirmation = true, action = ActionType.SHELL,
+        ),
+        CapabilitySpec(
+            intent = IntentType.VIRTUAL_DISPLAY, name = "副屏操作", category = "自由模式",
+            summary = "操作端侧虚拟副屏（仅自由模式；需要 Shizuku/无线 ADB）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图。副屏上的动作不占用用户当前屏幕。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true,
+                    options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key", "screenshot")),
+                CapabilityParam("app", "应用", "text", description = "op=launch：包名或应用名"),
+                CapabilityParam("x", "X 坐标", "number", min = 0.0),
+                CapabilityParam("y", "Y 坐标", "number", min = 0.0),
+                CapabilityParam("x1", "起点 X", "number", min = 0.0),
+                CapabilityParam("y1", "起点 Y", "number", min = 0.0),
+                CapabilityParam("x2", "终点 X", "number", min = 0.0),
+                CapabilityParam("y2", "终点 Y", "number", min = 0.0),
+                CapabilityParam("text", "文字", "text", description = "op=type"),
+                CapabilityParam("key", "按键", "select", options = listOf("BACK", "HOME", "ENTER", "RECENT")),
+                CapabilityParam("direction", "滑动方向", "select", options = listOf("up", "down", "left", "right")),
+            ),
+            risk = RiskTier.EXTENDED, channel = CapabilityChannel.DEVICE,
+            permission = CapabilityPermission.SHELL, action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
             intent = IntentType.A11Y, name = "调用无障碍端点", category = "自由模式",

@@ -153,6 +153,14 @@ internal class ExecutionCore(
             }
         }
 
+        // 可验证等待（对齐 Eta 的 wait_for_text / wait_for_package）：等到目标出现或超时，
+        // 不靠固定时长盲等；超时如实回报当前前台与缺失目标，交给 AI 换路。
+        if (type == ActionType.WAIT_FOR) {
+            return waitForTarget(action).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
+        }
+
         // 副屏模式：动作下发到模拟副屏（input -d / am --display），不经过无障碍服务。
         // 副屏读不到元素树，定位只可能来自动作自带的坐标（含 by=coordinate 比例坐标）
         virtualDisplay()?.takeIf { it.isReady }?.let { vd ->
@@ -953,6 +961,60 @@ internal class ExecutionCore(
                 else fail("Shizuku 不可用，命令无法通过无障碍执行: $cmd")
             }
         }
+    }
+
+    /**
+     * 可验证等待：每 400ms 重新观察一次，命中「目标文字」或「目标前台应用」即成功；
+     * 到超时如实回报当前前台与页面是否变化（不静默、不假装成功）。
+     */
+    private suspend fun waitForTarget(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
+        val text = action.text?.trim().orEmpty()
+        val pkg = action.packageName?.trim().orEmpty()
+        if (text.isEmpty() && pkg.isEmpty()) {
+            return com.phoneagent.engine.execution.VerifyResult(
+                false,
+                "wait_for 缺少等待目标：请给出 text（要出现的文字）或 app（要进入前台的包名）",
+                "",
+                "",
+                notDelivered = true,
+            )
+        }
+        val timeout = (action.timeoutMs ?: 10_000L).coerceIn(500L, 60_000L)
+        val startedAt = System.nanoTime()
+        var last: ScreenSnapshot? = null
+        while (true) {
+            last = runCatchingLogged(TAG, "wait_for 重新观察") { observe() }.getOrNull()
+            val hitText = text.isNotEmpty() && last?.elements?.any { el ->
+                el.text?.contains(text, ignoreCase = true) == true ||
+                    el.contentDescription?.contains(text, ignoreCase = true) == true
+            } == true
+            val hitPkg = pkg.isNotEmpty() && (last?.packageName == pkg || last?.packageName?.contains(pkg, ignoreCase = true) == true)
+            if (hitText || hitPkg) {
+                val what = when {
+                    hitText && hitPkg -> "「$text」已出现且 $pkg 在前台"
+                    hitText -> "「$text」已出现"
+                    else -> "$pkg 已在前台"
+                }
+                return com.phoneagent.engine.execution.VerifyResult(true, "等待命中：$what", "", "")
+            }
+            if ((System.nanoTime() - startedAt) / 1_000_000 >= timeout) break
+            delay(400)
+        }
+        val current = last?.packageName ?: "未知"
+        val missing = buildString {
+            if (text.isNotEmpty()) append("文字「$text」")
+            if (pkg.isNotEmpty()) {
+                if (isNotEmpty()) append(" / ")
+                append("应用「$pkg」到前台")
+            }
+        }
+        return com.phoneagent.engine.execution.VerifyResult(
+            false,
+            "等待超时（${timeout}ms）：未等到 $missing；当前前台是 $current",
+            "",
+            "",
+            notDelivered = true,
+        )
     }
 
     /** 计算滑动终点（纯逻辑，见 EngineRules.swipeEndpoints） */

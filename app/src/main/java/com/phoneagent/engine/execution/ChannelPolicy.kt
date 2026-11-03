@@ -59,6 +59,9 @@ internal enum class ChannelGoal(val label: String) {
     /** 像素截图 */
     SCREENSHOT("截图"),
 
+    /** 观察屏幕（等待文字/应用出现等只读轮询） */
+    OBSERVE("观察屏幕"),
+
     /** 自由模式 shell 命令 */
     SHELL("命令行");
 
@@ -73,6 +76,7 @@ internal enum class ChannelGoal(val label: String) {
             ActionType.KEY, ActionType.BACK, ActionType.HOME, ActionType.RECENTS, ActionType.REFRESH -> KEY
             ActionType.LAUNCH -> LAUNCH
             ActionType.OPEN -> OPEN
+            ActionType.WAIT_FOR -> OBSERVE
             ActionType.SHELL -> SHELL
             else -> null
         }
@@ -112,7 +116,7 @@ internal object ChannelPolicy {
         val canA11y = snapshot.isUsable(DeviceCapability.ACCESSIBILITY)
         val systemShell = systemShellCandidates(snapshot)
         return when (goal) {
-            ChannelGoal.SCREENSHOT ->
+            ChannelGoal.SCREENSHOT, ChannelGoal.OBSERVE ->
                 if (canA11y) listOf(ChannelCandidate(ChannelKind.ACCESSIBILITY, "无障碍在线")) else emptyList()
 
             ChannelGoal.SHELL -> shellCandidates(preference, snapshot, termuxToolCommand, systemShell)

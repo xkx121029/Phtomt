@@ -56,7 +56,7 @@ class CapabilityRegistryTest {
         assertEquals("均衡档补充与 MID 不一致", CapabilityRegistry.ofRisk(RiskTier.MID), ActionPolicy.midRisk)
         assertEquals("高风险档与 HIGH 不一致", CapabilityRegistry.ofRisk(RiskTier.HIGH), ActionPolicy.highRisk)
         assertEquals("自由专属与 EXTENDED 不一致", CapabilityRegistry.ofRisk(RiskTier.EXTENDED), ActionPolicy.freeOnly)
-        assertEquals("三档数量变化：低/中/高/自由专属", listOf(25, 16, 3, 2), listOf(
+        assertEquals("三档数量变化：低/中/高/自由专属", listOf(28, 20, 3, 3), listOf(
             ActionPolicy.lowRisk.size, ActionPolicy.midRisk.size, ActionPolicy.highRisk.size, ActionPolicy.freeOnly.size,
         ))
     }
@@ -79,7 +79,7 @@ class CapabilityRegistryTest {
             )
         }
         // 通道 → 能力数量（改动通道归属时先看这里，再确认门控/阶梯）
-        assertEquals(23, CapabilityRegistry.ofChannel(CapabilityChannel.SCREEN).size)
+        assertEquals(24, CapabilityRegistry.ofChannel(CapabilityChannel.SCREEN).size)
         assertEquals(2, CapabilityRegistry.ofChannel(CapabilityChannel.SHELL).size)
         assertEquals(6, CapabilityRegistry.ofChannel(CapabilityChannel.BROWSER).size)
         assertEquals(1, CapabilityRegistry.ofChannel(CapabilityChannel.VISION).size)

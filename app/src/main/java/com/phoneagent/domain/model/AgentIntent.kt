@@ -86,6 +86,11 @@ data class AgentIntent(
      */
     @SerialName("args")
     val args: Map<String, String>? = null,
+    /**
+     * 系统直连类意图的"子操作"（如 device_control 的 flashlight_on / volume / brightness）。
+     * 端侧按 意图 + op 分派到具体实现，AI 不写命令、不碰底层 API。
+     */
+    val op: String? = null,
     // ---- 统一字段（决策与进度展示通用） ----
     /** 给用户看的跑马灯文字（≤20 字） */
     val reasoning: String? = null,
@@ -168,6 +173,15 @@ object IntentType {
     // ---- 时钟直达（AlarmClock 意图，不经过语音助手；端侧直接创建并跳到时钟应用） ----
     const val SET_ALARM = "set_alarm"     // 定闹钟（hour/minute 或 when；repeat_days；label=text）
     const val SET_TIMER = "set_timer"     // 设倒计时（duration_seconds；label=text）
+    // ---- 系统直连（不经 GUI、不模拟点击；对齐 Eta 的 device 工具族） ----
+    const val WAIT_FOR = "wait_for"               // 等待某段文字出现或某个应用到前台（text / app / wait_ms）
+    const val DEVICE_INFO = "device_info"         // 读设备信息（op=status/network/storage/memory/battery/display/sound/inspect_app/apps）
+    const val DEVICE_CONTROL = "device_control"   // 改设备状态（op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/wifi/bluetooth/airplane/location/nfc）
+    const val SYSTEM_SETTINGS = "settings_op"     // 读写系统设置（op=get/set；namespace/key/value）
+    const val CLIPBOARD = "clipboard"             // 剪贴板（op=get/set/clear）
+    const val ALARM_MANAGE = "alarm_manage"       // 管理已有闹钟（op=list/enable/delete/update；需 Root/Shizuku）
+    const val VIRTUAL_DISPLAY = "virtual_display" // 副屏（op=status/create/destroy/launch/tap/swipe/type/key/screenshot）
+    const val MEMORY_GET = "memory_get"           // 按需检索长期记忆（query/limit）
     const val NOTIF_READ = "notif_read"   // 读取当前通知（需通知监听权限），纯本地读取、不操作设备
     const val NOTIF_CLEAR = "notif_clear" // 清理当前通知（ongoing 不动；会清掉用户未读内容，AI 需标注 needs_confirmation）
 
@@ -207,6 +221,8 @@ object IntentType {
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
         SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT, SET_ALARM, SET_TIMER,
+        WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE,
+        VIRTUAL_DISPLAY, MEMORY_GET,
         NOTIF_READ, NOTIF_CLEAR,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,

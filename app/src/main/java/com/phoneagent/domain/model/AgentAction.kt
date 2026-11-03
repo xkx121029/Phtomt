@@ -67,6 +67,8 @@ data class AgentAction(
     val endpoint: String? = null,
     /** a11y_call：端点参数（参数名 → 值） */
     val args: Map<String, String>? = null,
+    /** device_ops：子操作名（如 flashlight_on / list / get）；family 由 [endpoint] 携带 */
+    val op: String? = null,
     /** 深链/协议直达（type=open 时使用），如 https:// 链接或应用私有 scheme */
     val uri: String? = null,
     /** open 动作：目标软件名或包名（配合 [page] 走软件页面直达索引） */
@@ -157,6 +159,12 @@ object ActionType {
 
     /** 设倒计时（AlarmClock.ACTION_SET_TIMER 直达）：durationMs=时长 + text=标签 */
     const val SET_TIMER = "set_timer"
+
+    /** 可验证等待：等到目标文字/应用出现或超时（text=文字，packageName=包名，timeoutMs=上限） */
+    const val WAIT_FOR = "wait_for"
+
+    /** 系统直连子操作（endpoint=能力族，op=子操作，args=参数）；纯端侧落地，不操控屏幕 */
+    const val DEVICE_OPS = "device_ops"
 
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(

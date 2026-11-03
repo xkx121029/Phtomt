@@ -73,6 +73,8 @@ internal class ExecutionDeviceHooks(
     val awaitActionConfirmation: suspend (AgentAction) -> Boolean,
     val handleRemember: suspend (String, Int, AgentAction) -> Unit,
     val handleDeviceQuery: suspend (Int, AgentAction, MutableList<ChatMessageDto>) -> Unit,
+    /** 系统直连子操作：端侧按能力族 + op 分派，不操控屏幕，结果回注下一轮 */
+    val handleDeviceOps: suspend (Int, AgentAction, MutableList<ChatMessageDto>) -> Unit = { _, _, _ -> },
     val handleSay: (Int, AgentAction) -> Unit,
     val handleShowAgent: (Int, AgentAction) -> Unit,
     val browserHandles: (String) -> Boolean,
@@ -296,6 +298,12 @@ internal class ExecutionPhase(
                 // 本机信息查询：同类端侧代办，读到的内容作为"上一步结果"回注下一轮决策
                 if (act.type == ActionType.DEVICE_QUERY) {
                     device.handleDeviceQuery(step, act, messages)
+                    return StepOutcome.Continue
+                }
+                // 系统直连（设备状态/设置/剪贴板/闹钟管理/副屏/记忆检索）：同样纯端侧代办，
+                // 不经过 GUI、不触发 shell 确认（命令由端侧拼装，AI 只选 op）
+                if (act.type == ActionType.DEVICE_OPS) {
+                    device.handleDeviceOps(step, act, messages)
                     return StepOutcome.Continue
                 }
                 // AI 对用户说话：纯端侧呈现，不操作设备、不截图、不重试，

@@ -474,6 +474,51 @@ internal class DeviceQueryStrategy : IntentTranslationStrategy {
 }
 
 /**
+ * 系统直连策略：把 device_info / device_control / settings_op / clipboard / alarm_manage /
+ * virtual_display / memory_get 这些"不操控 GUI"的能力统一翻译成一条 [ActionType.DEVICE_OPS]。
+ *
+ * 与 shell 的区别：AI 只选 op 与参数，命令/API 由端侧拼装，不需要自由模式确认；
+ * 参数白名单来自能力注册表的 `op` 选项，写错 op 直接回可选值。
+ */
+internal class DeviceOpsStrategy(private val family: String) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val spec = CapabilityRegistry.specOf(family)
+        val opParam = spec?.params?.firstOrNull { it.name == "op" }
+        val rawOp = intent.op?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: opParam?.defaultValue
+        if (opParam != null) {
+            if (rawOp == null) {
+                return IntentTranslator.TranslationResult.MissingParam(
+                    field = "op",
+                    reason = "$family 需要 op 字段；可选值：${opParam.options.joinToString("/")}。",
+                )
+            }
+            if (opParam.options.isNotEmpty() && rawOp !in opParam.options) {
+                return IntentTranslator.TranslationResult.Failed(
+                    "$family 不支持 op=$rawOp；可选值：${opParam.options.joinToString("/")}。",
+                )
+            }
+        }
+        // 参数契约：所有子参数放在 args 对象里（键名见能力说明），值统一按字符串传
+        val args = intent.args.orEmpty()
+            .mapKeys { it.key.trim().lowercase() }
+            .filterKeys { it.isNotEmpty() }
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.DEVICE_OPS,
+                endpoint = family,
+                op = rawOp,
+                args = args.takeIf { it.isNotEmpty() },
+                text = intent.text,
+                app = intent.app,
+                uri = intent.uri,
+                summary = intent.summary ?: intent.target?.let { it.toString() },
+                reason = reasonOf(intent),
+            ),
+        )
+    }
+}
+
+/**
  * Termux 命令行取数策略：把"取网页 / 接口正文"这类**图形界面做不到或很笨拙**的事，
  * 落到 Termux 的 curl 上。
  *
@@ -679,6 +724,18 @@ class IntentTranslator(
         // 时钟直达（AlarmClock 意图，不经语音助手、不模拟点击；LOW 风险，保守档也放行）
         put(IntentType.SET_ALARM, ClockStrategy(ActionType.SET_ALARM))
         put(IntentType.SET_TIMER, ClockStrategy(ActionType.SET_TIMER))
+        // 可验证等待（等到文字/应用出现再继续，避免盲等）
+        put(IntentType.WAIT_FOR, passthrough(ActionType.WAIT_FOR) { i, a ->
+            a.copy(text = i.text, packageName = i.app, timeoutMs = i.waitMs ?: i.durationMs)
+        })
+        // 系统直连（不经过 GUI；AI 只选 op，参数走 args，端侧拼装 API/命令）
+        put(IntentType.DEVICE_INFO, DeviceOpsStrategy(IntentType.DEVICE_INFO))
+        put(IntentType.DEVICE_CONTROL, DeviceOpsStrategy(IntentType.DEVICE_CONTROL))
+        put(IntentType.SYSTEM_SETTINGS, DeviceOpsStrategy(IntentType.SYSTEM_SETTINGS))
+        put(IntentType.CLIPBOARD, DeviceOpsStrategy(IntentType.CLIPBOARD))
+        put(IntentType.ALARM_MANAGE, DeviceOpsStrategy(IntentType.ALARM_MANAGE))
+        put(IntentType.VIRTUAL_DISPLAY, DeviceOpsStrategy(IntentType.VIRTUAL_DISPLAY))
+        put(IntentType.MEMORY_GET, DeviceOpsStrategy(IntentType.MEMORY_GET))
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，
