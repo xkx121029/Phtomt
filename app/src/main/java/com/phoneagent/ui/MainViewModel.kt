@@ -559,6 +559,12 @@ class MainViewModel(
     /** 本对话内 AI 澄清 → 用户选择 的往来（引擎内存态），Agent 页据此保留 问题 + 选择 */
     val clarifyEvents: StateFlow<List<com.phoneagent.engine.ClarifyAnswered>> get() = engine.clarifyEvents
 
+    /**
+     * 合并形态下的纯对话问答（引擎内存态）：Agent 页把「对话」Tab 的产出也画在同一条时间线上。
+     * 与 [conversation] 不同，这里只存用户看得懂的 问题 + 回答，不含内部决策提示词。
+     */
+    val chatTurns: StateFlow<List<com.phoneagent.engine.runtime.ChatTurnEvent>> get() = engine.chatTurns
+
     /** 撤销一条刚写入的记忆：删库 + 从任务流移除卡片 */
     fun undoMemory(id: Long) {
         viewModelScope.launch {
@@ -710,17 +716,21 @@ class MainViewModel(
         acaScanJob?.cancel()
         acaScanJob = viewModelScope.launch {
             _acaScanning.value = true
-            _acaSkills.value = emptyList()
-            _acaSkillErrors.value = emptyList()
-            // 扫盘在 Default 线程，回调里只做状态追加（StateFlow 写是线程安全的）
-            val errors = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                com.phoneagent.coding.skill.AcaSkillCatalog.streamScan(context.applicationContext) { info ->
-                    _acaSkills.value = _acaSkills.value + info
+            try {
+                _acaSkills.value = emptyList()
+                _acaSkillErrors.value = emptyList()
+                // 扫盘在 Default 线程，回调里只做状态追加（StateFlow 写是线程安全的）
+                val errors = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    com.phoneagent.coding.skill.AcaSkillCatalog.streamScan(context.applicationContext) { info ->
+                        _acaSkills.value = _acaSkills.value + info
+                    }
                 }
+                _acaSkillErrors.value = errors.map { (dir, err) -> "$dir：$err" }
+                acaScannedAt = System.currentTimeMillis()
+            } finally {
+                // 无论成功、失败还是被取消，都必须复位；否则标志永久为 true，后续扫描会被永久跳过
+                _acaScanning.value = false
             }
-            _acaSkillErrors.value = errors.map { (dir, err) -> "$dir：$err" }
-            acaScannedAt = System.currentTimeMillis()
-            _acaScanning.value = false
         }
     }
 

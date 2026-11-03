@@ -22,6 +22,13 @@ fun formatFileTime(millis: Long): String {
     return TimeFormats.format(pattern, millis)
 }
 
+/** 执行耗时（中文单位）：毫秒级、秒级、分钟级各用不同精度，别显示 "0.0 秒" */
+fun formatDuration(ms: Long): String = when {
+    ms < 1000 -> "${ms} 毫秒"
+    ms < 60_000 -> String.format("%.1f 秒", ms / 1000.0)
+    else -> "${ms / 60_000} 分 ${(ms % 60_000) / 1000} 秒"
+}
+
 /** 文件大小："512 B" / "1.2 KB" / "3.4 MB" */
 fun formatSize(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"

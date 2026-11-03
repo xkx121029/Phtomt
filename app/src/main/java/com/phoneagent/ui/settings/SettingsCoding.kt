@@ -46,7 +46,12 @@ import org.koin.compose.koinInject
  * [CodingAgentBridge]（Koin 单例，与编码页/引擎路由共享同一实例）。
  */
 @Composable
-internal fun SettingsCoding(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+internal fun SettingsCoding(
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+    onOpenEnv: () -> Unit,
+) {
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
     val runtimeState by runtime.state.collectAsState()
@@ -65,121 +70,172 @@ internal fun SettingsCoding(st: SettingsState, save: () -> Unit, onBack: () -> U
             .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("编码", onBack, subtitle = "Node 编码运行时 · 审批档位 · 工作区")
+        SettingsPageHeader("编码", onBack, subtitle = "Node 运行时 · 构建环境 · 审批档位 · 工作区")
         Spacer(Modifier.height(20.dp))
 
-        // ========== A 运行时状态 ==========
-        SettingsSection(
-            title = "运行时状态",
-            subtitle = "Node 宿主随主包内置，编码 Agent 跑在里面",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                when (val stt = runtimeState) {
-                    is CodingRuntimeState.Installed -> {
-                        SettingsStatusRow("状态", "内置就绪")
-                        Spacer(Modifier.height(8.dp))
-                        SettingsStatusRow("版本", "v${stt.versionName} (${stt.versionCode})")
-                    }
-
-                    is CodingRuntimeState.NotReady -> {
-                        SettingsStatusRow("状态", "未就绪")
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stt.reason,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            }
-        }
-
+        CodingEnvEntrySection(onOpen = { buzz(); onOpenEnv() })
         Spacer(Modifier.height(16.dp))
 
-        // ========== B 审批档位 ==========
-        SettingsSection(
-            title = "审批档位",
-            subtitle = "编码 agent 执行敏感工具时的放行策略（改动即时生效）",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                ApprovalModeSegment(
-                    current = st.codingApprovalMode,
-                    onSelect = {
-                        buzz()
-                        st.codingApprovalMode = it
-                        save()
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    approvalModeHint(st.codingApprovalMode),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
+        CodingRuntimeSection(runtimeState)
         Spacer(Modifier.height(16.dp))
 
-        // ========== C 工作区与连接 ==========
-        SettingsSection(title = "工作区与连接", subtitle = "编码文件的落盘位置与 agent 通道状态", tone = SettingsTone.Brand) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("工作区", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            workspacePath,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    OutlinedButton(onClick = {
-                        buzz()
-                        if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
-                    }) {
-                        Text("打开")
-                    }
-                }
-                SettingsDivider(inset = false)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val (dotColor, label) = when (clientState.conn) {
-                        ConnState.CONNECTED -> AppTheme.colors.success to "已连接"
-                        ConnState.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
-                        ConnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
-                    }
-                    Box(
-                        Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(dotColor),
+        CodingApprovalSection(
+            mode = st.codingApprovalMode,
+            onSelect = {
+                buzz()
+                st.codingApprovalMode = it
+                save()
+            },
+        )
+        Spacer(Modifier.height(16.dp))
+
+        CodingWorkspaceSection(
+            workspacePath = workspacePath,
+            conn = clientState.conn,
+            error = clientState.error,
+            onOpenWorkspace = {
+                buzz()
+                if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
+            },
+        )
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** 构建环境（二级页入口）：放在最上方，它是「能不能在设备里自己打出 APK」这个前提 */
+@Composable
+private fun CodingEnvEntrySection(onOpen: () -> Unit) {
+    SettingsSection(
+        title = "构建环境",
+        subtitle = "设备内构建 APK 的 Linux 工具链（独立组件承载）",
+        tone = SettingsTone.Cool,
+    ) {
+        SettingsRow(
+            icon = AppIcons.Terminal,
+            title = "环境",
+            subtitle = "自动识别工程版本，一键安装 Gradle + AGP 配套组件",
+            tone = SettingsTone.Cool,
+            onClick = onOpen,
+        )
+    }
+}
+
+/** 运行时状态：Node 宿主随主包内置 */
+@Composable
+private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
+    SettingsSection(
+        title = "运行时状态",
+        subtitle = "Node 宿主随主包内置，编码 Agent 跑在里面",
+        tone = SettingsTone.Brand,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            when (runtimeState) {
+                is CodingRuntimeState.Installed -> {
+                    SettingsStatusRow("状态", "内置就绪")
+                    Spacer(Modifier.height(8.dp))
+                    SettingsStatusRow(
+                        "版本",
+                        "v${runtimeState.versionName} (${runtimeState.versionCode})",
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text("编码 Agent 连接", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
-                if (clientState.error != null) {
+
+                is CodingRuntimeState.NotReady -> {
+                    SettingsStatusRow("状态", "未就绪")
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        clientState.error ?: "",
+                        runtimeState.reason,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
         }
+    }
+}
 
-        Spacer(Modifier.height(28.dp))
+/** 审批档位：编码 agent 执行敏感工具时的放行策略（改动即时生效） */
+@Composable
+private fun CodingApprovalSection(mode: String, onSelect: (String) -> Unit) {
+    SettingsSection(
+        title = "审批档位",
+        subtitle = "编码 agent 执行敏感工具时的放行策略（改动即时生效）",
+        tone = SettingsTone.Brand,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            ApprovalModeSegment(current = mode, onSelect = onSelect)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                approvalModeHint(mode),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 工作区与连接：编码文件的落盘位置与 agent 通道状态 */
+@Composable
+private fun CodingWorkspaceSection(
+    workspacePath: String,
+    conn: ConnState,
+    error: String?,
+    onOpenWorkspace: () -> Unit,
+) {
+    SettingsSection(
+        title = "工作区与连接",
+        subtitle = "编码文件的落盘位置与 agent 通道状态",
+        tone = SettingsTone.Brand,
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("工作区", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        workspacePath,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = onOpenWorkspace) {
+                    Text("打开")
+                }
+            }
+            SettingsDivider(inset = false)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (dotColor, label) = when (conn) {
+                    ConnState.CONNECTED -> AppTheme.colors.success to "已连接"
+                    ConnState.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
+                    ConnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
+                }
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(dotColor),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "编码 Agent 连接",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (error != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }

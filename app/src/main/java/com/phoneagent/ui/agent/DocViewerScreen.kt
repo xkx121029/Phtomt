@@ -47,6 +47,37 @@ fun DocViewerScreen(
     backLabel: String = "返回主页",
     backIcon: ImageVector = AppIcons.Home,
 ) {
+    MarkdownReaderScreen(
+        title = doc?.fileName.orEmpty(),
+        content = doc?.content,
+        headline = "AI 生成的内容",
+        emptyHint = "这份内容已经关掉了；在任务流里再点一次「全屏」即可重新打开。",
+        icon = AppIcons.Description,
+        onClose = onClose,
+        modifier = modifier,
+        backLabel = backLabel,
+        backIcon = backIcon,
+    )
+}
+
+/**
+ * 全屏 Markdown 阅读器：只放"身份行 + 整篇正文 + 一个返回出口"。
+ *
+ * 文档预览与编码页的 AI 回复共用这一套，两处不再各长一份阅读页；
+ * [content] 为 null 表示来源已关闭，展示 [emptyHint] 而不是空白屏。
+ */
+@Composable
+fun MarkdownReaderScreen(
+    title: String,
+    content: String?,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    headline: String = "全文阅读",
+    emptyHint: String = "没有可读的内容",
+    icon: ImageVector = AppIcons.Description,
+    backLabel: String = "返回主页",
+    backIcon: ImageVector = AppIcons.Home,
+) {
     val colors = AppTheme.colors
     Column(
         modifier = modifier
@@ -65,7 +96,7 @@ fun DocViewerScreen(
                 ),
         ) {
             AppIconTile(
-                icon = AppIcons.Description,
+                icon = icon,
                 tint = colors.brand,
                 background = colors.surfaceSunken,
                 tileSize = 36.dp,
@@ -74,13 +105,13 @@ fun DocViewerScreen(
             Spacer(Modifier.width(AppSpacing.Md))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "AI 生成的内容",
+                    text = headline,
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceRaised,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = doc?.fileName.orEmpty().ifBlank { "全文阅读" },
+                    text = title.ifBlank { "全文阅读" },
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
@@ -89,9 +120,9 @@ fun DocViewerScreen(
             }
         }
 
-        if (doc == null) {
+        if (content == null) {
             Text(
-                text = "这份内容已经关掉了；在任务流里再点一次「全屏」即可重新打开。",
+                text = emptyHint,
                 style = MaterialTheme.typography.bodyMedium,
                 color = colors.onSurfaceRaised,
                 modifier = Modifier
@@ -110,7 +141,7 @@ fun DocViewerScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Xs),
                 ) {
-                    MarkdownPreview(content = doc.content, modifier = Modifier.fillMaxWidth())
+                    MarkdownPreview(content = content, modifier = Modifier.fillMaxWidth())
                 }
             }
         }

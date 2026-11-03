@@ -309,6 +309,56 @@ internal fun ClarifyAnswerItem(item: AgentTimelineItem.ClarifyAnswer) {
 internal val AgentItemSpacing = AppSpacing.Md
 
 /**
+ * 合并形态下的一次纯对话问答：用户问题（右对齐）+ AI 回答（左对齐）成组出现。
+ *
+ * 对话 Tab 收起后，这两句只能靠任务流留住；回答走 Markdown 渲染，
+ * 与其它 AI 输出同一套读法（代码块、列表都能正常显示）。
+ */
+@Composable
+internal fun ChatTurnItem(item: AgentTimelineItem.ChatTurn, vm: MainViewModel) {
+    val colors = AppTheme.colors
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            Text(
+                text = item.question,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onMessageBubbleUser,
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .clip(agentBubbleShape(isUser = true))
+                    .background(colors.messageBubbleUser)
+                    .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Sm))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(agentBubbleShape(isUser = false))
+                .background(colors.messageBubbleAgent)
+                .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
+        ) {
+            AgentSpeakerHeader(label = "回答", tint = colors.onMessageBubbleAgent)
+            Spacer(Modifier.height(AppSpacing.Xs))
+            if (item.answer.isBlank()) {
+                // 回答还没回来：问题已经先上屏，这里给一个明确的等待态，而不是一块空气泡
+                Text(
+                    text = "正在回答…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onMessageBubbleAgent.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                AgentMessageText(text = item.answer, vm = vm, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+/**
  * AI 生成的文档结果：直接嵌在任务流里预览，不再另开工作区页面。
  * 默认展开让用户一眼看到成果，长文限高内滚，可全屏通读、收起或关闭预览。
  */

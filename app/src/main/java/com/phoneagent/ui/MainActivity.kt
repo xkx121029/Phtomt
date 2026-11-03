@@ -89,6 +89,7 @@ import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.agent.DocViewerScreen
+import com.phoneagent.ui.agent.MarkdownReaderScreen
 import com.phoneagent.ui.chat.ChatScreen
 import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.AppSnackbar
@@ -112,6 +113,7 @@ import com.phoneagent.ui.home.HomeScreen
 import com.phoneagent.ui.memory.MemoryGraphScreen
 import com.phoneagent.ui.onboarding.OnboardingPermissionScreen
 import com.phoneagent.ui.onboarding.OnboardingScreen
+import com.phoneagent.ui.settings.SettingsPage
 import com.phoneagent.ui.settings.SettingsScreen
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -120,9 +122,11 @@ import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.PhoneAgentTheme
 import com.phoneagent.ui.theme.PressScale
+import com.phoneagent.ui.theme.UiStyle
 import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.pressScaleSpec
+import com.phoneagent.ui.workbench.WorkbenchScreen
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import org.koin.androidx.compose.koinViewModel
@@ -184,6 +188,8 @@ class MainActivity : ComponentActivity() {
                 bordersEnabled = !settings.borderless,
                 // 磨砂浓淡微调：同样实时驱动，主题页拖动滑杆立即看到玻璃变化
                 glassTintOffset = settings.glassTintOffset,
+                // 界面风格预设：经典（默认）/ 工作台，切换即重组、无需重启
+                styleId = settings.uiStyle,
             ) {
                 ActivityContent(vm, pageSignal, entrySignal)
             }
@@ -208,6 +214,11 @@ sealed class ExtrasPage {
     object Memory : ExtrasPage()
     /** 内置浏览器：AI 上网/操作网页的落点，用户也可直接当浏览窗口用 */
     object Browser : ExtrasPage()
+    /**
+     * 编码工作台：编码 Tab 不在（被人为隐藏或被合并进 Agent 页）时的落点。
+     * 合并形态下，Agent 页的编码卡片与分享文件都从这里下钻，编码界面本身不改。
+     */
+    object Coding : ExtrasPage()
 }
 
 /** ExtrasPage 状态保存：跨进程重建后恢复当前二级页 */
@@ -220,6 +231,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             is ExtrasPage.Skill -> listOf("skill")
             is ExtrasPage.Memory -> listOf("memory")
             is ExtrasPage.Browser -> listOf("browser")
+            is ExtrasPage.Coding -> listOf("coding")
         }
     },
     restore = { list ->
@@ -230,6 +242,7 @@ private val ExtrasPageSaver = listSaver<ExtrasPage?, Any?>(
             "skill" -> ExtrasPage.Skill
             "memory" -> ExtrasPage.Memory
             "browser" -> ExtrasPage.Browser
+            "coding" -> ExtrasPage.Coding
             else -> null
         }
     },
@@ -295,8 +308,8 @@ private fun ActivityContent(
 
     // 可配置 Tab（Superagent 融合 Phase 5）：顺序与可见性由 AppSettings.tab_order/tab_visible 决定，
     // 设置页改动后 settings 流更新，这里即时重排；selected 是「可见 Tab 列表的索引」。
-    val visibleTabs = remember(settings.tabOrder, settings.tabVisible) {
-        MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible)
+    val visibleTabs = remember(settings.tabOrder, settings.tabVisible, settings.agentSurface) {
+        MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible, settings.agentSurface)
     }
     val tabs = visibleTabs.map { TabItem(it.title, it.icon) }
     // 配置变化后索引可能越界（比如当前 Tab 被隐藏）：先夹回有效范围，防止 when 落空白屏
@@ -396,6 +409,11 @@ private fun ActivityContent(
     val browseSignal by pageSignal.collectAsState()
     val doc by vm.docResult.collectAsState()
     var docFullscreen by rememberSaveable { mutableStateOf(false) }
+    // 工作台配置面板的深链落点：非空时设置页直接翻到该分类，消费后清空
+    var settingsLanding by remember { mutableStateOf<SettingsPage?>(null) }
+    // 编码页 AI 回返的正文：气泡在会话流里只能限宽，点「全屏阅读」就整屏通读。
+    // 不放进 Saveable：正文可能很长，塞进 Bundle 会触发 TransactionTooLargeException
+    var markdownReader by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(browseSignal) {
         val intent = activity.intent
         if (intent?.getBooleanExtra(com.phoneagent.feature.browser.BrowserBridge.EXTRA_BROWSE, false) == true) {
@@ -436,22 +454,22 @@ private fun ActivityContent(
             }
             is com.phoneagent.feature.entry.TaskEntry.Target.SharedFiles -> {
                 // 文件先落进临时编码区，再切到编码页——编码页在那里把附件挂进输入区。
-                // 编码页被用户在设置里隐藏时无处可落，明确告知而不是静默吞掉文件。
-                val codingIndex = MainTabs.visibleTabs(
-                    vm.settingsFlow.value.tabOrder,
-                    vm.settingsFlow.value.tabVisible,
-                ).indexOfFirst { it.id == MainTabs.CODING }
-                if (codingIndex < 0) {
-                    snackbarState.show("请先在「设置 → 页面」里打开编码页，再分享文件", SnackbarType.WARNING)
-                } else {
-                    // 落盘是 IO，放到协程里做，别在主线程抠住第一帧
+                // 编码 Tab 被用户在设置里隐藏时，落到全屏编码二级页，
+                // 文件始终有地方去，不再因为"页签不在"而丢掉
+                val s = vm.settingsFlow.value
+                val codingIndex = MainTabs.visibleTabs(s.tabOrder, s.tabVisible, s.agentSurface)
+                    .indexOfFirst { it.id == MainTabs.CODING }
+                // 落盘是 IO，放到协程里做，别在主线程抠住第一帧
+                if (codingIndex >= 0) {
                     extrasPage = null
                     selected = codingIndex
-                    entryScope.launch {
-                        com.phoneagent.coding.SharedFiles
-                            .import(activity, target.uris.map { android.net.Uri.parse(it) })
-                            .onFailure { snackbarState.show(it.message ?: "文件导入失败", SnackbarType.ERROR) }
-                    }
+                } else {
+                    extrasPage = ExtrasPage.Coding
+                }
+                entryScope.launch {
+                    com.phoneagent.coding.SharedFiles
+                        .import(activity, target.uris.map { android.net.Uri.parse(it) })
+                        .onFailure { snackbarState.show(it.message ?: "文件导入失败", SnackbarType.ERROR) }
                 }
             }
         }
@@ -475,6 +493,9 @@ private fun ActivityContent(
     // 全屏阅读是最上层的一层，返回手势先关它（放在最后注册，优先级最高）
     BackHandler(enabled = docFullscreen) {
         docFullscreen = false
+    }
+    BackHandler(enabled = markdownReader != null) {
+        markdownReader = null
     }
 
     // 键盘是否弹出：必须在内容层读一次，不能写在 Scaffold 的 bottomBar 里。
@@ -611,6 +632,7 @@ private fun ActivityContent(
                                         backLabel = backLabel,
                                         backIcon = backIcon,
                                         onBack = { extrasPage = null },
+                                        onOpenMarkdownFullscreen = { markdownReader = it },
                                     )
                                 } else {
                                     AnimatedContent(
@@ -646,32 +668,61 @@ private fun ActivityContent(
                                                     onDrawerOpenChange = { taskDrawerOpen = it },
                                                 )
 
-                                                MainTabs.HOME -> HomeScreen(
-                                                    vm, contentMod,
-                                                    onRequestScreenshot = {
-                                                        val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                                        screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                                                    },
-                                                    // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
-                                                    // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
-                                                    onNavigate = { legacy ->
-                                                        val s = vm.settingsFlow.value
-                                                        selected = when (legacy) {
-                                                            0 -> tabIndex(s, MainTabs.AGENT)
-                                                            2 -> tabIndex(s, MainTabs.SETTINGS)
-                                                            else -> legacy.coerceIn(0, tabs.lastIndex)
-                                                        }
-                                                    },
-                                                    onOpenExtras = { extrasPage = it },
-                                                )
+                                                MainTabs.HOME -> if (UiStyle.of(settings.uiStyle) == UiStyle.WORKBENCH) {
+                                                    // 工作台风格的首屏：Agent / Coding 同壳切换，状态持久化
+                                                    WorkbenchScreen(
+                                                        vm = vm,
+                                                        modifier = contentMod,
+                                                        onOpenMemory = {
+                                                            val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
+                                                            if (idx >= 0) {
+                                                                extrasPage = null
+                                                                selected = idx
+                                                            } else {
+                                                                extrasPage = ExtrasPage.Memory
+                                                            }
+                                                        },
+                                                        onOpenDocFullscreen = { docFullscreen = true },
+                                                        onOpenSettingsPage = { landing ->
+                                                            settingsLanding = landing
+                                                            selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
+                                                        },
+                                                        onOpenMarkdownFullscreen = { markdownReader = it },
+                                                    )
+                                                } else {
+                                                    HomeScreen(
+                                                        vm, contentMod,
+                                                        onRequestScreenshot = {
+                                                            val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                                            screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                                        },
+                                                        // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
+                                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
+                                                        onNavigate = { legacy ->
+                                                            val s = vm.settingsFlow.value
+                                                            selected = when (legacy) {
+                                                                0 -> tabIndex(s, MainTabs.AGENT)
+                                                                2 -> tabIndex(s, MainTabs.SETTINGS)
+                                                                else -> legacy.coerceIn(0, tabs.lastIndex)
+                                                            }
+                                                        },
+                                                        onOpenExtras = { extrasPage = it },
+                                                    )
+                                                }
 
                                                 MainTabs.SETTINGS -> SettingsScreen(
                                                     vm, contentMod,
                                                     // 调试 / 测试从「关于」页进入，仍由这里统一接管二级页
                                                     onOpenExtras = { extrasPage = it },
+                                                    // 工作台配置面板的深链：翻到对应分类后清空，避免反复翻页
+                                                    initialPage = settingsLanding,
+                                                    onInitialPageConsumed = { settingsLanding = null },
                                                 )
                                                 MainTabs.CHAT -> ChatScreen(vm, contentMod)
-                                                MainTabs.CODING -> CodingScreen(vm, contentMod)
+                                                MainTabs.CODING -> CodingScreen(
+                                                    vm, contentMod,
+                                                    onOpenMarkdownFullscreen = { markdownReader = it },
+                                                )
                                                 MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
                                                 else -> {}
                                             }
@@ -724,6 +775,19 @@ private fun ActivityContent(
                     backLabel = backLabel,
                     backIcon = backIcon,
                     onClose = { docFullscreen = false },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            // 编码页的「全屏阅读」：与文档阅读共用同一套阅读页，只是标题口径不同
+            markdownReader?.let { content ->
+                MarkdownReaderScreen(
+                    title = "",
+                    content = content,
+                    headline = "编码 Agent 的回复",
+                    onClose = { markdownReader = null },
+                    backLabel = backLabel,
+                    backIcon = backIcon,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -1046,7 +1110,7 @@ private fun FloatingNavItem(
 
 /** 由当前设置算出指定 Tab 在可见列表中的索引（找不到或被隐藏时回退 0=首个可见 Tab） */
 internal fun tabIndex(settings: com.phoneagent.data.prefs.AppSettings.Settings, id: String): Int =
-    MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible)
+    MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible, settings.agentSurface)
         .indexOfFirst { it.id == id }
         .takeIf { it >= 0 } ?: 0
 
@@ -1059,6 +1123,8 @@ private fun ExtrasPageContent(
     backLabel: String,
     backIcon: ImageVector,
     onBack: () -> Unit,
+    /** 二级页里的编码页同样要能全屏通读 AI 回返的正文 */
+    onOpenMarkdownFullscreen: (String) -> Unit = {},
 ) {
     androidx.compose.foundation.layout.Column(
         modifier = modifier.fillMaxSize(),
@@ -1084,6 +1150,11 @@ private fun ExtrasPageContent(
             )
             ExtrasPage.Browser -> com.phoneagent.ui.browser.BrowserScreen(
                 Modifier.weight(1f).padding(horizontal = 0.dp),
+            )
+            ExtrasPage.Coding -> CodingScreen(
+                vm,
+                Modifier.weight(1f).padding(horizontal = 0.dp),
+                onOpenMarkdownFullscreen = onOpenMarkdownFullscreen,
             )
         }
         // 底部大圆角出口：文案跟着落点走（主页 / 当前 Tab）

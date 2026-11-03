@@ -1,10 +1,11 @@
-﻿package com.phoneagent.data.prefs
+package com.phoneagent.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.phoneagent.core.ai.CatalogModel
@@ -17,6 +18,21 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.agentStore by preferencesDataStore(name = "agent_settings")
+
+/**
+ * 工作台形态（[AppSettings.Settings.agentSurface] 的取值）。
+ *
+ * unified：操控与对话合成为一个 Agent 页——两者收成一个入口，
+ *          提交后由云端判定意图，自动选择「直接作答 / 操控执行」；编码仍是独立 Coding 页；
+ * split：  三种能力各占一个页面（操控 / 对话 / 编码 Tab 并列）。
+ */
+object AgentSurface {
+    const val UNIFIED = "unified"
+    const val SPLIT = "split"
+
+    /** 脏数据归一：只认这两个值，其余按合并形态 */
+    fun normalize(raw: String?): String = if (raw == SPLIT) SPLIT else UNIFIED
+}
 
 /**
  * 应用设置：AI API 配置与 Agent 运行参数。
@@ -126,6 +142,13 @@ class AppSettings(private val context: Context) {
          * 高对比度色板与 Android 12 以下的模糊降级底色不受影响
          */
         val glassTintOffset: Int = 0,
+        /**
+         * 界面风格预设（[com.phoneagent.ui.theme.UiStyle.id]）：classic = 原有主题，
+         * workbench = 工作台。存字符串避免脏数据反序列化失败，读取时由主题层归一。
+         */
+        val uiStyle: String = "classic",
+        /** 工作台风格下的工作视图（agent / coding，见 [WorkbenchView]），切换即落盘 */
+        val workbenchView: String = WorkbenchView.AGENT,
         // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
         /** 已配置的 API 端点（存 JSON 字符串；空表示从未写过，读取时由旧三槽合成） */
         val endpoints: List<Endpoint> = emptyList(),
@@ -140,6 +163,21 @@ class AppSettings(private val context: Context) {
         val updateChannel: String = "stable",
         /** 启动时自动检查更新 */
         val autoCheckUpdate: Boolean = true,
+        // ---- 执行文档：云端下发的操作手册，任务命中时注入规划与每步决策（见 feature/agentdoc）----
+        /** 是否启用云端执行文档（关闭后不再同步也不再注入） */
+        val docSyncEnabled: Boolean = true,
+        /** 文档服务地址（官网），默认与更新服务同域 */
+        val docBaseUrl: String = "https://hpa.linshuxu.us.kg",
+        /** 索引缓存有效期（分钟）：超过后下一次规划/决策会重新拉索引（支持 304，不会重复下载） */
+        val docTtlMinutes: Int = 30,
+        /** 单次注入文档正文的总预算（字符），防止超长手册挤爆上下文 */
+        val docMaxChars: Int = 1200,
+        /** 最近一次成功同步时间（毫秒），0 = 从未同步；由仓库写入，设置页只读 */
+        val docLastSyncAt: Long = 0L,
+        /** 最近一次同步失败原因，空 = 无错误；由仓库写入，设置页只读 */
+        val docLastError: String = "",
+        /** 上次成功同步到的文档篇数；由仓库写入，设置页只读 */
+        val docCount: Int = 0,
         // ---- 对外控制接口（Tasker / MacroDroid / 自动化工具广播下发任务） ----
         /** 是否接受外部广播下发任务（默认关闭；开启后任何应用都能按 [externalControlToken] 校验驱动本应用） */
         val externalControlEnabled: Boolean = false,
@@ -159,6 +197,12 @@ class AppSettings(private val context: Context) {
         val tabOrder: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
         /** 底部 Tab 可见性（可见 Tab 的 id 列表；home 与 settings 不可隐藏，UI 层保证） */
         val tabVisible: List<String> = listOf("home", "chat", "coding", "agent", "memory", "settings"),
+        /**
+         * 工作台形态：unified = 操控与对话合为一个 Agent 页（对话 Tab 收起，
+         * 由云端判定用户意图后选择作答或操控，编码仍在 Coding 页）；split = 三个独立页面并列。
+         * 合并形态下三种能力仍全部可达，只是入口收成两个。
+         */
+        val agentSurface: String = AgentSurface.UNIFIED,
     ) {
         /**
          * 模型配置是否可用；返回阻断原因（null = 可以执行）。
@@ -235,6 +279,10 @@ class AppSettings(private val context: Context) {
 
         /** 主题：磨砂浓淡微调（-25~25），见 [Settings.glassTintOffset] */
         val GLASS_TINT_OFFSET = intPreferencesKey("theme_glass_tint_offset")
+        /** 主题：界面风格预设，见 [Settings.uiStyle] */
+        val UI_STYLE = stringPreferencesKey("theme_ui_style")
+        /** 工作台工作视图（agent / coding），见 [Settings.workbenchView] */
+        val WORKBENCH_VIEW = stringPreferencesKey("workbench_view")
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
         val CATALOG = stringPreferencesKey("model_catalog")
         val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
@@ -242,6 +290,15 @@ class AppSettings(private val context: Context) {
         val UPDATE_BASE_URL = stringPreferencesKey("update_base_url")
         val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         val AUTO_CHECK_UPDATE = booleanPreferencesKey("auto_check_update")
+        /** 执行文档：开关 / 服务地址 / 缓存有效期 / 注入预算 */
+        val DOC_SYNC_ENABLED = booleanPreferencesKey("doc_sync_enabled")
+        val DOC_BASE_URL = stringPreferencesKey("doc_base_url")
+        val DOC_TTL_MINUTES = intPreferencesKey("doc_ttl_minutes")
+        val DOC_MAX_CHARS = intPreferencesKey("doc_max_chars")
+        /** 执行文档：同步状态（由仓库写入，设置页只读展示） */
+        val DOC_LAST_SYNC_AT = longPreferencesKey("doc_last_sync_at")
+        val DOC_LAST_ERROR = stringPreferencesKey("doc_last_error")
+        val DOC_COUNT = intPreferencesKey("doc_count")
         /** 对外控制：开关与口令，见 [Settings.externalControlEnabled] */
         val EXTERNAL_CONTROL_ENABLED = booleanPreferencesKey("external_control_enabled")
         val EXTERNAL_CONTROL_TOKEN = stringPreferencesKey("external_control_token")
@@ -252,6 +309,8 @@ class AppSettings(private val context: Context) {
         /** 底部 Tab 顺序 / 可见性（分号分隔 Tab id），见 [Settings.tabOrder] */
         val TAB_ORDER = stringPreferencesKey("tab_order")
         val TAB_VISIBLE = stringPreferencesKey("tab_visible")
+        /** 工作台形态（unified / split），见 [Settings.agentSurface] */
+        val AGENT_SURFACE = stringPreferencesKey("agent_surface")
     }
 
     val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
@@ -345,18 +404,28 @@ class AppSettings(private val context: Context) {
             borderless = prefs[Keys.BORDERLESS] ?: false,
             palette = prefs[Keys.PALETTE] ?: "ink_green",
             glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
+            uiStyle = prefs[Keys.UI_STYLE] ?: "classic",
+            workbenchView = WorkbenchView.normalize(prefs[Keys.WORKBENCH_VIEW]),
             endpoints = endpoints,
             catalog = catalog,
             skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
             updateBaseUrl = prefs[Keys.UPDATE_BASE_URL] ?: "https://hpa.linshuxu.us.kg",
             updateChannel = prefs[Keys.UPDATE_CHANNEL] ?: "stable",
             autoCheckUpdate = prefs[Keys.AUTO_CHECK_UPDATE] ?: true,
+            docSyncEnabled = prefs[Keys.DOC_SYNC_ENABLED] ?: true,
+            docBaseUrl = prefs[Keys.DOC_BASE_URL] ?: "https://hpa.linshuxu.us.kg",
+            docTtlMinutes = prefs[Keys.DOC_TTL_MINUTES] ?: 30,
+            docMaxChars = prefs[Keys.DOC_MAX_CHARS] ?: 1200,
+            docLastSyncAt = prefs[Keys.DOC_LAST_SYNC_AT] ?: 0L,
+            docLastError = prefs[Keys.DOC_LAST_ERROR] ?: "",
+            docCount = prefs[Keys.DOC_COUNT] ?: 0,
             externalControlEnabled = prefs[Keys.EXTERNAL_CONTROL_ENABLED] ?: false,
             externalControlToken = SecretCodec.decrypt(prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: ""),
             onboardingDone = prefs[Keys.ONBOARDING_DONE] ?: false,
             codingApprovalMode = prefs[Keys.CODING_APPROVAL_MODE] ?: "risky",
             tabOrder = TabPrefsCodec.decode(prefs[Keys.TAB_ORDER]),
             tabVisible = TabPrefsCodec.decode(prefs[Keys.TAB_VISIBLE]),
+            agentSurface = AgentSurface.normalize(prefs[Keys.AGENT_SURFACE]),
         )
     }
 
@@ -366,6 +435,20 @@ class AppSettings(private val context: Context) {
      */
     suspend fun markOnboardingDone() {
         context.agentStore.edit { prefs -> prefs[Keys.ONBOARDING_DONE] = true }
+    }
+
+    /**
+     * 只落盘执行文档的同步状态（时间 / 篇数 / 失败原因）。
+     *
+     * 与 onboardingDone 同理：这些字段由仓库在后台写，设置表单整体回写时不带它们，
+     * 走 [update] 会把刚同步到的状态打回默认值，所以单独开一个只写这三个键的入口。
+     */
+    suspend fun updateDocStatus(lastSyncAt: Long, count: Int, error: String) {
+        context.agentStore.edit { prefs ->
+            if (lastSyncAt > 0) prefs[Keys.DOC_LAST_SYNC_AT] = lastSyncAt
+            prefs[Keys.DOC_COUNT] = count
+            prefs[Keys.DOC_LAST_ERROR] = error.take(200)
+        }
     }
 
     suspend fun update(settings: Settings) {
@@ -419,6 +502,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.BORDERLESS] = settings.borderless
             prefs[Keys.PALETTE] = settings.palette
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
+            prefs[Keys.UI_STYLE] = settings.uiStyle
+            prefs[Keys.WORKBENCH_VIEW] = WorkbenchView.normalize(settings.workbenchView)
             // 端点表整体落盘，但每条 Key 先单独加密（地址/模型名保持可读）
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(
                 settings.endpoints.map { ep -> ep.copy(apiKey = SecretCodec.encrypt(ep.apiKey)) },
@@ -432,12 +517,19 @@ class AppSettings(private val context: Context) {
             prefs[Keys.UPDATE_BASE_URL] = settings.updateBaseUrl.trim().trimEnd('/')
             prefs[Keys.UPDATE_CHANNEL] = settings.updateChannel
             prefs[Keys.AUTO_CHECK_UPDATE] = settings.autoCheckUpdate
+            prefs[Keys.DOC_SYNC_ENABLED] = settings.docSyncEnabled
+            prefs[Keys.DOC_BASE_URL] = settings.docBaseUrl.trim().trimEnd('/')
+            prefs[Keys.DOC_TTL_MINUTES] = settings.docTtlMinutes.coerceIn(5, 24 * 60)
+            prefs[Keys.DOC_MAX_CHARS] = settings.docMaxChars.coerceIn(200, 4000)
+            // 同步状态（DOC_LAST_SYNC_AT / DOC_LAST_ERROR / DOC_COUNT）不在这里整体回写：
+            // 设置页表单没有这三个字段，写了会把仓库刚记下的状态打回默认值
             prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled
             prefs[Keys.EXTERNAL_CONTROL_TOKEN] = SecretCodec.encrypt(settings.externalControlToken)
             // onboardingDone 不在这里整体回写：设置表单没有该字段，会把 true 覆盖成 false
             prefs[Keys.CODING_APPROVAL_MODE] = settings.codingApprovalMode
             prefs[Keys.TAB_ORDER] = TabPrefsCodec.encode(settings.tabOrder)
             prefs[Keys.TAB_VISIBLE] = TabPrefsCodec.encode(settings.tabVisible)
+            prefs[Keys.AGENT_SURFACE] = AgentSurface.normalize(settings.agentSurface)
         }
     }
 }

@@ -34,8 +34,12 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.ToolRunState
+import com.phoneagent.ui.components.agentToolIdentity
+import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.components.looksLikeMarkdown
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.components.toolStatusStyle
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -65,11 +69,13 @@ internal fun ToolStepRow(
     var expanded by rememberSaveable(step.key) { mutableStateOf(false) }
     var rawOpen by rememberSaveable(step.key) { mutableStateOf(false) }
 
+    // 状态色与编码页共用同一份口径；"执行了但未验证"不在三态里，退回中性色
     val statusColor = when {
-        step.failed -> colors.error
-        step.verified -> colors.success
+        step.failed -> toolStatusStyle(ToolRunState.Failed).tint
+        step.verified -> toolStatusStyle(ToolRunState.Succeeded).tint
         else -> colors.onSurfaceRaised
     }
+    val identity = agentToolIdentity(step.toolType)
     val human = rememberTranslated(step.human, vm)
 
     Column(
@@ -91,14 +97,14 @@ internal fun ToolStepRow(
                         modifier = Modifier.width(40.dp),
                     )
                     Icon(
-                        imageVector = AgentToolStyle.icon(step.toolType),
+                        imageVector = identity.icon,
                         contentDescription = null,
                         tint = statusColor,
                         modifier = Modifier.size(14.dp),
                     )
                     Spacer(Modifier.width(AppSpacing.Sm))
                     Text(
-                        text = AgentToolStyle.name(step.toolType),
+                        text = identity.label,
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
@@ -325,14 +331,8 @@ private fun RawBlock(title: String, body: String) {
 /** 步内元信息（弱化层）：耗时 / token / 置信度 / 是否留档截图 */
 private fun metaLine(step: StepCall): String {
     val parts = ArrayList<String>(4)
-    if (step.durationMs > 0) {
-        parts += if (step.durationMs >= 1000) {
-            "耗时 ${"%.1f".format(step.durationMs / 1000.0)} 秒"
-        } else {
-            "耗时 ${step.durationMs} 毫秒"
-        }
-    }
-    if (step.tokens > 0) parts += "${step.tokens} tokens"
+    if (step.durationMs > 0) parts += "耗时 ${formatDuration(step.durationMs)}"
+    if (step.tokens > 0) parts += "消耗 ${step.tokens} 词元"
     step.confidence?.let { parts += "置信度 ${(it * 100).toInt()}%" }
     if (step.hasScreenshot) parts += "有截图留档"
     return if (parts.isEmpty()) "暂无更多信息" else parts.joinToString(" · ")

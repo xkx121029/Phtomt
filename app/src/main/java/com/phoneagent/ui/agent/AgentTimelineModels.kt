@@ -178,6 +178,20 @@ internal sealed interface AgentTimelineItem {
     }
 
     /**
+     * 合并形态下的一次纯对话问答：用户问题 + AI 回答成组出现。
+     *
+     * 分开形态里这两句在「对话」Tab 看着，合并后对话 Tab 收起，任务流必须自己把它们摆出来，
+     * 否则用户问完一句就什么都看不到。
+     */
+    data class ChatTurn(
+        val id: Long,
+        val question: String,
+        val answer: String,
+    ) : AgentTimelineItem {
+        override val key: String get() = "ct#$id"
+    }
+
+    /**
      * 提示类型。
      * 只有「无障碍未开启」会阻断 AI 读页面，属于真问题；
      * 悬浮窗是可选能力，不在此提示（改由设置页开关控制）。

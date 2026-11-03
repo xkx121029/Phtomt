@@ -1,4 +1,4 @@
-﻿package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
+import com.phoneagent.data.prefs.AgentSurface
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
@@ -47,7 +49,7 @@ import kotlinx.coroutines.launch
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
 // MODEL_CATALOG 是「云端模型」下的二级页：模型库动辄几十上百条，不能平铺在设置页上
-enum class SettingsPage { HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT, CODING, TABS }
+enum class SettingsPage { HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV, TABS }
 
 @Composable
 fun SettingsScreen(
@@ -60,6 +62,12 @@ fun SettingsScreen(
      * 现在收进「设置 → 关于」的开发者工具分区，由外层把页面切换交给 MainActivity。
      */
     onOpenExtras: (com.phoneagent.ui.ExtrasPage) -> Unit = {},
+    /**
+     * 工作台配置面板的深链落点：非空时直接翻到对应设置分类，翻页后回调消费掉。
+     * 与「让用户在一处集中找到配置」配套——面板只做聚类与跳转，真正的表单元数据仍在设置页。
+     */
+    initialPage: SettingsPage? = null,
+    onInitialPageConsumed: () -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
     // 同上：改走 LocalActivity（可空），不再把 LocalContext 强转成 Activity
@@ -73,6 +81,13 @@ fun SettingsScreen(
     // 一进来就是一块空白总览，等于让用户多点一次
     var page by rememberSaveable {
         mutableStateOf(if (twoPane) SettingsPage.AI_MODELS else SettingsPage.HOME)
+    }
+    // 工作台配置面板的跳转请求：只消费一次，消费后清空，避免设置页重组时反复翻页
+    LaunchedEffect(initialPage) {
+        if (initialPage != null) {
+            page = initialPage
+            onInitialPageConsumed()
+        }
     }
     // 正在挑选模型的职责（main / vision / reason）；null = 浮层收起
     var pickRole by remember { mutableStateOf<String?>(null) }
@@ -287,6 +302,11 @@ private fun SettingsPageContent(
                 st = st,
                 save = saveNonAiSettings,
                 onBack = backToHome,
+                onOpenEnv = { onPage(SettingsPage.CODING_ENV) },
+            )
+            // 编码环境是「编码」下的二级页：返回时回编码页而不是设置主页
+            SettingsPage.CODING_ENV -> SettingsCodingEnv(
+                onBack = { onPage(SettingsPage.CODING) },
             )
             SettingsPage.TABS -> SettingsTabs(
                 st = st,
@@ -364,6 +384,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var palette by mutableStateOf(initial.palette)
     /** 主题：磨砂浓淡微调（-25~25，0 = 色板默认），负更透正更实 */
     var glassTintOffset by mutableIntStateOf(initial.glassTintOffset)
+    /** 界面风格预设：classic / workbench，见 [com.phoneagent.ui.theme.UiStyle] */
+    var uiStyle by mutableStateOf(initial.uiStyle)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
@@ -372,6 +394,15 @@ class SettingsState(initial: AppSettings.Settings) {
     var updateBaseUrl by mutableStateOf(initial.updateBaseUrl)
     var updateChannel by mutableStateOf(initial.updateChannel)
     var autoCheckUpdate by mutableStateOf(initial.autoCheckUpdate)
+    // 云端执行文档：开关 / 服务地址 / 缓存有效期 / 注入预算（同步状态只读，不回写）
+    var docSyncEnabled by mutableStateOf(initial.docSyncEnabled)
+    var docBaseUrl by mutableStateOf(initial.docBaseUrl)
+    var docTtlMinutes by mutableIntStateOf(initial.docTtlMinutes)
+    var docMaxChars by mutableIntStateOf(initial.docMaxChars)
+    /** 同步状态（只读展示；由 AgentDocRepository 写回 DataStore） */
+    var docLastSyncAt by mutableLongStateOf(initial.docLastSyncAt)
+    var docCount by mutableIntStateOf(initial.docCount)
+    var docLastError by mutableStateOf(initial.docLastError)
     // 对外控制接口：Tasker 等广播下发任务的开关与口令
     var externalControlEnabled by mutableStateOf(initial.externalControlEnabled)
     var externalControlToken by mutableStateOf(initial.externalControlToken)
@@ -381,6 +412,8 @@ class SettingsState(initial: AppSettings.Settings) {
     // 底部 Tab 顺序与可见性（Tab id 列表，Superagent 融合 Phase 6）
     var tabOrder by mutableStateOf(initial.tabOrder)
     var tabVisible by mutableStateOf(initial.tabVisible)
+    // 工作台形态：分开显示（操控 / 对话 / 编码各占一个 Tab）或操控+对话合为一个 Agent 页（编码仍是 Coding 页）
+    var agentSurface by mutableStateOf(AgentSurface.normalize(initial.agentSurface))
 
     fun applyFrom(s: AppSettings.Settings) {
         base = s
@@ -430,6 +463,7 @@ class SettingsState(initial: AppSettings.Settings) {
         borderless = s.borderless
         palette = s.palette
         glassTintOffset = s.glassTintOffset
+        uiStyle = s.uiStyle
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
         endpoints.addAll(s.endpoints)
@@ -439,12 +473,20 @@ class SettingsState(initial: AppSettings.Settings) {
         updateBaseUrl = s.updateBaseUrl
         updateChannel = s.updateChannel
         autoCheckUpdate = s.autoCheckUpdate
+        docSyncEnabled = s.docSyncEnabled
+        docBaseUrl = s.docBaseUrl
+        docTtlMinutes = s.docTtlMinutes
+        docMaxChars = s.docMaxChars
+        docLastSyncAt = s.docLastSyncAt
+        docCount = s.docCount
+        docLastError = s.docLastError
         externalControlEnabled = s.externalControlEnabled
         externalControlToken = s.externalControlToken
         // 审批档位与 Tab 配置同回填：漏了的话任一设置页保存一次就会把它们打回默认值
         codingApprovalMode = s.codingApprovalMode
         tabOrder = s.tabOrder
         tabVisible = s.tabVisible
+        agentSurface = AgentSurface.normalize(s.agentSurface)
     }
 
     /**
@@ -514,16 +556,22 @@ class SettingsState(initial: AppSettings.Settings) {
         borderless = borderless,
         palette = palette,
         glassTintOffset = glassTintOffset,
+        uiStyle = uiStyle,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,
         updateBaseUrl = updateBaseUrl,
         updateChannel = updateChannel,
         autoCheckUpdate = autoCheckUpdate,
+        docSyncEnabled = docSyncEnabled,
+        docBaseUrl = docBaseUrl,
+        docTtlMinutes = docTtlMinutes,
+        docMaxChars = docMaxChars,
         externalControlEnabled = externalControlEnabled,
         externalControlToken = externalControlToken.trim(),
         codingApprovalMode = codingApprovalMode,
         tabOrder = tabOrder,
         tabVisible = tabVisible,
+        agentSurface = agentSurface,
     )
 }

@@ -3,6 +3,7 @@ package com.phoneagent.ui.voice
 // JSON 解析说明：原用 org.json 解析 ASR 响应，为统一项目序列化方案改为 kotlinx.serialization，字段取值与容错行为保持等价
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -312,16 +313,15 @@ class CloudAsrEngine(
 
     @Volatile private var stopRequested = false
 
+    // 麦克风权限在 preflightError() 里已显式检查（缺失直接返回 false），lint 看不穿这个自定义检查
+    @SuppressLint("MissingPermission")
     override fun start(): Boolean {
         _finalText.value = null
         _error.value = null
         _level.value = 0f
-        if (config.baseUrl.isBlank() || config.model.isBlank() || config.apiKey.isBlank()) {
-            _error.value = "请先在「云端模型 → 语音输入」里配置 API 地址、密钥与模型"
-            return false
-        }
-        if (ContextCompat_checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-            _error.value = "缺少麦克风权限"
+        val reason = preflightError()
+        if (reason != null) {
+            _error.value = reason
             return false
         }
         cancelled = false
@@ -329,11 +329,29 @@ class CloudAsrEngine(
         startAt = SystemClock.elapsedRealtime()
         val file = File(context.cacheDir, "voice_input_${startAt}.wav")
         wavFile = file
+        val audioRecord = createAudioRecord()
+        if (audioRecord == null) {
+            wavFile = null
+        } else {
+            recordThread = Thread { recordLoop(audioRecord, file) }.also { it.start() }
+        }
+        return audioRecord != null
+    }
 
+    /** 开录前的配置与权限校验：返回中文错误提示，null 表示可以开始录音 */
+    private fun preflightError(): String? = when {
+        config.baseUrl.isBlank() || config.model.isBlank() || config.apiKey.isBlank() ->
+            "请先在「云端模型 → 语音输入」里配置 API 地址、密钥与模型"
+        ContextCompat_checkSelfPermission() != PackageManager.PERMISSION_GRANTED -> "缺少麦克风权限"
+        else -> null
+    }
+
+    /** 创建并校验 AudioRecord；失败时写入错误提示并返回 null */
+    private fun createAudioRecord(): AudioRecord? {
         val minBuf = AudioRecord.getMinBufferSize(
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )
-        val audioRecord = try {
+        val record: AudioRecord? = try {
             AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 SAMPLE_RATE,
@@ -343,44 +361,45 @@ class CloudAsrEngine(
             )
         } catch (e: Exception) {
             _error.value = "录音启动失败：${e.message ?: "麦克风被占用"}"
-            return false
+            null
         }
-        if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
-            audioRecord.release()
+        if (record != null && record.state != AudioRecord.STATE_INITIALIZED) {
+            record.release()
             _error.value = "录音启动失败：麦克风不可用或权限未授予"
-            return false
+            return null
         }
+        return record
+    }
 
-        recordThread = Thread {
-            audioRecord.startRecording()
-            val buf = ShortArray(SAMPLE_RATE / 20) // 50ms 窗口，与规格一致
-            var pcmBytes = 0L
-            RandomAccessFile(file, "rw").use { out ->
-                out.setLength(0)
-                out.write(ByteArray(WAV_HEADER_SIZE)) // 先占头，停止时回填
-                while (!stopRequested && pcmBytes < MAX_BYTES) {
-                    val n = audioRecord.read(buf, 0, buf.size)
-                    if (n <= 0) break
-                    // RMS → 归一化电平（规格公式：level = clamp((20*log10(rms)+60)/60, 0, 1)）
-                    var sum = 0.0
-                    for (i in 0 until n) sum += buf[i] * buf[i]
-                    val rms = kotlin.math.sqrt(sum / n)
-                    _level.value = if (rms < 1.0) 0f
-                    else ((20 * log10(rms) + 60) / 60).toFloat().coerceIn(0f, 1f)
-                    val bytes = ByteArray(n * 2)
-                    for (i in 0 until n) {
-                        bytes[i * 2] = (buf[i].toInt() and 0xFF).toByte()
-                        bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte()
-                    }
-                    out.write(bytes)
-                    pcmBytes += bytes.size
+    /** 录音线程体：按 50ms 窗口采 PCM 写入 WAV，结束后回填头并释放 AudioRecord */
+    private fun recordLoop(audioRecord: AudioRecord, file: File) {
+        audioRecord.startRecording()
+        val buf = ShortArray(SAMPLE_RATE / 20) // 50ms 窗口，与规格一致
+        var pcmBytes = 0L
+        RandomAccessFile(file, "rw").use { out ->
+            out.setLength(0)
+            out.write(ByteArray(WAV_HEADER_SIZE)) // 先占头，停止时回填
+            while (!stopRequested && pcmBytes < MAX_BYTES) {
+                val n = audioRecord.read(buf, 0, buf.size)
+                if (n <= 0) break
+                // RMS → 归一化电平（规格公式：level = clamp((20*log10(rms)+60)/60, 0, 1)）
+                var sum = 0.0
+                for (i in 0 until n) sum += buf[i] * buf[i]
+                val rms = kotlin.math.sqrt(sum / n)
+                _level.value = if (rms < 1.0) 0f
+                else ((20 * log10(rms) + 60) / 60).toFloat().coerceIn(0f, 1f)
+                val bytes = ByteArray(n * 2)
+                for (i in 0 until n) {
+                    bytes[i * 2] = (buf[i].toInt() and 0xFF).toByte()
+                    bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte()
                 }
+                out.write(bytes)
+                pcmBytes += bytes.size
             }
-            audioRecord.stop()
-            audioRecord.release()
-            writeWavHeader(file, pcmBytes)
-        }.also { it.start() }
-        return true
+        }
+        audioRecord.stop()
+        audioRecord.release()
+        writeWavHeader(file, pcmBytes)
     }
 
     override fun stop(): VoiceCapture? {

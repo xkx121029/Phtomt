@@ -14,6 +14,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.data.prefs.AgentSurface
 import com.phoneagent.ui.MainTabSpec
 import com.phoneagent.ui.MainTabs
 import com.phoneagent.ui.components.LocalNavClearance
@@ -49,8 +53,54 @@ internal fun SettingsTabs(st: SettingsState, save: () -> Unit, onBack: () -> Uni
             .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("选项卡", onBack, subtitle = "底部导航的可见性与排序，改动即时生效")
+        SettingsPageHeader("选项卡", onBack, subtitle = "工作台形态与底部导航的可见性、排序")
         Spacer(Modifier.height(20.dp))
+
+        // ===== 工作台形态 =====
+        SettingsSection(
+            title = "工作台形态",
+            subtitle = "分开=操控 / 对话 / 编码各占一个 Tab；合一=操控与对话收进 Agent 页，编码仍在 Coding 页",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                val unified = st.agentSurface == AgentSurface.UNIFIED
+                val options = listOf(
+                    AgentSurface.SPLIT to "分开显示",
+                    AgentSurface.UNIFIED to "合为一个 Agent",
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    options.forEachIndexed { i, (key, label) ->
+                        SegmentedButton(
+                            selected = st.agentSurface == key,
+                            onClick = {
+                                if (st.agentSurface != key) {
+                                    buzz()
+                                    st.agentSurface = key
+                                    save()
+                                }
+                            },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = options.size),
+                            label = {
+                                Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    if (unified) {
+                        "对话已并入 Agent 页：提问直接作答、要动手就按操控流程执行，由云端自动判断；" +
+                            "编码仍是独立的 Coding 页。下方列表里对话一项的显隐暂不生效。"
+                    } else {
+                        "三个入口分开显示，各管各的；底部列表可单独开关与排序。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         SettingsSection(
             title = "底部选项卡",

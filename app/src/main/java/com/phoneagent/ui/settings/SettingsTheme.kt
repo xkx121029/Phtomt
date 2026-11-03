@@ -41,6 +41,8 @@ import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.ThemePalette
+import com.phoneagent.ui.theme.UiStyle
+import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.glassTintPreview
 import dev.chrisbanes.haze.hazeSource
 
@@ -63,8 +65,37 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("主题", onBack, subtitle = "配色、框线与磨砂浓淡，改完立即生效")
+        SettingsPageHeader("主题", onBack, subtitle = "界面风格、配色、框线与磨砂浓淡，改完立即生效")
         Spacer(Modifier.height(20.dp))
+
+        // 界面风格：只换令牌取值口径（圆角档位 / 容器色调），不新开一套样式系统。
+        // 选中即落盘，PhoneAgentTheme 重组后全站立即生效；默认经典，工作台作为可选预设
+        SettingsSection(
+            title = "界面风格",
+            subtitle = "经典是默认主题；工作台把页面收成平铺分区，首屏直接进入工作区",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                UiStyle.values().forEach { style ->
+                    SelectableOption(
+                        title = style.label,
+                        subtitle = style.summary,
+                        selected = st.uiStyle == style.id,
+                        onClick = {
+                            if (st.uiStyle != style.id) {
+                                st.uiStyle = style.id
+                                save()
+                            }
+                        },
+                    ) { StyleSwatch(style) }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         SettingsSection(
             title = "主题风格",
@@ -230,6 +261,47 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
         }
 
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** 预览小块：经典 = 一张浮起的小圆角卡；工作台 = 平铺的三条发丝线 */
+@Composable
+private fun StyleSwatch(style: UiStyle) {
+    Surface(
+        shape = RoundedCornerShape(AppRadii.Inline),
+        color = AppCardContainer,
+        border = appBorderStroke(1.dp, AppCardBorder),
+        modifier = Modifier.size(44.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(7.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            when (style) {
+                UiStyle.CLASSIC -> {
+                    Surface(
+                        shape = RoundedCornerShape(AppRadii.Chip),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {}
+                }
+
+                UiStyle.WORKBENCH -> {
+                    repeat(3) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -33,6 +33,10 @@ private const val REPO_GITEE = "https://gitee.com/xkx1029/Phtomt"
 private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
 /** Shizuku 主程序上游仓库（server/starter 内嵌自这里） */
 private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
+/** 参考过的同类项目：未内嵌代码，仅借鉴其工程组织与验证思路，故单列「参考与致谢」 */
+private const val CODA_REPO = "https://github.com/happy-everyday-everyweek/coda"
+private const val MOBILEGYM_REPO = "https://github.com/Purewhiter/mobilegym"
+private const val AETHER_REPO = "https://github.com/Zhou-Shilin/Aether"
 
 /**
  * 关于与帮助页：版本、开源仓库、使用说明与隐私边界。
@@ -118,6 +122,27 @@ internal fun SettingsAbout(
                 Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
                 Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
                 Bullet("Shizuku 主程序（server/starter）亦随「服务组件」一并分发，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        SettingsSection(
+            title = "参考与致谢",
+            subtitle = "思路来源，未包含其代码",
+            tone = SettingsTone.Neutral,
+        ) {
+            LinkRow("Coda（AGPL-3.0）", CODA_REPO) { openLink(context, CODA_REPO) }
+            SettingsDivider(inset = false)
+            LinkRow("MobileGym（Apache License 2.0）", MOBILEGYM_REPO) { openLink(context, MOBILEGYM_REPO) }
+            SettingsDivider(inset = false)
+            LinkRow("Aether 扶摇（GPL-3.0）", AETHER_REPO) { openLink(context, AETHER_REPO) }
+            SettingsDivider(inset = false)
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                Bullet("Coda 是安卓端的 Agent 工具，其工程组织与运行时方案为本项目在同类问题上的取舍提供了参照")
+                Bullet("MobileGym 是面向移动 GUI Agent 的模拟研究平台，其任务设计与可验证思路为本项目的测试设计提供了参照")
+                Bullet("Aether 是安卓端的通用 AI Agent，本项目「进行中」状态的回显手法（过程弱化、结果成卡、思考中微光扫过文字）借鉴自它")
+                Bullet("以上三个项目均未内嵌进本应用，此处仅作致谢；其版权与许可归各自作者所有")
             }
         }
 

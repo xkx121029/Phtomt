@@ -49,13 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phoneagent.coding.agent.CodingWorkspaces.Entry
 import com.phoneagent.coding.agent.CodingWorkspaces.SessionMeta
-import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.settings.ApprovalModeSegment
-import com.phoneagent.ui.settings.approvalModeHint
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
@@ -181,141 +178,6 @@ internal fun WorkspacePanel(
             Icon(AppIcons.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(AppSpacing.Xs))
             Text("从设备选择目录", style = MaterialTheme.typography.labelLarge)
-        }
-    }
-}
-
-/**
- * 模型与权限面板：编码页里直接换主模型、换审批档位，不必跳设置页。
- *
- * 审批档位会热更新到宿主里的 ApprovalPolicy（立即生效）；模型走宿主重启，
- * 运行中切换时面板明确告诉用户「本轮结束后生效」，不打断正在跑的这一轮。
- */
-@Composable
-internal fun ModelPermissionPanel(
-    model: String,
-    models: List<CatalogModel>,
-    endpointLabelOf: (CatalogModel) -> String,
-    approvalMode: String,
-    busy: Boolean,
-    onSelectApproval: (String) -> Unit,
-    onPickModel: (CatalogModel) -> Unit,
-    onPickManual: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val buzz = rememberHapticClick()
-    var manual by remember { mutableStateOf("") }
-
-    InlineOverlay(onDismiss = onDismiss, fillHeight = true) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "模型与权限",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                )
-                Text(
-                    if (busy) "运行中：切换模型会在本轮结束后生效，审批档位立即生效"
-                    else "审批档位立即生效，模型切换会重启编码宿主",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(AppIcons.Close, contentDescription = "关闭", modifier = Modifier.size(18.dp))
-            }
-        }
-
-        Text("审批档位", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        ApprovalModeSegment(current = approvalMode, onSelect = { buzz(); onSelectApproval(it) })
-        Text(
-            approvalModeHint(approvalMode),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Spacer(Modifier.height(AppSpacing.Xs))
-        Text("模型", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        LazyColumn(
-            modifier = Modifier.weight(1f, fill = false).heightIn(max = 300.dp),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
-            contentPadding = PaddingValues(vertical = AppSpacing.Xs),
-        ) {
-            if (models.isEmpty()) {
-                item {
-                    Text(
-                        "模型库为空：先在「设置 → 云端模型」里获取模型",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            items(models, key = { "${it.endpointId}/${it.name}" }) { m ->
-                val selected = m.name == model
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(AppRadii.Chip))
-                        .background(if (selected) AppTheme.colors.surfaceRaised else Color.Transparent)
-                        .clickable { buzz(); onPickModel(m) }
-                        .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        if (selected) AppIcons.CheckCircle else AppIcons.SmartToy,
-                        contentDescription = null,
-                        tint = if (selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(Modifier.width(AppSpacing.Sm))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            m.name,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            endpointLabelOf(m),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-        ) {
-            OutlinedTextField(
-                value = manual,
-                onValueChange = { manual = it },
-                singleLine = true,
-                placeholder = { Text("手填模型名", style = MaterialTheme.typography.bodySmall) },
-                textStyle = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedButton(
-                onClick = {
-                    buzz()
-                    val trimmed = manual.trim()
-                    if (trimmed.isNotEmpty()) {
-                        onPickManual(trimmed)
-                        manual = ""
-                    }
-                },
-                enabled = manual.isNotBlank(),
-                contentPadding = PaddingValues(horizontal = AppSpacing.Md),
-            ) { Text("使用") }
-        }
-
-        TextButton(onClick = { buzz(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
-            Text("关闭", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

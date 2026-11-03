@@ -11,6 +11,7 @@ import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
+import com.phoneagent.engine.runtime.ChatTurnEvent
 import com.phoneagent.feature.document.DocResult
 
 /**
@@ -70,6 +71,8 @@ internal object AgentTimelineMapper {
          * 上一段对话的完成摘要与失败状态，而不是一张白纸。
          */
         conversationStart: Long = 0L,
+        /** 合并形态：本对话内的纯对话问答（引擎内存态），问答成组出气泡 */
+        chatTurns: List<ChatTurnEvent> = emptyList(),
     ): List<AgentTimelineItem> {
         // 实时态是否属于本对话：正在跑的任务一定属于（新建对话时引擎拒绝另起），
         // 已结束的任务看它开始时刻是否落在本对话起点之后
@@ -296,6 +299,12 @@ internal object AgentTimelineMapper {
         // 12) AI 生成的文档结果：直接在任务流里预览（原工作区页面已移除）
         doc?.takeIf { it.content.isNotBlank() }?.let {
             items += AgentTimelineItem.DocPreview(fileName = it.fileName, content = it.content)
+        }
+
+        // 13) 合并形态的对话问答：分开形态里有独立对话 Tab，合并后只能靠时间线留住——
+        //     否则用户问完一句，界面上什么都不会留下。编码不在其中（它是独立 Coding 页）
+        chatTurns.filter { it.at >= conversationStart }.forEach { ev ->
+            items += AgentTimelineItem.ChatTurn(id = ev.id, question = ev.question, answer = ev.answer)
         }
 
         // 稳定 key 兜底：历史上 ChatPanel 出现过 key 冲突导致闪退

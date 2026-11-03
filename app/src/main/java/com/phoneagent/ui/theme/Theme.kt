@@ -267,6 +267,8 @@ fun PhoneAgentTheme(
     bordersEnabled: Boolean = true,
     /** 主题设置里的磨砂浓淡微调（-25 ~ +25，0 = 色板默认），负更透正更实 */
     glassTintOffset: Int = 0,
+    /** 主题设置里的界面风格预设（[UiStyle.id]），未知值回落经典 */
+    styleId: String = UiStyle.DEFAULT.id,
     content: @Composable () -> Unit,
 ) {
     val highContrast = rememberHighContrast()
@@ -283,8 +285,10 @@ fun PhoneAgentTheme(
     } else {
         basePalette
     }
-    // 无框线档没有描边帮忙划边界，靠加大容器色调位移把层次补回来
-    val toneBoost = if (bordersEnabled) 1f else BorderlessToneBoost
+    // 界面风格只调"面与面之间"的底色距离：工作台要平铺（0.8），
+    // 无框线档没有描边帮忙划边界，再乘上补偿系数把层次拉回来
+    val style = UiStyle.of(styleId)
+    val toneBoost = if (bordersEnabled) style.toneScale else BorderlessToneBoost * style.toneScale
     val colorScheme = remember(palette, darkTheme, toneBoost) {
         if (darkTheme) darkSchemeOf(palette, toneBoost) else lightSchemeOf(palette, toneBoost)
     }
@@ -303,11 +307,13 @@ fun PhoneAgentTheme(
     CompositionLocalProvider(
         LocalAppColors provides palette,
         LocalAppBorders provides bordersEnabled,
+        LocalUiStyle provides style,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = AppTypography,
-            shapes = AppShapes,
+            // 风格只换 Shapes 的取值口径（全部取自 AppRadii，不新增圆角数值）
+            shapes = shapesFor(style),
         ) {
             ProvideMotionSettings {
                 content()

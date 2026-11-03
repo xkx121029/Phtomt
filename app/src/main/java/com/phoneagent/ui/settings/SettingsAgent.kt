@@ -1,4 +1,4 @@
-﻿package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,18 +19,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.feature.agentdoc.AgentDocRepository
 import com.phoneagent.ui.components.LocalNavClearance
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
 
 /**
  * 任务行为页。
  *
  * 收口「AI 怎么干活」这一组配置：动作模式（授权范围）、步数上限、提示词语言与自定义提示词，
- * 以及默认收起的高级项（副屏模式）。
+ * 以及默认收起的高级项（云端执行文档、副屏模式）。
  *
  * 从本页搬走的两项：悬浮窗开关 → 「界面效果」（与跑马灯同页，同一件事只留一个设置点）；
  * 页面记忆 → 「数据与记忆」（记忆类开关与清空动作放在一起）。
@@ -38,6 +42,10 @@ import com.phoneagent.ui.components.LocalNavClearance
  */
 @Composable
 internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+    // 执行文档的「立即同步」只在设置页里用得到，直接取 Koin 单例（与引擎共享同一份缓存）
+    val docsRepo = koinInject<AgentDocRepository>()
+    val scope = rememberCoroutineScope()
+    var docSyncing by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -128,7 +136,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
 
         Spacer(Modifier.height(16.dp))
 
-        // ---- 高级项：默认折叠，用到再展开（副屏）----
+        // ---- 高级项：默认折叠，用到再展开（副屏 / 执行文档）----
         SettingsSection(
             title = "高级执行选项",
             subtitle = "特殊场景才需要；保持默认即可正常使用",
@@ -144,6 +152,70 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         st.virtualDisplayEnabled = enabled
                         save()
                     }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // 云端执行文档：官网下发的操作手册（一篇 Markdown 一篇流程），任务命中才注入，
+        // 规划与每步决策都会参考；与页面/铁律冲突时以页面与铁律为准（提示词里已写死）
+        SettingsSection(
+            title = "云端执行文档",
+            subtitle = "官网下发的标准操作流程，任务命中时自动参考",
+            tone = SettingsTone.Neutral,
+        ) {
+            SettingsToggleRow(
+                title = "启用云端执行文档",
+                subtitle = "按任务自动匹配并注入（如支付宝付款流程）；关闭后不再同步也不再注入。文档不会放宽确认与动作限制",
+                value = st.docSyncEnabled,
+            ) { enabled ->
+                st.docSyncEnabled = enabled
+                save()
+            }
+            if (st.docSyncEnabled) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    LabeledField("文档服务地址") {
+                        OutlinedTextField(
+                            value = st.docBaseUrl,
+                            onValueChange = { st.docBaseUrl = it },
+                            singleLine = true,
+                            placeholder = { Text("https://hpa.linshuxu.us.kg") },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { save() }) { Text("保存地址") }
+                        TextButton(
+                            enabled = !docSyncing,
+                            onClick = {
+                                // 先落库再同步：同步状态回落时设置流会把编辑态覆盖成最新值
+                                save()
+                                docSyncing = true
+                                scope.launch {
+                                    // 用页面当前编辑态发请求，不依赖 DataStore 的异步落库时序
+                                    runCatching { docsRepo.refreshNow(st.toSettings()) }
+                                    docSyncing = false
+                                }
+                            },
+                        ) { Text(if (docSyncing) "同步中…" else "立即同步") }
+                    }
+                    LabeledField("缓存有效期  ${st.docTtlMinutes} 分钟") {
+                        Slider(
+                            // 拖动只改编辑态，松手才落盘（同最大步数滑杆的写法）
+                            value = st.docTtlMinutes.toFloat(),
+                            onValueChange = { st.docTtlMinutes = it.toInt() },
+                            onValueChangeFinished = { save() },
+                            valueRange = 5f..120f,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = docSyncStatusText(st.docLastSyncAt, st.docCount, st.docLastError),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -247,4 +319,15 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
 
         Spacer(Modifier.height(28.dp))
     }
+}
+
+/**
+ * 执行文档同步状态一句话。
+ * 失败优先展示——用户最需要知道的是"为什么文档没生效"；离线时缓存仍然可用，所以要说明还有兜底。
+ */
+private fun docSyncStatusText(lastSyncAt: Long, count: Int, error: String): String = when {
+    error.isNotBlank() -> "上次同步失败：$error（离线时继续使用本地缓存）"
+    lastSyncAt <= 0L -> "尚未同步；下次任务规划时自动拉取"
+    else -> "已同步 $count 篇 · 更新于 " +
+        java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(lastSyncAt))
 }

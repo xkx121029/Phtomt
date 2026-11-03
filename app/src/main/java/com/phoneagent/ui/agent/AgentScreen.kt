@@ -51,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
-import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.GlassSurface
@@ -124,6 +123,8 @@ fun AgentScreen(
     val memoryEvents by vm.memoryEvents.collectAsState()
     val sayEvents by vm.sayEvents.collectAsState()
     val clarifyEvents by vm.clarifyEvents.collectAsState()
+    // 合并形态下「对话」的产出也落在同一条时间线上：问答成对气泡
+    val chatTurns by vm.chatTurns.collectAsState()
     val sessions by vm.taskSessions.collectAsState()
     val conversationStart by vm.conversationStart.collectAsState()
     // 不可逆动作确认门：引擎挂起等待放行时非空，任务流末尾插一张确认卡
@@ -170,6 +171,7 @@ fun AgentScreen(
     val items = remember(
         submittedTask, agent, planPhase, planText, decisionText, traces, history,
         queue, needsUser, a11yEnabled, fold, doc, memoryEvents, sayEvents, clarifyEvents,
+        chatTurns,
         selectedTaskId, archivedSession,
         conversationStart,
     ) {
@@ -190,6 +192,7 @@ fun AgentScreen(
             memoryEvents = memoryEvents,
             sayEvents = sayEvents,
             clarifyEvents = clarifyEvents,
+            chatTurns = chatTurns,
             focusTaskId = viewingTaskId,
             archived = archivedSession,
             conversationStart = conversationStart,
@@ -240,7 +243,7 @@ fun AgentScreen(
 
     // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态
     val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && liveTraces.isEmpty() &&
-        queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null
+        queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null && chatTurns.isEmpty()
     // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示（纯对话也已产出一句回答，同样算本轮任务）
     val planningTitle = submittedTask.takeIf {
         it.isNotBlank() && (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
@@ -453,6 +456,31 @@ fun AgentScreen(
                     // 判断必须看 assist 而不是 shownAssist：后者只是退场动画的内容缓存，
                     // 用了它输入区会在浮层退场后一直消失
                     if (assist == null) {
+                        // 模型与授权等级：两张默认折叠的转盘卡，贴在输入框上方。
+                        // 与 Coding 页同一组件、同一交互（见 AgentConfigDialRow / ConfigDialCard）
+                        AgentConfigDialRow(
+                            settings = settings,
+                            onPickModel = { name, endpointId ->
+                                val ep = endpointId?.let { id -> settings.endpoints.firstOrNull { it.id == id } }
+                                vm.saveSettings(
+                                    settings.copy(
+                                        model = name,
+                                        apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
+                                        apiKey = ep?.apiKey ?: settings.apiKey,
+                                    ),
+                                )
+                            },
+                            onPickMode = { mode -> vm.saveSettings(settings.copy(actionMode = mode)) },
+                            modifier = Modifier.padding(
+                                start = AgentGlassInnerPad,
+                                end = AgentGlassInnerPad,
+                                // 状态条不在时这两张卡就是面板的第一行，必须有顶部"壁厚"，
+                                // 否则会贴着玻璃上边缘；状态条在场时它自带顶部留白，这里不再叠
+                                top = if (showStrip) 0.dp else AgentGlassInnerPad,
+                                bottom = AppSpacing.Xs,
+                            ),
+                        )
+
                         AgentComposer(
                             vm = vm,
                             draft = draft,
@@ -495,14 +523,6 @@ fun AgentScreen(
                             onStop = { vm.stopAgent() },
                             onDismissUser = { vm.dismissUser() },
                             focusRequester = focusRequester,
-                        )
-                    }
-
-                    // 动作模式切换条：紧贴输入面下方。与输入面同进退——协助浮层占用底部操作区时一起让位
-                    if (assist == null) {
-                        AgentModeBar(
-                            current = ActionMode.fromKey(settings.actionMode),
-                            onSelect = { mode -> vm.saveSettings(settings.copy(actionMode = mode.key)) },
                         )
                     }
 
@@ -720,5 +740,6 @@ private fun AgentTimelineItemView(
             onExpandFullscreen = onOpenDocFullscreen,
         )
         is AgentTimelineItem.MemoryAdded -> MemoryCardItem(item, onUndo = { vm.undoMemory(it) })
+        is AgentTimelineItem.ChatTurn -> ChatTurnItem(item, vm)
     }
 }

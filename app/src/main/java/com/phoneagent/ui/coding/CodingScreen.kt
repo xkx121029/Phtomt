@@ -56,9 +56,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -72,18 +72,31 @@ import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.ComposerActionButton
+import com.phoneagent.ui.components.ConfigDialCard
+import com.phoneagent.ui.components.DialOption
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.MarkdownPreview
+import com.phoneagent.ui.components.PressableScale
+import com.phoneagent.ui.components.SkillCard
+import com.phoneagent.ui.components.SkillDetailBlock
+import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.ToolIconBadge
+import com.phoneagent.ui.components.ToolStatusTrail
+import com.phoneagent.ui.components.approvalDialOptions
+import com.phoneagent.ui.components.codingToolIdentity
+import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.components.formatSize
+import com.phoneagent.ui.components.modelDialOptions
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.components.toolRunState
+import com.phoneagent.ui.components.toolStatusStyle
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.settings.approvalModeLabel
-import com.phoneagent.ui.settings.endpointHost
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
+import com.phoneagent.ui.theme.appBorder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -98,7 +111,12 @@ import java.io.File
  * 审批以内嵌卡片呈现——项目铁律：审批绝不走系统弹窗。
  */
 @Composable
-fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
+fun CodingScreen(
+    vm: MainViewModel,
+    modifier: Modifier = Modifier,
+    /** 全屏阅读 AI 回返的正文：气泡在会话流里只能限宽，要通读就得整屏。 */
+    onOpenMarkdownFullscreen: (content: String) -> Unit = {},
+) {
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
     val appSettings = koinInject<AppSettings>()
@@ -124,7 +142,6 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var activeSessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var showWorkspaces by remember { mutableStateOf(false) }
     var showSessions by remember { mutableStateOf(false) }
-    var showModelPanel by remember { mutableStateOf(false) }
     /** 运行中换了模型：先落盘，等这一轮结束（busy 翻回 false）再重启宿主应用 */
     var pendingModelApply by remember { mutableStateOf(false) }
 
@@ -327,7 +344,6 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
             apiKey = ep?.apiKey ?: settings.apiKey,
         )
-        showModelPanel = false
         if (clientState.busy) {
             pendingModelApply = true
             scope.launch { appSettings.update(next) }
@@ -370,10 +386,16 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val activeSession = sessionsState.sessions.firstOrNull { it.id == activeSessionId }
     val sessionTitle = activeSession?.title ?: "新会话"
 
+    // 转盘候选：模型库名单 + 当前手填/不在库里的模型（保证当前值一定在轮上）
+    val modelOptions = remember(settings.catalog, settings.model) {
+        modelDialOptions(settings.catalog, settings.model)
+    }
+    val approvalOptions = remember { approvalDialOptions() }
+
     Box(modifier.fillMaxSize()) {
         GlassHeaderScaffold(
             modifier = Modifier.fillMaxSize(),
-            header = { AppTopBar(title = "编码", subtitle = "vibecoding · 设备端编码 Agent") },
+            header = { AppTopBar(title = "Coding", subtitle = "vibecoding · 设备端编码 Agent") },
         ) { contentPad ->
             // 宽屏下正文列已由骨架（GlassHeaderScaffold）收口并居中，这里不再重复约束
             Column(
@@ -384,24 +406,29 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     .padding(horizontal = AppSpacing.Md)
                     .padding(LocalNavClearance.current),
             ) {
-                WorkspaceHeader(
-                    workspaceName = workspace.name,
-                    workspacePath = workspace.path,
-                    conn = clientState.conn,
-                    onOpenFolder = {
-                        if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
-                    },
-                    onSwitch = { showWorkspaces = true },
-                )
-
-                Spacer(Modifier.height(AppSpacing.Xs))
-
-                SessionHeader(
-                    title = sessionTitle,
-                    count = sessionsState.sessions.size,
-                    onSessions = { showSessions = true },
-                    onNew = { newSession() },
-                )
+                // 顶栏：左侧会话层（当前会话 / 会话列表 / 新会话），右侧工作区（目录 / 连接 / 切换）。
+                // 两枚胶囊同高、同描边，一行扫完「在哪个会话、在哪个目录」，不再上下分两行起点各异
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SessionCapsule(
+                        title = sessionTitle,
+                        count = sessionsState.sessions.size,
+                        onSessions = { showSessions = true },
+                        onNew = { newSession() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    WorkspaceCapsule(
+                        workspaceName = workspace.name,
+                        conn = clientState.conn,
+                        onOpenFolder = {
+                            if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
+                        },
+                        onSwitch = { showWorkspaces = true },
+                    )
+                }
 
                 if (clientState.error != null) {
                     Spacer(Modifier.height(AppSpacing.Xs))
@@ -415,14 +442,35 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 ConversationFlow(
                     messages = clientState.messages,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
+                    onOpenFullscreen = onOpenMarkdownFullscreen,
                 )
 
-                ModelPermissionChip(
-                    model = settings.model,
-                    approval = approvalModeLabel(settings.codingApprovalMode),
-                    pendingApply = pendingModelApply,
-                    onClick = { showModelPanel = true },
-                )
+                // 模型与授权等级：两张独立小卡片，默认只露当前值，贴在输入框上方；
+                // 点开卡片才铺开转轴平行于屏幕的转盘（与 Agent 页共用同一组件与交互）
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = AppSpacing.Sm),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                ) {
+                    ConfigDialCard(
+                        title = "模型",
+                        icon = AppIcons.SmartToy,
+                        options = modelOptions,
+                        selectedId = settings.model,
+                        onSelect = { name ->
+                            switchModel(name, settings.catalog.firstOrNull { it.name == name }?.endpointId)
+                        },
+                        note = if (pendingModelApply) "本轮后生效" else null,
+                        modifier = Modifier.weight(1f),
+                    )
+                    ConfigDialCard(
+                        title = "授权等级",
+                        icon = AppIcons.Guard,
+                        options = approvalOptions,
+                        selectedId = settings.codingApprovalMode,
+                        onSelect = { switchApproval(it) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
 
                 if (clientState.busy) {
                     RunStatusLine(
@@ -494,120 +542,175 @@ fun CodingScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 onDismiss = { showSessions = false },
             )
         }
-
-        if (showModelPanel) {
-            ModelPermissionPanel(
-                model = settings.model,
-                models = settings.catalog,
-                endpointLabelOf = { m ->
-                    settings.endpoints.firstOrNull { it.id == m.endpointId }
-                        ?.let { endpointHost(it.baseUrl) }
-                        ?: "手动添加"
-                },
-                approvalMode = settings.codingApprovalMode,
-                busy = clientState.busy,
-                onSelectApproval = { switchApproval(it) },
-                onPickModel = { switchModel(it.name, it.endpointId) },
-                onPickManual = { switchModel(it, null) },
-                onDismiss = { showModelPanel = false },
-            )
-        }
     }
 }
 
-/** 工作区行：名称 + 真实路径 + 连接状态点，右侧「切换」与「在文件管理器打开」 */
+/**
+ * 工作区入口：名称 + 连接状态 + 「打开目录」「切换」合在同一个容器里，整体贴齐页面右上角。
+ *
+ * 之前名称与切换分散在左右两端、路径另起一行，看着是三个独立控件；
+ * 现在收成一个胶囊：用户扫一眼就知道"当前在哪个工作区、点哪里换"。
+ */
 @Composable
-private fun WorkspaceHeader(
+private fun WorkspaceCapsule(
     workspaceName: String,
-    workspacePath: String,
     conn: ConnState,
     onOpenFolder: () -> Unit,
     onSwitch: () -> Unit,
 ) {
+    val colors = AppTheme.colors
     val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppRadii.Chip)
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .widthIn(max = 340.dp)
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .appBorder(1.dp, colors.outlineSoft, shape)
+            .padding(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = { buzz(); onOpenFolder() }, modifier = Modifier.size(32.dp)) {
-            Icon(
-                AppIcons.FolderOpen,
-                contentDescription = "打开工作区目录",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
+        PressableScale(
+            onPress = buzz,
+            onClick = onOpenFolder,
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(AppRadii.Chip)),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    AppIcons.FolderOpen,
+                    contentDescription = "打开工作区目录",
+                    tint = colors.onSurfaceRaised,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
         Spacer(Modifier.width(AppSpacing.Xs))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    workspaceName,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(AppSpacing.Sm))
-                ConnDot(conn)
-            }
+        Text(
+            workspaceName,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 96.dp),
+        )
+        Spacer(Modifier.width(AppSpacing.Sm))
+        ConnDot(conn)
+        Spacer(Modifier.width(AppSpacing.Sm))
+        Box(
+            Modifier
+                .width(1.dp)
+                .height(16.dp)
+                .background(colors.outlineSoft),
+        )
+        Spacer(Modifier.width(AppSpacing.Xs))
+        PressableScale(
+            onPress = buzz,
+            onClick = onSwitch,
+            modifier = Modifier
+                .clip(RoundedCornerShape(AppRadii.Chip))
+                .background(colors.brandContainer)
+                .padding(horizontal = AppSpacing.Sm, vertical = 6.dp),
+        ) {
             Text(
-                workspacePath,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                "切换",
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onBrandContainer,
             )
         }
-        TextButton(onClick = { buzz(); onSwitch() }) {
-            Text("切换", style = MaterialTheme.typography.labelMedium)
-        }
+        Spacer(Modifier.width(2.dp))
     }
 }
 
-/** 会话行：当前会话标题 + 会话数入口 + 新会话 */
+/**
+ * 会话层胶囊：当前会话标题 + 会话数 + 新会话，与工作区胶囊并排、同高同描边。
+ *
+ * 原先会话层是一整行横向铺开的头部，和工作区各占一行；两者都在回答
+ * 「我现在在哪」，拆成两行反而要上下对两次。收成左一枚胶囊后，
+ * 标题过长只省略自己这一枚，不挤占右侧工作区。
+ */
 @Composable
-private fun SessionHeader(
+private fun SessionCapsule(
     title: String,
     count: Int,
     onSessions: () -> Unit,
     onNew: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val colors = AppTheme.colors
     val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppRadii.Chip)
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
-            .clickable { buzz(); onSessions() }
-            .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xs),
+        modifier = modifier
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .appBorder(1.dp, colors.outlineSoft, shape)
+            .padding(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            AppIcons.History,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(AppSpacing.Sm))
+        PressableScale(
+            onPress = buzz,
+            onClick = onSessions,
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(AppRadii.Chip)),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    AppIcons.History,
+                    contentDescription = "查看会话列表",
+                    tint = colors.onSurfaceRaised,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(AppSpacing.Xs))
         Text(
             title,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        Spacer(Modifier.width(AppSpacing.Xs))
         Text(
-            "$count 个会话",
+            "$count 会话",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.onSurfaceRaised,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(AppSpacing.Sm))
+        Box(
+            Modifier
+                .width(1.dp)
+                .height(16.dp)
+                .background(colors.outlineSoft),
         )
         Spacer(Modifier.width(AppSpacing.Xs))
-        Icon(AppIcons.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
-        TextButton(onClick = { buzz(); onNew() }, contentPadding = PaddingValues(horizontal = AppSpacing.Sm)) {
-            Text("新会话", style = MaterialTheme.typography.labelMedium)
+        PressableScale(
+            onPress = buzz,
+            onClick = onNew,
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(AppRadii.Chip))
+                .background(colors.brandContainer),
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    AppIcons.Add,
+                    contentDescription = "新建会话",
+                    tint = colors.onBrandContainer,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
+        Spacer(Modifier.width(2.dp))
     }
 }
 
-/** 连接状态点：已连接绿、连接中主色、未连接灰 */
+/** 连接状态点：已连接绿、连接中主色、未连接灰；胶囊里只留圆点，文字交给无障碍描述 */
 @Composable
 private fun ConnDot(conn: ConnState) {
     val colors = AppTheme.colors
@@ -616,21 +719,22 @@ private fun ConnDot(conn: ConnState) {
         ConnState.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
         ConnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
     }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(color),
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    Box(
+        Modifier
+            .size(7.dp)
+            .clip(CircleShape)
+            .background(color)
+            .semantics { contentDescription = "连接状态：$label" },
+    )
 }
 
 /** 编码会话流：user/assistant 气泡 + 工具调用卡 + 审批卡 */
 @Composable
-private fun ConversationFlow(messages: List<ChatMessage>, modifier: Modifier = Modifier) {
+private fun ConversationFlow(
+    messages: List<ChatMessage>,
+    modifier: Modifier = Modifier,
+    onOpenFullscreen: (content: String) -> Unit = {},
+) {
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
@@ -654,7 +758,7 @@ private fun ConversationFlow(messages: List<ChatMessage>, modifier: Modifier = M
         items(messages, key = { it.key }) { msg ->
             when (msg.role) {
                 "user" -> CodingUserBubble(msg.text)
-                "assistant" -> CodingAssistantBubble(msg.text)
+                "assistant" -> CodingAssistantBubble(msg.text) { onOpenFullscreen(msg.text) }
                 "tool" -> ToolCard(msg)
                 "subagent" -> SubagentCard(msg)
                 "approval" -> ApprovalCard(msg)
@@ -683,8 +787,12 @@ private fun CodingUserBubble(text: String) {
 }
 
 @Composable
-private fun CodingAssistantBubble(text: String) {
+private fun CodingAssistantBubble(text: String, onExpand: () -> Unit) {
     if (text.isBlank()) return
+    val buzz = rememberHapticClick()
+    // 短回复在气泡里就看得完，不再多摆一个按钮；长回复才给全屏入口，
+    // 否则每条消息右上角都挂一个图标，会话流会被这排小按钮切成碎片
+    val longEnough = text.length > 400
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -692,99 +800,112 @@ private fun CodingAssistantBubble(text: String) {
             .background(AppTheme.colors.surfaceRaised)
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {
-        MarkdownPreview(content = text, modifier = Modifier.fillMaxWidth())
+        Column(Modifier.fillMaxWidth()) {
+            if (longEnough) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    PressableScale(onPress = buzz, onClick = { buzz(); onExpand() }) {
+                        Icon(
+                            AppIcons.Expand,
+                            contentDescription = "全屏阅读",
+                            tint = AppTheme.colors.onSurfaceRaised,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(AppSpacing.Xs))
+            }
+            MarkdownPreview(content = text, modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 
-/** 工具调用卡：工具名 + 参数摘要 + 执行态（运行中 / 成功 / 失败）+ 耗时 */
+/** 卡片副标题只取首行：参数摘要往往多行，塞进头部会挤掉标题 */
+private fun firstLine(text: String): String = text.lineSequence().firstOrNull()?.trim().orEmpty()
+
+/**
+ * 技能卡（工具调用）：中文工具名 + 首行摘要 + 状态，点卡片展开完整执行内容。
+ * 与 Agent 页工具链卡片同一外壳（[SkillCard]），两页不再各长一套。
+ */
 @Composable
 private fun ToolCard(msg: ChatMessage) {
     val colors = AppTheme.colors
-    val (icon, tint, label) = when (msg.toolOk) {
-        null -> Triple(AppIcons.Loading, MaterialTheme.colorScheme.primary, "运行中…")
-        true -> Triple(AppIcons.CheckCircle, colors.success, "完成")
-        false -> Triple(AppIcons.Cancel, MaterialTheme.colorScheme.error, "失败")
-    }
+    var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
+    val status = toolStatusStyle(toolRunState(msg.toolOk))
     // 耗时只在结束后显示：运行中的数字每帧都在跳，读起来是噪声。
     val timing = msg.durationMs?.takeIf { msg.toolOk != null }?.let { formatDuration(it) }
-    RunCard(
-        name = msg.toolName ?: "工具",
-        detail = msg.text,
-        icon = AppIcons.Terminal,
-        statusIcon = icon,
-        tint = tint,
-        statusLabel = if (timing != null) "$label · $timing" else label,
-    )
-}
+    val isCommand = msg.toolName?.let { it == "run_command" || it == "bash" || it == "shell" } == true
+    val identity = codingToolIdentity(msg.toolName)
 
-/** 子 agent 卡：并行子任务的独立进度（人设 · 任务名 + 当前动作 + 成败 / 耗时） */
-@Composable
-private fun SubagentCard(msg: ChatMessage) {
-    val colors = AppTheme.colors
-    val (icon, tint, label) = when (msg.toolOk) {
-        null -> Triple(AppIcons.Loading, MaterialTheme.colorScheme.primary, "进行中")
-        true -> Triple(AppIcons.CheckCircle, colors.success, "完成")
-        false -> Triple(AppIcons.Cancel, MaterialTheme.colorScheme.error, "失败")
-    }
-    val timing = msg.durationMs?.takeIf { msg.toolOk != null }?.let { formatDuration(it) }
-    // 人设在前、任务名在后：一眼看出「谁在干哪一摊」，而不是一堆同名的 task-1。
-    val title = listOfNotNull("子 agent", msg.subagentPersona, msg.subagentLabel ?: msg.toolName).joinToString(" · ")
-    RunCard(
-        name = title,
-        detail = msg.text,
-        icon = AppIcons.Guard,
-        statusIcon = icon,
-        tint = tint,
-        statusLabel = if (timing != null) "$label · $timing" else label,
-    )
-}
-
-/** 工具卡与子 agent 卡共用的行布局：避免两份几乎一样的排版分叉。 */
-@Composable
-private fun RunCard(
-    name: String,
-    detail: String,
-    icon: ImageVector,
-    statusIcon: ImageVector,
-    tint: Color,
-    statusLabel: String,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Chip))
-            .background(AppTheme.colors.surfaceRaised)
-            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
+    SkillCard(
+        title = identity.label,
+        subtitle = firstLine(msg.text),
+        expandable = true,
+        expanded = expanded,
+        onToggleExpand = { expanded = !expanded },
+        leading = { ToolIconBadge(identity.icon, status.tint) },
+        trailing = { ToolStatusTrail(status, detail = timing) },
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(AppSpacing.Sm))
-        Column(Modifier.weight(1f)) {
-            Text(
-                name,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
+            SkillDetailBlock(
+                title = "完整执行内容",
+                body = msg.text,
+                monospace = isCommand,
             )
-            if (detail.isNotBlank()) {
+            // 回填给 AI 的那段输出：以前展开只有参数，看完还得猜这条命令到底跑出了什么
+            msg.outputPreview?.takeIf { it.isNotBlank() }?.let { out ->
+                Spacer(Modifier.height(AppSpacing.Sm))
+                SkillDetailBlock(
+                    title = "执行结果（回传给 AI）",
+                    body = out,
+                    monospace = isCommand,
+                )
+            }
+            if (timing != null) {
+                Spacer(Modifier.height(AppSpacing.Xs))
                 Text(
-                    detail,
+                    text = "耗时 $timing",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    color = colors.onSurfaceRaised,
                 )
             }
         }
-        Spacer(Modifier.width(AppSpacing.Sm))
-        Icon(statusIcon, contentDescription = statusLabel, tint = tint, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(statusLabel, style = MaterialTheme.typography.labelSmall, color = tint)
+    }
+}
+
+/** 子任务卡：并行子 agent 的独立进度（人设 · 任务名 + 当前动作 + 成败 / 耗时） */
+@Composable
+private fun SubagentCard(msg: ChatMessage) {
+    val colors = AppTheme.colors
+    var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
+    val status = toolStatusStyle(
+        state = toolRunState(msg.toolOk),
+        runningLabel = "进行中",
+    )
+    val timing = msg.durationMs?.takeIf { msg.toolOk != null }?.let { formatDuration(it) }
+    // 人设在前、任务名在后：一眼看出「谁在干哪一摊」，而不是一堆同名的 task-1
+    val who = listOfNotNull(msg.subagentPersona, msg.subagentLabel).joinToString(" · ")
+    val title = if (who.isBlank()) "子任务" else "子任务 · $who"
+
+    SkillCard(
+        title = title,
+        subtitle = firstLine(msg.text),
+        expandable = true,
+        expanded = expanded,
+        onToggleExpand = { expanded = !expanded },
+        leading = { ToolIconBadge(AppIcons.Guard, status.tint) },
+        trailing = { ToolStatusTrail(status, detail = timing) },
+    ) {
+        Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
+            SkillDetailBlock(title = "任务说明", body = msg.text)
+            if (timing != null) {
+                Spacer(Modifier.height(AppSpacing.Xs))
+                Text(
+                    text = "耗时 $timing",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceRaised,
+                )
+            }
+        }
     }
 }
 
@@ -823,7 +944,7 @@ private fun RunStatusLine(
             buildString {
                 append(formatDuration(elapsedMs))
                 if (iteration > 0) append(" · 第 $iteration 轮")
-                if (activeSubagents > 0) append(" · $activeSubagents 个子 agent 并行")
+                if (activeSubagents > 0) append(" · $activeSubagents 个子任务并行")
             },
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -831,16 +952,10 @@ private fun RunStatusLine(
     }
 }
 
-/** 耗时文案：毫秒级、秒级、分钟级各用不同精度，别显示 "0.0s"。 */
-private fun formatDuration(ms: Long): String = when {
-    ms < 1000 -> "${ms}ms"
-    ms < 60_000 -> String.format("%.1fs", ms / 1000.0)
-    else -> "${ms / 60_000}m${(ms % 60_000) / 1000}s"
-}
-
-/**
- * 审批卡（铁律）：编码 agent 请求执行敏感工具时的内嵌审批——允许 / 拒绝就在卡片上，
+/** 审批技能卡（铁律）：编码 agent 请求执行敏感工具时的内嵌审批——允许 / 拒绝就在卡片上，
  * 决议后置灰落定，绝不弹系统对话框。
+ *
+ * 与工具卡共用 [SkillCard] 外壳（不可展开，正文常显），两页所有卡片只长一个样子。
  */
 @Composable
 private fun ApprovalCard(msg: ChatMessage) {
@@ -849,134 +964,53 @@ private fun ApprovalCard(msg: ChatMessage) {
     val callId = msg.approvalCallId
     val resolved = msg.approvalResolved
     val colors = AppTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
-            .background(colors.surfaceRaised)
-            .padding(AppSpacing.Md),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                AppIcons.Guard,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(AppSpacing.Sm))
-            Text(
-                "编码 Agent 请求执行工具",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(AppSpacing.Xs))
-        Text(
-            msg.text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(Modifier.height(AppSpacing.Sm))
-        if (resolved == null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
-                Button(
-                    onClick = {
-                        buzz()
-                        if (callId != null) client.respondApproval(callId, true)
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("允许") }
-                OutlinedButton(
-                    onClick = {
-                        buzz()
-                        if (callId != null) client.respondApproval(callId, false)
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.weight(1f),
-                ) { Text("拒绝") }
-            }
-        } else {
-            Text(
-                if (resolved) "已允许" else "已拒绝",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
+    val toolLabel = msg.text.ifBlank { "敏感操作" }
 
-/**
- * 模型与权限入口（胶囊）：当前模型 + 审批档位，点开即切换。
- * 放在输入框上方——模型和档位决定的是「这一轮怎么跑」，离发消息越近越顺手。
- */
-@Composable
-private fun ModelPermissionChip(
-    model: String,
-    approval: String,
-    pendingApply: Boolean,
-    onClick: () -> Unit,
-) {
-    val buzz = rememberHapticClick()
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = AppSpacing.Xs),
-        verticalAlignment = Alignment.CenterVertically,
+    SkillCard(
+        title = "请求执行敏感操作",
+        subtitle = "工具：$toolLabel",
+        leading = { ToolIconBadge(AppIcons.Guard, MaterialTheme.colorScheme.primary) },
+        trailing = {
+            val (tint, text) = when (resolved) {
+                null -> colors.brand to "等待确认"
+                true -> colors.success to "已允许"
+                false -> colors.error to "已拒绝"
+            }
+            StatusPill(text = text, color = tint)
+        },
     ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(AppRadii.Chip))
-                .background(AppTheme.colors.surfaceRaised)
-                .clickable { buzz(); onClick() }
-                .padding(horizontal = AppSpacing.Sm, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                AppIcons.SmartToy,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(6.dp))
+        Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
             Text(
-                model.ifBlank { "未选模型" },
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 180.dp),
+                text = "编码 Agent 请求执行「$toolLabel」，确认后才会真正执行。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "·",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                AppIcons.Guard,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                approval,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (pendingApply) {
-                Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
+            if (resolved == null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+                    Button(
+                        onClick = {
+                            buzz()
+                            if (callId != null) client.respondApproval(callId, true)
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("允许") }
+                    OutlinedButton(
+                        onClick = {
+                            buzz()
+                            if (callId != null) client.respondApproval(callId, false)
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.weight(1f),
+                    ) { Text("拒绝") }
+                }
+            } else {
                 Text(
-                    "本轮后生效",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+                    if (resolved) "已允许本次执行" else "已拒绝本次执行",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurfaceRaised,
                 )
             }
-            Spacer(Modifier.width(2.dp))
-            Icon(
-                AppIcons.ChevronDown,
-                contentDescription = "切换模型与权限",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp),
-            )
         }
     }
 }
@@ -1179,9 +1213,15 @@ private fun AttachmentRow(
 private fun withAttachmentHint(text: String, attachments: List<SharedFiles.Imported>): String {
     if (attachments.isEmpty()) return text
     val hint = buildString {
-        append("（附件在工作区根目录）\n")
-        attachments.forEach { append("- ").append(it.relativePath).append('\n') }
+        append("（附件在工作区根目录，用 read_file 读取）\n")
+        attachments.forEach { item ->
+            append("- ").append(item.relativePath)
+            // 容器格式（docx/xlsx/pptx/zip）导入时已抽出纯文本，让 agent 直接读摘录而不是二进制
+            item.excerptPath?.let { append("（文本摘录：").append(it).append("）") }
+            append('\n')
+        }
         append(if (text.isBlank()) "请读取上面的文件并解读。" else text)
+        append("\n（若是 PDF / 图片 / 音视频这类二进制文件，读不了就直说，不要编造内容）")
     }
     return hint.trim()
 }
@@ -1197,7 +1237,7 @@ private fun isAppOwnedPath(context: Context, path: String): Boolean {
 }
 
 /** 打开「所有文件访问」授权页：让编码 agent 能直接用路径读写用户选的目录 */
-private fun openAllFilesAccessSettings(context: Context) {
+internal fun openAllFilesAccessSettings(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
     runCatching {
         context.startActivity(
