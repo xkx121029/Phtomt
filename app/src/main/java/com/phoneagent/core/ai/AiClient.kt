@@ -257,6 +257,7 @@ class AiClient(
         // 显式标注泛型：while(true) 循环体里有面向 for 的 break，编译器把 lambda
         // 返回类型推成 AiDecision | Unit（= Any），这里收口回 AiDecision
         runCatching<AiDecision> {
+            DecisionStreamStats.onCall()
             val startNano = System.nanoTime()
             // 若携带截图，把图片拼到末尾消息（主模型决策一般文本即可，这里保留能力）
             val finalMessages = if (screenshot != null) {
@@ -299,6 +300,22 @@ class AiClient(
                 }
                 onDelta(delta)
             }
+            // 边收边解析（Eta 对标结论之二）：每帧之后扫一遍新正文，一旦第一个顶层 JSON 闭合
+            // 就尝试解析；成功即停止消费，不必等服务端把流关闭（省掉结尾的网络尾巴）。
+            // 只扫描 content（思考内容不进 full），因此不会把 reasoning 里的花括号当成 JSON。
+            val incremental = IncrementalIntentParser()
+            var earlyAction: AgentIntent? = null
+            val shouldStopStream: () -> Boolean = {
+                if (earlyAction == null) {
+                    val closed = incremental.nextObject(full)
+                    if (closed != null) {
+                        // 闭合对象直接按完整解析口径尝试（含一次本地修复）；
+                        // 解析不出来就继续等完整正文，交给下面的纠错重发判定，行为与原来一致
+                        earlyAction = parseAgentIntentOrNull(closed)
+                    }
+                }
+                earlyAction != null
+            }
             loop@ while (true) {
                 for (attempt in 0 until MAX_RETRIES) {
                     if (attempt > 0) {
@@ -309,6 +326,8 @@ class AiClient(
                     }
                     try {
                         full.setLength(0)
+                        incremental.reset()
+                        earlyAction = null
                         lastUsage = null
                         sawReasoning = false
                         firstDeltaSeen = false
@@ -328,9 +347,14 @@ class AiClient(
                                     return@use
                                 }
                                 resp.body?.source()?.use { source ->
-                                    sawReasoning = pumpSse(source, adapter, full, timedDelta) { usage ->
-                                        lastUsage = combineUsage(lastUsage, usage)
-                                    }
+                                    sawReasoning = pumpSse(
+                                        source = source,
+                                        adapter = adapter,
+                                        full = full,
+                                        onDelta = timedDelta,
+                                        onUsage = { usage -> lastUsage = combineUsage(lastUsage, usage) },
+                                        shouldStop = shouldStopStream,
+                                    )
                                 }
                             }
                         } finally {
@@ -343,6 +367,27 @@ class AiClient(
                             continue
                         }
                         val content = full.toString()
+                        // 增量解析已命中：JSON 已经闭合且可解析，不必再等服务端关闭流。
+                        // usage 由末尾帧携带，提前结束时拿不到，按 0 记（只影响成本统计，不影响决策）。
+                        val early = earlyAction
+                        if (early != null) {
+                            val nowNano = System.nanoTime()
+                            logStreamTiming(
+                                "决策", attemptStartNano, firstDeltaNano, nowNano, content.length, attempt,
+                                earlyStop = true,
+                            )
+                            DecisionStreamStats.onEarlyStop()
+                            AppLog.i("AiClient", DecisionStreamStats.summaryText())
+                            return@runCatching AiDecision(
+                                action = early,
+                                promptTokens = lastUsage?.promptTokens ?: 0,
+                                completionTokens = lastUsage?.completionTokens ?: 0,
+                                totalTokens = lastUsage?.totalTokens ?: 0,
+                                elapsedMs = (nowNano - startNano) / 1_000_000,
+                                rawContent = content,
+                                thinking = sawReasoning,
+                            )
+                        }
                         if (content.isBlank()) {
                             // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
                             lastErr = null
@@ -376,6 +421,7 @@ class AiClient(
                         val action = parseAgentIntentOrNull(content)
                         if (action == null && !jsonRepairUsed) {
                             jsonRepairUsed = true
+                            DecisionStreamStats.onResend()
                             AppLog.w("AiClient", "决策输出无法解析为标准 JSON，附上原文纠错重发（仅一次）")
                             // 重发前清空流式回显（与网络重试同一口径），避免界面上内容叠加两遍
                             onRetry?.invoke("返回格式无法解析，正在重新生成", 0L)
@@ -400,6 +446,7 @@ class AiClient(
                             lastErr = null
                             continue@loop
                         }
+                        AppLog.i("AiClient", DecisionStreamStats.summaryText())
                         return@runCatching AiDecision(
                             // 纠错后仍解析失败 → 走既有 give_up 兜底（不无限循环）
                             action = action ?: parseAgentIntent(content),
@@ -762,10 +809,12 @@ class AiClient(
         endNano: Long,
         chars: Int,
         attempt: Int,
+        earlyStop: Boolean = false,
     ) {
         if (startNano <= 0L) return
         val totalMs = (endNano - startNano) / 1_000_000
         val retryNote = if (attempt > 0) "（第 ${attempt + 1} 次尝试）" else ""
+        val earlyNote = if (earlyStop) "（增量解析命中，提前结束）" else ""
         if (firstDeltaNano <= 0L) {
             // 有正文但没记到首字（如非流式回退路径），只报总量
             AppLog.i("AiClient", "$scene 流式$retryNote：未记到首 token，总耗时 ${totalMs}ms，${chars} 字")
@@ -773,9 +822,10 @@ class AiClient(
         }
         val ttftMs = (firstDeltaNano - startNano) / 1_000_000
         val genMs = (endNano - firstDeltaNano) / 1_000_000
+        if (scene == "决策") DecisionStreamStats.onTiming(ttftMs, totalMs)
         AppLog.i(
             "AiClient",
-            "$scene 流式$retryNote：首 token ${ttftMs}ms，生成 ${genMs}ms，合计 ${totalMs}ms，${chars} 字",
+            "$scene 流式$retryNote：首 token ${ttftMs}ms，生成 ${genMs}ms，合计 ${totalMs}ms，${chars} 字$earlyNote",
         )
     }
 
@@ -794,6 +844,11 @@ class AiClient(
         full: StringBuilder,
         onDelta: (String) -> Unit,
         onUsage: ((Usage) -> Unit)? = null,
+        /**
+         * 每处理完一帧后询问「是否已拿到可解析的完整结果」；返回 true 立即停止消费，
+         * 不必等服务端关闭流（决策链路的增量解析据此提前结束，省掉结尾网络尾巴）。
+         */
+        shouldStop: () -> Boolean = { false },
     ): Boolean {
         var sawReasoning = false
         while (!source.exhausted()) {
@@ -807,6 +862,7 @@ class AiClient(
             } else if (pumpOpenAiFrame(payload, full, onDelta, onUsage)) {
                 sawReasoning = true
             }
+            if (shouldStop()) break
         }
         return sawReasoning
     }
@@ -1179,7 +1235,7 @@ class AiClient(
         )
 
     /** 同 [parseAgentIntent]，但兜底全部失败时返回 null 而非 give_up（供纠错重发判定） */
-    internal fun parseAgentIntentOrNull(content: String): AgentIntent? {
+    internal fun parseAgentIntentOrNull(content: String, allowRepair: Boolean = true): AgentIntent? {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
             return json.decodeFromString(AgentIntent.serializer(), EngineRules.extractJsonObject(content))
@@ -1209,7 +1265,23 @@ class AiClient(
                 AppLog.w("AiClient", "Step3 array parse failed: ${e.message}")
             }
         }
-        // Step 4：全部失败 → 返回 null，由调用方决定纠错重发或 give_up 兜底
+        // Step 4：本地修复后再解析一次（补闭合括号 / 去尾逗号 / 去围栏 / 转义裸换行）。
+        // 修复是纯端侧几十微秒的操作，比纠错重发便宜两个数量级（重发要再付一次首 token + 生成）；
+        // 修不好才交给调用方纠错重发或 give_up 兜底。
+        if (allowRepair) {
+            val repaired = IntentJsonRepair.repair(content)
+            if (repaired != null && repaired != content) {
+                try {
+                    val parsed = json.decodeFromString(AgentIntent.serializer(), repaired)
+                    DecisionStreamStats.onLocalRepair()
+                    AppLog.i("AiClient", "本地修复后解析成功，省掉一次纠错重发")
+                    return parsed
+                } catch (e: Exception) {
+                    AppLog.w("AiClient", "Step4 本地修复后仍解析失败：${e.message}")
+                }
+            }
+        }
+        // Step 5：全部失败 → 返回 null，由调用方决定纠错重发或 give_up 兜底
         AppLog.e("AiClient", "All parse steps failed. Raw content: ${content.take(300)}")
         return null
     }
