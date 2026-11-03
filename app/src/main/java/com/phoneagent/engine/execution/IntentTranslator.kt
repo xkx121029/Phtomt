@@ -797,6 +797,7 @@ class IntentTranslator(
         put(IntentType.SYSTEM_SETTINGS, DeviceOpsStrategy(IntentType.SYSTEM_SETTINGS))
         put(IntentType.CLIPBOARD, DeviceOpsStrategy(IntentType.CLIPBOARD))
         put(IntentType.ALARM_MANAGE, DeviceOpsStrategy(IntentType.ALARM_MANAGE))
+        put(IntentType.CALENDAR_OP, DeviceOpsStrategy(IntentType.CALENDAR_OP))
         put(IntentType.VIRTUAL_DISPLAY, DeviceOpsStrategy(IntentType.VIRTUAL_DISPLAY))
         put(IntentType.MEMORY_GET, DeviceOpsStrategy(IntentType.MEMORY_GET))
         put(IntentType.MEMORY_WRITE, DeviceOpsStrategy(IntentType.MEMORY_WRITE))

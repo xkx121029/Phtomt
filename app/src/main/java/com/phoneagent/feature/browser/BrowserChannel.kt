@@ -79,6 +79,21 @@ internal class BrowserChannel(
                     }
                 }
             }
+            IntentType.WEB_SEARCH -> {
+                val query = (intent.text ?: intent.args?.get("text") ?: intent.args?.get("query"))
+                    ?.trim().orEmpty()
+                if (query.isBlank()) {
+                    Outcome.Missing(
+                        field = "text",
+                        reason = "AI 输出了 web_search 但未提供 text（要搜的关键词）。" +
+                            "请补全 text，例如 {\"intent\":\"web_search\",\"text\":\"明天北京天气\"}。",
+                    )
+                } else {
+                    // 打开搜索结果页再抓正文：两步都不碰用户的搜索 App，也不点进任何结果
+                    val opened = from(executor.open(searchUrl(query)))
+                    if (opened !is Outcome.Ok) opened else from(executor.read())
+                }
+            }
             IntentType.BROWSE_SCROLL -> {
                 val dir = intent.direction?.trim()?.lowercase().orEmpty().ifBlank { "down" }
                 if (dir !in DIRECTIONS) {
@@ -152,13 +167,21 @@ internal class BrowserChannel(
         else -> Outcome.Failed(result.text)
     }
 
+    /** 搜索词 → 结果页地址。用 Bing：国内可直连，结果页是静态 HTML，抓正文最稳 */
+    private fun searchUrl(query: String): String =
+        SEARCH_URL + java.net.URLEncoder.encode(query, "UTF-8")
+
     companion object {
         /** 本通道持有的意图（复用 [IntentType] 常量，不写字面量） */
         val INTENTS: Set<String> = setOf(
             IntentType.BROWSE_OPEN, IntentType.BROWSE_READ, IntentType.BROWSE_CLICK,
             IntentType.BROWSE_INPUT, IntentType.BROWSE_SCROLL, IntentType.BROWSE_BACK,
             IntentType.BROWSE_INFO, IntentType.BROWSE_RELOAD, IntentType.BROWSE_WAIT,
+            IntentType.WEB_SEARCH,
         )
+
+        /** web_search 的结果页前缀 */
+        private const val SEARCH_URL = "https://cn.bing.com/search?q="
 
         /** 点击/输入的目标定位方式：text=元素文字（优先），id=CSS 选择器 */
         val TARGET_BY = setOf("text", "id", "hint")

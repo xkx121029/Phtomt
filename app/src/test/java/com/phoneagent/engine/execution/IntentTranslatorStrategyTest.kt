@@ -529,4 +529,50 @@ class IntentTranslatorStrategyTest {
         )
         assertTrue("应指出超出上限，实际: $reason", reason.contains("不能大于 30"))
     }
+
+    @Test
+    fun calendar_op_转译为DEVICE_OPS并保留参数() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(
+                intent = IntentType.CALENDAR_OP, op = "create",
+                args = mapOf("title" to "周会", "start" to "2026-11-05 09:00", "duration_min" to "30"),
+            ),
+            snapshot(),
+        )
+        assertEquals(ActionType.DEVICE_OPS, action.type)
+        assertEquals("create", action.op)
+        assertEquals("周会", action.args?.get("title"))
+        assertEquals("2026-11-05 09:00", action.args?.get("start"))
+    }
+
+    @Test
+    fun calendar_op_op非法_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(intent = IntentType.CALENDAR_OP, op = "merge", args = mapOf("title" to "周会")),
+            snapshot(),
+        )
+        assertTrue("应指出可选值，实际: $reason", reason.contains("可选值：list/create/update/delete"))
+    }
+
+    @Test
+    fun calendar_op_条数越界_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(intent = IntentType.CALENDAR_OP, op = "list", args = mapOf("limit" to "500")),
+            snapshot(),
+        )
+        assertTrue("应指出超出上限，实际: $reason", reason.contains("不能大于 100"))
+    }
+
+    @Test
+    fun calendar_op_event_id非数字_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(intent = IntentType.CALENDAR_OP, op = "delete", args = mapOf("event_id" to "abc")),
+            snapshot(),
+        )
+        assertTrue("应指出格式不合法，实际: $reason", reason.contains("格式不合法"))
+    }
 }

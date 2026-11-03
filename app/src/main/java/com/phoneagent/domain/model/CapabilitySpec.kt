@@ -496,6 +496,14 @@ object CapabilityRegistry {
             risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
         ),
         CapabilitySpec(
+            intent = IntentType.WEB_SEARCH, name = "网页搜索", category = "浏览器",
+            summary = "在内置浏览器里搜索（text 填搜索词）：端侧打开搜索引擎结果页并抓回正文与链接，省去先打开首页再手打关键词的几步。适合查资料、查天气、查价格这类没有原生能力的长尾信息；结果只读，不点进任何结果页。",
+            params = listOf(
+                CapabilityParam("text", "搜索词", "text", required = true, description = "要搜的关键词，如「明天北京天气」"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
+        ),
+        CapabilitySpec(
 
         // ---- 中风险（均衡模式起放行） ----
             intent = IntentType.OPEN_APP, name = "打开应用", category = "导航",
@@ -646,6 +654,25 @@ object CapabilityRegistry {
                 CapabilityParam("text", "内容", "text", required = false, description = "op=set 时必填"),
             ),
             risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.CALENDAR_OP, name = "日历读写", category = "设备",
+            summary = "读写系统日历事件（不经过日历 App 的 GUI）：op=list 列出（query 过滤、days 时间窗、limit 条数），op=create 新建（title/start，可选 end 或 duration_min、all_day、calendar_id），op=update 改（event_id + 要改的字段），op=delete 删（event_id）。start/end 可写「2026-11-05 09:00」或毫秒时间戳。查询/写入以 shell 身份进行，需要 Shizuku 或无线 ADB；没有时回中文原因并建议改走 GUI。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "create", "update", "delete")),
+                CapabilityParam("title", "标题", "text", description = "op=create/update：事件标题"),
+                CapabilityParam("start", "开始时间", "text", description = "「YYYY-MM-DD HH:mm」或毫秒时间戳；op=create 必填"),
+                CapabilityParam("end", "结束时间", "text", description = "可选；不给时按 duration_min 推算"),
+                CapabilityParam("duration_min", "时长（分钟）", "number", min = 5.0, max = 1440.0, defaultValue = "60"),
+                CapabilityParam("event_id", "事件 id", "text", pattern = "[0-9]+", description = "op=update/delete：从 op=list 结果里取"),
+                CapabilityParam("calendar_id", "日历 id", "number", min = 0.0, description = "可选，默认 1（本机主日历）"),
+                CapabilityParam("all_day", "全天", "boolean", description = "op=create/update"),
+                CapabilityParam("query", "过滤词", "text", description = "op=list：按标题过滤"),
+                CapabilityParam("days", "时间窗（天）", "number", min = 1.0, max = 365.0, defaultValue = "30", description = "op=list：只看未来多少天"),
+                CapabilityParam("limit", "条数", "number", min = 1.0, max = 100.0, defaultValue = "20"),
+            ),
+            risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, permission = CapabilityPermission.SHELL,
+            action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
             intent = IntentType.ALARM_MANAGE, name = "管理闹钟", category = "时钟",

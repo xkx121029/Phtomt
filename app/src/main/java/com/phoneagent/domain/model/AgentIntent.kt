@@ -180,6 +180,7 @@ object IntentType {
     const val SYSTEM_SETTINGS = "settings_op"     // 读写系统设置（op=get/set；namespace/key/value）
     const val CLIPBOARD = "clipboard"             // 剪贴板（op=get/set/clear）
     const val ALARM_MANAGE = "alarm_manage"       // 管理已有闹钟（op=list/enable/delete/update；需 Root/Shizuku）
+    const val CALENDAR_OP = "calendar_op"         // 日历读写（op=list/create/update/delete；title/start/end/event_id；走注入通道）
     const val VIRTUAL_DISPLAY = "virtual_display" // 副屏（op=status/create/destroy/launch/tap/swipe/type/key/screenshot）
     const val MEMORY_GET = "memory_get"           // 按需检索长期记忆（query/limit）
     const val MEMORY_WRITE = "memory_write"       // 增删改长期记忆（op=write/update/delete；id/revision 取自 memory_get）
@@ -202,6 +203,7 @@ object IntentType {
     const val BROWSE_INFO = "browse_info"     // 看当前网页状态（标题/网址/加载状态/滚动位置/可交互数量）
     const val BROWSE_RELOAD = "browse_reload" // 刷新当前网页并等加载完成
     const val BROWSE_WAIT = "browse_wait"     // 等某元素出现（target 选择器/文字 + wait_ms，上限 30s）
+    const val WEB_SEARCH = "web_search"           // 内置浏览器搜索（query；打开搜索引擎并抓结果正文）
 
     // ---- 高层语义接口（Φ 端侧已识别的语义控件类，转译层本地映射为命令，AI 不写命令/坐标） ----
     const val BACK = "back"               // 返回上一页（优先语义按钮，找不到走系统返回）
@@ -231,9 +233,9 @@ object IntentType {
     val ALL: Set<String> = setOf(
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
         SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT, SET_ALARM, SET_TIMER,
-        WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE,
+        WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE, CALENDAR_OP,
         VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE, FILE_READ, FILE_WRITE, APP_MANAGE, TERMINAL_OP, PERSONAL_READ,
-        BROWSE_INFO, BROWSE_RELOAD, BROWSE_WAIT,
+        BROWSE_INFO, BROWSE_RELOAD, BROWSE_WAIT, WEB_SEARCH,
         NOTIF_READ, NOTIF_CLEAR,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,

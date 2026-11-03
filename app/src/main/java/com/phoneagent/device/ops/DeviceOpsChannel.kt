@@ -58,6 +58,7 @@ class DeviceOpsChannel(
         "settings_op" -> settingsOp(op ?: "get", args)
         "clipboard" -> clipboardOp(op ?: "get", args)
         "alarm_manage" -> alarmManage(op ?: "list", args)
+        "calendar_op" -> calendarOp(op ?: "list", args)
         "virtual_display" -> virtualDisplayOp(op ?: "status", args)
         "memory_get" -> memoryGet(args)
         "memory_write" -> memoryWrite(op ?: "write", args)
@@ -432,6 +433,153 @@ class DeviceOpsChannel(
                 return out.take(2000)
             }
         }
+        return null
+    }
+
+    // ---------------------------------------------------------- calendar_op
+
+    /**
+     * 日历事件读写（对齐 Eta 的 list_calendars / create|update|delete_calendar_event）。
+     *
+     * 走注入通道的 `content` 命令而不是 ContentResolver：日历 Provider 的读写权限只有系统/日历应用持有，
+     * 以本应用身份直接调用会被拒；以 shell 身份执行才拿得到（与闹钟管理同一个思路）。
+     * 没有通道时不假装成功，直接给中文原因 + 替代路线。
+     */
+    private suspend fun calendarOp(op: String, args: Map<String, String>): OpsResult = when (op) {
+        "list" -> calendarList(args)
+        "create" -> calendarCreate(args)
+        "update" -> calendarUpdate(args)
+        "delete" -> calendarDelete(args)
+        else -> OpsResult.Fail("calendar_op 只支持 list/create/update/delete")
+    }
+
+    private suspend fun calendarList(args: Map<String, String>): OpsResult {
+        val days = (args["days"]?.toLongOrNull() ?: 30L).coerceIn(1L, 365L)
+        val limit = (args["limit"]?.toIntOrNull() ?: 20).coerceIn(1, 100)
+        val query = args["query"]?.trim().orEmpty()
+        val now = System.currentTimeMillis()
+        val until = now + days * 24 * 3600_000L
+        val out = shell("content query --uri $CALENDAR_URI --projection _id:title:dtstart:dtend --where ${quote("dtstart>=$now AND dtstart<=$until")} --sort ${quote("dtstart ASC")}")
+            ?: return OpsResult.Fail(
+                "读日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动查看。",
+            )
+        val rows = out.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("No result") && !it.startsWith("Error") }
+            .filter { query.isEmpty() || it.contains(query, ignoreCase = true) }
+            .take(limit)
+            .map { line -> formatCalendarRow(line) }
+            .toList()
+        if (rows.isEmpty()) {
+            return OpsResult.Ok("未来 $days 天没有${if (query.isEmpty()) "" else "标题含「$query」的"}日程。")
+        }
+        return OpsResult.Ok("未来 $days 天的日程（${rows.size} 条）：\n" + rows.joinToString("\n") { "- $it" }.take(4000))
+    }
+
+    /** 把 `Row: 0 _id=.., title=..` 这类原始行压成「时间 · 标题 · id」 */
+    private fun formatCalendarRow(line: String): String {
+        fun field(key: String): String? =
+            Regex("$key=([^,]+)").find(line)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+        val id = field("_id") ?: "?"
+        val title = field("title") ?: "（无标题）"
+        val start = field("dtstart")?.toLongOrNull()?.let { formatCalendarTime(it) } ?: "时间未知"
+        val end = field("dtend")?.toLongOrNull()?.let { formatCalendarTime(it) }
+        return "$start${if (end != null) " ~ $end" else ""} · $title（id=$id）"
+    }
+
+    private fun formatCalendarTime(ms: Long): String = CALENDAR_TIME.format(Date(ms))
+
+    private suspend fun calendarCreate(args: Map<String, String>): OpsResult {
+        val title = args["title"]?.trim().orEmpty()
+        if (title.isEmpty()) return OpsResult.Fail("calendar_op create 需要 title（事件标题）")
+        val startText = args["start"]?.trim().orEmpty()
+        if (startText.isEmpty()) return OpsResult.Fail("calendar_op create 需要 start（如「2026-11-05 09:00」）")
+        val startMs = parseCalendarTime(startText)
+            ?: return OpsResult.Fail("读不懂 start=$startText；请写成「YYYY-MM-DD HH:mm」或毫秒时间戳")
+        val endMs = args["end"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
+            parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 end=$text；请写成「YYYY-MM-DD HH:mm」或毫秒时间戳")
+        } ?: (startMs + (args["duration_min"]?.toLongOrNull() ?: 60L) * 60_000L)
+        val calendarId = args["calendar_id"]?.toLongOrNull() ?: 1L
+        val allDay = boolArg(args, "all_day") ?: false
+        val binds = buildList {
+            add("calendar_id:i:$calendarId")
+            add("title:s:${quote(title)}")
+            add("dtstart:l:$startMs")
+            add("dtend:l:$endMs")
+            add("allDay:i:${if (allDay) 1 else 0}")
+            add("eventTimezone:s:${quote(java.util.TimeZone.getDefault().id)}")
+        }.joinToString(" --bind ")
+        val out = shell("content insert --uri $CALENDAR_URI --bind $binds")
+            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动新建。")
+        if (out.contains("Error", ignoreCase = true) || out.contains("Exception", ignoreCase = true)) {
+            return OpsResult.Fail("日历 Provider 拒绝写入：${out.take(200)}。可改走 open_app 打开日历应用手动新建。")
+        }
+        return OpsResult.Ok("已新建日程「$title」：${formatCalendarTime(startMs)} ~ ${formatCalendarTime(endMs)}（calendar_id=$calendarId）")
+    }
+
+    private suspend fun calendarUpdate(args: Map<String, String>): OpsResult {
+        val id = args["event_id"]?.trim().orEmpty()
+        if (id.isEmpty()) return OpsResult.Fail("calendar_op update 需要 event_id（从 calendar_op list 结果里取）")
+        val binds = buildList {
+            args["title"]?.trim()?.takeIf { it.isNotEmpty() }?.let { add("title:s:${quote(it)}") }
+            args["start"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
+                val ms = parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 start=$text；请写成「YYYY-MM-DD HH:mm」")
+                add("dtstart:l:$ms")
+            }
+            args["end"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
+                val ms = parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 end=$text；请写成「YYYY-MM-DD HH:mm」")
+                add("dtend:l:$ms")
+            }
+            boolArg(args, "all_day")?.let { add("allDay:i:${if (it) 1 else 0}") }
+        }
+        if (binds.isEmpty()) return OpsResult.Fail("calendar_op update 至少要给一个要改的字段（title/start/end/all_day）")
+        val out = shell("content update --uri $CALENDAR_URI --where ${quote("_id=$id")} --bind ${binds.joinToString(" --bind ")}")
+            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+        if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
+            return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝写入。先用 calendar_op list 确认 id。")
+        }
+        return OpsResult.Ok("已更新日程 id=$id（${binds.size} 个字段）")
+    }
+
+    private suspend fun calendarDelete(args: Map<String, String>): OpsResult {
+        val id = args["event_id"]?.trim().orEmpty()
+        if (id.isEmpty()) return OpsResult.Fail("calendar_op delete 需要 event_id（从 calendar_op list 结果里取）")
+        val out = shell("content delete --uri $CALENDAR_URI --where ${quote("_id=$id")}")
+            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+        if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
+            return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝删除。先用 calendar_op list 确认 id。")
+        }
+        return OpsResult.Ok("已删除日程 id=$id")
+    }
+
+    /**
+     * 时间解析：纯数字按毫秒时间戳；否则依次尝试几种常见写法。
+     * 只到分钟精度——日历事件的秒级误差没有意义，少给模型一种"猜格式"的负担。
+     */
+    private fun parseCalendarTime(raw: String): Long? {
+        val text = raw.trim()
+        text.toLongOrNull()?.let { return it }
+        val patterns = listOf(
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
+            "MM-dd HH:mm", "M月d日 HH:mm", "M月d日",
+        )
+        for (p in patterns) {
+            val fmt = SimpleDateFormat(p, Locale.getDefault()).apply { isLenient = false }
+            val parsed = runCatching { fmt.parse(text) }.getOrNull() ?: continue
+            if (parsed != null) return parsed.time
+        }
+        // 只给了「HH:mm」：按今天算，已过去则顺延到明天
+        runCatching { SimpleDateFormat("HH:mm", Locale.getDefault()).apply { isLenient = false }.parse(text) }.getOrNull()
+            ?.let { t ->
+                val cal = java.util.Calendar.getInstance().apply {
+                    time = t
+                    val now = java.util.Calendar.getInstance()
+                    set(java.util.Calendar.YEAR, now.get(java.util.Calendar.YEAR))
+                    set(java.util.Calendar.DAY_OF_YEAR, now.get(java.util.Calendar.DAY_OF_YEAR))
+                    if (timeInMillis <= now.timeInMillis) add(java.util.Calendar.DAY_OF_YEAR, 1)
+                }
+                return cal.timeInMillis
+            }
         return null
     }
 
@@ -890,5 +1038,11 @@ class DeviceOpsChannel(
 
         /** 写入/删除时使用的 URI：先用 AOSP，失败再换厂商（由 content 命令报错暴露） */
         private const val ALARM_URI = "content://com.android.deskclock/alarm"
+
+        /** 日历事件 Provider（AOSP / 绝大多数厂商共用这一份 authority） */
+        private const val CALENDAR_URI = "content://com.android.calendar/events"
+
+        /** 日历结果里的时间展示格式：到分钟即可，秒级没有意义 */
+        private val CALENDAR_TIME = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
     }
 }

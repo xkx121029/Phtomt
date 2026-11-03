@@ -54,7 +54,7 @@ class BrowserChannelTest {
     // ---- 分流边界 ----
 
     @Test
-    fun handles_只认九个browse意图() {
+    fun handles_只认十个browse意图() {
         val ch = channel(false, FakeExecutor())
         BrowserChannel.INTENTS.forEach { assertTrue(it, ch.handles(it)) }
         assertFalse(ch.handles(IntentType.TAP))
@@ -70,6 +70,26 @@ class BrowserChannelTest {
     }
 
     // ---- 参数校验：不合格不落到执行层 ----
+
+    @Test
+    fun webSearch_缺text_回报缺参且不执行() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex).execute(AgentIntent(intent = IntentType.WEB_SEARCH))
+        assertTrue(out is BrowserChannel.Outcome.Missing)
+        assertEquals("text", (out as BrowserChannel.Outcome.Missing).field)
+        assertTrue(ex.calls.isEmpty())
+    }
+
+    @Test
+    fun webSearch_打开结果页再读正文() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex).execute(AgentIntent(intent = IntentType.WEB_SEARCH, text = "明天北京天气"))
+        assertTrue(out is BrowserChannel.Outcome.Ok)
+        assertEquals(2, ex.calls.size)
+        assertTrue("搜索词应编码进结果页地址：${ex.calls[0]}", ex.calls[0].startsWith("open:https://cn.bing.com/search?q="))
+        assertTrue(ex.calls[0].contains("%E5%A4%A9"))
+        assertEquals("read", ex.calls[1])
+    }
 
     @Test
     fun browseOpen_缺uri_回报缺参且不执行() = runTest {
