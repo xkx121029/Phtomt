@@ -722,11 +722,11 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.VIRTUAL_DISPLAY, name = "副屏操作", category = "自由模式",
-            summary = "操作端侧虚拟副屏（仅自由模式；需要 Shizuku/无线 ADB）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图。副屏上的动作不占用用户当前屏幕。",
+            summary = "操作端侧虚拟副屏（仅自由模式；需要 Shizuku/无线 ADB）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图，present 把副屏里操作的应用投到主屏前台给用户看（app 省略时用刚刚 launch 的那个）。副屏上的动作不占用用户当前屏幕。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true,
-                    options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key", "screenshot")),
-                CapabilityParam("app", "应用", "text", description = "op=launch：包名或应用名"),
+                    options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key", "screenshot", "present")),
+                CapabilityParam("app", "应用", "text", description = "op=launch：包名或应用名；op=present 可省略"),
                 CapabilityParam("x", "X 坐标", "number", min = 0.0),
                 CapabilityParam("y", "Y 坐标", "number", min = 0.0),
                 CapabilityParam("x1", "起点 X", "number", min = 0.0),

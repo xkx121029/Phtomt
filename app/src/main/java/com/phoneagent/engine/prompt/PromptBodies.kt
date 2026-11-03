@@ -107,7 +107,7 @@ internal object PromptBodies {
     | clipboard | 读写系统剪贴板 | op=get/set/clear；text(op=set) |
     | alarm_manage | 管理时钟里已有的闹钟（读/开关/删除/改时间；读取他人数据需 Root 或 Shizuku） | op=list/enable/delete/update；args={hour,minute,enable,new_hour,new_minute} |
     | calendar_op | 读写系统日历（不操作屏幕）：list 列日程 / create 新建 / update 改 / delete 删；需 Shizuku/ADB | op=list/create/update/delete；args={title,start,end,duration_min,event_id,calendar_id,all_day,query,days,limit}；start/end 写「YYYY-MM-DD HH:mm」 |
-    | virtual_display | 操作端侧虚拟副屏（仅自由模式，需 Shizuku/无线 ADB；副屏动作不占用用户当前屏幕） | op=status/create/destroy/launch/tap/swipe/type/key/screenshot；参数放 args |
+    | virtual_display | 操作端侧虚拟副屏（仅自由模式，需 Shizuku/无线 ADB；副屏动作不占用用户当前屏幕） | op=status/create/destroy/launch/tap/swipe/type/key/screenshot/present（present 把副屏里操作的应用投到主屏给用户看）；参数放 args |
     | memory_get | 按需检索长期记忆（只读，不操作屏幕） | args={query,limit} |
     | memory_write | 增删改长期记忆（不操作屏幕）：write 新增 / update 按 id 改 / delete 按 id 删 | args={op,text,category,id,revision}；id 与 revision 取自 memory_get 的返回 |
     | file_read | 只读文件（不操作屏幕）：read 读文本（截断 4000 字符）/ list 列目录 / stat 看属性 / glob 通配符找文件 / grep 正则搜内容 | args={op,path,pattern,limit}；path 要绝对路径，glob/grep 的 path 是搜索根目录 |
@@ -158,7 +158,7 @@ internal object PromptBodies {
     | clipboard | Read/write the system clipboard | op=get/set/clear; text (for op=set) |
     | alarm_manage | Manage existing alarms in the clock app (list/enable/delete/change time; reading others' data needs Root or Shizuku) | op=list/enable/delete/update; args={hour,minute,enable,new_hour,new_minute} |
     | calendar_op | Read/write the system calendar (no screen operation): list / create / update / delete; needs Shizuku/ADB | op=list/create/update/delete; args={title,start,end,duration_min,event_id,calendar_id,all_day,query,days,limit}; start/end as "YYYY-MM-DD HH:mm" |
-    | virtual_display | Operate the on-device virtual display (free mode only, needs Shizuku/wireless ADB; actions there do not occupy the user's screen) | op=status/create/destroy/launch/tap/swipe/type/key/screenshot; parameters in args |
+    | virtual_display | Operate the on-device virtual display (free mode only, needs Shizuku/wireless ADB; actions there do not occupy the user's screen) | op=status/create/destroy/launch/tap/swipe/type/key/screenshot/present (present brings the app you were driving there to the main screen for the user); parameters in args |
     | memory_get | Retrieve long-term memory on demand (read-only, no screen operation) | args={query,limit} |
     | memory_write | Add/update/delete long-term memory (no screen operation): write / update by id / delete by id | args={op,text,category,id,revision}; take id and revision from memory_get |
     | file_read | Read-only file access (no screen operation): read (cut at 4000 chars) / list / stat / glob / grep | args={op,path,pattern,limit}; use absolute paths; for glob/grep path is the search root |

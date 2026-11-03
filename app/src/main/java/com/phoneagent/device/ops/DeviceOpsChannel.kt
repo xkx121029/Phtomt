@@ -47,6 +47,9 @@ class DeviceOpsChannel(
     private val virtualDisplay: () -> VirtualDisplayAgent? = { null },
 ) {
 
+    /** 最近一次在副屏里拉起的包名：`present` 不带 app 时靠它把画面投回主屏 */
+    private var lastVirtualApp: String? = null
+
     sealed interface OpsResult {
         data class Ok(val text: String) : OpsResult
         data class Fail(val reason: String) : OpsResult
@@ -594,7 +597,10 @@ class DeviceOpsChannel(
             "destroy" -> run { agent.destroy(); OpsResult.Ok("副屏已销毁") }
             "launch" -> {
                 val app = args["app"] ?: return OpsResult.Fail("virtual_display launch 需要 app")
-                outcome(agent.launch(resolvePackage(app) ?: app), "副屏启动应用")
+                val pkg = resolvePackage(app) ?: app
+                // 记下最近一次在副屏里拉起的是谁：present 不带 app 时靠它把画面投回主屏
+                lastVirtualApp = pkg
+                outcome(agent.launch(pkg), "副屏启动应用")
             }
             "tap" -> {
                 val x = intArg(args, "x"); val y = intArg(args, "y")
@@ -622,8 +628,28 @@ class DeviceOpsChannel(
                 if (bytes == null) OpsResult.Fail("副屏截图失败：当前系统不支持 screencap -d 或副屏未就绪")
                 else OpsResult.Ok("副屏截图成功：${bytes.size} 字节 PNG（内容已交给端侧，不在对话里展开）")
             }
+            "present" -> presentVirtual(agent, args)
             else -> OpsResult.Fail("virtual_display 不支持 op=$op")
         }
+    }
+
+    /**
+     * 把副屏里操作的应用投到主屏前台（virtual_display present）。
+     *
+     * 副屏的价值是"不占用用户当前屏幕"，但任务收尾时用户往往想立刻看到结果。
+     * 同一应用跨 display 共享进程状态，在 display 0 拉起它 = 把副屏结果呈现给用户，
+     * 无需额外的投屏/镜像通路，也就不必去碰 MediaProjection 这类敏感权限。
+     */
+    private suspend fun presentVirtual(agent: VirtualDisplayAgent, args: Map<String, String>): OpsResult {
+        val pkg = args["app"]?.trim()?.takeIf { it.isNotEmpty() }?.let { resolvePackage(it) ?: it }
+            ?: lastVirtualApp
+            ?: return OpsResult.Fail("present 需要 app：先用 virtual_display launch 在副屏里打开应用，或直接给 app")
+        val out = shell("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
+            ?: return OpsResult.Fail("把应用拉到主屏需要 Shizuku 或无线 ADB 注入通道；当前不可用")
+        if (out.contains("No activities found", ignoreCase = true) || out.contains("aborted", ignoreCase = true)) {
+            return OpsResult.Fail("$pkg 没有可启动的入口（可能是系统应用或未安装）；可改用 open 深链或 show_agent")
+        }
+        return OpsResult.Ok("已把 $pkg 拉到主屏前台；副屏（display=${agent.displayId}）仍在后台，可继续操作")
     }
 
     private fun outcome(o: VirtualDisplayAgent.Outcome, what: String): OpsResult = when (o) {
