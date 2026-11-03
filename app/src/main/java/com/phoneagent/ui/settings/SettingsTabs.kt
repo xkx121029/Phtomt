@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -23,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.data.prefs.AgentSurface
@@ -102,6 +105,36 @@ internal fun SettingsTabs(st: SettingsState, save: () -> Unit, onBack: () -> Uni
 
         Spacer(Modifier.height(16.dp))
 
+        // ===== 启动默认页 =====
+        // 候选只取「当前可见」的 Tab：隐藏的页选不了，避免选了个启动时根本不存在的落点。
+        // 若某页被隐藏后又删掉了配置里的默认页，主界面会自动回落主页。
+        val landingCandidates = MainTabs.visibleTabs(st.tabOrder, st.tabVisible, st.agentSurface)
+        val landingId = landingCandidates.firstOrNull { it.id == st.defaultTab }?.id ?: MainTabs.HOME
+        SettingsSection(
+            title = "启动默认页",
+            subtitle = "打开软件直接落到这一页；所选页被隐藏时回落到主页",
+            tone = SettingsTone.Brand,
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                landingCandidates.forEachIndexed { index, spec ->
+                    if (index > 0) SettingsDivider(inset = false)
+                    LandingRow(
+                        spec = spec,
+                        selected = spec.id == landingId,
+                        onSelect = {
+                            if (st.defaultTab != spec.id) {
+                                buzz()
+                                st.defaultTab = spec.id
+                                save()
+                            }
+                        },
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         SettingsSection(
             title = "底部选项卡",
             subtitle = "主页与设置是固定出入口，不可隐藏",
@@ -151,6 +184,41 @@ internal fun SettingsTabs(st: SettingsState, save: () -> Unit, onBack: () -> Uni
         }
 
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * 启动默认页的单行选项：整行可点、单选。
+ * 选中态只靠 RadioButton 与文字加深，不加水平滑入/位移。
+ */
+@Composable
+private fun LandingRow(
+    spec: MainTabSpec,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(8.dp))
+        Icon(
+            spec.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            spec.title,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            ),
+        )
     }
 }
 

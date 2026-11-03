@@ -23,13 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phoneagent.device.a11y.AgentAccessibilityService
@@ -158,61 +154,45 @@ fun HomeScreen(
         }
 
         val secondarySections: @Composable ColumnScope.() -> Unit = {
-            // 编码技能与权限雷达属于"偶尔看一眼"的信息：首屏默认折叠，不跟主路径抢注意力
-            var moreExpanded by remember { mutableStateOf(false) }
-            SectionHeader("更多")
-            MoreSection(
-                title = "编码技能与权限详情",
-                subtitle = if (moreExpanded) "点按收起" else "点按展开（不常用）",
-                expanded = moreExpanded,
-                onToggle = { moreExpanded = !moreExpanded },
-            ) {
-                // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
-                // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
-                // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
+            // 编码技能与权限雷达直接平铺：不再折成一行"点按展开"，
+            // 进页往下滑就能看到，少一次点击也少一处隐藏状态。
+            // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
+            // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
+            // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
+            SectionHeader("编码技能")
+            if (acaSkills.isEmpty()) {
                 Text(
-                    "编码技能",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    modifier = Modifier.padding(top = 6.dp, bottom = 6.dp),
+                    text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(vertical = 4.dp),
                 )
-                if (acaSkills.isEmpty()) {
-                    Text(
-                        text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.padding(vertical = 4.dp),
-                    )
-                }
-                acaSkills.forEachIndexed { index, skill ->
-                    AcaSkillCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateListItem(index),
-                        icon = AppIcons.Code,
-                        name = skill.name,
-                        description = skill.description,
-                        meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
-                        iconColor = MaterialTheme.colorScheme.secondary,
-                        iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
-                        translate = { vm.translate(it) },
-                    )
-                }
-                if (acaSkillErrors.isNotEmpty()) {
-                    Text(
-                        text = "无效技能包：${acaSkillErrors.joinToString("；")}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-
-                Text(
-                    "权限雷达",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                    modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
-                )
-                PermissionRadar(permissions, context, vm)
             }
+            acaSkills.forEachIndexed { index, skill ->
+                AcaSkillCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateListItem(index),
+                    icon = AppIcons.Code,
+                    name = skill.name,
+                    description = skill.description,
+                    meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
+                    iconColor = MaterialTheme.colorScheme.secondary,
+                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                    translate = { vm.translate(it) },
+                )
+            }
+            if (acaSkillErrors.isNotEmpty()) {
+                Text(
+                    text = "无效技能包：${acaSkillErrors.joinToString("；")}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+
+            SectionHeader("权限雷达")
+            PermissionRadar(permissions, context, vm)
 
             // 版本号
             Spacer(Modifier.height(20.dp))

@@ -1,14 +1,10 @@
 package com.phoneagent.ui.home
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -238,64 +234,6 @@ private fun HomeStatusDivider() {
             .fillMaxHeight()
             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     )
-}
-
-/**
- * 可折叠区块：首屏「更多」用。
- *
- * 展开/收起只做纵向尺寸变化（与设置页的 ExpandableCard 同一条动效纪律）：
- * 自下而上、无水平位移。
- */
-@Composable
-internal fun MoreSection(
-    title: String,
-    subtitle: String,
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    val buzz = com.phoneagent.ui.components.rememberHapticClick()
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
-        color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        buzz()
-                        onToggle()
-                    }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Icon(
-                    if (expanded) AppIcons.ChevronUp else AppIcons.ChevronDown,
-                    contentDescription = if (expanded) "收起" else "展开",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(expandFrom = Alignment.Top),
-                exit = shrinkVertically(shrinkTowards = Alignment.Top),
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), content = content)
-            }
-        }
-    }
 }
 
 /**

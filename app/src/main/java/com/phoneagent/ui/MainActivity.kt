@@ -291,7 +291,9 @@ private fun ActivityContent(
         }
     }
 
-    var selected by rememberSaveable { mutableStateOf(0) }
+    // -1 = 还没选过 Tab：本轮落点由设置里的「启动默认页」决定；
+    // 用户一碰底部导航（或深链写入）selected 就变成真实索引，进程重建后按 rememberSaveable 恢复。
+    var selected by rememberSaveable { mutableStateOf(-1) }
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
     val activity = androidx.activity.compose.LocalActivity.current as ComponentActivity
@@ -312,8 +314,12 @@ private fun ActivityContent(
         MainTabs.visibleTabs(settings.tabOrder, settings.tabVisible, settings.agentSurface)
     }
     val tabs = visibleTabs.map { TabItem(it.title, it.icon) }
+    // 启动默认页：按可见列表找 id；被隐藏 / 脏值一律回落首个可见 Tab（主页）。
+    // 不作为一次性赋值，而是「selected 未定」时的派生落点——settings 流晚到一帧也不会锁错页。
+    val landingIndex = visibleTabs.indexOfFirst { it.id == settings.defaultTab }.takeIf { it >= 0 } ?: 0
     // 配置变化后索引可能越界（比如当前 Tab 被隐藏）：先夹回有效范围，防止 when 落空白屏
-    val safeSelected = selected.coerceIn(0, tabs.lastIndex.coerceAtLeast(0))
+    val safeSelected = (if (selected >= 0) selected else landingIndex)
+        .coerceIn(0, tabs.lastIndex.coerceAtLeast(0))
     LaunchedEffect(tabs.size) { if (selected > tabs.lastIndex) selected = tabs.lastIndex }
 
     // Tab 级状态容器：底部 Tab 是手写路由，页面离开组合即被销毁，页面内的

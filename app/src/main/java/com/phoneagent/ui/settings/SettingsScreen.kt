@@ -412,6 +412,8 @@ class SettingsState(initial: AppSettings.Settings) {
     // 底部 Tab 顺序与可见性（Tab id 列表，Superagent 融合 Phase 6）
     var tabOrder by mutableStateOf(initial.tabOrder)
     var tabVisible by mutableStateOf(initial.tabVisible)
+    // 启动默认页（Tab id；打开软件直接落到该页，隐藏的 Tab 由主界面回落首页）
+    var defaultTab by mutableStateOf(initial.defaultTab)
     // 工作台形态：分开显示（操控 / 对话 / 编码各占一个 Tab）或操控+对话合为一个 Agent 页（编码仍是 Coding 页）
     var agentSurface by mutableStateOf(AgentSurface.normalize(initial.agentSurface))
 
@@ -486,6 +488,7 @@ class SettingsState(initial: AppSettings.Settings) {
         codingApprovalMode = s.codingApprovalMode
         tabOrder = s.tabOrder
         tabVisible = s.tabVisible
+        defaultTab = s.defaultTab
         agentSurface = AgentSurface.normalize(s.agentSurface)
     }
 
@@ -572,6 +575,7 @@ class SettingsState(initial: AppSettings.Settings) {
         codingApprovalMode = codingApprovalMode,
         tabOrder = tabOrder,
         tabVisible = tabVisible,
+        defaultTab = defaultTab,
         agentSurface = agentSurface,
     )
 }

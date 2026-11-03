@@ -149,6 +149,11 @@ class AppSettings(private val context: Context) {
         val uiStyle: String = "classic",
         /** 工作台风格下的工作视图（agent / coding，见 [WorkbenchView]），切换即落盘 */
         val workbenchView: String = WorkbenchView.AGENT,
+        /**
+         * 启动默认页（Tab id，见 [com.phoneagent.ui.MainTabs]）。
+         * 冷启动 / 从后台彻底退出后重开时落到该 Tab；被隐藏的 Tab 由 UI 层回落首页。
+         */
+        val defaultTab: String = "home",
         // ---- 模型库：端点（API 地址 + Key）→ 模型（带能力）→ 职责分配（主 / 视觉 / 思考） ----
         /** 已配置的 API 端点（存 JSON 字符串；空表示从未写过，读取时由旧三槽合成） */
         val endpoints: List<Endpoint> = emptyList(),
@@ -283,6 +288,8 @@ class AppSettings(private val context: Context) {
         val UI_STYLE = stringPreferencesKey("theme_ui_style")
         /** 工作台工作视图（agent / coding），见 [Settings.workbenchView] */
         val WORKBENCH_VIEW = stringPreferencesKey("workbench_view")
+        /** 启动默认页（Tab id），见 [Settings.defaultTab] */
+        val DEFAULT_TAB = stringPreferencesKey("default_tab")
         val ENDPOINTS = stringPreferencesKey("model_endpoints")
         val CATALOG = stringPreferencesKey("model_catalog")
         val SKIP_VISION_DESC = booleanPreferencesKey("skip_vision_desc_when_main_sees")
@@ -406,6 +413,7 @@ class AppSettings(private val context: Context) {
             glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
             uiStyle = prefs[Keys.UI_STYLE] ?: "classic",
             workbenchView = WorkbenchView.normalize(prefs[Keys.WORKBENCH_VIEW]),
+            defaultTab = prefs[Keys.DEFAULT_TAB] ?: "home",
             endpoints = endpoints,
             catalog = catalog,
             skipVisionDescWhenMainSees = prefs[Keys.SKIP_VISION_DESC] ?: true,
@@ -504,6 +512,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
             prefs[Keys.UI_STYLE] = settings.uiStyle
             prefs[Keys.WORKBENCH_VIEW] = WorkbenchView.normalize(settings.workbenchView)
+            prefs[Keys.DEFAULT_TAB] = settings.defaultTab.ifBlank { "home" }
             // 端点表整体落盘，但每条 Key 先单独加密（地址/模型名保持可读）
             prefs[Keys.ENDPOINTS] = ModelCatalogCodec.encodeEndpoints(
                 settings.endpoints.map { ep -> ep.copy(apiKey = SecretCodec.encrypt(ep.apiKey)) },
