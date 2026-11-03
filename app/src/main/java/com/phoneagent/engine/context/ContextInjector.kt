@@ -16,6 +16,7 @@ import com.phoneagent.engine.execution.AppNameResolver
 import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.MAX_PREVIOUS_TASKS
 import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.perf.StageTiming
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.rules.SessionContext
 
@@ -45,11 +46,23 @@ internal class ContextInjector(
 
     fun realScreenHeight(): Int = deviceFacts.realScreenSize().second
 
+    // ==================== 规划阶段缓存（性能：同一任务内不重复读库） ====================
+    /** 规划页记忆缓存归属的任务 id / 任务文本 / 语言（三者任一变化即失效） */
+    private var planningCacheTaskId: Long = Long.MIN_VALUE
+    private var planningCacheTask: String? = null
+    private var planningCacheLang: PromptLang? = null
+
+    /** 规划页记忆缓存结果（含"空结果"：没记忆时同样不该每轮重读库） */
+    private var planningCacheLines: List<String> = emptyList()
+
     /**
      * 规划提示词用的已安装应用清单，让计划贴近真实环境。
      * 文案与"截断必须写明"的规则在 DeviceFacts.appListPromptText（纯逻辑，可单测）。
+     * 清单本体已由 [DeviceFacts] 按任务缓存，这里只计时"拼装"这一段（规划首轮等待的一部分）。
      */
-    fun installedAppList(): String = DeviceFacts.appListPromptText(deviceFacts.launcherApps())
+    fun installedAppList(): String = StageTiming.measure(store.currentTaskId, "应用清单") {
+        DeviceFacts.appListPromptText(deviceFacts.launcherApps())
+    }
 
     /** 累计前台应用出现次数（同一任务内），供经验规则推断作用域；本 App 自己不计入 */
     fun noteForeground(pkg: String) {
@@ -62,8 +75,12 @@ internal class ContextInjector(
     /**
      * 采集环境事实注入 AI：时间 / 网络 / 电量 / 前台应用 / 已安装应用数。
      * 这些是元素树里读不到的事实（日期决定"明天"是哪天，前台应用决定面前这页属于谁）。
+     * 每步决策都会调用：耗时单独记账（应用名与清单走任务级缓存，见 [DeviceFacts]）。
      */
-    fun envFacts(snapshot: ScreenSnapshot? = null): EnvFacts {
+    fun envFacts(snapshot: ScreenSnapshot? = null): EnvFacts =
+        StageTiming.measure(store.currentTaskId, "环境事实") { collectEnvFacts(snapshot) }
+
+    private fun collectEnvFacts(snapshot: ScreenSnapshot?): EnvFacts {
         val pkg = snapshot?.packageName.orEmpty()
         // 顺手记一次前台应用分布：任务结束提炼经验时据此推断作用域（不额外采集，零成本）
         noteForeground(pkg)
@@ -100,20 +117,23 @@ internal class ContextInjector(
      * kind 已由转译层白名单校验，这里只负责把本地事实取出来并组装；
      * 应用清单那一段的文案在 DeviceFacts.appQueryAnswerText（纯逻辑，可单测）。
      */
-    fun deviceQueryText(kind: String, filter: String): String = when (kind) {
-        "apps" -> DeviceFacts.appQueryAnswerText(deviceFacts.launcherApps(), filter)
-        "time" -> "当前时间：${deviceFacts.dateTimeText()}"
-        "battery" -> "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}"
-        "network" -> "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}"
-        "storage" -> "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}"
-        else -> listOf(
-            "当前时间：${deviceFacts.dateTimeText()}",
-            "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}",
-            "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}",
-            "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}",
-            "已安装可启动应用：${deviceFacts.launcherAppCount()} 个（需要清单请查 kind=apps，可用 filter 过滤）",
-        ).joinToString("\n")
-    }
+    fun deviceQueryText(kind: String, filter: String): String =
+        StageTiming.measure(store.currentTaskId, "设备查询") {
+            when (kind) {
+                "apps" -> DeviceFacts.appQueryAnswerText(deviceFacts.launcherApps(), filter)
+                "time" -> "当前时间：${deviceFacts.dateTimeText()}"
+                "battery" -> "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}"
+                "network" -> "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}"
+                "storage" -> "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}"
+                else -> listOf(
+                    "当前时间：${deviceFacts.dateTimeText()}",
+                    "网络：${deviceFacts.networkLabel().ifBlank { "未知" }}",
+                    "电量：${deviceFacts.batteryLabel().ifBlank { "未知" }}",
+                    "存储：${deviceFacts.storageLabel().ifBlank { "未知" }}",
+                    "已安装可启动应用：${deviceFacts.launcherAppCount()} 个（需要清单请查 kind=apps，可用 filter 过滤）",
+                ).joinToString("\n")
+            }
+        }
 
     // ==================== 会话承接（连续对话） ====================
 
@@ -124,7 +144,10 @@ internal class ContextInjector(
      * 取材严格限定在当前对话里（起点见会话起点流）：上一段对话的聊天记录既不发出去，
      * 也不会被拿来讲"上一轮"。每任务只构建一次（规划与所有决策步共用），避免两处口径不一致。
      */
-    fun sessionContextText(task: String, lang: PromptLang): String {
+    fun sessionContextText(task: String, lang: PromptLang): String =
+        StageTiming.measure(store.currentTaskId, "会话承接") { computeSessionContextText(task, lang) }
+
+    private fun computeSessionContextText(task: String, lang: PromptLang): String {
         store.sessionContextCache?.let { return it }
         val text = runCatching {
             // 素材带时间戳，任务与问答按同一时间轴排，才读得出"上一轮"到底是谁
@@ -173,7 +196,10 @@ internal class ContextInjector(
      * 画像 + 记忆 + 规则每任务只读一次库并缓存（记忆被写入后缓存作废）；
      * 异常经验随页面变化，按页面指纹单独缓存，换页才重新查。
      */
-    suspend fun memoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> {
+    suspend fun memoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> =
+        StageTiming.measure(store.currentTaskId, "记忆与规则") { computeMemoryAndRules(task, snapshot) }
+
+    private suspend fun computeMemoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> {
         val raw = store.memoryRawCache ?: runCatching {
             EngineStore.MemoryRaw(memory.loadProfile(), memory.loadAiMemories(), memory.loadEvolvedRules())
         }.getOrDefault(EngineStore.MemoryRaw(emptyList(), emptyList(), emptyList())).also { store.memoryRawCache = it }
@@ -221,7 +247,13 @@ internal class ContextInjector(
      * 按页面指纹缓存，换页才重查（与 anomalyHint 同款），DataStore 读取不进每步热路径。
      * @param hit 本步 Recorder 命中的已记忆页面（可能为 null：新页面或未记忆）
      */
-    suspend fun pageMemoryHintFor(snapshot: ScreenSnapshot, hit: com.phoneagent.data.store.PageMemoryEntry?): String {
+    suspend fun pageMemoryHintFor(snapshot: ScreenSnapshot, hit: com.phoneagent.data.store.PageMemoryEntry?): String =
+        StageTiming.measure(store.currentTaskId, "页面记忆(决策)") { computePageMemoryHint(snapshot, hit) }
+
+    private suspend fun computePageMemoryHint(
+        snapshot: ScreenSnapshot,
+        hit: com.phoneagent.data.store.PageMemoryEntry?,
+    ): String {
         val fp = runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }.getOrDefault("")
         if (fp.isBlank()) return ""
         if (fp == store.pageMemoryHintFingerprint) return store.pageMemoryHintText
@@ -253,8 +285,28 @@ internal class ContextInjector(
     /**
      * 规划用页面记忆行：按最近使用取前 6 条路径，组装「应用名：出发页 —动作→ 目标页（走过N次）」。
      * 只挑与任务提到的应用相关的记忆（应用名出现在任务文本里才注入），避免无关路径污染规划。
+     *
+     * 性能（先量后改）：这里要读页面边 / 页面记忆并逐条比对应用名（MemoryStore 本身有内存缓存，
+     * 但过滤、解析与拼装是每轮都重做的）。规划可能跑两轮（首轮 + 解析失败纠错重发），
+     * 同一任务的页面记忆在任务执行前不会变化，因此按（任务 id, 任务文本, 语言）缓存结果——
+     * 纠错重发不再重复拼装；换任务自动失效。
      */
-    suspend fun pageMemoryPlanningLines(task: String, lang: PromptLang): List<String> {
+    suspend fun pageMemoryPlanningLines(task: String, lang: PromptLang): List<String> =
+        StageTiming.measure(store.currentTaskId, "页面记忆(规划)") {
+            val taskId = store.currentTaskId
+            if (planningCacheTaskId == taskId && planningCacheTask == task && planningCacheLang == lang) {
+                planningCacheLines
+            } else {
+                computePageMemoryPlanningLines(task, lang).also { lines ->
+                    planningCacheTaskId = taskId
+                    planningCacheTask = task
+                    planningCacheLang = lang
+                    planningCacheLines = lines
+                }
+            }
+        }
+
+    private suspend fun computePageMemoryPlanningLines(task: String, lang: PromptLang): List<String> {
         val edges = runCatching { memory.loadPageEdges() }.getOrDefault(emptyList())
         if (edges.isEmpty()) return emptyList()
         val pages = runCatching { memory.loadPageMemories() }.getOrDefault(emptyList())

@@ -22,6 +22,7 @@ import com.phoneagent.engine.VisionConfig
 import com.phoneagent.engine.context.ContextInjector
 import com.phoneagent.engine.isSuccess
 import com.phoneagent.engine.perception.PageFingerprint
+import com.phoneagent.engine.perf.StageTiming
 import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.RELOCATE_BEFORE_TYPES
 import com.phoneagent.engine.runtime.EngineStore
@@ -991,6 +992,13 @@ internal class ExecutionCore(
         service: AgentAccessibilityService,
         pkg: String,
         snapshot: ScreenSnapshot,
+    ): com.phoneagent.engine.execution.VerifyResult =
+        StageTiming.measure(store.currentTaskId, "启动阶梯") { runLaunchLadder(service, pkg, snapshot) }
+
+    private suspend fun runLaunchLadder(
+        service: AgentAccessibilityService,
+        pkg: String,
+        snapshot: ScreenSnapshot,
     ): com.phoneagent.engine.execution.VerifyResult {
         val shellKind = activeSystemShellKind()
         // shell 候选收敛成"当前真正可用的那一条"，避免把同一套 am/monkey 重复执行两遍
@@ -1120,6 +1128,18 @@ internal class ExecutionCore(
      * - 没有任何可用替代通道时返回 null，由调用方保留原始失败原因。
      */
     private suspend fun channelFallback(
+        action: AgentAction,
+        type: String,
+        snapshot: ScreenSnapshot,
+        x: Int?,
+        y: Int?,
+        originalReason: String,
+    ): com.phoneagent.engine.execution.VerifyResult? =
+        StageTiming.measure(store.currentTaskId, "通道回退") {
+            fallbackViaChannels(action, type, snapshot, x, y, originalReason)
+        }
+
+    private suspend fun fallbackViaChannels(
         action: AgentAction,
         type: String,
         snapshot: ScreenSnapshot,

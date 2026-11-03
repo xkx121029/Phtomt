@@ -286,6 +286,19 @@ class AiClient(
             var sawReasoning = false
             var status = -1
             var lastErr: String? = null
+            // 首 token 计时（Eta 对标结论之三）：把"等首字"与"生成"分开记账，
+            // 才能在慢的时候分清是网络/服务排队（TTFT 大）还是模型吐字慢（生成段大），
+            // 不用再去猜"是不是应用卡了"。只写应用内日志，不进提示词、不影响行为。
+            var attemptStartNano = 0L
+            var firstDeltaNano = 0L
+            var firstDeltaSeen = false
+            val timedDelta: (String) -> Unit = { delta ->
+                if (!firstDeltaSeen && delta.isNotBlank()) {
+                    firstDeltaSeen = true
+                    firstDeltaNano = System.nanoTime()
+                }
+                onDelta(delta)
+            }
             loop@ while (true) {
                 for (attempt in 0 until MAX_RETRIES) {
                     if (attempt > 0) {
@@ -298,6 +311,9 @@ class AiClient(
                         full.setLength(0)
                         lastUsage = null
                         sawReasoning = false
+                        firstDeltaSeen = false
+                        firstDeltaNano = 0L
+                        attemptStartNano = System.nanoTime()
                         var streamFailed = false
                         val call = client.newCall(request)
                         // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
@@ -312,7 +328,7 @@ class AiClient(
                                     return@use
                                 }
                                 resp.body?.source()?.use { source ->
-                                    sawReasoning = pumpSse(source, adapter, full, onDelta) { usage ->
+                                    sawReasoning = pumpSse(source, adapter, full, timedDelta) { usage ->
                                         lastUsage = combineUsage(lastUsage, usage)
                                     }
                                 }
@@ -354,6 +370,8 @@ class AiClient(
                                 thinking = false,
                             )
                         }
+                        // 只在拿到正文后记账：空正文会走下面的非流式回退，不参与首 token 统计
+                        logStreamTiming("决策", attemptStartNano, firstDeltaNano, System.nanoTime(), content.length, attempt)
                         // 先按「可空」口径解析：失败时不急着 give_up，先做一次纠错重发
                         val action = parseAgentIntentOrNull(content)
                         if (action == null && !jsonRepairUsed) {
@@ -729,6 +747,39 @@ class AiClient(
     }
 
     /**
+     * 记录一次流式调用的分段耗时：**首 token（TTFT）**与**首 token 之后的生成段**分开记。
+     *
+     * 为什么要分开：总耗时只能告诉你"慢"，分不清是网络/服务端排队慢（请求已发出但首字迟迟不来），
+     * 还是模型吐字慢（首字很快、后续拖很久），更分不清是不是端侧在等工具。分开后：
+     * - 首 token 大 → 网络/服务排队/提示词过长（前缀缓存没命中）
+     * - 生成段大 → 模型速度/输出长度
+     * 日志只进应用内调试缓冲，不改变任何请求与提示词，也不暴露给 AI。
+     */
+    private fun logStreamTiming(
+        scene: String,
+        startNano: Long,
+        firstDeltaNano: Long,
+        endNano: Long,
+        chars: Int,
+        attempt: Int,
+    ) {
+        if (startNano <= 0L) return
+        val totalMs = (endNano - startNano) / 1_000_000
+        val retryNote = if (attempt > 0) "（第 ${attempt + 1} 次尝试）" else ""
+        if (firstDeltaNano <= 0L) {
+            // 有正文但没记到首字（如非流式回退路径），只报总量
+            AppLog.i("AiClient", "$scene 流式$retryNote：未记到首 token，总耗时 ${totalMs}ms，${chars} 字")
+            return
+        }
+        val ttftMs = (firstDeltaNano - startNano) / 1_000_000
+        val genMs = (endNano - firstDeltaNano) / 1_000_000
+        AppLog.i(
+            "AiClient",
+            "$scene 流式$retryNote：首 token ${ttftMs}ms，生成 ${genMs}ms，合计 ${totalMs}ms，${chars} 字",
+        )
+    }
+
+    /**
      * 消费一段 SSE 流：增量文本交给 [onDelta]，正文累积到 [full]，[onUsage] 非空时解析 usage 帧。
      *
      * `chatForAction`（决策）与 `chatStream`（规划/思考）原先各写一份逐行解析，两处逐行逻辑完全同构，
@@ -1039,6 +1090,17 @@ class AiClient(
             val full = StringBuilder()
             var status = -1
             var lastErr: String? = null
+            // 首 token 计时（与决策链路同一口径）：规划慢时区分"等首字"与"生成"
+            var attemptStartNano = 0L
+            var firstDeltaNano = 0L
+            var firstDeltaSeen = false
+            val timedDelta: (String) -> Unit = { delta ->
+                if (!firstDeltaSeen && delta.isNotBlank()) {
+                    firstDeltaSeen = true
+                    firstDeltaNano = System.nanoTime()
+                }
+                onDelta(delta)
+            }
             for (attempt in 0 until MAX_RETRIES) {
                 if (attempt > 0) {
                     // 与 chatForAction 同一口径：先算退避，算不出来说明已到上限，不再回调"重试中"
@@ -1049,6 +1111,9 @@ class AiClient(
                 try {
                     // 每次尝试独立累积，避免流中断重试后新旧内容拼接导致重复
                     full.setLength(0)
+                    firstDeltaSeen = false
+                    firstDeltaNano = 0L
+                    attemptStartNano = System.nanoTime()
                     var streamFailed = false
                     val call = client.newCall(request)
                     // 协程取消（任务停止/页面关闭）时同步取消 OkHttp 请求；请求结束后反注册回调
@@ -1064,7 +1129,7 @@ class AiClient(
                             }
                             resp.body?.source()?.use { source ->
                                 // 规划/思考链路不消费 usage，传 null 即跳过 usage 帧解析
-                                pumpSse(source, adapter, full, onDelta, onUsage = null)
+                                pumpSse(source, adapter, full, timedDelta, onUsage = null)
                             }
                         }
                     } finally {
@@ -1076,7 +1141,9 @@ class AiClient(
                         if (status == 401 || status == 403 || status == 404) break
                         continue
                     }
-                    return@runCatching full.toString()
+                    val text = full.toString()
+                    logStreamTiming("规划", attemptStartNano, firstDeltaNano, System.nanoTime(), text.length, attempt)
+                    return@runCatching text
                 } catch (e: Exception) {
                     // 协程取消必须穿透重试循环向上传播，不能被当成普通失败吞掉
                     if (e is CancellationException) throw e
