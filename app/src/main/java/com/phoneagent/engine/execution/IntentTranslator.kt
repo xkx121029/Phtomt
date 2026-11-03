@@ -9,6 +9,7 @@ import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 
@@ -621,7 +622,15 @@ class IntentTranslator(
         put(IntentType.ADD, SemanticActionStrategy(listOf("add_btn"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))
-        put(IntentType.DELETE, SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, irreversible = true, intentResolver = intentResolver))
+        put(
+            IntentType.DELETE,
+            SemanticActionStrategy(
+                listOf("delete_btn"), ActionType.TAP,
+                // 不可逆动作是否强制确认，取自能力注册表的 needsConfirmation（与技能列表/门控同源）
+                irreversible = CapabilityRegistry.specOf(IntentType.DELETE)?.needsConfirmation == true,
+                intentResolver = intentResolver,
+            ),
+        )
         // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly）----
         put(IntentType.SHELL, ShellCommandStrategy(actionMode))
         put(IntentType.A11Y, A11yEndpointStrategy(actionMode))

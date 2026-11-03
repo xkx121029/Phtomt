@@ -203,37 +203,10 @@ object IntentType {
      * 与 [ALL] 一样是「唯一登记点」：新增意图若既没接转译表、也没登记在这里，
      * IntentTypeCoverageTest 会直接红（否则 AI 输出该意图后只会得到一句"未知意图"）。
      */
-    val VIA_OTHER_CHANNELS: Set<String> = setOf(
-        SEE,
-        BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
-    )
+    val VIA_OTHER_CHANNELS: Set<String> =
+        CapabilityRegistry.all.filter { it.action == null }.map { it.intent }.toSet()
 
     /** 意图 → 内部执行动作（AgentAction.type）的映射。供转译层把意图变成命令。 */
-    val TO_ACTION: Map<String, String> = mapOf(
-        OPEN_APP to ActionType.LAUNCH,
-        OPEN to ActionType.OPEN,
-        TAP to ActionType.TAP,
-        LONG_PRESS to ActionType.LONG_PRESS,
-        INPUT to ActionType.TYPE_TEXT,
-        SWIPE to ActionType.SWIPE,
-        PRESS to ActionType.KEY,
-        WAIT to ActionType.WAIT,
-        SCROLL_TO to ActionType.SCROLL,
-        WRITE_DOC to ActionType.WRITE_DOC,
-        DEVICE_QUERY to ActionType.DEVICE_QUERY,
-        SAY to ActionType.SAY,
-        SHOW_AGENT to ActionType.SHOW_AGENT,
-        FETCH to ActionType.SHELL,
-        FINISH to ActionType.TASK_DONE,
-        GIVE_UP to ActionType.TASK_DONE,
-        ASSISTANT to ActionType.LAUNCH_ASSISTANT,
-        NOTIF_READ to ActionType.READ_NOTIFS,
-        NOTIF_CLEAR to ActionType.CLEAR_NOTIFS,
-        // 自由模式专属：AI 自写命令落到 shell，无障碍端点落到 a11y_call
-        SHELL to ActionType.SHELL,
-        A11Y to ActionType.A11Y_CALL,
-        // 6 个浏览意图（browse_*）不在此表：它们走内置浏览器通道（BrowserChannel），
-        // 由 DOM 脚本直接落地，不经过转译层，也不产生 ActionType。
-        // see 同理：由 AgentEngine 就地调用视觉模型（端侧代办、不触碰设备），不经过转译层。
-    )
+    val TO_ACTION: Map<String, String> =
+        CapabilityRegistry.all.mapNotNull { spec -> spec.action?.let { spec.intent to it } }.toMap()
 }
