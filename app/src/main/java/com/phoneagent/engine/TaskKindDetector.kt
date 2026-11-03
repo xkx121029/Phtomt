@@ -3,12 +3,16 @@ package com.phoneagent.engine
 import com.phoneagent.engine.prompt.PromptFlag
 
 /**
- * 任务类型判定：**唯一判定点**。
+ * 任务类型判定：**提示词裁块的唯一判定点**。
  *
- * 两处消费它，必须同源，否则会出现"提示词按网页任务裁剪、附加指导却按普通任务注入"的错位：
+ * 只影响两件事，必须同源，否则会出现"提示词按网页任务裁剪、附加指导却按普通任务注入"的错位：
  * - [AgentPrompts.system] 用它决定裁不裁 `sys.web_browse` / `sys.open_link` 两个大块，
  *   并决定是否注入 `sys.assistant`（语音助手直达引导）；
  * - [AgentPrompts.situationalExtras] 用它决定注入哪几段「当前任务附加指导」。
+ *
+ * **不再承担路由**：操控 / 对话 的分流改由云端判定（见 [IntentRouter]）——
+ * 词表只认字面词，分不清「帮我把这段代码解释一下」该答还是该动手。
+ * 这里的 chat/coding 命中只用于「要不要注入对应的引导块」，与进哪条链路无关。
  *
  * 纯函数、无 Android 依赖，可 JVM 单测。
  */
@@ -82,33 +86,8 @@ object TaskKindDetector {
         return flags
     }
 
-    /** 三形态的命中词数计分（Superagent 融合 Phase 4 多需求路由的简单置信度，见 AgentEngine.routeTask） */
-    data class Scores(
-        /** 编码词表命中数 */
-        val coding: Int,
-        /** 对话词表命中数 */
-        val chat: Int,
-        /** 操作类词表（doc/open/browse/fetch/assistant）命中数合计 */
-        val agentOps: Int,
-    )
-
-    /** 按词表命中词数给三形态计分：多需求并存时路由侧据此取最高置信度者 */
-    fun scores(lang: PromptLang, task: String, termuxAvailable: Boolean = false): Scores = Scores(
-        coding = count(lang, task, CODING_WORDS),
-        chat = count(lang, task, CHAT_WORDS),
-        agentOps = count(lang, task, DOC_WORDS) +
-            count(lang, task, OPEN_TARGET_WORDS) +
-            count(lang, task, OPEN_WORDS) +
-            count(lang, task, BROWSE_WORDS) +
-            (if (termuxAvailable) count(lang, task, FETCH_WORDS) else 0) +
-            count(lang, task, ASSISTANT_WORDS),
-    )
-
     private fun hits(lang: PromptLang, task: String, words: Map<PromptLang, List<String>>): Boolean =
         words.getValue(lang).any { task.contains(it, ignoreCase = true) }
-
-    private fun count(lang: PromptLang, task: String, words: Map<PromptLang, List<String>>): Int =
-        words.getValue(lang).count { task.contains(it, ignoreCase = true) }
 
     private val DOC_WORDS = mapOf(
         PromptLang.CN to listOf(
@@ -164,17 +143,13 @@ object TaskKindDetector {
 
     private val ASSISTANT_WORDS = mapOf(
         PromptLang.CN to listOf(
-            // 闹钟/计时/提醒
-            "闹钟", "闹铃", "定时", "倒计时", "提醒",
-            // 通讯
+            // 通讯（闹钟/计时/提醒已改走 set_alarm / set_timer 的本地直达能力，不再注入语音助手引导）
             "打电话", "打给", "拨打", "拨号", "呼叫", "回电", "发消息", "发微信", "发短信", "回复消息",
             // 媒体与硬件
             "播放", "放歌", "放一首", "暂停", "手电筒", "截屏", "录屏", "音量", "静音", "飞行模式", "蓝牙", "亮度",
         ),
         PromptLang.EN to listOf(
-            // alarm / timer / reminder
-            "alarm", "timer", "countdown", "remind me", "reminder",
-            // communication
+            // communication (alarms/timers/reminders now use the local set_alarm / set_timer capability)
             "call ", "dial", "text ", "send a message", "message to", "make a call",
             // media & hardware
             "play music", "play a song", "play the song", "pause the music", "flashlight",

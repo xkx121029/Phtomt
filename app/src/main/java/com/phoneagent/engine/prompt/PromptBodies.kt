@@ -97,7 +97,9 @@ internal object PromptBodies {
     | intent | 含义 | 必填字段 |
     |--------|------|----------|
     | open_app | 打开应用 | app（应用名即可，如"美团"，端侧自动查包名；同名应用多个时优先系统自带） |
-    | assistant | 唤起系统语音助手（小爱同学/小艺/小布/Google 助理等）；text 给了就把这句话转交给助手执行（端侧在助手界面自动输入并发送，传话失败只影响传话不算失败），不给则仅拉起。要让助手办的事（打电话/发消息/控制硬件/系统级指令）用它；单纯打开某个应用用 open_app | text(要传给助手的话，可选) |
+    | assistant | 唤起系统语音助手（小爱同学/小艺/小布/Google 助理等）；text 给了就把这句话转交给助手执行（端侧在助手界面自动输入并发送，传话失败只影响传话不算失败），不给则仅拉起。要让助手办的事（打电话/发消息/控制硬件/系统级指令）用它；单纯打开某个应用用 open_app；**定闹钟/设倒计时用 set_alarm / set_timer，不要交给本意图** | text(要传给助手的话，可选) |
+    | set_alarm | 定闹钟（直达本机时钟应用，不经语音助手、不模拟点击）；时间给 when 一句口语即可，端侧解析成时:分+跨天+重复日 | when(如"7点半"/"半小时后"/"明天早上6点"/"每天7点") 或 hour,minute；repeat_days（"每天"/"工作日"/"周末"/"周一三五"）可选；text(标签) 可选 |
+    | set_timer | 设倒计时（直达本机时钟应用，不经语音助手） | duration_seconds（秒，如 1800=30 分钟）；text(标签) 可选 |
     | open | 交给系统应用打开链接/文件，或深链直达 App 内页/系统页 | 三选一，不要混着填：①uri（网址、文件路径、公开 scheme）——用户给的是网址/文件时用它；②app + page（page 是**字符串**形式的序号，如 "1"；App 内页直达索引）——用户指的是某软件里的某个页面时用它，这一形态**没有 uri**；③uri + app——网址/文件已定，只是额外点名用哪个应用打开。要读网页内容用 browse_open，只是打开给用户看才用它 |
     | tap | 点击 | target |
     | long_press | 长按（弹菜单/唤起系统选项） | target,duration_ms |
@@ -127,7 +129,9 @@ internal object PromptBodies {
     | intent | Meaning | Required fields |
     |--------|---------|-----------------|
     | open_app | Open an app | app (app name or package name, e.g. "Meituan" or "com.sankuai.meituan"; device resolves the package; when several apps share the name, the built-in system app wins) |
-    | assistant | Launch the system voice assistant (Xiao Ai / Celia / Breeno / Google Assistant, etc.); with text the device passes that sentence to the assistant automatically (typed & sent in its UI — a failed hand-off only drops the message, it never fails the step), without text it just launches. Use it for things the assistant should do (calls / messages / hardware / system-level commands); plain app launching stays with open_app | text(message to pass to the assistant, optional) |
+    | assistant | Launch the system voice assistant (Xiao Ai / Celia / Breeno / Google Assistant, etc.); with text the device passes that sentence to the assistant automatically (typed & sent in its UI — a failed hand-off only drops the message, it never fails the step), without text it just launches. Use it for things the assistant should do (calls / messages / hardware / system-level commands); plain app launching stays with open_app; **alarms/timers go to set_alarm / set_timer, never to this intent** | text(message to pass to the assistant, optional) |
+    | set_alarm | Set an alarm (straight to the device clock app, no voice assistant, no simulated taps); give the time as a spoken phrase in `when` and the device resolves hour:minute + day offset + repeat days | when (e.g. "7:30", "in half an hour", "tomorrow 6am", "every day at 7"); or hour,minute; repeat_days ("every day"/"weekdays"/"weekend"/"Mon Wed Fri") optional; text (label) optional |
+    | set_timer | Set a countdown (straight to the device clock app, no voice assistant) | duration_seconds (e.g. 1800 = 30 min); text (label) optional |
     | open | Hand a link/file to a system app, or direct-open an in-app/system page | Pick exactly one, never mix: (1) uri (URL, file path, public scheme) — when the user gives a URL/file; (2) the two fields app + page (page is the index **as a string**, e.g. "1"; the in-app page index) — when the user means a page inside some app, and this form has **no uri**; (3) uri + app — the URL/file is already determined and you only pin which app opens it. To READ a web page use browse_open — use open only when it is just shown to the user |
     | tap | Tap | target |
     | long_press | Long press (context menu) | target,duration_ms |
@@ -254,23 +258,23 @@ internal object PromptBodies {
     // ---- sys.assistant ----
     internal val SYS_ASSISTANT_CN: String = """
     # 语音助手直达（可选捷径，用不用由你判断）
-    当前任务属于语音助手通常能直接办的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。这类系统级事务有一条捷径：输出 assistant 意图，把指令转交给系统语音助手执行，省去打开时钟/电话/微信等 App 逐步点击：
-    {"intent":"assistant","text":"明早七点定一个闹钟","reasoning":"定闹钟一句话能说清，交给语音助手直达","expected":"语音助手开始创建闹钟","confidence":0.9}
+    当前任务属于语音助手通常能直接办的事（打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。这类系统级事务有一条捷径：输出 assistant 意图，把指令转交给系统语音助手执行，省去打开电话/微信等 App 逐步点击。**定闹钟/设倒计时不在其列，一律用 set_alarm / set_timer 直达时钟应用**：
+    {"intent":"assistant","text":"给小张发条微信说我晚点到","reasoning":"一句话能说清，交给语音助手直达","expected":"语音助手开始编辑消息","confidence":0.9}
     - 是否走捷径由你判断：指令一句话能说清、且不需要你盯着页面逐步确认时，assistant 更快；任务还需要看页面或持续交互（如浏览挑选后再下单）、或助手明显办不了时，照常走 open_app + 页面操作。
-    - 当前计划若走的是手动路径（如打开时钟 App 逐步设置），而你判断 assistant 能一步办成，可以直接改发 assistant，不必拘泥原计划；反之 assistant 被拒或传话失败时，回到手动路径。
+    - 当前计划若走的是手动路径（如打开电话 App 逐步拨号），而你判断 assistant 能一步办成，可以直接改发 assistant，不必拘泥原计划；反之 assistant 被拒或传话失败时，回到手动路径。
     - 用 assistant 时 text 写成一句完整、明确的指令：时间/联系人/内容/动作说清楚，助手会把这句话当作用户的原话执行；任务里有多件独立的事，分多步各发一条。
     - 传话后语音助手的执行结果端侧**读不到**：上一步结果只会告诉你传话是否送达，不要臆造助手做了什么；需要向用户交代时用 say 说明。
-    - assistant 被端侧拒绝或传话失败时不要重试，改走手动路径（如打开时钟 App 逐步创建），或用 say 提示用户更改动作模式。
+    - assistant 被端侧拒绝或传话失败时不要重试，改走手动路径，或用 say 提示用户更改动作模式。
     """.trimIndent()
     internal val SYS_ASSISTANT_EN: String = """
     # Voice Assistant Direct (optional shortcut; whether to use it is your call)
-    The current task is something a voice assistant can usually handle directly (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). For such system-level tasks there is a shortcut: emit the assistant intent and hand the instruction to the system voice assistant, instead of opening the Clock/Phone/WeChat app and tapping through:
-    {"intent":"assistant","text":"Set an alarm for 7 AM tomorrow","reasoning":"one clear instruction; the voice assistant is faster","expected":"the assistant starts creating the alarm","confidence":0.9}
+    The current task is something a voice assistant can usually handle directly (calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). For such system-level tasks there is a shortcut: emit the assistant intent and hand the instruction to the system voice assistant, instead of opening the Phone/WeChat app and tapping through. **Alarms and countdown timers are NOT in this list — always use set_alarm / set_timer straight to the clock app**:
+    {"intent":"assistant","text":"Text Xiaozhang that I'll be late","reasoning":"one clear instruction; the voice assistant is faster","expected":"the assistant starts composing the message","confidence":0.9}
     - Whether to take the shortcut is your call: when one sentence covers it and you don't need to watch the page step by step, assistant is faster; when the task still needs page interaction (browsing and picking before ordering) or the assistant clearly can't do it, use the regular open_app + page-operations path.
-    - If the current plan takes the manual path (e.g. open the Clock app and set it step by step) but you judge the assistant can do it in one step, switch to assistant directly — the plan is not a cage; conversely, if assistant is rejected or the hand-off fails, return to the manual path.
+    - If the current plan takes the manual path (e.g. open the Phone app and dial step by step) but you judge the assistant can do it in one step, switch to assistant directly — the plan is not a cage; conversely, if assistant is rejected or the hand-off fails, return to the manual path.
     - With assistant, write `text` as one complete, explicit instruction: spell out the time/contact/content/action; the assistant executes it as if the user said it. Several independent things in a task get one assistant step each.
     - The assistant's execution result **cannot be read back on-device**: the previous step result only tells you whether the hand-off was delivered — never invent what the assistant did; use say to inform the user when needed.
-    - If assistant is rejected on-device or the hand-off fails, don't retry: fall back to the manual path (e.g. open the Clock app and create it step by step), or ask the user to change the mode with say.
+    - If assistant is rejected on-device or the hand-off fails, don't retry: fall back to the manual path, or ask the user to change the mode with say.
     """.trimIndent()
 
     // ---- sys.coding ----
@@ -594,7 +598,7 @@ internal object PromptBodies {
     # 环境与意图
     - 已安装应用见上：优先选用已安装应用；目标应用未安装 → 澄清或 give_up。
     - 国产应用速查：{common_cn_apps}
-    - 可用意图：open_app(应用名启动，泛指类目优先系统自带) / assistant(把一句完整指令转交给系统语音助手执行，定闹钟/打电话/发消息/放歌等系统级事务，端侧拉起助手并自动传话) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / say(对用户说一句话，不操作屏幕，直接显示在任务流里) / write_doc(生成文档，结果在 Agent 页预览) / show_agent(把用户带回 Agent 页当面看结果，可带 text 全屏展示 Markdown) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文 Markdown + 可操作元素清单) / browse_click(点网页元素，target 取清单里的文字) / browse_input(填网页表单，下拉也用它) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
+    - 可用意图：open_app(应用名启动，泛指类目优先系统自带) / assistant(把一句完整指令转交给系统语音助手执行，打电话/发消息/放歌等系统级事务，端侧拉起助手并自动传话；定闹钟/倒计时不要用它) / set_alarm(定闹钟，直达系统时钟应用，when 给一句口语时间) / set_timer(设倒计时，直达系统时钟应用，duration_seconds 秒) / tap / long_press / input / swipe / press / wait / scroll_to / open(深链直达 App 内页，或把网址/本地文件交给系统应用打开，可填 app 指定应用) / say(对用户说一句话，不操作屏幕，直接显示在任务流里) / write_doc(生成文档，结果在 Agent 页预览) / show_agent(把用户带回 Agent 页当面看结果，可带 text 全屏展示 Markdown) / remember(记住长期信息) / device_query(查应用清单/时间/电量/网络/存储) / fetch(取正文，需本机有 Termux；返回 HTML 会自动转成 Markdown) / browse_open(内置浏览器打开网址) / browse_read(读当前网页正文 Markdown + 可操作元素清单) / browse_click(点网页元素，target 取清单里的文字) / browse_input(填网页表单，下拉也用它) / browse_scroll(滚动网页) / browse_back(网页后退) / finish / give_up。
     - 上网类任务（查资料、看资讯、在网页里搜索，需要你读页面内容）：第一步就规划 browse_open 打开目标网址，之后用 browse_read / browse_click / browse_input 推进；不要规划"打开浏览器 App"或"用 open 深链开网址"。网址不明确时规划一步 browse_open 打开搜索引擎结果页。内置浏览器在后台静默加载（界面不切走、截图里看不到网页，内容一律用 browse_read 读），是独立通道，不依赖无障碍/Shizuku/无线 ADB；只有命中不可逆词表（{irreversible_words}）的网页操作会被端侧拒绝（被拒就换非不可逆路径，不要重试同一动作）。
     - 打开本地文件（用户给了 ppt/doc/pdf/图片路径，或说"用文档软件打开这个文件"）：规划一步 open + uri=文件路径；指定应用时才填 app。
     - 只是把网址打开给用户看（用户说"用浏览器打开这个网址"）：规划一步 open + uri=网址，不要规划 browse_open。
@@ -605,7 +609,7 @@ internal object PromptBodies {
     # Environment & Intents
     - Use the installed apps above; prefer installed apps. If the target app isn't installed → clarify or give_up.
     - Common Chinese apps: {common_cn_apps}
-    - Available intents: open_app(launch by app name; for a generic category the built-in system app wins) / assistant(hand one complete instruction to the system voice assistant — alarms/calls/messages/music and other system-level tasks; the device launches the assistant and passes the text automatically) / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link into an in-app page, or hand a URL/local file to a system app — set app to pick a specific app) / say(say one sentence to the user; touches no screen, shown right in the task stream) / write_doc(generate document, previewed on the Agent page) / show_agent(bring the user back to the Agent page to read the result; text is shown full screen as Markdown) / remember / device_query / fetch(fetch a body, requires Termux; HTML responses are converted to Markdown) / browse_open(open a URL in the built-in browser) / browse_read(read current page body as Markdown + an actionable-element list) / browse_click(click a web element; take the target text from that list) / browse_input(fill a web form, also used to pick a dropdown option) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
+    - Available intents: open_app(launch by app name; for a generic category the built-in system app wins) / assistant(hand one complete instruction to the system voice assistant — calls/messages/music and other system-level tasks; the device launches the assistant and passes the text automatically; never for alarms/timers) / set_alarm(set an alarm straight in the system clock app; `when` takes a spoken time phrase) / set_timer(set a countdown in the system clock app; duration_seconds) / tap / long_press / input / swipe / press / wait / scroll_to / open(deep-link into an in-app page, or hand a URL/local file to a system app — set app to pick a specific app) / say(say one sentence to the user; touches no screen, shown right in the task stream) / write_doc(generate document, previewed on the Agent page) / show_agent(bring the user back to the Agent page to read the result; text is shown full screen as Markdown) / remember / device_query / fetch(fetch a body, requires Termux; HTML responses are converted to Markdown) / browse_open(open a URL in the built-in browser) / browse_read(read current page body as Markdown + an actionable-element list) / browse_click(click a web element; take the target text from that list) / browse_input(fill a web form, also used to pick a dropdown option) / browse_scroll(scroll the page) / browse_back(web history back) / finish / give_up.
     - Online-lookup tasks (research, news, search inside a website — you must read the page content): plan browse_open as the first step, then advance with browse_read / browse_click / browse_input. Do NOT plan "open the browser app" or "open a URL with open". When the URL is unknown, plan a browse_open that opens a search-engine results page. The built-in browser loads pages silently in the background (the UI is not switched and the page is NOT in screenshots — always read it with browse_read); it is an independent channel needing no accessibility/Shizuku/wireless ADB; only a web action hitting the irreversible word list ({irreversible_words}) is refused (when refused, switch to a non-irreversible path — never retry the same action).
     - Opening a local file (the user gave a ppt/doc/pdf/image path, or said "open this file with a document app"): plan one step of open + uri=file path; fill app only when a specific app is named.
     - Merely showing a URL to the user (the user said "open this URL in a browser"): plan one step of open + uri=URL, do NOT plan browse_open.
@@ -628,19 +632,19 @@ internal object PromptBodies {
     // ---- plan.assistant ----
     internal val PLAN_ASSISTANT_CN: String = """
     # 语音助手捷径（规划时优先权衡）
-    本任务属于系统语音助手通常能一步办成的事（定闹钟/计时、打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。规划时优先权衡这条捷径：整个计划只规划一步，description 写「调用语音助手…」，执行时端侧会拉起语音助手并把指令自动传话给它，不必规划「打开时钟 App → 找到闹铃页 → 新建 → 设时间 → 保存」这类手动路径：
-    {"needs_clarification":false,"plan":{"steps":[{"description":"调用语音助手创建一个10分钟以后的闹铃","intent":"语音助手界面出现，指令已转交"}],"estimated_time_seconds":20,"confidence":0.9}}
+    本任务属于系统语音助手通常能一步办成的事（打电话/拨号、发消息、播放音乐、开关手电筒/飞行模式/蓝牙、调音量等）。规划时优先权衡这条捷径：整个计划只规划一步，description 写「调用语音助手…」，执行时端侧会拉起语音助手并把指令自动传话给它，不必规划「打开电话 App → 拨号 → 等待接通」这类手动路径。**定闹钟/设倒计时不走这条捷径，直接用 set_alarm / set_timer 一步规划**：
+    {"needs_clarification":false,"plan":{"steps":[{"description":"调用语音助手给小张发条微信说我晚点到","intent":"语音助手界面出现，指令已转交"}],"estimated_time_seconds":20,"confidence":0.9}}
     - description 里把指令内容写全（时间/联系人/内容/动作），执行者会把它整理成一句完整明确的指令传给助手；任务里有多件独立的事，各规划一步。
     - 是否走捷径由你权衡：指令一句话能说清、且无需逐步看页面确认的任务用它最快；需要浏览挑选、持续页面交互或助手明显办不了时，再规划常规路径。
-    - 语音助手的执行结果端侧读不到：这一步的 intent 只写「语音助手界面出现，指令已转交」，不要写「闹钟已创建」这类端侧验证不了的结果。
+    - 语音助手的执行结果端侧读不到：这一步的 intent 只写「语音助手界面出现，指令已转交」，不要写端侧验证不了的结果。
     """.trimIndent()
     internal val PLAN_ASSISTANT_EN: String = """
     # Voice Assistant Shortcut (weigh it first when planning)
-    This task is something the system voice assistant can usually do in one step (setting alarms/timers, calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). Weigh this shortcut first when planning: the whole plan is a single step whose description reads "use the voice assistant to…"; on execution the device launches the assistant and hands the instruction over automatically, instead of planning a manual path like "open the Clock app → alarm tab → add → set time → save":
-    {"needs_clarification":false,"plan":{"steps":[{"description":"Use the voice assistant to set an alarm 10 minutes from now","intent":"assistant UI appears, instruction handed over"}],"estimated_time_seconds":20,"confidence":0.9}}
+    This task is something the system voice assistant can usually do in one step (calling/dialing, sending messages, playing music, toggling flashlight/airplane mode/Bluetooth, adjusting volume, etc.). Weigh this shortcut first when planning: the whole plan is a single step whose description reads "use the voice assistant to…"; on execution the device launches the assistant and hands the instruction over automatically, instead of planning a manual path like "open the Phone app → dial → wait for the call to connect". **Alarms/timers do not use this shortcut — plan a single set_alarm / set_timer step instead**:
+    {"needs_clarification":false,"plan":{"steps":[{"description":"Use the voice assistant to text Xiaozhang that I'll be late","intent":"assistant UI appears, instruction handed over"}],"estimated_time_seconds":20,"confidence":0.9}}
     - Put the full instruction (time/contact/content/action) in the description; the executor will turn it into one complete, explicit sentence for the assistant. Several independent things in a task get one step each.
     - Whether to take the shortcut is your call: tasks covered by one sentence that need no step-by-step page confirmation are fastest with assistant; for tasks needing browsing, sustained page interaction, or beyond the assistant, plan the regular path instead.
-    - The assistant's execution result cannot be read back on-device: this step's intent should only say "assistant UI appears, instruction handed over" — never "the alarm was created", which cannot be verified on-device.
+    - The assistant's execution result cannot be read back on-device: this step's intent should only say "assistant UI appears, instruction handed over" — never a result the device cannot verify.
     """.trimIndent()
 
     // ---- plan.ambiguity ----

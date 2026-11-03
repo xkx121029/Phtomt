@@ -7,12 +7,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 三形态判定词表单测（Superagent 融合 Phase 7）。
+ * 词表裁块单测（Superagent 融合 Phase 7；路由改云端后的回归）。
  *
- * 覆盖 chatHit / codingHit 新词表与旧词表（doc/open/browse/assistant）回归，
- * 以及 [TaskKindDetector.scores] 的计分——多需求并存时 [AgentEngine.routeTask]
- * 按「编码分 >= max(对话分, 操控分)」取最高置信度者（平手偏编码），
- * 这里的计分断言与该取大实现同源。
+ * 覆盖 chatHit / codingHit 新词表与旧词表（doc/open/browse/assistant）回归。
+ * 注意：词表已不承担三形态路由（改由云端 [IntentRouter] 判定），
+ * 这里只断言「提示词裁块」的输入——[TaskKindDetector.detect] 与 [TaskKindDetector.flagsOf]。
  */
 class TaskKindDetectorTest {
 
@@ -29,32 +28,15 @@ class TaskKindDetectorTest {
         val flags = TaskKindDetector.flagsOf(PromptLang.CN, task)
         assertTrue("编码任务应置 CODE_TASK", PromptFlag.CODE_TASK in flags)
         assertFalse("非纯对话不置 CHAT_TASK", PromptFlag.CHAT_TASK in flags)
-
-        val s = TaskKindDetector.scores(PromptLang.CN, task)
-        assertEquals(3, s.coding)
-        assertEquals(0, s.chat)
-        assertEquals(0, s.agentOps)
     }
 
     @Test
-    fun `多需求任务_爬虫抓网页_计分与路由取大同源`() {
+    fun `多需求任务_爬虫抓网页_同时命中编码与浏览`() {
         val task = "写个爬虫抓网页数据"
         val kind = TaskKindDetector.detect(PromptLang.CN, task)
         assertTrue("爬虫命中编码词表", kind.codingHit)
         assertTrue("网页命中浏览词表（操控形态并存）", kind.browseHit)
         assertFalse(kind.chatHit)
-
-        // termux 不可用：coding=1（爬虫），agentOps=1（browse 的"网页"），
-        // 路由取大 coding(1) >= max(chat=0, ops=1) → 编码（平手偏编码）
-        val s = TaskKindDetector.scores(PromptLang.CN, task, termuxAvailable = false)
-        assertEquals(1, s.coding)
-        assertEquals(0, s.chat)
-        assertEquals(1, s.agentOps)
-
-        // termux 可用：fetch 词表追加命中"网页"+"爬"，agentOps=3 → 编码分不再占优，路由按操控处理
-        val sTermux = TaskKindDetector.scores(PromptLang.CN, task, termuxAvailable = true)
-        assertEquals(1, sTermux.coding)
-        assertEquals(3, sTermux.agentOps)
 
         // 词表并存仍注入编码引导块（chat 引导只在纯对话时给）
         val flags = TaskKindDetector.flagsOf(PromptLang.CN, task)
@@ -69,8 +51,6 @@ class TaskKindDetectorTest {
         assertTrue(kind.codingHit)
         assertFalse(kind.chatHit)
 
-        // python + script 两词命中
-        assertEquals(2, TaskKindDetector.scores(PromptLang.EN, task).coding)
         assertTrue(PromptFlag.CODE_TASK in TaskKindDetector.flagsOf(PromptLang.EN, task))
     }
 
@@ -87,11 +67,6 @@ class TaskKindDetectorTest {
         assertFalse(kind.assistantHit)
 
         assertEquals(setOf(PromptFlag.CHAT_TASK), TaskKindDetector.flagsOf(PromptLang.CN, task))
-
-        val s = TaskKindDetector.scores(PromptLang.CN, task)
-        assertEquals(1, s.chat)
-        assertEquals(0, s.coding)
-        assertEquals(0, s.agentOps)
     }
 
     @Test
@@ -102,32 +77,21 @@ class TaskKindDetectorTest {
         assertTrue(kind.chatHit)
         assertTrue("文章应命中文档词表（旧词表行为不变）", kind.docHit)
 
-        // CHAT_TASK 是纯对话引导块：与其他形态并存时不给（与 routeTask 的 chatPure 判定同条件）
+        // CHAT_TASK 是纯对话引导块：与其他形态并存时不给
         val flags = TaskKindDetector.flagsOf(PromptLang.CN, task)
         assertFalse(PromptFlag.CHAT_TASK in flags)
         assertFalse(PromptFlag.CODE_TASK in flags)
-
-        val s = TaskKindDetector.scores(PromptLang.CN, task)
-        assertEquals(2, s.chat)
-        assertEquals(0, s.coding)
-        // "文章" 与 "写一篇"（DOC_WORDS 内含 "写一个"/"写一篇"）两词命中
-        assertEquals(2, s.agentOps)
     }
 
     @Test
-    fun `对话与编码词并存时计分并列_路由平手偏编码`() {
+    fun `对话与编码词并存时只注入编码引导`() {
         // "解释一下" 命中对话、"代码" 命中编码 → 多需求并存
         val task = "解释一下这段代码的含义"
         val kind = TaskKindDetector.detect(PromptLang.CN, task)
         assertTrue(kind.chatHit)
         assertTrue(kind.codingHit)
 
-        val s = TaskKindDetector.scores(PromptLang.CN, task)
-        assertEquals(1, s.chat)
-        assertEquals(1, s.coding)
-        assertEquals(0, s.agentOps)
-
-        // coding(1) >= max(chat=1, ops=0) → 路由走编码；提示词只注入 CODE_TASK
+        // 并存时提示词只注入 CODE_TASK
         val flags = TaskKindDetector.flagsOf(PromptLang.CN, task)
         assertTrue(PromptFlag.CODE_TASK in flags)
         assertFalse(PromptFlag.CHAT_TASK in flags)
@@ -140,10 +104,8 @@ class TaskKindDetectorTest {
             TaskKindDetector.flagsOf(PromptLang.EN, "what is quantum computing"),
         )
 
-        // "explain"+"why" 两词命中
         val sky = "explain why the sky is blue"
         assertTrue(TaskKindDetector.detect(PromptLang.EN, sky).chatHit)
-        assertEquals(2, TaskKindDetector.scores(PromptLang.EN, sky).chat)
         assertEquals(setOf(PromptFlag.CHAT_TASK), TaskKindDetector.flagsOf(PromptLang.EN, sky))
     }
 
@@ -183,11 +145,20 @@ class TaskKindDetectorTest {
 
     @Test
     fun `语音助手任务行为不变`() {
-        val kind = TaskKindDetector.detect(PromptLang.CN, "明早七点定一个闹钟")
+        val kind = TaskKindDetector.detect(PromptLang.CN, "给小张发消息说我晚点到")
         assertTrue(kind.assistantHit)
         assertFalse(kind.chatHit)
         assertFalse(kind.codingHit)
-        assertEquals(setOf(PromptFlag.ASSISTANT_TASK), TaskKindDetector.flagsOf(PromptLang.CN, "明早七点定一个闹钟"))
+        assertEquals(setOf(PromptFlag.ASSISTANT_TASK), TaskKindDetector.flagsOf(PromptLang.CN, "给小张发消息说我晚点到"))
+    }
+
+    @Test
+    fun `定闹钟不再引导语音助手`() {
+        // 闹钟/倒计时已改为 set_alarm / set_timer 的本地直达能力，不能再注入"交给语音助手"的引导块
+        val kind = TaskKindDetector.detect(PromptLang.CN, "明早七点定一个闹钟")
+        assertFalse("定闹钟不应命中 assistant 词表", kind.assistantHit)
+        assertEquals(emptySet<PromptFlag>(), TaskKindDetector.flagsOf(PromptLang.CN, "明早七点定一个闹钟"))
+        assertFalse(TaskKindDetector.detect(PromptLang.EN, "set an alarm for 7am tomorrow").assistantHit)
     }
 
     // ==================== 未知任务 ====================
@@ -205,11 +176,6 @@ class TaskKindDetectorTest {
         assertFalse(PromptFlag.ASSISTANT_TASK in flags)
         assertFalse(PromptFlag.CODE_TASK in flags)
         assertFalse(PromptFlag.CHAT_TASK in flags)
-
-        val s = TaskKindDetector.scores(PromptLang.CN, "")
-        assertEquals(0, s.coding)
-        assertEquals(0, s.chat)
-        assertEquals(0, s.agentOps)
     }
 
     @Test

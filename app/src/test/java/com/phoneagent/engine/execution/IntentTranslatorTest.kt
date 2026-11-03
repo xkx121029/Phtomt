@@ -402,7 +402,9 @@ class IntentTranslatorTest {
     fun assistant_未探测到助手_转译失败并给中文原因() {
         mode(Mode.ACCESSIBILITY)
         val reason = failure(AgentIntent(intent = IntentType.ASSISTANT), snapshot())
-        assertTrue(reason.contains("未找到系统语音助手"))
+        assertTrue(reason.contains("没有可用的系统语音助手"))
+        // 失败文案要给出可执行的替代路径（本地直达能力），避免 AI 原地重试
+        assertTrue(reason.contains("set_alarm"))
     }
 
     @Test

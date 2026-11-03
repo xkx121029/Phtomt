@@ -137,12 +137,19 @@ class PromptCropTest {
 
     @Test
     fun `语音助手任务注入直达引导_普通任务不注入`() {
+        val message = AgentPrompts.system(
+            PromptLang.CN, "", hasVision = true, shizukuAvailable = true,
+            task = "给小张发消息说我晚点到",
+        )
+        assertTrue("语音助手任务应注入直达引导块", message.contains("# 语音助手直达"))
+        assertTrue(message.contains("\"intent\":\"assistant\""))
+
+        // 定闹钟已改走 set_alarm / set_timer 的本地直达能力：不能再注入"交给语音助手"的引导
         val alarm = AgentPrompts.system(
             PromptLang.CN, "", hasVision = true, shizukuAvailable = true,
             task = "明早七点定一个闹钟",
         )
-        assertTrue("语音助手任务应注入直达引导块", alarm.contains("# 语音助手直达"))
-        assertTrue(alarm.contains("\"intent\":\"assistant\""))
+        assertFalse("定闹钟不该注入语音助手块", alarm.contains("# 语音助手直达"))
 
         val meituan = AgentPrompts.system(
             PromptLang.CN, "", hasVision = true, shizukuAvailable = true,
@@ -156,24 +163,24 @@ class PromptCropTest {
 
         val en = AgentPrompts.system(
             PromptLang.EN, "", hasVision = true, shizukuAvailable = true,
-            task = "set an alarm for 7 am tomorrow",
+            task = "text Xiaozhang that I'll be late",
         )
         assertTrue(en.contains("# Voice Assistant Direct"))
     }
 
     @Test
     fun `语音助手任务规划提示注入捷径_普通任务不注入`() {
-        val alarm = AgentPrompts.planning(PromptLang.CN, "定一个10分钟以后的闹铃", "", "")
-        assertTrue("语音助手任务的规划应注入捷径块", alarm.contains("# 语音助手捷径"))
-        assertTrue(alarm.contains("调用语音助手"))
+        val message = AgentPrompts.planning(PromptLang.CN, "给小张发消息说我晚点到", "", "")
+        assertTrue("语音助手任务的规划应注入捷径块", message.contains("# 语音助手捷径"))
+        assertTrue(message.contains("调用语音助手"))
 
         val meituan = AgentPrompts.planning(PromptLang.CN, "帮我在美团点一份黄焖鸡米饭", "", "")
         assertFalse("普通 App 任务的规划不该注入捷径块", meituan.contains("# 语音助手捷径"))
 
         // 可用意图清单必须包含 assistant：规划器看不到它就不会走捷径
-        assertTrue("规划可用意图清单应包含 assistant", alarm.contains("assistant("))
+        assertTrue("规划可用意图清单应包含 assistant", message.contains("assistant("))
 
-        val en = AgentPrompts.planning(PromptLang.EN, "set an alarm 10 minutes from now", "", "")
+        val en = AgentPrompts.planning(PromptLang.EN, "text Xiaozhang that I'll be late", "", "")
         assertTrue(en.contains("# Voice Assistant Shortcut"))
     }
 

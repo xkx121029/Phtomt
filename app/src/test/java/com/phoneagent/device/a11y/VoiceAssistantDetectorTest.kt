@@ -109,4 +109,44 @@ class VoiceAssistantDetectorTest {
         val targets = VoiceAssistantDetector.orderedTargets(null, null, vendors)
         assertEquals(VoiceAssistantDetector.MAX_WAKE_CANDIDATES, targets.size)
     }
+
+    // ---- 探测缓存：启动前只探一次，过期重扫，拉起失败可失效 ----
+
+    @Test
+    fun 探测缓存_TTL内复用结果_过期后重扫() {
+        var now = 0L
+        var calls = 0
+        val cache = VoiceAssistantDetector.ProbeCache(60_000L, { now }) { calls++; "com.miui.voiceassist" }
+
+        assertEquals("com.miui.voiceassist", cache.get())
+        assertEquals("com.miui.voiceassist", cache.get())
+        assertEquals("TTL 内重复探测会白扫 PackageManager", 1, calls)
+
+        now = 30_000L
+        cache.get()
+        assertEquals("未到 TTL 仍应复用", 1, calls)
+
+        now = 60_000L
+        cache.get()
+        assertEquals("到期应立即重扫", 2, calls)
+    }
+
+    @Test
+    fun 探测缓存_失效后立即重扫() {
+        var calls = 0
+        val cache = VoiceAssistantDetector.ProbeCache(60_000L, { 0L }) { calls++; calls }
+        assertEquals(1, cache.get())
+        assertEquals(1, cache.get())
+        cache.invalidate()
+        assertEquals("invalidate 之后必须重新探测（用户可能刚改了默认助理）", 2, cache.get())
+    }
+
+    @Test
+    fun 探测缓存_空结果也缓存_不反复重扫() {
+        var calls = 0
+        val cache = VoiceAssistantDetector.ProbeCache<String?>(60_000L, { 0L }) { calls++; null }
+        assertNull(cache.get())
+        assertNull(cache.get())
+        assertEquals("没有助理也要缓存，避免每步都扫一遍", 1, calls)
+    }
 }

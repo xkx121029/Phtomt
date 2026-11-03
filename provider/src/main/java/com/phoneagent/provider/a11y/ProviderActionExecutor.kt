@@ -314,27 +314,28 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
     /**
      * 唤起系统语音助手（assistant 意图的执行出口）。
      *
-     * 多入口依次唤醒 + 拉起后验证：部分设备上后台 startActivity 会被**静默拦截**
-     * （不抛异常但窗口根本不出现），所以每个入口拉起后都确认助手窗口真的到了前台，
-     * 没到就换下一个入口（语音指令入口 → 默认助理入口 → 厂商助手兜底）。
-     * 唤醒成功后尽力传话；全部入口都失败才返回 Failure。
+     * 探测先行：拉起前就确定"用哪一个"（[VoiceAssistantDetector.probe] 返回单一目标），
+     * 只拉一次并验证窗口真的到前台。以前是三个入口连环试，最坏要等三倍超时才发现不行；
+     * 现在未探测到目标直接失败并给出可执行替代路径，探测到但拉不起来也只报这一次。
      */
     suspend fun launchAssistant(text: String?): ActionResult {
-        val targets = VoiceAssistantDetector(service.applicationContext).probeAll()
-        if (targets.isEmpty()) {
-            return fail("本机未找到系统语音助手（已尝试语音指令、默认助理与常见厂商助手）；请确认设备已启用语音助手，或改用其他方式完成")
+        val detector = VoiceAssistantDetector(service.applicationContext)
+        val target = detector.probe()
+            ?: return fail(
+                "本机没有可用的系统语音助手（角色持有者、系统默认助理、语音交互服务、ASSIST 与 VOICE_COMMAND 入口均未探测到）。" +
+                    "请在系统设置里启用/设置默认语音助手后重试；也可以改用本地直达能力完成，" +
+                    "例如定闹钟/设倒计时（set_alarm / set_timer）、打开应用（open_app）或直接操作当前页面",
+            )
+        if (wakeAssistant(target)) {
+            passToAssistant(text)
+            return ok()
         }
-        var lastReason = "未知原因"
-        for (target in targets) {
-            if (wakeAssistant(target)) {
-                passToAssistant(text)
-                return ok()
-            }
-            lastReason = "「${target.via.label}」入口（${target.packageName ?: "系统默认"}）拉起后未见助手窗口"
-        }
+        // 拉起失败：清掉缓存，用户可能在设置里刚改过默认助理
+        detector.invalidate()
         return fail(
-            "无法唤醒语音助手：已尝试 ${targets.size} 个入口，最后失败原因——$lastReason。" +
-                "可在系统设置里把默认语音助手设为可用的助手应用后重试，或改用其他方式完成任务",
+            "已探测到语音助手（${target.via.label}：${target.packageName ?: "系统默认"}），" +
+                "但拉起后助手窗口未出现——可能被系统的后台启动限制拦截（不抛异常但窗口不出现）。" +
+                "请手动打开该助手一次后重试，或改用本地直达能力（定闹钟/倒计时/打开应用）完成任务",
         )
     }
 
@@ -349,20 +350,37 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
     private suspend fun wakeAssistant(target: VoiceAssistantDetector.Target): Boolean {
         val ctx = service.applicationContext
         val pm = ctx.packageManager
-        val intent = when (target.via) {
-            VoiceAssistantDetector.Via.VOICE_COMMAND ->
-                android.content.Intent(android.content.Intent.ACTION_VOICE_COMMAND)
-            VoiceAssistantDetector.Via.ASSIST ->
-                android.content.Intent(android.content.Intent.ACTION_ASSIST)
-            VoiceAssistantDetector.Via.VENDOR ->
-                pm.getLaunchIntentForPackage(target.packageName ?: return false)
-        }?.apply {
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            // 系统入口探测到具体包名时钉住，避免被第三方应用抢答（厂商兜底自带包名，无需再钉）
-            if (target.via != VoiceAssistantDetector.Via.VENDOR && !target.packageName.isNullOrBlank()) {
-                setPackage(target.packageName)
+        // 正式探测到的是"系统里登记的助理"：统一走 ACTION_ASSIST 并钉住包名，由系统路由到该助理；
+        // 只有它明确注册了语音指令入口时才用 VOICE_COMMAND（那才是厂商真正的语音入口）
+        val action = when (target.via) {
+            VoiceAssistantDetector.Via.VOICE_COMMAND -> android.content.Intent.ACTION_VOICE_COMMAND
+            VoiceAssistantDetector.Via.ASSIST,
+            VoiceAssistantDetector.Via.ROLE,
+            VoiceAssistantDetector.Via.SETTINGS,
+            VoiceAssistantDetector.Via.VOICE_INTERACTION,
+            -> android.content.Intent.ACTION_ASSIST
+            VoiceAssistantDetector.Via.VENDOR -> null
+        }
+        val pkg = target.packageName
+        val intent = if (action != null) {
+            val candidate = android.content.Intent(action).apply {
+                if (!pkg.isNullOrBlank()) setPackage(pkg)
             }
+            // 启动前先确认这个入口真的能解析到目标（避免抛 ActivityNotFound 才发现不行）
+            val resolved = runCatching { pm.resolveActivity(candidate, 0) != null }.getOrDefault(false)
+            if (resolved) {
+                candidate
+            } else if (!pkg.isNullOrBlank()) {
+                // 该助理没注册 ASSIST/VOICE_COMMAND，退到它自己的启动入口（同目标的次级入口，不是换目标）
+                pm.getLaunchIntentForPackage(pkg)
+            } else {
+                null
+            }
+        } else {
+            pm.getLaunchIntentForPackage(pkg ?: return false)
         } ?: return false
+
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             ctx.startActivity(intent)
             assistantWindowVisible(target.packageName, ASSISTANT_WAKE_TIMEOUT_MS)
