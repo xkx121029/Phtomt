@@ -65,8 +65,9 @@ internal val LocalSettingsTwoPane = androidx.compose.runtime.compositionLocalOf 
  * 分区色调（语义分组色）。
  *
  * 四系对应色板里的品牌 / 冷辅 / 暖辅 / 中性——不是随手挑的彩虹。
- * 分组与色调的绑定是固定的：AI 接入=品牌、运行行为=冷、设备接入=暖、
- * 外观复用品牌、系统走中性；用户在整页里靠"颜色→类别"形成肌肉记忆。
+ * 分组与色调的绑定是固定的：执行通道与权限=暖、模型与端侧视觉=品牌、
+ * 任务行为与模式=冷、界面与主题复用品牌、数据与记忆/关于与更新走中性；
+ * 用户在整页里靠"颜色→类别"形成肌肉记忆。
  */
 internal enum class SettingsTone { Brand, Cool, Warm, Neutral }
 

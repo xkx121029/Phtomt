@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -268,7 +268,11 @@ private fun SettingsPageContent(
             SettingsPage.VISUAL -> SettingsVisual(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = backToHome)
             SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings, onBack = backToHome)
-            SettingsPage.DATA -> SettingsData(vm = vm, onBack = backToHome)
+            SettingsPage.DATA -> SettingsData(
+                vm = vm, st = st,
+                save = saveNonAiSettings,
+                onBack = backToHome,
+            )
             SettingsPage.UPDATE -> SettingsUpdate(
                 vm = vm, st = st,
                 save = saveNonAiSettings,

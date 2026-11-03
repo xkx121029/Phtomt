@@ -43,8 +43,27 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("界面效果", onBack, subtitle = "执行过程中的视觉反馈，只影响观感")
+        SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
         Spacer(Modifier.height(20.dp))
+
+        // ---- 桌面悬浮窗（总开关）----
+        // 从「任务行为」搬到这里：悬浮窗开关与跑马灯样式是同一件事，放在一起才算一个设置点
+        SettingsSection(
+            title = "桌面悬浮窗",
+            subtitle = "任务进度浮在桌面，关掉也不影响任务执行",
+            tone = SettingsTone.Brand,
+        ) {
+            SettingsToggleRow(
+                title = "启用桌面悬浮窗",
+                subtitle = "关闭后任务进度只在 App 内展示；下方的跑马灯样式仅在悬浮窗开启时可见",
+                value = st.floatingWindowEnabled,
+            ) {
+                st.floatingWindowEnabled = it
+                save()
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         // ---- 点击光标 ----
         SettingsSection(
@@ -181,7 +200,11 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
         // ---- 悬浮窗跑马灯 ----
         SettingsSection(
             title = "悬浮窗跑马灯",
-            subtitle = "跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度",
+            subtitle = if (st.floatingWindowEnabled) {
+                "跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度"
+            } else {
+                "当前悬浮窗已关闭，以下样式不会显示；重新开启上方总开关即可恢复"
+            },
             tone = SettingsTone.Brand,
         ) {
             SettingsToggleRow(

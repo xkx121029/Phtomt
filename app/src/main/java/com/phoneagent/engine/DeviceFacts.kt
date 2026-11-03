@@ -20,50 +20,56 @@ import java.util.Locale
  * **不负责**把事实拼成给 AI 的提示词（那是 [AgentPrompts.environment] 与 AgentEngine 的组装活）；
  * 也不做任何决策。取数与组装分开之后，"取错了"和"写错了"是两类问题，各自能单独验证。
  *
- * 唯一的内部状态是应用数量缓存：决策每步都要用到它，不能每步全量扫一次 PackageManager。
+ * 唯一的内部状态是应用清单/显示名的任务级缓存（见 [AppInventory]）：决策每步都要用到它们，不能每步全量扫 PackageManager。
  * 缓存按任务失效——调用方在任务开始时调 [resetAppCache]（应用可能在两次任务之间被装卸）。
  */
 internal class DeviceFacts(private val context: Context) {
 
-    /** 已安装应用数量缓存；-1 表示本任务还没查过 */
-    private var appCountCache = -1
+    /**
+     * 清单与显示名的任务级缓存（见 [AppInventory]）。
+     * 改造前：`launcherApps()` 每次调用都全量扫 PackageManager、`appLabelOf()` 每次决策都做一次
+     * getApplicationInfo IPC；清单/计数/前台应用名/收尾提炼各自重复查询。现在统一走这一份缓存。
+     */
+    private val inventory = AppInventory(
+        fetchApps = {
+            runCatching {
+                val pm = context.packageManager
+                val launcher = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                pm.queryIntentActivities(launcher, 0)
+                    .mapNotNull { info ->
+                        val label = info.loadLabel(pm).toString().trim()
+                        if (label.isBlank()) null else "$label(${info.activityInfo.packageName})"
+                    }
+                    .distinct()
+                    .sorted()
+            }.getOrDefault(emptyList())
+        },
+        fetchLabel = { pkg ->
+            runCatching {
+                val pm = context.packageManager
+                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().trim()
+            }.getOrDefault("")
+        },
+    )
 
     /** 任务开始时清缓存：应用可能在两次任务之间被装上或卸掉 */
-    fun resetAppCache() {
-        appCountCache = -1
-    }
+    fun resetAppCache() = inventory.reset()
 
-    /** 已安装可启动应用：`应用名(包名)` 列表，按名称排序（查询一次，供清单与计数复用） */
-    fun launcherApps(): List<String> = runCatching {
-        val pm = context.packageManager
-        val launcher = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-        pm.queryIntentActivities(launcher, 0)
-            .mapNotNull { info ->
-                val label = info.loadLabel(pm).toString().trim()
-                if (label.isBlank()) null else "$label(${info.activityInfo.packageName})"
-            }
-            .distinct()
-            .sorted()
-    }.getOrDefault(emptyList())
+    /** 已安装可启动应用：`应用名(包名)` 列表，按名称排序（本任务只扫一次 PackageManager） */
+    fun launcherApps(): List<String> = inventory.apps()
 
-    /** 已安装应用数量：每任务只查一次 PackageManager（决策每步都要用，不能每步全量查询） */
-    fun launcherAppCount(): Int {
-        if (appCountCache >= 0) return appCountCache
-        return launcherApps().size.also { appCountCache = it }
-    }
+    /** 已安装应用数量：复用同一份清单缓存（决策每步都要用，不能每步全量查询） */
+    fun launcherAppCount(): Int = inventory.count()
 
     /**
      * 已装应用名清单：供经验规则推断"任务文本里点名的那个应用"当关键词作用域。
-     * 只在任务结束提炼时调用一次，不做缓存（复用同一次包管理器查询的产物，代价可忽略）。
+     * 只在任务结束提炼时调用一次，直接复用 [launcherApps] 的任务级缓存（不再单独扫 PackageManager）。
      */
     fun launcherAppNames(): List<String> =
         launcherApps().mapNotNull { it.substringBefore('(').trim().ifBlank { null } }.distinct()
 
-    /** 应用显示名；取不到时返回空串（调用方按"名字不可用"处理，不要拿包名冒充名字） */
-    fun appLabelOf(pkg: String): String = runCatching {
-        val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString().trim()
-    }.getOrDefault("")
+    /** 应用显示名；取不到时返回空串（调用方按"名字不可用"处理，不要拿包名冒充名字）；按任务缓存 */
+    fun appLabelOf(pkg: String): String = inventory.labelOf(pkg)
 
     /** 当前时间（`2026-09-29 周二 20:00`）：元素树里读不到，"明天""下周"这类说法全靠它 */
     fun dateTimeText(): String = runCatching {

@@ -1,5 +1,6 @@
 package com.phoneagent.core.window
 
+import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import android.view.Gravity
@@ -10,6 +11,11 @@ import android.view.WindowManager
  *
  * 这三层覆盖物的参数原本各写一份（同样的 TYPE_APPLICATION_OVERLAY 兼容分支 + 四个 FLAG +
  * 不透明度口径），任何一处改动都容易漏掉另外两处。这里只保留一份构造逻辑。
+ *
+ * 坐标系对齐（四条缺一不可，参照 Eta 的覆盖层实现）：
+ * 真实屏幕尺寸（而非 MATCH_PARENT）+ `fitInsetsTypes = 0` + 刘海模式 ALWAYS +
+ * `FLAG_LAYOUT_IN_SCREEN | FLAG_LAYOUT_NO_LIMITS`。窗口类型保持 TYPE_APPLICATION_OVERLAY，
+ * 不要换成 TYPE_ACCESSIBILITY_OVERLAY——后者与无障碍服务存活强绑定，服务被系统收走浮层直接消失。
  *
  * 不透明度口径（踩过的坑）：Android 12+ 会按**所有覆盖层叠加后**的组合不透明度判定是否放行
  * 穿透触摸，组合值超过系统上限（默认 0.8）时用户点击/滑动会被整条丢弃，而 Agent 的无障碍手势
@@ -25,13 +31,19 @@ object OverlayWindowSpec {
      * 构建全屏、不拦截触摸、不抢焦点的被动覆盖层参数。
      *
      * @param clearInsets API 30+ 是否清空 fitInsetsTypes。清空后窗口坐标系从物理屏顶开始，
-     *        与元素树 / 手势 / Shizuku input 使用的物理坐标一致（光标、页面标记必须清空）；
-     *        边缘光效按自身 inset 参数绘制，保持系统默认。
+     *        与元素树 / 手势 / Shizuku input 使用的物理坐标一致。
+     *        **边缘光效也必须清空**：否则窗口内容区从状态栏下沿开始，光带画到自身 y=0
+     *        在物理屏上仍落在状态栏下方（2026-11 定位的「顶部光带下移一条」根因）。
+     * @param screenSize 真实屏幕尺寸（px）。传入后不再用 MATCH_PARENT：部分设备的
+     *        MATCH_PARENT 不含系统栏，窗口原点与物理屏左上角不重合，光带会整体偏移。
      */
     fun passiveFullScreen(
         clearInsets: Boolean,
         alpha: Float = PASSIVE_ALPHA,
+        screenSize: Pair<Int, Int>? = null,
     ): WindowManager.LayoutParams {
+        val width = screenSize?.first ?: WindowManager.LayoutParams.MATCH_PARENT
+        val height = screenSize?.second ?: WindowManager.LayoutParams.MATCH_PARENT
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -39,8 +51,8 @@ object OverlayWindowSpec {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         return WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            width,
+            height,
             type,
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -49,10 +61,36 @@ object OverlayWindowSpec {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            // 刘海/挖孔屏：允许窗口铺进 cutout，否则顶部仍会留一条不能绘制的黑边
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
             if (clearInsets && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // API 30+ 默认 fitInsetsTypes = systemBars()：不改会把内容整体推到状态栏下方，
+                // 与 FLAG_LAYOUT_NO_LIMITS 是两套机制；清空后 y=0 才真正等于物理屏顶
                 fitInsetsTypes = 0
             }
             this.alpha = alpha
+        }
+    }
+
+    /**
+     * 真实屏幕尺寸（含系统栏与刘海），用于覆盖层窗口的原点对齐。
+     *
+     * MATCH_PARENT 在部分设备/窗口类型下按「可用区域」计算，不含状态栏与导航栏；
+     * 覆盖层要画到物理屏边缘，必须显式给出真实像素尺寸。
+     */
+    fun realScreenSize(context: Context): Pair<Int, Int> {
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = wm.currentWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            val point = android.graphics.Point()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealSize(point)
+            point.x to point.y
         }
     }
 }

@@ -90,9 +90,16 @@ class EdgeLightingService : Service() {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
 
-        // 全屏、不拦截触摸、不抢焦点；光效按自身 inset 参数绘制，故保留系统默认 fitInsets。
+        // 全屏、不拦截触摸、不抢焦点。这里**必须清空 fitInsets**（clearInsets = true）：
+        // 保留系统默认时窗口内容区从状态栏下沿开始，光带即使画到自身 y=0，
+        // 物理上仍落在状态栏下方——这就是「顶部光带总是低一条」的根因。
+        // 同时显式给出真实屏幕尺寸：MATCH_PARENT 在部分设备不含系统栏，原点对不齐。
         // 不透明度按「三层组合不超过 0.8」口径统一由 OverlayWindowSpec 给出（含完整踩坑说明）。
-        params = com.phoneagent.core.window.OverlayWindowSpec.passiveFullScreen(clearInsets = false)
+        val spec = com.phoneagent.core.window.OverlayWindowSpec
+        params = spec.passiveFullScreen(
+            clearInsets = true,
+            screenSize = spec.realScreenSize(this),
+        )
 
         try {
             windowManager?.addView(lightingView, params)

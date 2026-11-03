@@ -1,4 +1,4 @@
-package com.phoneagent.data.prefs
+﻿package com.phoneagent.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -77,7 +77,13 @@ class AppSettings(private val context: Context) {
         val edgeLightingEnabled: Boolean = true,
         /** 是否启用桌面悬浮窗（可选能力：关闭后任务进度只在 App 内展示，不影响任务执行） */
         val floatingWindowEnabled: Boolean = true,
-        /** 是否启用 Shizuku shell 命令执行 */
+        /**
+         * 【已废弃，保留键只为不丢旧配置】历史上的独立「Shizuku shell 开关」。
+         *
+         * 它从未在界面暴露，引擎也不读取它——真正的通道选择由 [executionChannel] 决定
+         * （AUTO / SHIZUKU / TERMUX），见 [com.phoneagent.engine.execution.ChannelPolicy]。
+         * 这里保留字段与读写，是为了整体回写时不丢老用户的键值；界面与判定一律不要再用它。
+         */
         val shizukuEnabled: Boolean = true,
         /** 执行通道偏好：AUTO=内置 Shizuku（binder 优先，ADB 引导会话其次） | SHIZUKU=仅 Shizuku | TERMUX=仅 Termux。
          *  旧「无线ADB」独立通道已砍；历史遗留的 "ADB" 值读取时归一为 AUTO */
@@ -208,6 +214,7 @@ class AppSettings(private val context: Context) {
         val EDGE_LIGHTING_WIDTH = intPreferencesKey("edge_lighting_width")
         val EDGE_LIGHTING_ENABLED = booleanPreferencesKey("edge_lighting_enabled")
         val FLOATING_WINDOW_ENABLED = booleanPreferencesKey("floating_window_enabled")
+        /** 旧「Shizuku shell 开关」：已废弃，仅读回保留，通道以 [EXECUTION_CHANNEL] 为准 */
         val SHIZUKU_ENABLED = booleanPreferencesKey("shizuku_enabled")
         val EXECUTION_CHANNEL = stringPreferencesKey("execution_channel")
         val ACTION_MODE = stringPreferencesKey("action_mode")

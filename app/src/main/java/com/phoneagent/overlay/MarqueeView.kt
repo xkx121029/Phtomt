@@ -102,13 +102,23 @@ class MarqueeView @JvmOverloads constructor(
     /** 单帧最大推进时长：视图不可见一段时间后恢复，不该让文字瞬移一大段 */
     private val maxFrameSeconds = 0.1f
 
+    /** 上一次真正请求过的面板宽度（px），用于抑制高频文字更新带来的重复重排 */
+    private var requestedWidthPx = -1f
+
     /** 更新文字（内容未变时直接跳过，避免无谓重绘） */
     fun setText(text: String) {
         if (this.text == text) return
         this.text = text
         textWidth = paint.measureText(text)
-        // 宽度随文字自适应：文字换了要重新测量，窗口才会跟着变宽变窄
-        requestLayout()
+        // 宽度随文字自适应：文字换了要重新测量，窗口才会跟着变宽变窄。
+        // 但 AI 状态每秒更新数次，逐次 requestLayout 会让 WRAP_CONTENT 的悬浮窗
+        // 每秒重排多次（掉帧的主要来源）。宽度按 12dp 网格取整，只有跨格才重排：
+        // 长文案的宽度本来就封顶在 maxPanelWidth，后续更新完全不触发 relayout。
+        val desired = desiredWidthPx()
+        if (kotlin.math.abs(desired - requestedWidthPx) > 0.5f) {
+            requestedWidthPx = desired
+            requestLayout()
+        }
         // 刻意不重置 offset：见类注释第 2 条
         ensureRunning()
         invalidate()
@@ -153,6 +163,19 @@ class MarqueeView @JvmOverloads constructor(
     }
 
     /**
+     * 期望面板宽度：文字宽 + 内边距，封顶 [maxPanelWidth]，再按 [WIDTH_STEP] 网格向上取整。
+     *
+     * 取整是为了让「状态文字换一句」这种几像素的宽度变化不引发窗口重排；
+     * 只要没跨格就用旧宽度，长文案则永远等于 [maxPanelWidth]，彻底稳定。
+     */
+    private fun desiredWidthPx(): Float {
+        val capped = (textWidth + 2 * padH).coerceAtMost(maxPanelWidth)
+        val step = dp(WIDTH_STEP)
+        val snapped = (kotlin.math.ceil(capped / step) * step).coerceAtMost(maxPanelWidth)
+        return snapped.coerceAtLeast(dp(48f))
+    }
+
+    /**
      * 长宽自适应：宽按文字量，封顶 [maxPanelWidth]；高按字号加纵向内边距。
      *
      * 窗口是 WRAP_CONTENT，这里量多少窗口就多大——文字一变宽窄就跟着变。
@@ -160,8 +183,8 @@ class MarqueeView @JvmOverloads constructor(
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val fm = paint.fontMetrics
         val contentH = fm.descent - fm.ascent
-        val desiredW = (textWidth + 2 * padH).coerceAtMost(maxPanelWidth)
-        val w = desiredW.coerceAtLeast(dp(48f))
+        val desiredW = desiredWidthPx()
+        val w = desiredW
         val h = contentH + 2 * padVPx
         setMeasuredDimension(
             resolveSize(w.toInt(), widthMeasureSpec),
@@ -285,5 +308,8 @@ class MarqueeView @JvmOverloads constructor(
 
         /** 单色模式的兜底色（上游一个颜色都没给时用），取默认渐变的头色 */
         private const val DEFAULT_SOLID = 0xFF4FA3FF.toInt()
+
+        /** 面板宽度取整网格（dp）：跨格才重排，避免状态文字高频更新导致窗口抖动 */
+        private const val WIDTH_STEP = 12f
     }
 }

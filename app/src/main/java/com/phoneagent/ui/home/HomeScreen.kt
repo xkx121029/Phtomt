@@ -23,27 +23,28 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.LocalNavClearance
-import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
-import com.phoneagent.ui.theme.Success
 
 @Composable
 fun HomeScreen(
@@ -110,94 +111,33 @@ fun HomeScreen(
                 RunningBanner(agent.message.ifBlank { agent.task })
             }
 
-            // 区块之间的纵向节奏只由 [SectionHeader] 自带的上边距决定，
-            // 正文里再补 Spacer 就成了"两次留白叠一起"（原先这里是 20+20=40，
-            // 上一区块却是 12+20=32，同一屏里两种节奏）
-            SectionHeader("能力状态")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                PressableScale(
-                    modifier = Modifier.weight(1f).animateListItem(0),
-                    onClick = { AgentAccessibilityService.openSettings(context) },
-                ) {
-                    StatusCard(
-                        icon = AppIcons.TouchApp,
-                        title = if (a11y) "无障碍服务" else "未开启",
-                        subtitle = if (a11y) "已连接，可读取与操作" else "点击前往开启",
-                        iconColor = if (a11y) Success else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (a11y) Success.copy(alpha = 0.15f) else AppSurfaceMuted,
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                PressableScale(
-                    modifier = Modifier.weight(1f).animateListItem(1),
-                    onClick = onRequestScreenshot,
-                ) {
-                    StatusCard(
-                        icon = AppIcons.Camera,
-                        title = "屏幕捕获",
-                        subtitle = if (screenshotActive) "运行中，支持视觉理解" else "点击授权截屏",
-                        iconColor = if (screenshotActive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        iconBackground = if (screenshotActive) MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f) else AppSurfaceMuted,
-                    )
-                }
-                PressableScale(
-                    modifier = Modifier.weight(1f).animateListItem(2),
-                    // 设置 Tab 索引（去掉记忆 Tab 后为 2）
-                    onClick = { onNavigate(2) },
-                ) {
-                    val configured = settings.apiKey.isNotBlank()
-                    StatusCard(
-                        icon = AppIcons.Key,
-                        title = if (configured) "AI 已配置" else "未配置",
-                        // 未配置时给一句"下一步做什么"：副标题留空的话，用户点进去只看到一整页设置，
-                        // 不知道该填哪一项（这是首屏最需要说清的一件事）
-                        subtitle = if (configured) settings.model else "接入模型后即可开始",
-                        iconColor = if (configured) {
-                            MaterialTheme.colorScheme.tertiary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        iconBackground = if (configured) {
-                            MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f)
-                        } else {
-                            AppSurfaceMuted
-                        },
-                    )
-                }
-            }
+            // 首屏第一件事只回答一个问题：我要做什么。一个主入口卡，点它就去 Agent 页下达任务；
+            // 未配置模型时同一张卡直接说"下一步先配置"，不另开一张状态卡
+            val configured = settings.apiKey.isNotBlank()
+            PrimaryActionCard(
+                modelReady = configured,
+                model = settings.model,
+                onClick = { onNavigate(if (configured) 0 else 2) },
+            )
 
-            // 快捷模块入口
-            SectionHeader("快捷入口")
+            // 状态压成一条：三格分别回答"模型 / 无障碍 / 截屏"能不能用，点哪格去哪格
+            SectionHeader("运行状态")
+            HomeStatusStrip(
+                modelReady = configured,
+                model = settings.model,
+                a11yReady = a11y,
+                screenshotReady = screenshotActive,
+                onModel = { onNavigate(2) },
+                onA11y = { AgentAccessibilityService.openSettings(context) },
+                onScreenshot = onRequestScreenshot,
+            )
+
+            // 常用入口只留两个：其余能力都收在底部导航（Coding / 记忆 / 设置）与「设置」里
+            SectionHeader("常用")
             val pressHaptic = com.phoneagent.ui.components.rememberHapticPress()
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 QuickEntry(
                     modifier = Modifier.weight(1f).animateListItem(3),
-                    icon = AppIcons.Bolt,
-                    tint = MaterialTheme.colorScheme.primary,
-                    title = "Agent",
-                    subtitle = "下达执行任务",
-                    onPress = { pressHaptic() },
-                    onClick = { onNavigate(0) },
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                QuickEntry(
-                    modifier = Modifier.weight(1f).animateListItem(5),
-                    icon = AppIcons.Settings,
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    title = "设置",
-                    subtitle = "模型与权限配置",
-                    onPress = { pressHaptic() },
-                    // 设置 Tab 索引（去掉记忆 Tab 后为 2）
-                    onClick = { onNavigate(2) },
-                )
-                // 调试 / 测试不再占首页位置：它们是排查工具，入口收进「设置 → 关于」，
-                // 首屏这几个位置留给用户真正会天天用的入口
-                QuickEntry(
-                    modifier = Modifier.weight(1f).animateListItem(6),
                     icon = AppIcons.Memory,
                     tint = MaterialTheme.colorScheme.tertiary,
                     title = "技能&能力",
@@ -205,58 +145,74 @@ fun HomeScreen(
                     onPress = { pressHaptic() },
                     onClick = { onOpenExtras(ExtrasPage.Skill) },
                 )
+                QuickEntry(
+                    modifier = Modifier.weight(1f).animateListItem(4),
+                    icon = AppIcons.Globe,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    title = "浏览器",
+                    subtitle = "AI 上网、操作网页",
+                    onPress = { pressHaptic() },
+                    onClick = { onOpenExtras(ExtrasPage.Browser) },
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            QuickEntry(
-                modifier = Modifier.fillMaxWidth().animateListItem(9),
-                icon = AppIcons.Globe,
-                tint = MaterialTheme.colorScheme.secondary,
-                title = "浏览器",
-                subtitle = "AI 上网、操作网页的落点",
-                onPress = { pressHaptic() },
-                onClick = { onOpenExtras(ExtrasPage.Browser) },
-            )
         }
 
         val secondarySections: @Composable ColumnScope.() -> Unit = {
-            // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
-            // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
-            // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
-            SectionHeader("编码技能")
-            if (acaSkills.isEmpty()) {
+            // 编码技能与权限雷达属于"偶尔看一眼"的信息：首屏默认折叠，不跟主路径抢注意力
+            var moreExpanded by remember { mutableStateOf(false) }
+            SectionHeader("更多")
+            MoreSection(
+                title = "编码技能与权限详情",
+                subtitle = if (moreExpanded) "点按收起" else "点按展开（不常用）",
+                expanded = moreExpanded,
+                onToggle = { moreExpanded = !moreExpanded },
+            ) {
+                // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
+                // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
+                // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
                 Text(
-                    text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(vertical = 4.dp),
+                    "编码技能",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.padding(top = 6.dp, bottom = 6.dp),
                 )
-            }
-            acaSkills.forEachIndexed { index, skill ->
-                AcaSkillCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateListItem(index),
-                    icon = AppIcons.Code,
-                    name = skill.name,
-                    description = skill.description,
-                    meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
-                    iconColor = MaterialTheme.colorScheme.secondary,
-                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
-                    translate = { vm.translate(it) },
-                )
-            }
-            if (acaSkillErrors.isNotEmpty()) {
-                Text(
-                    text = "无效技能包：${acaSkillErrors.joinToString("；")}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+                if (acaSkills.isEmpty()) {
+                    Text(
+                        text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                }
+                acaSkills.forEachIndexed { index, skill ->
+                    AcaSkillCard(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .animateListItem(index),
+                        icon = AppIcons.Code,
+                        name = skill.name,
+                        description = skill.description,
+                        meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
+                        iconColor = MaterialTheme.colorScheme.secondary,
+                        iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                        translate = { vm.translate(it) },
+                    )
+                }
+                if (acaSkillErrors.isNotEmpty()) {
+                    Text(
+                        text = "无效技能包：${acaSkillErrors.joinToString("；")}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
 
-            // 权限雷达
-            SectionHeader("权限雷达")
-            PermissionRadar(permissions, context, vm)
+                Text(
+                    "权限雷达",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
+                )
+                PermissionRadar(permissions, context, vm)
+            }
 
             // 版本号
             Spacer(Modifier.height(20.dp))

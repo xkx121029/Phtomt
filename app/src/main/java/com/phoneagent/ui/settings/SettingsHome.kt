@@ -81,16 +81,55 @@ internal data class SettingsGroup(
 )
 
 /**
- * 五块分区的定义。
+ * 六块分区的定义（设置入口的唯一清单）。
  *
- * 分组依据是**用户要去解决什么**（配模型、调行为、给权限、改外观、管数据），
- * 而不是按技术模块平铺。执行通道原先在「Agent 运行」里还有个优先级开关，
- * 与「权限与执行通道」页里的配对界面说的是同一件事，现已合并到一处。
+ * 分组只按**用户要解决什么**排：能不能执行（通道与权限）→ AI 从哪来（模型与端侧视觉）
+ * → 怎么干活（任务行为与模式）→ 长什么样（界面与主题）→ 记住什么（数据与记忆）
+ * → 怎么更新/求助（关于与更新）。技术模块名（如「编码运行时」「执行文档」）不再单独成组，
+ * 它们各自只是上面某一组里的一个二级页。
+ *
+ * 同一件事只留一个入口：悬浮窗从「Agent 运行」并到「界面效果」，页面记忆从「Agent 运行」
+ * 并到「数据与记忆」，动作模式从 Agent 页的转盘提到「任务行为」里成为正式设置项。
  */
 internal fun settingsGroups(): List<SettingsGroup> = listOf(
     SettingsGroup(
-        title = "AI 接入",
-        subtitle = "云端模型与端侧视觉",
+        title = "执行通道与权限",
+        subtitle = "能不能执行：系统授权、shell 通道与 AI 的授权范围",
+        tone = SettingsTone.Warm,
+        entries = listOf(
+            SettingsEntry(
+                page = SettingsPage.PERMISSIONS,
+                icon = AppIcons.Guard,
+                title = "权限与执行通道",
+                subtitle = "无障碍 / 截图 / Shizuku / Termux / 外部控制",
+                tone = SettingsTone.Warm,
+                summary = { ctx ->
+                    when {
+                        !ctx.permissionsKnown -> "检测中"
+                        ctx.pendingPermissions == 0 -> "全部就绪"
+                        else -> "待授权 ${ctx.pendingPermissions} 项"
+                    }
+                },
+            ),
+            SettingsEntry(
+                page = SettingsPage.CODING,
+                icon = AppIcons.Code,
+                title = "编码 Agent",
+                subtitle = "运行时 / 审批档位 / 工作区",
+                tone = SettingsTone.Warm,
+                summary = { ctx ->
+                    when (ctx.st.codingApprovalMode) {
+                        "ask" -> "审批：询问"
+                        "bypass" -> "审批：全自动"
+                        else -> "审批：默认放行"
+                    }
+                },
+            ),
+        ),
+    ),
+    SettingsGroup(
+        title = "模型与端侧视觉",
+        subtitle = "AI 从哪来：云端端点、模型职责与本地视觉",
         tone = SettingsTone.Brand,
         entries = listOf(
             SettingsEntry(
@@ -109,34 +148,23 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 tone = SettingsTone.Brand,
                 summary = { ctx -> if (ctx.st.enableExternalVision) "已启用" else "已关闭" },
             ),
-            SettingsEntry(
-                page = SettingsPage.CODING,
-                icon = AppIcons.Code,
-                title = "编码 Agent",
-                subtitle = "运行时 / 审批档位 / 工作区",
-                tone = SettingsTone.Brand,
-                summary = { ctx ->
-                    when (ctx.st.codingApprovalMode) {
-                        "ask" -> "审批：询问"
-                        "bypass" -> "审批：全自动"
-                        else -> "审批：默认放行"
-                    }
-                },
-            ),
         ),
     ),
     SettingsGroup(
-        title = "运行行为",
-        subtitle = "执行参数、提示词与长线任务",
+        title = "任务行为与模式",
+        subtitle = "怎么干活：动作模式、步数、提示词与长线任务",
         tone = SettingsTone.Cool,
         entries = listOf(
             SettingsEntry(
                 page = SettingsPage.AGENT,
                 icon = AppIcons.Tune,
-                title = "运行与提示词",
-                subtitle = "步数上限 / 悬浮窗 / 页面记忆 / 提示词",
+                title = "任务行为",
+                subtitle = "动作模式 / 步数 / 提示词 / 执行文档 / 副屏",
                 tone = SettingsTone.Cool,
-                summary = { ctx -> if (ctx.st.maxSteps > 0) "最多 ${ctx.st.maxSteps} 步" else "不设限" },
+                summary = { ctx ->
+                    val mode = com.phoneagent.engine.execution.ActionMode.fromKey(ctx.st.actionMode).label
+                    "$mode · " + if (ctx.st.maxSteps > 0) "最多 ${ctx.st.maxSteps} 步" else "不限步数"
+                },
             ),
             SettingsEntry(
                 page = SettingsPage.LONG_RUN,
@@ -149,29 +177,8 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
         ),
     ),
     SettingsGroup(
-        title = "设备接入",
-        subtitle = "系统权限与 shell 执行通道",
-        tone = SettingsTone.Warm,
-        entries = listOf(
-            SettingsEntry(
-                page = SettingsPage.PERMISSIONS,
-                icon = AppIcons.Guard,
-                title = "权限与执行通道",
-                subtitle = "无障碍 / 悬浮窗 / Shizuku / Termux",
-                tone = SettingsTone.Warm,
-                summary = { ctx ->
-                    when {
-                        !ctx.permissionsKnown -> "检测中"
-                        ctx.pendingPermissions == 0 -> "全部就绪"
-                        else -> "待授权 ${ctx.pendingPermissions} 项"
-                    }
-                },
-            ),
-        ),
-    ),
-    SettingsGroup(
-        title = "外观",
-        subtitle = "配色风格与运行时视觉效果",
+        title = "界面与主题",
+        subtitle = "长什么样：配色、悬浮窗与导航",
         tone = SettingsTone.Brand,
         entries = listOf(
             SettingsEntry(
@@ -188,15 +195,15 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 page = SettingsPage.VISUAL,
                 icon = AppIcons.Star,
                 title = "界面效果",
-                subtitle = "点击光标 / 边缘光效 / 悬浮窗跑马灯",
+                subtitle = "悬浮窗 / 点击光标 / 边缘光效 / 跑马灯",
                 tone = SettingsTone.Brand,
-                summary = { ctx -> if (ctx.st.edgeLightingEnabled) "光效开" else "光效关" },
+                summary = { ctx -> if (ctx.st.floatingWindowEnabled) "悬浮窗开" else "悬浮窗关" },
             ),
             SettingsEntry(
                 page = SettingsPage.TABS,
                 icon = AppIcons.Reorder,
-                title = "底部选项卡",
-                subtitle = "可见性 / 排序",
+                title = "选项卡与工作台",
+                subtitle = "工作台形态 / Tab 可见性与排序",
                 tone = SettingsTone.Brand,
                 summary = { ctx ->
                     "${com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size} 个可见"
@@ -205,18 +212,25 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
         ),
     ),
     SettingsGroup(
-        title = "系统",
-        subtitle = "本机数据与帮助信息",
+        title = "数据与记忆",
+        subtitle = "记住什么：页面记忆、导出、清空与恢复默认",
         tone = SettingsTone.Neutral,
         entries = listOf(
             SettingsEntry(
                 page = SettingsPage.DATA,
                 icon = AppIcons.Folder,
-                title = "数据与存储",
-                subtitle = "导出 / 清空记忆 / 恢复默认",
+                title = "数据与记忆",
+                subtitle = "页面记忆 / 导出 / 清空记忆 / 恢复默认",
                 tone = SettingsTone.Neutral,
-                summary = { "本机数据" },
+                summary = { ctx -> if (ctx.st.pageMemoryEnabled) "页面记忆开" else "页面记忆关" },
             ),
+        ),
+    ),
+    SettingsGroup(
+        title = "关于与更新",
+        subtitle = "怎么更新、去哪求助",
+        tone = SettingsTone.Neutral,
+        entries = listOf(
             SettingsEntry(
                 page = SettingsPage.UPDATE,
                 icon = AppIcons.Refresh,
@@ -263,7 +277,8 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
  * 设置主页（一级导航）。
  *
  * 视觉走 Material 3 Expressive：顶栏下方先给一条「就绪度」状态条（先去哪、还差什么一目了然），
- * 再是五块各自带色相的分区容器，条目用圆形图标底盘。
+ * 再是六块各自带色相的分区容器，条目用圆形图标底盘。未就绪时状态条下方补一句话，
+ * 把「第一次用先做哪两步」说清楚；就绪后这行自动消失，不给老用户添噪音。
  *
  * 只有窄屏会走到这里：宽屏由 [SettingsScreen] 切换成「左分类 + 右详情」的双栏形态。
  */
@@ -476,37 +491,55 @@ private fun ReadinessStrip(
     onModel: () -> Unit,
     onPermission: () -> Unit,
 ) {
+    val modelReady = ctx.st.model.isNotBlank()
     androidx.compose.material3.Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
         border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-            ReadinessCell(
-                title = "AI 模型",
-                value = ctx.st.model.takeIf { it.isNotBlank() } ?: "未配置",
-                ready = ctx.st.model.isNotBlank(),
-                onClick = onModel,
-                modifier = Modifier.weight(1f),
-            )
-            Box(
-                Modifier
-                    .width(0.5.dp)
-                    .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-            )
-            ReadinessCell(
-                title = "运行权限",
-                value = when {
-                    ctx.permissionsReady -> "已就绪"
-                    ctx.pendingPermissions > 0 -> "待授权 ${ctx.pendingPermissions} 项"
-                    else -> "检测中"
-                },
-                ready = ctx.permissionsReady,
-                onClick = onPermission,
-                modifier = Modifier.weight(1f),
-            )
+        Column {
+            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+                ReadinessCell(
+                    title = "AI 模型",
+                    value = ctx.st.model.takeIf { it.isNotBlank() } ?: "未配置",
+                    ready = modelReady,
+                    onClick = onModel,
+                    modifier = Modifier.weight(1f),
+                )
+                Box(
+                    Modifier
+                        .width(0.5.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                )
+                ReadinessCell(
+                    title = "运行权限",
+                    value = when {
+                        ctx.permissionsReady -> "已就绪"
+                        ctx.pendingPermissions > 0 -> "待授权 ${ctx.pendingPermissions} 项"
+                        else -> "检测中"
+                    },
+                    ready = ctx.permissionsReady,
+                    onClick = onPermission,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            // 首次使用的两步指引：只在未就绪时出现，就绪后自动收起
+            if (!modelReady || !ctx.permissionsReady) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(0.5.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                )
+                Text(
+                    text = "第一次使用：① 配好模型 → ② 开启无障碍权限 → 回「Agent」页直接说要做什么。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
         }
     }
 }

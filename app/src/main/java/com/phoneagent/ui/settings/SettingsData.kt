@@ -46,7 +46,12 @@ import com.phoneagent.ui.theme.AppRadii
  * 整机重置放最后并单独占一张卡，避免误点。
  */
 @Composable
-internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
+internal fun SettingsData(
+    vm: MainViewModel,
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     // 清空动作的结果（成功是路径/提示，失败以 ERR: 开头）就地回显，不弹系统弹窗
     var message by remember { mutableStateOf<String?>(null) }
@@ -66,8 +71,26 @@ internal fun SettingsData(vm: MainViewModel, onBack: () -> Unit) {
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("数据与存储", onBack, subtitle = "导出、清空与恢复默认，清空后不可撤销")
+        SettingsPageHeader("数据与记忆", onBack, subtitle = "页面记忆、导出、清空与恢复默认；清空后不可撤销")
         Spacer(Modifier.height(20.dp))
+
+        // ---- 页面记忆（从「任务行为」并入这里：记忆开关与清空动作放在同一页）----
+        SettingsSection(
+            title = "页面记忆",
+            subtitle = "任务执行时自动记忆页面热点与跳转路径",
+            tone = SettingsTone.Cool,
+        ) {
+            SettingsToggleRow(
+                title = "启用页面记忆",
+                subtitle = "自动记忆遇到过的页面；屏幕以淡色圆环标记已知控件（不挡触摸），后续规划与决策可参考",
+                value = st.pageMemoryEnabled,
+            ) { enabled ->
+                st.pageMemoryEnabled = enabled
+                save()
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
 
         SettingsSection(
             title = "导出",
