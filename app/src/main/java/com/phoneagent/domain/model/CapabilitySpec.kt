@@ -296,6 +296,53 @@ object CapabilityRegistry {
             risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
+            intent = IntentType.FILE_READ, name = "读文件", category = "文件",
+            summary = "只读文件系统（不操作屏幕）：op=read 读文本（截断到 4000 字符）/ list 列目录 / stat 看属性 / glob 按通配符找文件 / grep 按正则搜内容。path 必须绝对路径（/sdcard、/storage、应用私有目录），相对路径按 /sdcard 解析。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "read",
+                    options = listOf("read", "list", "stat", "glob", "grep")),
+                CapabilityParam("path", "路径", "text", description = "绝对路径；glob/grep 作为搜索根目录（默认 /sdcard）"),
+                CapabilityParam("pattern", "模式", "text", description = "glob 的通配符（如 **/*.md）或 grep 的正则"),
+                CapabilityParam("limit", "条数", "number", defaultValue = "100", min = 1.0, max = 500.0),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
+            intent = IntentType.FILE_WRITE, name = "写文件", category = "文件",
+            summary = "改文件内容（会覆盖/修改用户数据，需用户确认）：op=write 覆盖写入（不存在的文件自动创建）/ append 追加 / edit 把文件里唯一出现的一段原文替换成新内容。path 规则同 file_read。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "write",
+                    options = listOf("write", "append", "edit")),
+                CapabilityParam("path", "路径", "text", required = true, description = "目标文件绝对路径"),
+                CapabilityParam("text", "内容", "text", description = "write/append 写入的内容"),
+                CapabilityParam("old", "原文", "text", description = "edit：文件里要被替换的原文（需唯一）"),
+                CapabilityParam("new", "新内容", "text", description = "edit：替换成的新内容"),
+            ),
+            risk = RiskTier.HIGH, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
+            needsConfirmation = true,
+        ),
+        CapabilitySpec(
+            intent = IntentType.APP_MANAGE, name = "管控应用", category = "应用",
+            summary = "对本机应用做强制操作（不点界面，需 Shizuku/无线 ADB）：op=force_stop 强制停止 / background 清理后台。app 给包名或应用名。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "force_stop",
+                    options = listOf("force_stop", "background")),
+                CapabilityParam("app", "目标应用", "text", required = true, description = "包名或应用名"),
+            ),
+            risk = RiskTier.HIGH, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+            needsConfirmation = true,
+        ),
+        CapabilitySpec(
+            intent = IntentType.TERMINAL_OP, name = "命令行", category = "命令行",
+            summary = "在本机注入通道执行命令（仅自由模式；需 Shizuku/无线 ADB）：op=exec 执行 command（输出截断到 4000 字符）/ check_root 看当前通道是否 Root。AI 自己写命令属于高风险能力。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "exec",
+                    options = listOf("exec", "check_root")),
+                CapabilityParam("command", "命令", "text", description = "op=exec 时要执行的命令原文"),
+            ),
+            risk = RiskTier.EXTENDED, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
             intent = IntentType.SEE, name = "看图追问", category = "取数",
             summary = "就当前屏幕截图向视觉模型提一个问题（问题要写成一句明确的目的，如「给出图中轮盘指针指向的扇区」）；回答作为「上一步结果」回注下一步。元素树读不到目标、需要判断画面内容/位置时用它。",
             params = listOf(

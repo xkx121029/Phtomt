@@ -183,6 +183,11 @@ object IntentType {
     const val VIRTUAL_DISPLAY = "virtual_display" // 副屏（op=status/create/destroy/launch/tap/swipe/type/key/screenshot）
     const val MEMORY_GET = "memory_get"           // 按需检索长期记忆（query/limit）
     const val MEMORY_WRITE = "memory_write"       // 增删改长期记忆（op=write/update/delete；id/revision 取自 memory_get）
+    // ---- 文件与应用管控（对齐 Eta 的 file / app 工具族；不经 GUI） ----
+    const val FILE_READ = "file_read"             // 只读文件（op=read/list/stat/glob/grep；path/pattern/limit）
+    const val FILE_WRITE = "file_write"           // 改文件（op=write/append/edit；path/text/old/new）
+    const val APP_MANAGE = "app_manage"           // 管控应用（op=force_stop/background；app）
+    const val TERMINAL_OP = "terminal_op"         // 注入通道命令行（op=exec/check_root；command；仅自由模式）
     const val NOTIF_READ = "notif_read"   // 读取当前通知（需通知监听权限），纯本地读取、不操作设备
     const val NOTIF_CLEAR = "notif_clear" // 清理当前通知（ongoing 不动；会清掉用户未读内容，AI 需标注 needs_confirmation）
 
@@ -223,7 +228,7 @@ object IntentType {
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
         SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT, SET_ALARM, SET_TIMER,
         WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE,
-        VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE,
+        VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE, FILE_READ, FILE_WRITE, APP_MANAGE, TERMINAL_OP,
         NOTIF_READ, NOTIF_CLEAR,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,

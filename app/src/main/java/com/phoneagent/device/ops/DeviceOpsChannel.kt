@@ -20,7 +20,12 @@ import com.phoneagent.data.store.AiMemoryEdit
 import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.device.screen.VirtualDisplayAgent
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 系统直连执行器（对齐 Eta 的 device / phone / file 工具族里"不经过 GUI"的那批能力）。
@@ -56,6 +61,10 @@ class DeviceOpsChannel(
         "virtual_display" -> virtualDisplayOp(op ?: "status", args)
         "memory_get" -> memoryGet(args)
         "memory_write" -> memoryWrite(op ?: "write", args)
+        "file_read" -> fileRead(op ?: "read", args)
+        "file_write" -> fileWrite(op ?: "write", args)
+        "app_manage" -> appManage(op ?: "force_stop", args)
+        "terminal_op" -> terminalOp(op ?: "exec", args)
         else -> OpsResult.Fail("未知的系统直连能力族：$family")
     }
 
@@ -534,7 +543,259 @@ class DeviceOpsChannel(
         }
     }
 
+    // ---------------------------------------------------------------- file_read
+
+    /**
+     * 只读文件族（对齐 Eta 的 read_file / stat_file / list_directory / glob_files / grep_files）。
+     * 只允许 /sdcard、/storage 与应用私有目录，避免 AI 一把梭到 /data 或系统目录；
+     * 扫描类操作有节点/条数/文件大小上限，防止把整棵树读进上下文。
+     */
+    private suspend fun fileRead(op: String, args: Map<String, String>): OpsResult = withContext(Dispatchers.IO) {
+        when (op) {
+            "read" -> {
+                val raw = args["path"]?.trim().orEmpty()
+                if (raw.isEmpty()) return@withContext OpsResult.Fail("file_read 的 read 需要 path（绝对路径，如 /sdcard/Download/a.txt）")
+                val f = resolvePath(raw) ?: return@withContext OpsResult.Fail("路径不可访问：$raw（仅支持 /sdcard、/storage 与应用私有目录）")
+                if (!f.exists()) return@withContext OpsResult.Fail("文件不存在：${f.path}")
+                if (f.isDirectory) return@withContext OpsResult.Fail("${f.path} 是目录；列目录请用 op=list")
+                val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+                    ?: return@withContext OpsResult.Fail("读取失败（二进制文件或非 UTF-8 编码）：${f.path}")
+                val cap = 4000
+                OpsResult.Ok(buildString {
+                    appendLine("${f.path}（${f.length()} 字节）")
+                    append(if (text.length > cap) text.take(cap) + "\n…（已截断，全文 ${text.length} 字符）" else text)
+                })
+            }
+            "list" -> {
+                val dir = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
+                    ?: return@withContext OpsResult.Fail("路径不可访问；list 支持 /sdcard、/storage 与应用私有目录")
+                if (!dir.isDirectory) return@withContext OpsResult.Fail("不是目录：${dir.path}")
+                val limit = (args["limit"]?.toIntOrNull() ?: 200).coerceIn(1, 500)
+                val all = runCatching { dir.listFiles() }.getOrNull().orEmpty()
+                    .sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
+                OpsResult.Ok(buildString {
+                    appendLine("${dir.path} 共 ${all.size} 项${if (all.size > limit) "（只列前 $limit 项）" else ""}")
+                    all.take(limit).forEach { c ->
+                        appendLine(if (c.isDirectory) "- [目录] ${c.name}/" else "- [文件] ${c.name}（${c.length()} 字节）")
+                    }
+                }.trimEnd())
+            }
+            "stat" -> {
+                val f = resolvePath(args["path"]?.trim().orEmpty())
+                    ?: return@withContext OpsResult.Fail("stat 需要可访问的 path")
+                if (!f.exists()) return@withContext OpsResult.Fail("路径不存在：${f.path}")
+                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA).format(Date(f.lastModified()))
+                OpsResult.Ok("${f.path}\n类型：${if (f.isDirectory) "目录" else "文件"}\n" +
+                    "大小：${f.length()} 字节\n修改时间：$time\n可读：${f.canRead()} 可写：${f.canWrite()}")
+            }
+            "glob" -> {
+                val pattern = args["pattern"]?.trim().orEmpty()
+                if (pattern.isEmpty()) return@withContext OpsResult.Fail("glob 需要 pattern（如 **/*.md）")
+                val root = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
+                    ?: return@withContext OpsResult.Fail("glob 的搜索根不可访问")
+                if (!root.isDirectory) return@withContext OpsResult.Fail("glob 的 path 必须是目录：${root.path}")
+                val limit = (args["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
+                val regex = globToRegex(pattern)
+                val basePath = root.path.trimEnd('/')
+                val hits = ArrayList<String>()
+                walkFiles(root) { f ->
+                    val rel = f.path.trimEnd('/').removePrefix("$basePath/")
+                    if (regex.matches(rel)) {
+                        hits.add("${f.path}（${f.length()} 字节）")
+                        hits.size >= limit
+                    } else false
+                }
+                if (hits.isEmpty()) OpsResult.Ok("没有匹配「$pattern」的文件（根目录：${root.path}）")
+                else OpsResult.Ok("匹配 ${hits.size} 个文件（根目录：${root.path}）：\n" + hits.joinToString("\n") { "- $it" })
+            }
+            "grep" -> {
+                val pattern = args["pattern"]?.trim().orEmpty()
+                if (pattern.isEmpty()) return@withContext OpsResult.Fail("grep 需要 pattern（正则表达式）")
+                val regex = runCatching { Regex(pattern) }.getOrElse {
+                    return@withContext OpsResult.Fail("grep 的正则不合法：${it.message ?: pattern}")
+                }
+                val root = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
+                    ?: return@withContext OpsResult.Fail("grep 的搜索根不可访问")
+                if (!root.isDirectory) return@withContext OpsResult.Fail("grep 的 path 必须是目录：${root.path}")
+                val limit = (args["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
+                val hits = ArrayList<String>()
+                walkFiles(root) { f ->
+                    if (f.length() > maxScanBytes) return@walkFiles false
+                    val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: return@walkFiles false
+                    var added = false
+                    text.lineSequence().forEachIndexed { idx, line ->
+                        if (hits.size < limit && regex.containsMatchIn(line)) {
+                            hits.add("${f.path}:${idx + 1}: ${line.trim().take(160)}")
+                            added = true
+                        }
+                    }
+                    if (!added) false else hits.size >= limit
+                }
+                if (hits.isEmpty()) OpsResult.Ok("没有匹配「$pattern」的内容（根目录：${root.path}）")
+                else OpsResult.Ok("匹配 ${hits.size} 处（根目录：${root.path}）：\n" + hits.joinToString("\n") { "- $it" })
+            }
+            else -> OpsResult.Fail("file_read 只支持 op=read/list/stat/glob/grep")
+        }
+    }
+
+    // ---------------------------------------------------------------- file_write
+
+    /** 改文件族（write/append/edit）；edit 要求原文在文件中唯一出现，避免误替换。 */
+    private suspend fun fileWrite(op: String, args: Map<String, String>): OpsResult = withContext(Dispatchers.IO) {
+        val raw = args["path"]?.trim().orEmpty()
+        if (raw.isEmpty()) return@withContext OpsResult.Fail("file_write 需要 path（目标文件绝对路径）")
+        val f = resolvePath(raw) ?: return@withContext OpsResult.Fail("路径不可访问：$raw（仅支持 /sdcard、/storage 与应用私有目录）")
+        when (op) {
+            "write", "append" -> {
+                val text = args["text"] ?: return@withContext OpsResult.Fail("file_write 的 $op 需要 text（写入内容）")
+                runCatching {
+                    if (op == "write") {
+                        f.parentFile?.mkdirs()
+                        f.writeText(text, Charsets.UTF_8)
+                    } else {
+                        f.parentFile?.mkdirs()
+                        f.appendText(text, Charsets.UTF_8)
+                    }
+                }.getOrElse { return@withContext OpsResult.Fail("写入失败：${it.message ?: "系统拒绝"}") }
+                OpsResult.Ok("已${if (op == "write") "覆盖写入" else "追加"}：${f.path}（现 ${f.length()} 字节）")
+            }
+            "edit" -> {
+                val old = args["old"].orEmpty()
+                val new = args["new"].orEmpty()
+                if (old.isEmpty()) return@withContext OpsResult.Fail("file_write 的 edit 需要 old（被替换的原文）")
+                if (!f.isFile) return@withContext OpsResult.Fail("edit 的目标不是已存在的文件：${f.path}")
+                val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
+                    ?: return@withContext OpsResult.Fail("读取失败（非 UTF-8 文本）：${f.path}")
+                val count = countOccurrences(text, old)
+                when {
+                    count == 0 -> OpsResult.Fail("edit 失败：文件里没有这段原文（${old.take(40)}…）")
+                    count > 1 -> OpsResult.Fail("edit 失败：原文出现 $count 次，请给一段更长的唯一片段")
+                    else -> {
+                        val idx = text.indexOf(old)
+                        val updated = text.replaceRange(idx, idx + old.length, new)
+                        runCatching { f.writeText(updated, Charsets.UTF_8) }
+                            .getOrElse { return@withContext OpsResult.Fail("写入失败：${it.message ?: "系统拒绝"}") }
+                        OpsResult.Ok("已替换 1 处：${f.path}（${text.length} → ${updated.length} 字符）")
+                    }
+                }
+            }
+            else -> OpsResult.Fail("file_write 只支持 op=write/append/edit")
+        }
+    }
+
+    // ---------------------------------------------------------------- app_manage
+
+    /** 应用管控：走注入通道的 am 命令（普通应用无法强停其他应用）。 */
+    private suspend fun appManage(op: String, args: Map<String, String>): OpsResult {
+        val input = args["app"]?.trim().orEmpty()
+        if (input.isEmpty()) return OpsResult.Fail("app_manage 需要 app（包名或应用名）")
+        val pkg = resolvePackage(input) ?: return OpsResult.Fail("没有找到应用「$input」")
+        val command = when (op) {
+            "force_stop" -> "am force-stop $pkg"
+            "background" -> "am kill $pkg"
+            else -> return OpsResult.Fail("app_manage 只支持 op=force_stop/background")
+        }
+        val out = shell(command)
+            ?: return OpsResult.Fail("$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
+        val tail = out.trim().take(120)
+        return OpsResult.Ok("已${if (op == "force_stop") "强制停止" else "清理后台"}：$pkg" + if (tail.isEmpty()) "" else "（输出：$tail）")
+    }
+
+    // ---------------------------------------------------------------- terminal_op
+
+    /** 命令行族：exec / check_root；命令由 AI 给出，属于自由模式专属能力。 */
+    private suspend fun terminalOp(op: String, args: Map<String, String>): OpsResult = when (op) {
+        "exec" -> {
+            val cmd = args["command"]?.trim().orEmpty()
+            if (cmd.isEmpty()) return OpsResult.Fail("terminal_op 的 exec 需要 command（要执行的命令）")
+            val out = shell(cmd)
+                ?: return OpsResult.Fail("terminal 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
+            OpsResult.Ok("$ $cmd\n" + out.trim().take(4000))
+        }
+        "check_root" -> {
+            val out = shell("id -u")
+                ?: return OpsResult.Fail("check_root 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道")
+            val uid = out.trim().lineSequence().firstOrNull().orEmpty()
+            if (uid.contains("uid=0") || uid == "0") OpsResult.Ok("当前注入通道具备 Root（id -u → $uid）")
+            else OpsResult.Ok("当前注入通道不是 Root（id -u → ${uid.ifBlank { "无输出" }}）")
+        }
+        else -> OpsResult.Fail("terminal_op 只支持 op=exec/check_root")
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    /** 单文件扫描上限：超过这个大小不读内容，避免 grep 拖垮内存 */
+    private val maxScanBytes = 512 * 1024L
+
+    /** 允许文件能力操作的根目录（其余路径一律拒绝，防止 AI 误伤系统目录） */
+    private val fileRoots: List<String> by lazy {
+        listOf("/sdcard", "/storage", context.filesDir.path, context.cacheDir.path) +
+            listOfNotNull(context.externalCacheDir?.path, context.getExternalFilesDir(null)?.path)
+    }
+
+    /** 绝对路径直接用；相对路径按 /sdcard 解析；解析后必须落在 [fileRoots] 之内 */
+    private fun resolvePath(raw: String, default: String? = null): File? {
+        val p = raw.trim().trim('"').ifEmpty { default ?: return null }
+        val f = if (p.startsWith("/")) File(p) else File("/sdcard", p)
+        val canonical = runCatching { f.canonicalFile }.getOrNull() ?: return null
+        val path = canonical.path
+        return canonical.takeIf { fileRoots.any { root -> path == root || path.startsWith("$root/") } }
+    }
+
+    /** `*` 不跨目录、`**` 跨目录、`?` 单字符（覆盖 Eta glob 的常见写法） */
+    private fun globToRegex(glob: String): Regex {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < glob.length) {
+            val c = glob[i]
+            when {
+                c == '*' && i + 1 < glob.length && glob[i + 1] == '*' -> {
+                    sb.append(".*")
+                    i++
+                }
+                c == '*' -> sb.append("[^/]*")
+                c == '?' -> sb.append("[^/]")
+                c in "\\.[]{}()+^$|" -> sb.append('\\').append(c)
+                else -> sb.append(c)
+            }
+            i++
+        }
+        return Regex(sb.toString())
+    }
+
+    /**
+     * 广度优先遍历目录（跳过隐藏目录），onFile 返回 true 表示"够了，停"。
+     * 节点数上限兜底，避免 /sdcard 上有超大目录时扫描停不下来。
+     */
+    private fun walkFiles(root: File, maxNodes: Int = 20000, onFile: (File) -> Boolean): Boolean {
+        val queue = ArrayDeque<File>().apply { add(root) }
+        var nodes = 0
+        while (queue.isNotEmpty()) {
+            val dir = queue.removeFirst()
+            val children = runCatching { dir.listFiles() }.getOrNull() ?: continue
+            for (c in children) {
+                nodes++
+                if (nodes > maxNodes) return false
+                if (c.isDirectory) {
+                    if (!c.name.startsWith(".")) queue.add(c)
+                } else if (onFile(c)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun countOccurrences(text: String, needle: String): Int {
+        if (needle.isEmpty()) return 0
+        var count = 0
+        var idx = text.indexOf(needle)
+        while (idx >= 0) {
+            count++
+            idx = text.indexOf(needle, idx + needle.length)
+        }
+        return count
+    }
 
     private fun resolvePackage(input: String): String? {
         val raw = input.trim()
