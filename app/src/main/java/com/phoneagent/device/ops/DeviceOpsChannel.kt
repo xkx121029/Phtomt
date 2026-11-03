@@ -16,6 +16,8 @@ import android.os.Environment
 import android.os.StatFs
 import android.provider.Settings
 import android.view.KeyEvent
+import com.phoneagent.data.store.AiMemoryEdit
+import com.phoneagent.data.store.AiMemoryUpsert
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.device.screen.VirtualDisplayAgent
 import java.util.Locale
@@ -53,6 +55,7 @@ class DeviceOpsChannel(
         "alarm_manage" -> alarmManage(op ?: "list", args)
         "virtual_display" -> virtualDisplayOp(op ?: "status", args)
         "memory_get" -> memoryGet(args)
+        "memory_write" -> memoryWrite(op ?: "write", args)
         else -> OpsResult.Fail("未知的系统直连能力族：$family")
     }
 
@@ -482,9 +485,53 @@ class DeviceOpsChannel(
             it.content.contains(query, ignoreCase = true) || it.category.contains(query, ignoreCase = true)
         }).sortedByDescending { it.createdAt }.take(limit)
         if (matched.isEmpty()) return OpsResult.Ok("没有匹配「$query」的记忆（共 ${all.size} 条）")
+        // 带上 #id 与 rev（=updatedAt）：AI 要改/删时必须按 id 定位，rev 用于 update 的版本校验
         return OpsResult.Ok("匹配 ${matched.size} 条（共 ${all.size} 条）：\n" + matched.joinToString("\n") {
-            "- [${it.category}] ${it.content.take(180)}"
+            "- #${it.id} rev=${it.updatedAt} [${it.category}] ${it.content.take(180)}"
         })
+    }
+
+    // ---------------------------------------------------------------- memory_write
+
+    /**
+     * 记忆编辑（不改屏幕）：
+     * - write：新增一条，category 默认 general；
+     * - update：按 id 改内容，revision 给了就做 CAS（与当前 updatedAt 不一致则拒绝，防覆盖）；
+     * - delete：按 id 删除。
+     */
+    private suspend fun memoryWrite(op: String, args: Map<String, String>): OpsResult {
+        val store = memory ?: return OpsResult.Fail("记忆编辑：记忆库不可用")
+        return when (op) {
+            "write" -> {
+                val text = args["text"]?.trim().orEmpty()
+                if (text.isEmpty()) return OpsResult.Fail("memory_write 的 write 需要 text（要记住的内容）")
+                val category = args["category"]?.trim()?.takeIf { it.isNotBlank() } ?: "general"
+                when (val r = store.upsertAiMemory(text, category, "用户指令", "user")) {
+                    null -> OpsResult.Fail("记忆写入失败：内容为空")
+                    is AiMemoryUpsert.Added -> OpsResult.Ok("已记住 #${r.entry.id} [${r.entry.category}] ${r.entry.content.take(120)}")
+                    is AiMemoryUpsert.Updated -> OpsResult.Ok("已更新相近记忆 #${r.entry.id} [${r.entry.category}] ${r.entry.content.take(120)}")
+                }
+            }
+            "update" -> {
+                val id = args["id"]?.trim()?.toLongOrNull()
+                    ?: return OpsResult.Fail("memory_write 的 update 需要数字 id（先 memory_get 查 id）")
+                val text = args["text"]?.trim().orEmpty()
+                if (text.isEmpty()) return OpsResult.Fail("memory_write 的 update 需要 text（新的内容）")
+                when (val r = store.updateAiMemory(id, text, args["category"], args["revision"]?.trim()?.toLongOrNull())) {
+                    is AiMemoryEdit.Updated -> OpsResult.Ok("已修改记忆 #$id：${r.entry.content.take(120)}（rev=${r.entry.updatedAt}）")
+                    AiMemoryEdit.NotFound -> OpsResult.Fail("没有 id=$id 的记忆；先 memory_get 查现有条目")
+                    is AiMemoryEdit.Conflict -> OpsResult.Fail(
+                        "记忆 #$id 已被改过（现内容：${r.current.content.take(80)}，rev=${r.current.updatedAt}），请按最新内容重试",
+                    )
+                }
+            }
+            "delete" -> {
+                val id = args["id"]?.trim()?.toLongOrNull()
+                    ?: return OpsResult.Fail("memory_write 的 delete 需要数字 id")
+                if (store.deleteAiMemory(id)) OpsResult.Ok("已删除记忆 #$id") else OpsResult.Fail("没有 id=$id 的记忆")
+            }
+            else -> OpsResult.Fail("memory_write 只支持 write/update/delete")
+        }
     }
 
     // ------------------------------------------------------------------ helpers

@@ -799,6 +799,7 @@ class IntentTranslator(
         put(IntentType.ALARM_MANAGE, DeviceOpsStrategy(IntentType.ALARM_MANAGE))
         put(IntentType.VIRTUAL_DISPLAY, DeviceOpsStrategy(IntentType.VIRTUAL_DISPLAY))
         put(IntentType.MEMORY_GET, DeviceOpsStrategy(IntentType.MEMORY_GET))
+        put(IntentType.MEMORY_WRITE, DeviceOpsStrategy(IntentType.MEMORY_WRITE))
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，

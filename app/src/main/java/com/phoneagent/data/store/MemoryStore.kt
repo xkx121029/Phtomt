@@ -414,6 +414,28 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
         }
     }
 
+    /**
+     * 按 id 改写单条 AI 记忆（内容/分类可改，id 不变）。
+     * revision 非空时做乐观并发校验：与当前 updatedAt 不一致说明条目已被别处改过，返回 [AiMemoryEdit.Conflict]，
+     * 让调用方（通常是 AI）重新读取后再改，而不是覆盖掉别人刚写的内容。
+     */
+    suspend fun updateAiMemory(id: Long, content: String, category: String?, revision: Long?): AiMemoryEdit {
+        val text = content.trim()
+        val list = loadAiMemories().toMutableList()
+        val idx = list.indexOfFirst { it.id == id }
+        if (idx < 0) return AiMemoryEdit.NotFound
+        val current = list[idx]
+        if (revision != null && revision != current.updatedAt) return AiMemoryEdit.Conflict(current)
+        val updated = current.copy(
+            content = text,
+            category = category?.trim()?.takeIf { it.isNotBlank() } ?: current.category,
+            updatedAt = System.currentTimeMillis(),
+        )
+        list[idx] = updated
+        saveAiMemories(list)
+        return AiMemoryEdit.Updated(updated)
+    }
+
     /** 删除单条 AI 记忆，返回是否删掉了东西 */
     suspend fun deleteAiMemory(id: Long): Boolean {
         val list = loadAiMemories()
@@ -840,6 +862,14 @@ internal object PageMemoryOps {
         (old + new).forEach { merged.putIfAbsent(keyOf(it), it) }
         return merged.values.take(MAX_PAGE_HOTSPOTS)
     }
+}
+
+/** [MemoryStore.updateAiMemory] 的三种结局：改成功 / 没这条 id / 版本号过期 */
+sealed interface AiMemoryEdit {
+    data class Updated(val entry: AiMemoryEntry) : AiMemoryEdit
+    data object NotFound : AiMemoryEdit
+    /** revision 与当前 updatedAt 不一致；current 是现在的条目，便于把最新内容回给 AI */
+    data class Conflict(val current: AiMemoryEntry) : AiMemoryEdit
 }
 
 /** AI 记忆写入结果：新增还是合并更新（供界面区分「已记住 / 已更新」） */

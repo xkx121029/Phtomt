@@ -492,6 +492,35 @@ class IntentTranslatorStrategyTest {
     }
 
     @Test
+    fun memory_write_转译为DEVICE_OPS并保留参数() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(
+                intent = IntentType.MEMORY_WRITE, op = "update",
+                args = mapOf("id" to "3", "text" to "改成少辣", "revision" to "1700000000000"),
+            ),
+            snapshot(),
+        )
+        assertEquals(ActionType.DEVICE_OPS, action.type)
+        assertEquals("update", action.op)
+        assertEquals("3", action.args?.get("id"))
+        assertEquals("1700000000000", action.args?.get("revision"))
+    }
+
+    @Test
+    fun memory_write_category非法_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(
+                intent = IntentType.MEMORY_WRITE, op = "write",
+                args = mapOf("text" to "用户喜欢少辣", "category" to "emotion"),
+            ),
+            snapshot(),
+        )
+        assertTrue("应指出候选值，实际: $reason", reason.contains("只能是"))
+    }
+
+    @Test
     fun memory_get_条数越界_转译层直接拒绝() {
         mode(Mode.SHIZUKU)
         val reason = failure(

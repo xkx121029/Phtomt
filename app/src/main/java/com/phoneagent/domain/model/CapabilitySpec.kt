@@ -281,6 +281,21 @@ object CapabilityRegistry {
             risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
+            intent = IntentType.MEMORY_WRITE, name = "编辑记忆", category = "记忆",
+            summary = "增删改本地长期记忆（不操作屏幕）：op=write 新增一条（text/category）；update 按 id 改内容（id/text，可选 revision 做版本校验）；delete 按 id 删除。id 与 revision 都取自 memory_get 的返回。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "write",
+                    options = listOf("write", "update", "delete")),
+                CapabilityParam("text", "内容", "text", description = "write/update 时的新内容"),
+                CapabilityParam("category", "分类", "select", defaultValue = "general",
+                    options = listOf("preference", "fact", "habit", "tip", "general")),
+                CapabilityParam("id", "条目 id", "number", min = 1.0, description = "update/delete 用，取自 memory_get"),
+                CapabilityParam("revision", "版本号", "number", min = 0.0,
+                    description = "可选：update 时带上 memory_get 里的 rev，不一致说明条目已被改过"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
             intent = IntentType.SEE, name = "看图追问", category = "取数",
             summary = "就当前屏幕截图向视觉模型提一个问题（问题要写成一句明确的目的，如「给出图中轮盘指针指向的扇区」）；回答作为「上一步结果」回注下一步。元素树读不到目标、需要判断画面内容/位置时用它。",
             params = listOf(
