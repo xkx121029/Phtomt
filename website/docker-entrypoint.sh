@@ -11,7 +11,8 @@ seed() {
   for file in "$src"/*; do
     [ -e "$file" ] || continue
     name=$(basename "$file")
-    [ -e "$dst/$name" ] || cp "$file" "$dst/$name"
+    # -r：种子里有子目录（如 agent-docs），普通 cp 遇到目录会报错并让 set -e 直接退出
+    [ -e "$dst/$name" ] || cp -r "$file" "$dst/$name"
   done
 }
 
