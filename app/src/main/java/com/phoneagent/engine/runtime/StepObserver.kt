@@ -42,11 +42,24 @@ internal object ObservationPolicy {
         settings.enableExternalVision && (!settings.smartVisionRoute || !treeSparse)
 
     /**
-     * 是否需要截图：截图总开关、端侧 3B、元素树稀疏三者任一命中。
-     * 元素树稀疏/为空时无条件截图——这时视觉是唯一的信息来源。
+     * 是否需要截图。
+     *
+     * 口径：只有「图真的会被消费」时才抓帧，不再每步必截——
+     * 1. 元素树稀疏/为空：视觉是唯一信息来源，必须截；
+     * 2. 主模型自己能识图且开了附送截图：图会随消息发给主模型；
+     * 3. 关掉混合路由（每步都走端侧 3B）：3B 需要图。
+     *
+     * 其余情况（文本主模型 + 混合路由）默认不截图，AI 明确要看时由 `see` 现场补抓一帧。
      */
-    fun shotNeeded(settings: AppSettings.Settings, needExternal3b: Boolean, treeSparse: Boolean): Boolean =
-        settings.attachScreenshot || needExternal3b || treeSparse
+    fun shotNeeded(
+        settings: AppSettings.Settings,
+        needExternal3b: Boolean,
+        treeSparse: Boolean,
+        mainSeesImage: Boolean,
+    ): Boolean =
+        treeSparse ||
+            (settings.attachScreenshot && mainSeesImage) ||
+            (needExternal3b && !settings.smartVisionRoute)
 
     /** 页面指纹未变且缓存位图仍可用时复用上一帧，省掉一次抓帧与位图分配 */
     fun canReuseShot(shotNeeded: Boolean, pageSig: String, cachedSig: String?, cachedShotUsable: Boolean): Boolean =
@@ -56,8 +69,9 @@ internal object ObservationPolicy {
 /**
  * 观察段执行器（重构阶段 B1，见 [StepObservation]）。
  *
- * 从 AgentEngine 迁出「标注 + semanticId 回填 + 截图决策 + 截图缓存」四件事，
- * 行为与迁移前逐行等价：截图失败仍然降级为「本轮无截图」，指纹未变仍然复用上一帧位图。
+ * 从 AgentEngine 迁出「标注 + semanticId 回填 + 截图决策 + 截图缓存」四件事。
+ * 截图改为**按需抓帧**（见 [ObservationPolicy.shotNeeded]）：页面元素树可读且图没人消费时不抓，
+ * 失败仍然降级为「本轮无截图」，指纹未变仍然复用上一帧位图。
  * 截图缓存随任务结束必须释放（全屏位图动辄数 MB 原生内存），由 [reset] 负责。
  */
 internal class StepObserver(
@@ -67,6 +81,8 @@ internal class StepObserver(
     private val log: (AgentLog.Level, String) -> Unit,
     /** 元素树统计文案（无障碍服务未连接时为 null） */
     private val treeStats: () -> String?,
+    /** 主模型是否能识图（决定「附送截图」这一路是否真的有人消费） */
+    private val mainSeesImage: (AppSettings.Settings) -> Boolean = { false },
 ) {
     /** 上一轮截图与其页面指纹：指纹未变时直接复用，省掉一次抓帧与位图分配 */
     private var cachedShot: Bitmap? = null
@@ -94,7 +110,9 @@ internal class StepObserver(
         val needExternal3b = ObservationPolicy.needExternal3b(settingsVal, treeSparse)
         // 截图链路（MediaProjection / 无障碍）在权限被回收或服务断开时会直接抛异常；
         // 截图只是增强信息，失败即降级为「本轮无截图」，用无障碍元素树继续决策
-        val shotNeeded = ObservationPolicy.shotNeeded(settingsVal, needExternal3b, treeSparse)
+        val shotNeeded = ObservationPolicy.shotNeeded(
+            settingsVal, needExternal3b, treeSparse, mainSeesImage(settingsVal),
+        )
         // 指纹只在本轮真要图时才算：不算图就不需要为复用做指纹计算
         val pageSig = if (shotNeeded) PageFingerprint.computeMeaningful(snapshot) else ""
         val reuseShot = ObservationPolicy.canReuseShot(

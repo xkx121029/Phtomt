@@ -145,7 +145,8 @@ class AfterObservationReuseTest {
         AfterObservationStats.reset()
         val counters = Counters()
         val sparse = snapshot(2, "稀疏")
-        val phase = phase(counters, readSnapshot = { snapshot(30, "完整") })
+        // 重读后仍是稀疏页：视觉是唯一信息来源，必须截图兜底
+        val phase = phase(counters, readSnapshot = { snapshot(2, "重读稀疏") })
         val session = session(pending = afterOf(sparse))
 
         phase.run(session)

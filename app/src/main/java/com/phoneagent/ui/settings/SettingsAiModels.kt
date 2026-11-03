@@ -378,7 +378,7 @@ private fun AiModelsPage(
             SettingsDivider(inset = false)
             SettingsToggleRow(
                 title = "附送屏幕截图",
-                subtitle = "附带当前屏幕截图辅助模型判断",
+                subtitle = "仅当主模型支持看图时随消息附送截图；文本模型不抓屏，需要时由 AI 主动「看」再现场截一帧",
                 value = st.attachScreenshot,
             ) { st.attachScreenshot = it }
             Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {

@@ -218,7 +218,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             SettingsDivider(inset = false)
             SettingsToggleRow(
                 title = "混合路由",
-                subtitle = "简单任务（元素树可读）走端侧 3B 省额度；复杂任务（如游戏/WebView）直接走云端视觉",
+                subtitle = "简单任务（元素树可读）走端侧 3B 省额度；复杂任务（如游戏/WebView）直接走云端视觉。开启后只在元素稀疏的页面抓屏，其余步骤不截图",
                 value = st.smartVisionRoute,
             ) {
                 st.smartVisionRoute = it
