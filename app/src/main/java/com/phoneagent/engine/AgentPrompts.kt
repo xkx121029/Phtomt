@@ -102,6 +102,36 @@ object AgentPrompts {
             ),
         )
 
+    /**
+     * 能力可用性投影（对齐 Eta 的 availability 投影）：把「本轮实测能用的能力」压成两行注入系统提示。
+     *
+     * 只投影两个会影响整族能力的硬条件：本轮是否带截图、注入通道（Shizuku/无线 ADB）是否可用；
+     * 缺失时直接写"别调用 + 怎么换路线"，比让 AI 逐个试错、每步撞一次必然失败的墙便宜得多。
+     */
+    private fun availabilityHeader(lang: PromptLang): String =
+        if (lang == PromptLang.CN) {
+            "# 本机可用性（按当前设备实测）\n以下结论来自端侧实测快照；标为不可用的能力这次一律不要调用，直接按说明换路线或告知用户。"
+        } else {
+            "# Device availability (measured on this device)\nThese conclusions come from a runtime snapshot. Do NOT call anything marked unavailable — take another route or tell the user."
+        }
+
+    private fun availabilityText(lang: PromptLang, hasVision: Boolean, shizukuAvailable: Boolean): String =
+        if (lang == PromptLang.CN) {
+            listOf(
+                if (hasVision) "- 视觉：本轮带截图，可以看图（see 会拿到图像）"
+                else "- 视觉：本轮没有截图 → 不要靠「看图」判断页面，改用 read 文本 / a11y 元素树 / device_info",
+                if (shizukuAvailable) "- 系统直连：注入通道可用 → shell、terminal_op、app_manage、personal_read、a11y 端点均可调用"
+                else "- 系统直连：注入通道不可用（未开 Shizuku、也未连无线 ADB）→ 不要调用 terminal_op、app_manage、personal_read、intent=shell；需要这些能力时用 say 让用户先开 Shizuku",
+            ).joinToString("\n")
+        } else {
+            listOf(
+                if (hasVision) "- Vision: a screenshot is attached this run — you can look at it (see returns the image)"
+                else "- Vision: no screenshot this run → do NOT judge the page visually; use read text / the a11y tree / device_info",
+                if (shizukuAvailable) "- Device direct: injection channel available → shell, terminal_op, app_manage, personal_read and a11y endpoints are all callable"
+                else "- Device direct: injection channel UNAVAILABLE (no Shizuku, no wireless ADB) → do NOT call terminal_op, app_manage, personal_read or intent=shell; ask the user to enable Shizuku with say",
+            ).joinToString("\n")
+        }
+
     /** 授权范围段落的装配上下文：三档互斥，天然只命中一块 */
     private fun modeCtx(lang: PromptLang, mode: ActionMode): PromptContext =
         PromptContext(
@@ -143,12 +173,17 @@ object AgentPrompts {
         actionMode: ActionMode = ActionMode.DEFAULT,
         task: String = "",
     ): String {
-        // hasVision / shizukuAvailable 保留形参：视觉能力声明已独立成 capabilitiesLang（独立 system 消息），
-        // 系统主体正文不使用它们（正文里没有对应占位符），但调用点契约不变。
-        val base = custom.ifBlank { PromptAssembler.assemble(PromptGroup.SYSTEM, systemCtx(lang, actionMode, task)) }
+        // hasVision / shizukuAvailable 用于「本机可用性」投影（见 availabilityText）：
+        // 缺视觉或缺注入通道时，直接在系统提示里划掉对应能力，避免 AI 每步撞墙。
+        // 视觉能力声明另有 capabilitiesLang 独立 system 消息，两者不冲突。
+        val base = custom.ifBlank {
+            PromptAssembler.assemble(PromptGroup.SYSTEM, systemCtx(lang, actionMode, task))
+        }
+        // 可用性投影紧跟主体：它是端侧实测结论，和意图表一起构成"这次能做什么"的事实基础
+        val withAvailability = "$base\n\n" + availabilityHeader(lang) + "\n" + availabilityText(lang, hasVision, shizukuAvailable)
         // 授权范围一段无论用户是否自定义提示词都必须追加：它是端侧真实拒绝逻辑的说明书，
         // 缺了它 AI 会按自己的想象发请求，然后在门控那里反复撞墙
-        val withMode = "$base\n\n${actionModeSection(lang, actionMode)}"
+        val withMode = "$withAvailability\n\n${actionModeSection(lang, actionMode)}"
         return if (skills.isBlank()) withMode else "$withMode\n\n$skills"
     }
 
