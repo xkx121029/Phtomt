@@ -282,8 +282,9 @@ internal class ExecutionCore(
                 // 仅"本机探测不到语音助手"才是 Failure，走既有连续失败介入机制
                 val r = executor.launchAssistant(action.text)
                 if (r is com.phoneagent.device.a11y.ActionExecutor.Result.Failure) {
-                    // 无障碍多入口拉起全部失败 → shell 兜底：am start 不受后台启动限制，
+                    // 单目标拉起失败 → shell 兜底：am start 不受后台启动限制，
                     // 在不少机型上是无障碍 startActivity 被静默拦截时唯一能唤醒的通道。
+                    // shell 也只发一条命令（入口由探测结果决定），不再连环试三个入口。
                     // 唤醒成功后回到无障碍传话（传话只能靠无障碍，与 AssistantStrategy 的双通道分工一致）
                     val shellWoke = shellWakeAssistant(executor)
                     if (!shellWoke) {
