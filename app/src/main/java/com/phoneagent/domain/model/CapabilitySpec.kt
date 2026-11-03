@@ -343,6 +343,19 @@ object CapabilityRegistry {
             risk = RiskTier.EXTENDED, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
         ),
         CapabilitySpec(
+            intent = IntentType.PERSONAL_READ, name = "个人数据", category = "取数",
+            summary = "只读个人数据（需 Shizuku/无线 ADB，系统以 shell 身份查 ContentProvider）：op=contacts 通讯录 / calls 通话记录 / sms 短信 / calendar 日历事件 / media 媒体文件 / logs 最近错误日志。query 用于按文字过滤，limit 控制条数。",
+            params = listOf(
+                CapabilityParam("op", "操作", "select", required = true, defaultValue = "contacts",
+                    options = listOf("contacts", "calls", "sms", "calendar", "media", "logs")),
+                CapabilityParam("query", "过滤词", "text", description = "按名称/号码/正文包含此词过滤"),
+                CapabilityParam("limit", "条数", "number", defaultValue = "20", min = 1.0, max = 200.0),
+                CapabilityParam("type", "媒体类型", "select", defaultValue = "images",
+                    options = listOf("images", "videos", "audio"), description = "仅 op=media 用"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
+        ),
+        CapabilitySpec(
             intent = IntentType.SEE, name = "看图追问", category = "取数",
             summary = "就当前屏幕截图向视觉模型提一个问题（问题要写成一句明确的目的，如「给出图中轮盘指针指向的扇区」）；回答作为「上一步结果」回注下一步。元素树读不到目标、需要判断画面内容/位置时用它。",
             params = listOf(

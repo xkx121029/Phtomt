@@ -65,6 +65,7 @@ class DeviceOpsChannel(
         "file_write" -> fileWrite(op ?: "write", args)
         "app_manage" -> appManage(op ?: "force_stop", args)
         "terminal_op" -> terminalOp(op ?: "exec", args)
+        "personal_read" -> personalRead(op ?: "contacts", args)
         else -> OpsResult.Fail("未知的系统直连能力族：$family")
     }
 
@@ -720,6 +721,46 @@ class DeviceOpsChannel(
             else OpsResult.Ok("当前注入通道不是 Root（id -u → ${uid.ifBlank { "无输出" }}）")
         }
         else -> OpsResult.Fail("terminal_op 只支持 op=exec/check_root")
+    }
+
+    // ---------------------------------------------------------------- personal_read
+
+    /**
+     * 个人数据只读：用注入通道的 `content query` / `logcat` 直接查 ContentProvider，
+     * 绕开 App 自身权限（以 shell 身份读）。输出在端侧按 query 过滤并截断，避免整表灌进上下文。
+     */
+    private suspend fun personalRead(op: String, args: Map<String, String>): OpsResult {
+        val limit = (args["limit"]?.toIntOrNull() ?: 20).coerceIn(1, 200)
+        val query = args["query"]?.trim().orEmpty()
+        val mediaType = args["type"]?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: "images"
+        val command = when (op) {
+            "contacts" -> "content query --uri content://contacts/phones --projection display_name:number"
+            "calls" -> "content query --uri content://call_log/calls --projection number:type:date:duration --sort \"date DESC\""
+            "sms" -> "content query --uri content://sms --projection address:body:date --sort \"date DESC\""
+            "calendar" -> "content query --uri content://com.android.calendar/events --projection title:dtstart:dtend"
+            "media" -> "content query --uri ${when (mediaType) {
+                "videos" -> "content://media/external/video/media"
+                "audio" -> "content://media/external/audio/media"
+                else -> "content://media/external/images/media"
+            }} --projection _display_name:relative_path"
+            "logs" -> "logcat -d -t 300"
+            else -> return OpsResult.Fail("personal_read 只支持 op=contacts/calls/sms/calendar/media/logs")
+        }
+        val out = shell(command) ?: return OpsResult.Fail(
+            "$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道（读个人数据要以 shell 身份查询）",
+        )
+        val rows = out.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("No result") }
+            .filter { query.isEmpty() || it.contains(query, ignoreCase = true) }
+            .take(limit)
+            .toList()
+        if (rows.isEmpty()) {
+            return OpsResult.Ok("没有查到${if (query.isEmpty()) "数据" else "含「$query」的数据"}（op=$op）。" +
+                if (op == "logs") "" else "若返回为空也可能是通道权限不足。")
+        }
+        return OpsResult.Ok("$op${if (query.isEmpty()) "" else "（过滤「$query」）"} 前 ${rows.size} 条：\n" +
+            rows.joinToString("\n") { "- ${it.take(220)}" }.take(4000))
     }
 
     // ------------------------------------------------------------------ helpers

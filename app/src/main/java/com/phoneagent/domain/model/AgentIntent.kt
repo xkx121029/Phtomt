@@ -188,6 +188,7 @@ object IntentType {
     const val FILE_WRITE = "file_write"           // 改文件（op=write/append/edit；path/text/old/new）
     const val APP_MANAGE = "app_manage"           // 管控应用（op=force_stop/background；app）
     const val TERMINAL_OP = "terminal_op"         // 注入通道命令行（op=exec/check_root；command；仅自由模式）
+    const val PERSONAL_READ = "personal_read"     // 个人数据只读（op=contacts/calls/sms/calendar/media/logs；query/limit/type；走注入通道）
     const val NOTIF_READ = "notif_read"   // 读取当前通知（需通知监听权限），纯本地读取、不操作设备
     const val NOTIF_CLEAR = "notif_clear" // 清理当前通知（ongoing 不动；会清掉用户未读内容，AI 需标注 needs_confirmation）
 
@@ -228,7 +229,7 @@ object IntentType {
         OPEN_APP, OPEN, TAP, LONG_PRESS, INPUT, SWIPE, PRESS, WAIT, SCROLL_TO, WRITE_DOC, REMEMBER, DEVICE_QUERY,
         SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT, SET_ALARM, SET_TIMER,
         WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE,
-        VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE, FILE_READ, FILE_WRITE, APP_MANAGE, TERMINAL_OP,
+        VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE, FILE_READ, FILE_WRITE, APP_MANAGE, TERMINAL_OP, PERSONAL_READ,
         NOTIF_READ, NOTIF_CLEAR,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,

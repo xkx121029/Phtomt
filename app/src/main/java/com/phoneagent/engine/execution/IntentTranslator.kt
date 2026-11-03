@@ -804,6 +804,7 @@ class IntentTranslator(
         put(IntentType.FILE_WRITE, DeviceOpsStrategy(IntentType.FILE_WRITE))
         put(IntentType.APP_MANAGE, DeviceOpsStrategy(IntentType.APP_MANAGE))
         put(IntentType.TERMINAL_OP, DeviceOpsStrategy(IntentType.TERMINAL_OP))
+        put(IntentType.PERSONAL_READ, DeviceOpsStrategy(IntentType.PERSONAL_READ))
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，
