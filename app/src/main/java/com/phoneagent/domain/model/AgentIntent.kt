@@ -4,13 +4,19 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
 
 /**
  * AI 决策后输出的"意图" DSL（对应 HPA动作执行逻辑优化文档 v2.1）。
@@ -85,6 +91,7 @@ data class AgentIntent(
      * 用于把"调用技能"统一归一化成等价意图或 MCP 调用。普通意图场景不填。
      */
     @SerialName("args")
+    @Serializable(with = FlexibleArgsSerializer::class)
     val args: Map<String, String>? = null,
     /**
      * 系统直连类意图的"子操作"（如 device_control 的 flashlight_on / volume / brightness）。
@@ -144,6 +151,32 @@ object FlexibleIntSerializer : KSerializer<Int> {
 
     override fun serialize(encoder: Encoder, value: Int) {
         encoder.encodeInt(value)
+    }
+}
+
+/**
+ * args 的宽松序列化器：模型把参数值写成数字/布尔（`{"level":30}`、`{"all_day":true}`）是常态，
+ * 而 [AgentIntent.args] 的类型是 `Map<String, String>` —— 严格解码会因为"类型不匹配"把**整条意图**
+ * 判为解析失败，连 intent 名都读不进来，表现就是"设备直连怎么都不工作"。
+ *
+ * 因此这里只做一件事：把对象里每个原始值按字面量读成字符串（30 → "30"、true → "true"）；
+ * `null` 直接丢掉（等价于没给这个参数）；嵌套对象/数组原样交给原解码器（那种形态不属于参数语义，
+ * 应当尽早失败而不是被悄悄收成一个无意义的字符串）。
+ */
+object FlexibleArgsSerializer : JsonTransformingSerializer<Map<String, String>>(
+    MapSerializer(String.serializer(), String.serializer()),
+) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        if (element !is JsonObject) return element
+        return JsonObject(
+            element.mapNotNull { (key, value) ->
+                when (value) {
+                    is JsonNull -> null
+                    is JsonPrimitive -> key to JsonPrimitive(value.content)
+                    else -> key to value
+                }
+            }.toMap(),
+        )
     }
 }
 
