@@ -333,8 +333,8 @@ object ProviderManager {
     data class SelfTestStep(val title: String, val ok: Boolean, val detail: String)
 
     /**
-     * 执行通道自检：把「装没装 → 开没开 → 绑没绑 → 树能不能读 → 图能不能截」
-     * 拆成五步可观察的结果。
+     * 执行通道自检：把「装没装 → 开没开 → 绑没绑 → 注入命令能不能跑 → 树能不能读 → 图能不能截」
+     * 拆成逐步可观察的结果。
      *
      * 存在的意义是终结「界面说已连接、实际一条命令都发不出去」只能靠猜的排障：
      * 每步给出实际数值（版本号 / apiVersion / 字节数 / 元素个数 / 异常），
@@ -388,6 +388,32 @@ object ProviderManager {
             title = "服务侧无障碍实例",
             ok = remoteEnabled == true && remoteConnected == true,
             detail = "开关=${remoteEnabled ?: "读取失败"} · 实例已连接=${remoteConnected ?: "读取失败"}",
+        )
+
+        // ---- 注入通道（系统直连真正依赖的一环）----
+        // 之前自检只测「装/开/绑/读树/截图」，恰好漏掉了 shell —— 而闹钟/日历/应用管控/
+        // 命令行/个人数据全部走它，坏了在自检里完全看不出来。
+        val shizukuState = runCatching { remote.shizukuState() }.getOrNull()
+        val shizukuText = when (shizukuState) {
+            2 -> "READY（已授权）"
+            1 -> "PERMISSION_DENIED（已运行但未授权：点卡片里的「请求授权」）"
+            0 -> "UNAVAILABLE（未运行：点卡片里的「一键启动」经无线 ADB 拉起）"
+            else -> "读取失败：${lastError.value ?: "无响应"}"
+        }
+        steps += SelfTestStep(
+            title = "内置 Shizuku 状态",
+            ok = shizukuState == 2,
+            detail = shizukuText,
+        )
+        val shellProbe = call(context, 35_000L) { r -> r.execShizuku("id -u") }
+        steps += SelfTestStep(
+            title = "注入命令实跑",
+            ok = shellProbe?.success == true,
+            detail = when {
+                shellProbe == null -> "调用超时或通道异常：${lastError.value ?: "无响应"}"
+                !shellProbe.success -> "失败：${shellProbe.reason.ifBlank { "无原因" }}"
+                else -> "id -u → ${shellProbe.output.trim().ifBlank { "无输出" }}（exit=${shellProbe.exitCode}）"
+            },
         )
 
         // 元素树：优先分片（与引擎实际路径一致），旧组件才回退一次性接口

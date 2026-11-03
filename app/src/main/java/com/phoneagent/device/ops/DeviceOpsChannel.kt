@@ -45,6 +45,13 @@ class DeviceOpsChannel(
     private val memory: MemoryStore? = null,
     /** 副屏代理：引擎按任务是否启用副屏提供；未启用时为 null */
     private val virtualDisplay: () -> VirtualDisplayAgent? = { null },
+    /**
+     * 注入通道不可用时的人话诊断（服务组件是否安装 / Shizuku 是否就绪 / 无线 ADB 是否连接）。
+     *
+     * 之前所有失败都只报「需要 Shizuku 或无线 ADB 注入通道」，用户与 AI 都无从知道
+     * 卡的到底是哪一环（没装服务组件？没启动 Shizuku？没授权？），只能靠猜。
+     */
+    private val channelAdvice: () -> String = { "" },
 ) {
 
     /** 最近一次在副屏里拉起的包名：`present` 不带 app 时靠它把画面投回主屏 */
@@ -53,6 +60,15 @@ class DeviceOpsChannel(
     sealed interface OpsResult {
         data class Ok(val text: String) : OpsResult
         data class Fail(val reason: String) : OpsResult
+    }
+
+    /**
+     * 注入通道缺口的失败文案：保留原句（含替代路线），再追加端侧实测的通道诊断。
+     * 诊断为空时不加括号，保持与旧文案完全一致（不改变无引擎装配场景下的表现）。
+     */
+    private fun noChannel(prefix: String): OpsResult.Fail {
+        val advice = runCatching { channelAdvice() }.getOrDefault("").trim()
+        return OpsResult.Fail(prefix + if (advice.isNotEmpty()) "（$advice）" else "")
     }
 
     suspend fun run(family: String, op: String?, args: Map<String, String>): OpsResult = when (family) {
@@ -212,14 +228,26 @@ class DeviceOpsChannel(
         "写系统设置需要授权：请到「设置 → 应用 → 本应用 → 修改系统设置」允许后再试；" +
             "或用 Shizuku/无线 ADB 通道执行（无需该授权）。"
 
-    private fun brightness(level: Int?): OpsResult {
+    /**
+     * 系统设置写入：先走本应用身份（需「修改系统设置」授权），没有授权再改走注入通道。
+     *
+     * 之前的实现只要 `canWrite` 为 false 就直接失败，即使 Shizuku 通道明明可用——
+     * 于是「调亮度 / 改息屏时间 / 关自动旋转」在没授权但通道正常的机器上一律不可用。
+     */
+    private suspend fun writeSystemSetting(key: String, value: Int, label: String): OpsResult {
+        val written = Settings.System.canWrite(context) &&
+            runCatching { Settings.System.putInt(context.contentResolver, key, value) }.isSuccess
+        return when {
+            written -> OpsResult.Ok(label)
+            shell("settings put system $key $value") != null -> OpsResult.Ok("$label（经注入通道写入）")
+            else -> noChannel("${label}失败：${writeSettingsReason()}")
+        }
+    }
+
+    private suspend fun brightness(level: Int?): OpsResult {
         if (level == null) return OpsResult.Fail("brightness 需要 level（0~100）")
         val value = (level.coerceIn(0, 100) * 255 / 100)
-        if (!Settings.System.canWrite(context)) return OpsResult.Fail("亮度：${writeSettingsReason()}")
-        return runCatching {
-            Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, value)
-            OpsResult.Ok("亮度已设为 $level%（系统值 $value/255）")
-        }.getOrElse { OpsResult.Fail("亮度写入失败：${it.message ?: "系统拒绝"}") }
+        return writeSystemSetting(Settings.System.SCREEN_BRIGHTNESS, value, "亮度已设为 $level%（系统值 $value/255）")
     }
 
     private fun volume(args: Map<String, String>): OpsResult {
@@ -288,22 +316,23 @@ class DeviceOpsChannel(
         }.getOrElse { OpsResult.Fail("勿扰切换失败：${it.message ?: "系统拒绝"}") }
     }
 
-    private fun screenTimeout(seconds: Int?): OpsResult {
+    private suspend fun screenTimeout(seconds: Int?): OpsResult {
         if (seconds == null) return OpsResult.Fail("screen_timeout 需要 seconds（5~1800）")
-        if (!Settings.System.canWrite(context)) return OpsResult.Fail("息屏时间：${writeSettingsReason()}")
-        return runCatching {
-            Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, seconds.coerceIn(5, 1800) * 1000)
-            OpsResult.Ok("息屏时间已设为 ${seconds.coerceIn(5, 1800)} 秒")
-        }.getOrElse { OpsResult.Fail("息屏时间写入失败：${it.message ?: "系统拒绝"}") }
+        val effective = seconds.coerceIn(5, 1800)
+        return writeSystemSetting(
+            Settings.System.SCREEN_OFF_TIMEOUT,
+            effective * 1000,
+            "息屏时间已设为 $effective 秒",
+        )
     }
 
-    private fun rotation(enable: Boolean?): OpsResult {
+    private suspend fun rotation(enable: Boolean?): OpsResult {
         if (enable == null) return OpsResult.Fail("rotation 需要 enable=true/false")
-        if (!Settings.System.canWrite(context)) return OpsResult.Fail("旋转：${writeSettingsReason()}")
-        return runCatching {
-            Settings.System.putInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, if (enable) 1 else 0)
-            OpsResult.Ok("自动旋转已${if (enable) "开启" else "关闭"}")
-        }.getOrElse { OpsResult.Fail("旋转设置失败：${it.message ?: "系统拒绝"}") }
+        return writeSystemSetting(
+            Settings.System.ACCELEROMETER_ROTATION,
+            if (enable) 1 else 0,
+            "自动旋转已${if (enable) "开启" else "关闭"}",
+        )
     }
 
     private suspend fun systemToggle(op: String, enable: Boolean?): OpsResult {
@@ -318,7 +347,7 @@ class DeviceOpsChannel(
             else -> return OpsResult.Fail("不支持的系统开关：$op")
         }
         val out = shell(cmd)
-            ?: return OpsResult.Fail("$op：需要 Shizuku/无线 ADB 通道（或 Root）；当前没有可用注入通道")
+            ?: return noChannel("$op：需要 Shizuku/无线 ADB 通道（或 Root）；当前没有可用注入通道")
         return OpsResult.Ok("$op 已提交${if (enable) "开启" else "关闭"}（系统回执：${out.ifBlank { "无输出" }.take(300)}）")
     }
 
@@ -349,7 +378,7 @@ class DeviceOpsChannel(
             val ok = runCatching { Settings.System.putString(context.contentResolver, key, value) }.isSuccess
             if (ok) return OpsResult.Ok("system/$key 已写入 $value")
         }
-        return OpsResult.Fail("写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
+        return noChannel("写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
             (if (ns == "system") "或先授予「修改系统设置」权限。" else "secure/global 只能走注入通道。"))
     }
 
@@ -463,7 +492,7 @@ class DeviceOpsChannel(
         val now = System.currentTimeMillis()
         val until = now + days * 24 * 3600_000L
         val out = shell("content query --uri $CALENDAR_URI --projection _id:title:dtstart:dtend --where ${quote("dtstart>=$now AND dtstart<=$until")} --sort ${quote("dtstart ASC")}")
-            ?: return OpsResult.Fail(
+            ?: return noChannel(
                 "读日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动查看。",
             )
         val rows = out.lineSequence()
@@ -513,7 +542,7 @@ class DeviceOpsChannel(
             add("eventTimezone:s:${quote(java.util.TimeZone.getDefault().id)}")
         }.joinToString(" --bind ")
         val out = shell("content insert --uri $CALENDAR_URI --bind $binds")
-            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动新建。")
+            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动新建。")
         if (out.contains("Error", ignoreCase = true) || out.contains("Exception", ignoreCase = true)) {
             return OpsResult.Fail("日历 Provider 拒绝写入：${out.take(200)}。可改走 open_app 打开日历应用手动新建。")
         }
@@ -537,7 +566,7 @@ class DeviceOpsChannel(
         }
         if (binds.isEmpty()) return OpsResult.Fail("calendar_op update 至少要给一个要改的字段（title/start/end/all_day）")
         val out = shell("content update --uri $CALENDAR_URI --where ${quote("_id=$id")} --bind ${binds.joinToString(" --bind ")}")
-            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
         if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
             return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝写入。先用 calendar_op list 确认 id。")
         }
@@ -548,7 +577,7 @@ class DeviceOpsChannel(
         val id = args["event_id"]?.trim().orEmpty()
         if (id.isEmpty()) return OpsResult.Fail("calendar_op delete 需要 event_id（从 calendar_op list 结果里取）")
         val out = shell("content delete --uri $CALENDAR_URI --where ${quote("_id=$id")}")
-            ?: return OpsResult.Fail("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
         if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
             return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝删除。先用 calendar_op list 确认 id。")
         }
@@ -645,7 +674,7 @@ class DeviceOpsChannel(
             ?: lastVirtualApp
             ?: return OpsResult.Fail("present 需要 app：先用 virtual_display launch 在副屏里打开应用，或直接给 app")
         val out = shell("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
-            ?: return OpsResult.Fail("把应用拉到主屏需要 Shizuku 或无线 ADB 注入通道；当前不可用")
+            ?: return noChannel("把应用拉到主屏需要 Shizuku 或无线 ADB 注入通道；当前不可用")
         if (out.contains("No activities found", ignoreCase = true) || out.contains("aborted", ignoreCase = true)) {
             return OpsResult.Fail("$pkg 没有可启动的入口（可能是系统应用或未安装）；可改用 open 深链或 show_agent")
         }
@@ -871,7 +900,7 @@ class DeviceOpsChannel(
             else -> return OpsResult.Fail("app_manage 只支持 op=force_stop/background")
         }
         val out = shell(command)
-            ?: return OpsResult.Fail("$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
+            ?: return noChannel("$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
         val tail = out.trim().take(120)
         return OpsResult.Ok("已${if (op == "force_stop") "强制停止" else "清理后台"}：$pkg" + if (tail.isEmpty()) "" else "（输出：$tail）")
     }
@@ -884,12 +913,12 @@ class DeviceOpsChannel(
             val cmd = args["command"]?.trim().orEmpty()
             if (cmd.isEmpty()) return OpsResult.Fail("terminal_op 的 exec 需要 command（要执行的命令）")
             val out = shell(cmd)
-                ?: return OpsResult.Fail("terminal 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
+                ?: return noChannel("terminal 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
             OpsResult.Ok("$ $cmd\n" + out.trim().take(4000))
         }
         "check_root" -> {
             val out = shell("id -u")
-                ?: return OpsResult.Fail("check_root 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道")
+                ?: return noChannel("check_root 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道")
             val uid = out.trim().lineSequence().firstOrNull().orEmpty()
             if (uid.contains("uid=0") || uid == "0") OpsResult.Ok("当前注入通道具备 Root（id -u → $uid）")
             else OpsResult.Ok("当前注入通道不是 Root（id -u → ${uid.ifBlank { "无输出" }}）")
@@ -920,7 +949,7 @@ class DeviceOpsChannel(
             "logs" -> "logcat -d -t 300"
             else -> return OpsResult.Fail("personal_read 只支持 op=contacts/calls/sms/calendar/media/logs")
         }
-        val out = shell(command) ?: return OpsResult.Fail(
+        val out = shell(command) ?: return noChannel(
             "$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道（读个人数据要以 shell 身份查询）",
         )
         val rows = out.lineSequence()
