@@ -99,13 +99,16 @@ object EngineRules {
         ActionType.OPEN -> "打开链接/Scheme"
         // 看图追问：由引擎就地调用视觉模型直出（同 browse_* 的做法，不设独立 ActionType）
         IntentType.SEE -> "看图追问"
-        // 内置浏览器的 6 个子操作：由 BrowserChannel 直出，不经转译层，故直接按意图名映射
+        // 内置浏览器的 9 个子操作：由 BrowserChannel 直出，不经转译层，故直接按意图名映射
         IntentType.BROWSE_OPEN -> "打开网页"
         IntentType.BROWSE_READ -> "抓取网页内容"
         IntentType.BROWSE_CLICK -> "点击网页元素"
         IntentType.BROWSE_INPUT -> "填写网页表单"
         IntentType.BROWSE_SCROLL -> "滚动网页"
         IntentType.BROWSE_BACK -> "网页后退"
+        IntentType.BROWSE_INFO -> "查看网页状态"
+        IntentType.BROWSE_RELOAD -> "刷新网页"
+        IntentType.BROWSE_WAIT -> "等待网页元素"
         ActionType.BACK -> "返回"
         ActionType.HOME -> "回到桌面"
         ActionType.RECENTS -> "最近任务"

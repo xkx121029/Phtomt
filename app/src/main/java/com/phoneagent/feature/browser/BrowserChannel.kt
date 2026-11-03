@@ -60,9 +60,25 @@ internal class BrowserChannel(
                     else -> from(executor.open(uri))
                 }
             }
-            // 抓正文 / 网页后退：无参数，吃的是浏览器里"当前已打开的那一页"
+            // 抓正文 / 网页后退 / 看状态 / 刷新：无参数，吃的是浏览器里"当前已打开的那一页"
             IntentType.BROWSE_READ -> from(executor.read())
             IntentType.BROWSE_BACK -> from(executor.back())
+            IntentType.BROWSE_INFO -> from(executor.info())
+            IntentType.BROWSE_RELOAD -> from(executor.reload())
+            IntentType.BROWSE_WAIT -> {
+                val target = intent.target
+                when {
+                    target == null || target.value.isBlank() -> Outcome.Missing(
+                        field = "target",
+                        reason = "AI 输出了 browse_wait 但未提供 target（要等出现的元素）。" +
+                            "按文字等：{\"by\":\"text\",\"value\":\"下一步\"}；按选择器等：{\"by\":\"id\",\"value\":\"#result\"}。",
+                    )
+                    else -> {
+                        val by = target.by.takeIf { it in TARGET_BY } ?: "text"
+                        from(executor.waitForSelector(by, target.value.trim(), intent.waitMs ?: 8000L))
+                    }
+                }
+            }
             IntentType.BROWSE_SCROLL -> {
                 val dir = intent.direction?.trim()?.lowercase().orEmpty().ifBlank { "down" }
                 if (dir !in DIRECTIONS) {
@@ -141,6 +157,7 @@ internal class BrowserChannel(
         val INTENTS: Set<String> = setOf(
             IntentType.BROWSE_OPEN, IntentType.BROWSE_READ, IntentType.BROWSE_CLICK,
             IntentType.BROWSE_INPUT, IntentType.BROWSE_SCROLL, IntentType.BROWSE_BACK,
+            IntentType.BROWSE_INFO, IntentType.BROWSE_RELOAD, IntentType.BROWSE_WAIT,
         )
 
         /** 点击/输入的目标定位方式：text=元素文字（优先），id=CSS 选择器 */

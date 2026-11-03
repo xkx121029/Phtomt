@@ -199,6 +199,9 @@ object IntentType {
     const val BROWSE_INPUT = "browse_input"   // 网页表单输入（target, text）
     const val BROWSE_SCROLL = "browse_scroll" // 网页滚动（direction：up/down/top/bottom）
     const val BROWSE_BACK = "browse_back"     // 网页内后退（不是系统返回，不会退出浏览器）
+    const val BROWSE_INFO = "browse_info"     // 看当前网页状态（标题/网址/加载状态/滚动位置/可交互数量）
+    const val BROWSE_RELOAD = "browse_reload" // 刷新当前网页并等加载完成
+    const val BROWSE_WAIT = "browse_wait"     // 等某元素出现（target 选择器/文字 + wait_ms，上限 30s）
 
     // ---- 高层语义接口（Φ 端侧已识别的语义控件类，转译层本地映射为命令，AI 不写命令/坐标） ----
     const val BACK = "back"               // 返回上一页（优先语义按钮，找不到走系统返回）
@@ -230,6 +233,7 @@ object IntentType {
         SAY, SHOW_AGENT, SEE, FETCH, FINISH, GIVE_UP, ASSISTANT, SET_ALARM, SET_TIMER,
         WAIT_FOR, DEVICE_INFO, DEVICE_CONTROL, SYSTEM_SETTINGS, CLIPBOARD, ALARM_MANAGE,
         VIRTUAL_DISPLAY, MEMORY_GET, MEMORY_WRITE, FILE_READ, FILE_WRITE, APP_MANAGE, TERMINAL_OP, PERSONAL_READ,
+        BROWSE_INFO, BROWSE_RELOAD, BROWSE_WAIT,
         NOTIF_READ, NOTIF_CLEAR,
         BROWSE_OPEN, BROWSE_READ, BROWSE_CLICK, BROWSE_INPUT, BROWSE_SCROLL, BROWSE_BACK,
         BACK, HOME, REFRESH, SEARCH, SEND, CONFIRM, CLOSE, SHARE, COLLECT, COPY, DELETE, DOWNLOAD, ADD,

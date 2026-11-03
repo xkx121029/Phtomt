@@ -55,4 +55,50 @@ internal object NavScripts {
   } catch (e) { return {ok:false, error:String(e)}; }
 })()
 """.trimIndent()
+
+    /** 网页状态（browse_info）：只回元信息，不搬正文，代价小、可频繁调用 */
+    val INFO = """
+(function(){
+  try {
+    var d = document;
+    return {ok:true,
+      title: d.title || '',
+      url: location.href || '',
+      ready: d.readyState || '',
+      scroll_y: Math.round(window.scrollY || 0),
+      scroll_height: Math.max(d.documentElement.scrollHeight || 0, (d.body ? d.body.scrollHeight : 0)),
+      links: d.querySelectorAll('a[href]').length,
+      controls: d.querySelectorAll('input,textarea,select,button').length};
+  } catch (e) { return {ok:false, error:String(e)}; }
+})()
+""".trimIndent()
+
+    /**
+     * browse_wait 的单轮探测：只查"元素在不在"，轮询节奏由 Kotlin 侧控制（300ms 一轮）。
+     * byText=true 时按元素文字包含匹配（限短文本节点，避免命中整页容器）；
+     * 否则把 value 当 CSS 选择器。
+     */
+    fun probe(selector: String, byText: Boolean): String {
+        val want = com.phoneagent.core.text.HtmlToMarkdown.jsStr(selector)
+        val textMode = if (byText) "true" else "false"
+        return """
+(function(){
+  try {
+    var WANT = $want;
+    var BY_TEXT = $textMode;
+    var el = null;
+    if (BY_TEXT) {
+      var nodes = document.querySelectorAll('body *');
+      for (var i = 0; i < nodes.length; i++) {
+        var t = (nodes[i].innerText || '').trim();
+        if (t && t.length <= 40 && t.indexOf(WANT) >= 0) { el = nodes[i]; break; }
+      }
+    } else {
+      el = document.querySelector(WANT);
+    }
+    return {ok:true, found: !!el, text: el ? ((el.innerText || el.value || '').trim().slice(0, 60)) : ''};
+  } catch (e) { return {ok:false, error:String(e)}; }
+})()
+""".trimIndent()
+    }
 }

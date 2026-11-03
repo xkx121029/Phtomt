@@ -135,6 +135,9 @@ internal object PromptBodies {
     | browse_input | 填写网页表单；下拉框也用它选选项（text 填选项文字） | target,text |
     | browse_scroll | 滚动网页 | direction(up/down/top/bottom) |
     | browse_back | 网页内后退一页（不是系统返回） | 无 |
+    | browse_info | 看当前网页状态（标题/网址/加载状态/滚动位置/链接与控件数量），不读正文 | 无 |
+    | browse_reload | 刷新当前网页并等加载完成 | 无 |
+    | browse_wait | 等某元素出现（最多 30s，默认 8s），出现后才继续下一步 | target（文字或 CSS 选择器）,wait_ms(可选) |
     | finish | 任务完成 | summary(你看到的证据) |
     | give_up | 放弃 | reason(原因) |
     """.trimIndent()
@@ -181,6 +184,9 @@ internal object PromptBodies {
     | browse_input | Fill a web form field; also used to pick a dropdown option (put the option text in text) | target,text |
     | browse_scroll | Scroll the web page | direction(up/down/top/bottom) |
     | browse_back | Go back one page in web history (NOT the system back) | none |
+    | browse_info | Current page status (title/url/ready state/scroll position/link and control counts) without reading the body | none |
+    | browse_reload | Reload the current page and wait for load completion | none |
+    | browse_wait | Wait until a target element appears (max 30s, default 8s) before continuing | target (text or CSS selector), wait_ms (optional) |
     | finish | Task complete | summary(evidence you saw) |
     | give_up | Give up | reason |
     """.trimIndent()
@@ -218,7 +224,8 @@ internal object PromptBodies {
       - 上网查资料/搜东西时**直接 browse_open 一个搜索引擎结果页**（如 https://www.bing.com/search?q=关键词），禁止先 open_app 打开"浏览器"应用再去点它的搜索框——打开应用不等于打开网页，只会白白多两步。
       - browse_click / browse_input / browse_scroll / browse_back 只作用于浏览器里"当前已打开的那一页"；没打开过网页就先 browse_open，否则端侧会回"浏览器还没打开"。
       - 网页里的元素一律用 browse_click / browse_input 按文字定位（清单里看得见的就点得到），禁止改用 tap + 坐标去猜网页控件（网页控件不在手机元素树里）；要点的元素清单里没有，先用 browse_scroll 滚出来。
-      - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。
+      - browse_read 的返回会作为"上一步结果"回给你，读完再决定下一步，不要连着盲点。只想确认"页面加载完没有 / 停在哪一页"就用 browse_info（便宜）；页面卡住或内容没更新就 browse_reload；目标元素还没出现就用 browse_wait 等它，别抢跑点击。
+      - browse_wait 只等"元素出现"，不负责点它；出现后照常 browse_click。等不到就别死等，换 browse_read 看看页面到底在说什么。
       - 正文里的链接要点，就取方括号里的文字交给 browse_click；直接用清单里的文字也行，两条路都通。
       - 表格转成了扁平化的管道表：原网页里的跨列/跨行单元格（colspan/rowspan）会被忽略，列可能错位，别拿错位的数值直接下结论。
       - browse_back 只在网页历史里后退（不是系统返回）。静默上网不会切走 App 界面，所以不需要用 BACK 离开浏览器——要回桌面/切应用就直接用 home / open_app。
@@ -245,6 +252,7 @@ internal object PromptBodies {
     - Boundaries (violating any fails the step):
       - For research/searching, browse_open a search-engine results URL directly (e.g. https://www.bing.com/search?q=keyword); NEVER open_app the "browser" first and then hunt for its search box — launching an app is not opening a web page, it just wastes two steps.
       - browse_click / browse_input / browse_scroll / browse_back only act on the page currently loaded in the browser; if no page was opened yet, browse_open first — otherwise the device replies "the built-in browser is not open yet".
+      - To check only "has the page finished loading / where am I" use browse_info (cheap). If the page is stuck or stale, use browse_reload. If a target element has not appeared yet, use browse_wait instead of clicking early; browse_wait only waits — click afterwards as usual.
       - Web-page elements MUST be handled with browse_click / browse_input by text (what the list shows is what can be clicked); NEVER switch to tap + coordinates to guess at web controls (web controls are not in the phone's element tree); if the element you want is not in the list, scroll it into view with browse_scroll first.
       - The browse_read result is returned to you as the previous step result — read it, then decide; do not keep blind-clicking.
       - The browse_read body is Markdown: links are already inlined as [text](url) — to click one, pass the text inside the brackets to browse_click as-is; using the text from the element list works too — both routes work.

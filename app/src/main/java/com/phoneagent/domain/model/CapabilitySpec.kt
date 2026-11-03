@@ -477,6 +477,25 @@ object CapabilityRegistry {
             risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
         ),
         CapabilitySpec(
+            intent = IntentType.BROWSE_INFO, name = "网页状态", category = "浏览器",
+            summary = "不读正文，只看当前网页的元信息：标题、网址、文档加载状态、滚动位置、链接与输入控件数量。用来判断「页面到底加载完没有 / 现在停在哪」。无需参数。",
+            risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
+        ),
+        CapabilitySpec(
+            intent = IntentType.BROWSE_RELOAD, name = "刷新网页", category = "浏览器",
+            summary = "重新加载当前网页并等加载完成（页面卡住或内容没更新时用）。无需参数。",
+            risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
+        ),
+        CapabilitySpec(
+            intent = IntentType.BROWSE_WAIT, name = "等元素出现", category = "浏览器",
+            summary = "反复轮询直到目标元素出现（最多 30 秒）。target 按 id（CSS 选择器）或 text（元素文字）定位；wait_ms 不填默认 8000。",
+            params = listOf(
+                CapabilityParam("target", "目标元素", "text", required = true, description = "要等出现的元素：文字或 CSS 选择器"),
+                CapabilityParam("wait_ms", "超时毫秒", "number", defaultValue = "8000", min = 500.0, max = 30000.0),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
+        ),
+        CapabilitySpec(
 
         // ---- 中风险（均衡模式起放行） ----
             intent = IntentType.OPEN_APP, name = "打开应用", category = "导航",

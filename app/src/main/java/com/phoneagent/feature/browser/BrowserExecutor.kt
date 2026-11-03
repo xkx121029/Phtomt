@@ -15,6 +15,9 @@ internal interface BrowserExecutor {
     suspend fun input(by: String, value: String, text: String): BrowseResult
     suspend fun scroll(direction: String): BrowseResult
     suspend fun back(): BrowseResult
+    suspend fun info(): BrowseResult
+    suspend fun reload(): BrowseResult
+    suspend fun waitForSelector(by: String, value: String, waitMs: Long): BrowseResult
 }
 
 /** 生产实现：一律转调 [BrowserBridge]（切主线程、等加载完成等细节都在 Bridge 里）。 */
@@ -27,4 +30,8 @@ internal class BridgeExecutor : BrowserExecutor {
         BrowserBridge.input(by, value, text)
     override suspend fun scroll(direction: String): BrowseResult = BrowserBridge.scroll(direction)
     override suspend fun back(): BrowseResult = BrowserBridge.back()
+    override suspend fun info(): BrowseResult = BrowserBridge.info()
+    override suspend fun reload(): BrowseResult = BrowserBridge.reload()
+    override suspend fun waitForSelector(by: String, value: String, waitMs: Long): BrowseResult =
+        BrowserBridge.waitForSelector(by, value, waitMs)
 }

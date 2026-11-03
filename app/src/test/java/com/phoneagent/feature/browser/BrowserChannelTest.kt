@@ -35,6 +35,11 @@ class BrowserChannelTest {
         }
         override suspend fun scroll(direction: String): BrowseResult { calls += "scroll:$direction"; return result }
         override suspend fun back(): BrowseResult { calls += "back"; return result }
+        override suspend fun info(): BrowseResult { calls += "info"; return result }
+        override suspend fun reload(): BrowseResult { calls += "reload"; return result }
+        override suspend fun waitForSelector(by: String, value: String, waitMs: Long): BrowseResult {
+            calls += "wait:$by=$value,$waitMs"; return result
+        }
     }
 
     private fun channel(readOnly: Boolean, executor: FakeExecutor) =
@@ -49,7 +54,7 @@ class BrowserChannelTest {
     // ---- 分流边界 ----
 
     @Test
-    fun handles_只认六个browse意图() {
+    fun handles_只认九个browse意图() {
         val ch = channel(false, FakeExecutor())
         BrowserChannel.INTENTS.forEach { assertTrue(it, ch.handles(it)) }
         assertFalse(ch.handles(IntentType.TAP))
@@ -121,6 +126,38 @@ class BrowserChannelTest {
         val out = channel(false, ex).execute(AgentIntent(intent = IntentType.BROWSE_SCROLL))
         assertTrue(out is BrowserChannel.Outcome.Ok)
         assertEquals(listOf("scroll:down"), ex.calls)
+    }
+
+    @Test
+    fun browseInfo与reload_无参数直达执行器() = runTest {
+        val ex = FakeExecutor()
+        val ch = channel(true, ex)
+        ch.execute(AgentIntent(intent = IntentType.BROWSE_INFO))
+        ch.execute(AgentIntent(intent = IntentType.BROWSE_RELOAD))
+        assertEquals(listOf("info", "reload"), ex.calls)
+    }
+
+    @Test
+    fun browseWait_缺target_追问补参() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex).execute(AgentIntent(intent = IntentType.BROWSE_WAIT))
+        assertTrue(out is BrowserChannel.Outcome.Missing)
+        assertEquals("target", (out as BrowserChannel.Outcome.Missing).field)
+        assertTrue(ex.calls.isEmpty())
+    }
+
+    @Test
+    fun browseWait_带文字目标与超时_按wait_ms轮询() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex).execute(
+            AgentIntent(
+                intent = IntentType.BROWSE_WAIT,
+                target = AgentIntentTarget(by = "text", value = "加载完成"),
+                waitMs = 5000,
+            ),
+        )
+        assertTrue(out is BrowserChannel.Outcome.Ok)
+        assertEquals(listOf("wait:text=加载完成,5000"), ex.calls)
     }
 
     // ---- 只读护栏：该放行的放行 ----

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.webkit.WebView
 import com.phoneagent.core.AgentBudgets
 import com.phoneagent.core.log.AppLog
+import android.os.SystemClock
 import com.phoneagent.feature.browser.script.NavScripts
 import com.phoneagent.feature.browser.script.ReadScript
 import com.phoneagent.feature.browser.script.InteractScripts
@@ -284,6 +285,80 @@ object BrowserBridge {
             }
             delay(800)
             BrowseResult(true, "已后退到上一个网页：${lastUrl}")
+        }
+    }
+
+    /** browse_info：不读正文，只回标题/网址/加载状态/滚动位置/可交互数量 */
+    suspend fun info(): BrowseResult = lock.withLock {
+        withPage { wv ->
+            val obj = eval(wv, NavScripts.INFO)
+                ?: return@withPage BrowseResult(false, "读取网页状态超时，请重试。")
+            if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
+                return@withPage BrowseResult(false, "读取网页状态失败：${obj.str("error").ifBlank { "未知原因" }}")
+            }
+            BrowseResult(
+                true,
+                "标题：${obj.str("title").ifBlank { "(无标题)" }}\n" +
+                    "网址：${obj.str("url")}\n" +
+                    "加载状态：${obj.str("ready").ifBlank { "unknown" }}\n" +
+                    "滚动：${obj.str("scroll_y")} / ${obj.str("scroll_height")}\n" +
+                    "链接 ${obj.str("links")} 个，可交互控件 ${obj.str("controls")} 个",
+            )
+        }
+    }
+
+    /** browse_reload：刷新当前页并等加载完成（沿用 open 的加载等待器） */
+    suspend fun reload(): BrowseResult = lock.withLock {
+        withPage { wv ->
+            val waiter = CompletableDeferred<Boolean>()
+            loadWaiter = waiter
+            withContext(Dispatchers.Main) { wv.reload() }
+            val loaded = withTimeoutOrNull(LOAD_TIMEOUT_MS) { waiter.await() } ?: false
+            loadWaiter = null
+            if (!loaded) {
+                return@withPage BrowseResult(
+                    false,
+                    "网页刷新超时（${LOAD_TIMEOUT_MS / 1000}s）：${lastUrl}。请检查网络或改用 browse_info 看状态。",
+                )
+            }
+            BrowseResult(true, "已刷新网页：${lastTitle.ifBlank { lastUrl }}\n网址：${lastUrl}")
+        }
+    }
+
+    /**
+     * browse_wait：轮询到目标元素出现或超时。
+     * by=id 当 CSS 选择器；其余按页面文字模糊匹配（与点击同源思路，够用且避免引入复杂选择器语法）。
+     */
+    suspend fun waitForSelector(by: String, value: String, waitMs: Long): BrowseResult = lock.withLock {
+        withPage { wv ->
+            val byText = by != "id"
+            val deadline = SystemClock.elapsedRealtime() + waitMs.coerceIn(500, 30000)
+            var found = false
+            var lastError = ""
+            var elapsed = 0L
+            while (!found && SystemClock.elapsedRealtime() < deadline) {
+                val obj = eval(wv, NavScripts.probe(value, byText))
+                if (obj == null) {
+                    lastError = "探测脚本超时"
+                } else if (obj["ok"]?.jsonPrimitive?.contentOrNull != "true") {
+                    lastError = obj.str("error").ifBlank { "未知原因" }
+                } else if (obj["found"]?.jsonPrimitive?.contentOrNull == "true") {
+                    found = true
+                    elapsed = waitMs - (deadline - SystemClock.elapsedRealtime())
+                    val text = obj.str("text")
+                    return@withPage BrowseResult(
+                        true,
+                        "元素已出现（约 ${(elapsed / 1000.0).toInt()}s）：$value" +
+                            if (text.isBlank()) "" else "\n元素文字：${text.take(60)}",
+                    )
+                }
+                if (!found) delay(300)
+            }
+            BrowseResult(
+                false,
+                "等待 ${waitMs / 1000}s 仍未出现元素：$value" +
+                    if (lastError.isBlank()) "" else "（最后一次探测：$lastError）",
+            )
         }
     }
 
