@@ -8,6 +8,9 @@ import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AlarmDays
+import com.phoneagent.domain.model.AlarmParseResult
+import com.phoneagent.domain.model.AlarmTimeParser
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
@@ -156,7 +159,9 @@ internal class AssistantStrategy(
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
         val target = assistantProbe()
             ?: return IntentTranslator.TranslationResult.Failed(
-                "本机未找到系统语音助手（小爱同学/小艺/小布/Google 助理等均未探测到）；该设备可能未启用语音助手，请改用其他意图完成任务，或 give_up 说明原因",
+                "本机没有可用的系统语音助手（助理角色、系统默认助理、语音交互服务、ASSIST 与 VOICE_COMMAND 入口均未探测到）。" +
+                    "请改用本地直达能力：定闹钟/设倒计时用 set_alarm / set_timer，打开应用用 open_app，" +
+                    "或在当前页面上直接操作；确实做不到再 give_up 说明原因",
             )
         val reason = reasonOf(intent)
         if (a11yReady()) {
@@ -174,7 +179,11 @@ internal class AssistantStrategy(
             val command = when (target.via) {
                 VoiceAssistantDetector.Via.VOICE_COMMAND -> "raw am start -a android.intent.action.VOICE_COMMAND"
                 VoiceAssistantDetector.Via.ASSIST -> "raw am start -a android.intent.action.ASSIST"
-                VoiceAssistantDetector.Via.VENDOR -> "launch ${target.packageName}"
+                VoiceAssistantDetector.Via.ROLE,
+                VoiceAssistantDetector.Via.SETTINGS,
+                VoiceAssistantDetector.Via.VOICE_INTERACTION,
+                VoiceAssistantDetector.Via.VENDOR,
+                -> "launch ${target.packageName}"
             }
             return IntentTranslator.TranslationResult.Command(
                 ctx.base.copy(type = ActionType.SHELL, command = command, packageName = target.packageName, reason = reason),
@@ -183,6 +192,74 @@ internal class AssistantStrategy(
         return IntentTranslator.TranslationResult.Failed(
             "当前通道无法唤起语音助手（无障碍未开启且非 Shizuku 模式）；请开启无障碍或 Shizuku 后重试",
         )
+    }
+}
+
+/**
+ * 时钟策略：set_alarm / set_timer → AlarmClock 直达动作。
+ *
+ * 时间来源优先级：口语 [AgentIntent.timeText]（「7点半」「半小时后」「明天早上6点」）→ 结构化 hour/minute。
+ * 解析失败不回退到 assistant/模拟点击，直接给出中文原因让 AI 换参数或 give_up。
+ */
+internal class ClockStrategy(
+    private val type: String,
+    private val now: () -> java.time.LocalDateTime = { java.time.LocalDateTime.now() },
+) : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        if (type == ActionType.SET_TIMER) {
+            val seconds = intent.durationSeconds ?: intent.durationMs?.let { it / 1000 }
+            if (seconds == null || seconds <= 0L) {
+                return IntentTranslator.TranslationResult.MissingParam(
+                    field = "duration_seconds",
+                    reason = "AI 输出了 set_timer 但未给出有效时长。请补全 duration_seconds（秒，如 1800 = 30 分钟）。",
+                )
+            }
+            return IntentTranslator.TranslationResult.Command(
+                ctx.base.copy(
+                    type = type,
+                    durationMs = seconds * 1000,
+                    text = intent.text,
+                    reason = reasonOf(intent),
+                ),
+            )
+        }
+
+        val explicitDays = AlarmDays.fromField(intent.repeatDays)
+        val parsed = if (!intent.timeText.isNullOrBlank()) {
+            AlarmTimeParser.parse(intent.timeText, now())
+        } else {
+            AlarmTimeParser.parseNumbers(intent.hour, intent.minute, explicitDays ?: emptySet(), now())
+        }
+        return when (parsed) {
+            is AlarmParseResult.Failure -> {
+                if (intent.hour == null && intent.timeText.isNullOrBlank()) {
+                    IntentTranslator.TranslationResult.MissingParam(
+                        field = "when",
+                        reason = "AI 输出了 set_alarm 但未给出时间。请补全 when（「7点半」/「半小时后」/「明天早上6点」）或 hour+minute。",
+                    )
+                } else {
+                    IntentTranslator.TranslationResult.Failed(parsed.message)
+                }
+            }
+            is AlarmParseResult.Success -> {
+                val time = parsed.time
+                val repeatDays = when {
+                    time.repeatDays.isNotEmpty() -> AlarmDays.toCalendarDays(time.repeatDays)
+                    explicitDays != null -> AlarmDays.toCalendarDays(explicitDays)
+                    else -> null
+                }
+                IntentTranslator.TranslationResult.Command(
+                    ctx.base.copy(
+                        type = type,
+                        hour = time.hour,
+                        minute = time.minute,
+                        repeatDays = repeatDays,
+                        text = intent.text,
+                        reason = reasonOf(intent),
+                    ),
+                )
+            }
+        }
     }
 }
 
@@ -599,6 +676,9 @@ class IntentTranslator(
         // 通知读取/清理（数据来自通知监听缓存，纯本地，不触碰设备）
         put(IntentType.NOTIF_READ, NotifStrategy(ActionType.READ_NOTIFS))
         put(IntentType.NOTIF_CLEAR, NotifStrategy(ActionType.CLEAR_NOTIFS))
+        // 时钟直达（AlarmClock 意图，不经语音助手、不模拟点击；LOW 风险，保守档也放行）
+        put(IntentType.SET_ALARM, ClockStrategy(ActionType.SET_ALARM))
+        put(IntentType.SET_TIMER, ClockStrategy(ActionType.SET_TIMER))
         // 命令行取数（Termux）：图形界面做不到的事落到 Linux 工具链，命令由端侧拼装
         put(IntentType.FETCH, TermuxFetchStrategy(termuxAvailable))
         // 内置浏览器（WebView 可见页）不在此表：browse_* 由 BrowserChannel 这条独立通道处理，

@@ -73,6 +73,12 @@ data class AgentAction(
     val app: String? = null,
     /** open 动作：目标软件内的页面索引序号（见软件页面直达索引表） */
     val page: Int? = null,
+    /** set_alarm：小时（0~23） */
+    val hour: Int? = null,
+    /** set_alarm：分钟（0~59） */
+    val minute: Int? = null,
+    /** set_alarm：重复星期（Android Calendar 常量，周日=1…周六=7；空=一次性） */
+    val repeatDays: List<Int>? = null,
 )
 
 /** 动作目标 */
@@ -145,6 +151,12 @@ object ActionType {
     const val LAUNCH_ASSISTANT = "launch_assistant"
     const val READ_NOTIFS = "read_notifs"
     const val CLEAR_NOTIFS = "clear_notifs"
+
+    /** 定闹钟（AlarmClock.ACTION_SET_ALARM 直达）：hour/minute + repeatDays(Calendar 常量) + text=标签 */
+    const val SET_ALARM = "set_alarm"
+
+    /** 设倒计时（AlarmClock.ACTION_SET_TIMER 直达）：durationMs=时长 + text=标签 */
+    const val SET_TIMER = "set_timer"
 
     /** 文档动作别名 → 引擎动作的映射 */
     val ALIAS: Map<String, String> = mapOf(

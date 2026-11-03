@@ -290,7 +290,8 @@ internal class ExecutionCore(
                         com.phoneagent.engine.execution.VerifyResult(
                             false,
                             "${r.reason}；shell 兜底（am start）也未能唤醒语音助手。" +
-                                "请检查设备的默认语音助手设置，或改用其他方式完成任务",
+                                "请在系统设置里确认默认语音助手，或改用本地直达能力完成" +
+                                "（定闹钟/倒计时用 set_alarm / set_timer，打开应用用 open_app）",
                             "", "",
                         )
                     } else {
@@ -305,6 +306,27 @@ internal class ExecutionCore(
                     val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
                     com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
+                }
+            }
+            ActionType.SET_ALARM -> {
+                // 时钟直达：AlarmClock 意图创建闹钟，不经语音助手、不模拟点击。
+                // 无 root 读不到时钟库，因此成功=“已派发”，不谎称已验证（沿用 Eta 的 verified=false 语义）
+                when (val r = com.phoneagent.device.clock.ClockChannel(appContext).setAlarm(
+                    action.hour, action.minute, action.repeatDays, action.text,
+                )) {
+                    is com.phoneagent.device.clock.ClockResult.Ok ->
+                        com.phoneagent.engine.execution.VerifyResult(true, r.message, snapshot.packageName ?: "", "")
+                    is com.phoneagent.device.clock.ClockResult.Failure ->
+                        com.phoneagent.engine.execution.VerifyResult(false, r.reason, snapshot.packageName ?: "", "")
+                }
+            }
+            ActionType.SET_TIMER -> {
+                val seconds = action.durationMs?.let { it / 1000 }
+                when (val r = com.phoneagent.device.clock.ClockChannel(appContext).setTimer(seconds, action.text)) {
+                    is com.phoneagent.device.clock.ClockResult.Ok ->
+                        com.phoneagent.engine.execution.VerifyResult(true, r.message, snapshot.packageName ?: "", "")
+                    is com.phoneagent.device.clock.ClockResult.Failure ->
+                        com.phoneagent.engine.execution.VerifyResult(false, r.reason, snapshot.packageName ?: "", "")
                 }
             }
             ActionType.READ_NOTIFS -> {
@@ -784,47 +806,37 @@ internal class ExecutionCore(
     }
 
     /**
-     * shell 兜底唤醒语音助手：无障碍 startActivity 被系统静默拦截时，
-     * shell 通道不受后台启动限制。三级尝试：语音指令 am start → 默认助理 am start →
-     * 长按电源键（ROM 设置了"长按电源键唤醒语音助手"时直达；未设置会弹电源菜单，
-     * 因此该级必须验证到助手窗口才算成功）。最后用无障碍窗口验证
-     * （探测不到包名时视为尽力而为的成功，与「仅拉起」语义一致）。
+     * shell 兜底唤醒语音助手：无障碍 startActivity 被系统静默拦截时，shell 通道不受后台启动限制。
+     *
+     * 只发**一条**命令：入口由探测结果决定（语音指令入口 / 默认助理入口 / 厂商助手），
+     * 不再"语音指令 → 默认助理 → 长按电源键"连环试三条。选错入口或设备确实没配助手时，
+     * 多发两条只会把失败时间拖成三倍；探测阶段已经把"用哪一个"确定下来了。
      */
     private suspend fun shellWakeAssistant(executor: ActionExecutor): Boolean {
-        val probePkg = runCatchingLogged(TAG, "探测语音助手包名") {
-            com.phoneagent.provider.a11y.VoiceAssistantDetector(appContext).probe()?.packageName
-        }.getOrNull()
-        // requireWindow：该入口拉起后必须验证到助手窗口才算成功。
-        // am start 失败多半是窗口没来但指令本身被接受，沿用尽力而为语义；
-        // 长按电源键在未配置"唤醒助手"的 ROM 上会弹电源菜单——必须验证窗口，否则会误报成功
-        val attempts = listOf(
-            ShellAttempt("am start -a android.intent.action.VOICE_COMMAND", requireWindow = false),
-            ShellAttempt("am start -a android.intent.action.ASSIST", requireWindow = false),
-            // KEYCODE_POWER=26 长按：ROM 设置了"长按电源键唤醒语音助手"时直达助手
-            ShellAttempt("input keyevent --longpress 26", requireWindow = true),
-        )
-        var anyAccepted = false
-        for (attempt in attempts) {
-            val out = runCatchingLogged(TAG, "shell 唤醒助手 ${attempt.cmd}") { execShellViaChannel(attempt.cmd) }.getOrNull()
-            val accepted = when (out) {
-                is ShizukuManager.ShellResult.Success ->
-                    !out.output.contains("error", ignoreCase = true) &&
-                        !out.output.contains("exception", ignoreCase = true)
-                else -> false
-            }
-            if (accepted) {
-                // 拉起指令已被 shell 接受：稍候再验证窗口，冷启动的厂商助手需要时间
-                delay(1200)
-                if (executor.assistantVisible(probePkg)) return true
-                if (!attempt.requireWindow) anyAccepted = true
-            }
+        val target = runCatchingLogged(TAG, "探测语音助手包名") {
+            com.phoneagent.provider.a11y.VoiceAssistantDetector(appContext).probe()
+        }.getOrNull() ?: return false
+        val pkg = target.packageName
+        val cmd = when (target.via) {
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND ->
+                "am start -a android.intent.action.VOICE_COMMAND"
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.ASSIST,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.ROLE,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.SETTINGS,
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_INTERACTION,
+            -> "am start -a android.intent.action.ASSIST"
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VENDOR ->
+                pkg?.let { "monkey -p $it -c android.intent.category.LAUNCHER 1" } ?: return false
         }
-        // 指令被接受但窗口验证不到（探测包名与实际助手不一致等）：仍按尽力而为放行传话
-        return anyAccepted
+        val out = runCatchingLogged(TAG, "shell 唤醒助手 $cmd") { execShellViaChannel(cmd) }.getOrNull()
+        val accepted = (out as? ShizukuManager.ShellResult.Success)?.let {
+            !it.output.contains("error", ignoreCase = true) && !it.output.contains("exception", ignoreCase = true)
+        } ?: false
+        if (!accepted) return false
+        // 已知包名才验证窗口；系统入口未钉包名时按"指令已被接受"放行（与仅拉起语义一致）
+        delay(1200)
+        return if (pkg.isNullOrBlank()) true else executor.assistantVisible(pkg)
     }
-
-    /** shell 唤醒尝试：一条命令 + 是否强制要求验证到助手窗口 */
-    private data class ShellAttempt(val cmd: String, val requireWindow: Boolean)
 
     /**
      * 传话已填入文字但没点到发送时，用 shell 回车键补发（KEYCODE_ENTER=66）。

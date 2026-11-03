@@ -56,7 +56,7 @@ class CapabilityRegistryTest {
         assertEquals("均衡档补充与 MID 不一致", CapabilityRegistry.ofRisk(RiskTier.MID), ActionPolicy.midRisk)
         assertEquals("高风险档与 HIGH 不一致", CapabilityRegistry.ofRisk(RiskTier.HIGH), ActionPolicy.highRisk)
         assertEquals("自由专属与 EXTENDED 不一致", CapabilityRegistry.ofRisk(RiskTier.EXTENDED), ActionPolicy.freeOnly)
-        assertEquals("三档数量变化：低/中/高/自由专属", listOf(23, 16, 3, 2), listOf(
+        assertEquals("三档数量变化：低/中/高/自由专属", listOf(25, 16, 3, 2), listOf(
             ActionPolicy.lowRisk.size, ActionPolicy.midRisk.size, ActionPolicy.highRisk.size, ActionPolicy.freeOnly.size,
         ))
     }
@@ -84,6 +84,7 @@ class CapabilityRegistryTest {
         assertEquals(6, CapabilityRegistry.ofChannel(CapabilityChannel.BROWSER).size)
         assertEquals(1, CapabilityRegistry.ofChannel(CapabilityChannel.VISION).size)
         assertEquals(1, CapabilityRegistry.ofChannel(CapabilityChannel.A11Y).size)
+        assertEquals(2, CapabilityRegistry.ofChannel(CapabilityChannel.CLOCK).size)
     }
 
     @Test

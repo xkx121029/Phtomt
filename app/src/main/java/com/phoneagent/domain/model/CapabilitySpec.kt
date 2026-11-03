@@ -38,6 +38,9 @@ enum class CapabilityChannel(val key: String) {
     /** 屏幕操作：无障碍 / Shizuku / 无线 ADB 按 ChannelLadder 择优 */
     SCREEN("screen"),
 
+    /** 系统时钟应用直达（AlarmClock 意图：定闹钟 / 倒计时，不经语音助手、不模拟点击） */
+    CLOCK("clock"),
+
     /** 内置浏览器（WebView 可见页，独立通道） */
     BROWSER("browser"),
 
@@ -186,9 +189,29 @@ object CapabilityRegistry {
 
     /** 全部能力声明（顺序 = App 技能列表展示顺序） */
     val all: List<CapabilitySpec> = listOf(
-        CapabilitySpec(
-
         // ---- 低风险（保守模式放行） ----
+        CapabilitySpec(
+            intent = IntentType.SET_ALARM, name = "定闹钟", category = "时钟",
+            summary = "直接在本机时钟应用创建闹钟（不经语音助手、不模拟点击）：hour/minute 为 24 小时制，或只给 when（「7点半」「半小时后」「明天早上6点」「每天7点」）由端侧解析；repeat_days 可写「每天/工作日/周一三五」；text 为标签。LOW 风险：保守档也允许，可撤销、不改动用户数据。",
+            params = listOf(
+                CapabilityParam("when", "时间说法", "text", description = "口语时间：「7点半」「半小时后」「明天早上6点」「每天7点」"),
+                CapabilityParam("hour", "小时", "number", description = "24 小时制 0~23；与 when 二选一"),
+                CapabilityParam("minute", "分钟", "number", description = "0~59，缺省 0"),
+                CapabilityParam("repeat_days", "重复星期", "text", description = "「每天」「工作日」「周末」「周一三五」，也接受 mon..sun 列表"),
+                CapabilityParam("text", "标签", "text", description = "闹钟标签，如「起床」"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.CLOCK, action = ActionType.SET_ALARM,
+        ),
+        CapabilitySpec(
+            intent = IntentType.SET_TIMER, name = "设倒计时", category = "时钟",
+            summary = "直接在本机时钟应用创建倒计时（不经语音助手）；duration_seconds 为秒数，text 为标签。LOW 风险：保守档也允许。",
+            params = listOf(
+                CapabilityParam("duration_seconds", "倒计时秒数", "number", required = true, description = "如 1800 = 30 分钟"),
+                CapabilityParam("text", "标签", "text", description = "倒计时标签，可选"),
+            ),
+            risk = RiskTier.LOW, channel = CapabilityChannel.CLOCK, action = ActionType.SET_TIMER,
+        ),
+        CapabilitySpec(
             intent = IntentType.WAIT, name = "等待", category = "操作",
             summary = "原地等待 wait_ms 毫秒，用于等待页面加载。",
             params = listOf(CapabilityParam("wait_ms", "等待毫秒", "number", required = true, defaultValue = "1000")),
