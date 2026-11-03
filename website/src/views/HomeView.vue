@@ -147,7 +147,7 @@ onMounted(async () => {
         </div>
 
         <div v-reveal class="sec-more">
-          <RouterLink to="/features" class="btn">查看全部 {{ data?.features?.length || 18 }} 项能力</RouterLink>
+          <RouterLink to="/features" class="btn">查看全部 {{ data?.features?.length || 25 }} 项能力</RouterLink>
         </div>
       </div>
     </section>

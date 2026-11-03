@@ -1,17 +1,17 @@
-/* 由 scripts/snapshot.mjs 生成于 2026-09-22T14:15:32.330Z，请勿手工编辑。
+/* 由 scripts/snapshot.mjs 生成于 2026-11-03T11:08:57.759Z，请勿手工编辑。
    静态导出（GitHub Pages）用这份快照替代后端 API。 */
 export const snapshot = {
-  "builtAt": "2026-09-22T14:15:32.330Z",
+  "builtAt": "2026-11-03T11:08:57.759Z",
   "static": true,
   "site": {
     "name": "Happy Phone Agent",
     "shortName": "Happy Agent",
     "slug": "phtomt",
     "tagline": "让手机自己动手",
-    "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。",
-    "version": "0.1.384",
-    "buildNumber": 384,
-    "updatedAt": "2026-09-20T13:40:27.690Z",
+    "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
+    "version": "0.2.1264",
+    "buildNumber": 1264,
+    "updatedAt": "2026-11-02T16:23:00.958Z",
     "links": {
       "github": "https://github.com/xkx121029/Phtomt",
       "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -22,22 +22,22 @@ export const snapshot = {
     "requirements": {
       "minAndroid": "8.0",
       "minApi": 26,
-      "targetApi": 35,
-      "arch": "arm64-v8a / armeabi-v7a",
+      "targetApi": 36,
+      "arch": "arm64-v8a",
       "packageName": "com.phoneagent"
     },
     "techStack": [
       {
         "name": "Kotlin",
-        "version": "2.0.21"
+        "version": "2.4.20"
       },
       {
         "name": "Jetpack Compose",
-        "version": "2024.12.01"
+        "version": "2026.06.01"
       },
       {
         "name": "Material 3",
-        "version": "1.3.1"
+        "version": "1.4.0"
       },
       {
         "name": "Koin",
@@ -74,21 +74,14 @@ export const snapshot = {
         "id": "accessibility",
         "name": "无障碍通道",
         "level": "普通应用权限",
-        "desc": "通过 AccessibilityService 读取控件树并执行点击、滑动、输入，兼容性最好，无需额外安装。",
+        "desc": "通过 AccessibilityService 读取控件树并执行点击、滑动、输入，兼容性最好，无需 Root。执行能力运行在独立服务组件中，主应用内置其 APK 并引导安装。",
         "default": true
       },
       {
-        "id": "adb",
-        "name": "无线 ADB 通道",
-        "level": "shell 权限",
-        "desc": "手机自带无线调试，配对后即可执行 am / pm / settings 等系统命令，应用启动走真实包名而非模拟点按。",
-        "default": false
-      },
-      {
         "id": "shizuku",
-        "name": "Shizuku 通道",
+        "name": "内置 Shizuku",
         "level": "shell 权限",
-        "desc": "可选增强，借助 Shizuku 拿到 ADB 级权限；未安装或授权失败不影响无线 ADB 主通道。",
+        "desc": "Shizuku server / starter 随服务组件一并分发，免装官方 App。首次启动用手机自带的无线调试完成引导，之后即可执行 am / pm / settings 等系统命令；启动应用走真实包名，不靠模拟点按。",
         "default": false
       },
       {
@@ -100,39 +93,42 @@ export const snapshot = {
       }
     ],
     "latest": {
-      "version": "v0.1.384",
-      "build": 384,
-      "channel": "stable",
-      "date": "2026-09-20",
+      "version": "v0.2.1264",
+      "build": 1264,
+      "channel": "dev",
+      "date": "2026-11-02",
       "published": true,
-      "title": "当前开发版",
-      "summary": "AI 此前是在\"真空\"里做决策的：它看不到今天几号、当前在哪个应用、有没有网、电量还剩多少，也记不住 上一轮让它做过什么。同一句话「再发一遍」被当成全新任务，「帮我看看装了哪些应用」则只能一步步翻设置页。 本次给它补上三类上下文：**环境事实**（每步自动注入）、**按需取数**（新增 device_query 技能）、 **会话承接**（上一轮任务的目标与结论）。",
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
       "apk": {
-        "file": "HappyAgent-0.1.384.apk",
-        "size": 14959209,
-        "sizeText": "14 MB",
-        "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23"
+        "file": "HappyAgent-0.2.1264.apk",
+        "size": 70876730,
+        "sizeText": "68 MB",
+        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
       },
       "notes": [
-        "Debug 构建，用于内测与自用",
-        "首次安装需手动授予无障碍、悬浮窗与通知权限"
+        "DEV 构建"
       ],
-      "downloads": 2
+      "downloads": 0
     },
     "stats": {
-      "totalDownloads": 2,
-      "lastDownloadAt": "2026-09-20T14:15:16.573Z",
+      "totalDownloads": 4,
+      "lastDownloadAt": "2026-10-12T05:55:02.141Z",
       "byVersion": {
-        "v0.1.384": 2
+        "v0.1.384": 4
       },
       "recent": [
         {
           "day": "2026-09-20",
           "count": 2
+        },
+        {
+          "day": "2026-10-12",
+          "count": 2
         }
       ],
-      "apkTotalSize": 14959209,
-      "apkTotalSizeText": "14 MB"
+      "apkTotalSize": 365021675,
+      "apkTotalSizeText": "348 MB"
     }
   },
   "features": [
@@ -145,143 +141,294 @@ export const snapshot = {
       "detail": "接入任意 OpenAI 兼容端点（自建 Ollama / LM Studio / one-api 都行）。规划时步数动态收敛到 3~8 步，执行中每一步都以当前页面元素树为唯一依据——目标控件不在当前页面就不允许点击，找不到先滚动查找，仍找不到则中止并说明原因。"
     },
     {
-      "id": "intent",
-      "order": 2,
-      "tag": "执行",
-      "title": "15 个高层语义意图",
-      "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
-      "detail": "back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input 全部由 IntentTranslator 实时转译为端侧动作。有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
-    },
-    {
-      "id": "vision",
-      "order": 3,
-      "tag": "感知",
-      "title": "双引擎视觉理解",
-      "summary": "元素树可读时走端侧，稀疏时自动切云端视觉模型补位。",
-      "detail": "无障碍能读到的控件（元素数 > 3）视为简单页面，优先端侧处理；元素树稀疏（≤ 3）视为复杂页面，自动启用云端视觉模型做截图描述与坐标定位，即使截图开关是关的也会兜底。"
-    },
-    {
       "id": "chain",
-      "order": 4,
+      "order": 2,
       "tag": "决策",
       "title": "多模型链路聚合",
       "summary": "主模型决策 + 视觉模型定位 + 思考模型规划，按需组合，默认关闭。",
-      "detail": "默认只跑主模型（加可选视觉模型），省额度、省延迟。开启链路聚合后，思考模型负责复杂规划、歧义检测与重规划，视觉模型只负责截图描述与坐标定位。三者的地址、模型名、密钥都在设置页图形化配置。"
+      "detail": "默认只跑主模型（可加一个视觉模型），省额度、省延迟。开启链路聚合后，思考模型负责复杂规划、歧义检测与重规划，视觉模型只负责截图描述与坐标定位。三者的地址、模型名、密钥都在设置页图形化配置，并提供模型目录与连通性测试。"
+    },
+    {
+      "id": "local",
+      "order": 3,
+      "tag": "决策",
+      "title": "端侧快速决策与跳广告",
+      "summary": "弹窗、加载、广告这类高频场景本地直接处理，不花云端额度。",
+      "detail": "LocalDecisionEngine 覆盖高频重复场景，命中即本地决策，省掉一次往返。AdSkipperCore 独立于 Agent 运行，按「青少年模式弹窗 > 跳过按钮 > 倒计时角标 > 关闭按钮」的优先级识别四类广告形态，配合精确匹配、位置约束与控件类型约束降低误触，内置冷却防止反复戳同一个按钮。"
+    },
+    {
+      "id": "vision",
+      "order": 4,
+      "tag": "感知",
+      "title": "三引擎视觉理解",
+      "summary": "端侧 3B 优先，元素树可读时走本地，稀疏时自动切云端视觉模型补位。",
+      "detail": "无障碍能读到的控件（元素数 > 3）视为简单页面，优先端侧处理；元素树稀疏（≤ 3）视为复杂页面，自动启用云端视觉模型做截图描述与坐标定位，即使截图开关是关的也会兜底。端侧 3B 模型可用时优先由它框选控件，不可用时逐级回落到云端视觉与本地 OCR。"
+    },
+    {
+      "id": "ondevice",
+      "order": 5,
+      "tag": "感知",
+      "title": "端侧 3B 视觉模型",
+      "summary": "Qwen2.5-VL-3B 走 llama.cpp 本机推理，截图不出设备。",
+      "detail": "模型合计约 3.1GB，下载支持断点续传，中断后可继续。开启「混合路由」后，元素树可读的简单任务交给端侧 3B 省额度，游戏、WebView 这类复杂页面直接走云端视觉。识别全过程在本机完成，只有确实需要云端时才发图。"
+    },
+    {
+      "id": "intent",
+      "order": 6,
+      "tag": "执行",
+      "title": "46 个语义意图",
+      "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
+      "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 46 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 6 个内置浏览器动作。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
     },
     {
       "id": "channel",
-      "order": 5,
+      "order": 7,
       "tag": "执行",
       "title": "四通道执行体系",
-      "summary": "无线 ADB 为主，Shizuku 可选，Termux 补命令行，无障碍兜底。",
-      "detail": "AUTO 模式下按「无线 ADB → Shizuku → Termux」降级。无线 ADB 连接成功即就绪，可直接执行 shell；Shizuku 失败或超时不阻塞主流程。AI 给的裸包名会被自动补全为 launch action，不会因为少写参数而空转。"
+      "summary": "无障碍 / 无线 ADB / Shizuku / Termux 收进独立 Provider 应用，主应用内置并引导安装。",
+      "detail": "执行通道从 v0.2.1080 起整体迁入同签名的 com.phoneagent.provider，主应用通过 AIDL 远程调用，两端共用同一份接口契约。主应用内置该 APK 并在首次使用时引导安装，签名不一致无法绑定。AUTO 模式下按「无线 ADB → Shizuku → Termux」降级；Shizuku 失败或超时不阻塞主流程，AI 给的裸包名会被自动补全为 launch action，不会因为少写参数而空转。"
     },
     {
       "id": "shell",
-      "order": 6,
+      "order": 8,
       "tag": "执行",
       "title": "AI 友好命令解析",
       "summary": "tap / sw / key / text 这类短命令，坐标支持像素、比例、百分比三种写法。",
       "detail": "ShellCommands 把 AI 的自然短命令翻译成真实 ADB 命令，模型不用记 ADB 语法。命令输出会被截取（最多 1200 字）回灌到下一轮决策上下文里，让 AI 看得到自己刚刚做了什么。"
     },
     {
-      "id": "safety",
-      "order": 7,
-      "tag": "安全",
-      "title": "安全防护与脱敏",
-      "summary": "敏感页面自动只读，手机号 / 身份证 / 银行卡号自动遮蔽。",
-      "detail": "EngineRules 作为硬约束规则引擎，在动作真正下发前拦截危险操作；SensitivePageDetector 识别支付、个人信息等页面并切换为只读横切；DataSanitizer 对 11 位手机号、18 位身份证号、银行卡号做脱敏后再进模型上下文。"
-    },
-    {
       "id": "verify",
-      "order": 8,
+      "order": 9,
       "tag": "执行",
       "title": "页面指纹验证",
       "summary": "动作执行前后比对控件特征，确认「点下去了」还是「点空了」。",
       "detail": "VerifiedClickExecutor 在点击前后各取一次页面指纹，不一致才算生效。这一步把「AI 以为点了」和「页面真的变了」区分开，是长线任务不跑偏的关键。"
     },
     {
-      "id": "local",
-      "order": 9,
-      "tag": "性能",
-      "title": "端侧快速决策",
-      "summary": "弹窗、加载、广告这类高频场景本地直接处理，不花云端额度。",
-      "detail": "LocalDecisionEngine 覆盖高频重复场景，命中即本地决策，省掉一次往返。配合 AdSkipperCore 的冷却机制，既不会漏跳也不会反复戳同一个按钮。"
-    },
-    {
-      "id": "adskip",
-      "order": 10,
-      "tag": "能力",
-      "title": "内置跳广告",
-      "summary": "独立于 Agent 运行：青少年模式弹窗 > 跳过按钮 > 倒计时角标 > 关闭按钮。",
-      "detail": "AdSkipperCore 按优先级识别四类广告形态，配合精确匹配、位置约束与控件类型约束降低误触，内置冷却防止重复点击死循环。"
-    },
-    {
-      "id": "overlay",
-      "order": 11,
-      "tag": "交互",
-      "title": "液态玻璃悬浮窗",
-      "summary": "半透明白玻璃，宽 300dp，高度随内容自适应，跑马灯贴屏幕顶边。",
-      "detail": "执行时只占「跑马灯 + 标题 + 状态」三行，AI 详情默认折叠，展开可看「发送给 AI / AI 返回 / 审核结论」三段原文。截图时自动隐藏、截完立刻恢复，全过程 ≤ 0.3 秒。任务完成显示打勾动画并停在屏幕上，不自动消失。"
-    },
-    {
-      "id": "takeover",
-      "order": 12,
-      "tag": "交互",
-      "title": "随时接管与纠偏",
-      "summary": "AI 拿不准会停下来问，你也能随时插话改方向。",
-      "detail": "遇到歧义时悬浮窗弹出澄清选项；执行中可随时输入补充指令，会被追加进任务记忆的「用户要求」而不是覆盖原始目标。「已手动处理」按钮让人工接管后任务继续，而不是直接退出。"
-    },
-    {
       "id": "memory",
-      "order": 13,
+      "order": 10,
       "tag": "记忆",
-      "title": "任务记忆",
+      "title": "任务记忆与断点续传",
       "summary": "记住目标、用户要求、已验证方法与进度，长线任务不丢上下文。",
-      "detail": "任务记忆独立持久化，按 taskId 归属判定，避免旧任务的收尾逻辑误标新任务。用户中途的每一条补充要求按精确去重后追加保留，不会因为语义相近被合并掉。"
+      "detail": "任务记忆独立持久化，按 taskId 归属判定，避免旧任务的收尾逻辑误标新任务。用户中途的每一条补充要求按精确去重后追加保留，不会因为语义相近被合并掉。任务执行中自动保存检查点，中断后可在「长线任务」页续传；执行策略可选智能（模板命中按脚本、否则逐步）、脚本（复用已生成计划自主推进）、逐步（每步云端决策，最稳）。多任务按队列顺序执行，随时可取消与重规划。"
     },
     {
-      "id": "queue",
-      "order": 14,
-      "tag": "任务",
-      "title": "多任务队列与检查点",
-      "summary": "顺序执行多个任务，随时取消、重规划，模板库沉淀可复用流程。",
-      "detail": "TaskStore 保存检查点与任务模板库；TemplateMatcher 命中模板时直接复用验证过的路径。模板必须由软件预置或经用户明确确认后才入库，AI 不能自行创建模板。"
+      "id": "graph",
+      "order": 11,
+      "tag": "记忆",
+      "title": "记忆图谱与页面记忆",
+      "summary": "任务记忆、异常经验与用户画像织成图谱，页面记忆可下钻到具体界面。",
+      "detail": "记忆图谱把三类记忆放在同一张图上：任务记忆记录目标与已验证路径，异常经验沉淀失败原因，用户画像保存长期偏好。页面记忆按包名与页面指纹归档，配合虚拟屏画布可以回看 Agent 当时看到的界面结构，排查「它为什么会这么点」比翻日志直观得多。"
     },
     {
       "id": "skill",
-      "order": 15,
+      "order": 12,
       "tag": "扩展",
       "title": "技能与 MCP",
       "summary": "内置技能目录 + 远程 MCP 工具，参数校验与失败原因都是中文。",
-      "detail": "SkillCatalog 与 IntentType.ALL 一一对应，被禁用的技能在归一化阶段直接拒绝。MCP 技能调用 20 秒超时、输出截断 1200 字，连续 3 次被拒即停止任务，避免无限循环。"
+      "detail": "SkillCatalog 与语义意图一一对应，被禁用的技能在归一化阶段直接拒绝。MCP 技能调用 20 秒超时、输出截断 1200 字，连续 3 次被拒即停止任务，避免无限循环。技能的启用、凭据与调用记录都在设置页可查。"
+    },
+    {
+      "id": "coding",
+      "order": 13,
+      "tag": "扩展",
+      "title": "设备端编码 Agent",
+      "summary": "Coding 页是一个独立的编码 Agent：开工作区、改代码、看预览，全程在本机推进。",
+      "detail": "支持新建工作区或从设备里选目录，内置编辑器与预览，可接入本地或云端模型。工具调用按授权等级放行，遇到敏感操作会先弹确认；完整执行内容与回传给 AI 的结果都能展开查看，随时可停止。"
+    },
+    {
+      "id": "browser",
+      "order": 14,
+      "tag": "扩展",
+      "title": "内置浏览器",
+      "summary": "端侧 WebView 可见页，AI 能亲眼看到网页，不依赖 Termux、不操控用户设备。",
+      "detail": "browse_open / read / click / input / scroll / back 六个意图由浏览器通道直接落到 DOM 上：打开网址、抓取标题正文与链接表单、按文字或 CSS 选择器点击、填表、滚动、页内后退。读回来的内容会回注到下一轮决策，网页任务不必再靠截图猜。"
+    },
+    {
+      "id": "test",
+      "order": 15,
+      "tag": "扩展",
+      "title": "AI 测试工作台",
+      "summary": "单独调提示词与模型，跑测试方案，不改正式配置也能验证效果。",
+      "detail": "在「AI 测试工作台」里可以切换中英文提示词、临时填 Base URL / 模型名 / 密钥，按预设方案批量跑并流式看输出，结果可一键清除。它和正式的模型配置互不影响，适合改提示词前后做对照。"
     },
     {
       "id": "doc",
       "order": 16,
-      "tag": "输出",
+      "tag": "扩展",
       "title": "文档结果直出",
       "summary": "需要写文档的任务直接产出结果页，不在屏幕上假装打字。",
       "detail": "write_doc 意图由 DocumentEngine 落盘到应用私有目录，并推给 Agent 页内嵌 Markdown 预览（可展开 / 收起 / 关闭）。提示词里有铁律约束：文档类任务必须直接输出 write_doc，不许打开备忘录打字或用 shell 写文件。"
     },
     {
-      "id": "i18n",
+      "id": "entry",
       "order": 17,
+      "tag": "集成",
+      "title": "系统级入口",
+      "summary": "深链、分享、选中文字、快捷设置磁贴、桌面快捷方式与 Widget 都能直接开任务。",
+      "detail": "hpa://task?text=… 直接开任务，hpa://resume 从最近检查点续跑；任何 App 里分享文字/链接或用「处理选中文字」即可交给 Agent；下拉通知栏有快捷设置磁贴，用来一键唤起/收起悬浮窗（刻意不做启停任务，避免误触）；长按图标有「新任务 / 继续上次任务 / 打开记忆页」；桌面 Widget 显示任务名、阶段与步数。运行中进来的请求自动进队列，空闲才开新任务。"
+    },
+    {
+      "id": "safety",
+      "order": 18,
+      "tag": "安全",
+      "title": "安全防护与脱敏",
+      "summary": "敏感页面自动只读，手机号 / 身份证 / 银行卡号自动遮蔽。",
+      "detail": "EngineRules 作为硬约束规则引擎，在动作真正下发前拦截危险操作；SensitivePageDetector 识别支付、个人信息等页面并切换为只读横切；DataSanitizer 对 11 位手机号、18 位身份证号、银行卡号做脱敏后再进模型上下文。"
+    },
+    {
+      "id": "confirm",
+      "order": 19,
+      "tag": "安全",
+      "title": "不可逆动作必须确认",
+      "summary": "删除、清通知这类回不去的操作，先弹确认卡再执行。",
+      "detail": "delete 等不可逆意图自动带 needs_confirmation，界面弹出确认卡由人决定。AI 自写命令（shell）与直接调无障碍端点（a11y）属于自由模式专属能力，保守与均衡策略会一律拒绝，只有明确切到自由模式才放行。"
+    },
+    {
+      "id": "overlay",
+      "order": 20,
+      "tag": "体验",
+      "title": "桌面悬浮窗",
+      "summary": "宽 300dp，品牌色 85% 不透明底 + 发丝描边，高度随内容自适应。",
+      "detail": "执行时只占「跑马灯 + 标题 + 状态」三行，AI 详情默认折叠，展开可看「发送给 AI / AI 返回 / 审核结论」三段原文。刻意不做背景模糊——框架的 blurBehind 会把整块屏幕糊掉而不只是卡片，所以卡片就是一块干净的半透明品牌色。点击光标指示 AI 正在点哪里，可开启「先到位再点击」与边缘光效，执行时截图会自动隐藏浮窗。任务完成显示打勾动画并停在屏幕上，不自动消失。"
+    },
+    {
+      "id": "takeover",
+      "order": 21,
+      "tag": "体验",
+      "title": "随时接管与纠偏",
+      "summary": "AI 拿不准会停下来问，你也能随时插话改方向。",
+      "detail": "遇到歧义时悬浮窗弹出澄清选项；执行中可随时输入补充指令，会被追加进任务记忆的「用户要求」而不是覆盖原始目标。「已手动处理」按钮让人工接管后任务继续，而不是直接退出。"
+    },
+    {
+      "id": "theme",
+      "order": 22,
+      "tag": "体验",
+      "title": "四套色板与宽屏布局",
+      "summary": "玄青 / 赭石 / 黛蓝 / 绛紫四套色板，深色模式全适配，宽屏自动换布局。",
+      "detail": "主题跟随系统深浅色，四套色板在「设置 → 主题」即时切换，语义颜色令牌集中管理。布局由可用宽高决定：宽屏常驻侧栏、窄屏底部悬浮条，正文收口在统一最大宽度，设置页在宽屏改为「左分类 + 右详情」双栏，对话气泡按宽度限宽。入场动画统一为自下而上淡入位移，全局触觉反馈。"
+    },
+    {
+      "id": "voice",
+      "order": 23,
+      "tag": "体验",
+      "title": "端侧语音输入",
+      "summary": "输入栏的麦克风走系统识别并内嵌显示，说完先回填、不直接发送。",
+      "detail": "使用系统 SpeechRecognizer 内嵌识别，不弹系统全屏对话框。识别结果回填到输入框，由你过目确认后再发送，避免口误直接变成任务。"
+    },
+    {
+      "id": "update",
+      "order": 24,
+      "tag": "体验",
+      "title": "应用内更新",
+      "summary": "按渠道矩阵查新版本，下载后校验哈希，能静默装就静默装。",
+      "detail": "启动时静默查询新版本，有更新才提示。稳定版只收 stable，测试版收 beta + stable，开发版收 dev + beta + stable，每日构建全收——版本更高、或同版本构建号更高即判定有更新。下载带断点续传与 SHA-256 校验；有无线 ADB 或 Shizuku 通路时静默安装，否则回落系统安装器。官方站点会优先走蓝奏云镜像，镜像不可用时静默回落官网直链。"
+    },
+    {
+      "id": "i18n",
+      "order": 25,
       "tag": "体验",
       "title": "中英双语与自动翻译",
       "summary": "提示词可手动切换中英；AI 的英文输出自动翻成中文再展示。",
       "detail": "AI 回复若以非中文为主（中文字符占比低于 30%）会自动翻译后再展示，翻译失败则回退原文。翻译结果带缓存去重，不会为同一句话重复付费。"
-    },
-    {
-      "id": "design",
-      "order": 18,
-      "tag": "体验",
-      "title": "Material 3 Expressive",
-      "summary": "玄青 · 流萤配色，深色模式、高对比度无障碍、边缘光效全适配。",
-      "detail": "语义颜色令牌集中管理，浅色 / 深色 / 高对比度四套主题；入场动画统一为自下而上淡入位移，全局触觉反馈，动效曲线统一收敛在 Motion 模块。"
     }
   ],
   "releases": [
+    {
+      "version": "v0.2.1264",
+      "build": 1264,
+      "channel": "dev",
+      "date": "2026-11-02",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.1264.apk",
+        "size": 70876730,
+        "sizeText": "68 MB",
+        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1252",
+      "build": 1252,
+      "channel": "dev",
+      "date": "2026-11-01",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.1252.apk",
+        "size": 70767522,
+        "sizeText": "67 MB",
+        "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee\r"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1248",
+      "build": 1248,
+      "channel": "beta",
+      "date": "2026-10-31",
+      "published": true,
+      "title": "测试版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.1248.apk",
+        "size": 69587050,
+        "sizeText": "66 MB",
+        "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb\r"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1231",
+      "build": 1231,
+      "channel": "dev",
+      "date": "2026-10-29",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+      "apk": {
+        "file": "HappyAgent-0.2.1231.apk",
+        "size": 69430446,
+        "sizeText": "66 MB",
+        "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150\r"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1128",
+      "build": 1128,
+      "channel": "dev",
+      "date": "2026-10-26",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+      "apk": {
+        "file": "HappyAgent-0.2.1128.apk",
+        "size": 69400718,
+        "sizeText": "66 MB",
+        "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031\r"
+      },
+      "notes": [
+        "开发版构建"
+      ],
+      "downloads": 0
+    },
     {
       "version": "v0.1.384",
       "build": 384,
@@ -300,10 +447,40 @@ export const snapshot = {
         "Debug 构建，用于内测与自用",
         "首次安装需手动授予无障碍、悬浮窗与通知权限"
       ],
-      "downloads": 2
+      "downloads": 4
     }
   ],
   "changelog": [
+    {
+      "version": "v0.2.1264",
+      "date": "2026-11-02",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.1252",
+      "date": "2026-11-01",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.1248",
+      "date": "2026-10-31",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.1231",
+      "date": "2026-10-29",
+      "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+      "sections": []
+    },
+    {
+      "version": "v0.2.1128",
+      "date": "2026-10-26",
+      "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+      "sections": []
+    },
     {
       "version": "v0.1.334",
       "date": "2026-09-20",
@@ -1180,7 +1357,7 @@ export const snapshot = {
       "group": "入门",
       "order": 1,
       "summary": "从下载安装到跑通第一个任务。",
-      "body": "## 环境要求\n\n| 项目 | 要求 |\n| --- | --- |\n| 系统 | Android 8.0（API 26）及以上 |\n| 架构 | arm64-v8a / armeabi-v7a |\n| 网络 | 需要能访问你配置的模型服务 |\n| 可选 | Shizuku（高权限执行）、Termux（命令行取数） |\n\n## 安装\n\n1. 到 [下载页](/download) 取最新 APK，直接安装（Debug 包需允许「安装未知来源应用」）。\n2. 打开应用，按首页的**权限雷达**逐项授权。\n\n## 必须授予的权限\n\n- **无障碍服务** —— 读取屏幕控件并执行点击、滑动、输入。这是 Agent 的手和眼，不授予则完全无法工作。\n- **悬浮窗** —— 显示实时进度与接管面板。可在设置里关掉，关掉后任务照常执行，只是看不到浮窗。\n- **通知权限** —— 前台服务与进度通知。\n- **屏幕录制**（可选） —— 仅当需要云端视觉模型截图时使用。\n\n## 配置模型\n\n进入**设置 → 模型配置**，填写：\n\n- **API 地址**：任意 OpenAI 兼容端点，例如 `http://192.168.1.5:8000/v1`、`http://localhost:11434/v1`。不写协议会自动补全：内网地址、localhost、单段主机名补 `http://`，公网域名补 `https://`。\n- **API Key**\n- **模型名**\n\n填完点**测试连接**，通过后才允许保存——避免把错误配置写进 DataStore 之后再花时间排查。\n\n## 跑通第一个任务\n\n回到首页，在输入框里写一句人话，比如「打开设置，把屏幕亮度调到一半」。点击开始后：\n\n1. 悬浮窗出现，跑马灯滚动显示当前步骤。\n2. Agent 会先规划 3~8 步，然后逐步执行。\n3. 遇到需要确认的操作，浮窗会停下来等你点。\n\n如果某一步卡住，直接在浮窗输入框里补充说明即可，任务不会中断。"
+      "body": "## 环境要求\n\n| 项目 | 要求 |\n| --- | --- |\n| 系统 | Android 8.0（API 26）及以上 |\n| 架构 | arm64-v8a |\n| 网络 | 需要能访问你配置的模型服务 |\n| 可选 | 内置 Shizuku（免装官方 App，高权限执行）、Termux（命令行取数） |\n\n## 安装\n\n1. 到 [下载页](/download) 取最新 APK，直接安装（Debug 包需允许「安装未知来源应用」）。\n2. 首次打开会提示安装内置服务组件（同签名），按引导完成；这一步给出 Shizuku shell 能力，也可以跳过。\n3. 打开应用，按首页的**权限雷达**逐项授权。\n\n## 必须授予的权限\n\n- **无障碍服务** —— 读取屏幕控件并执行点击、滑动、输入。这是 Agent 的手和眼，不授予则完全无法工作。\n- **悬浮窗** —— 显示实时进度与接管面板。可在设置里关掉，关掉后任务照常执行，只是看不到浮窗。\n- **通知权限** —— 前台服务与进度通知。\n- **屏幕录制**（可选） —— 仅当需要云端视觉模型截图时使用。\n\n## 配置模型\n\n进入**设置 → 模型配置**，填写：\n\n- **API 地址**：任意 OpenAI 兼容端点，例如 `http://192.168.1.5:8000/v1`、`http://localhost:11434/v1`。不写协议会自动补全：内网地址、localhost、单段主机名补 `http://`，公网域名补 `https://`。\n- **API Key**\n- **模型名**\n\n填完点**测试连接**，通过后才允许保存——避免把错误配置写进 DataStore 之后再花时间排查。\n\n## 跑通第一个任务\n\n回到首页，在输入框里写一句人话，比如「打开设置，把屏幕亮度调到一半」。点击开始后：\n\n1. 悬浮窗出现，跑马灯滚动显示当前步骤。\n2. Agent 会先规划 3~8 步，然后逐步执行。\n3. 遇到需要确认的操作，浮窗会停下来等你点。\n\n如果某一步卡住，直接在浮窗输入框里补充说明即可，任务不会中断。"
     },
     {
       "slug": "model-config",
@@ -1203,16 +1380,16 @@ export const snapshot = {
       "title": "执行通道",
       "group": "进阶",
       "order": 4,
-      "summary": "无线 ADB、Shizuku、Termux、无障碍四者的能力边界与选择建议。",
-      "body": "## 四条通道，能力完全不同\n\n| 通道 | 权限级别 | 能做什么 |\n| --- | --- | --- |\n| 无障碍 | 普通应用权限 | 读控件树、点击、滑动、输入文字 |\n| 无线 ADB | shell（adb） | `am` / `pm` / `settings` 等系统命令 |\n| Shizuku | shell（adb） | 同上，通过 Shizuku 授权获得 |\n| Termux | 普通应用权限 | curl / python / 文本处理，**不能**执行系统命令 |\n\n## 默认策略：无线 ADB 为主\n\n设置里的执行通道是三态偏好：`AUTO` / `ADB` / `SHIZUKU`（Termux 作为补充通道参与 AUTO 降级）。\n\n`AUTO` 下的顺序是：**无线 ADB → Shizuku → Termux → 无障碍**。\n\n无线 ADB 是主通道的理由很实际：Android 11+ 自带无线调试，配对一次即可长期使用，拿到的是货真价实的 shell 权限，且不需要额外安装任何应用。Shizuku 退居可选增强——拉起失败或超时都不会阻塞主流程。\n\n## 为什么启动应用要走 shell\n\nAgent 启动目标应用一律用 `launch`（底层是 `monkey -p <包名> 1`），而不是回到桌面点图标。原因有两条：\n\n1. 桌面图标的位置和数量随时会变，坐标点击不稳定；\n2. 点图标会引入「桌面是不是在前台」这个额外状态判断。\n\nAI 若只给了裸包名（例如 `com.tencent.mm`），端侧会自动补全为完整的 launch 动作。\n\n## Termux 的前置条件\n\n三项缺一不可：\n\n1. 已安装 Termux；\n2. 已授予 `com.termux.permission.RUN_COMMAND`；\n3. Termux 侧 `allow-external-apps=true`。\n\n结果回传走 **PendingIntent**，不走结果目录文件——后者在 `allow-external-apps` 未开启时会永久挂起。"
+      "summary": "AUTO / SHIZUKU / TERMUX 三种可选项的能力边界、通道阶梯与选择建议。",
+      "body": "## 各执行路径的能力边界\n\n| 通道 | 权限级别 | 能做什么 |\n| --- | --- | --- |\n| 无障碍 | 普通应用权限 | 读控件树、点击、滑动、输入文字 |\n| 内置 Shizuku | shell（经服务组件） | `am` / `pm` / `settings` 等系统命令 |\n| Termux | 普通应用权限 | curl / python / 文本处理，**不能**执行系统命令 |\n| 无线 ADB | shell（adb） | 仅作首次启动内置 Shizuku server 的引导传输，不是独立通道 |\n\n## 可选值与通道阶梯\n\n设置里的执行通道是三态偏好：`AUTO` / `SHIZUKU` / `TERMUX`。独立的「无线 ADB」通道已删除，旧值 `ADB` 会被归一成 `AUTO`。\n\n`AUTO` 下的顺序是：**内置 Shizuku → 无线 ADB 引导会话 → Termux → 无障碍**。无线 ADB 只在前两级里承担「首次启动内置 Shizuku server」的引导传输，任务执行本身不再以它为独立通道。\n\n## 通道跑在独立服务组件里\n\nshell 能力不驻留在主应用进程，而是由同签名的服务组件 `com.phoneagent.provider` 提供。该组件的 APK 已内置于主应用，首次使用时按引导安装即可，**免装官方 Shizuku App**；绑定要求两侧签名一致，签名不一致时 `BIND_PROVIDER` 会被系统直接拒绝。\n\n拉起失败或超时都不会阻塞主流程，下一级通道会接手。\n\n## 为什么启动应用要走 shell\n\nAgent 启动目标应用一律用 `launch`（底层是 `monkey -p <包名> 1`），而不是回到桌面点图标。原因有两条：\n\n1. 桌面图标的位置和数量随时会变，坐标点击不稳定；\n2. 点图标会引入「桌面是不是在前台」这个额外状态判断。\n\nAI 若只给了裸包名（例如 `com.tencent.mm`），端侧会自动补全为完整的 launch 动作。\n\n## Termux 的前置条件\n\n三项缺一不可：\n\n1. 已安装 Termux；\n2. 已授予 `com.termux.permission.RUN_COMMAND`；\n3. Termux 侧 `allow-external-apps=true`。\n\n结果回传走 **PendingIntent**，不走结果目录文件——后者在 `allow-external-apps` 未开启时会永久挂起。"
     },
     {
       "slug": "intent-layer",
       "title": "意图转译层",
       "group": "进阶",
       "order": 5,
-      "summary": "为什么 AI 永远不输出坐标和命令，以及 15 个语义意图是怎么落地的。",
-      "body": "## 设计前提\n\n让语言模型直接输出坐标和 shell 命令，会同时引入两类问题：\n\n- **不稳定**：同一个控件在不同分辨率、不同主题下的坐标不同；\n- **不可控**：模型可以输出任意命令，安全边界形同虚设。\n\n所以本项目把 AI 的输出面收窄成 15 个**高层语义意图**，由端侧 IntentTranslator 实时转译成已有的 ActionType。\n\n## 15 个语义意图\n\n```text\nback  home  refresh  search  send  confirm  close\nshare  collect  copy  delete  download  add  switch  clear_input\n```\n\n每个意图对应一个策略类（SemanticActionStrategy / BackStrategy / HomeStrategy），本地执行，零网络往返。\n\n## 定位优先级\n\n1. **id / label** —— 无障碍元素树里有精确标识时优先使用，执行层自动算坐标；\n2. **scroll_to** —— 当前屏幕找不到目标控件时先滚动查找；\n3. **coordinate** —— 只有图片、图表这类元素树里读不到的控件才允许用坐标；\n4. **abort** —— 以上都不成立就中止，并说明当前前台应用与缺失的控件名。\n\n报错信息里必须带**当前前台应用**，而不是笼统的「无法定位控件」——否则 AI 下一轮仍然不知道该做什么。\n\n## 一步一个动作\n\n同一轮只做一个明确动作，不叠加小动作，同一控件不反复操作。规划阶段的步数动态收敛到 3~8 步，宁可少而准。"
+      "summary": "为什么 AI 永远不输出坐标和命令，以及 46 个语义意图是怎么落地的。",
+      "body": "## 设计前提\n\n让语言模型直接输出坐标和 shell 命令，会同时引入两类问题：\n\n- **不稳定**：同一个控件在不同分辨率、不同主题下的坐标不同；\n- **不可控**：模型可以输出任意命令，安全边界形同虚设。\n\n所以本项目把 AI 的输出面收窄成 46 个**高层语义意图**，由端侧 IntentTranslator 实时转译成已有的 ActionType。\n\n## 46 个语义意图\n\n| 类别 | 意图 |\n| --- | --- |\n| 导航 | open_app、open、assistant、back、home、refresh |\n| 操作 | tap、long_press、input、swipe、press、wait、scroll_to、search、send、confirm、close、share、collect、copy、delete、download、add、switch、clear_input |\n| 内容 | finish、give_up、write_doc、remember、device_query、notif_read、notif_clear、say、show_agent、see、fetch |\n| 时钟 | set_alarm、set_timer |\n| 浏览器 | browse_open、browse_read、browse_click、browse_input、browse_scroll、browse_back |\n| 自由模式 | shell、a11y |\n\n每个意图在 `CapabilitySpec` 里声明参数、风险档、首选通道与所需权限；不产生设备动作的意图（browse_*、see）由对应通道就地落地。转译全部在端侧完成，零网络往返。\n\n## 定位优先级\n\n1. **id / label** —— 无障碍元素树里有精确标识时优先使用，执行层自动算坐标；\n2. **scroll_to** —— 当前屏幕找不到目标控件时先滚动查找；\n3. **coordinate** —— 只有图片、图表这类元素树里读不到的控件才允许用坐标；\n4. **abort** —— 以上都不成立就中止，并说明当前前台应用与缺失的控件名。\n\n报错信息里必须带**当前前台应用**，而不是笼统的「无法定位控件」——否则 AI 下一轮仍然不知道该做什么。\n\n## 一步一个动作\n\n同一轮只做一个明确动作，不叠加小动作，同一控件不反复操作。规划阶段的步数动态收敛到 3~8 步，宁可少而准。"
     },
     {
       "slug": "safety",
@@ -1220,7 +1397,7 @@ export const snapshot = {
       "group": "进阶",
       "order": 6,
       "summary": "哪些页面只读、哪些数据会被脱敏、哪些操作必须你点头。",
-      "body": "## 敏感页面只读\n\nSensitivePageDetector 识别支付、个人信息、密码等敏感页面，命中后由 EngineRules 横切为**只读**：Agent 可以看、可以描述，但不能提交。\n\n## 数据脱敏\n\n进模型上下文之前，以下数据会被遮蔽：\n\n| 类型 | 规则 |\n| --- | --- |\n| 手机号 | 11 位连续数字 |\n| 身份证号 | 18 位（含末位 X） |\n| 银行卡号 | 长位数字串 |\n\n脱敏发生在构造提示词的环节，不是事后过滤——被遮蔽的内容从未离开过设备。\n\n## 硬约束规则引擎\n\nEngineRules 在动作真正下发**之前**拦截：\n\n- 敏感页上的写操作；\n- 结构化错误的命令（未知命令、空命令、参数非法）——直接跳过 3 次无效重试并立即失败，同时把错误原因与可用命令列表注入下一轮决策上下文。\n\n## 不确定时的行为\n\n系统提示词里明确禁止「不确定就输出 task_done」。模型必须：\n\n1. 先尝试可行解法；\n2. 卡住时输出 `abort` 并说明卡点；\n3. **不得编造不存在的命令或动作。**\n\n## 完成任务的门槛\n\nAI 只有在**当前页面上亲眼看到任务完成的明确证据**时才允许输出 `task_done`，且总结里必须写清证据是什么。执行层还会做二次把关：至少执行 3 步、且达到规划步数的 60%，才接受完成判定；连续 3 次过早完成才强制收尾，防止死循环。"
+      "body": "## 敏感页面只读\n\nSensitivePageDetector 识别支付、个人信息、密码等敏感页面，命中后由 EngineRules 横切为**只读**：Agent 可以看、可以描述，但不能提交。\n\n## 数据脱敏\n\n进模型上下文之前，以下数据会被遮蔽：\n\n| 类型 | 规则 |\n| --- | --- |\n| 手机号 | 11 位连续数字 |\n| 身份证号 | 18 位（含末位 X） |\n| 银行卡号 | 长位数字串 |\n\n脱敏发生在构造提示词的环节，不是事后过滤——被遮蔽的内容从未离开过设备。\n\n## 硬约束规则引擎\n\nEngineRules 在动作真正下发**之前**拦截：\n\n- 敏感页上的写操作；\n- 结构化错误的命令（未知命令、空命令、参数非法）——直接跳过 3 次无效重试并立即失败，同时把错误原因与可用命令列表注入下一轮决策上下文。\n\n## 不确定时的行为\n\n系统提示词里明确禁止「不确定就输出 task_done」。模型必须：\n\n1. 先尝试可行解法；\n2. 卡住时输出 `abort` 并说明卡点；\n3. **不得编造不存在的命令或动作。**\n\n## 完成任务的门槛\n\nAI 只有在**当前页面上亲眼看到任务完成的明确证据**时才允许输出 `task_done`，且总结里必须写清证据是什么。执行层还会做二次把关：有计划时达到规划步数的 60%、无计划时至少 3 步，才接受完成判定；连续 3 次过早完成才强制收尾，防止死循环。"
     },
     {
       "slug": "architecture",
@@ -1228,7 +1405,7 @@ export const snapshot = {
       "group": "进阶",
       "order": 7,
       "summary": "感知、决策、执行、视觉、持久化、展示六层怎么协作。",
-      "body": "## 执行循环\n\n```text\n观察屏幕 → 页面标注 → 端侧/云端决策 → 双通道执行 → 带验证 → 记录 → 循环\n```\n\n1. **观察** —— 无障碍服务取回屏幕全部可交互元素。\n2. **标注** —— PageAnnotator 为 26 类常见控件分配语义 ID（`dlg_allow`、`ad_skip`、`search_box`、`send_btn` …），直接注入 AI 上下文，让模型能按 id 选控件。\n3. **决策** —— LocalDecisionEngine 先处理高频场景，其余交给模型。\n4. **执行** —— 通道降级执行，动作前后做页面指纹比对。\n5. **记录** —— 落盘供多轮对话与诊断导出使用。\n\n## 分层\n\n```text\ncore/       跨层基础设施（AI 客户端、脱敏、通知、人话翻译）\ndomain/     纯领域模型与规则（动作、意图、规则引擎、端侧决策）\ndata/       持久化（DataStore 配置 + 五处 Store）\ndevice/     设备能力（无障碍、shell、截图、视觉）\nengine/     Agent 编排（ReAct 主循环、转译层、感知、提示词）\noverlay/    悬浮窗\nfeature/    功能域（任务、技能、MCP、文档、跳广告、边缘光效、测试）\nui/         界面层（页面 = 入口 + 单一职责拆分文件）\n```\n\n## 持久化\n\n| 存储 | 内容 |\n| --- | --- |\n| AppSettings | DataStore 配置（模型、通道、语言、开关） |\n| MemoryStore | 任务记忆（目标 / 用户要求 / 已验证方法 / 状态） |\n| TaskStore | 检查点 + 任务模板库 |\n| DebugRecordsStore | 日志 / 轨迹 / 历史 / 对话 |\n| McpStore | MCP 服务与技能配置 |\n| PromptTemplateStore | 提示词模板 |\n\n## 上下文卫生\n\n每次 `run()` 开头会彻底清空 AI 上下文：对话消息、失败计数、无效命令计数、上一条 shell 输出、上一页截图、上一任务计划、工作记忆。任务之间不串味。"
+      "body": "## 执行循环\n\n```text\n观察屏幕 → 页面标注 → 端侧/云端决策 → 双通道执行 → 带验证 → 记录 → 循环\n```\n\n1. **观察** —— 无障碍服务取回屏幕全部可交互元素。\n2. **标注** —— PageAnnotator 为 26 类常见控件分配语义 ID（`dlg_allow`、`ad_skip`、`search_box`、`send_btn` …），直接注入 AI 上下文，让模型能按 id 选控件。\n3. **决策** —— LocalDecisionEngine 先处理高频场景，其余交给模型。\n4. **执行** —— 通道降级执行，动作前后做页面指纹比对。\n5. **记录** —— 落盘供多轮对话与诊断导出使用。\n\n## 分层\n\n```text\ncore/       跨层基础设施（AI 客户端、脱敏、通知、人话翻译）\ndomain/     纯领域模型与规则（动作、意图、规则引擎、端侧决策）\ndata/       持久化（DataStore 配置 + 四处 Store）\ndevice/     设备能力（无障碍、shell、截图、视觉）\nengine/     Agent 编排（ReAct 主循环、转译层、感知、提示词）\noverlay/    悬浮窗\nfeature/    功能域（任务、技能、MCP、文档、跳广告、边缘光效、测试）\nui/         界面层（页面 = 入口 + 单一职责拆分文件）\n```\n\n## 持久化\n\n| 存储 | 内容 |\n| --- | --- |\n| AppSettings | DataStore 配置（模型、通道、语言、开关） |\n| MemoryStore | 任务记忆（目标 / 用户要求 / 已验证方法 / 状态） |\n| TaskStore | 检查点 + 任务模板库 |\n| DebugRecordsStore | 日志 / 轨迹 / 历史 / 对话 |\n| McpStore | MCP 服务与技能配置 |\n\n## 上下文卫生\n\n每次 `run()` 开头会彻底清空 AI 上下文：对话消息、失败计数、无效命令计数、上一条 shell 输出、上一页截图、上一任务计划、工作记忆。任务之间不串味。"
     },
     {
       "slug": "overlay-and-takeover",
@@ -1244,7 +1421,7 @@ export const snapshot = {
       "group": "进阶",
       "order": 9,
       "summary": "CLOUD / LOCAL / AUTO 三种视觉模式各自什么时候生效，元素树读不出来时怎么兜底。",
-      "body": "## 三种模式\n\n设置里是三态分段按钮：云端 / 本地OCR / 自动，对应 `CLOUD` / `LOCAL` / `AUTO`。\n\n| 模式 | 含义 |\n| --- | --- |\n| CLOUD | 只走云端视觉模型 |\n| LOCAL | 只走本地（外挂端侧）识别 |\n| AUTO | 优先云端，失败或未配置时回退本地 |\n\n## 实际调用顺序\n\n元素树读不到内容时，视觉链路按下面的顺序取第一个能出结果的一步：\n\n1. **外挂端侧视觉**（设置里的「外挂视觉 Agent」）——跨进程调用端侧 3B，返回控件类型、用途与归一化坐标；\n2. **云端视觉模型**——把截图交给视觉模型描述，`CLOUD` 与 `AUTO` 都会走；\n3. **本地兜底**——`LOCAL` 模式，或 `AUTO` 下云端失败 / 未配置时，再试一次本地识别。\n\n任一步拿到结果就停，不会重复消耗后面的来源。整条链路有看门狗兜底：超时即放弃本轮视觉描述，只用无障碍元素树继续决策，主循环不会被打死。\n\n## 混合路由\n\n「混合路由」默认开启，按页面复杂度分流：\n\n- 简单页面（元素树可读）交给端侧 3B 框选，快且省云端额度；\n- 复杂页面（元素稀疏，如游戏 / WebView / 小程序）跳过 3B，直接走云端视觉做语义理解。\n\n关掉它则不做分流，端侧 3B 与云端按上面的固定顺序参与。\n\n## 元素树稀疏时会怎样\n\n端侧把「元素数 ≤ 3」视为稀疏：\n\n- 即使关掉了「附送屏幕截图」，也会自动截图交给视觉链路；\n- 日志里会注明「元素稀疏，自动启用视觉模型」；\n- 该步的追踪记录会标出视觉来源与模型名，便于在调试页核对。\n\n## 云端视觉默认模型\n\n云端视觉模型默认是 `glm-4.6v-flash`。视觉模型的密钥留空时回退主模型密钥，地址留空时回退默认端点；只有当视觉模型开关关闭、模型名为空、或最终取不到密钥时，云端视觉才完全不参与。\n\n## 定位与兜底\n\n视觉模型除了描述页面，还负责定位：给定目标文字，返回它在截图上的比例坐标（0~1），端侧再乘屏幕宽高换算成像素。外挂端侧定位不准时，会退回「在已识别控件里做本地文字匹配」的结果。\n\n调试页的追踪里，`visionSource` 取值是 外挂3B / 云端 / 本地OCR / 无，可以直接看出这一步靠谁完成。注意本地路径的模型标签沿用了「ML Kit 中文OCR」的旧文案，实际执行体已是外挂端侧视觉——主程序不再内置 OCR。"
+      "body": "## 三种模式\n\n设置里是三态分段按钮：云端 / 本地OCR / 自动，对应 `CLOUD` / `LOCAL` / `AUTO`。\n\n| 模式 | 含义 |\n| --- | --- |\n| CLOUD | 只走云端视觉模型 |\n| LOCAL | 只走端侧视觉识别（进程内 3B） |\n| AUTO | 优先云端，失败或未配置时回退本地 |\n\n## 实际调用顺序\n\n元素树读不到内容时，视觉链路按下面的顺序取第一个能出结果的一步：\n\n1. **端侧视觉（进程内 3B）**——Qwen2.5-VL-3B 已并入主程序进程内，由 llama.cpp 加载，返回控件类型、用途与归一化坐标；\n2. **云端视觉模型**——把截图交给视觉模型描述，`CLOUD` 与 `AUTO` 都会走；\n3. **本地兜底**——`LOCAL` 模式，或 `AUTO` 下云端失败 / 未配置、3B 推理失败时，改走 ML Kit 中文 OCR 框选控件。\n\n任一步拿到结果就停，不会重复消耗后面的来源。整条链路有看门狗兜底：超时即放弃本轮视觉描述，只用无障碍元素树继续决策，主循环不会被打死。\n\n## 混合路由\n\n「混合路由」默认开启，按页面复杂度分流：\n\n- 简单页面（元素树可读）交给端侧 3B 框选，快且省云端额度；\n- 复杂页面（元素稀疏，如游戏 / WebView / 小程序）跳过 3B，直接走云端视觉做语义理解。\n\n关掉它则不做分流，端侧 3B 与云端按上面的固定顺序参与。\n\n## 元素树稀疏时会怎样\n\n端侧把「元素数 ≤ 3」视为稀疏：\n\n- 即使关掉了「附送屏幕截图」，也会自动截图交给视觉链路；\n- 日志里会注明「元素稀疏，自动启用视觉模型」；\n- 该步的追踪记录会标出视觉来源与模型名，便于在调试页核对。\n\n## 云端视觉默认模型\n\n云端视觉模型默认是 `glm-4.6v-flash`。视觉模型的密钥留空时回退主模型密钥，地址留空时回退默认端点；只有当视觉模型开关关闭、模型名为空、或最终取不到密钥时，云端视觉才完全不参与。\n\n## 定位与兜底\n\n视觉模型除了描述页面，还负责定位：给定目标文字，返回它在截图上的比例坐标（0~1），端侧再乘屏幕宽高换算成像素。端侧 3B 定位不准时，会退回「在已识别控件里做本地文字匹配」的结果。\n\n调试页的追踪里，`visionSource` 取值是 端侧3B / 云端 / 本地OCR / 无，可以直接看出这一步靠谁完成。本地路径由主程序内置的 ML Kit 中文 OCR 执行，随 APK 一起分发，不需要另装组件。"
     },
     {
       "slug": "task-memory",
@@ -1260,7 +1437,7 @@ export const snapshot = {
       "group": "进阶",
       "order": 11,
       "summary": "内置技能有哪些、MCP 技能怎么注册，以及参数校验和超时规则。",
-      "body": "## 技能是什么\n\n技能（Skill）把原来的硬编码命令升级为「有名字、有参数、可复用」的能力单元。每个内置技能通过 `legacyIntent` 指回一条旧命令意图，由 SkillCompat 兼容层保证「旧命令 → 内置技能 → 原有转译逻辑」这条链路不变，因此 AI 叫旧意图名或技能名都可达。\n\n内置技能共 36 个，分 7 类：\n\n| 类别 | 技能（意图名） |\n| --- | --- |\n| 导航 | 打开应用 open_app、打开链接/文件 open、返回 back、回桌面 home、刷新 refresh |\n| 操作 | 点击 tap、长按 long_press、输入文字 input、滑动 swipe、按键 press、等待 wait、滚动查找 scroll_to、搜索 search、发送 send、确认 confirm、关闭 close、分享 share、收藏 collect、复制 copy、删除 delete、下载 download、新增 add、切换开关 switch、清空输入 clear_input |\n| 创作 | 写入文档 write_doc |\n| 记忆 | 记住信息 remember |\n| 取数 | 查询本机信息 device_query、取网页正文 fetch |\n| 浏览器 | 打开网页 browse_open、抓取网页内容 browse_read、点击网页元素 browse_click、网页表单输入 browse_input、网页滚动 browse_scroll、网页后退 browse_back |\n| 控制 | 完成 finish、放弃 give_up |\n\n提示词里不会逐个罗列内置技能（它们与意图表一一对应），只说明等价关系；真正需要单独讲的是 MCP 技能——参数名 AI 猜不到。\n\n## intent 字段的三种写法\n\nAI 输出的 `intent` 字段在端侧统一收口，接受三种写法：\n\n1. **标准意图名**（tap / open_app / swipe …）——原样放行；若其对应内置技能已被用户停用则拒绝。\n2. **内置技能 id 或技能名**（skill_open_app / 打开应用）——归一化为等价的旧意图，其余字段原样保留。\n3. **MCP 技能 id**（如 mcp_filesystem_read_file）——不产生设备动作，交 MCP 客户端就地调用，参数取 `args`。\n\n技能参数有两种等价写法：放进 `args` 对象，或直接写成意图的扁平字段。\n\n```json\n{\"intent\":\"skill_swipe\",\"args\":{\"direction\":\"up\"}}\n{\"intent\":\"swipe\",\"direction\":\"up\"}\n```\n\n两者效果相同；回填只覆盖 `args` 里真正给出的字段，AI 写在扁平字段上的值不受影响。\n\n## MCP 接入\n\nMCP 服务器在「技能与能力 → MCP」页配置，字段与校验规则：\n\n| 字段 | 规则 |\n| --- | --- |\n| 名称 | 非空、不含空格、与已有服务器不重名 |\n| 地址 | 必须以 http:// 或 https:// 开头，且含有效主机名 |\n| Token | 可选，非空时以 Authorization: Bearer 下发 |\n| 协议版本 | 默认 2025-03-26，目前仅支持该版本 |\n\n内置市场提供快捷填充：经典工具类（文件系统、SQLite、GitHub、Notion，需自配 URL / Token）与公共开放 API（天气、汇率、新闻、加密货币行情，默认 URL 可直接用）。添加前会做连接测试，握手 initialize 与 tools/list 都成功才算可用。\n\n服务器连通后，在 MCP 页点「绑定为技能」，把枚举到的工具注册为 `source=MCP` 的技能：技能 id 形如 `mcp_<服务器名>_<工具名>`，参数由工具的 JSON Schema 解析而来（type / required / enum 归并为 select / default / description）。只有已启用的 MCP 技能会注入提示词，AI 只能调用这些。\n\n## 参数校验与失败处理\n\n归一化阶段会拦下三类问题，并把中文原因回注给 AI 纠正：\n\n- **未知技能** —— 提示改用系统提示里列出的意图或已启用技能。\n- **技能已停用** —— 技能页的启停开关对运行时真正生效；停用技能也会在提示词里列为「不可调用」，避免 AI 白试。\n- **缺必填参数** —— 报出缺失的参数名，并提示用 `args` 对象补全。\n\nMCP 调用前还会校验工具名（仅允许常见标识符字符），参数按 `argsTemplate` 模板替换后再下发。\n\n## 超时与熔断\n\n| 项 | 值 |\n| --- | --- |\n| MCP 单次调用超时 | 20 秒（超时按失败回注，主循环不干等） |\n| MCP 传输层连接超时 | 8 秒 |\n| MCP 传输层读 / 写超时 | 90 秒 |\n| MCP 返回值注入上下文上限 | 1200 字符 |\n| 连续「技能调用被拒」上限 | 3 次，达到即停止任务 |\n\n此外，动作连续失败 3 次会请求用户介入，决策链路连续异常 5 次会收尾。这些计数器都是异常隔离的护栏，避免任务在坏链路上无限打转。"
+      "body": "## 技能是什么\n\n技能（Skill）把原来的硬编码命令升级为「有名字、有参数、可复用」的能力单元。每个内置技能通过 `legacyIntent` 指回一条旧命令意图，由 SkillCompat 兼容层保证「旧命令 → 内置技能 → 原有转译逻辑」这条链路不变，因此 AI 叫旧意图名或技能名都可达。\n\n内置技能共 46 个，按 `CapabilitySpec.category` 分 10 类：\n\n| 类别 | 技能（意图名） |\n| --- | --- |\n| 导航 | 打开应用 open_app、打开链接/文件 open、语音助手 assistant、返回 back、回桌面 home、刷新 refresh |\n| 操作 | 点击 tap、长按 long_press、输入文字 input、滑动 swipe、按键 press、等待 wait、滚动查找 scroll_to、搜索 search、发送 send、确认 confirm、关闭 close、分享 share、收藏 collect、复制 copy、删除 delete、下载 download、新增 add、切换开关 switch、清空输入 clear_input、清理通知 notif_clear |\n| 取数 / 感知 | 查询本机信息 device_query、看图追问 see、读取通知 notif_read、取网页正文 fetch |\n| 创作 | 写入文档 write_doc |\n| 记忆 | 记住信息 remember |\n| 沟通 | 回话 say、引导用户看结果 show_agent |\n| 控制 | 完成 finish、放弃 give_up |\n| 时钟 | 定闹钟 set_alarm、设倒计时 set_timer |\n| 浏览器 | 打开网页 browse_open、抓取网页内容 browse_read、点击网页元素 browse_click、网页表单输入 browse_input、网页滚动 browse_scroll、网页后退 browse_back |\n| 自由模式 | 执行命令 shell、调用无障碍端点 a11y |\n\n通知相关的 notif_read / notif_clear 分别归在取数 / 操作，感知相关的 see / device_query 也在取数，不再单列类别。\n\n提示词里不会逐个罗列内置技能（它们与意图表一一对应），只说明等价关系；真正需要单独讲的是 MCP 技能——参数名 AI 猜不到。\n\n## intent 字段的三种写法\n\nAI 输出的 `intent` 字段在端侧统一收口，接受三种写法：\n\n1. **标准意图名**（tap / open_app / swipe …）——原样放行；若其对应内置技能已被用户停用则拒绝。\n2. **内置技能 id 或技能名**（skill_open_app / 打开应用）——归一化为等价的旧意图，其余字段原样保留。\n3. **MCP 技能 id**（如 mcp_filesystem_read_file）——不产生设备动作，交 MCP 客户端就地调用，参数取 `args`。\n\n技能参数有两种等价写法：放进 `args` 对象，或直接写成意图的扁平字段。\n\n```json\n{\"intent\":\"skill_swipe\",\"args\":{\"direction\":\"up\"}}\n{\"intent\":\"swipe\",\"direction\":\"up\"}\n```\n\n两者效果相同；回填只覆盖 `args` 里真正给出的字段，AI 写在扁平字段上的值不受影响。\n\n## MCP 接入\n\nMCP 服务器在「技能与能力 → MCP」页配置，字段与校验规则：\n\n| 字段 | 规则 |\n| --- | --- |\n| 名称 | 非空、不含空格、与已有服务器不重名 |\n| 地址 | 必须以 http:// 或 https:// 开头，且含有效主机名 |\n| Token | 可选，非空时以 Authorization: Bearer 下发 |\n| 协议版本 | 默认 2025-03-26，目前仅支持该版本 |\n\n内置市场提供快捷填充：经典工具类（文件系统、SQLite、GitHub、Notion，需自配 URL / Token）与公共开放 API（天气、汇率、新闻、加密货币行情，默认 URL 可直接用）。添加前会做连接测试，握手 initialize 与 tools/list 都成功才算可用。\n\n服务器连通后，在 MCP 页点「绑定为技能」，把枚举到的工具注册为 `source=MCP` 的技能：技能 id 形如 `mcp_<服务器名>_<工具名>`，参数由工具的 JSON Schema 解析而来（type / required / enum 归并为 select / default / description）。只有已启用的 MCP 技能会注入提示词，AI 只能调用这些。\n\n## 参数校验与失败处理\n\n归一化阶段会拦下三类问题，并把中文原因回注给 AI 纠正：\n\n- **未知技能** —— 提示改用系统提示里列出的意图或已启用技能。\n- **技能已停用** —— 技能页的启停开关对运行时真正生效；停用技能也会在提示词里列为「不可调用」，避免 AI 白试。\n- **缺必填参数** —— 报出缺失的参数名，并提示用 `args` 对象补全。\n\nMCP 调用前还会校验工具名（仅允许常见标识符字符），参数按 `argsTemplate` 模板替换后再下发。\n\n## 超时与熔断\n\n| 项 | 值 |\n| --- | --- |\n| MCP 单次调用超时 | 20 秒（超时按失败回注，主循环不干等） |\n| MCP 传输层连接超时 | 8 秒 |\n| MCP 传输层读 / 写超时 | 90 秒 |\n| MCP 返回值注入上下文上限 | 1200 字符 |\n| 连续「技能调用被拒」上限 | 3 次，达到即停止任务 |\n\n此外，动作连续失败 3 次会请求用户介入，决策链路连续异常 5 次会收尾。这些计数器都是异常隔离的护栏，避免任务在坏链路上无限打转。"
     },
     {
       "slug": "built-in-browser",
@@ -1268,7 +1445,7 @@ export const snapshot = {
       "group": "进阶",
       "order": 12,
       "summary": "browse_* 系列技能负责什么，网页是怎么被读成 Markdown 的。",
-      "body": "## 为什么要内置浏览器\n\n网页元素（下拉、弹层、登录框）在无障碍树里往往拿不到可靠的 id 或文字，坐标更是换个分辨率就错。而网页自己有 DOM，读正文、按文字点元素、往输入框填字都能精确完成。所以内置浏览器把网页读写统一交给注入的 DOM 脚本，AI 只表达「点哪个字 / 填什么」。\n\n它有三条边界：\n\n1. **可见** —— 浏览器是本 App 的一个二级页，需要上网时把 App 切到该页，于是每步截图里就是真实网页，AI 能亲眼看到页面，而不是只拿一段文本凭空判断。\n2. **端侧自足** —— 网页读写走 DOM 脚本，不依赖无障碍、Shizuku、Termux，这些能力缺失时浏览器照常可用。\n3. **只操作浏览器里的页** —— 所有操作都作用于 WebView 里当前这一页；没有打开过网页时一律返回可判定的中文原因，引导 AI 先打开网页，而不是静默无动作。\n\n## 六个 browse_* 技能\n\n| 技能 | 意图名 | 作用 | 参数 |\n| --- | --- | --- | --- |\n| 打开网页 | browse_open | 在内置浏览器打开网址，页面切到前台并出现在之后每步截图里 | uri |\n| 抓取网页内容 | browse_read | 抓当前页正文与表单按钮，正文以 Markdown 返回 | 无 |\n| 点击网页元素 | browse_click | 按元素文字（优先）或 CSS 选择器点击 | target |\n| 网页表单输入 | browse_input | 往网页输入框填字 | target、text |\n| 网页滚动 | browse_scroll | 滚动网页，方向 up / down / top / bottom | direction |\n| 网页后退 | browse_back | 网页内后退，不是系统返回，不会退出浏览器 | 无 |\n\nbrowse_read 的结果里，正文是 Markdown（标题层级 / 列表 / 表格 / 代码块 / 内联链接），链接已内联成 `[文字](网址)`，所以不再单独给「可点链接」清单——AI 要点击时直接取正文里的链接文字。输入框与按钮仍单独列出，因为它们是浏览通道特有的可操作面，AI 靠它们决定 browse_input 的 target 与 browse_click 的文字。\n\n## 网页是怎么被读成 Markdown 的\n\n转换器 HtmlToMarkdown 是自研的（项目没有引入 jsoup），分四段：\n\n1. **stripNoise** —— 单遍扫描，删注释、DOCTYPE、CDATA，按丢弃表整棵删除 script / style / nav / footer / head 等噪声子树，同时把 title / base / canonical / og:url 抽出来。head 整棵会被丢掉，元信息必须在丢之前扫一遍，否则永远拿不到网页标题。\n2. **tokenize** —— 手写标签扫描器，属性走小状态机，引号内的 `>` 不当标签结束（`<a title=\"a > b\">` 是常见坑）。\n3. **Converter** —— 显式标签栈，全程无递归，畸形页面或千层 div 都不会栈溢出。它把标题、列表、引用、代码块、表格、链接、加粗等映射成 Markdown，并把相对链接绝对化；被属性或 class 藏起来的元素整棵静音，不产出任何文本。\n4. **MdBuilder** —— 块累积、空白折叠、CJK 之间不插空格、Markdown 特殊字符转义，超过生成上限即早停。\n\n浏览器侧的注入脚本与 Kotlin 侧**同源**：丢弃表 / 块级表 / 行内标记表 / 隐藏类名表 / 转义字符表都由 HtmlToMarkdown 的常量插值生成，改规则只会改一处，两侧不可能漂移。\n\n## 长度上限\n\n| 项 | 值 |\n| --- | --- |\n| AI 可见正文预算 | 4000 字符（按块边界截断，绝不产生半个链接） |\n| 生成上限 | 8000 字符 |\n| 输入 HTML 切片上限 | 1,500,000 字符 |\n| 标签嵌套深度上限 | 256 |\n| 表格保留行数 / 列数 / 单元格字符 | 30 / 12 / 120 |\n| 浏览器侧脚本：节点 / 深度 / 输出 / 单次耗时 | 15000 / 120 / 8000 / 1500ms |\n\n截断统一在块边界执行（优先切空行，退而切换行，落点若在链接中间则继续回退），保证 fetch 链路与浏览器链路行为一致。\n\n## 四类「打开」的分工\n\n| 意图 | 什么时候用 |\n| --- | --- |\n| open_app | 打开某个应用本身，如「打开设置」「打开微信」 |\n| open | 把链接 / 文件交给系统应用打开，或深链直达 App 内页 / 系统页；只是把网址打开给用户看时用它 |\n| fetch | 用命令行取纯文本 / JSON 接口正文（需本机已装并授权 Termux）；返回 HTML 时端侧自动转成 Markdown |\n| browse_open | 需要读或操作网页内容时用内置浏览器打开 |\n\n判断顺序很简单：要读 / 操作网页内容就走 browse_*；只是把网址展示给用户就用 open + uri 交系统浏览器；目标只是纯文本接口且本机有 Termux 通道可以用 fetch，但 fetch 终究只是文字快照，看不到网页长什么样、有哪些按钮，不能拿它代替 browse_*。\n\n边界：browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要离开浏览器回 App，用 `press key=BACK`。"
+      "body": "## 为什么要内置浏览器\n\n网页元素（下拉、弹层、登录框）在无障碍树里往往拿不到可靠的 id 或文字，坐标更是换个分辨率就错。而网页自己有 DOM，读正文、按文字点元素、往输入框填字都能精确完成。所以内置浏览器把网页读写统一交给注入的 DOM 脚本，AI 只表达「点哪个字 / 填什么」。\n\n它有三条边界：\n\n1. **静默后台加载** —— `browse_open` 默认在后台的 HeadlessWebHost（全透明悬浮窗里的 WebView）加载，App 界面不切走，截图里也看不到网页；AI 靠 `browse_read` 拿 DOM 正文与表单结构决策。只有用户自己点开「浏览器」二级页时才走可见路径，空宿主建不起来时才回退到可见页。\n2. **端侧自足** —— 网页读写走 DOM 脚本，不依赖无障碍、Shizuku、Termux，这些能力缺失时浏览器照常可用。\n3. **只操作浏览器里的页** —— 所有操作都作用于 WebView 里当前这一页；没有打开过网页时一律返回可判定的中文原因，引导 AI 先打开网页，而不是静默无动作。\n\n## 六个 browse_* 技能\n\n| 技能 | 意图名 | 作用 | 参数 |\n| --- | --- | --- | --- |\n| 打开网页 | browse_open | 在内置浏览器打开网址，默认在后台静默宿主加载，App 界面不切走；用户自己打开浏览器页时才可见 | uri |\n| 抓取网页内容 | browse_read | 抓当前页正文与表单按钮，正文以 Markdown 返回 | 无 |\n| 点击网页元素 | browse_click | 按元素文字（优先）或 CSS 选择器点击 | target |\n| 网页表单输入 | browse_input | 往网页输入框填字 | target、text |\n| 网页滚动 | browse_scroll | 滚动网页，方向 up / down / top / bottom | direction |\n| 网页后退 | browse_back | 网页内后退，不是系统返回，不会退出浏览器 | 无 |\n\nbrowse_read 的结果里，正文是 Markdown（标题层级 / 列表 / 表格 / 代码块 / 内联链接），链接已内联成 `[文字](网址)`，所以不再单独给「可点链接」清单——AI 要点击时直接取正文里的链接文字。输入框与按钮仍单独列出，因为它们是浏览通道特有的可操作面，AI 靠它们决定 browse_input 的 target 与 browse_click 的文字。\n\n## 网页是怎么被读成 Markdown 的\n\n转换器 HtmlToMarkdown 是自研的（项目没有引入 jsoup），分四段：\n\n1. **stripNoise** —— 单遍扫描，删注释、DOCTYPE、CDATA，按丢弃表整棵删除 script / style / nav / footer / head 等噪声子树，同时把 title / base / canonical / og:url 抽出来。head 整棵会被丢掉，元信息必须在丢之前扫一遍，否则永远拿不到网页标题。\n2. **tokenize** —— 手写标签扫描器，属性走小状态机，引号内的 `>` 不当标签结束（`<a title=\"a > b\">` 是常见坑）。\n3. **Converter** —— 显式标签栈，全程无递归，畸形页面或千层 div 都不会栈溢出。它把标题、列表、引用、代码块、表格、链接、加粗等映射成 Markdown，并把相对链接绝对化；被属性或 class 藏起来的元素整棵静音，不产出任何文本。\n4. **MdBuilder** —— 块累积、空白折叠、CJK 之间不插空格、Markdown 特殊字符转义，超过生成上限即早停。\n\n浏览器侧的注入脚本与 Kotlin 侧**同源**：丢弃表 / 块级表 / 行内标记表 / 隐藏类名表 / 转义字符表都由 HtmlToMarkdown 的常量插值生成，改规则只会改一处，两侧不可能漂移。\n\n## 长度上限\n\n| 项 | 值 |\n| --- | --- |\n| AI 可见正文预算 | 4000 字符（按块边界截断，绝不产生半个链接） |\n| 生成上限 | 8000 字符 |\n| 输入 HTML 切片上限 | 1,500,000 字符 |\n| 标签嵌套深度上限 | 256 |\n| 表格保留行数 / 列数 / 单元格字符 | 30 / 12 / 120 |\n| 浏览器侧脚本：节点 / 深度 / 输出 / 单次耗时 | 15000 / 120 / 8000 / 1500ms |\n\n截断统一在块边界执行（优先切空行，退而切换行，落点若在链接中间则继续回退），保证 fetch 链路与浏览器链路行为一致。\n\n## 四类「打开」的分工\n\n| 意图 | 什么时候用 |\n| --- | --- |\n| open_app | 打开某个应用本身，如「打开设置」「打开微信」 |\n| open | 把链接 / 文件交给系统应用打开，或深链直达 App 内页 / 系统页；只是把网址打开给用户看时用它 |\n| fetch | 用命令行取纯文本 / JSON 接口正文（需本机已装并授权 Termux）；返回 HTML 时端侧自动转成 Markdown |\n| browse_open | 需要读或操作网页内容时用内置浏览器打开 |\n\n判断顺序很简单：要读 / 操作网页内容就走 browse_*；只是把网址展示给用户就用 open + uri 交系统浏览器；目标只是纯文本接口且本机有 Termux 通道可以用 fetch，但 fetch 终究只是文字快照，看不到网页长什么样、有哪些按钮，不能拿它代替 browse_*。\n\n边界：browse_click / browse_input / browse_scroll / browse_back 都要求浏览器里已有打开的那一页，没有就先 browse_open；要离开浏览器回 App，用 `press key=BACK`。"
     },
     {
       "slug": "troubleshooting",
@@ -1284,7 +1461,7 @@ export const snapshot = {
       "group": "支持",
       "order": 14,
       "summary": "调试页导出的诊断包里有什么，出问题时该看哪几项。",
-      "body": "## 调试页的四个视角\n\n| 视角 | 内容 |\n| --- | --- |\n| 执行流 | 把决策追踪、执行记录与截图按 (taskId, step) 合成一条时间轴 |\n| 指标 | 请求数、Token、耗时、视觉与执行的平均耗时、生成速度 |\n| 对话 | 与 AI 的完整往返消息 |\n| 日志 | 分级日志，可按级别与关键词筛选 |\n\n页头的「更多」菜单里还有：查看能力状态、用外挂视觉画框、导出诊断报告、导出 JSON（分任务）、清空调试数据。\n\n## 诊断报告里有什么\n\n导出的是 `hpa_diagnostic_<时间戳>.txt`，落在「下载/HappyPhoneAgent」。分两大块：\n\n**一、人话摘要区（用户视角）**\n\n- 按任务列出每一步，用 HumanTranslator 把原始决策文本概括成一句人话；\n- 列出全部 ERROR / WARN 并翻译成人话。\n\n**二、原始数据区（开发者视角）**\n\n- 执行追踪：每一步的 SENT（发给模型的完整文本）、GOT（模型原始返回）、视觉来源与模型、是否思考、Token、耗时；\n- 系统日志：含 API 请求与响应原文；\n- 对话：每条消息按角色列出，内容截断到 500 字。\n\n## 导出前是否脱敏\n\n原始数据区逐处脱敏：SENT / GOT、日志正文与详情、对话内容在写出前都经过 DataSanitizer，手机号、身份证号、银行卡号会被掩码。人话摘要区由 HumanTranslator 从追踪与日志文本生成。\n\n另有「导出 JSON（分任务）」：每个任务一个 `hpa_logs_<id>_<任务名>_<时间戳>.json`，字段为 ts / time / level / message / detail；无归属的系统日志单独成文件。\n\n## 容量上限与滚动\n\n记录都是内存环形缓冲，超出后只保留最近部分：\n\n| 记录 | 上限 |\n| --- | --- |\n| 日志 | 800 条 |\n| 决策追踪 | 300 条 |\n| 执行历史 | 400 条 |\n| 对话 | 200 条 |\n| 记忆事件 | 20 条 |\n| 任务会话 | 30 条 |\n\n这些记录会落盘到应用内部目录，重启后回载；调试页「清空调试数据」会同时清掉内存与落盘内容。\n\n## 拿到包之后按什么顺序看\n\n1. **执行流**：先看第几步开始偏离预期，重点核对那一步的 SENT（模型看到的页面）与 GOT（模型给出的意图）；\n2. **日志筛 ERROR / WARN**：API 错误原文、降级与回退都记在这里；\n3. **指标**：请求数、Token 与耗时是否异常，视觉平均耗时能看出是端侧还是云端拖时间；\n4. **对话**：需要还原完整上下文时再看。\n\n## 提 Issue 时该附什么\n\n- 诊断报告（人话摘要 + 原始数据）；\n- 导出 JSON（分任务），便于按任务定位；\n- 复现步骤、机型与系统版本；\n- 模型配置：API 地址与模型名（脱敏后的即可）。"
+      "body": "## 调试页的四个视角\n\n| 视角 | 内容 |\n| --- | --- |\n| 执行流 | 把决策追踪、执行记录与截图按 (taskId, step) 合成一条时间轴 |\n| 指标 | 请求数、Token、耗时、视觉与执行的平均耗时、生成速度 |\n| 对话 | 与 AI 的完整往返消息 |\n| 日志 | 分级日志，可按级别与关键词筛选 |\n\n页头的「更多」菜单里还有：查看能力状态、用端侧视觉画框、导出诊断报告、导出 JSON（分任务）、清空调试数据。\n\n## 诊断报告里有什么\n\n导出的是 `hpa_diagnostic_<时间戳>.txt`，落在「下载/HappyPhoneAgent」。分两大块：\n\n**一、人话摘要区（用户视角）**\n\n- 按任务列出每一步，用 HumanTranslator 把原始决策文本概括成一句人话；\n- 列出全部 ERROR / WARN 并翻译成人话。\n\n**二、原始数据区（开发者视角）**\n\n- 执行追踪：每一步的 SENT（发给模型的完整文本）、GOT（模型原始返回）、视觉来源与模型、是否思考、Token、耗时；\n- 系统日志：含 API 请求与响应原文；\n- 对话：每条消息按角色列出，内容截断到 500 字。\n\n## 导出前是否脱敏\n\n原始数据区逐处脱敏：SENT / GOT、日志正文与详情、对话内容在写出前都经过 DataSanitizer，手机号、身份证号、银行卡号会被掩码。人话摘要区由 HumanTranslator 从追踪与日志文本生成。\n\n另有「导出 JSON（分任务）」：每个任务一个 `hpa_logs_<id>_<任务名>_<时间戳>.json`，字段为 ts / time / level / message / detail；无归属的系统日志单独成文件。\n\n## 容量上限与滚动\n\n记录都是内存环形缓冲，超出后只保留最近部分：\n\n| 记录 | 上限 |\n| --- | --- |\n| 日志 | 800 条 |\n| 决策追踪 | 300 条 |\n| 执行历史 | 400 条 |\n| 对话 | 200 条 |\n| 记忆事件 | 20 条 |\n| 任务会话 | 30 条 |\n\n这些记录会落盘到应用内部目录，重启后回载；调试页「清空调试数据」会同时清掉内存与落盘内容。\n\n## 拿到包之后按什么顺序看\n\n1. **执行流**：先看第几步开始偏离预期，重点核对那一步的 SENT（模型看到的页面）与 GOT（模型给出的意图）；\n2. **日志筛 ERROR / WARN**：API 错误原文、降级与回退都记在这里；\n3. **指标**：请求数、Token 与耗时是否异常，视觉平均耗时能看出是端侧还是云端拖时间；\n4. **对话**：需要还原完整上下文时再看。\n\n## 提 Issue 时该附什么\n\n- 诊断报告（人话摘要 + 原始数据）；\n- 导出 JSON（分任务），便于按任务定位；\n- 复现步骤、机型与系统版本；\n- 模型配置：API 地址与模型名（脱敏后的即可）。"
     },
     {
       "slug": "local-dev",
@@ -1292,7 +1469,7 @@ export const snapshot = {
       "group": "支持",
       "order": 15,
       "summary": "从 clone 到跑起 App 和官网，以及测试与打包命令。",
-      "body": "## 环境要求\n\n| 项目 | 要求 | 依据 |\n| --- | --- | --- |\n| JDK | 17 | compileOptions 与 kotlinOptions 的 jvmTarget 均为 17 |\n| Android SDK | 35 | compileSdk / targetSdk = 35，minSdk = 26 |\n| Gradle | 8.14.2 | gradle/wrapper/gradle-wrapper.properties |\n| Node | >= 18 | website/package.json 的 engines |\n| Android Studio | Hedgehog 或更新 | 可选，命令行构建不需要 |\n\n## 项目结构\n\n仓库分两部分：根目录是 Android 工程，`website/` 是官网。App 代码在 `app/src/main/java/com/phoneagent/`，按层组织：\n\n| 目录 | 职责 |\n| --- | --- |\n| core/ | 跨层基础设施：模型客户端、敏感页检测与脱敏、人话翻译、通知 |\n| domain/ | 纯领域模型与规则：动作 / 意图 / 状态、硬约束规则引擎、命令解析、端侧决策 |\n| data/ | 持久化：DataStore 配置，以及记忆 / 任务 / 调试记录 / MCP / 提示词模板各 Store |\n| engine/ | Agent 编排：ReAct 主循环、提示词、执行转译、感知标注、页面指纹 |\n| overlay/ | 悬浮窗服务与绘制 |\n| feature/ | 功能域：技能、MCP、文档、跳广告、边缘光效、自测 |\n| ui/ | 界面层：首页 / Agent / 记忆 / 调试 / 技能 / 设置 / 自测各页 |\n| di/ | Koin 依赖注入模块 |\n\n官网这边，`src/` 是 Vue3 前端，`server/` 是 Express 内容 API，`server/data/*.json` 存放全部内容，`scripts/` 放快照与种子脚本。\n\n## 跑起 App\n\n仓库根目录就是 Android 工程，`gradlew` 与 `gradlew.bat` 都在根目录：\n\n```bash\n# Windows 用 gradlew.bat，macOS / Linux 用 ./gradlew\ngradlew.bat assembleDebug\n\n# 产物：app/build/outputs/apk/debug/app-debug.apk\n\n# 安装到已连接的设备\nadb install app/build/outputs/apk/debug/app-debug.apk\n```\n\n版本号来自根目录 `version.properties` 的 `BUILD_NUMBER`：执行 assemble / bundle 任务时自增，`versionCode` 取该值，`versionName` 为 `0.1.<BUILD_NUMBER>`。配置阶段不会改动它。也可以直接用 Android Studio 打开根目录运行；Debug 构建不混淆，适合本地调试。\n\n## 跑起官网\n\n官网在 `website/`，是 Vue3 前端加 Express 内容 API：\n\n```bash\ncd website\nnpm install\nnpm run dev\n```\n\n`npm run dev` 用 concurrently 同时起两个进程：\n\n| 进程 | 命令 | 端口 |\n| --- | --- | --- |\n| API | node --watch server/index.js | 5180（可用环境变量 PORT 覆盖） |\n| 前端 | vite | 5173 |\n\n前端的 `/api` 与 `/apk` 请求代理到 127.0.0.1:5180，所以只需访问前端端口。只想起其中一端时用 `npm run dev:api` 或 `npm run dev:web`；生产模式用 `npm start` 只起 API，由 Express 托管已构建的前端。内容全部是 `server/data/*.json`，没有数据库。\n\n## 构建 APK\n\n```bash\ngradlew.bat assembleDebug     # Debug，不混淆\ngradlew.bat assembleRelease   # Release，开启 minify 与资源压缩\n```\n\nRelease 构建额外做了两件事：`isMinifyEnabled` 与 `isShrinkResources` 打开，ABI 只保留 arm64-v8a，用于减小包体。签名从 `app/upload-signing.properties` 读取，该文件不存在时跳过 release 签名配置。这两个文件都是本地文件，不应提交到仓库。\n\n## 官网静态导出\n\n给没有后端的部署（如 GitHub Pages / Gitee Pages）用：\n\n```bash\ncd website\nnpm run snapshot       # 把 server/data 烘成前端快照 src/data/fallback.js\nnpm run build:static   # 等价于 snapshot + STATIC_EXPORT=1 vite build，产物 dist-static/\n```\n\n`build:static` 会先跑 snapshot 再构建，产物为 hash 路由加相对 base，所有内容从快照读取；快照由 `scripts/snapshot.mjs` 生成，不要手工编辑。快照里不含管理端点，也不含任何令牌。\n\n## 测试\n\n```bash\n# Android 单元测试（JVM 运行，android.util.Log 等返回默认值）\ngradlew.bat test\n```\n\n测试覆盖 HtmlToMarkdown、SkillCompat、SkillRegistry、McpClient、IntentTranslator、EngineRules、页面指纹、无线 ADB 状态机等纯逻辑模块。仓库根目录 `tests/` 下另有一组 `.mjs` 脚本，用于提示词的联调与回归测试。"
+      "body": "## 环境要求\n\n| 项目 | 要求 | 依据 |\n| --- | --- | --- |\n| JDK | 17 | compileOptions 与 kotlinOptions 的 jvmTarget 均为 17 |\n| Android SDK | 36 | compileSdk / targetSdk = 36，minSdk = 26 |\n| Gradle | 8.14.2 | gradle/wrapper/gradle-wrapper.properties |\n| Node | >= 18 | website/package.json 的 engines |\n| Android Studio | Hedgehog 或更新 | 可选，命令行构建不需要 |\n\n## 项目结构\n\n仓库分两部分：根目录是 Android 工程，`website/` 是官网。App 代码在 `app/src/main/java/com/phoneagent/`，按层组织：\n\n| 目录 | 职责 |\n| --- | --- |\n| core/ | 跨层基础设施：模型客户端、敏感页检测与脱敏、人话翻译、通知 |\n| domain/ | 纯领域模型与规则：动作 / 意图 / 状态、硬约束规则引擎、命令解析、端侧决策 |\n| data/ | 持久化：DataStore 配置，以及记忆 / 任务 / 调试记录 / MCP / 提示词模板各 Store |\n| engine/ | Agent 编排：ReAct 主循环、提示词、执行转译、感知标注、页面指纹 |\n| overlay/ | 悬浮窗服务与绘制 |\n| feature/ | 功能域：技能、MCP、文档、跳广告、边缘光效、自测 |\n| ui/ | 界面层：首页 / Agent / 记忆 / 调试 / 技能 / 设置 / 自测各页 |\n| di/ | Koin 依赖注入模块 |\n\n官网这边，`src/` 是 Vue3 前端，`server/` 是 Express 内容 API，`server/data/*.json` 存放全部内容，`scripts/` 放快照与种子脚本。\n\n## 跑起 App\n\n仓库根目录就是 Android 工程，`gradlew` 与 `gradlew.bat` 都在根目录：\n\n```bash\n# Windows 用 gradlew.bat，macOS / Linux 用 ./gradlew\ngradlew.bat assembleDebug\n\n# 产物：app/build/outputs/apk/debug/app-debug.apk\n\n# 安装到已连接的设备\nadb install app/build/outputs/apk/debug/app-debug.apk\n```\n\n版本号来自根目录 `version.properties` 的 `BUILD_NUMBER`：执行 assemble / bundle 任务时自增，`versionCode` 取该值，`versionName` 为 `0.2.<BUILD_NUMBER>`。配置阶段不会改动它。也可以直接用 Android Studio 打开根目录运行；Debug 构建不混淆，适合本地调试。\n\n## 跑起官网\n\n官网在 `website/`，是 Vue3 前端加 Express 内容 API：\n\n```bash\ncd website\nnpm install\nnpm run dev\n```\n\n`npm run dev` 用 concurrently 同时起两个进程：\n\n| 进程 | 命令 | 端口 |\n| --- | --- | --- |\n| API | node --watch server/index.js | 5180（可用环境变量 PORT 覆盖） |\n| 前端 | vite | 5173 |\n\n前端的 `/api` 与 `/apk` 请求代理到 127.0.0.1:5180，所以只需访问前端端口。只想起其中一端时用 `npm run dev:api` 或 `npm run dev:web`；生产模式用 `npm start` 只起 API，由 Express 托管已构建的前端。内容全部是 `server/data/*.json`，没有数据库。\n\n## 构建 APK\n\n```bash\ngradlew.bat assembleDebug     # Debug，不混淆\ngradlew.bat assembleRelease   # Release，开启 minify 与资源压缩\n```\n\nRelease 构建额外做了两件事：`isMinifyEnabled` 与 `isShrinkResources` 打开，ABI 只保留 arm64-v8a，用于减小包体。签名从 `app/upload-signing.properties` 读取，该文件不存在时跳过 release 签名配置。这两个文件都是本地文件，不应提交到仓库。\n\n## 官网静态导出\n\n给没有后端的部署（如 GitHub Pages / Gitee Pages）用：\n\n```bash\ncd website\nnpm run snapshot       # 把 server/data 烘成前端快照 src/data/fallback.js\nnpm run build:static   # 等价于 snapshot + STATIC_EXPORT=1 vite build，产物 dist-static/\n```\n\n`build:static` 会先跑 snapshot 再构建，产物为 hash 路由加相对 base，所有内容从快照读取；快照由 `scripts/snapshot.mjs` 生成，不要手工编辑。快照里不含管理端点，也不含任何令牌。\n\n## 测试\n\n```bash\n# Android 单元测试（JVM 运行，android.util.Log 等返回默认值）\ngradlew.bat test\n```\n\n测试覆盖 HtmlToMarkdown、SkillCompat、SkillRegistry、McpClient、IntentTranslator、EngineRules、页面指纹、Provider AIDL、通道阶梯、浏览器脚本等纯逻辑模块。仓库根目录 `tests/` 下另有一组 `.mjs` 脚本，用于提示词的联调与回归测试。"
     },
     {
       "slug": "privacy",
@@ -1300,7 +1477,7 @@ export const snapshot = {
       "group": "合规",
       "order": 16,
       "summary": "哪些数据留在设备上、哪些会发出去、发给了谁。",
-      "body": "## 设备上存了什么\n\n应用把数据放在应用私有空间，其它应用读不到。主要落点：\n\n| 位置 | 内容 |\n| --- | --- |\n| DataStore `agent_settings` | 模型配置（API 地址、Key、模型名、温度、提示词语言、执行通道偏好、各类开关） |\n| DataStore `agent_memory` | AI 记忆（ai_memory）、用户画像（user_profile）、异常经验（anomaly_memory）、任务记忆（task_memory） |\n| DataStore `agent_tasks` | 任务检查点与任务模板库 |\n| DataStore `mcp_servers` | MCP 服务器配置与 Token |\n| 应用私有目录 `hpa_debug_hist/` | 调试记录 `records.json` 与每步截图缩略图 `shot_*.png` |\n| 外部私有目录 `documents/` | `write_doc` 生成的文档正文 |\n\n模型 API Key 与 MCP Token 保存在 DataStore 的 Preferences 中，未做额外的加密处理——它们依赖 Android 应用沙箱隔离，而不是独立密钥库。\n\n## 数据会发出去吗\n\n应用只有一个网络出口：**你自己配置的模型服务端点**（OpenAI 兼容的 chat/completions），请求头带上你填的 Key。每次决策会把这些内容发过去：\n\n- 你输入的任务描述与补充说明；\n- 当前页面的元素树（控件的文本、描述等结构化字段）；\n- 决策对话历史；\n- 截图（base64 图像）——仅在你开启视觉能力并配置了视觉模型时。\n\n此外：MCP 调用只会发给你主动配置并启用的 MCP 服务器；内置浏览器加载网页时的网络请求由 WebView 直接发出，与你用系统浏览器访问该网址是同一回事。\n\n## 脱敏规则\n\n进模型上下文之前，DataSanitizer 会遮蔽三类数字串：\n\n| 类型 | 匹配 | 结果 |\n| --- | --- | --- |\n| 身份证号 | 18 位，末位可为 X | 前 6 位 + ******** + 后 4 位 |\n| 手机号 | 1[3-9] 开头的 11 位连续数字 | 前 3 位 + **** + 后 4 位 |\n| 银行卡号 | 16~19 位连续数字 | 前 4 位 + **** + 后 4 位 |\n\n处理顺序是先脱敏最长的身份证号，再手机号，最后银行卡号——否则 18 位身份证号会被 16~19 位的银行卡正则先吃掉，留下残段。脱敏发生在构造提示词的环节，不是事后过滤：被遮蔽的内容从未离开设备。\n\n## 敏感页面只读\n\nSensitivePageDetector 在支付、金融类应用页面（命中包名特征）上进一步检查关键词（支付密码、验证码、转账、银行卡、余额等）。命中后该页面被横切为**只读**：Agent 可以看、可以描述，但不能提交。\n\n## 是否采集遥测或崩溃上报\n\n**不采集。** 依据有三条：\n\n1. **依赖层面** —— `gradle/libs.versions.toml` 与 `app/build.gradle.kts` 中没有 Firebase、Crashlytics、Sentry、BugSnag、友盟等任何统计或崩溃上报 SDK。\n2. **代码层面** —— 全仓库没有向第三方上报的调用；检索到的「埋点」字样只是调试页用于本地展示的耗时聚合。\n3. **数据出口层面** —— 网络请求只发生在 AI 客户端、MCP 客户端与 WebView 三处，目标分别是你配置的模型端点、你配置的 MCP 服务器、你访问的网页。\n\n调试页的导出（日志 / 诊断报告）是**本地文件**，写到「下载/HappyPhoneAgent/」，是否交给他人完全由你决定；诊断报告在导出前还会再跑一次脱敏。\n\n## 权限清单与用途\n\n| 权限 | 用途 |\n| --- | --- |\n| INTERNET / ACCESS_NETWORK_STATE | 访问模型服务与网页 |\n| POST_NOTIFICATIONS | 前台服务与任务进度通知 |\n| FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PROJECTION | 屏幕录制前台服务 |\n| FOREGROUND_SERVICE_SPECIAL_USE | 悬浮窗前台服务 |\n| SYSTEM_ALERT_WINDOW | 显示悬浮窗进度 |\n| QUERY_ALL_PACKAGES | 按名称查包名、列出已安装应用 |\n| REQUEST_IGNORE_BATTERY_OPTIMIZATIONS | 长任务在后台持续运行 |\n| com.termux.permission.RUN_COMMAND | Termux 命令行通道（需已安装 Termux） |\n| 无障碍服务 | 读取屏幕控件并执行点击 / 滑动 / 输入，在系统设置里手动开启 |\n| Shizuku | 通过 Shizuku 获得 shell 权限，可选 |\n\n应用还放开了 `usesCleartextTraffic`，用于把 API 地址指向内网 http 服务（如 `http://192.168.1.5:8000/v1`）；不打算用内网服务时可以忽略这一点。\n\n## 如何彻底清除数据\n\n应用内没有「一键清除全部数据」的入口，彻底清除走系统路径：\n\n1. 系统设置 → 应用 → Happy Agent → 存储 → 清除数据，或直接卸载应用。这会删掉模型 Key、记忆、检查点、MCP 配置、调试记录与文档。\n2. 手动删除导出文件：「下载/HappyPhoneAgent/」下的日志与诊断报告不在应用私有空间，清除应用数据不会动它们。\n3. 如已授权，到系统设置里关闭无障碍服务与悬浮窗权限。"
+      "body": "## 设备上存了什么\n\n应用把数据放在应用私有空间，其它应用读不到。主要落点：\n\n| 位置 | 内容 |\n| --- | --- |\n| DataStore `agent_settings` | 模型配置（API 地址、Key、模型名、温度、提示词语言、执行通道偏好、各类开关） |\n| DataStore `agent_memory` | AI 记忆（ai_memory）、用户画像（user_profile）、异常经验（anomaly_memory）、任务记忆（task_memory） |\n| DataStore `agent_tasks` | 任务检查点与任务模板库 |\n| DataStore `mcp_servers` | MCP 服务器配置与 Token |\n| 应用私有目录 `hpa_debug_hist/` | 调试记录 `records.json` 与每步截图缩略图 `shot_*.png` |\n| 外部私有目录 `documents/` | `write_doc` 生成的文档正文 |\n\n模型 API Key 与 MCP Token 保存在 DataStore 的 Preferences 中，未做额外的加密处理——它们依赖 Android 应用沙箱隔离，而不是独立密钥库。\n\n## 数据会发出去吗\n\n网络出口不止一处：\n\n- **模型服务端点**——主模型 / 视觉模型 / 思考模型 / ASR 各自配置的 OpenAI 兼容接口，请求头带上你填的 Key；\n- **你配置的 MCP 服务器**——只有你主动添加并启用的服务器才会收到调用；\n- **内置浏览器访问的网页**——由 WebView 直接发出，与你用系统浏览器访问该网址是同一回事；\n- **应用更新接口与蓝奏云镜像**——检查新版本、下载 APK；\n- **端侧 3B 模型下载**——首次启用端侧视觉时拉取 Qwen2.5-VL-3B 权重；\n- **编码环境组件下载**——首次使用编码环境时拉取组件。\n\n发往模型端点的每次决策会带上：\n\n- 你输入的任务描述与补充说明；\n- 当前页面的元素树（控件的文本、描述等结构化字段）；\n- 决策对话历史；\n- 截图（base64 图像）——仅在你开启视觉能力并配置了视觉模型时。\n\nMCP 调用只会发给你主动配置并启用的服务器；内置浏览器加载网页时的网络请求由 WebView 直接发出，与你用系统浏览器访问该网址是同一回事。\n\n## 脱敏规则\n\n进模型上下文之前，DataSanitizer 会遮蔽三类数字串：\n\n| 类型 | 匹配 | 结果 |\n| --- | --- | --- |\n| 身份证号 | 18 位，末位可为 X | 前 6 位 + ******** + 后 4 位 |\n| 手机号 | 1[3-9] 开头的 11 位连续数字 | 前 3 位 + **** + 后 4 位 |\n| 银行卡号 | 16~19 位连续数字 | 前 4 位 + **** + 后 4 位 |\n\n处理顺序是先脱敏最长的身份证号，再手机号，最后银行卡号——否则 18 位身份证号会被 16~19 位的银行卡正则先吃掉，留下残段。脱敏发生在构造提示词的环节，不是事后过滤：被遮蔽的内容从未离开设备。\n\n## 敏感页面只读\n\nSensitivePageDetector 在支付、金融类应用页面（命中包名特征）上进一步检查关键词（支付密码、验证码、转账、银行卡、余额等）。命中后该页面被横切为**只读**：Agent 可以看、可以描述，但不能提交。\n\n## 是否采集遥测或崩溃上报\n\n**不采集。** 依据有三条：\n\n1. **依赖层面** —— `gradle/libs.versions.toml` 与 `app/build.gradle.kts` 中没有 Firebase、Crashlytics、Sentry、BugSnag、友盟等任何统计或崩溃上报 SDK。\n2. **代码层面** —— 全仓库没有向第三方上报的调用；检索到的「埋点」字样只是调试页用于本地展示的耗时聚合。\n3. **数据出口层面** —— 网络请求只发生在模型客户端、MCP 客户端、WebView、应用更新接口与组件 / 模型下载处，目标分别是你配置的模型端点、你配置的 MCP 服务器、你访问的网页，以及更新与下载服务。\n\n调试页的导出（日志 / 诊断报告）是**本地文件**，写到「下载/HappyPhoneAgent/」，是否交给他人完全由你决定；诊断报告在导出前还会再跑一次脱敏。\n\n## 权限清单与用途\n\n| 权限 | 用途 |\n| --- | --- |\n| INTERNET / ACCESS_NETWORK_STATE | 访问模型服务与网页 |\n| POST_NOTIFICATIONS | 前台服务与任务进度通知 |\n| FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PROJECTION | 屏幕录制前台服务 |\n| FOREGROUND_SERVICE_SPECIAL_USE | 悬浮窗前台服务 |\n| SYSTEM_ALERT_WINDOW | 显示悬浮窗进度 |\n| QUERY_ALL_PACKAGES | 按名称查包名、列出已安装应用 |\n| REQUEST_IGNORE_BATTERY_OPTIMIZATIONS | 长任务在后台持续运行 |\n| REQUEST_INSTALL_PACKAGES | 安装内置服务组件与编码环境组件；通道不可用时回落到系统安装器 |\n| MANAGE_EXTERNAL_STORAGE | 编码工作区按真实路径读写用户选择的任意目录（授权走系统设置页） |\n| READ_EXTERNAL_STORAGE / WRITE_EXTERNAL_STORAGE | Android 10 及以下的同等读写场景（maxSdkVersion=29） |\n| RECORD_AUDIO | 任务输入框的端侧语音输入（SpeechRecognizer / ASR） |\n| com.phoneagent.permission.BIND_PROVIDER / BIND_ENV | 绑定同签名的服务组件（shell / 编码环境），signature 级 |\n| 无障碍服务 | 读取屏幕控件并执行点击 / 滑动 / 输入，在系统设置里手动开启；其声明在服务组件 `com.phoneagent.provider` 的 Manifest 中 |\n| 内置 Shizuku | 由同签名服务组件提供 shell 权限，免装官方 Shizuku App |\n| Termux | RUN_COMMAND 权限、RunCommandService 与结果回传均在服务组件中声明（需已安装 Termux） |\n\n应用还放开了 `usesCleartextTraffic`，用于把 API 地址指向内网 http 服务（如 `http://192.168.1.5:8000/v1`）；不打算用内网服务时可以忽略这一点。\n\n## 如何彻底清除数据\n\n应用内没有「一键清除全部数据」的入口，彻底清除走系统路径：\n\n1. 系统设置 → 应用 → Happy Agent → 存储 → 清除数据，或直接卸载应用。这会删掉模型 Key、记忆、检查点、MCP 配置、调试记录与文档。\n2. 手动删除导出文件：「下载/HappyPhoneAgent/」下的日志与诊断报告不在应用私有空间，清除应用数据不会动它们。\n3. 如已授权，到系统设置里关闭无障碍服务与悬浮窗权限。"
     },
     {
       "slug": "disclaimer",
@@ -1308,7 +1485,7 @@ export const snapshot = {
       "group": "合规",
       "order": 17,
       "summary": "无障碍权限与自动化操作的能力边界和责任划分。",
-      "body": "## 以什么状态分发\n\n当前提供的安装包是 **Debug 构建，用于内测与自用**。这意味着：\n\n- 它不经过应用商店的审核流程，安装时可能需要你手动允许「安装未知来源应用」；\n- 安装后需要你逐项手动授予无障碍、悬浮窗、通知等权限；\n- 版本号形如 `0.1.<BUILD_NUMBER>`，随每次构建自增，下载页给出的 SHA-256 可用于核对包体。\n\n它面向愿意自己动手、能看懂日志与诊断报告的用户，而不是普通消费者成品软件。\n\n## 无障碍与自动化操作的固有风险\n\n无障碍服务是 Agent 的手和眼：授予后，应用可以读取当前屏幕上的一切控件文本，并模拟点击、滑动、文字输入。这等于把「看屏幕 + 操作屏幕」的能力交给了这个应用，风险是固有的：\n\n- 屏幕上出现的任何内容都可能被读取，包括通知、聊天、表单；\n- 模拟操作可能落在非预期控件上；\n- 系统会在无障碍开启期间给出提示，你可以随时在系统设置里关闭它，关闭后 Agent 立即失效。\n\n如果你对某个页面不放心，最稳妥的做法是先关闭无障碍，等需要时再开。\n\n## AI 决策可能出错\n\n决策由你配置的语言模型做出，模型可能误解页面、把 A 按钮当成 B 按钮、或对当前状态做出错误判断。项目为此加了多重护栏：\n\n- 一步一个动作，同一控件不反复操作；\n- 动作前后做页面指纹比对，确认是否真的生效；\n- 连续失败 3 次会请求用户介入；\n- 敏感页面只读，不提交；\n- 只有在当前页面看到明确证据时才接受「任务完成」，且执行步数不足时会被打回。\n\n但这些护栏只能降低出错概率，不能消除。涉及真实数据的任务，请人工复核结果，不要无人值守地跑。\n\n## 不可逆操作的责任划分\n\n对支付、转账、删除数据、发送消息这类不可逆操作：\n\n- `delete` 会标记为不可逆并自动触发用户确认；\n- 敏感页面（支付密码、验证码、转账、银行卡等关键词命中）会被横切为只读，Agent 无法提交；\n- 但确认之后是否执行、以及执行的后果，由你承担。\n\n建议先在测试账号、测试数据或空数据上验证任务流程，确认行为符合预期后再用到真实场景。不要把它用在涉及真实资金的自动操作上。\n\n## 按原样提供\n\n本项目基于 **MIT 协议**开源，按「按原样提供」分发，不提供任何明示或默示的担保，包括但不限于对适销性、特定用途适用性和非侵权性的担保。作者与贡献者不对因使用或无法使用本软件而产生的任何索赔、损害或其它责任负责。\n\n## 你的责任\n\n- 你对在本设备上执行的每一次操作负责，包括 Agent 代表你做出的操作；\n- 请遵守当地法律，以及你所操作应用的服务条款——自动化操作在某些平台上可能被禁止；\n- 你自行配置的模型服务与 MCP 服务器由你选择与部署，它们的可用性、计费与数据处理由对应服务商负责；\n- 如用于生产或对外分发，请自行完成相应的合规与安全评估。\n\n如果你不同意以上任一条，请不要安装或使用本应用。"
+      "body": "## 以什么状态分发\n\n当前提供的安装包按 **stable / beta / dev / nightly** 频道分发，版本号形如 `0.2.<BUILD_NUMBER>`，随每次构建自增。**当前为 Debug 签名，内测分发**，这意味着：\n\n- 它不经过应用商店的审核流程，安装时可能需要你手动允许「安装未知来源应用」；\n- 安装后需要你逐项手动授予无障碍、悬浮窗、通知等权限；\n- 下载页给出的 SHA-256 可用于核对包体；频道只决定更新节奏，能力上没有差别。\n\n它面向愿意自己动手、能看懂日志与诊断报告的用户，而不是普通消费者成品软件。\n\n## 无障碍与自动化操作的固有风险\n\n无障碍服务是 Agent 的手和眼：授予后，应用可以读取当前屏幕上的一切控件文本，并模拟点击、滑动、文字输入。这等于把「看屏幕 + 操作屏幕」的能力交给了这个应用，风险是固有的：\n\n- 屏幕上出现的任何内容都可能被读取，包括通知、聊天、表单；\n- 模拟操作可能落在非预期控件上；\n- 系统会在无障碍开启期间给出提示，你可以随时在系统设置里关闭它，关闭后 Agent 立即失效。\n\n如果你对某个页面不放心，最稳妥的做法是先关闭无障碍，等需要时再开。\n\n## AI 决策可能出错\n\n决策由你配置的语言模型做出，模型可能误解页面、把 A 按钮当成 B 按钮、或对当前状态做出错误判断。项目为此加了多重护栏：\n\n- 一步一个动作，同一控件不反复操作；\n- 动作前后做页面指纹比对，确认是否真的生效；\n- 连续失败 3 次会请求用户介入；\n- 敏感页面只读，不提交；\n- 只有在当前页面看到明确证据时才接受「任务完成」，且执行步数不足时会被打回。\n\n但这些护栏只能降低出错概率，不能消除。涉及真实数据的任务，请人工复核结果，不要无人值守地跑。\n\n## 不可逆操作的责任划分\n\n对支付、转账、删除数据、发送消息这类不可逆操作：\n\n- `delete` 会标记为不可逆并自动触发用户确认；\n- 敏感页面（支付密码、验证码、转账、银行卡等关键词命中）会被横切为只读，Agent 无法提交；\n- 但确认之后是否执行、以及执行的后果，由你承担。\n\n建议先在测试账号、测试数据或空数据上验证任务流程，确认行为符合预期后再用到真实场景。不要把它用在涉及真实资金的自动操作上。\n\n## 按原样提供\n\n本项目基于 **MIT 协议**开源，按「按原样提供」分发，不提供任何明示或默示的担保，包括但不限于对适销性、特定用途适用性和非侵权性的担保。作者与贡献者不对因使用或无法使用本软件而产生的任何索赔、损害或其它责任负责。\n\n## 你的责任\n\n- 你对在本设备上执行的每一次操作负责，包括 Agent 代表你做出的操作；\n- 请遵守当地法律，以及你所操作应用的服务条款——自动化操作在某些平台上可能被禁止；\n- 你自行配置的模型服务与 MCP 服务器由你选择与部署，它们的可用性、计费与数据处理由对应服务商负责；\n- 如用于生产或对外分发，请自行完成相应的合规与安全评估。\n\n如果你不同意以上任一条，请不要安装或使用本应用。"
     }
   ],
   "faq": [
@@ -1317,7 +1494,7 @@ export const snapshot = {
       "order": 1,
       "group": "使用",
       "q": "需要 Root 吗？",
-      "a": "不需要。基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，用 Android 11+ 自带的无线调试配对，或安装 Shizuku——两者都不需要 Root。"
+      "a": "不需要。基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，Shizuku server 已内置、随同签名的服务组件（com.phoneagent.provider）分发，免装官方 Shizuku App——首次启动按引导安装该组件即可；无线 ADB 只用于首次启动内置 Shizuku server 的引导会话。都不需要 Root。"
     },
     {
       "id": "which-model",
@@ -1345,7 +1522,7 @@ export const snapshot = {
       "order": 5,
       "group": "下载",
       "q": "下载页的 APK 是什么构建？",
-      "a": "当前提供的是 Debug 构建，用于内测与自用，需要手动授予权限。每个版本的 SHA-256 校验值都写在下载页上，安装前可自行核对。"
+      "a": "安装包按 stable / beta / dev / nightly 频道分发，版本号形如 0.2.<BUILD_NUMBER>。当前为 Debug 签名，内测分发，需要手动授予权限。每个版本的 SHA-256 校验值都写在下载页上，安装前可自行核对。"
     },
     {
       "id": "install-fail",
@@ -1436,7 +1613,7 @@ export const snapshot = {
       "order": 18,
       "group": "下载",
       "q": "怎么升级或降级，配置会不会丢？",
-      "a": "从下载页取新版 APK 覆盖安装即可，当前版本号显示在主页底部。模型配置、记忆、技能都保存在应用内部存储，覆盖安装不会清空，只有卸载重装才会丢。降级需先卸载再装旧版，配置会随之清空。见 [下载页](/download)。"
+      "a": "在「设置 → 软件更新」按频道检查、下载、校验 SHA-256 后安装；也可以从下载页取新版 APK 覆盖安装。当前版本号显示在主页底部。模型配置、记忆、技能都保存在应用内部存储，覆盖安装不会清空；降级需先卸载再装旧版，配置会随之清空。见 [下载页](/download)。"
     },
     {
       "id": "custom-skill-mcp",
@@ -1474,11 +1651,11 @@ export const snapshot = {
       "category": "系统设置",
       "title": "把屏幕亮度调到一半",
       "goal": "打开设置，把屏幕亮度调到一半。",
-      "channel": "无线 ADB",
+      "channel": "内置 Shizuku",
       "steps": [
         {
           "title": "确认通道就绪",
-          "detail": "先确认无线 ADB 已连接、拿到 shell 权限；没有 shell 时这一步会降级到无障碍，改去设置页手动拖滑杆。"
+          "detail": "先确认内置 Shizuku 已就绪、拿到 shell；没有 shell 时降级到无障碍，改去设置页手动拖滑杆。"
         },
         {
           "title": "读取当前亮度",
@@ -1621,7 +1798,7 @@ export const snapshot = {
       "steps": [
         {
           "title": "打开天气页面",
-          "detail": "用 browse_open 在内置浏览器打开天气网址，App 会切到浏览器页，之后每步截图就是真实网页。"
+          "detail": "用 browse_open 在内置浏览器打开天气网址，默认在后台静默宿主加载，App 界面不切走；随后用 browse_read 读正文。"
         },
         {
           "title": "读取网页正文",
@@ -1698,7 +1875,7 @@ export const snapshot = {
       "category": "内容整理",
       "title": "把相册里的截图按月份归档",
       "goal": "把相册里的截图按月份整理到不同文件夹。",
-      "channel": "无线 ADB",
+      "channel": "内置 Shizuku",
       "steps": [
         {
           "title": "定位截图目录",
@@ -1795,7 +1972,7 @@ export const snapshot = {
         },
         {
           "title": "提交并确认",
-          "detail": "填完用 browse_click 点提交按钮；提交属于不可逆操作，会先请你确认再下发。"
+          "detail": "填完用 browse_click 点提交按钮；只有按钮命中支付 / 下单 / 提交订单等不可逆词表时才先请你确认，泛词「提交」不在词表，不会额外拦截。"
         },
         {
           "title": "回屏核对结果",
@@ -2018,6 +2195,12 @@ export const snapshot = {
         "group": "主要"
       },
       {
+        "path": "/ask",
+        "name": "ask",
+        "title": "AI 问答",
+        "group": "主要"
+      },
+      {
         "path": "/changelog",
         "name": "changelog",
         "title": "更新日志",
@@ -2149,6 +2332,16 @@ export const snapshot = {
       },
       {
         "method": "GET",
+        "path": "/api/ai/status",
+        "desc": "站点问答是否可用，以及助手名、开场白、推荐提问与是否允许带路"
+      },
+      {
+        "method": "POST",
+        "path": "/api/ai/chat",
+        "desc": "站点问答：请求体 { messages: [{ role: \"user\" | \"assistant\", content }] }，以 SSE 流式返回 delta / done / error。回答里的 [[go:<路径>|<去处名>]] 是站内引导标记，由前端解析后直接跳转"
+      },
+      {
+        "method": "GET",
         "path": "/api/openapi",
         "desc": "OpenAPI 3.1 规范（机器可读）"
       },
@@ -2164,6 +2357,16 @@ export const snapshot = {
       },
       {
         "method": "GET",
+        "path": "/api/update/check",
+        "desc": "客户端检查更新：?channel=stable|beta|dev|nightly&version=&build=，按频道矩阵判定是否升级并返回下载信息"
+      },
+      {
+        "method": "GET",
+        "path": "/api/update/download/:version",
+        "desc": "更新下载：优先从蓝奏云镜像取回并解包 APK，失败回落官网直链"
+      },
+      {
+        "method": "GET",
         "path": "/apk/:file",
         "desc": "APK 静态直出（带 Range 与缓存）"
       },
@@ -2176,6 +2379,16 @@ export const snapshot = {
         "method": "GET",
         "path": "/api/admin/session",
         "desc": "校验当前令牌是否有效"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/password",
+        "desc": "口令来源与安全状态（环境变量或后台设置）"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/password",
+        "desc": "修改管理口令，需提供当前口令；成功后旧令牌全部失效"
       },
       {
         "method": "GET",
@@ -2195,12 +2408,42 @@ export const snapshot = {
       {
         "method": "POST",
         "path": "/api/admin/apk",
-        "desc": "上传 APK（multipart，字段名 file）"
+        "desc": "上传 APK（multipart，字段名 file）；已启用蓝奏云镜像时会自动打包上传"
       },
       {
         "method": "DELETE",
         "path": "/api/admin/apk/:file",
         "desc": "删除 APK 文件"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/lanzou",
+        "desc": "蓝奏云镜像配置（口令打码）与已登记镜像清单"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/admin/lanzou",
+        "desc": "保存蓝奏云镜像配置；password 留空表示不修改"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/lanzou/test",
+        "desc": "用当前表单值登录蓝奏云；需人机验证时返回验证码图与 token，带 verifycode 续登"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/lanzou/mirror",
+        "desc": "手动触发某个 APK 的蓝奏云镜像上传"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/admin/lanzou/mirror/:file",
+        "desc": "手工登记某 APK 的蓝奏云分享链接与提取码"
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/admin/lanzou/mirror/:file",
+        "desc": "移除某 APK 的蓝奏云镜像登记"
       },
       {
         "method": "GET",
@@ -2341,6 +2584,36 @@ export const snapshot = {
         "method": "POST",
         "path": "/api/admin/import/changelog",
         "desc": "从 CHANGELOG.md 文本导入更新日志"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/ai",
+        "desc": "AI 问答配置（密钥打码，只回指纹）与知识库规模"
+      },
+      {
+        "method": "PUT",
+        "path": "/api/admin/ai",
+        "desc": "保存 AI 问答配置；apiKey 留空表示不修改，clearKey=true 表示清除"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/ai/test",
+        "desc": "用当前表单值测一次连通性，返回延迟与模型回复"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/ai/preview",
+        "desc": "预览一次提问实际注入给模型的项目资料与命中的来源"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/ai/logs",
+        "desc": "问答留痕：访客提问与回答（IP 已打码），支持 ?q=&page=&size="
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/admin/ai/logs",
+        "desc": "清空问答留痕"
       }
     ]
   },
@@ -2350,10 +2623,10 @@ export const snapshot = {
       "shortName": "Happy Agent",
       "slug": "phtomt",
       "tagline": "让手机自己动手",
-      "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。",
-      "version": "0.1.384",
-      "buildNumber": 384,
-      "updatedAt": "2026-09-20T13:40:27.690Z",
+      "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
+      "version": "0.2.1264",
+      "buildNumber": 1264,
+      "updatedAt": "2026-11-02T16:23:00.958Z",
       "links": {
         "github": "https://github.com/xkx121029/Phtomt",
         "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -2364,22 +2637,22 @@ export const snapshot = {
       "requirements": {
         "minAndroid": "8.0",
         "minApi": 26,
-        "targetApi": 35,
-        "arch": "arm64-v8a / armeabi-v7a",
+        "targetApi": 36,
+        "arch": "arm64-v8a",
         "packageName": "com.phoneagent"
       },
       "techStack": [
         {
           "name": "Kotlin",
-          "version": "2.0.21"
+          "version": "2.4.20"
         },
         {
           "name": "Jetpack Compose",
-          "version": "2024.12.01"
+          "version": "2026.06.01"
         },
         {
           "name": "Material 3",
-          "version": "1.3.1"
+          "version": "1.4.0"
         },
         {
           "name": "Koin",
@@ -2416,21 +2689,14 @@ export const snapshot = {
           "id": "accessibility",
           "name": "无障碍通道",
           "level": "普通应用权限",
-          "desc": "通过 AccessibilityService 读取控件树并执行点击、滑动、输入，兼容性最好，无需额外安装。",
+          "desc": "通过 AccessibilityService 读取控件树并执行点击、滑动、输入，兼容性最好，无需 Root。执行能力运行在独立服务组件中，主应用内置其 APK 并引导安装。",
           "default": true
         },
         {
-          "id": "adb",
-          "name": "无线 ADB 通道",
-          "level": "shell 权限",
-          "desc": "手机自带无线调试，配对后即可执行 am / pm / settings 等系统命令，应用启动走真实包名而非模拟点按。",
-          "default": false
-        },
-        {
           "id": "shizuku",
-          "name": "Shizuku 通道",
+          "name": "内置 Shizuku",
           "level": "shell 权限",
-          "desc": "可选增强，借助 Shizuku 拿到 ADB 级权限；未安装或授权失败不影响无线 ADB 主通道。",
+          "desc": "Shizuku server / starter 随服务组件一并分发，免装官方 App。首次启动用手机自带的无线调试完成引导，之后即可执行 am / pm / settings 等系统命令；启动应用走真实包名，不靠模拟点按。",
           "default": false
         },
         {
@@ -2442,39 +2708,42 @@ export const snapshot = {
         }
       ],
       "latest": {
-        "version": "v0.1.384",
-        "build": 384,
-        "channel": "stable",
-        "date": "2026-09-20",
+        "version": "v0.2.1264",
+        "build": 1264,
+        "channel": "dev",
+        "date": "2026-11-02",
         "published": true,
-        "title": "当前开发版",
-        "summary": "AI 此前是在\"真空\"里做决策的：它看不到今天几号、当前在哪个应用、有没有网、电量还剩多少，也记不住 上一轮让它做过什么。同一句话「再发一遍」被当成全新任务，「帮我看看装了哪些应用」则只能一步步翻设置页。 本次给它补上三类上下文：**环境事实**（每步自动注入）、**按需取数**（新增 device_query 技能）、 **会话承接**（上一轮任务的目标与结论）。",
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "apk": {
-          "file": "HappyAgent-0.1.384.apk",
-          "size": 14959209,
-          "sizeText": "14 MB",
-          "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23"
+          "file": "HappyAgent-0.2.1264.apk",
+          "size": 70876730,
+          "sizeText": "68 MB",
+          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
         },
         "notes": [
-          "Debug 构建，用于内测与自用",
-          "首次安装需手动授予无障碍、悬浮窗与通知权限"
+          "DEV 构建"
         ],
-        "downloads": 2
+        "downloads": 0
       },
       "stats": {
-        "totalDownloads": 2,
-        "lastDownloadAt": "2026-09-20T14:15:16.573Z",
+        "totalDownloads": 4,
+        "lastDownloadAt": "2026-10-12T05:55:02.141Z",
         "byVersion": {
-          "v0.1.384": 2
+          "v0.1.384": 4
         },
         "recent": [
           {
             "day": "2026-09-20",
             "count": 2
+          },
+          {
+            "day": "2026-10-12",
+            "count": 2
           }
         ],
-        "apkTotalSize": 14959209,
-        "apkTotalSizeText": "14 MB"
+        "apkTotalSize": 365021675,
+        "apkTotalSizeText": "348 MB"
       }
     },
     "features": [
@@ -2487,143 +2756,294 @@ export const snapshot = {
         "detail": "接入任意 OpenAI 兼容端点（自建 Ollama / LM Studio / one-api 都行）。规划时步数动态收敛到 3~8 步，执行中每一步都以当前页面元素树为唯一依据——目标控件不在当前页面就不允许点击，找不到先滚动查找，仍找不到则中止并说明原因。"
       },
       {
-        "id": "intent",
-        "order": 2,
-        "tag": "执行",
-        "title": "15 个高层语义意图",
-        "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
-        "detail": "back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input 全部由 IntentTranslator 实时转译为端侧动作。有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
-      },
-      {
-        "id": "vision",
-        "order": 3,
-        "tag": "感知",
-        "title": "双引擎视觉理解",
-        "summary": "元素树可读时走端侧，稀疏时自动切云端视觉模型补位。",
-        "detail": "无障碍能读到的控件（元素数 > 3）视为简单页面，优先端侧处理；元素树稀疏（≤ 3）视为复杂页面，自动启用云端视觉模型做截图描述与坐标定位，即使截图开关是关的也会兜底。"
-      },
-      {
         "id": "chain",
-        "order": 4,
+        "order": 2,
         "tag": "决策",
         "title": "多模型链路聚合",
         "summary": "主模型决策 + 视觉模型定位 + 思考模型规划，按需组合，默认关闭。",
-        "detail": "默认只跑主模型（加可选视觉模型），省额度、省延迟。开启链路聚合后，思考模型负责复杂规划、歧义检测与重规划，视觉模型只负责截图描述与坐标定位。三者的地址、模型名、密钥都在设置页图形化配置。"
+        "detail": "默认只跑主模型（可加一个视觉模型），省额度、省延迟。开启链路聚合后，思考模型负责复杂规划、歧义检测与重规划，视觉模型只负责截图描述与坐标定位。三者的地址、模型名、密钥都在设置页图形化配置，并提供模型目录与连通性测试。"
+      },
+      {
+        "id": "local",
+        "order": 3,
+        "tag": "决策",
+        "title": "端侧快速决策与跳广告",
+        "summary": "弹窗、加载、广告这类高频场景本地直接处理，不花云端额度。",
+        "detail": "LocalDecisionEngine 覆盖高频重复场景，命中即本地决策，省掉一次往返。AdSkipperCore 独立于 Agent 运行，按「青少年模式弹窗 > 跳过按钮 > 倒计时角标 > 关闭按钮」的优先级识别四类广告形态，配合精确匹配、位置约束与控件类型约束降低误触，内置冷却防止反复戳同一个按钮。"
+      },
+      {
+        "id": "vision",
+        "order": 4,
+        "tag": "感知",
+        "title": "三引擎视觉理解",
+        "summary": "端侧 3B 优先，元素树可读时走本地，稀疏时自动切云端视觉模型补位。",
+        "detail": "无障碍能读到的控件（元素数 > 3）视为简单页面，优先端侧处理；元素树稀疏（≤ 3）视为复杂页面，自动启用云端视觉模型做截图描述与坐标定位，即使截图开关是关的也会兜底。端侧 3B 模型可用时优先由它框选控件，不可用时逐级回落到云端视觉与本地 OCR。"
+      },
+      {
+        "id": "ondevice",
+        "order": 5,
+        "tag": "感知",
+        "title": "端侧 3B 视觉模型",
+        "summary": "Qwen2.5-VL-3B 走 llama.cpp 本机推理，截图不出设备。",
+        "detail": "模型合计约 3.1GB，下载支持断点续传，中断后可继续。开启「混合路由」后，元素树可读的简单任务交给端侧 3B 省额度，游戏、WebView 这类复杂页面直接走云端视觉。识别全过程在本机完成，只有确实需要云端时才发图。"
+      },
+      {
+        "id": "intent",
+        "order": 6,
+        "tag": "执行",
+        "title": "46 个语义意图",
+        "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
+        "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 46 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 6 个内置浏览器动作。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
       },
       {
         "id": "channel",
-        "order": 5,
+        "order": 7,
         "tag": "执行",
         "title": "四通道执行体系",
-        "summary": "无线 ADB 为主，Shizuku 可选，Termux 补命令行，无障碍兜底。",
-        "detail": "AUTO 模式下按「无线 ADB → Shizuku → Termux」降级。无线 ADB 连接成功即就绪，可直接执行 shell；Shizuku 失败或超时不阻塞主流程。AI 给的裸包名会被自动补全为 launch action，不会因为少写参数而空转。"
+        "summary": "无障碍 / 无线 ADB / Shizuku / Termux 收进独立 Provider 应用，主应用内置并引导安装。",
+        "detail": "执行通道从 v0.2.1080 起整体迁入同签名的 com.phoneagent.provider，主应用通过 AIDL 远程调用，两端共用同一份接口契约。主应用内置该 APK 并在首次使用时引导安装，签名不一致无法绑定。AUTO 模式下按「无线 ADB → Shizuku → Termux」降级；Shizuku 失败或超时不阻塞主流程，AI 给的裸包名会被自动补全为 launch action，不会因为少写参数而空转。"
       },
       {
         "id": "shell",
-        "order": 6,
+        "order": 8,
         "tag": "执行",
         "title": "AI 友好命令解析",
         "summary": "tap / sw / key / text 这类短命令，坐标支持像素、比例、百分比三种写法。",
         "detail": "ShellCommands 把 AI 的自然短命令翻译成真实 ADB 命令，模型不用记 ADB 语法。命令输出会被截取（最多 1200 字）回灌到下一轮决策上下文里，让 AI 看得到自己刚刚做了什么。"
       },
       {
-        "id": "safety",
-        "order": 7,
-        "tag": "安全",
-        "title": "安全防护与脱敏",
-        "summary": "敏感页面自动只读，手机号 / 身份证 / 银行卡号自动遮蔽。",
-        "detail": "EngineRules 作为硬约束规则引擎，在动作真正下发前拦截危险操作；SensitivePageDetector 识别支付、个人信息等页面并切换为只读横切；DataSanitizer 对 11 位手机号、18 位身份证号、银行卡号做脱敏后再进模型上下文。"
-      },
-      {
         "id": "verify",
-        "order": 8,
+        "order": 9,
         "tag": "执行",
         "title": "页面指纹验证",
         "summary": "动作执行前后比对控件特征，确认「点下去了」还是「点空了」。",
         "detail": "VerifiedClickExecutor 在点击前后各取一次页面指纹，不一致才算生效。这一步把「AI 以为点了」和「页面真的变了」区分开，是长线任务不跑偏的关键。"
       },
       {
-        "id": "local",
-        "order": 9,
-        "tag": "性能",
-        "title": "端侧快速决策",
-        "summary": "弹窗、加载、广告这类高频场景本地直接处理，不花云端额度。",
-        "detail": "LocalDecisionEngine 覆盖高频重复场景，命中即本地决策，省掉一次往返。配合 AdSkipperCore 的冷却机制，既不会漏跳也不会反复戳同一个按钮。"
-      },
-      {
-        "id": "adskip",
-        "order": 10,
-        "tag": "能力",
-        "title": "内置跳广告",
-        "summary": "独立于 Agent 运行：青少年模式弹窗 > 跳过按钮 > 倒计时角标 > 关闭按钮。",
-        "detail": "AdSkipperCore 按优先级识别四类广告形态，配合精确匹配、位置约束与控件类型约束降低误触，内置冷却防止重复点击死循环。"
-      },
-      {
-        "id": "overlay",
-        "order": 11,
-        "tag": "交互",
-        "title": "液态玻璃悬浮窗",
-        "summary": "半透明白玻璃，宽 300dp，高度随内容自适应，跑马灯贴屏幕顶边。",
-        "detail": "执行时只占「跑马灯 + 标题 + 状态」三行，AI 详情默认折叠，展开可看「发送给 AI / AI 返回 / 审核结论」三段原文。截图时自动隐藏、截完立刻恢复，全过程 ≤ 0.3 秒。任务完成显示打勾动画并停在屏幕上，不自动消失。"
-      },
-      {
-        "id": "takeover",
-        "order": 12,
-        "tag": "交互",
-        "title": "随时接管与纠偏",
-        "summary": "AI 拿不准会停下来问，你也能随时插话改方向。",
-        "detail": "遇到歧义时悬浮窗弹出澄清选项；执行中可随时输入补充指令，会被追加进任务记忆的「用户要求」而不是覆盖原始目标。「已手动处理」按钮让人工接管后任务继续，而不是直接退出。"
-      },
-      {
         "id": "memory",
-        "order": 13,
+        "order": 10,
         "tag": "记忆",
-        "title": "任务记忆",
+        "title": "任务记忆与断点续传",
         "summary": "记住目标、用户要求、已验证方法与进度，长线任务不丢上下文。",
-        "detail": "任务记忆独立持久化，按 taskId 归属判定，避免旧任务的收尾逻辑误标新任务。用户中途的每一条补充要求按精确去重后追加保留，不会因为语义相近被合并掉。"
+        "detail": "任务记忆独立持久化，按 taskId 归属判定，避免旧任务的收尾逻辑误标新任务。用户中途的每一条补充要求按精确去重后追加保留，不会因为语义相近被合并掉。任务执行中自动保存检查点，中断后可在「长线任务」页续传；执行策略可选智能（模板命中按脚本、否则逐步）、脚本（复用已生成计划自主推进）、逐步（每步云端决策，最稳）。多任务按队列顺序执行，随时可取消与重规划。"
       },
       {
-        "id": "queue",
-        "order": 14,
-        "tag": "任务",
-        "title": "多任务队列与检查点",
-        "summary": "顺序执行多个任务，随时取消、重规划，模板库沉淀可复用流程。",
-        "detail": "TaskStore 保存检查点与任务模板库；TemplateMatcher 命中模板时直接复用验证过的路径。模板必须由软件预置或经用户明确确认后才入库，AI 不能自行创建模板。"
+        "id": "graph",
+        "order": 11,
+        "tag": "记忆",
+        "title": "记忆图谱与页面记忆",
+        "summary": "任务记忆、异常经验与用户画像织成图谱，页面记忆可下钻到具体界面。",
+        "detail": "记忆图谱把三类记忆放在同一张图上：任务记忆记录目标与已验证路径，异常经验沉淀失败原因，用户画像保存长期偏好。页面记忆按包名与页面指纹归档，配合虚拟屏画布可以回看 Agent 当时看到的界面结构，排查「它为什么会这么点」比翻日志直观得多。"
       },
       {
         "id": "skill",
-        "order": 15,
+        "order": 12,
         "tag": "扩展",
         "title": "技能与 MCP",
         "summary": "内置技能目录 + 远程 MCP 工具，参数校验与失败原因都是中文。",
-        "detail": "SkillCatalog 与 IntentType.ALL 一一对应，被禁用的技能在归一化阶段直接拒绝。MCP 技能调用 20 秒超时、输出截断 1200 字，连续 3 次被拒即停止任务，避免无限循环。"
+        "detail": "SkillCatalog 与语义意图一一对应，被禁用的技能在归一化阶段直接拒绝。MCP 技能调用 20 秒超时、输出截断 1200 字，连续 3 次被拒即停止任务，避免无限循环。技能的启用、凭据与调用记录都在设置页可查。"
+      },
+      {
+        "id": "coding",
+        "order": 13,
+        "tag": "扩展",
+        "title": "设备端编码 Agent",
+        "summary": "Coding 页是一个独立的编码 Agent：开工作区、改代码、看预览，全程在本机推进。",
+        "detail": "支持新建工作区或从设备里选目录，内置编辑器与预览，可接入本地或云端模型。工具调用按授权等级放行，遇到敏感操作会先弹确认；完整执行内容与回传给 AI 的结果都能展开查看，随时可停止。"
+      },
+      {
+        "id": "browser",
+        "order": 14,
+        "tag": "扩展",
+        "title": "内置浏览器",
+        "summary": "端侧 WebView 可见页，AI 能亲眼看到网页，不依赖 Termux、不操控用户设备。",
+        "detail": "browse_open / read / click / input / scroll / back 六个意图由浏览器通道直接落到 DOM 上：打开网址、抓取标题正文与链接表单、按文字或 CSS 选择器点击、填表、滚动、页内后退。读回来的内容会回注到下一轮决策，网页任务不必再靠截图猜。"
+      },
+      {
+        "id": "test",
+        "order": 15,
+        "tag": "扩展",
+        "title": "AI 测试工作台",
+        "summary": "单独调提示词与模型，跑测试方案，不改正式配置也能验证效果。",
+        "detail": "在「AI 测试工作台」里可以切换中英文提示词、临时填 Base URL / 模型名 / 密钥，按预设方案批量跑并流式看输出，结果可一键清除。它和正式的模型配置互不影响，适合改提示词前后做对照。"
       },
       {
         "id": "doc",
         "order": 16,
-        "tag": "输出",
+        "tag": "扩展",
         "title": "文档结果直出",
         "summary": "需要写文档的任务直接产出结果页，不在屏幕上假装打字。",
         "detail": "write_doc 意图由 DocumentEngine 落盘到应用私有目录，并推给 Agent 页内嵌 Markdown 预览（可展开 / 收起 / 关闭）。提示词里有铁律约束：文档类任务必须直接输出 write_doc，不许打开备忘录打字或用 shell 写文件。"
       },
       {
-        "id": "i18n",
+        "id": "entry",
         "order": 17,
+        "tag": "集成",
+        "title": "系统级入口",
+        "summary": "深链、分享、选中文字、快捷设置磁贴、桌面快捷方式与 Widget 都能直接开任务。",
+        "detail": "hpa://task?text=… 直接开任务，hpa://resume 从最近检查点续跑；任何 App 里分享文字/链接或用「处理选中文字」即可交给 Agent；下拉通知栏有快捷设置磁贴，用来一键唤起/收起悬浮窗（刻意不做启停任务，避免误触）；长按图标有「新任务 / 继续上次任务 / 打开记忆页」；桌面 Widget 显示任务名、阶段与步数。运行中进来的请求自动进队列，空闲才开新任务。"
+      },
+      {
+        "id": "safety",
+        "order": 18,
+        "tag": "安全",
+        "title": "安全防护与脱敏",
+        "summary": "敏感页面自动只读，手机号 / 身份证 / 银行卡号自动遮蔽。",
+        "detail": "EngineRules 作为硬约束规则引擎，在动作真正下发前拦截危险操作；SensitivePageDetector 识别支付、个人信息等页面并切换为只读横切；DataSanitizer 对 11 位手机号、18 位身份证号、银行卡号做脱敏后再进模型上下文。"
+      },
+      {
+        "id": "confirm",
+        "order": 19,
+        "tag": "安全",
+        "title": "不可逆动作必须确认",
+        "summary": "删除、清通知这类回不去的操作，先弹确认卡再执行。",
+        "detail": "delete 等不可逆意图自动带 needs_confirmation，界面弹出确认卡由人决定。AI 自写命令（shell）与直接调无障碍端点（a11y）属于自由模式专属能力，保守与均衡策略会一律拒绝，只有明确切到自由模式才放行。"
+      },
+      {
+        "id": "overlay",
+        "order": 20,
+        "tag": "体验",
+        "title": "桌面悬浮窗",
+        "summary": "宽 300dp，品牌色 85% 不透明底 + 发丝描边，高度随内容自适应。",
+        "detail": "执行时只占「跑马灯 + 标题 + 状态」三行，AI 详情默认折叠，展开可看「发送给 AI / AI 返回 / 审核结论」三段原文。刻意不做背景模糊——框架的 blurBehind 会把整块屏幕糊掉而不只是卡片，所以卡片就是一块干净的半透明品牌色。点击光标指示 AI 正在点哪里，可开启「先到位再点击」与边缘光效，执行时截图会自动隐藏浮窗。任务完成显示打勾动画并停在屏幕上，不自动消失。"
+      },
+      {
+        "id": "takeover",
+        "order": 21,
+        "tag": "体验",
+        "title": "随时接管与纠偏",
+        "summary": "AI 拿不准会停下来问，你也能随时插话改方向。",
+        "detail": "遇到歧义时悬浮窗弹出澄清选项；执行中可随时输入补充指令，会被追加进任务记忆的「用户要求」而不是覆盖原始目标。「已手动处理」按钮让人工接管后任务继续，而不是直接退出。"
+      },
+      {
+        "id": "theme",
+        "order": 22,
+        "tag": "体验",
+        "title": "四套色板与宽屏布局",
+        "summary": "玄青 / 赭石 / 黛蓝 / 绛紫四套色板，深色模式全适配，宽屏自动换布局。",
+        "detail": "主题跟随系统深浅色，四套色板在「设置 → 主题」即时切换，语义颜色令牌集中管理。布局由可用宽高决定：宽屏常驻侧栏、窄屏底部悬浮条，正文收口在统一最大宽度，设置页在宽屏改为「左分类 + 右详情」双栏，对话气泡按宽度限宽。入场动画统一为自下而上淡入位移，全局触觉反馈。"
+      },
+      {
+        "id": "voice",
+        "order": 23,
+        "tag": "体验",
+        "title": "端侧语音输入",
+        "summary": "输入栏的麦克风走系统识别并内嵌显示，说完先回填、不直接发送。",
+        "detail": "使用系统 SpeechRecognizer 内嵌识别，不弹系统全屏对话框。识别结果回填到输入框，由你过目确认后再发送，避免口误直接变成任务。"
+      },
+      {
+        "id": "update",
+        "order": 24,
+        "tag": "体验",
+        "title": "应用内更新",
+        "summary": "按渠道矩阵查新版本，下载后校验哈希，能静默装就静默装。",
+        "detail": "启动时静默查询新版本，有更新才提示。稳定版只收 stable，测试版收 beta + stable，开发版收 dev + beta + stable，每日构建全收——版本更高、或同版本构建号更高即判定有更新。下载带断点续传与 SHA-256 校验；有无线 ADB 或 Shizuku 通路时静默安装，否则回落系统安装器。官方站点会优先走蓝奏云镜像，镜像不可用时静默回落官网直链。"
+      },
+      {
+        "id": "i18n",
+        "order": 25,
         "tag": "体验",
         "title": "中英双语与自动翻译",
         "summary": "提示词可手动切换中英；AI 的英文输出自动翻成中文再展示。",
         "detail": "AI 回复若以非中文为主（中文字符占比低于 30%）会自动翻译后再展示，翻译失败则回退原文。翻译结果带缓存去重，不会为同一句话重复付费。"
-      },
-      {
-        "id": "design",
-        "order": 18,
-        "tag": "体验",
-        "title": "Material 3 Expressive",
-        "summary": "玄青 · 流萤配色，深色模式、高对比度无障碍、边缘光效全适配。",
-        "detail": "语义颜色令牌集中管理，浅色 / 深色 / 高对比度四套主题；入场动画统一为自下而上淡入位移，全局触觉反馈，动效曲线统一收敛在 Motion 模块。"
       }
     ],
     "releases": [
+      {
+        "version": "v0.2.1264",
+        "build": 1264,
+        "channel": "dev",
+        "date": "2026-11-02",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.1264.apk",
+          "size": 70876730,
+          "sizeText": "68 MB",
+          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.1252",
+        "build": 1252,
+        "channel": "dev",
+        "date": "2026-11-01",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.1252.apk",
+          "size": 70767522,
+          "sizeText": "67 MB",
+          "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee\r"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.1248",
+        "build": 1248,
+        "channel": "beta",
+        "date": "2026-10-31",
+        "published": true,
+        "title": "测试版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.1248.apk",
+          "size": 69587050,
+          "sizeText": "66 MB",
+          "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb\r"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.1231",
+        "build": 1231,
+        "channel": "dev",
+        "date": "2026-10-29",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+        "apk": {
+          "file": "HappyAgent-0.2.1231.apk",
+          "size": 69430446,
+          "sizeText": "66 MB",
+          "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150\r"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.1128",
+        "build": 1128,
+        "channel": "dev",
+        "date": "2026-10-26",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+        "apk": {
+          "file": "HappyAgent-0.2.1128.apk",
+          "size": 69400718,
+          "sizeText": "66 MB",
+          "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031\r"
+        },
+        "notes": [
+          "开发版构建"
+        ],
+        "downloads": 0
+      },
       {
         "version": "v0.1.384",
         "build": 384,
@@ -2642,138 +3062,39 @@ export const snapshot = {
           "Debug 构建，用于内测与自用",
           "首次安装需手动授予无障碍、悬浮窗与通知权限"
         ],
-        "downloads": 2
+        "downloads": 4
       }
     ],
     "changelog": [
       {
-        "version": "v0.1.334",
-        "date": "2026-09-20",
-        "summary": "AI 此前是在\"真空\"里做决策的：它看不到今天几号、当前在哪个应用、有没有网、电量还剩多少，也记不住 上一轮让它做过什么。同一句话「再发一遍」被当成全新任务，「帮我看看装了哪些应用」则只能一步步翻设置页。 本次给它补上三类上下文：**环境事实**（每步自动注入）、**按需取数**（新增 device_query 技能）、 **会话承接**（上一轮任务的目标与结论）。",
-        "sections": [
-          {
-            "type": "新增",
-            "items": [
-              "**环境上下文默认注入**（`AgentPrompts.environment`）：每次规划与每步决策都带上端侧实时采集的事实—— 当前时间（`yyyy-MM-dd 周几 HH:mm`）、前台应用（`应用名(包名)`）、网络状态、电量（含是否充电）、已安装可启动应用数；缺项整行省略，不出现空标签",
-              "**`device_query` 技能：本机信息按需查询**（`IntentType.DEVICE_QUERY` → `ActionType.DEVICE_QUERY`）- 参数 `kind = apps|time|battery|network|storage|all`，`filter` 仅 `kind=apps` 时生效（如「相机」）- 纯本地读取、不触碰设备：只读模式下同样放行（与 remember/wait 同列）- 查询结果作为「上一步结果」回注下一轮决策（截断 1500 字符），AI 拿到事实再决定下一步- `kind` 非法直接失败并列出可选值，不会拿着无效参数空转- **应用清单不给全量**：环境上下文只给个数，要清单必须走 device_query，避免每步都往提示词里塞一长串包名",
-              "**多轮对话承接**（`SessionContext` + `AgentPrompts.sessionContext`）- 判定追问：含「接着/刚才/这个/改成/换成…」等强指代词直接认定；弱承接词「再」只在短句（≤12 字）里认定，避免把「打开微信」这类自带完整目标的短指令误判为追问- 注入最近 3 条已完成任务（目标 + 状态 + 结论，按时间倒序，进行中的不取——那条正是当前任务自己）- 是追问时明确写「必须以『上一轮任务』为目标主体」；不是追问时提示按相关性参考、无关就独立执行",
-              "**任务结论落库**（`TaskMemoryEntry.conclusion`）：任务成功收尾时把完成摘要写进结论，作为下一轮承接的\"上次结果\"；结论为空则回退取最后一条完成方法"
-            ]
-          },
-          {
-            "type": "优化",
-            "items": [
-              "**性能**：已安装应用数每任务只查一次 `PackageManager`；会话承接块每任务只构建一次，随任务开始、规划、执行入口三处作废缓存，避免串轮",
-              "**提示词双语同步**：中英两版系统提示词都补上 device_query 意图表行、独占路由规则（需要本机事实用 device_query，不要翻设置页）与决策阶段的「本机信息提醒」"
-            ]
-          },
-          {
-            "type": "测试",
-            "items": [
-              "新增 `SessionContextTest`（4 例）：强指代词追问、弱词「再」仅在短句成立、自带完整目标不误判、空白输入",
-              "新增 `AgentPromptsContextTest`（6 例）：中/英环境上下文内容、缺项不渲染空标签、无历史不注入承接、追问强调承接、非追问提示独立",
-              "`SkillCompatTest` 增 2 例：按技能名调用回填 kind/filter、标准意图名原样放行",
-              "`IntentTranslatorStrategyTest` 增 4 例：转译字段、缺 kind 默认 all、非法 kind 失败、只读模式放行"
-            ]
-          }
-        ]
+        "version": "v0.2.1264",
+        "date": "2026-11-02",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "sections": []
       },
       {
-        "version": "v0.1.334",
-        "date": "2026-09-20",
-        "summary": "本轮只做加固、不改产品行为：把四类会让任务「卡死」或「状态残留」的缺陷堵掉—— 异常穿透、协作事件丢失、队列竞态、主循环单点故障。任务该怎么做还是怎么做， 区别在于出问题时它降级、重试、请求用户介入，而不是无声停摆。",
-        "sections": [
-          {
-            "type": "修复",
-            "items": [
-              "**异常不再穿透整个任务**（`AgentEngine.run`）- `runInner` 里的未捕获异常此前会顺着协程传到 `processQueue`，把队列 worker 一起带走：界面永久停在「运行中」，之后排队的任务也不再执行。现由 `run()` 统一收敛，并按 taskId 兜底复位运行状态- `approvePlan()` 原先用 `runCatching{ run() }.onFailure{}` 包住任务启动，会把`CancellationException` 一并吞掉 —— 「停止」按钮再也打不断已批准的计划，而且「用户停止」还会被误报成「执行异常」",
-              "**兜底复位加归属守卫**（`EngineRules.shouldFallbackReset`）- `stop()` 取消协程后收尾是异步跑的：用户立刻发起新任务时，旧任务的收尾会把新任务的`agentRunning` 置 false、状态打回空闲，还会关掉新任务的悬浮窗。现按 taskId + 终态双重守卫",
-              "**多任务队列改原子操作**（`PendingTaskQueue`）- 原先是对 `MutableStateFlow` 做 `_taskQueue.value + task` 的非原子「读—改—写」，并发提交时后写的会覆盖先写的，任务被静默吞掉；worker 启动与退出之间还存在「入队方既看不到活着的 worker、也看不到非空队列」的窗口，任务就此漏跑- 现由独立锁保证原子性，退出时以 `job === self` 只清自己的引用，避免误清入队方刚启动的新 worker 导致双 worker 重复执行同一任务",
-              "**用户协作事件不再丢失**（AgentEngine 协作信箱）- 「敏感页保护 / 动作连续失败」的原因此前走 `MutableSharedFlow.tryEmit`，无订阅者时值被静默丢弃，界面上只能看到一个没有任何说明的协作面板。现改为 `Channel(CONFLATED)` 单槽信箱，用户抢在订阅之前输入的内容也能被缓冲住- 原因同步写入 `agentState.message`，界面才有东西可显示；非等待状态下的误触投递由 `_needsUser` 门控拦下，避免残留值让下一次等待被立刻满足而跳过等待"
-            ]
-          },
-          {
-            "type": "优化",
-            "items": [
-              "**主循环高风险调用点单点隔离**：`observe()` 读元素树、截图、端侧决策、云端决策、技能归一化、意图转译、动作执行、步骤留档全部包上异常兜底。无障碍服务被系统回收、截图权限被回收、Shizuku/Termux 通道断开时，只降级当前这一步（走既有的「连续 3 次失败 → 请求用户介入」链路），不再终止整个任务",
-              "**决策链路连续异常护栏**：连续 5 次决策抛异常（如 API 地址错误、网络完全不可达）时收尾并提示「AI 决策链路持续异常，已停止任务」，不再无限空转；`WATCHDOG` 超时保持既有「等待后重试」语义不变"
-            ]
-          },
-          {
-            "type": "测试",
-            "items": [
-              "新增 `PendingTaskQueueTest`（5 例）：FIFO 顺序、空队列取出返回 null、并发入队不丢任务、边入队边取出不重复不丢任务",
-              "`EngineRulesTest` 补 `shouldFallbackReset` 4 例：归属一致且非终态允许复位、`DONE` 终态不复位、taskId 不一致不复位、无归属 id 只靠终态守卫"
-            ]
-          }
-        ]
+        "version": "v0.2.1252",
+        "date": "2026-11-01",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "sections": []
       },
       {
-        "version": "v0.1.333",
-        "date": "2026-09-20",
-        "summary": "让 API 地址不再被「公网 HTTPS」绑架：自建推理服务（Ollama、LM Studio、one-api 等）多跑在内网， 地址常是 `192.168.1.5:8000/v1` 或 `localhost:11434/v1`。此前这类配置走不通有两条原因—— 系统的明文流量策略会直接拦下 http:// 请求，漏写协议时 OkHttp 也会因地址不完整而抛异常。",
-        "sections": [
-          {
-            "type": "新增",
-            "items": [
-              "**明文 HTTP 放行**（`AndroidManifest.xml`）：`android:usesCleartextTraffic=\"true\"`。targetSdk 28 起系统默认禁止明文流量，不放开则 http:// 的 API 地址一律失败于\"CLEARTEXT communication to xxx not permitted by network security policy\"",
-              "**地址自动补协议**（`AiClient.normalizeBaseUrl`）：未写协议时按主机推断——localhost、私有网段（127/10/172.16-31/192.168）、单段主机名（nas、myserver）与 .local/.lan/.internal 等内网后缀补 `http://`，公网域名补 `https://`；已写 `http://` 的地址原样保留，不会被改写成 https",
-              "设置页「API 地址」下补一行说明：支持 http://、内网地址与 localhost，不写协议时自动补全"
-            ]
-          },
-          {
-            "type": "测试",
-            "items": [
-              "新增 `ApiEndpointNormalizeTest`（5 例）：协议保留、本机/私有网段/内网后缀补 http、公网域名补 https、空串处理"
-            ]
-          }
-        ]
+        "version": "v0.2.1248",
+        "date": "2026-10-31",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "sections": []
       },
       {
-        "version": "v0.1.332",
-        "date": "2026-09-20",
-        "summary": "给悬浮窗做减法：任务执行时它以小窗形态长时间贴在屏幕上，此前却把 AI 的发送/返回/审核三段 内容全摊在体内，窗口被撑成一块\"屏幕补丁\"；玻璃背景又叠了八层光学效果（菲涅尔四边反射、 动态光斑、棱镜虹彩色散…），热闹得不像系统组件；再加上窗口可被拖出屏幕、拖丢后任务还在跑 却看不见状态。本次从信息密度、视觉、交互、性能四方面收敛。",
-        "sections": [
-          {
-            "type": "优化",
-            "items": [
-              "**AI 详情默认折叠**（`FloatingWindowService`）- 详情区（发送给 AI / AI 返回 / 审核结论）高 112dp，此前每来一段流式文本就自动弹出，窗口在任务执行中反复变高变大 —— 正是遮挡屏幕的主要来源- 现默认只占「跑马灯 + 头部 + 状态行」三行；内容照常在后台累积，点头部或头部新增的「详情/收起」按钮即可展开查看，展开状态在任务内保持、任务结束复位- 一并去掉详情区自带的「AI 徽章 + 思考中」标题行：顶部阶段徽章已经说明了当前处于思考中，再叠一行只是重复信息、白占高度；分栏标题 SENT/RESPONSE/REVIEW 改为中文",
-              "**玻璃背景降为三层**（`LiquidGlassDrawable`）- 去掉菲涅尔四边反射、动态光斑、底部阴影渐变、棱镜虹彩色散，只留半透明白底 + 顶部折射高光 + 一道左上斜向柔光，外侧由发丝描边与细边框收边；虹彩是最显\"脏\"的一层，白玻璃上叠三原色渐变会让整体发浑- 投影高度 18dp → 12dp（M3 柔和浮起，不需要夸张阴影来证明\"浮起\"）",
-              "**交互：边缘吸附与越界回收**（`FloatingWindowService.settlePosition`）- 窗口用 `FLAG_LAYOUT_NO_LIMITS`，本可被拖到屏幕外；松手时若贴近左右边缘则吸附贴边（留 8dp 边距），纵向越界则回收进屏幕 —— 不再出现\"窗口拖丢了、任务还在跑\"的情况- 惯性滑行的活动范围同样收进屏内，并保留跑马灯贴顶的负 y 上限",
-              "**交互：轻点头部展开详情**：按触摸阈值区分\"轻点\"与\"拖动\"（此前手指的微小抖动也算位移，拖动与点击无法共存）；拖动时不再跟随手指做光斑重绘"
-            ]
-          },
-          {
-            "type": "性能",
-            "items": [
-              "**Shader 缓存**（`LiquidGlassDrawable`）：光学层改为仅在尺寸变化时重建，绘制期间零分配。悬浮窗在任务执行期间每帧重绘，此前每帧要新建十来个 `LinearGradient`/`RadialGradient`",
-              "**跑马灯不可见时停帧**（`MarqueeView`）：截图隐藏、任务结束隐藏时不再每帧请求重绘（GONE 的视图仍会把 Choreographer 帧回调与遍历持续拉起来），恢复可见后从当前相位续滚",
-              "**通知节流**（`FloatingWindowService`）：AI 思考同步到通知栏限制为最小间隔 700ms —— 流式增量每秒数次，逐条 `notify` 是跨进程调用，此前是白烧的固定开销"
-            ]
-          },
-          {
-            "type": "变更",
-            "items": [
-              "悬浮窗尺寸与位置常量（宽度、投影、贴边留白、吸附阈值、详情区高度）集中到`FloatingUi` 令牌，不再散落在窗口创建、惯性滑行、吸附各处",
-              "面板入场动画改为「淡入 + 自下而上 12dp 位移」，去掉缩放（缩放与位移叠加会让视觉重心漂移，且入场方向应统一为自下而上）"
-            ]
-          }
-        ]
+        "version": "v0.2.1231",
+        "date": "2026-10-29",
+        "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+        "sections": []
       },
       {
-        "version": "v0.1.331",
-        "date": "2026-09-20",
-        "summary": "让点击光标只属于「任务执行中」：此前任务成功跑完后从不撤下光标，它就停在最后一次点击的位置 一直挂在屏幕上；服务还声明了 `START_STICKY`，被杀后系统用空 intent 重建时也会凭空挂出一个光标。",
-        "sections": [
-          {
-            "type": "修复",
-            "items": [
-              "**任务正常完成不撤光标**（`AgentEngine.run`）- 只在该路径补 `hide()` 是治标：主循环有多个 `return` / 异常出口，逐个补容易漏- 现统一放在 `run()` 的 `finally` 里，成功 / 失败 / 用户停止 / 异常一律撤下；并按 `taskId` 判定归属——停止协程后 `finally` 是异步跑的，用户若立刻发起新任务，旧任务的收尾不能把新任务刚挂上的光标一并撤掉",
-              "**服务被重建后凭空出现光标**（`CursorOverlayService`）- `START_STICKY` 让系统在服务被杀后用 `null` intent 重建它，重建即走「显示」分支挂出光标，而此时并没有任何任务在执行；现改为 `START_NOT_STICKY` - 新增「任务执行中」这一唯一可见性凭据（`wanted`，由 `show` / `hide` 驱动）：`show` 的启动请求与 `hide` 抢跑（请求姗姗来迟）时，`onStartCommand` 直接 `stopSelf`，不再补挂光标",
-              "**撤下光标改走进程内直连**：原来靠 `startService(ACTION_HIDE)` 通知服务自撤，而任务大多在 App 处于后台时结束，后台启动服务可能被系统拒绝（异常被 `runCatching` 吞掉），光标就留在屏幕上；服务实例本就在同一进程，现直接在主线程撤下视图并停掉服务，撤下前再确认一次 `wanted`，避免误撤新任务刚挂上的光标"
-            ]
-          }
-        ]
+        "version": "v0.2.1128",
+        "date": "2026-10-26",
+        "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+        "sections": []
       }
     ],
     "faq": [
@@ -2782,7 +3103,7 @@ export const snapshot = {
         "order": 1,
         "group": "使用",
         "q": "需要 Root 吗？",
-        "a": "不需要。基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，用 Android 11+ 自带的无线调试配对，或安装 Shizuku——两者都不需要 Root。"
+        "a": "不需要。基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，Shizuku server 已内置、随同签名的服务组件（com.phoneagent.provider）分发，免装官方 Shizuku App——首次启动按引导安装该组件即可；无线 ADB 只用于首次启动内置 Shizuku server 的引导会话。都不需要 Root。"
       },
       {
         "id": "which-model",
@@ -2810,7 +3131,7 @@ export const snapshot = {
         "order": 5,
         "group": "下载",
         "q": "下载页的 APK 是什么构建？",
-        "a": "当前提供的是 Debug 构建，用于内测与自用，需要手动授予权限。每个版本的 SHA-256 校验值都写在下载页上，安装前可自行核对。"
+        "a": "安装包按 stable / beta / dev / nightly 频道分发，版本号形如 0.2.<BUILD_NUMBER>。当前为 Debug 签名，内测分发，需要手动授予权限。每个版本的 SHA-256 校验值都写在下载页上，安装前可自行核对。"
       },
       {
         "id": "install-fail",
@@ -2847,14 +3168,14 @@ export const snapshot = {
         "title": "执行通道",
         "group": "进阶",
         "order": 4,
-        "summary": "无线 ADB、Shizuku、Termux、无障碍四者的能力边界与选择建议。"
+        "summary": "AUTO / SHIZUKU / TERMUX 三种可选项的能力边界、通道阶梯与选择建议。"
       },
       {
         "slug": "intent-layer",
         "title": "意图转译层",
         "group": "进阶",
         "order": 5,
-        "summary": "为什么 AI 永远不输出坐标和命令，以及 15 个语义意图是怎么落地的。"
+        "summary": "为什么 AI 永远不输出坐标和命令，以及 46 个语义意图是怎么落地的。"
       },
       {
         "slug": "safety",

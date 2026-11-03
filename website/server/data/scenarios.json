@@ -5,11 +5,11 @@
     "category": "系统设置",
     "title": "把屏幕亮度调到一半",
     "goal": "打开设置，把屏幕亮度调到一半。",
-    "channel": "无线 ADB",
+    "channel": "内置 Shizuku",
     "steps": [
       {
         "title": "确认通道就绪",
-        "detail": "先确认无线 ADB 已连接、拿到 shell 权限；没有 shell 时这一步会降级到无障碍，改去设置页手动拖滑杆。"
+        "detail": "先确认内置 Shizuku 已就绪、拿到 shell；没有 shell 时降级到无障碍，改去设置页手动拖滑杆。"
       },
       {
         "title": "读取当前亮度",
@@ -152,7 +152,7 @@
     "steps": [
       {
         "title": "打开天气页面",
-        "detail": "用 browse_open 在内置浏览器打开天气网址，App 会切到浏览器页，之后每步截图就是真实网页。"
+        "detail": "用 browse_open 在内置浏览器打开天气网址，默认在后台静默宿主加载，App 界面不切走；随后用 browse_read 读正文。"
       },
       {
         "title": "读取网页正文",
@@ -229,7 +229,7 @@
     "category": "内容整理",
     "title": "把相册里的截图按月份归档",
     "goal": "把相册里的截图按月份整理到不同文件夹。",
-    "channel": "无线 ADB",
+    "channel": "内置 Shizuku",
     "steps": [
       {
         "title": "定位截图目录",
@@ -326,7 +326,7 @@
       },
       {
         "title": "提交并确认",
-        "detail": "填完用 browse_click 点提交按钮；提交属于不可逆操作，会先请你确认再下发。"
+        "detail": "填完用 browse_click 点提交按钮；只有按钮命中支付 / 下单 / 提交订单等不可逆词表时才先请你确认，泛词「提交」不在词表，不会额外拦截。"
       },
       {
         "title": "回屏核对结果",

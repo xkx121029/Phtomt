@@ -7,6 +7,11 @@ const all = ref([])
 const active = ref('全部')
 const open = ref('')
 
+/** 标题里的条数跟着数据走，别手写死——功能每加一条就漏改一次 */
+const heroTitle = computed(() =>
+  all.value.length ? `${all.value.length} 项能力，逐条说明它在解决什么` : '能力清单'
+)
+
 const tags = computed(() => ['全部', ...new Set(all.value.map((f) => f.tag).filter(Boolean))])
 
 const groups = computed(() => {
@@ -37,7 +42,7 @@ onMounted(async () => {
   <div>
     <PageHero
       eyebrow="能力清单"
-      title="18 项能力，逐条说明它在解决什么"
+      :title="heroTitle"
       lead="每一条都对应真实代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。"
     >
       <div class="chips">
