@@ -12,6 +12,7 @@ import com.phoneagent.domain.model.AlarmDays
 import com.phoneagent.domain.model.AlarmParseResult
 import com.phoneagent.domain.model.AlarmTimeParser
 import com.phoneagent.domain.model.AgentIntentTarget
+import com.phoneagent.domain.model.CapabilityParam
 import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
@@ -473,12 +474,57 @@ internal class DeviceQueryStrategy : IntentTranslationStrategy {
     }
 }
 
+/** 布尔参数的合法写法（与 DeviceOpsChannel.boolArg 接受的形态保持一致） */
+private val BOOLEAN_TEXTS = setOf("true", "false", "1", "0", "on", "off", "yes", "no")
+
+/** 数值展示：整数去掉小数尾巴（5.0 → 5） */
+private fun numText(d: Double): String = if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
+
+/**
+ * 单项参数约束校验（能力注册表的 [CapabilityParam] 是唯一事实来源）：
+ * - number：必须能解析成数字，且落在 [min, max]；
+ * - select：必须在候选值里（忽略大小写，执行层同样按小写比对）；
+ * - boolean：必须是 true/false（兼容 1/0、on/off、yes/no）；
+ * - text 且声明了 pattern：必须整串匹配。
+ *
+ * 返回 null 表示通过，否则是给人看的中文原因（含合法范围/候选值，便于 AI 一次改对）。
+ */
+private fun paramError(p: CapabilityParam, raw: String): String? = when (p.type) {
+    "number" -> {
+        val v = raw.toDoubleOrNull()
+        when {
+            v == null -> "「${p.label}」需要数字，收到「$raw」。"
+            p.min != null && v < p.min -> "「${p.label}」不能小于 ${numText(p.min)}，收到 $raw。"
+            p.max != null && v > p.max -> "「${p.label}」不能大于 ${numText(p.max)}，收到 $raw。"
+            else -> null
+        }
+    }
+    "select" -> if (p.options.isNotEmpty() && p.options.none { it.equals(raw, ignoreCase = true) }) {
+        "「${p.label}」只能是 ${p.options.joinToString("/")}，收到「$raw」。"
+    } else {
+        null
+    }
+    "boolean" -> if (raw.lowercase() !in BOOLEAN_TEXTS) {
+        "「${p.label}」需要 true/false，收到「$raw」。"
+    } else {
+        null
+    }
+    else -> p.pattern?.takeIf { it.isNotBlank() }?.let { pat ->
+        if (runCatching { Regex(pat).matches(raw) }.getOrDefault(false)) null
+        else "「${p.label}」格式不合法：$raw（需匹配 $pat）。"
+    }
+}
+
 /**
  * 系统直连策略：把 device_info / device_control / settings_op / clipboard / alarm_manage /
  * virtual_display / memory_get 这些"不操控 GUI"的能力统一翻译成一条 [ActionType.DEVICE_OPS]。
  *
  * 与 shell 的区别：AI 只选 op 与参数，命令/API 由端侧拼装，不需要自由模式确认；
  * 参数白名单来自能力注册表的 `op` 选项，写错 op 直接回可选值。
+ *
+ * 参数约束前移：op 之外的参数按注册表声明在**转译层**就校验（类型/候选值/范围/正则），
+ * 不合规立即回中文原因，不让错误的参数流到执行层才失败（省一轮模型往返）。
+ * 顶层 text/app/uri 与 args 里同名参数等价（AI 两种写法都会出现），这里统一补进 args 再校验。
  */
 internal class DeviceOpsStrategy(private val family: String) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
@@ -499,9 +545,26 @@ internal class DeviceOpsStrategy(private val family: String) : IntentTranslation
             }
         }
         // 参数契约：所有子参数放在 args 对象里（键名见能力说明），值统一按字符串传
-        val args = intent.args.orEmpty()
+        var args = intent.args.orEmpty()
             .mapKeys { it.key.trim().lowercase() }
             .filterKeys { it.isNotEmpty() }
+        // 顶层 text/app/uri 补齐到同名参数：执行器只读 args，避免"明明给了却报缺参"
+        spec?.params?.forEach { p ->
+            if (args.containsKey(p.name)) return@forEach
+            val top = when (p.name) {
+                "text" -> intent.text
+                "app" -> intent.app
+                "uri" -> intent.uri
+                else -> null
+            }?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+            args = args + (p.name to top)
+        }
+        // 参数约束前移：不合规立即回中文原因，不把错误留到执行层
+        spec?.params?.forEach { p ->
+            if (p.name == "op") return@forEach
+            val raw = args[p.name]?.trim()?.takeIf { it.isNotEmpty() } ?: return@forEach
+            paramError(p, raw)?.let { return IntentTranslator.TranslationResult.Failed(it) }
+        }
         return IntentTranslator.TranslationResult.Command(
             ctx.base.copy(
                 type = ActionType.DEVICE_OPS,

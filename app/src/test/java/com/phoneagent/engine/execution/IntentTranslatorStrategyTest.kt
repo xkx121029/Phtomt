@@ -426,4 +426,78 @@ class IntentTranslatorStrategyTest {
         val reason = freeFailure(AgentIntent(intent = IntentType.A11Y, endpoint = "back"))
         assertTrue("只读通道应拒绝端点直调，实际: $reason", reason.contains("只读模式"))
     }
+
+    // ---------------------------------------------------------- 系统直连参数约束前移
+
+    @Test
+    fun device_control_数值越界_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(
+                intent = IntentType.DEVICE_CONTROL, op = "brightness",
+                args = mapOf("level" to "150"),
+            ),
+            snapshot(),
+        )
+        assertTrue("应指出超出上限，实际: $reason", reason.contains("不能大于 100"))
+    }
+
+    @Test
+    fun device_control_数值非数字_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(
+                intent = IntentType.DEVICE_CONTROL, op = "screen_timeout",
+                args = mapOf("seconds" to "一分钟"),
+            ),
+            snapshot(),
+        )
+        assertTrue("应指出需要数字，实际: $reason", reason.contains("需要数字"))
+    }
+
+    @Test
+    fun device_control_布尔写法非法_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(
+                intent = IntentType.DEVICE_CONTROL, op = "dnd",
+                args = mapOf("enable" to "maybe"),
+            ),
+            snapshot(),
+        )
+        assertTrue("应指出需要 true/false，实际: $reason", reason.contains("需要 true/false"))
+    }
+
+    @Test
+    fun system_settings_key含非法字符_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(
+                intent = IntentType.SYSTEM_SETTINGS, op = "get",
+                args = mapOf("namespace" to "system", "key" to "screen brightness"),
+            ),
+            snapshot(),
+        )
+        assertTrue("应指出格式不合法，实际: $reason", reason.contains("格式不合法"))
+    }
+
+    @Test
+    fun clipboard_顶层text_补进args() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(intent = IntentType.CLIPBOARD, op = "set", text = "复制这段"),
+            snapshot(),
+        )
+        assertEquals("复制这段", action.args?.get("text"))
+    }
+
+    @Test
+    fun memory_get_条数越界_转译层直接拒绝() {
+        mode(Mode.SHIZUKU)
+        val reason = failure(
+            AgentIntent(intent = IntentType.MEMORY_GET, args = mapOf("limit" to "99")),
+            snapshot(),
+        )
+        assertTrue("应指出超出上限，实际: $reason", reason.contains("不能大于 30"))
+    }
 }
