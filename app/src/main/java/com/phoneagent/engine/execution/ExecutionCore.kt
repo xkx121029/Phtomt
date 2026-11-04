@@ -26,6 +26,7 @@ import com.phoneagent.engine.perf.StageTiming
 import com.phoneagent.domain.rules.effectiveLabel
 import com.phoneagent.engine.runtime.EngineLimits.RELOCATE_BEFORE_TYPES
 import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.runtime.TaskNoticeCenter
 import com.phoneagent.engine.runtime.UiBridge
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -577,6 +578,10 @@ internal class ExecutionCore(
             caps = caps,
         ).run(request)
         val trace = ClockFallbackPolicy.levels(request, caps).joinToString(" → ") { it.kind.label }
+
+        // 降级链的「现在用的是什么方式」必须让用户看得到：写进任务状态出口，
+        // 由浮层线读取展示（本类不直接操作界面）。
+        TaskNoticeCenter.publishClock(outcome)
 
         return when (outcome) {
             is ClockOutcome.Done -> com.phoneagent.engine.execution.VerifyResult(
@@ -1227,6 +1232,9 @@ internal class ExecutionCore(
             }
         }
 
+        // 启动阶梯发生过降级（或全部不可用）时，把「现在用的是哪种方式」写进状态出口。
+        TaskNoticeCenter.publishLadder(ladder, source = "launch")
+
         val result = delivered ?: VerifyResult(
             false,
             "启动应用失败: $pkg（${ladder.detail}）",
@@ -1326,6 +1334,9 @@ internal class ExecutionCore(
                 else -> ChannelStepResult.Skipped("该目标没有此类通道")
             }
         }
+
+        // 动作通道发生过降级（或全部不可用）时，把「现在用的是哪种方式」写进状态出口。
+        TaskNoticeCenter.publishLadder(ladder, source = "action")
 
         val out = delivered
         return when {
