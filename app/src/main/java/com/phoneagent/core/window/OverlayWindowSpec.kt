@@ -28,6 +28,50 @@ object OverlayWindowSpec {
     const val PASSIVE_ALPHA = 0.4f
 
     /**
+     * 覆盖层窗口类型：固定 TYPE_APPLICATION_OVERLAY（API 26+），低版本退回 TYPE_PHONE。
+     *
+     * 刻意不用 TYPE_ACCESSIBILITY_OVERLAY：后者与无障碍服务存活强绑定，
+     * 服务被系统收走时整块浮层会直接消失；跑马灯、边缘光这类显示层必须独立存活。
+     */
+    fun overlayWindowType(): Int = overlayWindowTypeFor(Build.VERSION.SDK_INT)
+
+    /** 按 API 级别取窗口类型（抽成纯函数便于单测：跑马灯必须始终是 APPLICATION_OVERLAY） */
+    fun overlayWindowTypeFor(sdkInt: Int): Int = if (sdkInt >= Build.VERSION_CODES.O) {
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+    } else {
+        @Suppress("DEPRECATION")
+        WindowManager.LayoutParams.TYPE_PHONE
+    }
+
+    /**
+     * 被动覆盖层的固定 FLAG 组合。
+     *
+     * `LAYOUT_IN_SCREEN | LAYOUT_NO_LIMITS` 让窗口坐标从物理屏原点算起、允许越出系统栏；
+     * 缺一组都会让顶部光带整体下移一条（状态栏高度）。
+     */
+    fun passiveFlags(): Int =
+        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+    /**
+     * 顶部光带高度（px）：取状态栏 + 挖孔 inset 与最小可读高度的较大值。
+     *
+     * 光带要「压过」状态栏，高度就不能比 inset 小；但 inset 很矮的机型上还得放得下 14sp 文字。
+     */
+    fun marqueeBandHeightPx(statusBarInsetPx: Int, minHeightPx: Int): Int =
+        maxOf(statusBarInsetPx, minHeightPx)
+
+    /**
+     * 底部跑马灯窗口宽度（px）：真实屏宽去掉两侧留白，**建窗时一次定死**。
+     *
+     * 文本高频更新时窗口宽度不变，就不会触发窗口重排；胶囊宽度只在绘制层随文字变。
+     */
+    fun marqueeWidthPx(screenWidthPx: Int, sideMarginPx: Int): Int =
+        (screenWidthPx - 2 * sideMarginPx).coerceAtLeast(sideMarginPx * 2 + 1)
+
+    /**
      * 构建全屏、不拦截触摸、不抢焦点的被动覆盖层参数。
      *
      * @param clearInsets API 30+ 是否清空 fitInsetsTypes。清空后窗口坐标系从物理屏顶开始，
@@ -44,20 +88,11 @@ object OverlayWindowSpec {
     ): WindowManager.LayoutParams {
         val width = screenSize?.first ?: WindowManager.LayoutParams.MATCH_PARENT
         val height = screenSize?.second ?: WindowManager.LayoutParams.MATCH_PARENT
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
         return WindowManager.LayoutParams(
             width,
             height,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            overlayWindowType(),
+            passiveFlags(),
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START

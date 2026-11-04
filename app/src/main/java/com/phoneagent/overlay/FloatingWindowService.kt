@@ -40,8 +40,6 @@ import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.PathInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
@@ -55,12 +53,8 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.phoneagent.BuildConfig
 import com.phoneagent.R
+import com.phoneagent.core.window.OverlayWindowSpec
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.ui.theme.DurationFast
-import com.phoneagent.ui.theme.DurationNormal
-import com.phoneagent.ui.theme.DurationPulse
-import com.phoneagent.ui.theme.DurationSlow
-import com.phoneagent.ui.theme.PressScale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,8 +109,27 @@ class FloatingWindowService : Service() {
     /** 底部跑马灯距屏幕底边的基础留白（导航栏高度之外再加这么多） */
     private val MARQUEE_BOTTOM_GAP = 12
 
-    /** 顶部状态栏跑马灯：它同时是底部跑马灯窗口的根视图（见 [showMarquee]） */
+    /** 底部胶囊窗口两侧留白（dp）：窗口宽度 = 真实屏宽 - 2 * 此值，建窗时定死 */
+    private val MARQUEE_SIDE_MARGIN = 16
+
+    /** 顶部光带最小高度（dp）：状态栏再矮也要放得下 14sp 文字 */
+    private val BAND_MIN_HEIGHT = 30
+
+    /**
+     * 底部跑马灯（胶囊）：固定宽度窗口，浮在导航栏之上。
+     */
     private var marquee: MarqueeView? = null
+
+    /**
+     * 顶部光带：独立窗口，宽度 = 真实屏幕宽、高度 = 状态栏 + 挖孔 inset，
+     * 窗口坐标从物理屏顶开始 —— 所以它真的压在状态栏上（见 [OverlayWindowSpec.passiveFlags]）。
+     *
+     * 用两个窗口而不是一个全屏窗口：全屏窗口必须整体压到 0.4 不透明度才不触发
+     * Android 12+ 的穿透触摸拦截，那会把光带与胶囊一起变淡；
+     * 拆成「顶部整宽矮窗 + 底部自适应胶囊」后两层都能保持纯色不透明，也不影响触摸。
+     */
+    private var topBand: MarqueeView? = null
+
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
     private var taskTitle: TextView? = null
@@ -252,6 +265,9 @@ class FloatingWindowService : Service() {
      */
     private var barParams: WindowManager.LayoutParams? = null
 
+    /** 顶部光带窗口参数：旋转时高度随状态栏 inset 重算 */
+    private var bandParams: WindowManager.LayoutParams? = null
+
     /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
 
@@ -316,15 +332,18 @@ class FloatingWindowService : Service() {
         if (marqueeAutoColor) listOf(FloatingUi.phaseColor(phase)) else marqueeColors
 
     /**
-     * 把「跑马灯内边距 / 配色」设置应用到跑马灯面板。
+     * 设置跑马灯内边距 / 配色：顶部光带与底部胶囊同步应用。
      *
-     * 面板长宽自适应，厚度由内边距决定：改内边距只要让面板重新测量（窗口是 WRAP_CONTENT，
-     * 视图量多少窗口就多大），不必再动窗口 LayoutParams，也影响不到任务卡片。
+     * 底部胶囊厚度由内边距决定（窗口宽度固定、高度自适应）；顶部光带高度由状态栏 inset 决定，
+     * 内边距只影响文字垂直居中，两者都不需要动窗口 LayoutParams。
      */
     private fun applyMarqueeSettings() {
-        val m = marquee ?: return
-        m.setColors(marqueeGradient(currentPhase))
-        m.setPadV(dp(marqueeHeightDp))
+        val colors = marqueeGradient(currentPhase)
+        marquee?.let {
+            it.setColors(colors)
+            it.setPadV(dp(marqueeHeightDp))
+        }
+        topBand?.setColors(colors)
     }
 
     private fun startForegroundCompat() {
@@ -408,7 +427,7 @@ class FloatingWindowService : Service() {
             thinkingSentText?.text = ""
             clearThinkingReturn()
             lastSentShown = ""
-            marquee?.setText("等待任务...")
+            setMarqueeText("等待任务...")
             currentPhase = "PENDING"
             applyMarqueeSettings()
             updateNotification("等待任务...", "Happy Agent")
@@ -454,7 +473,8 @@ class FloatingWindowService : Service() {
         val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
         windowManager = wm
         val layout = buildPanel()
-        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "task-card-build=${SystemClock.uptimeMillis() - startedAt}ms")
+        val builtAt = SystemClock.uptimeMillis()
+        OverlayPerf.log("task-card-build", "${builtAt - startedAt}ms")
         // 获取当前屏幕尺寸，根据横竖屏调整初始位置，避免旋转后悬浮窗位置出屏
         val point = android.graphics.Point()
         runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
@@ -500,8 +520,10 @@ class FloatingWindowService : Service() {
             return
         }
         root = layout
-        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "task-card-add=${SystemClock.uptimeMillis() - startedAt}ms")
-        logFirstFrame("task-card-first-frame", layout, startedAt)
+        val addedAt = SystemClock.uptimeMillis()
+        // 代码成本 = 建视图 + addView；帧等待 = 到首个 onPreDraw 的差值
+        OverlayPerf.log("task-card-add", "${addedAt - builtAt}ms")
+        OverlayPerf.firstFrame("task-card-first-frame", layout, startedAt, addedAt - startedAt)
         showMarquee()
         showSheetWindow()
         // 预热完成卡片：任务一开始就把底部卡片窗口建好（隐藏、0 高、不吃触摸），
@@ -510,44 +532,102 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 创建底部跑马灯窗口，任务期间常驻。
+     * 创建跑马灯：**两个独立窗口**，任务期间常驻。
      *
-     * 三个关键点：
-     * 1. **长宽 WRAP_CONTENT**：面板尺寸交给 [MarqueeView] 按文字量，不再铺满整宽；
-     * 2. **FLAG_NOT_TOUCHABLE**：它只负责显示，绝不吃掉任何触摸；
-     * 3. **fitInsetsTypes = 0**：清掉系统栏 inset 适配，底部偏移才是从物理屏底算起。
+     * 1. **顶部光带**（[topBand]）：宽度 = 真实屏宽、高度 = 状态栏 + 挖孔 inset，坐标从物理屏顶开始。
+     *    窗口类型仍是 `TYPE_APPLICATION_OVERLAY`，配合
+     *    `fitInsetsTypes = 0` + `cutout = ALWAYS` + `LAYOUT_IN_SCREEN | NO_LIMITS`，
+     *    光带才能真正压在状态栏上（少任何一条都会整体下移一条状态栏）。
+     * 2. **底部胶囊**（[marquee]）：固定宽度（真实屏宽 - 两侧留白）、高度自适应，
+     *    锚在导航栏之上，不被手势条压住。
+     *
+     * 两者都是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
+     * 窗口宽度在建窗时一次定死，之后文本怎么高频更新都不会触发窗口重排。
      */
     private fun showMarquee() {
-        if (marquee != null) return
         val wm = windowManager ?: return
-        val bar = MarqueeView(this).apply {
-            setColors(marqueeGradient(currentPhase))
-            setPadV(dp(marqueeHeightDp))
+        if (marquee != null && topBand != null) return
+        val screenSize = OverlayWindowSpec.realScreenSize(this)
+        val screenW = screenSize.first
+
+        if (topBand == null) {
+            val startedAt = SystemClock.uptimeMillis()
+            val inset = statusBarHeight()
+            val bandHeight = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(BAND_MIN_HEIGHT))
+            val band = MarqueeView(this, bandMode = true).apply {
+                setColors(marqueeGradient(currentPhase))
+                setBandHeight(inset)
+            }
+            val lp = WindowManager.LayoutParams(
+                screenW, bandHeight,
+                OverlayWindowSpec.overlayWindowType(),
+                OverlayWindowSpec.passiveFlags(),
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = 0
+                // 物理屏顶：fitInsetsTypes 已清空，y=0 就是状态栏上方那条
+                y = 0
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+            }
+            try {
+                wm.addView(band, lp)
+                topBand = band
+                bandParams = lp
+                OverlayPerf.code("marquee-band-add", startedAt)
+            } catch (_: Exception) {
+                // 无悬浮窗权限：光带建不出来，底部胶囊与任务卡片照常工作
+            }
         }
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = marqueeBottomOffset()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-        }
-        try {
-            wm.addView(bar, lp)
-            marquee = bar
-            barParams = lp
-        } catch (_: Exception) {
-            // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
+
+        if (marquee == null) {
+            val startedAt = SystemClock.uptimeMillis()
+            val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(MARQUEE_SIDE_MARGIN))
+            val bar = MarqueeView(this).apply {
+                setColors(marqueeGradient(currentPhase))
+                setPadV(dp(marqueeHeightDp))
+            }
+            val lp = WindowManager.LayoutParams(
+                // 固定宽度：文本更新只改绘制，不重排窗口
+                barW, WindowManager.LayoutParams.WRAP_CONTENT,
+                OverlayWindowSpec.overlayWindowType(),
+                OverlayWindowSpec.passiveFlags(),
+                PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                x = 0
+                y = marqueeBottomOffset()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+            }
+            try {
+                wm.addView(bar, lp)
+                marquee = bar
+                barParams = lp
+                OverlayPerf.code("marquee-add", startedAt)
+            } catch (_: Exception) {
+                // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
+            }
         }
     }
+
+    /** 更新跑马灯文案：顶部光带与底部胶囊同源，相位各自保持（更新文案不重置滚动位置） */
+    private fun setMarqueeText(text: String) {
+        marquee?.setText(text)
+        topBand?.setText(text)
+    }
+
+    /** 跑马灯（光带 + 胶囊）整体显示/隐藏：两层始终同进同出 */
+    private fun setMarqueeVisible(visible: Boolean) {
+        val v = if (visible) View.VISIBLE else View.GONE
+        marquee?.visibility = v
+        topBand?.visibility = v
+    }
+
+    private fun isMarqueeVisible(): Boolean = marquee?.visibility == View.VISIBLE
 
     /**
      * 底部跑马灯距屏幕底边的距离：基础留白 + 导航栏（手势条）高度。
@@ -588,6 +668,8 @@ class FloatingWindowService : Service() {
                 onInteraction?.invoke("resume", "")
             }
         }
+        // 按下当帧反馈，不等系统 ripple（悬浮球是收起后唯一的入口，反馈必须立刻可见）
+        bindPress(ball)
         val point = android.graphics.Point()
         runCatching { wm.defaultDisplay.getRealSize(point) }
         val screenW = if (point.x > 0) point.x else dp(360)
@@ -628,7 +710,7 @@ class FloatingWindowService : Service() {
         val ball = miniRoot ?: return
         userHidden = true
         root?.visibility = View.GONE
-        marquee?.visibility = View.GONE
+        setMarqueeVisible(false)
         ball.visibility = View.VISIBLE
     }
 
@@ -637,7 +719,7 @@ class FloatingWindowService : Service() {
         if (!userHidden) return
         userHidden = false
         root?.visibility = View.VISIBLE
-        marquee?.visibility = View.VISIBLE
+        setMarqueeVisible(true)
         miniRoot?.visibility = View.GONE
     }
 
@@ -648,7 +730,7 @@ class FloatingWindowService : Service() {
     private fun applyUserHidden() {
         if (!userHidden) return
         root?.visibility = View.GONE
-        marquee?.visibility = View.GONE
+        setMarqueeVisible(false)
     }
 
     /**
@@ -703,6 +785,7 @@ class FloatingWindowService : Service() {
             }
         }
         collapsedPill?.let { pill ->
+            bindPress(pill)
             container.addView(
                 pill,
                 LinearLayout.LayoutParams(
@@ -744,43 +827,43 @@ class FloatingWindowService : Service() {
         if (container.visibility == View.VISIBLE) return
         container.visibility = View.VISIBLE
         container.post {
-            val h = container.height.toFloat()
+            val h = container.height.coerceAtLeast(dp(1)).toFloat()
+            // 入场：自下而上（从面板自身高度走进位），曲线与时长走令牌
+            container.animate().cancel()
+            container.alpha = 1f
             container.translationY = h
             container.animate()
                 .translationY(0f)
-                .setDuration(DurationNormal.toLong())
-                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                .setDuration(OverlayMotion.EnterMs.toLong())
+                .setInterpolator(OverlayMotion.EaseOut)
                 .start()
         }
     }
 
-    /** 滑出并隐藏选项卡 */
+    /** 滑出并隐藏选项卡：向上淡出（与入场方向相反，读起来是"让位"而不是"被抽走"） */
     private fun hideSheet() {
         val container = sheetRoot ?: return
         if (container.visibility != View.VISIBLE) return
-        container.animate()
-            .translationY(container.height.toFloat())
-            .setDuration(DurationFast.toLong())
-            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
-            .withEndAction {
-                container.visibility = View.GONE
-                container.translationY = 0f
-                // 面板本身也要收起：容器是窗口根视图，即使它自己 GONE，窗口根仍会被测量，
-                // 面板留在 VISIBLE 会继续把窗口撑出同样高度 —— 一层看不见却可触摸的窗口
-                // 会持续吃掉这块屏幕区域的操作。
-                interactPanel?.visibility = View.GONE
-                // 收起胶囊同理：它是答疑面板的入口，问题已经收起（答复完毕/任务结束）时不该留在屏幕上
-                collapsedPill?.visibility = View.GONE
-                interactCollapsed = false
-                // 窗口尺寸复原为整宽：下一次交互滑进来时是完整的选项卡，而不是一条贴着右边缘的窄窗
-                applySheetCollapsedWindow(false)
-                // 丢掉"上次问了什么"的记录：留着它，系统切深浅色时旧问题会被重新摆回屏幕上
-                lastInteractType = null
-                lastInteractTitle = null
-                lastInteractContent = null
-                lastInteractOptions = null
-            }
-            .start()
+        OverlayMotion.exit(container) {
+            container.visibility = View.GONE
+            // 复位入场/退场留下的透明度与位移，下一次 showSheet 才是干净的自下而上
+            container.alpha = 1f
+            container.translationY = 0f
+            // 面板本身也要收起：容器是窗口根视图，即使它自己 GONE，窗口根仍会被测量，
+            // 面板留在 VISIBLE 会继续把窗口撑出同样高度 —— 一层看不见却可触摸的窗口
+            // 会持续吃掉这块屏幕区域的操作。
+            interactPanel?.visibility = View.GONE
+            // 收起胶囊同理：它是答疑面板的入口，问题已经收起（答复完毕/任务结束）时不该留在屏幕上
+            collapsedPill?.visibility = View.GONE
+            interactCollapsed = false
+            // 窗口尺寸复原为整宽：下一次交互滑进来时是完整的选项卡，而不是一条贴着右边缘的窄窗
+            applySheetCollapsedWindow(false)
+            // 丢掉"上次问了什么"的记录：留着它，系统切深浅色时旧问题会被重新摆回屏幕上
+            lastInteractType = null
+            lastInteractTitle = null
+            lastInteractContent = null
+            lastInteractOptions = null
+        }
     }
 
     private fun buildPanel(): LinearLayout {
@@ -872,6 +955,8 @@ class FloatingWindowService : Service() {
                 }
             }
         }
+        // 头部三个可点控件（关闭 / 详情 / 隐藏）：按下当帧缩放
+        bindPress(close)
         // 详情开关：折叠态只显示三行，AI 的发送/返回/审核内容按需展开
         expandChip = TextView(this).apply {
             text = "详情"
@@ -886,6 +971,7 @@ class FloatingWindowService : Service() {
             ).apply { marginStart = dp(6) }
             setOnClickListener { toggleThinking() }
         }
+        expandChip?.let { bindPress(it) }
         header?.addView(dot)
         header?.addView(taskTitle)
         // 隐藏按钮：收起整套面板、只留一个悬浮球，同时把任务搁置（引擎在下一轮开始前挂起）；
@@ -906,6 +992,7 @@ class FloatingWindowService : Service() {
                 onInteraction?.invoke("hide", "")
             }
         }
+        bindPress(hideChip)
         header?.addView(close)
         panel.addView(header)
 
@@ -1240,8 +1327,8 @@ class FloatingWindowService : Service() {
         val sx = p.x
         val sy = p.y
         ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = DurationNormal.toLong()
-            interpolator = DecelerateInterpolator()
+            duration = OverlayMotion.EnterMs.toLong()
+            interpolator = OverlayMotion.EaseOut
             addUpdateListener { anim ->
                 val t = anim.animatedValue as Float
                 p.x = sx + ((targetX - sx) * t).toInt()
@@ -1319,8 +1406,10 @@ class FloatingWindowService : Service() {
             currentTask = task
             // 跑马灯底色随阶段变化（跟随状态）或保持用户自定义配色
             currentPhase = phase
-            marquee?.setColors(marqueeGradient(phase))
-            marquee?.setText(reasoning.ifBlank { status })
+            val colors = marqueeGradient(phase)
+            marquee?.setColors(colors)
+            topBand?.setColors(colors)
+            setMarqueeText(reasoning.ifBlank { status })
             taskTitle?.text = task
             // 总步数已知时给出「第 3/8 步」，用户能一眼看出还剩多少
             stepText?.text = if (total > 0) "第 $step/$total 步 · $status" else "第 $step 步 · $status"
@@ -1416,11 +1505,11 @@ class FloatingWindowService : Service() {
     private fun startDotPulse() {
         if (dotPulseAnimator?.isRunning == true) return
         dotPulseAnimator = ValueAnimator.ofFloat(0.45f, 1f).apply {
-            // 循环动效统一走 DurationPulse：与骨架/运行指示同一个节拍
-            duration = DurationPulse.toLong()
+            // 循环动效统一走 OverlayMotion.PulseMs：与骨架/运行指示同一个节拍
+            duration = OverlayMotion.PulseMs.toLong()
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
-            interpolator = DecelerateInterpolator()
+            interpolator = OverlayMotion.EaseOut
             addUpdateListener { dot?.alpha = it.animatedValue as Float }
             start()
         }
@@ -1451,7 +1540,7 @@ class FloatingWindowService : Service() {
         // 完成态会把顶部任务卡整块让位给完成卡片；新任务必须把它放回来
         root?.visibility = View.VISIBLE
         dot?.visibility = View.VISIBLE
-        marquee?.visibility = View.VISIBLE
+        setMarqueeVisible(true)
         statusRow?.visibility = View.VISIBLE
         progressBar?.visibility = View.GONE
         interactPanel?.visibility = View.GONE
@@ -1488,15 +1577,9 @@ class FloatingWindowService : Service() {
      */
     private fun showPanelWithAnim(view: View?) {
         view ?: return
-        view.alpha = 0f
-        view.translationY = dp(12).toFloat()
         view.visibility = View.VISIBLE
-        view.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(DurationFast.toLong())
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        // 位移距离与曲线全部走 OverlayMotion 令牌：自下而上 12dp + 淡入
+        OverlayMotion.enter(view)
     }
 
     /**
@@ -1699,8 +1782,19 @@ class FloatingWindowService : Service() {
         }
         barParams?.let { lp ->
             val bar = marquee ?: return@let
+            // 窗口宽度随屏幕方向重算：宽度仍是固定值，文本更新不会改变它
+            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(MARQUEE_SIDE_MARGIN))
             lp.y = marqueeBottomOffset()
             runCatching { windowManager?.updateViewLayout(bar, lp) }
+        }
+        bandParams?.let { lp ->
+            val band = topBand ?: return@let
+            // 顶部光带：旋转后状态栏/挖孔高度会变，窗口尺寸与视图高度一起重算
+            val inset = statusBarHeight()
+            band.setBandHeight(inset)
+            lp.width = screenW
+            lp.height = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(BAND_MIN_HEIGHT))
+            runCatching { windowManager?.updateViewLayout(band, lp) }
         }
     }
 
@@ -1790,7 +1884,7 @@ class FloatingWindowService : Service() {
             setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), 0)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
             setOnClickListener { onClick() }
-        }
+        }.also { bindPress(it) }
 
     /**
      * 出口行：次要在左、主操作在右（与 App 侧协助浮层的出口行同构）。
@@ -1843,6 +1937,7 @@ class FloatingWindowService : Service() {
             ).apply { topMargin = dp(FloatingUi.PAD) }
             setOnClickListener { onClick() }
         }
+        bindPress(row)
         container?.addView(row)
     }
 
@@ -1947,7 +2042,7 @@ class FloatingWindowService : Service() {
             // 否则底部卡片会和顶部卡片同时压在同一块画面上
             miniRoot?.visibility = View.GONE
             root?.visibility = View.GONE
-            marquee?.visibility = View.GONE
+            setMarqueeVisible(false)
             showDoneCard(message, startedAt)
             updateNotification("任务完成：$message", "Happy Agent")
         }
@@ -2209,23 +2304,24 @@ class FloatingWindowService : Service() {
             message.contains("放弃") ||
             message.contains("未完成")
         if (!ensureDoneWindow()) return
-        if (BuildConfig.DEBUG) Log.d(PERF_TAG, "done-card-build=${SystemClock.uptimeMillis() - t0}ms")
+        OverlayPerf.code("done-card-build", t0)
         applyDoneContent(message)
         val rv = doneRoot ?: return
         rv.visibility = View.VISIBLE
         rv.post {
-            if (BuildConfig.DEBUG) Log.d(PERF_TAG, "done-card-post=${SystemClock.uptimeMillis() - t0}ms")
+            val postAt = SystemClock.uptimeMillis()
+            OverlayPerf.log("done-card-apply", "${postAt - t0}ms")
             val card = doneCard ?: return@post
             val h = card.height.coerceAtLeast(dp(1)).toFloat()
             card.animate().cancel()
             card.translationY = h
             card.alpha = 0f
-            // 进入：自下而上 + 淡入，ease-out；时长收敛到 DurationSlow（≤300ms）
+            // 进入：自下而上 + 淡入；时长与曲线走令牌（强调档强调"任务完成"）
             card.animate()
                 .translationY(0f)
                 .alpha(1f)
-                .setDuration(DurationSlow.toLong())
-                .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                .setDuration(OverlayMotion.EmphasisMs.toLong())
+                .setInterpolator(OverlayMotion.EaseOut)
                 .start()
             // 正文真的超出限高才显示渐变遮罩（短结果下不出现多余的灰带）
             val scroll = doneScroll
@@ -2236,7 +2332,7 @@ class FloatingWindowService : Service() {
                 } else {
                     View.GONE
                 }
-            logFirstFrame("done-card-first-frame", rv, startedAt)
+            OverlayPerf.firstFrame("done-card-first-frame", rv, startedAt, postAt - startedAt)
             restartDoneAutoClose()
         }
     }
@@ -2310,8 +2406,8 @@ class FloatingWindowService : Service() {
                 } else {
                     card.animate()
                         .translationY(0f)
-                        .setDuration(DurationNormal.toLong())
-                        .setInterpolator(PathInterpolator(0.23f, 1f, 0.32f, 1f))
+                        .setDuration(OverlayMotion.EnterMs.toLong())
+                        .setInterpolator(OverlayMotion.EaseOut)
                         .start()
                     restartDoneAutoClose()
                 }
@@ -2319,7 +2415,7 @@ class FloatingWindowService : Service() {
         }
     }
 
-    /** 退场：200ms 淡出 + 下沉，动画结束后才移除窗口（避免卡片被瞬间抽走） */
+    /** 退场：向上淡出（不复用"下滑抽走"——那会被读成系统回收），动画结束后才移除窗口 */
     private fun closeDoneCard() {
         handler.removeCallbacks(doneAutoClose)
         val card = doneCard
@@ -2328,25 +2424,18 @@ class FloatingWindowService : Service() {
             removeDoneCardNow()
             return
         }
-        card.animate().cancel()
-        card.animate()
-            .translationY(card.height.coerceAtLeast(dp(1)).toFloat())
-            .alpha(0f)
-            .setDuration(DurationNormal.toLong())
-            .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
-            .withEndAction {
-                // 退场动画 200ms 内可能有新任务接管（resetPanel 已把卡片摘掉）：
-                // 只有"卡片还挂在这个窗口上"时才认为整场任务真正结束并退出服务，
-                // 否则只清理旧窗口，别把新任务的悬浮窗一起带走
-                if (doneRoot === rootView) {
-                    removeDoneCardNow()
-                    stopSelf()
-                    removeWindow()
-                } else {
-                    runCatching { windowManager?.removeView(rootView) }
-                }
+        OverlayMotion.exit(card, durationMs = OverlayMotion.ExitMs) {
+            // 退场动画 200ms 内可能有新任务接管（resetPanel 已把卡片摘掉）：
+            // 只有"卡片还挂在这个窗口上"时才认为整场任务真正结束并退出服务，
+            // 否则只清理旧窗口，别把新任务的悬浮窗一起带走
+            if (doneRoot === rootView) {
+                removeDoneCardNow()
+                stopSelf()
+                removeWindow()
+            } else {
+                runCatching { windowManager?.removeView(rootView) }
             }
-            .start()
+        }
     }
 
     /** 立即移除完成卡片窗口（不做退场动画）：新任务开始 / 服务销毁时用 */
@@ -2391,24 +2480,25 @@ class FloatingWindowService : Service() {
         handler.removeCallbacks(doneAutoClose)
     }
 
-    /** 三键的按压反馈：ACTION_DOWN 立刻缩到 PressScale，抬手回弹（时长走 DurationFast） */
+    /**
+     * 完成卡片三键的按压反馈：ACTION_DOWN 当帧缩到 [OverlayMotion.PressedScale]，
+     * 抬手回弹；同时暂停/恢复 auto-close 计时。
+     *
+     * 为什么不用系统 ripple：ripple 的按下态要等下一帧才显示，手指快按快抬时经常完全看不到；
+     * 这里在 DOWN 事件里直接改 scale，当帧就生效。
+     */
     private fun bindPressFeedback(vararg views: View) {
         views.forEach { v ->
             v.setOnTouchListener { _, ev ->
                 when (ev.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         pauseDoneAutoClose()
-                        v.animate().cancel()
-                        v.scaleX = PressScale
-                        v.scaleY = PressScale
-                        logFirstFrame("press-feedback", v, ev.eventTime)
+                        OverlayMotion.pressDown(v)
+                        // 首个视觉反馈延迟（含帧等待；代码部分是 0ms，缩放是同步落位）
+                        OverlayPerf.firstFrame("press-down-paint", v, ev.eventTime, 0)
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        v.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(DurationFast.toLong())
-                            .start()
+                        OverlayMotion.pressUp(v)
                         restartDoneAutoClose()
                     }
                 }
@@ -2418,29 +2508,37 @@ class FloatingWindowService : Service() {
         }
     }
 
+    /** 普通控件的按压反馈（不涉及完成卡片计时）：同样在 ACTION_DOWN 当帧生效 */
+    private fun bindPress(vararg views: View) {
+        views.forEach { v ->
+            v.setOnTouchListener { _, ev ->
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> OverlayMotion.pressDown(v)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> OverlayMotion.pressUp(v)
+                }
+                false
+            }
+        }
+    }
+
     /**
      * 调试期量化埋点：从 [since] 到该视图下一次真正绘制（onPreDraw）的毫秒数。
      * 只打在 debug 包上，release 不做任何额外遍历。
      */
-    private fun logFirstFrame(tag: String, view: View, since: Long) {
-        if (!BuildConfig.DEBUG) return
-        view.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                val observer = view.viewTreeObserver
-                if (observer.isAlive) observer.removeOnPreDrawListener(this)
-                Log.d(PERF_TAG, "$tag=${SystemClock.uptimeMillis() - since}ms")
-                return true
-            }
-        })
+    private fun logFirstFrame(tag: String, view: View, since: Long, codeMs: Long? = null) {
+        OverlayPerf.firstFrame(tag, view, since, codeMs)
     }
 
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
-        // 跑马灯是独立窗口，需一并移除（否则任务结束后胶囊会常驻在屏幕底部）
+        // 跑马灯是两层独立窗口：底部胶囊 + 顶部光带，需一并移除
         marquee?.let { runCatching { windowManager?.removeView(it) } }
         marquee = null
         barParams = null
+        topBand?.let { runCatching { windowManager?.removeView(it) } }
+        topBand = null
+        bandParams = null
         // 悬浮球同样是独立窗口：移除后屏幕上不留任何入口（任务已结束，不需要再唤出）
         miniRoot?.let { runCatching { windowManager?.removeView(it) } }
         miniRoot = null
@@ -2595,7 +2693,7 @@ class FloatingWindowService : Service() {
             // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
             if (!visible) {
                 val rootShown = svc.root?.visibility == View.VISIBLE
-                val marqueeShown = svc.marquee?.visibility == View.VISIBLE
+                val marqueeShown = svc.isMarqueeVisible()
                 val miniShown = svc.miniRoot?.visibility == View.VISIBLE
                 val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
                 val doneShown = svc.doneRoot?.visibility == View.VISIBLE
@@ -2603,10 +2701,10 @@ class FloatingWindowService : Service() {
                 val hideStartedAt = SystemClock.uptimeMillis()
                 svc.handler.post {
                     svc.root?.visibility = View.GONE
-                    // 跑马灯是独立窗口，截图时同样要藏起来（它浮在屏幕底部，一定会被截进画面）；
-                    // 同样先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
-                    svc.barVisibleBeforeHide = svc.marquee?.visibility == View.VISIBLE
-                    svc.marquee?.visibility = View.GONE
+                    // 跑马灯是两层独立窗口（顶部光带 + 底部胶囊），截图时同样要藏起来；
+                    // 先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
+                    svc.barVisibleBeforeHide = svc.isMarqueeVisible()
+                    svc.setMarqueeVisible(false)
                     // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
                     svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
                     svc.miniRoot?.visibility = View.GONE
@@ -2618,10 +2716,8 @@ class FloatingWindowService : Service() {
                     svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
                     svc.doneRoot?.visibility = View.GONE
                     // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
-                    // 因此这里直接记「调用 → 落位」的耗时（要求 ≤0.3s）
-                    if (BuildConfig.DEBUG) {
-                        Log.d(PERF_TAG, "screenshot-hide=${SystemClock.uptimeMillis() - hideStartedAt}ms")
-                    }
+                    // 因此这里记「调用 → 落位」的代码耗时，不含任何帧等待
+                    OverlayPerf.code("screenshot-hide-code", hideStartedAt)
                 }
                 return true
             }
@@ -2630,7 +2726,7 @@ class FloatingWindowService : Service() {
                 // 用户主动收起（userHidden）时面板保持隐藏：截图恢复不能推翻用户的收起操作
                 svc.root?.visibility = if (svc.userHidden) View.GONE else View.VISIBLE
                 if (svc.barVisibleBeforeHide) {
-                    svc.marquee?.visibility = View.VISIBLE
+                    svc.setMarqueeVisible(true)
                     svc.barVisibleBeforeHide = false
                 }
                 if (svc.miniVisibleBeforeHide) {
@@ -2645,8 +2741,15 @@ class FloatingWindowService : Service() {
                     svc.doneRoot?.visibility = View.VISIBLE
                     svc.doneVisibleBeforeHide = false
                 }
-                if (BuildConfig.DEBUG) {
-                    Log.d(PERF_TAG, "screenshot-restore=${SystemClock.uptimeMillis() - restoreStartedAt}ms")
+                // 恢复分两段：先记"代码落位"（不可见窗口重新置为 VISIBLE），
+                // 再等首个真正绘制帧 —— 后者含软件渲染的合成等待，不能当作代码成本
+                val restoreCode = SystemClock.uptimeMillis() - restoreStartedAt
+                OverlayPerf.log("screenshot-restore-code", "${restoreCode}ms")
+                val restoreTarget = svc.doneRoot?.takeIf { it.visibility == View.VISIBLE }
+                    ?: svc.root?.takeIf { it.visibility == View.VISIBLE }
+                    ?: svc.marquee?.takeIf { it.visibility == View.VISIBLE }
+                if (restoreTarget != null) {
+                    OverlayPerf.firstFrame("screenshot-restore-first-frame", restoreTarget, restoreStartedAt, restoreCode)
                 }
             }
             return true

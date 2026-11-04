@@ -11,7 +11,6 @@ import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import com.phoneagent.data.store.PageMemoryHotspot
-import com.phoneagent.ui.theme.DurationNormal
 
 /**
  * 页面记忆标记覆盖层：当前页面命中已记忆页面时，在该页已记忆的可点击控件位置
@@ -66,8 +65,9 @@ class PageMarkOverlayService : Service() {
         val view = markView ?: return
         view.marks = pendingMarks
         view.alpha = 0f
-        // 动效时长走令牌：200ms = DurationNormal
-        view.animate()?.alpha(1f)?.setDuration(DurationNormal.toLong())?.start()
+        // 淡入时长与曲线走浮层动效令牌
+        view.animate()?.alpha(1f)?.setDuration(OverlayMotion.EnterMs.toLong())
+            ?.setInterpolator(OverlayMotion.EaseOut)?.start()
     }
 
     private fun removeOverlay() {

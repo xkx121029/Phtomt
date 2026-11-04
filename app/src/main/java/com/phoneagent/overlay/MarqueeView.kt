@@ -10,35 +10,81 @@ import android.graphics.Shader
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
+import com.phoneagent.BuildConfig
+
+/**
+ * 跑马灯几何计算（纯函数，单独抽出来是为了能跑 JVM 单测）。
+ *
+ * 跑马灯是**固定宽度窗口**的根视图：窗口宽度在建窗时一次定死（屏幕宽减两侧留白），
+ * 文字变化只改内部胶囊宽度与滚动相位，不再触发 requestLayout / 窗口重排。
+ * 之前的做法是 `WRAP_CONTENT` + 按 12dp 网格取整重排：AI 状态每秒更新数次，
+ * 只要文案长度跨过网格，窗口就重排一次——这正是"定时抖一下"的来源。
+ */
+internal object MarqueeGeometry {
+
+    /** 胶囊宽度取整网格（dp）：同长度区间的文案共用一个宽度，胶囊不会逐字抖动 */
+    const val WidthStepDp = 12f
+
+    /** 胶囊最小宽度（dp）：极短文案（一个"✓"）也要有个像样的底 */
+    const val MinWidthDp = 48f
+
+    /**
+     * 胶囊宽度：文字宽 + 左右内边距，封顶可用宽度，再按网格向上取整。
+     * 封顶后长文案宽度恒定，滚动区宽度也跟着恒定。
+     */
+    fun panelWidthPx(
+        textWidthPx: Float,
+        padHPx: Float,
+        maxWidthPx: Float,
+        stepPx: Float,
+        minWidthPx: Float,
+    ): Float {
+        val raw = (textWidthPx + 2 * padHPx).coerceAtMost(maxWidthPx)
+        val step = stepPx.coerceAtLeast(1f)
+        val snapped = kotlin.math.ceil(raw / step) * step
+        return snapped.coerceAtMost(maxWidthPx).coerceAtLeast(minWidthPx)
+    }
+
+    /** 内容区宽：胶囊宽度去掉左右内边距，文字只能在这个区间里滚 */
+    fun contentWidthPx(panelWidthPx: Float, padHPx: Float): Float =
+        (panelWidthPx - 2 * padHPx).coerceAtLeast(1f)
+
+    /** 只有文字放不进内容区才需要滚动；放得下就停在原地，也就不必每帧重绘 */
+    fun shouldScroll(textWidthPx: Float, panelWidthPx: Float, padHPx: Float): Boolean =
+        textWidthPx > contentWidthPx(panelWidthPx, padHPx)
+
+    /**
+     * 推进滚动相位。
+     *
+     * 回位判据必须是「完全滚出」：文字画在 x = offset，完全离开左侧要满足
+     * `offset < -(textWidth + gap)`。原判据 `offset < -panelWidth` 在文字比面板窄时
+     * 会提前回位，文字还在屏内就跳回入场位——肉眼可见的抽动。
+     */
+    fun advanceOffset(offsetPx: Float, deltaPx: Float, travelDistancePx: Float): Float =
+        if (offsetPx - deltaPx < -travelDistancePx) 0f else offsetPx - deltaPx
+}
 
 /**
  * 底部跑马灯面板：圆角胶囊 + 单行状态文字向左匀速滚动。
  *
  * 它是**独立窗口的根视图**（不挂在任务卡片里）：浮在屏幕底边之上、任务期间常驻，显示 AI 当前动作简述。
- * 长宽随内容自适应——宽 = 文字宽 + 左右内边距（超过屏幕可用宽就封顶并开始滚动），
- * 高 = 文字高 + 上下内边距（内边距由设置里的「内边距」滑块控制）。
+ * 窗口宽度固定（见 [MarqueeGeometry]），胶囊宽度随文字自适应并居中；高度 = 文字高 + 上下内边距。
  * 底色是不透明实色——浮窗压在别的 App 上，半透明白会让文字随时失去对比度。
  *
  * 几个刻意为之的地方（都是踩过的坑）：
  *
- * 1. **底色就是用户选的原色，文字固定白色**。
- *    底色已在设置里由用户配色，再向白色柔化或按阶段混色都会让配色选择器形同虚设，
- *    设置页的预览也就永远对不上实际——预览与实际必须同源。
- *    另外 `Paint` 里 shader 的优先级高于 color：给文字设了渐变 shader 之后，
- *    传进来的颜色会被无声覆盖 —— 早先的相位色就是这么失效的。
- * 2. **更新文字不重置滚动相位**。AI 状态是高频更新的（每秒数次），
- *    每次重置都会把文字钉回起点，看上去像卡住不动。
- * 3. **回位判据必须是"完全滚出"**。文字画在 x = offset，完全离开左侧要满足
- *    `offset < -(textWidth)`；原判据 `offset < -w` 在文字比屏幕窄时会提前回位，
- *    于是文字还在屏内就跳回入场位 —— 肉眼可见的抽动。
- * 4. **短文本居中静止**。跑马灯的意义是显示放不下的长文本；
- *    短文本硬滚只会让人等它绕一圈，还白烧每帧重绘。
- * 5. **滚动判据是"文字宽 vs 内容区宽"**。面板宽度跟着文字走，用 view 宽度判断
- *    会让所有文本都算"放得下"，跑马灯就永远不滚了。
+ * 1. **底色就是用户选的原色，文字固定白色**。设置页预览与实际必须同源；
+ *    `Paint` 里 shader 优先级高于 color，给文字设渐变会让传入颜色被无声覆盖。
+ * 2. **更新文字不重置滚动相位**。AI 状态每秒数次更新，每次重置都会把文字钉回起点。
+ * 3. **更新文字不触发重排**。窗口宽度固定，胶囊宽度只影响绘制；文字更新只测量 + invalidate。
+ * 4. **短文本居中静止**。跑马灯的意义是显示放不下的长文本，短文本硬滚只是白烧每帧重绘。
+ * 5. **滚动判据是"文字宽 vs 内容区宽"**，不是 view 宽度（窗口宽度是固定的）。
  */
 class MarqueeView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
+    /** true = 顶部光带（整宽实心带、高度固定）；false = 底部胶囊（宽度自适应、居中） */
+    private val bandMode: Boolean = false,
 ) : View(context, attrs) {
 
     private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -76,19 +122,27 @@ class MarqueeView @JvmOverloads constructor(
     /** 纵向内边距（像素）：由设置项控制，决定面板厚度 */
     private var padVPx = dp(8f).toInt()
 
-    /** 面板宽度上限：屏幕宽减两侧留白，长文本封顶后靠滚动展示 */
+    /** 窗口可用宽度：窗口本身是固定宽度，量出来就是它；未布局时按屏幕宽兜底 */
     private val maxPanelWidth: Float
-        get() = (resources.displayMetrics.widthPixels - 2 * dp(PANEL_MARGIN))
-            .coerceAtLeast(dp(120f))
+        get() = if (width > 0) width.toFloat()
+        else (resources.displayMetrics.widthPixels - 2 * dp(PANEL_MARGIN)).coerceAtLeast(dp(120f))
 
-    /** 滚动相位：主段文字左边缘的 x 坐标（0 = 刚入场，负值 = 已在滚动中） */
+    /** 当前胶囊宽度（px）：由文字量决定，绘制时居中 */
+    private var panelWidth = 0f
+
+    /** 顶部光带高度（px）：由状态栏 + 挖孔 inset 给出，建窗时定死 */
+    private var bandHeightPx = 0
+
+    /** 滚动相位：主段文字左边缘相对内容区起点的 x 坐标（0 = 刚入场，负值 = 已在滚动中） */
     private var offset = 0f
     private var scrolling = false
     private var lastTime = 0L
 
-    /** 两段文字之间的间隔，小间隔形成字幕式连续流动，避免屏幕出现空档 */
-    private var gap = 120f
-    private val scrollSpeed = 60f // px/s
+    /** 两段文字之间的间隔（dp），小间隔形成字幕式连续流动，避免屏幕出现空档 */
+    private val gapPx = dp(GAP_DP)
+
+    /** 滚动速度（dp/s）：按密度换算，不同屏幕上"看起来一样快" */
+    private val scrollSpeedPxPerSec = dp(SCROLL_DP_PER_SEC)
 
     /**
      * 是否处于"可动画"状态（已附着且可见）。
@@ -102,32 +156,51 @@ class MarqueeView @JvmOverloads constructor(
     /** 单帧最大推进时长：视图不可见一段时间后恢复，不该让文字瞬移一大段 */
     private val maxFrameSeconds = 0.1f
 
-    /** 上一次真正请求过的面板宽度（px），用于抑制高频文字更新带来的重复重排 */
-    private var requestedWidthPx = -1f
+    // ---- debug 埋点：证明"文本高频更新不触发重排" ----
+    private var debugTextUpdates = 0
+    private var debugMeasures = 0
+    private var debugLayoutRequests = 0
 
     /** 更新文字（内容未变时直接跳过，避免无谓重绘） */
     fun setText(text: String) {
         if (this.text == text) return
         this.text = text
         textWidth = paint.measureText(text)
-        // 宽度随文字自适应：文字换了要重新测量，窗口才会跟着变宽变窄。
-        // 但 AI 状态每秒更新数次，逐次 requestLayout 会让 WRAP_CONTENT 的悬浮窗
-        // 每秒重排多次（掉帧的主要来源）。宽度按 12dp 网格取整，只有跨格才重排：
-        // 长文案的宽度本来就封顶在 maxPanelWidth，后续更新完全不触发 relayout。
-        val desired = desiredWidthPx()
-        if (kotlin.math.abs(desired - requestedWidthPx) > 0.5f) {
-            requestedWidthPx = desired
-            requestLayout()
+        // 关键：只更新胶囊宽度与相位，不 requestLayout。
+        // 窗口宽度固定，胶囊宽度是纯绘制属性 —— 状态每秒更新数次也不会让窗口重排。
+        val desired = computePanelWidth()
+        if (kotlin.math.abs(desired - panelWidth) > 0.5f) {
+            panelWidth = desired
+            buildBgGradient()
+        }
+        debugTextUpdates++
+        if (BuildConfig.DEBUG && debugTextUpdates % DEBUG_LOG_EVERY == 0) {
+            OverlayPerf.log(
+                "marquee-updates",
+                "updates=$debugTextUpdates measures=$debugMeasures relayouts=$debugLayoutRequests",
+            )
         }
         // 刻意不重置 offset：见类注释第 2 条
         ensureRunning()
         invalidate()
     }
 
-    /** 设置纵向内边距（像素）：决定面板厚度，设置项变化时调用 */
+    /** 设置纵向内边距（像素）：决定面板厚度，设置项变化时调用（低频，允许重排） */
     fun setPadV(px: Int) {
         if (padVPx == px) return
         padVPx = px
+        requestLayout()
+        invalidate()
+    }
+
+    /**
+     * 顶部光带：高度取状态栏 + 挖孔 inset（至少 [BAND_MIN_HEIGHT_DP]），窗口高度随之固定。
+     * 光带必须能画进状态栏区域，所以它的高度不由文字决定。
+     */
+    fun setBandHeight(px: Int) {
+        val target = px.coerceAtLeast(dp(BAND_MIN_HEIGHT_DP).toInt())
+        if (bandHeightPx == target) return
+        bandHeightPx = target
         requestLayout()
         invalidate()
     }
@@ -151,54 +224,47 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 背景渐变：用户配色原样使用（不透明实色），随窗口尺寸重建 */
+    /** 背景渐变：用户配色原样使用（不透明实色），随胶囊宽度重建（只在宽度变化时重建） */
     private fun buildBgGradient() {
-        if (width <= 0 || gradientColors.isEmpty()) return
+        if (panelWidth <= 0f || gradientColors.isEmpty()) {
+            bgGradient = null
+            return
+        }
         // 首色补到末尾：渐变首尾同色，色带接缝处才不会断开
         val arr = (gradientColors + gradientColors.first()).toIntArray()
-        // 整幅渐变正好铺满面板宽度，两端用 CLAMP 收口即可。
-        // REPEAT 是平铺语义：万一渐变的宽度与面板当前宽度不同步，它会把整条色带再重复一遍，
-        // 屏幕上就凭空多出几段颜色——设置页预览用的是不平铺的横向渐变，这里必须同源。
-        bgGradient = LinearGradient(0f, 0f, width.toFloat(), 0f, arr, null, Shader.TileMode.CLAMP)
+        // 整幅渐变正好铺满胶囊宽度，两端用 CLAMP 收口即可。
+        // REPEAT 是平铺语义：万一渐变宽度与胶囊宽度不同步，它会把整条色带再重复一遍。
+        bgGradient = LinearGradient(0f, 0f, panelWidth, 0f, arr, null, Shader.TileMode.CLAMP)
     }
 
-    /**
-     * 期望面板宽度：文字宽 + 内边距，封顶 [maxPanelWidth]，再按 [WIDTH_STEP] 网格向上取整。
-     *
-     * 取整是为了让「状态文字换一句」这种几像素的宽度变化不引发窗口重排；
-     * 只要没跨格就用旧宽度，长文案则永远等于 [maxPanelWidth]，彻底稳定。
-     */
-    private fun desiredWidthPx(): Float {
-        val capped = (textWidth + 2 * padH).coerceAtMost(maxPanelWidth)
-        val step = dp(WIDTH_STEP)
-        val snapped = (kotlin.math.ceil(capped / step) * step).coerceAtMost(maxPanelWidth)
-        return snapped.coerceAtLeast(dp(48f))
-    }
+    /** 胶囊宽度：文字宽 + 内边距，封顶窗口宽，按网格取整（见 [MarqueeGeometry]） */
+    private fun computePanelWidth(): Float = MarqueeGeometry.panelWidthPx(
+        textWidthPx = textWidth,
+        padHPx = padH,
+        maxWidthPx = maxPanelWidth,
+        stepPx = dp(MarqueeGeometry.WidthStepDp),
+        minWidthPx = dp(MarqueeGeometry.MinWidthDp),
+    )
 
     /**
-     * 长宽自适应：宽按文字量，封顶 [maxPanelWidth]；高按字号加纵向内边距。
+     * 长宽：窗口宽度固定（EXACT）。底部胶囊高度 = 字号 + 纵向内边距；
+     * 顶部光带高度 = 状态栏 + 挖孔 inset，保证光带真的压在状态栏上。
      *
-     * 窗口是 WRAP_CONTENT，这里量多少窗口就多大——文字一变宽窄就跟着变。
+     * 这里**不再用文字宽决定窗口宽**——窗口宽度固定是"文本更新不重排"的前提。
      */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        if (BuildConfig.DEBUG) debugMeasures++
         val fm = paint.fontMetrics
         val contentH = fm.descent - fm.ascent
-        val desiredW = desiredWidthPx()
-        val w = desiredW
-        val h = contentH + 2 * padVPx
-        setMeasuredDimension(
-            resolveSize(w.toInt(), widthMeasureSpec),
-            resolveSize(h.toInt(), heightMeasureSpec),
-        )
+        val w = resolveSize(maxPanelWidth.toInt(), widthMeasureSpec)
+        val h = if (bandMode) bandHeightPx else (contentH + 2 * padVPx).toInt()
+        if (panelWidth <= 1f) panelWidth = if (bandMode) w.toFloat() else computePanelWidth()
+        setMeasuredDimension(w, resolveSize(h, heightMeasureSpec))
     }
-
-    /** 内容区宽：面板宽度去掉左右内边距，文字只能在这个区间里滚 */
-    private val contentWidth: Float
-        get() = width - 2 * padH
 
     /** 只有文字放不进内容区才需要滚动；放得下就停在原地，也就不必每帧重绘 */
     private fun ensureRunning() {
-        if (textWidth <= contentWidth) {
+        if (!MarqueeGeometry.shouldScroll(textWidth, panelWidth, padH)) {
             scrolling = false
             return
         }
@@ -237,8 +303,15 @@ class MarqueeView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        // 窗口宽度是固定的：旋转后宽度会变，胶囊宽度按新上限重算；光带永远是整宽
+        panelWidth = if (bandMode) w.toFloat() else computePanelWidth()
         buildBgGradient()
         ensureRunning()
+    }
+
+    override fun requestLayout() {
+        if (BuildConfig.DEBUG) debugLayoutRequests++
+        super.requestLayout()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -246,9 +319,18 @@ class MarqueeView @JvmOverloads constructor(
 
         val w = width.toFloat()
         val h = height.toFloat()
-        // 圆角胶囊：半径取半高，隆起的一块面板
-        val radius = h / 2f
-        panel.set(0f, 0f, w, h)
+        if (w <= 0f || h <= 0f) return
+
+        // 光带整宽、直角；底部胶囊居中、圆角取半高
+        if (bandMode) {
+            panelWidth = w
+        } else if (panelWidth <= 1f) {
+            panelWidth = computePanelWidth()
+        }
+        val pw = panelWidth.coerceAtMost(w)
+        val left = if (bandMode) 0f else (w - pw) / 2f
+        val radius = if (bandMode) 0f else h / 2f
+        panel.set(left, 0f, left + pw, h)
         val solid = solidColor
         if (solid != null) {
             // 单色：实心一块，不留任何渐变痕迹（shader 必须清掉，否则旧渐变会接着生效）
@@ -263,16 +345,16 @@ class MarqueeView @JvmOverloads constructor(
         }
         if (text.isEmpty()) return
 
-        val left = padH
-        val avail = w - 2 * padH
+        val contentLeft = left + padH
+        val avail = MarqueeGeometry.contentWidthPx(pw, padH)
         // 文字裁进内容区：既不会压到胶囊圆角上，滚动时也在边缘干净地消失
         canvas.save()
-        canvas.clipRect(left, 0f, w - padH, h)
+        canvas.clipRect(contentLeft, 0f, left + pw - padH, h)
 
-        if (textWidth <= avail) {
+        if (!MarqueeGeometry.shouldScroll(textWidth, pw, padH)) {
             // 短文本：居中静止，省掉每帧重绘
             scrolling = false
-            canvas.drawText(text, left + (avail - textWidth) / 2f, centerY(), paint)
+            canvas.drawText(text, contentLeft + (avail - textWidth) / 2f, centerY(), paint)
             canvas.restore()
             return
         }
@@ -280,13 +362,12 @@ class MarqueeView @JvmOverloads constructor(
         val now = System.nanoTime()
         val dt = ((now - lastTime) / 1_000_000_000f).coerceIn(0f, maxFrameSeconds)
         lastTime = now
-        offset -= scrollSpeed * dt
-        // 完全滚出左侧才回位：见类注释第 3 条
-        if (offset < -(textWidth + gap)) offset = 0f
+        // 回位判据见 [MarqueeGeometry.advanceOffset]：必须完全滚出（含段间隔）才回位
+        offset = MarqueeGeometry.advanceOffset(offset, scrollSpeedPxPerSec * dt, textWidth + gapPx)
 
         // 两段循环：主段滚出时，次段正好接上，形成无缝字幕
-        canvas.drawText(text, left + offset, centerY(), paint)
-        canvas.drawText(text, left + offset + textWidth + gap, centerY(), paint)
+        canvas.drawText(text, contentLeft + offset, centerY(), paint)
+        canvas.drawText(text, contentLeft + offset + textWidth + gapPx, centerY(), paint)
         canvas.restore()
 
         // 不可见时不再续帧（见 canAnimate 说明）
@@ -303,13 +384,22 @@ class MarqueeView @JvmOverloads constructor(
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
 
     companion object {
-        /** 面板两侧至少留出的空白：长文本封顶后也不能顶到屏幕边缘 */
+        /** 胶囊两侧至少留出的空白：长文本封顶后也不能顶到屏幕边缘 */
         private const val PANEL_MARGIN = 16f
 
         /** 单色模式的兜底色（上游一个颜色都没给时用），取默认渐变的头色 */
         private const val DEFAULT_SOLID = 0xFF4FA3FF.toInt()
 
-        /** 面板宽度取整网格（dp）：跨格才重排，避免状态文字高频更新导致窗口抖动 */
-        private const val WIDTH_STEP = 12f
+        /** 两段文字之间的间隔（dp） */
+        private const val GAP_DP = 40f
+
+        /** 滚动速度（dp/s）：约等于原先 60px/s 在 2.75 密度屏上的观感 */
+        private const val SCROLL_DP_PER_SEC = 22f
+
+        /** debug 下每多少次文字更新打一条滚动统计 */
+        private const val DEBUG_LOG_EVERY = 20
+
+        /** 顶部光带最小高度（dp）：状态栏很矮的机型上也要放得下 14sp 文字 */
+        private const val BAND_MIN_HEIGHT_DP = 30f
     }
 }
