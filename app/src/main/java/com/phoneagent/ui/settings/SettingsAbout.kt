@@ -33,6 +33,18 @@ private const val REPO_GITEE = "https://gitee.com/xkx1029/Phtomt"
 private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
 /** Shizuku 主程序上游仓库（server/starter 内嵌自这里） */
 private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
+
+/**
+ * 渠道后缀：CI 用 versionCode 段位区分渠道（dev = 1000000+run，beta = 2000000+run），
+ * 本地构建仍落在旧号段，后缀为空。不改 versionName 是因为服务端 compareVersion
+ * 按 "." 分段做数值比较，带 "-dev" 后缀会让整段被解析成 0，破坏升级判断。
+ */
+private fun channelSuffix(): String = when {
+    BuildConfig.VERSION_CODE >= 2_000_000 -> " · beta"
+    BuildConfig.VERSION_CODE >= 1_000_000 -> " · dev"
+    else -> ""
+}
+
 /** 参考过的同类项目：未内嵌代码，仅借鉴其工程组织与验证思路，故单列「参考与致谢」 */
 private const val CODA_REPO = "https://github.com/happy-everyday-everyweek/coda"
 private const val MOBILEGYM_REPO = "https://github.com/Purewhiter/mobilegym"
@@ -83,7 +95,7 @@ internal fun SettingsAbout(
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
+                    "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）" + channelSuffix(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
