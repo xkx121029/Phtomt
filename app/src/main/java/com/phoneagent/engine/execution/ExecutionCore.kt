@@ -161,6 +161,14 @@ internal class ExecutionCore(
             }
         }
 
+        // 时钟直达/降级：不依赖无障碍服务，因此放在副屏与无障碍判定之前。
+        // 每级失败只降级、不终止（静默直达 → shell 写库 → 无障碍确认 → 打开时钟页手动设置）。
+        if (type == ActionType.SET_ALARM || type == ActionType.SET_TIMER) {
+            return executeClockAction(action, type).also {
+                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
+            }
+        }
+
         // 副屏模式：动作下发到模拟副屏（input -d / am --display），不经过无障碍服务。
         // 副屏读不到元素树，定位只可能来自动作自带的坐标（含 by=coordinate 比例坐标）
         virtualDisplay()?.takeIf { it.isReady }?.let { vd ->
@@ -315,27 +323,6 @@ internal class ExecutionCore(
                     val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
                     com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
-                }
-            }
-            ActionType.SET_ALARM -> {
-                // 时钟直达：AlarmClock 意图创建闹钟，不经语音助手、不模拟点击。
-                // 无 root 读不到时钟库，因此成功=“已派发”，不谎称已验证（沿用 Eta 的 verified=false 语义）
-                when (val r = com.phoneagent.device.clock.ClockChannel(appContext).setAlarm(
-                    action.hour, action.minute, action.repeatDays, action.text,
-                )) {
-                    is com.phoneagent.device.clock.ClockResult.Ok ->
-                        com.phoneagent.engine.execution.VerifyResult(true, r.message, snapshot.packageName ?: "", "")
-                    is com.phoneagent.device.clock.ClockResult.Failure ->
-                        com.phoneagent.engine.execution.VerifyResult(false, r.reason, snapshot.packageName ?: "", "")
-                }
-            }
-            ActionType.SET_TIMER -> {
-                val seconds = action.durationMs?.let { it / 1000 }
-                when (val r = com.phoneagent.device.clock.ClockChannel(appContext).setTimer(seconds, action.text)) {
-                    is com.phoneagent.device.clock.ClockResult.Ok ->
-                        com.phoneagent.engine.execution.VerifyResult(true, r.message, snapshot.packageName ?: "", "")
-                    is com.phoneagent.device.clock.ClockResult.Failure ->
-                        com.phoneagent.engine.execution.VerifyResult(false, r.reason, snapshot.packageName ?: "", "")
                 }
             }
             ActionType.READ_NOTIFS -> {
@@ -544,6 +531,65 @@ internal class ExecutionCore(
             com.phoneagent.engine.execution.VerifyResult(false, engine.error.value.ifBlank { "文档写入失败" }, "", "")
         } else {
             com.phoneagent.engine.execution.VerifyResult(true, "文档已生成，可在 Agent 页查看：$written", "", "")
+        }
+    }
+
+    /**
+     * 时钟动作（定闹钟/倒计时）：按 [ClockFallbackPolicy] 的降级链执行。
+     *
+     * 与其它动作不同，这一条**不依赖无障碍服务**，由 [executeWithVerify] 在无障碍判定之前分流；
+     * 每一级失败只记录原因并继续下一级，最终必须给出一句点名「现在用的是什么方式」的中文。
+     */
+    private suspend fun executeClockAction(
+        action: AgentAction,
+        type: String,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val request = if (type == ActionType.SET_ALARM) {
+            val hour = action.hour
+            val minute = action.minute
+            if (hour == null || minute == null) {
+                return com.phoneagent.engine.execution.VerifyResult(
+                    false, "闹钟参数不完整：缺少小时/分钟，未设定任何闹钟", "", "",
+                )
+            }
+            com.phoneagent.device.clock.ClockRequests.alarm(hour, minute, action.repeatDays, action.text)
+        } else {
+            val seconds = action.durationMs?.let { it / 1000 }
+            if (seconds == null || seconds <= 0L) {
+                return com.phoneagent.engine.execution.VerifyResult(
+                    false, "倒计时参数不完整：缺少有效时长，未启动任何倒计时", "", "",
+                )
+            }
+            com.phoneagent.device.clock.ClockRequests.timer(seconds, action.text)
+        }
+
+        val capability = capabilityReader.snapshot()
+        val service = AgentAccessibilityService.instance
+        val caps = ClockCapabilities(
+            accessibility = service != null &&
+                capability.isUsable(com.phoneagent.device.capability.DeviceCapability.ACCESSIBILITY),
+            shell = activeSystemShellKind() != null,
+        )
+        val outcome = ClockFallbackRunner(
+            context = appContext,
+            executor = service?.let { ActionExecutor(it) },
+            shell = { cmd -> execShellViaChannel(cmd) },
+            caps = caps,
+        ).run(request)
+        val trace = ClockFallbackPolicy.levels(request, caps).joinToString(" → ") { it.kind.label }
+
+        return when (outcome) {
+            is ClockOutcome.Done -> com.phoneagent.engine.execution.VerifyResult(
+                true, outcome.message, "", "", channel = outcome.kind.id, trace = trace,
+            )
+            // 只把用户带到时钟页：不算成功，但动作没有再交付一次的风险，禁止通道重试造成重复设置
+            is ClockOutcome.Manual -> com.phoneagent.engine.execution.VerifyResult(
+                false, outcome.message, "", "", notDelivered = false,
+                channel = ClockFallbackKind.OPEN_MANUAL.id, trace = trace,
+            )
+            is ClockOutcome.Failed -> com.phoneagent.engine.execution.VerifyResult(
+                false, outcome.reason, "", "", notDelivered = false, trace = trace,
+            )
         }
     }
 
