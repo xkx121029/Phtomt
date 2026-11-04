@@ -90,6 +90,15 @@ internal val AgentGlassInset = AppSpacing.Md
 internal val AgentGlassInnerPad = AppSpacing.Md
 
 /**
+ * 页面壳层归属。
+ *
+ * - [STANDARD]：本页自带玻璃页眉与底部毛玻璃输入板（经典首页与 Agent Tab）。
+ * - [SHELL]：顶栏由外层壳层（工作台）绘制，本页只留任务流与输入面——
+ *   输入面直接落在页面上、不再套玻璃板，抽屉开合交给外层持有。
+ */
+enum class AgentChrome { STANDARD, SHELL }
+
+/**
  * Agent 页：固定的顶栏 + 输入区夹着一条可滚动的任务流。
  *
  * 数据全部来自引擎已有状态（traces / executionHistory / AgentState / PlanPhase / planStream），
@@ -108,6 +117,10 @@ fun AgentScreen(
     onOpenSettings: () -> Unit = {},
     /** 任务抽屉开合变化：抽屉是盖住整页的，打开时外层要让悬浮导航栏让位，别浮在抽屉上 */
     onDrawerOpenChange: (Boolean) -> Unit = {},
+    /** 页面壳层：见 [AgentChrome] */
+    chrome: AgentChrome = AgentChrome.STANDARD,
+    /** 壳层顶栏的抽屉开合状态；null 时由本页自己持有 */
+    drawerOpenState: Boolean? = null,
 ) {
     val agent by vm.agentState.collectAsState()
     val queue by vm.taskQueue.collectAsState()
@@ -139,10 +152,15 @@ fun AgentScreen(
     var assistDraft by rememberSaveable { mutableStateOf("") }
     var submittedTask by rememberSaveable { mutableStateOf("") }
     var previewVisible by rememberSaveable { mutableStateOf(false) }
-    var drawerOpen by remember { mutableStateOf(false) }
-    // 抽屉从左侧拉出时盖住整页，外层据此收掉悬浮导航栏（否则它会浮在抽屉上面）。
+    var internalDrawerOpen by remember { mutableStateOf(false) }
+    // 壳层模式（工作台）里抽屉由外层顶栏的汉堡按钮控制，状态也放在外层；
+    // 经典模式仍由本页自己持有。两种模式都通过 onDrawerOpenChange 通知外层导航让位。
+    val drawerOpen = drawerOpenState ?: internalDrawerOpen
+    fun setDrawerOpen(open: Boolean) {
+        internalDrawerOpen = open
+        onDrawerOpenChange(open)
+    }
     // 离开本页时（组合被回收）必须复位，否则导航栏会一直藏着。
-    LaunchedEffect(drawerOpen) { onDrawerOpenChange(drawerOpen) }
     DisposableEffect(Unit) { onDispose { onDrawerOpenChange(false) } }
     // 侧边栏里选中的任务；-1 = 跟随实时（最新一次执行 + 正在进行的规划）。
     // 新建任务时一律复位到这里，保证「新建任务打开的是新任务」而不是接着看旧的。
@@ -316,14 +334,16 @@ fun AgentScreen(
     // 本页有单一的 LazyColumn（listState），直接传官网风格的绝对位置判定：
     // 不在首项或首项 offset 过 8px → 浮起胶囊。比内部 NestedScrollConnection 更稳
     // （不依赖手势方向约定，方向翻也不会反）。
-    GlassHeaderScaffold(
-        modifier = modifier,
-        floating = { listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 8 },
-        header = {
+    // 页眉：经典模式是本页自带的一条玻璃顶栏；壳层模式（工作台）由外层画顶栏，
+    // 这里传 null，骨架不再绘制页眉、正文也不为页眉留净空。
+    val workspaceHeader: (@Composable () -> Unit)? = if (chrome == AgentChrome.SHELL) {
+        null
+    } else {
+        {
             AgentHeaderBar(
                 running = agent.isRunning,
                 runningTask = agent.task,
-                onOpenTasks = { drawerOpen = true },
+                onOpenTasks = { setDrawerOpen(true) },
                 onOpenMemory = onOpenMemory,
             )
 
@@ -339,7 +359,13 @@ fun AgentScreen(
                     ),
                 )
             }
-        },
+        }
+    }
+
+    GlassHeaderScaffold(
+        modifier = modifier,
+        floating = { listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 8 },
+        header = workspaceHeader,
         content = { headerPad ->
             Box(modifier = Modifier.fillMaxSize()) {
                 LazyColumn(
@@ -359,11 +385,23 @@ fun AgentScreen(
                             LocalNavClearance.current.calculateBottomPadding(),
                     ),
                 ) {
+                    // 壳层模式下页眉不在了，历史回看提示改挂在任务流首项：
+                    // 它仍然要在"当前看的不是实时任务"这件事上先开口，并给回实时的出口
+                    if (chrome == AgentChrome.SHELL && viewingTaskId != null) {
+                        item(key = "history-banner") {
+                            HistoryViewBanner(
+                                title = archivedSession?.title.orEmpty(),
+                                onBack = { selectedTaskId = -1L },
+                            )
+                            Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
+                        }
+                    }
                     if (showEmpty) {
                         item(key = "empty") {
                             AgentEmptyState(
                                 a11yEnabled = a11yEnabled,
                                 onPickSuggestion = { draft = it },
+                                grid = chrome == AgentChrome.SHELL,
                             )
                         }
                     }
@@ -410,22 +448,20 @@ fun AgentScreen(
         // 净空padding放在 onSizeChanged 之外，让 dockHeight 只反映玻璃本体高度，
         // 否则列表会按「玻璃 + 净空」再加一次净空，末项被顶得过高
         dock = { glass ->
-            GlassSurface(
-                hazeState = glass,
-                shape = RoundedCornerShape(AppRadii.Hero),
-                modifier = Modifier
-                    // 宽屏下输入面与正文列等宽居中，不再整屏拉通
-                    .contentColumn()
-                    .align(Alignment.BottomCenter)
-                    .imePadding()
-                    .padding(
-                        // 侧栏已占位，左右只留面板自身的外边距
-                        start = AgentGlassInset,
-                        end = AgentGlassInset,
-                        bottom = LocalNavClearance.current.calculateBottomPadding(),
-                    )
-                    .onSizeChanged { dockHeight = it.height },
-            ) {
+            val dockModifier = Modifier
+                // 宽屏下输入面与正文列等宽居中，不再整屏拉通
+                .contentColumn()
+                .align(Alignment.BottomCenter)
+                .imePadding()
+                .padding(
+                    // 侧栏已占位，左右只留面板自身的外边距
+                    start = AgentGlassInset,
+                    end = AgentGlassInset,
+                    bottom = LocalNavClearance.current.calculateBottomPadding(),
+                )
+                .onSizeChanged { dockHeight = it.height }
+
+            val dockBody: @Composable () -> Unit = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     AnimatedVisibility(
                         visible = showStrip,
@@ -568,6 +604,18 @@ fun AgentScreen(
                     }
                 }
             }
+
+            // 壳层模式（工作台）：输入面直接落在页面上——与 Eta 的实心输入卡同形。
+            // 玻璃是经典风格的材质语言，壳层不放这层玻璃，让输入卡自己浮在任务流之上。
+            if (chrome == AgentChrome.SHELL) {
+                Box(dockModifier) { dockBody() }
+            } else {
+                GlassSurface(
+                    hazeState = glass,
+                    shape = RoundedCornerShape(AppRadii.Hero),
+                    modifier = dockModifier,
+                ) { dockBody() }
+            }
         },
         overlay = {
             // 运行画面是 500ms 轮询取帧，必须挂在与列表同层的浮层上，不能进列表项
@@ -583,19 +631,19 @@ fun AgentScreen(
                 viewingTaskId = viewingTaskId,
                 onSelect = { taskId ->
                     selectedTaskId = taskId ?: -1L
-                    drawerOpen = false
+                    setDrawerOpen(false)
                 },
                 onNewTask = {
                     selectedTaskId = -1L
                     // 新建对话：清掉上一段的输入回显与文档预览，主区域随即变成一张白纸
                     submittedTask = ""
                     vm.newConversation()
-                    drawerOpen = false
+                    setDrawerOpen(false)
                     focusRequester.requestFocus()
                 },
                 // 任务运行中不能另起对话（引擎侧同样会拒绝）：入口据此置灰并说明原因
                 newConversationEnabled = !agent.isRunning,
-                onDismiss = { drawerOpen = false },
+                onDismiss = { setDrawerOpen(false) },
             )
         },
     )

@@ -3,7 +3,6 @@ package com.phoneagent.ui.workbench
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -44,14 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.coding.agent.CodingWorkspaces
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.data.prefs.WorkbenchView
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.agent.AgentChrome
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.LocalNavClearance
@@ -68,11 +67,8 @@ import com.phoneagent.ui.theme.UiStyle
 import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.motionSettings
 
-/** 顶栏高度：一行标题 + 视图切换，紧凑到不抢正文（不走新的间距令牌，只用固定行高） */
-private val WorkbenchBarHeight = 52.dp
-
-/** 状态条高度：一行事实，不再给每项套胶囊 */
-private val WorkbenchStripHeight = 30.dp
+/** 顶栏高度：与 Eta 的紧凑顶栏同高，只放两枚图标，不抢正文 */
+private val WorkbenchBarHeight = 56.dp
 
 /** 配置面板的最大高度：超过就内滚，不把整页拉成长表单 */
 private val ConfigPanelMaxHeight = 460.dp
@@ -102,21 +98,19 @@ fun WorkbenchScreen(
     onOpenSettingsPage: (SettingsPage) -> Unit = {},
     /** Coding 视图里 AI 回返正文的全屏阅读 */
     onOpenMarkdownFullscreen: (String) -> Unit = {},
+    /** 任务抽屉开合：抽屉盖住整页，外层据此让悬浮导航栏让位 */
+    onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
-    val a11y by vm.a11yEnabled.collectAsState()
-    val agent by vm.agentState.collectAsState()
-    val context = LocalContext.current
-    val colors = AppTheme.colors
 
     val view = WorkbenchView.normalize(settings.workbenchView)
-    // 工作区名只用于状态条：读一次即可，不参与重组判定
-    val workspaceName = remember(context) {
-        runCatching { CodingWorkspaces.active(context).name }.getOrDefault("默认工作区")
-    }
 
     var configOpen by rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    // 任务抽屉的开合状态放在壳层：打开它的汉堡按钮在顶栏上，而抽屉本身在 Agent 页里
+    var drawerOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(enabled = configOpen) { configOpen = false }
+    BackHandler(enabled = drawerOpen) { drawerOpen = false }
 
     val motion = motionSettings()
     val switchMs = motion.scaledDuration(ScreenTransitions.Duration)
@@ -127,32 +121,29 @@ fun WorkbenchScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            WorkbenchBar(
+            // 顶栏只有两枚图标：左边开任务抽屉，右边是溢出菜单。
+            // 视图切换、配置面板、记忆都收进溢出菜单——Eta 的首页顶栏就是这样
+            // 把"身份"和"功能入口"压到最小，正文才是唯一主角。
+            WorkbenchTopBar(
                 view = view,
-                onSelectView = ::selectView,
-                onOpenConfig = { configOpen = true },
+                menuOpen = menuOpen,
+                onMenuOpenChange = { menuOpen = it },
+                onOpenDrawer = { drawerOpen = true },
+                onSelectView = {
+                    menuOpen = false
+                    selectView(
+                        if (view == WorkbenchView.CODING) WorkbenchView.AGENT else WorkbenchView.CODING,
+                    )
+                },
+                onOpenConfig = {
+                    menuOpen = false
+                    configOpen = true
+                },
+                onOpenMemory = {
+                    menuOpen = false
+                    onOpenMemory()
+                },
             )
-            Hairline(colors.outlineSoft)
-
-            // 状态条：同一行内用"标签 值"的紧凑格式，两种视图各回答两三个问题
-            when (view) {
-                WorkbenchView.CODING -> StatusStrip {
-                    Fact("工作区", workspaceName)
-                    FactDivider()
-                    Fact("审批", approvalLabel(settings.codingApprovalMode))
-                    FactDivider()
-                    Fact("视图", "编码工作台")
-                }
-
-                else -> StatusStrip {
-                    Fact("模型", settings.model.ifBlank { "未配置模型" })
-                    FactDivider()
-                    Fact("无障碍", if (a11y) "已连接" else "未连接")
-                    FactDivider()
-                    Fact("执行", if (agent.isRunning) "运行中" else "待命")
-                }
-            }
-            Hairline(colors.outlineSoft)
 
             AnimatedContent(
                 targetState = view,
@@ -176,6 +167,8 @@ fun WorkbenchScreen(
                         vm = vm,
                         modifier = Modifier.fillMaxSize(),
                         onOpenMarkdownFullscreen = onOpenMarkdownFullscreen,
+                        // 顶栏已由壳层画，编码页不再重复一条自己的页眉
+                        showHeader = false,
                     )
                 } else {
                     // Agent 视图接上现有实现，不另造一份：任务流、审批卡、输入区都在原页里
@@ -185,6 +178,12 @@ fun WorkbenchScreen(
                         onOpenMemory = onOpenMemory,
                         onOpenDocFullscreen = onOpenDocFullscreen,
                         onOpenSettings = { onOpenSettingsPage(SettingsPage.AI_MODELS) },
+                        onDrawerOpenChange = {
+                            drawerOpen = it
+                            onDrawerOpenChange(it)
+                        },
+                        chrome = AgentChrome.SHELL,
+                        drawerOpenState = drawerOpen,
                     )
                 }
             }
@@ -225,164 +224,89 @@ fun WorkbenchScreen(
     }
 }
 
-/** 顶栏：身份 → 视图切换 → 配置，一条横线结束，不再叠玻璃板 */
+/** 顶栏上单枚图标按钮的尺寸：48dp 是触摸目标下限，图标在该范围内居中 */
+private val TopBarActionSize = 48.dp
+
+/**
+ * 顶栏：左边开任务抽屉，右边溢出菜单。不画标题、不叠玻璃板、不加分割线。
+ *
+ * 视图切换、工作台配置、记忆都收进溢出菜单——顶栏只留"两个入口"，
+ * 其余功能不跟正文抢位置。编码视图没有任务抽屉，汉堡位留空占位，
+ * 两枚图标仍分别贴住左右边。
+ */
 @Composable
-private fun WorkbenchBar(
+private fun WorkbenchTopBar(
     view: String,
-    onSelectView: (String) -> Unit,
+    menuOpen: Boolean,
+    onMenuOpenChange: (Boolean) -> Unit,
+    onOpenDrawer: () -> Unit,
+    onSelectView: () -> Unit,
     onOpenConfig: () -> Unit,
+    onOpenMemory: () -> Unit,
 ) {
-    val colors = AppTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(WorkbenchBarHeight)
-            .padding(start = AppSpacing.Lg, end = AppSpacing.Sm),
+            .padding(horizontal = AppSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(18.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip))
-                .background(colors.brand),
-        )
-        Spacer(Modifier.width(AppSpacing.Md))
-        Text(
-            "工作台",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.onSurfaceBase,
-        )
-        Spacer(Modifier.width(AppSpacing.Sm))
-        Text(
-            if (view == WorkbenchView.CODING) "编码" else "操控",
-            style = MaterialTheme.typography.labelSmall,
-            color = colors.onSurfaceRaised,
-        )
-        Spacer(Modifier.weight(1f))
-        ViewTab(
-            label = "Agent",
-            selected = view != WorkbenchView.CODING,
-            onClick = { onSelectView(WorkbenchView.AGENT) },
-        )
-        Spacer(Modifier.width(AppSpacing.Md))
-        ViewTab(
-            label = "Coding",
-            selected = view == WorkbenchView.CODING,
-            onClick = { onSelectView(WorkbenchView.CODING) },
-        )
-        Spacer(Modifier.width(AppSpacing.Xs))
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip))
-                .clickable(onClick = onOpenConfig),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = AppIcons.Settings,
-                contentDescription = "工作台配置",
-                tint = colors.onSurfaceRaised,
-                modifier = Modifier.size(18.dp),
+        if (view == WorkbenchView.CODING) {
+            Spacer(Modifier.width(TopBarActionSize))
+        } else {
+            TopBarAction(
+                icon = AppIcons.Menu,
+                contentDescription = "任务列表",
+                onClick = onOpenDrawer,
             )
+        }
+        Spacer(Modifier.weight(1f))
+        Box {
+            TopBarAction(
+                icon = AppIcons.More,
+                contentDescription = "更多",
+                onClick = { onMenuOpenChange(true) },
+            )
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { onMenuOpenChange(false) },
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (view == WorkbenchView.CODING) "切换到 Agent" else "切换到编码工作台",
+                        )
+                    },
+                    onClick = onSelectView,
+                )
+                DropdownMenuItem(text = { Text("工作台配置") }, onClick = onOpenConfig)
+                DropdownMenuItem(text = { Text("记忆") }, onClick = onOpenMemory)
+            }
         }
     }
 }
 
-/**
- * 视图切换的文字标签：选中项只靠"文字变深 + 下方 2dp 短线"表达，
- * 不滑动、不缩放；短线颜色做一次淡入淡出，符合"只做自下而上"的动效约束。
- */
 @Composable
-private fun ViewTab(
-    label: String,
-    selected: Boolean,
+private fun TopBarAction(
+    icon: ImageVector,
+    contentDescription: String,
     onClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val tint by animateColorAsState(
-        targetValue = if (selected) colors.onSurfaceBase else colors.onSurfaceRaised,
-        animationSpec = tween(DurationFast, easing = EaseOut),
-        label = "view-tab-tint",
-    )
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
         modifier = Modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(vertical = AppSpacing.Xs),
+            .size(TopBarActionSize)
+            .clip(RoundedCornerShape(AppRadii.Chip))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = tint,
-        )
-        Spacer(Modifier.height(AppSpacing.Xs))
-        Box(
-            Modifier
-                .width(14.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip))
-                .background(if (selected) colors.brand else Color.Transparent),
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = colors.onSurfaceBase,
+            modifier = Modifier.size(22.dp),
         )
     }
-}
-
-/** 状态条容器：一行事实，左右与正文同一留白 */
-@Composable
-private fun StatusStrip(content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(WorkbenchStripHeight)
-            .padding(horizontal = AppSpacing.Lg),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
-}
-
-@Composable
-private fun RowScope.Fact(label: String, value: String) {
-    val colors = AppTheme.colors
-    Text(
-        label,
-        style = MaterialTheme.typography.labelSmall,
-        color = colors.onSurfaceRaised,
-    )
-    Spacer(Modifier.width(AppSpacing.Xs))
-    Text(
-        value,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Medium,
-        color = colors.onSurfaceBase,
-    )
-}
-
-@Composable
-private fun RowScope.FactDivider() {
-    val colors = AppTheme.colors
-    Spacer(Modifier.width(AppSpacing.Md))
-    Box(
-        Modifier
-            .width(1.dp)
-            .height(10.dp)
-            .background(colors.outlineSoft),
-    )
-    Spacer(Modifier.width(AppSpacing.Md))
-}
-
-@Composable
-private fun Hairline(color: Color) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(color),
-    )
 }
 
 /** 编码审批档位的中文说法；与设置页共用同一套口径 */

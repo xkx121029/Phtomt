@@ -117,6 +117,8 @@ fun CodingScreen(
     modifier: Modifier = Modifier,
     /** 全屏阅读 AI 回返的正文：气泡在会话流里只能限宽，要通读就得整屏。 */
     onOpenMarkdownFullscreen: (content: String) -> Unit = {},
+    /** 工作台壳层已画顶栏时置 false：本页不再重复一条自己的页眉 */
+    showHeader: Boolean = true,
 ) {
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
@@ -396,7 +398,11 @@ fun CodingScreen(
     Box(modifier.fillMaxSize()) {
         GlassHeaderScaffold(
             modifier = Modifier.fillMaxSize(),
-            header = { AppTopBar(title = "Coding", subtitle = "vibecoding · 设备端编码 Agent") },
+            header = if (showHeader) {
+                { AppTopBar(title = "Coding", subtitle = "vibecoding · 设备端编码 Agent") }
+            } else {
+                null
+            },
         ) { contentPad ->
             // 宽屏下正文列已由骨架（GlassHeaderScaffold）收口并居中，这里不再重复约束
             Column(

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,7 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.PressableScale
@@ -32,12 +35,15 @@ import com.phoneagent.ui.theme.appBorder
 /**
  * 起步建议：软件预置的固定示例，不是 AI 现编内容。
  * 只作为「可以这么说」的示范，点击即填入输入框，不自动执行。
+ * 图标只用于网格形态（工作台）——一行一个的文字形态不需要图标来分区。
  */
+private data class StartSuggestion(val text: String, val icon: ImageVector)
+
 private val StartSuggestions = listOf(
-    "打开设置，把字体调大",
-    "打开时钟，设一个 10 分钟后的闹钟",
-    "把屏幕亮度调到最高",
-    "打开相册，看看最近拍的照片",
+    StartSuggestion("打开设置，把字体调大", AppIcons.Settings),
+    StartSuggestion("打开时钟，设一个 10 分钟后的闹钟", AppIcons.ListTodo),
+    StartSuggestion("把屏幕亮度调到最高", AppIcons.Tune),
+    StartSuggestion("打开相册，看看最近拍的照片", AppIcons.Camera),
 )
 
 /**
@@ -52,7 +58,14 @@ internal fun AgentEmptyState(
     a11yEnabled: Boolean,
     onPickSuggestion: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** 工作台壳层：改用 Eta 那样的「一句提问 + 2×2 建议卡网格」，不再竖排示例行 */
+    grid: Boolean = false,
 ) {
+    if (grid) {
+        GridEmptyState(a11yEnabled = a11yEnabled, onPickSuggestion = onPickSuggestion, modifier = modifier)
+        return
+    }
+
     val colors = AppTheme.colors
 
     Column(
@@ -107,7 +120,7 @@ internal fun AgentEmptyState(
             modifier = Modifier.fillMaxWidth(),
         ) {
             StartSuggestions.forEach { suggestion ->
-                SuggestionRow(text = suggestion, onClick = { onPickSuggestion(suggestion) })
+                SuggestionRow(text = suggestion.text, onClick = { onPickSuggestion(suggestion.text) })
             }
         }
     }
@@ -141,6 +154,109 @@ private fun SuggestionRow(text: String, onClick: () -> Unit) {
                 contentDescription = null,
                 tint = colors.onSurfaceRaised,
                 modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 工作台壳层的空态：一句提问居中 + 2×2 建议卡网格（结构对齐 Eta，配色与圆角走本项目令牌）。
+ *
+ * 与经典空态的区别只在组织方式：不给每句示例配箭头，而是四张等高的卡，
+ * 图标在上、示例在下，一眼扫完「可以让我做哪几类事」。
+ */
+@Composable
+private fun GridEmptyState(
+    a11yEnabled: Boolean,
+    onPickSuggestion: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpacing.Lg)
+            // 与 Eta 一样把提问摆在页面上部三分之一处：不贴顶，也不压到底部输入卡上
+            .padding(top = AppSpacing.Lg * 4, bottom = AppSpacing.Lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "有什么可以帮你？",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(AppSpacing.Lg))
+
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+            StartSuggestions.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                ) {
+                    row.forEach { suggestion ->
+                        SuggestionCard(
+                            suggestion = suggestion,
+                            onClick = { onPickSuggestion(suggestion.text) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    // 奇数条时补一个空位，末卡才不会被拉成整行宽
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+
+        if (!a11yEnabled) {
+            Spacer(Modifier.height(AppSpacing.Lg))
+            Text(
+                text = "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onWarningContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(AppRadii.Item))
+                    .background(colors.warningContainer)
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    .padding(AppSpacing.Lg),
+            )
+        }
+    }
+}
+
+/** 网格里的一张建议卡：图标在上、示例在下，两张同高，点击即把示例带进输入框 */
+@Composable
+private fun SuggestionCard(
+    suggestion: StartSuggestion,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    PressableScale(
+        onPress = buzz,
+        onClick = { buzz(); onClick() },
+        modifier = modifier
+            .heightIn(min = 88.dp)
+            .clip(RoundedCornerShape(AppRadii.Tile))
+            .background(colors.surfaceRaised)
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+            .padding(AppSpacing.Md),
+    ) {
+        Column {
+            Icon(
+                imageVector = suggestion.icon,
+                contentDescription = null,
+                tint = colors.brand,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.height(AppSpacing.Md))
+            Text(
+                text = suggestion.text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

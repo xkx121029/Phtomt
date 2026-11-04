@@ -694,6 +694,8 @@ private fun ActivityContent(
                                                             selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
                                                         },
                                                         onOpenMarkdownFullscreen = { markdownReader = it },
+                                                        // 工作台的顶栏汉堡同样会展开任务抽屉，导航让位走同一条通道
+                                                        onDrawerOpenChange = { taskDrawerOpen = it },
                                                     )
                                                 } else {
                                                     HomeScreen(

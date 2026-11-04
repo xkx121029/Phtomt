@@ -277,7 +277,8 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * @param floating 可选的显式浮起状态。非 null 时直接用它替换骨架内部的滚动监听。
  * @param header 页眉内容，会被套进一块四角全圆的玻璃板。内层内容的左右留白由骨架通过
  *   [LocalHeaderContentPad] 下发，页眉里放 [AppTopBar] 时**不要再传 contentPadding**，
- *   否则标题会跟着面板边距一起横移。
+ *   否则标题会跟着面板边距一起横移。传 null 表示顶栏由调用方（如工作台壳层）自己画：
+ *   骨架不画页眉、正文也不为页眉留净空，其余（取样源 / 底部浮层 / 浮层槽位）照常。
  * @param content 正文，参数是页眉实测高度 + 上缘外边距，供正文垫净空
  * @param dock 底部玻璃浮层（如 Agent 页的输入区）。它和页眉一样要从正文取像素做模糊，
  *   而取样源只有骨架手里这一份——所以底部浮层不能各页自己再造一个，否则要么取不到样、
@@ -294,7 +295,7 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
 fun GlassHeaderScaffold(
     modifier: Modifier = Modifier,
     floating: (() -> Boolean)? = null,
-    header: @Composable () -> Unit,
+    header: (@Composable () -> Unit)?,
     dock: (@Composable BoxScope.(HazeState) -> Unit)? = null,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
@@ -317,8 +318,13 @@ fun GlassHeaderScaffold(
     // 实测高度回填给正文，首项不会被压在玻璃页眉下面
     var headerHeight by remember { mutableIntStateOf(0) }
     // 正文净空按"贴顶吸顶"的形态算，不跟着形态切换变：
-    // 净空一变，列表在同一帧里既被手指拖着走、又被改掉内边距，读起来像打滑
-    val contentTopPad = with(density) { headerHeight.toDp() } + GlassHeaderInset
+    // 净空一变，列表在同一帧里既被手指拖着走、又被改掉内边距，读起来像打滑。
+    // 没有页眉时不留净空：顶栏在骨架之外，正文就该从内容区上沿开始。
+    val contentTopPad = if (header == null) {
+        0.dp
+    } else {
+        with(density) { headerHeight.toDp() } + GlassHeaderInset
+    }
 
     // 胶囊浮板的圆角 = 页眉实测高度的一半，两端才是正圆弧、整条板才是真胶囊；
     // 首帧还没量到高度时用 AppRadii.Header 兜底（只影响转场动画的端点，量到后立即校正）
@@ -367,24 +373,26 @@ fun GlassHeaderScaffold(
         // 不再额外向下飘移一段距离
         val cornerRadius = capsuleRadius * liftProgress
 
-        GlassSurface(
-            hazeState = glass,
-            // 吸顶时是通栏直角（半径 0），离开页首收成胶囊浮板。形态由 [liftProgress]
-            // 一根弹簧统一驱动：圆角、左右/上缘外边距四条曲线同步走完，不各走各的
-            shape = RoundedCornerShape(cornerRadius),
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(start = sideInset + columnInset, end = sideInset + columnInset)
-                .onSizeChanged { headerHeight = it.height },
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                CompositionLocalProvider(LocalHeaderContentPad provides contentPad) {
-                    header()
+        if (header != null) {
+            GlassSurface(
+                hazeState = glass,
+                // 吸顶时是通栏直角（半径 0），离开页首收成胶囊浮板。形态由 [liftProgress]
+                // 一根弹簧统一驱动：圆角、左右/上缘外边距四条曲线同步走完，不各走各的
+                shape = RoundedCornerShape(cornerRadius),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(start = sideInset + columnInset, end = sideInset + columnInset)
+                    .onSizeChanged { headerHeight = it.height },
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    CompositionLocalProvider(LocalHeaderContentPad provides contentPad) {
+                        header()
+                    }
+                    // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来。
+                    // 这段固定不随进度收放——它计进 headerHeight，一动就会带动正文净空
+                    Spacer(Modifier.height(AppSpacing.Sm))
                 }
-                // 玻璃的圆角下沿不能贴着内容：留一口气，圆角才看得出来。
-                // 这段固定不随进度收放——它计进 headerHeight，一动就会带动正文净空
-                Spacer(Modifier.height(AppSpacing.Sm))
             }
         }
 
