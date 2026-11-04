@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 
 /**
  * 标定预览框的颜色。
@@ -34,7 +35,13 @@ private val CalibrationGuideBorder = Color(0xFFFFD600)
 
 /** 界面效果页：运行时视觉反馈（点击光标 / 边缘光效 / 悬浮窗跑马灯） */
 @Composable
-internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+internal fun SettingsVisual(
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+    /** 由「外观与导航」内嵌渲染时为 true：标题已由外层给，这里不再重复画一遍 */
+    embedded: Boolean = false,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -43,8 +50,10 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
-        Spacer(Modifier.height(20.dp))
+        if (!embedded) {
+            SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
+            Spacer(Modifier.height(AppSpacing.Page))
+        }
 
         // ---- 桌面悬浮窗（总开关）----
         // 从「任务行为」搬到这里：悬浮窗开关与跑马灯样式是同一件事，放在一起才算一个设置点

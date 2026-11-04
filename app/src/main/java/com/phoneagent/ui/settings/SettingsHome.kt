@@ -188,36 +188,21 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
         ),
     ),
     SettingsGroup(
-        title = "界面与主题",
-        subtitle = "长什么样：配色、悬浮窗与导航",
+        title = "外观与导航",
+        subtitle = "长什么样：配色、运行时效果与底部导航",
         tone = SettingsTone.Brand,
         entries = listOf(
+            // 主题 / 界面效果 / 选项卡原先三个同级入口，改的都是同一件事的两面，
+            // 合并成一页三个分区（SettingsAppearance），这里只留一个入口
             SettingsEntry(
-                page = SettingsPage.THEME,
+                page = SettingsPage.APPEARANCE,
                 icon = AppIcons.Palette,
-                title = "主题",
-                subtitle = "配色 / 框线 / 磨砂",
+                title = "外观与导航",
+                subtitle = "配色 / 框线 / 悬浮窗与光效 / 选项卡",
                 tone = SettingsTone.Brand,
                 summary = { ctx ->
-                    "${ThemePalette.of(ctx.st.palette).label} · ${if (ctx.st.borderless) "无框线" else "标准"}"
-                },
-            ),
-            SettingsEntry(
-                page = SettingsPage.VISUAL,
-                icon = AppIcons.Star,
-                title = "界面效果",
-                subtitle = "悬浮窗 / 点击光标 / 边缘光效 / 跑马灯",
-                tone = SettingsTone.Brand,
-                summary = { ctx -> if (ctx.st.floatingWindowEnabled) "悬浮窗开" else "悬浮窗关" },
-            ),
-            SettingsEntry(
-                page = SettingsPage.TABS,
-                icon = AppIcons.Reorder,
-                title = "选项卡与工作台",
-                subtitle = "工作台形态 / Tab 可见性与排序",
-                tone = SettingsTone.Brand,
-                summary = { ctx ->
-                    "${com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size} 个可见"
+                    val tabs = com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size
+                    "${ThemePalette.of(ctx.st.palette).label} · ${tabs} 个 Tab"
                 },
             ),
         ),

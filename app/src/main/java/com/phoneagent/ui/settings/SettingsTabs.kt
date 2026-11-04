@@ -34,6 +34,7 @@ import com.phoneagent.ui.MainTabs
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 
 /**
  * 选项卡分页（Superagent 融合 Phase 6）：每个 Tab 一行——图标、名称、可见性开关、
@@ -41,7 +42,13 @@ import com.phoneagent.ui.icons.AppIcons
  * MainActivity 观察 settings 流即时重排；主页与设置钉住不可隐藏。
  */
 @Composable
-internal fun SettingsTabs(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+internal fun SettingsTabs(
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+    /** 由「外观与导航」内嵌渲染时为 true：标题已由外层给，这里不再重复画一遍 */
+    embedded: Boolean = false,
+) {
     val buzz = rememberHapticClick()
 
     // 展示顺序：以 tabOrder 为准，缺的新 Tab 补在尾部、脏 id 滤掉
@@ -56,8 +63,10 @@ internal fun SettingsTabs(st: SettingsState, save: () -> Unit, onBack: () -> Uni
             .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("选项卡", onBack, subtitle = "工作台形态与底部导航的可见性、排序")
-        Spacer(Modifier.height(20.dp))
+        if (!embedded) {
+            SettingsPageHeader("选项卡", onBack, subtitle = "工作台形态与底部导航的可见性、排序")
+            Spacer(Modifier.height(AppSpacing.Page))
+        }
 
         // ===== 工作台形态 =====
         SettingsSection(

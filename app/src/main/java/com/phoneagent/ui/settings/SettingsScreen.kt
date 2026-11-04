@@ -52,8 +52,10 @@ import kotlinx.coroutines.launch
 // MODEL_CATALOG 是「云端模型」下的二级页：模型库动辄几十上百条，不能平铺在设置页上
 // QUICK_START 是「冷启动专用」的一页流程：连模型 → 给无障碍 → 发出第一个任务，
 // 不参与分类导航，只从主页主操作卡 / 工作台空态 / 设置主页顶部直达
-enum class SettingsPage { QUICK_START, HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN,
-    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV, TABS }
+// 主题 / 界面效果 / 选项卡三页收成一页「外观与导航」（SettingsAppearance），
+// 三处改的都是「看起来什么样、导航怎么排」，分开摆只会让用户来回跳
+enum class SettingsPage { QUICK_START, HOME, APPEARANCE, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, LONG_RUN,
+    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV }
 
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
@@ -292,7 +294,7 @@ private fun SettingsPageContent(
                 } else {
                     SettingsHome(st, vm, onOpen = onPage)
                 }
-            SettingsPage.THEME -> SettingsTheme(st, save = saveNonAiSettings, onBack = backToHome)
+            SettingsPage.APPEARANCE -> SettingsAppearance(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.AI_MODELS -> SettingsAiModels(
                 vm = vm, st = st,
                 onBack = backToHome,
@@ -316,7 +318,6 @@ private fun SettingsPageContent(
             SettingsPage.ONDEVICE -> SettingsOnDevice(st, save = saveNonAiSettings, onBack = backToHome)
 
             SettingsPage.AGENT -> SettingsAgent(st, save = saveNonAiSettings, onBack = backToHome)
-            SettingsPage.VISUAL -> SettingsVisual(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = backToHome)
             SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings,
                 onBack = backToHome)
@@ -344,11 +345,6 @@ private fun SettingsPageContent(
             // 编码环境是「编码」下的二级页：返回时回编码页而不是设置主页
             SettingsPage.CODING_ENV -> SettingsCodingEnv(
                 onBack = { onPage(SettingsPage.CODING) },
-            )
-            SettingsPage.TABS -> SettingsTabs(
-                st = st,
-                save = saveNonAiSettings,
-                onBack = backToHome,
             )
         }
     }
