@@ -13,17 +13,15 @@ import org.junit.Test
 /**
  * 声明式能力注册表的收敛性自检。
  *
- * 核心命题只有一句：**能力只在一个地方声明**，下游三处（运行时门控 / 技能目录 / App 技能列表）
- * 都从它派生，提示词里的静态意图表不得出现在注册表之外。
+ * 核心命题：**能力只在一个地方声明**，下游（运行时门控 / 技能目录 / App 列表 / 提示词一致性）
+ * 都从它派生。这里不写死任何数量——数量变化是正常的，结构变化才需要红。
  *
- * 因此本测试不是"跑一遍看有没有崩"，而是对"新增能力忘了接线"的结构性拦截：
- * - 注册表与 [IntentType.ALL] 互相闭合；
- * - [ActionPolicy] 三档与注册表 risk 完全一致（不再各自维护）；
- * - [SkillCatalog] 44 项内置技能全部来自注册表，参数逐字段一致；
- * - App 内技能列表（[SkillRegistry] 注入内置技能）默认全量可见；
- * - 提示词意图表出现的每个 intent 都能在注册表里找到（拼错/删除未清理会红）。
+ * 结构性拦截由 [CapabilityConventions] 承担；本测试只负责把真实注册表与真实通道阶梯接进去，
+ * 再用「虚构成一条新能力」证明新增确实只需要两处登记。
  */
 class CapabilityRegistryTest {
+
+    private fun channelHasGoal(action: String): Boolean = ChannelGoal.of(action) != null
 
     // ---- 注册表 ↔ 意图全集 ----
 
@@ -32,20 +30,11 @@ class CapabilityRegistryTest {
         val registered = CapabilityRegistry.all.map { it.intent }.toSet()
         assertEquals("注册表存在重复 intent", CapabilityRegistry.all.size, registered.size)
         assertEquals("注册表未覆盖的意图：${IntentType.ALL - registered}", IntentType.ALL, registered)
-        assertTrue("存在空名称/空分类的能力", CapabilityRegistry.all.all { it.name.isNotBlank() && it.category.isNotBlank() })
-        assertTrue("存在空说明的能力", CapabilityRegistry.all.all { it.summary.isNotBlank() })
     }
 
     @Test
-    fun 每个能力都有明确的通道与动作登记() {
-        CapabilityRegistry.all.forEach { spec ->
-            // 不产生设备动作的能力必须显式声明为 null（VIACapability 派生依赖这条事实）
-            val expectedOtherChannel = spec.channel == CapabilityChannel.BROWSER || spec.channel == CapabilityChannel.VISION
-            assertEquals(
-                "${spec.intent} 的动作登记与通道不一致（action=${spec.action}, channel=${spec.channel}）",
-                expectedOtherChannel, spec.action == null,
-            )
-        }
+    fun 能力声明全部满足结构约定() {
+        CapabilityConventions.requireClean(CapabilityRegistry.all, ::channelHasGoal)
     }
 
     // ---- 门控同源 ----
@@ -56,53 +45,88 @@ class CapabilityRegistryTest {
         assertEquals("均衡档补充与 MID 不一致", CapabilityRegistry.ofRisk(RiskTier.MID), ActionPolicy.midRisk)
         assertEquals("高风险档与 HIGH 不一致", CapabilityRegistry.ofRisk(RiskTier.HIGH), ActionPolicy.highRisk)
         assertEquals("自由专属与 EXTENDED 不一致", CapabilityRegistry.ofRisk(RiskTier.EXTENDED), ActionPolicy.freeOnly)
-        assertEquals("三档数量变化：低/中/高/自由专属", listOf(35, 21, 5, 4), listOf(
-            ActionPolicy.lowRisk.size, ActionPolicy.midRisk.size, ActionPolicy.highRisk.size, ActionPolicy.freeOnly.size,
-        ))
+    }
+
+    // ---- 通道策略同源 ----
+
+    @Test
+    fun 每个通道都有非空降级策略且至少被一项能力使用() {
+        CapabilityChannel.values().forEach { channel ->
+            assertTrue("通道 ${channel.key} 缺少降级策略", channel.fallback.isNotBlank())
+            assertTrue("通道 ${channel.key} 没有任何能力使用", CapabilityRegistry.ofChannel(channel).isNotEmpty())
+        }
     }
 
     @Test
-    fun 高风险能力都要求用户确认() {
-        CapabilityRegistry.all.filter { it.risk == RiskTier.HIGH }.forEach {
-            assertTrue("高风险能力 ${it.intent} 未声明 needsConfirmation", it.needsConfirmation)
+    fun 时钟通道对应独立降级链而非通用阶梯() {
+        val clock = CapabilityRegistry.ofChannel(CapabilityChannel.CLOCK)
+        assertEquals(setOf(IntentType.SET_ALARM, IntentType.SET_TIMER), clock)
+        clock.forEach { intent ->
+            val action = CapabilityRegistry.specOf(intent)!!.action
+            assertTrue("$intent 的时钟动作异常：$action", action in CapabilityConventions.CLOCK_ACTIONS)
         }
+        assertTrue(
+            "时钟通道策略必须点名 ClockFallbackPolicy",
+            CapabilityChannel.CLOCK.fallback.contains("ClockFallbackPolicy"),
+        )
+    }
+
+    /**
+     * 「新增能力 = 注册表一条 + 通道策略一行」的契约测试。
+     *
+     * 场景：新增一个 SCREEN 能力但先忘了在 ChannelGoal 加一行 —— 必须报错；
+     * 补上那一行后，同一份声明零问题。这证明收敛没有靠硬编码数量假装成立。
+     */
+    @Test
+    fun 新增能力只需注册表一条加通道策略一行() {
+        val newSpec = CapabilitySpec(
+            intent = "new_screen_capability",
+            name = "新能力",
+            category = "操作",
+            summary = "仅用于契约测试的虚拟能力",
+            params = listOf(CapabilityParam("target", "目标", required = true)),
+            risk = RiskTier.MID,
+            channel = CapabilityChannel.SCREEN,
+            action = "new_screen_action",
+        )
+        val specs = CapabilityRegistry.all + newSpec
+
+        val missingGoal = CapabilityConventions.check(specs) { action ->
+            action != "new_screen_action" && channelHasGoal(action)
+        }
+        assertEquals(
+            "漏接通道策略时应该只有这一条问题",
+            listOf(newSpec.intent),
+            missingGoal.map { it.intent }.distinct(),
+        )
+        assertTrue(
+            "错误信息必须指出要补哪一处",
+            missingGoal.single().message.contains("通道策略表加一行"),
+        )
+
+        val complete = CapabilityConventions.check(specs) { action ->
+            action == "new_screen_action" || channelHasGoal(action)
+        }
+        assertTrue("补上通道策略后应零问题：$complete", complete.isEmpty())
     }
 
     @Test
-    fun 通道声明与执行通道阶梯可对齐() {
-        CapabilityRegistry.all.forEach { spec ->
-            val goal = spec.action?.let { ChannelGoal.of(it) }
-            val needsLadder = spec.channel == CapabilityChannel.SCREEN || spec.channel == CapabilityChannel.SHELL
-            assertEquals(
-                "${spec.intent} 声明了 ${spec.channel} 通道，但动作 ${spec.action} 没有对应的通道目标（新增动作忘了接 ChannelGoal）",
-                needsLadder, goal != null,
-            )
-        }
-        // 通道 → 能力数量（改动通道归属时先看这里，再确认门控/阶梯）
-        assertEquals(24, CapabilityRegistry.ofChannel(CapabilityChannel.SCREEN).size)
-        assertEquals(2, CapabilityRegistry.ofChannel(CapabilityChannel.SHELL).size)
-        assertEquals(10, CapabilityRegistry.ofChannel(CapabilityChannel.BROWSER).size)
-        assertEquals(1, CapabilityRegistry.ofChannel(CapabilityChannel.VISION).size)
-        assertEquals(1, CapabilityRegistry.ofChannel(CapabilityChannel.A11Y).size)
-        assertEquals(2, CapabilityRegistry.ofChannel(CapabilityChannel.CLOCK).size)
+    fun 新增时钟能力不需要通用通道目标() {
+        val newClock = CapabilitySpec(
+            intent = IntentType.SET_ALARM,
+            name = "定闹钟",
+            category = "时钟",
+            summary = "验证时钟能力不依赖通用通道阶梯",
+            risk = RiskTier.LOW,
+            channel = CapabilityChannel.CLOCK,
+            action = "set_alarm",
+        )
+        assertTrue(CapabilityConventions.check(listOf(newClock) + restOfChannels(), ::channelHasGoal).isEmpty())
     }
 
-    @Test
-    fun 依赖设备权限的能力都声明了权限需求() {
-        CapabilityRegistry.all.forEach { spec ->
-            when (spec.channel) {
-                CapabilityChannel.A11Y, CapabilityChannel.SHELL ->
-                    assertTrue(
-                        "${spec.intent} 走 ${spec.channel} 通道却未声明权限需求",
-                        spec.permission != CapabilityPermission.NONE,
-                    )
-                else -> Unit
-            }
-        }
-        CapabilityRegistry.all.filter { it.permission == CapabilityPermission.NOTIFICATION }.forEach {
-            assertEquals("${it.intent} 依赖通知使用权", CapabilityChannel.LOCAL, it.channel)
-        }
-    }
+    /** 给「只校验一条新能力」时补齐通道覆盖，避免死通道噪声 */
+    private fun restOfChannels(): List<CapabilitySpec> =
+        CapabilityRegistry.all.filter { it.intent != IntentType.SET_ALARM && it.intent != IntentType.SET_TIMER }
 
     // ---- 技能目录同源 ----
 

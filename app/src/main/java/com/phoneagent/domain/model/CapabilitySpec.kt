@@ -30,34 +30,39 @@ enum class RiskTier {
     EXTENDED,
 }
 
-/** 首选执行入口（通道族）。同一族的候选与降级顺序由 ChannelPolicy 按能力快照决定。 */
-enum class CapabilityChannel(val key: String) {
+/**
+ * 首选执行入口（通道族）。
+ *
+ * [fallback] 是该通道固定的一段降级策略摘要（候选 → 失败后去哪），和 [CapabilitySpec] 一样属于
+ * 「新增通道必须补一行」的声明；具体执行顺序由 engine 的阶梯表消费，这里只保证**没有通道是无声降级的**。
+ */
+enum class CapabilityChannel(val key: String, val fallback: String) {
     /** 纯端侧：不触碰屏幕/外部，无通道依赖 */
-    LOCAL("local"),
+    LOCAL("local", "无通道依赖；失败直接回中文原因，不静默"),
 
     /** 屏幕操作：无障碍 / Shizuku / 无线 ADB 按 ChannelLadder 择优 */
-    SCREEN("screen"),
+    SCREEN("screen", "无障碍 → Shizuku → 无线 ADB，按 ChannelLadder 择优；全不可用回中文原因"),
 
     /** 系统时钟应用直达（AlarmClock 意图：定闹钟 / 倒计时，不经语音助手、不模拟点击） */
-    CLOCK("clock"),
+    CLOCK("clock", "静默直达 → 注入通道写库 → 时钟页直达+无障碍确认 → 打开时钟页手动设置（ClockFallbackPolicy）"),
 
     /** 内置浏览器（WebView 可见页，独立通道） */
-    BROWSER("browser"),
+    BROWSER("browser", "内置浏览器独立通道；失败回页面状态与中文原因，不切到系统浏览器"),
 
     /** 命令行（Shizuku / 无线 ADB / Termux） */
-    SHELL("shell"),
+    SHELL("shell", "Shizuku → 无线 ADB → Termux，按可用性择优；全不可用回中文原因"),
 
     /** 无障碍端点直调 */
-    A11Y("a11y"),
+    A11Y("a11y", "无障碍端点直调；服务离线回中文原因并提示改用高层意图"),
 
     /** 系统语音助手 */
-    VOICE("voice"),
+    VOICE("voice", "唤起系统助手；未探测到可用助手时回中文原因与替代能力"),
 
     /** 端侧视觉模型 */
-    VISION("vision"),
+    VISION("vision", "端侧视觉问答；模型或截图不可用时回元素树摘要"),
 
     /** 系统直连（AudioManager / Settings / Clipboard / PackageManager / 副屏 / 时钟数据库等，不经 GUI） */
-    DEVICE("device"),
+    DEVICE("device", "系统 API 直连 → 必要时注入通道；权限不足回中文原因与替代做法"),
 }
 
 /** 能力所需的本机权限（NONE = 无固定权限要求，可用性由通道探测决定） */
