@@ -464,6 +464,16 @@ class MainViewModel(
         viewModelScope.launch { settings.update(value) }
     }
 
+    /**
+     * 保存并等落盘完成。
+     *
+     * 只有"保存完立刻要用新配置"的流程才需要它：快速开始里填完 Key 直接发任务，
+     * 若走 [saveSettings] 的异步写入，引擎可能在写入完成前就按旧配置起跑。
+     */
+    suspend fun saveSettingsNow(value: AppSettings.Settings) {
+        settings.update(value)
+    }
+
     // ---- 自动更新：查询新版本、下载安装 ----
     val updateState: StateFlow<com.phoneagent.feature.update.UpdateState> = updateManager.state
 

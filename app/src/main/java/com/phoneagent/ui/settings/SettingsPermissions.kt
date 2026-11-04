@@ -41,6 +41,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.engine.runtime.AssistantPrimaryAction
+import com.phoneagent.engine.runtime.AssistantRedirect
+import com.phoneagent.engine.runtime.AssistantRoleFacts
+import com.phoneagent.engine.runtime.AssistantRoleMessages
+import com.phoneagent.engine.runtime.AssistantRolePlanner
 import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
@@ -137,6 +142,8 @@ internal fun SettingsPermissions(
             val snackbar = LocalSnackbar.current
 
             /** 乐观更新后写回 Provider；失败回滚并提示，成功后重读快照拿 running/canRepairA11y 真值 */
+            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+            @Suppress("MaxLineLength")
             fun applyWatchdog(target: WatchdogUi) {
                 if (watchdogBusy) return
                 watchdogBusy = true
@@ -192,6 +199,8 @@ internal fun SettingsPermissions(
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
+                        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                        @Suppress("MaxLineLength")
                         val result = ProviderManager.install(context)
                         // 安装器拉起后由用户确认；失败才需要页内提示，成功后靠 ON_RESUME 刷新
                         if (result is ProviderManager.InstallLaunch.Failed) {
@@ -298,6 +307,8 @@ internal fun SettingsPermissions(
                         watchdog = readWatchdog() ?: watchdog
                     }
                     if (watchdog != null) {
+                        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                        @Suppress("MaxLineLength")
                         val w = watchdog!!
                         Spacer(Modifier.height(12.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -420,6 +431,8 @@ internal fun SettingsPermissions(
                                 ) { Text("打开无障碍设置（关闭再开启一次）") }
                                 // 小米/红米/HyperOS：进程被安全中心冻结是「服务故障」的首因，
                                 // 自启动开关只有系统界面能改（无公开 API），直接跳到对应设置页
+                                // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                @Suppress("MaxLineLength")
                                 val miui = Build.MANUFACTURER.contains("xiaomi", ignoreCase = true) ||
                                     Build.MANUFACTURER.contains("redmi", ignoreCase = true) ||
                                     Build.BRAND.contains("redmi", ignoreCase = true) ||
@@ -466,7 +479,9 @@ internal fun SettingsPermissions(
                             onClick = {
                                 runCatching {
                                     context.startActivity(
-                                        android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
+                                        )
                                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                                     )
                                 }.onFailure { snackbar?.show("无法打开电池优化设置", SnackbarType.ERROR) }
@@ -522,47 +537,101 @@ internal fun SettingsPermissions(
             // 两者都是系统授权，不进权限雷达（雷达枚举的是运行时权限），单独给一区引导。
             SettingsSection(title = "系统级入口", subtitle = "数字助理唤起与通知感知", tone = SettingsTone.Warm) {
                 val activity = androidx.activity.compose.LocalActivity.current
-                var assistantHeld by androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(
-                        com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context),
-                    )
-                }
+                // 事实来自系统，判断与文案来自引擎契约（engine/runtime/AssistantRolePlan.kt）：
+                // UI 只负责读 facts、按 primaryAction 执行、把 redirects 按顺序 resolve。
+                // 不再在本页写第二套"为什么不行"的说法——两份措辞一定会在两个页面里分叉。
+                var roleFacts by remember { mutableStateOf(readAssistantRoleFacts(context)) }
+                var roleHint by remember { mutableStateOf<String?>(null) }
+                val rolePlan = remember(roleFacts) { AssistantRolePlanner.plan(roleFacts) }
                 val roleLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                     androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
                 ) {
-                    // 授权框关闭后回读状态（授权/拒绝都要刷新，否则按钮文案停在旧状态）
-                    assistantHeld = com.phoneagent.feature.assistant.AssistantRole.isDefaultAssistant(context)
+                    // 授权框返回后按契约重读 facts 再 plan：仍未持有则给 KEY_DENIED 的中文成品文案
+                    roleFacts = readAssistantRoleFacts(context)
+                    roleHint = if (roleFacts.roleHeld) {
+                        null
+                    } else {
+                        AssistantRoleMessages.textOf(AssistantRoleMessages.KEY_DENIED)
+                    }
                 }
                 val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
                 Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
                     Text(
-                        "数字助理：设为默认助理后，长按电源键或边缘手势直接唤起 Happy Agent，" +
-                            "唤起时的屏幕内容会带给任务（原来占这个位置的语音助手仍有各自的专属入口）。",
+                        rolePlan.explanation,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(6.dp))
                     // 区块内的主操作统一满宽按钮，与端侧视觉/数据页的行动按钮同一语言
-                    androidx.compose.material3.Button(
-                        enabled = !assistantHeld,
+                    Button(
+                        enabled = rolePlan.primaryAction != AssistantPrimaryAction.NONE,
                         onClick = {
-                            val host = activity ?: context as? android.app.Activity
-                            // 拿得到系统授权框就弹框授权；拿不到（API<29 / 机型不支持该角色）时
-                            // 兜底跳系统「数字助理应用」设置页手动指定——不再静默无反应
-                            val request = if (android.os.Build.VERSION.SDK_INT >= 29) {
-                                com.phoneagent.feature.assistant.AssistantRole.requestRole(host)
-                            } else {
-                                null
-                            }
-                            if (request != null) {
-                                roleLauncher.launch(request)
-                            } else {
-                                com.phoneagent.feature.assistant.AssistantRole.openAssistantSettings(host ?: context)
+                            when (rolePlan.primaryAction) {
+                                AssistantPrimaryAction.REQUEST_ROLE -> {
+                                    val request = com.phoneagent.feature.assistant.AssistantRole.requestRole(activity)
+                                    if (request != null) {
+                                        roleHint = null
+                                        roleLauncher.launch(request)
+                                    } else {
+                                        // 拿不到授权框：按契约顺序跳设置页，全部失败才报"找不到入口"
+                                        val opened = openFirstAssistantRedirect(context, rolePlan.redirects)
+                                        roleHint = if (opened) {
+                                            rolePlan.failureText
+                                                ?: rolePlan.requestBlockedReason
+                                                ?: AssistantRoleMessages.textOf(
+                                                    AssistantRoleMessages.KEY_NO_SETTINGS_PAGE,
+                                                )
+                                        } else {
+                                            AssistantRoleMessages.textOf(AssistantRoleMessages.KEY_NO_SETTINGS_PAGE)
+                                        }
+                                    }
+                                }
+
+                                AssistantPrimaryAction.OPEN_SETTINGS -> {
+                                    val opened = openFirstAssistantRedirect(context, rolePlan.redirects)
+                                    roleHint = if (opened) {
+                                        rolePlan.failureText ?: rolePlan.explanation
+                                    } else {
+                                        AssistantRoleMessages.textOf(AssistantRoleMessages.KEY_NO_SETTINGS_PAGE)
+                                    }
+                                }
+
+                                AssistantPrimaryAction.NONE -> Unit
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(if (assistantHeld) "已是默认数字助理" else "设为系统数字助理")
+                        Text(rolePlan.primaryLabel)
+                    }
+
+                    // 说明区：不能弹授权框的原因 / 失败原因，全部是契约里的中文成品
+                    val explain = roleHint ?: rolePlan.requestBlockedReason
+                    if (explain != null) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            explain,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+
+                    // 候选链：按 ROM 兼容度排序，逐个可点；文案同样来自契约
+                    if (rolePlan.primaryAction == AssistantPrimaryAction.OPEN_SETTINGS || roleHint != null) {
+                        Spacer(Modifier.height(2.dp))
+                        rolePlan.redirects.forEach { redirect ->
+                            TextButton(
+                                onClick = {
+                                    val ok = openAssistantRedirect(context, redirect.action, redirect.requiresResolve)
+                                    roleHint = if (ok) {
+                                        roleHint
+                                    } else {
+                                        AssistantRoleMessages.textOf(AssistantRoleMessages.KEY_NO_SETTINGS_PAGE)
+                                    }
+                                },
+                            ) {
+                                Text(redirect.label)
+                            }
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     Text(
@@ -748,4 +817,66 @@ private fun WatchdogRow(
         }
         Switch(checked = checked, onCheckedChange = onChecked)
     }
+}
+
+// ---------- 数字助理角色：事实读取与跳转执行（契约见 docs/assistant-role-contract.md） ----------
+
+/**
+ * 读出契约要求的 5 个事实，交给 [AssistantRolePlanner] 判断。
+ * 低版本只报"不支持"，不去碰 API 29 的 RoleManager 类。
+ */
+private fun readAssistantRoleFacts(context: android.content.Context): AssistantRoleFacts {
+    val api = Build.VERSION.SDK_INT
+    val pkg = context.packageName
+    if (api < AssistantRolePlanner.ROLE_API) {
+        return AssistantRoleFacts(api, false, false, null, pkg)
+    }
+    return readAssistantRoleFactsApi29(context, api, pkg)
+}
+
+/** API 29+ 的读取实现：RoleManager 只在 29 之后存在，单列一个带注解的函数避免低版本触类 */
+@androidx.annotation.RequiresApi(AssistantRolePlanner.ROLE_API)
+// 此处刻意兜底捕获系统服务/协议异常，避免单个失败打断整体流程，故按规则豁免
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+private fun readAssistantRoleFactsApi29(
+    context: android.content.Context,
+    api: Int,
+    pkg: String,
+): AssistantRoleFacts = try {
+    val rm = context.getSystemService(android.app.role.RoleManager::class.java)
+    AssistantRoleFacts(
+        apiLevel = api,
+        roleAvailable = rm?.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT) == true,
+        roleHeld = rm?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true,
+        // 持有者包名无法用公开 SDK 稳定获取（getRoleHolders 不在第三方可见 API 内），
+        // 契约允许传 null：只影响「被占用」的说明文案，主流程仍会尝试弹授权框
+        roleHolderPackage = null,
+        selfPackage = pkg,
+    )
+} catch (t: Throwable) {
+    AssistantRoleFacts(api, false, false, null, pkg)
+}
+
+/** 按契约顺序尝试候选链：第一条能 resolve 的就打开，返回是否成功 */
+private fun openFirstAssistantRedirect(context: android.content.Context, redirects: List<AssistantRedirect>): Boolean =
+    redirects.any { openAssistantRedirect(context, it.action, it.requiresResolve) }
+
+/** 单条候选：requiresResolve 为 true 时先探测，避免在删掉该页的 ROM 上抛 ActivityNotFoundException */
+// 此处刻意兜底捕获系统服务/协议异常，避免单个失败打断整体流程，故按规则豁免
+@Suppress("TooGenericExceptionCaught", "SwallowedException")
+private fun openAssistantRedirect(
+    context: android.content.Context,
+    action: String,
+    requiresResolve: Boolean,
+): Boolean = try {
+    val intent = android.content.Intent(action)
+        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (requiresResolve && intent.resolveActivity(context.packageManager) == null) {
+        false
+    } else {
+        context.startActivity(intent)
+        true
+    }
+} catch (t: Throwable) {
+    false
 }

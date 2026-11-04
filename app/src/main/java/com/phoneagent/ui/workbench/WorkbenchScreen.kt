@@ -56,7 +56,9 @@ import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.settings.SettingsPage
+import com.phoneagent.ui.theme.AppElevation
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppStyle
 import com.phoneagent.ui.theme.AppTheme
@@ -65,13 +67,11 @@ import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.ScreenTransitions
 import com.phoneagent.ui.theme.UiStyle
 import com.phoneagent.ui.theme.appBorderStroke
+import com.phoneagent.ui.theme.appElevation
 import com.phoneagent.ui.theme.motionSettings
 
-/** 顶栏高度：与 Eta 的紧凑顶栏同高，只放两枚图标，不抢正文 */
-private val WorkbenchBarHeight = 56.dp
-
-/** 配置面板的最大高度：超过就内滚，不把整页拉成长表单 */
-private val ConfigPanelMaxHeight = 460.dp
+// 顶栏高度、配置面板上限、触摸目标全部取 AppSize / AppSpacing 令牌：
+// 这三类尺寸在设置页与 Agent 页也有对应物，各自写死一份会各自漂移。
 
 /**
  * 工作台（[UiStyle.WORKBENCH]）的首屏。
@@ -87,6 +87,8 @@ private val ConfigPanelMaxHeight = 460.dp
  * Coding 视图回答"代码改到哪一步"，正文分别复用既有的 AgentScreen 与 CodingScreen。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod")
 fun WorkbenchScreen(
     vm: MainViewModel,
     modifier: Modifier = Modifier,
@@ -177,7 +179,7 @@ fun WorkbenchScreen(
                         modifier = Modifier.fillMaxSize(),
                         onOpenMemory = onOpenMemory,
                         onOpenDocFullscreen = onOpenDocFullscreen,
-                        onOpenSettings = { onOpenSettingsPage(SettingsPage.AI_MODELS) },
+                        onOpenSettings = { onOpenSettingsPage(SettingsPage.QUICK_START) },
                         onDrawerOpenChange = {
                             drawerOpen = it
                             onDrawerOpenChange(it)
@@ -224,9 +226,6 @@ fun WorkbenchScreen(
     }
 }
 
-/** 顶栏上单枚图标按钮的尺寸：48dp 是触摸目标下限，图标在该范围内居中 */
-private val TopBarActionSize = 48.dp
-
 /**
  * 顶栏：左边开任务抽屉，右边溢出菜单。不画标题、不叠玻璃板、不加分割线。
  *
@@ -235,6 +234,8 @@ private val TopBarActionSize = 48.dp
  * 两枚图标仍分别贴住左右边。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 private fun WorkbenchTopBar(
     view: String,
     menuOpen: Boolean,
@@ -247,12 +248,12 @@ private fun WorkbenchTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(WorkbenchBarHeight)
+            .height(AppSize.Bar)
             .padding(horizontal = AppSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (view == WorkbenchView.CODING) {
-            Spacer(Modifier.width(TopBarActionSize))
+            Spacer(Modifier.width(AppSize.TouchTarget))
         } else {
             TopBarAction(
                 icon = AppIcons.Menu,
@@ -295,7 +296,7 @@ private fun TopBarAction(
     val colors = AppTheme.colors
     Box(
         modifier = Modifier
-            .size(TopBarActionSize)
+            .size(AppSize.TouchTarget)
             .clip(RoundedCornerShape(AppRadii.Chip))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -304,16 +305,9 @@ private fun TopBarAction(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = colors.onSurfaceBase,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(AppSize.Icon),
         )
     }
-}
-
-/** 编码审批档位的中文说法；与设置页共用同一套口径 */
-private fun approvalLabel(raw: String): String = when (raw) {
-    "ask" -> "每次询问"
-    "bypass" -> "全部放行"
-    else -> "仅风险询问"
 }
 
 /**
@@ -324,6 +318,8 @@ private fun approvalLabel(raw: String): String = when (raw) {
  * 不在面板里重造一份表单——配置项仍然只有设置页那一份真源。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 private fun WorkbenchConfigPanel(
     settings: AppSettings.Settings,
     currentStyle: UiStyle,
@@ -332,19 +328,22 @@ private fun WorkbenchConfigPanel(
     onOpenSettingsPage: (SettingsPage) -> Unit,
 ) {
     val colors = AppTheme.colors
+    val panelShape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card)
     Surface(
-        shape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card),
+        shape = panelShape,
         color = colors.surfaceBase,
-        border = appBorderStroke(1.dp, colors.outlineSoft),
+        border = appBorderStroke(AppSize.Hairline, colors.outlineSoft),
         modifier = Modifier
             .fillMaxWidth()
             // 面板停在悬浮导航上方：底部内容不被导航压住，也不在导航底下留一条被截断的正文
-            .padding(bottom = LocalNavClearance.current.calculateBottomPadding()),
+            .padding(bottom = LocalNavClearance.current.calculateBottomPadding())
+            // 它是真正盖住正文的一层，给一点抬手高度；工作台风格下 appElevation 自动为 no-op
+            .appElevation(AppElevation.Sheet, panelShape),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .heightIn(max = ConfigPanelMaxHeight)
+                .heightIn(max = AppSize.PanelMax)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = AppSpacing.Lg,
@@ -361,7 +360,7 @@ private fun WorkbenchConfigPanel(
                         fontWeight = FontWeight.Bold,
                         color = colors.onSurfaceBase,
                     )
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(AppSpacing.Xxs))
                     Text(
                         "按功能归类；改完立即生效，无需重启",
                         style = MaterialTheme.typography.bodySmall,
@@ -370,7 +369,7 @@ private fun WorkbenchConfigPanel(
                 }
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(AppSize.TouchTarget)
                         .clip(RoundedCornerShape(AppRadii.Chip))
                         .clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
@@ -379,7 +378,7 @@ private fun WorkbenchConfigPanel(
                         AppIcons.Close,
                         contentDescription = "关闭",
                         tint = colors.onSurfaceRaised,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(AppSize.IconSm),
                     )
                 }
             }
@@ -543,7 +542,8 @@ private fun LinkRow(
             AppIcons.ChevronRight,
             contentDescription = null,
             tint = colors.onSurfaceRaised,
-            modifier = Modifier.size(14.dp),
+            modifier = Modifier.size(AppSize.IconSm),
         )
     }
 }
+

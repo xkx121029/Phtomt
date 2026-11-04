@@ -38,6 +38,7 @@ import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
 
@@ -50,7 +51,7 @@ import com.phoneagent.ui.theme.appBorderStroke
 // 全项目只此一处定义，各设置页一律引用，杜绝各页各写一套。
 
 /** 设置页统一横向留白，与全站页面栅格一致 */
-internal val SettingsScreenPad = 20.dp
+internal val SettingsScreenPad = AppSpacing.Page
 
 /**
  * 设置是否处于「左列表 + 右详情」的双栏形态（平板宽屏）。
@@ -100,7 +101,7 @@ internal fun SettingsSection(
         // 分区容器圆角走 Hero 档：比通用卡片（24dp）再大一档，读起来更"整块"
         shape = RoundedCornerShape(AppRadii.Hero),
         color = accent.copy(alpha = 0.06f),
-        border = appBorderStroke(1.dp, accent.copy(alpha = 0.15f)),
+        border = appBorderStroke(AppSize.Hairline, accent.copy(alpha = 0.15f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -149,7 +150,7 @@ internal fun SettingsPlainCard(
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(AppSize.Hairline, AppCardBorder),
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth()) { content() }
@@ -347,7 +348,7 @@ internal fun SettingsChoiceChip(
         shape = RoundedCornerShape(AppRadii.Tile),
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
         border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                 else appBorderStroke(1.dp, AppCardBorder),
+                 else appBorderStroke(AppSize.Hairline, AppCardBorder),
         modifier = modifier.clickable {
             buzz()
             onClick()

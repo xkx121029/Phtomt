@@ -41,6 +41,7 @@ import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.contentColumn
+import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.ScreenTransitions
 import com.phoneagent.ui.theme.motionSettings
 import kotlinx.coroutines.launch
@@ -49,9 +50,14 @@ import kotlinx.coroutines.launch
 
 // AD_SKIP 已并入 AGENT 页（内容只有一组开关，不值得独占一级）
 // MODEL_CATALOG 是「云端模型」下的二级页：模型库动辄几十上百条，不能平铺在设置页上
-enum class SettingsPage { HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN, PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV, TABS }
+// QUICK_START 是「冷启动专用」的一页流程：连模型 → 给无障碍 → 发出第一个任务，
+// 不参与分类导航，只从主页主操作卡 / 工作台空态 / 设置主页顶部直达
+enum class SettingsPage { QUICK_START, HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN,
+    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV, TABS }
 
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod")
 fun SettingsScreen(
     vm: MainViewModel,
     modifier: Modifier = Modifier,
@@ -68,6 +74,11 @@ fun SettingsScreen(
      */
     initialPage: SettingsPage? = null,
     onInitialPageConsumed: () -> Unit = {},
+    /**
+     * 快速开始里「发出第一个任务」后回 Agent 页：设置页不持有 Tab 导航，
+     * 由外层把页面切过去。任务本身已经由 [MainViewModel.startAgent] 起跑。
+     */
+    onNavigateAgent: () -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
     // 同上：改走 LocalActivity（可空），不再把 LocalContext 强转成 Activity
@@ -110,7 +121,8 @@ fun SettingsScreen(
     }
 
     // 实时更新标定参数到预览服务
-    LaunchedEffect(st.edgeInsetTop, st.edgeInsetBottom, st.edgeInsetLeft, st.edgeInsetRight, st.cornerRadius, st.edgeLightingWidth) {
+    LaunchedEffect(st.edgeInsetTop, st.edgeInsetBottom, st.edgeInsetLeft, st.edgeInsetRight, st.cornerRadius,
+        st.edgeLightingWidth) {
         if (st.calibrationExpanded && st.edgeLightingEnabled && activity != null) {
             EdgeLightingService.updateCalibration(
                 context = activity,
@@ -179,6 +191,7 @@ fun SettingsScreen(
                                 onPickRole = { pickRole = it },
                                 saveNonAiSettings = ::saveNonAiSettings,
                                 onOpenExtras = onOpenExtras,
+                                onNavigateAgent = onNavigateAgent,
                             )
                         }
                     }
@@ -195,6 +208,7 @@ fun SettingsScreen(
                     onPickRole = { pickRole = it },
                     saveNonAiSettings = ::saveNonAiSettings,
                     onOpenExtras = onOpenExtras,
+                    onNavigateAgent = onNavigateAgent,
                 )
             }
         }
@@ -202,7 +216,7 @@ fun SettingsScreen(
 }
 
 /** 宽屏双栏时左侧分类栏的宽度：够放「图标 + 标题 + 摘要」，又不至于挤掉右侧正文 */
-private val SettingsRailWidth = 264.dp
+private val SettingsRailWidth = AppSize.Rail
 
 /**
  * 设置页内容区（转场 + 页面分发），单栏与双栏共用。
@@ -210,6 +224,8 @@ private val SettingsRailWidth = 264.dp
  * 转场语言、页面路由只有这一处定义：分成两份写，新增一个设置页时必然只加到一边。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 private fun SettingsPageContent(
     page: SettingsPage,
     st: SettingsState,
@@ -221,6 +237,7 @@ private fun SettingsPageContent(
     onPickRole: (String?) -> Unit,
     saveNonAiSettings: () -> Unit,
     onOpenExtras: (com.phoneagent.ui.ExtrasPage) -> Unit,
+    onNavigateAgent: () -> Unit,
 ) {
     AnimatedContent(
         targetState = page,
@@ -249,6 +266,25 @@ private fun SettingsPageContent(
             onPage(SettingsPage.MODEL_CATALOG)
         }
         when (p) {
+            // 冷启动一条线：连模型 → 给无障碍 → 发出第一个任务。
+            // 发任务前先等落盘完成，否则引擎可能还在读旧的 key/model（DataStore 写入是异步的）
+            SettingsPage.QUICK_START -> {
+                val quickStartScope = rememberCoroutineScope()
+                SettingsQuickStart(
+                    vm = vm,
+                    st = st,
+                    save = saveNonAiSettings,
+                    onBack = backToHome,
+                    onOpenPermissions = { onPage(SettingsPage.PERMISSIONS) },
+                    onStartTask = { task ->
+                        quickStartScope.launch {
+                            vm.saveSettingsNow(st.toSettings())
+                            vm.startAgent(task)
+                            onNavigateAgent()
+                        }
+                    },
+                )
+            }
             // 双栏时右侧不再重复列一遍入口（左侧分类栏已经是导航），只留就绪度与指引
             SettingsPage.HOME ->
                 if (LocalSettingsTwoPane.current) {
@@ -282,7 +318,8 @@ private fun SettingsPageContent(
             SettingsPage.AGENT -> SettingsAgent(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.VISUAL -> SettingsVisual(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = backToHome)
-            SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings, onBack = backToHome)
+            SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings,
+                onBack = backToHome)
             SettingsPage.DATA -> SettingsData(
                 vm = vm, st = st,
                 save = saveNonAiSettings,
@@ -513,6 +550,8 @@ class SettingsState(initial: AppSettings.Settings) {
             .distinctBy { it.endpointId to it.name }
     }
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod")
     fun toSettings() = base.copy(
         apiBaseUrl = baseUrl,
         apiKey = apiKey,

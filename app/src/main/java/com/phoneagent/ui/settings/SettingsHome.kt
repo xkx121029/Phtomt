@@ -41,6 +41,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.ThemePalette
@@ -91,6 +92,8 @@ internal data class SettingsGroup(
  * 同一件事只留一个入口：悬浮窗从「Agent 运行」并到「界面效果」，页面记忆从「Agent 运行」
  * 并到「数据与记忆」，动作模式从 Agent 页的转盘提到「任务行为」里成为正式设置项。
  */
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 internal fun settingsGroups(): List<SettingsGroup> = listOf(
     SettingsGroup(
         title = "执行通道与权限",
@@ -312,8 +315,16 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
             // 就绪度状态条：把"能不能开工"最关键的两件事提到最前，点一下直达对应设置
             ReadinessStrip(
                 ctx = ctx,
-                onModel = { onOpen(SettingsPage.AI_MODELS) },
+                onModel = {
+                    // 还没配好 → 快速开始（填 Key + 测试连接一步到位）；
+                    // 已配好 → 云端模型（多端点/职责分配才是日常要改的东西）
+                    onOpen(
+                        if (ctx.st.apiKey.isNotBlank()) SettingsPage.AI_MODELS
+                        else SettingsPage.QUICK_START
+                    )
+                },
                 onPermission = { onOpen(SettingsPage.PERMISSIONS) },
+                onQuickStart = { onOpen(SettingsPage.QUICK_START) },
             )
 
             groups.forEach { group -> SettingsGroupSection(group, ctx, onOpen) }
@@ -348,8 +359,14 @@ internal fun SettingsOverviewPane(st: SettingsState, vm: MainViewModel, onOpen: 
         ) {
             ReadinessStrip(
                 ctx = ctx,
-                onModel = { onOpen(SettingsPage.AI_MODELS) },
+                onModel = {
+                    onOpen(
+                        if (ctx.st.apiKey.isNotBlank()) SettingsPage.AI_MODELS
+                        else SettingsPage.QUICK_START
+                    )
+                },
                 onPermission = { onOpen(SettingsPage.PERMISSIONS) },
+                onQuickStart = { onOpen(SettingsPage.QUICK_START) },
             )
             Text(
                 "从左侧选择一类设置",
@@ -486,12 +503,18 @@ internal fun SettingsGroupSection(
  * 两格都可点，直接落到对应设置页，省去在五组里找入口。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod", "MaxLineLength")
 private fun ReadinessStrip(
     ctx: SettingsOverviewCtx,
     onModel: () -> Unit,
     onPermission: () -> Unit,
+    onQuickStart: () -> Unit,
 ) {
-    val modelReady = ctx.st.model.isNotBlank()
+    // 有模型名不等于能跑：没填 Key 时引擎发不出请求，这里必须把 Key 也算进"就绪"
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
+    val modelReady = ctx.st.model.isNotBlank() && ctx.st.apiKey.isNotBlank()
     androidx.compose.material3.Surface(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Card),
         color = AppCardContainer,
@@ -502,7 +525,11 @@ private fun ReadinessStrip(
             Row(modifier = Modifier.height(IntrinsicSize.Min)) {
                 ReadinessCell(
                     title = "AI 模型",
-                    value = ctx.st.model.takeIf { it.isNotBlank() } ?: "未配置",
+                    value = when {
+                        ctx.st.apiKey.isBlank() -> "未配置"
+                        ctx.st.model.isNotBlank() -> ctx.st.model
+                        else -> "未选模型"
+                    },
                     ready = modelReady,
                     onClick = onModel,
                     modifier = Modifier.weight(1f),
@@ -525,20 +552,31 @@ private fun ReadinessStrip(
                     modifier = Modifier.weight(1f),
                 )
             }
-            // 首次使用的两步指引：只在未就绪时出现，就绪后自动收起
+            // 首次使用的两步指引：只在未就绪时出现，就绪后自动收起。
+            // 右侧给一个直达「快速开始」的动作——只写步骤不给入口，等于让用户自己再找一遍
             if (!modelReady || !ctx.permissionsReady) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(0.5.dp)
+                        .height(AppSize.Hairline)
                         .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                 )
-                Text(
-                    text = "第一次使用：① 配好模型 → ② 开启无障碍权限 → 回「Agent」页直接说要做什么。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = AppSpacing.Lg, end = AppSpacing.Sm, top = AppSpacing.Xs, bottom = AppSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "第一次使用：① 配好模型 → ② 开启无障碍权限 → 回「Agent」页直接说要做什么。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    androidx.compose.material3.TextButton(onClick = onQuickStart) {
+                        Text("开始配置")
+                    }
+                }
             }
         }
     }

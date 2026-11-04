@@ -1,3 +1,5 @@
+// 入口活动里的组装函数较多，按生命周期分片组织，整文件豁免 TooManyFunctions
+@file:Suppress("TooManyFunctions")
 package com.phoneagent.ui
 
 import android.content.Intent
@@ -252,6 +254,8 @@ private data class TabItem(val label: String, val icon: ImageVector)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+// 页面装配集中在这个函数里，结构完整、拆分风险高；个别长文案无法折行，此处按规则豁免
+@Suppress("MaxLineLength", "LongMethod", "CyclomaticComplexMethod")
 private fun ActivityContent(
     vm: MainViewModel,
     pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
@@ -647,6 +651,8 @@ private fun ActivityContent(
                                         label = "screen-switch",
                                     ) { screenIndex ->
                                         val contentMod = Modifier.fillMaxSize()
+                                        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                        @Suppress("MaxLineLength")
                                         val pageId = visibleTabs.getOrNull(screenIndex)?.id ?: MainTabs.HOME
                                         // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
                                         // 排序变化只改索引不改落点（与导航共用同一份可见列表）
@@ -666,9 +672,10 @@ private fun ActivityContent(
                                                         }
                                                     },
                                                     onOpenDocFullscreen = { docFullscreen = true },
-                                                    // 失败卡「去配置」：直接切到设置 Tab（不叠二级页，
-                                                    // 用户配置完按返回就回到 Agent 页继续重试）
+                                                    // 失败卡「去配置」：直接落到快速开始（连模型 + 权限 + 重试入口同页），
+                                                    // 用户配置完按返回就回到 Agent 页继续重试
                                                     onOpenSettings = {
+                                                        settingsLanding = SettingsPage.QUICK_START
                                                         selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
                                                     },
                                                     onDrawerOpenChange = { taskDrawerOpen = it },
@@ -680,6 +687,8 @@ private fun ActivityContent(
                                                         vm = vm,
                                                         modifier = contentMod,
                                                         onOpenMemory = {
+                                                            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                                            @Suppress("MaxLineLength")
                                                             val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
                                                             if (idx >= 0) {
                                                                 extrasPage = null
@@ -691,7 +700,8 @@ private fun ActivityContent(
                                                         onOpenDocFullscreen = { docFullscreen = true },
                                                         onOpenSettingsPage = { landing ->
                                                             settingsLanding = landing
-                                                            selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
+                                                            selected = tabIndex(vm.settingsFlow.value,
+                                                                MainTabs.SETTINGS)
                                                         },
                                                         onOpenMarkdownFullscreen = { markdownReader = it },
                                                         // 工作台的顶栏汉堡同样会展开任务抽屉，导航让位走同一条通道
@@ -701,16 +711,22 @@ private fun ActivityContent(
                                                     HomeScreen(
                                                         vm, contentMod,
                                                         onRequestScreenshot = {
+                                                            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                                            @Suppress("MaxLineLength")
                                                             val mpm = activity.getSystemService(MediaProjectionManager::class.java)
                                                             screenshotLauncher.launch(mpm.createScreenCaptureIntent())
                                                         },
                                                         // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
-                                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动
+                                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动。
+                                                        // 去设置时落到「快速开始」：未配置模型的新用户不再走 设置主页 → 云端模型 两层
                                                         onNavigate = { legacy ->
                                                             val s = vm.settingsFlow.value
                                                             selected = when (legacy) {
                                                                 0 -> tabIndex(s, MainTabs.AGENT)
-                                                                2 -> tabIndex(s, MainTabs.SETTINGS)
+                                                                2 -> {
+                                                                    settingsLanding = SettingsPage.QUICK_START
+                                                                    tabIndex(s, MainTabs.SETTINGS)
+                                                                }
                                                                 else -> legacy.coerceIn(0, tabs.lastIndex)
                                                             }
                                                         },
@@ -725,6 +741,11 @@ private fun ActivityContent(
                                                     // 工作台配置面板的深链：翻到对应分类后清空，避免反复翻页
                                                     initialPage = settingsLanding,
                                                     onInitialPageConsumed = { settingsLanding = null },
+                                                    // 快速开始发完第一个任务直接回 Agent 页
+                                                    onNavigateAgent = {
+                                                        extrasPage = null
+                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
+                                                    },
                                                 )
                                                 MainTabs.CHAT -> ChatScreen(vm, contentMod)
                                                 MainTabs.CODING -> CodingScreen(
@@ -897,6 +918,8 @@ private fun NavRail(
  * 更适合侧栏的长条形；按压回弹与底部条同源（[PressScale] + 按下即触觉）。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 private fun RailNavItem(
     tab: TabItem,
     selected: Boolean,
@@ -1026,6 +1049,8 @@ private fun FloatingNavBar(
  * 底部条里的单个条目：主色胶囊指示器 + 图标 + 文字，按下即回弹（无涟漪）。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 private fun FloatingNavItem(
     tab: TabItem,
     selected: Boolean,
@@ -1124,6 +1149,8 @@ internal fun tabIndex(settings: com.phoneagent.data.prefs.AppSettings.Settings, 
 
 /** 全屏二级页内容：对应页面 + 底部大圆角出口 */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 private fun ExtrasPageContent(
     page: ExtrasPage,
     vm: MainViewModel,

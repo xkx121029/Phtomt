@@ -4,6 +4,7 @@ import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -56,6 +57,8 @@ object AppRadii {
  * 共享组件统一引用，避免 16.dp / 12.dp 等魔法数字散落各处。
  */
 object AppSpacing {
+    /** 发丝级间距：标题与副标题之间这类"几乎贴着"的行距 */
+    val Xxs = 2.dp
     /** 极小间距：图标与文字、徽章内边距 */
     val Xs = 4.dp
     /** 小间距：并列元素之间 */
@@ -64,7 +67,79 @@ object AppSpacing {
     val Md = 12.dp
     /** 标准间距：卡片内边距 / 屏幕左右留白 */
     val Lg = 16.dp
+    /** 页面左右留白：设置页与工作台正文共用的栅格边距 */
+    val Page = 20.dp
+    /** 大间距：分区之间、页面内大节奏 */
+    val Xl = 24.dp
+    /** 特大间距：整页留白、空态与正文的距离 */
+    val Xxl = 32.dp
 }
+
+/**
+ * 尺寸令牌：控件级的固定尺寸，只表达"这块东西多大"，不表达页面节奏（那是 [AppSpacing]）。
+ *
+ * 收口原因与间距一致：顶栏高度、触摸目标、图标、面板上限这些值原先在各页各写一遍，
+ * 56 / 48 / 24 / 460 这类数字散落在十几个文件里，改一次高度要翻遍全项目。
+ * 只收「结构固定」的尺寸；内容驱动的尺寸（文本自适应、进度的百分比）仍由布局自己算。
+ */
+object AppSize {
+    /** 最小可点区域：Material 触摸目标下限，任何独立图标按钮都不得小于它 */
+    val TouchTarget = 48.dp
+    /** 顶栏高度：只放图标与标题，不抢正文 */
+    val Bar = 56.dp
+    /** 发丝分隔线 */
+    val Hairline = 1.dp
+    /** 小图标：行内说明、状态点旁的辅助图标 */
+    val IconSm = 18.dp
+    /** 标准图标：工具栏、列表项、按钮内图标 */
+    val Icon = 24.dp
+    /** 图标瓦片：图标底板的方形尺寸 */
+    val IconTile = 40.dp
+    /** 紧凑图标按钮：面板右上角关闭、卡片内的小动作 */
+    val IconAction = 32.dp
+    /** 宽屏下设置分类栏的宽度 */
+    val Rail = 264.dp
+    /** 底部嵌入式面板的最大高度：超出即内滚，不把页面拉成长表单 */
+    val PanelMax = 460.dp
+    /** 浮层（弹层 / 选择器）的最大宽度：平板与横屏下不被拉成整行 */
+    val OverlayMax = 480.dp
+}
+
+/**
+ * 层级令牌：面与面之间的"浮起程度"。
+ *
+ * 本项目的层次主语言是「底色差 + 发丝描边」，阴影只在**真正盖住内容**的层面使用
+ * （嵌入式面板、选择浮层），正文卡片一律 [Flat]。工作台风格本身是平铺的，
+ * 由 [appElevation] 按风格自动收掉阴影——不在每个调用点写 `if (workbench)`。
+ */
+object AppElevation {
+    /** 平铺：与页面同层，不投影 */
+    val Flat = 0.dp
+    /** 轻微抬起：与正文同层但需要一点边界感 */
+    val Raised = 1.dp
+    /** 卡片层：分组卡片在有阴影需求时的取值 */
+    val Card = 3.dp
+    /** 面板层：自下而上盖住正文的嵌入式面板 */
+    val Sheet = 8.dp
+    /** 覆盖层：弹层 / 选择器 */
+    val Overlay = 16.dp
+}
+
+/**
+ * 阴影令牌入口。工作台风格下恒为 no-op：工作台用发丝线与分区表达层级，
+ * 再叠阴影会把"平铺"读成"层层浮起的卡片"，与风格本身矛盾。
+ * 经典风格沿用系统阴影（不换实现），只是把数值收口到这里。
+ */
+@Composable
+fun Modifier.appElevation(level: Dp, shape: Shape): Modifier =
+    if (level == AppElevation.Flat || AppStyle.current == UiStyle.WORKBENCH) this
+    else shadow(
+        elevation = level,
+        shape = shape,
+        clip = false,
+        ambientColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.10f),
+        spotColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.16f),
+    )
 
 /**
  * 主题的「框线」开关（主题设置：标准 / 无框线）。
@@ -259,6 +334,8 @@ private fun darkSchemeOf(c: AppColors, toneBoost: Float = 1f): ColorScheme {
 }
 
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 fun PhoneAgentTheme(
     darkTheme: Boolean = isSystemDark(),
     /** 主题设置里的配色方案（[ThemePalette.id]），未知值回落默认玄青 */
