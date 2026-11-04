@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  debug 变体专有清单：只在这里注册日志传输的启动 Provider。
+  release 变体不合并本文件，因此正式包里既没有这个 Provider，也没有 src/debug 下的任何代码。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <provider
+            android:name=".debug.logtransfer.DebugLogBridgeInitializer"
+            android:authorities="${applicationId}.debug.logtransfer"
+            android:exported="false"
+            android:initOrder="1000" />
+
+        <!-- debug-only 浮层截图入口：前台启动 FloatingWindowService 后立即关闭自己 -->
+        <activity
+            android:name="com.phoneagent.debug.overlay.OverlayShotActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+    </application>
+
+</manifest>
