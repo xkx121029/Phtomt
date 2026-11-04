@@ -141,7 +141,15 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 title = "云端模型",
                 subtitle = "端点 / 模型库 / 职责分配",
                 tone = SettingsTone.Brand,
-                summary = { ctx -> ctx.st.model.takeIf { it.isNotBlank() } ?: "未配置" },
+                // 与顶部状态条同一判定：只有模型名没有 Key 时仍算未配置，
+                // 否则列表写着 glm-4.7-flash、任务却发不出去，比空着更误导
+                summary = { ctx ->
+                    when {
+                        ctx.st.apiKey.isBlank() -> "未配置"
+                        ctx.st.model.isNotBlank() -> ctx.st.model
+                        else -> "未选模型"
+                    }
+                },
             ),
             SettingsEntry(
                 page = SettingsPage.ONDEVICE,
