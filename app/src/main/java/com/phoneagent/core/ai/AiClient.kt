@@ -305,12 +305,15 @@ class AiClient(
             // 只扫描 content（思考内容不进 full），因此不会把 reasoning 里的花括号当成 JSON。
             val incremental = IncrementalIntentParser()
             var earlyAction: AgentIntent? = null
+            // 提前结束时复用这个已闭合对象，别再对整段正文做一次 toString 复制
+            var earlyContent: String? = null
             val shouldStopStream: () -> Boolean = {
                 if (earlyAction == null) {
                     val closed = incremental.nextObject(full)
                     if (closed != null) {
                         // 闭合对象直接按完整解析口径尝试（含一次本地修复）；
                         // 解析不出来就继续等完整正文，交给下面的纠错重发判定，行为与原来一致
+                        earlyContent = closed
                         earlyAction = parseAgentIntentOrNull(closed)
                     }
                 }
@@ -328,6 +331,7 @@ class AiClient(
                         full.setLength(0)
                         incremental.reset()
                         earlyAction = null
+                        earlyContent = null
                         lastUsage = null
                         sawReasoning = false
                         firstDeltaSeen = false
@@ -366,14 +370,15 @@ class AiClient(
                             if (status == 401 || status == 403 || status == 404) break
                             continue
                         }
-                        val content = full.toString()
                         // 增量解析已命中：JSON 已经闭合且可解析，不必再等服务端关闭流。
                         // usage 由末尾帧携带，提前结束时拿不到，按 0 记（只影响成本统计，不影响决策）。
+                        // 早停路径直接用已闭合对象当 rawContent，避免对整段正文再做一次 toString 复制。
                         val early = earlyAction
                         if (early != null) {
                             val nowNano = System.nanoTime()
+                            val raw = earlyContent ?: full.toString()
                             logStreamTiming(
-                                "决策", attemptStartNano, firstDeltaNano, nowNano, content.length, attempt,
+                                "决策", attemptStartNano, firstDeltaNano, nowNano, full.length, attempt,
                                 earlyStop = true,
                             )
                             DecisionStreamStats.onEarlyStop()
@@ -384,10 +389,11 @@ class AiClient(
                                 completionTokens = lastUsage?.completionTokens ?: 0,
                                 totalTokens = lastUsage?.totalTokens ?: 0,
                                 elapsedMs = (nowNano - startNano) / 1_000_000,
-                                rawContent = content,
+                                rawContent = raw,
                                 thinking = sawReasoning,
                             )
                         }
+                        val content = full.toString()
                         if (content.isBlank()) {
                             // 流式空正文（兼容问题）→ 回退非流式 + 结构化输出
                             lastErr = null

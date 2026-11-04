@@ -51,6 +51,22 @@ internal data class LadderResult(
     fun degradedFrom(): ChannelKind? =
         attempts.firstOrNull { it.outcome == ChannelOutcome.NOT_DELIVERED }?.kind
             ?.takeIf { it != channel }
+
+    /**
+     * 给用户看的中文说明（点名现在用的是哪种方式）。
+     * 未发生降级返回 null，调用方保持原有成功文案不动。
+     */
+    fun userNotice(): String? {
+        val from = degradedFrom() ?: attempts.firstOrNull { it.outcome == ChannelOutcome.NOT_DELIVERED }?.kind
+            ?: return null
+        val now = channel?.label
+        val detail = attempts.firstOrNull { it.kind == from }?.detail?.takeIf { it.isNotBlank() }
+        return DegradationPolicy.notice(
+            DegradationTrigger.CHANNEL_UNAVAILABLE,
+            detail ?: from.label,
+            now,
+        )
+    }
 }
 
 /**

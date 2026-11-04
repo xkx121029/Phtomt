@@ -1,5 +1,7 @@
 package com.phoneagent.engine.decision
 
+import com.phoneagent.engine.execution.DegradationPolicy
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.runtime.EngineLimits
 
 /**
@@ -15,4 +17,12 @@ internal object DecisionPolicy {
 
     /** 连续决策链路异常是否达到收尾阈值 */
     fun isDecisionFailureFatal(failureStreak: Int): Boolean = failureStreak >= EngineLimits.MAX_DECISION_FAILURE_STREAK
+
+    /** 云端决策超时的用户可见说明：必须点名「改用等待后重试」，不能只说超时 */
+    fun timeoutNotice(seconds: Long = EngineLimits.WATCHDOG_DECIDE_MS / 1000): String =
+        DegradationPolicy.notice(DegradationTrigger.MODEL_TIMEOUT, "${seconds}s", "等待后重试")
+
+    /** 页面卡死的用户可见说明：说明已经换做法，并预告下一步会征求用户意见 */
+    fun pageStuckNotice(streak: Int): String =
+        DegradationPolicy.notice(DegradationTrigger.PAGE_STUCK, "$streak 次重复", "换一种做法")
 }
