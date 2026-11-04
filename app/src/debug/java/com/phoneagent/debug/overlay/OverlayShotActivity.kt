@@ -18,6 +18,8 @@ import com.phoneagent.overlay.FloatingWindowService
  * 用法：
  * adb shell am start -n com.phoneagent/.debug.overlay.OverlayShotActivity --es cmd t2
  *   cmd = t2（任务卡 + 长文案跑马灯） / done（完成卡片） / hide / restore
+ *       / notice（普通降级提示细条） / notice-action（需操作细条）
+ *       / stress（连续 20 次文案更新，验证跑马灯不重排）
  */
 class OverlayShotActivity : Activity() {
 
@@ -48,6 +50,33 @@ class OverlayShotActivity : Activity() {
                 "hide", "restore" -> sendBroadcast(
                     Intent(DEBUG_DONE_ACTION).setPackage(packageName).putExtra("mode", cmd),
                 )
+                // 高频更新压测：连续 20 次不同文案，验证「不重排」的打点（HPA_PERF marquee-updates）
+                "stress" -> {
+                    repeat(20) { i ->
+                        FloatingWindowService.update(
+                            status = "第 ${i + 1} 次状态更新：正在核对第 ${i + 1} 条订单的金额与收货地址",
+                            task = "整理本月账单",
+                            reasoning = "已读取订单列表",
+                            step = 3,
+                            total = 6,
+                            phase = "RUNNING",
+                        )
+                    }
+                }
+                // 降级提示细条：先起任务卡（载体），再发提示
+                "notice", "notice-action" -> {
+                    FloatingWindowService.update(
+                        status = "正在打开闹钟",
+                        task = "设置明早 7:30 闹钟",
+                        reasoning = "已进入时钟页，准备写入闹钟",
+                        step = 2,
+                        total = 4,
+                        phase = "RUNNING",
+                    )
+                    sendBroadcast(
+                        Intent(DEBUG_DONE_ACTION).setPackage(packageName).putExtra("mode", cmd),
+                    )
+                }
             }
             finish()
         }, 1200)

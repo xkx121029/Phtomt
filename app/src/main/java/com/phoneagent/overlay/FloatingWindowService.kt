@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.overlay
 
 import android.animation.ValueAnimator
@@ -55,6 +57,8 @@ import com.phoneagent.BuildConfig
 import com.phoneagent.R
 import com.phoneagent.core.window.OverlayWindowSpec
 import com.phoneagent.data.prefs.AppSettings
+import com.phoneagent.engine.runtime.TaskNotice
+import com.phoneagent.engine.runtime.TaskNoticeCenter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,7 +71,7 @@ import com.phoneagent.ui.MainActivity
  * 悬浮窗服务：任务执行时在屏幕上显示实时进度面板，支持用户在窗内直接交互。
  *
  * 窗口结构（两个独立窗口，职责不重叠）：
- * - **底部跑马灯**：浮在屏幕底边之上（留 [MARQUEE_BOTTOM_GAP] 净空）的圆角胶囊，任务期间常驻，
+ * - **底部跑马灯**：浮在屏幕底边之上（留 [marqueeBottomGap] 净空）的圆角胶囊，任务期间常驻，
  *   实时显示 AI 意向/任务状态；长宽随文字自适应，文字超出一屏才滚动。
  * - **任务卡片**：300dp 宽、可拖动的小卡片，承载标题/步骤/详情/交互，高度随内容自适应。
  *
@@ -107,13 +111,13 @@ class FloatingWindowService : Service() {
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
     /** 底部跑马灯距屏幕底边的基础留白（导航栏高度之外再加这么多） */
-    private val MARQUEE_BOTTOM_GAP = 12
+    private val marqueeBottomGap = 12
 
     /** 底部胶囊窗口两侧留白（dp）：窗口宽度 = 真实屏宽 - 2 * 此值，建窗时定死 */
-    private val MARQUEE_SIDE_MARGIN = 16
+    private val marqueeSideMargin = 16
 
     /** 顶部光带最小高度（dp）：状态栏再矮也要放得下 14sp 文字 */
-    private val BAND_MIN_HEIGHT = 30
+    private val bandMinHeight = 30
 
     /**
      * 底部跑马灯（胶囊）：固定宽度窗口，浮在导航栏之上。
@@ -271,6 +275,26 @@ class FloatingWindowService : Service() {
     /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
 
+    // ==================== 降级提示细条（引擎 → 浮层） ====================
+    // 引擎已经产出成品中文（TaskNoticeCenter.notice），浮层只负责展示：
+    // 不新增常驻栏，做成底部一次性细条，显示几秒后自己向上淡出。
+    // 位置在底部跑马灯胶囊之上（见 [noticeBottomOffset]），宽度与胶囊同宽、建窗时定死。
+    private var noticeRoot: LinearLayout? = null
+    private var noticeParams: WindowManager.LayoutParams? = null
+    private var noticeText: TextView? = null
+    private var noticeMethod: TextView? = null
+    private var noticeBadge: TextView? = null
+    /** 当前细条语义（true = 需要用户动手）：主题翻面重上色时按它决定白底还是实色 */
+    private var noticeRequiresAction = false
+    /** 细条是否处于"已展示/计时中"状态；退场动画期间置 false，避免重复收场 */
+    private var noticeShowing = false
+    /** 截图隐藏期间为 true：此间到达的提示只更新内容，不把窗口弹出来打断抓屏 */
+    private var captureHidden = false
+    private val noticeAutoHide = Runnable { hideNotice() }
+
+    /** 截图隐藏前提示细条是否可见，用于截图后原样恢复 */
+    private var noticeVisibleBeforeHide = false
+
     /**
      * 用户是否主动收起了整套面板（点卡片上的「隐藏」）。
      *
@@ -288,11 +312,13 @@ class FloatingWindowService : Service() {
     private var miniVisibleBeforeHide = false
 
     /**
-     * 任务卡片可拖动的上边界：始终退到状态栏下方，不至于把时间电量盖掉。
+     * 任务卡片可拖动的上边界：始终退到顶部光带下方（= 状态栏 + 文字行）。
      *
-     * 跑马灯移到底部之后，卡片上方不再有别的东西压着，这条边界只用来避开系统状态栏。
+     * 光带占据状态栏与它下面那一行文字，卡片再往上拖会盖住光带文案；
+     * 所以边界不是状态栏高度，而是整条光带的高度。
      */
-    private fun cardTopLimit(): Int = statusBarHeight()
+    private fun cardTopLimit(): Int =
+        OverlayWindowSpec.marqueeBandHeightPx(statusBarHeight(), dp(bandMinHeight))
 
     private val handler = Handler(Looper.getMainLooper())
     private var notificationManager: NotificationManager? = null
@@ -321,6 +347,10 @@ class FloatingWindowService : Service() {
                 marqueeColors = s.marqueeColors.map { it.toInt() }
                 applyMarqueeSettings()
             }
+        }
+        // 引擎降级提示：只读 notice，展示由浮层决定（text 原样、method 作方式标签）
+        scope.launch {
+            TaskNoticeCenter.notice.collect { notice -> showNotice(notice) }
         }
     }
 
@@ -466,6 +496,8 @@ class FloatingWindowService : Service() {
         return dp(24)
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun showWindow() {
         if (root != null) return
         // 量化埋点起点：从建视图到首个绘制帧（含 addView + 一次测量/布局）
@@ -544,6 +576,8 @@ class FloatingWindowService : Service() {
      * 两者都是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
      * 窗口宽度在建窗时一次定死，之后文本怎么高频更新都不会触发窗口重排。
      */
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun showMarquee() {
         val wm = windowManager ?: return
         if (marquee != null && topBand != null) return
@@ -553,10 +587,10 @@ class FloatingWindowService : Service() {
         if (topBand == null) {
             val startedAt = SystemClock.uptimeMillis()
             val inset = statusBarHeight()
-            val bandHeight = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(BAND_MIN_HEIGHT))
+            val bandHeight = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(bandMinHeight))
             val band = MarqueeView(this, bandMode = true).apply {
                 setColors(marqueeGradient(currentPhase))
-                setBandHeight(inset)
+                setBandInset(inset)
             }
             val lp = WindowManager.LayoutParams(
                 screenW, bandHeight,
@@ -586,7 +620,7 @@ class FloatingWindowService : Service() {
 
         if (marquee == null) {
             val startedAt = SystemClock.uptimeMillis()
-            val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(MARQUEE_SIDE_MARGIN))
+            val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
             val bar = MarqueeView(this).apply {
                 setColors(marqueeGradient(currentPhase))
                 setPadV(dp(marqueeHeightDp))
@@ -643,7 +677,199 @@ class FloatingWindowService : Service() {
                     ?.bottom
             } else null
         }.getOrNull() ?: 0
-        return navBar + dp(MARQUEE_BOTTOM_GAP)
+        return navBar + dp(marqueeBottomGap)
+    }
+
+    // ==================== 降级提示细条 ====================
+
+    /**
+     * 收到一条降级提示（或引擎清除时收到 null）。
+     *
+     * 展示规则（与 docs/task-notice-contract.md 对齐）：
+     * - `text` **原样**显示，界面不再拼文案；
+     * - `method` 作为「当前：X」标签；
+     * - `requiresAction` 用高亮实色条 + 「需操作」徽章，与普通白底提示一眼可辨；
+     * - 一条到底就覆盖，不堆历史；[TaskNoticePresentation.HoldMs] 后自己向上淡出。
+     *
+     * 已经在显示时只换内容、不重跑入场动画：同一次任务里连续换通道时，
+     * 细条若反复"消失再进场"会像在闪，反而不如原地换字稳。
+     */
+    private fun showNotice(notice: TaskNotice?) {
+        handler.post {
+            if (notice == null) {
+                // 引擎主动清除：按正常退场收条，不要"啪"一下消失
+                hideNotice()
+                return@post
+            }
+            // 用户已收起整套面板：不把细条弹出来（收起是"让出屏幕"的明确意图）
+            if (userHidden) return@post
+            val showStartedAt = SystemClock.uptimeMillis()
+            val root = ensureNoticeWindow() ?: return@post
+            noticeRequiresAction = notice.requiresAction
+            // text 是引擎产出的成品中文，原样落到 TextView
+            noticeText?.text = notice.text
+            val methodLabel = TaskNoticePresentation.methodLabel(notice.method)
+            noticeMethod?.text = methodLabel.orEmpty()
+            noticeMethod?.visibility = if (methodLabel == null) View.GONE else View.VISIBLE
+            noticeBadge?.visibility =
+                if (TaskNoticePresentation.actionBadge(notice.requiresAction) != null) View.VISIBLE else View.GONE
+            applyNoticeStyle(noticeRequiresAction)
+            val firstShow = !noticeShowing
+            if (!captureHidden) {
+                // 每次发布都要保证可见：细条窗口是复用的，一旦某条提示的退场/截图隐藏
+                // 把视图留在了 GONE，只靠"首次显示"分支就再也弹不出来（只补动画，不补可见性）
+                root.visibility = View.VISIBLE
+            }
+            if (firstShow && !captureHidden) {
+                OverlayMotion.reset(root)
+                OverlayMotion.enter(root)
+            }
+            noticeShowing = true
+            if (!captureHidden) {
+                scheduleNoticeHide()
+                if (firstShow) {
+                    // 代码成本已含建窗/addView/文案落位；帧等待由 onPreDraw 单独补上
+                    OverlayPerf.firstFrame(
+                        "notice-first-frame",
+                        root,
+                        showStartedAt,
+                        SystemClock.uptimeMillis() - showStartedAt,
+                    )
+                }
+            }
+            // 跑马灯胶囊高度是动态的：细条要稳稳落在它上方，等本帧布局完成后再校正 y
+            root.post {
+                val p = noticeParams ?: return@post
+                p.y = noticeBottomOffset()
+                runCatching { windowManager?.updateViewLayout(root, p) }
+            }
+        }
+    }
+
+    /** 重新计时：新提示覆盖上一条时，从"这一条"开始算停留时长 */
+    private fun scheduleNoticeHide() {
+        handler.removeCallbacks(noticeAutoHide)
+        handler.postDelayed(noticeAutoHide, TaskNoticePresentation.HoldMs)
+    }
+
+    /** 细条退场：统一向上淡出，收完之后留在窗口里待命（下次复用，避免反复 add/remove） */
+    private fun hideNotice() {
+        handler.removeCallbacks(noticeAutoHide)
+        if (!noticeShowing) return
+        noticeShowing = false
+        val view = noticeRoot ?: return
+        OverlayMotion.exit(view) {
+            // 退场期间若来了新提示，[showNotice] 会把 noticeShowing 置回 true，此时不能再收
+            if (!noticeShowing) {
+                view.visibility = View.GONE
+                OverlayMotion.reset(view)
+            }
+        }
+    }
+
+    /**
+     * 细条窗口：固定宽度（与底部胶囊同宽）、高度随内容自适应，`FLAG_NOT_TOUCHABLE` 不吃触摸。
+     *
+     * 只用一次 addView，之后复用：提示是低频事件，但每条都重建窗口会把成本压在任务关键时刻。
+     */
+    private fun ensureNoticeWindow(): LinearLayout? {
+        noticeRoot?.let { return it }
+        val wm = windowManager ?: return null
+        val startedAt = SystemClock.uptimeMillis()
+        val screenW = OverlayWindowSpec.realScreenSize(this).first
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
+            // 配色跟随深浅主题：登记式重上色，翻面时不用重建窗口
+            themed { applyNoticeStyle(noticeRequiresAction) }
+        }
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        noticeBadge = TextView(this).apply {
+            text = TaskNoticePresentation.actionBadge(true).orEmpty()
+            textSize = 10f
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            // 暖色实心徽章：在深玄青底上也跳得出来（不靠半透明叠层做强调）
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
+            setPadding(dp(FloatingUi.PAD), dp(2), dp(FloatingUi.PAD), dp(2))
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = dp(FloatingUi.PAD) }
+        }
+        noticeText = TextView(this).apply {
+            textSize = 12f
+            maxLines = 4
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        titleRow.addView(noticeBadge)
+        titleRow.addView(noticeText)
+        noticeMethod = TextView(this).apply {
+            textSize = 10f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(0, dp(3), 0, 0)
+            visibility = View.GONE
+        }
+        root.addView(titleRow)
+        root.addView(noticeMethod)
+
+        val lp = WindowManager.LayoutParams(
+            OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            OverlayWindowSpec.overlayWindowType(),
+            OverlayWindowSpec.passiveFlags(),
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            x = 0
+            y = noticeBottomOffset()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+        }
+        val added = runCatching { wm.addView(root, lp) }.isSuccess
+        if (!added) return null
+        noticeRoot = root
+        noticeParams = lp
+        OverlayPerf.code("notice-add", startedAt)
+        return root
+    }
+
+    /**
+     * 细条配色：
+     * - 普通提示 = 暖纸白实色 + 发丝描边，是"信息"层级；
+     * - `requiresAction` = 品牌实色条 + 白字，是"要动手"层级，不靠透明度区分。
+     */
+    private fun applyNoticeStyle(requiresAction: Boolean) {
+        val root = noticeRoot ?: return
+        if (requiresAction) {
+            root.background = FloatingUi.capsule(this, FloatingUi.RADIUS_PANEL, FloatingUi.BRAND)
+            noticeText?.setTextColor(FloatingUi.ON_BRAND)
+            noticeMethod?.setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+        } else {
+            root.background = FloatingUi.capsule(
+                this,
+                FloatingUi.RADIUS_PANEL,
+                palette.panel,
+                palette.panelEdge,
+                dp(1),
+            )
+            noticeText?.setTextColor(palette.textPrimary)
+            noticeMethod?.setTextColor(palette.textSecondary)
+        }
+    }
+
+    /** 细条底边：底部胶囊（含导航栏净空）之上再留 8dp，胶囊高度动态，取不到时用经验值兜底 */
+    private fun noticeBottomOffset(): Int {
+        val capsuleHeight = marquee?.takeIf { it.visibility == View.VISIBLE && it.height > 0 }?.height
+            ?: dp(NOTICE_MARQUEE_FALLBACK_HEIGHT_DP)
+        return marqueeBottomOffset() + capsuleHeight + dp(FloatingUi.PAD)
     }
 
     /**
@@ -712,6 +938,8 @@ class FloatingWindowService : Service() {
         root?.visibility = View.GONE
         setMarqueeVisible(false)
         ball.visibility = View.VISIBLE
+        // 收起即"让出屏幕"：降级提示细条一并收掉，不等它 4 秒后自己走
+        hideNotice()
     }
 
     /** 用户点悬浮球：原样唤出面板（任务由引擎继续执行） */
@@ -924,7 +1152,8 @@ class FloatingWindowService : Service() {
             textSize = 12f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
+                FloatingUi.ON_BRAND_STATE_WEAK)
             layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
             var closeArmed = false
             setOnClickListener {
@@ -963,7 +1192,8 @@ class FloatingWindowService : Service() {
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
+                FloatingUi.ON_BRAND_STATE_WEAK)
             setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -981,7 +1211,8 @@ class FloatingWindowService : Service() {
             textSize = 11f
             gravity = Gravity.CENTER
             setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP, FloatingUi.ON_BRAND_STATE_WEAK)
+            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
+                FloatingUi.ON_BRAND_STATE_WEAK)
             setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1044,7 +1275,8 @@ class FloatingWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
-            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL, p.panel) }
+            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL,
+                p.panel) }
         }
         // 内容可滚动，限制高度避免悬浮窗过大（折叠时整块不占位）
         thinkingScroll = ScrollView(this).apply {
@@ -1525,7 +1757,8 @@ class FloatingWindowService : Service() {
     private fun updateReview(text: String?) {
         handler.post {
             reviewText?.text = text ?: ""
-            updateNotification("AI 思考中", taskTitle?.text?.toString() ?: "Happy Agent", 0, thinkingReturnText?.text?.toString().orEmpty())
+            updateNotification("AI 思考中", taskTitle?.text?.toString() ?: "Happy Agent", 0,
+                thinkingReturnText?.text?.toString().orEmpty())
         }
     }
 
@@ -1569,17 +1802,6 @@ class FloatingWindowService : Service() {
         thinkingExpanded = false
         thinkingPanel?.visibility = View.GONE
         expandChip?.text = "详情"
-    }
-
-    /**
-     * 面板入场动画：透明度 + 自下而上 12dp 位移（DecelerateInterpolator，起快收缓）。
-     * 刻意不做缩放：缩放与位移动画叠加时视觉重心会漂移，且入场方向应统一为自下而上。
-     */
-    private fun showPanelWithAnim(view: View?) {
-        view ?: return
-        view.visibility = View.VISIBLE
-        // 位移距离与曲线全部走 OverlayMotion 令牌：自下而上 12dp + 淡入
-        OverlayMotion.enter(view)
     }
 
     /**
@@ -1783,7 +2005,7 @@ class FloatingWindowService : Service() {
         barParams?.let { lp ->
             val bar = marquee ?: return@let
             // 窗口宽度随屏幕方向重算：宽度仍是固定值，文本更新不会改变它
-            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(MARQUEE_SIDE_MARGIN))
+            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
             lp.y = marqueeBottomOffset()
             runCatching { windowManager?.updateViewLayout(bar, lp) }
         }
@@ -1791,10 +2013,17 @@ class FloatingWindowService : Service() {
             val band = topBand ?: return@let
             // 顶部光带：旋转后状态栏/挖孔高度会变，窗口尺寸与视图高度一起重算
             val inset = statusBarHeight()
-            band.setBandHeight(inset)
+            band.setBandInset(inset)
             lp.width = screenW
-            lp.height = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(BAND_MIN_HEIGHT))
+            lp.height = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(bandMinHeight))
             runCatching { windowManager?.updateViewLayout(band, lp) }
+        }
+        noticeParams?.let { lp ->
+            val notice = noticeRoot ?: return@let
+            // 提示细条：宽度跟胶囊一起换，底边重新贴到胶囊上方（导航栏 inset 也随方向变了）
+            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
+            lp.y = noticeBottomOffset()
+            runCatching { windowManager?.updateViewLayout(notice, lp) }
         }
     }
 
@@ -2007,6 +2236,29 @@ class FloatingWindowService : Service() {
                     // 模拟截图前后隐藏/恢复：量化「隐藏与恢复 ≤0.3s」
                     "hide" -> setVisible(false)
                     "restore" -> setVisible(true)
+                    // debug 预览降级提示细条（普通 / 需操作两档），供截图与视觉走查
+                    "notice" -> TaskNoticeCenter.publish(
+                        TaskNotice(
+                            id = "debug:notice:info",
+                            trigger = "channel_unavailable",
+                            source = "launch",
+                            text = intent.getStringExtra("text")
+                                ?: "无障碍通道暂时不可用，已改用内置 Shizuku 继续执行。",
+                            method = intent.getStringExtra("method") ?: "内置 Shizuku",
+                            requiresAction = false,
+                        ),
+                    )
+                    "notice-action" -> TaskNoticeCenter.publish(
+                        TaskNotice(
+                            id = "debug:notice:action",
+                            trigger = "clock_fallback",
+                            source = "clock",
+                            text = intent.getStringExtra("text")
+                                ?: "时钟页已打开，但无法自动写入闹钟，请你手动新建一个 07:30 的闹钟。",
+                            method = null,
+                            requiresAction = true,
+                        ),
+                    )
                     else -> showDone(
                         intent.getStringExtra("message")
                             ?: "已关闭蓝牙并回到桌面。共执行 3 步，用时 12 秒。",
@@ -2059,6 +2311,8 @@ class FloatingWindowService : Service() {
      * 层级：拖拽把手 → 状态行（20dp 圆点 + 15sp 半粗标题）→ 可滚动正文（底部渐变遮罩）
      *       → 一行三键（复制 / 完成 / 打开 Agent）。
      */
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun buildDoneCard(): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2252,6 +2506,8 @@ class FloatingWindowService : Service() {
      * 2. 高度 `WRAP_CONTENT`：卡片长多高长多高，永远不需要「先占屏再裁」。
      * 3. 正文限高滚动：长结果在卡片内部滚，卡片本身不会长到屏幕外。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun ensureDoneWindow(): Boolean {
         if (doneRoot != null) return true
         val wm = windowManager ?: return false
@@ -2521,14 +2777,6 @@ class FloatingWindowService : Service() {
         }
     }
 
-    /**
-     * 调试期量化埋点：从 [since] 到该视图下一次真正绘制（onPreDraw）的毫秒数。
-     * 只打在 debug 包上，release 不做任何额外遍历。
-     */
-    private fun logFirstFrame(tag: String, view: View, since: Long, codeMs: Long? = null) {
-        OverlayPerf.firstFrame(tag, view, since, codeMs)
-    }
-
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
@@ -2548,6 +2796,12 @@ class FloatingWindowService : Service() {
         sheetParams = null
         // 完成卡片同样是独立窗口：任务结束/服务退出后不能留在屏幕上
         removeDoneCardNow()
+        // 降级提示细条也是独立窗口：先停计时再移除，避免移除后回调再动已脱离窗口的视图
+        handler.removeCallbacks(noticeAutoHide)
+        noticeShowing = false
+        noticeRoot?.let { runCatching { windowManager?.removeView(it) } }
+        noticeRoot = null
+        noticeParams = null
     }
 
     override fun onDestroy() {
@@ -2588,6 +2842,9 @@ class FloatingWindowService : Service() {
         /** 悬浮球直径（dp）：小到不挡操作，大到手指点得到 */
         private const val MINI_BALL_SIZE = 44
 
+        /** 底部胶囊取不到高度时（首帧）的经验值（dp）：提示细条据此让位，不会压在胶囊上 */
+        private const val NOTICE_MARQUEE_FALLBACK_HEIGHT_DP = 36
+
         /** 完成卡片正文最大高度（dp）：超过则在卡片内部滚动，卡片本身不长出屏幕 */
         private const val DONE_BODY_MAX_HEIGHT = 220
 
@@ -2601,8 +2858,6 @@ class FloatingWindowService : Service() {
         private const val COPY_FEEDBACK_MS = 1400L
 
         /** 调试期量化埋点 tag（仅 debug 包输出，release 不打印） */
-        private const val PERF_TAG = "HPA_PERF"
-
         /** debug 预览完成卡片的广播 action（见 [registerDebugDoneReceiver]） */
         private const val DEBUG_DONE_ACTION = "com.phoneagent.DEBUG_DONE"
 
@@ -2688,7 +2943,11 @@ class FloatingWindowService : Service() {
          * 调用方据此决定是否需要恢复，避免对「没藏东西」的调用做无谓的恢复动作。
          * 恢复分支会尊重用户手动隐藏状态（userHidden）：用户主动收起的面板不因截图恢复而弹回。
          */
+        // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+        @Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
         fun setVisible(visible: Boolean): Boolean {
+            // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
+            @Suppress("ComplexCondition")
             val svc = instance ?: return false
             // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
             if (!visible) {
@@ -2697,7 +2956,12 @@ class FloatingWindowService : Service() {
                 val miniShown = svc.miniRoot?.visibility == View.VISIBLE
                 val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
                 val doneShown = svc.doneRoot?.visibility == View.VISIBLE
-                if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown) return false
+                val noticeShown = svc.noticeRoot?.visibility == View.VISIBLE
+                if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown && !noticeShown) {
+                    return false
+                }
+                // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
+                @Suppress("ComplexCondition")
                 val hideStartedAt = SystemClock.uptimeMillis()
                 svc.handler.post {
                     svc.root?.visibility = View.GONE
@@ -2715,6 +2979,11 @@ class FloatingWindowService : Service() {
                     // 完成卡片也是独立窗口：截图时藏起来，截完按原样恢复
                     svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
                     svc.doneRoot?.visibility = View.GONE
+                    // 降级提示细条同理：截图时不能截进画面，先停计时再藏，截完按原样恢复并重新计时
+                    svc.captureHidden = true
+                    svc.noticeVisibleBeforeHide = svc.noticeShowing
+                    svc.handler.removeCallbacks(svc.noticeAutoHide)
+                    svc.noticeRoot?.visibility = View.GONE
                     // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
                     // 因此这里记「调用 → 落位」的代码耗时，不含任何帧等待
                     OverlayPerf.code("screenshot-hide-code", hideStartedAt)
@@ -2741,6 +3010,17 @@ class FloatingWindowService : Service() {
                     svc.doneRoot?.visibility = View.VISIBLE
                     svc.doneVisibleBeforeHide = false
                 }
+                // 提示细条：截图期间到达的提示已被压住（只更新内容、不弹窗），这里一并恢复并重新计时
+                svc.captureHidden = false
+                if (svc.noticeVisibleBeforeHide || svc.noticeShowing) {
+                    svc.noticeVisibleBeforeHide = false
+                    svc.noticeRoot?.takeIf { !svc.userHidden }?.let { n ->
+                        n.visibility = View.VISIBLE
+                        OverlayMotion.reset(n)
+                        svc.noticeShowing = true
+                        svc.scheduleNoticeHide()
+                    }
+                }
                 // 恢复分两段：先记"代码落位"（不可见窗口重新置为 VISIBLE），
                 // 再等首个真正绘制帧 —— 后者含软件渲染的合成等待，不能当作代码成本
                 val restoreCode = SystemClock.uptimeMillis() - restoreStartedAt
@@ -2749,7 +3029,8 @@ class FloatingWindowService : Service() {
                     ?: svc.root?.takeIf { it.visibility == View.VISIBLE }
                     ?: svc.marquee?.takeIf { it.visibility == View.VISIBLE }
                 if (restoreTarget != null) {
-                    OverlayPerf.firstFrame("screenshot-restore-first-frame", restoreTarget, restoreStartedAt, restoreCode)
+                    OverlayPerf.firstFrame("screenshot-restore-first-frame", restoreTarget, restoreStartedAt,
+                        restoreCode)
                 }
             }
             return true
