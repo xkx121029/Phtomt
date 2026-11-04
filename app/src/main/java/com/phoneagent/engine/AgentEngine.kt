@@ -23,6 +23,7 @@ import com.phoneagent.domain.rules.SessionContext
 import com.phoneagent.domain.rules.ShellCommands
 import com.phoneagent.domain.rules.ShellCommands.Motion
 import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.AppNameResolver
 import com.phoneagent.engine.execution.CapabilityManager
@@ -92,6 +93,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlin.coroutines.coroutineContext
 import java.util.concurrent.atomic.AtomicLong
 import com.phoneagent.engine.runtime.EngineStore
+import com.phoneagent.engine.runtime.TaskNoticeCenter
 import com.phoneagent.engine.runtime.StepTexts
 import com.phoneagent.engine.runtime.UiBridge
 import com.phoneagent.engine.runtime.TelemetryRecorder
@@ -2273,6 +2275,13 @@ class AgentEngine(
         if (result == null) {
             log(AgentLog.Level.WARN, "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死")
             pushFloating("AI 决策超时，将自动重试", "THINKING")
+            // 超时降级必须进用户可见出口：只写日志/通知的话，任务卡状态里看不出「已改用等待重试」
+            TaskNoticeCenter.publishDegradation(
+                DegradationTrigger.MODEL_TIMEOUT,
+                detail = "${WATCHDOG_DECIDE_MS / 1000}s",
+                method = "等待后重试",
+                source = "decision",
+            )
             com.phoneagent.core.notify.ActiveNotifier.notify(
                 appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CLOUD_TIMEOUT,
                 "AI 卡顿了一下", "云端暂时联系不上，已自动改为稍后重试，任务不会被中断。",

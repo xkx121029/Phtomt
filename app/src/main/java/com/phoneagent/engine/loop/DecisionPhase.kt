@@ -11,11 +11,13 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.rules.LocalDecisionEngine
 import com.phoneagent.engine.decision.DecisionPolicy
 import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.memory.PageMemoryRecorder
 import com.phoneagent.engine.runtime.EngineLimits.MAX_MODE_DENY_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SKILL_ERROR_STREAK
 import com.phoneagent.engine.runtime.LoopGuard
+import com.phoneagent.engine.runtime.TaskNoticeCenter
 import com.phoneagent.engine.skill.SkillRunner
 import com.phoneagent.feature.skill.SkillCompat
 import com.phoneagent.feature.skill.SkillExecutionGateway
@@ -205,6 +207,13 @@ internal class DecisionPhase(
         if (loopGuard.shouldNotifyNoProgress(completedSteps())) {
             hooks.log(AgentLog.Level.WARN, "任务长时间无进展，提醒用户")
             hooks.notifyNoProgress()
+            // 无进展属于无人值守降级：继续执行但换打法，说明必须出现在用户可见的状态出口
+            TaskNoticeCenter.publishDegradation(
+                DegradationTrigger.PAGE_STUCK,
+                detail = "长时间没有完成新步骤",
+                method = "换一种做法",
+                source = "decision",
+            )
         }
 
         // 3.5 技能归一化：AI 的 intent 字段可以填技能名 / 技能 id（含 MCP 技能）。

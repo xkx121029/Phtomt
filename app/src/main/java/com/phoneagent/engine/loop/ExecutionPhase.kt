@@ -12,6 +12,7 @@ import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.execution.ActionMode
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifyResult
@@ -19,6 +20,7 @@ import com.phoneagent.engine.execution.VerifyRules
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
 import com.phoneagent.engine.runtime.ExecutionFeedback
 import com.phoneagent.engine.runtime.LoopGuard
+import com.phoneagent.engine.runtime.TaskNoticeCenter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlin.math.ceil
@@ -454,6 +456,13 @@ internal class ExecutionPhase(
                         "这个做法无效：请换一种完全不同的意图（如 scroll_to 滚动查找、see 看图确认、" +
                         "say 向用户说明障碍、open/press 返回上一级），不要重复同一动作。"
                     ui.log(AgentLog.Level.WARN, "决策循环：连续 $streak 步同签名动作「${action.type}」，注入纠偏提示")
+                    // 同签名动作反复 = 页面卡死，已自动换打法；写进状态出口让用户知道现在怎么继续
+                    TaskNoticeCenter.publishDegradation(
+                        DegradationTrigger.PAGE_STUCK,
+                        detail = "连续 $streak 步同签名动作「${action.type}」",
+                        method = "换一种做法",
+                        source = "execution",
+                    )
                     messages.add(
                         ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = loopHint))),
                     )
