@@ -5,7 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.overlay.FloatingWindowService
+import com.phoneagent.overlay.OverlayDisplaySettings
+import com.phoneagent.overlay.StepTextPlacement
 
 /**
  * debug-only 浮层回归入口（不合并进 release 包）。
@@ -20,12 +23,18 @@ import com.phoneagent.overlay.FloatingWindowService
  *   cmd = t2（任务卡 + 长文案跑马灯） / done（完成卡片） / hide / restore
  *       / notice（普通降级提示细条） / notice-action（需操作细条）
  *       / stress（连续 20 次文案更新，验证跑马灯不重排）
+ *       / edge-on（打开边缘光效并起标定预览） / edge-off（关闭，验证窗口被真正移除）
+ *   可选 --es placement marquee|card|both（三档文字位置，写入正式设置后即时生效）
  */
 class OverlayShotActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val cmd = intent?.getStringExtra("cmd") ?: "t2"
+        // 三档文字位置的走查入口：写的就是用户设置，服务监听后即时重绘
+        intent?.getStringExtra("placement")?.let {
+            OverlayDisplaySettings.setStepTextPlacement(this, StepTextPlacement.fromValue(it))
+        }
         FloatingWindowService.start(this)
         Handler(Looper.getMainLooper()).postDelayed({
             when (cmd) {
@@ -63,6 +72,12 @@ class OverlayShotActivity : Activity() {
                         )
                     }
                 }
+                // 边缘光效开关：关闭走的是"设置写入 → 服务监听 → removeOverlay"的真实链路
+                "edge-on" -> {
+                    OverlayDisplaySettings.setEdgeLightingEnabled(this, true)
+                    EdgeLightingService.startPreview(this)
+                }
+                "edge-off" -> OverlayDisplaySettings.setEdgeLightingEnabled(this, false)
                 // 降级提示细条：先起任务卡（载体），再发提示
                 "notice", "notice-action" -> {
                     FloatingWindowService.update(

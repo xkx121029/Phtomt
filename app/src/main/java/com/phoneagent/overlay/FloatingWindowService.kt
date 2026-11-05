@@ -14,6 +14,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.content.res.Configuration
 import android.graphics.Canvas
@@ -275,6 +276,31 @@ class FloatingWindowService : Service() {
     /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
 
+    /**
+     * 逐步任务文字的显示位置（跑马灯 / 任务卡状态行 / 两处），用户可在设置里改。
+     *
+     * 改动即时生效：监听偏好写入后立即按最近一次状态就地重绘，不等下一个任务。
+     */
+    private var stepPlacement = OverlayDisplaySettings.DEFAULT_STEP_TEXT_PLACEMENT
+
+    /** 最近一次状态更新的原始入参：切换显示位置时就地重绘，不用等下一次 updateStatus */
+    private var lastStatusText = "等待任务..."
+    private var lastReasoningText = ""
+    private var lastStep = 0
+    private var lastTotal = 0
+
+    /** 跑马灯最近一次"想不想显示"的请求；实际可见性还要再过一道 [stepPlacement] 闸门 */
+    private var marqueeRequestedVisible = true
+
+    /** 显示设置监听：只关心文字位置这一个键（边缘光效由 EdgeLightingService 自己监听） */
+    private val displaySettingsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == OverlayDisplaySettings.KEY_STEP_TEXT_PLACEMENT) {
+                stepPlacement = OverlayDisplaySettings.stepTextPlacement(this)
+                handler.post { applyStepTextPlacement() }
+            }
+        }
+
     // ==================== 降级提示细条（引擎 → 浮层） ====================
     // 引擎已经产出成品中文（TaskNoticeCenter.notice），浮层只负责展示：
     // 不新增常驻栏，做成底部一次性细条，显示几秒后自己向上淡出。
@@ -339,6 +365,9 @@ class FloatingWindowService : Service() {
         palette = FloatingUi.Palette.of(FloatingUi.isNightMode(this))
         startForegroundCompat()
         registerDebugDoneReceiver()
+        // 逐步任务文字的显示位置：启动时读一次，运行中由偏好监听即时改写
+        stepPlacement = OverlayDisplaySettings.stepTextPlacement(this)
+        OverlayDisplaySettings.registerListener(this, displaySettingsListener)
         // 监听跑马灯设置：内边距/配色方式修改后即时生效
         scope.launch {
             appSettings.settings.collect { s ->
@@ -446,7 +475,6 @@ class FloatingWindowService : Service() {
     private fun resetToIdle() {
         handler.post {
             taskTitle?.text = "Happy Agent"
-            stepText?.text = "等待任务..."
             phaseChip?.text = "待命"
             phaseChip?.background = FloatingUi.capsule(this@FloatingWindowService, 
                 FloatingUi.RADIUS_CHIP / 2,
@@ -457,9 +485,13 @@ class FloatingWindowService : Service() {
             thinkingSentText?.text = ""
             clearThinkingReturn()
             lastSentShown = ""
-            setMarqueeText("等待任务...")
+            lastStatusText = "等待任务..."
+            lastReasoningText = ""
+            lastStep = 0
+            lastTotal = 0
             currentPhase = "PENDING"
             applyMarqueeSettings()
+            applyStepTextPlacement()
             updateNotification("等待任务...", "Happy Agent")
         }
     }
@@ -564,14 +596,17 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 创建跑马灯：**两个独立窗口**，任务期间常驻。
+     * 创建跑马灯：**同一时刻只存在一个文字载体**，任务期间常驻。
      *
-     * 1. **顶部光带**（[topBand]）：宽度 = 真实屏宽、高度 = 状态栏 + 挖孔 inset，坐标从物理屏顶开始。
+     * 1. **顶部光带**（[topBand]，主载体）：宽度 = 真实屏宽、高度 = 状态栏 + 挖孔 inset，坐标从物理屏顶开始。
      *    窗口类型仍是 `TYPE_APPLICATION_OVERLAY`，配合
      *    `fitInsetsTypes = 0` + `cutout = ALWAYS` + `LAYOUT_IN_SCREEN | NO_LIMITS`，
      *    光带才能真正压在状态栏上（少任何一条都会整体下移一条状态栏）。
-     * 2. **底部胶囊**（[marquee]）：固定宽度（真实屏宽 - 两侧留白）、高度自适应，
-     *    锚在导航栏之上，不被手势条压住。
+     * 2. **底部胶囊**（[marquee]，仅退路）：固定宽度（真实屏宽 - 两侧留白）、高度自适应，
+     *    锚在导航栏之上，不被手势条压住。只有光带建不出来（无权限/ROM 限制）时才创建它。
+     *
+     * 为什么不再两者并存：两个窗口逐字渲染同一段任务描述，用户看到的就是"同一步被画了两遍"。
+     * 现在光带负责文字，胶囊只在光带缺失时兜底，二者永不叠加。
      *
      * 两者都是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
      * 窗口宽度在建窗时一次定死，之后文本怎么高频更新都不会触发窗口重排。
@@ -580,7 +615,8 @@ class FloatingWindowService : Service() {
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun showMarquee() {
         val wm = windowManager ?: return
-        if (marquee != null && topBand != null) return
+        // 光带与胶囊是同一段文案的两个候选载体：同时只保留一个
+        if (marquee != null || topBand != null) return
         val screenSize = OverlayWindowSpec.realScreenSize(this)
         val screenW = screenSize.first
 
@@ -618,7 +654,8 @@ class FloatingWindowService : Service() {
             }
         }
 
-        if (marquee == null) {
+        // 只有光带建不出来（无权限/ROM 限制）时才退回底部胶囊，保证文字仍有一处可读
+        if (marquee == null && topBand == null) {
             val startedAt = SystemClock.uptimeMillis()
             val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
             val bar = MarqueeView(this).apply {
@@ -646,22 +683,53 @@ class FloatingWindowService : Service() {
                 // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
             }
         }
+        // 新建的窗口默认可见：这里立刻按用户设置和当前状态补一次（只任务卡模式下直接 GONE）
+        applyStepTextPlacement()
     }
 
-    /** 更新跑马灯文案：顶部光带与底部胶囊同源，相位各自保持（更新文案不重置滚动位置） */
+    /**
+     * 更新跑马灯文案：只写当前存在的那个载体（光带优先、胶囊兜底）。
+     *
+     * 相位由 `MarqueeView` 自己保持：换文案不会重置滚动位置，也不会触发窗口重排。
+     */
     private fun setMarqueeText(text: String) {
-        marquee?.setText(text)
-        topBand?.setText(text)
+        val band = topBand
+        if (band != null) band.setText(text) else marquee?.setText(text)
     }
 
-    /** 跑马灯（光带 + 胶囊）整体显示/隐藏：两层始终同进同出 */
+    /**
+     * 跑马灯整体显示/隐藏。
+     *
+     * [visible] 表达"当前界面状态想不想显示"（任务运行中显示、完成卡/用户收起/截图时隐藏）；
+     * 这里再叠一道用户设置：只任务卡模式（[StepTextPlacement.CARD]）下跑马灯一律不显示。
+     */
     private fun setMarqueeVisible(visible: Boolean) {
-        val v = if (visible) View.VISIBLE else View.GONE
+        marqueeRequestedVisible = visible
+        val v = if (visible && stepPlacement != StepTextPlacement.CARD) View.VISIBLE else View.GONE
         marquee?.visibility = v
         topBand?.visibility = v
     }
 
-    private fun isMarqueeVisible(): Boolean = marquee?.visibility == View.VISIBLE
+    /**
+     * 按当前显示设置重绘两处文字，并重算跑马灯可见性。
+     *
+     * 每次状态更新与设置变更都走这里，切换显示方式时正在跑的任务即时生效。
+     */
+    private fun applyStepTextPlacement() {
+        val desc = lastReasoningText.ifBlank { lastStatusText }
+        val showMarqueeText = stepPlacement != StepTextPlacement.CARD
+        stepText?.text = StepTextContent.cardLabel(
+            step = lastStep,
+            total = lastTotal,
+            description = desc,
+            includeDescription = stepPlacement != StepTextPlacement.MARQUEE,
+        )
+        setMarqueeText(if (showMarqueeText) desc else "")
+        setMarqueeVisible(marqueeRequestedVisible)
+    }
+
+    private fun isMarqueeVisible(): Boolean =
+        marquee?.visibility == View.VISIBLE || topBand?.visibility == View.VISIBLE
 
     /**
      * 底部跑马灯距屏幕底边的距离：基础留白 + 导航栏（手势条）高度。
@@ -1641,10 +1709,13 @@ class FloatingWindowService : Service() {
             val colors = marqueeGradient(phase)
             marquee?.setColors(colors)
             topBand?.setColors(colors)
-            setMarqueeText(reasoning.ifBlank { status })
+            // 记录原始入参 + 按显示设置落到两处（跑马灯 / 卡片状态行），避免同一条描述画两遍
+            lastStatusText = status
+            lastReasoningText = reasoning
+            lastStep = step
+            lastTotal = total
+            applyStepTextPlacement()
             taskTitle?.text = task
-            // 总步数已知时给出「第 3/8 步」，用户能一眼看出还剩多少
-            stepText?.text = if (total > 0) "第 $step/$total 步 · $status" else "第 $step 步 · $status"
             // 阶段徽章：实心阶段色胶囊 + 白字（卡片是实色主题色，徽章也必须实色才压得住）
             val ph = FloatingUi.phaseColor(phase)
             phaseChip?.text = phaseLabel(phase)
@@ -2805,6 +2876,7 @@ class FloatingWindowService : Service() {
     }
 
     override fun onDestroy() {
+        OverlayDisplaySettings.unregisterListener(this, displaySettingsListener)
         debugDoneReceiver?.let { runCatching { unregisterReceiver(it) } }
         debugDoneReceiver = null
         // 清理拖动物理动画与回调
