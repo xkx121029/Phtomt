@@ -55,6 +55,41 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Restore fixed debug keystore
+        # 签名基线：本机 hpa-publish 用的就是 Android 默认 debug keystore
+        #   %USERPROFILE%\.android\debug.keystore
+        #   alias=androiddebugkey，storepass/keypass=android
+        #   SHA-256 2B:67:B9:1A:73:EB:7D:4E:6A:9C:E7:FF:A2:5D:8A:07:
+        #           8F:66:2A:C2:3D:65:C5:47:08:D2:95:96:4D:3C:BE:ED
+        # 把同一份文件 base64 后存进 DEBUG_KEYSTORE_B64，CI 与本地才能同包名同签名，
+        # 新旧包可互相覆盖安装；否则每次 runner 都会新建随机签名，只能先卸载再装。
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          DEBUG_KEYSTORE_PASS: ${{ secrets.DEBUG_KEYSTORE_PASS }}
+        run: |
+          KS="$HOME/.android/debug.keystore"
+          mkdir -p "$(dirname "$KS")"
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$KS"
+            PASS="${DEBUG_KEYSTORE_PASS:-android}"
+            if ! keytool -list -keystore "$KS" -storepass "$PASS" -alias androiddebugkey >/dev/null 2>&1; then
+              echo "::error::固定 debug keystore 还原后校验失败（内容或 DEBUG_KEYSTORE_PASS 不对）"
+              exit 1
+            fi
+            echo "已还原固定 debug keystore："
+            keytool -list -v -keystore "$KS" -storepass "$PASS" -alias androiddebugkey | grep -E 'SHA256:'
+          else
+            # 绝不静默换签名：让 run 明确告诉下载者「这一版覆盖不了旧版」。
+            echo "::warning title=签名与历史不一致::未配置 DEBUG_KEYSTORE_B64，本次改用 runner 临时生成的 debug keystore。"
+            echo "::warning::本次签名与历史不一致，包不能覆盖安装（需先卸载旧版）。"
+            {
+              echo "## ⚠️ 签名与历史不一致"
+              echo
+              echo "本次构建没有 \`DEBUG_KEYSTORE_B64\`，用的是 runner 上临时生成的 debug keystore。"
+              echo "**本次签名与历史不一致，包不能覆盖安装**——安装前请先卸载旧版本。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Detekt (static analysis)
         # 任务名必须带 :app 前缀：detekt 配置与基线只挂在 :app 上，
         # 跑根项目的 `detekt` 不带基线路径，存量问题会全量报错。
@@ -164,6 +199,49 @@ jobs:
             --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
             --notes-file release-notes.md \
             --prerelease
+
+      - name: Publish Gitee Release
+        # Gitee 不是构建目标，只是「发行版回传」：同一次 GitHub 构建、同一个 APK、
+        # 同一个版本号与 tag 再挂一份到 Gitee 发行版，方便两边对照。
+        # 注意：Gitee 的「从 GitHub 拉取」镜像只同步分支/标签/提交，不同步 Release
+        # 和附件，所以发行版必须由这一步显式创建。
+        # GITEE_TOKEN 未配置时跳过；跳过是正常路径，整个 run 仍为绿。
+        if: github.event_name != 'pull_request'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          APK: ${{ steps.ver.outputs.apk }}
+          VERSION_NAME: ${{ steps.ver.outputs.version_name }}
+          VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "未配置 GITEE_TOKEN，跳过 Gitee 发行版发布"
+            echo "> GITEE_TOKEN 未配置，本 run 跳过 Gitee 发行版发布（不是失败）。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          API="https://gitee.com/api/v5/repos/xkx1029/Phtomt"
+          BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n' \
+            "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}")
+          # 先建发行版；同名 tag 已存在时改读它的 upload_url（重复触发不报错）
+          RESP=$(curl -sS -X POST "$API/releases" \
+            --data-urlencode "access_token=$GITEE_TOKEN" \
+            --data-urlencode "tag_name=$TAG" \
+            --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+            --data-urlencode "body=$BODY" \
+            --data-urlencode "target_commitish=nightly" \
+            --data-urlencode "prerelease=true")
+          UPLOAD=$(echo "$RESP" | jq -r '.upload_url // empty')
+          if [ -z "$UPLOAD" ]; then
+            echo "创建 Gitee 发行版失败，尝试复用已存在的 tag：$RESP" >&2
+            UPLOAD=$(curl -sS "$API/releases/tags/$TAG?access_token=$GITEE_TOKEN" | jq -r '.upload_url // empty')
+          fi
+          if [ -z "$UPLOAD" ]; then echo "拿不到 Gitee upload_url，发行版发布失败" >&2; exit 1; fi
+          case "$UPLOAD" in https://*) ;; *) UPLOAD="https://gitee.com/api/v5$UPLOAD" ;; esac
+          UPLOADED=$(curl -sS -X POST "$UPLOAD" \
+            -F "access_token=$GITEE_TOKEN" \
+            -F "file=@$APK")
+          echo "$UPLOADED"
+          echo "$UPLOADED" | jq -e '.browser_download_url' > /dev/null
 
       - name: Persist version counter
         # 出包成功才把计数器推进一步（失败不烧号）。
