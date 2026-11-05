@@ -2,6 +2,8 @@
 @file:Suppress("MagicNumber")
 package com.phoneagent.engine.execution
 
+import android.app.AlarmManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.provider.AlarmClock
@@ -10,6 +12,8 @@ import com.phoneagent.device.a11y.NodeSelector
 import com.phoneagent.device.clock.ClockPackages
 import com.phoneagent.device.clock.ClockRequest
 import com.phoneagent.device.shell.ShizukuManager
+import com.phoneagent.domain.model.ScreenSnapshot
+import java.util.Calendar
 import kotlinx.coroutines.delay
 
 /**
@@ -69,7 +73,7 @@ internal object ClockFallbackPolicy {
         add(
             ClockLevel(
                 kind = ClockFallbackKind.DIRECT_SILENT,
-                condition = "系统时钟能解析到处理该 action 的 Activity（含厂商包名/私有 action 探测）",
+                condition = "系统时钟能解析到处理该标准 action 的 Activity（先试厂商包名，再隐式解析）",
                 failureCriterion = "解析不到，或 startActivity 抛异常（后台启动限制）",
             ),
         )
@@ -114,20 +118,41 @@ internal object ClockFallbackPolicy {
             else -> null
         }
 
-    /** 成功时给用户看的中文，必须点名「这次用的是哪种方式」 */
-    fun successMessage(kind: ClockFallbackKind, request: ClockRequest, clickedLabel: String? = null): String {
+    /**
+     * 成功时给用户看的中文，必须点名「这次用的是哪种方式」。
+     * [verified] 为真时才有资格说「已确认」；否则如实说明「派发了但读不到结果」。
+     */
+    fun successMessage(
+        kind: ClockFallbackKind,
+        request: ClockRequest,
+        clickedLabel: String? = null,
+        verified: Boolean = false,
+        evidence: String? = null,
+    ): String {
         val what = describe(request)
         return when (kind) {
-            ClockFallbackKind.DIRECT_SILENT ->
-                "已用系统时钟静默直达设定$what（系统未回执，请在时钟应用的列表里确认）"
+            ClockFallbackKind.DIRECT_SILENT -> if (verified) {
+                "已确认设定$what（回读：${evidence ?: "系统时钟数据"}）"
+            } else {
+                "已向系统时钟派发$what，但本机读不到时钟数据，无法确认是否真的生效；" +
+                    "请看一眼时钟应用的列表。没有重复派发，避免出现多条一样的条目"
+            }
             ClockFallbackKind.SHELL_WRITE ->
                 "已用注入通道（Shizuku/无线 ADB）写入时钟数据库并回查确认：$what"
             ClockFallbackKind.UI_CONFIRM ->
-                "静默直达不可用，已改用时钟页直达 + 无障碍点击「${clickedLabel ?: "保存"}」确认：$what"
+                "静默直达不可用，已改用时钟页直达 + 无障碍点击「${clickedLabel ?: "保存"}」，并回读确认：$what"
             ClockFallbackKind.OPEN_MANUAL ->
                 "当前方式：打开时钟页手动设置。已打开时钟应用，请手动设定$what"
         }
     }
+
+    /** 系统里已经就是这个闹钟：不再重复派发，避免时钟列表出现两条一样的 */
+    fun alreadySetMessage(request: ClockRequest): String =
+        "系统里已经有过这个${describe(request)}（下一闹钟就是它），本次没有重复设置"
+
+    /** 无障碍点了保存键，但回读不到：不能算成功，交给下一级并说明原因 */
+    fun uiClickUnverifiedMessage(clickedLabel: String?, reason: String): String =
+        "已在时钟页点击「${clickedLabel ?: "保存"}」，但回读不到对应条目（$reason）"
 
     /**
      * 最终只能停在「手动设置」时的完整说明：为什么没自动完成 + 现在用户该做什么。
@@ -174,40 +199,66 @@ internal object ClockFallbackPolicy {
     }
 }
 
-/** 厂商时钟的私有 action 候选：只在 `resolveActivity` 真的能解析时使用，解析不到就跳过 */
-internal data class ClockVendorRoute(val packageName: String, val action: String)
-
 /**
- * 厂商私有 action 探测表。
+ * 「真的设置成功」的判据（纯函数，JVM 可直接测）。
  *
- * 这些 action 没有官方契约，属于「有就更快、没有也不影响」的加速路径：
- * 每个候选都先用 `Intent(action).setPackage(包名)` 解析一次，解析不到就当不存在。
- * 标准 AlarmClock 意图始终是每台机器的保底路径，不因私有 action 猜错而跳过。
+ * 与旧实现的关键差别：`startActivity` 没抛异常只等于「派发成功」，不等于「时钟里真的多了条目」。
+ * 这里把可回读的证据全部收拢成一组纯判断：系统下一闹钟、闹钟 Provider 行、计时器页文本。
  */
-internal object ClockVendorRoutes {
+internal object ClockVerification {
 
-    val alarm: List<ClockVendorRoute> = listOf(
-        ClockVendorRoute("com.oplus.alarmclock", "com.oplus.alarmclock.action.SET_ALARM"),
-        ClockVendorRoute("com.coloros.alarmclock", "com.coloros.alarmclock.action.SET_ALARM"),
-        ClockVendorRoute("com.miui.clock", "com.miui.clock.action.SET_ALARM"),
-        ClockVendorRoute("com.huawei.clock", "com.huawei.clock.action.SET_ALARM"),
-        ClockVendorRoute("com.hihonor.clock", "com.hihonor.clock.action.SET_ALARM"),
-    ).distinctBy { it.packageName to it.action }
+    /** 闹钟是整分设置，回读时间留 90 秒容差（跨零点/时区换算不会误判） */
+    const val ALARM_TOLERANCE_MS = 90_000L
 
-    val timer: List<ClockVendorRoute> = listOf(
-        ClockVendorRoute("com.oplus.alarmclock", "com.oplus.alarmclock.action.SET_TIMER"),
-        ClockVendorRoute("com.coloros.alarmclock", "com.coloros.alarmclock.action.SET_TIMER"),
-        ClockVendorRoute("com.miui.clock", "com.miui.clock.action.SET_TIMER"),
-        ClockVendorRoute("com.huawei.clock", "com.huawei.clock.action.SET_TIMER"),
-        ClockVendorRoute("com.hihonor.clock", "com.hihonor.clock.action.SET_TIMER"),
-    ).distinctBy { it.packageName to it.action }
+    /** 未来 8 天内、时分一致（重复闹钟还要求星期命中）即视为「这条就是我设的」 */
+    fun matchesAlarm(triggerAtMillis: Long, request: ClockRequest, nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (triggerAtMillis < nowMillis - ALARM_TOLERANCE_MS) return false
+        if (triggerAtMillis > nowMillis + 8L * 24 * 3600_000) return false
+        val cal = Calendar.getInstance().apply { timeInMillis = triggerAtMillis }
+        if (cal.get(Calendar.HOUR_OF_DAY) != (request.hour ?: return false)) return false
+        if (cal.get(Calendar.MINUTE) != (request.minute ?: return false)) return false
+        val days = request.repeatDays
+        return days.isNullOrEmpty() || cal.get(Calendar.DAY_OF_WEEK) in days
+    }
 
-    fun of(request: ClockRequest): List<ClockVendorRoute> =
-        if (request.action == AlarmClock.ACTION_SET_ALARM) alarm else timer
+    /** 闹钟列表/文本里能否看到这个时间（12/24 小时两种写法都认，带标签时也认标签） */
+    fun alarmVisible(screenText: String, request: ClockRequest): Boolean {
+        val hour = request.hour ?: return false
+        val minute = request.minute ?: return false
+        val padded = "%02d:%02d".format(hour, minute)
+        val plain = "$hour:%02d".format(minute)
+        if (screenText.contains(padded) || screenText.contains(plain)) return true
+        val label = request.label
+        return !label.isNullOrBlank() && screenText.contains(label)
+    }
 
-    /** 纯选择：按候选顺序返回第一个可解析的路由（[resolvable] 由调用方用 PackageManager 提供） */
-    fun pick(routes: List<ClockVendorRoute>, resolvable: (ClockVendorRoute) -> Boolean): ClockVendorRoute? =
-        routes.firstOrNull(resolvable)
+    /** 计时器页里能否看到这个倒计时（「5m Timer」「05:00」「5 分钟」等写法都认） */
+    fun timerVisible(screenText: String, request: ClockRequest): Boolean {
+        val seconds = request.seconds ?: return false
+        val label = request.label
+        if (!label.isNullOrBlank() && screenText.contains(label)) return true
+        val minutes = seconds / 60
+        val rest = seconds % 60
+        val candidates = buildList {
+            add("%02d:%02d".format(minutes, rest))
+            add("$minutes:%02d".format(rest))
+            add("${minutes}m")
+            if (minutes > 0) add("$minutes 分钟")
+            if (seconds >= 3600) add("${seconds / 3600} 小时")
+        }
+        return candidates.any { screenText.contains(it, ignoreCase = true) }
+    }
+
+    /** `dumpsys alarm` 输出里的计时器条数（TIMER_EXPIRED 一条对应一个在跑的计时器） */
+    fun timerCount(dumpsysAlarm: String): Int =
+        dumpsysAlarm.lineSequence().count { it.contains("TIMER_EXPIRED") }
+
+    /** Provider 查询输出里是否含目标闹钟行（`hour=7` 与 `minutes=30` 同时出现） */
+    fun providerHasAlarm(queryOutput: String, request: ClockRequest): Boolean {
+        val hour = request.hour ?: return false
+        val minute = request.minute ?: return false
+        return queryOutput.contains("hour=$hour") && queryOutput.contains("minutes=$minute")
+    }
 }
 
 /** 一次时钟降级的执行结果 */
@@ -233,6 +284,8 @@ internal class ClockFallbackRunner(
     private val executor: ActionExecutor?,
     private val shell: suspend (String) -> ShizukuManager.ShellResult,
     private val caps: ClockCapabilities,
+    /** 时钟页文本回读：用于「无障碍能看见条目」这一档的验证；没有无障碍时返回 null */
+    private val screen: suspend () -> ScreenSnapshot? = { null },
 ) {
 
     /** 保存/确认按钮的文案候选：只点一次，点到即止；点不到就降级，绝不连环乱点 */
@@ -249,21 +302,74 @@ internal class ClockFallbackRunner(
     )
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     suspend fun run(request: ClockRequest): ClockOutcome {
+        // 去重一：系统下一闹钟已经就是这个目标 → 不再发第二次（重复派发会多出一条闹钟）
+        if (request.action == AlarmClock.ACTION_SET_ALARM && alarmAlreadyNext(request)) {
+            return ClockOutcome.Done(
+                ClockFallbackKind.DIRECT_SILENT,
+                ClockFallbackPolicy.alreadySetMessage(request),
+                verified = true,
+            )
+        }
+        // 去重二：同一个倒计时刚刚被确认过（60 秒内）→ 不再创建第二条
+        lastTimer?.let { done ->
+            val same = request.action == AlarmClock.ACTION_SET_TIMER &&
+                done.verified && done.seconds == (request.seconds ?: 0L) && done.label == request.label
+            val ageMs = System.currentTimeMillis() - done.atMillis
+            if (same && ageMs in 0..60_000L) {
+                return ClockOutcome.Done(
+                    ClockFallbackKind.DIRECT_SILENT,
+                    "刚刚（${ageMs / 1000} 秒前）已经确认启动过同一个倒计时，本次没有重复创建",
+                    verified = true,
+                )
+            }
+        }
+
         val failures = mutableListOf<String>()
+        val beforeAlarm = nextAlarmTrigger()
+        val beforeTimers = if (caps.shell) timerCount() else null
         for (level in ClockFallbackPolicy.levels(request, caps)) {
             when (level.kind) {
                 ClockFallbackKind.DIRECT_SILENT -> {
-                    val error = dispatch(request, skipUi = true, preferVendorAction = true)
-                    if (error == null) {
-                        return ClockOutcome.Done(
-                            ClockFallbackKind.DIRECT_SILENT,
-                            ClockFallbackPolicy.successMessage(ClockFallbackKind.DIRECT_SILENT, request),
-                            verified = false,
-                        )
+                    // 只走标准 AlarmClock 契约（与 Eta 一致）：厂商私有 action 没有回读契约，
+                    // 出现了「打开了页面但没设成」时无法识别，不能作为判成功的通道。
+                    val error = dispatch(request, skipUi = true)
+                    if (error != null) {
+                        failures += "静默直达：$error"
+                        continue
                     }
-                    failures += "静默直达：$error"
+                    when (val evidence = verify(request, beforeAlarm, beforeTimers)) {
+                        is ClockEvidence.Confirmed -> {
+                            rememberTimer(request, verified = true)
+                            return ClockOutcome.Done(
+                                ClockFallbackKind.DIRECT_SILENT,
+                                ClockFallbackPolicy.successMessage(
+                                    ClockFallbackKind.DIRECT_SILENT,
+                                    request,
+                                    verified = true,
+                                    evidence = evidence.source,
+                                ),
+                                verified = true,
+                            )
+                        }
+                        is ClockEvidence.Absent -> {
+                            failures += "静默直达：${evidence.reason}"
+                        }
+                        ClockEvidence.Unreadable -> {
+                            // 读不到不等于没设成：如实回报、停止再派发，避免重复条目
+                            rememberTimer(request, verified = false)
+                            return ClockOutcome.Done(
+                                ClockFallbackKind.DIRECT_SILENT,
+                                ClockFallbackPolicy.successMessage(
+                                    ClockFallbackKind.DIRECT_SILENT,
+                                    request,
+                                    verified = false,
+                                ),
+                                verified = false,
+                            )
+                        }
+                    }
                 }
 
                 ClockFallbackKind.SHELL_WRITE -> {
@@ -281,17 +387,30 @@ internal class ClockFallbackRunner(
                 ClockFallbackKind.UI_CONFIRM -> {
                     val error = confirmViaAccessibility(request)
                     if (error == null) {
-                        return ClockOutcome.Done(
-                            ClockFallbackKind.UI_CONFIRM,
-                            ClockFallbackPolicy.successMessage(
-                                ClockFallbackKind.UI_CONFIRM,
-                                request,
-                                clickedLabel = lastClickedLabel,
-                            ),
-                            verified = true,
-                        )
+                        // 点完保存必须再回读一次：点到按钮不等于条目真的进了时钟
+                        when (val evidence = verify(request, beforeAlarm, beforeTimers)) {
+                            is ClockEvidence.Confirmed -> {
+                                rememberTimer(request, verified = true)
+                                return ClockOutcome.Done(
+                                    ClockFallbackKind.UI_CONFIRM,
+                                    ClockFallbackPolicy.successMessage(
+                                        ClockFallbackKind.UI_CONFIRM,
+                                        request,
+                                        clickedLabel = lastClickedLabel,
+                                        verified = true,
+                                        evidence = evidence.source,
+                                    ),
+                                    verified = true,
+                                )
+                            }
+                            is ClockEvidence.Absent -> failures +=
+                                "无障碍确认：${ClockFallbackPolicy.uiClickUnverifiedMessage(lastClickedLabel, evidence.reason)}"
+                            ClockEvidence.Unreadable -> failures +=
+                                "无障碍确认：${ClockFallbackPolicy.uiClickUnverifiedMessage(lastClickedLabel, "本机无法回读")}"
+                        }
+                    } else {
+                        failures += "无障碍确认：$error"
                     }
-                    failures += "无障碍确认：$error"
                 }
 
                 ClockFallbackKind.OPEN_MANUAL -> {
@@ -314,6 +433,161 @@ internal class ClockFallbackRunner(
 
     private var lastClickedLabel: String? = null
 
+    /** 最近一次已确认的倒计时：用于「同一句指令被重复执行」时防止创建多条 */
+    private data class DispatchedTimer(val seconds: Long, val label: String?, val atMillis: Long, val verified: Boolean)
+
+    private var lastTimer: DispatchedTimer? = null
+
+    private fun rememberTimer(request: ClockRequest, verified: Boolean) {
+        if (request.action != AlarmClock.ACTION_SET_TIMER) return
+        lastTimer = DispatchedTimer(
+            seconds = request.seconds ?: 0L,
+            label = request.label,
+            atMillis = System.currentTimeMillis(),
+            verified = verified,
+        )
+    }
+
+    // ---------------------------------------------------------------- 回读验证
+
+    private sealed interface ClockEvidence {
+        /** 已经拿到「时钟里确实有这一条」的证据 */
+        data class Confirmed(val source: String) : ClockEvidence
+
+        /** 有明确证据表明没设成 */
+        data class Absent(val reason: String) : ClockEvidence
+
+        /** 本机没有任何可回读的通道：既不能确认也不能否认 */
+        data object Unreadable : ClockEvidence
+    }
+
+    private fun nextAlarmTrigger(): Long? =
+        runCatching {
+            context.getSystemService(AlarmManager::class.java)?.nextAlarmClock?.triggerTime
+        }.getOrNull()
+
+    private fun alarmAlreadyNext(request: ClockRequest): Boolean {
+        val trigger = nextAlarmTrigger() ?: return false
+        return ClockVerification.matchesAlarm(trigger, request)
+    }
+
+    private suspend fun timerCount(): Int? =
+        (shell("dumpsys alarm") as? ShizukuManager.ShellResult.Success)
+            ?.output
+            ?.let(ClockVerification::timerCount)
+
+    /** 计时器登记是异步的（实测派发后约 1.3 秒才进 AlarmManager），轮询到增加或超时 */
+    private suspend fun awaitTimerIncrease(before: Int): Int? {
+        var last: Int? = null
+        repeat(10) {
+            last = timerCount()
+            val current = last
+            if (current != null && current > before) return current
+            delay(300)
+        }
+        return last
+    }
+
+    /** 闹钟 Provider 回查：true=有这一行；false=Provider 可读但没有；null=没有可读的 Provider */
+    private suspend fun providerHasAlarm(request: ClockRequest): Boolean? {
+        val hour = request.hour ?: return null
+        val minute = request.minute ?: return null
+        var providerReadable = false
+        for (uri in alarmUris) {
+            val probe = shell("content query --uri '$uri' --projection _id") as? ShizukuManager.ShellResult.Success
+                ?: continue
+            if (probe.output.contains("Error", ignoreCase = true) ||
+                probe.output.contains("Permission", ignoreCase = true)
+            ) {
+                continue
+            }
+            providerReadable = true
+            val query = shell(
+                "content query --uri '$uri' --projection hour:minutes " +
+                    "--where 'hour=$hour AND minutes=$minute'",
+            ) as? ShizukuManager.ShellResult.Success ?: continue
+            if (ClockVerification.providerHasAlarm(query.output, request)) return true
+        }
+        return if (providerReadable) false else null
+    }
+
+    /**
+     * 打开对应的时钟页并轮询无障碍文本，直到命中 [matches] 或 6 秒超时。
+     *
+     * 不能只等一次：实测时钟 App 冷启动后闹钟/计时器列表要 4 秒以上才渲染出来，
+     * 固定等 1.2 秒会把「其实已经设好」误判成「没设成」，进而触发重复设置。
+     * 全程读不到时钟页（没有无障碍/被系统挡）返回 null，表示「读不了」而不是「不存在」。
+     */
+    private suspend fun clockPageText(request: ClockRequest, matches: (String) -> Boolean): String? {
+        if (!openClockPage(request)) return null
+        var last: String? = null
+        repeat(6) {
+            delay(1_000)
+            val snapshot = runCatching { screen() }.getOrNull() ?: return@repeat
+            if (snapshot.packageName?.contains("clock", ignoreCase = true) != true) return@repeat
+            last = snapshot.elements.joinToString("\n") { element ->
+                listOfNotNull(element.text, element.contentDescription).joinToString(" ")
+            }
+            if (matches(last.orEmpty())) return last
+        }
+        return last
+    }
+
+    /**
+     * 「真的设置成功」的判据。按证据强度依次尝试：
+     * 1. 系统下一闹钟（AlarmManager，公开 API，闹钟最可靠）；
+     * 2. 时钟 Provider 回查（仅闹钟，需要注入通道）；
+     * 3. `dumpsys alarm` 里的计时器登记数变化（仅倒计时，需要注入通道）；
+     * 4. 打开时钟页后无障碍文本里是否出现该条目。
+     * 全部不可用才返回 [ClockEvidence.Unreadable]，绝不把「派发成功」当「设置成功」。
+     */
+    private suspend fun verify(
+        request: ClockRequest,
+        beforeAlarm: Long?,
+        beforeTimers: Int?,
+    ): ClockEvidence {
+        if (request.action == AlarmClock.ACTION_SET_ALARM) {
+            val trigger = nextAlarmTrigger()
+            if (trigger != null && ClockVerification.matchesAlarm(trigger, request)) {
+                val at = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                    .format(java.util.Date(trigger))
+                return ClockEvidence.Confirmed("系统下一闹钟是 $at")
+            }
+            providerHasAlarm(request)?.let { found ->
+                return if (found) ClockEvidence.Confirmed("时钟 Provider 回查到了该闹钟")
+                else ClockEvidence.Absent("时钟 Provider 回查不到该闹钟")
+            }
+            if (!caps.accessibility) return ClockEvidence.Unreadable
+            val text = clockPageText(request) { ClockVerification.alarmVisible(it, request) }
+                ?: return ClockEvidence.Unreadable
+            return if (ClockVerification.alarmVisible(text, request)) {
+                ClockEvidence.Confirmed("闹钟列表里能看到该时间")
+            } else {
+                ClockEvidence.Absent("闹钟列表里没有该时间")
+            }
+        }
+
+        // 倒计时
+        if (beforeTimers != null) {
+            val after = awaitTimerIncrease(beforeTimers)
+            if (after != null && after > beforeTimers) {
+                return ClockEvidence.Confirmed("系统计时器登记从 $beforeTimers 条增加到 $after 条")
+            }
+            // 没增加先别急着否定：部分 ROM 的 dumpsys 不按预期登记，继续看页面文本
+        } else if (!caps.accessibility) {
+            // 既没有注入通道也没有无障碍：读不到任何证据
+            return ClockEvidence.Unreadable
+        }
+        if (!caps.accessibility) return ClockEvidence.Unreadable
+        val text = clockPageText(request) { ClockVerification.timerVisible(it, request) }
+            ?: return ClockEvidence.Unreadable
+        return if (ClockVerification.timerVisible(text, request)) {
+            ClockEvidence.Confirmed("计时器页里能看到该倒计时正在运行")
+        } else {
+            ClockEvidence.Absent("计时器页里没有该倒计时")
+        }
+    }
+
     // ---------------------------------------------------------------- 一级：静默直达
 
     /**
@@ -322,30 +596,30 @@ internal class ClockFallbackRunner(
      */
     // 分派函数多处早退以保证可读性，此处按规则豁免
     @Suppress("ReturnCount")
-    private fun dispatch(request: ClockRequest, skipUi: Boolean, preferVendorAction: Boolean): String? {
-        val probe = fillIntent(request, Intent(request.action), skipUi) ?: return "时钟类型无法识别"
+    private fun dispatch(request: ClockRequest, skipUi: Boolean): String? {
+        val base = fillIntent(request, Intent(request.action), skipUi) ?: return "时钟类型无法识别"
 
-        // 1) 厂商私有 action（解析不到就当没有，不影响标准意图）
-        if (preferVendorAction) {
-            val route = ClockVendorRoutes.pick(ClockVendorRoutes.of(request)) { candidate ->
-                canResolve(Intent(candidate.action).setPackage(candidate.packageName))
-            }
-            if (route != null) {
-                val intent = fillIntent(request, Intent(route.action).setPackage(route.packageName), skipUi)
-                if (intent != null && start(intent) == null) return null
-            }
+        // 1) 按厂商时钟包名显式解析标准 action（与 Eta 一致：先试 ColorOS 包，再退回隐式）
+        val explicit = ClockPackages.PREFERRED.firstNotNullOfOrNull { pkg ->
+            resolveClockIntent(Intent(base).setPackage(pkg))
         }
+        // 2) 隐式解析标准 action
+        val target = explicit ?: resolveClockIntent(base) ?: return ClockPackages.NO_CLOCK_MESSAGE
+        return start(target)
+    }
 
-        // 2) 按厂商包名显式解析标准 action
-        val preferred = ClockPackages.PREFERRED.firstOrNull { pkg ->
-            canResolve(Intent(probe).setPackage(pkg))
-        }
-        if (preferred != null) {
-            return start(fillIntent(request, Intent(request.action).setPackage(preferred), skipUi)!!)
-        }
-
-        // 3) 隐式解析标准 action
-        return if (canResolve(probe)) start(probe) else ClockPackages.NO_CLOCK_MESSAGE
+    /**
+     * 解析到具体 Activity 并显式指定组件。
+     *
+     * 只 `setPackage` 时，系统可能把意图投递到该应用当前最上层的任意 Activity（实测时钟停在
+     * 计时页时会「已投递但没处理」），表现为「启动了但没设成」。显式组件保证落到真正处理
+     * SET_ALARM / SET_TIMER 的那个入口 Activity（与 `am start` 打印的 cmp= 行为一致）。
+     */
+    private fun resolveClockIntent(intent: Intent): Intent? {
+        val resolved = runCatching { context.packageManager.resolveActivity(intent, 0) }.getOrNull()
+            ?: return null
+        val info = resolved.activityInfo ?: return null
+        return Intent(intent).setComponent(ComponentName(info.packageName, info.name))
     }
 
     /** 往 Intent 里填参数；时钟类型不认识时返回 null */
@@ -438,7 +712,7 @@ internal class ClockFallbackRunner(
     @Suppress("ReturnCount")
     private suspend fun confirmViaAccessibility(request: ClockRequest): String? {
         val exec = executor ?: return "无障碍服务不在线"
-        val error = dispatch(request, skipUi = false, preferVendorAction = false)
+        val error = dispatch(request, skipUi = false)
         if (error != null) return "时钟页拉不起来：$error"
         // 页面已拉起：等它完成转场后再找按钮
         delay(1200)

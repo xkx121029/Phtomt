@@ -598,6 +598,8 @@ internal class ExecutionCore(
             executor = service?.let { ActionExecutor(it) },
             shell = { cmd -> execShellViaChannel(cmd) },
             caps = caps,
+            // 回读验证用同一份观察结果（不新起截图链路），只有无障碍在线时才有内容
+            screen = { observe() },
         ).run(request)
         val trace = ClockFallbackPolicy.levels(request, caps).joinToString(" → ") { it.kind.label }
 

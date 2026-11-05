@@ -2,6 +2,7 @@ package com.phoneagent.engine.execution
 
 import com.phoneagent.device.clock.ClockRequest
 import com.phoneagent.device.clock.ClockRequests
+import java.util.Calendar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -75,10 +76,18 @@ class ClockFallbackPolicyTest {
 
     @Test
     fun 成功文案必须点名当前方式与时间() {
-        val direct = ClockFallbackPolicy.successMessage(ClockFallbackKind.DIRECT_SILENT, alarm)
-        assertTrue(direct.contains("系统时钟"))
-        assertTrue(direct.contains("07:30"))
-        assertTrue(direct.contains("未回执"))
+        val verified = ClockFallbackPolicy.successMessage(
+            ClockFallbackKind.DIRECT_SILENT, alarm, verified = true, evidence = "系统下一闹钟是 11-06 07:30",
+        )
+        assertTrue(verified.contains("已确认"))
+        assertTrue(verified.contains("07:30"))
+        assertTrue(verified.contains("11-06 07:30"))
+
+        // 读不到回执时不许说「已确认」，要如实说明并强调没有重复派发
+        val unverified = ClockFallbackPolicy.successMessage(ClockFallbackKind.DIRECT_SILENT, alarm, verified = false)
+        assertFalse(unverified.contains("已确认"))
+        assertTrue(unverified.contains("无法确认"))
+        assertTrue(unverified.contains("没有重复派发"))
 
         val shell = ClockFallbackPolicy.successMessage(ClockFallbackKind.SHELL_WRITE, alarm)
         assertTrue(shell.contains("Shizuku"))
@@ -119,15 +128,66 @@ class ClockFallbackPolicyTest {
     }
 
     @Test
-    fun 厂商私有action候选_包内去重且按顺序挑选() {
-        assertTrue(ClockVendorRoutes.alarm.isNotEmpty())
-        assertEquals(ClockVendorRoutes.alarm.size, ClockVendorRoutes.alarm.toSet().size)
-        assertTrue(ClockVendorRoutes.alarm.all { it.action.startsWith(it.packageName) })
+    fun 下一闹钟回读_时分命中才算已设置() {
+        val now = Calendar.getInstance().apply {
+            set(2026, Calendar.NOVEMBER, 5, 20, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val tomorrow = Calendar.getInstance().apply {
+            timeInMillis = now
+            add(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 7)
+            set(Calendar.MINUTE, 30)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
 
-        val picked = ClockVendorRoutes.pick(ClockVendorRoutes.alarm) { it.packageName == "com.miui.clock" }
-        assertEquals("com.miui.clock", picked!!.packageName)
+        assertTrue(ClockVerification.matchesAlarm(tomorrow, alarm, now))
+        // 分钟不一致 → 不是这条闹钟
+        val other = ClockRequests.alarm(7, 31, null, null)
+        assertFalse(ClockVerification.matchesAlarm(tomorrow, other, now))
+        // 已过期的触发时间不能当成「刚设好的」
+        assertFalse(ClockVerification.matchesAlarm(now - 3_600_000, alarm, now))
+    }
 
-        // 全不可解析 → 不选任何私有 action（随后会落回标准 AlarmClock 意图）
-        assertNull(ClockVendorRoutes.pick(ClockVendorRoutes.alarm) { false })
+    @Test
+    fun 重复闹钟回读_星期必须命中() {
+        val monday = Calendar.getInstance().apply {
+            set(2026, Calendar.NOVEMBER, 9, 7, 30, 0) // 2026-11-09 是周一
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val weekday = ClockRequests.alarm(7, 30, listOf(2, 3, 4, 5, 6), null)
+        val weekend = ClockRequests.alarm(7, 30, listOf(1, 7), null)
+        assertTrue(ClockVerification.matchesAlarm(monday, weekday, monday - 24 * 3600_000))
+        assertFalse(ClockVerification.matchesAlarm(monday, weekend, monday - 24 * 3600_000))
+    }
+
+    @Test
+    fun 时钟页文本回读_闹钟与倒计时都认多种写法() {
+        assertTrue(ClockVerification.alarmVisible("7:30 AM 明天", alarm))
+        assertTrue(ClockVerification.alarmVisible("07:30", alarm))
+        assertFalse(ClockVerification.alarmVisible("7:31 AM", alarm))
+
+        val timer = ClockRequests.timer(300, "煮面")
+        assertTrue(ClockVerification.timerVisible("5m Timer 04:12", timer))
+        assertTrue(ClockVerification.timerVisible("05:00", timer))
+        assertTrue(ClockVerification.timerVisible("煮面 正在计时", timer))
+        assertFalse(ClockVerification.timerVisible("5m Timer", ClockRequests.timer(600, null)))
+    }
+
+    @Test
+    fun 计时器登记数与Provider行_作为回读证据() {
+        val dump = """
+            RTC_WAKEUP #1: Alarm{abc type 0 when 12345 com.google.android.deskclock}
+              tag=*walarm*:com.android.deskclock.TIMER_EXPIRED
+            RTC_WAKEUP #2: Alarm{def type 0 when 22345 com.google.android.deskclock}
+              tag=*walarm*:com.android.deskclock.TIMER_EXPIRED
+        """.trimIndent()
+        assertEquals(2, ClockVerification.timerCount(dump))
+        assertEquals(0, ClockVerification.timerCount("nothing here"))
+
+        val rows = "Row: 0 _id=3, hour=7, minutes=30, enabled=1"
+        assertTrue(ClockVerification.providerHasAlarm(rows, alarm))
+        assertFalse(ClockVerification.providerHasAlarm("Row: 0 _id=3, hour=7, minutes=31, enabled=1", alarm))
     }
 }

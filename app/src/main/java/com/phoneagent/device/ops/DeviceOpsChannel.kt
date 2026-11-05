@@ -27,7 +27,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 /**
  * 系统直连执行器（对齐 Eta 的 device / phone / file 工具族里"不经过 GUI"的那批能力）。
@@ -225,9 +229,13 @@ class DeviceOpsChannel(
         else -> OpsResult.Fail("device_control 不支持 op=$op")
     }
 
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun torch(on: Boolean): OpsResult {
+    /**
+     * 手电筒：下发后等系统 TorchCallback 回报「已到达目标状态」才算成功。
+     *
+     * 之前的实现 `setTorchMode` 没抛异常就报「已打开」，但相机被占用/闪光灯过热时
+     * 系统会静默拒绝，用户看到的是「提示说开了、实际没亮」。这里以回调为准。
+     */
+    private suspend fun torch(on: Boolean): OpsResult {
         val cm = context.getSystemService(CameraManager::class.java)
             ?: return OpsResult.Fail("手电筒：相机服务不可用")
         val id = runCatching {
@@ -235,36 +243,142 @@ class DeviceOpsChannel(
                 cm.getCameraCharacteristics(cid).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
             }
         }.getOrNull() ?: return OpsResult.Fail("手电筒：本机没有可用的闪光灯")
-        return runCatching {
-            cm.setTorchMode(id, on)
-            OpsResult.Ok("手电筒已${if (on) "打开" else "关闭"}")
-        }.getOrElse { OpsResult.Fail("手电筒操作失败：${it.message ?: "系统拒绝"}（部分机型需要相机权限）") }
+
+        val confirmed = runCatching {
+            withTimeoutOrNull(1_500L) {
+                suspendCancellableCoroutine { cont ->
+                    lateinit var callback: CameraManager.TorchCallback
+                    callback = object : CameraManager.TorchCallback() {
+                        override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                            if (cameraId != id || !cont.isActive) return
+                            if (enabled == on) {
+                                runCatching { cm.unregisterTorchCallback(this) }
+                                cont.resume(true)
+                            }
+                        }
+
+                        override fun onTorchModeUnavailable(cameraId: String) {
+                            if (cameraId != id || !cont.isActive) return
+                            runCatching { cm.unregisterTorchCallback(this) }
+                            cont.resume(false)
+                        }
+                    }
+                    cm.registerTorchCallback(callback, null)
+                    cm.setTorchMode(id, on)
+                    cont.invokeOnCancellation { runCatching { cm.unregisterTorchCallback(callback) } }
+                }
+            }
+        }.getOrElse {
+            return OpsResult.Fail("手电筒操作失败：${it.message ?: "系统拒绝"}（部分机型需要相机权限）")
+        }
+        return when (confirmed) {
+            true -> OpsResult.Ok("手电筒已${if (on) "打开" else "关闭"}（回读闪光灯状态=${if (on) "on" else "off"}）")
+            false -> OpsResult.Fail("手电筒不可用：系统回报闪光灯状态不可用（可能被相机占用或过热保护）")
+            else -> OpsResult.Fail(
+                "手电筒命令已下发，但 1.5 秒内没有收到「${if (on) "开" else "关"}」的状态回调，本机无法确认是否生效",
+            )
+        }
     }
+
+    // ------------------------------------------------------ 回读验证（真的生效）
 
     private fun writeSettingsReason(): String =
         "写系统设置需要授权：请到「设置 → 应用 → 本应用 → 修改系统设置」允许后再试；" +
             "或用 Shizuku/无线 ADB 通道执行（无需该授权）。"
 
+    private fun systemInt(key: String): Int? =
+        runCatching { Settings.System.getInt(context.contentResolver, key) }.getOrNull()
+
+    private fun globalInt(key: String): Int? =
+        runCatching { Settings.Global.getInt(context.contentResolver, key) }.getOrNull()
+
+    private fun secureInt(key: String): Int? =
+        runCatching { Settings.Secure.getInt(context.contentResolver, key) }.getOrNull()
+
+    /** 注入通道读设置（本应用身份读不到时兜底） */
+    private suspend fun shellSetting(ns: String, key: String): Int? =
+        shell("settings get $ns $key")?.trim()?.toIntOrNull()
+
+    /** 读字符串设置值（用于 settings_op set 的回读） */
+    private suspend fun settingString(ns: String, key: String): String? {
+        val local = runCatching {
+            when (ns) {
+                "secure" -> Settings.Secure.getString(context.contentResolver, key)
+                "global" -> Settings.Global.getString(context.contentResolver, key)
+                else -> Settings.System.getString(context.contentResolver, key)
+            }
+        }.getOrNull()
+        return local ?: shell("settings get $ns $key")?.trim()
+    }
+
+    /**
+     * 等系统真的把值落下去：每 400ms 回读一次、最多 5 次，返回最后一次读到的值。
+     * 设置类写入不是同步生效（亮度/开关都有过渡态），只读一次容易把「过渡中」误判成失败。
+     */
+    private suspend fun awaitValue(probe: suspend () -> Int?, expect: (Int) -> Boolean): Int? {
+        var last: Int? = null
+        repeat(5) {
+            last = probe()
+            val current = last
+            if (current != null && expect(current)) return current
+            delay(400)
+        }
+        return last ?: probe()
+    }
+
     /**
      * 系统设置写入：先走本应用身份（需「修改系统设置」授权），没有授权再改走注入通道。
      *
-     * 之前的实现只要 `canWrite` 为 false 就直接失败，即使 Shizuku 通道明明可用——
-     * 于是「调亮度 / 改息屏时间 / 关自动旋转」在没授权但通道正常的机器上一律不可用。
+     * 写入成功不再等于「改成功」：写完必须回读，值与期望不一致就如实失败，
+     * 常见原因是自动亮度/设备策略/其它应用在覆盖同一个 key。
      */
     private suspend fun writeSystemSetting(key: String, value: Int, label: String): OpsResult {
-        val written = Settings.System.canWrite(context) &&
+        val appWriteAllowed = Settings.System.canWrite(context)
+        val written = appWriteAllowed &&
             runCatching { Settings.System.putInt(context.contentResolver, key, value) }.isSuccess
-        return when {
-            written -> OpsResult.Ok(label)
-            shell("settings put system $key $value") != null -> OpsResult.Ok("$label（经注入通道写入）")
-            else -> noChannel("${label}失败：${writeSettingsReason()}")
+        if (!written && shell("settings put system $key $value") == null) {
+            return noChannel("${label}失败：${writeSettingsReason()}")
+        }
+        val actual = awaitValue(
+            probe = { systemInt(key) ?: shellSetting("system", key) },
+            expect = { it == value },
+        )
+        return if (actual == value) {
+            OpsResult.Ok("$label（回读 system/$key=$actual）")
+        } else {
+            OpsResult.Fail(
+                "$label 未生效：回读 system/$key=${actual ?: "读不到"}，期望 $value。" +
+                    "可能被自动亮度/设备策略或其它应用覆盖",
+            )
         }
     }
 
     private suspend fun brightness(level: Int?): OpsResult {
         if (level == null) return OpsResult.Fail("brightness 需要 level（0~100）")
-        val value = (level.coerceIn(0, 100) * 255 / 100)
-        return writeSystemSetting(Settings.System.SCREEN_BRIGHTNESS, value, "亮度已设为 $level%（系统值 $value/255）")
+        val percent = level.coerceIn(0, 100)
+        // 与 Eta 一致：有注入通道时走 `cmd display set-brightness --unit percentage`，
+        // 它直接改显示亮度，不受「自动亮度」开关影响；没有通道再退回写 Settings。
+        val viaDisplay = shell("cmd display set-brightness $percent --unit percentage")
+        if (viaDisplay != null) {
+            var actual: Double? = null
+            repeat(5) {
+                delay(400)
+                actual = shell("cmd display get-brightness --unit percentage")?.trim()?.toDoubleOrNull()
+                val current = actual
+                if (current != null && kotlin.math.abs(current - percent) <= 1.0) {
+                    return OpsResult.Ok("亮度已设为 $percent%（回读 ${current}%）")
+                }
+            }
+            return OpsResult.Fail(
+                "亮度未达到目标：回读 ${actual?.let { "$it%" } ?: "读不到"}，期望 $percent%。" +
+                    "可能被自动亮度或省电策略覆盖",
+            )
+        }
+        return writeSystemSetting(
+            Settings.System.SCREEN_BRIGHTNESS,
+            percent * 255 / 100,
+            "亮度已设为 $percent%（系统值 ${percent * 255 / 100}/255）",
+        )
     }
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
@@ -284,7 +398,15 @@ class DeviceOpsChannel(
         val target = (level.coerceIn(0, 100) * max / 100)
         return runCatching {
             am.setStreamVolume(stream, target, 0)
-            OpsResult.Ok("音量已设为 $level%（$target/$max）")
+            val actual = am.getStreamVolume(stream)
+            if (actual == target) {
+                OpsResult.Ok("音量已设为 $level%（回读 $actual/$max）")
+            } else {
+                OpsResult.Fail(
+                    "音量未生效：期望 $target/$max，回读 $actual/$max。" +
+                        "勿扰模式或「固定音量」策略可能拦住了铃声/通知音量",
+                )
+            }
         }.getOrElse { OpsResult.Fail("音量调整失败：${it.message ?: "系统拒绝"}") }
     }
 
@@ -322,24 +444,62 @@ class DeviceOpsChannel(
         }
         return runCatching {
             am.ringerMode = target
-            OpsResult.Ok("已切换到${when (target) { AudioManager.RINGER_MODE_VIBRATE -> "震动"; AudioManager.RINGER_MODE_SILENT -> "静音"; else -> "响铃" }}")
+            val actual = am.ringerMode
+            if (actual == target) {
+                OpsResult.Ok("已切换到${when (target) { AudioManager.RINGER_MODE_VIBRATE -> "震动"; AudioManager.RINGER_MODE_SILENT -> "静音"; else -> "响铃" }}（回读 ringerMode=$actual）")
+            } else {
+                OpsResult.Fail("声音模式未生效：期望 $target，回读 $actual（勿扰模式可能限制了铃声）")
+            }
         }.getOrElse { OpsResult.Fail("切换声音模式失败：${it.message ?: "系统拒绝"}（勿扰模式可能限制了铃声）") }
     }
 
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount", "MaxLineLength")
-    private fun dnd(enable: Boolean?): OpsResult {
+    /**
+     * 勿扰：优先用注入通道 `cmd notification set_dnd`（与 Eta 一致）。
+     *
+     * 系统 API `setInterruptionFilter` 需要用户在设置里手动授予「勿扰访问权限」，
+     * 大量机型上这一步不可达；注入通道直接改 zen_mode，不需要该授权。
+     * 两种路径都必须回读 `zen_mode` 才算成功。
+     */
+    private suspend fun dnd(enable: Boolean?): OpsResult {
         if (enable == null) return OpsResult.Fail("dnd 需要 enable=true/false")
-        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-        @Suppress("MaxLineLength")
+        val expectedOpen = enable
+        val expect: (Int) -> Boolean = { if (expectedOpen) it != 0 else it == 0 }
+
+        val viaShell = shell("cmd notification set_dnd ${if (enable) "priority" else "off"}")
+        if (viaShell != null) {
+            val actual = awaitValue(
+                probe = { globalInt("zen_mode") ?: shellSetting("global", "zen_mode") },
+                expect = expect,
+            )
+            return if (actual != null && expect(actual)) {
+                OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
+            } else {
+                OpsResult.Fail("勿扰命令已执行，但回读 zen_mode=${actual ?: "读不到"}，与期望不一致")
+            }
+        }
+
         val nm = context.getSystemService(NotificationManager::class.java)
             ?: return OpsResult.Fail("勿扰：通知服务不可用")
         if (!nm.isNotificationPolicyAccessGranted) {
-            return OpsResult.Fail("勿扰：未授予「勿扰访问权限」，请到系统设置里给本应用开启后重试")
+            return OpsResult.Fail(
+                "勿扰：没有 Shizuku/无线 ADB 通道，且未授予「勿扰访问权限」。" +
+                    "请到 设置 → 通知 → 勿扰访问权限 里给本应用开启，或配置注入通道",
+            )
         }
         return runCatching {
-            nm.setInterruptionFilter(if (enable) NotificationManager.INTERRUPTION_FILTER_PRIORITY else NotificationManager.INTERRUPTION_FILTER_ALL)
-            OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}")
+            nm.setInterruptionFilter(
+                if (enable) NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                else NotificationManager.INTERRUPTION_FILTER_ALL,
+            )
+            val actual = awaitValue(
+                probe = { globalInt("zen_mode") ?: shellSetting("global", "zen_mode") },
+                expect = expect,
+            )
+            if (actual != null && expect(actual)) {
+                OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
+            } else {
+                OpsResult.Fail("勿扰切换未生效：回读 zen_mode=${actual ?: "读不到"}")
+            }
         }.getOrElse { OpsResult.Fail("勿扰切换失败：${it.message ?: "系统拒绝"}") }
     }
 
@@ -377,7 +537,35 @@ class DeviceOpsChannel(
         }
         val out = shell(cmd)
             ?: return noChannel("$op：需要 Shizuku/无线 ADB 通道（或 Root）；当前没有可用注入通道")
-        return OpsResult.Ok("$op 已提交${if (enable) "开启" else "关闭"}（系统回执：${out.ifBlank { "无输出" }.take(300)}）")
+
+        // 命令有回执 ≠ 开关真的变了：逐项回读系统设置里的真实状态
+        val probe: suspend () -> Int? = when (op) {
+            "wifi" -> { { globalInt("wifi_on") ?: shellSetting("global", "wifi_on") } }
+            "bluetooth" -> { { globalInt("bluetooth_on") ?: shellSetting("global", "bluetooth_on") } }
+            "airplane" -> { { globalInt("airplane_mode_on") ?: shellSetting("global", "airplane_mode_on") } }
+            "location" -> { { secureInt("location_mode") ?: shellSetting("secure", "location_mode") } }
+            else -> { { null } }
+        }
+        if (op == "nfc") {
+            return OpsResult.Ok("$op 已提交${if (enable) "开启" else "关闭"}（本机没有可回读的 NFC 状态值，" +
+                "请用控制中心确认；系统回执：${out.ifBlank { "无输出" }.take(200)}）")
+        }
+        val expect: (Int) -> Boolean = when (op) {
+            "location" -> { v -> if (enable) v != 0 else v == 0 }
+            else -> { v -> if (enable) v == 1 else v == 0 }
+        }
+        val actual = awaitValue(probe, expect)
+        return when {
+            actual != null && expect(actual) ->
+                OpsResult.Ok("$op 已${if (enable) "开启" else "关闭"}（回读开关值=$actual）")
+            actual != null ->
+                OpsResult.Fail("$op 命令已执行，但回读开关值=$actual，与期望${if (enable) "开启" else "关闭"}不一致；" +
+                    "可能被飞行模式/设备策略阻止")
+            else ->
+                // 命令有回执但读不到真实开关值：不能当成设置成功，只能如实报「无法确认」
+                OpsResult.Fail("$op 命令已执行，但本机读不到开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
+                    "请用控制中心确认；系统回执：${out.ifBlank { "无输出" }.take(200)}")
+        }
     }
 
     // --------------------------------------------------------------- settings
@@ -404,13 +592,23 @@ class DeviceOpsChannel(
         val value = args["value"] ?: return OpsResult.Fail("settings_op 的 set 需要 value")
         // 优先用注入命令（能写 secure/global，不改系统权限）；没有注入通道时退回 system 的可写授权
         val out = shell("settings put $ns $key ${quote(value)}")
-        if (out != null) return OpsResult.Ok("$ns/$key 已写入 $value")
-        if (ns == "system" && Settings.System.canWrite(context)) {
-            val ok = runCatching { Settings.System.putString(context.contentResolver, key, value) }.isSuccess
-            if (ok) return OpsResult.Ok("system/$key 已写入 $value")
+        val appWritten = if (out == null && ns == "system" && Settings.System.canWrite(context)) {
+            runCatching { Settings.System.putString(context.contentResolver, key, value) }.isSuccess
+        } else {
+            false
         }
-        return noChannel("写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
-            (if (ns == "system") "或先授予「修改系统设置」权限。" else "secure/global 只能走注入通道。"))
+        if (out == null && !appWritten) {
+            return noChannel("写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
+                (if (ns == "system") "或先授予「修改系统设置」权限。" else "secure/global 只能走注入通道。"))
+        }
+        // 写完回读：值没落下去就如实失败，不报「已写入」
+        var actual: String? = null
+        repeat(3) {
+            actual = settingString(ns, key)
+            if (actual == value) return OpsResult.Ok("$ns/$key 已写入 $value（回读一致）")
+            delay(300)
+        }
+        return OpsResult.Fail("$ns/$key 写入未生效：回读=${actual ?: "读不到"}，期望 $value")
     }
 
     // -------------------------------------------------------------- clipboard
@@ -467,8 +665,17 @@ class DeviceOpsChannel(
             }
             "delete" -> {
                 val out = shell("content delete --uri ${ALARM_URI} --where ${quote(where)}")
-                if (out.isNullOrBlank()) OpsResult.Fail("删除闹钟失败：注入通道不可用或时钟 Provider 拒绝")
-                else OpsResult.Ok("已删除 $hour:${"%02d".format(minute)} 的闹钟（${out.take(200)}）")
+                if (out.isNullOrBlank()) {
+                    OpsResult.Fail("删除闹钟失败：注入通道不可用或时钟 Provider 拒绝")
+                } else {
+                    // 删除命令有回执不等于行没了：回查一遍，还在就如实报失败
+                    val after = queryAlarms().orEmpty()
+                    if (after.contains("hour=$hour") && after.contains("minutes=$minute")) {
+                        OpsResult.Fail("已执行删除，但回查时钟 Provider 仍能看到 $hour:${"%02d".format(minute)} 的闹钟")
+                    } else {
+                        OpsResult.Ok("已删除 $hour:${"%02d".format(minute)} 的闹钟（回查已不存在；${out.take(200)}）")
+                    }
+                }
             }
             "update" -> {
                 val nh = intArg(args, "new_hour") ?: return OpsResult.Fail("alarm_manage update 需要 new_hour")
