@@ -99,6 +99,22 @@ android {
         }
     }
 
+    // CI 固定签名：HPA_DEBUG_KEYSTORE 指向还原好的 keystore 时，debug 变体显式用它签名。
+    // 不依赖 AGP 对默认路径（$HOME/.android 或 $ANDROID_SDK_HOME/.android）的推断——
+    // 推断失败时 AGP 会临时生成随机 keystore，导致 CI 包与本机包不能互相覆盖安装。
+    val ciDebugKeystore = System.getenv("HPA_DEBUG_KEYSTORE")
+    if (!ciDebugKeystore.isNullOrBlank() && file(ciDebugKeystore).exists()) {
+        signingConfigs {
+            // maybeCreate：AGP 通常已预建 "debug" 配置，这里只覆盖它的内容，避免重复创建报错
+            maybeCreate("debug").apply {
+                storeFile = file(ciDebugKeystore)
+                storePassword = System.getenv("HPA_DEBUG_KEYSTORE_PASS") ?: "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = System.getenv("HPA_DEBUG_KEYSTORE_PASS") ?: "android"
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.phoneagent"
         minSdk = 26
