@@ -205,6 +205,31 @@ jobs:
             echo "- ⚠️ 本次签名 $DIGEST 与本机 $EXPECTED 不一致，需先卸载旧版才能安装" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Assert bundled coding runtime
+        # beta(v0.2.9114) 曾把「没有 libnode.so / agent-host」的包发出去，编码功能直接不可用，
+        # 而 CI 全绿——因为当时只断言签名、没人看包内容。这里对最终 APK 硬断言：
+        # 缺任何一个就红，不靠人肉发现。
+        env:
+          APK: ${{ steps.ver.outputs.apk }}
+        run: |
+          LIST=$(unzip -l "$APK")
+          MISSING=0
+          for entry in "lib/arm64-v8a/libnode.so" \
+                       "lib/arm64-v8a/libicudata.so" \
+                       "lib/arm64-v8a/libicui18n.so" \
+                       "lib/arm64-v8a/libicuuc.so" \
+                       "assets/agent-host/host-stdio.js"; do
+            if ! printf '%s\n' "$LIST" | grep -q " $entry\$"; then
+              echo "::error title=APK 缺少编码运行时::$APK 里没有 $entry"
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" = "1" ]; then
+            echo "::error::APK 不完整：缺编码运行时文件，装了也用不了编码 Agent。"
+            exit 1
+          fi
+          echo "- ✅ 编码运行时完整：libnode + 3 个 libicu + assets/agent-host 均已在包内" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
