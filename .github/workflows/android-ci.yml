@@ -213,6 +213,7 @@ jobs:
           APK: ${{ steps.ver.outputs.apk }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+        timeout-minutes: 40
         run: |
           if [ -z "$GITEE_TOKEN" ]; then
             echo "未配置 GITEE_TOKEN，跳过 Gitee 发行版发布"
@@ -220,28 +221,60 @@ jobs:
             exit 0
           fi
           API="https://gitee.com/api/v5/repos/xkx1029/Phtomt"
+          AUTH="access_token=$GITEE_TOKEN"
+          APK_NAME=$(basename "$APK")
+          APK_SIZE=$(stat -c %s "$APK")
           BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n' \
             "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}")
-          # Gitee 的发行版响应里没有 upload_url（和 GitHub 不同），附件必须走
-          # /releases/{release_id}/attach_files 这个接口，先拿 id。
-          RESP=$(curl -sS -X POST "$API/releases" \
-            --data-urlencode "access_token=$GITEE_TOKEN" \
-            --data-urlencode "tag_name=$TAG" \
-            --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
-            --data-urlencode "body=$BODY" \
-            --data-urlencode "target_commitish=nightly" \
-            --data-urlencode "prerelease=true")
-          RID=$(echo "$RESP" | jq -r '.id // empty')
+          # 先按 tag 复用已有发行版：重跑或计数器重号时 POST /releases 会 400，
+          # 直接复用可以避免重复建发行版。
+          RID=$(curl -sS --max-time 60 "$API/releases/tags/$TAG?$AUTH" | jq -r '.id // empty')
           if [ -z "$RID" ]; then
-            echo "创建 Gitee 发行版未返回 id，尝试复用已存在的 tag：$RESP" >&2
-            RID=$(curl -sS "$API/releases/tags/$TAG?access_token=$GITEE_TOKEN" | jq -r '.id // empty')
+            # Gitee 的发行版响应里没有 upload_url（和 GitHub 不同），附件必须走
+            # /releases/{release_id}/attach_files 这个接口，所以先拿 id。
+            RESP=$(curl -sS --max-time 90 -X POST "$API/releases" \
+              --data-urlencode "access_token=$GITEE_TOKEN" \
+              --data-urlencode "tag_name=$TAG" \
+              --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+              --data-urlencode "body=$BODY" \
+              --data-urlencode "target_commitish=nightly" \
+              --data-urlencode "prerelease=true")
+            RID=$(echo "$RESP" | jq -r '.id // empty')
           fi
-          if [ -z "$RID" ]; then echo "拿不到 Gitee release id，发行版发布失败" >&2; exit 1; fi
-          UPLOADED=$(curl -sS -X POST "$API/releases/$RID/attach_files" \
+          if [ -z "$RID" ]; then
+            echo "::warning title=Gitee 发行版创建失败::tag=$TAG，响应=$RESP"
+            echo "- ⚠️ Gitee 发行版 \`$TAG\` 创建失败，附件未上传（GitHub Release 不受影响）。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Gitee 发行版 id=$RID（tag=$TAG）"
+          # 幂等：同名同大小附件已存在就不再重复传 71MB
+          if curl -sS --max-time 60 "$API/releases/$RID/attach_files?$AUTH" \
+             | jq -e --arg n "$APK_NAME" --argjson s "$APK_SIZE" \
+                 'map(select(.name == $n and .size == $s)) | length > 0' > /dev/null; then
+            echo "Gitee 附件已存在且大小一致：$APK_NAME（$APK_SIZE B），跳过上传"
+            echo "- ✅ Gitee 发行版 \`$TAG\` 附件已存在：\`$APK_NAME\`（$APK_SIZE B）" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # 71MB 从 GitHub runner 直传 Gitee 只有 ~100KB/s 量级（单次 10 分钟以上），
+          # 且 Gitee 附件不支持断点续传，所以只设时间上限、不做整体重试。
+          echo "开始上传 $APK_NAME（$APK_SIZE B）到 Gitee 发行版 $RID"
+          UPLOADED=$(curl -sS --http1.1 --connect-timeout 30 --max-time 1500 \
+            -X POST "$API/releases/$RID/attach_files" \
             -F "access_token=$GITEE_TOKEN" \
-            -F "file=@$APK")
+            -F "file=@$APK" \
+            -w '\n_TIME=%{time_total}s _SIZE=%{size_upload}B _SPEED=%{speed_upload}B/s\n') || true
           echo "$UPLOADED"
-          echo "$UPLOADED" | jq -e '.browser_download_url' > /dev/null
+          # 以服务端附件列表为准核对文件名与字节数（不看上传响应体）
+          ACTUAL=$(curl -sS --max-time 60 "$API/releases/$RID/attach_files?$AUTH" \
+            | jq -r --arg n "$APK_NAME" 'map(select(.name == $n)) | .[0].size // empty')
+          if [ "$ACTUAL" = "$APK_SIZE" ]; then
+            echo "Gitee 附件核验通过：$APK_NAME = $ACTUAL B"
+            echo "- ✅ Gitee 发行版 \`$TAG\`：\`$APK_NAME\`（$ACTUAL B）" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=Gitee 附件未传完::服务端大小=[${ACTUAL:-无}]，期望 $APK_SIZE B"
+            echo "- ⚠️ Gitee 发行版 \`$TAG\` 已创建，但 APK 附件未传完（GitHub Release 不受影响）。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
 
       - name: Persist version counter
         # 出包成功才把计数器推进一步（失败不烧号）。
