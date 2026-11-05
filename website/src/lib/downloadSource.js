@@ -45,6 +45,16 @@ function writeCache(payload) {
   }
 }
 
+/**
+ * 只读缓存里的择优结果，不发任何探测请求。
+ *
+ * 首页按钮用它复用下载页已经测好的源；版本对不上或已过期就返回 null，
+ * 调用方回落到默认直链——避免把别的版本的链接（或过期结论）套到这个版本上。
+ */
+export function cachedDownloadSource(version) {
+  return version ? readCache(String(version)) : null
+}
+
 /** 本站直链：静态站指向随站点发布的 apk，有后端时走运行时上传目录 */
 export function directApkUrl(release) {
   const file = release?.apk?.file

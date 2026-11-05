@@ -7,6 +7,7 @@ import AnnotatedScreen from '../components/AnnotatedScreen.vue'
 import CopyButton from '../components/CopyButton.vue'
 import { content } from '../api/client.js'
 import { downloadUrl, formatDate, relativeTime, sectionTone, channelLabel } from '../lib/format.js'
+import { cachedDownloadSource } from '../lib/downloadSource.js'
 
 const data = ref(null)
 const failed = ref(false)
@@ -16,6 +17,16 @@ const latest = computed(() => site.value.latest || null)
 const features = computed(() => (data.value?.features || []).slice(0, 6))
 const releases = computed(() => data.value?.releases || [])
 const entries = computed(() => data.value?.changelog || [])
+
+/**
+ * 首页主按钮：优先复用下载页测好的择优结果（只读 sessionStorage，不发任何请求、不阻塞首屏）。
+ * 没有缓存、版本对不上或已过期，就与改动前完全一致——走默认直链。
+ */
+const primaryUrl = computed(() => {
+  const cached = cachedDownloadSource(latest.value?.version)
+  if (cached?.url) return cached.url
+  return latest.value ? downloadUrl(latest.value, site.value) : '/download'
+})
 
 const QUICK_START = `# 1. 装好 APK 后，先授予无障碍与悬浮窗权限
 # 2. 设置 → 模型配置，填任意 OpenAI 兼容端点
@@ -64,7 +75,7 @@ onMounted(async () => {
             <div v-reveal="140" class="hero__actions">
               <a
                 class="btn btn--primary btn--lg"
-                :href="latest ? downloadUrl(latest, site) : '/download'"
+                :href="primaryUrl"
                 :target="latest && !latest.apk ? '_blank' : undefined"
                 :rel="latest && !latest.apk ? 'noopener noreferrer' : undefined"
               >
