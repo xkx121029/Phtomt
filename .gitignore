@@ -273,3 +273,6 @@ desktop.ini
 # 编码功能会 runtime-missing。仅豁免 jniLibs 目录下这批随包分发的 so。
 !app/src/main/jniLibs/**/*.so
 # <<< gitea-sync <<<
+
+# 局域网侧补挂 Gitee 用的 APK 缓存（tool/gitee_attach.py）
+.gitee-cache/
