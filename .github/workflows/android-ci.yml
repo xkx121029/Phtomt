@@ -31,7 +31,9 @@ jobs:
   build:
     name: Build + Release (${{ github.ref_name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 构建约 8 分钟；Gitee 附件跨境内网速只有 ~40KB/s，71MB 需 25~40 分钟，
+    # 这里给足余量，避免整条流水线被附件上传拖死。
+    timeout-minutes: 90
 
     env:
       # 渠道判定：手动触发用输入值，否则 nightly 分支 = dev，其余 = beta
@@ -213,7 +215,7 @@ jobs:
           APK: ${{ steps.ver.outputs.apk }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
-        timeout-minutes: 40
+        timeout-minutes: 45
         run: |
           if [ -z "$GITEE_TOKEN" ]; then
             echo "未配置 GITEE_TOKEN，跳过 Gitee 发行版发布"
@@ -224,8 +226,10 @@ jobs:
           AUTH="access_token=$GITEE_TOKEN"
           APK_NAME=$(basename "$APK")
           APK_SIZE=$(stat -c %s "$APK")
-          BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n' \
-            "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}")
+          # body 里带上 GitHub 直链：附件万一没传完，用户仍有可用下载入口。
+          BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n**APK**：https://github.com/%s/releases/download/%s/%s\n' \
+            "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}" \
+            "$GITHUB_REPOSITORY" "$TAG" "$APK_NAME")
           # 先按 tag 复用已有发行版：重跑或计数器重号时 POST /releases 会 400，
           # 直接复用可以避免重复建发行版。
           RID=$(curl -sS --max-time 60 "$API/releases/tags/$TAG?$AUTH" | jq -r '.id // empty')
@@ -258,7 +262,7 @@ jobs:
           # 71MB 从 GitHub runner 直传 Gitee 只有 ~100KB/s 量级（单次 10 分钟以上），
           # 且 Gitee 附件不支持断点续传，所以只设时间上限、不做整体重试。
           echo "开始上传 $APK_NAME（$APK_SIZE B）到 Gitee 发行版 $RID"
-          UPLOADED=$(curl -sS --http1.1 --connect-timeout 30 --max-time 1500 \
+          UPLOADED=$(curl -sS --http1.1 --connect-timeout 30 --max-time 2400 \
             -X POST "$API/releases/$RID/attach_files" \
             -F "access_token=$GITEE_TOKEN" \
             -F "file=@$APK" \
