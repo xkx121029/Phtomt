@@ -6,6 +6,7 @@ import { config, originOf } from './config.js'
 import { publicRouter, SITE_ROUTES } from './routes/public.js'
 import { downloadRouter } from './routes/download.js'
 import { updateRouter } from './routes/update.js'
+import { agentDocsRouter } from './routes/agentDocs.js'
 import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
@@ -40,6 +41,7 @@ app.use('/api', publicRouter)
 app.use('/api/ai', aiRouter)
 app.use('/api/download', downloadRouter)
 app.use('/api/update', updateRouter)
+app.use('/api/agent-docs', agentDocsRouter)
 app.use('/api/admin/ai', aiAdminRouter)
 app.use('/api/admin', adminRouter)
 

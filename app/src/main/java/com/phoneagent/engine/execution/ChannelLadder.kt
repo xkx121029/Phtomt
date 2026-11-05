@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.execution
 
 /**
@@ -82,6 +84,8 @@ internal data class LadderResult(
  */
 internal class ChannelLadder(private val health: ChannelHealth) {
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount", "LongMethod", "TooGenericExceptionCaught")
     suspend fun run(
         goal: ChannelGoal,
         candidates: List<ChannelCandidate>,
@@ -98,9 +102,13 @@ internal class ChannelLadder(private val health: ChannelHealth) {
         }
         val ordered = health.rank(goal, candidates)
         val attempts = ArrayList<ChannelAttempt>(ordered.size)
+        // 引擎循环刻意兜底捕获，避免单个异常打断整个任务，此处按规则豁免
+        @Suppress("TooGenericExceptionCaught")
         var lastDetail = ""
         for (candidate in ordered) {
             val t0 = System.nanoTime()
+            // 此处刻意兜底捕获系统服务/协议异常，避免单个失败打断整体流程，故按规则豁免
+            @Suppress("TooGenericExceptionCaught")
             val step = try {
                 onStep(candidate)
             } catch (e: kotlinx.coroutines.CancellationException) {

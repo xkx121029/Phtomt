@@ -1,0 +1,10 @@
+#!/bin/sh
+# 身份闸门：禁止任何非本仓库所有者身份的提交。
+# trae-solo-agent 曾在部分历史提交里冒充 Committer，这里直接拦截。
+if [ "$GIT_COMMITTER_EMAIL" = "solo-agent@trae.ai" ] || [ "$GIT_COMMITTER_NAME" = "trae-solo-agent" ]; then
+    echo "[identity-guard] 检测到冒充提交身份：${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>" >&2
+    echo "[identity-guard] 请以 xkx121029 <xkx121029@qq.com> 提交，本次提交已被阻止。" >&2
+    exit 1
+fi
+
+exit 0

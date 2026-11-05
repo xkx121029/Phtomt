@@ -1,4 +1,8 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.coding.agent
+
+import java.util.Locale
 
 /**
  * JSON-lines 事件 → 消息列表变更的纯逻辑（Superagent 融合 Phase 7 可测性抽取）。
@@ -52,6 +56,7 @@ internal object CodingEventReducer {
      * @param tool          approval_request 的工具名（作为卡片正文）
      * @param code          host_exited 的退出码
      * @param argsPreview   tool_start 的参数摘要（AgentClient 侧由 org.json 渲染后传入）
+     * @param outputPreview tool_end 的执行结果摘要（回填给 AI 的那段输出）
      * @param durationMs    tool_end / subagent_end / done 的耗时
      * @param subagentId    子 agent 事件的子任务 id
      * @param subagentLabel subagent_start 的任务名
@@ -59,6 +64,8 @@ internal object CodingEventReducer {
      * @param iteration     iteration 事件的轮次序号
      * @param errorDetail   subagent_end 的失败原因
      */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
     fun apply(
         type: String,
         messages: List<ChatMessage>,
@@ -73,6 +80,7 @@ internal object CodingEventReducer {
         tool: String = "",
         code: Int = 0,
         argsPreview: String = "",
+        outputPreview: String = "",
         durationMs: Long = 0L,
         subagentId: String = "",
         subagentLabel: String = "",
@@ -121,7 +129,7 @@ internal object CodingEventReducer {
                 toolCallId = callId.ifEmpty { null },
             ),
             assistantKey = null,
-            phase = "执行 ${name.ifEmpty { "工具" }}",
+            phase = "执行 ${CodingToolNames.label(name)}",
         )
 
         // agent 对每次工具调用都广播一次审批结论。approved=false 时把原因写进卡片，
@@ -148,6 +156,8 @@ internal object CodingEventReducer {
                     it[idx] = it[idx].copy(
                         toolOk = ok,
                         durationMs = durationMs.takeIf { d -> d > 0 },
+                        // 结果摘要就是 host 回填给 AI 的 outputPreview：展开卡片不只看参数，也看结果
+                        outputPreview = outputPreview.takeIf { p -> p.isNotBlank() } ?: it[idx].outputPreview,
                     )
                 }
             } else {
@@ -158,7 +168,8 @@ internal object CodingEventReducer {
 
         "approval_request" -> Result(
             messages = messages + ChatMessage(
-                key = "p_$callId", role = "approval", approvalCallId = callId, text = tool,
+                key = "p_$callId", role = "approval", approvalCallId = callId,
+                text = CodingToolNames.label(tool),
             ),
             assistantKey = assistantKey,
         )
@@ -166,19 +177,20 @@ internal object CodingEventReducer {
         // —— 并行子 agent ——
         // 子 agent 的进度单独一张卡：主界面能同时看到几个子任务各自跑到哪、谁在干。
         "subagent_start" -> {
-            val who = listOfNotNull(subagentPersona.ifEmpty { null }, subagentLabel.ifEmpty { null }).joinToString(" · ")
+            val who = listOfNotNull(subagentPersona.ifEmpty { null },
+                subagentLabel.ifEmpty { null }).joinToString(" · ")
             Result(
                 messages = messages + ChatMessage(
                     key = "s_${subagentId}_${nextId()}",
                     role = "subagent",
-                    toolName = subagentLabel.ifEmpty { subagentId },
+                    toolName = subagentLabel.ifEmpty { "子任务" },
                     text = promptPreview,
                     subagentId = subagentId,
                     subagentLabel = subagentLabel,
                     subagentPersona = subagentPersona.ifEmpty { null },
                 ),
                 assistantKey = assistantKey,
-                phase = if (who.isEmpty()) "子 agent" else "子 agent $who",
+                phase = if (who.isEmpty()) "子任务" else "子任务 $who",
             )
         }
 
@@ -231,7 +243,7 @@ internal object CodingEventReducer {
             assistantKey = null,
             busy = false,
             conn = ConnState.DISCONNECTED,
-            error = "agent host exited (code $code)，正在重连…",
+            error = "编码宿主已退出（代码 $code），正在重连…",
             hostExited = true,
             phase = "",
         )
@@ -253,8 +265,8 @@ internal object CodingEventReducer {
 
     private fun formatDuration(ms: Long): String = when {
         ms <= 0 -> "—"
-        ms < 1000 -> "${ms}ms"
-        ms < 60_000 -> String.format("%.1fs", ms / 1000.0)
-        else -> "${ms / 60_000}m${(ms % 60_000) / 1000}s"
+        ms < 1000 -> "${ms} 毫秒"
+        ms < 60_000 -> String.format(Locale.ROOT, "%.1f 秒", ms / 1000.0)
+        else -> "${ms / 60_000} 分 ${(ms % 60_000) / 1000} 秒"
     }
 }

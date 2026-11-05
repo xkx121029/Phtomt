@@ -41,6 +41,17 @@ project(":provider").projectDir = file("provider")
 include(":provider-api")
 project(":provider-api").projectDir = file("provider-api")
 
+// 编码环境组件：独立 APK，targetSdk 28 承载 PRoot + Alpine（Android 10+ 的 W^X
+// 只允许 targetSdk < 29 的应用 execve 私有目录文件，主应用 targetSdk 36 做不到）。
+// 产物与 Provider 一样作为静态资产提交在 app/src/{debug,release}/assets/env/ 下，
+// 改了 env 后执行 .\gradlew.bat :app:syncEnvAssets 同步。
+include(":env")
+project(":env").projectDir = file("env")
+
+// 编码环境跨进程契约（IEnvProvider AIDL）：主应用与 env 组件共享同一份
+include(":env-api")
+project(":env-api").projectDir = file("env-api")
+
 // Shizuku 客户端库本地源码集成（vendor 自 https://github.com/RikkaApps/Shizuku-API，
 // 主仓库 https://github.com/RikkaApps/Shizuku 保留在 third_party/shizuku 作参考）。
 // 原依赖 dev.rikka.shizuku:api / provider（Maven）已移除，改用以下四个本地模块：

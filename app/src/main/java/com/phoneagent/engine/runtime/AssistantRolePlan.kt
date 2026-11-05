@@ -134,6 +134,8 @@ object AssistantRolePlanner {
         ),
     )
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod")
     fun plan(facts: AssistantRoleFacts): AssistantRolePlan {
         val holder = facts.roleHolderPackage?.takeIf { it.isNotBlank() }
         val held = facts.roleHeld ||

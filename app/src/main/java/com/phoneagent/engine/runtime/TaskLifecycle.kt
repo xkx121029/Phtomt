@@ -26,10 +26,13 @@ import kotlinx.coroutines.launch
  * 执行体（run/runInner 主循环）仍留 AgentEngine（重构批次 8 随 DecisionLoop 走），
  * 经 [runTask] 钩子接入；异常复位经 [safeReset] 钩子回调引擎。
  *
- * Superagent 融合 Phase 4：任务入执行体前先经 [router] 分流（普通对话/编码委托/原链路），
- * 分流决策由 AgentEngine 组装注入，本类不感知三形态的执行细节；Coding/Chat 决策自带执行体，
+ * Superagent 融合 Phase 4：任务入执行体前先经 [router] 分流（普通对话 / 原链路），
+ * 分流决策由 AgentEngine 组装注入，本类不感知形态的执行细节；Chat 决策自带执行体，
  * 在队列 worker 的 job 协程内挂起执行，保持"同一时刻只允许一个任务"的语义。
+ * 编码不经这里：Coding 页直接驱动编码 agent。
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class TaskLifecycle(
     private val appContext: Context,
     private val settings: AppSettings,
@@ -43,7 +46,6 @@ internal class TaskLifecycle(
     /**
      * 任务路由（Superagent 融合 Phase 4）：由 AgentEngine 组装注入。
      * 返回 [RouteDecision.Agent] 时走原 runTask 链路，行为与迁移前完全一致。
-     *
      * 第二个参数是「对话页提交」标记：为 true 时路由必须只作答、不进任何执行体
      * （对话模式不开启任务执行链路，见 [start]）。
      */
@@ -155,13 +157,12 @@ internal class TaskLifecycle(
 
     /**
      * 按路由决策分发执行体（Superagent 融合 Phase 4）：
-     * Coding/Chat 决策的执行体在本协程（队列 worker 的 job 协程）内挂起执行——
+     * Chat 决策的执行体在本协程（队列 worker 的 job 协程）内挂起执行——
      * 不占用 runTask 的 ReAct 主循环，但同样维持 worker 单任务语义（后续任务排队等待）；
      * Agent 决策走原 runTask 链路，行为不变。
      */
     private suspend fun dispatch(task: String, plan: TaskPlan?, chatOnly: Boolean = false) {
         when (val decision = router(task, chatOnly)) {
-            is RouteDecision.Coding -> decision.run()
             is RouteDecision.Chat -> decision.run()
             RouteDecision.Agent -> runTask(task, plan)
         }

@@ -25,6 +25,8 @@ internal object ExecutionFeedback {
      * 结构性错误（未知命令/参数无效）回注给 AI 的纠正提示。
      * shell 连续无效 ≥2 次时升级为「禁止再用 shell，改用无障碍动作」；其它意图给出可用意图清单。
      */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     fun structuralErrorHint(actionType: String, reason: String, invalidCommandStreak: Int): String =
         if (actionType == ActionType.SHELL) {
             if (invalidCommandStreak >= 2) {

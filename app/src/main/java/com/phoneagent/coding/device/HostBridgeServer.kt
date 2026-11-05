@@ -2,6 +2,9 @@ package com.phoneagent.coding.device
 
 import android.content.Context
 import android.os.Build
+import com.phoneagent.coding.env.CodingEnvBootstrap
+import com.phoneagent.coding.env.CodingEnvClient
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -23,13 +26,28 @@ import java.util.concurrent.Executors
  * apps_list / ui_dump / ui_action / screen_* / notifications_* / overlay_*）——那部分
  * 能力要整合进 HPA（happy_phone agent），已整体移除。移植进 HPA 后一期进一步禁用了
  * browser_* / userscripts / logcat_read / sqlite_*（HPA 有独立的浏览器体系，工具箱
- * 也由主工程承担），这里只保留：工作区文件、编辑器、预览。
+ * 也由主工程承担），这里只保留：工作区文件、编辑器、预览、编码环境（env_*）。
  */
 class HostBridgeServer(
     private val context: Context,
     /** 期望的共享密钥（与 CodingAgentConfig.token 一致）。入站反向请求必须带上它。 */
     private val expectedToken: () -> String = { "" },
+    /** 编码环境门户；宿主没接入时为 null，env_* 方法会明确报错而不是静默失败 */
+    private val envClientProvider: () -> CodingEnvClient? = { null },
 ) {
+
+    private companion object {
+        /** env 任务的等待窗口（秒）：与 Node 侧 coding_env 工具的默认值保持一致 */
+        const val DEFAULT_ENV_TIMEOUT_SEC = 1_800L
+        const val MIN_ENV_TIMEOUT_SEC = 30L
+        const val MAX_ENV_TIMEOUT_SEC = 3_600L
+        const val MILLIS_PER_SEC = 1_000L
+    }
+
+    /** 环境编排器；首次用到时才创建，避免每个进程启动都多一个对象 */
+    private val envBootstrap by lazy {
+        envClientProvider()?.let { CodingEnvBootstrap(context, it) }
+    }
 
     /** 处理器可能阻塞（读写文件、等界面拉起），绝不能占着 stdout 读线程。 */
     private val pool = Executors.newCachedThreadPool { r ->
@@ -91,8 +109,24 @@ class HostBridgeServer(
         "workspace_create" -> DeviceWorkspace.create(context, params.optString("path"))
         "editor_open" -> editorOpen(params)
         "preview_open" -> previewOpen(params)
-        else -> throw IllegalArgumentException("unknown host method: $method")
+        "env_status" -> env { it.status(refresh = true) }
+        "env_setup" -> env { it.setup(timeoutSec(params)) }
+        "env_build" -> env { it.build(params.optString("task", "assembleDebug"), timeoutSec(params)) }
+        "env_cancel" -> env { it.cancel() }
+        else -> throw IllegalArgumentException("未知的宿主方法：$method")
     }
+
+    /** env_* 统一入口：桥处理器跑在后台线程池里，这里用 runBlocking 把挂起流程变成一次阻塞调用 */
+    private fun env(block: suspend (CodingEnvBootstrap) -> JSONObject): Any {
+        val bootstrap = envBootstrap
+            ?: error("编码环境未接入：宿主没有提供 CodingEnvClient")
+        return runBlocking { block(bootstrap) }
+    }
+
+    /** 秒 → 毫秒，并夹在两端之间：过短会把下载误判成失败，过长又让 Agent 白等 */
+    private fun timeoutSec(params: JSONObject): Long =
+        params.optLong("timeoutSec", DEFAULT_ENV_TIMEOUT_SEC)
+            .coerceIn(MIN_ENV_TIMEOUT_SEC, MAX_ENV_TIMEOUT_SEC) * MILLIS_PER_SEC
 
     /**
      * 能力表。这里是纯功能开关，Node 侧据此决定降级还是直连。
@@ -109,6 +143,8 @@ class HostBridgeServer(
         caps.put("workspace")
         caps.put("editor")
         caps.put("preview")
+        // 编码环境：能经 AIDL 驱动独立组件的 PRoot 工具链（status/setup/build）
+        if (envBootstrap != null) caps.put("env")
 
         return JSONObject()
             .put("platform", "android")

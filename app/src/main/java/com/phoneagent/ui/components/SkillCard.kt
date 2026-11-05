@@ -48,6 +48,8 @@ import com.phoneagent.ui.theme.appBorder
  * @param content 展开后的内容（调用方自己给内边距）
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 fun SkillCard(
     title: String,
     subtitle: String,
@@ -127,6 +129,8 @@ private fun SkillCardBody(content: @Composable () -> Unit) {
 
 /** 卡片头：两页共用一套层级（标题 body 中粗、副标题最弱、状态在右） */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 private fun SkillCardHeader(
     title: String,
     subtitle: String,

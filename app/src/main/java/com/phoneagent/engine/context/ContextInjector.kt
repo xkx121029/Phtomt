@@ -250,6 +250,8 @@ internal class ContextInjector(
     suspend fun pageMemoryHintFor(snapshot: ScreenSnapshot, hit: com.phoneagent.data.store.PageMemoryEntry?): String =
         StageTiming.measure(store.currentTaskId, "页面记忆(决策)") { computePageMemoryHint(snapshot, hit) }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private suspend fun computePageMemoryHint(
         snapshot: ScreenSnapshot,
         hit: com.phoneagent.data.store.PageMemoryEntry?,

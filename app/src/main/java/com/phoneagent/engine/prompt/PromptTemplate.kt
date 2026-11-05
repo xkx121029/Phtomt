@@ -55,6 +55,8 @@ data class PromptVars(
     val memory: String = "",
     /** 命中的经验规则（见 RuleScoper） */
     val evolvedRules: String = "",
+    /** 命中的云端执行文档正文（多篇以 Markdown 二级标题分隔） */
+    val docText: String = "",
 
     // ---- 记忆提炼区块 ----
     val outcome: String = "",
@@ -91,6 +93,7 @@ data class PromptVars(
         "context_hint" to contextHint,
         "memory" to memory,
         "evolved_rules" to evolvedRules,
+        "doc_text" to docText,
         "last_result" to lastResult,
 
         "outcome" to outcome,

@@ -94,6 +94,8 @@ internal class LoopGuard(
      * @param fromLocal true = 本步由端侧决策（累计 streak）；false = 云端决策（清零 streak）
      * @return true = 本次刚好达到阈值且尚未提醒过，应提醒用户一次（每任务至多一次）
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     internal fun onLocalDecision(fromLocal: Boolean): Boolean {
         if (!fromLocal) {
             localDecisionStreak = 0
@@ -151,6 +153,8 @@ internal class LoopGuard(
      * 长时间无进展是否需要提醒：每任务至多提醒一次；一个已完成步骤都没有时不提醒
      * （任务刚起步还没到"卡住"的程度，提醒只会打扰用户）。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     internal fun shouldNotifyNoProgress(completedSteps: Int): Boolean {
         if (completedSteps <= 0 || noProgressNotified) return false
         if (clock() - lastProgressAt <= EngineLimits.NO_PROGRESS_MS) return false

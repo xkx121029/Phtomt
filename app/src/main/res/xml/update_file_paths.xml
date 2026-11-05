@@ -9,4 +9,6 @@
     <files-path name="internal-updates" path="updates/" />
     <!-- 权限 Provider 安装包：从 assets 解到 cache/provider 后交给系统安装器 -->
     <cache-path name="provider" path="provider/" />
+    <!-- 编码环境组件安装包：从 assets 解到 cache/env 后交给系统安装器 -->
+    <cache-path name="env" path="env/" />
 </paths>

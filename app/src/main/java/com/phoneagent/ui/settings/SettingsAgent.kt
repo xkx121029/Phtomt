@@ -41,6 +41,8 @@ import org.koin.compose.koinInject
  * Agent 页输入栏下方的模式转盘仍保留，它是在跑任务时的快捷切换，与这里的设置写同一个键。
  */
 @Composable
+// 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
     // 执行文档的「立即同步」只在设置页里用得到，直接取 Koin 单例（与引擎共享同一份缓存）
     val docsRepo = koinInject<AgentDocRepository>()

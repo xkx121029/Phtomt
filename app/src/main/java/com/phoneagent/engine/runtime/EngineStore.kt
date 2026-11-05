@@ -69,6 +69,16 @@ internal class EngineStore {
     private val _clarifyEvents = MutableStateFlow<List<ClarifyAnswered>>(emptyList())
     val clarifyEvents: MutableStateFlow<List<ClarifyAnswered>> get() = _clarifyEvents
 
+    /**
+     * 本对话内的纯对话问答（合并形态）：Agent 页把「用户问 → AI 答」画成气泡。
+     *
+     * 不能复用 [conversation]：那里 user 角色存的是发给模型的完整决策 prompt，
+     * 直接铺到 Agent 页等于把内部提示词泄露给用户（详见 AgentTimelineMapper 的说明）。
+     */
+    private val _chatTurns = MutableStateFlow<List<ChatTurnEvent>>(emptyList())
+    val chatTurns: MutableStateFlow<List<ChatTurnEvent>> get() = _chatTurns
+    val chatTurnSeq = AtomicLong(0L)
+
     /** 连续 say 计数：达到上限即要求 AI 开始真正执行 */
     @Volatile
     var sayStreak = 0
@@ -211,15 +221,7 @@ internal class EngineStore {
     /** 本次计划的预计总步数（无计划则为 0，表示未知） */
     var totalPlannedSteps = 0
 
-    // ---- 主动反馈状态（v2.2.1 八）----
-    /** 最近一次"步骤生效"的时间戳，用于检测长时间无进展 */
-    var lastProgressAt = 0L
-    /** 5 分钟无进展提醒是否已发（每个任务一次） */
-    var noProgressNotified = false
-    /** 连续由端侧决策的次数，用于"疑似死循环"检测 */
-    var localDecisionStreak = 0
-    /** 死循环提醒是否已发（每个任务一次） */
-    var localLoopNotified = false
+    // ---- 主动反馈状态（v2.2.1 八）：连续端侧决策次数已收口到 [LoopGuard]（重构阶段 B2） ----
 
     // ---- 第 9 层：用户协作 ----
     private val _userHintRequest = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -304,12 +306,6 @@ internal class EngineStore {
     var sensitiveTakeoverStreak = 0
     /** 连续「决策链路异常」次数，达到上限即收尾 */
     var decisionFailureStreak = 0
-    /** 上一次自动点击的广告关闭目标 key（centerX/20:centerY/20），供连续命中护栏使用 */
-    @Volatile
-    var lastAdClickTargetKey: String? = null
-    /** 同一广告关闭目标被自动点击的连续次数 */
-    @Volatile
-    var adAutoClickStreak = 0
     /** 最近一次 shell 命令输出（查询类命令回传给 AI 上下文） */
     var lastShellOutput: String = ""
 
@@ -352,3 +348,16 @@ internal class EngineStore {
     @Volatile
     var lastVisualCoordinate: Pair<Int, Int>? = null
 }
+
+/**
+ * 一条对话问答（问题 + 回答），供合并形态的 Agent 页出气泡。
+ *
+ * 放在顶层而不是 [EngineStore] 内：引擎与 ViewModel 把它们作为公开流类型暴露出去，
+ * 嵌套在 internal 类里会让「public 属性暴露 internal 类型」编译不过。
+ */
+data class ChatTurnEvent(
+    val id: Long,
+    val at: Long,
+    val question: String,
+    val answer: String,
+)

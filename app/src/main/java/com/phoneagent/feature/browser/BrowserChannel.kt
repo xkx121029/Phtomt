@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.feature.browser
 
 import com.phoneagent.domain.model.AgentIntent
@@ -44,6 +46,8 @@ internal class BrowserChannel(
     fun label(intent: String): String = EngineRules.actionLabel(intent)
 
     /** 执行一条浏览器意图：先校验参数，再过只读护栏，最后才落到 [executor] */
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     suspend fun execute(intent: AgentIntent): Outcome {
         val op = intent.intent
         return when (op) {

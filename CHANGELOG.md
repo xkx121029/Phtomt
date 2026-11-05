@@ -34,8 +34,82 @@
 
 ## [未发布]
 
+### 构建（可选模块）
+
+- **可选构建模块开关**（`config/build-modules.properties` + 根 `build.gradle.kts`）：Android 平台构建、Vue 开发服务器、Git 工具链、GitHub 关联与同步四类模块按开关注册，默认不进入 `build` / `check` / `assemble` 任务图；禁用模块保留同名占位任务并正常退出（退出码 0）
+- **汇总入口**：`buildModules` 输出开关 / 前置条件 / 任务状态表，`buildModulesCheck` 只校验已启用模块；非法开关值在配置阶段给出中文错误
+- **`androidPackage`**：依赖 `:app:assembleDebug` 后按时间戳归档到 `build/apk-archive`，并计入版本号自增判断；`app/build/outputs` 下的原始产物位置不变
+- **Vue / Git / GitHub 模块**：`vueCheck` / `vueInstall` / `vueDev` / `vueBuild`、`gitCheck` / `gitStatus` / `gitInfo`、`githubCheck` / `githubLink` / `githubSync`（推送默认演练，需 `-PconfirmSync=true`）
+- 配置说明、启用/禁用验证矩阵见 `docs/build-modules.md`
+
+### 官网
+
+- **GitHub Pages 静态站回连主站**：`site-pages.yml` 构建时注入 `VITE_API_BASE`（默认 `https://hpa.linshuxu.us.kg`，可用仓库变量 `SITE_API_BASE` 覆盖），更新日志、发布数据与 AI 问答改为实时读取主站接口，不再是构建期快照
+- **静态构建分级**：`client.js` 拆出 `hasRemoteApi` / `staticOnly`，只有「静态导出且未配置主站地址」才禁用写操作与问答；接口不可达（网络失败 / 5xx）时保留快照兜底
+- **跨域**：主站需配置 `CORS_ORIGINS=https://xkx121029.github.io`，`API.md` 与 `.env.example` 已补说明
+- **GitHub Releases 同步**：后台发布带 APK 的版本时，把同一安装包异步上传到对应 tag 的 Release（同名附件先删后传，beta/dev/nightly 标为 pre-release），结果回写版本的 `github` / `github_error` 字段；未配置 `GITHUB_REPO` / `GITHUB_TOKEN` 时完全跳过
+
+### 新增
+
+- **工作台形态：操控 + 对话合并为一个 Agent，编码独立为 Coding**（`设置 → 选项卡 → 工作台形态`，默认合一）
+  - 分开显示：操控 / 对话 / 编码各占一个 Tab（原行为不变）；合为一个 Agent：对话 Tab 收进 Agent 页，
+    编码仍是独立的 Coding 页（它有自己的一套文件、环境与会话）
+  - 合并形态下，Agent 页提交的每句话先交由**云端**判定意图（新增 `IntentRouter`，只输出
+    `agent` / `chat`）：纯对话直接作答并以问答气泡留在时间线，其余走操控规划流；
+    判定失败或无明确结果统一降级为操控，避免任务卡死
+  - 提问先上屏（气泡先显示「正在回答…」再回填），提交后不会退回空态
+  - 词表计分路由（`TaskKindDetector.scores`）移除，词表只保留提示词裁块用途
+- **编码环境：设备内构建 APK 的完整工具链**（`设置 → 编码 → 环境`）
+  - 新增伴生应用 `:env`（`com.phoneagent.env`，targetSdk 28）承载 PRoot + Alpine 根文件系统。
+    Android 10 起系统只允许 targetSdk < 29 的应用 execve 私有目录下的程序，主应用（targetSdk 36）
+    做不到，因此能力放独立组件，主应用经 `:env-api` 的 AIDL 契约（`IEnvProvider` / `IEnvCallback`）驱动
+  - **一键安装**：Linux 根文件系统 → JDK 17（Adoptium aarch64）→ Gradle 发行版 → Android cmdline-tools
+    → platform / build-tools → aapt2 兼容层，全部从官方源下载并缓存，重复安装不重复下载
+  - **自动识别工程版本**：读 `gradle-wrapper.properties` 的 `distributionUrl`；没有 wrapper 时按 AGP
+    版本查官方配套表（8.0–8.4 / 9.x 全覆盖，未知版本按主版本落到 8.13 或 9.6.0 兜底）。
+    `compileSdk` / `buildToolsVersion` 同样从模块脚本解析，不需要手填
+  - **设备内 `assembleDebug`**：环境组件一次只跑一个任务，安装与构建共用同一套步骤进度与日志回调，
+    可在页面里取消
+  - 两处硬约束在代码里显式处理：环境组件是另一个 uid，读不到主应用 filesDir，私有工作区会先镜像到
+    `/storage/emulated/0/happyac-build/<工程名>`；aapt2 只有 x86_64 版，arm64 设备上由
+    `qemu-x86_64` + Ubuntu base 的 glibc 转译执行（`android.aapt2FromMavenOverride` 指向包装脚本）
+- **设备内编码：一句 `coding_env` 打通整套环境**
+  - 新增 `CodingEnvBootstrap`：把「装环境组件 → 所有文件访问 → 组件存储授权 → 工具链安装 → 构建」固化成
+    一条可重复执行的流程。每次只推进到第一个需要用户动手的环节并拉起对应系统页面、返回
+    `needsUserAction`；用户办完重跑即可，已完成的步骤不会重复执行
+  - `HostBridgeServer` 新增 `env_status` / `env_setup` / `env_build` / `env_cancel` 四个桥方法，
+    `host_capabilities` 在有环境客户端时声明 `env`；上游 `agent-core` 新增 `coding_env` 工具
+    （`action: status|setup|build|cancel`），返回 `stage` / `ready` / 缺口清单 / 任务进度 /
+    日志尾巴 / 下一步该做什么
+  - **内置说明 skill `happyac-coding`**：`assets/skills` 随包分发 `skill.json` + `prompt.md`
+    （环境组成、四个 action、用户亲手三步、工作区与共享镜像、产物路径、mksh 能做什么、故障对照表、
+    汇报规则），首次启动按版本号落盘到 `filesDir/skills`，Agent 用 `list_skills` →
+    `activate_skill` 按需注入系统提示
+  - 上游 `skills.js` 支持从 `prompt.md` 读提示词（`skill.json` 内 `prompt` 仍优先），
+    补 `coding_env` 输出格式与提示词回落两组单测
+- **debug 专有：设备日志传输到调试电脑**（全部位于 `src/debug`，release 包不合并、零代码零体积）
+  - **自动启动与连接检测**：debug Manifest 注册 `DebugLogBridgeInitializer`（ContentProvider），
+    进程启动即拉起 `DebugLogBridge`；`UsbDebugWatcher` 监听 USB 状态广播（`connected` + `adb`）的
+    0→1 上升沿，调试端 TCP 首次接入再兜一层（`TransferTrigger` 只在上升沿触发，反复广播/多客户端不重复触发）。
+    USB 与无线调试共用 `adb forward tcp:19090 tcp:19090`，服务端只绑回环地址
+  - **两类日志同传**：历史日志 = 追加流水 `LogJournal`（跨重启、不裁剪）+ 引擎 800 条环形缓冲 +
+    `DebugRecordsStore` 快照，三源去重后按时间戳正序全量发送（不截断）；实时日志从历史末尾续号，
+    AppLog sink 与引擎日志流双来源采集（引擎接管 sink 后自动卸载自身挂接，`CrossSourceDeduper` 防镜像重复），
+    入队即发、10ms 推进，实测端到端延迟 <100ms
+  - **完整性与顺序**：历史编号 1..N、实时 N+1 起单调递增；`ack` 累计确认、`nak <expect>` 缺口重传、
+    600ms 超时重发（单包最多 4 次）、窗口 128；每连接独立会话，重连即从 seq=1 重新全量重发，不需要断点续传状态。
+    期间进度、`历史日志传输完成`、`传输结束` 全部写入 `AppLog`（tag `LogTrans`），既进 logcat
+    也作为普通日志推给电脑端
+  - **电脑端接收脚本** `tool/hpa_log_receiver.py`：序号连续性校验、缺口 `nak`、逐条 `ack`、
+    历史进度与完成提示、实时延迟统计（按 hello 的设备时刻校准两端时钟）、断线自动重连、日志按序落盘
+  - 新增 `testDebug` 单测 31 例：连接触发边沿、5000 条历史完整性、实时延迟 <100ms、
+    双客户端并发、断线重连全量重发、序号/重传/窗口语义、三源合并去重与 JSON 往返、追加流水跨读取一致
+
 ### 变更
 
+- **detekt 基线按 HEAD 现状重新生成**：随包基线还是旧函数名/旧签名（如 `SettingsAiModels` 而已拆成
+  `AiModelsPage`），71 条存量问题因此一直不在豁免名单里、`detekt` 闸门实际是红的。按当前源码重生成后
+  条目 1543 → 1574，此后仍按「只减不增」执行——本次新增的环境代码本身零豁免条目
 - **拉取模型改为勾选入库**：端点里点「拉取模型」拿到服务端列表后直接弹勾选浮层（默认勾选全部新增项，
   已入库的置灰不可选），只有勾中的模型才写进模型库。原先静默全量入库，一个端点几十上百个模型会
   立刻把模型库塞爆、挑不动

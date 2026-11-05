@@ -205,6 +205,9 @@ dependencies {
     // 与 :provider 共享同一份定义，序列化两端严格一致
     implementation(project(":provider-api"))
 
+    // 编码环境跨进程契约（IEnvProvider AIDL）：与 :env 组件共享同一份定义
+    implementation(project(":env-api"))
+
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)
     implementation(libs.mlkit.common)
@@ -377,3 +380,47 @@ verifyProviderAssets.configure { mustRunAfter(syncProviderDebug, syncProviderRel
 // （两个任务共同读写 src/{debug,release}/assets/provider，Gradle 无法自动推断顺序）
 tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(syncProviderDebug) }
 tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncProviderRelease) }
+
+// ---------------------------------------------------------------------------
+// 编码环境组件 APK（assets 内静态资产）。
+// 构建时由 :app:syncEnvDebug / syncEnvRelease 从 :env 产物同步到
+// src/{debug,release}/assets/env/ 下，属生成物、不进仓库（见 .gitignore）；
+// 需要单独刷新时手动执行：.\gradlew.bat :app:syncEnvAssets
+// 不做源码指纹闸门：env 的 AIDL 契约由 env-api 模块参与主应用编译，
+// 契约不同步会直接编译失败；APK 落后只影响运行时能力（install/build 由版本号兜底）。
+// ---------------------------------------------------------------------------
+val envBuildDir = project(":env").layout.buildDirectory
+
+val syncEnvDebug by tasks.registering(Copy::class) {
+    group = "env"
+    description = "把最新 env-debug.apk 同步进主应用 debug assets（构建产物，不提交）"
+    dependsOn(":env:assembleDebug", ":env:writeEnvVersion")
+    from(envBuildDir.file("outputs/apk/debug/env-debug.apk")) { rename { "env.apk" } }
+    from(envBuildDir.file("env/version.txt"))
+    into(file("src/debug/assets/env"))
+}
+
+val syncEnvRelease by tasks.registering(Copy::class) {
+    group = "env"
+    description = "把最新 env-release.apk 同步进主应用 release assets（构建产物，不提交）"
+    if (rootProject.file("app/upload-signing.properties").exists()) {
+        dependsOn(":env:assembleRelease", ":env:writeEnvVersion")
+        from(envBuildDir.file("outputs/apk/release/env-release.apk")) { rename { "env.apk" } }
+    } else {
+        // 未配置上传密钥时回落 debug 包（本地 release 构建同样用 debug 证书）
+        dependsOn(":env:assembleDebug", ":env:writeEnvVersion")
+        from(envBuildDir.file("outputs/apk/debug/env-debug.apk")) { rename { "env.apk" } }
+    }
+    from(envBuildDir.file("env/version.txt"))
+    into(file("src/release/assets/env"))
+}
+
+tasks.register("syncEnvAssets") {
+    group = "env"
+    description = "同步两个变体的编码环境组件 APK 到主应用 assets（env 改动后手动执行）"
+    dependsOn(syncEnvDebug, syncEnvRelease)
+}
+
+// 同一次调用里跑 syncEnvAssets + assemble* 时，assets 合并必须等同步落盘完成
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(syncEnvDebug) }
+tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncEnvRelease) }

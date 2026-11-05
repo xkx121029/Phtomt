@@ -155,6 +155,8 @@ data class A11yEndpoint(
 
 /** 无障碍端点白名单（18 项）：自由模式下 AI 可调用的底层接口全集，唯一定义点。 */
 object A11yEndpoints {
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     val all: List<A11yEndpoint> = listOf(
         A11yEndpoint("click", listOf("x", "y"), emptyList(), "按像素坐标点击", "tap at pixel coordinates"),
         A11yEndpoint("long_click", listOf("x", "y"), emptyList(), "按像素坐标长按", "long-press at pixel coordinates"),
@@ -163,21 +165,31 @@ object A11yEndpoints {
             "直点活节点控件（免坐标，优先用它）；target 写「id:资源名」或直接写控件文字",
             "click a live node control (no coordinates; prefer this); target is \"id:resourceName\" or the control's text",
         ),
-        A11yEndpoint("swipe", listOf("x1", "y1", "x2", "y2"), listOf("duration_ms"), "按坐标滑动", "swipe between coordinates"),
-        A11yEndpoint("swipe_direction", listOf("direction"), listOf("distance_px"), "按方向滑动（up/down/left/right）", "swipe by direction (up/down/left/right)"),
-        A11yEndpoint("scroll", listOf("direction"), listOf("target"), "滚动页面；给 target 时滚动查找该控件", "scroll the page; with target, scroll until that control appears"),
-        A11yEndpoint("scroll_container", listOf("direction"), emptyList(), "滚动当前可滚动容器", "scroll the current scrollable container"),
-        A11yEndpoint("global_action", listOf("action"), emptyList(), "原始全局动作：1=返回 2=主页 4=通知栏 8=最近任务", "raw global action: 1=back 2=home 4=notifications 8=recents"),
+        A11yEndpoint("swipe", listOf("x1", "y1", "x2", "y2"), listOf("duration_ms"), "按坐标滑动",
+            "swipe between coordinates"),
+        A11yEndpoint("swipe_direction", listOf("direction"), listOf("distance_px"), "按方向滑动（up/down/left/right）",
+            "swipe by direction (up/down/left/right)"),
+        A11yEndpoint("scroll", listOf("direction"), listOf("target"), "滚动页面；给 target 时滚动查找该控件",
+            "scroll the page; with target, scroll until that control appears"),
+        A11yEndpoint("scroll_container", listOf("direction"), emptyList(), "滚动当前可滚动容器",
+            "scroll the current scrollable container"),
+        A11yEndpoint("global_action", listOf("action"), emptyList(), "原始全局动作：1=返回 2=主页 4=通知栏 8=最近任务",
+            "raw global action: 1=back 2=home 4=notifications 8=recents"),
         A11yEndpoint("back", emptyList(), emptyList(), "系统返回", "system back"),
         A11yEndpoint("home", emptyList(), emptyList(), "系统主页", "system home"),
         A11yEndpoint("recents", emptyList(), emptyList(), "最近任务", "recent tasks"),
         A11yEndpoint("launch_app", listOf("package"), emptyList(), "按包名启动应用", "launch an app by package name"),
-        A11yEndpoint("open_uri", listOf("uri"), listOf("package"), "打开链接/文件/深链（可指定应用包名）", "open a link/file/deep-link (optionally with a target package)"),
-        A11yEndpoint("open_settings_action", listOf("action"), emptyList(), "打开系统设置页（如 accessibility_settings / wifi）", "open a system settings page (e.g. accessibility_settings / wifi)"),
-        A11yEndpoint("type_text", listOf("text"), listOf("target"), "向当前焦点或指定控件输入文字", "type text into the current focus or a given control"),
-        A11yEndpoint("capture_tree", emptyList(), emptyList(), "重新抓取当前页面元素树（结果回注给你）", "re-capture the current element tree (result is fed back to you)"),
+        A11yEndpoint("open_uri", listOf("uri"), listOf("package"), "打开链接/文件/深链（可指定应用包名）",
+            "open a link/file/deep-link (optionally with a target package)"),
+        A11yEndpoint("open_settings_action", listOf("action"), emptyList(), "打开系统设置页（如 accessibility_settings / wifi）",
+            "open a system settings page (e.g. accessibility_settings / wifi)"),
+        A11yEndpoint("type_text", listOf("text"), listOf("target"), "向当前焦点或指定控件输入文字",
+            "type text into the current focus or a given control"),
+        A11yEndpoint("capture_tree", emptyList(), emptyList(), "重新抓取当前页面元素树（结果回注给你）",
+            "re-capture the current element tree (result is fed back to you)"),
         A11yEndpoint("screenshot", emptyList(), emptyList(), "截取当前屏幕位图", "capture the current screen bitmap"),
-        A11yEndpoint("can_screenshot", emptyList(), emptyList(), "查询本机当前是否具备截图能力", "check whether screen capture is currently available"),
+        A11yEndpoint("can_screenshot", emptyList(), emptyList(), "查询本机当前是否具备截图能力",
+            "check whether screen capture is currently available"),
     )
 
     private val byName: Map<String, A11yEndpoint> = all.associateBy { it.name }
@@ -202,6 +214,8 @@ object CapabilityRegistry {
     )
 
     /** 全部能力声明（顺序 = App 技能列表展示顺序） */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     val all: List<CapabilitySpec> = listOf(
         // ---- 低风险（保守模式放行） ----
         CapabilitySpec(
@@ -252,7 +266,8 @@ object CapabilityRegistry {
             summary = "把有长期价值的信息写入本地记忆库（不操作屏幕、不碰设备）。",
             params = listOf(
                 CapabilityParam("text", "要记住的内容", "text", required = true, description = "一句话，如「用户偏好简洁界面」"),
-                CapabilityParam("summary", "分类", "select", defaultValue = "general", options = listOf("preference", "fact", "habit", "tip", "general")),
+                CapabilityParam("summary", "分类", "select", defaultValue = "general", options = listOf("preference",
+                    "fact", "habit", "tip", "general")),
             ),
             risk = RiskTier.LOW, channel = CapabilityChannel.LOCAL, action = ActionType.REMEMBER,
         ),
@@ -270,7 +285,8 @@ object CapabilityRegistry {
             summary = "读系统详情（不操作屏幕、不碰 GUI）：op=status 汇总 / network 网络 / storage 存储 / memory 内存 / battery 电量 / display 屏幕 / sound 声音 / apps 应用清单 / inspect_app 应用详情。inspect_app 需要 app（包名或应用名），可同时给 text=权限/版本等关注点。",
             params = listOf(
                 CapabilityParam("op", "查询项", "select", required = true, defaultValue = "status",
-                    options = listOf("status", "network", "storage", "memory", "battery", "display", "sound", "apps", "inspect_app")),
+                    options = listOf("status", "network", "storage", "memory", "battery", "display", "sound", "apps",
+                        "inspect_app")),
                 CapabilityParam("app", "目标应用", "text", description = "op=inspect_app 时必填：包名或应用名"),
                 CapabilityParam("text", "补充关键词", "text", description = "op=inspect_app 时可写 permissions/version/source"),
             ),
@@ -402,7 +418,8 @@ object CapabilityRegistry {
         CapabilitySpec(
             intent = IntentType.SWIPE, name = "滑动", category = "操作",
             summary = "按方向滑动屏幕。参数 direction = up|down|left|right。",
-            params = listOf(CapabilityParam("direction", "方向", "select", required = true, options = listOf("up", "down", "left", "right"))),
+            params = listOf(CapabilityParam("direction", "方向", "select", required = true, options = listOf("up", "down",
+                "left", "right"))),
             risk = RiskTier.LOW, channel = CapabilityChannel.SCREEN, action = ActionType.SWIPE,
         ),
         CapabilitySpec(
@@ -414,7 +431,8 @@ object CapabilityRegistry {
         CapabilitySpec(
             intent = IntentType.PRESS, name = "按键", category = "操作",
             summary = "触发系统按键。参数 key = BACK|HOME|ENTER|RECENT。",
-            params = listOf(CapabilityParam("key", "按键", "select", required = true, options = listOf("BACK", "HOME", "ENTER", "RECENT"))),
+            params = listOf(CapabilityParam("key", "按键", "select", required = true, options = listOf("BACK", "HOME",
+                "ENTER", "RECENT"))),
             risk = RiskTier.LOW, channel = CapabilityChannel.SCREEN, action = ActionType.KEY,
         ),
         CapabilitySpec(
@@ -472,7 +490,8 @@ object CapabilityRegistry {
             intent = IntentType.BROWSE_SCROLL, name = "网页滚动", category = "浏览器",
             summary = "滚动内置浏览器的网页（长文/长列表查找内容时用）。",
             params = listOf(
-                CapabilityParam("direction", "方向", "select", required = true, defaultValue = "down", options = listOf("up", "down", "top", "bottom"), description = "up=上翻 down=下翻 top=回到顶部 bottom=到底部"),
+                CapabilityParam("direction", "方向", "select", required = true, defaultValue = "down",
+                    options = listOf("up", "down", "top", "bottom"), description = "up=上翻 down=下翻 top=回到顶部 bottom=到底部"),
             ),
             risk = RiskTier.LOW, channel = CapabilityChannel.BROWSER,
         ),
@@ -520,7 +539,8 @@ object CapabilityRegistry {
             intent = IntentType.OPEN, name = "打开链接/文件", category = "导航",
             summary = "把链接/文件交给系统应用打开（网址给系统浏览器，本地文件 /sdcard/x.ppt 给系统文档应用，端侧按扩展名补类型），或用深链直达应用页面。参数 uri 为网址、文件路径或应用私有 scheme；或 app+page 走页面直达索引。要指定用哪个应用打开就填 app。",
             params = listOf(
-                CapabilityParam("uri", "链接/文件路径", "text", defaultValue = "", description = "https:// 网址、/sdcard/x.ppt 本地文件路径或 scheme://"),
+                CapabilityParam("uri", "链接/文件路径", "text", defaultValue = "",
+                    description = "https:// 网址、/sdcard/x.ppt 本地文件路径或 scheme://"),
                 CapabilityParam("app", "应用名", "text", description = "指定用哪个应用打开（可配合 page 走页面索引）"),
                 CapabilityParam("page", "页面序号", "number", description = "软件页面直达索引序号"),
             ),
@@ -529,7 +549,8 @@ object CapabilityRegistry {
         CapabilitySpec(
             intent = IntentType.TAP, name = "点击", category = "操作",
             summary = "点击某个控件。参数 target 的 by 用 id 引用控件编号（如 ctl_3），或 text 用外显文字。",
-            params = listOf(CapabilityParam("target", "目标", "text", required = true, description = "控件 id（ctl_1）或控件文字/语义")),
+            params = listOf(CapabilityParam("target", "目标", "text", required = true,
+                description = "控件 id（ctl_1）或控件文字/语义")),
             risk = RiskTier.MID, channel = CapabilityChannel.SCREEN, action = ActionType.TAP,
         ),
         CapabilitySpec(
@@ -553,20 +574,23 @@ object CapabilityRegistry {
         CapabilitySpec(
             intent = IntentType.FETCH, name = "取网页正文", category = "取数",
             summary = "用命令行取网页/接口正文（需本机已安装并授权 Termux）；接口 JSON/纯文本原样返回，返回 HTML 时自动转成 Markdown 再回传。",
-            params = listOf(CapabilityParam("uri", "网页/接口地址", "text", required = true, description = "http:// 或 https://")),
+            params = listOf(CapabilityParam("uri", "网页/接口地址", "text", required = true,
+                description = "http:// 或 https://")),
             risk = RiskTier.MID, channel = CapabilityChannel.SHELL, permission = CapabilityPermission.TERMUX,
             action = ActionType.SHELL,
         ),
         CapabilitySpec(
             intent = IntentType.BROWSE_OPEN, name = "打开网页", category = "浏览器",
             summary = "在 App 内置浏览器打开网址（后台静默加载，界面不切走、截图里看不到网页）。只要打开网页就用它（不用 open 深链、不用 fetch），之后用 browse_read 看内容。",
-            params = listOf(CapabilityParam("uri", "网址", "text", required = true, description = "http:// 或 https:// 开头的完整网址")),
+            params = listOf(CapabilityParam("uri", "网址", "text", required = true,
+                description = "http:// 或 https:// 开头的完整网址")),
             risk = RiskTier.MID, channel = CapabilityChannel.BROWSER,
         ),
         CapabilitySpec(
             intent = IntentType.BROWSE_CLICK, name = "点击网页元素", category = "浏览器",
             summary = "点击当前网页里的元素。target 优先写元素文字（by=text），元素无文字时写 CSS 选择器（by=id，如 #login）。",
-            params = listOf(CapabilityParam("target", "目标元素", "text", required = true, description = "元素文字（优先）或 CSS 选择器")),
+            params = listOf(CapabilityParam("target", "目标元素", "text", required = true,
+                description = "元素文字（优先）或 CSS 选择器")),
             risk = RiskTier.MID, channel = CapabilityChannel.BROWSER,
         ),
         CapabilitySpec(
@@ -631,11 +655,16 @@ object CapabilityRegistry {
                         "sound_mode", "dnd", "screen_timeout", "rotation",
                         "wifi", "bluetooth", "airplane", "location", "nfc",
                     )),
-                CapabilityParam("enable", "开关", "boolean", description = "op=dnd/rotation/wifi/bluetooth/airplane/location/nfc 时用"),
-                CapabilityParam("level", "数值", "number", description = "brightness 0~100；volume 为百分比 0~100", min = 0.0, max = 100.0),
-                CapabilityParam("stream", "音量通道", "select", defaultValue = "music", options = listOf("music", "ring", "notification", "alarm", "call")),
-                CapabilityParam("mode", "模式", "select", options = listOf("ring", "vibrate", "silent"), description = "op=sound_mode"),
-                CapabilityParam("action", "媒体动作", "select", options = listOf("play", "pause", "next", "prev", "stop"), description = "op=media"),
+                CapabilityParam("enable", "开关", "boolean",
+                    description = "op=dnd/rotation/wifi/bluetooth/airplane/location/nfc 时用"),
+                CapabilityParam("level", "数值", "number", description = "brightness 0~100；volume 为百分比 0~100", min = 0.0,
+                    max = 100.0),
+                CapabilityParam("stream", "音量通道", "select", defaultValue = "music", options = listOf("music", "ring",
+                    "notification", "alarm", "call")),
+                CapabilityParam("mode", "模式", "select", options = listOf("ring", "vibrate", "silent"),
+                    description = "op=sound_mode"),
+                CapabilityParam("action", "媒体动作", "select", options = listOf("play", "pause", "next", "prev", "stop"),
+                    description = "op=media"),
                 CapabilityParam("seconds", "秒数", "number", min = 5.0, max = 1800.0, description = "op=screen_timeout"),
             ),
             risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
@@ -645,8 +674,10 @@ object CapabilityRegistry {
             summary = "读写系统设置项：op=get 读（namespace/key），op=set 写（namespace/key/value）。namespace=system/secure/global。写 secure/global 通常需要 shell（Shizuku/无线 ADB）；写 system 需「修改系统设置」授权。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, options = listOf("get", "set")),
-                CapabilityParam("namespace", "命名空间", "select", required = true, defaultValue = "system", options = listOf("system", "secure", "global")),
-                CapabilityParam("key", "设置项", "text", required = true, description = "如 screen_brightness / font_scale", pattern = "[A-Za-z0-9_.]+"),
+                CapabilityParam("namespace", "命名空间", "select", required = true, defaultValue = "system",
+                    options = listOf("system", "secure", "global")),
+                CapabilityParam("key", "设置项", "text", required = true, description = "如 screen_brightness / font_scale",
+                    pattern = "[A-Za-z0-9_.]+"),
                 CapabilityParam("value", "值", "text", description = "op=set 时必填"),
             ),
             risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, action = ActionType.DEVICE_OPS,
@@ -664,16 +695,19 @@ object CapabilityRegistry {
             intent = IntentType.CALENDAR_OP, name = "日历读写", category = "设备",
             summary = "读写系统日历事件（不经过日历 App 的 GUI）：op=list 列出（query 过滤、days 时间窗、limit 条数），op=create 新建（title/start，可选 end 或 duration_min、all_day、calendar_id），op=update 改（event_id + 要改的字段），op=delete 删（event_id）。start/end 可写「2026-11-05 09:00」或毫秒时间戳。查询/写入以 shell 身份进行，需要 Shizuku 或无线 ADB；没有时回中文原因并建议改走 GUI。",
             params = listOf(
-                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "create", "update", "delete")),
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "create", "update",
+                    "delete")),
                 CapabilityParam("title", "标题", "text", description = "op=create/update：事件标题"),
                 CapabilityParam("start", "开始时间", "text", description = "「YYYY-MM-DD HH:mm」或毫秒时间戳；op=create 必填"),
                 CapabilityParam("end", "结束时间", "text", description = "可选；不给时按 duration_min 推算"),
                 CapabilityParam("duration_min", "时长（分钟）", "number", min = 5.0, max = 1440.0, defaultValue = "60"),
-                CapabilityParam("event_id", "事件 id", "text", pattern = "[0-9]+", description = "op=update/delete：从 op=list 结果里取"),
+                CapabilityParam("event_id", "事件 id", "text", pattern = "[0-9]+",
+                    description = "op=update/delete：从 op=list 结果里取"),
                 CapabilityParam("calendar_id", "日历 id", "number", min = 0.0, description = "可选，默认 1（本机主日历）"),
                 CapabilityParam("all_day", "全天", "boolean", description = "op=create/update"),
                 CapabilityParam("query", "过滤词", "text", description = "op=list：按标题过滤"),
-                CapabilityParam("days", "时间窗（天）", "number", min = 1.0, max = 365.0, defaultValue = "30", description = "op=list：只看未来多少天"),
+                CapabilityParam("days", "时间窗（天）", "number", min = 1.0, max = 365.0, defaultValue = "30",
+                    description = "op=list：只看未来多少天"),
                 CapabilityParam("limit", "条数", "number", min = 1.0, max = 100.0, defaultValue = "20"),
             ),
             risk = RiskTier.MID, channel = CapabilityChannel.DEVICE, permission = CapabilityPermission.SHELL,
@@ -683,7 +717,8 @@ object CapabilityRegistry {
             intent = IntentType.ALARM_MANAGE, name = "管理闹钟", category = "时钟",
             summary = "管理时钟应用里已有的闹钟：op=list 列出，op=enable 开关（hour/minute/enable），op=delete 删除（hour/minute），op=update 改时间（hour/minute/new_hour/new_minute）。读取/修改他人时钟数据需要 Root 或 Shizuku；没有时会回中文原因，并建议改走 GUI 或重新新增。",
             params = listOf(
-                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "enable", "delete", "update")),
+                CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "enable", "delete",
+                    "update")),
                 CapabilityParam("hour", "小时", "number", min = 0.0, max = 23.0, description = "定位已有闹钟"),
                 CapabilityParam("minute", "分钟", "number", min = 0.0, max = 59.0),
                 CapabilityParam("enable", "启用", "boolean", description = "op=enable"),
@@ -721,7 +756,8 @@ object CapabilityRegistry {
         // ---- 自由模式专属（保守/均衡拒绝） ----
             intent = IntentType.SHELL, name = "执行命令", category = "自由模式",
             summary = "执行 AI 自写的命令（仅自由模式；本任务首次执行前用户确认一次）。command 填命令原文，shizuku / 无线 ADB / Termux 通道由端侧按可用性自动选，终端输出会作为「上一步结果」回给你。",
-            params = listOf(CapabilityParam("command", "命令原文", "text", required = true, description = "如 pm list packages | grep 相机；也可写友好命令")),
+            params = listOf(CapabilityParam("command", "命令原文", "text", required = true,
+                description = "如 pm list packages | grep 相机；也可写友好命令")),
             risk = RiskTier.EXTENDED, channel = CapabilityChannel.SHELL, permission = CapabilityPermission.SHELL,
             needsConfirmation = true, action = ActionType.SHELL,
         ),
@@ -730,7 +766,8 @@ object CapabilityRegistry {
             summary = "操作端侧虚拟副屏（仅自由模式；需要 Shizuku/无线 ADB）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图，present 把副屏里操作的应用投到主屏前台给用户看（app 省略时用刚刚 launch 的那个）。副屏上的动作不占用用户当前屏幕。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true,
-                    options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key", "screenshot", "present")),
+                    options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key",
+                        "screenshot", "present")),
                 CapabilityParam("app", "应用", "text", description = "op=launch：包名或应用名；op=present 可省略"),
                 CapabilityParam("x", "X 坐标", "number", min = 0.0),
                 CapabilityParam("y", "Y 坐标", "number", min = 0.0),

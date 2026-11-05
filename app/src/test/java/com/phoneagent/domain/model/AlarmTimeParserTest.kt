@@ -217,7 +217,8 @@ class AlarmTimeParserTest {
 
     @Test
     fun 结构化_hour_minute直接组装() {
-        val t = (AlarmTimeParser.parseNumbers(7, 30, emptySet(), LocalDateTime.parse("2026-11-03T06:00:00")) as AlarmParseResult.Success).time
+        val t = (AlarmTimeParser.parseNumbers(7, 30, emptySet(),
+            LocalDateTime.parse("2026-11-03T06:00:00")) as AlarmParseResult.Success).time
         assertEquals(7, t.hour)
         assertEquals(30, t.minute)
         assertEquals(0, t.dayOffset)

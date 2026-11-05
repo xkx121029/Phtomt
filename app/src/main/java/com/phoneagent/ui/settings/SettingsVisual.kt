@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +40,7 @@ import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import kotlinx.coroutines.delay
 
 /**
  * 标定预览框的颜色。
@@ -65,6 +66,34 @@ internal fun SettingsVisual(
     // 这里只做这一个写入口，正在运行的跑马灯/光效靠它自己的监听即时生效，无需重启。
     var stepPlacement by remember { mutableStateOf(OverlayDisplaySettings.stepTextPlacement(context)) }
     var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(context)) }
+    // 两个复选框是 stepPlacement 的展开形态：勾两处 = both，只勾顶部 = marquee，只勾卡片 = card
+    var marqueeOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.CARD) }
+    var cardOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.MARQUEE) }
+    var stepTextHint by remember { mutableStateOf(false) }
+
+    fun updateStepText(nextMarquee: Boolean, nextCard: Boolean) {
+        if (!nextMarquee && !nextCard) {
+            // 两处都取消会让描述无处可显。这里不静默变成空状态：
+            // 保持原勾选并就地提示一句，比把最后一枚复选框置灰更容易看懂为什么点不动
+            stepTextHint = true
+            return
+        }
+        val next = when {
+            nextMarquee && nextCard -> StepTextPlacement.BOTH
+            nextMarquee -> StepTextPlacement.MARQUEE
+            else -> StepTextPlacement.CARD
+        }
+        marqueeOn = nextMarquee
+        cardOn = nextCard
+        stepPlacement = next
+        OverlayDisplaySettings.setStepTextPlacement(context, next)
+    }
+    LaunchedEffect(stepTextHint) {
+        if (stepTextHint) {
+            delay(2_500)
+            stepTextHint = false
+        }
+    }
 
     // 标定面板展开时起全屏预览；开关关掉就立刻收窗。
     // 这段原先挂在设置页根节点上，现在挪到本页：预览服务只服务这一个分区，
@@ -137,37 +166,35 @@ internal fun SettingsVisual(
 
         Spacer(Modifier.height(16.dp))
 
-        // ---- 逐步任务文字：同一步的描述只画一处，别在两处重复 ----
+        // ---- 逐步任务文字：两个复选框，勾哪就在哪画 ----
         SettingsSection(
             title = "逐步任务文字",
-            subtitle = "同一步的描述原本会在跑马灯和任务卡上各画一遍；选一处显示，另一处就安静下来",
+            subtitle = "同一步的描述只画一遍：两处都勾就各显示一遍，只勾一处另一处就安静下来",
             tone = SettingsTone.Brand,
         ) {
-            StepTextOption(
-                title = "只顶部跑马灯",
-                subtitle = "任务卡状态行只留「第 n/m 步」，描述在顶部光带滚动",
-                selected = stepPlacement == StepTextPlacement.MARQUEE,
-            ) {
-                stepPlacement = StepTextPlacement.MARQUEE
-                OverlayDisplaySettings.setStepTextPlacement(context, StepTextPlacement.MARQUEE)
+            CheckRow(
+                title = "顶部跑马灯",
+                subtitle = "描述在顶部光带滚动；不勾就整条不显示",
+                checked = marqueeOn,
+            ) { next ->
+                updateStepText(nextMarquee = next, nextCard = cardOn)
             }
             SettingsDivider()
-            StepTextOption(
-                title = "只任务卡状态行",
-                subtitle = "顶部跑马灯整条不显示，描述只在任务卡里出现",
-                selected = stepPlacement == StepTextPlacement.CARD,
-            ) {
-                stepPlacement = StepTextPlacement.CARD
-                OverlayDisplaySettings.setStepTextPlacement(context, StepTextPlacement.CARD)
+            CheckRow(
+                title = "任务卡状态行",
+                subtitle = "描述出现在任务卡里；不勾就只留「第 n/m 步」",
+                checked = cardOn,
+            ) { next ->
+                updateStepText(nextMarquee = marqueeOn, nextCard = next)
             }
-            SettingsDivider()
-            StepTextOption(
-                title = "两处都显示",
-                subtitle = "描述在跑马灯与任务卡各出现一遍，需要同屏对照时再用",
-                selected = stepPlacement == StepTextPlacement.BOTH,
-            ) {
-                stepPlacement = StepTextPlacement.BOTH
-                OverlayDisplaySettings.setStepTextPlacement(context, StepTextPlacement.BOTH)
+            if (stepTextHint) {
+                // 只做一次性提示，不弹系统 Toast：提示就近放在控件下方，读到就知道怎么改
+                Text(
+                    "至少保留一处显示",
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
 
@@ -208,14 +235,15 @@ internal fun SettingsVisual(
             subtitle = "任务执行时的屏幕边缘绿色光带",
             tone = SettingsTone.Brand,
         ) {
-            SettingsToggleRow(
+            // 与上方「逐步任务文字」同一套复选框语言：这一组都是「要不要显示某一层」，不是开关总控
+            CheckRow(
                 title = "绿色边缘光效悬浮窗",
-                subtitle = "任务执行时在屏幕边缘显示绿色光带；关闭后不建窗口、不占触摸，任务照常执行",
-                value = edgeLightingOn,
-            ) {
-                edgeLightingOn = it
+                subtitle = "任务执行时在屏幕边缘显示绿色光带；不勾就不建窗口、不占触摸，任务照常执行",
+                checked = edgeLightingOn,
+            ) { next ->
+                edgeLightingOn = next
                 // 只写浮层线的这枚键：正在运行的光效由服务自己的监听即时收窗/复现
-                OverlayDisplaySettings.setEdgeLightingEnabled(context, it)
+                OverlayDisplaySettings.setEdgeLightingEnabled(context, next)
             }
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
                 ExpandableCard(
@@ -350,33 +378,33 @@ internal fun SettingsVisual(
 }
 
 /**
- * 「逐步任务文字」的单选行：整行可点、单选。
+ * 复选行：整行可点、可勾。
  *
- * 与「启动默认页」的单选行同一套写法（RadioButton + 选中项文字加深），
- * 不另造一种选项控件：三选一里每条都有一句「另一处会怎样」的说明，
- * 竖排单选行才放得下完整句子，横排胶囊会把字截断。
+ * 「逐步任务文字」和「绿色边缘光效」共用这一个：这组的语义是「要不要显示某一层」，
+ * 不是单选互斥，也不是总开关，所以用 Checkbox 而不是 RadioButton / Switch。
+ * 每行带一句说明，竖排才放得下完整句子。
  */
 @Composable
-private fun StepTextOption(
+private fun CheckRow(
     title: String,
     subtitle: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = null)
+        Checkbox(checked = checked, onCheckedChange = null)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
                 ),
             )
             Spacer(Modifier.height(2.dp))

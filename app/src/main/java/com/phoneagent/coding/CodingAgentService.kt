@@ -18,6 +18,9 @@ import com.phoneagent.coding.agent.LocalAgent
  */
 class CodingAgentService : Service() {
 
+    /** 只有用户主动停止/页面显式关停时才置 true，用来区分"系统回收服务"。 */
+    private var explicitStop = false
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
@@ -25,6 +28,7 @@ class CodingAgentService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            explicitStop = true
             stopSelf()
             return START_NOT_STICKY
         }
@@ -45,7 +49,9 @@ class CodingAgentService : Service() {
     }
 
     override fun onDestroy() {
-        LocalAgent.stop()
+        // 只有"主动停止"才杀宿主。系统因内存压力回收前台服务时同样会走 onDestroy，
+        // 以前无条件 stop 会把正在跑的编码会话连根拔掉，回到前台就全是断线。
+        if (explicitStop) LocalAgent.stop()
         super.onDestroy()
     }
 

@@ -112,7 +112,8 @@ class ClockFallbackPolicyTest {
     @Test
     fun 时间描述_支持每天与倒计时格式() {
         assertEquals("闹钟 07:30（每天）", ClockFallbackPolicy.describe(ClockRequests.alarm(7, 30, (1..7).toList(), null)))
-        assertEquals("闹钟 23:05（工作日）", ClockFallbackPolicy.describe(ClockRequests.alarm(23, 5, listOf(2, 3, 4, 5, 6), null)))
+        assertEquals("闹钟 23:05（工作日）", ClockFallbackPolicy.describe(ClockRequests.alarm(23, 5, listOf(2, 3, 4, 5, 6),
+            null)))
         assertEquals("倒计时 30 分钟", ClockFallbackPolicy.describe(ClockRequests.timer(1800, null)))
         assertEquals("倒计时 1 小时 2 分钟", ClockFallbackPolicy.describe(ClockRequests.timer(3720, null)))
     }

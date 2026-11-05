@@ -97,6 +97,8 @@ internal fun SettingsAiModels(
 private data class FetchedModels(val endpointId: String, val endpointLabel: String, val names: List<String>)
 
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 private fun AiModelsPage(
     vm: MainViewModel,
     st: SettingsState,

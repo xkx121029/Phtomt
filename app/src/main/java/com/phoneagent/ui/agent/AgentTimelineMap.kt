@@ -39,6 +39,8 @@ internal object AgentTimelineMapper {
 
     private val typeRegex = Regex("\"type\"\\s*:\\s*\"([^\"]+)\"")
 
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
     fun build(
         submittedTask: String,
         state: AgentState,

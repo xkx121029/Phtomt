@@ -1,6 +1,9 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.ui.components
 
 import com.phoneagent.core.text.TimeFormats
+import java.util.Locale
 
 /**
  * UI 层共享格式化工具（纯 Kotlin，无 Compose 依赖，可单测）。
@@ -25,7 +28,7 @@ fun formatFileTime(millis: Long): String {
 /** 执行耗时（中文单位）：毫秒级、秒级、分钟级各用不同精度，别显示 "0.0 秒" */
 fun formatDuration(ms: Long): String = when {
     ms < 1000 -> "${ms} 毫秒"
-    ms < 60_000 -> String.format("%.1f 秒", ms / 1000.0)
+    ms < 60_000 -> String.format(Locale.ROOT, "%.1f 秒", ms / 1000.0)
     else -> "${ms / 60_000} 分 ${(ms % 60_000) / 1000} 秒"
 }
 

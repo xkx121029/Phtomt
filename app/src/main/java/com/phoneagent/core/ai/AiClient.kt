@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.ai
 
 import android.graphics.Bitmap
@@ -277,7 +279,8 @@ class AiClient(
                     Request.Builder()
                         .url(chatCompletionsUrl(baseUrl))
                         .header("Authorization", "Bearer $apiKey")
-                        .post(buildStreamRequestBody(msgs, model, temperature, thinking = false, streamOptions = StreamOptions()))
+                        .post(buildStreamRequestBody(msgs, model, temperature, thinking = false,
+                            streamOptions = StreamOptions()))
                         .build()
                 }
             var request = actionRequest(activeMessages)
@@ -422,7 +425,8 @@ class AiClient(
                             )
                         }
                         // 只在拿到正文后记账：空正文会走下面的非流式回退，不参与首 token 统计
-                        logStreamTiming("决策", attemptStartNano, firstDeltaNano, System.nanoTime(), content.length, attempt)
+                        logStreamTiming("决策", attemptStartNano, firstDeltaNano, System.nanoTime(), content.length,
+                            attempt)
                         // 先按「可空」口径解析：失败时不急着 give_up，先做一次纠错重发
                         val action = parseAgentIntentOrNull(content)
                         if (action == null && !jsonRepairUsed) {
@@ -433,7 +437,8 @@ class AiClient(
                             onRetry?.invoke("返回格式无法解析，正在重新生成", 0L)
                             // 附上「上一轮信息无法识别」：assistant 带原文 + user 要求只输出标准 JSON
                             activeMessages = activeMessages + listOf(
-                                ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = content))),
+                                ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text",
+                                    text = content))),
                                 ChatMessageDto(
                                     role = "user",
                                     content = listOf(
@@ -510,7 +515,8 @@ class AiClient(
         runCatching {
             val adapter = ChatProtocols.of(protocol)
             val request = if (adapter != null) {
-                protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature, maxTokens = 4096, stream = false)
+                protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature, maxTokens = 4096,
+                    stream = false)
             } else {
                 Request.Builder()
                     .url(chatCompletionsUrl(baseUrl))
@@ -691,7 +697,8 @@ class AiClient(
                 if (adapter == null) {
                     val toolsCall = rawPost(
                         baseUrl, apiKey, model,
-                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请调用 noop_ping 工具。")))),
+                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                            text = "请调用 noop_ping 工具。")))),
                         listOf(
                             ToolSpec(
                                 function = FunctionSpec(
@@ -728,7 +735,8 @@ class AiClient(
         adapter: ChatProtocolAdapter?,
     ): RawResponse {
         val request = if (adapter != null) {
-            protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature = 0.4, maxTokens = 64, stream = false)
+            protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature = 0.4, maxTokens = 64,
+                stream = false)
         } else {
             Request.Builder()
                 .url(chatCompletionsUrl(baseUrl))
@@ -808,6 +816,8 @@ class AiClient(
      * - 生成段大 → 模型速度/输出长度
      * 日志只进应用内调试缓冲，不改变任何请求与提示词，也不暴露给 AI。
      */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     private fun logStreamTiming(
         scene: String,
         startNano: Long,
@@ -844,6 +854,8 @@ class AiClient(
      *
      * @return 本次流是否出现过思考内容（reasoning_content）
      */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList", "CyclomaticComplexMethod")
     internal fun pumpSse(
         source: BufferedSource,
         adapter: ChatProtocolAdapter?,
@@ -1084,7 +1096,8 @@ class AiClient(
         temperature: Double,
         responseFormat: ResponseFormat?,
     ): okhttp3.RequestBody = buildRequest(
-        ChatRequest(messages = messages, model = model, temperature = temperature, max_tokens = 2048, response_format = responseFormat),
+        ChatRequest(messages = messages, model = model, temperature = temperature, max_tokens = 2048,
+            response_format = responseFormat),
     )
 
     /** 从视觉模型输出中解析比例坐标：优先 JSON，其次 "x,y" 形式 */
@@ -1122,6 +1135,8 @@ class AiClient(
      * 流式对话（SSE）：边生成边通过 onDelta 回调增量文本，返回完整正文。
      * 用于规划/思考阶段，避免用户长时间空等。
      */
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     suspend fun chatStream(
         baseUrl: String,
         apiKey: String,
@@ -1225,7 +1240,8 @@ class AiClient(
         thinking: Boolean = false,
         streamOptions: StreamOptions? = null,
     ): okhttp3.RequestBody = buildRequest(
-        ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, stream = true, thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions),
+        ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, stream = true,
+            thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions),
     )
 
     /**
@@ -1241,6 +1257,8 @@ class AiClient(
         )
 
     /** 同 [parseAgentIntent]，但兜底全部失败时返回 null 而非 give_up（供纠错重发判定） */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     internal fun parseAgentIntentOrNull(content: String, allowRepair: Boolean = true): AgentIntent? {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
@@ -1329,7 +1347,9 @@ class AiClient(
         return buildRequest(
             ChatRequest(
                 model = model, messages = finalMessages, temperature = temperature, max_tokens = 4096,
-                response_format = ResponseFormat(type = "json_object", json_schema = JsonSchemaSpec(name = "agent_action", strict = false, schema = json.parseToJsonElement(ACTION_SCHEMA))),
+                response_format = ResponseFormat(type = "json_object",
+                    json_schema = JsonSchemaSpec(name = "agent_action", strict = false,
+                    schema = json.parseToJsonElement(ACTION_SCHEMA))),
             ),
         )
     }

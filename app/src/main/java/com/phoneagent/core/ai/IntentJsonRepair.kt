@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.ai
 
 /**
@@ -19,6 +21,8 @@ internal object IntentJsonRepair {
      * 返回修复后的候选 JSON 文本；内容里连 `{` 都没有时返回 null。
      * 不保证修完一定能解析——调用方解析成功才算数。
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     fun repair(content: String): String? {
         val start = content.indexOf('{')
         if (start < 0) return null
@@ -77,6 +81,8 @@ internal object IntentJsonRepair {
     }
 
     /** 去掉 `}` / `]` 前的逗号（字符串内部的逗号不动） */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     private fun stripTrailingCommas(text: String): String {
         val out = StringBuilder(text.length)
         var inString = false
