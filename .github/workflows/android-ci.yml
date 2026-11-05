@@ -20,9 +20,11 @@ on:
 permissions:
   contents: write
 
-# 同一分支的构建排队执行，不并发抢 tag；不取消进行中的发布
+# 同一分支的构建排队执行，不并发抢 tag；不取消进行中的发布。
+# group 不带分支名是刻意的：dev 与 beta 共用 version.properties 这一个计数器，
+# 两条流水线必须串行读-自增-回写，否则会拿到同一个号。
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-build-release
   cancel-in-progress: false
 
 jobs:
@@ -82,20 +84,27 @@ jobs:
 
       - name: Compute version + tag
         id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 版本编码按渠道分段，保证 dev 与 beta 各自单调递增、互不回退：
-          # dev = 1000000 + run_number，beta = 2000000 + run_number
-          if [ "$CHANNEL" = "dev" ]; then
-            CODE=$((1000000 + RUN_NUMBER))
-          else
-            CODE=$((2000000 + RUN_NUMBER))
+          # 版本号只有一条递增序列：仓库根 version.properties 的 BUILD_NUMBER，
+          # 本机构建（root build.gradle.kts）也是读写同一个文件。
+          # 权威副本固定在 nightly 分支——beta 也读它的值，避免两条分支各长一个计数器。
+          COUNTER=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
+            -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+          if ! [ "$COUNTER" -ge 0 ] 2>/dev/null; then
+            echo "读不到 version.properties 的 BUILD_NUMBER（值：$COUNTER）" >&2
+            exit 1
           fi
+          CODE=$((COUNTER + 1))
+          echo "counter=$COUNTER" >> "$GITHUB_OUTPUT"
+          echo "counter_sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "version_code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "version_name=0.2.$CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "tag=v0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "apk=HappyAgent-0.2.$CODE-$CHANNEL.apk" >> "$GITHUB_OUTPUT"
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
+          echo "本次版本：0.2.$CODE-$CHANNEL（计数器 $COUNTER -> $CODE）"
 
       - name: Sync provider + env assets
         # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
@@ -107,6 +116,7 @@ jobs:
         run: |
           ./gradlew :app:assembleDebug \
             -PbuildNumber=${{ steps.ver.outputs.version_code }} \
+            -Pchannel=${{ env.CHANNEL }} \
             --stacktrace
 
       - name: Rename APK
@@ -154,3 +164,33 @@ jobs:
             --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
             --notes-file release-notes.md \
             --prerelease
+
+      - name: Persist version counter
+        # 出包成功才把计数器推进一步（失败不烧号）。
+        # 回写固定在 nightly：它是计数器的权威副本，beta 跑完也写这里，
+        # 所以两条分支不会各长一个独立序列。GITHUB_TOKEN 造成的提交不会再次触发工作流。
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          for attempt in 1 2 3; do
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+            CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
+              -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+            # 若本地构建抢先推进过，就跳到它之后，绝不回退
+            TARGET=$CODE
+            if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
+            CONTENT=$(printf '#Auto-incremented by Gradle\n#%s\nBUILD_NUMBER=%s\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET" | base64 -w0)
+            if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
+                 -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
+                 -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
+              echo "version.properties: $CUR -> $TARGET"
+              exit 0
+            fi
+            echo "回写冲突，重试 $attempt" >&2
+            sleep 3
+          done
+          echo "计数器回写失败：version.properties 仍停在 $CUR" >&2
+          exit 1

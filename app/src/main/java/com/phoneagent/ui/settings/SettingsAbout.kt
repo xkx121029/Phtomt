@@ -35,13 +35,12 @@ private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
 private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
 
 /**
- * 渠道后缀：CI 用 versionCode 段位区分渠道（dev = 1000000+run，beta = 2000000+run），
- * 本地构建仍落在旧号段，后缀为空。不改 versionName 是因为服务端 compareVersion
- * 按 "." 分段做数值比较，带 "-dev" 后缀会让整段被解析成 0，破坏升级判断。
+ * 渠道后缀：CI 用 -Pchannel=dev|beta 把后缀写进 versionName（0.2.9105-dev / 0.2.9106-beta），
+ * 本机构建没有后缀。versionCode 与 versionName 共用一个计数器，渠道不再靠号段偏移区分。
  */
 private fun channelSuffix(): String = when {
-    BuildConfig.VERSION_CODE >= 2_000_000 -> " · beta"
-    BuildConfig.VERSION_CODE >= 1_000_000 -> " · dev"
+    BuildConfig.VERSION_NAME.endsWith("-beta") -> " · beta"
+    BuildConfig.VERSION_NAME.endsWith("-dev") -> " · dev"
     else -> ""
 }
 

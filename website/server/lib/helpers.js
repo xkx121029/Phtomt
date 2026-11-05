@@ -60,8 +60,10 @@ export function listApkFiles() {
 
 /** 版本号排序：0.1.371 > 0.1.9（逐段数值比较，不做字符串比较） */
 export function compareVersion(a, b) {
-  const pa = String(a).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
-  const pb = String(b).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
+  // 渠道后缀（-dev / -beta）与预发布标记不参与比较：0.2.9105-dev 等价于 0.2.9105
+  const seg = (s) => String(s).replace(/^v/i, '').replace(/[-+].*$/, '').split('.').map((n) => Number(n) || 0)
+  const pa = seg(a)
+  const pb = seg(b)
   const len = Math.max(pa.length, pb.length)
   for (let i = 0; i < len; i += 1) {
     const diff = (pa[i] || 0) - (pb[i] || 0)

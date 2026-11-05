@@ -76,6 +76,11 @@ tasks.named("check") { dependsOn(checkDetektBaseline) }
  */
 val buildNumber: Int = rootProject.extra["buildNumber"] as Int
 
+// 渠道后缀：CI 传 -Pchannel=dev|beta，本机构建不传（无后缀）。
+// 版本号本身仍是 version.properties 里那一个计数器，两个渠道靠这条后缀 + 顺序递增的
+// versionCode 区分，不再用百万级号段偏移。
+val channelName: String? = (findProperty("channel") as? String)?.trim()?.takeIf { it.isNotEmpty() }
+
 android {
     namespace = "com.phoneagent"
     compileSdk = 36
@@ -99,7 +104,8 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = buildNumber
-        versionName = "0.2.$buildNumber"
+        // 同一计数器 + 渠道后缀：0.2.9105-dev / 0.2.9106-beta；本机构建为 0.2.9107
+        versionName = "0.2.$buildNumber" + (channelName?.let { "-$it" } ?: "")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
