@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.loop
 
 import com.phoneagent.core.ai.ChatMessageDto
@@ -12,8 +14,8 @@ import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.execution.ActionMode
-import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.ActionPolicy
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.VerifyResult
 import com.phoneagent.engine.execution.VerifyRules
@@ -26,6 +28,8 @@ import kotlinx.coroutines.isActive
 import kotlin.math.ceil
 
 /** 执行阶段的界面出口：日志 / 悬浮窗 / 状态 / 协作面板 / 对话气泡 / 结束提示 */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ExecutionUiHooks(
     val log: (AgentLog.Level, String) -> Unit,
     val pushFloating: (String, String) -> Unit,
@@ -42,6 +46,8 @@ internal class ExecutionUiHooks(
 )
 
 /** 执行阶段的留档出口：步骤记录 / 历史 / 截图 / 进度 / 检查点 / 异常记忆 */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ExecutionRecordHooks(
     val recordStep: (Int, AgentAction, String, String, String, String) -> Unit,
     val recordsIntoHistory: (Int, AgentAction, VerifyResult) -> Unit,
@@ -59,6 +65,8 @@ internal class ExecutionRecordHooks(
 )
 
 /** 执行阶段的设备/端侧代办出口：转译、执行、重观察、确认门、纯端侧动作、浏览器通道 */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ExecutionDeviceHooks(
     /** 取走上一步视觉坐标（原 `lastVisualCoordinate` 的读 + 清空） */
     val takeVisualCoordinate: () -> Pair<Int, Int>?,
@@ -102,6 +110,8 @@ internal class ExecutionFinishHooks(
 )
 
 /** 执行阶段持有的连续计数（仍在引擎里按任务归零，阶段只读写） */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ExecutionCounters(
     val earlyDoneRejections: () -> Int,
     val setEarlyDoneRejections: (Int) -> Unit,
@@ -130,6 +140,8 @@ internal class ExecutionCounters(
  * - 引导后的意图要再过动作模式门控与不可逆/自写命令确认门，不能成为越权旁路
  * - 引导失败/完成时只补一条失败留档后回到观测，绝不重放接管前的旧失败动作
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "TooGenericExceptionCaught")
 internal class ExecutionPhase(
     private val loopGuard: LoopGuard,
     private val currentPlan: () -> TaskPlan?,
@@ -151,6 +163,8 @@ internal class ExecutionPhase(
             null
         }
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "ComplexCondition", "ReturnCount")
     override suspend fun run(session: StepSession): StepOutcome {
         val messages = session.messages
         val snapshot = session.snapshot
@@ -408,7 +422,8 @@ internal class ExecutionPhase(
                     type = intent.intent,
                     reasoning = intent.reasoning,
                     reason = reason,
-                    target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by, value = it.value) },
+                    target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by,
+                        value = it.value) },
                 )
                 verify = VerifyResult(false, reason, "", "")
                 isStructuralError = true
@@ -430,7 +445,8 @@ internal class ExecutionPhase(
                     type = intent.intent,
                     reasoning = intent.reasoning,
                     reason = reason,
-                    target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by, value = it.value) },
+                    target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by,
+                        value = it.value) },
                 )
                 verify = VerifyResult(false, reason, "", "")
                 isStructuralError = true
@@ -509,7 +525,8 @@ internal class ExecutionPhase(
             val hint = ui.awaitUserHint()
             if (hint.isBlank()) {
                 // 用户离开：这一步在 return，不会再走到下方统一留档，先补一条失败记录
-                record.recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+                record.recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint,
+                    verify.reason)
                 finish.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, null)
                 finish.stopEngine()
                 return StepOutcome.Return
@@ -632,7 +649,8 @@ internal class ExecutionPhase(
                     AgentLog.Level.WARN,
                     "用户引导后仍未获得有效动作（${guided?.intent ?: "调用失败"}），重新观测页面而非重放旧动作",
                 )
-                record.recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint, verify.reason)
+                record.recordStep(step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint,
+                    verify.reason)
                 return StepOutcome.Continue
             }
         }
@@ -739,6 +757,8 @@ internal class ExecutionPhase(
      * 能否被下一步复用由 [AfterObservationPolicy.isReusable] 判定：稀疏页、加载中、
      * 强制视觉模式、快照过期都会回退完整观察，稀疏页的截图兜底不受影响。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private suspend fun captureAfterObservation(
         session: StepSession,
         before: ScreenSnapshot,

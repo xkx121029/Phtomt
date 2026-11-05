@@ -3,6 +3,7 @@
 package com.phoneagent.ui
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
@@ -61,6 +62,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -89,6 +91,7 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.core.log.AppLog
 import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.feature.edge.EdgeLightingService
+import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.ui.agent.AgentScreen
 import com.phoneagent.ui.agent.DocViewerScreen
 import com.phoneagent.ui.agent.MarkdownReaderScreen
@@ -337,8 +340,21 @@ private fun ActivityContent(
     val backLabel = if (backTabId == MainTabs.HOME) "返回主页" else "返回${MainTabs.titleOf(backTabId)}"
     val backIcon = if (backTabId == MainTabs.HOME) AppIcons.Home else AppIcons.ArrowBack
 
-    LaunchedEffect(agentState.isRunning, settings.edgeLightingEnabled, overlayGranted) {
-        val shouldShow = agentState.isRunning && settings.edgeLightingEnabled && overlayGranted
+    // 光效开关归浮层线的「浮层显示设置」（独立 prefs，默认开）。这里订阅它的变化，
+    // 任务跑到一半把开关关掉也要立刻收窗，而不是等下一个任务才生效。
+    var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(activity)) }
+    DisposableEffect(activity) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == OverlayDisplaySettings.KEY_EDGE_LIGHTING_ENABLED) {
+                edgeLightingOn = OverlayDisplaySettings.edgeLightingEnabled(activity)
+            }
+        }
+        OverlayDisplaySettings.registerListener(activity, listener)
+        onDispose { OverlayDisplaySettings.unregisterListener(activity, listener) }
+    }
+
+    LaunchedEffect(agentState.isRunning, edgeLightingOn, overlayGranted) {
+        val shouldShow = agentState.isRunning && edgeLightingOn && overlayGranted
         if (shouldShow) {
             EdgeLightingService.start(
                 context = activity,

@@ -99,27 +99,36 @@ object TaskEntry {
 
     /** 纯函数核心（JVM 可测）：action + 文本 + 文件清单 → 目标（文件优先于配文） */
     internal fun parseShare(action: String?, extraText: String?, streamUris: List<String>): Target? {
-        val isShare = action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+        // VIEW 也算「带文件进来」：文件管理器的「打开方式」走 ACTION_VIEW，data 就是文件本身
+        val fileAction = action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE ||
+            action == Intent.ACTION_VIEW
         val files = streamUris.map { it.trim() }.filter { it.isNotEmpty() }
-        if (isShare && files.isNotEmpty()) return Target.SharedFiles(files)
+        if (fileAction && files.isNotEmpty()) return Target.SharedFiles(files)
+        val isShare = action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
         val text = extraText?.trim().orEmpty()
         val textAction = isShare || action == Intent.ACTION_PROCESS_TEXT
         return if (textAction && text.isNotEmpty()) Target.Task(text) else null
     }
 
     /** 从分享 Intent 里收文件 URI：EXTRA_STREAM 与 ClipData 都看，去重保序 */
-    @Suppress("DEPRECATION")
     private fun streamUris(intent: Intent): List<String> {
         val uris = LinkedHashSet<String>()
-        if (intent.action == Intent.ACTION_SEND) {
-            intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris += it.toString() }
-        } else if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
-            intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-                ?.forEach { uris += it.toString() }
+        // EXTRA_STREAM 的实际类型在不同 App 上不一致：Uri / ArrayList<Uri> / 字符串路径都有，
+        // 按原始 Object 判型，避免 getParcelableExtra 在 ArrayList 上抛 ClassCastException
+        when (val raw = intent.extras?.get(Intent.EXTRA_STREAM)) {
+            is Uri -> uris += raw.toString()
+            is List<*> -> raw.forEach { if (it is Uri) uris += it.toString() }
+            is String -> if (raw.isNotBlank()) uris += raw
         }
         // ClipData 是更现代、也更可靠的来源（部分 ROM 只填它不填 EXTRA_STREAM）
         intent.clipData?.let { clip ->
             for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { uris += it.toString() }
+        }
+        // ACTION_VIEW（「用其他应用打开」）的文件在 data 上；只认 content:// 与 file://，
+        // hpa:// 深链由 [fromDeepLink] 先一步消费
+        val data = intent.data
+        if (intent.action == Intent.ACTION_VIEW && (data?.scheme == "content" || data?.scheme == "file")) {
+            uris += data.toString()
         }
         return uris.toList()
     }

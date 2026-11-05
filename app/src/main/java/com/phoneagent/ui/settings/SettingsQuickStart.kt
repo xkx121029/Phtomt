@@ -269,7 +269,7 @@ internal fun SettingsQuickStart(
                         color = AppTheme.colors.onSurfaceBase,
                     )
                     Text(
-                        if (a11y) "现在可以替你操作手机" else "点右侧按钮，在系统设置里打开本应用的无障碍服务",
+                        if (a11y) "现在可以替你操作手机" else "点右侧按钮，在系统里为它授权",
                         style = MaterialTheme.typography.bodySmall,
                         color = AppTheme.colors.onSurfaceRaised,
                     )

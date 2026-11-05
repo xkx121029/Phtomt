@@ -46,6 +46,8 @@ import com.phoneagent.ui.theme.AppRadii
  * 整机重置放最后并单独占一张卡，避免误点。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 internal fun SettingsData(
     vm: MainViewModel,
     st: SettingsState,

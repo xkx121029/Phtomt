@@ -11,9 +11,8 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.rules.LocalDecisionEngine
 import com.phoneagent.engine.decision.DecisionPolicy
 import com.phoneagent.engine.execution.ActionMode
-import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.ActionPolicy
-import com.phoneagent.engine.memory.PageMemoryRecorder
+import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.runtime.EngineLimits.MAX_MODE_DENY_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SKILL_ERROR_STREAK
 import com.phoneagent.engine.runtime.LoopGuard
@@ -24,7 +23,11 @@ import com.phoneagent.feature.skill.SkillExecutionGateway
 import kotlinx.coroutines.CancellationException
 
 /** 决策阶段的外部出口（阶段 B3）：日志 / 悬浮窗 / 失败状态 / 通知 / 页面记忆 */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class DecisionHooks(
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     val log: (AgentLog.Level, String) -> Unit,
     val pushFloating: (String, String) -> Unit,
     /** 决策链路连续异常：写 ERROR 相位并归类为 DECISION（失败卡据此给「重试」） */
@@ -61,12 +64,13 @@ internal class MacroRelay(
  *   缺参推断仍在 Error 分支内先尝试
  * - 动作模式门控位于技能归一化之后、浏览器分流之前（覆盖 browse_*）
  */
+// 此处刻意兜底捕获系统服务/协议异常，避免单个失败打断整体流程，故按规则豁免
+@Suppress("TooGenericExceptionCaught", "LongParameterList")
 internal class DecisionPhase(
     private val localDecision: LocalDecisionEngine,
     private val loopGuard: LoopGuard,
     private val skillGateway: SkillExecutionGateway?,
     private val skillRunner: SkillRunner,
-    private val pageMemoryRecorder: PageMemoryRecorder,
     private val macro: MacroRelay,
     private val hooks: DecisionHooks,
     private val cloudDecide: suspend (
@@ -94,6 +98,8 @@ internal class DecisionPhase(
     private val modeDenyStreak: () -> Int,
     private val setModeDenyStreak: (Int) -> Unit,
     private val actionMode: () -> ActionMode,
+    // 引擎循环刻意兜底捕获，避免单个异常打断整个任务，此处按规则豁免
+    @Suppress("TooGenericExceptionCaught")
     private val completedSteps: () -> Int,
 ) : StepPhase {
 
@@ -109,6 +115,8 @@ internal class DecisionPhase(
             null
         }
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "ReturnCount")
     override suspend fun run(session: StepSession): StepOutcome {
         val messages = session.messages
         val annotated = session.annotated
@@ -135,14 +143,16 @@ internal class DecisionPhase(
         val localIntent = if (macroIntent == null && !forceCloudReview) {
             tryOrNull("端侧决策失败") { localDecision.decide(session.semanticSnapshot) } as? AgentIntent
         } else {
-            if (forceCloudReview) hooks.log(AgentLog.Level.WARN, "连续 ${loopGuard.localDecisionStreakValue} 次端侧决策，本步强制云端复核")
+            if (forceCloudReview) hooks.log(AgentLog.Level.WARN,
+                "连续 ${loopGuard.localDecisionStreakValue} 次端侧决策，本步强制云端复核")
             null
         }
         var decidedIntent: AgentIntent? = null
         var fromLocal = false
         if (macroIntent != null) {
             decidedIntent = macroIntent
-            hooks.log(AgentLog.Level.INFO, "宏「${macro.name()}」第 ${macro.dispatched()} 步注入：${macroIntent.intent} 参数=${macroIntent.args}")
+            hooks.log(AgentLog.Level.INFO,
+                "宏「${macro.name()}」第 ${macro.dispatched()} 步注入：${macroIntent.intent} 参数=${macroIntent.args}")
         } else if (localIntent != null) {
             decidedIntent = localIntent
             fromLocal = true
@@ -154,6 +164,8 @@ internal class DecisionPhase(
             // cloudDecide 内部含视觉链路与网络请求，异常面很宽：抛异常时降级为「等待重试」，
             // 而不是让异常穿透整个任务（既有的「正常返回 null → 决策为空停止」语义保持不变）
             var decisionThrew = false
+            // 引擎循环刻意兜底捕获，避免单个异常打断整个任务，此处按规则豁免
+            @Suppress("TooGenericExceptionCaught")
             val decided = try {
                 cloudDecide(
                     session.task,
@@ -244,11 +256,14 @@ internal class DecisionPhase(
                     // 任一步被拒整宏不启动；预检通过后进入接力模式，由端侧按顺序派发每一步
                     // （每步照常走归一化 → ActionPolicy 门控 → 转译层全链路，不绕过任何安全机制）
                     setSkillErrorStreak(0)
+                    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                    @Suppress("MaxLineLength")
                     val rejectReason = tryOrNull("宏预检失败") { skillRunner.macroPrecheckReason(normalized.skill) } as? String
                     if (rejectReason != null) {
                         setSkillErrorStreak(skillErrorStreak() + 1)
                         hooks.log(AgentLog.Level.WARN, "宏启动被拒：$rejectReason")
-                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ $rejectReason"))))
+                        messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                            text = "⚠️ $rejectReason"))))
                         return StepOutcome.Continue
                     }
                     macro.start(normalized)
@@ -289,10 +304,12 @@ internal class DecisionPhase(
                             if (skillErrorStreak() >= MAX_SKILL_ERROR_STREAK) {
                                 hooks.markSkillFatal(normalized.reason)
                                 hooks.pushFloating("技能不可用，已停止", "ERROR")
-                                hooks.log(AgentLog.Level.ERROR, "连续 ${skillErrorStreak()} 次技能调用被拒绝，停止任务：${normalized.reason}")
+                                hooks.log(AgentLog.Level.ERROR,
+                                    "连续 ${skillErrorStreak()} 次技能调用被拒绝，停止任务：${normalized.reason}")
                                 return StepOutcome.Fatal("技能连续被拒")
                             }
-                            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${normalized.reason}"))))
+                            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                                text = "⚠️ ${normalized.reason}"))))
                             return StepOutcome.Continue
                         }
                     }
@@ -316,7 +333,8 @@ internal class DecisionPhase(
                 hooks.log(AgentLog.Level.ERROR, stopReason)
                 return StepOutcome.Fatal("动作模式连续拒绝")
             }
-            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "⚠️ ${modeVerdict.reason}"))))
+            messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                text = "⚠️ ${modeVerdict.reason}"))))
             // 宏步骤被动作模式拒绝 = 失败即停：终止宏并交还 AI 决策循环（预检已挡掉绝大多数情况，
             // 这里兜住"任务中途用户切了档位"的运行期变化）
             if (macro.name().isNotBlank()) {

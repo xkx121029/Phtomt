@@ -3,8 +3,10 @@ package com.phoneagent.feature.edge
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.IBinder
 import android.view.WindowManager
+import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.overlay.OverlayMotion
 
 /**
@@ -20,12 +22,32 @@ class EdgeLightingService : Service() {
     private var params: WindowManager.LayoutParams? = null
     /** 是否正处于任务运行光效模式（区别于设置页标定预览） */
     private var isRunning = false
+    /** 设置页是否正在做标定预览（预览期间切换开关也要能即时收起/恢复） */
+    private var previewing = false
+    /** 用户设置：绿色主题边缘光效是否开启；关闭时不建窗口、不跑帧动画 */
+    private var lightingEnabled = true
+
+    private val settingsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == OverlayDisplaySettings.KEY_EDGE_LIGHTING_ENABLED) {
+                lightingEnabled = OverlayDisplaySettings.edgeLightingEnabled(this)
+                if (lightingEnabled) {
+                    // 立刻恢复：任务在跑或设置页在预览时，重新建窗并起动画
+                    if (isRunning || previewing) showOverlay()
+                } else {
+                    // 真正移除窗口：不留透明窗口、不再逐帧重绘、不占触摸区域
+                    removeOverlay()
+                }
+            }
+        }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        lightingEnabled = OverlayDisplaySettings.edgeLightingEnabled(this)
+        OverlayDisplaySettings.registerListener(this, settingsListener)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -38,16 +60,19 @@ class EdgeLightingService : Service() {
         when (intent.action) {
             ACTION_STOP -> {
                 isRunning = false
+                previewing = false
                 removeOverlay()
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_PREVIEW_START -> {
+                previewing = true
                 showOverlay()
                 applyCalibrationFrom(intent)
                 return START_STICKY
             }
             ACTION_PREVIEW_STOP -> {
+                previewing = false
                 if (isRunning) {
                     // 任务运行中的光效不应被设置页收起标定误关
                     return START_STICKY
@@ -83,6 +108,8 @@ class EdgeLightingService : Service() {
     }
 
     private fun showOverlay() {
+        // 用户关掉了边缘光效：一个窗口都不建（既不空转透明窗口，也不跑帧动画）
+        if (!lightingEnabled) return
         if (lightingView != null) return
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -140,6 +167,7 @@ class EdgeLightingService : Service() {
     }
 
     override fun onDestroy() {
+        OverlayDisplaySettings.unregisterListener(this, settingsListener)
         removeOverlay()
         if (instance === this) instance = null
         super.onDestroy()

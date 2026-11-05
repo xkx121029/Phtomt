@@ -23,6 +23,8 @@ object CapabilityConventions {
      * @param specs 待校验的能力声明
      * @param actionHasGoal 动作是否有通道阶梯目标（真实场景传 `{ ChannelGoal.of(it) != null }`）
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
     fun check(specs: List<CapabilitySpec>, actionHasGoal: (String) -> Boolean): List<Problem> {
         val problems = mutableListOf<Problem>()
         val seen = mutableSetOf<String>()

@@ -19,30 +19,32 @@ object AssistantRole {
     private const val ROLE_API = 29
 
     /** 当前是否已是默认数字助理（API < 29 一律 false，走系统设置手动指定） */
-    fun isDefaultAssistant(context: Context): Boolean {
-        val rm = if (Build.VERSION.SDK_INT >= ROLE_API) {
-            context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
+    fun isDefaultAssistant(context: Context): Boolean =
+        if (Build.VERSION.SDK_INT < ROLE_API) {
+            false
         } else {
-            null
+            val rm = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
+            rm?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
         }
-        return rm?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
-    }
 
     /**
      * 发起角色请求（系统授权框）。返回可 launch 的 Intent；本应用已是助理或
      * 系统拒绝授予该角色（机型定制）时返回 null。
      */
-    fun requestRole(activity: Activity?): Intent? {
-        val rm = if (Build.VERSION.SDK_INT >= ROLE_API) {
-            activity?.getSystemService(Context.ROLE_SERVICE) as? RoleManager
-        } else {
+    fun requestRole(activity: Activity?): Intent? =
+        if (Build.VERSION.SDK_INT < ROLE_API) {
             null
+        } else {
+            val rm = activity?.getSystemService(Context.ROLE_SERVICE) as? RoleManager
+            rm
+                ?.takeIf {
+                    it.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
+                        !it.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+                }
+                ?.let { role ->
+                    runCatching { role.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT) }.getOrNull()
+                }
         }
-        val intent = rm
-            ?.takeIf { it.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && !it.isRoleHeld(RoleManager.ROLE_ASSISTANT) }
-            ?.let { role -> runCatching { role.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT) }.getOrNull() }
-        return intent
-    }
 
     /**
      * 兜底跳转：系统授权框拿不到（API < 29 / 机型不支持该角色 / createRequestRoleIntent 抛异常）时，

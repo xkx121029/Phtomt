@@ -37,7 +37,6 @@ import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.data.prefs.AgentSurface
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.contentColumn
@@ -52,8 +51,10 @@ import kotlinx.coroutines.launch
 // MODEL_CATALOG 是「云端模型」下的二级页：模型库动辄几十上百条，不能平铺在设置页上
 // QUICK_START 是「冷启动专用」的一页流程：连模型 → 给无障碍 → 发出第一个任务，
 // 不参与分类导航，只从主页主操作卡 / 工作台空态 / 设置主页顶部直达
-enum class SettingsPage { QUICK_START, HOME, THEME, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, VISUAL, LONG_RUN,
-    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV, TABS }
+// 主题 / 界面效果 / 选项卡三页收成一页「外观与导航」（SettingsAppearance），
+// 三处改的都是「看起来什么样、导航怎么排」，分开摆只会让用户来回跳
+enum class SettingsPage { QUICK_START, HOME, APPEARANCE, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, LONG_RUN,
+    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV }
 
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
@@ -81,8 +82,6 @@ fun SettingsScreen(
     onNavigateAgent: () -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
-    // 同上：改走 LocalActivity（可空），不再把 LocalContext 强转成 Activity
-    val activity = androidx.activity.compose.LocalActivity.current
 
     val st = remember { SettingsState(settings) }
     // 宽屏双栏：左侧分类常驻，右侧直接翻页。
@@ -102,39 +101,6 @@ fun SettingsScreen(
     }
     // 正在挑选模型的职责（main / vision / reason）；null = 浮层收起
     var pickRole by remember { mutableStateOf<String?>(null) }
-
-    // 监听标定面板展开状态，启动/停止全屏预览
-    LaunchedEffect(st.calibrationExpanded, st.edgeLightingEnabled) {
-        if (st.calibrationExpanded && st.edgeLightingEnabled && activity != null) {
-            EdgeLightingService.startPreview(
-                context = activity,
-                top = st.edgeInsetTop,
-                bottom = st.edgeInsetBottom,
-                left = st.edgeInsetLeft,
-                right = st.edgeInsetRight,
-                radius = st.cornerRadius,
-                width = st.edgeLightingWidth,
-            )
-        } else if (activity != null) {
-            EdgeLightingService.stopPreview(activity)
-        }
-    }
-
-    // 实时更新标定参数到预览服务
-    LaunchedEffect(st.edgeInsetTop, st.edgeInsetBottom, st.edgeInsetLeft, st.edgeInsetRight, st.cornerRadius,
-        st.edgeLightingWidth) {
-        if (st.calibrationExpanded && st.edgeLightingEnabled && activity != null) {
-            EdgeLightingService.updateCalibration(
-                context = activity,
-                top = st.edgeInsetTop,
-                bottom = st.edgeInsetBottom,
-                left = st.edgeInsetLeft,
-                right = st.edgeInsetRight,
-                radius = st.cornerRadius,
-                width = st.edgeLightingWidth,
-            )
-        }
-    }
 
     // 设置持久化后同步到本地表单
     LaunchedEffect(settings) { st.applyFrom(settings) }
@@ -292,7 +258,7 @@ private fun SettingsPageContent(
                 } else {
                     SettingsHome(st, vm, onOpen = onPage)
                 }
-            SettingsPage.THEME -> SettingsTheme(st, save = saveNonAiSettings, onBack = backToHome)
+            SettingsPage.APPEARANCE -> SettingsAppearance(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.AI_MODELS -> SettingsAiModels(
                 vm = vm, st = st,
                 onBack = backToHome,
@@ -316,7 +282,6 @@ private fun SettingsPageContent(
             SettingsPage.ONDEVICE -> SettingsOnDevice(st, save = saveNonAiSettings, onBack = backToHome)
 
             SettingsPage.AGENT -> SettingsAgent(st, save = saveNonAiSettings, onBack = backToHome)
-            SettingsPage.VISUAL -> SettingsVisual(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = backToHome)
             SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings,
                 onBack = backToHome)
@@ -344,11 +309,6 @@ private fun SettingsPageContent(
             // 编码环境是「编码」下的二级页：返回时回编码页而不是设置主页
             SettingsPage.CODING_ENV -> SettingsCodingEnv(
                 onBack = { onPage(SettingsPage.CODING) },
-            )
-            SettingsPage.TABS -> SettingsTabs(
-                st = st,
-                save = saveNonAiSettings,
-                onBack = backToHome,
             )
         }
     }
@@ -401,7 +361,6 @@ class SettingsState(initial: AppSettings.Settings) {
     var edgeInsetRight by mutableIntStateOf(initial.edgeInsetRight)
     var cornerRadius by mutableIntStateOf(initial.cornerRadius)
     var edgeLightingWidth by mutableIntStateOf(initial.edgeLightingWidth)
-    var edgeLightingEnabled by mutableStateOf(initial.edgeLightingEnabled)
 
     var floatingWindowEnabled by mutableStateOf(initial.floatingWindowEnabled)
     var executionChannel by mutableStateOf(initial.executionChannel)
@@ -488,7 +447,6 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeInsetRight = s.edgeInsetRight
         cornerRadius = s.cornerRadius
         edgeLightingWidth = s.edgeLightingWidth
-        edgeLightingEnabled = s.edgeLightingEnabled
         floatingWindowEnabled = s.floatingWindowEnabled
         executionChannel = s.executionChannel
         actionMode = s.actionMode
@@ -584,7 +542,6 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeInsetRight = edgeInsetRight,
         cornerRadius = cornerRadius,
         edgeLightingWidth = edgeLightingWidth,
-        edgeLightingEnabled = edgeLightingEnabled,
         floatingWindowEnabled = floatingWindowEnabled,
         executionChannel = executionChannel,
         actionMode = actionMode,

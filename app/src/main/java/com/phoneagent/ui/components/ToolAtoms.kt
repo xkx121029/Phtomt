@@ -1,3 +1,5 @@
+// 该文件是小号 UI 原子组件集合，函数多但体量小，整文件豁免 TooManyFunctions
+@file:Suppress("TooManyFunctions")
 package com.phoneagent.ui.components
 
 import androidx.compose.foundation.background
@@ -95,6 +97,8 @@ data class ToolIdentity(
  * 图标一律线性描边、同一尺寸；名称复用 [HumanTranslator] 的动作人话，
  * 避免同一动作在卡片标题与步骤行里叫两个名字。
  */
+// 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+@Suppress("CyclomaticComplexMethod")
 fun agentToolIdentity(type: String): ToolIdentity = ToolIdentity(
     icon = when (type) {
         ActionType.CLICK, ActionType.TAP -> AppIcons.Tap
@@ -154,6 +158,8 @@ private val CommandTools = setOf("run_command", "bash", "shell")
  * 尺寸与底色只有这一份，Agent 页图标连排与编码页单工具卡才对得上。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 fun ToolIconBadge(
     icon: ImageVector,
     tint: Color,
@@ -207,7 +213,7 @@ data class ToolChip(
 )
 
 /** 图标条最多连排几个，超出的用 +N 交代，避免长任务把这一行撑爆 */
-private const val MaxChips = 4
+private const val MAX_CHIPS = 4
 
 /** 单个工具方块边长 / 相邻两个的横向前进量（小于边长 → 连排而非平铺） */
 private val ChipSize = 26.dp
@@ -221,7 +227,7 @@ private val ChipAdvance = 19.dp
 fun ToolIconStrip(
     chips: List<ToolChip>,
     modifier: Modifier = Modifier,
-    maxChips: Int = MaxChips,
+    maxChips: Int = MAX_CHIPS,
 ) {
     if (chips.isEmpty()) return
     val colors = AppTheme.colors

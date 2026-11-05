@@ -7,6 +7,7 @@ import java.io.File
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
 /**
  * Owns the on-device agent host process (node + extracted agent-host/index.js)
@@ -20,8 +21,13 @@ class AgentProcess(
     private val stderrLog: File,
     private val onExit: (Int) -> Unit = {},
 ) {
+    @Volatile
     private var process: java.lang.Process? = null
+
+    @Volatile
     private var writer: BufferedWriter? = null
+
+    @Volatile
     private var running = false
 
     /** stdout lines (one JSON object each). Thread-safe. */
@@ -84,8 +90,10 @@ class AgentProcess(
                 running = false
                 Log.w(TAG, "agent host exited with code $code")
                 val bye = """{"type":"event","event":{"type":"host_exited","code":$code}}"""
-                lineListeners.forEach { it(bye) }
-                onExit(code)
+                // 监听器里任何一处抛异常都不能中断后续通知与 onExit：
+                // 否则一次 UI 回调崩溃就会让所有人都以为宿主还活着。
+                lineListeners.forEach { listener -> runCatching { listener(bye) } }
+                runCatching { onExit(code) }
             },
             "coding-waiter",
         ).start()
@@ -150,15 +158,26 @@ class AgentProcess(
 
     fun stop() {
         running = false
-        try {
-            writer?.close()
-        } catch (_: Exception) {
-        }
-        try {
-            process?.destroy()
-        } catch (_: Exception) {
-        }
+        val proc = process
         process = null
+        val w = writer
+        writer = null
+        runCatching { w?.close() }
+        if (proc == null) return
+        // 先礼后兵：关 stdin 让 host 走 EOF 退出，同时发 SIGTERM；给 2 秒宽限，
+        // 超时强杀。以前只调一次 destroy() 就撒手，遇到 node 卡在同步任务时
+        // 会留下孤儿进程占着状态目录与端口，下一次启动直接起来第二份。
+        Thread(
+            {
+                runCatching { proc.destroy() }
+                val exited = runCatching { proc.waitFor(2, TimeUnit.SECONDS) }.getOrDefault(false)
+                if (!exited) {
+                    Log.w(TAG, "agent host still alive after 2s, killing")
+                    runCatching { proc.destroyForcibly() }
+                }
+            },
+            "coding-stop",
+        ).apply { isDaemon = true }.start()
     }
 
     companion object {

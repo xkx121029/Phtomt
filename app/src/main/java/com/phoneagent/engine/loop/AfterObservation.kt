@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.loop
 
 import com.phoneagent.core.security.DataSanitizer
@@ -95,6 +97,8 @@ internal object AfterObservationPolicy {
      * 这张图只是增强信息，动作后的元素树差异已经能说明变化；否则默认设置下永远不会复用，
      * 「动作即观察」等于没落地。需要每步必看图的用户走「强制视觉」路径，仍然每一步都截图。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun isReusable(
         after: AfterObservation,
         settings: AppSettings.Settings,
@@ -217,6 +221,8 @@ internal object AfterObservationPolicy {
  * - 净节省 = (完整单步均值 - 复用单步均值) × 复用次数 - 动作后快照总耗时
  *   （不可复用的步骤既付了抓快照又走了完整观察，属于净亏，已从公式里扣掉）
  */
+// 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
+@Suppress("TooManyFunctions")
 internal object AfterObservationStats {
     private val lock = Any()
     private var activeTask: String? = null

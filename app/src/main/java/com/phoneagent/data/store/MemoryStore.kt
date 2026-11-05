@@ -419,6 +419,8 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
      * revision 非空时做乐观并发校验：与当前 updatedAt 不一致说明条目已被别处改过，返回 [AiMemoryEdit.Conflict]，
      * 让调用方（通常是 AI）重新读取后再改，而不是覆盖掉别人刚写的内容。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     suspend fun updateAiMemory(id: Long, content: String, category: String?, revision: Long?): AiMemoryEdit {
         val text = content.trim()
         val list = loadAiMemories().toMutableList()

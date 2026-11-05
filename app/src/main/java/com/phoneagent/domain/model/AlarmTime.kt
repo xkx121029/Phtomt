@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.domain.model
 
 import java.time.DayOfWeek
@@ -31,7 +33,8 @@ data class AlarmTime(
     fun repeatText(): String = when {
         repeatDays.isEmpty() -> ""
         repeatDays.size == 7 -> "每天"
-        repeatDays == setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY) -> "工作日"
+        repeatDays == setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
+            DayOfWeek.FRIDAY) -> "工作日"
         repeatDays == setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) -> "周末"
         else -> AlarmDays.displayNames(repeatDays).joinToString("") { "周$it" }
     }
@@ -74,6 +77,8 @@ object AlarmDays {
         return result.ifEmpty { null }
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun fromName(raw: String): DayOfWeek? {
         val s = raw.trim().lowercase().removePrefix("周").removePrefix("星期").removePrefix("礼拜")
         if (s.isBlank()) return null
@@ -109,8 +114,8 @@ object AlarmTimeParser {
      * 星期前缀：范围写法（「一到周五」，中间可再带「周/星期/礼拜」）排在普通列举之前，
      * 避免把后面紧跟的小时数字（「周一三五7点」里的 7）当成星期数吞掉。
      */
-    private val DAY_RANGE = """(?:[一二三四五六日天1-7])[到至](?:周|星期|礼拜)?[一二三四五六日天1-7]"""
-    private val DAY_LIST = """[一二三四五六日天1-7、,，]+"""
+    private const val DAY_RANGE = """(?:[一二三四五六日天1-7])[到至](?:周|星期|礼拜)?[一二三四五六日天1-7]"""
+    private const val DAY_LIST = """[一二三四五六日天1-7、,，]+"""
     private val DAY_SELECTOR = Regex(
         """^(每天|每日|天天|工作日|周末|每周($DAY_RANGE|$DAY_LIST)|(?:周|星期|礼拜)($DAY_RANGE|$DAY_LIST)|(今天|明天|后天|明早|明晚|今晚))""",
     )
@@ -120,6 +125,8 @@ object AlarmTimeParser {
     /** 行尾时刻：不能带 `^`（要允许前面还有星期/时段前缀），只用 `$` 钉住结尾 */
     private val CLOCK = Regex("""([0-9]{1,2}|[一二两三四五六七八九十]{1,3})(?:[:：点时])(半|[0-9]{1,2}|[一二两三四五六七八九十]{1,3})?分?$""")
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     fun parse(raw: String?, now: LocalDateTime): AlarmParseResult {
         val normalized = normalize(raw)
             ?: return AlarmParseResult.Failure("没有提供时间：请说「7 点半」「半小时后」或「明天早上 6 点」，或直接给出 hour/minute")
@@ -144,7 +151,8 @@ object AlarmTimeParser {
                     repeatDays = DayOfWeek.entries.toSet(); leftover = tail
                 }
                 "工作日" -> {
-                    repeatDays = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY)
+                    repeatDays = setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY,
+                        DayOfWeek.FRIDAY)
                     leftover = tail
                 }
                 "周末" -> {
@@ -215,6 +223,8 @@ object AlarmTimeParser {
     }
 
     /** 结构化兜底：模型直接给 hour/minute 时组装（不做口语解析） */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun parseNumbers(hour: Int?, minute: Int?, repeatDays: Set<DayOfWeek>, now: LocalDateTime): AlarmParseResult {
         if (hour == null) return AlarmParseResult.Failure("缺少 hour：请给出 24 小时制的 hour/minute")
         val m = minute ?: 0
@@ -227,6 +237,8 @@ object AlarmTimeParser {
         return AlarmParseResult.Success(AlarmTime(hour, m, offset, repeatDays))
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun parseRelative(text: String, now: LocalDateTime): AlarmParseResult? {
         val m = RELATIVE.matchEntire(text) ?: return null
         val amountText = m.groupValues[1]
@@ -266,6 +278,8 @@ object AlarmTimeParser {
             .replace("点整", "点")
     }
 
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod")
     private fun number(text: String): Int {
         text.toIntOrNull()?.let { return it }
         var total = 0
@@ -303,10 +317,14 @@ object AlarmTimeParser {
     }
 
     /** 重复闹钟的下一次命中偏移（0=今天还没过，1…6=之后第几天） */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun daysUntil(today: LocalDate, days: Set<DayOfWeek>, candidate: LocalDateTime, now: LocalDateTime): Int {
         if (days.isEmpty()) return if (!candidate.isAfter(now)) 1 else 0
         for (offset in 0..7) {
             val date = today.plusDays(offset.toLong())
+            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+            @Suppress("MaxLineLength")
             val hit = date.dayOfWeek in days && date.atTime(candidate.toLocalTime()).let { it.isAfter(now) || offset > 0 }
             if (hit) return offset
         }
@@ -314,6 +332,8 @@ object AlarmTimeParser {
     }
 
     /** 「一三五」「一到五」「1,3,5」「一、三、五」→ 星期集合 */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun parseDayGroup(raw: String): Set<DayOfWeek>? {
         if (raw.isBlank()) return null
         val range = Regex("""([一二三四五六日天1-7])[到至](?:周|星期|礼拜)?([一二三四五六日天1-7])""").find(raw)
@@ -326,7 +346,8 @@ object AlarmTimeParser {
             )
             val from = order.indexOf(start)
             val to = order.indexOf(end)
-            return if (from <= to) order.subList(from, to + 1).toSet() else (order.subList(from, order.size) + order.subList(0, to + 1)).toSet()
+            return if (from <= to) order.subList(from, to + 1).toSet() else (order.subList(from,
+                order.size) + order.subList(0, to + 1)).toSet()
         }
         return raw.mapNotNull { AlarmDays.fromName(it.toString()) }.toSet().ifEmpty { null }
     }

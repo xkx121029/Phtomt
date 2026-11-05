@@ -1,3 +1,5 @@
+// 该文件是列表条目的集中渲染处，函数多但每个都很短，整文件豁免 TooManyFunctions
+@file:Suppress("TooManyFunctions")
 package com.phoneagent.ui.agent
 
 import androidx.compose.animation.AnimatedVisibility

@@ -31,6 +31,8 @@ private val appModule = module {
     single { ShizukuManager(androidContext()) }
     single { MemoryStore(androidContext()) }
     single { DocumentEngine(androidContext()) }
+    // 云端执行文档：规划/决策与设置页共用同一实例（共享内存索引与磁盘缓存，避免重复下载）
+    single { com.phoneagent.feature.agentdoc.AgentDocRepository(androidContext(), get()) }
     single { TermuxBridge(androidContext()) }
     // 末位注入 MemoryStore 单例：引擎与 UI 记忆页共用同一实例（消除双实例与各自缓存不一致）。
     // 全部用具名参数：11 个 get() 的位置参数一旦有人调整构造顺序就会静默错配，
@@ -44,10 +46,9 @@ private val appModule = module {
             adbTransport = get(),
             termuxBridge = get(),
             documentEngine = get(),
-            mcpManager = get(),
             skillGateway = get(),
-            codingBridge = get(),
             memoryStore = get(),
+            docRepository = get(),
         )
     }
     single { TestEngine(get()) }
@@ -72,8 +73,12 @@ private val appModule = module {
     // 编码运行时管理器：Node 宿主随主 APK 内置（app/src/main/jniLibs），只做就绪探测
     single { com.phoneagent.coding.CodingRuntimeManager(androidContext()) }
 
+    // 编码环境组件（com.phoneagent.env）门户：安装引导、AIDL 绑定、一键安装与构建的进度聚合
+    single { com.phoneagent.coding.env.CodingEnvClient(androidContext()) }
+
     // 编码 agent 委托桥（Superagent 融合 Phase 4）：引擎路由与 Phase 5 编码页共享同一实例
-    single { com.phoneagent.engine.coding.CodingAgentBridge(androidContext(), get(), get()) }
+    // 第四个参数是环境门户：Agent 的 coding_env 工具经它驱动 PRoot 工具链
+    single { com.phoneagent.engine.coding.CodingAgentBridge(androidContext(), get(), get(), get()) }
 
     viewModel {
         MainViewModel(

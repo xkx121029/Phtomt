@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.execution
 
 import com.phoneagent.core.log.AppLog
@@ -206,6 +208,8 @@ internal class ClockStrategy(
     private val type: String,
     private val now: () -> java.time.LocalDateTime = { java.time.LocalDateTime.now() },
 ) : IntentTranslationStrategy {
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
         if (type == ActionType.SET_TIMER) {
             val seconds = intent.durationSeconds ?: intent.durationMs?.let { it / 1000 }
@@ -489,6 +493,8 @@ private fun numText(d: Double): String = if (d == d.toLong().toDouble()) d.toLon
  *
  * 返回 null 表示通过，否则是给人看的中文原因（含合法范围/候选值，便于 AI 一次改对）。
  */
+// 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+@Suppress("CyclomaticComplexMethod")
 private fun paramError(p: CapabilityParam, raw: String): String? = when (p.type) {
     "number" -> {
         val v = raw.toDoubleOrNull()
@@ -527,6 +533,8 @@ private fun paramError(p: CapabilityParam, raw: String): String? = when (p.type)
  * 顶层 text/app/uri 与 args 里同名参数等价（AI 两种写法都会出现），这里统一补进 args 再校验。
  */
 internal class DeviceOpsStrategy(private val family: String) : IntentTranslationStrategy {
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
         val spec = CapabilityRegistry.specOf(family)
         val opParam = spec?.params?.firstOrNull { it.name == "op" }

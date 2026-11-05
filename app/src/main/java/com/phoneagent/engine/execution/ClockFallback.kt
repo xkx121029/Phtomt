@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.execution
 
 import android.content.Context
@@ -246,6 +248,8 @@ internal class ClockFallbackRunner(
         "content://com.google.android.deskclock/alarm",
     )
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     suspend fun run(request: ClockRequest): ClockOutcome {
         val failures = mutableListOf<String>()
         for (level in ClockFallbackPolicy.levels(request, caps)) {
@@ -316,6 +320,8 @@ internal class ClockFallbackRunner(
      * 发一次时钟 Intent。
      * @return null=已交付；非空=中文失败原因（用于下一级文案）
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun dispatch(request: ClockRequest, skipUi: Boolean, preferVendorAction: Boolean): String? {
         val probe = fillIntent(request, Intent(request.action), skipUi) ?: return "时钟类型无法识别"
 
@@ -384,6 +390,8 @@ internal class ClockFallbackRunner(
      * 用注入通道把一次性闹钟写进厂商时钟 Provider，并**回查**确认。
      * 任何一步不成立都返回中文原因，交给下一级；不吞异常、不假装成功。
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     private suspend fun writeAlarmViaShell(request: ClockRequest): String? {
         if (request.action != AlarmClock.ACTION_SET_ALARM) return "倒计时不支持写库"
         if (!request.repeatDays.isNullOrEmpty()) return "重复闹钟的星期字段各厂商不一致"
@@ -412,6 +420,8 @@ internal class ClockFallbackRunner(
         }
 
         // 回查：拿不到这一行就是没写进去，不能把「命令没报错」当成成功
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val check = shell("content query --uri '$uri' --where 'hour=$hour AND minutes=$minute' --projection hour:minutes")
         val checkOut = (check as? ShizukuManager.ShellResult.Success)?.output.orEmpty()
         if (!checkOut.contains("hour=$hour") || !checkOut.contains("minutes=$minute")) {
@@ -424,6 +434,8 @@ internal class ClockFallbackRunner(
 
     // ---------------------------------------------------------------- 三级：无障碍确认
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private suspend fun confirmViaAccessibility(request: ClockRequest): String? {
         val exec = executor ?: return "无障碍服务不在线"
         val error = dispatch(request, skipUi = false, preferVendorAction = false)

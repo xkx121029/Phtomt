@@ -40,6 +40,7 @@ import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.ThemePalette
 import com.phoneagent.ui.theme.UiStyle
 import com.phoneagent.ui.theme.appBorderStroke
@@ -56,7 +57,13 @@ import dev.chrisbanes.haze.hazeSource
  * 保存后整棵树重组，不需要重启。
  */
 @Composable
-internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+internal fun SettingsTheme(
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+    /** 由「外观与导航」内嵌渲染时为 true：标题已由外层给，这里不再重复画一遍 */
+    embedded: Boolean = false,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -65,8 +72,10 @@ internal fun SettingsTheme(st: SettingsState, save: () -> Unit, onBack: () -> Un
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("主题", onBack, subtitle = "界面风格、配色、框线与磨砂浓淡，改完立即生效")
-        Spacer(Modifier.height(20.dp))
+        if (!embedded) {
+            SettingsPageHeader("主题", onBack, subtitle = "界面风格、配色、框线与磨砂浓淡，改完立即生效")
+            Spacer(Modifier.height(AppSpacing.Page))
+        }
 
         // 界面风格：只换令牌取值口径（圆角档位 / 容器色调），不新开一套样式系统。
         // 选中即落盘，PhoneAgentTheme 重组后全站立即生效；默认经典，工作台作为可选预设

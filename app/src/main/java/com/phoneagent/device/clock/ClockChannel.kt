@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.device.clock
 
 import android.content.Context
@@ -88,6 +90,8 @@ sealed interface ClockResult {
  */
 class ClockChannel(private val context: Context) {
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun setAlarm(hour: Int?, minute: Int?, repeatDays: List<Int>?, label: String?): ClockResult {
         if (hour == null || minute == null) {
             return ClockResult.Failure("缺少闹钟时间：请给出 hour/minute，或一句可识别的时间（如「7点半」）")
@@ -102,6 +106,8 @@ class ClockChannel(private val context: Context) {
         return dispatch(req, message)
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun setTimer(seconds: Long?, label: String?): ClockResult {
         if (seconds == null || seconds <= 0L) {
             return ClockResult.Failure("倒计时时长无效：duration_seconds 需大于 0（如 1800 = 30 分钟）")

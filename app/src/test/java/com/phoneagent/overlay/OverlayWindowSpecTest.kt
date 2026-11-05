@@ -44,11 +44,13 @@ class OverlayWindowSpecTest {
     }
 
     @Test
-    fun `光带高度不小于状态栏 inset`() {
-        // 状态栏 72px、最小可读高度 90px：取 90，保证文字放得下
-        assertEquals(90, OverlayWindowSpec.marqueeBandHeightPx(72, 90))
-        // 状态栏 120px：取 120，保证完全盖住状态栏
-        assertEquals(120, OverlayWindowSpec.marqueeBandHeightPx(120, 90))
+    fun `光带高度整段盖住状态栏并多出一行文字`() {
+        // 状态栏 72px + 文字行 90px：高度 162px，上段 72px 铺进系统栏，下段放文字
+        assertEquals(162, OverlayWindowSpec.marqueeBandHeightPx(72, 90))
+        // 无 inset（罕见机型）时也至少留一行文字的高度
+        assertEquals(90, OverlayWindowSpec.marqueeBandHeightPx(0, 90))
+        // 挖孔屏 inset 很高：光带必须比 inset 更高，否则文字行会被系统栏吃掉
+        assertTrue(OverlayWindowSpec.marqueeBandHeightPx(120, 90) > 120)
     }
 
     @Test

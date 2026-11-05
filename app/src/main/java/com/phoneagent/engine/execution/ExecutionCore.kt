@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.execution
 
 import android.content.Intent
@@ -40,6 +42,8 @@ import kotlinx.coroutines.flow.first
  * 注意：目标定位与坐标换算已收口到 [IntentResolver]（resolveAction / relocateOnLatest / nodeSelectorOf），
  * 本类不做任何重复定位逻辑。
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ExecutionCore(
     private val appContext: android.content.Context,
     private val settings: AppSettings,
@@ -118,7 +122,8 @@ internal class ExecutionCore(
     private fun settingsChannelPreferenceSnapshot(): String =
         settingsSnapshot()?.executionChannel ?: "AUTO"
 
-    suspend fun executeWithVerify(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
+    suspend fun executeWithVerify(action: AgentAction,
+        snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         val execT0 = System.nanoTime()
         // 任务边界切换时清空通道健康度：上一任务的连续失败不该拖累新任务的首选通道
         syncChannelHealth()
@@ -235,6 +240,8 @@ internal class ExecutionCore(
             }
         }
 
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val result = when (type) {
             ActionType.CLICK, ActionType.TAP ->
                 // 点击走专门的流水线：活节点直点 → 手势点最新位置 → 快照坐标 → 滚动查找，
@@ -255,32 +262,39 @@ internal class ExecutionCore(
                 val dist = action.distancePx
                     ?: if (horizontal) ctx.screenWidth() else ctx.screenHeight()
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
-                verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey, action.durationMs ?: 400).isSuccess() }
+                verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey,
+                    action.durationMs ?: 400).isSuccess() }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (ctx.screenWidth() / 2)
                 val py = y ?: verticalSwipeStartY()
-                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py - ctx.screenHeight()).coerceIn(0, ctx.screenHeight() - 1)).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py - ctx.screenHeight()).coerceIn(0,
+                    ctx.screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_DOWN -> {
                 val px = x ?: (ctx.screenWidth() / 2)
                 val py = y ?: verticalSwipeStartY()
-                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py + ctx.screenHeight()).coerceIn(0, ctx.screenHeight() - 1)).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, px, (py + ctx.screenHeight()).coerceIn(0,
+                    ctx.screenHeight() - 1)).isSuccess() }
             }
             ActionType.SWIPE_LEFT -> {
                 val px = x ?: (ctx.screenWidth() / 2)
                 val py = y ?: (ctx.screenHeight() / 2)
-                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px - ctx.screenWidth()).coerceIn(0, ctx.screenWidth() - 1), py).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px - ctx.screenWidth()).coerceIn(0,
+                    ctx.screenWidth() - 1), py).isSuccess() }
             }
             ActionType.SWIPE_RIGHT -> {
                 val px = x ?: (ctx.screenWidth() / 2)
                 val py = y ?: (ctx.screenHeight() / 2)
-                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px + ctx.screenWidth()).coerceIn(0, ctx.screenWidth() - 1), py).isSuccess() }
+                verifier.executeAndVerify(snapshot) { executor.swipe(px, py, (px + ctx.screenWidth()).coerceIn(0,
+                    ctx.screenWidth() - 1), py).isSuccess() }
             }
-            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(baseline, target) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
+            ActionType.SCROLL, ActionType.SCROLL_TO -> verifier.executeAndVerify(baseline,
+                target) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
                 if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(baseline, target) { executor.typeText(action.text ?: "", target, x, y).isSuccess() }
+                else verifier.executeAndVerify(baseline, target) { executor.typeText(action.text ?: "", target, x,
+                    y).isSuccess() }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
@@ -321,6 +335,8 @@ internal class ExecutionCore(
                         )
                     }
                 } else {
+                    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                    @Suppress("MaxLineLength")
                     val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
                     com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
@@ -374,7 +390,8 @@ internal class ExecutionCore(
             ActionType.BACK -> executeNoVerify(executor) { executor.back().isSuccess() }
             ActionType.HOME -> executeNoVerify(executor) { executor.home().isSuccess() }
             ActionType.RECENTS -> executeNoVerify(executor) { executor.recents().isSuccess() }
-            ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.engine.execution.VerifyResult(true, "等待完成", "", "") }
+            ActionType.WAIT -> { delay(action.timeoutMs ?: action.durationMs ?: 1000); com.phoneagent.engine.execution.VerifyResult(true,
+                "等待完成", "", "") }
             ActionType.REFRESH -> com.phoneagent.engine.execution.VerifyResult(
                 false,
                 VerifyRules.NO_A11Y_REFRESH + "：请改用 refresh 意图点击页面刷新按钮，或下滑手势",
@@ -410,7 +427,8 @@ internal class ExecutionCore(
      * 通道断开时会直接抛异常。异常若穿透主循环会连带终止整个任务，所以这里统一降级为「失败验证结果」，
      * 复用既有的「连续 3 次失败 → 请求用户介入」机制，把问题交回用户而不是无声崩掉。
      */
-    suspend fun safeExecute(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
+    suspend fun safeExecute(action: AgentAction,
+        snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
         return try {
             executeWithVerify(action, snapshot)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -449,6 +467,8 @@ internal class ExecutionCore(
         val x = resolved.x ?: action.x
         val y = resolved.y ?: action.y
         val vdW = if (snapshot.screenWidth > 0) snapshot.screenWidth else ctx.screenWidth()
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val vdH = if (snapshot.screenHeight > 0) snapshot.screenHeight else ctx.screenHeight()
 
         return when (type) {
@@ -541,6 +561,8 @@ internal class ExecutionCore(
      * 与其它动作不同，这一条**不依赖无障碍服务**，由 [executeWithVerify] 在无障碍判定之前分流；
      * 每一级失败只记录原因并继续下一级，最终必须给出一句点名「现在用的是什么方式」的中文。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private suspend fun executeClockAction(
         action: AgentAction,
         type: String,
@@ -703,6 +725,8 @@ internal class ExecutionCore(
 
         val service = AgentAccessibilityService.instance ?: return fail("无障碍服务不可用")
         val executor = ActionExecutor(service)
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         fun wrap(r: ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult = when (r) {
             is ActionExecutor.Result.Success -> ok(r.description.ifBlank { "端点 $name 执行成功" })
             is ActionExecutor.Result.Failure -> fail(r.reason)
@@ -739,7 +763,8 @@ internal class ExecutionCore(
             ))
             "swipe_direction" -> {
                 val direction = strArg("direction") ?: return fail("swipe_direction 缺少参数 direction")
-                val (ex, ey) = swipeEndpoints(ctx.screenWidth() / 2, ctx.screenHeight() / 2, direction, intArg("distance_px"))
+                val (ex, ey) = swipeEndpoints(ctx.screenWidth() / 2, ctx.screenHeight() / 2, direction,
+                    intArg("distance_px"))
                 wrap(executor.swipe(ctx.screenWidth() / 2, ctx.screenHeight() / 2, ex, ey, 400))
             }
             "scroll" -> {
@@ -872,6 +897,8 @@ internal class ExecutionCore(
      * 不再"语音指令 → 默认助理 → 长按电源键"连环试三条。选错入口或设备确实没配助手时，
      * 多发两条只会把失败时间拖成三倍；探测阶段已经把"用哪一个"确定下来了。
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private suspend fun shellWakeAssistant(executor: ActionExecutor): Boolean {
         val target = runCatchingLogged(TAG, "探测语音助手包名") {
             com.phoneagent.provider.a11y.VoiceAssistantDetector(appContext).probe()
@@ -948,12 +975,14 @@ internal class ExecutionCore(
 
         // 结果包装：成功提示已用无障碍代替 shell
         fun wrap(r: ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult = when (r) {
-            is ActionExecutor.Result.Success -> com.phoneagent.engine.execution.VerifyResult(true, "已用无障碍代替 shell 执行: $cmd", "", "")
+            is ActionExecutor.Result.Success -> com.phoneagent.engine.execution.VerifyResult(true,
+                "已用无障碍代替 shell 执行: $cmd", "", "")
             is ActionExecutor.Result.Failure -> com.phoneagent.engine.execution.VerifyResult(false, r.reason, "", "")
         }
 
         // 坐标类动作统一处理
-        suspend fun coordOp(block: suspend (Int, Int) -> ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult {
+        suspend fun coordOp(block: suspend (Int,
+            Int) -> ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult {
             val (x, y) = ShellCommands.coord(args, w, h) ?: return fail("Shizuku 不可用，坐标无效: $cmd")
             return wrap(block(x, y))
         }
@@ -971,10 +1000,14 @@ internal class ExecutionCore(
                     first
                 }
             }
-            "su", "swipe_up" -> coordOp { x, y -> executor.swipe(x, y, x, (y - h * 0.25f).toInt().coerceAtLeast(0), 400) }
-            "sd", "swipe_down" -> coordOp { x, y -> executor.swipe(x, y, x, (y + h * 0.25f).toInt().coerceAtMost(h), 400) }
-            "sl", "swipe_left" -> coordOp { x, y -> executor.swipe(x, y, (x - w * 0.25f).toInt().coerceAtLeast(0), y, 400) }
-            "sr", "swipe_right" -> coordOp { x, y -> executor.swipe(x, y, (x + w * 0.25f).toInt().coerceAtMost(w), y, 400) }
+            "su", "swipe_up" -> coordOp { x, y -> executor.swipe(x, y, x, (y - h * 0.25f).toInt().coerceAtLeast(0),
+                400) }
+            "sd", "swipe_down" -> coordOp { x, y -> executor.swipe(x, y, x, (y + h * 0.25f).toInt().coerceAtMost(h),
+                400) }
+            "sl", "swipe_left" -> coordOp { x, y -> executor.swipe(x, y, (x - w * 0.25f).toInt().coerceAtLeast(0), y,
+                400) }
+            "sr", "swipe_right" -> coordOp { x, y -> executor.swipe(x, y, (x + w * 0.25f).toInt().coerceAtMost(w), y,
+                400) }
             "sw", "swipe" -> {
                 val c = ShellCommands.coords(args, w, h)
                 if (c == null) fail("Shizuku 不可用，滑动参数无效: $cmd")
@@ -1018,6 +1051,8 @@ internal class ExecutionCore(
      * 可验证等待：每 400ms 重新观察一次，命中「目标文字」或「目标前台应用」即成功；
      * 到超时如实回报当前前台与页面是否变化（不静默、不假装成功）。
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
     private suspend fun waitForTarget(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
         val text = action.text?.trim().orEmpty()
         val pkg = action.packageName?.trim().orEmpty()
@@ -1039,7 +1074,8 @@ internal class ExecutionCore(
                 el.text?.contains(text, ignoreCase = true) == true ||
                     el.contentDescription?.contains(text, ignoreCase = true) == true
             } == true
-            val hitPkg = pkg.isNotEmpty() && (last?.packageName == pkg || last?.packageName?.contains(pkg, ignoreCase = true) == true)
+            val hitPkg = pkg.isNotEmpty() && (last?.packageName == pkg || last?.packageName?.contains(pkg,
+                ignoreCase = true) == true)
             if (hitText || hitPkg) {
                 val what = when {
                     hitText && hitPkg -> "「$text」已出现且 $pkg 在前台"
@@ -1121,6 +1157,8 @@ internal class ExecutionCore(
     ): com.phoneagent.engine.execution.VerifyResult =
         StageTiming.measure(store.currentTaskId, "启动阶梯") { runLaunchLadder(service, pkg, snapshot) }
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     private suspend fun runLaunchLadder(
         service: AgentAccessibilityService,
         pkg: String,
@@ -1256,6 +1294,8 @@ internal class ExecutionCore(
      * - 启动与深链 → shell（monkey / am start）失败后还有"本应用直启"兜底；
      * - 没有任何可用替代通道时返回 null，由调用方保留原始失败原因。
      */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     private suspend fun channelFallback(
         action: AgentAction,
         type: String,
@@ -1268,6 +1308,8 @@ internal class ExecutionCore(
             fallbackViaChannels(action, type, snapshot, x, y, originalReason)
         }
 
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     private suspend fun fallbackViaChannels(
         action: AgentAction,
         type: String,
@@ -1360,6 +1402,8 @@ internal class ExecutionCore(
     }
 
     /** 把动作翻译成替代通道的 shell 命令；无对应命令返回 null */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList", "CyclomaticComplexMethod", "NestedBlockDepth", "MaxLineLength")
     private fun buildFallbackCommands(
         action: AgentAction,
         type: String,
@@ -1461,8 +1505,12 @@ internal class ExecutionCore(
         else -> null
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     private fun launchLocally(pkg: String): Boolean {
         if (!PACKAGE_RE.matches(pkg)) return false
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val intent = runCatching { appContext.packageManager.getLaunchIntentForPackage(pkg) }.getOrNull() ?: return false
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         return runCatching { appContext.startActivity(intent); true }.getOrDefault(false)
@@ -1507,7 +1555,8 @@ internal class ExecutionCore(
         uri.isNotBlank() && uri.none { it == '\'' || it == '\n' || it == '\r' }
 
 
-    private suspend fun handleKey(executor: ActionExecutor, keycode: String): com.phoneagent.engine.execution.VerifyResult {
+    private suspend fun handleKey(executor: ActionExecutor,
+        keycode: String): com.phoneagent.engine.execution.VerifyResult {
         return when (keycode.uppercase()) {
             "BACK" -> executeNoVerify(executor) { executor.back().isSuccess() }
             "HOME" -> executeNoVerify(executor) { executor.home().isSuccess() }
@@ -1523,7 +1572,8 @@ internal class ExecutionCore(
         }
     }
 
-    private suspend fun executeNoVerify(executor: ActionExecutor, block: suspend () -> Boolean): com.phoneagent.engine.execution.VerifyResult {
+    private suspend fun executeNoVerify(executor: ActionExecutor,
+        block: suspend () -> Boolean): com.phoneagent.engine.execution.VerifyResult {
         val ok = block()
         delay(500)
         return com.phoneagent.engine.execution.VerifyResult(

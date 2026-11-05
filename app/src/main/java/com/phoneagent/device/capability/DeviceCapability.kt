@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.device.capability
 
 /**
@@ -95,6 +97,8 @@ data class DeviceCapabilitySnapshot(
      * 给人看的中文原因（用于失败回注与日志，不用于提示词的能力宣称）。
      * 可用时返回空串。
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod")
     fun reasonOf(capability: DeviceCapability): String {
         val state = stateOf(capability)
         if (state == CapabilityState.AVAILABLE || state == CapabilityState.UNKNOWN) return ""

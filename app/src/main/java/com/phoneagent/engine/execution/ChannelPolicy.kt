@@ -153,7 +153,6 @@ internal object ChannelPolicy {
         systemShell: List<ChannelCandidate>,
     ): List<ChannelCandidate> {
         val shizuku = snapshot.isUsable(DeviceCapability.SHELL_SHIZUKU)
-        val adb = snapshot.isUsable(DeviceCapability.SHELL_ADB)
         val termux = snapshot.isUsable(DeviceCapability.SHELL_TERMUX)
 
         // Termux 工具链命令：Termux 优先（adb shell 里没有 curl/python/jq）

@@ -1,27 +1,46 @@
 package com.phoneagent.ui.settings
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.phoneagent.feature.edge.EdgeLightingService
+import com.phoneagent.overlay.OverlayDisplaySettings
+import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import kotlinx.coroutines.delay
 
 /**
  * 标定预览框的颜色。
@@ -34,7 +53,87 @@ private val CalibrationGuideBorder = Color(0xFFFFD600)
 
 /** 界面效果页：运行时视觉反馈（点击光标 / 边缘光效 / 悬浮窗跑马灯） */
 @Composable
-internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
+internal fun SettingsVisual(
+    st: SettingsState,
+    save: () -> Unit,
+    onBack: () -> Unit,
+    /** 由「外观与导航」内嵌渲染时为 true：标题已由外层给，这里不再重复画一遍 */
+    embedded: Boolean = false,
+) {
+    val context = LocalContext.current
+    val activity = LocalActivity.current
+    // 浮层显示设置由浮层线的 OverlayDisplaySettings 统一读写（独立 prefs 文件）：
+    // 这里只做这一个写入口，正在运行的跑马灯/光效靠它自己的监听即时生效，无需重启。
+    var stepPlacement by remember { mutableStateOf(OverlayDisplaySettings.stepTextPlacement(context)) }
+    var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(context)) }
+    // 两个复选框是 stepPlacement 的展开形态：勾两处 = both，只勾顶部 = marquee，只勾卡片 = card
+    var marqueeOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.CARD) }
+    var cardOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.MARQUEE) }
+    var stepTextHint by remember { mutableStateOf(false) }
+
+    fun updateStepText(nextMarquee: Boolean, nextCard: Boolean) {
+        if (!nextMarquee && !nextCard) {
+            // 两处都取消会让描述无处可显。这里不静默变成空状态：
+            // 保持原勾选并就地提示一句，比把最后一枚复选框置灰更容易看懂为什么点不动
+            stepTextHint = true
+            return
+        }
+        val next = when {
+            nextMarquee && nextCard -> StepTextPlacement.BOTH
+            nextMarquee -> StepTextPlacement.MARQUEE
+            else -> StepTextPlacement.CARD
+        }
+        marqueeOn = nextMarquee
+        cardOn = nextCard
+        stepPlacement = next
+        OverlayDisplaySettings.setStepTextPlacement(context, next)
+    }
+    LaunchedEffect(stepTextHint) {
+        if (stepTextHint) {
+            delay(2_500)
+            stepTextHint = false
+        }
+    }
+
+    // 标定面板展开时起全屏预览；开关关掉就立刻收窗。
+    // 这段原先挂在设置页根节点上，现在挪到本页：预览服务只服务这一个分区，
+    // 离开分区（或关掉开关）就该一并停掉，不该让根节点替它兜底。
+    LaunchedEffect(st.calibrationExpanded, edgeLightingOn) {
+        if (st.calibrationExpanded && edgeLightingOn && activity != null) {
+            EdgeLightingService.startPreview(
+                context = activity,
+                top = st.edgeInsetTop,
+                bottom = st.edgeInsetBottom,
+                left = st.edgeInsetLeft,
+                right = st.edgeInsetRight,
+                radius = st.cornerRadius,
+                width = st.edgeLightingWidth,
+            )
+        } else if (activity != null) {
+            EdgeLightingService.stopPreview(activity)
+        }
+    }
+    LaunchedEffect(
+        st.edgeInsetTop, st.edgeInsetBottom, st.edgeInsetLeft, st.edgeInsetRight,
+        st.cornerRadius, st.edgeLightingWidth,
+    ) {
+        if (st.calibrationExpanded && edgeLightingOn && activity != null) {
+            EdgeLightingService.updateCalibration(
+                context = activity,
+                top = st.edgeInsetTop,
+                bottom = st.edgeInsetBottom,
+                left = st.edgeInsetLeft,
+                right = st.edgeInsetRight,
+                radius = st.cornerRadius,
+                width = st.edgeLightingWidth,
+            )
+        }
+    }
+    // 切走分区时组合被回收：预览不会自己停，必须在这里补一刀
+    DisposableEffect(Unit) {
+        onDispose { activity?.let { EdgeLightingService.stopPreview(it) } }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -43,8 +142,10 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
-        Spacer(Modifier.height(20.dp))
+        if (!embedded) {
+            SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
+            Spacer(Modifier.height(AppSpacing.Page))
+        }
 
         // ---- 桌面悬浮窗（总开关）----
         // 从「任务行为」搬到这里：悬浮窗开关与跑马灯样式是同一件事，放在一起才算一个设置点
@@ -60,6 +161,40 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
             ) {
                 st.floatingWindowEnabled = it
                 save()
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ---- 逐步任务文字：两个复选框，勾哪就在哪画 ----
+        SettingsSection(
+            title = "逐步任务文字",
+            subtitle = "同一步的描述只画一遍：两处都勾就各显示一遍，只勾一处另一处就安静下来",
+            tone = SettingsTone.Brand,
+        ) {
+            CheckRow(
+                title = "顶部跑马灯",
+                subtitle = "描述在顶部光带滚动；不勾就整条不显示",
+                checked = marqueeOn,
+            ) { next ->
+                updateStepText(nextMarquee = next, nextCard = cardOn)
+            }
+            SettingsDivider()
+            CheckRow(
+                title = "任务卡状态行",
+                subtitle = "描述出现在任务卡里；不勾就只留「第 n/m 步」",
+                checked = cardOn,
+            ) { next ->
+                updateStepText(nextMarquee = marqueeOn, nextCard = next)
+            }
+            if (stepTextHint) {
+                // 只做一次性提示，不弹系统 Toast：提示就近放在控件下方，读到就知道怎么改
+                Text(
+                    "至少保留一处显示",
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
 
@@ -97,21 +232,23 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
         // ---- 边缘光效 ----
         SettingsSection(
             title = "边缘光效",
-            subtitle = "任务执行时的屏幕边缘彩色光效",
+            subtitle = "任务执行时的屏幕边缘绿色光带",
             tone = SettingsTone.Brand,
         ) {
-            SettingsToggleRow(
-                title = "启用跑马光效",
-                subtitle = "任务执行时显示屏幕边缘彩色光效",
-                value = st.edgeLightingEnabled,
-            ) {
-                st.edgeLightingEnabled = it
-                save()
+            // 与上方「逐步任务文字」同一套复选框语言：这一组都是「要不要显示某一层」，不是开关总控
+            CheckRow(
+                title = "绿色边缘光效悬浮窗",
+                subtitle = "任务执行时在屏幕边缘显示绿色光带；不勾就不建窗口、不占触摸，任务照常执行",
+                checked = edgeLightingOn,
+            ) { next ->
+                edgeLightingOn = next
+                // 只写浮层线的这枚键：正在运行的光效由服务自己的监听即时收窗/复现
+                OverlayDisplaySettings.setEdgeLightingEnabled(context, next)
             }
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
                 ExpandableCard(
                     title = "光效标定",
-                    enabled = st.edgeLightingEnabled,
+                    enabled = edgeLightingOn,
                     expanded = st.calibrationExpanded,
                     onExpandedChange = { st.calibrationExpanded = it },
                 ) {
@@ -237,5 +374,45 @@ internal fun SettingsVisual(st: SettingsState, save: () -> Unit, onBack: () -> U
         }
 
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/**
+ * 复选行：整行可点、可勾。
+ *
+ * 「逐步任务文字」和「绿色边缘光效」共用这一个：这组的语义是「要不要显示某一层」，
+ * 不是单选互斥，也不是总开关，所以用 Checkbox 而不是 RadioButton / Switch。
+ * 每行带一句说明，竖排才放得下完整句子。
+ */
+@Composable
+private fun CheckRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

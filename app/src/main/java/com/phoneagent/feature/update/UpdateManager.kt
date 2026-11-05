@@ -198,7 +198,9 @@ class UpdateManager(
 
     /** 落盘文件名：优先用服务端给出的 APK 名，兜底用版本号拼一个 */
     private fun apkName(release: ReleaseInfo, download: DownloadInfo): String {
-        val fromServer = download.file.trim()
+        // 服务端文件名不可信：去掉任何目录成分（含 ../ 与绝对路径），只留最后一段，
+        // 否则 File(dir, name) 会被拼出目录之外的位置
+        val fromServer = File(download.file.trim()).name
         if (fromServer.endsWith(".apk", ignoreCase = true)) return fromServer
         val version = release.version.trim().ifBlank { "update" }
         return "HappyAgent-$version.apk"

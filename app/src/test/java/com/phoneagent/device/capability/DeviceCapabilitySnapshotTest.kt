@@ -15,6 +15,8 @@ import org.junit.Test
  */
 class DeviceCapabilitySnapshotTest {
 
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     private fun snap(
         a11yConnected: Boolean = true,
         a11yEnabled: Boolean = true,

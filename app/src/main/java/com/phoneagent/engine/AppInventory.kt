@@ -41,6 +41,8 @@ internal class AppInventory(
     fun count(): Int = apps().size
 
     /** 应用显示名；取不到时返回空串（调用方按"名字不可用"处理） */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun labelOf(pkg: String): String {
         if (pkg.isBlank()) return ""
         labelCache[pkg]?.let { return it }

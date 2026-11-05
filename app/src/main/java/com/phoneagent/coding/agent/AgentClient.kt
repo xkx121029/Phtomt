@@ -23,6 +23,8 @@ data class ChatMessage(
     val toolCallId: String? = null,
     /** 工具/子 agent 执行耗时（毫秒），tool_end 回填后 UI 直接显示。 */
     val durationMs: Long? = null,
+    /** 工具执行结果摘要（tool_end 的 outputPreview）：就是回填给 AI 的那段输出。 */
+    val outputPreview: String? = null,
     /** 子 agent 标识与名称：并行子 agent 的进度卡按这个分组。 */
     val subagentId: String? = null,
     val subagentLabel: String? = null,
@@ -54,6 +56,8 @@ data class AgentUiState(
 class AgentClient(
     private val context: Context,
     private val fixedSessionId: String? = null,
+    /** 编码环境门户（宿主桥的 env_* 能力来源）；不接入时 env 工具会报「未接入」 */
+    private val envClientProvider: () -> com.phoneagent.coding.env.CodingEnvClient? = { null },
 ) {
 
     private var transport: AgentTransport? = null
@@ -76,9 +80,9 @@ class AgentClient(
     private var lastConnect: ((Boolean) -> Unit)? = null
     private var reconnectAttempts = 0
 
-    /** 反向通道：Node 侧 agent 请求应用侧能力（工作区 / 编辑器 / 预览）。
+    /** 反向通道：Node 侧 agent 请求应用侧能力（工作区 / 编辑器 / 预览 / 编码环境）。
      *  入站请求必须带当前配置的 token（见 HostBridgeServer.handle）。 */
-    private val hostBridge = HostBridgeServer(context) { token }
+    private val hostBridge = HostBridgeServer(context, { token }, envClientProvider)
 
     /** 界面主动发起的 RPC 的回调表，按 id 索引；断线时整体以错误回包落空（不能静默丢弃，否则 UI 卡在加载态）。 */
     private val pending = java.util.concurrent.ConcurrentHashMap<String, (JSONObject) -> Unit>()
@@ -311,6 +315,7 @@ class AgentClient(
                 tool = ev.optString("tool"),
                 code = ev.optInt("code"),
                 argsPreview = argsPreview(ev.optJSONObject("arguments")),
+                outputPreview = ev.optString("outputPreview"),
                 durationMs = ev.optLong("durationMs").takeIf { it > 0 } ?: ev.optLong("elapsedMs"),
                 subagentId = ev.optString("subagentId"),
                 subagentLabel = ev.optString("label"),

@@ -56,12 +56,14 @@ object OverlayWindowSpec {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
     /**
-     * 顶部光带高度（px）：取状态栏 + 挖孔 inset 与最小可读高度的较大值。
+     * 顶部光带高度（px）= 状态栏/挖孔 inset + 一行文字的高度。
      *
-     * 光带要「压过」状态栏，高度就不能比 inset 小；但 inset 很矮的机型上还得放得下 14sp 文字。
+     * 光带要「压过」状态栏，高度就必须整段覆盖 inset；但文字不能和状态栏图标挤同一行
+     * （那会顶在时钟/电量上，白字压白底、深色图标压深色带都读不出来）。所以分两段：
+     * 上面一段纯色铺进系统栏，下面再接一行专门放文字，视觉上是一条完整的顶部横幅。
      */
-    fun marqueeBandHeightPx(statusBarInsetPx: Int, minHeightPx: Int): Int =
-        maxOf(statusBarInsetPx, minHeightPx)
+    fun marqueeBandHeightPx(statusBarInsetPx: Int, textRowHeightPx: Int): Int =
+        statusBarInsetPx.coerceAtLeast(0) + textRowHeightPx.coerceAtLeast(0)
 
     /**
      * 底部跑马灯窗口宽度（px）：真实屏宽去掉两侧留白，**建窗时一次定死**。

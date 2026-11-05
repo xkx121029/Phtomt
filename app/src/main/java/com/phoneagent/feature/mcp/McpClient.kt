@@ -33,7 +33,8 @@ class HttpMcpTransport(
     private val config: McpServerConfig,
     private val httpCall: suspend (url: String, token: String, body: String) -> String,
 ) : McpTransport {
-    private var id = 0
+    // 并发调用（例如同时刷新多个服务器/重试）时 ++id 非原子，会产生重复的 JSON-RPC id
+    private val id = java.util.concurrent.atomic.AtomicInteger(0)
 
     /** 最近一次请求原文（JSON-RPC），供 UI 展示 */
     @Volatile
@@ -48,7 +49,7 @@ class HttpMcpTransport(
     override suspend fun call(method: String, params: JsonObject?): JsonElement {
         val req = buildJsonObject {
             put("jsonrpc", JsonPrimitive("2.0"))
-            put("id", JsonPrimitive(++id))
+            put("id", JsonPrimitive(id.incrementAndGet()))
             put("method", JsonPrimitive(method))
             params?.let { put("params", it) }
         }

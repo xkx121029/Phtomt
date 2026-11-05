@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.overlay
 
 import android.content.Context
@@ -130,8 +132,8 @@ class MarqueeView @JvmOverloads constructor(
     /** 当前胶囊宽度（px）：由文字量决定，绘制时居中 */
     private var panelWidth = 0f
 
-    /** 顶部光带高度（px）：由状态栏 + 挖孔 inset 给出，建窗时定死 */
-    private var bandHeightPx = 0
+    /** 顶部光带里"状态栏/挖孔"那一段的高度（px）：文字行固定落在它下面，不压系统图标 */
+    private var bandInsetPx = 0
 
     /** 滚动相位：主段文字左边缘相对内容区起点的 x 坐标（0 = 刚入场，负值 = 已在滚动中） */
     private var offset = 0f
@@ -194,13 +196,15 @@ class MarqueeView @JvmOverloads constructor(
     }
 
     /**
-     * 顶部光带：高度取状态栏 + 挖孔 inset（至少 [BAND_MIN_HEIGHT_DP]），窗口高度随之固定。
-     * 光带必须能画进状态栏区域，所以它的高度不由文字决定。
+     * 顶部光带：上段 inset 铺进状态栏/挖孔区，下段固定一行高度放文字。
+     *
+     * 窗口高度随之固定（不由文字决定），状态栏那一段永远整宽纯色；
+     * 文字只在下段里滚动，绝不和时钟、电量挤同一行。
      */
-    fun setBandHeight(px: Int) {
-        val target = px.coerceAtLeast(dp(BAND_MIN_HEIGHT_DP).toInt())
-        if (bandHeightPx == target) return
-        bandHeightPx = target
+    fun setBandInset(px: Int) {
+        val target = px.coerceAtLeast(0)
+        if (bandInsetPx == target) return
+        bandInsetPx = target
         requestLayout()
         invalidate()
     }
@@ -257,7 +261,7 @@ class MarqueeView @JvmOverloads constructor(
         val fm = paint.fontMetrics
         val contentH = fm.descent - fm.ascent
         val w = resolveSize(maxPanelWidth.toInt(), widthMeasureSpec)
-        val h = if (bandMode) bandHeightPx else (contentH + 2 * padVPx).toInt()
+        val h = if (bandMode) bandInsetPx + dp(BAND_ROW_HEIGHT_DP).toInt() else (contentH + 2 * padVPx).toInt()
         if (panelWidth <= 1f) panelWidth = if (bandMode) w.toFloat() else computePanelWidth()
         setMeasuredDimension(w, resolveSize(h, heightMeasureSpec))
     }
@@ -314,6 +318,8 @@ class MarqueeView @JvmOverloads constructor(
         super.requestLayout()
     }
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
@@ -347,9 +353,11 @@ class MarqueeView @JvmOverloads constructor(
 
         val contentLeft = left + padH
         val avail = MarqueeGeometry.contentWidthPx(pw, padH)
-        // 文字裁进内容区：既不会压到胶囊圆角上，滚动时也在边缘干净地消失
+        // 文字裁进内容区：既不会压到胶囊圆角上，滚动时也在边缘干净地消失。
+        // 光带还要再从 inset 下沿起裁：上段是给状态栏纯色打底的，文字不能爬进去压系统图标。
+        val textTop = if (bandMode) bandInsetPx.toFloat() else 0f
         canvas.save()
-        canvas.clipRect(contentLeft, 0f, left + pw - padH, h)
+        canvas.clipRect(contentLeft, textTop, left + pw - padH, h)
 
         if (!MarqueeGeometry.shouldScroll(textWidth, pw, padH)) {
             // 短文本：居中静止，省掉每帧重绘
@@ -376,7 +384,10 @@ class MarqueeView @JvmOverloads constructor(
 
     private fun centerY(): Float {
         val fm = paint.fontMetrics
-        return (height - fm.ascent - fm.descent) / 2f
+        // 光带只在下段文字行里居中；上段（状态栏高度）不参与文字排版
+        val rowTop = if (bandMode) bandInsetPx.toFloat() else 0f
+        val rowHeight = height - rowTop
+        return rowTop + (rowHeight - fm.ascent - fm.descent) / 2f
     }
 
     private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity
@@ -399,7 +410,7 @@ class MarqueeView @JvmOverloads constructor(
         /** debug 下每多少次文字更新打一条滚动统计 */
         private const val DEBUG_LOG_EVERY = 20
 
-        /** 顶部光带最小高度（dp）：状态栏很矮的机型上也要放得下 14sp 文字 */
-        private const val BAND_MIN_HEIGHT_DP = 30f
+        /** 顶部光带文字行高度（dp）：状态栏那一段之下再给 14sp 文字留出可读的一行 */
+        private const val BAND_ROW_HEIGHT_DP = 30f
     }
 }

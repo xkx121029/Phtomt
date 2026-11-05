@@ -1,0 +1,6 @@
+{
+  "id": "happyac-coding",
+  "name": "设备内编码手册",
+  "description": "HPA 设备内编码环境（PRoot Linux + JDK + Gradle + Android SDK）的一键配置与构建手册：什么时候用 coding_env、用户需要亲手做什么、工作区与共享镜像目录、构建产物在哪、mksh 的限制以及常见故障的处理方式。",
+  "version": "1.0.0"
+}

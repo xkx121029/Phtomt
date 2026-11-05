@@ -392,7 +392,7 @@ private fun WorkbenchConfigPanel(
                     selected = currentStyle.id,
                     onSelect = { id -> onSave(settings.copy(uiStyle = id)) },
                 )
-                LinkRow("配色、框线与磨砂", "主题", onClick = { onOpenSettingsPage(SettingsPage.THEME) })
+                LinkRow("主题 / 效果 / 选项卡", "外观与导航", onClick = { onOpenSettingsPage(SettingsPage.APPEARANCE) })
             }
 
             ConfigGroup("工作台") {
@@ -439,7 +439,6 @@ private fun WorkbenchConfigPanel(
             }
 
             ConfigGroup("导航与数据") {
-                LinkRow("选项卡", "顺序与可见性", onClick = { onOpenSettingsPage(SettingsPage.TABS) })
                 LinkRow("数据与记忆", "导出 / 清空", onClick = { onOpenSettingsPage(SettingsPage.DATA) })
                 LinkRow("关于与更新", "版本 / 频道", onClick = { onOpenSettingsPage(SettingsPage.ABOUT) })
             }

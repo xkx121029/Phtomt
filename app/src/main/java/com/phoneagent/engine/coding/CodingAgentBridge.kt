@@ -26,25 +26,29 @@ import kotlinx.coroutines.flow.first
  *
  * UI 层（Phase 5 CodingScreen）直接消费 [client].state 渲染会话与审批卡；Bridge 只负责"启动/委托/停止"。
  */
+// 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
+@Suppress("TooManyFunctions")
 class CodingAgentBridge(
     private val appContext: Context,
     private val settings: AppSettings,
     private val runtimeManager: CodingRuntimeManager,
+    /** 编码环境门户：宿主桥的 env_* 能力据此驱动独立组件的 PRoot 工具链 */
+    private val envClient: com.phoneagent.coding.env.CodingEnvClient,
 ) {
 
     /**
      * 后台编码引擎的连接：固定挂在 engine 会话上。
      *
      * 编码页现在有自己独立的连接与独立会话（[uiClient]），两条连接共享同一个 host 进程，
-     * 事件按 sessionId 分流，操控页的编码委托不会再把编码页的对话冲掉，反之亦然。
+     * 事件按 sessionId 分流，引擎侧的后台会话不会把编码页的对话冲掉，反之亦然。
      * 会话 id 带进程时间戳：每次冷启动都是一套干净上下文（与改造前的行为一致），
      * 同时又能和编码页的会话彻底分开。
      */
     private val engineSessionId = "engine_${System.currentTimeMillis().toString(36)}"
-    val client = AgentClient(appContext, fixedSessionId = engineSessionId)
+    val client = AgentClient(appContext, fixedSessionId = engineSessionId) { envClient }
 
     /** 编码页专用连接：会话由工作区里的会话列表决定，和引擎完全隔离。 */
-    val uiClient = AgentClient(appContext)
+    val uiClient = AgentClient(appContext, envClientProvider = { envClient })
 
     /**
      * 委托一个编码任务：确保运行时已装 → 连接本地 agent → sendPrompt → 挂起等待会话结束
