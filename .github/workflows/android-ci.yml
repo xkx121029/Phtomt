@@ -31,9 +31,8 @@ jobs:
   build:
     name: Build + Release (${{ github.ref_name }})
     runs-on: ubuntu-latest
-    # 构建约 8 分钟；Gitee 附件跨境内网速只有 ~40KB/s，71MB 需 25~40 分钟，
-    # 这里给足余量，避免整条流水线被附件上传拖死。
-    timeout-minutes: 90
+    # 构建 + 门禁约 12~15 分钟；Gitee 只建发行版（不传附件），不再需要 90 分钟余量。
+    timeout-minutes: 40
 
     env:
       # 渠道判定：手动触发用输入值，否则 nightly 分支 = dev，其余 = beta
@@ -191,14 +190,15 @@ jobs:
             echo "::warning title=无法校验签名::没找到 apksigner，跳过签名断言（不阻断出包）"
             exit 0
           fi
-          DIGEST=$("$APKSIGNER" verify --print-certs "$APK" \
-            | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
+          DIGEST=$("$APKSIGNER" verify --print-certs "$APK" | grep -oE '[0-9a-f]{64}' | head -1)
           EXPECTED=2b67b91a73eb7d4e6a9ce7ffa25d8a078f662ac23d65c54708d295964d3cbeed
-          echo "APK 签名 SHA-256：$DIGEST（期望 $EXPECTED）"
+          echo "APK 签名 SHA-256：${DIGEST:-（取不到）}（期望 $EXPECTED）"
           if [ "$DIGEST" = "$EXPECTED" ]; then
             echo "- ✅ APK 签名与本机一致：\`$DIGEST\`，可直接覆盖安装" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$FIXED" = "1" ]; then
-            echo "::error title=固定签名未生效::已还原固定 keystore，但 APK 实际签名是 $DIGEST（期望 $EXPECTED），包不能覆盖安装。"
+            # 把 apksigner 原始输出贴出来，便于直接看出是哪张证书
+            "$APKSIGNER" verify --print-certs "$APK" || true
+            echo "::error title=固定签名未生效::已还原固定 keystore，但 APK 实际签名是 ${DIGEST:-取不到}（期望 $EXPECTED），包不能覆盖安装。"
             exit 1
           else
             echo "::warning title=签名与历史不一致::未配置 DEBUG_KEYSTORE_B64，本次签名 $DIGEST 与本机 $EXPECTED 不同，包不能覆盖安装。"
@@ -259,11 +259,8 @@ jobs:
           APK: ${{ steps.ver.outputs.apk }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
-        # 耗时说明：**这一步耗 25~40 分钟属正常，不是卡死**。
-        # GitHub runner 出口到 Gitee 实测只有 ~40KB/s，71MB 就得好几十分钟；
-        # 期间日志停在 "开始上传" 是 curl 正在传（Gitee 不支持断点续传，只能一次传完）。
-        # --max-time 2400 是硬上限，超时只会 warning，不会让整个 run 变红。
-        timeout-minutes: 45
+          GITEE_UPLOAD_FROM_CI: ${{ vars.GITEE_UPLOAD_FROM_CI }}
+        timeout-minutes: 10
         run: |
           if [ -z "$GITEE_TOKEN" ]; then
             echo "未配置 GITEE_TOKEN，跳过 Gitee 发行版发布"
@@ -299,6 +296,18 @@ jobs:
             exit 0
           fi
           echo "Gitee 发行版 id=$RID（tag=$TAG）"
+          # 实测（run 42062347605）：GitHub runner 出口到 Gitee 只有 15.7KB/s，
+          # 71MB 传了 40 分钟才到 37.6MB，服务端回合时已超时丢弃 ⇒ 40 分钟上限永远不够
+          # （按实测速率需要约 76 分钟）。同一条链路从局域网侧（本机）实测 97KB/s，
+          # 71MB 约 12 分钟，快 6 倍。所以职责拆开：
+          #   CI   = 建发行版 + body 里给 GitHub 直链（附件缺失时用户仍有下载入口）
+          #   局域网侧 = tool/gitee_attach.py 把同一 APK 补挂到 Gitee 发行版
+          # 需要临时恢复 CI 内直传时，把仓库变量 GITEE_UPLOAD_FROM_CI 设为 true。
+          if [ "${GITEE_UPLOAD_FROM_CI:-false}" != "true" ]; then
+            echo "跳过 CI 内上传：附件交给局域网侧 tool/gitee_attach.py 补传（CI 出口 15.7KB/s，71MB 需约 76 分钟）"
+            echo "- ℹ️ Gitee 发行版 \`$TAG\` 已创建，body 内含 GitHub 直链；APK 附件由局域网侧（\`tool/gitee_attach.py\`）补传。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           # 幂等：同名同大小附件已存在就不再重复传 71MB
           if curl -sS --max-time 60 "$API/releases/$RID/attach_files?$AUTH" \
              | jq -e --arg n "$APK_NAME" --argjson s "$APK_SIZE" \

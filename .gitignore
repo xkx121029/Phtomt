@@ -27,6 +27,9 @@ debug.keystore
 debug.keystore.properties
 upload-signing.properties
 
+# 局域网侧补挂 Gitee 用的 APK 缓存（tool/gitee_attach.py）
+.gitee-cache/
+
 # Local properties
 local.properties
 captures/
