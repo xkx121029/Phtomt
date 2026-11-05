@@ -106,6 +106,8 @@ enum class AgentChrome { STANDARD, SHELL }
  * 那里 user 角色存的是发给模型的完整决策 prompt。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun AgentScreen(
     vm: MainViewModel,
     modifier: Modifier = Modifier,

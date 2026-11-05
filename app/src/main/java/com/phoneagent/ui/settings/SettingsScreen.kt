@@ -37,7 +37,6 @@ import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.data.prefs.AgentSurface
 import com.phoneagent.data.prefs.AppSettings
-import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.contentColumn
@@ -83,8 +82,6 @@ fun SettingsScreen(
     onNavigateAgent: () -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
-    // 同上：改走 LocalActivity（可空），不再把 LocalContext 强转成 Activity
-    val activity = androidx.activity.compose.LocalActivity.current
 
     val st = remember { SettingsState(settings) }
     // 宽屏双栏：左侧分类常驻，右侧直接翻页。
@@ -104,39 +101,6 @@ fun SettingsScreen(
     }
     // 正在挑选模型的职责（main / vision / reason）；null = 浮层收起
     var pickRole by remember { mutableStateOf<String?>(null) }
-
-    // 监听标定面板展开状态，启动/停止全屏预览
-    LaunchedEffect(st.calibrationExpanded, st.edgeLightingEnabled) {
-        if (st.calibrationExpanded && st.edgeLightingEnabled && activity != null) {
-            EdgeLightingService.startPreview(
-                context = activity,
-                top = st.edgeInsetTop,
-                bottom = st.edgeInsetBottom,
-                left = st.edgeInsetLeft,
-                right = st.edgeInsetRight,
-                radius = st.cornerRadius,
-                width = st.edgeLightingWidth,
-            )
-        } else if (activity != null) {
-            EdgeLightingService.stopPreview(activity)
-        }
-    }
-
-    // 实时更新标定参数到预览服务
-    LaunchedEffect(st.edgeInsetTop, st.edgeInsetBottom, st.edgeInsetLeft, st.edgeInsetRight, st.cornerRadius,
-        st.edgeLightingWidth) {
-        if (st.calibrationExpanded && st.edgeLightingEnabled && activity != null) {
-            EdgeLightingService.updateCalibration(
-                context = activity,
-                top = st.edgeInsetTop,
-                bottom = st.edgeInsetBottom,
-                left = st.edgeInsetLeft,
-                right = st.edgeInsetRight,
-                radius = st.cornerRadius,
-                width = st.edgeLightingWidth,
-            )
-        }
-    }
 
     // 设置持久化后同步到本地表单
     LaunchedEffect(settings) { st.applyFrom(settings) }
@@ -397,7 +361,6 @@ class SettingsState(initial: AppSettings.Settings) {
     var edgeInsetRight by mutableIntStateOf(initial.edgeInsetRight)
     var cornerRadius by mutableIntStateOf(initial.cornerRadius)
     var edgeLightingWidth by mutableIntStateOf(initial.edgeLightingWidth)
-    var edgeLightingEnabled by mutableStateOf(initial.edgeLightingEnabled)
 
     var floatingWindowEnabled by mutableStateOf(initial.floatingWindowEnabled)
     var executionChannel by mutableStateOf(initial.executionChannel)
@@ -484,7 +447,6 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeInsetRight = s.edgeInsetRight
         cornerRadius = s.cornerRadius
         edgeLightingWidth = s.edgeLightingWidth
-        edgeLightingEnabled = s.edgeLightingEnabled
         floatingWindowEnabled = s.floatingWindowEnabled
         executionChannel = s.executionChannel
         actionMode = s.actionMode
@@ -580,7 +542,6 @@ class SettingsState(initial: AppSettings.Settings) {
         edgeInsetRight = edgeInsetRight,
         cornerRadius = cornerRadius,
         edgeLightingWidth = edgeLightingWidth,
-        edgeLightingEnabled = edgeLightingEnabled,
         floatingWindowEnabled = floatingWindowEnabled,
         executionChannel = executionChannel,
         actionMode = actionMode,

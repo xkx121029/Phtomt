@@ -292,6 +292,8 @@ val LocalHeaderContentPad = compositionLocalOf { GlassHeaderDefaultContentPad }
  * 这个收口只在骨架里做一次，各页不写 widthIn。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod")
 fun GlassHeaderScaffold(
     modifier: Modifier = Modifier,
     floating: (() -> Boolean)? = null,
