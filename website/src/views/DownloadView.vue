@@ -3,16 +3,28 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHero from '../components/PageHero.vue'
 import CopyButton from '../components/CopyButton.vue'
-import { content } from '../api/client.js'
+import { content, apiBaseUrl } from '../api/client.js'
 import { channelLabel, downloadUrl, formatDate, isExternalDownload, relativeTime } from '../lib/format.js'
+import { PROBE_HINT_DELAY, directApkUrl, resolveDownloadSource } from '../lib/downloadSource.js'
 
 const site = ref({})
 const releases = ref([])
 const stats = ref(null)
 const ready = ref(false)
 
+/** 择优结果：拿到前主按钮沿用原来的默认直链，拿到后换成实测更快的那个 */
+const best = ref(null)
+const probing = ref(false)
+const probeNote = ref('')
+let hintTimer = null
+
 const latest = computed(() => releases.value[0] || site.value.latest || null)
 const rest = computed(() => releases.value.slice(1))
+
+const primaryUrl = computed(() =>
+  best.value?.url || (latest.value ? downloadUrl(latest.value, site.value) : site.value.links?.releases || '#')
+)
+const directUrl = computed(() => directApkUrl(latest.value))
 
 const REQS = computed(() => {
   const r = site.value.requirements || {}
@@ -43,6 +55,47 @@ const STEPS = [
   }
 ]
 
+/**
+ * 后台测速：不阻塞首屏，按钮先用默认直链；检测超过 300ms 才在按钮旁显示「正在检测线路…」，
+ * 几毫秒内出结果的话用户根本看不到这行字。全部测不通就留在默认源，并给一句解释。
+ */
+async function detect(refresh = false) {
+  if (!latest.value?.apk?.file) return
+  clearTimeout(hintTimer)
+  probing.value = false
+  probeNote.value = ''
+  const started = Date.now()
+  hintTimer = setTimeout(() => {
+    probing.value = true
+  }, PROBE_HINT_DELAY)
+
+  const result = await resolveDownloadSource(latest.value, { site: site.value, refresh })
+  const elapsed = Date.now() - started
+  clearTimeout(hintTimer)
+  probing.value = false
+
+  if (result?.degraded) {
+    probeNote.value = '两条线路都没测通，已使用默认下载源'
+    return
+  }
+  if (result?.url) {
+    best.value = result
+    return
+  }
+  // 探测本身失败（接口不可达/超时）：默认源照常能点，只是多一句说明
+  if (elapsed >= PROBE_HINT_DELAY) probeNote.value = '线路检测超时，已使用默认下载源'
+}
+
+/** 选了 GitHub 直链时，下载不再经过本站，用 beacon 补记一次下载数 */
+function onPrimaryClick() {
+  if (best.value?.source !== 'github' || !latest.value?.version) return
+  try {
+    navigator.sendBeacon(`${apiBaseUrl()}/api/download/hit/${encodeURIComponent(latest.value.version)}`)
+  } catch {
+    /* 计数失败不影响下载 */
+  }
+}
+
 onMounted(async () => {
   try {
     const boot = await content.bootstrap()
@@ -53,6 +106,7 @@ onMounted(async () => {
     /* 读取失败时页面仍可展示骨架，下载按钮退回 GitHub Releases */
   } finally {
     ready.value = true
+    detect()
   }
 })
 </script>
@@ -87,10 +141,10 @@ onMounted(async () => {
             <div class="hero-card__actions">
               <a
                 class="btn btn--primary btn--lg"
-                :href="downloadUrl(latest, site)"
+                :href="primaryUrl"
                 :target="isExternalDownload(latest) ? '_blank' : undefined"
                 :rel="isExternalDownload(latest) ? 'noopener noreferrer' : undefined"
-                download
+                @click="onPrimaryClick"
               >
                 <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
@@ -101,7 +155,31 @@ onMounted(async () => {
                 <template v-else>前往 GitHub Releases</template>
               </a>
               <RouterLink to="/docs/getting-started" class="btn btn--lg">安装说明</RouterLink>
+              <span v-if="probing" class="hero-card__probing">正在检测线路…</span>
             </div>
+
+            <p class="hero-card__sources">
+              <span v-if="probeNote" class="hero-card__note">{{ probeNote }}</span>
+              其他下载源：
+              <a
+                :href="site.links?.releases || site.links?.github || '#'"
+                target="_blank"
+                rel="noopener noreferrer"
+              >GitHub Release 页</a>
+              <template v-if="directUrl">
+                ·
+                <a :href="directUrl">本站直链</a>
+              </template>
+              <span v-if="latest.apk">·</span>
+              <button
+                v-if="latest.apk"
+                type="button"
+                class="hero-card__redetect"
+                :disabled="probing"
+                @click="detect(true)"
+              >重新检测</button>
+            </p>
+
 
             <p v-if="isExternalDownload(latest)" class="hint hero-card__hint">
               本站未托管该版本的安装包，按钮会跳到 GitHub Releases 页面。
@@ -284,6 +362,47 @@ onMounted(async () => {
 
 .hero-card__hint {
   margin-top: 12px;
+}
+
+/* 测速状态常驻在按钮同一行，不占额外高度；测完即消失，不做进度条也不做动画 */
+.hero-card__probing {
+  align-self: center;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.hero-card__sources {
+  margin-top: 14px;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  line-height: 1.9;
+}
+
+.hero-card__sources a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hero-card__note {
+  margin-right: 8px;
+  color: var(--ink-3);
+}
+
+.hero-card__redetect {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.hero-card__redetect:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .hero-card__side {
