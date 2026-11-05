@@ -47,14 +47,18 @@ Desktop.ini
 *.class
 
 # Project specific
-version.properties
+# version.properties 必须入库：它是 CI 与本机构建共用的唯一版本计数器，
+# CI 通过 contents API 读 nightly 上的这一份，再回写推进（本地构建同样读写它）。
+# 本地每次 assemble 会把它改一行，按普通改动提交即可。
 BUGS/
 # 推广物料：演示视频体积大，不进源码库（单文件 HTML 复刻仍入库）
 promo/*.webm
 # 截图产物（UI 验收临时输出）
 .screenshots/
-# 编码 agent host 由 tool/bundle_host.mjs 从 happy_ACA 上游单向同步生成，不提交
-app/src/main/assets/agent-host/
+# 编码 agent host：本地由 tool/bundle_host.mjs 从 happy_ACA 上游生成；
+# 但 CI（干净检出、没有 ../happy_ACA）生成不了，缺了它编码功能起不来
+# （assets 里没有 host-stdio.js）。因此这份产物必须入库，与 provider.apk /
+# env.apk 一样当静态资产用。上游更新后在本地重新生成并提交即可。
 # 编码运行时 so 由 tool/bundle_runtime.py 生成（Termux Node + 依赖闭包）。
 # 必须随仓库提交：干净检出（CI）没有它，产出的 APK 会缺 libnode.so，
 # 编码功能直接 runtime-missing。重新生成后照常提交即可。
