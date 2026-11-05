@@ -96,7 +96,11 @@ class DeviceOpsChannel(
         "app_manage" -> appManage(op ?: "force_stop", args)
         "terminal_op" -> terminalOp(op ?: "exec", args)
         "personal_read" -> personalRead(op ?: "contacts", args)
-        else -> OpsResult.Fail("未知的系统直连能力族：$family")
+        else -> OpsResult.Fail(
+            "未知的系统直连能力族：$family。可用的有 device_info、device_control、settings_op、clipboard、" +
+                "alarm_manage、calendar_op、virtual_display、memory_get、memory_write、file_read、file_write、" +
+                "app_manage、terminal_op、personal_read",
+        )
     }
 
     // ---------------------------------------------------------------- device_info
@@ -140,7 +144,10 @@ class DeviceOpsChannel(
         "sound" -> OpsResult.Ok(soundText())
         "apps" -> OpsResult.Ok(appsText())
         "inspect_app" -> inspectApp(args["app"] ?: args["package"] ?: "")
-        else -> OpsResult.Fail("device_info 不支持 op=$op")
+        else -> OpsResult.Fail(
+            "device_info 不支持 op=$op；可用：status（概览）、network、storage、memory、battery、display、" +
+                "sound、apps（已安装应用）、inspect_app（单个应用详情）",
+        )
     }
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
@@ -186,12 +193,21 @@ class DeviceOpsChannel(
     /** 应用详情：版本 / 安装时间 / 来源 / 权限（对齐 Eta inspect_app） */
     @Suppress("DEPRECATION", "ReturnCount", "MaxLineLength")
     private fun inspectApp(input: String): OpsResult {
-        if (input.isBlank()) return OpsResult.Fail("inspect_app 需要 app（包名或应用名）")
+        if (input.isBlank()) {
+            return OpsResult.Fail("inspect_app 需要 app：给应用名（如「微信」）或包名（如 com.tencent.mm）")
+        }
         val pm = context.packageManager
-        val pkg = resolvePackage(input) ?: return OpsResult.Fail("没有找到应用「$input」")
+        val pkg = resolvePackage(input) ?: return OpsResult.Fail(
+            "没有找到应用「$input」。请确认应用名或包名是否正确；不确定时先调 device_info（op=apps）" +
+                "看一遍已安装应用列表，再把准确名称给我",
+        )
         val info = runCatching { pm.getPackageInfo(pkg, android.content.pm.PackageManager.GET_PERMISSIONS) }.getOrNull()
-            ?: return OpsResult.Fail("读取应用信息失败：$pkg")
-        val appInfo = info.applicationInfo ?: return OpsResult.Fail("读取应用信息失败：$pkg（applicationInfo 为空）")
+            ?: return OpsResult.Fail(
+                "读取应用信息失败：$pkg。它可能刚被卸载或受系统限制；请用 device_info（op=apps）确认它还在列表里",
+            )
+        val appInfo = info.applicationInfo ?: return OpsResult.Fail(
+            "读取应用信息失败：$pkg（系统没返回应用详情）。请用 device_info（op=apps）确认它还在已安装列表里",
+        )
         val requested = info.requestedPermissions.orEmpty()
         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
         @Suppress("MaxLineLength")
@@ -225,8 +241,12 @@ class DeviceOpsChannel(
         "dnd" -> dnd(boolArg(args, "enable"))
         "screen_timeout" -> screenTimeout(intArg(args, "seconds"))
         "rotation" -> rotation(boolArg(args, "enable"))
+        "dark_mode" -> darkMode(boolArg(args, "enable"))
         "wifi", "bluetooth", "airplane", "location", "nfc" -> systemToggle(op, boolArg(args, "enable"))
-        else -> OpsResult.Fail("device_control 不支持 op=$op")
+        else -> OpsResult.Fail(
+            "device_control 不支持 op=$op；可用：flashlight_on、flashlight_off、brightness、volume、media、" +
+                "sound_mode、dnd、screen_timeout、rotation、dark_mode、wifi、bluetooth、airplane、location、nfc",
+        )
     }
 
     /**
@@ -237,12 +257,17 @@ class DeviceOpsChannel(
      */
     private suspend fun torch(on: Boolean): OpsResult {
         val cm = context.getSystemService(CameraManager::class.java)
-            ?: return OpsResult.Fail("手电筒：相机服务不可用")
+            ?: return OpsResult.Fail(
+                "手电筒：相机服务不可用。请下拉控制中心手动打开手电筒；若控制中心也没有这个图标，" +
+                    "说明系统禁用了相机服务，需要到 设置 → 应用 → 相机 里启用",
+            )
         val id = runCatching {
             cm.cameraIdList.firstOrNull { cid ->
                 cm.getCameraCharacteristics(cid).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
             }
-        }.getOrNull() ?: return OpsResult.Fail("手电筒：本机没有可用的闪光灯")
+        }.getOrNull() ?: return OpsResult.Fail(
+            "手电筒：本机没有可用的闪光灯（平板或部分机型属正常）。请下拉控制中心确认有没有手电筒图标",
+        )
 
         val confirmed = runCatching {
             withTimeoutOrNull(1_500L) {
@@ -269,13 +294,21 @@ class DeviceOpsChannel(
                 }
             }
         }.getOrElse {
-            return OpsResult.Fail("手电筒操作失败：${it.message ?: "系统拒绝"}（部分机型需要相机权限）")
+            return OpsResult.Fail(
+                "手电筒操作失败：${it.message ?: "系统拒绝"}。部分机型需要相机权限：" +
+                    "请到 设置 → 应用 → 本应用 → 权限 里允许「相机」后重试，或直接下拉控制中心手动打开",
+            )
         }
         return when (confirmed) {
             true -> OpsResult.Ok("手电筒已${if (on) "打开" else "关闭"}（回读闪光灯状态=${if (on) "on" else "off"}）")
-            false -> OpsResult.Fail("手电筒不可用：系统回报闪光灯状态不可用（可能被相机占用或过热保护）")
+            false -> OpsResult.Fail(
+                "手电筒不可用：系统回报闪光灯状态不可用，通常是相机正被占用或闪光灯过热保护。" +
+                    "请先关掉正在用相机的应用（相机、扫码、视频通话），等半分钟散热后重试；" +
+                    "也可以下拉控制中心手动打开",
+            )
             else -> OpsResult.Fail(
-                "手电筒命令已下发，但 1.5 秒内没有收到「${if (on) "开" else "关"}」的状态回调，本机无法确认是否生效",
+                "手电筒命令已下发，但 1.5 秒内没有收到「${if (on) "开" else "关"}」的状态回调，本机无法确认是否生效。" +
+                    "请下拉控制中心看一眼手电筒图标${if (on) "是否已亮起" else "是否已熄灭"}；没变就手动点一下",
             )
         }
     }
@@ -299,8 +332,21 @@ class DeviceOpsChannel(
     private suspend fun shellSetting(ns: String, key: String): Int? =
         shell("settings get $ns $key")?.trim()?.toIntOrNull()
 
-    /** 读字符串设置值（用于 settings_op set 的回读） */
+    /**
+     * 回读开关值：**优先走注入通道**。
+     *
+     * 写是用 shell 写的，读也用同一条链路，才不会出现「本进程 Settings 缓存还是旧值」的假失败；
+     * 没有通道时再退回本进程读。
+     */
+    private suspend fun readGlobalInt(key: String): Int? =
+        shellSetting("global", key) ?: globalInt(key)
+
+    private suspend fun readSecureInt(key: String): Int? =
+        shellSetting("secure", key) ?: secureInt(key)
+
+    /** 读字符串设置值（用于 settings_op set 的回读）：同样优先走注入通道 */
     private suspend fun settingString(ns: String, key: String): String? {
+        shell("settings get $ns $key")?.trim()?.takeIf { it.isNotEmpty() && it != "null" }?.let { return it }
         val local = runCatching {
             when (ns) {
                 "secure" -> Settings.Secure.getString(context.contentResolver, key)
@@ -308,7 +354,7 @@ class DeviceOpsChannel(
                 else -> Settings.System.getString(context.contentResolver, key)
             }
         }.getOrNull()
-        return local ?: shell("settings get $ns $key")?.trim()
+        return local
     }
 
     /**
@@ -348,13 +394,16 @@ class DeviceOpsChannel(
         } else {
             OpsResult.Fail(
                 "$label 未生效：回读 system/$key=${actual ?: "读不到"}，期望 $value。" +
-                    "可能被自动亮度/设备策略或其它应用覆盖",
+                    "可能被自动亮度、省电模式或设备策略覆盖：请先关掉自动亮度/省电模式再试，" +
+                    "也可以到 设置里手动改一次",
             )
         }
     }
 
     private suspend fun brightness(level: Int?): OpsResult {
-        if (level == null) return OpsResult.Fail("brightness 需要 level（0~100）")
+        if (level == null) {
+            return OpsResult.Fail("brightness 需要 level：0~100 的整数，例如 50 表示一半亮度")
+        }
         val percent = level.coerceIn(0, 100)
         // 与 Eta 一致：有注入通道时走 `cmd display set-brightness --unit percentage`，
         // 它直接改显示亮度，不受「自动亮度」开关影响；没有通道再退回写 Settings。
@@ -371,7 +420,8 @@ class DeviceOpsChannel(
             }
             return OpsResult.Fail(
                 "亮度未达到目标：回读 ${actual?.let { "$it%" } ?: "读不到"}，期望 $percent%。" +
-                    "可能被自动亮度或省电策略覆盖",
+                    "多半是「自动亮度」或省电策略在覆盖，请先关闭自动亮度再试，" +
+                    "也可以到 设置 → 显示 → 亮度 手动拖到目标位置",
             )
         }
         return writeSystemSetting(
@@ -385,7 +435,7 @@ class DeviceOpsChannel(
     @Suppress("ReturnCount")
     private fun volume(args: Map<String, String>): OpsResult {
         val am = context.getSystemService(AudioManager::class.java)
-            ?: return OpsResult.Fail("音量：音频服务不可用")
+            ?: return OpsResult.Fail("音量：音频服务不可用。请按手机侧边的音量键手动调，或重启手机后再试")
         val stream = when ((args["stream"] ?: "music").lowercase()) {
             "ring", "ringer" -> AudioManager.STREAM_RING
             "notification", "notify" -> AudioManager.STREAM_NOTIFICATION
@@ -393,7 +443,8 @@ class DeviceOpsChannel(
             "call", "voice" -> AudioManager.STREAM_VOICE_CALL
             else -> AudioManager.STREAM_MUSIC
         }
-        val level = intArg(args, "level") ?: return OpsResult.Fail("volume 需要 level（0~100）")
+        val level = intArg(args, "level")
+            ?: return OpsResult.Fail("volume 需要 level：0~100 的整数，例如 50 表示一半音量")
         val max = am.getStreamMaxVolume(stream)
         val target = (level.coerceIn(0, 100) * max / 100)
         return runCatching {
@@ -404,15 +455,21 @@ class DeviceOpsChannel(
             } else {
                 OpsResult.Fail(
                     "音量未生效：期望 $target/$max，回读 $actual/$max。" +
-                        "勿扰模式或「固定音量」策略可能拦住了铃声/通知音量",
+                        "勿扰模式或「固定音量」策略可能拦住了铃声/通知音量：" +
+                        "请先关掉勿扰、或在 设置 → 声音 里检查「固定音量」，也可以直接按侧边音量键手动调",
                 )
             }
-        }.getOrElse { OpsResult.Fail("音量调整失败：${it.message ?: "系统拒绝"}") }
+        }.getOrElse {
+            OpsResult.Fail(
+                "音量调整失败：${it.message ?: "系统拒绝"}。请按手机侧边的音量键手动调一次，" +
+                    "若仍不行，检查是否开启了勿扰模式或音量被家长控制/设备策略锁定",
+            )
+        }
     }
 
     private fun mediaKey(action: String): OpsResult {
         val am = context.getSystemService(AudioManager::class.java)
-            ?: return OpsResult.Fail("媒体控制：音频服务不可用")
+            ?: return OpsResult.Fail("媒体控制：音频服务不可用。请先打开音乐/视频应用，再在应用里手动播放或暂停")
         val code = when (action.lowercase()) {
             "pause" -> KeyEvent.KEYCODE_MEDIA_PAUSE
             "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
@@ -426,21 +483,29 @@ class DeviceOpsChannel(
             am.dispatchMediaKeyEvent(down)
             am.dispatchMediaKeyEvent(up)
             OpsResult.Ok("已发送媒体键：$action")
-        }.getOrElse { OpsResult.Fail("媒体键发送失败：${it.message ?: "系统拒绝"}") }
+        }.getOrElse {
+            OpsResult.Fail(
+                "媒体键发送失败：${it.message ?: "系统拒绝"}。请先打开一个正在播放的音乐/视频应用再试，" +
+                    "或直接在该应用里手动操作",
+            )
+        }
     }
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
     @Suppress("ReturnCount", "MaxLineLength")
     private fun soundMode(mode: String?): OpsResult {
         val am = context.getSystemService(AudioManager::class.java)
-            ?: return OpsResult.Fail("声音模式：音频服务不可用")
+            ?: return OpsResult.Fail("声音模式：音频服务不可用。请直接按侧边音量键或拨动静音开关手动切换")
         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
         @Suppress("MaxLineLength")
         val target = when (mode?.lowercase()) {
             "vibrate" -> AudioManager.RINGER_MODE_VIBRATE
             "silent" -> AudioManager.RINGER_MODE_SILENT
             "ring", null -> AudioManager.RINGER_MODE_NORMAL
-            else -> return OpsResult.Fail("sound_mode 的 mode 只能是 ring/vibrate/silent")
+            else -> return OpsResult.Fail(
+                "sound_mode 的 mode 只能是 ring（响铃）、vibrate（震动）、silent（静音），" +
+                    "例如 mode=silent；也可以直接拨动手机侧边的静音开关",
+            )
         }
         return runCatching {
             am.ringerMode = target
@@ -448,9 +513,17 @@ class DeviceOpsChannel(
             if (actual == target) {
                 OpsResult.Ok("已切换到${when (target) { AudioManager.RINGER_MODE_VIBRATE -> "震动"; AudioManager.RINGER_MODE_SILENT -> "静音"; else -> "响铃" }}（回读 ringerMode=$actual）")
             } else {
-                OpsResult.Fail("声音模式未生效：期望 $target，回读 $actual（勿扰模式可能限制了铃声）")
+                OpsResult.Fail(
+                    "声音模式未生效：期望 $target，回读 $actual（勿扰模式可能限制铃声）。" +
+                        "请先关闭勿扰模式，或直接拨动手机侧边的静音/响铃开关",
+                )
             }
-        }.getOrElse { OpsResult.Fail("切换声音模式失败：${it.message ?: "系统拒绝"}（勿扰模式可能限制了铃声）") }
+        }.getOrElse {
+            OpsResult.Fail(
+                "切换声音模式失败：${it.message ?: "系统拒绝"}（勿扰模式可能限制了铃声）。" +
+                    "请先关闭勿扰，再拨动侧边静音开关手动切换",
+            )
+        }
     }
 
     /**
@@ -461,25 +534,28 @@ class DeviceOpsChannel(
      * 两种路径都必须回读 `zen_mode` 才算成功。
      */
     private suspend fun dnd(enable: Boolean?): OpsResult {
-        if (enable == null) return OpsResult.Fail("dnd 需要 enable=true/false")
+        if (enable == null) {
+            return OpsResult.Fail("dnd 需要 enable：true 表示开启勿扰，false 表示关闭，例如 enable=true")
+        }
         val expectedOpen = enable
         val expect: (Int) -> Boolean = { if (expectedOpen) it != 0 else it == 0 }
 
         val viaShell = shell("cmd notification set_dnd ${if (enable) "priority" else "off"}")
         if (viaShell != null) {
             val actual = awaitValue(
-                probe = { globalInt("zen_mode") ?: shellSetting("global", "zen_mode") },
+                probe = { readGlobalInt("zen_mode") },
                 expect = expect,
             )
             return if (actual != null && expect(actual)) {
                 OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
             } else {
-                OpsResult.Fail("勿扰命令已执行，但回读 zen_mode=${actual ?: "读不到"}，与期望不一致")
+                OpsResult.Fail("勿扰命令已执行，但回读 zen_mode=${actual ?: "读不到"}，与期望不一致。" +
+                    "请下拉控制中心看一眼勿扰图标；部分 ROM 的「专注模式」会覆盖 zen_mode")
             }
         }
 
         val nm = context.getSystemService(NotificationManager::class.java)
-            ?: return OpsResult.Fail("勿扰：通知服务不可用")
+            ?: return OpsResult.Fail("勿扰：通知服务不可用。请下拉控制中心点「勿扰」图标手动切换")
         if (!nm.isNotificationPolicyAccessGranted) {
             return OpsResult.Fail(
                 "勿扰：没有 Shizuku/无线 ADB 通道，且未授予「勿扰访问权限」。" +
@@ -492,19 +568,22 @@ class DeviceOpsChannel(
                 else NotificationManager.INTERRUPTION_FILTER_ALL,
             )
             val actual = awaitValue(
-                probe = { globalInt("zen_mode") ?: shellSetting("global", "zen_mode") },
+                probe = { readGlobalInt("zen_mode") },
                 expect = expect,
             )
             if (actual != null && expect(actual)) {
                 OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
             } else {
-                OpsResult.Fail("勿扰切换未生效：回读 zen_mode=${actual ?: "读不到"}")
+                OpsResult.Fail("勿扰切换未生效：回读 zen_mode=${actual ?: "读不到"}。" +
+                    "请到 设置 → 通知 → 勿扰 手动确认一下")
             }
-        }.getOrElse { OpsResult.Fail("勿扰切换失败：${it.message ?: "系统拒绝"}") }
+        }.getOrElse { OpsResult.Fail("勿扰切换失败：${it.message ?: "系统拒绝"}；请到 设置 → 通知 → 勿扰访问权限 检查授权") }
     }
 
     private suspend fun screenTimeout(seconds: Int?): OpsResult {
-        if (seconds == null) return OpsResult.Fail("screen_timeout 需要 seconds（5~1800）")
+        if (seconds == null) {
+            return OpsResult.Fail("screen_timeout 需要 seconds：5~1800 的秒数，例如 30 秒填 seconds=30")
+        }
         val effective = seconds.coerceIn(5, 1800)
         return writeSystemSetting(
             Settings.System.SCREEN_OFF_TIMEOUT,
@@ -514,7 +593,9 @@ class DeviceOpsChannel(
     }
 
     private suspend fun rotation(enable: Boolean?): OpsResult {
-        if (enable == null) return OpsResult.Fail("rotation 需要 enable=true/false")
+        if (enable == null) {
+            return OpsResult.Fail("rotation 需要 enable：true 表示开启自动旋转，false 表示锁定方向，例如 enable=false")
+        }
         return writeSystemSetting(
             Settings.System.ACCELEROMETER_ROTATION,
             if (enable) 1 else 0,
@@ -522,10 +603,58 @@ class DeviceOpsChannel(
         )
     }
 
+    /**
+     * 深色模式：`cmd uimode night yes|no` 改的是 Configuration 的夜间位。
+     *
+     * 与其它开关同一标准：改完必须回读当前夜间模式，读不到或读到「跟随时间自动切换」
+     * 都不能算成功——「自动」档位下用户会在日落后被系统改回去。
+     */
+    private suspend fun darkMode(enable: Boolean?): OpsResult {
+        if (enable == null) {
+            return OpsResult.Fail("dark_mode 需要 enable：true 表示开启深色模式，false 表示关闭，例如 enable=true")
+        }
+        val want = if (enable) "yes" else "no"
+        val out = shell("cmd uimode night $want")
+            ?: return noChannel(
+                "切换深色模式需要 Shizuku/无线 ADB 通道（系统不开放第三方应用改夜间模式）。" +
+                    "可改走 open_app 打开「设置 → 显示 → 深色模式」手动切换。",
+            )
+        val actual = awaitValue(
+            probe = { shell("cmd uimode night")?.let(::parseNightMode) },
+            expect = { it == if (enable) 1 else 0 },
+        )
+        return when (actual) {
+            if (enable) 1 else 0 ->
+                OpsResult.Ok("深色模式已${if (enable) "开启" else "关闭"}（回读 uimode night=$want）")
+            -1 -> OpsResult.Fail(
+                "深色模式回读为「跟随时间自动切换」，命令没有定死档位。请到 设置 → 显示 → 深色模式 手动选「始终」",
+            )
+            else -> OpsResult.Fail(
+                "深色模式命令已执行，但回读=${if (actual == null) "读不到" else if (actual == 1) "yes" else "no"}，期望 $want，" +
+                    "无法确认是否生效。请到 设置 → 显示 看一眼；系统回执：${out.trim().take(120)}",
+            )
+        }
+    }
+
+    /** `cmd uimode night` 的输出：`Night mode: yes|no|auto`，auto 返回 -1 表示档位未定死 */
+    private fun parseNightMode(output: String): Int? {
+        val text = output.lowercase()
+        return when {
+            text.contains("night_no") -> 0
+            text.contains("night_yes") -> 1
+            text.contains("night_auto") -> -1
+            Regex("\\byes\\b").containsMatchIn(text) -> 1
+            Regex("\\bno\\b").containsMatchIn(text) -> 0
+            else -> null
+        }
+    }
+
     // 分派函数多处早退以保证可读性，此处按规则豁免
     @Suppress("ReturnCount")
     private suspend fun systemToggle(op: String, enable: Boolean?): OpsResult {
-        if (enable == null) return OpsResult.Fail("$op 需要 enable=true/false")
+        if (enable == null) {
+            return OpsResult.Fail("$op 需要 enable：true 表示开启，false 表示关闭，例如 enable=true")
+        }
         val on = if (enable) "enable" else "disable"
         val cmd = when (op) {
             "wifi" -> "svc wifi $on"
@@ -533,22 +662,40 @@ class DeviceOpsChannel(
             "airplane" -> "cmd connectivity airplane-mode $on"
             "location" -> "cmd location set-location-enabled ${if (enable) "true" else "false"}"
             "nfc" -> "svc nfc $on"
-            else -> return OpsResult.Fail("不支持的系统开关：$op")
+            else -> return OpsResult.Fail(
+                "不支持的系统开关：$op；可用的有 wifi、bluetooth、airplane、location、nfc",
+            )
         }
         val out = shell(cmd)
-            ?: return noChannel("$op：需要 Shizuku/无线 ADB 通道（或 Root）；当前没有可用注入通道")
+            ?: return noChannel(
+                "$op：需要 Shizuku/无线 ADB 通道（或 Root），当前没有可用注入通道。" +
+                    "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权；" +
+                    "也可以下拉控制中心手动切换$op",
+            )
 
         // 命令有回执 ≠ 开关真的变了：逐项回读系统设置里的真实状态
         val probe: suspend () -> Int? = when (op) {
-            "wifi" -> { { globalInt("wifi_on") ?: shellSetting("global", "wifi_on") } }
-            "bluetooth" -> { { globalInt("bluetooth_on") ?: shellSetting("global", "bluetooth_on") } }
-            "airplane" -> { { globalInt("airplane_mode_on") ?: shellSetting("global", "airplane_mode_on") } }
-            "location" -> { { secureInt("location_mode") ?: shellSetting("secure", "location_mode") } }
+            "wifi" -> { { readGlobalInt("wifi_on") } }
+            "bluetooth" -> { { readGlobalInt("bluetooth_on") } }
+            "airplane" -> { { readGlobalInt("airplane_mode_on") } }
+            "location" -> { { readSecureInt("location_mode") } }
             else -> { { null } }
         }
         if (op == "nfc") {
-            return OpsResult.Ok("$op 已提交${if (enable) "开启" else "关闭"}（本机没有可回读的 NFC 状态值，" +
-                "请用控制中心确认；系统回执：${out.ifBlank { "无输出" }.take(200)}）")
+            // NFC 没有可回读的状态值：只能报「无法确认」，不能报成功
+            val reply = out.trim()
+            val noService = reply.contains("Can't find service", ignoreCase = true) ||
+                reply.contains("null NfcAdapter", ignoreCase = true) ||
+                reply.contains("Could not find provider", ignoreCase = true)
+            return OpsResult.Fail(
+                if (noService) {
+                    "本机没有可用的 NFC 服务（系统回执：${reply.take(120).ifBlank { "无输出" }}）。" +
+                        "如果这台手机确实有 NFC，请到 设置 → 连接 → NFC 手动打开；没有 NFC 硬件就忽略这条指令"
+                } else {
+                    "NFC 命令已执行，但本机读不到 NFC 开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
+                        "请下拉控制中心看一眼 NFC 图标；系统回执：${reply.ifBlank { "无输出" }.take(200)}"
+                },
+            )
         }
         val expect: (Int) -> Boolean = when (op) {
             "location" -> { v -> if (enable) v != 0 else v == 0 }
@@ -559,12 +706,12 @@ class DeviceOpsChannel(
             actual != null && expect(actual) ->
                 OpsResult.Ok("$op 已${if (enable) "开启" else "关闭"}（回读开关值=$actual）")
             actual != null ->
-                OpsResult.Fail("$op 命令已执行，但回读开关值=$actual，与期望${if (enable) "开启" else "关闭"}不一致；" +
-                    "可能被飞行模式/设备策略阻止")
+                OpsResult.Fail("$op 命令已执行，但回读开关值=$actual，与期望${if (enable) "开启" else "关闭"}不一致。" +
+                    "可能被飞行模式或设备策略阻止：请先关闭飞行模式/省电模式后重试，或下拉控制中心手动切换 $op")
             else ->
                 // 命令有回执但读不到真实开关值：不能当成设置成功，只能如实报「无法确认」
                 OpsResult.Fail("$op 命令已执行，但本机读不到开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
-                    "请用控制中心确认；系统回执：${out.ifBlank { "无输出" }.take(200)}")
+                    "请下拉控制中心看一眼 $op 图标；系统回执：${out.ifBlank { "无输出" }.take(200)}")
         }
     }
 
@@ -575,9 +722,17 @@ class DeviceOpsChannel(
     private suspend fun settingsOp(op: String, args: Map<String, String>): OpsResult {
         val ns = (args["namespace"] ?: "system").lowercase()
         val key = args["key"]?.trim().orEmpty()
-        if (key.isBlank()) return OpsResult.Fail("settings_op 需要 key")
-        if (!KEY_RE.matches(key)) return OpsResult.Fail("设置项 key 含非法字符：$key")
-        if (ns !in setOf("system", "secure", "global")) return OpsResult.Fail("namespace 只能是 system/secure/global")
+        if (key.isBlank()) {
+            return OpsResult.Fail(
+                "settings_op 需要 key：要读写的设置项名称，例如 key=screen_brightness（system 命名空间）",
+            )
+        }
+        if (!KEY_RE.matches(key)) {
+            return OpsResult.Fail("设置项 key 含非法字符：$key。key 只能用小写字母、数字、下划线和点，请改正后重试")
+        }
+        if (ns !in setOf("system", "secure", "global")) {
+            return OpsResult.Fail("namespace 只能是 system、secure、global 三者之一，例如 namespace=system")
+        }
         if (op == "get") {
             val value = runCatching {
                 when (ns) {
@@ -588,8 +743,8 @@ class DeviceOpsChannel(
             }.getOrNull()
             return OpsResult.Ok(if (value == null) "$ns/$key = 未设置（或读取被系统限制）" else "$ns/$key = $value")
         }
-        if (op != "set") return OpsResult.Fail("settings_op 只支持 get/set")
-        val value = args["value"] ?: return OpsResult.Fail("settings_op 的 set 需要 value")
+        if (op != "set") return OpsResult.Fail("settings_op 只支持 op=get（读）和 op=set（写）")
+        val value = args["value"] ?: return OpsResult.Fail("settings_op 的 set 需要 value：要写入的值，例如 value=1")
         // 优先用注入命令（能写 secure/global，不改系统权限）；没有注入通道时退回 system 的可写授权
         val out = shell("settings put $ns $key ${quote(value)}")
         val appWritten = if (out == null && ns == "system" && Settings.System.canWrite(context)) {
@@ -598,8 +753,11 @@ class DeviceOpsChannel(
             false
         }
         if (out == null && !appWritten) {
-            return noChannel("写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
-                (if (ns == "system") "或先授予「修改系统设置」权限。" else "secure/global 只能走注入通道。"))
+            return noChannel(
+                "写入 $ns/$key 失败：需要 Shizuku/无线 ADB 通道；" +
+                    (if (ns == "system") "或先授予「修改系统设置」权限。" else "secure/global 只能走注入通道。") +
+                    "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
+            )
         }
         // 写完回读：值没落下去就如实失败，不报「已写入」
         var actual: String? = null
@@ -608,7 +766,10 @@ class DeviceOpsChannel(
             if (actual == value) return OpsResult.Ok("$ns/$key 已写入 $value（回读一致）")
             delay(300)
         }
-        return OpsResult.Fail("$ns/$key 写入未生效：回读=${actual ?: "读不到"}，期望 $value")
+        return OpsResult.Fail(
+            "$ns/$key 写入未生效：回读=${actual ?: "读不到"}，期望 $value。" +
+                "请确认 key 名称拼写正确；有些项被系统锁定改不了，就不要继续硬改",
+        )
     }
 
     // -------------------------------------------------------------- clipboard
@@ -617,7 +778,7 @@ class DeviceOpsChannel(
     @Suppress("ReturnCount")
     private fun clipboardOp(op: String, args: Map<String, String>): OpsResult {
         val cm = context.getSystemService(ClipboardManager::class.java)
-            ?: return OpsResult.Fail("剪贴板服务不可用")
+            ?: return OpsResult.Fail("剪贴板服务不可用。请重启手机后再试，或手动长按文本复制/粘贴")
         return when (op) {
             "get" -> {
                 val clip = runCatching { cm.primaryClip }.getOrNull()
@@ -628,9 +789,28 @@ class DeviceOpsChannel(
                 OpsResult.Ok(if (text.isEmpty()) "剪贴板为空" else "剪贴板内容：\n${text.take(2000)}")
             }
             "set" -> {
-                val text = args["text"] ?: return OpsResult.Fail("clipboard set 需要 text")
-                cm.setPrimaryClip(ClipData.newPlainText("phantom", text))
-                OpsResult.Ok("已写入剪贴板（${text.length} 字）")
+                val text = args["text"] ?: return OpsResult.Fail("clipboard set 需要 text：要复制到剪贴板的内容")
+                runCatching { cm.setPrimaryClip(ClipData.newPlainText("phantom", text)) }
+                    .getOrElse {
+                        return OpsResult.Fail(
+                            "写剪贴板失败：${it.message ?: "系统拒绝"}。" +
+                                "请把本应用切到前台后重试，或手动长按文本复制",
+                        )
+                    }
+                // 写入后回读：拿到的内容一致才算真的写进去了
+                val actual = runCatching {
+                    cm.primaryClip?.let { clip ->
+                        (0 until clip.itemCount).joinToString("\n") { clip.getItemAt(it).coerceToText(context).toString() }
+                    }
+                }.getOrNull()
+                if (actual == text) {
+                    OpsResult.Ok("已写入剪贴板（回读一致，${text.length} 字）")
+                } else {
+                    OpsResult.Fail(
+                        "剪贴板写入未确认：回读为「${actual?.take(40) ?: "读不到"}」。" +
+                            "Android 10+ 限制后台读剪贴板，请把本应用切到前台后再让我写一次",
+                    )
+                }
             }
             "clear" -> {
                 cm.clearPrimaryClip()
@@ -651,39 +831,88 @@ class DeviceOpsChannel(
         if (op == "list") return OpsResult.Ok("现有闹钟：\n$uriOut")
         val hour = intArg(args, "hour")
         val minute = intArg(args, "minute")
-        if (hour == null || minute == null) return OpsResult.Fail("alarm_manage 的 $op 需要 hour 与 minute 定位已有闹钟")
+        if (hour == null || minute == null) {
+            return OpsResult.Fail(
+                "alarm_manage 的 $op 需要 hour 与 minute 定位已有闹钟，例如 hour=7、minute=30；" +
+                    "不确定现有闹钟时间时先调 alarm_manage（op=list）看一眼",
+            )
+        }
         val where = "hour=$hour AND minutes=$minute"
         return when (op) {
             "enable" -> {
                 val enable = boolArg(args,
-                    "enable") ?: return OpsResult.Fail("alarm_manage enable 需要 enable=true/false")
-                updateAlarm(where, listOf(Triple("enabled", "i", if (enable) "1" else "0")))
+                    "enable") ?: return OpsResult.Fail(
+                    "alarm_manage enable 需要 enable：true 表示启用这条闹钟，false 表示关闭，例如 enable=false",
+                )
+                val flag = if (enable) "1" else "0"
+                updateAlarm(where, listOf(Triple("enabled", "i", flag)))
                     .fold(
-                        { OpsResult.Ok("已${if (enable) "启用" else "关闭"} $hour:${"%02d".format(minute)} 的闹钟（${it}）") },
-                        { OpsResult.Fail("改闹钟开关失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）") },
+                        {
+                            // 命令有回执不等于开关变了：回查同一时分的闹钟行
+                            val row = alarmRow(queryAlarms().orEmpty(), hour, minute)
+                            when {
+                                row == null -> OpsResult.Fail(
+                                    "已执行${if (enable) "启用" else "关闭"}，但回查不到 $hour:${"%02d".format(minute)} 的闹钟，" +
+                                        "无法确认是否生效。请打开时钟应用看一眼这条闹钟的开关",
+                                )
+                                row.contains("enabled=$flag") -> OpsResult.Ok(
+                                    "已${if (enable) "启用" else "关闭"} $hour:${"%02d".format(minute)} 的闹钟（回查 enabled=$flag）",
+                                )
+                                else -> OpsResult.Fail(
+                                    "闹钟开关未改动：回查 $hour:${"%02d".format(minute)} 仍是 ${Regex("enabled=(\\d)")
+                                        .find(row)?.groupValues?.get(1) ?: "未知"}。" +
+                                        "部分厂商时钟不开放该字段，请打开时钟应用手动切换",
+                                )
+                            }
+                        },
+                        { OpsResult.Fail(
+                            "改闹钟开关失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）。" +
+                                "请到应用设置里确认注入通道已连接并授权，或打开时钟应用手动切换这条闹钟",
+                        ) },
                     )
             }
             "delete" -> {
-                val out = shell("content delete --uri ${ALARM_URI} --where ${quote(where)}")
+                val out = shell("content delete --uri ${alarmUri()} --where ${quote(where)}")
                 if (out.isNullOrBlank()) {
-                    OpsResult.Fail("删除闹钟失败：注入通道不可用或时钟 Provider 拒绝")
+                    OpsResult.Fail(
+                        "删除闹钟失败：注入通道不可用或时钟 Provider 拒绝。" +
+                            "请到应用设置里确认 Shizuku/无线 ADB 已连接并授权后重试，" +
+                            "或打开时钟应用手动删掉这条闹钟",
+                    )
                 } else {
                     // 删除命令有回执不等于行没了：回查一遍，还在就如实报失败
                     val after = queryAlarms().orEmpty()
                     if (after.contains("hour=$hour") && after.contains("minutes=$minute")) {
-                        OpsResult.Fail("已执行删除，但回查时钟 Provider 仍能看到 $hour:${"%02d".format(minute)} 的闹钟")
+                        OpsResult.Fail(
+                            "已执行删除，但回查时钟 Provider 仍能看到 $hour:${"%02d".format(minute)} 的闹钟。" +
+                                "请打开时钟应用手动删除这条",
+                        )
                     } else {
                         OpsResult.Ok("已删除 $hour:${"%02d".format(minute)} 的闹钟（回查已不存在；${out.take(200)}）")
                     }
                 }
             }
             "update" -> {
-                val nh = intArg(args, "new_hour") ?: return OpsResult.Fail("alarm_manage update 需要 new_hour")
-                val nm = intArg(args, "new_minute") ?: return OpsResult.Fail("alarm_manage update 需要 new_minute")
+                val nh = intArg(args, "new_hour")
+                    ?: return OpsResult.Fail("alarm_manage update 需要 new_hour：改后的小时（0~23），例如 new_hour=8")
+                val nm = intArg(args, "new_minute")
+                    ?: return OpsResult.Fail("alarm_manage update 需要 new_minute：改后的分钟（0~59），例如 new_minute=15")
                 updateAlarm(where, listOf(Triple("hour", "i", nh.toString()), Triple("minutes", "i", nm.toString())))
                     .fold(
-                        { OpsResult.Ok("闹钟已改为 $nh:${"%02d".format(nm)}（${it}）") },
-                        { OpsResult.Fail("改闹钟时间失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）") },
+                        {
+                            if (alarmRow(queryAlarms().orEmpty(), nh, nm) != null) {
+                                OpsResult.Ok("闹钟已改为 $nh:${"%02d".format(nm)}（回查新时间已存在）")
+                            } else {
+                                OpsResult.Fail(
+                                    "改闹钟时间的命令已执行，但回查不到 $nh:${"%02d".format(nm)} 的闹钟，" +
+                                        "无法确认是否生效。请打开时钟应用看一眼列表",
+                                )
+                            }
+                        },
+                        { OpsResult.Fail(
+                            "改闹钟时间失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）。" +
+                                "请到应用设置里确认注入通道已连接并授权，或打开时钟应用手动改时间",
+                        ) },
                     )
             }
             else -> OpsResult.Fail("alarm_manage 只支持 list/enable/delete/update")
@@ -694,7 +923,7 @@ class DeviceOpsChannel(
     @Suppress("ReturnCount")
     private suspend fun updateAlarm(where: String, binds: List<Triple<String, String, String>>): kotlin.Result<String> {
         val bind = binds.joinToString(" ") { (k, type, v) -> "--bind $k:$type:${quote(v)}" }
-        val out = shell("content update --uri ${ALARM_URI} --where ${quote(where)} $bind")
+        val out = shell("content update --uri ${alarmUri()} --where ${quote(where)} $bind")
             ?: return kotlin.Result.failure(IllegalStateException("注入通道不可用"))
         if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
             return kotlin.Result.failure(IllegalStateException("Provider 未匹配到该闹钟或拒绝写入"))
@@ -702,17 +931,31 @@ class DeviceOpsChannel(
         return kotlin.Result.success(out.take(200))
     }
 
+    /** 从闹钟 Provider 的输出里挑出「某时某分」那一行（写后回查用） */
+    private fun alarmRow(query: String, hour: Int, minute: Int): String? =
+        query.lineSequence()
+            .firstOrNull { it.contains("hour=$hour") && it.contains("minutes=$minute") }
+            ?.trim()
+
+    /** 最近一次查询成功的闹钟 Provider URI：写/删沿用同一条，避免厂商机上 AOSP URI 不生效 */
+    private var alarmUriInUse: String? = null
+
     /** 依次尝试常见时钟 Provider，返回第一条可用输出 */
     private suspend fun queryAlarms(): String? {
         for (uri in ALARM_URIS) {
             val out = shell("content query --uri $uri --projection _id:hour:minutes:enabled:label") ?: continue
             if (out.isNotBlank() && !out.contains("Error", ignoreCase = true) && !out.contains("No result",
                 ignoreCase = true)) {
+                alarmUriInUse = uri
                 return out.take(2000)
             }
         }
+        alarmUriInUse = null
         return null
     }
+
+    /** 写/删闹钟用哪条 URI：优先用刚才查询成功的那条 */
+    private fun alarmUri(): String = alarmUriInUse ?: ALARM_URI
 
     // ---------------------------------------------------------- calendar_op
 
@@ -798,7 +1041,17 @@ class DeviceOpsChannel(
         if (out.contains("Error", ignoreCase = true) || out.contains("Exception", ignoreCase = true)) {
             return OpsResult.Fail("日历 Provider 拒绝写入：${out.take(200)}。可改走 open_app 打开日历应用手动新建。")
         }
-        return OpsResult.Ok("已新建日程「$title」：${formatCalendarTime(startMs)} ~ ${formatCalendarTime(endMs)}（calendar_id=$calendarId）")
+        // 写入命令有回执不等于事件真的在库里：回查同名同开始时间的那条
+        val row = findCalendarEvent("title=${quote(title)} AND dtstart=$startMs")
+            ?: return OpsResult.Fail(
+                "日历写入命令已执行，但回查不到「$title」这条日程，无法确认是否真的写入。" +
+                    "请打开日历应用看一眼当天有没有这条；也可以先用 calendar_op list 确认。",
+            )
+        val newId = Regex("_id=(\\d+)").find(row)?.groupValues?.get(1)
+        return OpsResult.Ok(
+            "已新建日程「$title」：${formatCalendarTime(startMs)} ~ ${formatCalendarTime(endMs)}" +
+                "（calendar_id=$calendarId，回查 id=${newId ?: "?"}）",
+        )
     }
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
@@ -819,14 +1072,38 @@ class DeviceOpsChannel(
             boolArg(args, "all_day")?.let { add("allDay:i:${if (it) 1 else 0}") }
         }
         if (binds.isEmpty()) return OpsResult.Fail("calendar_op update 至少要给一个要改的字段（title/start/end/all_day）")
+        // 记录「改完之后应该读到什么」，用于写后回查
+        val expects = buildList {
+            args["title"]?.trim()?.takeIf { it.isNotEmpty() }?.let { add("title=$it") }
+            args["start"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
+                parseCalendarTime(text)?.let { add("dtstart=$it") }
+            }
+            boolArg(args, "all_day")?.let { add("allDay=${if (it) 1 else 0}") }
+        }
         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
         @Suppress("MaxLineLength")
         val out = shell("content update --uri $CALENDAR_URI --where ${quote("_id=$id")} --bind ${binds.joinToString(" --bind ")}")
-            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+            ?: return noChannel(
+                "写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动改这条日程。",
+            )
         if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
             return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝写入。先用 calendar_op list 确认 id。")
         }
-        return OpsResult.Ok("已更新日程 id=$id（${binds.size} 个字段）")
+        // 命令有回执不等于字段改了：按 _id 回查，逐个核对本次提交的值
+        val row = findCalendarEvent("_id=$id")
+            ?: return OpsResult.Fail(
+                "更新命令已执行，但回查不到 id=$id 的日程，无法确认是否生效。" +
+                    "若列表里也没有这条，说明它已被删除；否则请打开日历应用手动改一次。",
+            )
+        val missing = expects.filterNot { row.contains(it) }
+        return if (missing.isEmpty()) {
+            OpsResult.Ok("已更新日程 id=$id（回查 ${expects.joinToString("、")} 均已生效）")
+        } else {
+            OpsResult.Fail(
+                "日程已改动，但回查 ${missing.joinToString("、")} 与提交值不一致，可能被日历应用拒绝。" +
+                    "请打开日历应用核对该日程。",
+            )
+        }
     }
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
@@ -835,11 +1112,30 @@ class DeviceOpsChannel(
         val id = args["event_id"]?.trim().orEmpty()
         if (id.isEmpty()) return OpsResult.Fail("calendar_op delete 需要 event_id（从 calendar_op list 结果里取）")
         val out = shell("content delete --uri $CALENDAR_URI --where ${quote("_id=$id")}")
-            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。")
+            ?: return noChannel(
+                "删日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动删除这条日程。",
+            )
         if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
             return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝删除。先用 calendar_op list 确认 id。")
         }
-        return OpsResult.Ok("已删除日程 id=$id")
+        // 删除同样要看结果：按 _id 再查一次，还能查到就是没删掉
+        if (findCalendarEvent("_id=$id") != null) {
+            return OpsResult.Fail(
+                "删除命令已执行，但回查 id=$id 的日程还在，删除没有生效。请打开日历应用手动删除这条。",
+            )
+        }
+        return OpsResult.Ok("已删除日程 id=$id（回查已不存在）")
+    }
+
+    /** 回查单条日历事件：命中返回原始行；读不到或不存在返回 null */
+    private suspend fun findCalendarEvent(where: String): String? {
+        val out = shell(
+            "content query --uri $CALENDAR_URI --projection _id:title:dtstart:dtend:allDay --where ${quote(where)}",
+        ) ?: return null
+        if (out.contains("Error", ignoreCase = true)) return null
+        return out.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.contains("_id=") && !it.startsWith("No result") }
     }
 
     /**
@@ -884,13 +1180,16 @@ class DeviceOpsChannel(
         // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
         @Suppress("ComplexCondition", "MaxLineLength")
         val agent = virtualDisplay()
-            ?: return OpsResult.Fail("副屏：本任务未启用副屏模式（需自由模式且 Shizuku/无线 ADB 可用）")
+            ?: return OpsResult.Fail(
+                "副屏：本任务未启用副屏模式。请先切到自由模式，并在应用设置里确认 Shizuku/无线 ADB 已连接",
+            )
         return when (op) {
             "status" -> OpsResult.Ok("副屏：${if (agent.isReady) "已创建（display=${agent.displayId}）" else "未创建"}")
             "create" -> outcome(agent.ensure(), "创建副屏")
             "destroy" -> run { agent.destroy(); OpsResult.Ok("副屏已销毁") }
             "launch" -> {
-                val app = args["app"] ?: return OpsResult.Fail("virtual_display launch 需要 app")
+                val app = args["app"]
+                    ?: return OpsResult.Fail("virtual_display launch 需要 app：写应用名或包名，例如 app=微信")
                 val pkg = resolvePackage(app) ?: app
                 // 记下最近一次在副屏里拉起的是谁：present 不带 app 时靠它把画面投回主屏
                 lastVirtualApp = pkg
@@ -898,33 +1197,52 @@ class DeviceOpsChannel(
             }
             "tap" -> {
                 val x = intArg(args, "x"); val y = intArg(args, "y")
-                if (x == null || y == null) OpsResult.Fail("virtual_display tap 需要 x/y") else outcome(agent.tap(x, y),
-                    "副屏点击")
+                if (x == null || y == null) {
+                    OpsResult.Fail("virtual_display tap 需要 x/y 屏幕坐标；不确定位置时先调 op=screenshot 看一眼画面")
+                } else {
+                    outcome(agent.tap(x, y), "副屏点击")
+                }
             }
             "swipe" -> {
                 val x1 = intArg(args, "x1"); val y1 = intArg(args, "y1")
                 val x2 = intArg(args, "x2"); val y2 = intArg(args, "y2")
-                if (x1 == null || y1 == null || x2 == null || y2 == null) OpsResult.Fail("virtual_display swipe 需要 x1/y1/x2/y2")
-                else outcome(agent.swipe(x1, y1, x2, y2), "副屏滑动")
+                if (x1 == null || y1 == null || x2 == null || y2 == null) {
+                    OpsResult.Fail("virtual_display swipe 需要 x1/y1/x2/y2 起点与终点坐标；不确定位置时先截图看一眼")
+                } else {
+                    outcome(agent.swipe(x1, y1, x2, y2), "副屏滑动")
+                }
             }
             "type" -> {
-                val text = args["text"] ?: return OpsResult.Fail("virtual_display type 需要 text")
+                val text = args["text"]
+                    ?: return OpsResult.Fail("virtual_display type 需要 text：要输入的文本内容")
                 outcome(agent.typeText(text), "副屏输入")
             }
             "key" -> {
                 val code = when ((args["key"] ?: "").uppercase()) {
                     "BACK" -> 4; "HOME" -> 3; "ENTER" -> 66; "RECENT" -> 187; else -> -1
                 }
-                if (code < 0) OpsResult.Fail("virtual_display key 只支持 BACK/HOME/ENTER/RECENT")
-                else outcome(agent.keyevent(code), "副屏按键")
+                if (code < 0) {
+                    OpsResult.Fail("virtual_display key 只支持 BACK、HOME、ENTER、RECENT，例如 key=BACK")
+                } else {
+                    outcome(agent.keyevent(code), "副屏按键")
+                }
             }
             "screenshot" -> {
                 val bytes = agent.screenshot()
-                if (bytes == null) OpsResult.Fail("副屏截图失败：当前系统不支持 screencap -d 或副屏未就绪")
-                else OpsResult.Ok("副屏截图成功：${bytes.size} 字节 PNG（内容已交给端侧，不在对话里展开）")
+                if (bytes == null) {
+                    OpsResult.Fail(
+                        "副屏截图失败：当前系统不支持 screencap -d 或副屏尚未就绪。" +
+                            "请先调 virtual_display（op=status）看副屏是否已创建，没创建就先 op=create",
+                    )
+                } else {
+                    OpsResult.Ok("副屏截图成功：${bytes.size} 字节 PNG（内容已交给端侧，不在对话里展开）")
+                }
             }
             "present" -> presentVirtual(agent, args)
-            else -> OpsResult.Fail("virtual_display 不支持 op=$op")
+            else -> OpsResult.Fail(
+                "virtual_display 不支持 op=$op；可用：status、create、destroy、launch、tap、swipe、type、key、" +
+                    "screenshot、present",
+            )
         }
     }
 
@@ -942,7 +1260,10 @@ class DeviceOpsChannel(
             ?: lastVirtualApp
             ?: return OpsResult.Fail("present 需要 app：先用 virtual_display launch 在副屏里打开应用，或直接给 app")
         val out = shell("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
-            ?: return noChannel("把应用拉到主屏需要 Shizuku 或无线 ADB 注入通道；当前不可用")
+            ?: return noChannel(
+                "把应用拉到主屏需要 Shizuku 或无线 ADB 注入通道；当前不可用。" +
+                    "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
+            )
         if (out.contains("No activities found", ignoreCase = true) || out.contains("aborted", ignoreCase = true)) {
             return OpsResult.Fail("$pkg 没有可启动的入口（可能是系统应用或未安装）；可改用 open 深链或 show_agent")
         }
@@ -1043,10 +1364,17 @@ class DeviceOpsChannel(
                 // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
                 @Suppress("MaxLineLength")
                 val f = resolvePath(raw) ?: return@withContext OpsResult.Fail("路径不可访问：$raw（仅支持 /sdcard、/storage 与应用私有目录）")
-                if (!f.exists()) return@withContext OpsResult.Fail("文件不存在：${f.path}")
+                if (!f.exists()) {
+                    return@withContext OpsResult.Fail(
+                        "文件不存在：${f.path}。请先用 file_read（op=list）看一眼所在目录里实际有哪些文件名",
+                    )
+                }
                 if (f.isDirectory) return@withContext OpsResult.Fail("${f.path} 是目录；列目录请用 op=list")
                 val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
-                    ?: return@withContext OpsResult.Fail("读取失败（二进制文件或非 UTF-8 编码）：${f.path}")
+                    ?: return@withContext OpsResult.Fail(
+                        "读取失败：${f.path} 是二进制文件或不是 UTF-8 文本，读出来也是乱码。" +
+                            "若只是想确认它存在，用 op=stat 看大小和时间即可",
+                    )
                 val cap = 4000
                 OpsResult.Ok(buildString {
                     appendLine("${f.path}（${f.length()} 字节）")
@@ -1145,7 +1473,12 @@ class DeviceOpsChannel(
                         f.parentFile?.mkdirs()
                         f.appendText(text, Charsets.UTF_8)
                     }
-                }.getOrElse { return@withContext OpsResult.Fail("写入失败：${it.message ?: "系统拒绝"}") }
+                }.getOrElse {
+                    return@withContext OpsResult.Fail(
+                        "写入失败：${it.message ?: "系统拒绝"}。请换到 /sdcard/Download 或 /sdcard/Documents 这类可写目录再试，" +
+                            "并确认文件名没有被系统保留",
+                    )
+                }
                 OpsResult.Ok("已${if (op == "write") "覆盖写入" else "追加"}：${f.path}（现 ${f.length()} 字节）")
             }
             "edit" -> {
@@ -1179,17 +1512,33 @@ class DeviceOpsChannel(
     @Suppress("ReturnCount", "MaxLineLength")
     private suspend fun appManage(op: String, args: Map<String, String>): OpsResult {
         val input = args["app"]?.trim().orEmpty()
-        if (input.isEmpty()) return OpsResult.Fail("app_manage 需要 app（包名或应用名）")
-        val pkg = resolvePackage(input) ?: return OpsResult.Fail("没有找到应用「$input」")
+        if (input.isEmpty()) {
+            return OpsResult.Fail("app_manage 需要 app：应用名（如「微信」）或包名（如 com.tencent.mm）")
+        }
+        val pkg = resolvePackage(input) ?: return OpsResult.Fail(
+            "没有找到应用「$input」。请确认应用名或包名；不确定时先调 device_info（op=apps）看已安装列表",
+        )
         val command = when (op) {
             "force_stop" -> "am force-stop $pkg"
             "background" -> "am kill $pkg"
-            else -> return OpsResult.Fail("app_manage 只支持 op=force_stop/background")
+            else -> return OpsResult.Fail("app_manage 只支持 op=force_stop（强制停止）和 op=background（清理后台）")
         }
         val out = shell(command)
-            ?: return noChannel("$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
-        val tail = out.trim().take(120)
-        return OpsResult.Ok("已${if (op == "force_stop") "强制停止" else "清理后台"}：$pkg" + if (tail.isEmpty()) "" else "（输出：$tail）")
+            ?: return noChannel(
+                "$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道。" +
+                    "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
+            )
+        // 命令有回执不等于进程没了：用 pidof 回读，还在就如实报「无法确认已停止」
+        val pid = shell("pidof $pkg")?.trim().orEmpty()
+        return if (pid.isEmpty()) {
+            OpsResult.Ok("已${if (op == "force_stop") "强制停止" else "清理后台"}：$pkg（回读进程列表已无该应用）")
+        } else {
+            OpsResult.Fail(
+                "$op 命令已执行，但 $pkg 仍在运行（pid=$pid），无法确认是否已停止。" +
+                    "若它正在前台，请先切到别的应用再试；仍不行就手动在多任务里划掉。" +
+                    "系统回执：${out.trim().take(120).ifEmpty { "无输出" }}",
+            )
+        }
     }
 
     // ---------------------------------------------------------------- terminal_op
@@ -1198,14 +1547,22 @@ class DeviceOpsChannel(
     private suspend fun terminalOp(op: String, args: Map<String, String>): OpsResult = when (op) {
         "exec" -> {
             val cmd = args["command"]?.trim().orEmpty()
-            if (cmd.isEmpty()) return OpsResult.Fail("terminal_op 的 exec 需要 command（要执行的命令）")
+            if (cmd.isEmpty()) {
+                return OpsResult.Fail("terminal_op 的 exec 需要 command：要执行的命令，例如 command=\"ls /sdcard\"")
+            }
             val out = shell(cmd)
-                ?: return noChannel("terminal 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道，请到设置里开启后重试")
+                ?: return noChannel(
+                    "terminal 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道。" +
+                        "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
+                )
             OpsResult.Ok("$ $cmd\n" + out.trim().take(4000))
         }
         "check_root" -> {
             val out = shell("id -u")
-                ?: return noChannel("check_root 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道")
+                ?: return noChannel(
+                    "check_root 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道。" +
+                        "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
+                )
             val uid = out.trim().lineSequence().firstOrNull().orEmpty()
             if (uid.contains("uid=0") || uid == "0") OpsResult.Ok("当前注入通道具备 Root（id -u → $uid）")
             else OpsResult.Ok("当前注入通道不是 Root（id -u → ${uid.ifBlank { "无输出" }}）")
@@ -1238,10 +1595,13 @@ class DeviceOpsChannel(
                 else -> "content://media/external/images/media"
             }} --projection _display_name:relative_path"
             "logs" -> "logcat -d -t 300"
-            else -> return OpsResult.Fail("personal_read 只支持 op=contacts/calls/sms/calendar/media/logs")
+            else -> return OpsResult.Fail(
+                "personal_read 只支持 op=contacts、calls、sms、calendar、media、logs，例如 op=contacts",
+            )
         }
         val out = shell(command) ?: return noChannel(
-            "$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道（读个人数据要以 shell 身份查询）",
+            "$op 需要 Shizuku 或无线 ADB 通道；当前没有可用注入通道（读个人数据要以 shell 身份查询）。" +
+                "请到应用设置里检查 Shizuku/无线 ADB 是否已连接并授权后重试",
         )
         val rows = out.lineSequence()
             .map { it.trim() }

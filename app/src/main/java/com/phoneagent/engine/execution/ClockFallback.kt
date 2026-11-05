@@ -274,6 +274,20 @@ internal sealed interface ClockOutcome {
 }
 
 /**
+ * 时钟意图的投递方。
+ *
+ * 抽成接口是因为 `android.content.Intent` 在 JVM 单测里是空壳（构造后 action/extra 都不保存），
+ * 只有换成可控实现，才能把「派发 → 回读 → 判成功/降级」整条链放进单测里跑。
+ */
+internal interface ClockIntentDispatcher {
+    /** 派发一次设置请求；返回 null 表示已交付，非空是中文失败原因 */
+    fun dispatch(request: ClockRequest, skipUi: Boolean): String?
+
+    /** 打开闹钟/计时器列表页；返回是否交付成功 */
+    fun openPage(request: ClockRequest): Boolean = false
+}
+
+/**
  * 按 [ClockFallbackPolicy] 的表执行一级级降级。
  *
  * 所有 Android 依赖（Intent 解析、无障碍点击、shell）都通过构造参数注入，
@@ -286,6 +300,8 @@ internal class ClockFallbackRunner(
     private val caps: ClockCapabilities,
     /** 时钟页文本回读：用于「无障碍能看见条目」这一档的验证；没有无障碍时返回 null */
     private val screen: suspend () -> ScreenSnapshot? = { null },
+    /** 意图投递：默认走标准 AlarmClock 契约；单测里替换成假时钟 */
+    private val dispatcher: ClockIntentDispatcher = IntentClockDispatcher(context),
 ) {
 
     /** 保存/确认按钮的文案候选：只点一次，点到即止；点不到就降级，绝不连环乱点 */
@@ -590,73 +606,8 @@ internal class ClockFallbackRunner(
 
     // ---------------------------------------------------------------- 一级：静默直达
 
-    /**
-     * 发一次时钟 Intent。
-     * @return null=已交付；非空=中文失败原因（用于下一级文案）
-     */
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun dispatch(request: ClockRequest, skipUi: Boolean): String? {
-        val base = fillIntent(request, Intent(request.action), skipUi) ?: return "时钟类型无法识别"
-
-        // 1) 按厂商时钟包名显式解析标准 action（与 Eta 一致：先试 ColorOS 包，再退回隐式）
-        val explicit = ClockPackages.PREFERRED.firstNotNullOfOrNull { pkg ->
-            resolveClockIntent(Intent(base).setPackage(pkg))
-        }
-        // 2) 隐式解析标准 action
-        val target = explicit ?: resolveClockIntent(base) ?: return ClockPackages.NO_CLOCK_MESSAGE
-        return start(target)
-    }
-
-    /**
-     * 解析到具体 Activity 并显式指定组件。
-     *
-     * 只 `setPackage` 时，系统可能把意图投递到该应用当前最上层的任意 Activity（实测时钟停在
-     * 计时页时会「已投递但没处理」），表现为「启动了但没设成」。显式组件保证落到真正处理
-     * SET_ALARM / SET_TIMER 的那个入口 Activity（与 `am start` 打印的 cmp= 行为一致）。
-     */
-    private fun resolveClockIntent(intent: Intent): Intent? {
-        val resolved = runCatching { context.packageManager.resolveActivity(intent, 0) }.getOrNull()
-            ?: return null
-        val info = resolved.activityInfo ?: return null
-        return Intent(intent).setComponent(ComponentName(info.packageName, info.name))
-    }
-
-    /** 往 Intent 里填参数；时钟类型不认识时返回 null */
-    private fun fillIntent(request: ClockRequest, intent: Intent, skipUi: Boolean): Intent? {
-        when (request.action) {
-            AlarmClock.ACTION_SET_ALARM -> {
-                intent.putExtra(AlarmClock.EXTRA_HOUR, request.hour ?: 0)
-                intent.putExtra(AlarmClock.EXTRA_MINUTES, request.minute ?: 0)
-                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi)
-                intent.putExtra(AlarmClock.EXTRA_VIBRATE, true)
-                request.label?.let { intent.putExtra(AlarmClock.EXTRA_MESSAGE, it) }
-                request.repeatDays?.takeIf { it.isNotEmpty() }?.let { days ->
-                    intent.putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, ArrayList(days))
-                }
-            }
-            AlarmClock.ACTION_SET_TIMER -> {
-                intent.putExtra(AlarmClock.EXTRA_LENGTH, (request.seconds ?: 0L).toInt())
-                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi)
-                request.label?.let { intent.putExtra(AlarmClock.EXTRA_MESSAGE, it) }
-            }
-            else -> return null
-        }
-        return intent
-    }
-
-    private fun canResolve(intent: Intent): Boolean =
-        runCatching { context.packageManager.resolveActivity(intent, 0) != null }.getOrDefault(false)
-
-    private fun start(intent: Intent): String? {
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return runCatching {
-            context.startActivity(intent)
-            null
-        }.getOrElse { e ->
-            "启动时钟页失败（${e.javaClass.simpleName}${e.message?.let { "：$it" } ?: ""}）"
-        }
-    }
+    private fun dispatch(request: ClockRequest, skipUi: Boolean): String? =
+        dispatcher.dispatch(request, skipUi)
 
     // ---------------------------------------------------------------- 二级：shell 写库
 
@@ -727,7 +678,30 @@ internal class ClockFallbackRunner(
 
     // ---------------------------------------------------------------- 四级：打开页面
 
-    private fun openClockPage(request: ClockRequest): Boolean {
+    private fun openClockPage(request: ClockRequest): Boolean = dispatcher.openPage(request)
+}
+
+/**
+ * 生产实现：标准 AlarmClock 契约 + 显式组件投递。
+ *
+ * 与 Eta 一致，先按厂商时钟包名尝试标准 action，再退回隐式解析；不使用厂商私有 action
+ * （私有 action 没有回读契约，出现「页面开了但没设成」时无法识别）。
+ */
+internal class IntentClockDispatcher(private val context: Context) : ClockIntentDispatcher {
+
+    override fun dispatch(request: ClockRequest, skipUi: Boolean): String? {
+        val base = fillIntent(request, Intent(request.action), skipUi) ?: return "时钟类型无法识别"
+
+        // 1) 按厂商时钟包名显式解析标准 action
+        val explicit = ClockPackages.PREFERRED.firstNotNullOfOrNull { pkg ->
+            resolveClockIntent(Intent(base).setPackage(pkg))
+        }
+        // 2) 隐式解析标准 action
+        val target = explicit ?: resolveClockIntent(base) ?: return ClockPackages.NO_CLOCK_MESSAGE
+        return start(target)
+    }
+
+    override fun openPage(request: ClockRequest): Boolean {
         val pageAction = if (request.action == AlarmClock.ACTION_SET_ALARM) AlarmClock.ACTION_SHOW_ALARMS
         else AlarmClock.ACTION_SHOW_TIMERS
         val page = Intent(pageAction)
@@ -737,5 +711,55 @@ internal class ClockFallbackRunner(
             runCatching { context.packageManager.getLaunchIntentForPackage(pkg) }.getOrNull()
         }
         return launch != null && start(launch) == null
+    }
+
+    /**
+     * 解析到具体 Activity 并显式指定组件。
+     *
+     * 只 `setPackage` 时，系统可能把意图投递到该应用当前最上层的任意 Activity（实测时钟停在
+     * 计时页时会「已投递但没处理」），表现为「启动了但没设成」。显式组件保证落到真正处理
+     * SET_ALARM / SET_TIMER 的那个入口 Activity（与 `am start` 打印的 cmp= 行为一致）。
+     */
+    private fun resolveClockIntent(intent: Intent): Intent? {
+        val resolved = runCatching { context.packageManager.resolveActivity(intent, 0) }.getOrNull()
+            ?: return null
+        val info = resolved.activityInfo ?: return null
+        return Intent(intent).setComponent(ComponentName(info.packageName, info.name))
+    }
+
+    /** 往 Intent 里填参数；时钟类型不认识时返回 null */
+    private fun fillIntent(request: ClockRequest, intent: Intent, skipUi: Boolean): Intent? {
+        when (request.action) {
+            AlarmClock.ACTION_SET_ALARM -> {
+                intent.putExtra(AlarmClock.EXTRA_HOUR, request.hour ?: 0)
+                intent.putExtra(AlarmClock.EXTRA_MINUTES, request.minute ?: 0)
+                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi)
+                intent.putExtra(AlarmClock.EXTRA_VIBRATE, true)
+                request.label?.let { intent.putExtra(AlarmClock.EXTRA_MESSAGE, it) }
+                request.repeatDays?.takeIf { it.isNotEmpty() }?.let { days ->
+                    intent.putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, ArrayList(days))
+                }
+            }
+            AlarmClock.ACTION_SET_TIMER -> {
+                intent.putExtra(AlarmClock.EXTRA_LENGTH, (request.seconds ?: 0L).toInt())
+                intent.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi)
+                request.label?.let { intent.putExtra(AlarmClock.EXTRA_MESSAGE, it) }
+            }
+            else -> return null
+        }
+        return intent
+    }
+
+    private fun canResolve(intent: Intent): Boolean =
+        runCatching { context.packageManager.resolveActivity(intent, 0) != null }.getOrDefault(false)
+
+    private fun start(intent: Intent): String? {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching {
+            context.startActivity(intent)
+            null
+        }.getOrElse { e ->
+            "启动时钟页失败（${e.javaClass.simpleName}${e.message?.let { "：$it" } ?: ""}）"
+        }
     }
 }
