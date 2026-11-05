@@ -647,16 +647,16 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.DEVICE_CONTROL, name = "设备直控", category = "设备",
-            summary = "直接改设备状态（不经过 GUI、不模拟点击）：op=flashlight_on/flashlight_off 手电筒，brightness 亮度（level 0~100），volume 音量（stream/level），media 媒体键（action=play/pause/next/prev/stop），sound_mode 响铃模式（mode=ring/vibrate/silent），dnd 勿扰（enable=true/false），screen_timeout 息屏时间（seconds），rotation 旋转（enable=true/false），wifi/bluetooth/airplane/location/nfc 系统开关（enable=true/false，需 shell）。缺权限/通道时会回中文原因与替代做法。",
+            summary = "直接改设备状态（不经过 GUI、不模拟点击）：op=flashlight_on/flashlight_off 手电筒，brightness 亮度（level 0~100），volume 音量（stream/level），media 媒体键（action=play/pause/next/prev/stop），sound_mode 响铃模式（mode=ring/vibrate/silent），dnd 勿扰（enable=true/false），screen_timeout 息屏时间（seconds），rotation 旋转（enable=true/false），dark_mode 深色模式（enable=true/false），wifi/bluetooth/airplane/location/nfc 系统开关（enable=true/false，需 shell）。缺权限/通道时会回中文原因与替代做法。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true,
                     options = listOf(
                         "flashlight_on", "flashlight_off", "brightness", "volume", "media",
-                        "sound_mode", "dnd", "screen_timeout", "rotation",
+                        "sound_mode", "dnd", "screen_timeout", "rotation", "dark_mode",
                         "wifi", "bluetooth", "airplane", "location", "nfc",
                     )),
                 CapabilityParam("enable", "开关", "boolean",
-                    description = "op=dnd/rotation/wifi/bluetooth/airplane/location/nfc 时用"),
+                    description = "op=dnd/rotation/dark_mode/wifi/bluetooth/airplane/location/nfc 时用"),
                 CapabilityParam("level", "数值", "number", description = "brightness 0~100；volume 为百分比 0~100", min = 0.0,
                     max = 100.0),
                 CapabilityParam("stream", "音量通道", "select", defaultValue = "music", options = listOf("music", "ring",
