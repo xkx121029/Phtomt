@@ -171,16 +171,23 @@ object DebugRecordsStore {
         val dir = dir(ctx)
         val file = File(dir, BUNDLE_FILE)
         if (!file.exists()) return null
-        val bundle = json.decodeFromString(Bundle.serializer(), file.readText())
-        val traces = bundle.traces.map { t ->
-            val shot = t.shotFile?.let { name -> BitmapFactory.decodeFile(File(dir, name).absolutePath) }
-            StepTrace(
-                taskId = t.taskId, taskName = t.taskName, step = t.step,
-                sentText = t.sentText, receivedText = t.receivedText,
-                promptTokens = t.promptTokens, completionTokens = t.completionTokens, totalTokens = t.totalTokens,
-                latencyMs = t.latencyMs, visionSource = t.visionSource, visionModel = t.visionModel,
-                visionDescription = t.visionDescription, thinking = t.thinking, screenshot = shot,
-            )
+        // 分三段打点：读文件 / 解析 JSON / 解码缩略图。存档随使用时长增长，
+        // 需要知道时间花在哪一段，才知道该不该把截图解码再往后挪。
+        val raw = com.phoneagent.core.perf.StartupTrace.span("读取 records.json") { file.readText() }
+        val bundle = com.phoneagent.core.perf.StartupTrace.span("解析 records.json") {
+            json.decodeFromString(Bundle.serializer(), raw)
+        }
+        val traces = com.phoneagent.core.perf.StartupTrace.span("解码 ${bundle.traces.size} 张缩略图") {
+            bundle.traces.map { t ->
+                val shot = t.shotFile?.let { name -> BitmapFactory.decodeFile(File(dir, name).absolutePath) }
+                StepTrace(
+                    taskId = t.taskId, taskName = t.taskName, step = t.step,
+                    sentText = t.sentText, receivedText = t.receivedText,
+                    promptTokens = t.promptTokens, completionTokens = t.completionTokens, totalTokens = t.totalTokens,
+                    latencyMs = t.latencyMs, visionSource = t.visionSource, visionModel = t.visionModel,
+                    visionDescription = t.visionDescription, thinking = t.thinking, screenshot = shot,
+                )
+            }
         }
         Persisted(
             logs = bundle.logs.map {
