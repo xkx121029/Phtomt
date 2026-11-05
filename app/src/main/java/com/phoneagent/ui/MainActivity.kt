@@ -89,6 +89,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.log.AppLog
+import com.phoneagent.core.perf.StartupTrace
 import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.overlay.OverlayDisplaySettings
@@ -181,11 +182,24 @@ class MainActivity : ComponentActivity() {
     private val entrySignal = MutableStateFlow(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        StartupTrace.mark("MainActivity.onCreate 开始")
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         entrySignal.value++
+        // 首帧/首窗口焦点打点：与 Application 分段对齐，判断"慢在准备还是慢在绘制"
+        window.decorView.viewTreeObserver.addOnDrawListener(object : android.view.ViewTreeObserver.OnDrawListener {
+            private var done = false
+            override fun onDraw() {
+                if (done) return
+                done = true
+                StartupTrace.mark("首帧绘制完成")
+                window.decorView.post {
+                    runCatching { window.decorView.viewTreeObserver.removeOnDrawListener(this) }
+                }
+            }
+        })
         setContent {
-            val vm: MainViewModel = koinViewModel()
+            val vm: MainViewModel = StartupTrace.span("MainViewModel/引擎单例构建") { koinViewModel() }
             // 主题设置：配色 / 无框线 / 磨砂浓淡实时驱动 PhoneAgentTheme，改完立即生效
             val settings by vm.settingsFlow.collectAsState()
             PhoneAgentTheme(

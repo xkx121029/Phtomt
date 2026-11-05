@@ -816,8 +816,11 @@ class AgentEngine(
     private fun persistDebug() = telemetry.persistDebug()
 
     init {
-        // 启动时回载上次的调试记录（日志/轨迹/执行历史/对话/会话归档），实现持久化
-        telemetry.loadPersistedDebug()
+        // 回载上次的调试记录（日志/轨迹/执行历史/对话/会话归档）。
+        // **必须放在构造之后异步做**：这份存档随使用时长增长（上限 800 条日志 + 300 张缩略图），
+        // 实测可达数 MB、回载要几百毫秒到数秒；同步放在这里会把首帧一起拖住
+        // （冷启动时引擎在首帧的组合里构建）。异步回载与启动后新产生的数据按时间合并，见 TelemetryRecorder。
+        scope.launch(Dispatchers.IO) { telemetry.loadPersistedDebug() }
         // 持续缓存设置快照：供同步入口（规划预检）读取，避免在那里挂起读 DataStore
         scope.launch {
             settings.settings.collect { latestSettings = it }

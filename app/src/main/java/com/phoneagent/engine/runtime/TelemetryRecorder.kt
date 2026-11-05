@@ -11,6 +11,8 @@ import com.phoneagent.engine.TaskSession
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.engine.runtime.EngineLimits.LOCAL_DECISION_SOURCE
+import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION
+import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_MEMORY_EVENTS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_EVENTS
@@ -242,25 +244,44 @@ internal class TelemetryRecorder(
         }
     }
 
-    /** 启动时回载上次的调试记录：日志/轨迹（含截图缩略图）/执行历史/对话，实现持久化 */
+    /**
+     * 回载上次的调试记录：日志/轨迹（含截图缩略图）/执行历史/对话，实现持久化。
+     *
+     * **允许在引擎构造完成后异步调用**（见 AgentEngine.init）：那时界面已经开始接收新日志，
+     * 因此这里一律按「旧存档在前、新数据在后」合并，而不是整体覆盖——否则回载完成的一瞬间
+     * 会把启动后刚产生的日志/会话冲掉。
+     */
     fun loadPersistedDebug() {
-        runCatching {
-            val p = com.phoneagent.data.store.DebugRecordsStore.load(appContext) ?: return@runCatching
-            store.logs.value = p.logs
-            store.traces.value = p.traces
-            store.executionHistory.value = p.history
-            store.conversation.value = p.conversation
-            // 存档里还挂着「进行中」的，说明上次是没走完收尾就被杀进程了，回载时直接判为已中断，
-            // 否则侧边栏会永远显示一个不会结束的任务
-            replaceTaskSessions(
-                p.sessions.map {
+        com.phoneagent.core.perf.StartupTrace.span("调试记录磁盘回载") {
+            runCatching {
+                val p = com.phoneagent.data.store.DebugRecordsStore.load(appContext) ?: return@runCatching
+                store.logs.value = mergeCapped(p.logs, store.logs.value, MAX_LOGS)
+                store.traces.value = mergeCapped(p.traces, store.traces.value, MAX_TRACES)
+                store.executionHistory.value = mergeCapped(p.history, store.executionHistory.value, MAX_EXECUTION_HISTORY)
+                store.conversation.value = mergeCapped(p.conversation, store.conversation.value, MAX_CONVERSATION)
+                // 存档里还挂着「进行中」的，说明上次是没走完收尾就被杀进程了，回载时直接判为已中断，
+                // 否则侧边栏会永远显示一个不会结束的任务。
+                // 同一 taskId 以内存中的为准（本次启动后新产生的会话优先）。
+                val restored = p.sessions.map {
                     if (it.status == TaskSession.Status.RUNNING) {
                         it.copy(status = TaskSession.Status.ABORTED, summary = it.summary.ifBlank { "应用重启，任务已中断" })
                     } else {
                         it
                     }
-                },
-            )
+                }
+                val merged = LinkedHashMap<Long, TaskSession>()
+                restored.forEach { merged[it.taskId] = it }
+                store.taskSessions.value.forEach { merged[it.taskId] = it }
+                store.taskSessions.value = merged.values.sortedByDescending { it.startedAt }.take(MAX_TASK_SESSIONS)
+            }
         }
+    }
+
+    /** 旧数据在前、新数据在后，超出上限时丢最早的 */
+    private fun <T> mergeCapped(old: List<T>, new: List<T>, cap: Int): List<T> {
+        if (old.isEmpty()) return new
+        if (new.isEmpty()) return if (old.size > cap) old.takeLast(cap) else old
+        val merged = old + new
+        return if (merged.size > cap) merged.takeLast(cap) else merged
     }
 }
