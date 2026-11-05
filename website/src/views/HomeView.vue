@@ -8,12 +8,14 @@ import CopyButton from '../components/CopyButton.vue'
 import { content } from '../api/client.js'
 import { downloadUrl, formatDate, relativeTime, sectionTone, channelLabel } from '../lib/format.js'
 import { cachedDownloadSource } from '../lib/downloadSource.js'
+import { latestRelease } from '../lib/latest.js'
 
 const data = ref(null)
 const failed = ref(false)
 
 const site = computed(() => data.value?.site || {})
-const latest = computed(() => site.value.latest || null)
+// 与下载页同一判据：全渠道版本号最大的一条，不再用 site.latest（那是最新稳定版）
+const latest = computed(() => latestRelease(data.value))
 const features = computed(() => (data.value?.features || []).slice(0, 6))
 const releases = computed(() => data.value?.releases || [])
 const entries = computed(() => data.value?.changelog || [])
@@ -105,7 +107,10 @@ onMounted(async () => {
         <dl v-reveal="190" class="specs">
           <div class="specs__item">
             <dt>当前版本</dt>
-            <dd class="mono">{{ site.version ? `v${site.version}` : '—' }}</dd>
+            <dd class="mono">
+              {{ latest?.version ? `v${String(latest.version).replace(/^v/i, '')}` : '—' }}
+              <span v-if="latest && latest.channel !== 'stable'" class="muted small">· {{ channelLabel(latest.channel) }}</span>
+            </dd>
           </div>
           <div class="specs__item">
             <dt>系统要求</dt>

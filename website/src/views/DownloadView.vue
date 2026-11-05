@@ -6,6 +6,7 @@ import CopyButton from '../components/CopyButton.vue'
 import { content, apiBaseUrl } from '../api/client.js'
 import { channelLabel, downloadUrl, formatDate, isExternalDownload, relativeTime } from '../lib/format.js'
 import { PROBE_HINT_DELAY, directApkUrl, resolveDownloadSource } from '../lib/downloadSource.js'
+import { latestRelease } from '../lib/latest.js'
 
 const site = ref({})
 const releases = ref([])
@@ -18,7 +19,8 @@ const probing = ref(false)
 const probeNote = ref('')
 let hintTimer = null
 
-const latest = computed(() => releases.value[0] || site.value.latest || null)
+// 与首页同一判据（src/lib/latest.js）：全渠道版本号最大的一条，避免两处各取一份
+const latest = computed(() => latestRelease({ releases: releases.value, site: site.value }))
 const rest = computed(() => releases.value.slice(1))
 
 const primaryUrl = computed(() =>

@@ -55,13 +55,27 @@ publicRouter.get('/health', (_req, res) => {
   })
 })
 
-publicRouter.get('/site', (req, res) => {
-  const site = store.read('site')
-  res.json({
-    ...site,
-    latest: publicRelease(req, latestRelease()),
+/**
+ * 站点元信息里的「最新版本」。
+ *
+ * 规则与 bootstrap.releases 完全一致：全渠道、已发布、有包体，版本号最大的一条。
+ * 原来这里取的是「最新稳定版」，于是首页（site.latest）和下载页（releases[0]）
+ * 指向两个不同版本；version 也一直沿用 site.json 里的手写旧值。这里统一由 release
+ * 数据推导，`site.json` 的 version 只在一条 release 都没有时兜底。
+ */
+function siteMeta(req) {
+  const raw = store.read('site')
+  const newest = latestRelease({ channel: 'all' })
+  return {
+    ...raw,
+    version: newest ? String(newest.version).replace(/^v/i, '') : raw.version,
+    latest: publicRelease(req, newest),
     stats: summarizeStats()
-  })
+  }
+}
+
+publicRouter.get('/site', (req, res) => {
+  res.json(siteMeta(req))
 })
 
 publicRouter.get('/features', (_req, res) => {
@@ -181,9 +195,8 @@ publicRouter.get('/bootstrap', (req, res) => {
  * 迟早漂移出「接口有、首屏无」这类只有用户能发现的差异。
  */
 export function buildBootstrap(req) {
-  const site = store.read('site')
   return {
-    site: { ...site, latest: publicRelease(req, latestRelease()), stats: summarizeStats() },
+    site: siteMeta(req),
     features: [...store.read('features')].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     releases: store
       .read('releases')

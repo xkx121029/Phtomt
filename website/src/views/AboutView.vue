@@ -11,7 +11,7 @@ const LINKS = computed(() => {
   const links = site.value.links || {}
   return [
     { label: 'GitHub 仓库', href: links.github, hint: '主仓库，Issue 与 Release 都在这里' },
-    { label: 'Gitee 镜像', href: links.gitee, hint: '国内访问更稳的镜像' },
+    { label: 'Gitee 代码镜像', href: links.gitee, hint: '仅同步源码，不提供安装包下载' },
     { label: '问题反馈', href: links.issues, hint: '附上调试页导出的诊断包' },
     { label: '历史版本', href: links.releases, hint: '按标签归档的构建产物' }
   ].filter((l) => l.href)

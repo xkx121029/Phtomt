@@ -88,7 +88,7 @@ onMounted(async () => {
               class="foot__link"
               target="_blank"
               rel="noopener noreferrer"
-              >Gitee</a
+              >Gitee 镜像</a
             >
             <a
               v-if="site.links?.issues"

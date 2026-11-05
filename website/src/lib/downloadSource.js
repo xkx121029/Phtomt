@@ -1,5 +1,6 @@
 import { apiBaseUrl, staticOnly } from '../api/client.js'
 import { decideSource } from './downloadRank.js'
+import { pickGithubAsset } from './githubAsset.js'
 
 /**
  * 下载源择优（在用户浏览器里实测）。
@@ -95,26 +96,23 @@ async function headTiming(url, mode) {
 }
 
 /**
- * 查 GitHub 是否真的有这个资产。
- * API 不可达（国内常见）、限流、或该版本没有传资产，都返回 null —— 等同于该源不可用。
+ * 查 GitHub 是否真的有这个版本的资产。
+ * 定位规则见 githubAsset.js（按版本匹配，不拼固定 tag/文件名）。
+ * API 不可达（国内常见）、限流、或该版本没传资产，都返回 null —— 等同于该源不可用。
  */
 async function findGithubAsset(site, release) {
   const repo = repoOf(site)
-  const file = release?.apk?.file
-  if (!repo || !file) return null
-  const tag = String(release.version).startsWith('v') ? String(release.version) : `v${release.version}`
+  if (!repo || !release?.apk?.file || !release?.version) return null
   try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
+    const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
       headers: { Accept: 'application/vnd.github+json' },
       cache: 'no-store',
       signal: AbortSignal.timeout(PROBE_TIMEOUT)
     })
     if (!res.ok) return null
-    const data = await res.json()
-    const asset = (data.assets || []).find((a) => a.name === file)
-    return asset?.browser_download_url
-      ? { id: 'github', label: 'GitHub Release', url: asset.browser_download_url }
-      : null
+    const list = await res.json()
+    const hit = pickGithubAsset(list, release)
+    return hit ? { id: 'github', label: 'GitHub Release', ...hit } : null
   } catch {
     return null
   }
