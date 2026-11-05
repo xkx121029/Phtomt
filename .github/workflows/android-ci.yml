@@ -222,7 +222,8 @@ jobs:
           API="https://gitee.com/api/v5/repos/xkx1029/Phtomt"
           BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n' \
             "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}")
-          # 先建发行版；同名 tag 已存在时改读它的 upload_url（重复触发不报错）
+          # Gitee 的发行版响应里没有 upload_url（和 GitHub 不同），附件必须走
+          # /releases/{release_id}/attach_files 这个接口，先拿 id。
           RESP=$(curl -sS -X POST "$API/releases" \
             --data-urlencode "access_token=$GITEE_TOKEN" \
             --data-urlencode "tag_name=$TAG" \
@@ -230,14 +231,13 @@ jobs:
             --data-urlencode "body=$BODY" \
             --data-urlencode "target_commitish=nightly" \
             --data-urlencode "prerelease=true")
-          UPLOAD=$(echo "$RESP" | jq -r '.upload_url // empty')
-          if [ -z "$UPLOAD" ]; then
-            echo "创建 Gitee 发行版失败，尝试复用已存在的 tag：$RESP" >&2
-            UPLOAD=$(curl -sS "$API/releases/tags/$TAG?access_token=$GITEE_TOKEN" | jq -r '.upload_url // empty')
+          RID=$(echo "$RESP" | jq -r '.id // empty')
+          if [ -z "$RID" ]; then
+            echo "创建 Gitee 发行版未返回 id，尝试复用已存在的 tag：$RESP" >&2
+            RID=$(curl -sS "$API/releases/tags/$TAG?access_token=$GITEE_TOKEN" | jq -r '.id // empty')
           fi
-          if [ -z "$UPLOAD" ]; then echo "拿不到 Gitee upload_url，发行版发布失败" >&2; exit 1; fi
-          case "$UPLOAD" in https://*) ;; *) UPLOAD="https://gitee.com/api/v5$UPLOAD" ;; esac
-          UPLOADED=$(curl -sS -X POST "$UPLOAD" \
+          if [ -z "$RID" ]; then echo "拿不到 Gitee release id，发行版发布失败" >&2; exit 1; fi
+          UPLOADED=$(curl -sS -X POST "$API/releases/$RID/attach_files" \
             -F "access_token=$GITEE_TOKEN" \
             -F "file=@$APK")
           echo "$UPLOADED"
