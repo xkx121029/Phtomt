@@ -84,6 +84,7 @@ import com.phoneagent.engine.runtime.EngineLimits.EXTERNAL_VISION_TIMEOUT
 import com.phoneagent.engine.runtime.EngineLimits.MAX_BROWSE_MISSING_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION_CHATS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DEVICE_QUERY_OUTPUT
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_TIMEOUT_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DIALOG_TURNS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_PARAM_REFILL
@@ -723,6 +724,8 @@ class AgentEngine(
 
     private var sensitiveTakeoverStreak by store::sensitiveTakeoverStreak
     private var decisionFailureStreak by store::decisionFailureStreak
+    /** 连续「单步决策看门狗超时」次数：网络长期不通时用来收尾，见 cloudDecide */
+    private var decisionTimeoutStreak = 0
     private var lastShellOutput by store::lastShellOutput
 
     private var pendingShellOutput by store::pendingShellOutput
@@ -1175,6 +1178,7 @@ class AgentEngine(
         skillErrorStreak = 0
         browseMissingStreak = 0
         decisionFailureStreak = 0
+        decisionTimeoutStreak = 0
         lastShellOutput = ""
         lastSkillOutput = ""
         // 宏接力状态随任务复位：上个任务没跑完的宏步骤绝不串到本任务
@@ -1734,7 +1738,17 @@ class AgentEngine(
             )
         }
         if (result == null) {
-            log(AgentLog.Level.WARN, "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死")
+            decisionTimeoutStreak += 1
+            log(
+                AgentLog.Level.WARN,
+                "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死" +
+                    "（连续第 $decisionTimeoutStreak 次）",
+            )
+            // 连续超时不可能是「抖动」了：网络多半一直不通。继续 wait 会在 maxSteps=0 的配置下无限空转，
+            // 抛给主循环按失败收尾，让用户看到「检查网络后重试」，而不是永远停在准备中。
+            if (decisionTimeoutStreak >= MAX_DECISION_TIMEOUT_STREAK) {
+                throw com.phoneagent.engine.runtime.DecisionTimeoutExhaustedException(decisionTimeoutStreak)
+            }
             pushFloating("AI 决策超时，将自动重试", "THINKING")
             // 超时降级必须进用户可见出口：只写日志/通知的话，任务卡状态里看不出「已改用等待重试」
             TaskNoticeCenter.publishDegradation(
@@ -1749,6 +1763,7 @@ class AgentEngine(
             )
             return AgentIntent(intent = "wait", waitMs = 1200, reasoning = "AI 决策超时，等待后重试")
         }
+        decisionTimeoutStreak = 0
         val latencyMs = (System.nanoTime() - startNano) / 1_000_000
         // 失败必须显式抛回主循环：静默 return null 会让上层把"单次网络抖动"当成「决策为空」直接杀任务，
         // 且连续失败护栏（decisionFailureStreak）永远统计不到这条路径；

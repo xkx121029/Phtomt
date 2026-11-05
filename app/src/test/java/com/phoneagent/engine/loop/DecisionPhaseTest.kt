@@ -9,7 +9,9 @@ import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.perception.AnnotatedPage
+import com.phoneagent.engine.runtime.DecisionTimeoutExhaustedException
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_FAILURE_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_TIMEOUT_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_MODE_DENY_STREAK
 import com.phoneagent.engine.runtime.LoopGuard
 import com.phoneagent.engine.skill.SkillRunner
@@ -166,6 +168,19 @@ class DecisionPhaseTest {
         assertTrue(outcome is StepOutcome.Fatal)
         assertEquals(1, f.hooks.decisionFatal)
         assertEquals(MAX_DECISION_FAILURE_STREAK, f.counters.decisionFailure)
+    }
+
+    @Test
+    fun `云端连续超时直接失败收尾并提示检查网络`() = runTest {
+        // maxSteps=0（不设上限）时，超时若继续降级为 wait 会无限空转 —— 必须直接收尾
+        val f = Fixture(cloud = { throw DecisionTimeoutExhaustedException(MAX_DECISION_TIMEOUT_STREAK) })
+        val s = session()
+        val outcome = f.phase.run(s)
+        assertTrue(outcome is StepOutcome.Fatal)
+        assertEquals(1, f.hooks.decisionFatal)
+        assertTrue((outcome as StepOutcome.Fatal).reason.contains("检查网络"))
+        assertEquals(0, f.counters.decisionFailure)
+        assertTrue(f.hooks.logs.any { it.contains("网络可能不通") })
     }
 
     @Test

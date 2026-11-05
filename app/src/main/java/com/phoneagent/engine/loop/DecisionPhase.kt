@@ -176,6 +176,14 @@ internal class DecisionPhase(
                     session.settingsVal,
                     session.pageMemoryHint,
                 )
+            } catch (e: com.phoneagent.engine.runtime.DecisionTimeoutExhaustedException) {
+                // 连续多轮看门狗超时：不是抖动，是链路不通（无网 / 服务端长时间不响应）。
+                // 这里必须直接收尾，不能继续 wait —— maxSteps=0 时 wait 会无限空转。
+                hooks.log(AgentLog.Level.ERROR, "云端决策连续 ${e.attempts} 次超时，网络可能不通，停止任务")
+                val reason = "网络似乎不通：AI 连续 ${e.attempts} 次没能连上云端，任务已暂停。请检查网络后点「重试」。"
+                hooks.markDecisionFatal(reason)
+                hooks.pushFloating("网络不通，任务已暂停", "ERROR")
+                return StepOutcome.Fatal(reason, AgentState.FailureKind.DECISION, taskMemoryNote = "网络不通，决策连续超时")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {

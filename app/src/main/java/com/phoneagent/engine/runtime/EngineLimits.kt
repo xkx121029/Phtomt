@@ -130,6 +130,15 @@ internal object EngineLimits {
      */
     internal const val MAX_DECISION_FAILURE_STREAK = 5
 
+    /**
+     * 连续「单步决策超时」次数上限。
+     *
+     * 单步看门狗（[WATCHDOG_DECIDE_MS]）超时原本降级为 `wait` 意图重试，这在网络抖动时是对的；
+     * 但如果网络一直不通（比如飞行模式 / 无网 Wi-Fi），`maxSteps=0` 的配置下会 45 秒一轮无限空转，
+     * 用户看到的就是「永远在准备」。连续到上限即按失败收尾，给用户明确的「检查网络后重试」出口。
+     */
+    internal const val MAX_DECISION_TIMEOUT_STREAK = 3
+
     /** 不可逆动作（needsUserConfirmation）确认等待的超时：超时视为用户取消，不让任务无限挂起 */
     internal const val ACTION_CONFIRM_TIMEOUT_MS = 120_000L
 
