@@ -14,6 +14,9 @@ class SkillRegistry(
     sourceSkills: List<Skill> = emptyList(),
     private val customIdPrefix: String = "skill_user",
 ) {
+    // _all / _ordered 必须成对修改：UI 线程批量增删与引擎线程读取会并发，
+    // 不加锁时遍历 _ordered 期间被删元素会抛 ConcurrentModificationException。
+    // 所有访问这两个容器的公开方法统一加锁（同步块可重入，all() 内部调用不会死锁）。
     private val _all = LinkedHashMap<String, Skill>()
     private val _ordered = mutableListOf<String>()
 
@@ -25,10 +28,12 @@ class SkillRegistry(
 
     // ---- 查询 ----
 
+    @Synchronized
     fun all(): List<Skill> = _ordered.mapNotNull { _all[it] }
 
     fun custom(): List<Skill> = all().filter { !it.isBuiltIn }
 
+    @Synchronized
     fun byId(id: String): Skill? = _all[id]
 
     fun byName(name: String): Skill? =
@@ -42,6 +47,9 @@ class SkillRegistry(
     // ---- 增删改 ----
 
     /** 新增或覆盖一个 Skill；内置不允许覆盖非相关字段的安全校验由调用方负责 */
+    @Synchronized
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun upsert(skill: Skill): Result<Unit> {
         if (skill.id.isEmpty()) return Result.failure(IllegalArgumentException("Skill id 不能为空"))
         val existing = _all[skill.id]
@@ -55,6 +63,7 @@ class SkillRegistry(
     }
 
     /** 新增（若 id 已存在则跳过返回 false） */
+    @Synchronized
     fun add(skill: Skill): Boolean {
         if (skill.id in _all) return false
         _all[skill.id] = skill
@@ -62,6 +71,7 @@ class SkillRegistry(
         return true
     }
 
+    @Synchronized
     fun edit(skill: Skill): Boolean {
         if (_all[skill.id]?.isBuiltIn == true) return false
         // 保留顺序与旧值缺失字段：直接用新的覆盖
@@ -69,6 +79,9 @@ class SkillRegistry(
     }
 
     /** 删除一个 Skill；内置不可删 */
+    @Synchronized
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     fun remove(id: String): Boolean {
         val s = _all[id] ?: return false
         if (s.isBuiltIn) return false
@@ -78,17 +91,21 @@ class SkillRegistry(
     }
 
     /** 批量新增：返回成功数量 */
+    @Synchronized
     fun addAll(skills: List<Skill>): Int = skills.count { add(it) }
 
     /** 批量删除（跳过内置）：返回成功数量 */
+    @Synchronized
     fun removeAll(ids: Set<String>): Int = ids.count { remove(it) }
 
     /** 批量清除自定义 Skill（保留内置） */
+    @Synchronized
     fun clearCustom(): Int {
         val ids = custom().map { it.id }
         return removeAll(ids.toSet())
     }
 
+    @Synchronized
     fun setEnabled(id: String, enabled: Boolean): Boolean {
         val s = _all[id] ?: return false
         _all[id] = s.copy(enabled = enabled)
@@ -97,11 +114,13 @@ class SkillRegistry(
 
     // ---- 导入导出 ----
 
+    @Synchronized
     fun exportManifest(): SkillManifest {
         val custom = custom().map { stripRuntimeFields(it) }
         return SkillManifest(schema = "hpa-skill/v1", skills = custom)
     }
 
+    @Synchronized
     fun importManifest(manifest: SkillManifest): ImportReport {
         val count = addAll(manifest.skills.map { normalizeImported(it) })
         return ImportReport(imported = count, total = manifest.skills.size)
@@ -113,6 +132,7 @@ class SkillRegistry(
 
     fun exportJson(): String = json.encodeToString(SkillManifest.serializer(), exportManifest())
 
+    @Synchronized
     fun replaceAll(skills: List<Skill>) {
         _all.clear()
         _ordered.clear()

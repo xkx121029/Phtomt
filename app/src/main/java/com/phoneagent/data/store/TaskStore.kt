@@ -111,13 +111,30 @@ object TaskStore {
 
     private val templateListSerializer = ListSerializer(TaskTemplate.serializer())
 
-    /** 记录一个模板（同一 goal 合并更新） */
+    private fun decodeTemplates(raw: String?): MutableList<TaskTemplate> =
+        if (raw.isNullOrBlank()) {
+            mutableListOf()
+        } else {
+            runCatching { json.decodeFromString(templateListSerializer, raw) }
+                .getOrElse { emptyList() }
+                .toMutableList()
+        }
+
+    /**
+     * 记录一个模板（同一 goal 合并更新）。
+     *
+     * 读-改-写必须整段放在同一次 [androidx.datastore.preferences.core.edit] 里：
+     * 以前先 loadTemplates() 再单独 edit，两次之间别的协程完成写入就会被覆盖——
+     * 并发记模板时会整条整条地丢数据。
+     */
     suspend fun upsertTemplate(context: Context, template: TaskTemplate) {
-        val list = loadTemplates(context).toMutableList()
-        val existing = list.indexOfFirst { it.id == template.id || it.goal == template.goal }
-        if (existing >= 0) list[existing] = template.copy(id = template.id)
-        else list.add(template)
-        context.taskStore.edit { it[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list) }
+        context.taskStore.edit { prefs ->
+            val list = decodeTemplates(prefs[KEY_TEMPLATES])
+            val existing = list.indexOfFirst { it.id == template.id || it.goal == template.goal }
+            if (existing >= 0) list[existing] = template
+            else list.add(template)
+            prefs[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list)
+        }
     }
 
     suspend fun loadTemplates(context: Context): List<TaskTemplate> {
@@ -136,33 +153,41 @@ object TaskStore {
         return TemplateMatcher.match(goal, loadTemplates(context))
     }
 
-    /** 删除指定模板 */
+    /** 删除指定模板（同样在单次 edit 内完成读改写，避免与 upsert 互相覆盖） */
     suspend fun deleteTemplate(context: Context, id: String) {
-        val list = loadTemplates(context).filterNot { it.id == id }
-        context.taskStore.edit { it[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list) }
+        context.taskStore.edit { prefs ->
+            val list = decodeTemplates(prefs[KEY_TEMPLATES]).filterNot { it.id == id }
+            prefs[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list)
+        }
     }
 
     /** 匹配命中后：increment 执行计数 */
     /** 是否为软件内置模板（id 以 preset_ 前缀；用户自定义模板为 tpl_ 前缀） */
     fun isPresetId(id: String): Boolean = id.startsWith("preset_")
 
-        suspend fun bumpExecution(context: Context, id: String) {
-        val list = loadTemplates(context)
-        val t = list.firstOrNull { it.id == id } ?: return
-        upsertTemplate(context, t.copy(executionCount = t.executionCount + 1))
+    suspend fun bumpExecution(context: Context, id: String) {
+        context.taskStore.edit { prefs ->
+            val list = decodeTemplates(prefs[KEY_TEMPLATES])
+            val index = list.indexOfFirst { it.id == id }
+            if (index < 0) return@edit
+            list[index] = list[index].copy(executionCount = list[index].executionCount + 1)
+            prefs[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list)
+        }
     }
 
     /** 健康状态更新：成功 → failedStreak 清零；失败 → +1 */
     suspend fun updateTemplateHealth(context: Context, id: String, success: Boolean) {
-        val list = loadTemplates(context)
-        val t = list.firstOrNull { it.id == id } ?: return
-        upsertTemplate(
-            context,
-            t.copy(
+        context.taskStore.edit { prefs ->
+            val list = decodeTemplates(prefs[KEY_TEMPLATES])
+            val index = list.indexOfFirst { it.id == id }
+            if (index < 0) return@edit
+            val t = list[index]
+            list[index] = t.copy(
                 successCount = if (success) t.successCount + 1 else t.successCount,
                 failedStreak = if (success) 0 else t.failedStreak + 1,
-            ),
-        )
+            )
+            prefs[KEY_TEMPLATES] = json.encodeToString(templateListSerializer, list)
+        }
     }
 
     // ==================== 执行策略（v2.2 7） ====================

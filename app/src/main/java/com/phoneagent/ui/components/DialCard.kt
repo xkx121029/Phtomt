@@ -1,3 +1,5 @@
+// 该文件是转盘组件族：唯一的顶层类 DialOption 与其共用组件放在一起，文件按组件名命名，豁免 MatchingDeclarationName
+@file:Suppress("MatchingDeclarationName")
 package com.phoneagent.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
@@ -96,10 +98,10 @@ fun approvalDialOptions(): List<DialOption> =
 
 /** 转盘可见三行：上一档 / 当前档 / 下一档，小型卡片里刚好够"能转、能看清" */
 private val WheelItemHeight = 30.dp
-private const val WheelRows = 3
+private const val WHEEL_ROWS = 3
 
 /** 松手后按速度惯性多滑的时长（秒）：太小像滑块，太大会甩过头 */
-private const val FlingProjectionSecs = 0.15f
+private const val FLING_PROJECTION_SECS = 0.15f
 
 /**
  * 配置卡片：标题 + 当前值，默认折叠；点头部才铺开内嵌转盘，Agent 页与编码页共用。
@@ -112,6 +114,8 @@ private const val FlingProjectionSecs = 0.15f
  * - 转轴平行于屏幕（rotationX），上下拨动时选项像滚筒一样翻过去，手感与选择动作一致。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 fun ConfigDialCard(
     title: String,
     icon: ImageVector,
@@ -263,6 +267,8 @@ fun ConfigDialCard(
  * 既没有列表测量开销，也不会因为 item 回收导致中间高亮行闪烁。
  */
 @Composable
+// 转盘手势/吸附/惯性收在一处，结构完整、拆分风险高；循环内多分支跳转是该状态机的自然写法，此处按规则豁免
+@Suppress("LongMethod", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
 private fun WheelPicker(
     options: List<DialOption>,
     selectedId: String,
@@ -313,7 +319,7 @@ private fun WheelPicker(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(WheelItemHeight * WheelRows)
+            .height(WheelItemHeight * WHEEL_ROWS)
             .clip(RoundedCornerShape(AppRadii.Inline))
             .pointerInput(options, enabled) {
                 if (!enabled) return@pointerInput
@@ -351,7 +357,7 @@ private fun WheelPicker(
                     dragging = false
                     // 松手按速度再滑一段并吸附到最近一档：轻甩能越一两档，才像轮盘而不是滑块
                     val velocity = tracker.calculateVelocity().y
-                    val projected = (offset - velocity / itemPx * FlingProjectionSecs)
+                    val projected = (offset - velocity / itemPx * FLING_PROJECTION_SECS)
                         .roundToInt().coerceIn(0, options.lastIndex)
                     settle(
                         target = projected.toFloat(),

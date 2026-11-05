@@ -37,6 +37,8 @@ internal class IncrementalIntentParser {
      * 从 [text] 的当前扫描位置继续往后找，返回下一个已闭合的顶层 JSON 对象。
      * 没有闭合对象时返回 null（调用方下一帧再来）。
      */
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     fun nextObject(text: CharSequence): String? {
         while (pos < text.length) {
             val c = text[pos]

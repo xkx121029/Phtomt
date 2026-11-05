@@ -13,6 +13,7 @@ import {
   hubPutApk,
   hubSummary
 } from '../lib/hub.js'
+import { githubEnabled, githubSummary, publishReleaseApk } from '../lib/githubRelease.js'
 import {
   apkInfo,
   apkPath,
@@ -108,6 +109,7 @@ adminRouter.get('/overview', requireAdmin, (_req, res) => {
     stats: store.read('stats'),
     storage: { apkBytes: totalBytes, apkText: humanSize(totalBytes) },
     hub: hubSummary(),
+    github: githubSummary(),
     apkFiles,
     recent: store.read('audit').slice(0, 12),
     dataDir: path.relative(config.dataDir, config.dataDir) || '.',
@@ -230,6 +232,59 @@ adminRouter.use('/scenarios', listRouter('scenarios', idOf('id'), '场景'))
 
 // ---------- 版本 ----------
 
+/** 回写单条版本的附加字段，避免整包覆盖后台同时在改的其他内容 */
+function patchRelease(version, patch) {
+  const target = normalizeVersion(version)
+  store.write(
+    'releases',
+    store.read('releases').map((it) =>
+      normalizeVersion(it.version) === target ? { ...it, ...patch } : it
+    )
+  )
+}
+
+/**
+ * 发布版本时把安装包同步到 GitHub Release。
+ * 上传大文件耗时以分钟计，不能卡住发布响应，所以异步跑；
+ * 结果回写到版本的 github / github_error 字段，后台列表可直接看到。
+ */
+function syncGithubRelease(req, record) {
+  if (!githubEnabled() || !record?.apk?.file) return
+  // 同一个包已经同步过就不再重复上传：后台改摘要/说明时不该重传几十兆
+  if (record.github?.file === record.apk.file) return
+  const filePath = apkPath(record.apk.file)
+  if (!filePath) return
+  const version = record.version
+  publishReleaseApk({
+    version,
+    title: record.title,
+    summary: record.summary,
+    notes: record.notes,
+    channel: record.channel || 'stable',
+    filePath,
+    fileName: record.apk.file
+  })
+    .then((result) => {
+      patchRelease(version, {
+        github: {
+          tag: result.tag,
+          file: record.apk.file,
+          url: result.releaseUrl,
+          asset: result.assetUrl,
+          syncedAt: new Date().toISOString()
+        },
+        github_error: ''
+      })
+      audit(req, 'sync', `releases/${version}`, `已同步到 GitHub Release ${result.tag}`)
+      console.log(`[github] ${record.apk.file} → ${result.releaseUrl}`)
+    })
+    .catch((err) => {
+      const message = err?.detail ? `${err.message}（${err.detail}）` : err?.message || '同步失败'
+      patchRelease(version, { github_error: message })
+      console.error(`[github] 同步 ${record.apk.file} 失败：${message}`)
+    })
+}
+
 adminRouter.post('/releases', requireAdmin, (req, res) => {
   const item = req.body
   if (!item || !item.version) return fail(res, 400, 'missing_version', '缺少 version 字段')
@@ -252,6 +307,7 @@ adminRouter.post('/releases', requireAdmin, (req, res) => {
   }
   store.write('releases', [...list, record])
   audit(req, 'create', `releases/${version}`, `发布版本 ${version}`)
+  syncGithubRelease(req, record)
   res.status(201).json(record)
 })
 
@@ -270,6 +326,7 @@ adminRouter.put('/releases/:version', requireAdmin, (req, res) => {
   next[index] = merged
   store.write('releases', next)
   audit(req, 'update', `releases/${target}`, '更新版本信息')
+  syncGithubRelease(req, merged)
   res.json(merged)
 })
 

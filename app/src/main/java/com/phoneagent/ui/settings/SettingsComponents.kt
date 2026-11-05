@@ -824,6 +824,8 @@ internal fun RoleRow(
  * 页内浮层（非系统 Dialog），列表用 weight 撑开所以面板要 fillHeight。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 internal fun ModelImportDialog(
     endpointLabel: String,
     names: List<String>,

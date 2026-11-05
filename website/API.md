@@ -263,6 +263,24 @@ APK 文件放在 `public/apk/`。写入接口会先写临时文件再改名，�
 - `DELETE /api/admin/apk/:file` 会同时删除中枢对象；中枢不可用时只记日志，不影响删除结果。
 - 接入前已经上传过的本地包不会自动迁移，重新上传一次同一个文件即可写入中枢（中枢按 sha256 去重，不会多占空间）。
 
+## GitHub Releases 同步（可选）
+
+配置后，后台每次发布或更新带安装包的版本，都会把同一个 APK 再传一份到对应 tag 的 GitHub Release。未配置时完全跳过，官网发布照常。
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `GITHUB_REPO` | 空 | 目标仓库，如 `xkx121029/Phtomt` |
+| `GITHUB_TOKEN` | 空 | PAT，需细粒度 `Contents: write` 或经典 `repo` 权限 |
+| `GITHUB_PRERELEASE_CHANNELS` | `beta,dev,nightly` | 这些渠道的版本建成 pre-release，不会抢占 latest |
+
+行为细节：
+
+- 触发点是 `POST /api/admin/releases` 与 `PUT /api/admin/releases/:version`，异步执行，不阻塞发布响应
+- tag 用版本号自动补 `v`；同名 Release 复用，同名附件先删后传
+- Release 正文由 `summary` + `notes` 生成；私有/测试渠道按上面的变量标为 pre-release
+- 结果回写进版本记录：成功写 `github: { tag, url, asset, syncedAt }`，失败写 `github_error`（如令牌权限不足、网络异常）
+- 后台概览接口 `/api/admin/overview` 的 `github` 字段显示启用状态与仓库名，不回显令牌
+
 ## 静态导出
 
 `npm run build:static` 会把 `server/data` 烘成前端快照 `src/data/fallback.js`（由 `scripts/snapshot.mjs` 生成，勿手工编辑），供 GitHub Pages / Gitee Pages 这类没有后端的部署使用。快照里不含管理端点，也不含任何令牌。

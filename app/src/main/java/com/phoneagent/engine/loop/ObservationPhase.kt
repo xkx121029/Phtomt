@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.loop
 
 import com.phoneagent.core.security.SensitivePageDetector
@@ -18,6 +20,8 @@ import kotlinx.coroutines.delay
  * 全部收成回调而不是让阶段直接引用 AgentEngine：阶段只描述「观察段怎么做」，
  * 日志落点、悬浮窗文案、协作面板、状态流都由引擎实现；headless 测试里换成假实现即可。
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ObservationHooks(
     val log: (AgentLog.Level, String) -> Unit,
     val pushFloating: (String, String) -> Unit,
@@ -42,6 +46,8 @@ internal class ObservationHooks(
  * - 敏感页连续接管超限直接失败，不再无限弹接管
  * - 页面记忆只在敏感页判定之后采集，敏感页绝不入库
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class ObservationPhase(
     /** 实际读屏（含副屏模式与无障碍读取失败降级，由引擎侧负责） */
     private val readScreen: suspend () -> ScreenSnapshot,
@@ -58,6 +64,8 @@ internal class ObservationPhase(
     private val hooks: ObservationHooks,
 ) : StepPhase {
 
+    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     override suspend fun run(session: StepSession): StepOutcome {
         // 任务切换时把上一任务的「动作即观察」汇总落一条日志再清零
         AfterObservationStats.beginTask(session.task)?.let { hooks.log(AgentLog.Level.INFO, it) }

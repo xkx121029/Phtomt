@@ -70,6 +70,19 @@ export const config = {
     bucket: (process.env.HUB_BUCKET || 'packages').trim() || 'packages',
     prefix: hubPrefix ? `${hubPrefix}/` : ''
   },
+  /**
+   * GitHub Releases 同步。发布版本时把安装包再传一份到 Release，
+   * 未配置 repo 或 token 时自动跳过，不影响官网发布。
+   */
+  github: {
+    repo: (process.env.GITHUB_REPO || '').trim(),
+    token: (process.env.GITHUB_TOKEN || '').trim(),
+    /** 这些渠道的版本建成 pre-release，避免抢占 latest */
+    prereleaseChannels: (process.env.GITHUB_PRERELEASE_CHANNELS || 'beta,dev,nightly')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  },
   isProd: process.env.NODE_ENV === 'production'
 }
 

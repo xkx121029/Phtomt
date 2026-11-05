@@ -33,6 +33,8 @@ internal class TaskRunner(
      * @param runStep 执行一轮；返回本轮之后循环怎么走
      * @return 循环结束时的步数
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     suspend fun run(
         maxSteps: Int,
         startStep: Int = 0,

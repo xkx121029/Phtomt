@@ -16,6 +16,8 @@ class CodingEventReducerTest {
     private var seq = 0
     private fun nextId(): String = "n${++seq}"
 
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     private fun apply(
         type: String,
         messages: List<ChatMessage> = emptyList(),
@@ -29,6 +31,7 @@ class CodingEventReducerTest {
         tool: String = "",
         code: Int = 0,
         argsPreview: String = "",
+        outputPreview: String = "",
         durationMs: Long = 0L,
         subagentId: String = "",
         subagentLabel: String = "",
@@ -39,7 +42,7 @@ class CodingEventReducerTest {
     ): CodingEventReducer.Result = CodingEventReducer.apply(
         type, messages, assistantKey, ::nextId,
         delta, name, ok, approved, why, callId, tool, code, argsPreview,
-        durationMs, subagentId, subagentLabel, subagentPersona, promptPreview, iteration, errorDetail,
+        outputPreview, durationMs, subagentId, subagentLabel, subagentPersona, promptPreview, iteration, errorDetail,
     )
 
     private fun toolCard(name: String, text: String = "", toolOk: Boolean? = null) =
@@ -119,6 +122,20 @@ class CodingEventReducerTest {
     }
 
     @Test
+    fun `tool_end把回填给AI的结果摘要落到卡片上`() {
+        val msgs = listOf(toolCard("read_file"))
+        val r = apply("tool_end", messages = msgs, name = "read_file", ok = true, outputPreview = "第一行\n第二行")
+        assertEquals("第一行\n第二行", r.messages.single().outputPreview)
+    }
+
+    @Test
+    fun `tool_end结果摘要为空时不清掉已有内容`() {
+        val card = toolCard("read_file").copy(outputPreview = "旧结果")
+        val r = apply("tool_end", messages = listOf(card), name = "read_file", ok = true, outputPreview = "")
+        assertEquals("旧结果", r.messages.single().outputPreview)
+    }
+
+    @Test
     fun `tool_end不碰审批卡`() {
         val approval = ChatMessage(key = "p_c1", role = "approval", approvalCallId = "c1", text = "write_file")
         val r = apply("tool_end", messages = listOf(approval), name = "write_file", ok = true)
@@ -157,7 +174,7 @@ class CodingEventReducerTest {
         assertEquals("approval", card.role)
         assertEquals("p_call-1", card.key)
         assertEquals("call-1", card.approvalCallId)
-        assertEquals("write_file", card.text)
+        assertEquals("写入文件", card.text)
         assertNull("未解决审批卡保持待定（置灰交给 UI 响应动作）", card.approvalResolved)
         assertNull("审批请求不改 busy", r.busy)
     }
@@ -187,7 +204,7 @@ class CodingEventReducerTest {
         assertEquals(ConnState.DISCONNECTED, r.conn)
         assertEquals(false, r.busy)
         assertNull(r.assistantKey)
-        assertTrue("错误文案含退出码与重连提示", r.error!!.contains("code 7") && r.error!!.contains("正在重连"))
+        assertTrue("错误文案含退出码与重连提示", r.error!!.contains("代码 7") && r.error!!.contains("正在重连"))
         assertTrue("AgentClient 据此调度退避重连", r.hostExited)
     }
 
@@ -230,7 +247,7 @@ class CodingEventReducerTest {
     fun `tool_start记下callId与阶段`() {
         val r = apply("tool_start", name = "read_files", callId = "c7", argsPreview = "3 个文件")
         assertEquals("c7", r.messages.single().toolCallId)
-        assertEquals("执行 read_files", r.phase)
+        assertEquals("执行 批量读取文件", r.phase)
     }
 
     // ==================== 阶段与耗时 ====================
@@ -276,12 +293,12 @@ class CodingEventReducerTest {
         assertEquals("subagent", card.role)
         assertEquals("模块A", card.subagentLabel)
         assertEquals("实现模块 A", card.text)
-        assertNull("未结束的子 agent 卡保持运行态", card.toolOk)
-        assertEquals("子 agent 模块A", r.phase)
+        assertNull("未结束的子任务卡保持运行态", card.toolOk)
+        assertEquals("子任务 模块A", r.phase)
 
         r = apply("subagent_text", messages = r.messages, subagentId = "s1", delta = "正在写文件")
         assertEquals("实现模块 A正在写文件", r.messages.single().text)
-        assertNull("子 agent 正文不能接进主 assistant 气泡", r.assistantKey)
+        assertNull("子任务正文不能接进主 assistant 气泡", r.assistantKey)
 
         r = apply("subagent_end", messages = r.messages, subagentId = "s1", ok = true, durationMs = 900)
         assertEquals(true, r.messages.single().toolOk)
@@ -312,14 +329,14 @@ class CodingEventReducerTest {
         val card = r.messages.single()
         assertEquals("审查者", card.subagentPersona)
         assertEquals("安全审计", card.subagentLabel)
-        assertEquals("子 agent 审查者 · 安全审计", r.phase)
+        assertEquals("子任务 审查者 · 安全审计", r.phase)
     }
 
     @Test
     fun `没有人设的老事件仍能起卡`() {
         val r = apply("subagent_start", subagentId = "s1", subagentLabel = "模块A")
         assertNull(r.messages.single().subagentPersona)
-        assertEquals("子 agent 模块A", r.phase)
+        assertEquals("子任务 模块A", r.phase)
     }
 
     @Test

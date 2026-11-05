@@ -57,6 +57,9 @@ promo/*.webm
 app/src/main/assets/agent-host/
 # 编码运行时 so 由 tool/bundle_runtime.py 生成，打进主包 app/src/main/jniLibs（*.so 已全局忽略）
 app/src/main/jniLibs/
+# 环境组件 APK 由 :app:syncEnvDebug / syncEnvRelease 从 :env 产物同步，属构建产物不提交
+app/src/debug/assets/env/
+app/src/release/assets/env/
 # >>> gitea-auto-push >>>
 # 依赖 / 包管理器
 node_modules/
@@ -66,7 +69,6 @@ bower_components/
 vendor/
 .venv/
 venv/
-env/
 __pycache__/
 *.py[cod]
 .eggs/
@@ -169,7 +171,6 @@ bower_components/
 vendor/
 .venv/
 venv/
-env/
 __pycache__/
 *.py[cod]
 .eggs/

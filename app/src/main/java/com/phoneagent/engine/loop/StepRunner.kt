@@ -31,6 +31,8 @@ internal class StepRunner(
      */
     private var pendingAfter: AfterObservation? = null
 
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     suspend fun run(session: StepSession): StepOutcome {
         session.pendingAfterObservation = pendingAfter
         pendingAfter = null

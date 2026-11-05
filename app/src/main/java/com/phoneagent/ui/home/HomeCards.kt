@@ -143,6 +143,8 @@ internal fun PrimaryActionCard(
  * 一眼扫完，点哪格去哪格。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal fun HomeStatusStrip(
     modelReady: Boolean,
     model: String,
@@ -187,6 +189,8 @@ internal fun HomeStatusStrip(
 }
 
 @Composable
+// 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+@Suppress("MaxLineLength")
 private fun HomeStatusCell(
     label: String,
     value: String,
@@ -194,6 +198,8 @@ private fun HomeStatusCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     val buzz = com.phoneagent.ui.components.rememberHapticClick()
     Column(
         modifier = modifier

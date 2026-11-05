@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.engine.runtime
 
 import android.content.Context
@@ -30,10 +32,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * 时序约束（不变）：收尾必须先落终态，再做耗时的记忆提炼，否则记忆页会长时间停在「进行中」。
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class TaskFinalizer(
     private val store: EngineStore,
     private val memory: MemoryStore,
-    private val settings: AppSettings,
     private val aiClient: AiClient,
     private val appContext: Context,
     private val deviceFacts: DeviceFacts,
@@ -85,11 +88,39 @@ internal class TaskFinalizer(
     }
 
     /**
+     * 达到最大步数时的收尾（重构阶段 B4：从 runInner 尾部迁入）。
+     *
+     * 任务没做完，但收尾动作一样不能少：复用模板回写失败健康（连续 3 次失效主动反馈）、
+     * 任务记忆落失败终态、失败路径的记忆提炼。状态条/悬浮窗文案仍由引擎侧负责。
+     */
+    suspend fun finishOnMaxSteps(task: String, settingsVal: AppSettings.Settings) {
+        // 复用模板执行失败：回写健康状态，连续 3 次失效时主动反馈（v2.2.1 八）
+        store.reusedTemplateId?.let { tid ->
+            runCatching {
+                val t = TaskStore.loadTemplates(appContext).firstOrNull { it.id == tid }
+                TaskStore.updateTemplateHealth(appContext, tid, success = false)
+                if ((t?.failedStreak ?: 0) + 1 >= 3) {
+                    com.phoneagent.core.notify.ActiveNotifier.notify(
+                        appContext, com.phoneagent.core.notify.ActiveNotifier.ID_TEMPLATE_FAILED,
+                        "任务模板已失效", "这个任务的脚本连续失败多次，自动改走云端重新规划，建议手动检查一下。",
+                    )
+                }
+            }
+        }
+        // 达到最大步数：任务没做完，任务记忆同样要收尾，不能停在「进行中」
+        finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
+        // 未完成的任务同样提炼一次记忆：失败路径里的经验（哪个入口走不通）往往更值得留
+        runCatching { distillMemories(task, "未完成（达到最大步数限制）", settingsVal) }
+    }
+
+    /**
      * 任务结束后的记忆提炼：独立调用一次模型，**不写 conversation、不进 chatHistory**，
      * 因此不污染主决策上下文。同一任务只跑一次；结果经内容去重合并写入，重复不会堆成多条。
      *
      * @param settingsVal 任务级设置快照（主循环已读过一次，这里不再挂起读 DataStore）
      */
+    // 分派函数多处早退以保证可读性，此处按规则豁免
+    @Suppress("ReturnCount")
     suspend fun distillMemories(task: String, outcome: String, settingsVal: AppSettings.Settings) {
         if (store.currentTaskId == store.lastDistilledTaskId) return
         store.lastDistilledTaskId = store.currentTaskId

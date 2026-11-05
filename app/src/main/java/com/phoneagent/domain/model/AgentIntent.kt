@@ -208,7 +208,11 @@ object IntentType {
     const val SET_TIMER = "set_timer"     // 设倒计时（duration_seconds；label=text）
     // ---- 系统直连（不经 GUI、不模拟点击；对齐 Eta 的 device 工具族） ----
     const val WAIT_FOR = "wait_for"               // 等待某段文字出现或某个应用到前台（text / app / wait_ms）
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     const val DEVICE_INFO = "device_info"         // 读设备信息（op=status/network/storage/memory/battery/display/sound/inspect_app/apps）
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     const val DEVICE_CONTROL = "device_control"   // 改设备状态（op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/wifi/bluetooth/airplane/location/nfc）
     const val SYSTEM_SETTINGS = "settings_op"     // 读写系统设置（op=get/set；namespace/key/value）
     const val CLIPBOARD = "clipboard"             // 剪贴板（op=get/set/clear）
@@ -222,6 +226,8 @@ object IntentType {
     const val FILE_WRITE = "file_write"           // 改文件（op=write/append/edit；path/text/old/new）
     const val APP_MANAGE = "app_manage"           // 管控应用（op=force_stop/background；app）
     const val TERMINAL_OP = "terminal_op"         // 注入通道命令行（op=exec/check_root；command；仅自由模式）
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     const val PERSONAL_READ = "personal_read"     // 个人数据只读（op=contacts/calls/sms/calendar/media/logs；query/limit/type；走注入通道）
     const val NOTIF_READ = "notif_read"   // 读取当前通知（需通知监听权限），纯本地读取、不操作设备
     const val NOTIF_CLEAR = "notif_clear" // 清理当前通知（ongoing 不动；会清掉用户未读内容，AI 需标注 needs_confirmation）

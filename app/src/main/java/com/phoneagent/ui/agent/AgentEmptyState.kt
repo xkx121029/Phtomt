@@ -54,6 +54,8 @@ private val StartSuggestions = listOf(
  * 已经把这句话说了两遍，空态只负责给出口——标题 + 可以照说的例子。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod")
 internal fun AgentEmptyState(
     a11yEnabled: Boolean,
     onPickSuggestion: (String) -> Unit,

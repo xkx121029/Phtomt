@@ -25,6 +25,9 @@ enum class PromptGroup {
     /** 每步决策 */
     DECISION,
 
+    /** 云端执行文档（任务命中时注入，见 [com.phoneagent.engine.AgentPrompts.docsBlock]） */
+    DOCS,
+
     /** 审核者系统提示 */
     REVIEW,
 
@@ -81,6 +84,9 @@ enum class PromptFlag {
 
     /** 有可注入的技能调用教训（最近失败留档，见 SkillCallHistory） */
     SKILL_HISTORY,
+
+    /** 有命中的云端执行文档（见 com.phoneagent.feature.agentdoc.DocMatcher） */
+    DOC_HIT,
 }
 
 /**

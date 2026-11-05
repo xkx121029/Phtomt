@@ -69,6 +69,8 @@ object AgentPrompts {
     // ==================== 共享常量 ====================
 
     /** 国产应用速查（中文名=英文名/包名）。open_app 的 app 字段可直接写中文名，端侧负责转包名。 */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     private const val COMMON_CN_APPS =
         "微信=WeChat(com.tencent.mm)、QQ=QQ(com.tencent.mobileqq)、支付宝=Alipay(com.eg.android.AlipayGphone)、" +
             "淘宝=Taobao(com.taobao.taobao)、京东=JD(com.jingdong.app.mall)、拼多多=Pinduoduo(com.xunmeng.pinduoduo)、" +
@@ -108,6 +110,8 @@ object AgentPrompts {
      * 只投影两个会影响整族能力的硬条件：本轮是否带截图、注入通道（Shizuku/无线 ADB）是否可用；
      * 缺失时直接写"别调用 + 怎么换路线"，比让 AI 逐个试错、每步撞一次必然失败的墙便宜得多。
      */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     private fun availabilityHeader(lang: PromptLang): String =
         if (lang == PromptLang.CN) {
             "# 本机可用性（按当前设备实测）\n以下结论来自端侧实测快照；标为不可用的能力这次一律不要调用，直接按说明换路线或告知用户。"
@@ -115,6 +119,8 @@ object AgentPrompts {
             "# Device availability (measured on this device)\nThese conclusions come from a runtime snapshot. Do NOT call anything marked unavailable — take another route or tell the user."
         }
 
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     private fun availabilityText(lang: PromptLang, hasVision: Boolean, shizukuAvailable: Boolean): String =
         if (lang == PromptLang.CN) {
             listOf(
@@ -133,6 +139,8 @@ object AgentPrompts {
         }
 
     /** 授权范围段落的装配上下文：三档互斥，天然只命中一块 */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     private fun modeCtx(lang: PromptLang, mode: ActionMode): PromptContext =
         PromptContext(
             lang = lang,
@@ -180,7 +188,8 @@ object AgentPrompts {
             PromptAssembler.assemble(PromptGroup.SYSTEM, systemCtx(lang, actionMode, task))
         }
         // 可用性投影紧跟主体：它是端侧实测结论，和意图表一起构成"这次能做什么"的事实基础
-        val withAvailability = "$base\n\n" + availabilityHeader(lang) + "\n" + availabilityText(lang, hasVision, shizukuAvailable)
+        val withAvailability = "$base\n\n" + availabilityHeader(lang) + "\n" + availabilityText(lang, hasVision,
+            shizukuAvailable)
         // 授权范围一段无论用户是否自定义提示词都必须追加：它是端侧真实拒绝逻辑的说明书，
         // 缺了它 AI 会按自己的想象发请求，然后在门控那里反复撞墙
         val withMode = "$withAvailability\n\n${actionModeSection(lang, actionMode)}"
@@ -221,6 +230,8 @@ object AgentPrompts {
             "\"怎么做\"（选通道、定位、算坐标、转命令）全由端侧本地完成，你永远看不到也不需要知道命令长什么样。"
     }
 
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     private fun ironRule2EN(mode: ActionMode): String = if (mode == ActionMode.FREE) {
         "The field name MUST be \"intent\" (NOT type/action); NEVER output pixel coordinates — locating and coordinate computing stay on-device. " +
             "The current mode additionally allows intent=shell (self-written command in `command`) and intent=a11y (direct accessibility endpoint call), " +
@@ -257,6 +268,8 @@ object AgentPrompts {
             if (historyHint.isNotBlank()) add(PromptFlag.SKILL_HISTORY)
             if (macroLines.isNotEmpty()) add(PromptFlag.MACRO_SKILLS)
         }
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val vars = PromptVars(
             // 每行原文是 "| $line |"，行间以换行相接、末尾不带换行（表尾空行留在正文里）
             mcpTable = mcpLines.joinToString("\n") { "| $it |" },
@@ -275,6 +288,22 @@ object AgentPrompts {
             PromptContext(lang, if (hasVision) setOf(PromptFlag.HAS_VISION) else emptySet()),
         )
 
+    /**
+     * 云端执行文档块：任务命中文档时注入标准操作流程。
+     *
+     * 文档正文来自云端（/api/agent-docs），这里只做拼装与优先级说明；
+     * 没有命中（空列表）时整块缺席，不占上下文。文档不能扩大意图范围，
+     * 这一点在 [PromptGroup.DOCS] 的固定开头里已写死。
+     */
+    fun docsBlock(lang: PromptLang, docs: List<com.phoneagent.feature.agentdoc.AgentDoc>): String {
+        if (docs.isEmpty()) return ""
+        val text = docs.joinToString("\n\n") { doc -> "## ${doc.title}\n\n${doc.body.trim()}" }
+        return PromptAssembler.assemble(
+            PromptGroup.DOCS,
+            PromptContext(lang, setOf(PromptFlag.DOC_HIT), PromptVars(docText = text)),
+        )
+    }
+
     // ==================== 环境上下文（每步/规划都会注入） ====================
 
     /**
@@ -284,6 +313,8 @@ object AgentPrompts {
      * 缺了它们 AI 只能靠猜。完整应用清单刻意不给——体积大、绝大多数步骤用不上，
      * 需要时由 AI 自己用 device_query 查（见系统提示的独占路由规则 3）。
      */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     fun environment(lang: PromptLang, env: EnvFacts): String = when (lang) {
         PromptLang.CN -> buildString {
             append("\n\n# 环境上下文（端侧实时采集）")
@@ -315,6 +346,8 @@ object AgentPrompts {
      */
     fun sessionContext(lang: PromptLang, previous: List<PreviousTask>, followUp: Boolean): String {
         if (previous.isEmpty()) return ""
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val sb = StringBuilder()
         when (lang) {
             PromptLang.CN -> {
@@ -444,6 +477,8 @@ object AgentPrompts {
         paths: List<PagePathHint>,
     ): String {
         if (hotspots.isEmpty() && paths.isEmpty()) return ""
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val sb = StringBuilder()
         if (lang == PromptLang.CN) {
             sb.append("\n\n## 页面记忆\n当前页面此前执行任务时已记忆（来过 ${page.visitCount} 次），优先复用已知入口：")
@@ -482,6 +517,8 @@ object AgentPrompts {
      * 规划阶段的页面记忆块：按应用汇总历史走过的路径，规划时优先复用。
      * @param lines 每行一条「应用：路径摘要」，由引擎侧组装
      */
+    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+    @Suppress("MaxLineLength")
     fun pageMemoryPlanningBlock(lang: PromptLang, lines: List<String>): String {
         if (lines.isEmpty()) return ""
         return if (lang == PromptLang.CN) {
@@ -535,6 +572,8 @@ object AgentPrompts {
         val browseHit = kind.browseHit
         val fetchHit = kind.fetchHit
 
+        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+        @Suppress("MaxLineLength")
         val sb = StringBuilder()
         if (docHit) {
             sb.append("\n\n## 当前任务附加指导 · 文档生成\n")

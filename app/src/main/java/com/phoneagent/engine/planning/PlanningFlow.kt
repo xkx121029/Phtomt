@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
  * 从 AgentEngine 原样迁入，行为不变；状态与事件流存 [EngineStore]，UI 推送经 [UiBridge]，
  * 上下文素材经 [ContextInjector]。与执行主循环的接缝以 lambda 注入（见构造参数）。
  */
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 internal class PlanningFlow(
     private val appContext: android.content.Context,
     private val settings: AppSettings,
@@ -48,6 +50,8 @@ internal class PlanningFlow(
     private val launchTask: (task: String, plan: com.phoneagent.domain.model.TaskPlan?) -> Unit,
     /** 引擎侧钩子：当前设置快照（同步读缓存值，配置预检用） */
     private val settingsSnapshot: () -> AppSettings.Settings,
+    /** 云端执行文档仓库（null = 未装配，规划不注入文档） */
+    private val docRepository: com.phoneagent.feature.agentdoc.AgentDocRepository? = null,
 ) {
     /**
      * 配置预检：返回阻断原因（null = 可以规划）。
@@ -204,6 +208,8 @@ internal class PlanningFlow(
         store.activePlan = null
     }
 
+    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     private suspend fun cloudPlanStream(
         task: String,
         question: String?,
@@ -230,11 +236,19 @@ internal class PlanningFlow(
         val pageMemoryContext = if (settingsVal.pageMemoryEnabled) {
             runCatching { AgentPrompts.pageMemoryPlanningBlock(lang, ctx.pageMemoryPlanningLines(task, lang)) }.getOrDefault("")
         } else ""
+        // 云端执行文档：任务命中的标准操作流程在规划阶段就注入——计划本身要按手册走，
+        // 否则等执行时才看到文档，第一步已经走偏了。无命中/未启用时为空串，不占上下文。
+        val docContext = if (settingsVal.docSyncEnabled) {
+            runCatching { docRepository?.docsFor(task, null, settingsVal) }.getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { AgentPrompts.docsBlock(lang, it) }
+                .orEmpty()
+        } else ""
         // 澄清后重规划：问题与答案一起注入——光给答案不给问题，AI 就不知道这句话在回答哪一问
         val text = when {
-            answer.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext"
-            question.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext\n\n用户已选择澄清项：$answer"
-            else -> "$prompt$execContext$context$pageMemoryContext\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
+            answer.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext$docContext"
+            question.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext$docContext\n\n用户已选择澄清项：$answer"
+            else -> "$prompt$execContext$context$pageMemoryContext$docContext\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
         } + if (prevUnrecognized.isNullOrBlank()) "" else
             "\n\n## 上一轮返回无法识别\n" +
             "你上一轮针对本任务返回的内容无法解析为标准 JSON。上一轮原文：\n" +

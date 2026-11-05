@@ -22,6 +22,13 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- 编码环境组件把私有工作区镜像到共享存储（/sdcard/happyac-build）后才能构建：
+         Android 11 起走上面的「所有文件访问」，更早的版本仍需存储运行时权限 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
     <!-- Termux 执行通道已迁入 Provider（com.phoneagent.provider）：
          RUN_COMMAND 权限、RunCommandService 调用与结果回传接收器都在 Provider 内，
          主应用不再声明该权限 -->
@@ -33,6 +40,10 @@
          不声明此 uses-permission 会在 bindService 时直接抛 SecurityException -->
     <uses-permission android:name="com.phoneagent.permission.BIND_PROVIDER" />
 
+    <!-- 编码环境组件（com.phoneagent.env）同样把 AIDL 服务声明为 signature 级，
+         不声明此 uses-permission 绑定时会直接抛 SecurityException -->
+    <uses-permission android:name="com.phoneagent.permission.BIND_ENV" />
+
     <!-- 端侧语音输入：SpeechRecognizer（Android 11 起强制要求 RECORD_AUDIO） -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
@@ -43,6 +54,7 @@
          表现为「服务组件永远显示未安装、无障碍永远连不上」 -->
     <queries>
         <package android:name="com.phoneagent.provider" />
+        <package android:name="com.phoneagent.env" />
     </queries>
 
     <!-- 明文 HTTP：API 地址允许指向自建/内网服务（http://192.168.1.5:8000、http://nas.local、
@@ -96,6 +108,26 @@
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- 类型为空的分享：不少 App 分享文件时根本不填 mimeType（type=null），
+                 只塞 ClipData / EXTRA_STREAM。带 <data> 的过滤器匹配不到这种 Intent，
+                 必须另有一条不带 <data> 的过滤器，否则这些 App 的分享面板里看不到本应用。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- 「用其他应用打开」：文件管理器长按文件 → 打开方式里选本应用。
+                 覆盖文本 / 代码 / JSON / 文档 / PDF / 压缩包（这些 MIME 都落在 text/* 或
+                 application/* 下），落点与分享一致（临时编码区，见 TaskEntry.fromShareIntent）。
+                 不写成 */*：那样打开 APK、视频时也会挤进候选列表，而这两类本应用也解读不了。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="text/*" />
+                <data android:scheme="content" android:mimeType="application/*" />
+                <data android:scheme="file" android:mimeType="text/*" />
+                <data android:scheme="file" android:mimeType="application/*" />
             </intent-filter>
             <!-- 文本选择处理：任何 App 选中文字 →「问 Happy Agent」 -->
             <intent-filter>

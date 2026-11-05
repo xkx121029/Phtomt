@@ -1,6 +1,5 @@
 package com.phoneagent.coding
 
-import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -9,10 +8,22 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.Modifier
 import com.phoneagent.coding.device.DeviceWorkspace
+import com.phoneagent.ui.agent.MarkdownReaderScreen
+import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.PhoneAgentTheme
 
 /**
- * 代码预览（#30）：把工作区里的 HTML 页面直接渲染出来。
+ * 代码预览（#30）：把工作区里的页面渲染出来。
  *
  * 与内置浏览器刻意分成两个 WebView：浏览器那份是「agent 访问互联网」的长期会话
  * （在 HPA 里由主工程的浏览器体系承担），预览这份是一次性的本地渲染。混在一起
@@ -20,15 +31,74 @@ import com.phoneagent.coding.device.DeviceWorkspace
  *
  * 目标既可以是工作区相对路径（渲染本地页面），也可以是 http(s) 链接
  * （渲染 agent 起的预览服务器）。
+ *
+ * Markdown 文件（.md/.markdown）不进 WebView：源码里的 `#`、`*`、`|` 原样显示出来
+ * 等于没排版，转而交给编码页同款的 [MarkdownReaderScreen] 整屏阅读。
  */
-class PreviewActivity : Activity() {
+class PreviewActivity : ComponentActivity() {
 
     private var web: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val target = intent.getStringExtra(EXTRA_TARGET).orEmpty()
+        if (isMarkdown(target)) showMarkdown(target) else showWeb(target)
+    }
 
+    override fun onDestroy() {
+        web?.destroy()
+        web = null
+        super.onDestroy()
+    }
+
+    /** 只有工作区里的 .md/.markdown 走阅读器；http(s)/about: 与其它扩展名仍交给 WebView。 */
+    private fun isMarkdown(target: String): Boolean {
+        val t = target.trim()
+        if (t.startsWith("http://") || t.startsWith("https://") || t.startsWith("about:")) return false
+        // 去掉查询串与锚点再判扩展名：editor 传过来的路径可能带这些尾巴
+        val path = t.substringBefore('?').substringBefore('#').lowercase()
+        return path.endsWith(".md") || path.endsWith(".markdown")
+    }
+
+    private fun showMarkdown(target: String) {
+        enableEdgeToEdge()
+        val loaded = runCatching { DeviceWorkspace.read(this, target) }
+        val name = target.trim().replace('\\', '/').substringAfterLast('/')
+        setContent {
+            PhoneAgentTheme {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing),
+                ) {
+                    MarkdownReaderScreen(
+                        title = name,
+                        content = loaded.fold(
+                            onSuccess = { json ->
+                                val text = json.optString("content")
+                                if (json.optBoolean("truncated")) {
+                                    // 截断必须明说：少一段正文却读起来"到头了"，比报错更难排查
+                                    text + "\n\n---\n\n> 文件超过 512 KB，后面的内容没有读出来。"
+                                } else {
+                                    text
+                                }
+                            },
+                            onFailure = { "读取失败：${it.message ?: "未知原因"}" },
+                        ),
+                        headline = "工作区 Markdown",
+                        icon = AppIcons.Description,
+                        backLabel = "返回编辑",
+                        backIcon = AppIcons.ArrowBack,
+                        onClose = { finish() },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+        }
+    }
+
+    /** HTML 等其它目标：一次性 WebView 渲染（原有行为不变）。 */
+    private fun showWeb(target: String) {
         val webView = WebView(this)
         webView.setBackgroundColor(Color.parseColor("#111214"))
         webView.settings.apply {
@@ -68,12 +138,6 @@ class PreviewActivity : Activity() {
                 )
             },
         )
-    }
-
-    override fun onDestroy() {
-        web?.destroy()
-        web = null
-        super.onDestroy()
     }
 
     /** 工作区相对路径 -> file:// URL；http(s) 原样透传。越界的路径会被拒绝（落到空白页）。 */

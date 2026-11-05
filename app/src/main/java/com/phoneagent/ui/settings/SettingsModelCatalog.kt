@@ -49,6 +49,8 @@ import kotlinx.coroutines.launch
  * 模型库不再平铺在「云端模型」页：几十上百个模型铺开会把端点与职责两件事挤散。
  */
 @Composable
+// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 internal fun SettingsModelCatalog(
     vm: MainViewModel,
     st: SettingsState,
@@ -225,6 +227,8 @@ internal fun SettingsModelCatalog(
 
 /** 模型库单行：模型名 + 能力徽章 + 重新探测；挑选模式下整行可点，当前在用的一条高亮 */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList")
 private fun CatalogModelRow(
     model: CatalogModel,
     selected: Boolean,

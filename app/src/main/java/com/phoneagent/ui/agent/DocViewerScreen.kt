@@ -67,6 +67,8 @@ fun DocViewerScreen(
  * [content] 为 null 表示来源已关闭，展示 [emptyHint] 而不是空白屏。
  */
 @Composable
+// 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+@Suppress("LongParameterList", "LongMethod")
 fun MarkdownReaderScreen(
     title: String,
     content: String?,

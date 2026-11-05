@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.InputStream
+import java.util.zip.ZipFile
 
 /**
  * 系统分享进来的文件：落到「临时编码区」并把交接信息交给编码页。
@@ -27,9 +29,14 @@ object SharedFiles {
         val relativePath: String,
         val displayName: String,
         val bytes: Long,
+        /** docx / xlsx / pptx / zip 的纯文本摘录（同目录，见 [FileExcerpt]）；没有就是 null */
+        val excerptPath: String? = null,
     )
 
     private val _pending = MutableStateFlow<List<Imported>>(emptyList())
+
+    /** 摘录文件的后缀：容器格式解析出的纯文本放在原文件旁边，agent 用 read_file 直接读 */
+    private const val EXCERPT_SUFFIX = ".text.txt"
 
     /**
      * 已导入、还没发出去的附件。它是附件区唯一的真值来源：跨 Tab 切换/页面重建后
@@ -83,8 +90,15 @@ object SharedFiles {
             relativePath = target.name,
             displayName = name,
             bytes = target.length(),
+            excerptPath = writeExcerpt(entry.root, target),
         )
     }
+
+    /** 容器格式的纯文本摘录写在原文件旁边：解析或落盘失败都不该影响文件本身 */
+    private fun writeExcerpt(root: File, file: File): String? = runCatching {
+        val text = FileExcerpt.of(file) ?: return@runCatching null
+        uniqueFile(root, file.nameWithoutExtension + EXCERPT_SUFFIX).apply { writeText(text) }.name
+    }.getOrNull()
 
     /** 分享方登记的文件名；拿不到就退回 URI 末段，再不行给个通用名。 */
     private fun displayName(context: Context, uri: Uri): String {
@@ -120,4 +134,82 @@ object SharedFiles {
             i++
         }
     }
+}
+
+/**
+ * 容器格式 → 纯文本摘录。
+ *
+ * docx / xlsx / pptx 本质是 zip + XML，文字都躺在固定的 XML 段里；不抽出来，
+ * agent 的 read_file 读到的是二进制，等于什么都没读。zip 则给出条目清单。
+ * PDF / 图片 / 音视频没有无依赖的解析方式，保持原样（prompt 里会提醒 agent 别臆测内容）。
+ */
+private object FileExcerpt {
+
+    /** 一个 docx / xlsx / pptx 最多解析多少段 XML（PPT 一页一段）：再多会把对话上下文挤满 */
+    private const val MAX_PACKAGE_PARTS = 40
+    /** 压缩包清单最多列多少条：再多对「这个包里有什么」已经没有信息量 */
+    private const val MAX_ZIP_ENTRIES = 200
+    /** 超过这个大小的容器不解析：解压 + 正则在大文件上会把内存吃光 */
+    private const val MAX_BYTES = 20L * 1024 * 1024
+
+    /** 段落 / 行 / 换行标签：先换成真换行，摘录读起来才有分段 */
+    private val BlockEnd = Regex("</(?:[A-Za-z0-9]+:)?(?:p|tr|row|br)>")
+    private val AnyTag = Regex("<[^>]+>")
+    private val Whitespace = Regex("\\s+")
+
+    fun of(file: File): String? = runCatching {
+        if (file.length() > MAX_BYTES) return@runCatching null
+        when (file.extension.lowercase()) {
+            "docx" -> officeText(file) { name -> name == "word/document.xml" }
+            "xlsx" -> officeText(file) { name -> name == "xl/sharedStrings.xml" }
+            "pptx" -> officeText(file) { name -> name.startsWith("ppt/slides/slide") && name.endsWith(".xml") }
+            "zip" -> zipListing(file)
+            else -> null
+        }?.trim()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
+
+    /** 从容器里挑出承载文字的 XML 段，拼成一段纯文本 */
+    private fun officeText(file: File, pick: (String) -> Boolean): String? = runCatching {
+        ZipFile(file).use { zip ->
+            zip.entries().asSequence()
+                .filter { !it.isDirectory && pick(it.name) }
+                .sortedBy { it.name }
+                .take(MAX_PACKAGE_PARTS)
+                .map { xmlToText(zip.getInputStream(it)) }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n")
+        }
+    }.getOrNull()
+
+    /** OOXML 片段 → 可读文本：标签换行/去壳，实体还原，连续空白压成一个空格 */
+    private fun xmlToText(input: InputStream): String = input.use { stream ->
+        val xml = stream.readBytes().toString(Charsets.UTF_8)
+        xml.replace(BlockEnd, "\n")
+            .replace(AnyTag, " ")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .lines()
+            .map { it.replace(Whitespace, " ").trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+    }
+
+    /** 压缩包条目清单：只用名字与大小，不递归解包——解读「包里有什么」就够了 */
+    private fun zipListing(file: File): String? = runCatching {
+        ZipFile(file).use { zip ->
+            val all = zip.entries().asSequence().toList()
+            buildString {
+                append("压缩包条目（共 ").append(all.size).append(" 条）：\n")
+                all.take(MAX_ZIP_ENTRIES).forEach { entry ->
+                    append("- ").append(entry.name)
+                    if (!entry.isDirectory) append("  ").append(entry.size).append(" B")
+                    append('\n')
+                }
+                if (all.size > MAX_ZIP_ENTRIES) {
+                    append("…（只列前 ").append(MAX_ZIP_ENTRIES).append(" 条）")
+                }
+            }
+        }
+    }.getOrNull()
 }

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 环境组件需要联网：Alpine rootfs、JDK、Gradle 发行版、cmdline-tools、glibc sysroot 都靠它下载 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 共享存储读写：工程目录通常在 /sdcard 上（targetSdk 28 走旧版存储模型）。
+         运行时授权由 EnvSetupActivity 引导，主应用「环境」页按需拉起 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- 只允许同签名的主应用绑定 AIDL 服务 -->
+    <permission
+        android:name="com.phoneagent.permission.BIND_ENV"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="com.phoneagent.permission.BIND_ENV" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/env_app_name">
+
+        <!-- AIDL 入口：主应用绑定后远程驱动安装与构建。
+             targetSdk 28 是本组件的立身之本（见 build.gradle.kts 里的注释） -->
+        <service
+            android:name=".EnvService"
+            android:exported="true"
+            android:permission="com.phoneagent.permission.BIND_ENV">
+            <intent-filter>
+                <action android:name="com.phoneagent.env.IEnvProvider" />
+            </intent-filter>
+        </service>
+
+        <!-- 存储权限引导页：无 launcher 图标（不在桌面留入口），由主应用显式拉起 -->
+        <activity
+            android:name=".EnvSetupActivity"
+            android:exported="true"
+            android:label="@string/env_app_name" />
+    </application>
+
+</manifest>

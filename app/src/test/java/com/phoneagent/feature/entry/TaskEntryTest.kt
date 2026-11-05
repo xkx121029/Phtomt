@@ -120,6 +120,20 @@ class TaskEntryTest {
         assertNull(TaskEntry.parseShare(Intent.ACTION_PROCESS_TEXT, null, listOf("content://a")))
     }
 
+    @Test
+    fun `view document opens as shared file`() {
+        // 文件管理器「打开方式」走 VIEW，data 就是文件本体，落点与分享相同
+        val t = TaskEntry.parseShare(Intent.ACTION_VIEW, null, listOf("content://docs/1"))
+        assertEquals(listOf("content://docs/1"), (t as TaskEntry.Target.SharedFiles).uris)
+    }
+
+    @Test
+    fun `view without document is null`() {
+        assertNull(TaskEntry.parseShare(Intent.ACTION_VIEW, null, emptyList()))
+        // VIEW 带文字（如网页链接）不当任务：深链/分享各走各的解析
+        assertNull(TaskEntry.parseShare(Intent.ACTION_VIEW, "某段文字", emptyList()))
+    }
+
     // ---- 快捷方式 / extras ----
 
     @Test
