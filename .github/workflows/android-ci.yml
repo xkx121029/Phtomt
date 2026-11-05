@@ -97,6 +97,12 @@ jobs:
         env:
           RUN_NUMBER: ${{ github.run_number }}
 
+      - name: Sync provider + env assets
+        # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
+        # 干净检出后 assets 里只剩 version.txt，verifyProviderAssets 会直接拦下。
+        # 先由各自模块构建并同步进 assets，再走 assemble。
+        run: ./gradlew :app:syncProviderAssets :app:syncEnvAssets --stacktrace
+
       - name: Assemble Debug APK
         run: |
           ./gradlew :app:assembleDebug \
