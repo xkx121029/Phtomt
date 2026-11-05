@@ -150,6 +150,7 @@ happy_phone agent/
 │   ├── detekt/                     # detekt 规则 + 基线（只减不增）
 │   └── provider-assets/            # Provider 源码指纹（构建时校验）
 ├── docs/build-modules.md           # 可选构建模块的配置、任务与兼容性校验说明
+├── docs/release-pipeline.md        # 发版链路：CI 触发与断言、GitHub 产物、Gitee 附件补挂（手动）、Gitea 现状
 ├── promo/                          # 单文件 HTML 交互式 UI 复刻（app.html / index.html / ui-film.html）
 ├── tool/                           # 构建辅助脚本：bundle_host.mjs（同步编码 host）/ bundle_runtime.py（打包 Node 运行时）/ ICU 裁剪
 ├── website/                        # 官网（Vue3 SPA + Express 内容 API，见 website/API.md）
