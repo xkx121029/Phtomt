@@ -58,6 +58,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Restore fixed debug keystore
+        id: keystore
         # 签名基线：本机 hpa-publish 用的就是 Android 默认 debug keystore
         #   %USERPROFILE%\.android\debug.keystore
         #   alias=androiddebugkey，storepass/keypass=android
@@ -80,7 +81,14 @@ jobs:
             fi
             echo "已还原固定 debug keystore："
             keytool -list -v -keystore "$KS" -storepass "$PASS" -alias androiddebugkey | grep -E 'SHA256:'
+            # 显式告诉 :app 用这份 keystore 给 debug 变体签名。
+            # 不能只靠「文件放在 $HOME/.android 让 AGP 自己找」：实测连续三次 CI 包
+            # 指纹各不相同（340A/F4EF/C55F），说明 AGP 没找到它、每次临时生成了随机签名。
+            echo "HPA_DEBUG_KEYSTORE=$KS" >> "$GITHUB_ENV"
+            echo "HPA_DEBUG_KEYSTORE_PASS=$PASS" >> "$GITHUB_ENV"
+            echo "fixed=1" >> "$GITHUB_OUTPUT"
           else
+            echo "fixed=0" >> "$GITHUB_OUTPUT"
             # 绝不静默换签名：让 run 明确告诉下载者「这一版覆盖不了旧版」。
             echo "::warning title=签名与历史不一致::未配置 DEBUG_KEYSTORE_B64，本次改用 runner 临时生成的 debug keystore。"
             echo "::warning::本次签名与历史不一致，包不能覆盖安装（需先卸载旧版）。"
@@ -150,6 +158,8 @@ jobs:
         run: ./gradlew :app:syncProviderAssets :app:syncEnvAssets --stacktrace
 
       - name: Assemble Debug APK
+        # HPA_DEBUG_KEYSTORE / HPA_DEBUG_KEYSTORE_PASS 由上一步写入 $GITHUB_ENV，
+        # :app 的 build.gradle.kts 据此显式配置 signingConfigs.debug。
         run: |
           ./gradlew :app:assembleDebug \
             -PbuildNumber=${{ steps.ver.outputs.version_code }} \
@@ -160,6 +170,40 @@ jobs:
         run: |
           mv app/build/outputs/apk/debug/app-debug.apk "${{ steps.ver.outputs.apk }}"
           ls -lh "${{ steps.ver.outputs.apk }}"
+
+      - name: Verify APK signature
+        # 硬断言：CI 包必须与本机 hpa-publish 的包同证书，否则用户无法覆盖安装。
+        # 只检查「文件被还原」不够——AGP 可能压根没用它，所以这里直接验最终 APK。
+        env:
+          APK: ${{ steps.ver.outputs.apk }}
+          FIXED: ${{ steps.keystore.outputs.fixed }}
+        run: |
+          APKSIGNER="$(command -v apksigner || true)"
+          if [ -z "$APKSIGNER" ]; then
+            for root in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$HOME/Android/Sdk"; do
+              if [ -d "$root/build-tools" ]; then
+                APKSIGNER=$(ls "$root/build-tools/"*/apksigner 2>/dev/null | sort -V | tail -1)
+              fi
+              [ -n "$APKSIGNER" ] && break
+            done
+          fi
+          if [ -z "$APKSIGNER" ]; then
+            echo "::warning title=无法校验签名::没找到 apksigner，跳过签名断言（不阻断出包）"
+            exit 0
+          fi
+          DIGEST=$("$APKSIGNER" verify --print-certs "$APK" \
+            | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
+          EXPECTED=2b67b91a73eb7d4e6a9ce7ffa25d8a078f662ac23d65c54708d295964d3cbeed
+          echo "APK 签名 SHA-256：$DIGEST（期望 $EXPECTED）"
+          if [ "$DIGEST" = "$EXPECTED" ]; then
+            echo "- ✅ APK 签名与本机一致：\`$DIGEST\`，可直接覆盖安装" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$FIXED" = "1" ]; then
+            echo "::error title=固定签名未生效::已还原固定 keystore，但 APK 实际签名是 $DIGEST（期望 $EXPECTED），包不能覆盖安装。"
+            exit 1
+          else
+            echo "::warning title=签名与历史不一致::未配置 DEBUG_KEYSTORE_B64，本次签名 $DIGEST 与本机 $EXPECTED 不同，包不能覆盖安装。"
+            echo "- ⚠️ 本次签名 $DIGEST 与本机 $EXPECTED 不一致，需先卸载旧版才能安装" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -215,6 +259,10 @@ jobs:
           APK: ${{ steps.ver.outputs.apk }}
           VERSION_NAME: ${{ steps.ver.outputs.version_name }}
           VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+        # 耗时说明：**这一步耗 25~40 分钟属正常，不是卡死**。
+        # GitHub runner 出口到 Gitee 实测只有 ~40KB/s，71MB 就得好几十分钟；
+        # 期间日志停在 "开始上传" 是 curl 正在传（Gitee 不支持断点续传，只能一次传完）。
+        # --max-time 2400 是硬上限，超时只会 warning，不会让整个 run 变红。
         timeout-minutes: 45
         run: |
           if [ -z "$GITEE_TOKEN" ]; then
