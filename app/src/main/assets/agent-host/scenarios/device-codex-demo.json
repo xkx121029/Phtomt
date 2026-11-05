@@ -1,0 +1,36 @@
+[
+  {
+    "events": [
+      { "type": "text", "delta": "先看看工作区里有什么。" },
+      { "type": "tool_call", "index": 0, "id": "call_overview", "name": "workspace_overview", "argsDelta": "{\"depth\":2}" }
+    ],
+    "finishReason": "tool_calls"
+  },
+  {
+    "events": [
+      { "type": "text", "delta": "读一下 hello.py。" },
+      { "type": "tool_call", "index": 0, "id": "call_read", "name": "read_file", "argsDelta": "{\"path\":\"hello.py\"}" }
+    ],
+    "finishReason": "tool_calls"
+  },
+  {
+    "events": [
+      { "type": "text", "delta": "给它加一行。" },
+      { "type": "tool_call", "index": 0, "id": "call_patch", "name": "apply_patch", "argsDelta": "{\"path\":\"hello.py\",\"patch\":\"@@ -1,2 +1,3 @@\\n print(\\\"hello from happy_ACA\\\")\\n+print(\\\"patched on device\\\")\"}" }
+    ],
+    "finishReason": "tool_calls"
+  },
+  {
+    "events": [
+      { "type": "tool_call", "index": 0, "id": "call_run", "name": "run_command", "argsDelta": "{\"command\":\"cat hello.py\"}" }
+    ],
+    "finishReason": "tool_calls"
+  },
+  {
+    "events": [
+      { "type": "tool_call", "index": 0, "id": "call_stat", "name": "file_stat", "argsDelta": "{\"path\":\"hello.py\"}" }
+    ],
+    "finishReason": "tool_calls"
+  },
+  { "text": "完成：在手机上真实执行了 读文件 → 打补丁 → 跑命令 → 校验 的完整闭环。" }
+]
