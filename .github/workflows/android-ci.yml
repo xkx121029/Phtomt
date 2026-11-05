@@ -20,9 +20,11 @@ on:
 permissions:
   contents: write
 
-# 同一分支的构建排队执行，不并发抢 tag；不取消进行中的发布
+# 同一分支的构建排队执行，不并发抢 tag；不取消进行中的发布。
+# group 不带分支名是刻意的：dev 与 beta 共用 version.properties 这一个计数器，
+# 两条流水线必须串行读-自增-回写，否则会拿到同一个号。
 concurrency:
-  group: android-${{ github.ref }}
+  group: android-build-release
   cancel-in-progress: false
 
 jobs:
@@ -53,6 +55,41 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Restore fixed debug keystore
+        # 签名基线：本机 hpa-publish 用的就是 Android 默认 debug keystore
+        #   %USERPROFILE%\.android\debug.keystore
+        #   alias=androiddebugkey，storepass/keypass=android
+        #   SHA-256 2B:67:B9:1A:73:EB:7D:4E:6A:9C:E7:FF:A2:5D:8A:07:
+        #           8F:66:2A:C2:3D:65:C5:47:08:D2:95:96:4D:3C:BE:ED
+        # 把同一份文件 base64 后存进 DEBUG_KEYSTORE_B64，CI 与本地才能同包名同签名，
+        # 新旧包可互相覆盖安装；否则每次 runner 都会新建随机签名，只能先卸载再装。
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          DEBUG_KEYSTORE_PASS: ${{ secrets.DEBUG_KEYSTORE_PASS }}
+        run: |
+          KS="$HOME/.android/debug.keystore"
+          mkdir -p "$(dirname "$KS")"
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 -d > "$KS"
+            PASS="${DEBUG_KEYSTORE_PASS:-android}"
+            if ! keytool -list -keystore "$KS" -storepass "$PASS" -alias androiddebugkey >/dev/null 2>&1; then
+              echo "::error::固定 debug keystore 还原后校验失败（内容或 DEBUG_KEYSTORE_PASS 不对）"
+              exit 1
+            fi
+            echo "已还原固定 debug keystore："
+            keytool -list -v -keystore "$KS" -storepass "$PASS" -alias androiddebugkey | grep -E 'SHA256:'
+          else
+            # 绝不静默换签名：让 run 明确告诉下载者「这一版覆盖不了旧版」。
+            echo "::warning title=签名与历史不一致::未配置 DEBUG_KEYSTORE_B64，本次改用 runner 临时生成的 debug keystore。"
+            echo "::warning::本次签名与历史不一致，包不能覆盖安装（需先卸载旧版）。"
+            {
+              echo "## ⚠️ 签名与历史不一致"
+              echo
+              echo "本次构建没有 \`DEBUG_KEYSTORE_B64\`，用的是 runner 上临时生成的 debug keystore。"
+              echo "**本次签名与历史不一致，包不能覆盖安装**——安装前请先卸载旧版本。"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Detekt (static analysis)
         # 任务名必须带 :app 前缀：detekt 配置与基线只挂在 :app 上，
         # 跑根项目的 `detekt` 不带基线路径，存量问题会全量报错。
@@ -82,20 +119,27 @@ jobs:
 
       - name: Compute version + tag
         id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 版本编码按渠道分段，保证 dev 与 beta 各自单调递增、互不回退：
-          # dev = 1000000 + run_number，beta = 2000000 + run_number
-          if [ "$CHANNEL" = "dev" ]; then
-            CODE=$((1000000 + RUN_NUMBER))
-          else
-            CODE=$((2000000 + RUN_NUMBER))
+          # 版本号只有一条递增序列：仓库根 version.properties 的 BUILD_NUMBER，
+          # 本机构建（root build.gradle.kts）也是读写同一个文件。
+          # 权威副本固定在 nightly 分支——beta 也读它的值，避免两条分支各长一个计数器。
+          COUNTER=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
+            -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+          if ! [ "$COUNTER" -ge 0 ] 2>/dev/null; then
+            echo "读不到 version.properties 的 BUILD_NUMBER（值：$COUNTER）" >&2
+            exit 1
           fi
+          CODE=$((COUNTER + 1))
+          echo "counter=$COUNTER" >> "$GITHUB_OUTPUT"
+          echo "counter_sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "version_code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "version_name=0.2.$CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "tag=v0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "apk=HappyAgent-0.2.$CODE-$CHANNEL.apk" >> "$GITHUB_OUTPUT"
-        env:
-          RUN_NUMBER: ${{ github.run_number }}
+          echo "本次版本：0.2.$CODE-$CHANNEL（计数器 $COUNTER -> $CODE）"
 
       - name: Sync provider + env assets
         # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
@@ -107,6 +151,7 @@ jobs:
         run: |
           ./gradlew :app:assembleDebug \
             -PbuildNumber=${{ steps.ver.outputs.version_code }} \
+            -Pchannel=${{ env.CHANNEL }} \
             --stacktrace
 
       - name: Rename APK
@@ -154,3 +199,76 @@ jobs:
             --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
             --notes-file release-notes.md \
             --prerelease
+
+      - name: Publish Gitee Release
+        # Gitee 不是构建目标，只是「发行版回传」：同一次 GitHub 构建、同一个 APK、
+        # 同一个版本号与 tag 再挂一份到 Gitee 发行版，方便两边对照。
+        # 注意：Gitee 的「从 GitHub 拉取」镜像只同步分支/标签/提交，不同步 Release
+        # 和附件，所以发行版必须由这一步显式创建。
+        # GITEE_TOKEN 未配置时跳过；跳过是正常路径，整个 run 仍为绿。
+        if: github.event_name != 'pull_request'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          APK: ${{ steps.ver.outputs.apk }}
+          VERSION_NAME: ${{ steps.ver.outputs.version_name }}
+          VERSION_CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          if [ -z "$GITEE_TOKEN" ]; then
+            echo "未配置 GITEE_TOKEN，跳过 Gitee 发行版发布"
+            echo "> GITEE_TOKEN 未配置，本 run 跳过 Gitee 发行版发布（不是失败）。" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          API="https://gitee.com/api/v5/repos/xkx1029/Phtomt"
+          BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n' \
+            "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}")
+          # 先建发行版；同名 tag 已存在时改读它的 upload_url（重复触发不报错）
+          RESP=$(curl -sS -X POST "$API/releases" \
+            --data-urlencode "access_token=$GITEE_TOKEN" \
+            --data-urlencode "tag_name=$TAG" \
+            --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+            --data-urlencode "body=$BODY" \
+            --data-urlencode "target_commitish=nightly" \
+            --data-urlencode "prerelease=true")
+          UPLOAD=$(echo "$RESP" | jq -r '.upload_url // empty')
+          if [ -z "$UPLOAD" ]; then
+            echo "创建 Gitee 发行版失败，尝试复用已存在的 tag：$RESP" >&2
+            UPLOAD=$(curl -sS "$API/releases/tags/$TAG?access_token=$GITEE_TOKEN" | jq -r '.upload_url // empty')
+          fi
+          if [ -z "$UPLOAD" ]; then echo "拿不到 Gitee upload_url，发行版发布失败" >&2; exit 1; fi
+          case "$UPLOAD" in https://*) ;; *) UPLOAD="https://gitee.com/api/v5$UPLOAD" ;; esac
+          UPLOADED=$(curl -sS -X POST "$UPLOAD" \
+            -F "access_token=$GITEE_TOKEN" \
+            -F "file=@$APK")
+          echo "$UPLOADED"
+          echo "$UPLOADED" | jq -e '.browser_download_url' > /dev/null
+
+      - name: Persist version counter
+        # 出包成功才把计数器推进一步（失败不烧号）。
+        # 回写固定在 nightly：它是计数器的权威副本，beta 跑完也写这里，
+        # 所以两条分支不会各长一个独立序列。GITHUB_TOKEN 造成的提交不会再次触发工作流。
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          for attempt in 1 2 3; do
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+            CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
+              -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+            # 若本地构建抢先推进过，就跳到它之后，绝不回退
+            TARGET=$CODE
+            if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
+            CONTENT=$(printf '#Auto-incremented by Gradle\n#%s\nBUILD_NUMBER=%s\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET" | base64 -w0)
+            if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
+                 -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
+                 -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
+              echo "version.properties: $CUR -> $TARGET"
+              exit 0
+            fi
+            echo "回写冲突，重试 $attempt" >&2
+            sleep 3
+          done
+          echo "计数器回写失败：version.properties 仍停在 $CUR" >&2
+          exit 1
