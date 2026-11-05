@@ -67,7 +67,12 @@ def download(rel, asset):
         return path
     print("下载 %s（%d B）..." % (asset["name"], asset["size"]))
     curl = "curl.exe" if os.name == "nt" else "curl"
-    subprocess.run([curl, "-sS", "-L", "--max-time", "1800", "-o", path, asset["browser_download_url"]], check=True)
+    # GitHub 侧 71MB 跨洋下载会偶发 reset：断点续传 + 重试，避免重下整包
+    subprocess.run([
+        curl, "-sS", "-L", "-C", "-", "--retry", "6", "--retry-delay", "3",
+        "--retry-all-errors", "--connect-timeout", "30", "--max-time", "1800",
+        "-o", path, asset["browser_download_url"],
+    ], check=True)
     actual = os.path.getsize(path)
     if actual != asset["size"]:
         sys.exit("下载不完整：%d / %d B" % (actual, asset["size"]))
