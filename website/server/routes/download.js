@@ -38,6 +38,13 @@ async function send(req, res, release) {
   res.sendFile(full)
 }
 
+/** 走 GitHub 直链时补一条下载计数（页面点击时用 sendBeacon 调它） */
+downloadRouter.post('/hit/:version', (req, res) => {
+  const release = findRelease(req.params.version)
+  if (release) recordDownload(release.version)
+  res.status(204).end()
+})
+
 downloadRouter.get('/latest', (req, res) => {
   const release = latestRelease({ channel: req.query.channel || 'stable' })
   if (!release) return fail(res, 404, 'not_found', '暂无可下载的版本')
