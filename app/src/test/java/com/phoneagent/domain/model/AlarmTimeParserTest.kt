@@ -213,6 +213,72 @@ class AlarmTimeParserTest {
         assertEquals(5, t.dayOffset)
     }
 
+    // ---- 相对日期（明早/今晚/明天下午/三天后） ----
+
+    @Test
+    fun 明早七点_落在明天而不是今天() {
+        val t = success("明早七点", "2026-11-03T18:00:00")
+        assertEquals(7, t.hour)
+        assertEquals(1, t.dayOffset)
+    }
+
+    @Test
+    fun 明早七点_带冒号写法同样落在明天() {
+        val t = success("明早7:00", "2026-11-03T18:00:00")
+        assertEquals(7, t.hour)
+        assertEquals(1, t.dayOffset)
+    }
+
+    @Test
+    fun 今晚八点_按今天二十点换算() {
+        val t = success("今晚八点", "2026-11-03T10:00:00")
+        assertEquals(20, t.hour)
+        assertEquals(0, t.dayOffset)
+    }
+
+    @Test
+    fun 明天下午三点_时段加十二且偏移一天() {
+        val t = success("明天下午三点", "2026-11-03T10:00:00")
+        assertEquals(15, t.hour)
+        assertEquals(1, t.dayOffset)
+    }
+
+    @Test
+    fun 三天后早上七点_偏移三天() {
+        val t = success("三天后早上七点", "2026-11-03T10:00:00")
+        assertEquals(7, t.hour)
+        assertEquals(3, t.dayOffset)
+    }
+
+    @Test
+    fun 大后天七点_偏移三天() {
+        val t = success("大后天7点", "2026-11-03T10:00:00")
+        assertEquals(7, t.hour)
+        assertEquals(3, t.dayOffset)
+    }
+
+    @Test
+    fun 只说三天后没给时刻_明确拒绝而不是猜一个时间() {
+        val msg = failure("三天后", "2026-11-03T10:00:00")
+        assertTrue(msg.contains("还缺具体时刻"))
+    }
+
+    @Test
+    fun 目标时刻_把日期换算成绝对时间戳() {
+        val now = LocalDateTime.parse("2026-11-03T18:00:00")
+        val t = success("明早7点", "2026-11-03T18:00:00")
+        val back = java.time.Instant.ofEpochMilli(t.targetEpochMillis(now)!!)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+        assertEquals(java.time.LocalDate.parse("2026-11-04"), back.toLocalDate())
+        assertEquals(7, back.hour)
+    }
+
+    @Test
+    fun 重复闹钟_没有固定日期_目标时刻为空() {
+        val now = LocalDateTime.parse("2026-11-03T18:00:00")
+        assertNull(success("每天7点", "2026-11-03T18:00:00").targetEpochMillis(now))
+    }
+
     // ---- 结构化兜底 ----
 
     @Test

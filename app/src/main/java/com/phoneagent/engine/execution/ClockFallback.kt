@@ -210,10 +210,53 @@ internal object ClockVerification {
     /** 闹钟是整分设置，回读时间留 90 秒容差（跨零点/时区换算不会误判） */
     const val ALARM_TOLERANCE_MS = 90_000L
 
+    /** 标准 AlarmClock 意图无法表达「指定日期」时的统一说明（直达与页面确认都要跳过） */
+    const val TARGET_DATE_UNSUPPORTED: String =
+        "系统时钟的标准设置意图只能按 HH:mm 排「下一次」，无法指定具体日期；" +
+            "继续走它会把这个闹钟设到错误的那一天，因此这一步不派发"
+
+    /** 下一次 HH:mm 命中的毫秒时间戳 */
+    fun nextOccurrence(hour: Int, minute: Int, nowMillis: Long): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        if (cal.timeInMillis <= nowMillis) cal.add(Calendar.DAY_OF_MONTH, 1)
+        return cal.timeInMillis
+    }
+
+    fun sameDay(a: Long, b: Long): Boolean {
+        val ca = Calendar.getInstance().apply { timeInMillis = a }
+        val cb = Calendar.getInstance().apply { timeInMillis = b }
+        return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
+            ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR)
+    }
+
+    /**
+     * 请求的日期能否被标准 AlarmClock 意图表达。
+     *
+     * 只有「目标日 ≠ 下一次 HH:mm 所在的日」才是否；目标时刻已过去（如 21:00 说「今晚 8 点」）
+     * 按"下一次"处理，不拦。
+     */
+    fun targetDateExpressible(request: ClockRequest, nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (request.action != AlarmClock.ACTION_SET_ALARM) return true
+        val target = request.atMillis ?: return true
+        if (target <= nowMillis + ALARM_TOLERANCE_MS) return true
+        val hour = request.hour ?: return false
+        val minute = request.minute ?: return false
+        return sameDay(nextOccurrence(hour, minute, nowMillis), target)
+    }
+
     /** 未来 8 天内、时分一致（重复闹钟还要求星期命中）即视为「这条就是我设的」 */
     fun matchesAlarm(triggerAtMillis: Long, request: ClockRequest, nowMillis: Long = System.currentTimeMillis()): Boolean {
         if (triggerAtMillis < nowMillis - ALARM_TOLERANCE_MS) return false
         if (triggerAtMillis > nowMillis + 8L * 24 * 3600_000) return false
+        // 带明确日期的请求必须连日期一起对上：只看时分会把「今天 19:00」当成「明天 19:00」
+        val target = request.atMillis
+        if (target != null && target > nowMillis && !sameDay(triggerAtMillis, target)) return false
         val cal = Calendar.getInstance().apply { timeInMillis = triggerAtMillis }
         if (cal.get(Calendar.HOUR_OF_DAY) != (request.hour ?: return false)) return false
         if (cal.get(Calendar.MINUTE) != (request.minute ?: return false)) return false
@@ -343,9 +386,15 @@ internal class ClockFallbackRunner(
         }
 
         val failures = mutableListOf<String>()
+        // 日期表达不了时，直达与页面确认都会把闹钟设到错误的那一天：整级跳过并写明原因
+        val dateExpressible = ClockVerification.targetDateExpressible(request)
+        if (!dateExpressible) failures += "静默直达/页面确认：${ClockVerification.TARGET_DATE_UNSUPPORTED}"
         val beforeAlarm = nextAlarmTrigger()
         val beforeTimers = if (caps.shell) timerCount() else null
-        for (level in ClockFallbackPolicy.levels(request, caps)) {
+        val levels = ClockFallbackPolicy.levels(request, caps).filter { level ->
+            dateExpressible || level.kind !in setOf(ClockFallbackKind.DIRECT_SILENT, ClockFallbackKind.UI_CONFIRM)
+        }
+        for (level in levels) {
             when (level.kind) {
                 ClockFallbackKind.DIRECT_SILENT -> {
                     // 只走标准 AlarmClock 契约（与 Eta 一致）：厂商私有 action 没有回读契约，
@@ -506,8 +555,9 @@ internal class ClockFallbackRunner(
 
     /** 闹钟 Provider 回查：true=有这一行；false=Provider 可读但没有；null=没有可读的 Provider */
     private suspend fun providerHasAlarm(request: ClockRequest): Boolean? {
-        val hour = request.hour ?: return null
-        val minute = request.minute ?: return null
+        request.hour ?: return null
+        request.minute ?: return null
+        val dateBlocked = !ClockVerification.targetDateExpressible(request)
         var providerReadable = false
         for (uri in alarmUris) {
             val probe = shell("content query --uri '$uri' --projection _id") as? ShizukuManager.ShellResult.Success
@@ -520,7 +570,7 @@ internal class ClockFallbackRunner(
             providerReadable = true
             val query = shell(
                 "content query --uri '$uri' --projection hour:minutes " +
-                    "--where 'hour=$hour AND minutes=$minute'",
+                    "--where '${alarmWhere(request, dateBlocked)}'",
             ) as? ShizukuManager.ShellResult.Success ?: continue
             if (ClockVerification.providerHasAlarm(query.output, request)) return true
         }
@@ -632,22 +682,32 @@ internal class ClockFallbackRunner(
 
         val label = request.label?.takeIf { it.isNotBlank() }
         val bindLabel = label?.let { " --bind label:s:${quote(it)}" } ?: ""
+        // 标准意图表达不了目标日期时，写库必须把绝对触发时刻一起写进去，否则同样会落到"下一次"那天
+        val dateBlocked = !ClockVerification.targetDateExpressible(request)
+        val targetMillis = request.atMillis
+        val bindDate = if (dateBlocked && targetMillis != null) " --bind alarm_time:l:$targetMillis" else ""
         val insert = shell(
             "content insert --uri '$uri' --bind hour:i:$hour --bind minutes:i:$minute " +
-                "--bind enabled:i:1 --bind vibrate:i:1$bindLabel",
+                "--bind enabled:i:1 --bind vibrate:i:1$bindLabel$bindDate",
         )
         val insertOut = when (insert) {
             is ShizukuManager.ShellResult.Success -> insert.output
             is ShizukuManager.ShellResult.Failure -> return "插入被拒（${insert.reason}）"
         }
         if (insertOut.contains("Error", ignoreCase = true) || insertOut.contains("Exception", ignoreCase = true)) {
-            return "插入失败（${insertOut.take(80)}）"
+            return if (bindDate.isNotEmpty()) {
+                "该机型的时钟数据库没有可写的 alarm_time 列，无法指定日期（${insertOut.take(80)}）"
+            } else {
+                "插入失败（${insertOut.take(80)}）"
+            }
         }
 
         // 回查：拿不到这一行就是没写进去，不能把「命令没报错」当成成功
         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
         @Suppress("MaxLineLength")
-        val check = shell("content query --uri '$uri' --where 'hour=$hour AND minutes=$minute' --projection hour:minutes")
+        val check = shell(
+            "content query --uri '$uri' --where '${alarmWhere(request, dateBlocked)}' --projection hour:minutes",
+        )
         val checkOut = (check as? ShizukuManager.ShellResult.Success)?.output.orEmpty()
         if (!checkOut.contains("hour=$hour") || !checkOut.contains("minutes=$minute")) {
             return "写完回查不到该闹钟"
@@ -656,6 +716,12 @@ internal class ClockFallbackRunner(
     }
 
     private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    /** 闹钟行的查询条件；要求指定日期时把 alarm_time 也带上，避免命中别的那一天 */
+    private fun alarmWhere(request: ClockRequest, dateBlocked: Boolean): String {
+        val base = "hour=${request.hour ?: 0} AND minutes=${request.minute ?: 0}"
+        return if (dateBlocked && request.atMillis != null) "$base AND alarm_time=${request.atMillis}" else base
+    }
 
     // ---------------------------------------------------------------- 三级：无障碍确认
 

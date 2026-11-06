@@ -190,4 +190,49 @@ class ClockFallbackPolicyTest {
         assertTrue(ClockVerification.providerHasAlarm(rows, alarm))
         assertFalse(ClockVerification.providerHasAlarm("Row: 0 _id=3, hour=7, minutes=31, enabled=1", alarm))
     }
+
+    // ---- 相对日期：目标日必须真的对上 ----
+
+    private fun at(y: Int, m: Int, d: Int, h: Int, min: Int): Long =
+        Calendar.getInstance().apply {
+            set(y, m, d, h, min, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+    @Test
+    fun 明天下午三点_标准意图表达不了就不能直接派发() {
+        // 现在是 11-05 10:00，目标 11-06 15:00；下一次 15:00 却是今天 —— 直达会把闹钟设到今天
+        val now = at(2026, Calendar.NOVEMBER, 5, 10, 0)
+        val target = at(2026, Calendar.NOVEMBER, 6, 15, 0)
+        val request = ClockRequests.alarm(15, 0, null, null, atMillis = target)
+        assertFalse(ClockVerification.targetDateExpressible(request, now))
+        assertFalse(ClockVerification.matchesAlarm(at(2026, Calendar.NOVEMBER, 5, 15, 0), request, now))
+        assertTrue(ClockVerification.matchesAlarm(target, request, now))
+    }
+
+    @Test
+    fun 明早七点_目标日就是下一次命中_允许直达() {
+        // 现在是 11-05 22:00，目标 11-06 07:00：下一次 07:00 正好是明天
+        val now = at(2026, Calendar.NOVEMBER, 5, 22, 0)
+        val target = at(2026, Calendar.NOVEMBER, 6, 7, 0)
+        val request = ClockRequests.alarm(7, 0, null, null, atMillis = target)
+        assertTrue(ClockVerification.targetDateExpressible(request, now))
+        assertTrue(ClockVerification.matchesAlarm(target, request, now))
+    }
+
+    @Test
+    fun 只有时分没有日期_维持下一次语义_不误判为错误日期() {
+        val now = at(2026, Calendar.NOVEMBER, 5, 10, 0)
+        val request = ClockRequests.alarm(15, 0, null, null)
+        assertTrue(ClockVerification.targetDateExpressible(request, now))
+        assertTrue(ClockVerification.matchesAlarm(at(2026, Calendar.NOVEMBER, 5, 15, 0), request, now))
+    }
+
+    @Test
+    fun 已过去的目标时刻_按下一次处理_不拦截() {
+        // 21:00 说「今晚八点」：目标已过，沿用"下一次命中"的旧口径
+        val now = at(2026, Calendar.NOVEMBER, 5, 21, 0)
+        val request = ClockRequests.alarm(20, 0, null, null, atMillis = at(2026, Calendar.NOVEMBER, 5, 20, 0))
+        assertTrue(ClockVerification.targetDateExpressible(request, now))
+    }
 }

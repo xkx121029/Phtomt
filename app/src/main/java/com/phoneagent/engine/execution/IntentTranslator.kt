@@ -230,10 +230,12 @@ internal class ClockStrategy(
         }
 
         val explicitDays = AlarmDays.fromField(intent.repeatDays)
+        // 只取一次"现在"：解析与目标时刻换算必须基于同一时刻，否则跨分钟会得到两套日期
+        val now = now()
         val parsed = if (!intent.timeText.isNullOrBlank()) {
-            AlarmTimeParser.parse(intent.timeText, now())
+            AlarmTimeParser.parse(intent.timeText, now)
         } else {
-            AlarmTimeParser.parseNumbers(intent.hour, intent.minute, explicitDays ?: emptySet(), now())
+            AlarmTimeParser.parseNumbers(intent.hour, intent.minute, explicitDays ?: emptySet(), now)
         }
         return when (parsed) {
             is AlarmParseResult.Failure -> {
@@ -259,6 +261,8 @@ internal class ClockStrategy(
                         hour = time.hour,
                         minute = time.minute,
                         repeatDays = repeatDays,
+                        // 把相对日期带到执行层：AlarmClock 只认 HH:mm，"明天下午三点"不带日期会落到今天
+                        alarmAtMillis = time.targetEpochMillis(now),
                         text = intent.text,
                         reason = reasonOf(intent),
                     ),

@@ -56,17 +56,31 @@ data class ClockRequest(
     val repeatDays: List<Int>? = null,
     val seconds: Long? = null,
     val label: String? = null,
+    /**
+     * 目标触发时刻（毫秒）。null = 按「HH:mm 的下一次」排期。
+     *
+     * 「明天下午三点」在上午说出时，"下一次 15:00"其实是今天——必须把目标日期带进来，
+     * 否则闹钟会设在错误的那一天。已过去的时刻按 null 处理（下一次命中）。
+     */
+    val atMillis: Long? = null,
 )
 
 /** 时钟请求 → AlarmClock Intent 的字段映射（纯函数） */
 object ClockRequests {
-    fun alarm(hour: Int, minute: Int, repeatDays: List<Int>?, label: String?): ClockRequest =
+    fun alarm(
+        hour: Int,
+        minute: Int,
+        repeatDays: List<Int>?,
+        label: String?,
+        atMillis: Long? = null,
+    ): ClockRequest =
         ClockRequest(
             action = AlarmClock.ACTION_SET_ALARM,
             hour = hour,
             minute = minute,
             repeatDays = repeatDays?.takeIf { it.isNotEmpty() },
             label = label?.trim()?.takeIf { it.isNotBlank() },
+            atMillis = atMillis,
         )
 
     fun timer(seconds: Long, label: String?): ClockRequest =

@@ -5,6 +5,7 @@ package com.phoneagent.domain.model
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 /**
@@ -38,6 +39,19 @@ data class AlarmTime(
         repeatDays == setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY) -> "周末"
         else -> AlarmDays.displayNames(repeatDays).joinToString("") { "周$it" }
     }
+
+    /**
+     * 目标触发时刻（毫秒时间戳），供执行层把「明天下午三点」这类相对日期带到 AlarmClock。
+     *
+     * 重复闹钟只按星期滚动，没有"具体哪一天"的语义，返回 null；执行层据此退回"下一次 HH:mm"。
+     */
+    fun targetEpochMillis(now: LocalDateTime, zone: ZoneId = ZoneId.systemDefault()): Long? =
+        if (repeatDays.isNotEmpty()) {
+            null
+        } else {
+            now.toLocalDate().plusDays(dayOffset.toLong()).atTime(hour, minute)
+                .atZone(zone).toInstant().toEpochMilli()
+        }
 }
 
 sealed interface AlarmParseResult {
@@ -122,6 +136,14 @@ object AlarmTimeParser {
 
     private val PERIOD = Regex("""^(${PERIODS.joinToString("|")})""")
 
+    /**
+     * 「N 天后」前缀：`三天后早上 7 点` / `3 天后的 7 点` / `大后天 7 点`。
+     *
+     * 之前的 [RELATIVE] 只认小时/分钟，`三天后` 会被当作无法识别；而口语里它常和具体时刻连用，
+     * 这里只负责剥出"天偏移"，时刻仍交给后面的 CLOCK/PERIOD 解析。
+     */
+    private val DAY_AFTER = Regex("""^(?:再过|过)?(大后天|[0-9]+|[一二两三四五六七八九十]+)天(?:后|以后|之后)""")
+
     /** 行尾时刻：不能带 `^`（要允许前面还有星期/时段前缀），只用 `$` 钉住结尾 */
     private val CLOCK = Regex("""([0-9]{1,2}|[一二两三四五六七八九十]{1,3})(?:[:：点时])(半|[0-9]{1,2}|[一二两三四五六七八九十]{1,3})?分?$""")
 
@@ -133,15 +155,30 @@ object AlarmTimeParser {
 
         parseRelative(normalized, now)?.let { return it }
 
+        // 「N 天后」先剥掉：它只决定日期，不参与时刻解析（并把日期偏移一路带到执行层）
+        var text = normalized
+        var explicitOffset: Int? = null
+        DAY_AFTER.find(text)?.takeIf { it.range.first == 0 }?.let { m ->
+            explicitOffset = when (m.groupValues[1]) {
+                "大后天" -> 3
+                else -> number(m.groupValues[1])
+            }
+            text = text.substring(m.value.length)
+            if (text.isBlank()) {
+                return AlarmParseResult.Failure(
+                    "「${raw?.trim()}」还缺具体时刻：请说「三天后早上 7 点」或「三天后的 7 点」",
+                )
+            }
+        }
+
         // 先定位末尾的时刻部分（CLOCK 以 $ 结尾），剩下的前导词再按「星期 > 时段」剥离。
         // 反过来先剥前缀会被「周一三五7点」这类写法骗到：星期列举与小时数字共用同一批字符，
         // 「一三五7」会连 7 一起吞掉，剩下一个光秃秃的「点」。
-        val clock = CLOCK.find(normalized)
+        val clock = CLOCK.find(text)
             ?: return AlarmParseResult.Failure("无法识别的时间「${raw?.trim()}」：请改用「7 点半」「半小时后」「明天早上 6 点」这类说法")
 
-        var leftover = normalized.substring(0, clock.range.first)
+        var leftover = text.substring(0, clock.range.first)
         var repeatDays: Set<DayOfWeek> = emptySet()
-        var explicitOffset: Int? = null
 
         DAY_SELECTOR.find(leftover)?.let { m ->
             val head = m.value
@@ -159,23 +196,23 @@ object AlarmTimeParser {
                     repeatDays = setOf(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY); leftover = tail
                 }
                 "今天" -> {
-                    explicitOffset = 0; leftover = tail
+                    explicitOffset = (explicitOffset ?: 0); leftover = tail
                 }
                 "明天" -> {
-                    explicitOffset = 1; leftover = tail
+                    explicitOffset = (explicitOffset ?: 0) + 1; leftover = tail
                 }
                 "后天" -> {
-                    explicitOffset = 2; leftover = tail
+                    explicitOffset = (explicitOffset ?: 0) + 2; leftover = tail
                 }
                 // 「明早6点」的"早"本身就是时段词：剥掉日期后把时段补回来
                 "明早" -> {
-                    explicitOffset = 1; leftover = "早上" + tail
+                    explicitOffset = (explicitOffset ?: 0) + 1; leftover = "早上" + tail
                 }
                 "明晚" -> {
-                    explicitOffset = 1; leftover = "晚上" + tail
+                    explicitOffset = (explicitOffset ?: 0) + 1; leftover = "晚上" + tail
                 }
                 "今晚" -> {
-                    explicitOffset = 0; leftover = "晚上" + tail
+                    explicitOffset = (explicitOffset ?: 0); leftover = "晚上" + tail
                 }
                 else -> {
                     // 每周X / 周X / 星期X，支持「一三五」与「一到五」
