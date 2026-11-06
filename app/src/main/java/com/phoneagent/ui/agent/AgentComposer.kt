@@ -352,6 +352,9 @@ internal fun AgentComposer(
     onOpenQueue: () -> Unit,
     reviewEnabled: Boolean,
     onToggleReview: (Boolean) -> Unit,
+    /** 先规划再执行：与「审核 AI」同级，默认关闭；关闭时直接进入执行 */
+    planBeforeAct: Boolean,
+    onTogglePlanBeforeAct: (Boolean) -> Unit,
     /**
      * 发送：回传待发文本，而不是让宿主读自己的 draft。
      *
@@ -645,30 +648,59 @@ internal fun AgentComposer(
             }
         }
 
-        // 审核 AI 已下调为输入面下方的次级开关：执行侧本身有超时/失败降级放行，
-        // 这条开关只影响是否额外复核，不该占住发送主路径或阻塞核心工作流
+        // 输入面下方的两枚同级开关：审核 AI / 先规划执行计划。
+        // 两者位置、字号、开关尺寸完全一致，各占一半宽度；不再跟一段解释文字并排，
+        // 开关本身就是完整语义（用户明确要求去掉「审核 AI」后的描述）。
         if (mode == ComposerMode.NEW_TASK) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = AppSpacing.Xs),
             ) {
-                Text(
-                    text = "审核 AI",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = colors.onSurfaceRaised,
-                )
-                Spacer(Modifier.width(AppSpacing.Xs))
-                Text(
-                    text = "超时自动放行，不阻塞执行",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceRaised,
+                ComposerToggleLabel(
+                    label = "审核 AI",
+                    checked = reviewEnabled,
+                    onToggle = onToggleReview,
                     modifier = Modifier.weight(1f),
                 )
-                MiniSwitch(checked = reviewEnabled, onToggle = onToggleReview)
+                ComposerToggleLabel(
+                    label = "先规划执行计划",
+                    checked = planBeforeAct,
+                    onToggle = onTogglePlanBeforeAct,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+    }
+}
+
+/**
+ * 输入面下方的一枚同级开关：左侧标签、右侧开关，整体占一半宽度。
+ *
+ * 两枚开关（审核 AI / 先规划执行计划）共用这一个，保证字号、行高、开关尺寸与间距完全一致，
+ * 改一处不会只改到其中一枚。
+ */
+@Composable
+private fun ComposerToggleLabel(
+    label: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = AppTheme.colors.onSurfaceRaised,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(AppSpacing.Xs))
+        MiniSwitch(checked = checked, onToggle = onToggle)
     }
 }
 

@@ -61,6 +61,14 @@ object OverlayDisplaySettings {
     const val KEY_EDGE_LIGHTING_ENABLED = "edge_lighting_enabled"
 
     /**
+     * 键 3：任务开始前是否先产出执行计划。
+     *
+     * 与上面两个键放在同一个独立 prefs 文件里：引擎线与 UI 线读同一个键，
+     * 键名与取值语义（boolean，true=先规划，false=直接执行）是跨线契约，不要改。
+     */
+    const val KEY_PLAN_BEFORE_ACT = "plan_before_act"
+
+    /**
      * 键 1 默认值：只跑马灯。
      *
      * 截图里顶部光带是通栏、压状态栏、对比最强的那一层，更像"主信息"；
@@ -70,6 +78,9 @@ object OverlayDisplaySettings {
 
     /** 键 2 默认值：开启（边缘光效是任务执行的主要环境反馈，默认不削弱） */
     const val DEFAULT_EDGE_LIGHTING_ENABLED = true
+
+    /** 键 3 默认值：关闭（默认直接进入执行，需要先看计划时由用户手动打开） */
+    const val DEFAULT_PLAN_BEFORE_ACT = false
 
     fun stepTextPlacement(context: Context): StepTextPlacement =
         StepTextPlacement.fromValue(prefs(context).getString(KEY_STEP_TEXT_PLACEMENT, null))
@@ -83,6 +94,14 @@ object OverlayDisplaySettings {
 
     fun setEdgeLightingEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_EDGE_LIGHTING_ENABLED, enabled).apply()
+    }
+
+    /** 任务开始前是否先出计划；引擎在任务启动时读同一个键 */
+    fun planBeforeAct(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PLAN_BEFORE_ACT, DEFAULT_PLAN_BEFORE_ACT)
+
+    fun setPlanBeforeAct(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PLAN_BEFORE_ACT, enabled).apply()
     }
 
     /** 浮层服务监听设置变化用；UI 线不需要调用 */

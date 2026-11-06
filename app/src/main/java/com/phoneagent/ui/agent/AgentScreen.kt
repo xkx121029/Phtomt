@@ -44,11 +44,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
@@ -134,6 +136,10 @@ fun AgentScreen(
     val traces by vm.traces.collectAsState()
     val history by vm.executionHistory.collectAsState()
     val settings by vm.settingsFlow.collectAsState()
+    // 「先规划执行计划」与浮层显示同库存放（overlay_display 独立 prefs）：
+    // 引擎在任务启动时读同一个键，UI 这里只负责写入与即时反映状态
+    val context = LocalContext.current
+    var planBeforeAct by remember { mutableStateOf(OverlayDisplaySettings.planBeforeAct(context)) }
     val doc by vm.docResult.collectAsState()
     val memoryEvents by vm.memoryEvents.collectAsState()
     val sayEvents by vm.sayEvents.collectAsState()
@@ -531,6 +537,11 @@ fun AgentScreen(
                             },
                             reviewEnabled = settings.enableReview,
                             onToggleReview = { enabled -> vm.saveSettings(settings.copy(enableReview = enabled)) },
+                            planBeforeAct = planBeforeAct,
+                            onTogglePlanBeforeAct = { enabled ->
+                                planBeforeAct = enabled
+                                OverlayDisplaySettings.setPlanBeforeAct(context, enabled)
+                            },
                             options = clarifyPhase?.clarification?.options.orEmpty(),
                             onPickOption = { vm.answerClarification(it) },
                             plan = (planPhase as? PlanPhase.AwaitingApproval)?.plan,
@@ -545,7 +556,8 @@ fun AgentScreen(
                                             submittedTask = text
                                             // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
                                             selectedTaskId = -1L
-                                            vm.startPlanning(text)
+                                            // 开关决定是否先出计划：关（默认）直接执行，开才进入计划确认
+                                            if (planBeforeAct) vm.startPlanning(text) else vm.startAgent(text)
                                         }
 
                                         ComposerMode.QUEUE_FOLLOW_UP -> vm.startAgent(text)
