@@ -97,7 +97,7 @@ internal data class SettingsGroup(
 internal fun settingsGroups(): List<SettingsGroup> = listOf(
     SettingsGroup(
         title = "执行通道与权限",
-        subtitle = "能不能执行：系统授权、shell 通道与 AI 的授权范围",
+        subtitle = "能不能执行：系统授权、shell 通道与外部控制",
         tone = SettingsTone.Warm,
         entries = listOf(
             SettingsEntry(
@@ -163,19 +163,17 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "任务行为与模式",
-        subtitle = "怎么干活：动作模式、步数、提示词与长线任务",
+        subtitle = "怎么干活：步数、提示词、执行文档与长线任务",
         tone = SettingsTone.Cool,
         entries = listOf(
             SettingsEntry(
                 page = SettingsPage.AGENT,
                 icon = AppIcons.Tune,
                 title = "任务行为",
-                subtitle = "动作模式 / 步数 / 提示词 / 执行文档 / 副屏",
+                subtitle = "步数 / 提示词 / 执行文档 / 副屏",
                 tone = SettingsTone.Cool,
-                summary = { ctx ->
-                    val mode = com.phoneagent.engine.execution.ActionMode.fromKey(ctx.st.actionMode).label
-                    "$mode · " + if (ctx.st.maxSteps > 0) "最多 ${ctx.st.maxSteps} 步" else "不限步数"
-                },
+                // 执行方式已提到首页「常用」，这里只报本页真正管的步数，避免摘要指向别处
+                summary = { ctx -> if (ctx.st.maxSteps > 0) "最多 ${ctx.st.maxSteps} 步" else "不限步数" },
             ),
             SettingsEntry(
                 page = SettingsPage.LONG_RUN,
@@ -198,7 +196,7 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 page = SettingsPage.APPEARANCE,
                 icon = AppIcons.Palette,
                 title = "外观与导航",
-                subtitle = "配色 / 框线 / 悬浮窗与光效 / 选项卡",
+                subtitle = "配色 / 框线 / 光标与光效标定 / 选项卡",
                 tone = SettingsTone.Brand,
                 summary = { ctx ->
                     val tabs = com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size
@@ -279,7 +277,13 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
  * 只有窄屏会走到这里：宽屏由 [SettingsScreen] 切换成「左分类 + 右详情」的双栏形态。
  */
 @Composable
-internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (SettingsPage) -> Unit) {
+internal fun SettingsHome(
+    st: SettingsState,
+    vm: MainViewModel,
+    onOpen: (SettingsPage) -> Unit,
+    save: () -> Unit,
+    onPickModel: () -> Unit,
+) {
     val ctx = rememberSettingsOverviewCtx(st, vm)
 
     // 滚动状态：传给骨架做显式浮起判定（官网风格，比内部 NestedScrollConnection 更稳）
@@ -320,6 +324,10 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
                 onQuickStart = { onOpen(SettingsPage.QUICK_START) },
             )
 
+            // 高频项在第一屏可操作：执行方式、主模型/线路、浮层显示。
+            // 这些项在各自二级页里不再重复出现，避免「同一开关三处都能改」
+            SettingsQuickPanel(st = st, save = save, onPickModel = onPickModel)
+
             groups.forEach { group -> SettingsGroupSection(group, ctx, onOpen) }
 
             Spacer(Modifier.height(AppSpacing.Lg))
@@ -332,7 +340,13 @@ internal fun SettingsHome(st: SettingsState, vm: MainViewModel, onOpen: (Setting
  * 只留就绪度状态条与一句指引——重复列一遍等于把同一份导航摆两处。
  */
 @Composable
-internal fun SettingsOverviewPane(st: SettingsState, vm: MainViewModel, onOpen: (SettingsPage) -> Unit) {
+internal fun SettingsOverviewPane(
+    st: SettingsState,
+    vm: MainViewModel,
+    onOpen: (SettingsPage) -> Unit,
+    save: () -> Unit,
+    onPickModel: () -> Unit,
+) {
     val ctx = rememberSettingsOverviewCtx(st, vm)
     val scrollState = rememberScrollState()
     GlassHeaderScaffold(
@@ -361,8 +375,10 @@ internal fun SettingsOverviewPane(st: SettingsState, vm: MainViewModel, onOpen: 
                 onPermission = { onOpen(SettingsPage.PERMISSIONS) },
                 onQuickStart = { onOpen(SettingsPage.QUICK_START) },
             )
+            // 宽屏默认落在「常用」：高频项与手机上同一块面板，不必先去左侧找分类
+            SettingsQuickPanel(st = st, save = save, onPickModel = onPickModel)
             Text(
-                "从左侧选择一类设置",
+                "更多设置从左侧选择",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -395,6 +411,20 @@ internal fun SettingsCatalogRail(
             "设置",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = AppSpacing.Sm),
+        )
+        // 宽屏也保留「常用」这一站：高频项不因为屏幕变宽就退回二级页里
+        SettingsRailItem(
+            entry = SettingsEntry(
+                page = SettingsPage.HOME,
+                icon = AppIcons.Tune,
+                title = "常用设置",
+                subtitle = "",
+                tone = SettingsTone.Brand,
+                summary = { "执行方式 / 主模型 / 浮层" },
+            ),
+            summary = "执行方式 / 主模型 / 浮层",
+            selected = selected == SettingsPage.HOME,
+            onClick = { onSelect(SettingsPage.HOME) },
         )
         groups.forEach { group ->
             Text(

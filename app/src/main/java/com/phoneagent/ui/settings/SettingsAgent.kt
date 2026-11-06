@@ -58,57 +58,14 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         SettingsPageHeader(
             title = "任务行为",
             onBack = onBack,
-            subtitle = "动作模式、步数与提示词；高级项默认收起",
+            subtitle = "步数、提示词与执行文档；执行方式在设置首页「常用」里",
         )
         // 与全设置流程同一条骨架节奏：页头后 20 / 分区之间 16 / 结尾 28（不再用 spacedBy，
         // 否则页头与首区之间只有 16，和其他二级页对不上）
         Spacer(Modifier.height(20.dp))
 
-        // ---- 动作模式：决定 AI 能提出哪一类操作（与执行通道正交）----
-        val mode = com.phoneagent.engine.execution.ActionMode.fromKey(st.actionMode)
-        SettingsSection(
-            title = "动作模式",
-            subtitle = "给 AI 的授权范围，与「执行通道」叠加生效",
-            tone = SettingsTone.Cool,
-        ) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    com.phoneagent.engine.execution.ActionMode.entries.forEach { item ->
-                        SettingsChoiceChip(
-                            label = item.label,
-                            selected = st.actionMode == item.key,
-                            onClick = {
-                                st.actionMode = item.key
-                                save()
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = mode.summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (mode == com.phoneagent.engine.execution.ActionMode.FREE) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-                if (mode == com.phoneagent.engine.execution.ActionMode.FREE) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "自由模式允许 AI 自写命令并直调无障碍端点，只在你信任当前任务时使用。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
+        // 动作模式（保守 / 均衡 / 自由）已移到设置首页「常用」面板：它是每次跑任务前最常改的一项，
+        // 留在这里等于让用户多点两下；同一设置只保留首页那一处入口。
         SettingsSection(title = "执行参数", subtitle = "跑多少步就停", tone = SettingsTone.Cool) {
             SettingsToggleRow(
                 title = "限制最大步数",

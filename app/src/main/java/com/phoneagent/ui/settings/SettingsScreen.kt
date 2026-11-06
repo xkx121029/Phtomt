@@ -101,6 +101,15 @@ fun SettingsScreen(
     }
     // 正在挑选模型的职责（main / vision / reason）；null = 浮层收起
     var pickRole by remember { mutableStateOf<String?>(null) }
+    // 挑完模型回到哪一页：从首页「常用」进来回首页，从云端模型页进来回云端模型
+    var pickReturnPage by remember { mutableStateOf(SettingsPage.AI_MODELS) }
+
+    /** 打开模型库：role 非空表示「为某个职责挑模型」，null 表示只浏览管理 */
+    fun openModelCatalog(role: String?, returnPage: SettingsPage) {
+        pickRole = role
+        pickReturnPage = returnPage
+        page = SettingsPage.MODEL_CATALOG
+    }
 
     // 设置持久化后同步到本地表单
     LaunchedEffect(settings) { st.applyFrom(settings) }
@@ -152,9 +161,13 @@ fun SettingsScreen(
                                 st = st,
                                 vm = vm,
                                 pickRole = pickRole,
+                                pickReturnPage = pickReturnPage,
                                 transitionMs = pageTransitionMs,
                                 onPage = { page = it },
                                 onPickRole = { pickRole = it },
+                                onOpenCatalog = { openModelCatalog(null, SettingsPage.AI_MODELS) },
+                                onPickRoleInCatalog = { openModelCatalog(it, SettingsPage.AI_MODELS) },
+                                onPickModelFromHome = { openModelCatalog("main", SettingsPage.HOME) },
                                 saveNonAiSettings = ::saveNonAiSettings,
                                 onOpenExtras = onOpenExtras,
                                 onNavigateAgent = onNavigateAgent,
@@ -169,9 +182,13 @@ fun SettingsScreen(
                     st = st,
                     vm = vm,
                     pickRole = pickRole,
+                    pickReturnPage = pickReturnPage,
                     transitionMs = pageTransitionMs,
                     onPage = { page = it },
                     onPickRole = { pickRole = it },
+                    onOpenCatalog = { openModelCatalog(null, SettingsPage.AI_MODELS) },
+                    onPickRoleInCatalog = { openModelCatalog(it, SettingsPage.AI_MODELS) },
+                    onPickModelFromHome = { openModelCatalog("main", SettingsPage.HOME) },
                     saveNonAiSettings = ::saveNonAiSettings,
                     onOpenExtras = onOpenExtras,
                     onNavigateAgent = onNavigateAgent,
@@ -198,9 +215,17 @@ private fun SettingsPageContent(
     vm: MainViewModel,
     /** 正在挑选模型的职责（main / vision / reason）；非空时模型库页进入「选择」模式 */
     pickRole: String?,
+    /** 模型库挑完/返回后落到哪一页（首页或云端模型页） */
+    pickReturnPage: SettingsPage,
     transitionMs: Int,
     onPage: (SettingsPage) -> Unit,
     onPickRole: (String?) -> Unit,
+    /** 进入模型库浏览管理（不挑职责） */
+    onOpenCatalog: () -> Unit,
+    /** 进入模型库为某个职责挑模型 */
+    onPickRoleInCatalog: (String) -> Unit,
+    /** 首页「常用」里的主模型行：直接进模型库挑主模型 */
+    onPickModelFromHome: () -> Unit,
     saveNonAiSettings: () -> Unit,
     onOpenExtras: (com.phoneagent.ui.ExtrasPage) -> Unit,
     onNavigateAgent: () -> Unit,
@@ -222,15 +247,8 @@ private fun SettingsPageContent(
         modifier = Modifier.fillMaxSize(),
     ) { p ->
         val backToHome = { onPage(SettingsPage.HOME) }
-        val openCatalog = {
-            onPickRole(null)
-            onPage(SettingsPage.MODEL_CATALOG)
-        }
-        // 职责换模型不进浮层：模型库本身已是二级页，直接跳过去选，选完回本页
-        val pickRoleInCatalog = { role: String ->
-            onPickRole(role)
-            onPage(SettingsPage.MODEL_CATALOG)
-        }
+        // 模型库的进入与返回落点由外层（SettingsScreen）持有：从首页「常用」进来要回首页，
+        // 从云端模型页进来回云端模型页，两处共用同一条路由
         when (p) {
             // 冷启动一条线：连模型 → 给无障碍 → 发出第一个任务。
             // 发任务前先等落盘完成，否则引擎可能还在读旧的 key/model（DataStore 写入是异步的）
@@ -254,16 +272,22 @@ private fun SettingsPageContent(
             // 双栏时右侧不再重复列一遍入口（左侧分类栏已经是导航），只留就绪度与指引
             SettingsPage.HOME ->
                 if (LocalSettingsTwoPane.current) {
-                    SettingsOverviewPane(st, vm, onOpen = onPage)
+                    SettingsOverviewPane(
+                        st = st, vm = vm, onOpen = onPage,
+                        save = saveNonAiSettings, onPickModel = onPickModelFromHome,
+                    )
                 } else {
-                    SettingsHome(st, vm, onOpen = onPage)
+                    SettingsHome(
+                        st = st, vm = vm, onOpen = onPage,
+                        save = saveNonAiSettings, onPickModel = onPickModelFromHome,
+                    )
                 }
             SettingsPage.APPEARANCE -> SettingsAppearance(st, save = saveNonAiSettings, onBack = backToHome)
             SettingsPage.AI_MODELS -> SettingsAiModels(
                 vm = vm, st = st,
                 onBack = backToHome,
-                onOpenCatalog = openCatalog,
-                onPickRole = pickRoleInCatalog,
+                onOpenCatalog = onOpenCatalog,
+                onPickRole = onPickRoleInCatalog,
             )
             SettingsPage.MODEL_CATALOG -> SettingsModelCatalog(
                 vm = vm,
@@ -271,12 +295,12 @@ private fun SettingsPageContent(
                 pickRole = pickRole,
                 onBack = {
                     onPickRole(null)
-                    onPage(SettingsPage.AI_MODELS)
+                    onPage(pickReturnPage)
                 },
                 onPicked = { endpointId, name ->
                     pickRole?.let { applyRoleModel(st, it, endpointId, name) }
                     onPickRole(null)
-                    onPage(SettingsPage.AI_MODELS)
+                    onPage(pickReturnPage)
                 },
             )
             SettingsPage.ONDEVICE -> SettingsOnDevice(st, save = saveNonAiSettings, onBack = backToHome)

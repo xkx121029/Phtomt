@@ -10,37 +10,28 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.overlay.OverlayDisplaySettings
-import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
-import kotlinx.coroutines.delay
 
 /**
  * 标定预览框的颜色。
@@ -51,7 +42,10 @@ import kotlinx.coroutines.delay
  */
 private val CalibrationGuideBorder = Color(0xFFFFD600)
 
-/** 界面效果页：运行时视觉反馈（点击光标 / 边缘光效 / 悬浮窗跑马灯） */
+/**
+ * 界面效果页：运行时视觉反馈的**精调项**（点击光标 / 边缘光效标定 / 悬浮窗跑马灯样式）。
+ * 显示与不显示的开关统一放在设置首页「常用」，本页不再重复。
+ */
 @Composable
 internal fun SettingsVisual(
     st: SettingsState,
@@ -62,38 +56,9 @@ internal fun SettingsVisual(
 ) {
     val context = LocalContext.current
     val activity = LocalActivity.current
-    // 浮层显示设置由浮层线的 OverlayDisplaySettings 统一读写（独立 prefs 文件）：
-    // 这里只做这一个写入口，正在运行的跑马灯/光效靠它自己的监听即时生效，无需重启。
-    var stepPlacement by remember { mutableStateOf(OverlayDisplaySettings.stepTextPlacement(context)) }
-    var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(context)) }
-    // 两个复选框是 stepPlacement 的展开形态：勾两处 = both，只勾顶部 = marquee，只勾卡片 = card
-    var marqueeOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.CARD) }
-    var cardOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.MARQUEE) }
-    var stepTextHint by remember { mutableStateOf(false) }
-
-    fun updateStepText(nextMarquee: Boolean, nextCard: Boolean) {
-        if (!nextMarquee && !nextCard) {
-            // 两处都取消会让描述无处可显。这里不静默变成空状态：
-            // 保持原勾选并就地提示一句，比把最后一枚复选框置灰更容易看懂为什么点不动
-            stepTextHint = true
-            return
-        }
-        val next = when {
-            nextMarquee && nextCard -> StepTextPlacement.BOTH
-            nextMarquee -> StepTextPlacement.MARQUEE
-            else -> StepTextPlacement.CARD
-        }
-        marqueeOn = nextMarquee
-        cardOn = nextCard
-        stepPlacement = next
-        OverlayDisplaySettings.setStepTextPlacement(context, next)
-    }
-    LaunchedEffect(stepTextHint) {
-        if (stepTextHint) {
-            delay(2_500)
-            stepTextHint = false
-        }
-    }
+    // 这一步只读开关状态用于决定标定预览要不要起；开关本身已统一收在设置首页「常用」面板，
+    // 本页不再提供第二处入口（同一开关只允许一处）。
+    val edgeLightingOn = remember { OverlayDisplaySettings.edgeLightingEnabled(context) }
 
     // 标定面板展开时起全屏预览；开关关掉就立刻收窗。
     // 这段原先挂在设置页根节点上，现在挪到本页：预览服务只服务这一个分区，
@@ -143,62 +108,9 @@ internal fun SettingsVisual(
             .padding(LocalNavClearance.current),
     ) {
         if (!embedded) {
-            SettingsPageHeader("界面效果", onBack, subtitle = "悬浮窗与执行时的视觉反馈，只影响观感")
+            SettingsPageHeader("界面效果", onBack, subtitle = "光标、光效标定与跑马灯样式；显示开关在设置首页「常用」")
             Spacer(Modifier.height(AppSpacing.Page))
         }
-
-        // ---- 桌面悬浮窗（总开关）----
-        // 从「任务行为」搬到这里：悬浮窗开关与跑马灯样式是同一件事，放在一起才算一个设置点
-        SettingsSection(
-            title = "桌面悬浮窗",
-            subtitle = "任务进度浮在桌面，关掉也不影响任务执行",
-            tone = SettingsTone.Brand,
-        ) {
-            SettingsToggleRow(
-                title = "启用桌面悬浮窗",
-                subtitle = "关闭后任务进度只在 App 内展示；下方的跑马灯样式仅在悬浮窗开启时可见",
-                value = st.floatingWindowEnabled,
-            ) {
-                st.floatingWindowEnabled = it
-                save()
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // ---- 逐步任务文字：两个复选框，勾哪就在哪画 ----
-        SettingsSection(
-            title = "逐步任务文字",
-            subtitle = "同一步的描述只画一遍：两处都勾就各显示一遍，只勾一处另一处就安静下来",
-            tone = SettingsTone.Brand,
-        ) {
-            CheckRow(
-                title = "顶部跑马灯",
-                subtitle = "描述在顶部光带滚动；不勾就整条不显示",
-                checked = marqueeOn,
-            ) { next ->
-                updateStepText(nextMarquee = next, nextCard = cardOn)
-            }
-            SettingsDivider()
-            CheckRow(
-                title = "任务卡状态行",
-                subtitle = "描述出现在任务卡里；不勾就只留「第 n/m 步」",
-                checked = cardOn,
-            ) { next ->
-                updateStepText(nextMarquee = marqueeOn, nextCard = next)
-            }
-            if (stepTextHint) {
-                // 只做一次性提示，不弹系统 Toast：提示就近放在控件下方，读到就知道怎么改
-                Text(
-                    "至少保留一处显示",
-                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
 
         // ---- 点击光标 ----
         SettingsSection(
@@ -235,16 +147,8 @@ internal fun SettingsVisual(
             subtitle = "任务执行时的屏幕边缘绿色光带",
             tone = SettingsTone.Brand,
         ) {
-            // 与上方「逐步任务文字」同一套复选框语言：这一组都是「要不要显示某一层」，不是开关总控
-            CheckRow(
-                title = "绿色边缘光效悬浮窗",
-                subtitle = "任务执行时在屏幕边缘显示绿色光带；不勾就不建窗口、不占触摸，任务照常执行",
-                checked = edgeLightingOn,
-            ) { next ->
-                edgeLightingOn = next
-                // 只写浮层线的这枚键：正在运行的光效由服务自己的监听即时收窗/复现
-                OverlayDisplaySettings.setEdgeLightingEnabled(context, next)
-            }
+            // 边缘光效的开关已移到设置首页「常用」面板（与跑马灯、任务卡状态行同组）；
+            // 本页只保留标定——标定是低频精调，值得独立一页，开关不是。
             Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
                 ExpandableCard(
                     title = "光效标定",
@@ -377,42 +281,3 @@ internal fun SettingsVisual(
     }
 }
 
-/**
- * 复选行：整行可点、可勾。
- *
- * 「逐步任务文字」和「绿色边缘光效」共用这一个：这组的语义是「要不要显示某一层」，
- * 不是单选互斥，也不是总开关，所以用 Checkbox 而不是 RadioButton / Switch。
- * 每行带一句说明，竖排才放得下完整句子。
- */
-@Composable
-private fun CheckRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = null)
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
-                ),
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
