@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,35 +24,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.Accent
+import com.phoneagent.ui.components.BrandMark
 import com.phoneagent.ui.theme.AppRadii
-import com.phoneagent.ui.theme.BrandNavy
+import com.phoneagent.ui.theme.BrandAnchor
+import com.phoneagent.ui.theme.BrandMarkTint
 import com.phoneagent.ui.theme.DurationPulse
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.motionSettings
 
-/** 品牌瓦片：深海军蓝 → 电光蓝紫 渐变，呼应应用图标主色调。放在页眉最左侧 */
+/**
+ * 品牌瓦片：玄青深锚底 + 「亮格」标记（VI v1.0）。
+ * 旧版是"深海军蓝 → 电光蓝紫"渐变加星芒图标——既撞 AI 通用皮肤，也与"不要蓝紫渐变"的
+ * 品牌口径冲突，已退役；标记与桌面图标、官网 favicon 共用同一套几何。
+ */
 @Composable
 internal fun BrandTile(size: Dp = 40.dp) {
     Box(
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(AppRadii.Tile))
-            .background(Brush.linearGradient(listOf(BrandNavy, Accent))),
+            .background(BrandAnchor),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            AppIcons.AutoAwesome,
-            contentDescription = null,
-            tint = Color.White,
-            modifier = Modifier.size(size * 0.5f),
-        )
+        BrandMark(size = size * 0.6f, tint = BrandMarkTint)
     }
 }
 
