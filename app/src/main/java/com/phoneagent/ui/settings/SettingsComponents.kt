@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -57,8 +57,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
@@ -226,9 +226,9 @@ internal fun ExpandableCard(
                         }
                         onExpandedChange?.invoke(newState)
                     }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
             ) {
                 Text(
                     title,
@@ -250,7 +250,7 @@ internal fun ExpandableCard(
                 enter = expandVertically(expandFrom = Alignment.Top),
                 exit = shrinkVertically(shrinkTowards = Alignment.Top),
             ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
                     content()
                 }
             }
@@ -276,7 +276,7 @@ internal fun <T> ReorderableColumn(
                     contentDescription = "长按拖动排序",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
-                        .padding(end = 8.dp)
+                        .padding(end = AppSpacing.Sm)
                         .pointerInput(item) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = { dragAcc = 0f },
@@ -320,7 +320,7 @@ internal fun CalibrationSlider(
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
     ) {
         Text(
             label,
@@ -395,14 +395,14 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Item))
             .background(AppSurfaceMuted)
-            .padding(top = 20.dp, bottom = 12.dp),
+            .padding(top = AppSpacing.Page, bottom = AppSpacing.Md),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(background)
-                .padding(horizontal = 16.dp, vertical = padV.dp),
+                .padding(horizontal = AppSpacing.Lg, vertical = padV.dp),
         ) {
             Text(
                 marqueePreviewText,
@@ -424,7 +424,7 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
 internal fun MarqueePhasePreview(padV: Int) {
     Column {
         MarqueeCapsuleMock(SolidColor(Color(FloatingUi.phaseColor("ACTING"))), padV)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
@@ -449,7 +449,7 @@ internal fun MarqueePhasePreview(padV: Int) {
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(AppSpacing.Sm))
         Text(
             "跑马灯底色随阶段切换，无需自定义配色",
             style = MaterialTheme.typography.bodySmall,
@@ -480,7 +480,7 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
             Brush.horizontalGradient(colors + colors.first())
         }
         MarqueeCapsuleMock(brush, padV)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
         Text(
             when {
                 selected.size >= 2 -> "已选 ${selected.size} 色（按选择顺序渐变，最多 6 色）"
@@ -490,10 +490,10 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(10.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spacer(Modifier.height(AppSpacing.Md))
+        Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
             presets.chunked(4).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                     row.forEach { c ->
                         val idx = selected.indexOf(c.toLong())
                         val isSel = idx >= 0
@@ -537,7 +537,7 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(AppSpacing.Sm))
         androidx.compose.material3.TextButton(
             onClick = {
                 buzz()
@@ -581,8 +581,8 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadii.Chip))
             .background(AppTheme.colors.surfaceRaised)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(AppSpacing.Xs),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
     ) {
         modes.forEach { id ->
             val selected = current == id
@@ -592,7 +592,7 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
                     .clip(RoundedCornerShape(AppRadii.Chip))
                     .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
                     .clickable { onSelect(id) }
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = AppSpacing.Sm),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -611,7 +611,7 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
 /** 能力徽章：识图 / 纯文字 / 工具。null = 未测出，与"不支持"分开显示 */
 @Composable
 internal fun AbilityBadges(vision: Boolean?, tools: Boolean?) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
         when (vision) {
             true -> CapChip("识图 ✓", true)
             false -> CapChip("纯文字", false)
@@ -646,7 +646,7 @@ private fun CapChip(text: String, state: Boolean?) {
             text,
             style = MaterialTheme.typography.labelSmall,
             color = fg,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xs),
         )
     }
 }
@@ -683,7 +683,7 @@ internal fun EndpointCard(
         color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
             LabeledField("API 地址") {
                 OutlinedTextField(
                     value = baseUrl,
@@ -692,7 +692,7 @@ internal fun EndpointCard(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
             LabeledField("API Key") {
                 OutlinedTextField(
                     value = apiKey,
@@ -702,9 +702,9 @@ internal fun EndpointCard(
                 )
             }
             if (onProtocol != null) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 LabeledField("接口协议") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                         ApiProtocol.entries.forEach { p ->
                             FilterChip(
                                 selected = protocol == p.id,
@@ -715,10 +715,10 @@ internal fun EndpointCard(
                     }
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 OutlinedButton(
@@ -745,7 +745,7 @@ internal fun EndpointCard(
                 }
             }
             hint?.let {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -784,10 +784,10 @@ internal fun RoleRow(
                 modifier = Modifier
                     .weight(1f)
                     .clickable { buzz(); onClick() }
-                    .padding(vertical = 14.dp, horizontal = 4.dp),
+                    .padding(vertical = AppSpacing.Lg, horizontal = AppSpacing.Xs),
             ) {
                 Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     model.ifBlank { "未指定模型" },
                     style = MaterialTheme.typography.bodyLarge,
@@ -801,14 +801,14 @@ internal fun RoleRow(
                 )
             }
             if (showToggle) {
-                Switch(checked = enabled, onCheckedChange = onToggle, modifier = Modifier.padding(end = 12.dp))
+                Switch(checked = enabled, onCheckedChange = onToggle, modifier = Modifier.padding(end = AppSpacing.Md))
             } else {
                 Icon(
                     AppIcons.ChevronRight,
                     contentDescription = "更换模型",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     modifier = Modifier
-                        .padding(end = 12.dp)
+                        .padding(end = AppSpacing.Md)
                         .size(20.dp),
                 )
             }
@@ -859,7 +859,7 @@ internal fun ModelImportDialog(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
         ) {
             androidx.compose.material3.TextButton(
                 onClick = {
@@ -903,7 +903,7 @@ internal fun ModelImportDialog(
                             buzz()
                             if (checked) picked.remove(name) else picked.add(name)
                         }
-                        .padding(vertical = 4.dp, horizontal = 4.dp),
+                        .padding(vertical = AppSpacing.Xs, horizontal = AppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {

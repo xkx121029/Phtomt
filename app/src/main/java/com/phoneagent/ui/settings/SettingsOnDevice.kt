@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +33,7 @@ import com.phoneagent.device.vision.VisionModelDownloader
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.theme.AppSpacing
 
 /**
  * 端侧视觉页：3B 视觉模型（Qwen2.5-VL）已整体并入主程序进程内运行，
@@ -76,7 +77,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("端侧视觉", onBack, subtitle = "本地 3B 模型，识别在本机完成，截图不出设备")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // ========== A 模型状态 ==========
         SettingsSection(
@@ -84,19 +85,19 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             subtitle = "Qwen2.5-VL-3B · llama.cpp 端侧推理",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 SettingsStatusRow("原生推理库", if (nativeOk) "可用" else "不可用（需 arm64 设备）")
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 SettingsStatusRow("模型文件", if (modelPresent) "已下载" else "未下载")
                 // 两个模型文件的本地体积：未下载时显示 0 B，下载中断时能看到已落盘的部分
                 SettingsStatusRow("主权重", formatBytes(fileStatus[NativeVisionEngine.TEXT_MODEL_FILE] ?: 0L))
                 SettingsStatusRow("视觉投影", formatBytes(fileStatus[NativeVisionEngine.MMPROJ_FILE] ?: 0L))
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 SettingsStatusRow("内存加载", if (loaded) "已加载" else "未加载")
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== B 下载与加载 ==========
         SettingsSection(
@@ -104,19 +105,19 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             subtitle = "模型合计约 3.1GB，下载支持断点续传，中断后可继续",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 if (downloading) {
                     Text(
                         "正在下载：$currentFile · ${formatBytes(progressBytes)} / ${formatBytes(totalBytes)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     LinearProgressIndicator(
                         progress = { (progressBytes.toFloat() / totalBytes).coerceIn(0f, 1f) },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     OutlinedButton(
                         onClick = {
                             buzz()
@@ -159,7 +160,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
                     ) { Text(if (modelPresent) "重新下载模型（约 3.1GB）" else "一键下载模型（约 3.1GB）") }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedButton(
                     onClick = {
                         buzz()
@@ -174,7 +175,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (loaded) "模型已加载" else "加载模型") }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedButton(
                     onClick = {
                         buzz()
@@ -193,7 +194,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
                 ) { Text(if (testing) "识别测试中…" else "识别测试") }
 
                 hint?.let { s ->
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         s,
                         style = MaterialTheme.typography.bodySmall,
@@ -203,7 +204,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== C 运行开关 ==========
         SettingsSection(title = "运行开关", tone = SettingsTone.Brand) {
@@ -226,7 +227,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 

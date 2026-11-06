@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +34,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
 import java.util.Locale
+import com.phoneagent.ui.theme.AppSpacing
 
 /** 长线任务设置页：执行策略热切换 + 断点续传 + 任务模板库 */
 @Composable
@@ -68,7 +69,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("长线任务", onBack, subtitle = "执行策略、断点续传与任务模板库")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // ===== 执行策略热切换 =====
         SettingsSection(
@@ -76,7 +77,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             subtitle = "智能=模板命中按脚本、否则逐步；脚本=复用已生成计划自主推进；逐步=每步云端决策（最稳）",
             tone = SettingsTone.Cool,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 val options = listOf(
                     ExecutionStrategy.AUTO to "智能",
                     ExecutionStrategy.SCRIPT to "脚本",
@@ -100,7 +101,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ===== 断点续传 =====
         SettingsSection(
@@ -117,11 +118,11 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                         // 既不会改变显示，又会被 lint 判为 composable 内"不可观察地读取语言环境"
                         "\n保存于 ${timestampText(ck.updatedAt)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
                 )
                 OutlinedButton(
                     onClick = { vm.resumeFromCheckpoint() },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.Lg).padding(bottom = AppSpacing.Md),
                 ) {
                     Text("续传此任务")
                 }
@@ -130,12 +131,12 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                     "暂无已保存的任务检查点。任务执行中会自动保存进度。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ===== 任务模板库 =====
         SettingsSection(
@@ -148,14 +149,14 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                     "暂无模板。软件内置了常用任务模板，任务完成后可经你确认把执行步骤保存为自定义模板，供下次复用。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
                 )
             } else {
                 templates.forEachIndexed { i, t ->
                     if (i > 0) SettingsDivider(inset = false)
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
                         Text(t.goal, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(AppSpacing.Xs))
                         Text(
                             "${t.plan.steps.size} 步 · 执行 ${t.executionCount} 次 · 成功 ${t.successCount} 次" +
                                 if (t.failedStreak >= 3) " · 已失效（自动改走云端）" else
@@ -170,7 +171,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
                                     "软件内置（只读）",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(end = 8.dp),
+                                    modifier = Modifier.padding(end = AppSpacing.Sm),
                                 )
                             } else {
                                 TextButton(onClick = { vm.deleteTemplate(context, t.id); refresh() }) { Text("删除") }
@@ -181,7 +182,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 

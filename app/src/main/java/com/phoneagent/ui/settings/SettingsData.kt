@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +37,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppRadii
 
 /**
@@ -74,7 +75,7 @@ internal fun SettingsData(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("数据与记忆", onBack, subtitle = "页面记忆、导出、清空与恢复默认；清空后不可撤销")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // ---- 页面记忆（从「任务行为」并入这里：记忆开关与清空动作放在同一页）----
         SettingsSection(
@@ -92,7 +93,7 @@ internal fun SettingsData(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "导出",
@@ -127,7 +128,7 @@ internal fun SettingsData(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "AI 记忆",
@@ -174,7 +175,7 @@ internal fun SettingsData(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "调试记录与任务",
@@ -208,14 +209,14 @@ internal fun SettingsData(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "恢复默认设置",
             subtitle = "清空 API 地址与密钥、模型库、执行与界面参数，回到首次安装的状态",
             tone = SettingsTone.Neutral,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 // 整机重置不可撤销：按钮点一次变红字确认，再点才执行
                 var armed by remember { mutableStateOf(false) }
                 OutlinedButton(
@@ -228,7 +229,7 @@ internal fun SettingsData(
                             armed = true
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm),
                 ) {
                     Text(
                         if (armed) "再点一次确认恢复（不可撤销）" else "恢复默认设置",
@@ -239,7 +240,7 @@ internal fun SettingsData(
         }
 
         message?.let {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             Text(
                 it,
                 style = MaterialTheme.typography.bodySmall,
@@ -248,7 +249,7 @@ internal fun SettingsData(
             )
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -277,7 +278,7 @@ private fun DataActionRow(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = AppSpacing.Lg, end = AppSpacing.Sm, top = AppSpacing.Md, bottom = AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(

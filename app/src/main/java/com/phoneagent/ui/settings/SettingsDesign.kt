@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -108,7 +108,7 @@ internal fun SettingsSection(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = if (subtitle != null) 10.dp else 6.dp),
+                    .padding(start = AppSpacing.Page, end = AppSpacing.Page, top = AppSpacing.Page, bottom = if (subtitle != null) AppSpacing.Md else AppSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
@@ -125,7 +125,7 @@ internal fun SettingsSection(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     )
                     if (subtitle != null) {
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(AppSpacing.Xxs))
                         Text(
                             subtitle,
                             style = MaterialTheme.typography.bodySmall,
@@ -136,7 +136,7 @@ internal fun SettingsSection(
                 trailing?.invoke()
             }
             Column(Modifier.fillMaxWidth()) { content() }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
         }
     }
 }
@@ -163,7 +163,7 @@ internal fun SettingsDivider(inset: Boolean = true) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(start = if (inset) 74.dp else 16.dp, end = 16.dp)
+            .padding(start = if (inset) 74.dp else AppSpacing.Lg, end = AppSpacing.Lg)
             .height(0.5.dp)
             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     )
@@ -193,9 +193,9 @@ internal fun SettingsRow(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
     ) {
         Box(
             modifier = Modifier
@@ -265,14 +265,14 @@ internal fun SettingsPageHeader(title: String, onBack: () -> Unit, subtitle: Str
             ) {
                 Icon(AppIcons.ArrowBack, contentDescription = "返回", modifier = Modifier.size(22.dp))
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.Lg))
         }
         Text(
             title,
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
         )
         if (subtitle != null) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(AppSpacing.Xs))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodyMedium,
@@ -293,8 +293,8 @@ internal fun SettingsToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Md),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -303,7 +303,7 @@ internal fun SettingsToggleRow(
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
             )
             if (!subtitle.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -323,7 +323,7 @@ internal fun LabeledField(label: String, content: @Composable () -> Unit) {
             label,
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.padding(bottom = AppSpacing.Sm),
         )
         content()
     }
@@ -355,7 +355,7 @@ internal fun SettingsChoiceChip(
         },
     ) {
         Box(
-            modifier = Modifier.padding(vertical = 12.dp),
+            modifier = Modifier.padding(vertical = AppSpacing.Md),
             contentAlignment = Alignment.Center,
         ) {
             Text(

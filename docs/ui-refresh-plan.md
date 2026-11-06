@@ -115,7 +115,40 @@ Agent / Coding 两套气质可切换。约束：Material 3 Expressive、emilkowa
 - `docs/ui-shots/phase1-06-free-mode-warning.png`：自由模式选中态与后果说明
 - `docs/ui-shots/phase1-07-keep-one-hint.png`：取消最后一个复选框时的就地提示
 
-## 五、跨线依赖
+## 五、阶段二落地：纯色面与尺寸令牌（本次）
+
+### 改了什么
+
+- **去掉玻璃质感**：[Glass.kt](../../app/src/main/java/com/phoneagent/ui/components/Glass.kt) 的浮层面改为
+  不透明 `surfaceRaised` + 一道 `outlineSoft` 发丝描边，删除背景模糊、tint 叠色与顶部受光高光。
+  顶栏、输入区、悬浮导航栏全部由「磨砂玻璃」变为实色工具面板，滚动内容不再从下方透出。
+- **间距 / 圆角收令牌**：设置包内 `padding`、`spacedBy`、`Spacer` 与 `RoundedCornerShape` 的裸 dp
+  统一换成 `AppSpacing` / `AppRadii`，并把 3/6/10/14/18/28 这些零散值收进 4pt 刻度
+  （`Xxs=2 / Xs=4 / Sm=8 / Md=12 / Lg=16 / Page=20 / Xl=24 / Xxl=32`）。
+- **大字号修正**：首页「主模型」行原本模型名与右侧摘要抢宽度，1.35x 下会被省略；
+  改为「模型名一行、线路一行」的竖排，模型名不再截断。
+- **文案中文化**：底部 Tab `Coding` → `编码`，编码页标题、工作台视图名、设置摘要里的 `个 Tab` 一并改为中文。
+
+### 量化对比
+
+| 指标 | 改前 | 改后 |
+|---|---|---|
+| 设置包裸 dp 字面量（`\d.dp`，不含他人正在改的 SettingsQuickStart.kt） | 497 | 65 |
+| 其中间距/圆角上下文 | 约 430 | 0（全部走 `AppSpacing` / `AppRadii`） |
+| 浮层材质 | Haze 背景模糊 + 半透明 tint + 高光 | 不透明纯色面 + 发丝线 |
+| 大字号 1.35x 模型名 | 被省略号截断 | 完整显示 |
+
+剩余 65 处是组件固定尺寸（图标、指示条、预览框、标定尺）与调色板色块，不属于间距刻度，保留字面量。
+
+### 自查
+
+- 深色（默认玄青板）：`docs/ui-shots/phase2-01-settings-solid.png`
+- 系统字体 1.35x：`docs/ui-shots/phase2-02-font135-settings.png`、`phase2-03-font135-quickpanel.png`
+  —— 复选框标题、说明、分组卡片均无截断/压叠；仅线路 URL 因过长省略，属预期。
+- 对比度：正文 `onSurface` / 次要文字 `onSurfaceVariant` / 错误文案 `error`，均为色板令牌，
+  未出现自定义低对比灰字；装饰性箭头保留 45% 透明度，不承载信息。
+
+## 六、跨线依赖
 
 - 助理角色：已接入 `docs/assistant-role-contract.md` + `engine/runtime/AssistantRolePlan.kt`，
   按钮文案、说明、失败原因、跳转候选标签全部取自契约，UI 侧不再自写说法。

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -27,7 +26,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.icons.AppIcons
@@ -163,6 +161,15 @@ internal fun SettingsQuickPanel(
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                 )
                 Spacer(Modifier.height(AppSpacing.Xxs))
+                // 模型名与线路各占一行：模型名不再和右侧控件抢宽度，大字号下也不会被挤成省略号
+                Text(
+                    text = st.model.ifBlank { "未选模型" },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    color = if (st.model.isBlank()) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     // 线路名与模型名分开写：只说「已配置」看不出走的是哪条线
                     text = "线路：" + st.baseUrl.let { endpointHost(it) }.ifBlank { "未配置" },
@@ -172,15 +179,6 @@ internal fun SettingsQuickPanel(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = st.model.ifBlank { "未选模型" },
-                style = MaterialTheme.typography.labelLarge,
-                color = if (st.model.isBlank()) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 148.dp),
-            )
             Icon(
                 AppIcons.ChevronRight,
                 contentDescription = null,

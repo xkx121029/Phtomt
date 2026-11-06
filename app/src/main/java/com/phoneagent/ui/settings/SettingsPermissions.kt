@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -52,6 +52,8 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.home.PermissionRadar
+import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import kotlinx.coroutines.launch
 
@@ -94,7 +96,7 @@ internal fun SettingsPermissions(
             onBack = onBack,
             subtitle = "授予系统权限，配置 shell 执行通路",
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // 服务组件：无障碍 / 内置 Shizuku / Termux 三条通道都运行在独立应用
         // com.phoneagent.provider 里（随包附带的 APK，经 AIDL 调用），
@@ -162,7 +164,7 @@ internal fun SettingsPermissions(
                     watchdogBusy = false
                 }
             }
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Xs)) {
                 Text(
                     text = when {
                         installedVersion == null -> "未安装"
@@ -172,7 +174,7 @@ internal fun SettingsPermissions(
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = if (needsInstall) MaterialTheme.colorScheme.onSurface else Success,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Text(
                     "无障碍、内置 Shizuku、Termux 三条通道运行在独立服务组件中；" +
                         "其优点是主应用升级/重启不会导致无障碍掉线。",
@@ -189,14 +191,14 @@ internal fun SettingsPermissions(
                         !channelConnected -> "通道未就绪：正在连接服务组件…"
                         else -> "通道已就绪"
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         status,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (ready) Success else MaterialTheme.colorScheme.error,
                     )
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Button(
                     onClick = {
                         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
@@ -219,14 +221,14 @@ internal fun SettingsPermissions(
                     )
                 }
                 if (installedVersion != null) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     OutlinedButton(
                         onClick = { AgentAccessibilityService.openSettings(context) },
                         enabled = !a11yEnabled,
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (a11yEnabled) "无障碍服务已开启" else "开启无障碍服务") }
                     if (!a11yEnabled) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         Text(
                             "无障碍服务未开启：AI 暂时无法读取屏幕与点击操作，请在系统设置中打开「Happy Agent 自动操作」（属于服务组件应用）。",
                             style = MaterialTheme.typography.bodySmall,
@@ -238,13 +240,13 @@ internal fun SettingsPermissions(
                             Build.MANUFACTURER.contains("iqoo", ignoreCase = true) ||
                             Build.VERSION.SDK_INT >= 33
                         ) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(AppSpacing.Sm))
                             Column(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(AppRadii.Chip))
                                     .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f))
-                                    .padding(10.dp),
+                                    .padding(AppSpacing.Md),
                             ) {
                                 Text(
                                     "若开关开了又被自动弹回（vivo/OriginOS 及 Android 13+ 常见）：\n" +
@@ -260,7 +262,7 @@ internal fun SettingsPermissions(
                     }
 
                     // ---- 执行通道自检：五步实测，每步给出真实数值，不用对着「已安装」猜 ----
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     OutlinedButton(
                         onClick = {
                             if (selfTestRunning) return@OutlinedButton
@@ -274,17 +276,17 @@ internal fun SettingsPermissions(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text(if (selfTestRunning) "正在自检…" else "运行执行通道自检") }
                     selfTestSteps?.let { steps ->
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         steps.forEach { step ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.Xs),
                                 verticalAlignment = Alignment.Top,
                             ) {
                                 Text(
                                     text = if (step.ok) "✓" else "✕",
                                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                     color = if (step.ok) Success else MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.padding(end = 8.dp),
+                                    modifier = Modifier.padding(end = AppSpacing.Sm),
                                 )
                                 Column(Modifier.weight(1f)) {
                                     Text(
@@ -310,7 +312,7 @@ internal fun SettingsPermissions(
                         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
                         @Suppress("MaxLineLength")
                         val w = watchdog!!
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(AppSpacing.Md))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 "看门狗与保活",
@@ -354,20 +356,20 @@ internal fun SettingsPermissions(
                         // 看门狗对无障碍掉线无能为力（静默 no-op）——必须让用户看见这一点，
                         // 否则表现为"开了自动修复但开关还是被关"且毫无线索
                         if (!w.canRepairA11y && w.shizukuState != 2) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(AppSpacing.Sm))
                             Column(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(AppRadii.Chip))
                                     .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
-                                    .padding(10.dp),
+                                    .padding(AppSpacing.Md),
                             ) {
                                 Text(
                                     "自动修复当前不可用：既无安全设置写入授权，Shizuku 也未连接。无障碍被系统关闭后将无法自动恢复。",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )
-                                Spacer(Modifier.height(4.dp))
+                                Spacer(Modifier.height(AppSpacing.Xs))
                                 // 最省事的修复路径：电脑连一次手机执行一条 adb 授权，
                                 // 此后直写链路永久生效（无需 Shizuku 常驻）
                                 Text(
@@ -379,7 +381,7 @@ internal fun SettingsPermissions(
                             }
                         }
                         if (w.lastRepairMessage.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(AppSpacing.Xs))
                             Text(
                                 "最近动作：${w.lastRepairMessage}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -389,7 +391,7 @@ internal fun SettingsPermissions(
                         // 崩溃现场：无障碍"开了又自己关"多数是服务进程异常被系统停用，
                         // 这里透出 Provider 全局兜底记录的最近一次异常，便于定位根因
                         if (w.lastCrashMessage.isNotBlank()) {
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(AppSpacing.Xs))
                             Text(
                                 "最近一次异常（第 ${w.crashCount} 次，已被兜底拦截）：${w.lastCrashMessage.lineSequence().firstOrNull()}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -400,13 +402,13 @@ internal fun SettingsPermissions(
                         // 此时看门狗会自动重置最多 3 次；仍失败说明是被 ROM 冻结/省电策略杀掉，
                         // 只能靠系统级保活设置解决，必须明确告知用户下一步动作
                         if (w.a11yEnabledInList && !w.a11yConnected) {
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(AppSpacing.Sm))
                             Column(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(AppRadii.Chip))
                                     .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
-                                    .padding(10.dp),
+                                    .padding(AppSpacing.Md),
                             ) {
                                 Text(
                                     if (w.a11yMasterEnabled) {
@@ -421,7 +423,7 @@ internal fun SettingsPermissions(
                                 )
                                 // 无安全设置写入授权、又没有 Shizuku 时，看门狗无法自行重置故障态，
                                 // 唯一可靠的恢复手段就是用户手动关再开一次——给出一键跳转，别让用户自己找
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(AppSpacing.Sm))
                                 androidx.compose.material3.OutlinedButton(
                                     onClick = {
                                         runCatching { AgentAccessibilityService.openSettings(context) }
@@ -438,7 +440,7 @@ internal fun SettingsPermissions(
                                     Build.BRAND.contains("redmi", ignoreCase = true) ||
                                     Build.BRAND.contains("poco", ignoreCase = true)
                                 if (miui) {
-                                    Spacer(Modifier.height(6.dp))
+                                    Spacer(Modifier.height(AppSpacing.Sm))
                                     androidx.compose.material3.OutlinedButton(
                                         onClick = {
                                             val jumped = runCatching {
@@ -466,15 +468,15 @@ internal fun SettingsPermissions(
                         }
 
                         // ---- 系统保活设置：ROM 的进程冻结是无障碍"故障"的首因，应用无法自行设置 ----
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(AppSpacing.Md))
                         Text("系统保活设置", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(AppSpacing.Xxs))
                         Text(
                             "在服务组件（无界面应用）的应用信息里把「省电策略」设为「无限制」，并在 i管家/安全中心里允许自启动。这些设置只能由系统界面完成。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         OutlinedButton(
                             onClick = {
                                 runCatching {
@@ -488,7 +490,7 @@ internal fun SettingsPermissions(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("打开电池优化设置") }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         OutlinedButton(
                             onClick = {
                                 runCatching {
@@ -504,16 +506,16 @@ internal fun SettingsPermissions(
                         ) { Text("打开服务组件应用信息（省电策略/自启动）") }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "系统权限", subtitle = "点击未授权项跳转对应授权页", tone = SettingsTone.Warm) {
-                Column(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg)) {
                     androidx.compose.foundation.layout.Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.Xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -525,13 +527,13 @@ internal fun SettingsPermissions(
                         // 去系统设置授完权再回来，本页不会自行重组，留一个手动刷新的入口
                         TextButton(onClick = { vm.refreshPermissions(context) }) { Text("重新检测") }
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     PermissionRadar(permissions, context, vm)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.Lg))
 
             // 系统级入口：数字助理角色（长按电源键唤起）与通知感知（AI 的通知维度上下文）。
             // 两者都是系统授权，不进权限雷达（雷达枚举的是运行时权限），单独给一区引导。
@@ -555,13 +557,13 @@ internal fun SettingsPermissions(
                     }
                 }
                 val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Xs)) {
                     Text(
                         rolePlan.explanation,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     // 区块内的主操作统一满宽按钮，与端侧视觉/数据页的行动按钮同一语言
                     Button(
                         enabled = rolePlan.primaryAction != AssistantPrimaryAction.NONE,
@@ -607,7 +609,7 @@ internal fun SettingsPermissions(
                     // 说明区：不能弹授权框的原因 / 失败原因，全部是契约里的中文成品
                     val explain = roleHint ?: rolePlan.requestBlockedReason
                     if (explain != null) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         Text(
                             explain,
                             style = MaterialTheme.typography.bodySmall,
@@ -617,7 +619,7 @@ internal fun SettingsPermissions(
 
                     // 候选链：按 ROM 兼容度排序，逐个可点；文案同样来自契约
                     if (rolePlan.primaryAction == AssistantPrimaryAction.OPEN_SETTINGS || roleHint != null) {
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(AppSpacing.Xxs))
                         rolePlan.redirects.forEach { redirect ->
                             TextButton(
                                 onClick = {
@@ -633,13 +635,13 @@ internal fun SettingsPermissions(
                             }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     Text(
                         "通知感知：开启后 AI 能读到通知（验证码/提醒），并支持「读取通知/清理通知」技能。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     androidx.compose.material3.OutlinedButton(
                         enabled = !notifEnabled,
                         onClick = {
@@ -674,7 +676,7 @@ internal fun SettingsPermissions(
                     save()
                 }
                 if (st.externalControlEnabled) {
-                    Column(Modifier.padding(horizontal = 18.dp)) {
+                    Column(Modifier.padding(horizontal = AppSpacing.Page)) {
                         androidx.compose.material3.OutlinedTextField(
                             value = st.externalControlToken,
                             onValueChange = { st.externalControlToken = it; save() },
@@ -683,33 +685,33 @@ internal fun SettingsPermissions(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(AppSpacing.Xs))
                         if (tokenTooShort) {
                             Text(
                                 "口令少于 8 位时，任何应用都能伪造广播下发任务；请补足后再使用。",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            Spacer(Modifier.height(4.dp))
+                            Spacer(Modifier.height(AppSpacing.Xs))
                         }
                         Text(
                             "广播示例：action=com.phoneagent.action.EXTERNAL_RUN_TASK，extras：text=任务内容、token=口令",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.Lg))
 
             SettingsSection(
                 title = "执行通道优先级",
                 subtitle = "shell 执行通路的优先顺序（内置 Shizuku 为主，Termux 可选）",
                 tone = SettingsTone.Warm,
             ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Xs)) {
                     val channels = listOf(
                         "AUTO" to "自动",
                         "SHIZUKU" to "Shizuku",
@@ -726,7 +728,7 @@ internal fun SettingsPermissions(
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         when (st.executionChannel) {
                             "SHIZUKU" -> "仅认 Shizuku 服务就绪；未启动时可在下方一键启动。"
@@ -736,19 +738,19 @@ internal fun SettingsPermissions(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.Lg))
 
         // 执行通道：内置 Shizuku（一键启动 / 首次引导）+ Termux 探测。
         // 收进与分区同层的 20dp 栅格，卡片不再铺到屏幕边缘
         ShizukuChannelCard(vm)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
         TermuxChannelCard(vm)
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -803,12 +805,12 @@ private fun WatchdogRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = AppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(AppSpacing.Xxs))
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,

@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +37,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
@@ -62,8 +63,8 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
     val needsPairing = adbStatus.isUserActionRequired || adbStatus.phase == AdbPhase.FAILED
 
     AppCard {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(AppSpacing.Lg), verticalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
                 Box(Modifier.size(12.dp).background(
                     if (channelReady) Success
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -114,7 +115,7 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm), modifier = Modifier.fillMaxWidth()) {
                     Button(
                         onClick = {
                             vm.startAdbDiscovery()
@@ -180,11 +181,11 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
     LaunchedEffect(Unit) { vm.refreshTermuxStatus() }
 
     AppCard {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().padding(AppSpacing.Lg), verticalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
                 Box(
                     Modifier.size(12.dp).background(
@@ -219,7 +220,7 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(AppIcons.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(AppSpacing.Sm))
                     Text("前往 F-Droid 安装 Termux")
                 }
 
@@ -228,14 +229,14 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                 // 永远停在未授权」的原因。改为借内置 Shizuku 的 shell uid 直接 pm grant
                 !status.permissionGranted -> Column(
                     Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Xxs),
                 ) {
                     Button(
                         onClick = { vm.grantTermuxPermission() },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(AppIcons.Key, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(AppSpacing.Sm))
                         Text("授予执行权限")
                     }
                     TextButton(
@@ -249,7 +250,7 @@ internal fun TermuxChannelCard(vm: MainViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(AppIcons.Play, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(AppSpacing.Sm))
                     Text("实跑探测")
                 }
             }
@@ -322,7 +323,7 @@ internal fun AdbStepRow(index: Int, title: String, status: AdbStepStatus) {
         AdbStepStatus.ERROR -> MaterialTheme.colorScheme.error to MaterialTheme.colorScheme.onError
         AdbStepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant to MaterialTheme.colorScheme.surface
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
         Box(
             modifier = Modifier.size(24.dp).background(bg, CircleShape),
             contentAlignment = Alignment.Center,

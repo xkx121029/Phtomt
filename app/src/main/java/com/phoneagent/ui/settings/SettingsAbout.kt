@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import android.content.Intent
 import android.net.Uri
@@ -24,6 +24,7 @@ import com.phoneagent.BuildConfig
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.theme.AppSpacing
 
 /** 开源仓库地址：与推送远端一致（见项目 git remote） */
 private const val REPO_GITHUB = "https://github.com/xkx121029/Phtomt"
@@ -78,11 +79,11 @@ internal fun SettingsAbout(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("关于与帮助", onBack, subtitle = "版本信息、开源仓库与隐私边界")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // 应用标识：不放进带色相的分区，独立成一张中性卡，作为页面的题头
         SettingsPlainCard {
-            Column(Modifier.padding(18.dp)) {
+            Column(Modifier.padding(AppSpacing.Page)) {
                 Text(
                     "Happy Phone Agent",
                     style = MaterialTheme.typography.titleLarge,
@@ -93,7 +94,7 @@ internal fun SettingsAbout(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Text(
                     "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）" + channelSuffix(),
                     style = MaterialTheme.typography.bodySmall,
@@ -107,7 +108,7 @@ internal fun SettingsAbout(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "开源仓库",
@@ -119,7 +120,7 @@ internal fun SettingsAbout(
             LinkRow("Gitee", REPO_GITEE) { openLink(context, REPO_GITEE) }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "开源许可",
@@ -130,14 +131,14 @@ internal fun SettingsAbout(
             SettingsDivider(inset = false)
             LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
             SettingsDivider(inset = false)
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
                 Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
                 Bullet("Shizuku 主程序（server/starter）亦随「服务组件」一并分发，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "参考与致谢",
@@ -150,7 +151,7 @@ internal fun SettingsAbout(
             SettingsDivider(inset = false)
             LinkRow("Aether 扶摇（GPL-3.0）", AETHER_REPO) { openLink(context, AETHER_REPO) }
             SettingsDivider(inset = false)
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Bullet("Coda 是安卓端的 Agent 工具，其工程组织与运行时方案为本项目在同类问题上的取舍提供了参照")
                 Bullet("MobileGym 是面向移动 GUI Agent 的模拟研究平台，其任务设计与可验证思路为本项目的测试设计提供了参照")
                 Bullet("Aether 是安卓端的通用 AI Agent，本项目「进行中」状态的回显手法（过程弱化、结果成卡、思考中微光扫过文字）借鉴自它")
@@ -158,10 +159,10 @@ internal fun SettingsAbout(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "使用说明", tone = SettingsTone.Neutral) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Bullet("先在「AI 模型配置」里填好 API 地址与密钥并保存，配置未通过连接测试不会入库")
                 Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需完成「内置 Shizuku」的首次启动引导")
                 Bullet("在 Agent 页直接说需求即可；执行中会先给计划，你确认后才动手")
@@ -170,10 +171,10 @@ internal fun SettingsAbout(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "隐私说明", tone = SettingsTone.Neutral) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Bullet("日志、记忆与任务记录只存在本机，不会上传到本项目自己的服务器")
                 Bullet("执行任务时，当前页面的控件文字与截图会发送给你所配置的模型服务，用于决策")
                 Bullet("支付、密码、验证码等敏感页面为只读，AI 不会读取或输入其中内容")
@@ -182,7 +183,7 @@ internal fun SettingsAbout(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // 开发者工具：调试页与模型回归测试属于排查手段，不是日常功能，
         // 放在「关于」里而不是首页快捷入口——首页那几个位置应该留给用户真正会用的东西
@@ -208,7 +209,7 @@ internal fun SettingsAbout(
             )
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -217,7 +218,7 @@ internal fun SettingsAbout(
 private fun LinkRow(label: String, url: String, onClick: () -> Unit) {
     val buzz = rememberHapticClick()
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = AppSpacing.Lg, end = AppSpacing.Sm, top = AppSpacing.Md, bottom = AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -235,12 +236,12 @@ private fun LinkRow(label: String, url: String, onClick: () -> Unit) {
 /** 说明条目：圆点 + 正文 */
 @Composable
 private fun Bullet(text: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+    Row(Modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm)) {
         Text(
             "·",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = AppSpacing.Sm),
         )
         Text(
             text,

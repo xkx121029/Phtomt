@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -85,8 +85,8 @@ internal fun SettingsTheme(
             tone = SettingsTone.Brand,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
                 UiStyle.values().forEach { style ->
                     SelectableOption(
@@ -104,7 +104,7 @@ internal fun SettingsTheme(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "主题风格",
@@ -112,8 +112,8 @@ internal fun SettingsTheme(
             tone = SettingsTone.Brand,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
                 ThemeOption(
                     title = "标准",
@@ -142,7 +142,7 @@ internal fun SettingsTheme(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // 配色：整套品牌主色 + 底色（深浅跟随系统）。存 ThemePalette.id 字符串，
         // 落盘后 settingsFlow 驱动 PhoneAgentTheme 重组，整棵树立即换色，不用重启
@@ -152,8 +152,8 @@ internal fun SettingsTheme(
             tone = SettingsTone.Brand,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
                 ThemePalette.entries.forEach { palette ->
                     PaletteOption(
@@ -170,7 +170,7 @@ internal fun SettingsTheme(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // 磨砂浓淡：微调玻璃 tint 的透明度（相对色板默认 ±25 个百分点点），
         // 拖动只更新本地编辑态（数值跟手），松手才落盘——落盘后 settingsFlow 驱动
@@ -180,7 +180,7 @@ internal fun SettingsTheme(
             subtitle = "玻璃面板的透光度：向左更透，向右更实",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg)) {
                 // 实时预览样片：上面是"滚过玻璃下的内容"（彩色渐变 + 文字），
                 // 下面浮一块小玻璃板模拟页眉——tint 直接取滑杆的调节值，拖动跟手，
                 // 不用等落盘。真正落盘后全局玻璃面走的是同一个 alpha 位移实现点，
@@ -205,7 +205,7 @@ internal fun SettingsTheme(
                                     ),
                                 ),
                             )
-                            .padding(horizontal = 14.dp),
+                            .padding(horizontal = AppSpacing.Lg),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
@@ -232,13 +232,13 @@ internal fun SettingsTheme(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 10.dp)
+                            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md)
                             .height(44.dp),
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 14.dp),
+                                .padding(horizontal = AppSpacing.Lg),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
@@ -249,7 +249,7 @@ internal fun SettingsTheme(
                         }
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 LabeledField(
                     when {
                         st.glassTintOffset == 0 -> "浓淡  默认"
@@ -265,11 +265,11 @@ internal fun SettingsTheme(
                         steps = 9,
                     )
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -286,7 +286,7 @@ private fun StyleSwatch(style: UiStyle) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(7.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
         ) {
             when (style) {
                 UiStyle.CLASSIC -> {
@@ -351,9 +351,9 @@ private fun SelectableOption(
             .clickable { buzz(); onClick() },
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
             swatch()
             Column(Modifier.weight(1f)) {
@@ -363,7 +363,7 @@ private fun SelectableOption(
                     fontWeight = FontWeight.SemiBold,
                     color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
@@ -431,7 +431,7 @@ private fun PaletteSwatch(palette: ThemePalette) {
             listOf(c.surfaceRaised, c.surfaceBase, c.brand, c.accentCool).forEach { color ->
                 Box(
                     Modifier
-                        .padding(horizontal = 2.dp)
+                        .padding(horizontal = AppSpacing.Xxs)
                         .size(12.dp)
                         .background(color, CircleShape),
                 )

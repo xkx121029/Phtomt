@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -71,10 +71,10 @@ internal fun SettingsTabs(
         // ===== 工作台形态 =====
         SettingsSection(
             title = "工作台形态",
-            subtitle = "分开=操控 / 对话 / 编码各占一个 Tab；合一=操控与对话收进 Agent 页，编码仍在 Coding 页",
+            subtitle = "分开 = 操控 / 对话 / 编码各占一个选项卡；合一 = 操控与对话收进 Agent 页，编码仍单独一页",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 val unified = st.agentSurface == AgentSurface.UNIFIED
                 val options = listOf(
                     AgentSurface.SPLIT to "分开显示",
@@ -98,7 +98,7 @@ internal fun SettingsTabs(
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Text(
                     if (unified) {
                         "对话已并入 Agent 页：提问直接作答、要动手就按操控流程执行，由云端自动判断；" +
@@ -112,7 +112,7 @@ internal fun SettingsTabs(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ===== 启动默认页 =====
         // 候选只取「当前可见」的 Tab：隐藏的页选不了，避免选了个启动时根本不存在的落点。
@@ -124,7 +124,7 @@ internal fun SettingsTabs(
             subtitle = "打开软件直接落到这一页；所选页被隐藏时回落到主页",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 landingCandidates.forEachIndexed { index, spec ->
                     if (index > 0) SettingsDivider(inset = false)
                     LandingRow(
@@ -142,14 +142,14 @@ internal fun SettingsTabs(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
             title = "底部选项卡",
             subtitle = "主页与设置是固定出入口，不可隐藏",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 orderedIds.forEachIndexed { index, id ->
                     val spec = MainTabs.specOf(id) ?: return@forEachIndexed
                     if (index > 0) SettingsDivider(inset = false)
@@ -192,7 +192,7 @@ internal fun SettingsTabs(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -210,18 +210,18 @@ private fun LandingRow(
         modifier = Modifier
             .fillMaxWidth()
             .selectable(selected = selected, role = Role.RadioButton, onClick = onSelect)
-            .padding(vertical = 8.dp),
+            .padding(vertical = AppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = null)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(AppSpacing.Sm))
         Icon(
             spec.icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(20.dp),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(AppSpacing.Md))
         Text(
             spec.title,
             style = MaterialTheme.typography.bodyLarge.copy(
@@ -244,7 +244,7 @@ private fun TabConfigRow(
     onMoveDown: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -253,7 +253,7 @@ private fun TabConfigRow(
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(22.dp),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(AppSpacing.Md))
         Column(Modifier.weight(1f)) {
             Text(
                 spec.title,

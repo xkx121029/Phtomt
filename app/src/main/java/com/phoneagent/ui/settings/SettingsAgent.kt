@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,6 +29,7 @@ import com.phoneagent.feature.agentdoc.AgentDocRepository
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import com.phoneagent.ui.theme.AppSpacing
 
 /**
  * 任务行为页。
@@ -62,7 +63,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         )
         // 与全设置流程同一条骨架节奏：页头后 20 / 分区之间 16 / 结尾 28（不再用 spacedBy，
         // 否则页头与首区之间只有 16，和其他二级页对不上）
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // 动作模式（保守 / 均衡 / 自由）已移到设置首页「常用」面板：它是每次跑任务前最常改的一项，
         // 留在这里等于让用户多点两下；同一设置只保留首页那一处入口。
@@ -76,7 +77,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 save()
             }
             if (st.maxSteps > 0) {
-                Column(Modifier.padding(horizontal = 18.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Page)) {
                     LabeledField("最大步数  ${st.maxSteps}") {
                         Slider(
                             // 拖动只更新本地编辑态（数值即时跟手），松手才落盘，
@@ -88,12 +89,12 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                             steps = 10,
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 高级项：默认折叠，用到再展开（副屏 / 执行文档）----
         SettingsSection(
@@ -101,7 +102,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             subtitle = "特殊场景才需要；保持默认即可正常使用",
             tone = SettingsTone.Neutral,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 ExpandableCard(title = "副屏模式", initiallyExpanded = st.virtualDisplayEnabled) {
                     SettingsToggleRow(
                         title = "启用副屏模式",
@@ -115,7 +116,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // 云端执行文档：官网下发的操作手册（一篇 Markdown 一篇流程），任务命中才注入，
         // 规划与每步决策都会参考；与页面/铁律冲突时以页面与铁律为准（提示词里已写死）
@@ -133,7 +134,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 save()
             }
             if (st.docSyncEnabled) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Md)) {
                     LabeledField("文档服务地址") {
                         OutlinedTextField(
                             value = st.docBaseUrl,
@@ -143,7 +144,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { save() }) { Text("保存地址") }
                         TextButton(
@@ -169,7 +170,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                             valueRange = 5f..120f,
                         )
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         text = docSyncStatusText(st.docLastSyncAt, st.docCount, st.docLastError),
                         style = MaterialTheme.typography.bodySmall,
@@ -179,24 +180,24 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "提示词", subtitle = "发送给模型的语言与自定义系统提示词", tone = SettingsTone.Cool) {
-            Column(Modifier.padding(horizontal = 18.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Page)) {
                 Text(
                     "提示词语言",
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     "选择发送给 AI 的提示词语言（系统/决策/验证等 8 组 Prompt）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
                 ) {
                     listOf("CN" to "中文", "EN" to "English").forEach { (code, label) ->
                         // 单选胶囊统一走 SettingsChoiceChip（与更新渠道/主题选择同一套语言）
@@ -211,10 +212,10 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         )
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(AppSpacing.Lg))
             }
             SettingsDivider(inset = false)
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 // 自定义系统提示词是少数人才会动的项：默认收起，展开后才显示编辑器
                 ExpandableCard(
                     title = "自定义系统提示词",
@@ -225,7 +226,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     // 文本类改动不逐字落库：设置流会回灌编辑态，长文本（贴一段提示词）会与输入互抢光标
                     var draft by remember { mutableStateOf(st.systemPrompt) }
                     OutlinedTextField(
@@ -236,11 +237,11 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         maxLines = 10,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
                     ) {
                         Text(
                             when {
@@ -276,7 +277,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 

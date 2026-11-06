@@ -401,7 +401,7 @@ fun CodingScreen(
         GlassHeaderScaffold(
             modifier = Modifier.fillMaxSize(),
             header = if (showHeader) {
-                { AppTopBar(title = "Coding", subtitle = "vibecoding · 设备端编码 Agent") }
+                { AppTopBar(title = "编码", subtitle = "vibecoding · 设备端编码 Agent") }
             } else {
                 null
             },

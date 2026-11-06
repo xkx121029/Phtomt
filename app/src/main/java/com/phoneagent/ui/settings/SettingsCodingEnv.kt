@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +32,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import org.koin.compose.koinInject
 import kotlinx.coroutines.launch
@@ -75,7 +76,7 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK 17 · Gradle · Android SDK")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         EnvComponentSection(
             ui = ui,
@@ -83,16 +84,16 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
             onGrantStorage = { report(client.openStorageSetup()) },
             onOpenAllFiles = { openAllFilesAccessSettings(context) },
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         ToolchainSection(ui = ui, onRefresh = { scope.launch { client.refresh() } })
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         InstallSection(
             ui = ui,
             onInstall = { scope.launch { report(client.installEnvironment()) } },
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         BuildSection(
             ui = ui,
@@ -100,7 +101,7 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
         )
 
         TaskSection(ui = ui, onCancel = { client.cancel() })
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -117,20 +118,20 @@ private fun EnvComponentSection(
         subtitle = "targetSdk 28 的伴生应用：PRoot + Alpine Linux 的实际运行载体",
         tone = SettingsTone.Cool,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             Text(
                 installedText(ui),
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (ui.needsInstall) MaterialTheme.colorScheme.onSurface else Success,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
             Text(
                 "Android 10 起系统禁止 targetSdk ≥ 29 的应用执行私有目录里的程序，" +
                     "编码环境因此由独立组件承载，主应用只经 AIDL 驱动它。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             Button(
                 onClick = { buzz(); onInstall() },
                 enabled = ui.needsInstall,
@@ -145,7 +146,7 @@ private fun EnvComponentSection(
                 )
             }
             if (ui.installedVersion != null) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 OutlinedButton(
                     onClick = { buzz(); onGrantStorage() },
                     enabled = !ui.storageGranted,
@@ -155,7 +156,7 @@ private fun EnvComponentSection(
                 }
             }
             if (!ui.sharedWritable) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
                 TextButton(onClick = { buzz(); onOpenAllFiles() }) {
                     Text("开启本应用的「所有文件访问」")
                 }
@@ -178,14 +179,14 @@ private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit)
         subtitle = "按工程文件自动决定 Gradle 与 AGP 版本，不需要手填",
         tone = SettingsTone.Brand,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             if (toolchain == null || !toolchain.ready) {
                 Text(
                     "未识别到可构建的 Android 工程",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
                 Text(
                     "请在编码页切换到含 gradle-wrapper.properties 的工作区。",
                     style = MaterialTheme.typography.bodySmall,
@@ -200,7 +201,7 @@ private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit)
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 SettingsStatusRow("Gradle", "${toolchain.gradleVersion} · ${gradleSourceLabel(toolchain.gradleSource)}")
                 SettingsDivider(inset = false)
                 SettingsStatusRow("AGP", toolchain.agpVersion ?: "未识别")
@@ -209,7 +210,7 @@ private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit)
                 SettingsDivider(inset = false)
                 SettingsStatusRow("Build Tools", toolchain.buildTools)
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             OutlinedButton(onClick = { buzz(); onRefresh() }, modifier = Modifier.fillMaxWidth()) {
                 Text("重新识别")
             }
@@ -225,14 +226,14 @@ private fun InstallSection(ui: CodingEnvClient.UiState, onInstall: () -> Unit) {
         subtitle = "Linux 根文件系统 · JDK · Gradle · Android SDK · aapt2 兼容层",
         tone = SettingsTone.Warm,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             Text(
                 "全部从官方源下载：Alpine、Adoptium JDK、services.gradle.org、" +
                     "cmdline-tools 与 Ubuntu base（给 x86_64 版 aapt2 当运行库）。下载走缓存，重复安装不会重复下载。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             Button(
                 onClick = { buzz(); onInstall() },
                 enabled = ui.installedVersion != null && !ui.running && ui.toolchain?.ready == true,
@@ -241,7 +242,7 @@ private fun InstallSection(ui: CodingEnvClient.UiState, onInstall: () -> Unit) {
                 Text(if (ui.running) "任务执行中…" else "一键安装环境")
             }
             if (ui.envState.isNotEmpty()) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 EnvStateRows(ui.envState)
             }
         }
@@ -256,14 +257,14 @@ private fun BuildSection(ui: CodingEnvClient.UiState, onBuild: () -> Unit) {
         subtitle = "在设备内执行 Gradle 的 assembleDebug",
         tone = SettingsTone.Cool,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             Text(
                 "需要先完成一键安装。aapt2 只有 x86_64 版，arm64 设备上由 qemu-x86_64 + glibc " +
                     "转译执行，首次构建会慢一些。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             Button(
                 onClick = { buzz(); onBuild() },
                 enabled = ui.installedVersion != null && !ui.running && ui.toolchain?.ready == true,
@@ -273,7 +274,7 @@ private fun BuildSection(ui: CodingEnvClient.UiState, onBuild: () -> Unit) {
             }
             val path = ui.lastProjectPath
             if (path != null) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Text(
                     "构建目录：$path",
                     style = MaterialTheme.typography.bodySmall,
@@ -300,15 +301,15 @@ private fun TaskSection(ui: CodingEnvClient.UiState, onCancel: () -> Unit) {
         subtitle = "环境组件一次只跑一个任务，安装与构建共用这份进度",
         tone = SettingsTone.Neutral,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             if (ui.steps.isNotEmpty()) StepList(ui.steps)
             if (ui.logs.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 LogView(ui.logs)
             }
             val message = ui.message
             if (message != null) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Text(
                     message,
                     style = MaterialTheme.typography.bodyMedium,
@@ -316,7 +317,7 @@ private fun TaskSection(ui: CodingEnvClient.UiState, onCancel: () -> Unit) {
                 )
             }
             if (ui.running) {
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
                     Text("取消任务")
                 }

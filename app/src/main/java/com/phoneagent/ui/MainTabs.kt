@@ -39,7 +39,8 @@ object MainTabs {
     val all = listOf(
         MainTabSpec(HOME, "主页", AppIcons.Home),
         MainTabSpec(CHAT, "对话", AppIcons.Send),
-        MainTabSpec(CODING, "Coding", AppIcons.Code),
+        // 用户可见文案一律中文：不出现半截英文的 "Coding"
+        MainTabSpec(CODING, "编码", AppIcons.Code),
         MainTabSpec(AGENT, "操控", AppIcons.Bolt),
         MainTabSpec(MEMORY, "记忆", AppIcons.Memory),
         MainTabSpec(SETTINGS, "设置", AppIcons.Settings),

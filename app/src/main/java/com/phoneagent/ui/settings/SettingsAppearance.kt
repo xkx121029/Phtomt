@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween

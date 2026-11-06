@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.coding.env.CodingEnvClient
 import com.phoneagent.env.EnvApi
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -32,7 +34,7 @@ import java.util.Locale
 
 @Composable
 internal fun StepList(steps: List<CodingEnvClient.Step>) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
         steps.forEach { step ->
             val tint = when (step.state) {
                 EnvApi.STEP_OK -> Success
@@ -46,7 +48,7 @@ internal fun StepList(steps: List<CodingEnvClient.Step>) {
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(AppSpacing.Sm))
                 Text(
                     step.title,
                     style = MaterialTheme.typography.bodySmall,
@@ -64,9 +66,9 @@ internal fun LogView(lines: List<String>) {
     Box(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(AppRadii.Chip))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            .padding(10.dp),
+            .padding(AppSpacing.Md),
     ) {
         Text(
             lines.takeLast(8).joinToString("\n"),
@@ -86,7 +88,7 @@ internal fun EnvStateRows(state: Map<String, String>) {
         "aapt2" to state[EnvApi.STATE_AAPT2],
         "安装时间" to state[EnvApi.STATE_INSTALLED_AT]?.let(::formatInstalledAt),
     )
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
         rows.forEach { (label, value) ->
             if (value != null) SettingsStatusRow(label, value)
         }

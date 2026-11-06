@@ -400,7 +400,7 @@ private fun WorkbenchConfigPanel(
                     label = "默认视图",
                     options = listOf(
                         WorkbenchView.AGENT to "Agent",
-                        WorkbenchView.CODING to "Coding",
+                        WorkbenchView.CODING to "编码",
                     ),
                     selected = WorkbenchView.normalize(settings.workbenchView),
                     onSelect = { id -> onSave(settings.copy(workbenchView = id)) },

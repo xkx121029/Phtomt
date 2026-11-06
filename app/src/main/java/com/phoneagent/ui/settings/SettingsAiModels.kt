@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +41,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import kotlinx.coroutines.launch
 
@@ -124,7 +125,7 @@ private fun AiModelsPage(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // ========== A 端点 ==========
         SettingsSection(
@@ -132,13 +133,13 @@ private fun AiModelsPage(
             subtitle = "API 地址与密钥；一个端点下可以放多个模型",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 // 快捷预设：点一下填好地址 + 主/视觉/思考模型，并把它们写进端点与模型库
                 Text("快捷预设", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
                 ) {
                     ProviderPresets.all.forEach { preset ->
                         FilterChip(
@@ -155,23 +156,23 @@ private fun AiModelsPage(
                     }
                 }
                 presetHint?.let { hint ->
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(AppSpacing.Xs))
                     Text(
                         hint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Text(
                     "支持 http://、内网地址与 localhost（如 http://192.168.1.5:8000/v1），不写协议时自动补全",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
 
                 st.endpoints.toList().forEachIndexed { idx, ep ->
-                    if (idx > 0) Spacer(Modifier.height(10.dp))
+                    if (idx > 0) Spacer(Modifier.height(AppSpacing.Md))
                     EndpointCard(
                         baseUrl = ep.baseUrl,
                         apiKey = ep.apiKey,
@@ -221,7 +222,7 @@ private fun AiModelsPage(
                     )
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 val hasBlank = st.endpoints.any { it.baseUrl.isBlank() }
                 OutlinedButton(
                     onClick = {
@@ -234,7 +235,7 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== B 模型库（入口） ==========
         // 库里的模型通常几十上百条，平铺在本页会把端点与职责两件事挤散，故收进二级页
@@ -253,7 +254,7 @@ private fun AiModelsPage(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== C 职责分配 ==========
         SettingsSection(
@@ -279,7 +280,7 @@ private fun AiModelsPage(
                 value = st.enableChain,
             ) { st.enableChain = it }
 
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 val chainItems = remember { mutableStateListOf(*st.chainOrder.takeIf { it.isNotEmpty() }?.toTypedArray() ?: arrayOf("main", "vision", "reason")) }
                 ReorderableColumn(items = chainItems) { key, dragHandle ->
                     when (key) {
@@ -324,20 +325,20 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== D 功能选项 ==========
         SettingsSection(title = "功能选项", tone = SettingsTone.Brand) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Text("主模型识图", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     "自动 = 按模型库的探测结果决定：探测出能识图才把截图交给主模型，探测不出按不支持处理；" +
                         "强制开/关是你说了算，探测不参与",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 val mainVisionModes = listOf("自动" to "AUTO", "强制开" to "ON", "强制关" to "OFF")
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     mainVisionModes.forEachIndexed { i, (label, key) ->
@@ -349,15 +350,15 @@ private fun AiModelsPage(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Text("视觉读图方式", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     "自动 = 优先云端，失败回退本地 OCR",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 val visionModes = listOf("云端" to "CLOUD", "本地OCR" to "LOCAL", "自动" to "AUTO")
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     visionModes.forEachIndexed { i, (label, key) ->
@@ -369,7 +370,7 @@ private fun AiModelsPage(
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
             }
             SettingsDivider(inset = false)
             SettingsToggleRow(
@@ -383,7 +384,7 @@ private fun AiModelsPage(
                 subtitle = "仅当主模型支持看图时随消息附送截图；文本模型不抓屏，需要时由 AI 主动「看」再现场截一帧",
                 value = st.attachScreenshot,
             ) { st.attachScreenshot = it }
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 // 端侧 3B 视觉模型已并入主程序进程内，下载/加载/启用收在「设置 → 端侧视觉」
                 Text(
                     "端侧 3B 视觉模型在「设置 → 端侧视觉」中下载与启用",
@@ -393,7 +394,7 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 测试所有 API ----
         var testingAll by remember { mutableStateOf(false) }
@@ -403,7 +404,7 @@ private fun AiModelsPage(
             subtitle = "按 主模型 / 视觉模型 / 思考模型 逐项验证连接",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 OutlinedButton(
                     onClick = {
                         buzz()
@@ -435,7 +436,7 @@ private fun AiModelsPage(
                 apiResults.forEach { item ->
                     // 上下排列：错误详情含完整返回正文，需占满整行换行展示，避免被单行布局挤出屏幕
                     Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.Sm),
                     ) {
                         Text(item.label, style = MaterialTheme.typography.bodyMedium)
                         Text(
@@ -448,13 +449,13 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // 保存按钮：收进与分区同语言的中性卡（原先裸露在卡片外，与全页节奏对不上）
         var testing by remember { mutableStateOf(false) }
         var testError by remember { mutableStateOf<String?>(null) }
         SettingsPlainCard {
-            Column(Modifier.padding(16.dp)) {
+            Column(Modifier.padding(AppSpacing.Lg)) {
                 Button(
                     onClick = {
                         buzz()
@@ -481,7 +482,7 @@ private fun AiModelsPage(
                     Text(if (testing) "正在测试连接…" else "保存 AI 配置")
                 }
                 testError?.let {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
@@ -499,7 +500,7 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ========== E 语音输入 ==========
         // OpenAI 兼容 /audio/transcriptions 格式：硅基流动 / Groq / OpenAI / 自建 whisper 都适用
@@ -509,13 +510,13 @@ private fun AiModelsPage(
             subtitle = "长按聊天输入框说话后，用这个 API 转文字；留空则回退系统语音识别",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Text(
                     "填到版本号为止（如 https://api.siliconflow.cn/v1），请求会打到其下的 /audio/transcriptions",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedTextField(
                     value = st.asrBaseUrl,
                     onValueChange = { st.asrBaseUrl = it },
@@ -523,7 +524,7 @@ private fun AiModelsPage(
                     placeholder = { Text("API 地址，如 https://api.siliconflow.cn/v1") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 OutlinedTextField(
                     value = st.asrApiKey,
                     onValueChange = { st.asrApiKey = it },
@@ -531,7 +532,7 @@ private fun AiModelsPage(
                     placeholder = { Text("API 密钥") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 OutlinedTextField(
                     value = st.asrModel,
                     onValueChange = { st.asrModel = it },
@@ -539,7 +540,7 @@ private fun AiModelsPage(
                     placeholder = { Text("模型名，如 FunAudioLLM/SenseVoiceSmall") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedButton(
                     onClick = {
                         buzz()
@@ -551,7 +552,7 @@ private fun AiModelsPage(
                     },
                 ) { Text("保存语音配置") }
                 asrHint?.let { hint ->
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         hint,
                         style = MaterialTheme.typography.bodySmall,
@@ -561,7 +562,7 @@ private fun AiModelsPage(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 

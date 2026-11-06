@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -76,16 +76,16 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("软件更新", onBack, subtitle = "当前版本与接收渠道")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         // ---- 当前版本 + 检查 ----
         SettingsSection(title = "当前版本", tone = SettingsTone.Brand) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                    .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
             ) {
                 Box(
                     modifier = Modifier
@@ -128,12 +128,12 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 状态：查询结果 / 下载进度 / 安装结果 ----
         UpdateStatusSection(vm = vm, state = state, snackbar = snackbar)
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 接收频道 ----
         SettingsSection(
@@ -141,7 +141,7 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             subtitle = "选定渠道后只会收到同档与更稳定档的版本",
             tone = SettingsTone.Cool,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                     UpdateChannel.entries.forEach { ch ->
                         // 渠道芯片统一走 SettingsChoiceChip（与提示词语言/主题选择同一套选中语言，
@@ -158,7 +158,7 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 Text(
                     UpdateChannel.of(st.updateChannel).summary,
                     style = MaterialTheme.typography.bodySmall,
@@ -177,7 +177,7 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 更新服务地址（可指向自建站点） ----
         SettingsSection(
@@ -185,7 +185,7 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             subtitle = "默认使用官方站点；自建部署时填自己的地址",
             tone = SettingsTone.Neutral,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg)) {
                 LabeledField("服务地址") {
                     androidx.compose.material3.OutlinedTextField(
                         value = st.updateBaseUrl,
@@ -195,14 +195,14 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 OutlinedButton(onClick = { save(); snackbar?.show("已保存", SnackbarType.SUCCESS) }) {
                     Text("保存地址")
                 }
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -225,7 +225,7 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
             val release = state.release
             val download = state.download
             SettingsSection(title = "发现新版本", tone = SettingsTone.Warm) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg)) {
                     Text(
                         "${release.version}　${channelLabel(release.channel)}",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
@@ -238,11 +238,11 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
                         )
                     }
                     if (release.summary.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         Text(release.summary, style = MaterialTheme.typography.bodyMedium)
                     }
                     if (release.notes.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         release.notes.take(8).forEach { note ->
                             Text(
                                 "· $note",
@@ -251,7 +251,7 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
                             )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         buildString {
                             append("安装包 ${download?.sizeText?.ifBlank { null } ?: "大小未知"}")
@@ -261,7 +261,7 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
                     Button(
                         onClick = {
                             if (download != null && download.url.isNotBlank()) {
@@ -283,27 +283,27 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
 
         is UpdateState.Downloading -> {
             SettingsSection(title = "正在下载", tone = SettingsTone.Warm) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg)) {
                     if (state.percent >= 0) {
                         Text("${state.percent}%", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         LinearProgressIndicator(
                             progress = { state.percent / 100f },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
                         Text("正在下载…", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(AppSpacing.Sm))
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         "已下载 ${humanSize(state.bytesRead)}" +
                             if (state.totalBytes > 0) " / ${humanSize(state.totalBytes)}" else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         "可离开本页，下载会在后台完成",
                         style = MaterialTheme.typography.bodySmall,
@@ -333,12 +333,12 @@ private fun UpdateStatusSection(vm: MainViewModel, state: UpdateState, snackbar:
 
         is UpdateState.Failed -> {
             SettingsSection(title = "更新失败", tone = SettingsTone.Warm) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg)) {
                     Text(state.message, style = MaterialTheme.typography.bodyMedium)
                     val download = state.download
                     val release = state.release
                     if (release != null && download != null) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(AppSpacing.Md))
                         OutlinedButton(
                             onClick = { vm.downloadAndInstallUpdate(release, download) },
                             modifier = Modifier.fillMaxWidth(),
@@ -365,9 +365,9 @@ private fun StatusCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(AppSpacing.Lg),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
         ) {
             Box(
                 modifier = Modifier
@@ -380,7 +380,7 @@ private fun StatusCard(
             }
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(AppSpacing.Xxs))
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,

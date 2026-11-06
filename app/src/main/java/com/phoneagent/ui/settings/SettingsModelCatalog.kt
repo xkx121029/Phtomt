@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +36,7 @@ import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppRadii
 import kotlinx.coroutines.launch
 
@@ -96,7 +97,7 @@ internal fun SettingsModelCatalog(
                 "点一行即为该职责选定模型；库里没有的也可以手填"
             },
         )
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         if (pickRole != null) {
             SettingsSection(
@@ -104,11 +105,11 @@ internal fun SettingsModelCatalog(
                 subtitle = "服务端列表里没有该模型时直接输入",
                 tone = SettingsTone.Brand,
             ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
                     ) {
                         OutlinedTextField(
                             value = manual,
@@ -127,7 +128,7 @@ internal fun SettingsModelCatalog(
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(AppSpacing.Lg))
         }
 
         // ========== 已入库模型 ==========
@@ -136,7 +137,7 @@ internal fun SettingsModelCatalog(
             subtitle = "${st.catalog.size} 个 · 来自 ${st.endpoints.size} 个端点",
             tone = SettingsTone.Brand,
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -144,7 +145,7 @@ internal fun SettingsModelCatalog(
                     placeholder = { Text("筛选模型名") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(AppSpacing.Md))
                 val visible = st.catalog.toList().filter {
                     query.isBlank() || it.name.contains(query, ignoreCase = true)
                 }
@@ -154,19 +155,19 @@ internal fun SettingsModelCatalog(
                         else "没有匹配的模型",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 6.dp),
+                        modifier = Modifier.padding(vertical = AppSpacing.Sm),
                     )
                 } else {
                     st.endpoints.toList().forEach { ep ->
                         val items = visible.filter { it.endpointId == ep.id }
                         if (items.isNotEmpty()) {
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(AppSpacing.Sm))
                             Text(
                                 endpointHost(ep.baseUrl),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(AppSpacing.Sm))
                             items.forEach { m ->
                                 val key = "${m.endpointId}/${m.name}"
                                 CatalogModelRow(
@@ -213,7 +214,7 @@ internal fun SettingsModelCatalog(
                                         }
                                     },
                                 )
-                                Spacer(Modifier.height(8.dp))
+                                Spacer(Modifier.height(AppSpacing.Sm))
                             }
                         }
                     }
@@ -221,7 +222,7 @@ internal fun SettingsModelCatalog(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -247,11 +248,11 @@ private fun CatalogModelRow(
             .fillMaxWidth()
             .then(if (picking) Modifier.clickable { buzz(); onPick() } else Modifier),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(AppSpacing.Md)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -259,7 +260,7 @@ private fun CatalogModelRow(
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Medium,
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(AppSpacing.Xs))
                     AbilityBadges(model.vision, model.tools)
                 }
                 if (selected) {
@@ -276,7 +277,7 @@ private fun CatalogModelRow(
             }
             val line = hint ?: model.note.ifBlank { null }
             line?.let {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(AppSpacing.Xs))
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,

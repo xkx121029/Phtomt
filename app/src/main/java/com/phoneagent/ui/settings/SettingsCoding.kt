@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -37,6 +37,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import org.koin.compose.koinInject
 
@@ -71,13 +72,13 @@ internal fun SettingsCoding(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("编码", onBack, subtitle = "Node 运行时 · 构建环境 · 审批档位 · 工作区")
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(AppSpacing.Page))
 
         CodingEnvEntrySection(onOpen = { buzz(); onOpenEnv() })
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         CodingRuntimeSection(runtimeState)
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         CodingApprovalSection(
             mode = st.codingApprovalMode,
@@ -87,7 +88,7 @@ internal fun SettingsCoding(
                 save()
             },
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         CodingWorkspaceSection(
             workspacePath = workspacePath,
@@ -98,7 +99,7 @@ internal fun SettingsCoding(
                 if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
             },
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
@@ -128,11 +129,11 @@ private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
         subtitle = "Node 宿主随主包内置，编码 Agent 跑在里面",
         tone = SettingsTone.Brand,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             when (runtimeState) {
                 is CodingRuntimeState.Installed -> {
                     SettingsStatusRow("状态", "内置就绪")
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     SettingsStatusRow(
                         "版本",
                         "v${runtimeState.versionName} (${runtimeState.versionCode})",
@@ -141,7 +142,7 @@ private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
 
                 is CodingRuntimeState.NotReady -> {
                     SettingsStatusRow("状态", "未就绪")
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
                         runtimeState.reason,
                         style = MaterialTheme.typography.bodySmall,
@@ -161,9 +162,9 @@ private fun CodingApprovalSection(mode: String, onSelect: (String) -> Unit) {
         subtitle = "编码 agent 执行敏感工具时的放行策略（改动即时生效）",
         tone = SettingsTone.Brand,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             ApprovalModeSegment(current = mode, onSelect = onSelect)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
             Text(
                 approvalModeHint(mode),
                 style = MaterialTheme.typography.bodySmall,
@@ -186,7 +187,7 @@ private fun CodingWorkspaceSection(
         subtitle = "编码文件的落盘位置与 agent 通道状态",
         tone = SettingsTone.Brand,
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.weight(1f)) {
                     Text("工作区", style = MaterialTheme.typography.bodyMedium)
@@ -198,7 +199,7 @@ private fun CodingWorkspaceSection(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(AppSpacing.Sm))
                 OutlinedButton(onClick = onOpenWorkspace) {
                     Text("打开")
                 }
@@ -216,7 +217,7 @@ private fun CodingWorkspaceSection(
                         .clip(CircleShape)
                         .background(dotColor),
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(AppSpacing.Sm))
                 Text(
                     "编码 Agent 连接",
                     style = MaterialTheme.typography.bodyMedium,
@@ -229,7 +230,7 @@ private fun CodingWorkspaceSection(
                 )
             }
             if (error != null) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Text(
                     error,
                     style = MaterialTheme.typography.bodySmall,

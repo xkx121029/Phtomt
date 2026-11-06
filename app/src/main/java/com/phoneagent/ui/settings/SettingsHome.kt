@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -200,7 +200,7 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 tone = SettingsTone.Brand,
                 summary = { ctx ->
                     val tabs = com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size
-                    "${ThemePalette.of(ctx.st.palette).label} · ${tabs} 个 Tab"
+                    "${ThemePalette.of(ctx.st.palette).label} · ${tabs} 个选项卡"
                 },
             ),
         ),
@@ -410,7 +410,7 @@ internal fun SettingsCatalogRail(
         Text(
             "设置",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = AppSpacing.Sm),
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm),
         )
         // 宽屏也保留「常用」这一站：高频项不因为屏幕变宽就退回二级页里
         SettingsRailItem(
@@ -431,7 +431,7 @@ internal fun SettingsCatalogRail(
                 group.title,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = AppSpacing.Md, bottom = AppSpacing.Xs),
+                modifier = Modifier.padding(start = AppSpacing.Lg, top = AppSpacing.Md, bottom = AppSpacing.Xs),
             )
             group.entries.forEach { entry ->
                 SettingsRailItem(
@@ -459,7 +459,7 @@ private fun SettingsRailItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Sm, vertical = 2.dp)
+            .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xxs)
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Tile))
             .background(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -469,9 +469,9 @@ private fun SettingsRailItem(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
     ) {
         Icon(
             entry.icon,
@@ -621,7 +621,7 @@ private fun ReadinessCell(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg),
     ) {
         Text(
             title,
@@ -631,7 +631,7 @@ private fun ReadinessCell(
         Spacer(Modifier.height(5.dp))
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {
             Box(
                 Modifier

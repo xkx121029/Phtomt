@@ -1,4 +1,4 @@
-package com.phoneagent.ui.settings
+﻿package com.phoneagent.ui.settings
 
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
@@ -139,7 +139,7 @@ internal fun SettingsVisual(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 边缘光效 ----
         SettingsSection(
@@ -149,7 +149,7 @@ internal fun SettingsVisual(
         ) {
             // 边缘光效的开关已移到设置首页「常用」面板（与跑马灯、任务卡状态行同组）；
             // 本页只保留标定——标定是低频精调，值得独立一页，开关不是。
-            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
+            Column(Modifier.padding(start = AppSpacing.Lg, end = AppSpacing.Lg, top = AppSpacing.Md, bottom = AppSpacing.Md)) {
                 ExpandableCard(
                     title = "光效标定",
                     enabled = edgeLightingOn,
@@ -161,7 +161,7 @@ internal fun SettingsVisual(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
 
                     // 预览框
                     Text(
@@ -170,14 +170,14 @@ internal fun SettingsVisual(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     Surface(
                         shape = RoundedCornerShape(AppRadii.Item),
                         color = AppSurfaceMuted,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp)
-                            .padding(8.dp),
+                            .padding(AppSpacing.Sm),
                     ) {
                         Box(modifier = Modifier.fillMaxSize()) {
                             Surface(
@@ -195,7 +195,7 @@ internal fun SettingsVisual(
                             ) {}
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(AppSpacing.Lg))
 
                     // 四边内缩
                     Text(
@@ -204,14 +204,14 @@ internal fun SettingsVisual(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     // 拖动只改本地编辑态，松手才落盘（避免拖一次写几十次 DataStore）
                     CalibrationSlider("顶部", st.edgeInsetTop, 0f..30f, onChange = { st.edgeInsetTop = it }, onCommit = save)
                     CalibrationSlider("底部", st.edgeInsetBottom, 0f..30f, onChange = { st.edgeInsetBottom = it }, onCommit = save)
                     CalibrationSlider("左侧", st.edgeInsetLeft, 0f..30f, onChange = { st.edgeInsetLeft = it }, onCommit = save)
                     CalibrationSlider("右侧", st.edgeInsetRight, 0f..30f, onChange = { st.edgeInsetRight = it }, onCommit = save)
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
 
                     Text(
                         "圆角半径",
@@ -219,10 +219,10 @@ internal fun SettingsVisual(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     CalibrationSlider("圆角", st.cornerRadius, 0f..60f, onChange = { st.cornerRadius = it }, onCommit = save)
 
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(AppSpacing.Md))
 
                     Text(
                         "光带粗细",
@@ -230,13 +230,13 @@ internal fun SettingsVisual(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     CalibrationSlider("粗细", st.edgeLightingWidth, 5f..80f, onChange = { st.edgeLightingWidth = it }, onCommit = save)
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(AppSpacing.Lg))
 
         // ---- 悬浮窗跑马灯 ----
         SettingsSection(
@@ -256,9 +256,9 @@ internal fun SettingsVisual(
                 st.marqueeAutoColor = it
                 save()
             }
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 CalibrationSlider("内边距", st.marqueeHeight, 4f..28f, onChange = { st.marqueeHeight = it }, onCommit = save)
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(AppSpacing.Lg))
                 if (st.marqueeAutoColor) {
                     MarqueePhasePreview(st.marqueeHeight)
                 } else {
@@ -268,7 +268,7 @@ internal fun SettingsVisual(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(AppSpacing.Sm))
                     MarqueeColorPicker(st.marqueeColors, st.marqueeHeight) {
                         st.marqueeColors = it
                         save()
@@ -277,7 +277,6 @@ internal fun SettingsVisual(
             }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
-
