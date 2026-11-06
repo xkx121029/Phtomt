@@ -57,6 +57,16 @@ interface IDeviceProvider {
     String captureScreen();
 
     /**
+     * 抓取指定 display 的元素树（副屏模式用；[displayId] = -1 等价于主屏）。
+     *
+     * 实现走 AccessibilityService.getWindows() 按 window.displayId 过滤（需 API 30），
+     * 返回 JSON 在 [captureScreen] 字段之外多带 "displayId" 与 "reason"：
+     * 该 display 上没有可读窗口时 elements 为空，reason 写明卡在哪（无窗口/系统未暴露/版本不支持）。
+     * 服务未连接时返回 null。
+     */
+    String captureScreenOnDisplay(int displayId);
+
+    /**
      * 无障碍截图（API 30+），返回 PNG 字节；不支持或失败返回 null。
      *
      * 旧接口：全屏 PNG 通常 2~6MB，超过 Binder 单次事务上限（约 1MB）会抛

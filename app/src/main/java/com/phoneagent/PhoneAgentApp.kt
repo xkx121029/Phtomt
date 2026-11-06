@@ -7,6 +7,7 @@ import com.phoneagent.di.initKoin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class PhoneAgentApp : Application() {
@@ -27,6 +28,22 @@ class PhoneAgentApp : Application() {
         ioScope.launch {
             StartupTrace.span("编码工作区恢复") {
                 runCatching { com.phoneagent.coding.agent.CodingWorkspaces.ensureInitialized(this@PhoneAgentApp) }
+            }
+        }
+        // 幽灵副屏清理：上个进程被强杀会把 overlay_display_devices 留在系统设置里，
+        // 系统因此一直挂着一块没人用的副屏（显示设置里能看到"第二块屏"）。
+        // Shizuku 通道由 Provider 异步轮询得到，等它就绪后再清（最多 20 秒），没有通道就跳过。
+        ioScope.launch {
+            runCatching {
+                val shizuku = org.koin.core.context.GlobalContext.get()
+                    .get<com.phoneagent.device.shell.ShizukuManager>()
+                val ready = kotlinx.coroutines.withTimeoutOrNull(20_000L) {
+                    shizuku.state.first { it == com.phoneagent.device.shell.ShizukuManager.State.READY }
+                } != null
+                if (ready) {
+                    com.phoneagent.device.screen.VirtualDisplayAgent.cleanupGhost(shizuku)
+                    StartupTrace.mark("幽灵副屏清理完成")
+                }
             }
         }
         StartupTrace.mark("Application.onCreate 结束")

@@ -16,6 +16,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +48,10 @@ import com.phoneagent.ui.theme.AppSpacing
 internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
     // 执行文档的「立即同步」只在设置页里用得到，直接取 Koin 单例（与引擎共享同一份缓存）
     val docsRepo = koinInject<AgentDocRepository>()
+    // 副屏状态：Shizuku 通道 + 代理运行时状态，合成设置页要展示的四态
+    val shizuku = koinInject<com.phoneagent.device.shell.ShizukuManager>()
+    val shizukuState by shizuku.state.collectAsState()
+    val vdStatus by com.phoneagent.device.screen.VirtualDisplayAgent.status.collectAsState()
     val scope = rememberCoroutineScope()
     var docSyncing by remember { mutableStateOf(false) }
     Column(
@@ -106,11 +111,18 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 ExpandableCard(title = "副屏模式", initiallyExpanded = st.virtualDisplayEnabled) {
                     SettingsToggleRow(
                         title = "启用副屏模式",
-                        subtitle = "在模拟副屏上跑任务，不抢占当前屏幕；读不到无障碍元素树，决策只能依赖视觉",
+                        subtitle = "在模拟副屏上跑任务，不抢占当前屏幕；观察以副屏无障碍树为主，" +
+                            "副屏截图不可用时会明确标注（不会用主屏画面冒充）",
                         value = st.virtualDisplayEnabled,
                     ) { enabled ->
                         st.virtualDisplayEnabled = enabled
                         save()
+                    }
+                    if (st.virtualDisplayEnabled) {
+                        VirtualDisplayStatusBlock(
+                            status = vdStatus,
+                            shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY,
+                        )
                     }
                 }
             }
@@ -278,6 +290,47 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         }
 
         Spacer(Modifier.height(AppSpacing.Xl))
+    }
+}
+
+/**
+ * 副屏模式的状态行：把「未激活 Shizuku / 系统不支持 / 已启用 display=N / 失败原因」四种结论
+ * 直接摆在开关下面，失败原因可点开看完整诊断——避免"点了开关没反应，也不知道为什么"。
+ */
+@Composable
+private fun VirtualDisplayStatusBlock(
+    status: com.phoneagent.device.screen.VirtualDisplayStatus,
+    shizukuReady: Boolean,
+) {
+    var showDiagnostics by remember { mutableStateOf(false) }
+    val presentation = status.present(shizukuReady)
+    Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
+        Text(
+            presentation.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = if (presentation.isFailure) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            presentation.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (presentation.isFailure) {
+            TextButton(onClick = { showDiagnostics = !showDiagnostics }) {
+                Text(if (showDiagnostics) "收起诊断" else "查看诊断")
+            }
+            if (showDiagnostics) {
+                val diagnostics = com.phoneagent.device.screen.VirtualDisplayAgent.lastDiagnostic
+                    .ifBlank { presentation.detail }
+                Text(
+                    diagnostics,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

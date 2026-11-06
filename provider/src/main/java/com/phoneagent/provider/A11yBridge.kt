@@ -53,6 +53,9 @@ object A11yBridge {
 
     suspend fun captureScreenJson(): String? = service()?.captureScreenJson()
 
+    /** 指定 display 的元素树（-1 = 主屏）：副屏模式靠它读副屏，不再依赖截图 */
+    suspend fun captureScreenJson(displayId: Int): String? = service()?.captureScreenJson(displayId)
+
     /** 无障碍截图压成 PNG 字节（Bitmap 由本处持有，用完即回收）；不支持或失败返回 null */
     suspend fun takeScreenshotPng(): ByteArray? {
         val bitmap = service()?.takeScreenshotBitmap() ?: return null

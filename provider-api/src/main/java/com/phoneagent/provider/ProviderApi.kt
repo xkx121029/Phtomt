@@ -5,8 +5,8 @@ package com.phoneagent.provider
  */
 object ProviderApi {
 
-    /** 契约版本：增删 [IDeviceProvider] 方法时递增（v4：新增大块数据分片传输） */
-    const val API_VERSION = 4
+    /** 契约版本：增删 [IDeviceProvider] 方法时递增（v5：新增按 display 读元素树，副屏模式用） */
+    const val API_VERSION = 5
 
     /** 分片传输的数据种类：屏幕元素树 JSON（UTF-8） */
     const val KIND_TREE = 0

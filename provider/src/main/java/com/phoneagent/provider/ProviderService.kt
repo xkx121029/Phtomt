@@ -37,6 +37,9 @@ class ProviderService : Service() {
         override fun captureScreen(): String? =
             runBlockingBridge { A11yBridge.captureScreenJson() }
 
+        override fun captureScreenOnDisplay(displayId: Int): String? =
+            runBlockingBridge { A11yBridge.captureScreenJson(displayId) }
+
         override fun takeScreenshot(): ByteArray? =
             runBlockingBridge { A11yBridge.takeScreenshotPng() }
 

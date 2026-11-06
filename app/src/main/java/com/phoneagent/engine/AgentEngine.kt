@@ -1312,11 +1312,13 @@ class AgentEngine(
                         ContentPart(
                             type = "text",
                             text = if (lang == PromptLang.CN) {
-                                "【副屏模式】任务运行在独立副屏（1080x1920）上：你读不到页面元素树，只能看到截图。" +
+                                "【副屏模式】任务运行在独立副屏（1080x1920）上：观察以副屏无障碍元素树为主；" +
+                                    "截图可用时会附上，不可用时会明确告知且不带截图（不会拿主屏画面冒充副屏）。" +
                                     "所有触摸动作必须给坐标 —— click/long_click 用 target={method:\"coordinate\",value:\"比例x,比例y\"}（0~1 之间）；" +
                                     "输入文字前先点击输入框使其获得焦点；启动应用仍用 launch（包名）。"
                             } else {
-                                "[Virtual display mode] The task runs on a separate virtual display (1080x1920): no element tree is available, only screenshots. " +
+                                "[Virtual display mode] The task runs on a separate virtual display (1080x1920): observation relies primarily on the accessibility tree of that display. " +
+                                    "A screenshot is attached only when actually available from the virtual display — never a main-screen capture in disguise. " +
                                     "All touch actions must carry coordinates — click/long_click use target={method:\"coordinate\",value:\"ratioX,ratioY\"} (0..1). " +
                                     "Tap an input field before typing. Launch apps with launch (package name)."
                             },
@@ -2657,9 +2659,11 @@ class AgentEngine(
     private suspend fun awaitUserHint(): String = userGate.awaitUserHint()
 
     /**
-     * 截图：副屏模式读副屏（screencap -d），否则读主屏。
-     * 副屏截图失败（少数 ROM 的 screencap 不支持 -d）时回落主屏截图，
-     * 让决策至少还能看到点什么，而不是彻底失明。
+     * 截图：副屏模式只读副屏（screencap -d），主屏模式读主屏。
+     *
+     * 副屏截图失败（实测 Android 16 的 screencap 只认物理屏）时**绝不回退主屏截图**：
+     * 把主屏画面当成副屏发给模型，等于让模型对着另一个屏的画面算坐标，是假运行。
+     * 这里如实返回 null 并写明原因，决策层改用副屏无障碍元素树。
      */
     private suspend fun captureScreenshot(): Bitmap? {
         if (virtualDisplayActive) {
@@ -2667,7 +2671,12 @@ class AgentEngine(
                 val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 if (bmp != null) return bmp
             }
-            log(AgentLog.Level.WARN, "副屏截图不可用，回退主屏截图")
+            log(
+                AgentLog.Level.WARN,
+                "副屏截图不可用（${virtualDisplay?.lastScreenshotError ?: "原因未知"}）：" +
+                    "本轮不带截图，只用副屏无障碍元素树决策",
+            )
+            return null
         }
         return com.phoneagent.device.screen.ScreenCapture.capture()
     }
@@ -2687,6 +2696,9 @@ class AgentEngine(
             is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Ok -> true
             is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail -> {
                 log(AgentLog.Level.WARN, "副屏创建失败，已降级主屏模式：${r.reason}")
+                com.phoneagent.device.screen.VirtualDisplayAgent.lastDiagnostic
+                    .takeIf { it.isNotBlank() }
+                    ?.let { log(AgentLog.Level.INFO, "副屏诊断：$it") }
                 false
             }
         }
@@ -2700,17 +2712,8 @@ class AgentEngine(
     }
 
     private suspend fun observe(): ScreenSnapshot {
-        // 副屏模式：副屏上的元素树读不到（无障碍只覆盖主屏活动窗口），观察结果只有「副屏尺寸 + 截图」。
-        // 元素列表留空会命中引擎既有的"元素稀疏 → 自动走视觉"分支，决策因此拿到副屏截图
-        if (virtualDisplayActive) {
-            return ScreenSnapshot(
-                packageName = null,
-                missingAccessibility = false,
-                screenWidth = com.phoneagent.device.screen.VirtualDisplayAgent.WIDTH,
-                screenHeight = com.phoneagent.device.screen.VirtualDisplayAgent.HEIGHT,
-                hasScreenshot = true,
-            )
-        }
+        // 副屏模式：先读副屏的无障碍树（跨屏窗口），再尝试副屏截图；两条都拿不到才降级主屏
+        if (virtualDisplayActive) return observeVirtualDisplay()
         // 无障碍服务可能在任务执行中途被系统回收/关闭，此时读取元素树会抛异常；
         // 观察是每一步的起点，异常必须降级为「空快照」而不是终止任务
         val a11y = AgentAccessibilityService.instance
@@ -2736,6 +2739,71 @@ class AgentEngine(
             hasScreenshot = com.phoneagent.device.screen.ScreenCapture.available(),
         )
         return snapshot
+    }
+
+    /**
+     * 副屏观察：无障碍树优先，截图兜底，两者都不行才降级主屏。
+     *
+     * 铁律（用户裁定）：不拿主屏截图冒充副屏画面。副屏读不到树时明确标注"走树/无截图"，
+     * 降级时必须把原因写进日志（界面事件流会显示同一句）。
+     */
+    private suspend fun observeVirtualDisplay(): ScreenSnapshot {
+        val vd = virtualDisplay
+        val displayId = vd?.displayId
+        if (vd == null || displayId == null) {
+            return degradeVirtualDisplay("副屏代理或 displayId 丢失（创建阶段异常）")
+        }
+        val a11y = AgentAccessibilityService.instance
+        val tree = if (a11y == null) {
+            null
+        } else {
+            tryOrNull("读取副屏元素树失败") { a11y.captureScreenOnDisplay(displayId) }
+        }
+        val stats = a11y?.lastTreeStats ?: "未连接无障碍会话"
+        if (tree != null && tree.elements.isNotEmpty()) {
+            val shot = vd.screenshot()
+            if (shot == null) {
+                log(
+                    AgentLog.Level.INFO,
+                    "副屏截图不可用（${vd.lastScreenshotError ?: "原因未知"}），本轮按无障碍树观察（$stats）",
+                )
+            }
+            return tree.copy(
+                screenWidth = if (tree.screenWidth > 0) tree.screenWidth else com.phoneagent.device.screen.VirtualDisplayAgent.WIDTH,
+                screenHeight = if (tree.screenHeight > 0) tree.screenHeight else com.phoneagent.device.screen.VirtualDisplayAgent.HEIGHT,
+                hasScreenshot = shot != null,
+            )
+        }
+        // 树读不到：副屏截图是第二条路（能拿到就仍算副屏观察，只是没有元素树）
+        val shot = vd.screenshot()
+        if (shot != null) {
+            return ScreenSnapshot(
+                packageName = null,
+                missingAccessibility = true,
+                screenWidth = com.phoneagent.device.screen.VirtualDisplayAgent.WIDTH,
+                screenHeight = com.phoneagent.device.screen.VirtualDisplayAgent.HEIGHT,
+                hasScreenshot = true,
+            )
+        }
+        return degradeVirtualDisplay(
+            "副屏无障碍树不可用（$stats），" +
+                "副屏截图也不可用（${vd.lastScreenshotError ?: "原因未知"}）",
+        )
+    }
+
+    /**
+     * 副屏两条观察路径都失败时降级主屏：释放副屏、复位开关、写清原因，然后返回主屏观察结果。
+     * 降级是"明示"的——日志与界面事件流都会出现同一句原因，不再静默换屏。
+     */
+    private suspend fun degradeVirtualDisplay(reason: String): ScreenSnapshot {
+        virtualDisplayActive = false
+        runCatching { virtualDisplay?.destroy() }
+        log(
+            AgentLog.Level.WARN,
+            "副屏不可用，已降级主屏模式（后续步骤在主屏执行）：$reason",
+        )
+        pushFloating("副屏不可用，已降级主屏", "OBSERVING")
+        return observe()
     }
 
     // ---- 上下文注入已收口到 context/ContextInjector（重构批次 6），以下为转发 ----

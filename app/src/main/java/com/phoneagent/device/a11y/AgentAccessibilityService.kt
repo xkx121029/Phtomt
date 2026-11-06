@@ -171,6 +171,30 @@ class AgentAccessibilityService private constructor(
     }
 
     /**
+     * 读取指定 display 的元素树（副屏模式）：副屏窗口不在 rootInActiveWindow 里，
+     * 必须由 Provider 按 `AccessibilityWindowInfo.displayId` 过滤。
+     *
+     * 读不到时返回 missingAccessibility=true 的空快照，并把 Provider 给出的 reason
+     * 拼进 [lastTreeStats]——调用方据此决定"只用树"还是"降级主屏"，而不是猜。
+     */
+    internal suspend fun captureScreenOnDisplay(displayId: Int): ScreenSnapshot {
+        val raw = ProviderManager.call(applicationContext, CAPTURE_TIMEOUT_MS) { remote ->
+            remote.captureScreenOnDisplay(displayId)
+        }
+        val decoded = SnapshotJsonCodec.decode(raw)
+        if (decoded == null) {
+            lastTreeStats = "display=$displayId 读取失败：" +
+                (ProviderManager.lastError.value ?: "Provider 无回包（可能未升级到 v5 契约）")
+            AppLog.w(TAG, "副屏元素树读取失败：$lastTreeStats")
+            return ScreenSnapshot(packageName = null, missingAccessibility = true)
+        }
+        val reason = runCatching { org.json.JSONObject(raw ?: "").optString("reason") }.getOrNull().orEmpty()
+        lastTreeStats = if (reason.isBlank()) decoded.stats else "${decoded.stats} · $reason"
+        if (decoded.snapshot.elements.isEmpty()) AppLog.w(TAG, "副屏元素树为空：$lastTreeStats")
+        return decoded.snapshot
+    }
+
+    /**
      * 每步自动截图（不依赖 MediaProjection 屏幕共享）：由 Provider 的无障碍服务执行 takeScreenshot（API 30+）。
      * 结果以 PNG 字节跨进程回传，这里解成 Bitmap。
      */

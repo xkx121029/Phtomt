@@ -154,6 +154,77 @@ class ProviderAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * 抓取指定 display 的元素树（副屏模式）：[displayId] < 0 时等同主屏。
+     *
+     * 副屏上的窗口不在 rootInActiveWindow 里（那只反映主屏活动窗口），必须走
+     * `getWindows()` + `AccessibilityWindowInfo.displayId` 过滤。读不到窗口时**不返回空壳了事**：
+     * 在 JSON 里写明 reason，主应用据此决定"只用树"还是"降级"，并给用户一个可读原因。
+     */
+    fun captureScreenJson(displayId: Int): String? {
+        if (displayId < 0) return captureScreenJson()
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            return emptyDisplayJson(displayId, "按 display 读窗口需要 Android 11（API 30）以上，当前系统不支持")
+        }
+        val roots = windowsOn(displayId)
+        val root = roots.firstOrNull { it.childCount > 0 } ?: roots.firstOrNull()
+        if (root == null) {
+            return emptyDisplayJson(
+                displayId,
+                "副屏 display=$displayId 没有可读的无障碍窗口：副屏上可能没有应用在前台，" +
+                    "或系统没有把该 display 的窗口暴露给无障碍服务",
+            )
+        }
+        val elements = JSONArray()
+        val scan = TreeScan()
+        collectElements(root, true, 0, elements, scan)
+        lastTreeStats = "display=$displayId " + scan.describe(root)
+        if (elements.length() == 0) {
+            Log.w(TAG, "副屏元素树为空：$lastTreeStats")
+        }
+        val (w, h) = displaySize(displayId)
+        return JSONObject().apply {
+            put("stats", lastTreeStats)
+            put("missingAccessibility", false)
+            put("displayId", displayId)
+            put("reason", if (elements.length() == 0) "窗口可读但未筛出可交互元素（$lastTreeStats）" else "")
+            root.packageName?.toString()?.let { put("packageName", it) }
+            put("screenWidth", w)
+            put("screenHeight", h)
+            put("elements", elements)
+        }.toString()
+    }
+
+    /** 指定 display 上所有可读窗口的根节点（聚焦窗口优先，其次应用窗口） */
+    private fun windowsOn(displayId: Int): List<AccessibilityNodeInfo> = runCatching {
+        windows.orEmpty()
+            .filter { it.displayId == displayId }
+            .sortedWith(
+                compareByDescending<android.view.accessibility.AccessibilityWindowInfo> { it.isFocused }
+                    .thenByDescending { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION },
+            )
+            .mapNotNull { w -> runCatching { w.root }.getOrNull() }
+    }.getOrDefault(emptyList())
+
+    private fun emptyDisplayJson(displayId: Int, reason: String): String = JSONObject().apply {
+        put("stats", "display=$displayId 无窗口")
+        put("displayId", displayId)
+        put("reason", reason)
+        put("missingAccessibility", true)
+        put("screenWidth", displaySize(displayId).first)
+        put("screenHeight", displaySize(displayId).second)
+        put("elements", JSONArray())
+    }.toString()
+
+    private fun displaySize(displayId: Int): Pair<Int, Int> = runCatching {
+        val dm = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val display = dm.getDisplay(displayId) ?: return 0 to 0
+        val point = android.graphics.Point()
+        @Suppress("DEPRECATION")
+        display.getRealSize(point)
+        point.x to point.y
+    }.getOrDefault(0 to 0)
+
+    /**
      * 一次抓取的统计：元素树为空时用它判断"是系统不给节点"还是"被我们的筛选条件挡掉"。
      * 计数只服务诊断，不参与决策。
      */
@@ -196,7 +267,8 @@ class ProviderAccessibilityService : AccessibilityService() {
             node.isScrollable ||
             node.isEditable ||
             node.isLongClickable
-        val ownText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        // 密码框的正文不读取：ownText 会同时进提示词与本地留档，密码只该留在这一次输入里
+        val ownText = if (node.isPassword) null else node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         val ownDesc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         // 收录条件：① 可交互的控件（点击目标）；② 自带文字的可见节点（页面内容，供 AI 阅读与按文字定位）。
         // 已在可交互容器内的普通子节点不再重复收录——它的文字已经补到容器标签上，
@@ -259,7 +331,14 @@ class ProviderAccessibilityService : AccessibilityService() {
         ownText?.let { put("text", it) }
         (ownDesc ?: derivedLabel)?.let { put("contentDescription", it) }
         put("isSelected", node.isSelected)
-        if (node.isEditable) node.text?.toString()?.let { put("currentValue", it) }
+        // 密码框的正文一律不往外送：currentValue 会进主应用的提示词与本地留档，
+        // 用户输入的密码不该出现在任何一处。只把「这是密码框」这个事实告诉主应用，
+        // 由它决定输入框里显示什么、留档怎么写。
+        if (node.isPassword) {
+            put("isPassword", true)
+        } else if (node.isEditable) {
+            node.text?.toString()?.let { put("currentValue", it) }
+        }
         put("x", bounds.centerX())
         put("y", bounds.centerY())
         put("left", bounds.left)
@@ -406,8 +485,11 @@ internal object DerivedLabel {
         for (i in 0 until node.childCount) {
             if (out.size >= MAX_PARTS) return
             val child = node.getChild(i) ?: continue
-            val text = child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
-                ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            // 密码框的正文不能进派生标签：容器标签会进提示词与留档
+            val text = if (child.isPassword) null else {
+                child.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: child.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            }
             text?.let { out += it }
             collect(child, depth + 1, out, recycleChildren)
             if (recycleChildren && android.os.Build.VERSION.SDK_INT < 33) child.recycle()
