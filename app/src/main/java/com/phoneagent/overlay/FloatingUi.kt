@@ -154,22 +154,34 @@ object FloatingUi {
     /**
      * 阶段配色：底色 / 文字色 / 光晕色 / 光晕强度。
      *
+     * **这是全项目阶段色的唯一定义处**：跑马灯胶囊、任务卡状态圆点、阶段徽章、完成卡都从这里取，
+     * 不允许在别处再写一份。同一时刻两个组件对同一状态给出两种颜色，比两处都旧更糟。
+     *
      * 色相全部收在 VI 品牌色域内（docs/brand-vi.md 2.2 / 2.3）：
-     * 雾蓝=信息、琥珀=注意、墨玉绿深锚=品牌、成功/危险取语义色；
-     * 刻意避开 VI 明令不要的蓝紫区间，唯一强强调色留给「执行」的品红。
-     * 六个底色对白字的对比度均 ≥ 4.5:1（对照表见 CHANGELOG），可直接做实心胶囊。
+     * 雾蓝=信息、琥珀=注意、墨玉绿=品牌、成功/危险取语义色；刻意避开 VI 明令不要的蓝紫区间，
+     * 唯一强强调色留给「执行」的品红。六个底色对白字的对比度均 ≥ 4.5:1，可直接做实心胶囊。
+     *
+     * 两条"看起来不像规范值"的颜色，是**同色相提对比**的结果，不是抄错，请勿改回 VI 原值：
+     * - 观察 `#35617D` ≠ VI 雾蓝 `#4A7C9B`：裸雾蓝对白字只有 4.52:1，压 14sp 白字刚好贴着
+     *   AA 线；同色相压深一档到 6.65:1，观感仍是灰蓝，不会滑向海军蓝。
+     * - 等待 `#A85A24`（站点口径）≠ 端侧琥珀 `#B4632A`：后者对白字只有 4.41:1，低于小字号 AA 线。
+     *
+     * 「思考」与「完成」同属绿系也是刻意的：思考取玄青容器（暗）`#17453A`、完成取语义成功
+     * `#1F7A55`，两者靠**明度差两档 + 光晕强度 0.60 / 0.52**区分，而不是再造一个色相——
+     * 阶段色只允许这六个色相，多一个就回到"彩虹调色盘"。
      */
     data class PhaseTone(val base: Int, val text: Int, val glow: Int, val intensity: Float)
 
     fun phaseTone(phase: String): PhaseTone = when (phase) {
-        // 雾蓝（高对比档 #35617D：裸雾蓝 #4A7C9B 只有 4.52:1，撑 14sp 白字太勉强）
+        // 雾蓝高对比档：见上面 KDoc，不要换成 VI 的 #4A7C9B
         "OBSERVING" -> PhaseTone(0xFF35617D.toInt(), 0xFFEFF5F9.toInt(), 0xFF84B6D4.toInt(), 0.62f)
-        // 墨绿：VI 的玄青容器（暗），比完成绿暗两档，靠明度区分「在思考」与「已完成」
+        // 墨绿=玄青容器（暗）：比完成绿暗两档，与完成绿靠明度而非色相区分
         "THINKING" -> PhaseTone(0xFF17453A.toInt(), 0xFFE9F7F1.toInt(), 0xFF5FD9B4.toInt(), 0.60f)
         "ACTING" -> PhaseTone(0xFFD1366C.toInt(), 0xFFFFF5F8.toInt(), 0xFFFF9AB6.toInt(), 0.72f)
+        // 完成=语义成功：亮绿 + 同色光晕，与上面的深墨绿形成明度对照
         "DONE" -> PhaseTone(0xFF1F7A55.toInt(), 0xFFEBFFF7.toInt(), 0xFF6FD3A2.toInt(), 0.52f)
         "ERROR" -> PhaseTone(0xFFC4463C.toInt(), 0xFFFFF3F3.toInt(), 0xFFFF9A90.toInt(), 0.66f)
-        // 琥珀（取站点口径 #A85A24：VI 端侧琥珀 #B4632A 对白字只有 4.41:1）
+        // 琥珀取站点口径：见上面 KDoc，不要换成端侧 #B4632A（4.41:1 不够）
         else -> PhaseTone(0xFFA85A24.toInt(), 0xFFFFF8EC.toInt(), 0xFFF0A868.toInt(), 0.44f)
     }
 
