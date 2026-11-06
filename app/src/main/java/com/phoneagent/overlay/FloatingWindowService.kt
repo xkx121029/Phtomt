@@ -114,8 +114,21 @@ class FloatingWindowService : Service() {
     /** 底部胶囊距底边的最小净空（dp）：约 0.5cm，手势条更高时以手势条为准 */
     private val marqueeBottomGap = 19
 
+    /** 胶囊外扩柔光的留白（px）：窗口比胶囊四周各宽/高这么多，光晕才不会被窗口边界裁掉 */
+    private val marqueeGlowPad: Int
+        get() = (MarqueeView.GLOW_PAD_DP * resources.displayMetrics.density).toInt()
+
     /** 底部胶囊窗口两侧留白（dp）：窗口宽度 = 真实屏宽 - 2 * 此值，建窗时定死 */
     private val marqueeSideMargin = 16
+
+    /**
+     * 跑马灯窗口宽度（px）：胶囊宽度之外再留出两侧光晕的绘制空间。
+     *
+     * 胶囊体宽度仍是「屏宽 - 两侧留白」，多出来的只有外圈柔光；
+     * 窗口宽度依旧在建窗时定死，文本更新不会让它改变。
+     */
+    private fun marqueeWindowWidthPx(screenW: Int): Int =
+        OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin)) + 2 * marqueeGlowPad
 
     /**
      * 底部跑马灯（胶囊）：固定宽度窗口，浮在导航栏之上。
@@ -366,11 +379,12 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 跑马灯底色：跟随状态时用当前阶段色（纯色，一眼看出观察/思考/执行/完成/出错），
-     * 否则用用户自定义的渐变配色。
+     * 跑马灯配色：跟随状态时交给 `MarqueeView.setPhase`（底色/文字色/光晕色三档联动、
+     * 按阶段平滑过渡），否则用用户自定义的渐变配色。
      */
-    private fun marqueeGradient(phase: String): List<Int> =
-        if (marqueeAutoColor) listOf(FloatingUi.phaseColor(phase)) else marqueeColors
+    private fun applyMarqueePalette(view: MarqueeView) {
+        if (marqueeAutoColor) view.setPhase(currentPhase) else view.setColors(marqueeColors)
+    }
 
     /**
      * 设置跑马灯内边距 / 配色：顶部光带与底部胶囊同步应用。
@@ -379,9 +393,8 @@ class FloatingWindowService : Service() {
      * 内边距只影响文字垂直居中，两者都不需要动窗口 LayoutParams。
      */
     private fun applyMarqueeSettings() {
-        val colors = marqueeGradient(currentPhase)
         marquee?.let {
-            it.setColors(colors)
+            applyMarqueePalette(it)
             it.setPadV(dp(marqueeHeightDp))
         }
     }
@@ -596,9 +609,9 @@ class FloatingWindowService : Service() {
         val screenW = screenSize.first
 
         val startedAt = SystemClock.uptimeMillis()
-        val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
+        val barW = marqueeWindowWidthPx(screenW)
         val bar = MarqueeView(this).apply {
-            setColors(marqueeGradient(currentPhase))
+            applyMarqueePalette(this)
             setPadV(dp(marqueeHeightDp))
         }
         val lp = WindowManager.LayoutParams(
@@ -672,6 +685,9 @@ class FloatingWindowService : Service() {
      *
      * 面板压在系统手势条上会干扰上滑手势，所以取 `max(手势条高度, 19dp)`。
      * 拿不到导航栏 inset（API 30 以下）就只留基础留白，面板照常显示。
+     *
+     * 窗口高度比胶囊体上下各多出 [marqueeGlowPad]（光晕留白），所以窗口落点要减掉这一截，
+     * 胶囊体的视觉位置才和加光晕之前完全一致。
      */
     private fun marqueeBottomOffset(): Int {
         val navBar = runCatching {
@@ -681,7 +697,7 @@ class FloatingWindowService : Service() {
                     ?.bottom
             } else null
         }.getOrNull() ?: 0
-        return maxOf(navBar, dp(marqueeBottomGap))
+        return (maxOf(navBar, dp(marqueeBottomGap)) - marqueeGlowPad).coerceAtLeast(0)
     }
 
     // ==================== 降级提示细条 ====================
@@ -871,7 +887,9 @@ class FloatingWindowService : Service() {
 
     /** 细条底边：底部胶囊（含导航栏净空）之上再留 8dp，胶囊高度动态，取不到时用经验值兜底 */
     private fun noticeBottomOffset(): Int {
-        val capsuleHeight = marquee?.takeIf { it.visibility == View.VISIBLE && it.height > 0 }?.height
+        // 胶囊窗口的测量高度含上下光晕留白，扣掉才是胶囊体本身的厚度
+        val capsuleHeight = marquee?.takeIf { it.visibility == View.VISIBLE && it.height > 0 }
+            ?.let { (it.height - 2 * marqueeGlowPad).coerceAtLeast(0) }
             ?: dp(NOTICE_MARQUEE_FALLBACK_HEIGHT_DP)
         return marqueeBottomOffset() + capsuleHeight + dp(FloatingUi.PAD)
     }
@@ -1642,8 +1660,7 @@ class FloatingWindowService : Service() {
             currentTask = task
             // 跑马灯底色随阶段变化（跟随状态）或保持用户自定义配色
             currentPhase = phase
-            val colors = marqueeGradient(phase)
-            marquee?.setColors(colors)
+            marquee?.let { applyMarqueePalette(it) }
             // 记录原始入参 + 按显示设置落到两处（跑马灯 / 卡片状态行），避免同一条描述画两遍
             lastStatusText = status
             lastReasoningText = reasoning
@@ -2011,7 +2028,7 @@ class FloatingWindowService : Service() {
         barParams?.let { lp ->
             val bar = marquee ?: return@let
             // 窗口宽度随屏幕方向重算：宽度仍是固定值，文本更新不会改变它
-            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
+            lp.width = marqueeWindowWidthPx(screenW)
             lp.y = marqueeBottomOffset()
             runCatching { windowManager?.updateViewLayout(bar, lp) }
         }

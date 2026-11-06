@@ -2,6 +2,9 @@
 @file:Suppress("MagicNumber")
 package com.phoneagent.overlay
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,6 +15,7 @@ import android.graphics.Shader
 import android.text.TextPaint
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import com.phoneagent.BuildConfig
 
 /**
@@ -89,6 +93,9 @@ class MarqueeView @JvmOverloads constructor(
     private val bandMode: Boolean = false,
 ) : View(context, attrs) {
 
+    /** 底色 / 文字色 / 光晕色 + 光晕强度：三档联动，状态之间靠它做平滑过渡 */
+    private data class Palette(val base: Int, val text: Int, val glow: Int, val intensity: Float)
+
     private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = sp(14f)
         color = Color.WHITE
@@ -97,6 +104,25 @@ class MarqueeView @JvmOverloads constructor(
     // 背景：用户颜色序列柔化渐变，让面板成为一块实色底
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var bgGradient: LinearGradient? = null
+
+    /** 光晕画笔：只画胶囊外侧的柔光，不进胶囊内部 */
+    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    /** 光晕外扩留白（px）：窗口上下各留这么多，光晕才不会被窗口边界裁掉 */
+    private val glowPadPx = dp(GLOW_PAD_DP)
+
+    /** 当前配色（动画中的中间值）：底色、文字色、光晕色、光晕强度一起插值 */
+    private var palette = Palette(DEFAULT_SOLID, Color.WHITE, DEFAULT_SOLID, 0.5f)
+
+    private var paletteAnimator: ValueAnimator? = null
+
+    /**
+     * 上一次收到的目标配色。
+     *
+     * 状态更新（`updateStatus`）每秒可能下发数次，同一阶段反复下发时若每次都重启过渡动画，
+     * 跑马灯就会被一个永不结束的颜色动画持续拉起重绘。这里记住目标，同色直接跳过。
+     */
+    private var targetPalette: Palette? = null
 
     /**
      * 单色实心底色（非 null 时优先于 [bgGradient]）。
@@ -107,6 +133,7 @@ class MarqueeView @JvmOverloads constructor(
      */
     private var solidColor: Int? = null
     private val panel = RectF()
+    private val glowRect = RectF()
 
     /** 面板底色渐变颜色（按顺序组成渐变，可在设置中自定义，默认蓝→紫→粉） */
     private var gradientColors = listOf(
@@ -124,9 +151,14 @@ class MarqueeView @JvmOverloads constructor(
     /** 纵向内边距（像素）：由设置项控制，决定面板厚度 */
     private var padVPx = dp(8f).toInt()
 
-    /** 窗口可用宽度：窗口本身是固定宽度，量出来就是它；未布局时按屏幕宽兜底 */
+    /**
+     * 胶囊可用宽度（px）。
+     *
+     * 窗口比胶囊左右各宽 [glowPadPx]：光晕画在胶囊外侧，不把窗口撑大就只能画进胶囊内部，
+     * 或让两侧柔光被窗口边界切掉。胶囊体本身的宽度与建窗时保持一致，视觉位置不变。
+     */
     private val maxPanelWidth: Float
-        get() = if (width > 0) width.toFloat()
+        get() = if (width > 0) (width - 2 * glowPadPx).coerceAtLeast(dp(120f))
         else (resources.displayMetrics.widthPixels - 2 * dp(PANEL_MARGIN)).coerceAtLeast(dp(120f))
 
     /** 当前胶囊宽度（px）：由文字量决定，绘制时居中 */
@@ -209,8 +241,30 @@ class MarqueeView @JvmOverloads constructor(
         invalidate()
     }
 
+    /**
+     * 按执行阶段切换整套配色（底色 / 文字色 / 光晕色 / 光晕强度），280ms 平滑过渡。
+     *
+     * 这里刻意不复用设置页的用户配色：状态色是"当前在做什么"的语义色，
+     * 与用户挑的装饰配色是两件事；强弱按阶段递减到克制区间，避免霓虹感。
+     */
+    fun setPhase(phase: String) {
+        val target = paletteOfPhase(phase)
+        // 同一阶段重复下发（常见的状态刷新）不重启动画：颜色已经对了，再跑一遍只是白烧帧
+        if (target == targetPalette) return
+        targetPalette = target
+        // 阶段配色一律走实心底色：先切到实心模式，再让底色/文字色/光晕色/强度一起插值过去。
+        // （这里是"跟随状态时改为单色实心"旧决定的延续：三档颜色是同一套调色板里的，
+        //   但胶囊体本身仍是一整块纯色，不铺渐变见 CHANGELOG。）
+        solidColor = target.base
+        gradientColors = emptyList()
+        bgGradient = null
+        animateTo(target)
+    }
+
     /** 设置面板底色：只给一个颜色（跟随状态变色）就是纯色实心，给两个以上才铺渐变 */
     fun setColors(colors: List<Int>) {
+        // 换成用户配色后，下一次同阶段下发仍要重新过渡（阶段目标已不再是当前配色）
+        targetPalette = null
         if (colors.size < 2) {
             // 单色：整块铺一个色，绝不走渐变（见 solidColor 说明）
             val c = colors.firstOrNull() ?: DEFAULT_SOLID
@@ -218,15 +272,60 @@ class MarqueeView @JvmOverloads constructor(
             solidColor = c
             gradientColors = emptyList()
             bgGradient = null
+            paletteAnimator?.cancel()
+            palette = Palette(c, Color.WHITE, lighten(c), palette.intensity)
             invalidate()
             return
         }
         if (solidColor == null && gradientColors == colors) return
         solidColor = null
         gradientColors = colors
+        // 用户自定义渐变：光晕取首个颜色，强度固定在中档，不跟状态跳动
+        paletteAnimator?.cancel()
+        palette = Palette(colors.first(), Color.WHITE, colors.first(), GLOW_INTENSITY_CUSTOM)
         buildBgGradient()
         invalidate()
     }
+
+    /** 颜色插值到目标配色：只重绘，不动布局；连续切状态时从当前中间值接着走 */
+    private fun animateTo(target: Palette) {
+        paletteAnimator?.cancel()
+        if (palette == target) return
+        val from = palette
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = PALETTE_ANIM_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { anim ->
+                val t = anim.animatedFraction
+                palette = Palette(
+                    base = lerpColor(from.base, target.base, t),
+                    text = lerpColor(from.text, target.text, t),
+                    glow = lerpColor(from.glow, target.glow, t),
+                    intensity = from.intensity + (target.intensity - from.intensity) * t,
+                )
+                invalidate()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    palette = target
+                    invalidate()
+                }
+            })
+        }
+        paletteAnimator = animator
+        animator.start()
+        invalidate()
+    }
+
+    private fun lerpColor(from: Int, to: Int, t: Float): Int = Color.argb(
+        (Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * t).toInt(),
+        (Color.red(from) + (Color.red(to) - Color.red(from)) * t).toInt(),
+        (Color.green(from) + (Color.green(to) - Color.green(from)) * t).toInt(),
+        (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * t).toInt(),
+    )
+
+    /** 把颜色往白色提一档：光晕色永远比底色亮，才像"光"而不是脏边 */
+    private fun lighten(c: Int): Int = lerpColor(c, Color.WHITE, 0.45f)
 
     /** 背景渐变：用户配色原样使用（不透明实色），随胶囊宽度重建（只在宽度变化时重建） */
     private fun buildBgGradient() {
@@ -261,7 +360,8 @@ class MarqueeView @JvmOverloads constructor(
         val fm = paint.fontMetrics
         val contentH = fm.descent - fm.ascent
         val w = resolveSize(maxPanelWidth.toInt(), widthMeasureSpec)
-        val h = if (bandMode) bandInsetPx + dp(BAND_ROW_HEIGHT_DP).toInt() else (contentH + 2 * padVPx).toInt()
+        val h = if (bandMode) bandInsetPx + dp(BAND_ROW_HEIGHT_DP).toInt()
+        else (contentH + 2 * padVPx + 2 * glowPadPx).toInt()
         if (panelWidth <= 1f) panelWidth = if (bandMode) w.toFloat() else computePanelWidth()
         setMeasuredDimension(w, resolveSize(h, heightMeasureSpec))
     }
@@ -295,6 +395,8 @@ class MarqueeView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         canAnimate = false
+        paletteAnimator?.cancel()
+        paletteAnimator = null
         super.onDetachedFromWindow()
     }
 
@@ -335,13 +437,19 @@ class MarqueeView @JvmOverloads constructor(
         }
         val pw = panelWidth.coerceAtMost(w)
         val left = if (bandMode) 0f else (w - pw) / 2f
-        val radius = if (bandMode) 0f else h / 2f
-        panel.set(left, 0f, left + pw, h)
+        // 胶囊上下各让出光晕留白：光晕画在胶囊外侧，不能被窗口边界切掉
+        val padY = if (bandMode) 0f else glowPadPx
+        val radius = if (bandMode) 0f else (h - 2 * padY) / 2f
+        panel.set(left, padY, left + pw, h - padY)
+
+        // 先在胶囊外侧铺柔光（只画外圈，不进面板内部）
+        drawGlow(canvas, panel, radius)
+
         val solid = solidColor
         if (solid != null) {
             // 单色：实心一块，不留任何渐变痕迹（shader 必须清掉，否则旧渐变会接着生效）
             bgPaint.shader = null
-            bgPaint.color = solid
+            bgPaint.color = palette.base
             canvas.drawRoundRect(panel, radius, radius, bgPaint)
         } else {
             bgGradient?.let {
@@ -355,9 +463,10 @@ class MarqueeView @JvmOverloads constructor(
         val avail = MarqueeGeometry.contentWidthPx(pw, padH)
         // 文字裁进内容区：既不会压到胶囊圆角上，滚动时也在边缘干净地消失。
         // 光带还要再从 inset 下沿起裁：上段是给状态栏纯色打底的，文字不能爬进去压系统图标。
-        val textTop = if (bandMode) bandInsetPx.toFloat() else 0f
+        val textTop = if (bandMode) bandInsetPx.toFloat() else panel.top
+        paint.color = palette.text
         canvas.save()
-        canvas.clipRect(contentLeft, textTop, left + pw - padH, h)
+        canvas.clipRect(contentLeft, textTop, left + pw - padH, panel.bottom)
 
         if (!MarqueeGeometry.shouldScroll(textWidth, pw, padH)) {
             // 短文本：居中静止，省掉每帧重绘
@@ -382,17 +491,61 @@ class MarqueeView @JvmOverloads constructor(
         if (canAnimate) postInvalidateOnAnimation() else scrolling = false
     }
 
+    /**
+     * 外扩柔光：三层同心圆角矩形，越外层越大越淡。
+     *
+     * 用"多圈叠加"而不是 `BlurMaskFilter` / `setShadowLayer`：后两者会强制视图走
+     * 软件图层，滚动时每帧整窗离屏合成，文字高频刷新时最容易掉帧。
+     * 这里只在同一张画布上多画三个圆角矩形，成本与三次普通填充相当。
+     *
+     * 不同外层先画、内层后画，靠近胶囊边缘的地方叠加得更亮，形成向外的衰减。
+     */
+    private fun drawGlow(canvas: Canvas, capsule: RectF, radius: Float) {
+        // 光带贴屏幕两侧，外扩柔光会被窗口边界整条切掉，只会剩上下两条毛边，干脆不画
+        if (bandMode) return
+        val strength = palette.intensity
+        if (strength <= 0f) return
+        glowPaint.color = palette.glow
+        for (i in GLOW_RING_DP.indices) {
+            val spread = dp(GLOW_RING_DP[i])
+            glowPaint.alpha = (GLOW_RING_ALPHA[i] * strength * 255f).toInt()
+            glowRect.set(
+                capsule.left - spread,
+                capsule.top - spread,
+                capsule.right + spread,
+                capsule.bottom + spread,
+            )
+            canvas.drawRoundRect(glowRect, radius + spread, radius + spread, glowPaint)
+        }
+    }
+
     private fun centerY(): Float {
         val fm = paint.fontMetrics
-        // 光带只在下段文字行里居中；上段（状态栏高度）不参与文字排版
-        val rowTop = if (bandMode) bandInsetPx.toFloat() else 0f
-        val rowHeight = height - rowTop
+        // 光带只在下段文字行里居中；胶囊则在去掉光晕留白后的胶囊体内居中
+        val rowTop = if (bandMode) bandInsetPx.toFloat() else panel.top
+        val rowHeight = if (bandMode) height - rowTop else panel.height()
         return rowTop + (rowHeight - fm.ascent - fm.descent) / 2f
     }
 
     private fun sp(v: Float): Float = v * resources.displayMetrics.scaledDensity
 
     private fun dp(v: Float): Float = v * resources.displayMetrics.density
+
+    /**
+     * 阶段配色表：底色压深、文字近白、光晕比底色亮一档，强度按阶段递减。
+     *
+     * 只取状态本身的语义色（蓝=观察、紫=思考、粉=执行、绿=完成、红=失败、琥珀=等待），
+     * 不走彩虹渐变；光晕强度最高只到 0.75，保证"亮但不刺眼"。
+     */
+    private fun paletteOfPhase(phase: String): Palette = when (phase) {
+        "OBSERVING" -> Palette(0xFF2F5CD6.toInt(), 0xFFF2F6FF.toInt(), 0xFF8FB4FF.toInt(), 0.62f)
+        "THINKING" -> Palette(0xFF6440D4.toInt(), 0xFFF6F2FF.toInt(), 0xFFB9A5FF.toInt(), 0.56f)
+        "ACTING" -> Palette(0xFFD1366C.toInt(), 0xFFFFF5F8.toInt(), 0xFFFF9AB6.toInt(), 0.72f)
+        "DONE" -> Palette(0xFF0E8F66.toInt(), 0xFFEBFFF7.toInt(), 0xFF66E0B8.toInt(), 0.52f)
+        "ERROR" -> Palette(0xFFC23A3F.toInt(), 0xFFFFF3F3.toInt(), 0xFFFF9A9C.toInt(), 0.66f)
+        // PENDING（等待/刚起步）
+        else -> Palette(0xFFB0721C.toInt(), 0xFFFFF8EC.toInt(), 0xFFF3BE79.toInt(), 0.44f)
+    }
 
     companion object {
         /** 胶囊两侧至少留出的空白：长文本封顶后也不能顶到屏幕边缘 */
@@ -412,5 +565,23 @@ class MarqueeView @JvmOverloads constructor(
 
         /** 顶部光带文字行高度（dp）：状态栏那一段之下再给 14sp 文字留出可读的一行 */
         private const val BAND_ROW_HEIGHT_DP = 30f
+
+        /**
+         * 光晕外扩留白（dp）：窗口上下各让这么多，光晕才不会被窗口边界裁切。
+         * 悬浮窗的落点计算也用它（胶囊体位置不变，多出来的是外圈柔光）。
+         */
+        const val GLOW_PAD_DP = 10f
+
+        /** 配色过渡时长（ms）：与入场/强调同一档节奏，不额外造时长 */
+        private const val PALETTE_ANIM_MS = 280L
+
+        /** 自定义配色下的光晕强度：用户自己挑的颜色不跟状态跳动，固定中档 */
+        private const val GLOW_INTENSITY_CUSTOM = 0.5f
+
+        /** 光晕三层外扩半径（dp）：由外到内，越大越淡 */
+        private val GLOW_RING_DP = floatArrayOf(9f, 5f, 2f)
+
+        /** 三层光晕的透明度（乘上阶段强度后使用）：叠起来边缘约 0.2~0.3，够看清又不糊脸 */
+        private val GLOW_RING_ALPHA = floatArrayOf(0.05f, 0.09f, 0.14f)
     }
 }
