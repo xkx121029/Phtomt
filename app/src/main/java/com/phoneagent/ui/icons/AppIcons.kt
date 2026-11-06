@@ -1,11 +1,21 @@
 package com.phoneagent.ui.icons
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.composables.icons.lucide.AppWindow
 import com.composables.icons.lucide.ArrowLeft
 import com.composables.icons.lucide.Bell
+import com.composables.icons.lucide.BellOff
 import com.composables.icons.lucide.Bot
+import com.composables.icons.lucide.Calendar
 import com.composables.icons.lucide.Camera
 import com.composables.icons.lucide.ChartLine
+import com.composables.icons.lucide.Clipboard
+import com.composables.icons.lucide.Clock
+import com.composables.icons.lucide.Copy
+import com.composables.icons.lucide.MessageSquare
+import com.composables.icons.lucide.Share2
+import com.composables.icons.lucide.Smartphone
+import com.composables.icons.lucide.Timer
 import com.composables.icons.lucide.ArrowUpDown
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronRight
@@ -212,4 +222,26 @@ object AppIcons {
     val Guard: ImageVector get() = Lucide.Shield
     /** 均衡档：滑杆——范围可调 */
     val Tune: ImageVector get() = Lucide.SlidersHorizontal
+
+    // ── 能力端点（CapabilityVisuals 专用：每类系统能力一个语义图标） ──────
+    /** 闹钟 */
+    val Alarm: ImageVector get() = Lucide.Clock
+    /** 倒计时 */
+    val Timer: ImageVector get() = Lucide.Timer
+    /** 日历日程 */
+    val Calendar: ImageVector get() = Lucide.Calendar
+    /** 剪贴板 */
+    val Clipboard: ImageVector get() = Lucide.Clipboard
+    /** 回话 / 沟通 */
+    val Message: ImageVector get() = Lucide.MessageSquare
+    /** 清理通知（不打扰） */
+    val NotifOff: ImageVector get() = Lucide.BellOff
+    /** 分享 */
+    val Share: ImageVector get() = Lucide.Share2
+    /** 复制 */
+    val Copy: ImageVector get() = Lucide.Copy
+    /** 应用管控 / 副屏窗口 */
+    val AppWindow: ImageVector get() = Lucide.AppWindow
+    /** 设备信息 */
+    val Device: ImageVector get() = Lucide.Smartphone
 }

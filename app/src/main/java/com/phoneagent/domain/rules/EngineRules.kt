@@ -4,6 +4,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 
@@ -117,7 +118,9 @@ object EngineRules {
         ActionType.WAIT -> "等待"
         ActionType.SCROLL -> "滚动查找"
         ActionType.TASK_DONE, ActionType.TASK_COMPLETE -> "任务完成"
-        else -> type
+        // 兜底不吐英文意图名：能力注册表里有的（定闹钟、剪贴板、日历…）直接用登记的中文名，
+        // 这条标签会出现在授权确认与步骤回显里，用户不该看到 set_alarm 这种内部标识
+        else -> CapabilityRegistry.specOf(type)?.name ?: type
     }
 
     /**

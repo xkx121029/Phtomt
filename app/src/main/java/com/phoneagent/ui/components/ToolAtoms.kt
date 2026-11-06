@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.coding.agent.CodingToolNames
-import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
@@ -94,40 +93,15 @@ data class ToolIdentity(
 /**
  * Agent 侧工具（按动作类型识别）。
  *
- * 图标一律线性描边、同一尺寸；名称复用 [HumanTranslator] 的动作人话，
+ * 图标一律线性描边、同一尺寸；名称与图标统一由 [CapabilityVisuals] 给出，
  * 避免同一动作在卡片标题与步骤行里叫两个名字。
  */
 // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
 @Suppress("CyclomaticComplexMethod")
 fun agentToolIdentity(type: String): ToolIdentity = ToolIdentity(
-    icon = when (type) {
-        ActionType.CLICK, ActionType.TAP -> AppIcons.Tap
-        ActionType.LONG_CLICK, ActionType.LONG_PRESS -> AppIcons.LongPress
-        ActionType.TYPE_TEXT -> AppIcons.Keyboard
-        ActionType.KEY -> AppIcons.EnterKey
-        ActionType.SCROLL, ActionType.SWIPE, ActionType.SWIPE_UP, ActionType.SWIPE_DOWN,
-        ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT,
-        -> AppIcons.ScrollVertical
-
-        ActionType.SCROLL_TO -> AppIcons.ScrollSearch
-        ActionType.WAIT -> AppIcons.Loading
-        ActionType.LAUNCH -> AppIcons.Launch
-        ActionType.LAUNCH_ASSISTANT -> AppIcons.Launch
-        ActionType.OPEN -> AppIcons.Globe
-        ActionType.BACK -> AppIcons.ArrowBack
-        ActionType.HOME -> AppIcons.Home
-        ActionType.RECENTS -> AppIcons.ListTodo
-        ActionType.REFRESH -> AppIcons.Refresh
-        ActionType.SHELL -> AppIcons.Terminal
-        ActionType.WRITE_DOC -> AppIcons.Description
-        ActionType.REMEMBER -> AppIcons.Remember
-        ActionType.DEVICE_QUERY -> AppIcons.Memory
-        ActionType.MCP_CALL -> AppIcons.Bolt
-        ActionType.TASK_DONE, ActionType.TASK_COMPLETE -> AppIcons.CheckCircle
-        ActionType.ABORT -> AppIcons.Cancel
-        else -> AppIcons.SmartToy
-    },
-    label = if (HumanTranslator.knowsAction(type)) HumanTranslator.actionVerb(type) else "未知操作",
+    // 图标与中文名统一走能力表：新增能力（定闹钟、剪贴板、日历…）不会再落到「未知操作」+ 通用图标
+    icon = CapabilityVisuals.iconOf(type),
+    label = CapabilityVisuals.nameOf(type),
 )
 
 /**

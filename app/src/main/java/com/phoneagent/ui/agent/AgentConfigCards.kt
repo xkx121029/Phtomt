@@ -51,7 +51,7 @@ internal fun AgentConfigDialRow(
             modifier = Modifier.weight(1f),
         )
         ConfigDialCard(
-            title = "授权等级",
+            title = "执行与授权",
             icon = AppIcons.Guard,
             options = modeOptions,
             selectedId = settings.actionMode,

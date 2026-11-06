@@ -1,5 +1,7 @@
 package com.phoneagent.core.text
 
+import com.phoneagent.domain.model.CapabilityRegistry
+
 /**
  * 端侧"人话翻译器"（v2.2.1 5.1）：把技术术语硬编码映射成普通人能懂的表述。
  * 不调用云端（避免额外调用的不确定性与成本），找不到映射时原样返回原始信息。
@@ -89,11 +91,21 @@ object HumanTranslator {
         "generic" to "普通页面",
     )
 
-    /** 动作类型 → 人话动词 */
-    fun actionVerb(type: String): String = actionVerbMap[type] ?: type
+    /**
+     * 动作类型 → 人话动词。
+     *
+     * 先查本文件的手写表（历史动作，措辞更短更适合作为动词），
+     * 再退回 [CapabilityRegistry] 的能力名——能力端点的中文名只有注册表这一份事实源，
+     * 新能力进来后这里自动跟上，不会再原样吐英文意图名。
+     */
+    fun actionVerb(type: String): String =
+        actionVerbMap[type]
+            ?: CapabilityRegistry.specOf(type)?.name?.takeIf { it.isNotBlank() }
+            ?: "其他操作"
 
-    /** 动作类型是否可理解 */
-    fun knowsAction(type: String): Boolean = actionVerbMap.containsKey(type)
+    /** 动作类型是否可理解（手写表或能力注册表命中） */
+    fun knowsAction(type: String): Boolean =
+        actionVerbMap.containsKey(type) || CapabilityRegistry.specOf(type) != null
 
     /** 错误技术描述 → 人话（无映射则原样返回） */
     fun translateError(technical: String): String {

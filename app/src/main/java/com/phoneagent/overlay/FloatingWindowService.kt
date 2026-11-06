@@ -111,29 +111,16 @@ class FloatingWindowService : Service() {
 
     private var dot: View? = null
     private var dotPulseAnimator: ValueAnimator? = null
-    /** 底部跑马灯距屏幕底边的基础留白（导航栏高度之外再加这么多） */
-    private val marqueeBottomGap = 12
+    /** 底部胶囊距底边的最小净空（dp）：约 0.5cm，手势条更高时以手势条为准 */
+    private val marqueeBottomGap = 19
 
     /** 底部胶囊窗口两侧留白（dp）：窗口宽度 = 真实屏宽 - 2 * 此值，建窗时定死 */
     private val marqueeSideMargin = 16
-
-    /** 顶部光带最小高度（dp）：状态栏再矮也要放得下 14sp 文字 */
-    private val bandMinHeight = 30
 
     /**
      * 底部跑马灯（胶囊）：固定宽度窗口，浮在导航栏之上。
      */
     private var marquee: MarqueeView? = null
-
-    /**
-     * 顶部光带：独立窗口，宽度 = 真实屏幕宽、高度 = 状态栏 + 挖孔 inset，
-     * 窗口坐标从物理屏顶开始 —— 所以它真的压在状态栏上（见 [OverlayWindowSpec.passiveFlags]）。
-     *
-     * 用两个窗口而不是一个全屏窗口：全屏窗口必须整体压到 0.4 不透明度才不触发
-     * Android 12+ 的穿透触摸拦截，那会把光带与胶囊一起变淡；
-     * 拆成「顶部整宽矮窗 + 底部自适应胶囊」后两层都能保持纯色不透明，也不影响触摸。
-     */
-    private var topBand: MarqueeView? = null
 
     private var stepText: TextView? = null
     private var progressBar: ProgressBar? = null
@@ -270,9 +257,6 @@ class FloatingWindowService : Service() {
      */
     private var barParams: WindowManager.LayoutParams? = null
 
-    /** 顶部光带窗口参数：旋转时高度随状态栏 inset 重算 */
-    private var bandParams: WindowManager.LayoutParams? = null
-
     /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
     private var barVisibleBeforeHide = false
 
@@ -338,13 +322,11 @@ class FloatingWindowService : Service() {
     private var miniVisibleBeforeHide = false
 
     /**
-     * 任务卡片可拖动的上边界：始终退到顶部光带下方（= 状态栏 + 文字行）。
+     * 任务卡片可拖动的上边界：退到状态栏之下再留一行。
      *
-     * 光带占据状态栏与它下面那一行文字，卡片再往上拖会盖住光带文案；
-     * 所以边界不是状态栏高度，而是整条光带的高度。
+     * 顶部光带已移除，上边界不再需要让出整条光带高度；只保证卡片不压住状态栏文字。
      */
-    private fun cardTopLimit(): Int =
-        OverlayWindowSpec.marqueeBandHeightPx(statusBarHeight(), dp(bandMinHeight))
+    private fun cardTopLimit(): Int = statusBarHeight() + dp(12)
 
     private val handler = Handler(Looper.getMainLooper())
     private var notificationManager: NotificationManager? = null
@@ -402,7 +384,6 @@ class FloatingWindowService : Service() {
             it.setColors(colors)
             it.setPadV(dp(marqueeHeightDp))
         }
-        topBand?.setColors(colors)
     }
 
     private fun startForegroundCompat() {
@@ -598,103 +579,59 @@ class FloatingWindowService : Service() {
     /**
      * 创建跑马灯：**同一时刻只存在一个文字载体**，任务期间常驻。
      *
-     * 1. **顶部光带**（[topBand]，主载体）：宽度 = 真实屏宽、高度 = 状态栏 + 挖孔 inset，坐标从物理屏顶开始。
-     *    窗口类型仍是 `TYPE_APPLICATION_OVERLAY`，配合
-     *    `fitInsetsTypes = 0` + `cutout = ALWAYS` + `LAYOUT_IN_SCREEN | NO_LIMITS`，
-     *    光带才能真正压在状态栏上（少任何一条都会整体下移一条状态栏）。
-     * 2. **底部胶囊**（[marquee]，仅退路）：固定宽度（真实屏宽 - 两侧留白）、高度自适应，
-     *    锚在导航栏之上，不被手势条压住。只有光带建不出来（无权限/ROM 限制）时才创建它。
+     * 形态是贴底长条胶囊：固定宽度（真实屏宽 - 两侧留白）、两端全圆角（半径 = 高度一半，由
+     * `MarqueeView` 自绘）、锚在导航栏之上、离底边约 0.5cm，横向铺开而不是方块色块。
      *
-     * 为什么不再两者并存：两个窗口逐字渲染同一段任务描述，用户看到的就是"同一步被画了两遍"。
-     * 现在光带负责文字，胶囊只在光带缺失时兜底，二者永不叠加。
+     * 为什么只有这一个载体：曾经同时存在「顶部光带 + 底部胶囊」，两个窗口逐字渲染同一段
+     * 任务描述，用户看到的就是"同一步被画了两遍"；去掉光带后文字只有一处可读，也不再需要
+     * 为光带单独处理状态栏 inset、刘海裁切与 `LAYOUT_IN_SCREEN` 那一套窗口参数。
      *
-     * 两者都是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
+     * 窗口是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
      * 窗口宽度在建窗时一次定死，之后文本怎么高频更新都不会触发窗口重排。
      */
-    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun showMarquee() {
         val wm = windowManager ?: return
-        // 光带与胶囊是同一段文案的两个候选载体：同时只保留一个
-        if (marquee != null || topBand != null) return
+        if (marquee != null) return
         val screenSize = OverlayWindowSpec.realScreenSize(this)
         val screenW = screenSize.first
 
-        if (topBand == null) {
-            val startedAt = SystemClock.uptimeMillis()
-            val inset = statusBarHeight()
-            val bandHeight = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(bandMinHeight))
-            val band = MarqueeView(this, bandMode = true).apply {
-                setColors(marqueeGradient(currentPhase))
-                setBandInset(inset)
-            }
-            val lp = WindowManager.LayoutParams(
-                screenW, bandHeight,
-                OverlayWindowSpec.overlayWindowType(),
-                OverlayWindowSpec.passiveFlags(),
-                PixelFormat.TRANSLUCENT,
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = 0
-                // 物理屏顶：fitInsetsTypes 已清空，y=0 就是状态栏上方那条
-                y = 0
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-            }
-            try {
-                wm.addView(band, lp)
-                topBand = band
-                bandParams = lp
-                OverlayPerf.code("marquee-band-add", startedAt)
-            } catch (_: Exception) {
-                // 无悬浮窗权限：光带建不出来，底部胶囊与任务卡片照常工作
-            }
+        val startedAt = SystemClock.uptimeMillis()
+        val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
+        val bar = MarqueeView(this).apply {
+            setColors(marqueeGradient(currentPhase))
+            setPadV(dp(marqueeHeightDp))
         }
-
-        // 只有光带建不出来（无权限/ROM 限制）时才退回底部胶囊，保证文字仍有一处可读
-        if (marquee == null && topBand == null) {
-            val startedAt = SystemClock.uptimeMillis()
-            val barW = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
-            val bar = MarqueeView(this).apply {
-                setColors(marqueeGradient(currentPhase))
-                setPadV(dp(marqueeHeightDp))
-            }
-            val lp = WindowManager.LayoutParams(
-                // 固定宽度：文本更新只改绘制，不重排窗口
-                barW, WindowManager.LayoutParams.WRAP_CONTENT,
-                OverlayWindowSpec.overlayWindowType(),
-                OverlayWindowSpec.passiveFlags(),
-                PixelFormat.TRANSLUCENT,
-            ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                x = 0
-                y = marqueeBottomOffset()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-            }
-            try {
-                wm.addView(bar, lp)
-                marquee = bar
-                barParams = lp
-                OverlayPerf.code("marquee-add", startedAt)
-            } catch (_: Exception) {
-                // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
-            }
+        val lp = WindowManager.LayoutParams(
+            // 固定宽度：文本更新只改绘制，不重排窗口
+            barW, WindowManager.LayoutParams.WRAP_CONTENT,
+            OverlayWindowSpec.overlayWindowType(),
+            OverlayWindowSpec.passiveFlags(),
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            x = 0
+            y = marqueeBottomOffset()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
+        }
+        try {
+            wm.addView(bar, lp)
+            marquee = bar
+            barParams = lp
+            OverlayPerf.code("marquee-add", startedAt)
+        } catch (_: Exception) {
+            // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
         }
         // 新建的窗口默认可见：这里立刻按用户设置和当前状态补一次（只任务卡模式下直接 GONE）
         applyStepTextPlacement()
     }
 
     /**
-     * 更新跑马灯文案：只写当前存在的那个载体（光带优先、胶囊兜底）。
+     * 更新跑马灯文案：只写唯一那个载体。
      *
      * 相位由 `MarqueeView` 自己保持：换文案不会重置滚动位置，也不会触发窗口重排。
      */
     private fun setMarqueeText(text: String) {
-        val band = topBand
-        if (band != null) band.setText(text) else marquee?.setText(text)
+        marquee?.setText(text)
     }
 
     /**
@@ -707,7 +644,6 @@ class FloatingWindowService : Service() {
         marqueeRequestedVisible = visible
         val v = if (visible && stepPlacement != StepTextPlacement.CARD) View.VISIBLE else View.GONE
         marquee?.visibility = v
-        topBand?.visibility = v
     }
 
     /**
@@ -729,12 +665,12 @@ class FloatingWindowService : Service() {
     }
 
     private fun isMarqueeVisible(): Boolean =
-        marquee?.visibility == View.VISIBLE || topBand?.visibility == View.VISIBLE
+        marquee?.visibility == View.VISIBLE
 
     /**
-     * 底部跑马灯距屏幕底边的距离：基础留白 + 导航栏（手势条）高度。
+     * 底部跑马灯距屏幕底边的距离：约 0.5cm；系统手势条更高时让到手势区之上。
      *
-     * 面板压在系统手势条上会干扰上滑手势，所以先退到导航栏之上再留白。
+     * 面板压在系统手势条上会干扰上滑手势，所以取 `max(手势条高度, 19dp)`。
      * 拿不到导航栏 inset（API 30 以下）就只留基础留白，面板照常显示。
      */
     private fun marqueeBottomOffset(): Int {
@@ -745,7 +681,7 @@ class FloatingWindowService : Service() {
                     ?.bottom
             } else null
         }.getOrNull() ?: 0
-        return navBar + dp(marqueeBottomGap)
+        return maxOf(navBar, dp(marqueeBottomGap))
     }
 
     // ==================== 降级提示细条 ====================
@@ -1708,7 +1644,6 @@ class FloatingWindowService : Service() {
             currentPhase = phase
             val colors = marqueeGradient(phase)
             marquee?.setColors(colors)
-            topBand?.setColors(colors)
             // 记录原始入参 + 按显示设置落到两处（跑马灯 / 卡片状态行），避免同一条描述画两遍
             lastStatusText = status
             lastReasoningText = reasoning
@@ -2079,15 +2014,6 @@ class FloatingWindowService : Service() {
             lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
             lp.y = marqueeBottomOffset()
             runCatching { windowManager?.updateViewLayout(bar, lp) }
-        }
-        bandParams?.let { lp ->
-            val band = topBand ?: return@let
-            // 顶部光带：旋转后状态栏/挖孔高度会变，窗口尺寸与视图高度一起重算
-            val inset = statusBarHeight()
-            band.setBandInset(inset)
-            lp.width = screenW
-            lp.height = OverlayWindowSpec.marqueeBandHeightPx(inset, dp(bandMinHeight))
-            runCatching { windowManager?.updateViewLayout(band, lp) }
         }
         noticeParams?.let { lp ->
             val notice = noticeRoot ?: return@let
@@ -2851,13 +2777,10 @@ class FloatingWindowService : Service() {
     private fun removeWindow() {
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
-        // 跑马灯是两层独立窗口：底部胶囊 + 顶部光带，需一并移除
+        // 跑马灯是独立窗口：移除后屏幕上不留任何入口
         marquee?.let { runCatching { windowManager?.removeView(it) } }
         marquee = null
         barParams = null
-        topBand?.let { runCatching { windowManager?.removeView(it) } }
-        topBand = null
-        bandParams = null
         // 悬浮球同样是独立窗口：移除后屏幕上不留任何入口（任务已结束，不需要再唤出）
         miniRoot?.let { runCatching { windowManager?.removeView(it) } }
         miniRoot = null
