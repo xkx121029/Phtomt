@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Happy Phone Agent">
+  <title>Happy Phone Agent · 亮格</title>
+  <!-- 瓦片底：玄青深锚 -->
+  <rect width="24" height="24" rx="5.28" fill="#063A2E"/>
+  <g transform="translate(12 12) scale(0.94) translate(-12 -12)" fill="none" stroke="#5FD9B4" stroke-width="1.55">
+    <rect x="5.125" y="5.125" width="4.75" height="4.75" rx="1.225"/>
+    <rect x="5.125" y="14.125" width="4.75" height="4.75" rx="1.225"/>
+    <rect x="14.125" y="14.125" width="4.75" height="4.75" rx="1.225"/>
+  </g>
+  <rect x="13.35" y="4.35" width="6.3" height="6.3" rx="2" fill="#5FD9B4"
+        transform="translate(12 12) scale(0.94) translate(-12 -12)"/>
+</svg>

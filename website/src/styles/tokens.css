@@ -47,7 +47,8 @@
   --brand: #0e7c66;
   --brand-strong: #0a5a4a;
   --brand-ink: #033a2f;
-  --brand-wash: #dcefe8;
+  /* 与端侧 AppColors.brandContainer 对齐（VI v1.0），此前站点用的是偏灰的 #dcefe8 */
+  --brand-wash: #cfede3;
   --brand-veil: rgba(14, 124, 102, 0.08);
   /* 深墨绿：浅色主题里做深色锚点块的地，比纯黑有温度 */
   --brand-deep: #063a2e;

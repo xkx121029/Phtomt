@@ -2,12 +2,13 @@
 /**
  * 站点标记：直接用手机端 App 的图标，与用户桌面上看到的是同一个。
  * 走 BASE_URL 而不是写死 `/`，静态导出（GitHub Pages）在子路径下也能取到。
+ * VI v1.0 起改用矢量 favicon.svg：28px 下比 PNG 更锐利，且只此一份源文件。
  */
 defineProps({
   size: { type: Number, default: 28 }
 })
 
-const src = `${import.meta.env.BASE_URL}logo-mark.png`
+const src = `${import.meta.env.BASE_URL}favicon.svg`
 </script>
 
 <template>
