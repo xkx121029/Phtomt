@@ -1,3 +1,6 @@
+import org.gradle.api.provider.Property
+import org.gradle.api.services.BuildService
+import org.gradle.api.services.BuildServiceParameters
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
@@ -118,16 +121,60 @@ fun isBuildLockTask(name: String): Boolean =
 //   - 在 configureEach 里 tasks.register(...) → "cannot be executed in the current context"。
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// 锁释放服务：Gradle 在构建结束时（成功、失败、任务抛异常）都会关闭 BuildService。
+// 这是唯一可靠的收尾点——不能用 finalizedBy 的任务释放，因为「一个 task 一次构建只执行一次」，
+// 释放任务在第一个被锁任务结束后就执行完了，后续任务再取锁就没人释放（实测编译任务长时间持锁）。
+// 进程被外部杀掉时 close() 不会执行，这种情况由取锁时的「pid 存活探测 + 60 分钟阈值 + 无标记孤儿锁」兜底。
+// ---------------------------------------------------------------------------
+interface BuildLockReleaseParams : BuildServiceParameters {
+    val lockPath: Property<String>
+    val markerDir: Property<String>
+    val pid: Property<Long>
+}
+
+abstract class BuildLockReleaseService : BuildService<BuildLockReleaseParams>, AutoCloseable {
+    override fun close() {
+        val lock = File(parameters.lockPath.get())
+        val markerDir = File(parameters.markerDir.get())
+        val selfPid = parameters.pid.get()
+        val firstLine = runCatching { lock.readLines().firstOrNull() }.getOrNull()
+        // 诊断输出走 stdout：BuildService 里没有 logger，println 会进 daemon 日志。
+        // 只在本服务确实参与过构建时打印，正常构建多一行无害，出事时能一眼看出收尾有没有跑。
+        println("[build-lock] release-service close：self=pid=$selfPid，锁首行=${firstLine ?: "(无锁)"}")
+        // 只释放「确实由本进程持有」的锁：别人的锁（以及它同名标记）一概不动。
+        if (firstLine != "pid=$selfPid") return
+        markerDir.listFiles()?.forEach { it.delete() }
+        var waited = 0
+        while (waited < 20 && markerDir.listFiles()?.isNotEmpty() == true) {
+            Thread.sleep(50)
+            waited++
+        }
+        val left = markerDir.listFiles()?.size ?: 0
+        val removed = if (left == 0) lock.delete() else false
+        println("[build-lock] release-service 已释放：lock=$removed，剩余标记=$left")
+    }
+}
+
+val buildLockRelease = gradle.sharedServices.registerIfAbsent(
+    "hpaBuildLockRelease",
+    BuildLockReleaseService::class.java,
+) {
+    parameters.lockPath.set(rootProject.file(".gradle/build.lock").absolutePath)
+    parameters.markerDir.set(rootProject.file(".gradle/build.lock.d").absolutePath)
+    parameters.pid.set(ProcessHandle.current().pid())
+}
+
 subprojects.forEach { p ->
     val lockFile = rootProject.file(".gradle/build.lock")
     val markerRoot = rootProject.file(".gradle/build.lock.d")
     val hostAssets = rootProject.file("app/src/main/assets/agent-host")
     val versionFile = versionPropsFile
-    // 陈旧阈值：默认 45 分钟，必须高于「全量编译最坏情况」——实测 :app:compileDebugKotlin
-    // 20–25 分钟，冷 daemon 再加约 9 分钟。阈值设成几分钟会把正常的长构建误判成死锁，
-    // 那是比「假锁堵住」更坏的失败模式。可用 -Phpa.lockStaleMinutes=NN 覆盖（慢机器调大）。
+    // 陈旧阈值：默认 60 分钟，必须高于「全量编译最坏情况」——实测 :app:compileDebugKotlin
+    // 20–35 分钟，冷 daemon 再加约 9 分钟。阈值设成几分钟会把正常的长构建误判成死锁，
+    // 那是比「假锁堵住」更坏的失败模式。可用 -Phpa.lockStaleMinutes=NN 覆盖。
     val staleMinutes = (findProperty("hpa.lockStaleMinutes") as? String)
-        ?.trim()?.toIntOrNull()?.takeIf { it > 0 } ?: 45
+        ?.trim()?.toIntOrNull()?.takeIf { it > 0 } ?: 60
     val staleMs = staleMinutes * 60_000L
     val pid = ProcessHandle.current().pid()
     // 进程名只用于锁记录（出事时能看出是谁占的）；取不到就退回 "java"，不能因此写不出完整记录。
@@ -145,33 +192,10 @@ subprojects.forEach { p ->
     val injected = injectedBuildNumber
     val buildsApk = apkBuilding
 
-    // 兜底释放任务必须注册在 configureEach 之外：在任务「正在创建」的回调里再 register，
-    // Gradle 会直接抛 "DefaultTaskContainer#register(String, Action) on task set cannot be
-    // executed in the current context"，导致所有 package* 任务连创建都失败。
-    val releaseSlot = p.tasks.register("releaseBuildSlotLocks") {
-        description = "内部任务：释放本项目持有的 .gradle/build.lock 标记"
-        val markerDirPath = markerRoot.absolutePath
-        val lockPath = lockFile.absolutePath
-        val markerPrefix = "${projectKey}__"
-        val ownPid = pid
-        doLast {
-            val lock = File(lockPath)
-            // 只清理「确实由本进程持有」的标记：拿锁失败时锁属于别的构建，
-            // 它的 app__ 开头标记和我们同名，误删会让对方下一步判定失败。
-            val heldByUs = lock.exists() &&
-                runCatching { lock.readLines().firstOrNull() }.getOrNull() == "pid=$ownPid"
-            if (!heldByUs) return@doLast
-            val dir = File(markerDirPath)
-            dir.listFiles()?.forEach { if (it.name.startsWith(markerPrefix)) it.delete() }
-            // --parallel 下别的项目可能正在删自己的标记，给一点窗口再判断是否还有人持有
-            var waited = 0
-            while (waited < 20 && dir.listFiles()?.isNotEmpty() == true) {
-                Thread.sleep(50)
-                waited++
-            }
-            if (dir.listFiles().isNullOrEmpty()) lock.delete()
-        }
-    }
+    // 释放不再用「一个 finalizedBy 的释放任务」：
+    // Gradle 里一个 task 一次构建只执行一次，释放任务在第一个被锁任务结束后就跑完了，
+    // 之后的任务再取锁就没有人释放——实测表现就是 :app:compileDebugKotlin 从 06:07 起一直持锁。
+    // 现在由 BuildLockReleaseService 统一收尾：构建结束（成功/失败/编译回退）都会调 close()。
     p.tasks.matching { isBuildLockTask(it.name) }.configureEach {
         val owner = path
         val taskName = name
@@ -199,9 +223,17 @@ subprojects.forEach { p ->
         // assemble 会先后跑 packageDebug 和 packageRelease，第二个任务必须能认出第一个的写回。
         val localVersionMarker = rootProject.file(".gradle/build-number.marker").absolutePath
         val localHostAssets = hostAssets.absolutePath
+        // 声明使用释放服务：只有被任务声明使用的 BuildService 才会在构建结束时被关闭。
+        usesService(buildLockRelease)
+        // 光声明 usesService 不会实例化服务，而没被实例化的 BuildService 在构建结束时不会调 close()
+        // ——这正是「锁一直不放」的原因。这里在配置期把注册对象抓成局部变量（只捕获局部值，
+        // 不引用脚本对象），任务真跑起来时主动取一次实例，确保收尾路径一定存在。
+        val releaseRegistration = buildLockRelease
         // 顺序很关键：先占槽位，再做版本号/资产校验——校验必须在锁内，
         // 否则校验通过之后、真正写 APK 之前仍可能被另一个构建改写。
         doFirst {
+            // 主动实例化释放服务：懒加载的服务不取一次，构建结束时就不会有 close() 收尾。
+            releaseRegistration.get()
             // ---------------- 1. 占住构建槽位 ----------------
             val lock = File(lockPath)
             val marker = File(markerPath)
@@ -241,6 +273,10 @@ subprojects.forEach { p ->
                 val incomplete = holderPid == null || holderHost.isNullOrBlank() ||
                     holderTask.isNullOrBlank() || holderProcess.isNullOrBlank() || startedAt == null
                 val expired = ageMs > localStaleMs
+                // 锁文件还在、但一个持有标记都没有：说明上一次释放只删了标记、没删成锁
+                // （或锁被手工留下）。给 2 分钟容差，避开「刚 createFile、还没写标记」的窗口。
+                val holderMarkers = File(markerDirPath).listFiles()?.size ?: 0
+                val orphaned = ageMs > 120_000 && holderMarkers == 0
                 val ageDesc = when {
                     ageMs < 60_000 -> "${ageMs / 1000} 秒"
                     ageMs < 3_600_000 -> "${ageMs / 60_000} 分钟"
@@ -252,6 +288,7 @@ subprojects.forEach { p ->
                         "（pid=${holderPid ?: "无"}，process=${holderProcess ?: "无"}，" +
                         "task=${holderTask ?: "无"}，started=${startedRaw ?: "无"}，host=${holderHost ?: "无"}）"
                     sameHost && !holderAlive -> "持有进程 pid=$holderPid 在本机已经不存在"
+                    orphaned -> "锁文件存在但没有任何持有标记（上一次释放没有清干净）"
                     expired -> "持锁 $ageDesc，超过阈值 $localStaleMinutes 分钟" +
                         (if (holderAlive) "（该进程仍存活，可能已经卡死）" else "")
                     else -> null
@@ -420,9 +457,9 @@ subprojects.forEach { p ->
                 )
             }
         }
-        // 释放交给 finalizer：任务失败时 doLast 不执行，而它一定执行；
-        // 它也排在本任务所有 doLast（含上面的版本号回写）之后，顺序天然正确。
-        finalizedBy(releaseSlot)
+        // 释放交给 BuildLockReleaseService：Gradle 在构建结束时（成功或失败）关闭 BuildService，
+        // 这是比 finalizedBy 任务更可靠的收尾点——任务级的释放任务一次构建只执行一次，
+        // 第一个被锁任务结束后它就跑了，后面再取锁没人释放（实测导致编译任务长时间持锁）。
     }
 }
 
