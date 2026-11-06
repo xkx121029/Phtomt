@@ -3,6 +3,7 @@ package com.phoneagent.ui.theme
 import android.content.Context
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.TweenSpec
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -53,6 +54,8 @@ fun ProvideMotionSettings(
             reduceMotion = reduceMotion,
             animationScale = animationScale,
         ),
+        // 全站按压反馈收口在这里：不用系统 ripple，按下当帧铺色，见 InstantPress.kt
+        LocalIndication provides InstantPressIndication,
         content = content,
     )
 }

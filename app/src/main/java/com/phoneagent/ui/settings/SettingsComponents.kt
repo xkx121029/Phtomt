@@ -19,10 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -880,20 +880,22 @@ internal fun ModelImportDialog(
                 modifier = Modifier.weight(1f),
             )
         }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
+        // 一个端点拉回几十上百个模型是常态：这里同样走懒加载，
+        // 勾选时只重组被点的那一行，不会把整张列表重新量一遍
+        LazyColumn(
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
         ) {
             if (filtered.isEmpty()) {
-                Text(
-                    if (names.isEmpty()) "服务端没有返回任何模型" else "没有匹配的模型",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                item(key = "import-empty") {
+                    Text(
+                        if (names.isEmpty()) "服务端没有返回任何模型" else "没有匹配的模型",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            filtered.forEach { name ->
+            items(items = filtered, key = { it }) { name ->
                 val already = name in existing
                 val checked = name in picked
                 Row(

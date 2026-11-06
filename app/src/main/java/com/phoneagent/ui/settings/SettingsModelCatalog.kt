@@ -3,6 +3,7 @@
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,9 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -75,154 +76,170 @@ internal fun SettingsModelCatalog(
         else -> null
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = SettingsScreenPad)
+    // 模型库动辄上百条：整页走懒加载，只组合视口内的行，
+    // 滚动时不再每帧把所有行重新测量一遍（实测见 docs/ui-refresh-plan.md 阶段三）。
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            start = SettingsScreenPad,
+            end = SettingsScreenPad,
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(LocalNavClearance.current),
+            bottom = LocalNavClearance.current.calculateBottomPadding() + AppSpacing.Xl,
+        ),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
-        SettingsPageHeader(
-            title = when (pickRole) {
-                "main" -> "选择主模型"
-                "vision" -> "选择视觉模型"
-                "reason" -> "选择思考模型"
-                else -> "模型库"
-            },
-            onBack = onBack,
-            subtitle = if (pickRole == null) {
-                "已入库的模型与能力徽章；问号代表没测出，与「不支持」不是一回事"
-            } else {
-                "点一行即为该职责选定模型；库里没有的也可以手填"
-            },
-        )
-        Spacer(Modifier.height(AppSpacing.Page))
-
-        if (pickRole != null) {
-            SettingsSection(
-                title = "手填模型名",
-                subtitle = "服务端列表里没有该模型时直接输入",
-                tone = SettingsTone.Brand,
-            ) {
-                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-                    ) {
-                        OutlinedTextField(
-                            value = manual,
-                            onValueChange = { manual = it },
-                            singleLine = true,
-                            placeholder = { Text("模型名") },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Button(
-                            onClick = {
-                                buzz()
-                                if (manual.isNotBlank()) onPicked(null, manual.trim())
-                            },
-                            enabled = manual.isNotBlank(),
-                        ) { Text("使用") }
-                    }
-                }
+        item(key = "catalog-header") {
+            Column {
+                SettingsPageHeader(
+                    title = when (pickRole) {
+                        "main" -> "选择主模型"
+                        "vision" -> "选择视觉模型"
+                        "reason" -> "选择思考模型"
+                        else -> "模型库"
+                    },
+                    onBack = onBack,
+                    subtitle = if (pickRole == null) {
+                        "已入库的模型与能力徽章；问号代表没测出，与「不支持」不是一回事"
+                    } else {
+                        "点一行即为该职责选定模型；库里没有的也可以手填"
+                    },
+                )
+                Spacer(Modifier.height(AppSpacing.Page))
             }
-            Spacer(Modifier.height(AppSpacing.Lg))
         }
 
-        // ========== 已入库模型 ==========
-        SettingsSection(
-            title = "已入库模型",
-            subtitle = "${st.catalog.size} 个 · 来自 ${st.endpoints.size} 个端点",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    placeholder = { Text("筛选模型名") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(AppSpacing.Md))
-                val visible = st.catalog.toList().filter {
-                    query.isBlank() || it.name.contains(query, ignoreCase = true)
-                }
-                if (visible.isEmpty()) {
-                    Text(
-                        if (st.catalog.isEmpty()) "模型库为空：先回「云端模型」在端点里点「拉取模型」"
-                        else "没有匹配的模型",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = AppSpacing.Sm),
-                    )
-                } else {
-                    st.endpoints.toList().forEach { ep ->
-                        val items = visible.filter { it.endpointId == ep.id }
-                        if (items.isNotEmpty()) {
-                            Spacer(Modifier.height(AppSpacing.Sm))
-                            Text(
-                                endpointHost(ep.baseUrl),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(AppSpacing.Sm))
-                            items.forEach { m ->
-                                val key = "${m.endpointId}/${m.name}"
-                                CatalogModelRow(
-                                    model = m,
-                                    selected = m.name == current,
-                                    picking = pickRole != null,
-                                    probing = probingKey == key,
-                                    hint = probeHint.takeIf { probeHintFor == key },
-                                    onPick = { onPicked(m.endpointId, m.name) },
-                                    onProbe = {
-                                        buzz()
-                                        probeHintFor = key
-                                        scope.launch {
-                                            probingKey = key
-                                            probeHint = "正在探测能力…"
-                                            val owner = st.endpoints.firstOrNull { it.id == m.endpointId }
-                                            if (owner == null) {
-                                                probeHint = "该模型所属端点已被删除"
-                                            } else {
-                                                val r = vm.probeModel(
-                                                    owner.baseUrl,
-                                                    owner.apiKey,
-                                                    m.name,
-                                                    owner.protocol,
-                                                )
-                                                probeHint = r.fold(
-                                                    onSuccess = { ability ->
-                                                        updateCatalogModel(st, m.endpointId, m.name) {
-                                                            it.copy(
-                                                                vision = ability.vision,
-                                                                tools = ability.tools,
-                                                                note = ability.note,
-                                                                probedAt = System.currentTimeMillis(),
-                                                            )
-                                                        }
-                                                        // 这里不再顺手改写"视觉理解"档位：三态下的「自动」本就看探测结果，
-                                                        // 再写一手会在用户明确选了「强制关」时把设置偷偷翻回去
-                                                        ability.note.ifBlank { "探测完成" }
-                                                    },
-                                                    onFailure = { it.message ?: "探测失败" },
-                                                )
-                                            }
-                                            probingKey = null
-                                        }
-                                    },
+        if (pickRole != null) {
+            item(key = "catalog-manual") {
+                Column {
+                    SettingsSection(
+                        title = "手填模型名",
+                        subtitle = "服务端列表里没有该模型时直接输入",
+                        tone = SettingsTone.Brand,
+                    ) {
+                        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                            ) {
+                                OutlinedTextField(
+                                    value = manual,
+                                    onValueChange = { manual = it },
+                                    singleLine = true,
+                                    placeholder = { Text("模型名") },
+                                    modifier = Modifier.weight(1f),
                                 )
-                                Spacer(Modifier.height(AppSpacing.Sm))
+                                Button(
+                                    onClick = {
+                                        buzz()
+                                        if (manual.isNotBlank()) onPicked(null, manual.trim())
+                                    },
+                                    enabled = manual.isNotBlank(),
+                                ) { Text("使用") }
                             }
                         }
                     }
+                    Spacer(Modifier.height(AppSpacing.Lg))
                 }
             }
         }
 
-        Spacer(Modifier.height(AppSpacing.Xl))
+        // ========== 已入库模型 ==========
+        // 标题与筛选框单独成块；下面的模型行逐条懒加载，
+        // 不再包在一个会一次性量完全部行的大卡片里
+        item(key = "catalog-filter") {
+            SettingsSection(
+                title = "已入库模型",
+                subtitle = "${st.catalog.size} 个 · 来自 ${st.endpoints.size} 个端点",
+                tone = SettingsTone.Brand,
+            ) {
+                Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        placeholder = { Text("筛选模型名") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        val visible = st.catalog.toList().filter {
+            query.isBlank() || it.name.contains(query, ignoreCase = true)
+        }
+        if (visible.isEmpty()) {
+            item(key = "catalog-empty") {
+                Text(
+                    if (st.catalog.isEmpty()) "模型库为空：先回「云端模型」在端点里点「拉取模型」"
+                    else "没有匹配的模型",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = AppSpacing.Sm),
+                )
+            }
+        } else {
+            st.endpoints.toList().forEach { ep ->
+                val groupModels = visible.filter { it.endpointId == ep.id }
+                if (groupModels.isNotEmpty()) {
+                    item(key = "ep-${ep.id}") {
+                        Text(
+                            endpointHost(ep.baseUrl),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = AppSpacing.Md),
+                        )
+                    }
+                    items(items = groupModels, key = { "ep-${it.endpointId}/${it.name}" }) { m ->
+                        val key = "${m.endpointId}/${m.name}"
+                        CatalogModelRow(
+                            model = m,
+                            selected = m.name == current,
+                            picking = pickRole != null,
+                            probing = probingKey == key,
+                            hint = probeHint.takeIf { probeHintFor == key },
+                            onPick = { onPicked(m.endpointId, m.name) },
+                            onProbe = {
+                                buzz()
+                                probeHintFor = key
+                                scope.launch {
+                                    probingKey = key
+                                    probeHint = "正在探测能力…"
+                                    val owner = st.endpoints.firstOrNull { it.id == m.endpointId }
+                                    if (owner == null) {
+                                        probeHint = "该模型所属端点已被删除"
+                                    } else {
+                                        val r = vm.probeModel(
+                                            owner.baseUrl,
+                                            owner.apiKey,
+                                            m.name,
+                                            owner.protocol,
+                                        )
+                                        probeHint = r.fold(
+                                            onSuccess = { ability ->
+                                                updateCatalogModel(st, m.endpointId, m.name) {
+                                                    it.copy(
+                                                        vision = ability.vision,
+                                                        tools = ability.tools,
+                                                        note = ability.note,
+                                                        probedAt = System.currentTimeMillis(),
+                                                    )
+                                                }
+                                                // 这里不再顺手改写"视觉理解"档位：三态下的「自动」本就看探测结果，
+                                                // 再写一手会在用户明确选了「强制关」时把设置偷偷翻回去
+                                                ability.note.ifBlank { "探测完成" }
+                                            },
+                                            onFailure = { it.message ?: "探测失败" },
+                                        )
+                                    }
+                                    probingKey = null
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

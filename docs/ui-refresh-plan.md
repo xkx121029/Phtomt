@@ -148,7 +148,54 @@ Agent / Coding 两套气质可切换。约束：Material 3 Expressive、emilkowa
 - 对比度：正文 `onSurface` / 次要文字 `onSurfaceVariant` / 错误文案 `error`，均为色板令牌，
   未出现自定义低对比灰字；装饰性箭头保留 45% 透明度，不承载信息。
 
-## 六、跨线依赖
+## 六、阶段三落地：按压与长列表（本次）
+
+### 改了什么
+
+- **按下当帧给反馈**：新增 [InstantPress.kt](../../app/src/main/java/com/phoneagent/ui/theme/InstantPress.kt)，
+  以 `IndicationNodeFactory` 实现「按下即铺色」——收到 `PressInteraction.Press` 的同一帧就把
+  内容色 12% 平涂整块区域，抬手（Release / Cancel）立刻撤掉，中间没有任何插值。
+  在 `ProvideMotionSettings` 里经 `LocalIndication` 全站注入，所有未显式指定 indication 的
+  `.clickable` / `.toggleable` / M3 列表行自动生效；自带缩放的 `PressableScale` 仍走自己的
+  `indication = null`，不会叠两层。
+  系统 ripple 的问题是「可见浓度靠动画逐帧涨」，快速点击时整段反馈被截掉大半，观感像没点中。
+- **动效时长清零**：[VoiceRecordField.kt](../../app/src/main/java/com/phoneagent/ui/voice/VoiceRecordField.kt)
+  里最后两处裸时长 `tween(160)` / `tween(120)` 换成令牌——入场淡入走 `DurationNormal`（200ms），
+  分区着色渐变走 `DurationFast`（160ms）。全 UI 层 `grep tween(` 不再出现字面量时长。
+- **长列表懒加载**：
+  - [SettingsModelCatalog.kt](../../app/src/main/java/com/phoneagent/ui/settings/SettingsModelCatalog.kt)
+    由 `Column + verticalScroll + forEach` 改为 `LazyColumn`，页头、手填区、筛选区、每个端点的
+    分组标题与模型行都成为独立条目，只组合视口内的行。
+  - [SettingsComponents.kt](../../app/src/main/java/com/phoneagent/ui/settings/SettingsComponents.kt)
+    的「导入模型」弹窗列表同样改为 `LazyColumn`（一个端点拉回上百个模型是常态）。
+
+### 滚动帧时间实测
+
+模拟器为软件光栅化（`ro.hardware.egl=emulation`、`debug.hwui.renderer=skiagl`），
+刷新率 60Hz。设置首页上下慢速拖动 10 个来回，`dumpsys gfxinfo com.phoneagent`：
+
+| 指标 | 实测 |
+|---|---|
+| 总帧数 | 933 |
+| 50th 分位 | 17ms（≈59fps，满帧） |
+| 90th 分位 | 36ms |
+| 95th 分位 | 69ms |
+| 99th 分位 | 129ms |
+| Janky 帧占比 | 15.97% |
+| Slow UI thread / Slow issue draw | 122 / 123 |
+
+结论：稳态满帧（p50 = 17ms 即一帧预算），长尾卡顿来自模拟器软件绘制
+（Slow issue draw 与 Slow UI thread 数量基本相等，说明瓶颈在渲染线程而非组合/测量）。
+模型库页当前只有 2 条模型，页高不足一屏、滚不动，因此该项只能做功能核对与代码核对，
+不做帧数结论。
+
+### 截图
+
+- `docs/ui-shots/phase3-01-catalog-lazy.png`：模型库页改为 LazyColumn 后的渲染结果
+- `docs/ui-shots/phase3-02-press.png`：按住执行方式胶囊（`PressableScale` 自身路径）
+- `docs/ui-shots/phase3-03-press-row.png`：按住「主模型」整行——按下瞬间整块铺色，不等 ripple
+
+## 七、跨线依赖
 
 - 助理角色：已接入 `docs/assistant-role-contract.md` + `engine/runtime/AssistantRolePlan.kt`，
   按钮文案、说明、失败原因、跳转候选标签全部取自契约，UI 侧不再自写说法。

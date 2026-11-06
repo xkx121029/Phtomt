@@ -56,6 +56,8 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.DurationFast
+import com.phoneagent.ui.theme.DurationNormal
 import com.phoneagent.ui.theme.EaseOut
 import kotlinx.coroutines.isActive
 import kotlin.math.sin
@@ -366,19 +368,19 @@ private fun RecordingOverlay(
         popupPositionProvider = FullWindowPopupProvider,
         properties = PopupProperties(focusable = false),
     ) {
-        // 入场：整体淡入 160ms（光晕从底部"升起"的观感由渐变本身给出，不做位移）
+        // 入场：整体淡入 200ms（入场统一 DurationNormal；光晕从底部"升起"的观感由渐变本身给出，不做位移）
         val enterAlpha = remember { Animatable(0f) }
         LaunchedEffect(Unit) {
-            enterAlpha.animateTo(1f, tween(160, easing = EaseOut))
+            enterAlpha.animateTo(1f, tween(DurationNormal, easing = EaseOut))
         }
-        // 分区着色：0 中性 / 1 取消 / -1 预览，120ms 渐变（禁止瞬间跳变）
+        // 分区着色：0 中性 / 1 取消 / -1 预览，160ms 渐变（禁止瞬间跳变，时长走 DurationFast）
         val zoneTint by animateFloatAsState(
             targetValue = when (hoverZone) {
                 Zone.CANCEL -> 1f
                 Zone.PREVIEW -> -1f
                 Zone.NONE -> 0f
             },
-            animationSpec = tween(120),
+            animationSpec = tween(DurationFast, easing = EaseOut),
             label = "zoneTint",
         )
 
