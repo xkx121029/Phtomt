@@ -2,6 +2,7 @@
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -46,10 +48,66 @@ private fun channelSuffix(): String = when {
     else -> ""
 }
 
-/** 参考过的同类项目：未内嵌代码，仅借鉴其工程组织与验证思路，故单列「参考与致谢」 */
-private const val CODA_REPO = "https://github.com/happy-everyday-everyweek/coda"
-private const val MOBILEGYM_REPO = "https://github.com/Purewhiter/mobilegym"
-private const val AETHER_REPO = "https://github.com/Zhou-Shilin/Aether"
+/**
+ * 致谢条目：名称（点击跳仓库）+ 许可证 + 一句「它启发了我们什么」。
+ *
+ * 许可证一律按仓库实际的 LICENSE 写，不写「开源许可」笼统带过：
+ * Eta 是 PolyForm Noncommercial 1.0.0（非商业许可，不是 OSI 开源许可），
+ * dsh-Go 是 AGPL-3.0，pi 与 deepseek-harness 是 MIT。只有第四条的代码被内嵌才需要履行对应义务，
+ * 本项目一条都没内嵌，仅取思路。
+ */
+private data class Credit(
+    val name: String,
+    val license: String,
+    val url: String,
+    /** 它启发了我们什么：写具体手法，不写「感谢」这类空话 */
+    val inspiration: String,
+)
+
+private val CREDITS = listOf(
+    Credit(
+        name = "Eta",
+        license = "PolyForm Noncommercial 1.0.0",
+        url = "https://github.com/Mangi-11/Eta",
+        inspiration = "浮层胶囊、完成卡片与系统工具调用链路的参考实现",
+    ),
+    Credit(
+        name = "pi",
+        license = "MIT License",
+        url = "https://github.com/earendil-works/pi",
+        inspiration = "系统级集成与可扩展性的参考",
+    ),
+    Credit(
+        name = "deepseek-harness",
+        license = "MIT License",
+        url = "https://github.com/deepseek-ai/deepseek-harness",
+        inspiration = "Coding 执行器与 agent 循环的参考",
+    ),
+    Credit(
+        name = "dsh-Go",
+        license = "AGPL-3.0",
+        url = "https://github.com/ccch1mneyyy/dsh-Go",
+        inspiration = "手机端 Coding 实现的参考",
+    ),
+    Credit(
+        name = "Coda",
+        license = "AGPL-3.0",
+        url = "https://github.com/happy-everyday-everyweek/coda",
+        inspiration = "安卓端 Agent 的工程组织与运行时方案，为同类问题上的取舍提供了参照",
+    ),
+    Credit(
+        name = "MobileGym",
+        license = "Apache License 2.0",
+        url = "https://github.com/Purewhiter/mobilegym",
+        inspiration = "面向移动 GUI Agent 的模拟研究平台，任务设计与可验证思路的参照",
+    ),
+    Credit(
+        name = "Aether 扶摇",
+        license = "GPL-3.0",
+        url = "https://github.com/Zhou-Shilin/Aether",
+        inspiration = "「进行中」状态的回显手法：过程弱化、结果成卡、思考中微光扫过文字",
+    ),
+)
 
 /**
  * 关于与帮助页：版本、开源仓库、使用说明与隐私边界。
@@ -141,21 +199,13 @@ internal fun SettingsAbout(
         Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(
-            title = "参考与致谢",
-            subtitle = "思路来源，未包含其代码",
+            title = "致谢",
+            subtitle = "以下项目只作思路参考，代码未内嵌进本应用",
             tone = SettingsTone.Neutral,
         ) {
-            LinkRow("Coda（AGPL-3.0）", CODA_REPO) { openLink(context, CODA_REPO) }
-            SettingsDivider(inset = false)
-            LinkRow("MobileGym（Apache License 2.0）", MOBILEGYM_REPO) { openLink(context, MOBILEGYM_REPO) }
-            SettingsDivider(inset = false)
-            LinkRow("Aether 扶摇（GPL-3.0）", AETHER_REPO) { openLink(context, AETHER_REPO) }
-            SettingsDivider(inset = false)
-            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
-                Bullet("Coda 是安卓端的 Agent 工具，其工程组织与运行时方案为本项目在同类问题上的取舍提供了参照")
-                Bullet("MobileGym 是面向移动 GUI Agent 的模拟研究平台，其任务设计与可验证思路为本项目的测试设计提供了参照")
-                Bullet("Aether 是安卓端的通用 AI Agent，本项目「进行中」状态的回显手法（过程弱化、结果成卡、思考中微光扫过文字）借鉴自它")
-                Bullet("以上三个项目均未内嵌进本应用，此处仅作致谢；其版权与许可归各自作者所有")
+            CREDITS.forEachIndexed { index, credit ->
+                if (index > 0) SettingsDivider(inset = false)
+                CreditRow(credit) { openLink(context, credit.url) }
             }
         }
 
@@ -165,7 +215,7 @@ internal fun SettingsAbout(
             Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
                 Bullet("先在「AI 模型配置」里填好 API 地址与密钥并保存，配置未通过连接测试不会入库")
                 Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需完成「内置 Shizuku」的首次启动引导")
-                Bullet("在 Agent 页直接说需求即可；执行中会先给计划，你确认后才动手")
+                Bullet("在 Agent 页直接说需求即可；打开输入栏的「先规划执行计划」后会先出计划再动手（默认关闭，直接执行）")
                 Bullet("支付、删除、发布这类不可逆操作 AI 不会执行，会在动手前停下来交给你")
                 Bullet("任务执行期间的悬浮窗可随时停止任务、补充说明或接管操作")
             }
@@ -210,6 +260,42 @@ internal fun SettingsAbout(
         }
 
         Spacer(Modifier.height(AppSpacing.Xl))
+    }
+}
+
+/**
+ * 致谢行：第一行是项目名 + 许可证，第二行写它具体启发了什么；整行可点，点击即跳仓库。
+ *
+ * 不复用 [LinkRow]：那里第二行展示的是裸 URL，而这里 URL 不是给人读的，
+ * 换成「启发了什么」才有信息量。视觉仍是同一套列表行（左文右按钮、同间距、同分隔线）。
+ */
+@Composable
+private fun CreditRow(credit: Credit, onClick: () -> Unit) {
+    val buzz = rememberHapticClick()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { buzz(); onClick() }
+            .padding(start = AppSpacing.Lg, end = AppSpacing.Sm, top = AppSpacing.Md, bottom = AppSpacing.Md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(credit.name, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.width(AppSpacing.Sm))
+                Text(
+                    credit.license,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                credit.inspiration,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = { buzz(); onClick() }) { Text("打开") }
     }
 }
 

@@ -16,6 +16,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,7 +104,7 @@ internal fun AgentEmptyState(
                     .padding(AppSpacing.Lg),
             ) {
                 Text(
-                    text = "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权",
+                    text = a11yMissingHint(),
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onWarningContainer,
                 )
@@ -125,6 +127,25 @@ internal fun AgentEmptyState(
                 SuggestionRow(text = suggestion.text, onClick = { onPickSuggestion(suggestion.text) })
             }
         }
+    }
+}
+
+/**
+ * 无障碍缺失时的提示文案。
+ *
+ * 无障碍能力由独立安装的「服务组件」提供：组件没装时，系统无障碍列表里没有可开启的条目，
+ * 只提示「去系统设置授权」会把用户带到死路。这里按实际状态给出可执行的下一步。
+ */
+@Composable
+private fun a11yMissingHint(): String {
+    val context = LocalContext.current
+    val providerReady = remember {
+        runCatching { com.phoneagent.device.provider.ProviderManager.isInstalled(context) }.getOrDefault(false)
+    }
+    return if (providerReady) {
+        "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权"
+    } else {
+        "无障碍依赖「服务组件」，它还没安装：先到 设置 → 权限与执行通道 安装服务组件，再开启无障碍"
     }
 }
 
@@ -212,7 +233,7 @@ private fun GridEmptyState(
         if (!a11yEnabled) {
             Spacer(Modifier.height(AppSpacing.Lg))
             Text(
-                text = "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权",
+                text = a11yMissingHint(),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onWarningContainer,
                 modifier = Modifier

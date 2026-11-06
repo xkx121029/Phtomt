@@ -165,7 +165,7 @@ private fun AiModelsPage(
                 }
                 Spacer(Modifier.height(AppSpacing.Md))
                 Text(
-                    "支持 http://、内网地址与 localhost（如 http://192.168.1.5:8000/v1），不写协议时自动补全",
+                    "https 可直接使用；http:// 默认禁止，需要连接内网/自建服务时在下方打开「允许 http 端点」",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -181,6 +181,8 @@ private fun AiModelsPage(
                         hint = fetchHint.takeIf { fetchHintFor == ep.id },
                         protocol = ep.protocol,
                         onProtocol = { st.endpoints.setProtocol(ep.id, it) },
+                        guidedDecoding = ep.guidedDecoding,
+                        onGuidedDecoding = { st.endpoints.setGuidedDecoding(ep.id, it) },
                         onBaseUrl = { renameEndpoint(st, ep.id, it) },
                         onApiKey = { st.endpoints.setKey(ep.id, it) },
                         onFetch = {
@@ -232,6 +234,17 @@ private fun AiModelsPage(
                     enabled = !hasBlank,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text(if (hasBlank) "请先填写上面新增的端点" else "添加端点") }
+            }
+
+            SettingsDivider(inset = false)
+            SettingsToggleRow(
+                title = "允许 http 端点",
+                subtitle = "默认禁止明文。开启后 API Key 与聊天内容会明文经过网络，只建议用于本机或可信内网",
+                value = st.allowCleartext,
+            ) {
+                buzz()
+                st.allowCleartext = it
+                vm.saveSettings(st.toSettings())
             }
         }
 
@@ -346,6 +359,28 @@ private fun AiModelsPage(
                             selected = st.mainVisionMode == key,
                             onClick = { buzz(); st.mainVisionMode = key },
                             shape = SegmentedButtonDefaults.itemShape(index = i, count = mainVisionModes.size),
+                            label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Text("结构化输出", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(AppSpacing.Xxs))
+                Text(
+                    "自动 = 按模型库探测结果决定：探测出服务端接受 response_format 才带上，没测出就不带；" +
+                        "强制开会要求模型必须按 schema 输出 JSON，个别服务端同时开流式会直接 400" +
+                        "（遇到时本轮会自动去掉约束重试一次）",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(AppSpacing.Sm))
+                val structuredModes = listOf("自动" to "AUTO", "强制开" to "ON", "强制关" to "OFF")
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    structuredModes.forEachIndexed { i, (label, key) ->
+                        SegmentedButton(
+                            selected = st.structuredOutputMode == key,
+                            onClick = { buzz(); st.structuredOutputMode = key },
+                            shape = SegmentedButtonDefaults.itemShape(index = i, count = structuredModes.size),
                             label = { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
                         )
                     }
@@ -589,6 +624,15 @@ private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setKe
 private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setProtocol(id: String, protocol: String) {
     val i = indexOfFirst { it.id == id }
     if (i >= 0) this[i] = this[i].copy(protocol = protocol)
+}
+
+/** 改引导解码档位：手动档，不参与自动探测 */
+private fun androidx.compose.runtime.snapshots.SnapshotStateList<Endpoint>.setGuidedDecoding(
+    id: String,
+    guided: String,
+) {
+    val i = indexOfFirst { it.id == id }
+    if (i >= 0) this[i] = this[i].copy(guidedDecoding = guided)
 }
 
 /** 按归一化地址查端点协议；未入库（如尚未保存的地址）回落 OpenAI 兼容 */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,7 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.phoneagent.device.a11y.AgentAccessibilityService
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
@@ -38,6 +41,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.model.PermissionKind
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
@@ -67,6 +71,21 @@ fun HomeScreen(
         vm.refreshA11yState(context)
         vm.refreshPermissions(context)
         vm.refreshAcaSkills(context)
+    }
+
+    // 从系统授权页（无障碍/悬浮窗/电池/通知）返回后立刻重读，否则首页仍显示「去授权」，
+    // 得切一次页才更新。技能扫描不进 ON_RESUME：那是有 TTL 的耗时磁盘扫描。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refreshStatus(context)
+                vm.refreshA11yState(context)
+                vm.refreshPermissions(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // 顶部滚动容器的状态：传给 GlassHeaderScaffold 做显式浮起判定（官网风格，比内部
@@ -124,7 +143,8 @@ fun HomeScreen(
                 a11yReady = a11y,
                 screenshotReady = screenshotActive,
                 onModel = { onNavigate(2) },
-                onA11y = { AgentAccessibilityService.openSettings(context) },
+                // 无障碍由「服务组件」提供：没装组件就先去装，别把用户丢进空的无障碍列表
+                onA11y = { vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY) },
                 onScreenshot = onRequestScreenshot,
             )
 

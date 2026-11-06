@@ -28,6 +28,7 @@ import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.MemoryStore
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.TaskMemoryEntry
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.device.screen.ScreenSharingService
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.feature.mcp.McpServerConfig
@@ -60,6 +61,9 @@ import kotlinx.coroutines.launch
 
 /** ACA 技能目录扫描结果的有效期：切 Tab 回来的重复触发走缓存，不重复扫盘 */
 private const val ACA_SKILLS_TTL_MS = 60_000L
+
+/** 通知权限的运行时请求码（Android 13+） */
+private const val REQUEST_NOTIFICATIONS = 4401
 
 /**
  * 全局共享 ViewModel：设置、Agent 运行状态、无障碍/截图权限。
@@ -315,12 +319,19 @@ class MainViewModel(
     val permissions: StateFlow<List<PermissionItem>> get() = _permissions.asStateFlow()
 
     fun refreshPermissions(context: Context) {
+        // 无障碍由「服务组件」（独立安装的 Provider）提供：组件没装时，系统无障碍列表里根本没有
+        // 可开启的条目，直接跳过去是死路。这里如实标为未授权，并把下一步写进说明。
+        val providerReady = runCatching { ProviderManager.isInstalled(context) }.getOrDefault(false)
         _permissions.value = listOf(
             PermissionItem(
                 kind = PermissionKind.ACCESSIBILITY,
                 title = "无障碍服务",
-                description = "AI 接管手机执行操作的必需能力",
-                granted = AgentAccessibilityService.isServiceEnabled(context),
+                description = if (providerReady) {
+                    "AI 接管手机执行操作的必需能力"
+                } else {
+                    "需先安装「服务组件」（系统会要求允许安装未知应用），装完再回来开启"
+                },
+                granted = providerReady && AgentAccessibilityService.isServiceEnabled(context),
             ),
             PermissionItem(
                 kind = PermissionKind.OVERLAY,
@@ -340,9 +351,22 @@ class MainViewModel(
                 description = "用于识别并启动目标应用",
                 granted = hasQueryAllPackages(context),
             ),
+            PermissionItem(
+                kind = PermissionKind.NOTIFICATIONS,
+                title = "通知",
+                description = "任务进度与完成提醒（Android 13 起需单独授权）",
+                granted = hasNotificationPermission(context),
+            ),
             // Shizuku 不再进权限雷达：设置页下方的「内置 Shizuku」通道卡已覆盖其状态与授权
         )
     }
+
+    /** Android 13+ 的通知权限；低版本安装即授予 */
+    private fun hasNotificationPermission(context: Context): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
 
     private fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
@@ -382,6 +406,28 @@ class MainViewModel(
             fallbacks.any {
                 if (!fromActivity) it.addFlags(flags)
                 runCatching { context.startActivity(it) }.isSuccess
+            }
+            return
+        }
+        // 服务组件没装时无障碍列表里没有可开启条目：先去装组件，装完回来再开无障碍
+        if (kind == PermissionKind.ACCESSIBILITY &&
+            runCatching { ProviderManager.isInstalled(context) }.getOrDefault(false).not()
+        ) {
+            ProviderManager.install(context)
+            return
+        }
+        if (kind == PermissionKind.NOTIFICATIONS) {
+            val granted = hasNotificationPermission(context)
+            if (!granted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && context is Activity) {
+                // 13+ 首次直接弹系统授权框；被永久拒绝后系统不再弹，回退到应用通知设置页
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS,
+                )
+            } else {
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(flags)
+                runCatching { context.startActivity(intent) }
             }
             return
         }

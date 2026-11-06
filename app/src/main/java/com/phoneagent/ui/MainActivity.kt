@@ -582,13 +582,16 @@ private fun ActivityContent(
             // 导航形态由**可用宽度 + 高度**一起决定：
             // 平板竖屏（800×1280）宽度够，但一列只放得下图标，用收起侧栏；
             // 平板横屏（1280×800）宽高都够，侧栏展开成「图标 + 文字」；
-            // 手机横屏（891×411）宽度够了但高度只有 411，6 个条目竖排必然溢出，
-            // 仍是底部条。
+            // 手机横屏（891×411）高度放不下底部条——页眉 120dp + 输入板 200dp + 底部条 100dp
+            // 正好吃满 411dp，任务流被挤成一条缝；这里同样走左侧收起侧栏
+            // （5 个条目 × ≤56dp 在 411dp 内放得下），把底部整条空间还给内容。
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val width = maxWidth
                 val height = maxHeight
-                val railNav = width >= WindowWidthRail && height >= WindowHeightRail
-                val expanded = width >= WindowWidthExpanded
+                val landscapePhone = width >= WindowWidthRail && height < WindowHeightRail
+                val railNav = landscapePhone || (width >= WindowWidthRail && height >= WindowHeightRail)
+                // 展开态要「宽 + 高」都够：手机横屏只有 411dp 高，侧栏撑不出文字行
+                val expanded = width >= WindowWidthExpanded && height >= WindowHeightRail
 
                 // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
                 var taskDrawerOpen by remember { mutableStateOf(false) }
@@ -598,13 +601,14 @@ private fun ActivityContent(
                 val navBarVisible = !railNav && navSpaceReserved && !taskDrawerOpen
 
                 // 竖栏是**占位**的（内容整体右移，不是浮在内容上），
-                // 因此侧栏形态下页面净空一律为 0——页面本来就压不到导航。
-                // 底部条是浮层，才需要下面这套底部净空。
+                // 因此侧栏形态下不需要给导航条留净空。
+                // 但系统手势条不跟着导航形态走：横屏手机没有底部导航条，
+                // 手势胶囊仍在屏幕下缘，这一份 inset 必须照让，否则输入区会被压在胶囊底下。
                 val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
-                val navClearance = if (navSpaceReserved && !railNav) {
-                    PaddingValues(bottom = barClearanceBottom)
-                } else {
-                    PaddingValues(0.dp)
+                val navClearance = when {
+                    !navSpaceReserved -> PaddingValues(0.dp)
+                    railNav -> PaddingValues(bottom = systemNavInset)
+                    else -> PaddingValues(bottom = barClearanceBottom)
                 }
 
                 // 二级页是全屏的（自带返回出口），侧栏整块让开

@@ -354,9 +354,13 @@ class SettingsState(initial: AppSettings.Settings) {
     var model by mutableStateOf(initial.model)
     /** 主模型识图三态：AUTO/ON/OFF，判定口径见 com.phoneagent.core.ai.VisionRouting */
     var mainVisionMode by mutableStateOf(initial.mainVisionMode)
+    /** 结构化输出三态：AUTO/ON/OFF，判定口径见 com.phoneagent.core.ai.StructuredOutputRouting */
+    var structuredOutputMode by mutableStateOf(initial.structuredOutputMode)
     var maxSteps by mutableIntStateOf(initial.maxSteps)
     var attachScreenshot by mutableStateOf(initial.attachScreenshot)
     var promptLanguage by mutableStateOf(initial.promptLanguage)
+    /** 是否允许 http 明文端点；默认禁止，开启会提示 Key 明文传输 */
+    var allowCleartext by mutableStateOf(initial.allowCleartext)
     /** 自定义系统提示词：留空=用内置提示词；非空=整体替换内置系统提示词 */
     var systemPrompt by mutableStateOf(initial.systemPrompt)
     var visionBaseUrl by mutableStateOf(initial.visionBaseUrl)
@@ -441,9 +445,11 @@ class SettingsState(initial: AppSettings.Settings) {
         apiKey = s.apiKey
         model = s.model
         mainVisionMode = s.mainVisionMode
+        structuredOutputMode = s.structuredOutputMode
         maxSteps = s.maxSteps
         attachScreenshot = s.attachScreenshot
         promptLanguage = s.promptLanguage
+        allowCleartext = s.allowCleartext
         systemPrompt = s.systemPrompt
         visionBaseUrl = s.visionBaseUrl
         visionModel = s.visionModel
@@ -517,7 +523,8 @@ class SettingsState(initial: AppSettings.Settings) {
         .mapNotNull { ep ->
             val id = ModelCatalogCodec.endpointId(ep.baseUrl)
             if (id.isBlank()) null
-            else Endpoint(id = id, baseUrl = ep.baseUrl.trim(), apiKey = ep.apiKey.trim(), protocol = ep.protocol)
+            else Endpoint(id = id, baseUrl = ep.baseUrl.trim(), apiKey = ep.apiKey.trim(), protocol = ep.protocol,
+                guidedDecoding = ep.guidedDecoding)
         }
         .distinctBy { it.id }
 
@@ -537,9 +544,11 @@ class SettingsState(initial: AppSettings.Settings) {
         apiKey = apiKey,
         model = model,
         mainVisionMode = mainVisionMode,
+        structuredOutputMode = structuredOutputMode,
         maxSteps = maxSteps,
         attachScreenshot = attachScreenshot,
         promptLanguage = promptLanguage,
+        allowCleartext = allowCleartext,
         systemPrompt = systemPrompt,
         visionBaseUrl = visionBaseUrl,
         visionModel = visionModel,

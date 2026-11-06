@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.device.a11y.AgentAccessibilityService
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
@@ -278,7 +279,13 @@ internal fun SettingsQuickStart(
                     TextButton(
                         onClick = {
                             buzz()
-                            AgentAccessibilityService.openSettings(context)
+                            // 无障碍能力由独立的「服务组件」提供。没装组件时系统无障碍列表里
+                            // 根本不会有本应用条目，直接跳过去就是死路；先把这个组件装上。
+                            if (runCatching { ProviderManager.isInstalled(context) }.getOrDefault(false)) {
+                                AgentAccessibilityService.openSettings(context)
+                            } else {
+                                ProviderManager.install(context)
+                            }
                         },
                     ) {
                         Text("去开启")
@@ -443,6 +450,12 @@ private fun connectionFailureText(raw: String?): String {
             "接口地址或模型名不对（404），检查地址是否带 /v1 之类的路径"
         lower.contains("timeout") || lower.contains("timed out") ->
             "连接超时：检查网络，或确认地址在手机网络下可达"
+        // 关掉网络时的典型报错：Unable to resolve host … / No address associated with hostname，
+        // 归到「域名解析」而不是笼统的「连不上」，用户才知道该去开网络而不是改地址
+        lower.contains("unable to resolve host") || lower.contains("no address associated with hostname") ->
+            "域名解析失败：手机当前没有可用网络，连上网后重试"
+        lower.contains("network is unreachable") || lower.contains("failed to connect to") ->
+            "网络不可达：手机当前没有可用网络，或该地址只在内网可访问"
         lower.contains("unknownhost") || lower.contains("connect") ->
             "连不上这个地址：确认地址拼写正确，内网地址需要与手机同一网络"
         lower.contains("429") ->

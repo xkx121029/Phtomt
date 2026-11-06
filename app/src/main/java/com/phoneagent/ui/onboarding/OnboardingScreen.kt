@@ -50,6 +50,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.os.Build
+import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.AppItemCard
@@ -341,6 +343,9 @@ fun OnboardingPermissionScreen(
 
     val grantedCount = permissions.count { it.granted }
     val allGranted = permissions.isNotEmpty() && grantedCount == permissions.size
+    // 无障碍没开且系统是 Android 13+：很可能撞上「受限制的设置」拦路，给出解法
+    val a11yBlocked = Build.VERSION.SDK_INT >= 33 &&
+        permissions.any { it.kind == PermissionKind.ACCESSIBILITY && !it.granted }
 
     Column(
         modifier = modifier
@@ -402,6 +407,13 @@ fun OnboardingPermissionScreen(
                     )
                 }
             }
+            // Android 13+ 侧载应用的无障碍开关会被系统标成「受限制的设置」，点开只有一句
+            // 「App was denied access」和一个 Close，用户在这里就卡死了。提前把解法写在原地。
+            if (a11yBlocked) {
+                StaggerIn(4 + permissions.size) {
+                    RestrictedSettingHint(context)
+                }
+            }
         }
 
         Spacer(Modifier.weight(1f))
@@ -438,6 +450,38 @@ fun OnboardingPermissionScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * Android 13+ 侧载应用的无障碍开关会被系统标记为「受限制的设置」：
+ * 点进去只显示 `App was denied access` 与一个 Close 按钮，开关不可点。
+ * 解压在服务组件的应用信息页右上角菜单里，离线用户很难自己找到，这里直接写出来并给跳转。
+ */
+@Composable
+private fun RestrictedSettingHint(context: android.content.Context) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Card))
+            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f))
+            .padding(AppSpacing.Md),
+    ) {
+        Text(
+            "开启时如果看到「App was denied access」：这是 Android 13 起对侧载应用的限制。" +
+                "打开服务组件的应用信息，右上角菜单选「允许受限制的设置」，再回来开启即可。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onTertiaryContainer,
+        )
+        TextButton(
+            onClick = {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:${ProviderManager.PACKAGE}"),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(intent) }
+            },
+        ) { Text("打开服务组件应用信息") }
     }
 }
 
@@ -521,4 +565,5 @@ private fun permissionIcon(kind: PermissionKind): ImageVector = when (kind) {
     PermissionKind.OVERLAY -> AppIcons.Camera
     PermissionKind.AUTOSTART -> AppIcons.Bolt
     PermissionKind.QUERY_ALL_PACKAGES -> AppIcons.Memory
+    PermissionKind.NOTIFICATIONS -> AppIcons.Notifications
 }

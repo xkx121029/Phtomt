@@ -2,6 +2,7 @@ package com.phoneagent.ui.icons
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.composables.icons.lucide.ArrowLeft
+import com.composables.icons.lucide.Bell
 import com.composables.icons.lucide.Bot
 import com.composables.icons.lucide.Camera
 import com.composables.icons.lucide.ChartLine
@@ -139,6 +140,7 @@ object AppIcons {
     /** 报告（原 Icons.Rounded.Report） */
     val Report: ImageVector get() = Lucide.TriangleAlert
     val Info: ImageVector get() = Lucide.Info
+    val Notifications: ImageVector get() = Lucide.Bell
     val Star: ImageVector get() = Lucide.Star
     /** 主题 / 外观 */
     val Palette: ImageVector get() = Lucide.Palette

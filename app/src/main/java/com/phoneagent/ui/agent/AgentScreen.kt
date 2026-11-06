@@ -56,6 +56,7 @@ import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.LocalIsLandscape
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalHeaderContentPad
 import com.phoneagent.ui.components.PressableScale
@@ -470,6 +471,10 @@ fun AgentScreen(
                 .onSizeChanged { dockHeight = it.height }
 
             val dockBody: @Composable () -> Unit = {
+                // 横屏手机可用高度只有 411dp：两张转盘卡（约 72dp）会把任务流压没，
+                // 这里直接不摆——模型与授权等级在设置页同样可改，输入面保持单行可操作。
+                // 横竖屏统一读 LocalIsLandscape，不直读 LocalConfiguration
+                val shortScreen = LocalIsLandscape.current
                 Column(modifier = Modifier.fillMaxWidth()) {
                     AnimatedVisibility(
                         visible = showStrip,
@@ -501,29 +506,32 @@ fun AgentScreen(
                     // 用了它输入区会在浮层退场后一直消失
                     if (assist == null) {
                         // 模型与授权等级：两张默认折叠的转盘卡，贴在输入框上方。
-                        // 与 Coding 页同一组件、同一交互（见 AgentConfigDialRow / ConfigDialCard）
-                        AgentConfigDialRow(
-                            settings = settings,
-                            onPickModel = { name, endpointId ->
-                                val ep = endpointId?.let { id -> settings.endpoints.firstOrNull { it.id == id } }
-                                vm.saveSettings(
-                                    settings.copy(
-                                        model = name,
-                                        apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
-                                        apiKey = ep?.apiKey ?: settings.apiKey,
-                                    ),
-                                )
-                            },
-                            onPickMode = { mode -> vm.saveSettings(settings.copy(actionMode = mode)) },
-                            modifier = Modifier.padding(
-                                start = AgentGlassInnerPad,
-                                end = AgentGlassInnerPad,
-                                // 状态条不在时这两张卡就是面板的第一行，必须有顶部"壁厚"，
-                                // 否则会贴着玻璃上边缘；状态条在场时它自带顶部留白，这里不再叠
-                                top = if (showStrip) 0.dp else AgentGlassInnerPad,
-                                bottom = AppSpacing.Xs,
-                            ),
-                        )
+                        // 与 Coding 页同一组件、同一交互（见 AgentConfigDialRow / ConfigDialCard）；
+                        // 矮屏（横屏手机）下不摆，见上方 shortScreen 说明
+                        if (!shortScreen) {
+                            AgentConfigDialRow(
+                                settings = settings,
+                                onPickModel = { name, endpointId ->
+                                    val ep = endpointId?.let { id -> settings.endpoints.firstOrNull { it.id == id } }
+                                    vm.saveSettings(
+                                        settings.copy(
+                                            model = name,
+                                            apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
+                                            apiKey = ep?.apiKey ?: settings.apiKey,
+                                        ),
+                                    )
+                                },
+                                onPickMode = { mode -> vm.saveSettings(settings.copy(actionMode = mode)) },
+                                modifier = Modifier.padding(
+                                    start = AgentGlassInnerPad,
+                                    end = AgentGlassInnerPad,
+                                    // 状态条不在时这两张卡就是面板的第一行，必须有顶部"壁厚"，
+                                    // 否则会贴着玻璃上边缘；状态条在场时它自带顶部留白，这里不再叠
+                                    top = if (showStrip) 0.dp else AgentGlassInnerPad,
+                                    bottom = AppSpacing.Xs,
+                                ),
+                            )
+                        }
 
                         AgentComposer(
                             vm = vm,
