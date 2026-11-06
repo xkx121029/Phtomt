@@ -11,7 +11,6 @@ import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
 import { renderHtml } from './lib/htmlShell.js'
-import { hubDownloadUrl, hubEnabled } from './lib/hub.js'
 
 const app = express()
 
@@ -49,38 +48,17 @@ app.get('/api/openapi', (req, res) => {
   res.json(openApiDocument(originOf(req)))
 })
 
-// ---------- APK 静态直出 ----------
+// ---------- 安装包 ----------
+// 官网不再托管 APK：下载接口只做 302（见 routes/download.js 与 routes/update.js），
+// 磁盘上也不再保留 public/apk 目录。旧的静态地址明确返回 410，避免被前端路由
+// 兜底成一张 HTML（调用方会以为下载成功了）。
 
-// 包体在文件中枢时直接跳转签名直链，本地文件只作为中枢故障时的兜底。
-app.get('/apk/:file', async (req, res, next) => {
-  const file = path.basename(req.params.file)
-  if (file !== req.params.file || !/\.apk$/i.test(file)) return next()
-  if (hubEnabled()) {
-    try {
-      const url = await hubDownloadUrl(file, 900)
-      if (url) {
-        res.setHeader('Cache-Control', 'no-store')
-        return res.redirect(302, url)
-      }
-    } catch (err) {
-      console.warn(`[apk] 中枢签名失败，回落本地文件：${err.message}`)
-    }
-  }
-  return next()
-})
-
-// 运行时上传的包写在 public/apk，与构建产物解耦：重新构建前端不会丢包。
-app.use(
-  '/apk',
-  express.static(config.apkDir, {
-    maxAge: '7d',
-    setHeaders(res, filePath) {
-      if (filePath.toLowerCase().endsWith('.apk')) {
-        res.setHeader('Content-Type', 'application/vnd.android.package-archive')
-      }
-    }
+app.use('/apk', (_req, res) => {
+  res.status(410).json({
+    error: 'gone',
+    message: '安装包已迁移到 GitHub / Gitee 的 Release，请通过 /api/download/:version 获取'
   })
-)
+})
 
 // ---------- SEO 辅助 ----------
 

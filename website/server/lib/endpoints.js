@@ -49,15 +49,15 @@ export const PUBLIC_ENDPOINTS = [
     desc: '站点问答：请求体 { messages: [{ role: "user" | "assistant", content }] }，以 SSE 流式返回 delta / done / error。回答里的 [[go:<路径>|<去处名>]] 是站内引导标记，由前端解析后直接跳转'
   },
   { method: 'GET', path: '/api/openapi', desc: 'OpenAPI 3.1 规范（机器可读）' },
-  { method: 'GET', path: '/api/download/latest', desc: '重定向到最新版 APK' },
-  { method: 'GET', path: '/api/download/:version', desc: '下载指定版本 APK（计入统计）' },
+  { method: 'GET', path: '/api/download/latest', desc: '重定向到最新版（GitHub / Gitee Release）' },
+  { method: 'GET', path: '/api/download/:version', desc: '下载指定版本：302 到 Release 资产，计入统计' },
+  { method: 'GET', path: '/api/download/sources/:version', desc: '该版本在 GitHub / Gitee 上的候选资产地址（供浏览器测速择优）' },
   {
     method: 'GET',
     path: '/api/update/check',
     desc: '客户端检查更新：?channel=stable|beta|dev|nightly&version=&build=，按频道矩阵判定是否升级并返回下载信息'
   },
-  { method: 'GET', path: '/api/update/download/:version', desc: '更新下载：优先从蓝奏云镜像取回并解包 APK，失败回落官网直链' },
-  { method: 'GET', path: '/apk/:file', desc: 'APK 静态直出（带 Range 与缓存）' }
+  { method: 'GET', path: '/api/update/download/:version', desc: '旧客户端兼容入口：同样 302 到 Release 资产' }
 ]
 
 /** 管理端点：需要 Authorization: Bearer <token> */
@@ -68,15 +68,6 @@ export const ADMIN_ENDPOINTS = [
   { method: 'POST', path: '/api/admin/password', desc: '修改管理口令，需提供当前口令；成功后旧令牌全部失效' },
   { method: 'GET', path: '/api/admin/overview', desc: '后台概览：计数 / 存储占用 / 最近操作' },
   { method: 'GET', path: '/api/admin/audit', desc: '操作留痕（最近 300 条）' },
-  { method: 'GET', path: '/api/admin/apk', desc: '磁盘上的 APK 文件清单' },
-  { method: 'POST', path: '/api/admin/apk', desc: '上传 APK（multipart，字段名 file）；已启用蓝奏云镜像时会自动打包上传' },
-  { method: 'DELETE', path: '/api/admin/apk/:file', desc: '删除 APK 文件' },
-  { method: 'GET', path: '/api/admin/lanzou', desc: '蓝奏云镜像配置（口令打码）与已登记镜像清单' },
-  { method: 'PUT', path: '/api/admin/lanzou', desc: '保存蓝奏云镜像配置；password 留空表示不修改' },
-  { method: 'POST', path: '/api/admin/lanzou/test', desc: '用当前表单值登录蓝奏云；需人机验证时返回验证码图与 token，带 verifycode 续登' },
-  { method: 'POST', path: '/api/admin/lanzou/mirror', desc: '手动触发某个 APK 的蓝奏云镜像上传' },
-  { method: 'PUT', path: '/api/admin/lanzou/mirror/:file', desc: '手工登记某 APK 的蓝奏云分享链接与提取码' },
-  { method: 'DELETE', path: '/api/admin/lanzou/mirror/:file', desc: '移除某 APK 的蓝奏云镜像登记' },
   { method: 'GET', path: '/api/admin/content/:name', desc: '读取原始集合（site / features / releases / changelog / docs / faq / scenarios / roadmap）' },
   { method: 'PUT', path: '/api/admin/content/:name', desc: '整包写入原始集合' },
   { method: 'PUT', path: '/api/admin/site', desc: '整包更新站点元信息' },

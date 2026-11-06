@@ -1,48 +1,49 @@
-import fs from 'node:fs'
 import { Router } from 'express'
-import { apkPath, fail, findRelease, latestRelease, recordDownload } from '../lib/helpers.js'
-import { hubDownloadUrl, hubEnabled } from '../lib/hub.js'
+import { fail, findRelease, latestRelease, recordDownload } from '../lib/helpers.js'
+import { externalAssets, preferredAsset, releasePage } from '../lib/externalAssets.js'
 
+/**
+ * 下载入口只做跳转。
+ *
+ * 安装包放在 GitHub / Gitee 的 Release 里，官网不再保存 APK 文件，也不再透传字节：
+ * 这里选一个当前最可能拿到的外部资产地址，302 过去，并把版本号与校验值放在响应头，
+ * 客户端可以据此核对。两边都定位不到资产时跳到 Release 页面，绝不返回一个死链。
+ */
 export const downloadRouter = Router()
 
-async function send(req, res, release) {
-  const file = release.apk?.file
-  const full = apkPath(file)
-
-  // 包体在中枢：只做 302，下载流量不经过官网服务；签名直链默认 15 分钟有效
-  if (hubEnabled() && file) {
-    try {
-      const url = await hubDownloadUrl(file, 900)
-      if (url) {
-        recordDownload(release.version)
-        res.setHeader('X-Release-Version', release.version)
-        if (release.apk?.sha256) res.setHeader('X-Checksum-Sha256', release.apk.sha256)
-        return res.redirect(302, url)
-      }
-    } catch (err) {
-      // 中枢故障时静默回落本地文件，保证官网下载可用
-      console.warn(`[download] 中枢签名失败，回落本地文件：${err.message}`)
-    }
-  }
-
-  if (!full || !fs.existsSync(full)) {
-    return fail(res, 404, 'apk_missing', `版本 ${release.version} 的安装包尚未上传`)
-  }
-  recordDownload(release.version)
-  const fileName = `HappyAgent-${release.version.replace(/^v/i, '')}.apk`
-  res.setHeader('Content-Type', 'application/vnd.android.package-archive')
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+async function redirectTo(req, res, release) {
+  const asset = await preferredAsset(release)
+  res.setHeader('Cache-Control', 'no-store')
   res.setHeader('X-Release-Version', release.version)
-  if (release.apk?.sha256) res.setHeader('X-Checksum-Sha256', release.apk.sha256)
-  // res.sendFile 自带 Range / ETag / Last-Modified，APK 体积大时断点续传很重要
-  res.sendFile(full)
+  res.setHeader('X-Download-Source', asset?.id || 'releases-page')
+  // 只放纯十六进制：数据里偶尔带换行/空格，直接塞进响应头会让 Node 抛错
+  const sha = String(release.apk?.sha256 || '').replace(/[^a-fA-F0-9]/g, '')
+  if (sha) res.setHeader('X-Checksum-Sha256', sha)
+  if (asset) recordDownload(release.version)
+  return res.redirect(302, asset?.url || releasePage())
 }
 
-/** 走 GitHub 直链时补一条下载计数（页面点击时用 sendBeacon 调它） */
+/** 走 GitHub / Gitee 直链时补一条下载计数（页面点击时用 sendBeacon 调它） */
 downloadRouter.post('/hit/:version', (req, res) => {
   const release = findRelease(req.params.version)
   if (release) recordDownload(release.version)
   res.status(204).end()
+})
+
+/** 浏览器测速用：返回该版本在两个平台上的候选资产地址（不再有本站直链） */
+downloadRouter.get('/sources/:version', async (req, res) => {
+  const release = findRelease(req.params.version)
+  if (!release || release.published === false) {
+    return fail(res, 404, 'not_found', `未找到版本 ${req.params.version}`)
+  }
+  const candidates = await externalAssets(release)
+  res.setHeader('Cache-Control', 'no-store')
+  return res.json({
+    version: release.version,
+    file: release.apk?.file || '',
+    candidates,
+    page: releasePage()
+  })
 })
 
 downloadRouter.get('/latest', (req, res) => {
@@ -51,7 +52,7 @@ downloadRouter.get('/latest', (req, res) => {
   if (req.query.redirect === '0') {
     return res.json({ version: release.version, file: release.apk.file })
   }
-  return send(req, res, release)
+  return redirectTo(req, res, release)
 })
 
 downloadRouter.get('/:version', (req, res) => {
@@ -59,5 +60,5 @@ downloadRouter.get('/:version', (req, res) => {
   if (!release || release.published === false) {
     return fail(res, 404, 'not_found', `未找到版本 ${req.params.version}`)
   }
-  return send(req, res, release)
+  return redirectTo(req, res, release)
 })

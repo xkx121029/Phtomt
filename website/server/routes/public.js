@@ -3,10 +3,8 @@ import * as store from '../lib/store.js'
 import {
   compareVersion,
   findRelease,
-  humanSize,
   latestRelease,
-  normalizeVersion,
-  apkInfo
+  normalizeVersion
 } from '../lib/helpers.js'
 import { originOf } from '../config.js'
 import { PUBLIC_ENDPOINTS, SITE_ROUTES, ADMIN_ENDPOINTS } from '../lib/endpoints.js'
@@ -15,21 +13,20 @@ export { SITE_ROUTES, PUBLIC_ENDPOINTS }
 
 export const publicRouter = Router()
 
-/** 给版本对象补上「绝对下载地址 / 展示用大小」等派生字段，前端不必自己拼 */
+/**
+ * 给版本对象补上下载入口。安装包本身不在本站：`/api/download/:version` 只做一次
+ * 302（Gitee / GitHub Release），大小与校验值直接用版本记录里已发布的数据，
+ * 不再读磁盘——服务器上没有 APK 文件可读。
+ */
 function decorate(req, release) {
   if (!release) return null
-  const apk = release.apk && release.apk.file ? apkInfo(release.apk.file) : null
   const origin = originOf(req)
   const stats = store.read('stats')
+  const file = release.apk?.file
+  const downloadUrl = `${origin}/api/download/${encodeURIComponent(release.version)}`
   return {
     ...release,
-    apk: apk
-      ? {
-          ...apk,
-          url: `${origin}/apk/${encodeURIComponent(apk.file)}`,
-          downloadUrl: `${origin}/api/download/${encodeURIComponent(release.version)}`
-        }
-      : null,
+    apk: file ? { ...release.apk, url: downloadUrl, downloadUrl } : null,
     downloads: stats.byVersion?.[release.version] || 0
   }
 }
@@ -229,18 +226,11 @@ function summarizeStats() {
     .sort()
     .slice(-14)
     .map((day) => ({ day, count: byDay[day] }))
-  const releases = store.read('releases')
-  const apkBytes = releases.reduce((sum, r) => {
-    const info = r.apk?.file ? apkInfo(r.apk.file) : null
-    return sum + (info?.size || 0)
-  }, 0)
   return {
     totalDownloads: stats.totalDownloads || 0,
     lastDownloadAt: stats.lastDownloadAt || null,
     byVersion: stats.byVersion || {},
-    recent,
-    apkTotalSize: apkBytes,
-    apkTotalSizeText: humanSize(apkBytes)
+    recent
   }
 }
 

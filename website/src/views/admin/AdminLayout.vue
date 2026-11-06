@@ -10,8 +10,7 @@ const submitting = ref(false)
 
 const NAV = [
   { to: '/admin', label: '概览', exact: true },
-  { to: '/admin/releases', label: '版本与 APK' },
-  { to: '/admin/lanzou', label: '蓝奏云镜像' },
+  { to: '/admin/releases', label: '版本与安装包' },
   { to: '/admin/changelog', label: '更新日志' },
   { to: '/admin/features', label: '功能特性' },
   { to: '/admin/docs', label: '文档' },

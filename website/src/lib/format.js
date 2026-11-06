@@ -33,13 +33,15 @@ export function compactNumber(value) {
 /**
  * 下载地址解析。
  *
- * 有后端时走后端下载端点——那样才会计入下载统计；静态站直接指向随站点一起发布的
- * APK 文件；两者都不可用时退回 GitHub Releases，绝不给出一个必然 404 的地址。
+ * 有后端时走后端跳转端点：服务端会 302 到 GitHub / Gitee 的 Release 资产，
+ * 同时计入下载统计；静态站没有后端，也没有本地安装包，直接去 Release 页，
+ * 绝不给出一个必然 404 的地址。
  */
 export function downloadUrl(release, site) {
   const fallback = site?.links?.releases || site?.links?.github || '#'
   if (!release?.apk) return fallback
-  if (staticOnly) return `${import.meta.env.BASE_URL}apk/${release.apk.file}`
+  // 静态构建没有后端，也无法托管安装包：直接去 Release 页
+  if (staticOnly) return fallback
   return `${apiBaseUrl()}/api/download/${encodeURIComponent(release.version)}`
 }
 

@@ -1,7 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import crypto from 'node:crypto'
-import { config } from '../config.js'
 import * as store from './store.js'
 
 export function fail(res, status, code, message, extra = {}) {
@@ -18,44 +14,6 @@ export function humanSize(bytes) {
     unit += 1
   }
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
-}
-
-export function sha256File(file) {
-  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
-}
-
-/** APK 文件名白名单：只允许站点自己写进磁盘的名字，杜绝路径穿越 */
-export function apkPath(fileName) {
-  const safe = path.basename(String(fileName || ''))
-  if (!/^[A-Za-z0-9._-]+\.apk$/i.test(safe)) return null
-  const full = path.join(config.apkDir, safe)
-  if (!full.startsWith(config.apkDir)) return null
-  return full
-}
-
-export function apkInfo(fileName) {
-  const full = apkPath(fileName)
-  if (!full || !fs.existsSync(full)) return null
-  const stat = fs.statSync(full)
-  return {
-    file: path.basename(full),
-    size: stat.size,
-    sizeText: humanSize(stat.size),
-    sha256: sha256File(full),
-    updatedAt: stat.mtime.toISOString()
-  }
-}
-
-export function listApkFiles() {
-  if (!fs.existsSync(config.apkDir)) return []
-  return fs
-    .readdirSync(config.apkDir)
-    .filter((f) => /\.apk$/i.test(f))
-    .map((f) => {
-      const stat = fs.statSync(path.join(config.apkDir, f))
-      return { file: f, size: stat.size, sizeText: humanSize(stat.size), updatedAt: stat.mtime.toISOString() }
-    })
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 /** 版本号排序：0.1.371 > 0.1.9（逐段数值比较，不做字符串比较） */

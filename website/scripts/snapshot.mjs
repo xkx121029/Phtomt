@@ -4,8 +4,8 @@
  *
  * 静态站没有后端，所以：
  *  - 所有内容来自这份快照；
- *  - APK 只在文件确实存在于 public/apk 时才写进快照，否则标记为无包，
- *    下载页会退回 GitHub Releases 链接，而不是给出一个必然 404 的地址。
+ *  - 安装包不在仓库里，快照只保留版本记录中的资产名/体积/校验值，
+ *    下载页直接指向 GitHub / Gitee 的 Release 页。
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -15,7 +15,6 @@ import { PUBLIC_ENDPOINTS, SITE_ROUTES, ADMIN_ENDPOINTS } from '../server/lib/en
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
 const dataDir = path.join(root, 'server', 'data')
-const apkDir = path.join(root, 'public', 'apk')
 const outFile = path.join(root, 'src', 'data', 'fallback.js')
 
 const readJSON = (name, fallback) => {
@@ -60,26 +59,14 @@ const scenarios = readJSON('scenarios', [])
 const roadmap = readJSON('roadmap', { updatedAt: null, note: '', phases: [] })
 const stats = readJSON('stats', { totalDownloads: 0, byVersion: {}, byDay: {} })
 
-let bundledApk = 0
 const releases = releasesRaw
   .filter((r) => r.published !== false)
-  .map((r) => {
-    const file = r.apk?.file
-    const onDisk = file && fs.existsSync(path.join(apkDir, file))
-    if (onDisk) bundledApk += 1
-    return {
-      ...r,
-      apk: onDisk
-        ? {
-            file,
-            size: fs.statSync(path.join(apkDir, file)).size,
-            sizeText: humanSize(fs.statSync(path.join(apkDir, file)).size),
-            sha256: r.apk.sha256 || ''
-          }
-        : null,
-      downloads: stats.byVersion?.[r.version] || 0
-    }
-  })
+  .map((r) => ({
+    ...r,
+    // 只保留登记信息（资产名/体积/校验值）；实体在 GitHub / Gitee 的 Release 里
+    apk: r.apk?.file ? { ...r.apk } : null,
+    downloads: stats.byVersion?.[r.version] || 0
+  }))
   .sort((a, b) => compareVersion(b.version, a.version))
 
 const byDay = stats.byDay || {}
@@ -137,7 +124,4 @@ fs.writeFileSync(
 )
 
 console.log(`  ✓ 快照已写入 src/data/fallback.js`)
-console.log(`    版本 ${releases.length} · 更新日志 ${changelog.length} · 文档 ${docs.length} · FAQ ${faq.length} · 场景 ${scenarios.length} · 打包 APK ${bundledApk}`)
-if (!bundledApk) {
-  console.log('    （public/apk 下没有 APK，静态站下载按钮会指向 GitHub Releases）')
-}
+console.log(`    版本 ${releases.length} · 更新日志 ${changelog.length} · 文档 ${docs.length} · FAQ ${faq.length} · 场景 ${scenarios.length}`)

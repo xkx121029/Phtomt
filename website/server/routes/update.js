@@ -1,43 +1,32 @@
-import fs from 'node:fs'
 import { Router } from 'express'
-import {
-  apkInfo,
-  apkPath,
-  fail,
-  findRelease,
-  normalizeVersion,
-  recordDownload
-} from '../lib/helpers.js'
+import { fail, findRelease, normalizeVersion, recordDownload } from '../lib/helpers.js'
 import { buildOf, normalizeChannel, pickUpdate, latestVisible } from '../lib/update.js'
-import * as lanzou from '../lib/lanzou.js'
-import { hubDownloadUrl, hubEnabled } from '../lib/hub.js'
+import { preferredAsset, releasePage } from '../lib/externalAssets.js'
 import { originOf } from '../config.js'
 
 /**
  * 客户端自动更新接口。
  *
- * 与 /api/releases 的区别：那是给官网页面看的（返回列表、统计、装饰字段），
- * 这个接口是给**装好的 App 自己**用的——按客户端所在频道判定该不该升级，
- * 并给出一个「拿得到就能装」的下载地址（优先走蓝奏云镜像，失败自动回落官网直链）。
+ * 与 /api/releases 的区别：那是给官网页面看的，这个接口是给**装好的 App 自己**用的。
+ * 安装包只在 GitHub / Gitee 的 Release 里，所以 `download.url` 是本站的跳转入口，
+ * 服务端 302 到外部资产；官网上不保存任何 APK 字节。
  */
 export const updateRouter = Router()
 
 function downloadInfo(req, release) {
-  const apk = release.apk && release.apk.file ? apkInfo(release.apk.file) : null
+  const apk = release.apk?.file ? release.apk : null
   if (!apk) return null
-  const cfg = lanzou.loadConfig()
-  const mirror = lanzou.getMirror(apk.file)
   const origin = originOf(req)
   return {
-    url: `${origin}/api/update/download/${encodeURIComponent(release.version)}`,
+    url: `${origin}/api/download/${encodeURIComponent(release.version)}`,
     file: apk.file,
     size: apk.size,
     sizeText: apk.sizeText,
     sha256: apk.sha256,
-    // mirror=lanzou 时客户端下载的字节来自蓝奏云镜像；解析失败服务端会静默回落 origin
-    mirror: cfg.enabled && mirror?.shareUrl ? 'lanzou' : 'origin',
-    shareUrl: mirror?.shareUrl || null,
-    password: mirror?.password || ''
+    // 安装包来自 Release，不再是蓝奏云镜像；字段保留只为兼容旧客户端的解析
+    mirror: 'release',
+    shareUrl: null,
+    password: ''
   }
 }
 
@@ -86,59 +75,19 @@ updateRouter.get('/check', (req, res) => {
 })
 
 /**
- * 下载接口：优先经服务端从蓝奏云取回并解包出 APK 直出，失败回落到官网磁盘上的那份。
- * 对客户端而言永远是「一个能直接下到 APK 的地址」，不必理解蓝奏云的页面与提取码。
+ * 旧客户端可能直接持有这个下载地址，因此保留路由：同样只做 302，不再经本站传字节。
  */
 updateRouter.get('/download/:version', async (req, res) => {
   const release = findRelease(req.params.version)
   if (!release || release.published === false || !release.apk?.file) {
     return fail(res, 404, 'not_found', `未找到可下载的版本 ${req.params.version}`)
   }
-  const full = apkPath(release.apk.file)
-  const hasLocal = Boolean(full && fs.existsSync(full))
-
-  const fileName = `HappyAgent-${release.version.replace(/^v/i, '')}.apk`
-  const headers = (info) => {
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive')
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
-    res.setHeader('X-Release-Version', release.version)
-    res.setHeader('X-Update-Source', info)
-    if (release.apk?.sha256) res.setHeader('X-Checksum-Sha256', release.apk.sha256)
-  }
-
-  // 蓝奏云镜像优先：它能绕开官网带宽；本地文件缺失时这条链路无从打包，直接跳过
-  const cfg = lanzou.loadConfig()
-  const mirror = lanzou.getMirror(release.apk.file)
-  if (hasLocal && cfg.enabled && cfg.preferMirror && mirror?.shareUrl) {
-    try {
-      const { content } = await lanzou.fetchMirrorApk(release.apk.file, full)
-      recordDownload(release.version)
-      headers('lanzou')
-      return res.end(content)
-    } catch (err) {
-      // 蓝奏云接口极不稳定，解析失败是常态：记一笔日志就好，用户侧无感回落
-      console.warn(`[update] 蓝奏云镜像不可用，回落官网直链：${err.message}`)
-    }
-  }
-
-  // 包体在中枢：直接 302 到签名直链，客户端只需跟随跳转
-  if (hubEnabled()) {
-    try {
-      const url = await hubDownloadUrl(release.apk.file, 900)
-      if (url) {
-        recordDownload(release.version)
-        headers('hub')
-        return res.redirect(302, url)
-      }
-    } catch (err) {
-      console.warn(`[update] 中枢签名失败，回落本地文件：${err.message}`)
-    }
-  }
-
-  if (!hasLocal) {
-    return fail(res, 404, 'apk_missing', `版本 ${release.version} 的安装包尚未上传`)
-  }
-  recordDownload(release.version)
-  headers('origin')
-  return res.sendFile(full)
+  const asset = await preferredAsset(release)
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('X-Release-Version', release.version)
+  res.setHeader('X-Update-Source', asset?.id || 'releases-page')
+  const sha = String(release.apk?.sha256 || '').replace(/[^a-fA-F0-9]/g, '')
+  if (sha) res.setHeader('X-Checksum-Sha256', sha)
+  if (asset) recordDownload(release.version)
+  return res.redirect(302, asset?.url || releasePage())
 })

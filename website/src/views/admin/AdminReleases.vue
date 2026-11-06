@@ -1,16 +1,13 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ApiError, api, content } from '../../api/client.js'
+import { content } from '../../api/client.js'
 import { formatDate, channelLabel } from '../../lib/format.js'
 import { channelLabels } from '../../lib/siteMeta.js'
 import { useCollection } from './useCollection.js'
 
 const { items, loading, busy, error, notice, load, create, update, remove } = useCollection('releases', 'version')
 
-const files = ref([])
 const uploadError = ref('')
-const uploading = ref(false)
-const fileInput = ref(null)
 const selectedVersion = ref('')
 const mode = ref('edit')
 
@@ -22,6 +19,8 @@ const form = reactive({
   title: '',
   summary: '',
   apkFile: '',
+  apkSizeMb: '',
+  apkSha: '',
   notesText: ''
 })
 
@@ -31,23 +30,6 @@ const sorted = computed(() =>
 
 const isNew = computed(() => mode.value === 'create')
 
-/** 已被某个版本占用的文件，绑定下拉里标出来，避免两个版本指同一个包 */
-const usedBy = computed(() => {
-  const map = new Map()
-  for (const item of items.value) {
-    if (item.apk?.file) map.set(item.apk.file, item.version)
-  }
-  return map
-})
-
-async function loadFiles() {
-  try {
-    files.value = await api.adminGet('/api/admin/apk')
-  } catch {
-    files.value = []
-  }
-}
-
 function fill(item) {
   form.version = item?.version || ''
   form.channel = item?.channel || 'stable'
@@ -56,6 +38,8 @@ function fill(item) {
   form.title = item?.title || ''
   form.summary = item?.summary || ''
   form.apkFile = item?.apk?.file || ''
+  form.apkSizeMb = item?.apk?.size ? (Number(item.apk.size) / 1024 / 1024).toFixed(0) : ''
+  form.apkSha = item?.apk?.sha256 || ''
   form.notesText = Array.isArray(item?.notes) ? item.notes.join('\n') : ''
 }
 
@@ -73,6 +57,7 @@ function startCreate() {
 
 function payload() {
   const notes = form.notesText.split('\n').map((s) => s.trim()).filter(Boolean)
+  const sizeMb = Number(form.apkSizeMb)
   return {
     version: form.version.trim(),
     channel: form.channel,
@@ -80,7 +65,14 @@ function payload() {
     published: form.published,
     title: form.title,
     summary: form.summary,
-    apk: form.apkFile ? { file: form.apkFile } : null,
+    // 只登记资产名与校验值；安装包实体由 CI 上传到 GitHub / Gitee 的 Release
+    apk: form.apkFile.trim()
+      ? {
+          file: form.apkFile.trim(),
+          size: sizeMb > 0 ? Math.round(sizeMb * 1024 * 1024) : undefined,
+          sha256: form.apkSha.trim() || undefined
+        }
+      : null,
     notes
   }
 }
@@ -104,39 +96,9 @@ async function save() {
 
 async function destroy() {
   if (!selectedVersion.value) return
-  if (!window.confirm(`确定删除版本 ${selectedVersion.value}？APK 文件不会被删除。`)) return
+  if (!window.confirm(`确定删除版本 ${selectedVersion.value}？Release 里的安装包不会被删除。`)) return
   const ok = await remove(selectedVersion.value)
   if (ok) startCreate()
-}
-
-async function onUpload(event) {
-  const file = event.target.files?.[0]
-  if (!file) return
-  uploadError.value = ''
-  uploading.value = true
-  try {
-    const info = await api.upload('/api/admin/apk', file)
-    await loadFiles()
-    form.apkFile = info.file
-  } catch (err) {
-    uploadError.value = err instanceof ApiError ? err.message : '上传失败'
-  } finally {
-    uploading.value = false
-    if (fileInput.value) fileInput.value.value = ''
-  }
-}
-
-async function deleteFile(file) {
-  const owner = usedBy.value.get(file)
-  if (owner && !window.confirm(`文件被版本 ${owner} 引用，仍要强制删除？`)) return
-  if (!owner && !window.confirm(`删除磁盘上的 ${file}？`)) return
-  uploadError.value = ''
-  try {
-    await api.del(`/api/admin/apk/${encodeURIComponent(file)}${owner ? '?force=1' : ''}`, true)
-    await loadFiles()
-  } catch (err) {
-    uploadError.value = err instanceof ApiError ? err.message : '删除失败'
-  }
 }
 
 function copySha(text) {
@@ -145,7 +107,7 @@ function copySha(text) {
 
 onMounted(async () => {
   // 渠道下拉的可选项来自站点元信息 site.channelLabels（content.site 会把它并入注册表）
-  await Promise.all([load(), loadFiles(), content.site().catch(() => {})])
+  await Promise.all([load(), content.site().catch(() => {})])
   if (sorted.value.length) pick(sorted.value[0])
   else startCreate()
 })
@@ -155,9 +117,9 @@ onMounted(async () => {
   <div class="releases">
     <header class="head">
       <div>
-        <h1 class="h2">版本与 APK</h1>
+        <h1 class="h2">版本与安装包</h1>
         <p class="muted small head__sub">
-          上传安装包，再把版本指向它。下载页会自动用最新的已发布版本。
+          登记版本信息与 Release 资产名；安装包实体在 GitHub / Gitee 上，官网不再保存文件。
         </p>
       </div>
       <button class="btn btn--primary btn--sm" type="button" @click="startCreate">+ 新建版本</button>
@@ -258,47 +220,37 @@ onMounted(async () => {
           </div>
         </section>
 
-        <!-- APK -->
+        <!-- 安装包登记 -->
         <section class="card block">
           <header class="block__head">
             <h2 class="block__title">安装包</h2>
-            <label class="btn btn--sm upload">
-              {{ uploading ? '上传中…' : '上传 APK' }}
-              <input ref="fileInput" type="file" accept=".apk" :disabled="uploading" @change="onUpload" />
-            </label>
           </header>
 
           <p v-if="uploadError" class="msg msg--error">{{ uploadError }}</p>
 
-          <label class="field">
-            <span>绑定到本版本的文件</span>
-            <select v-model="form.apkFile" class="select mono">
-              <option value="">（不绑定，下载页退回 GitHub Releases）</option>
-              <option v-for="f in files" :key="f.file" :value="f.file">
-                {{ f.file }} · {{ f.sizeText }}{{ usedBy.get(f.file) && usedBy.get(f.file) !== selectedVersion ? ` · 已被 ${usedBy.get(f.file)} 引用` : '' }}
-              </option>
-            </select>
-          </label>
+          <p class="muted small">
+            安装包实体由 CI 上传到 GitHub / Gitee 的 Release，官网不保存 APK 文件。
+            这里只登记资产名与校验值，下载接口据此拼出 Release 地址。
+          </p>
 
-          <div v-if="files.length" class="files">
-            <p class="files__label">磁盘上的文件（{{ files.length }}）</p>
-            <ul class="files__list">
-              <li v-for="f in files" :key="f.file" class="files__item">
-                <div class="files__info">
-                  <span class="mono files__name">{{ f.file }}</span>
-                  <span class="muted small">{{ f.sizeText }} · {{ formatDate(f.updatedAt) }}</span>
-                  <span v-if="f.sha256" class="mono files__sha" :title="f.sha256" @click="copySha(f.sha256)">
-                    {{ f.sha256.slice(0, 16) }}…
-                  </span>
-                </div>
-                <div class="files__actions">
-                  <span v-if="usedBy.get(f.file)" class="tag">{{ usedBy.get(f.file) }}</span>
-                  <button class="btn btn--sm btn--danger" type="button" @click="deleteFile(f.file)">删除</button>
-                </div>
-              </li>
-            </ul>
+          <div class="grid">
+            <label class="field grid__wide">
+              <span>Release 资产名</span>
+              <input v-model="form.apkFile" class="input mono" placeholder="HappyAgent-0.2.9140.apk" />
+              <span class="hint">必须与 Release 里附件名完全一致，例如 <code>HappyAgent-0.2.9140.apk</code>。</span>
+            </label>
+
+            <label class="field">
+              <span>体积（MB）</span>
+              <input v-model="form.apkSizeMb" class="input mono" inputmode="numeric" placeholder="86" />
+            </label>
+
+            <label class="field">
+              <span>SHA-256</span>
+              <input v-model="form.apkSha" class="input mono" placeholder="可选，下载页会展示" />
+              <span v-if="form.apkSha" class="hint files__sha" @click="copySha(form.apkSha)">点击复制</span>
+            </label>
           </div>
-          <p v-else class="muted small">还没有上传过 APK。上限 200 MB，只接受 <code>.apk</code>。</p>
         </section>
       </div>
     </div>

@@ -15,8 +15,7 @@ const CARDS = computed(() => {
     { label: '更新日志', value: c.changelog ?? 0, to: '/admin/changelog' },
     { label: '功能特性', value: c.features ?? 0, to: '/admin/features' },
     { label: '文档', value: c.docs ?? 0, to: '/admin/docs' },
-    { label: '常见问题', value: c.faq ?? 0, to: '/admin/faq' },
-    { label: 'APK 文件', value: c.apkFiles ?? 0, extra: data.value?.storage?.apkText || '0 B', to: '/admin/releases' }
+    { label: '常见问题', value: c.faq ?? 0, to: '/admin/faq' }
   ]
 })
 
@@ -49,7 +48,7 @@ onMounted(async () => {
         <p class="muted small head__sub">内容集合的规模、磁盘占用与最近的操作。</p>
       </div>
       <div class="row">
-        <RouterLink to="/admin/releases" class="btn btn--primary btn--sm">上传 APK</RouterLink>
+        <RouterLink to="/admin/releases" class="btn btn--primary btn--sm">版本管理</RouterLink>
         <RouterLink to="/admin/changelog" class="btn btn--sm">写更新日志</RouterLink>
       </div>
     </header>
@@ -106,23 +105,10 @@ onMounted(async () => {
               <dt>最近一次</dt>
               <dd>{{ data.stats?.lastDownloadAt ? relativeTime(data.stats.lastDownloadAt) : '还没有人下载' }}</dd>
             </div>
-            <div class="kv__row">
-              <dt>APK 占用</dt>
-              <dd class="mono">{{ data.storage?.apkText || '0 B' }}</dd>
-            </div>
           </dl>
 
-          <div v-if="data.apkFiles?.length" class="files">
-            <p class="files__label">磁盘上的文件</p>
-            <ul class="files__list">
-              <li v-for="f in data.apkFiles" :key="f.file" class="files__item">
-                <span class="mono files__name">{{ f.file }}</span>
-                <span class="muted mono files__size">{{ f.sizeText }}</span>
-              </li>
-            </ul>
-          </div>
-          <p v-else class="muted small files__empty">
-            磁盘上还没有 APK 文件。到「版本与 APK」页上传。
+          <p class="muted small files__empty">
+            安装包托管在 GitHub / Gitee 的 Release，官网不保存 APK 文件。
           </p>
         </section>
       </div>
@@ -145,7 +131,7 @@ onMounted(async () => {
       </section>
 
       <p class="paths muted small">
-        数据目录 <span class="mono">{{ data.dataDir }}</span> · APK 目录 <span class="mono">{{ data.apkDir }}</span>
+        数据目录 <span class="mono">{{ data.dataDir }}</span>
       </p>
     </template>
   </div>

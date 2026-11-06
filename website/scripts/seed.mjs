@@ -5,7 +5,7 @@
  * 数据来源：
  *   - ../CHANGELOG.md            → server/data/changelog.json（32 个版本条目）
  *   - ../version.properties      → 站点当前版本号
- *   - ../app/build/outputs/apk/  → public/apk/（仅在传 --apk 时复制）
+ *   - ../app/build/outputs/apk/  → 读取体积与 SHA-256（不复制；安装包由 CI 传到 Release）
  *   - 内置文案                    → site / features / docs / faq
  *
  * 默认不覆盖已存在的数据文件，避免把后台里改过的内容冲掉；加 --force 才强制重写。
@@ -19,14 +19,12 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
 const projectRoot = path.resolve(root, '..')
 const dataDir = path.join(root, 'server', 'data')
-const apkDir = path.join(root, 'public', 'apk')
 
 const argv = process.argv.slice(2)
 const force = argv.includes('--force')
 const withApk = argv.includes('--apk') || force
 
 fs.mkdirSync(dataDir, { recursive: true })
-fs.mkdirSync(apkDir, { recursive: true })
 
 function writeIfNeeded(name, value) {
   const file = path.join(dataDir, name)
@@ -151,27 +149,25 @@ function findBuiltApk() {
   return candidates.find((f) => fs.existsSync(f)) || null
 }
 
+const builtApk = withApk ? findBuiltApk() : null
 let apkFileName = null
-if (withApk) {
-  const built = findBuiltApk()
-  if (!built) {
-    console.warn('  ! 没找到已构建的 APK，先跑 ./gradlew assembleDebug 再执行 npm run seed:apk')
-  } else {
-    apkFileName = `HappyAgent-${currentVersion}.apk`
-    fs.copyFileSync(built, path.join(apkDir, apkFileName))
-    console.log(`  ✓ APK 已复制为 public/apk/${apkFileName}（${humanSize(fs.statSync(built).size)}）`)
-  }
+if (withApk && !builtApk) {
+  console.warn('  ! 没找到已构建的 APK，先跑 ./gradlew assembleDebug 再执行 npm run seed:apk')
+}
+if (builtApk) {
+  // 只登记资产名与体积/校验值，不把包复制进官网：实体在 GitHub / Gitee 的 Release 里
+  apkFileName = `HappyAgent-${currentVersion}.apk`
+  console.log(`  ✓ 已登记 Release 资产名 ${apkFileName}（${humanSize(fs.statSync(builtApk).size)}）`)
 }
 
-const apkMeta = apkFileName
+const apkMeta = builtApk
   ? (() => {
-      const full = path.join(apkDir, apkFileName)
-      const stat = fs.statSync(full)
+      const stat = fs.statSync(builtApk)
       return {
         file: apkFileName,
         size: stat.size,
         sizeText: humanSize(stat.size),
-        sha256: sha256(full),
+        sha256: sha256(builtApk),
         updatedAt: stat.mtime.toISOString()
       }
     })()

@@ -5,7 +5,7 @@ import PageHero from '../components/PageHero.vue'
 import CopyButton from '../components/CopyButton.vue'
 import { content, apiBaseUrl } from '../api/client.js'
 import { channelLabel, downloadUrl, formatDate, isExternalDownload, relativeTime } from '../lib/format.js'
-import { PROBE_HINT_DELAY, directApkUrl, resolveDownloadSource } from '../lib/downloadSource.js'
+import { PROBE_HINT_DELAY, resolveDownloadSource } from '../lib/downloadSource.js'
 import { latestRelease } from '../lib/latest.js'
 
 const site = ref({})
@@ -26,7 +26,11 @@ const rest = computed(() => releases.value.slice(1))
 const primaryUrl = computed(() =>
   best.value?.url || (latest.value ? downloadUrl(latest.value, site.value) : site.value.links?.releases || '#')
 )
-const directUrl = computed(() => directApkUrl(latest.value))
+/** 备用入口：两个 Release 页；安装包只在这两个平台，官网上没有副本 */
+const giteePage = computed(() => {
+  const base = String(site.value.links?.gitee || '').replace(/\/$/, '')
+  return base ? `${base}/releases` : ''
+})
 
 const REQS = computed(() => {
   const r = site.value.requirements || {}
@@ -88,9 +92,12 @@ async function detect(refresh = false) {
   if (elapsed >= PROBE_HINT_DELAY) probeNote.value = '线路检测超时，已使用默认下载源'
 }
 
-/** 选了 GitHub 直链时，下载不再经过本站，用 beacon 补记一次下载数 */
+/**
+ * 按钮直接指向外部 Release 资产时，下载不再经过本站，用 beacon 补记一次下载数。
+ * （默认跳转入口由服务端 302，那边已经计过数，不要重复记。）
+ */
 function onPrimaryClick() {
-  if (best.value?.source !== 'github' || !latest.value?.version) return
+  if (!best.value?.url || !latest.value?.version) return
   try {
     navigator.sendBeacon(`${apiBaseUrl()}/api/download/hit/${encodeURIComponent(latest.value.version)}`)
   } catch {
@@ -168,9 +175,9 @@ onMounted(async () => {
                 target="_blank"
                 rel="noopener noreferrer"
               >GitHub Release 页</a>
-              <template v-if="directUrl">
+              <template v-if="giteePage">
                 ·
-                <a :href="directUrl">本站直链</a>
+                <a :href="giteePage" target="_blank" rel="noopener noreferrer">Gitee Release 页</a>
               </template>
               <span v-if="latest.apk">·</span>
               <button
@@ -183,8 +190,8 @@ onMounted(async () => {
             </p>
 
 
-            <p v-if="isExternalDownload(latest)" class="hint hero-card__hint">
-              本站未托管该版本的安装包，按钮会跳到 GitHub Releases 页面。
+            <p class="hint hero-card__hint">
+              安装包托管在 GitHub / Gitee 的 Release 里，本站不保存文件；按钮会自动跳到当前更快的那个。
             </p>
           </div>
 

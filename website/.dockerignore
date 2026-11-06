@@ -9,3 +9,5 @@ dist-check
 .git
 .github
 .trae
+# 安装包已改由 GitHub / Gitee 的 Release 托管，本地即使有残留也不要打进镜像
+public/apk

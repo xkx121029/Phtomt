@@ -33,12 +33,6 @@ const abs = (p) => (path.isAbsolute(p) ? p : path.join(ROOT, p))
 const adminPassword = process.env.ADMIN_PASSWORD?.trim() || ''
 const generatedPassword = adminPassword ? null : crypto.randomBytes(6).toString('base64url')
 
-// happy-hub 对象前缀：默认把官网的安装包放在 packages 桶的 apk/ 目录下。
-// 留空表示直接用文件名作为对象键。
-const hubPrefix = (process.env.HUB_PREFIX ?? 'apk')
-  .trim()
-  .replace(/^\/+|\/+$/g, '')
-
 export const config = {
   port: Number(process.env.PORT || 5180),
   /** 未显式配置口令时，每次启动随机生成，仅在控制台可见 */
@@ -52,37 +46,12 @@ export const config = {
   adminSecretIsDefault: !process.env.ADMIN_SECRET?.trim(),
   adminTokenTtlHours: Number(process.env.ADMIN_TOKEN_TTL || 72),
   dataDir: abs(process.env.DATA_DIR || 'server/data'),
-  apkDir: abs(process.env.APK_DIR || 'public/apk'),
   distDir: abs('dist'),
   siteOrigin: (process.env.SITE_ORIGIN || '').replace(/\/$/, ''),
-  maxApkBytes: Number(process.env.MAX_APK_MB || 200) * 1024 * 1024,
   corsOrigins: (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
-  /**
-   * happy-hub 文件中枢。APK 实体存到中枢后，下载接口只做 302 跳转，
-   * 不再把几百兆的安装包字节压在本服务上；未配置时自动回退本地磁盘。
-   */
-  hub: {
-    baseUrl: (process.env.HUB_URL || '').trim().replace(/\/+$/, ''),
-    token: (process.env.HUB_TOKEN || '').trim(),
-    bucket: (process.env.HUB_BUCKET || 'packages').trim() || 'packages',
-    prefix: hubPrefix ? `${hubPrefix}/` : ''
-  },
-  /**
-   * GitHub Releases 同步。发布版本时把安装包再传一份到 Release，
-   * 未配置 repo 或 token 时自动跳过，不影响官网发布。
-   */
-  github: {
-    repo: (process.env.GITHUB_REPO || '').trim(),
-    token: (process.env.GITHUB_TOKEN || '').trim(),
-    /** 这些渠道的版本建成 pre-release，避免抢占 latest */
-    prereleaseChannels: (process.env.GITHUB_PRERELEASE_CHANNELS || 'beta,dev,nightly')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  },
   isProd: process.env.NODE_ENV === 'production'
 }
 
@@ -93,6 +62,6 @@ export function originOf(req) {
   return `${proto}://${req.get('host')}`
 }
 
-for (const dir of [config.dataDir, config.apkDir]) {
+for (const dir of [config.dataDir]) {
   fs.mkdirSync(dir, { recursive: true })
 }

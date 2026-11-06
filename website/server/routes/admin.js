@@ -1,29 +1,14 @@
-import fs from 'node:fs'
-import path from 'node:path'
+﻿import path from 'node:path'
 import { Router } from 'express'
-import multer from 'multer'
 import { config } from '../config.js'
 import * as store from '../lib/store.js'
 import { checkPassword, issueToken, requireAdmin } from '../lib/auth.js'
 import * as credentials from '../lib/credentials.js'
-import * as lanzou from '../lib/lanzou.js'
 import {
-  hubDeleteApk,
-  hubEnabled,
-  hubPutApk,
-  hubSummary
-} from '../lib/hub.js'
-import { githubEnabled, githubSummary, publishReleaseApk } from '../lib/githubRelease.js'
-import {
-  apkInfo,
-  apkPath,
   audit,
   bodyItems,
   compareVersion,
   fail,
-  findRelease,
-  humanSize,
-  listApkFiles,
   normalizeVersion
 } from '../lib/helpers.js'
 
@@ -92,8 +77,6 @@ adminRouter.post('/password', requireAdmin, (req, res) => {
 
 adminRouter.get('/overview', requireAdmin, (_req, res) => {
   const releases = store.read('releases')
-  const apkFiles = listApkFiles()
-  const totalBytes = apkFiles.reduce((sum, f) => sum + f.size, 0)
   res.json({
     counts: {
       releases: releases.length,
@@ -102,18 +85,12 @@ adminRouter.get('/overview', requireAdmin, (_req, res) => {
       docs: store.read('docs').length,
       faq: store.read('faq').length,
       scenarios: store.read('scenarios').length,
-      features: store.read('features').length,
-      apkFiles: apkFiles.length
+      features: store.read('features').length
     },
     latest: releases.slice().sort((a, b) => compareVersion(a.version, b.version)).pop() || null,
     stats: store.read('stats'),
-    storage: { apkBytes: totalBytes, apkText: humanSize(totalBytes) },
-    hub: hubSummary(),
-    github: githubSummary(),
-    apkFiles,
     recent: store.read('audit').slice(0, 12),
-    dataDir: path.relative(config.dataDir, config.dataDir) || '.',
-    apkDir: path.relative(process.cwd(), config.apkDir)
+    dataDir: path.relative(process.cwd(), config.dataDir) || '.'
   })
 })
 
@@ -232,57 +209,24 @@ adminRouter.use('/scenarios', listRouter('scenarios', idOf('id'), '场景'))
 
 // ---------- 版本 ----------
 
-/** 回写单条版本的附加字段，避免整包覆盖后台同时在改的其他内容 */
-function patchRelease(version, patch) {
-  const target = normalizeVersion(version)
-  store.write(
-    'releases',
-    store.read('releases').map((it) =>
-      normalizeVersion(it.version) === target ? { ...it, ...patch } : it
-    )
-  )
-}
-
 /**
- * 发布版本时把安装包同步到 GitHub Release。
- * 上传大文件耗时以分钟计，不能卡住发布响应，所以异步跑；
- * 结果回写到版本的 github / github_error 字段，后台列表可直接看到。
+ * 规范化版本里登记的安装包信息。
+ *
+ * 包体由 CI 上传到 GitHub / Gitee 的 Release，后台不再接收文件，所以这里只整理
+ * 文件名、体积与校验值：`file` 是 Release 里的资产名，下载接口据此拼地址。
  */
-function syncGithubRelease(req, record) {
-  if (!githubEnabled() || !record?.apk?.file) return
-  // 同一个包已经同步过就不再重复上传：后台改摘要/说明时不该重传几十兆
-  if (record.github?.file === record.apk.file) return
-  const filePath = apkPath(record.apk.file)
-  if (!filePath) return
-  const version = record.version
-  publishReleaseApk({
-    version,
-    title: record.title,
-    summary: record.summary,
-    notes: record.notes,
-    channel: record.channel || 'stable',
-    filePath,
-    fileName: record.apk.file
-  })
-    .then((result) => {
-      patchRelease(version, {
-        github: {
-          tag: result.tag,
-          file: record.apk.file,
-          url: result.releaseUrl,
-          asset: result.assetUrl,
-          syncedAt: new Date().toISOString()
-        },
-        github_error: ''
-      })
-      audit(req, 'sync', `releases/${version}`, `已同步到 GitHub Release ${result.tag}`)
-      console.log(`[github] ${record.apk.file} → ${result.releaseUrl}`)
-    })
-    .catch((err) => {
-      const message = err?.detail ? `${err.message}（${err.detail}）` : err?.message || '同步失败'
-      patchRelease(version, { github_error: message })
-      console.error(`[github] 同步 ${record.apk.file} 失败：${message}`)
-    })
+function normalizeApk(apk) {
+  if (!apk || !apk.file) return apk
+  const file = path.basename(String(apk.file)).replace(/[^\w.\-]/g, '_')
+  const size = Number(apk.size) || 0
+  return {
+    ...apk,
+    file: /\.apk$/i.test(file) ? file : `${file}.apk`,
+    size,
+    sizeText: size ? `${(size / 1024 / 1024).toFixed(0)} MB` : apk.sizeText || '',
+    sha256: String(apk.sha256 || '').trim(),
+    updatedAt: apk.updatedAt || new Date().toISOString()
+  }
 }
 
 adminRouter.post('/releases', requireAdmin, (req, res) => {
@@ -298,16 +242,11 @@ adminRouter.post('/releases', requireAdmin, (req, res) => {
     published: true,
     date: new Date().toISOString().slice(0, 10),
     ...item,
-    version
-  }
-  if (record.apk?.file) {
-    const info = apkInfo(record.apk.file)
-    if (!info) return fail(res, 400, 'apk_missing', `APK 文件 ${record.apk.file} 不在磁盘上`)
-    record.apk = { ...info }
+    version,
+    apk: normalizeApk(item.apk)
   }
   store.write('releases', [...list, record])
   audit(req, 'create', `releases/${version}`, `发布版本 ${version}`)
-  syncGithubRelease(req, record)
   res.status(201).json(record)
 })
 
@@ -317,16 +256,11 @@ adminRouter.put('/releases/:version', requireAdmin, (req, res) => {
   const index = list.findIndex((r) => normalizeVersion(r.version) === target)
   if (index === -1) return fail(res, 404, 'not_found', `未找到版本 ${target}`)
   const merged = { ...list[index], ...req.body, version: target }
-  if (merged.apk?.file) {
-    const info = apkInfo(merged.apk.file)
-    if (!info) return fail(res, 400, 'apk_missing', `APK 文件 ${merged.apk.file} 不在磁盘上`)
-    merged.apk = { ...info }
-  }
+  if (merged.apk) merged.apk = normalizeApk(merged.apk)
   const next = [...list]
   next[index] = merged
   store.write('releases', next)
   audit(req, 'update', `releases/${target}`, '更新版本信息')
-  syncGithubRelease(req, merged)
   res.json(merged)
 })
 
@@ -407,192 +341,6 @@ adminRouter.post('/import/changelog', requireAdmin, (req, res) => {
   store.write('changelog', next)
   audit(req, 'import', 'changelog', `导入 ${parsed.length} 条（${mode}）`)
   res.json({ ok: true, imported: parsed.length, mode, total: next.length })
-})
-
-// ---------- APK 文件 ----------
-
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, config.apkDir),
-    filename: (_req, file, cb) => {
-      const base = path.basename(file.originalname).replace(/[^\w.\-]/g, '_')
-      cb(null, base.toLowerCase().endsWith('.apk') ? base : `${base}.apk`)
-    }
-  }),
-  limits: { fileSize: config.maxApkBytes, files: 1 },
-  fileFilter: (_req, file, cb) => {
-    const ok = /\.apk$/i.test(file.originalname)
-    cb(ok ? null : new Error('只接受 .apk 文件'), ok)
-  }
-})
-
-adminRouter.get('/apk', requireAdmin, (_req, res) => {
-  res.json(listApkFiles())
-})
-
-adminRouter.post('/apk', requireAdmin, (req, res) => {
-  upload.single('file')(req, res, async (err) => {
-    if (err) {
-      const tooBig = err.code === 'LIMIT_FILE_SIZE'
-      return fail(
-        res,
-        tooBig ? 413 : 400,
-        tooBig ? 'too_large' : 'upload_failed',
-        tooBig ? `文件超过 ${config.maxApkBytes / 1024 / 1024} MB 上限` : err.message
-      )
-    }
-    if (!req.file) return fail(res, 400, 'no_file', '请求里没有 file 字段')
-    const info = apkInfo(req.file.filename)
-
-    // 先把包体同步到文件中枢：上传成功时下载接口就能 302 到签名直链。
-    // 中枢不可用不阻断上传，官网继续用本地磁盘上的这份。
-    let hub = null
-    let hubError = ''
-    if (hubEnabled() && info) {
-      try {
-        const remote = await hubPutApk(apkPath(req.file.filename), req.file.filename)
-        hub = {
-          objectId: remote.id,
-          sha256: remote.sha256 || '',
-          size: remote.size || info.size,
-          deduped: Boolean(remote.deduped)
-        }
-      } catch (e) {
-        hubError = e?.message || '文件中枢上传失败'
-        console.error(`[hub] 上传 ${req.file.filename} 失败：${hubError}`)
-      }
-    }
-
-    audit(req, 'upload', `apk/${req.file.filename}`, `上传 APK（${info?.sizeText}）`)
-    // 上传即自动镜像到蓝奏云：打包上传要几十秒，不能卡住上传响应，异步跑并在登记表里跟踪结果
-    const mirror = lanzou.loadConfig()
-    if (mirror.enabled && mirror.autoMirror && info) {
-      const full = apkPath(req.file.filename)
-      lanzou
-        .mirrorApk(req.file.filename, full)
-        .then((m) => console.log(`[lanzou] 已镜像 ${req.file.filename} → ${m.shareUrl}`))
-        // 带上 err.cause：蓝奏云的失败常是网络层（fetch failed），只打 message 看不到原因
-        .catch((err) =>
-          console.error(
-            `[lanzou] 镜像 ${req.file.filename} 失败：${err.message}` +
-              (err.cause ? `（cause: ${err.cause.code || err.cause.message}）` : '')
-          )
-        )
-    }
-
-    const body = { ...info, hub }
-    if (hubError) body.hub_error = `${hubError}，下载将回退本地文件`
-    res.status(201).json(body)
-  })
-})
-
-// ---------- 蓝奏云镜像 ----------
-
-adminRouter.get('/lanzou', requireAdmin, (_req, res) => {
-  res.json({ config: lanzou.publicConfig(), mirrors: lanzou.listMirrors() })
-})
-
-adminRouter.put('/lanzou', requireAdmin, (req, res) => {
-  const body = req.body || {}
-  if (Array.isArray(body)) return fail(res, 400, 'bad_shape', '配置必须是对象')
-  const next = lanzou.saveConfig({
-    enabled: Boolean(body.enabled),
-    autoMirror: Boolean(body.autoMirror),
-    preferMirror: Boolean(body.preferMirror),
-    username: String(body.username ?? '').trim(),
-    password: typeof body.password === 'string' ? body.password : '',
-    folderId: Number.isFinite(Number(body.folderId)) ? Number(body.folderId) : -1,
-    domain: String(body.domain ?? '').trim()
-  })
-  audit(req, 'update', 'lanzou', '更新蓝奏云镜像配置')
-  res.json({ config: lanzou.publicConfig(), ok: true, folderId: next.folderId })
-})
-
-/** 用当前配置真登录一次，顺带把文件夹列表带回来供后台选择 */
-adminRouter.post('/lanzou/test', requireAdmin, async (req, res) => {
-  const body = req.body || {}
-  try {
-    const result = await lanzou.attemptLogin(body, {
-      captchaToken: String(body.captchaToken || ''),
-      verifycode: String(body.verifycode || '')
-    })
-    // 命中人机验证：把验证码图交回前端弹窗，人工输入后再带 token 续登
-    if (result.needCaptcha) {
-      return res.json({
-        ok: false,
-        needCaptcha: true,
-        token: result.token,
-        image: result.image,
-        hint: result.hint
-      })
-    }
-    audit(req, 'login', 'lanzou', '蓝奏云登录校验通过')
-    res.json({ ok: true, folders: result.folders })
-  } catch (err) {
-    res.status(400).json({ error: 'lanzou_login_failed', message: err.message })
-  }
-})
-
-/** 手动触发镜像（接口自动上传失败时的补传入口） */
-adminRouter.post('/lanzou/mirror', requireAdmin, async (req, res) => {
-  const file = path.basename(String(req.body?.file || ''))
-  const full = apkPath(file)
-  if (!full || !fs.existsSync(full)) return fail(res, 400, 'apk_missing', `APK 文件 ${file} 不在磁盘上`)
-  try {
-    const info = await lanzou.mirrorApk(file, full)
-    audit(req, 'mirror', `lanzou/${file}`, `镜像到蓝奏云：${info.shareUrl}`)
-    res.json(info)
-  } catch (err) {
-    res.status(400).json({ error: 'mirror_failed', message: err.message })
-  }
-})
-
-/** 手工登记分享信息：自动上传接口失效时的兜底 */
-adminRouter.put('/lanzou/mirror/:file', requireAdmin, (req, res) => {
-  const file = path.basename(req.params.file)
-  if (!apkPath(file)) return fail(res, 400, 'bad_file', '文件名不合法')
-  const info = lanzou.putMirror(file, {
-    shareUrl: String(req.body?.shareUrl || '').trim(),
-    password: String(req.body?.password || '').trim(),
-    mirrorFile: String(req.body?.mirrorFile || '').trim(),
-    apkFile: file,
-    uploadedAt: new Date().toISOString(),
-    source: 'manual'
-  })
-  audit(req, 'mirror', `lanzou/${file}`, '手工登记蓝奏云镜像')
-  res.json(info)
-})
-
-adminRouter.delete('/lanzou/mirror/:file', requireAdmin, (req, res) => {
-  const file = path.basename(req.params.file)
-  lanzou.removeMirror(file)
-  audit(req, 'delete', `lanzou/${file}`, '移除蓝奏云镜像登记')
-  res.json({ ok: true, removed: file })
-})
-
-adminRouter.delete('/apk/:file', requireAdmin, (req, res) => {
-  const full = apkPath(req.params.file)
-  if (!full || !fs.existsSync(full)) return fail(res, 404, 'not_found', '文件不存在')
-  const usedBy = store
-    .read('releases')
-    .filter((r) => r.apk?.file === path.basename(full))
-    .map((r) => r.version)
-  if (usedBy.length && req.query.force !== '1') {
-    return fail(res, 409, 'in_use', `该文件被版本 ${usedBy.join(', ')} 引用，加 ?force=1 强制删除`, { usedBy })
-  }
-  fs.unlinkSync(full)
-  // 文件没了，镜像登记也一并清掉，否则更新接口会把客户端引到一个已失效的分享页
-  lanzou.removeMirror(path.basename(full))
-  // 中枢对象同步回收；失败只记日志，不阻断删除响应
-  if (hubEnabled()) {
-    hubDeleteApk(path.basename(full))
-      .then((removed) => {
-        if (removed) console.log(`[hub] 已回收 ${path.basename(full)} 的中枢对象`)
-      })
-      .catch((err) => console.error(`[hub] 回收 ${path.basename(full)} 失败：${err.message}`))
-  }
-  audit(req, 'delete', `apk/${path.basename(full)}`, '删除 APK 文件')
-  res.json({ ok: true })
 })
 
 // ---------- 工具 ----------
