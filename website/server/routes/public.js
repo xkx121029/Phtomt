@@ -1,11 +1,7 @@
 import { Router } from 'express'
 import * as store from '../lib/store.js'
-import {
-  compareVersion,
-  findRelease,
-  latestRelease,
-  normalizeVersion
-} from '../lib/helpers.js'
+import { compareVersion, normalizeVersion } from '../lib/helpers.js'
+import { downloadTarget, findRelease, listReleases, snapshot } from '../lib/releaseFeed.js'
 import { originOf } from '../config.js'
 import { PUBLIC_ENDPOINTS, SITE_ROUTES, ADMIN_ENDPOINTS } from '../lib/endpoints.js'
 
@@ -55,19 +51,35 @@ publicRouter.get('/health', (_req, res) => {
 /**
  * 站点元信息里的「最新版本」。
  *
- * 规则与 bootstrap.releases 完全一致：全渠道、已发布、有包体，版本号最大的一条。
- * 原来这里取的是「最新稳定版」，于是首页（site.latest）和下载页（releases[0]）
- * 指向两个不同版本；version 也一直沿用 site.json 里的手写旧值。这里统一由 release
- * 数据推导，`site.json` 的 version 只在一条 release 都没有时兜底。
+ * 版本数据来自 GitHub Releases（lib/releaseFeed.js），按发布时间倒序；
+ * 主下载目标优先最新稳定版，没有稳定版时退回最新测试包并置 `stable: false`，
+ * 由页面写明「暂无稳定版」。`releases.json` 只在 GitHub 拉不到时兜底。
  */
 function siteMeta(req) {
   const raw = store.read('site')
-  const newest = latestRelease({ channel: 'all' })
+  const target = downloadTarget()
+  const newest = target.release
   return {
     ...raw,
     version: newest ? String(newest.version).replace(/^v/i, '') : raw.version,
     latest: publicRelease(req, newest),
+    downloadTarget: newest
+      ? { version: newest.version, channel: newest.channel, stable: target.stable }
+      : null,
+    releaseSource: feedInfo(),
     stats: summarizeStats()
+  }
+}
+
+/** 版本数据来源与新鲜度：页面据此决定要不要提示「可能不是最新」 */
+function feedInfo() {
+  const s = snapshot()
+  return {
+    source: s.source,
+    fetchedAt: s.fetchedAt,
+    degraded: s.degraded,
+    repo: s.repo,
+    error: s.degraded ? s.error : ''
   }
 }
 
@@ -82,20 +94,18 @@ publicRouter.get('/features', (_req, res) => {
 
 publicRouter.get('/releases', (req, res) => {
   const { channel = 'all', limit } = req.query
-  let list = store
-    .read('releases')
-    .filter((r) => r.published !== false)
-    .filter((r) => (channel === 'all' ? true : (r.channel || 'stable') === channel))
-    .sort((a, b) => compareVersion(b.version, a.version))
+  let list = listReleases({ channel })
   if (limit) list = list.slice(0, Math.max(0, Number(limit) || 0))
+  res.setHeader('X-Release-Source', snapshot().source)
   res.json(list.map((r) => decorate(req, r)))
 })
 
 publicRouter.get('/releases/latest', (req, res) => {
-  const release = latestRelease({ channel: req.query.channel || 'stable' })
+  const release = listReleases({ channel: req.query.channel || 'all' })[0]
   if (!release) {
     return res.status(404).json({ error: 'not_found', message: '暂无可下载的版本' })
   }
+  res.setHeader('X-Release-Source', snapshot().source)
   res.json(decorate(req, release))
 })
 
@@ -195,10 +205,8 @@ export function buildBootstrap(req) {
   return {
     site: siteMeta(req),
     features: [...store.read('features')].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-    releases: store
-      .read('releases')
-      .filter((r) => r.published !== false)
-      .sort((a, b) => compareVersion(b.version, a.version))
+    // 版本列表直接来自 GitHub Releases（发布时间倒序），本地 JSON 只做兜底
+    releases: listReleases()
       .slice(0, 10)
       .map((r) => decorate(req, r)),
     changelog: [...store.read('changelog')]

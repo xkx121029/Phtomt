@@ -48,6 +48,13 @@ export const config = {
   dataDir: abs(process.env.DATA_DIR || 'server/data'),
   distDir: abs('dist'),
   siteOrigin: (process.env.SITE_ORIGIN || '').replace(/\/$/, ''),
+  /**
+   * 读 GitHub Releases 用的令牌（可选）。
+   * 不带令牌时 API 限额是 60 次/小时，只够 10 分钟一次的缓存刷新；
+   * 配了令牌提到 5000 次/小时。只从环境变量读，绝不写进仓库。
+   */
+  githubToken: (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim(),
+
   corsOrigins: (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((s) => s.trim())

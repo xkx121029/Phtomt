@@ -34,23 +34,11 @@ export function normalizeVersion(input) {
   return v.startsWith('v') ? v : `v${v}`
 }
 
-export function findRelease(version) {
-  const target = normalizeVersion(version)
-  const releases = store.read('releases')
-  return releases.find((r) => normalizeVersion(r.version) === target) || null
-}
-
-export function latestRelease({ channel = 'stable', includeUnpublished = false } = {}) {
-  const releases = store.read('releases')
-  return (
-    releases
-      .filter((r) => (includeUnpublished ? true : r.published !== false))
-      .filter((r) => (channel && channel !== 'all' ? (r.channel || 'stable') === channel : true))
-      .filter((r) => r.apk && r.apk.file)
-      .sort((a, b) => compareVersion(a.version, b.version))
-      .pop() || null
-  )
-}
+/**
+ * 版本数据以 GitHub Releases 为准（见 lib/releaseFeed.js），
+ * `releases.json` 只在拉不到时兜底；这两个函数保留旧名字，避免各处调用点跟着改。
+ */
+export { findRelease, latestRelease } from './releaseFeed.js'
 
 /** 操作留痕：后台所有写操作都会落一条，便于回溯「谁在什么时候改了内容」 */
 export function audit(req, action, target, detail = '') {

@@ -11,6 +11,11 @@ import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
 import { renderHtml } from './lib/htmlShell.js'
+import { init as initReleaseFeed } from './lib/releaseFeed.js'
+
+// 版本数据以 GitHub Releases 为准：先把首份数据拉回来再对外服务，
+// 拉到就全站按它走；拉不到自动降级到 releases.json，接口里会标明 degraded。
+const feed = await initReleaseFeed()
 
 const app = express()
 
@@ -122,6 +127,9 @@ app.listen(config.port, () => {
   console.log(`  ├─ 站点      ${base}${hasBuild ? '' : '  （前端未构建，仅 API 可用）'}`)
   console.log(`  ├─ API 文档  ${base}/api/openapi`)
   console.log(`  └─ 管理后台  ${base}/admin`)
+  console.log(
+    `  版本数据    ${feed.source === 'github' ? `GitHub（${feed.list[0]?.version || '—'}）` : `本地兜底（GitHub 不可达：${feed.error}）`}`
+  )
   if (config.generatedPassword) {
     console.log(`\n  本次启动的临时管理口令：${config.generatedPassword}`)
     console.log(`  （设置 .env 里的 ADMIN_PASSWORD 可固定口令）\n`)

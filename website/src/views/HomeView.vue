@@ -14,7 +14,7 @@ const data = ref(null)
 const failed = ref(false)
 
 const site = computed(() => data.value?.site || {})
-// 与下载页同一判据：全渠道版本号最大的一条，不再用 site.latest（那是最新稳定版）
+// 与下载页同一判据：服务端 downloadTarget 优先稳定版，没有稳定版再退最新测试包
 const latest = computed(() => latestRelease(data.value))
 const features = computed(() => (data.value?.features || []).slice(0, 6))
 const releases = computed(() => data.value?.releases || [])
@@ -297,6 +297,10 @@ onMounted(async () => {
         <p v-if="latest" v-reveal="120" class="muted small cta__meta">
           {{ channelLabel(latest.channel) }} · 发布于 {{ formatDate(latest.date) }}（{{ relativeTime(latest.date) }}）
           <template v-if="releases.length > 1"> · 共 {{ releases.length }} 个可下载版本</template>
+          <template v-if="latest && latest.channel !== 'stable'"> · 暂无稳定版，以上为最新测试版</template>
+        </p>
+        <p v-if="site.releaseSource?.degraded" v-reveal="120" class="muted small cta__meta">
+          版本数据为本地兜底，可能不是最新；GitHub 恢复后会自动刷新。
         </p>
       </div>
     </section>

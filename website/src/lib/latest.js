@@ -1,13 +1,16 @@
 /**
  * 「最新版本」的唯一判据。
  *
- * 规则：只看已发布、有包体的版本，取版本号最大的一条。服务端的 `/api/releases`
- * 与 bootstrap 的 `releases` 都按同一套 compareVersion 全渠道倒序，所以数组首项就是
- * 版本号最大的那条——不要再按 `site.latest`（那是最新 **稳定版**）另取一份。
- *
- * 首页主按钮、首页版本号、下载页主卡片都走这里，保证「显示的版本」和「下载的版本」是同一个。
+ * 服务端按发布时间倒序给出 `releases`（数据来自 GitHub Releases），并额外给一个
+ * `site.downloadTarget`：有稳定版就指向最新稳定版，没有就退回最新测试包。
+ * 这里优先用 downloadTarget，再退到列表首项，保证「主按钮下载的」就是「页面上写的」。
  */
 export function latestRelease(bootstrap) {
   const list = (bootstrap?.releases || []).filter((r) => r?.apk?.file && r.published !== false)
+  const target = bootstrap?.site?.downloadTarget
+  if (target?.version) {
+    const hit = list.find((r) => String(r.version).replace(/^v/i, '') === String(target.version).replace(/^v/i, ''))
+    if (hit) return hit
+  }
   return list[0] || bootstrap?.site?.latest || null
 }

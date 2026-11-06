@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import { fail, findRelease, latestRelease, recordDownload } from '../lib/helpers.js'
+import { fail, recordDownload } from '../lib/helpers.js'
+import { downloadTarget, findRelease } from '../lib/releaseFeed.js'
 import { externalAssets, preferredAsset, releasePage } from '../lib/externalAssets.js'
 
 /**
@@ -47,10 +48,11 @@ downloadRouter.get('/sources/:version', async (req, res) => {
 })
 
 downloadRouter.get('/latest', (req, res) => {
-  const release = latestRelease({ channel: req.query.channel || 'stable' })
+  // 与首页同一个判据：优先最新稳定版，没有稳定版就退最新测试包
+  const { release } = downloadTarget()
   if (!release) return fail(res, 404, 'not_found', '暂无可下载的版本')
   if (req.query.redirect === '0') {
-    return res.json({ version: release.version, file: release.apk.file })
+    return res.json({ version: release.version, channel: release.channel, file: release.apk.file })
   }
   return redirectTo(req, res, release)
 })

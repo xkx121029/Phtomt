@@ -1,5 +1,5 @@
-import { compareVersion, latestRelease, normalizeVersion } from './helpers.js'
-import * as store from './store.js'
+import { compareVersion, normalizeVersion } from './helpers.js'
+import { latestRelease, listReleases } from './releaseFeed.js'
 
 /**
  * 客户端自动更新的频道判定。
@@ -56,10 +56,7 @@ export function pickUpdate({ clientChannel = 'stable', version = '', build = 0 }
   const channels = visibleChannels(clientChannel)
   const currentBuild = Number(build) || 0
   const currentVersion = normalizeVersion(version)
-  const candidates = store
-    .read('releases')
-    .filter((r) => r.published !== false)
-    .filter((r) => r.apk && r.apk.file)
+  const candidates = listReleases()
     .filter((r) => channels.includes(normalizeChannel(r.channel)))
     .filter((r) => {
       const diff = compareVersion(r.version, currentVersion)
@@ -75,15 +72,8 @@ export function pickUpdate({ clientChannel = 'stable', version = '', build = 0 }
   return candidates.pop() || null
 }
 
-/** 未指定版本时回退到该频道可见范围内的最新一版 */
+/** 未指定版本时回退到该频道可见范围内的最新一版（按发布时间） */
 export function latestVisible(clientChannel) {
   const channels = visibleChannels(clientChannel)
-  return (
-    store
-      .read('releases')
-      .filter((r) => r.published !== false && r.apk && r.apk.file)
-      .filter((r) => channels.includes(normalizeChannel(r.channel)))
-      .sort((a, b) => compareVersion(a.version, b.version))
-      .pop() || latestRelease()
-  )
+  return listReleases().find((r) => channels.includes(normalizeChannel(r.channel))) || latestRelease()
 }

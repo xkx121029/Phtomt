@@ -232,6 +232,10 @@ onMounted(async () => {
             安装包实体由 CI 上传到 GitHub / Gitee 的 Release，官网不保存 APK 文件。
             这里只登记资产名与校验值，下载接口据此拼出 Release 地址。
           </p>
+          <p class="muted small">
+            站点展示的版本以 GitHub Releases 为准（服务端 10 分钟刷新一次）；这份记录只在
+            GitHub 不可达时作为兜底，改它不会让官网「最新版」提前或延后。
+          </p>
 
           <div class="grid">
             <label class="field grid__wide">

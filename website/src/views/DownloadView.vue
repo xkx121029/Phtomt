@@ -19,9 +19,15 @@ const probing = ref(false)
 const probeNote = ref('')
 let hintTimer = null
 
-// 与首页同一判据（src/lib/latest.js）：全渠道版本号最大的一条，避免两处各取一份
+// 与首页同一判据（src/lib/latest.js）：服务端 downloadTarget 优先稳定版，没有稳定版再退最新测试包
 const latest = computed(() => latestRelease({ releases: releases.value, site: site.value }))
 const rest = computed(() => releases.value.slice(1))
+
+/** 没有稳定版时明说，别让用户以为这是正式版：主卡片已按「稳定版优先」取，取到非 stable 就说明一条稳定版都没有 */
+const noStable = computed(() => Boolean(latest.value) && latest.value.channel !== 'stable')
+/** 版本数据来自 GitHub；拉不到时走本地兜底，这行提示必须出现 */
+const feedDegraded = computed(() => Boolean(site.value.releaseSource?.degraded))
+const feedUpdated = computed(() => relativeTime(site.value.releaseSource?.fetchedAt) || '')
 
 const primaryUrl = computed(() =>
   best.value?.url || (latest.value ? downloadUrl(latest.value, site.value) : site.value.links?.releases || '#')
@@ -192,6 +198,12 @@ onMounted(async () => {
 
             <p class="hint hero-card__hint">
               安装包托管在 GitHub / Gitee 的 Release 里，本站不保存文件；按钮会自动跳到当前更快的那个。
+            </p>
+            <p v-if="noStable" class="hint hero-card__hint">
+              暂无稳定版，以下为最新测试版。稳定版发布后这里会自动切过去。
+            </p>
+            <p v-if="feedDegraded" class="hint hero-card__hint">
+              当前展示的是本地兜底的版本数据{{ feedUpdated ? `（更新于 ${feedUpdated}）` : '' }}，可能不是最新；GitHub 恢复后会自动刷新。
             </p>
           </div>
 
