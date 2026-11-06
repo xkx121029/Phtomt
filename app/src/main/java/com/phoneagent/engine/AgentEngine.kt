@@ -83,11 +83,13 @@ import com.phoneagent.engine.runtime.TaskLifecycle
 import com.phoneagent.engine.runtime.EngineLimits.EXTERNAL_VISION_TIMEOUT
 import com.phoneagent.engine.runtime.EngineLimits.MAX_BROWSE_MISSING_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION_CHATS
+import com.phoneagent.engine.docs.retrieveSafely
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DEVICE_QUERY_OUTPUT
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_TIMEOUT_STREAK
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DIALOG_TURNS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_PARAM_REFILL
+import com.phoneagent.engine.runtime.EngineLimits.METHOD_DOC_STEP_TIMEOUT_MS
 import com.phoneagent.engine.runtime.EngineLimits.VISION_FALLBACK_THRESHOLD
 import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_DECIDE_MS
 import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_VISION_MS
@@ -130,6 +132,12 @@ class AgentEngine(
      * 缺省 null（单测/独立构造场景），生产装配由 AppModule 注入。
      */
     private val docRepository: com.phoneagent.feature.agentdoc.AgentDocRepository? = null,
+    /**
+     * 方法文档检索器：动手前按任务描述查一次「这件事怎么做成」。
+     * 线上接口未就绪时用空实现（查不到 → 提示词写明「没有对应方法，按常规判断」并继续）。
+     */
+    private val methodDocRetriever: com.phoneagent.engine.docs.MethodDocRetriever =
+        com.phoneagent.engine.docs.EmptyMethodDocRetriever,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
@@ -519,6 +527,7 @@ class AgentEngine(
         // 配置预检要同步拿到当前设置：读不到（极早期）时返回默认值，让预检不阻断正常流程
         settingsSnapshot = { latestSettings ?: com.phoneagent.data.prefs.AppSettings.Settings() },
         docRepository = docRepository,
+        methodDocRetriever = methodDocRetriever,
     )
     /** 执行核心：带验证执行 / shell 通道 / 无障碍端点直调（重构批次 7b，见 [com.phoneagent.engine.execution.ExecutionCore]） */
     private val executionCore = com.phoneagent.engine.execution.ExecutionCore(
@@ -1280,6 +1289,11 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "动作模式=${activeActionMode.label}（${activeActionMode.key}）")
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
+        // 方法文档的注入分两处，刻意不在这里预取：
+        // - 规划阶段在 PlanningFlow 里按任务描述检索（计划要按方法文档走）；
+        // - 执行阶段在每步决策里按「任务 + 当前前台应用」检索（见 cloudDecide），
+        //   页面状态变化时能换到对应应用的方法文档，且只注入紧凑块。
+        // 这里预取会在两个阶段之外多查一次、并把整块文档塞进每一步，预算不可控。
         // 提示词里的"能看图"必须与实际是否真的发图一致：关掉"附送屏幕截图"后每步都不带图，
         // 此时仍告诉 AI"可视"会让它去描述图里看到的东西（实际没收到图）。
         // 判定走三态（见 VisionRouting）：AUTO 听模型库里真实探测出的能力，ON/OFF 是用户覆盖
@@ -1667,6 +1681,41 @@ class AgentEngine(
                 ?.let { AgentPrompts.docsBlock(currentLang, it) }
                 .orEmpty()
         } else ""
+        // 执行期方法文档：按「任务 + 当前前台应用」在本地检索（离线可用，网络只做后台增量同步）。
+        // 前台包名就是当前的页面状态——任务中途切进目标应用时，能换到那个应用的方法文档。
+        // 命中才注入紧凑块（预算 450 字符）；第一步没命中时明确说一次"没有方法文档"，
+        // 之后不重复刷屏（规划阶段已经说过一遍，执行期只做与当前页面相关的增量提示）。
+        var stepDocs = methodDocRetriever.retrieveSafely(
+            task = task,
+            foregroundPackage = snapshot.packageName,
+            timeoutMs = METHOD_DOC_STEP_TIMEOUT_MS,
+            limit = 2,
+        )
+        // 任务描述本身太笼统时（比如「帮我处理一下」），补一次「当前页面语境」检索；
+        // 只在首次没命中时补查，避免把页面噪声词混进正常检索把结果带偏。
+        if (stepDocs.isEmpty() && annotated.contextHint.isNotBlank()) {
+            val pageContext = DataSanitizer.sanitize(annotated.contextHint).take(30)
+            if (pageContext.isNotBlank()) {
+                stepDocs = methodDocRetriever.retrieveSafely(
+                    task = "$task $pageContext",
+                    foregroundPackage = snapshot.packageName,
+                    timeoutMs = METHOD_DOC_STEP_TIMEOUT_MS,
+                    limit = 2,
+                )
+            }
+        }
+        if (_state.value.stepCount == 0) {
+            if (stepDocs.isEmpty()) {
+                log(AgentLog.Level.INFO, "方法文档：没有对应方法，按常规探索继续")
+            } else {
+                log(AgentLog.Level.INFO, "方法文档：命中 ${stepDocs.size} 篇（${stepDocs.first().summary.take(40)}）")
+            }
+        }
+        val methodHint = when {
+            stepDocs.isNotEmpty() -> AgentPrompts.methodDocStepBlock(currentLang, stepDocs)
+            _state.value.stepCount == 0 -> AgentPrompts.methodDocNoMatchBlock(currentLang)
+            else -> ""
+        }
         val userText = AgentPrompts.decision(
             lang = currentLang,
             task = task,
@@ -1680,7 +1729,7 @@ class AgentEngine(
             memory = memoryText,
             // 经验规则注入：只放"与当前应用/任务相关"的那几条（见 RuleScoper），其余留在记忆里
             evolvedRules = ruleText,
-        ) + planNote + docHint + "\n\n## 当前页面\n$pageText" +
+        ) + planNote + docHint + methodHint + "\n\n## 当前页面\n$pageText" +
             DataSanitizer.sanitize(com.phoneagent.engine.perception.PageAnnotator.knownControlsText(annotated.elements)) +
             AgentPrompts.situationalExtras(currentLang, task, termuxBridge?.isAvailable() == true) +
             taskMemoryText() +

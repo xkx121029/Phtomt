@@ -8,6 +8,7 @@ import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.engine.AgentPrompts
 import com.phoneagent.engine.AgentResponseParser
+import com.phoneagent.engine.docs.retrieveSafely
 import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.PromptLang
@@ -52,6 +53,9 @@ internal class PlanningFlow(
     private val settingsSnapshot: () -> AppSettings.Settings,
     /** 云端执行文档仓库（null = 未装配，规划不注入文档） */
     private val docRepository: com.phoneagent.feature.agentdoc.AgentDocRepository? = null,
+    /** 方法文档检索器（默认空实现 = 永远按「没有方法文档」处理） */
+    private val methodDocRetriever: com.phoneagent.engine.docs.MethodDocRetriever =
+        com.phoneagent.engine.docs.EmptyMethodDocRetriever,
 ) {
     /**
      * 配置预检：返回阻断原因（null = 可以规划）。
@@ -236,8 +240,20 @@ internal class PlanningFlow(
         val pageMemoryContext = if (settingsVal.pageMemoryEnabled) {
             runCatching { AgentPrompts.pageMemoryPlanningBlock(lang, ctx.pageMemoryPlanningLines(task, lang)) }.getOrDefault("")
         } else ""
-        // 云端执行文档：任务命中的标准操作流程在规划阶段就注入——计划本身要按手册走，
-        // 否则等执行时才看到文档，第一步已经走偏了。无命中/未启用时为空串，不占上下文。
+        // 方法文档：按任务描述在本地检索（离线优先，不依赖网络）。
+        // 规划阶段先把「这件事怎么做成」的判断依据摆出来，计划本身才不会走偏；
+        // 无命中时提示词明确写「没有对应方法」，让模型走通用拆解而不是误以为做不到。
+        val methodDocs = methodDocRetriever.retrieveSafely(
+            task = task,
+            foregroundPackage = null,
+            timeoutMs = com.phoneagent.engine.runtime.EngineLimits.METHOD_DOC_TIMEOUT_MS,
+        )
+        if (methodDocs.isEmpty()) {
+            ui.log(com.phoneagent.domain.model.AgentLog.Level.INFO, "规划前查阅方法文档：没有对应方法，按常规判断继续")
+        } else {
+            ui.log(com.phoneagent.domain.model.AgentLog.Level.INFO, "规划前查阅方法文档：命中 ${methodDocs.size} 篇")
+        }
+        val methodDocContext = AgentPrompts.methodDocsBlock(lang, methodDocs)
         val docContext = if (settingsVal.docSyncEnabled) {
             runCatching { docRepository?.docsFor(task, null, settingsVal) }.getOrNull()
                 ?.takeIf { it.isNotEmpty() }
@@ -249,7 +265,7 @@ internal class PlanningFlow(
             answer.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext$docContext"
             question.isNullOrBlank() -> "$prompt$execContext$context$pageMemoryContext$docContext\n\n用户已选择澄清项：$answer"
             else -> "$prompt$execContext$context$pageMemoryContext$docContext\n\n你上一轮向用户提问：$question\n用户已选择澄清项：$answer"
-        } + if (prevUnrecognized.isNullOrBlank()) "" else
+        } + methodDocContext + if (prevUnrecognized.isNullOrBlank()) "" else
             "\n\n## 上一轮返回无法识别\n" +
             "你上一轮针对本任务返回的内容无法解析为标准 JSON。上一轮原文：\n" +
             "<prev_unrecognized>\n${prevUnrecognized.take(1500)}\n</prev_unrecognized>\n" +

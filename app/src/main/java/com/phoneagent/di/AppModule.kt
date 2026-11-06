@@ -33,6 +33,12 @@ private val appModule = module {
     single { DocumentEngine(androidContext()) }
     // 云端执行文档：规划/决策与设置页共用同一实例（共享内存索引与磁盘缓存，避免重复下载）
     single { com.phoneagent.feature.agentdoc.AgentDocRepository(androidContext(), get()) }
+    // 训练线任务文档：整包落本地、检索全在本地做，网络只用于增量同步（离线行为与在线一致）
+    single { com.phoneagent.engine.docs.TaskDocRepository(androidContext()) }
+    // 以接口类型注册：引擎按 MethodDocRetriever 取用，换实现时只改这一行
+    single<com.phoneagent.engine.docs.MethodDocRetriever> {
+        com.phoneagent.engine.docs.OfflineMethodDocRetriever(get(), get())
+    }
     single { TermuxBridge(androidContext()) }
     // 末位注入 MemoryStore 单例：引擎与 UI 记忆页共用同一实例（消除双实例与各自缓存不一致）。
     // 全部用具名参数：11 个 get() 的位置参数一旦有人调整构造顺序就会静默错配，
@@ -49,6 +55,7 @@ private val appModule = module {
             skillGateway = get(),
             memoryStore = get(),
             docRepository = get(),
+            methodDocRetriever = get(),
         )
     }
     single { TestEngine(get()) }

@@ -304,6 +304,129 @@ object AgentPrompts {
         )
     }
 
+    /**
+     * 方法文档块（动手前固定动作）：端侧已按任务描述检索过「这件事怎么做成」的方法文档。
+     *
+     * 与 [docsBlock] 的区别：这里是训练线约定的结构化字段——前提 / 成功判断点 / 易错点 / 收尾校验，
+     * actions 只作参考。命中时按这些判断点做；没命中也要**明确告诉模型"按常规判断继续"**，
+     * 否则模型会把"没查到方法"误读成"这件事做不了"而停下。
+     */
+    fun methodDocsBlock(
+        lang: PromptLang,
+        docs: List<com.phoneagent.engine.docs.MethodDoc>,
+        maxChars: Int = com.phoneagent.engine.docs.METHOD_DOC_PLAN_BUDGET,
+    ): String {
+        val cn = lang == PromptLang.CN
+        if (docs.isEmpty()) {
+            return if (cn) {
+                "\n\n# 方法文档（动手前查阅结果）\n" +
+                    "没有对应方法：没有检索到与本任务对应的方法文档。请按常规判断继续执行，不要因此停住，也不要反复查询。"
+            } else {
+                "\n\n# Method docs (looked up before acting)\n" +
+                    "No method doc matches this task. Proceed with normal judgement — do not stop and do not keep looking it up."
+            }
+        }
+        val text = buildString {
+            append(if (cn) "\n\n# 方法文档（动手前查阅结果）" else "\n\n# Method docs (looked up before acting)")
+            append(
+                if (cn) {
+                    "\n以下是「这件事怎么做成」的判断依据：先核对前提，按成功判断点确认结果，注意易错点，收尾按校验项核对。" +
+                        "它不是「点哪里」的录像——页面与文档冲突时以当前页面为准，actions 只作参考，不要照抄。"
+                } else {
+                    "\nThese are the judgement criteria for getting this done: check the preconditions first, verify with the success checks, " +
+                        "watch the pitfalls, and confirm with the wrap-up checks. This is NOT a tap-by-tap recording — when the page disagrees, trust the page. " +
+                        "actions are reference only; do not copy them blindly."
+                },
+            )
+            docs.forEach { doc ->
+                append("\n\n## ").append(doc.summary.take(160).ifBlank { if (cn) "未命名方法" else "Untitled method" })
+                if (doc.evidenceStatus == "unproven") {
+                    append(if (cn) "（仅参考思路，未验证）" else " (reference only, unproven)")
+                }
+                if (doc.preconditions.isNotEmpty()) {
+                    append(if (cn) "\n- 前提：" else "\n- Preconditions: ").append(doc.preconditions.joinToString("；"))
+                }
+                if (doc.successChecks.isNotEmpty()) {
+                    append(if (cn) "\n- 成功判断点：" else "\n- Success checks: ").append(doc.successChecks.joinToString("；"))
+                }
+                if (doc.notDoneWhen.isNotEmpty()) {
+                    append(if (cn) "\n- 未完成信号：" else "\n- Not done when: ").append(doc.notDoneWhen.joinToString("；"))
+                }
+                if (doc.pitfalls.isNotEmpty()) {
+                    append(if (cn) "\n- 易错点：" else "\n- Pitfalls: ").append(doc.pitfalls.joinToString("；"))
+                }
+                if (doc.wrapUpChecks.isNotEmpty()) {
+                    append(if (cn) "\n- 收尾校验：" else "\n- Wrap-up checks: ").append(doc.wrapUpChecks.joinToString("；"))
+                }
+                if (doc.actions.isNotEmpty()) {
+                    append(if (cn) "\n- 参考轨迹（仅参考）：" else "\n- Reference trace (reference only): ")
+                        .append(doc.actions.take(8).joinToString(" → "))
+                }
+            }
+        }
+        return truncateBlock(text, maxChars, cn)
+    }
+
+    /**
+     * 执行阶段每步的方法文档块（紧凑版）。
+     *
+     * 与 [methodDocsBlock] 的分工：规划看的是一整件事怎么做成，这里只放**当前这步用得上**的判断依据
+     * （未完成信号 / 判断点 / 易错点），并且**没命中就返回空串**——执行期不重复刷「没有方法文档」，
+     * 那句话每个任务说一次就够了（见 [methodDocNoMatchBlock]）。
+     */
+    fun methodDocStepBlock(
+        lang: PromptLang,
+        docs: List<com.phoneagent.engine.docs.MethodDoc>,
+        maxChars: Int = com.phoneagent.engine.docs.METHOD_DOC_STEP_BUDGET,
+    ): String {
+        if (docs.isEmpty()) return ""
+        val cn = lang == PromptLang.CN
+        val text = buildString {
+            append(if (cn) "\n\n# 方法文档（当前步骤参考）" else "\n\n# Method doc (current step reference)")
+            docs.take(2).forEach { doc ->
+                append("\n- ").append(doc.summary.take(80).ifBlank { if (cn) "未命名方法" else "Untitled method" })
+                if (doc.notDoneWhen.isNotEmpty()) {
+                    append(if (cn) "\n  未完成信号：" else "\n  Not done when: ")
+                        .append(doc.notDoneWhen.take(2).joinToString("；") { it.take(60) })
+                }
+                doc.decisionPoints.take(2).forEach { p ->
+                    if (p.trigger.isNotBlank() || p.thinking.isNotBlank()) {
+                        append(if (cn) "\n  判断点：" else "\n  Decision point: ")
+                            .append(p.trigger.take(40))
+                        if (p.thinking.isNotBlank()) append(" → ").append(p.thinking.take(60))
+                        if (p.options.isNotEmpty()) {
+                            append(if (cn) "；可选：" else "; options: ")
+                                .append(p.options.take(2).joinToString("/") { it.take(30) })
+                        }
+                    }
+                }
+                if (doc.pitfalls.isNotEmpty()) {
+                    append(if (cn) "\n  易错点：" else "\n  Pitfalls: ")
+                        .append(doc.pitfalls.take(2).joinToString("；") { it.take(60) })
+                }
+                if (doc.successChecks.isNotEmpty()) {
+                    append(if (cn) "\n  成功判断：" else "\n  Success checks: ")
+                        .append(doc.successChecks.take(2).joinToString("；") { it.take(60) })
+                }
+            }
+        }
+        return truncateBlock(text, maxChars, cn)
+    }
+
+    /** 整个任务都没检索到方法文档时的一句话（只在第一步注入一次，避免每步重复） */
+    fun methodDocNoMatchBlock(lang: PromptLang): String = if (lang == PromptLang.CN) {
+        "\n\n# 方法文档\n没有检索到与本任务对应的方法文档。按常规探索执行：先看清当前页面，再决定下一步；不要因此停下，也不要反复查询。"
+    } else {
+        "\n\n# Method docs\nNo method doc matches this task. Proceed with normal exploration: read the page first, then decide the next step. Do not stop, and do not keep looking it up."
+    }
+
+    /** 块级预算：超出就截尾并标注省略，避免把提示词堆成几 KB */
+    private fun truncateBlock(text: String, maxChars: Int, cn: Boolean): String {
+        if (maxChars <= 0 || text.length <= maxChars) return text
+        val head = text.take(maxChars - 1).trimEnd()
+        return head + if (cn) "…（已省略）" else "… (truncated)"
+    }
+
     // ==================== 环境上下文（每步/规划都会注入） ====================
 
     /**

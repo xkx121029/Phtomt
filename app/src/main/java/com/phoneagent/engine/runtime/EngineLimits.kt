@@ -29,6 +29,23 @@ internal object EngineLimits {
      *  没有它界面会一直停在“观察屏幕”（视觉分析发生在决策状态切换之前），看起来像卡死 */
     internal const val WATCHDOG_VISION_MS = 25_000L
 
+    /**
+     * 动手前方法文档检索的超时。
+     *
+     * 检索是「动手前的固定动作」，但它只是参考：超时按没查到处理，任务照常开始。
+     * 不能让一个外部检索服务决定任务能不能起步。
+     */
+    internal const val METHOD_DOC_TIMEOUT_MS = 4_000L
+
+    /**
+     * 执行期每步方法文档检索的超时。
+     *
+     * 本地检索是毫秒级；这个上限只防「首次整包拉取」把某一步决策拖住。
+     * 超时按没查到处理，下一步本地包通常已经落盘，能正常命中。
+     */
+    internal const val METHOD_DOC_STEP_TIMEOUT_MS = 2_500L
+
+
     /** 日志环形缓冲上限（v2.2.1 LogCollector），防长线任务内存膨胀 */
     internal const val MAX_LOGS = 800
 
