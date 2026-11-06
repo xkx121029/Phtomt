@@ -23,7 +23,8 @@ plugins {
 // 每次构建出来的 APK 版本号都一样。现在改为：
 //   1. `-PbuildNumber=NN` 优先（CI 注入，可用于覆盖/回退）；
 //   2. 否则取 version.properties 里记录的上次值（首次以 git 提交数为基线），
-//      并且只要本次调用会产出 APK（assemble / bundle / build），就 +1 并回写。
+//      只要本次调用会产出 APK（assemble / bundle / build），就 +1；
+//      **回写发生在 package 任务成功之后**（见 persistBuildNumber），失败构建不消费版本号。
 //
 // 为什么放在 root：Gradle 会先配置 root 再配置子项目，`org.gradle.parallel=true`
 // 下 app/provider 的配置顺序不保证，各自算一遍会算出不同值（两边版本号错位）。
@@ -60,25 +61,47 @@ val buildNumber: Int = run {
     // 版本号也只增不减（versionCode 回退会导致覆盖安装失败）。
     val base = maxOf(stored, gitCommitCount(), 0)
     val value = injected ?: (if (apkBuilding) base + 1 else maxOf(base, 1))
-    if (apkBuilding && (injected == null || injected > stored)) {
-        runCatching {
-            versionPropsFile.writeText(
-                buildString {
-                    appendLine("#Auto-incremented by Gradle")
-                    appendLine(
-                        "#" + ZonedDateTime.now()
-                            .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ROOT))
-                    )
-                    appendLine("BUILD_NUMBER=$value")
-                }
-            )
-        }
-    }
     maxOf(value, 1)
+}
+
+/**
+ * 版本号回写。
+ *
+ * 回写时机从「配置阶段」挪到「打包任务成功之后」（见下方 package* 任务的 doLast 挂接）：
+ * 配置阶段就写会导致 `--dry-run`、detekt/test、以及**编译失败的构建**同样吃掉一个版本号，
+ * 并且让被跟踪的 version.properties 在每次构建后都变脏。现在只有真正产出 APK/AAB 的
+ * package* 任务执行成功才消费版本号；构建中途失败时下一次会复用同一个号。
+ */
+fun persistBuildNumber(value: Int) {
+    if (value <= readStoredBuildNumber()) return
+    runCatching {
+        versionPropsFile.writeText(
+            buildString {
+                appendLine("#Auto-incremented by Gradle")
+                appendLine(
+                    "#" + ZonedDateTime.now()
+                        .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ROOT))
+                )
+                appendLine("BUILD_NUMBER=$value")
+            }
+        )
+    }
 }
 
 // 子项目通过 rootProject.extra["buildNumber"] 读取
 extra["buildNumber"] = buildNumber
+
+// 只有 APK/AAB 真正打包成功后才回写版本号：所有子模块的 package* 任务都挂一次，
+// persistBuildNumber 自带「只增不减」判断，多次调用只有第一次生效。
+if (apkBuilding) {
+    subprojects.forEach { p ->
+        p.tasks.matching {
+            it.name == "packageDebug" || it.name == "packageRelease" || it.name.endsWith("Bundle")
+        }.configureEach {
+            doLast { persistBuildNumber(buildNumber) }
+        }
+    }
+}
 
 // ===========================================================================
 // 可选构建模块（配置：config/build-modules.properties，说明：docs/build-modules.md）

@@ -7,8 +7,6 @@ import com.phoneagent.domain.model.AgentMetrics
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.overlay.FloatingWindowService
 import kotlinx.coroutines.flow.first
-import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION
-import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
 
 /**
  * 引擎 UI 桥（重构批次 2）：悬浮窗推送 + 日志环形缓冲 + 对话流追加。
@@ -74,16 +72,18 @@ internal class UiBridge(
     }
 
     fun log(level: AgentLog.Level, message: String, detail: String? = null) {
-        // 环形缓冲（v2.2.1 LogCollector）：仅保留最近 [MAX_LOGS] 条，防长线任务内存无限增长
-        val next = store.logs.value + AgentLog(
-            timestamp = System.currentTimeMillis(),
-            level = level,
-            message = message,
-            detail = detail,
-            taskId = store.currentTaskId,
-            taskName = store.currentTaskName,
+        // 环形缓冲（v2.2.1 LogCollector）：仅保留最近 MAX_LOGS 条，防长线任务内存无限增长。
+        // 追加走 EngineStore 的原子 helper：本方法与 AppLog 全局 sink 会被不同线程同时调用。
+        store.appendLog(
+            AgentLog(
+                timestamp = System.currentTimeMillis(),
+                level = level,
+                message = message,
+                detail = detail,
+                taskId = store.currentTaskId,
+                taskName = store.currentTaskName,
+            )
         )
-        store.logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
     }
 
     /** 记录完整 API 请求/响应（用于调试页日志，可展开查看全文） */
@@ -91,21 +91,21 @@ internal class UiBridge(
         val summary = "API 调用 · ${latencyMs}ms"
         val detail = "═══ 请求 ═══\n$request\n\n═══ 响应 ═══\n$response"
         // 环形缓冲：与 log() 一致，携带完整请求/响应大文本，必须同样截断防长任务内存膨胀
-        val next = store.logs.value + AgentLog(
-            timestamp = System.currentTimeMillis(),
-            level = AgentLog.Level.API,
-            message = summary,
-            detail = detail,
-            taskId = store.currentTaskId,
-            taskName = store.currentTaskName,
+        store.appendLog(
+            AgentLog(
+                timestamp = System.currentTimeMillis(),
+                level = AgentLog.Level.API,
+                message = summary,
+                detail = detail,
+                taskId = store.currentTaskId,
+                taskName = store.currentTaskName,
+            )
         )
-        store.logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
     }
 
     fun addConversation(role: String, content: String, hasImage: Boolean = false) {
         // 环形缓冲：长线任务每步决策都 append 完整 prompt，需上限防内存膨胀
-        val next = store.conversation.value + ConversationMessage(role, content, System.currentTimeMillis(), hasImage)
-        store.conversation.value = if (next.size > MAX_CONVERSATION) next.takeLast(MAX_CONVERSATION) else next
+        store.appendConversation(ConversationMessage(role, content, System.currentTimeMillis(), hasImage))
     }
 
     fun clearDebug() {

@@ -12,6 +12,7 @@ import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.domain.model.StepShot
+import com.phoneagent.domain.model.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.engine.ClarifyAnswered
@@ -24,6 +25,7 @@ import com.phoneagent.engine.execution.ActionMode
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -168,8 +170,36 @@ internal class EngineStore {
     val executionHistory: MutableStateFlow<List<StepRecord>> get() = _executionHistory
     val stepShot: MutableStateFlow<StepShot> get() = _stepShot
     /** 每步 AI 决策的详细追踪（Debug「按任务分类」页面展示） */
-    private val _traces = MutableStateFlow<List<com.phoneagent.domain.model.StepTrace>>(emptyList())
-    val traces: MutableStateFlow<List<com.phoneagent.domain.model.StepTrace>> get() = _traces
+    private val _traces = MutableStateFlow<List<StepTrace>>(emptyList())
+    val traces: MutableStateFlow<List<StepTrace>> get() = _traces
+
+    // ---- 环形缓冲写入（并发安全）----
+    /*
+     * 为什么单独收口：日志有几个同时进行的写入方——引擎协程、AppLog 全局 sink 所在的
+     * OkHttp/IO 线程、界面线程。原来各处写的 `flow.value = (flow.value + entry).takeLast(cap)`
+     * 是"读 → 改 → 写"三步，并发时后写者会覆盖先写者，条目被静默吞掉（调试页看起来就是
+     * 关键日志缺失）。MutableStateFlow.update 内部用 CAS 重试，每次追加都基于最新值；
+     * 上限裁剪也放进同一次 CAS，避免"先追加、再裁剪"两步之间被别的追加插入而突破上限。
+     */
+    fun appendLog(entry: AgentLog) {
+        _logs.appendCapped(entry, EngineLimits.MAX_LOGS)
+    }
+
+    fun appendConversation(message: ConversationMessage) {
+        _conversation.appendCapped(message, EngineLimits.MAX_CONVERSATION)
+    }
+
+    fun appendTrace(trace: StepTrace) {
+        _traces.appendCapped(trace, EngineLimits.MAX_TRACES)
+    }
+
+    fun appendMemoryEvent(event: MemoryEvent) {
+        _memoryEvents.appendCapped(event, EngineLimits.MAX_MEMORY_EVENTS)
+    }
+
+    fun appendSayEvent(event: SayEvent) {
+        _sayEvents.appendCapped(event, EngineLimits.MAX_SAY_EVENTS)
+    }
 
     // ---- 规划/澄清/批准流程 ----
     private val _planPhase = MutableStateFlow<PlanPhase>(PlanPhase.Idle)
@@ -347,6 +377,17 @@ internal class EngineStore {
     /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
     @Volatile
     var lastVisualCoordinate: Pair<Int, Int>? = null
+}
+
+/**
+ * 原子追加 + 环形裁剪：整段放进 [MutableStateFlow.update] 的同一次 CAS，
+ * 并发追加不会互相覆盖，也不会在裁剪与追加之间突破上限。
+ */
+private inline fun <T> MutableStateFlow<List<T>>.appendCapped(item: T, cap: Int) {
+    update { prev ->
+        val next = prev + item
+        if (next.size > cap) next.takeLast(cap) else next
+    }
 }
 
 /**

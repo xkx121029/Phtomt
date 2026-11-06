@@ -14,10 +14,9 @@ import com.phoneagent.engine.runtime.EngineLimits.LOCAL_DECISION_SOURCE
 import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION
 import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
-import com.phoneagent.engine.runtime.EngineLimits.MAX_MEMORY_EVENTS
-import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_EVENTS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TASK_SESSIONS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TRACES
+import kotlinx.coroutines.flow.update
 
 /**
  * 引擎遥测记录器（重构批次 2）：指标聚合、每步决策调试轨迹、记忆/say 事件流、
@@ -43,15 +42,17 @@ internal class TelemetryRecorder(
                 android.util.Log.ERROR -> AgentLog.Level.ERROR
                 else -> AgentLog.Level.INFO
             }
-            val next = store.logs.value + AgentLog(
-                timestamp = System.currentTimeMillis(),
-                level = lvl,
-                message = text,
-                detail = null,
-                taskId = store.currentTaskId,
-                taskName = store.currentTaskName,
+            // 走原子追加：sink 会被 OkHttp/IO 线程与引擎协程同时调用，直接读改写会丢日志
+            store.appendLog(
+                AgentLog(
+                    timestamp = System.currentTimeMillis(),
+                    level = lvl,
+                    message = text,
+                    detail = null,
+                    taskId = store.currentTaskId,
+                    taskName = store.currentTaskName,
+                )
             )
-            store.logs.value = if (next.size > MAX_LOGS) next.takeLast(MAX_LOGS) else next
         }
     }
 
@@ -98,26 +99,29 @@ internal class TelemetryRecorder(
         visionModel: String,
         visionDescription: String,
         screenshot: android.graphics.Bitmap?,
+        /** 需要脱敏时由调用方给出的替代正文；null = 用模型原文 */
+        receivedTextOverride: String? = null,
     ) {
-        store.traces.value = store.traces.value + com.phoneagent.domain.model.StepTrace(
-            taskId = store.currentTaskId,
-            taskName = store.currentTaskName,
-            step = step,
-            sentText = sent,
-            receivedText = decision.rawContent,
-            promptTokens = decision.promptTokens,
-            completionTokens = decision.completionTokens,
-            totalTokens = decision.totalTokens,
-            latencyMs = decision.elapsedMs,
-            visionSource = visionSource,
-            visionModel = visionModel,
-            visionDescription = visionDescription,
-            thinking = decision.thinking,
-            // 截图入内存前缩略化（≤360px），配合 traces 数量上限，避免多步全分辨率截图长期驻留导致 OOM 闪退
-            screenshot = com.phoneagent.data.store.DebugRecordsStore.thumb(screenshot),
+        // 追加与裁剪在同一次 CAS 内完成：两步写会并发突破上限、并可能丢掉另一线程刚写入的轨迹
+        store.appendTrace(
+            com.phoneagent.domain.model.StepTrace(
+                taskId = store.currentTaskId,
+                taskName = store.currentTaskName,
+                step = step,
+                sentText = sent,
+                receivedText = receivedTextOverride ?: decision.rawContent,
+                promptTokens = decision.promptTokens,
+                completionTokens = decision.completionTokens,
+                totalTokens = decision.totalTokens,
+                latencyMs = decision.elapsedMs,
+                visionSource = visionSource,
+                visionModel = visionModel,
+                visionDescription = visionDescription,
+                thinking = decision.thinking,
+                // 截图入内存前缩略化（≤360px），配合 traces 数量上限，避免多步全分辨率截图长期驻留导致 OOM 闪退
+                screenshot = com.phoneagent.data.store.DebugRecordsStore.thumb(screenshot),
+            )
         )
-        // 数量上限：环形保留最近 N 条轨迹，防长线/多任务场景内存无限增长
-        if (store.traces.value.size > MAX_TRACES) store.traces.value = store.traces.value.takeLast(MAX_TRACES)
     }
 
     /**
@@ -130,23 +134,26 @@ internal class TelemetryRecorder(
      * 与云端留档的差异：没有发给模型的上下文、没有 token 与延迟，用 [LOCAL_DECISION_SOURCE] 标注来源。
      */
     fun recordLocalStepTrace(step: Int, intent: AgentIntent) {
-        store.traces.value = store.traces.value + com.phoneagent.domain.model.StepTrace(
-            taskId = store.currentTaskId,
-            taskName = store.currentTaskName,
-            step = step,
-            sentText = "",
-            receivedText = intent.toString(),
-            promptTokens = 0,
-            completionTokens = 0,
-            totalTokens = 0,
-            latencyMs = 0,
-            // 复用"视觉来源"字段标注决策来源，便于在调试页区分端侧/云端
-            visionSource = LOCAL_DECISION_SOURCE,
-            visionModel = "",
-            visionDescription = "",
-            thinking = false,
+        // 端侧轨迹同样会落盘：输入类意图的正文只记位数，不记原文（密码可能就在里面）
+        val recorded = com.phoneagent.engine.execution.SensitiveInput.redactIntent(intent)
+        store.appendTrace(
+            com.phoneagent.domain.model.StepTrace(
+                taskId = store.currentTaskId,
+                taskName = store.currentTaskName,
+                step = step,
+                sentText = "",
+                receivedText = recorded.toString(),
+                promptTokens = 0,
+                completionTokens = 0,
+                totalTokens = 0,
+                latencyMs = 0,
+                // 复用"视觉来源"字段标注决策来源，便于在调试页区分端侧/云端
+                visionSource = LOCAL_DECISION_SOURCE,
+                visionModel = "",
+                visionDescription = "",
+                thinking = false,
+            )
         )
-        if (store.traces.value.size > MAX_TRACES) store.traces.value = store.traces.value.takeLast(MAX_TRACES)
     }
 
     /** 记忆写入事件入流（内存态，供 Agent 页实时插卡；环形保留最近 N 条） */
@@ -160,7 +167,7 @@ internal class TelemetryRecorder(
             step = step,
             createdAt = System.currentTimeMillis(),
         )
-        store.memoryEvents.value = (store.memoryEvents.value + event).takeLast(MAX_MEMORY_EVENTS)
+        store.appendMemoryEvent(event)
         // 同步挂到本次任务会话上：新任务开始会清空 memoryEvents，旧任务的记忆卡片
         // 若不在此刻归到会话里，切回旧任务时就再也看不到了
         updateTaskSession(runKey.removePrefix("r").toLongOrNull() ?: return) { cur ->
@@ -177,15 +184,17 @@ internal class TelemetryRecorder(
             step = step,
             createdAt = System.currentTimeMillis(),
         )
-        store.sayEvents.value = (store.sayEvents.value + event).takeLast(MAX_SAY_EVENTS)
+        store.appendSayEvent(event)
     }
 
     // ==================== 任务会话归档（Agent 页侧边栏） ====================
 
     /** 任务开始：插入一条「进行中」会话，最新在前 */
     fun startTaskSession(session: TaskSession) {
-        val next = (listOf(session) + store.taskSessions.value.filterNot { it.taskId == session.taskId })
-        store.taskSessions.value = if (next.size > MAX_TASK_SESSIONS) next.take(MAX_TASK_SESSIONS) else next
+        store.taskSessions.update { prev ->
+            val next = listOf(session) + prev.filterNot { it.taskId == session.taskId }
+            if (next.size > MAX_TASK_SESSIONS) next.take(MAX_TASK_SESSIONS) else next
+        }
     }
 
     /**
@@ -216,10 +225,12 @@ internal class TelemetryRecorder(
 
     /** 就地改写一条会话（不存在则忽略） */
     fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) {
-        val current = store.taskSessions.value
-        val idx = current.indexOfFirst { it.taskId == taskId }
-        if (idx < 0) return
-        store.taskSessions.value = current.toMutableList().also { it[idx] = transform(it[idx]) }
+        // CAS 内匹配并改写：收尾（settleTaskSession）与记忆事件挂载（emitMemoryEvent）
+        // 可能来自不同线程，读改写会丢掉另一方的更新
+        store.taskSessions.update { current ->
+            val idx = current.indexOfFirst { it.taskId == taskId }
+            if (idx < 0) current else current.toMutableList().also { it[idx] = transform(it[idx]) }
+        }
     }
 
     /** 回载/清空会话归档（由持久化层调用） */
@@ -230,7 +241,8 @@ internal class TelemetryRecorder(
     /** 撤销一条刚写入的记忆：删库 + 从事件流移除（卡片随之消失） */
     suspend fun dismissMemoryEvent(id: Long) {
         runCatching { memory.deleteAiMemory(id) }
-        store.memoryEvents.value = store.memoryEvents.value.filterNot { it.id == id }
+        // 同样走 CAS：撤销期间可能正有新的记忆事件被追加，读改写会把它一起抹掉
+        store.memoryEvents.update { cur -> cur.filterNot { it.id == id } }
         store.memoryRawCache = null
     }
 
@@ -255,10 +267,12 @@ internal class TelemetryRecorder(
         com.phoneagent.core.perf.StartupTrace.span("调试记录磁盘回载") {
             runCatching {
                 val p = com.phoneagent.data.store.DebugRecordsStore.load(appContext) ?: return@runCatching
-                store.logs.value = mergeCapped(p.logs, store.logs.value, MAX_LOGS)
-                store.traces.value = mergeCapped(p.traces, store.traces.value, MAX_TRACES)
-                store.executionHistory.value = mergeCapped(p.history, store.executionHistory.value, MAX_EXECUTION_HISTORY)
-                store.conversation.value = mergeCapped(p.conversation, store.conversation.value, MAX_CONVERSATION)
+                // 回载期间界面可能已经在写入新数据：用 update 在最新值上合并，
+                // 直接覆盖会把启动后刚产生的日志/轨迹冲掉
+                store.logs.update { cur -> mergeCapped(p.logs, cur, MAX_LOGS) }
+                store.traces.update { cur -> mergeCapped(p.traces, cur, MAX_TRACES) }
+                store.executionHistory.update { cur -> mergeCapped(p.history, cur, MAX_EXECUTION_HISTORY) }
+                store.conversation.update { cur -> mergeCapped(p.conversation, cur, MAX_CONVERSATION) }
                 // 存档里还挂着「进行中」的，说明上次是没走完收尾就被杀进程了，回载时直接判为已中断，
                 // 否则侧边栏会永远显示一个不会结束的任务。
                 // 同一 taskId 以内存中的为准（本次启动后新产生的会话优先）。

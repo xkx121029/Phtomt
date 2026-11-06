@@ -30,6 +30,10 @@ class AgentProcess(
     @Volatile
     private var running = false
 
+    /** JSON-lines 整行写入器（并发互斥），见 [LineWriter] */
+    @Volatile
+    private var lineWriter: LineWriter? = null
+
     /** stdout lines (one JSON object each). Thread-safe. */
     val lineListeners = CopyOnWriteArrayList<(String) -> Unit>()
 
@@ -80,7 +84,9 @@ class AgentProcess(
         val proc = pb.start()
         process = proc
         running = true
-        writer = BufferedWriter(OutputStreamWriter(proc.outputStream, Charsets.UTF_8))
+        writer = BufferedWriter(OutputStreamWriter(proc.outputStream, Charsets.UTF_8)).also {
+            lineWriter = LineWriter(it)
+        }
 
         Thread({ pumpStdout(proc) }, "coding-stdout").start()
         Thread({ pumpStderr(proc) }, "coding-stderr").start()
@@ -148,9 +154,9 @@ class AgentProcess(
 
     fun send(line: String) {
         try {
-            writer?.write(line)
-            writer?.newLine()
-            writer?.flush()
+            // 整行互斥交给 LineWriter：JSON-lines 要求"一行 = 一条消息"，
+            // 并发写不能把两行拼成一行（host 侧解析失败）。
+            lineWriter?.writeLine(line)
         } catch (e: Exception) {
             Log.w(TAG, "send failed: ${e.message}")
         }
@@ -162,6 +168,7 @@ class AgentProcess(
         process = null
         val w = writer
         writer = null
+        lineWriter = null
         runCatching { w?.close() }
         if (proc == null) return
         // 先礼后兵：关 stdin 让 host 走 EOF 退出，同时发 SIGTERM；给 2 秒宽限，

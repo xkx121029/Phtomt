@@ -104,6 +104,7 @@ object DebugRecordsStore {
         return Bitmap.createScaledBitmap(src, maxWidth, (src.height * scale).toInt().coerceAtLeast(1), true)
     }
 
+    @Synchronized
     fun save(
         ctx: Context,
         logs: List<AgentLog>,
@@ -114,16 +115,20 @@ object DebugRecordsStore {
     ) {
         runCatching {
             val dir = dir(ctx)
-            // 旧存档是 .png（内容却是 JPEG）、新存档统一 .jpg：两类残留一并清掉
-            dir.listFiles { f -> f.name.endsWith(".png") || f.name.endsWith(".jpg") }?.forEach { it.delete() }
+            // 本次保存的代际标识：截图文件名带上它，新图与旧存档引用的旧图不会互相覆盖。
+            // 配合「先写完全部新文件、再原子替换 records.json、最后才清理旧图」，
+            // 中途失败（磁盘满/进程被杀）时上一次的存档仍然完整可用。
+            val gen = System.nanoTime()
+            val keep = mutableSetOf<String>()
             val leanTraces = traces.mapIndexed { i, t ->
                 var shotFile: String? = null
                 if (t.screenshot != null) {
                     val thumb = thumb(t.screenshot) ?: t.screenshot
                     // 实际按 JPEG 压缩，扩展名跟着改成 .jpg，别再骗系统按 PNG 解
-                    val file = File(dir, "shot_$i.jpg")
+                    val file = File(dir, "shot_${gen}_$i.jpg")
                     file.outputStream().use { thumb.compress(Bitmap.CompressFormat.JPEG, 85, it) }
                     shotFile = file.name
+                    keep += file.name
                 }
                 LeanTrace(
                     t.taskId, t.taskName, t.step, t.sentText, t.receivedText,
@@ -164,9 +169,24 @@ object DebugRecordsStore {
                 target.writeText(json.encodeToString(Bundle.serializer(), bundle))
                 tmp.delete()
             }
+            // records.json 已经指向新图，现在才可以删旧代截图（含旧版无代际的 shot_N.jpg/.png）。
+            // 反过来的「先删后写」在中途失败时会让旧存档引用的图片全部消失。
+            pruneShotFiles(dir, keep)
         }
     }
 
+    /**
+     * 清理不再被当前存档引用的截图文件。
+     *
+     * 抽成 internal 是为了能在 JVM 单测里验证（Bitmap 在本地单测中不可用，没法走完整 [save]）。
+     */
+    internal fun pruneShotFiles(dir: File, keep: Set<String>) {
+        dir.listFiles { f ->
+            f.isFile && (f.name.endsWith(".jpg") || f.name.endsWith(".png")) && f.name !in keep
+        }?.forEach { runCatching { it.delete() } }
+    }
+
+    @Synchronized
     fun load(ctx: Context): Persisted? = runCatching {
         val dir = dir(ctx)
         val file = File(dir, BUNDLE_FILE)
@@ -222,6 +242,7 @@ object DebugRecordsStore {
     }.getOrNull()
 
     /** 清空持久化目录（配合调试页"清空"按钮，避免重启后旧记录又被回载） */
+    @Synchronized
     fun clear(ctx: Context) {
         runCatching { dir(ctx).listFiles()?.forEach { it.delete() } }
     }
