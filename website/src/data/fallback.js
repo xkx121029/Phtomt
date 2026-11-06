@@ -1,7 +1,7 @@
-/* 由 scripts/snapshot.mjs 生成于 2026-11-03T11:08:57.759Z，请勿手工编辑。
+/* 由 scripts/snapshot.mjs 生成于 2026-11-06T14:12:34.335Z，请勿手工编辑。
    静态导出（GitHub Pages）用这份快照替代后端 API。 */
 export const snapshot = {
-  "builtAt": "2026-11-03T11:08:57.759Z",
+  "builtAt": "2026-11-06T14:12:34.335Z",
   "static": true,
   "site": {
     "name": "Happy Phone Agent",
@@ -9,9 +9,9 @@ export const snapshot = {
     "slug": "phtomt",
     "tagline": "让手机自己动手",
     "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-    "version": "0.2.1264",
-    "buildNumber": 1264,
-    "updatedAt": "2026-11-02T16:23:00.958Z",
+    "version": "0.2.9140",
+    "buildNumber": 9140,
+    "updatedAt": "2026-11-06T13:39:06.665Z",
     "links": {
       "github": "https://github.com/xkx121029/Phtomt",
       "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -93,29 +93,31 @@ export const snapshot = {
       }
     ],
     "latest": {
-      "version": "v0.2.1264",
-      "build": 1264,
+      "version": "v0.2.9140",
+      "build": 9140,
       "channel": "dev",
-      "date": "2026-11-02",
+      "date": "2026-11-06",
       "published": true,
       "title": "开发版",
       "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
       "apk": {
-        "file": "HappyAgent-0.2.1264.apk",
-        "size": 70876730,
-        "sizeText": "68 MB",
-        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+        "file": "HappyAgent-0.2.9140.apk",
+        "size": 72104856,
+        "sizeText": "69 MB",
+        "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
+        "updatedAt": "2026-11-06T13:39:06.661Z"
       },
       "notes": [
         "DEV 构建"
       ],
-      "downloads": 0
+      "downloads": 1
     },
     "stats": {
-      "totalDownloads": 4,
-      "lastDownloadAt": "2026-10-12T05:55:02.141Z",
+      "totalDownloads": 5,
+      "lastDownloadAt": "2026-11-06T13:50:14.841Z",
       "byVersion": {
-        "v0.1.384": 4
+        "v0.1.384": 4,
+        "v0.2.9140": 1
       },
       "recent": [
         {
@@ -125,10 +127,12 @@ export const snapshot = {
         {
           "day": "2026-10-12",
           "count": 2
+        },
+        {
+          "day": "2026-11-06",
+          "count": 1
         }
-      ],
-      "apkTotalSize": 365021675,
-      "apkTotalSizeText": "348 MB"
+      ]
     }
   },
   "features": [
@@ -335,6 +339,46 @@ export const snapshot = {
   ],
   "releases": [
     {
+      "version": "v0.2.9140",
+      "build": 9140,
+      "channel": "dev",
+      "date": "2026-11-06",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9140.apk",
+        "size": 72104856,
+        "sizeText": "69 MB",
+        "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
+        "updatedAt": "2026-11-06T13:39:06.661Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 1
+    },
+    {
+      "version": "v0.2.1278",
+      "build": 1278,
+      "channel": "dev",
+      "date": "2026-11-04",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.1278.apk",
+        "size": 71202078,
+        "sizeText": "68 MB",
+        "sha256": "4448afdc9615f7d83d746e4f6b967c3b562d4acf5bb379e1c43ca6b3fd43b7e3",
+        "updatedAt": "2026-11-04T12:04:19.745Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
       "version": "v0.2.1264",
       "build": 1264,
       "channel": "dev",
@@ -346,7 +390,8 @@ export const snapshot = {
         "file": "HappyAgent-0.2.1264.apk",
         "size": 70876730,
         "sizeText": "68 MB",
-        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370",
+        "updatedAt": "2026-11-02T16:23:00.954Z"
       },
       "notes": [
         "DEV 构建"
@@ -365,7 +410,8 @@ export const snapshot = {
         "file": "HappyAgent-0.2.1252.apk",
         "size": 70767522,
         "sizeText": "67 MB",
-        "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee\r"
+        "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee",
+        "updatedAt": "2026-11-01T11:48:05.172Z"
       },
       "notes": [
         "DEV 构建"
@@ -384,7 +430,8 @@ export const snapshot = {
         "file": "HappyAgent-0.2.1248.apk",
         "size": 69587050,
         "sizeText": "66 MB",
-        "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb\r"
+        "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb",
+        "updatedAt": "2026-10-31T13:50:46.566Z"
       },
       "notes": [
         "DEV 构建"
@@ -403,7 +450,8 @@ export const snapshot = {
         "file": "HappyAgent-0.2.1231.apk",
         "size": 69430446,
         "sizeText": "66 MB",
-        "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150\r"
+        "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150",
+        "updatedAt": "2026-10-29T12:38:53.649Z"
       },
       "notes": [
         "DEV 构建"
@@ -422,7 +470,8 @@ export const snapshot = {
         "file": "HappyAgent-0.2.1128.apk",
         "size": 69400718,
         "sizeText": "66 MB",
-        "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031\r"
+        "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031",
+        "updatedAt": "2026-10-26T13:49:09.315Z"
       },
       "notes": [
         "开发版构建"
@@ -441,7 +490,8 @@ export const snapshot = {
         "file": "HappyAgent-0.1.384.apk",
         "size": 14959209,
         "sizeText": "14 MB",
-        "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23"
+        "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23",
+        "updatedAt": "2026-09-20T13:39:57.479Z"
       },
       "notes": [
         "Debug 构建，用于内测与自用",
@@ -451,6 +501,18 @@ export const snapshot = {
     }
   ],
   "changelog": [
+    {
+      "version": "v0.2.9140",
+      "date": "2026-11-06",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.1278",
+      "date": "2026-11-04",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
     {
       "version": "v0.2.1264",
       "date": "2026-11-02",
@@ -1469,7 +1531,7 @@ export const snapshot = {
       "group": "支持",
       "order": 15,
       "summary": "从 clone 到跑起 App 和官网，以及测试与打包命令。",
-      "body": "## 环境要求\n\n| 项目 | 要求 | 依据 |\n| --- | --- | --- |\n| JDK | 17 | compileOptions 与 kotlinOptions 的 jvmTarget 均为 17 |\n| Android SDK | 36 | compileSdk / targetSdk = 36，minSdk = 26 |\n| Gradle | 8.14.2 | gradle/wrapper/gradle-wrapper.properties |\n| Node | >= 18 | website/package.json 的 engines |\n| Android Studio | Hedgehog 或更新 | 可选，命令行构建不需要 |\n\n## 项目结构\n\n仓库分两部分：根目录是 Android 工程，`website/` 是官网。App 代码在 `app/src/main/java/com/phoneagent/`，按层组织：\n\n| 目录 | 职责 |\n| --- | --- |\n| core/ | 跨层基础设施：模型客户端、敏感页检测与脱敏、人话翻译、通知 |\n| domain/ | 纯领域模型与规则：动作 / 意图 / 状态、硬约束规则引擎、命令解析、端侧决策 |\n| data/ | 持久化：DataStore 配置，以及记忆 / 任务 / 调试记录 / MCP / 提示词模板各 Store |\n| engine/ | Agent 编排：ReAct 主循环、提示词、执行转译、感知标注、页面指纹 |\n| overlay/ | 悬浮窗服务与绘制 |\n| feature/ | 功能域：技能、MCP、文档、跳广告、边缘光效、自测 |\n| ui/ | 界面层：首页 / Agent / 记忆 / 调试 / 技能 / 设置 / 自测各页 |\n| di/ | Koin 依赖注入模块 |\n\n官网这边，`src/` 是 Vue3 前端，`server/` 是 Express 内容 API，`server/data/*.json` 存放全部内容，`scripts/` 放快照与种子脚本。\n\n## 跑起 App\n\n仓库根目录就是 Android 工程，`gradlew` 与 `gradlew.bat` 都在根目录：\n\n```bash\n# Windows 用 gradlew.bat，macOS / Linux 用 ./gradlew\ngradlew.bat assembleDebug\n\n# 产物：app/build/outputs/apk/debug/app-debug.apk\n\n# 安装到已连接的设备\nadb install app/build/outputs/apk/debug/app-debug.apk\n```\n\n版本号来自根目录 `version.properties` 的 `BUILD_NUMBER`：执行 assemble / bundle 任务时自增，`versionCode` 取该值，`versionName` 为 `0.2.<BUILD_NUMBER>`。配置阶段不会改动它。也可以直接用 Android Studio 打开根目录运行；Debug 构建不混淆，适合本地调试。\n\n## 跑起官网\n\n官网在 `website/`，是 Vue3 前端加 Express 内容 API：\n\n```bash\ncd website\nnpm install\nnpm run dev\n```\n\n`npm run dev` 用 concurrently 同时起两个进程：\n\n| 进程 | 命令 | 端口 |\n| --- | --- | --- |\n| API | node --watch server/index.js | 5180（可用环境变量 PORT 覆盖） |\n| 前端 | vite | 5173 |\n\n前端的 `/api` 与 `/apk` 请求代理到 127.0.0.1:5180，所以只需访问前端端口。只想起其中一端时用 `npm run dev:api` 或 `npm run dev:web`；生产模式用 `npm start` 只起 API，由 Express 托管已构建的前端。内容全部是 `server/data/*.json`，没有数据库。\n\n## 构建 APK\n\n```bash\ngradlew.bat assembleDebug     # Debug，不混淆\ngradlew.bat assembleRelease   # Release，开启 minify 与资源压缩\n```\n\nRelease 构建额外做了两件事：`isMinifyEnabled` 与 `isShrinkResources` 打开，ABI 只保留 arm64-v8a，用于减小包体。签名从 `app/upload-signing.properties` 读取，该文件不存在时跳过 release 签名配置。这两个文件都是本地文件，不应提交到仓库。\n\n## 官网静态导出\n\n给没有后端的部署（如 GitHub Pages / Gitee Pages）用：\n\n```bash\ncd website\nnpm run snapshot       # 把 server/data 烘成前端快照 src/data/fallback.js\nnpm run build:static   # 等价于 snapshot + STATIC_EXPORT=1 vite build，产物 dist-static/\n```\n\n`build:static` 会先跑 snapshot 再构建，产物为 hash 路由加相对 base，所有内容从快照读取；快照由 `scripts/snapshot.mjs` 生成，不要手工编辑。快照里不含管理端点，也不含任何令牌。\n\n## 测试\n\n```bash\n# Android 单元测试（JVM 运行，android.util.Log 等返回默认值）\ngradlew.bat test\n```\n\n测试覆盖 HtmlToMarkdown、SkillCompat、SkillRegistry、McpClient、IntentTranslator、EngineRules、页面指纹、Provider AIDL、通道阶梯、浏览器脚本等纯逻辑模块。仓库根目录 `tests/` 下另有一组 `.mjs` 脚本，用于提示词的联调与回归测试。"
+      "body": "## 环境要求\n\n| 项目 | 要求 | 依据 |\n| --- | --- | --- |\n| JDK | 17 | compileOptions 与 kotlinOptions 的 jvmTarget 均为 17 |\n| Android SDK | 36 | compileSdk / targetSdk = 36，minSdk = 26 |\n| Gradle | 8.14.2 | gradle/wrapper/gradle-wrapper.properties |\n| Node | >= 18 | website/package.json 的 engines |\n| Android Studio | Hedgehog 或更新 | 可选，命令行构建不需要 |\n\n## 项目结构\n\n仓库分两部分：根目录是 Android 工程，`website/` 是官网。App 代码在 `app/src/main/java/com/phoneagent/`，按层组织：\n\n| 目录 | 职责 |\n| --- | --- |\n| core/ | 跨层基础设施：模型客户端、敏感页检测与脱敏、人话翻译、通知 |\n| domain/ | 纯领域模型与规则：动作 / 意图 / 状态、硬约束规则引擎、命令解析、端侧决策 |\n| data/ | 持久化：DataStore 配置，以及记忆 / 任务 / 调试记录 / MCP / 提示词模板各 Store |\n| engine/ | Agent 编排：ReAct 主循环、提示词、执行转译、感知标注、页面指纹 |\n| overlay/ | 悬浮窗服务与绘制 |\n| feature/ | 功能域：技能、MCP、文档、跳广告、边缘光效、自测 |\n| ui/ | 界面层：首页 / Agent / 记忆 / 调试 / 技能 / 设置 / 自测各页 |\n| di/ | Koin 依赖注入模块 |\n\n官网这边，`src/` 是 Vue3 前端，`server/` 是 Express 内容 API，`server/data/*.json` 存放全部内容，`scripts/` 放快照与种子脚本。\n\n## 跑起 App\n\n仓库根目录就是 Android 工程，`gradlew` 与 `gradlew.bat` 都在根目录：\n\n```bash\n# Windows 用 gradlew.bat，macOS / Linux 用 ./gradlew\ngradlew.bat assembleDebug\n\n# 产物：app/build/outputs/apk/debug/app-debug.apk\n\n# 安装到已连接的设备\nadb install app/build/outputs/apk/debug/app-debug.apk\n```\n\n版本号来自根目录 `version.properties` 的 `BUILD_NUMBER`：执行 assemble / bundle 任务时自增，`versionCode` 取该值，`versionName` 为 `0.2.<BUILD_NUMBER>`。配置阶段不会改动它。也可以直接用 Android Studio 打开根目录运行；Debug 构建不混淆，适合本地调试。\n\n## 跑起官网\n\n官网在 `website/`，是 Vue3 前端加 Express 内容 API：\n\n```bash\ncd website\nnpm install\nnpm run dev\n```\n\n`npm run dev` 用 concurrently 同时起两个进程：\n\n| 进程 | 命令 | 端口 |\n| --- | --- | --- |\n| API | node --watch server/index.js | 5180（可用环境变量 PORT 覆盖） |\n| 前端 | vite | 5173 |\n\n前端的 `/api` 请求代理到 127.0.0.1:5180，所以只需访问前端端口。只想起其中一端时用 `npm run dev:api` 或 `npm run dev:web`；生产模式用 `npm start` 只起 API，由 Express 托管已构建的前端。内容全部是 `server/data/*.json`，没有数据库。\n\n## 构建 APK\n\n```bash\ngradlew.bat assembleDebug     # Debug，不混淆\ngradlew.bat assembleRelease   # Release，开启 minify 与资源压缩\n```\n\nRelease 构建额外做了两件事：`isMinifyEnabled` 与 `isShrinkResources` 打开，ABI 只保留 arm64-v8a，用于减小包体。签名从 `app/upload-signing.properties` 读取，该文件不存在时跳过 release 签名配置。这两个文件都是本地文件，不应提交到仓库。\n\n## 官网静态导出\n\n给没有后端的部署（如 GitHub Pages / Gitee Pages）用：\n\n```bash\ncd website\nnpm run snapshot       # 把 server/data 烘成前端快照 src/data/fallback.js\nnpm run build:static   # 等价于 snapshot + STATIC_EXPORT=1 vite build，产物 dist-static/\n```\n\n`build:static` 会先跑 snapshot 再构建，产物为 hash 路由加相对 base，所有内容从快照读取；快照由 `scripts/snapshot.mjs` 生成，不要手工编辑。快照里不含管理端点，也不含任何令牌。\n\n## 测试\n\n```bash\n# Android 单元测试（JVM 运行，android.util.Log 等返回默认值）\ngradlew.bat test\n```\n\n测试覆盖 HtmlToMarkdown、SkillCompat、SkillRegistry、McpClient、IntentTranslator、EngineRules、页面指纹、Provider AIDL、通道阶梯、浏览器脚本等纯逻辑模块。仓库根目录 `tests/` 下另有一组 `.mjs` 脚本，用于提示词的联调与回归测试。"
     },
     {
       "slug": "privacy",
@@ -2348,12 +2410,17 @@ export const snapshot = {
       {
         "method": "GET",
         "path": "/api/download/latest",
-        "desc": "重定向到最新版 APK"
+        "desc": "重定向到最新版（GitHub / Gitee Release）"
       },
       {
         "method": "GET",
         "path": "/api/download/:version",
-        "desc": "下载指定版本 APK（计入统计）"
+        "desc": "下载指定版本：302 到 Release 资产，计入统计"
+      },
+      {
+        "method": "GET",
+        "path": "/api/download/sources/:version",
+        "desc": "该版本在 GitHub / Gitee 上的候选资产地址（供浏览器测速择优）"
       },
       {
         "method": "GET",
@@ -2363,12 +2430,7 @@ export const snapshot = {
       {
         "method": "GET",
         "path": "/api/update/download/:version",
-        "desc": "更新下载：优先从蓝奏云镜像取回并解包 APK，失败回落官网直链"
-      },
-      {
-        "method": "GET",
-        "path": "/apk/:file",
-        "desc": "APK 静态直出（带 Range 与缓存）"
+        "desc": "旧客户端兼容入口：同样 302 到 Release 资产"
       },
       {
         "method": "POST",
@@ -2399,51 +2461,6 @@ export const snapshot = {
         "method": "GET",
         "path": "/api/admin/audit",
         "desc": "操作留痕（最近 300 条）"
-      },
-      {
-        "method": "GET",
-        "path": "/api/admin/apk",
-        "desc": "磁盘上的 APK 文件清单"
-      },
-      {
-        "method": "POST",
-        "path": "/api/admin/apk",
-        "desc": "上传 APK（multipart，字段名 file）；已启用蓝奏云镜像时会自动打包上传"
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/admin/apk/:file",
-        "desc": "删除 APK 文件"
-      },
-      {
-        "method": "GET",
-        "path": "/api/admin/lanzou",
-        "desc": "蓝奏云镜像配置（口令打码）与已登记镜像清单"
-      },
-      {
-        "method": "PUT",
-        "path": "/api/admin/lanzou",
-        "desc": "保存蓝奏云镜像配置；password 留空表示不修改"
-      },
-      {
-        "method": "POST",
-        "path": "/api/admin/lanzou/test",
-        "desc": "用当前表单值登录蓝奏云；需人机验证时返回验证码图与 token，带 verifycode 续登"
-      },
-      {
-        "method": "POST",
-        "path": "/api/admin/lanzou/mirror",
-        "desc": "手动触发某个 APK 的蓝奏云镜像上传"
-      },
-      {
-        "method": "PUT",
-        "path": "/api/admin/lanzou/mirror/:file",
-        "desc": "手工登记某 APK 的蓝奏云分享链接与提取码"
-      },
-      {
-        "method": "DELETE",
-        "path": "/api/admin/lanzou/mirror/:file",
-        "desc": "移除某 APK 的蓝奏云镜像登记"
       },
       {
         "method": "GET",
@@ -2624,9 +2641,9 @@ export const snapshot = {
       "slug": "phtomt",
       "tagline": "让手机自己动手",
       "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-      "version": "0.2.1264",
-      "buildNumber": 1264,
-      "updatedAt": "2026-11-02T16:23:00.958Z",
+      "version": "0.2.9140",
+      "buildNumber": 9140,
+      "updatedAt": "2026-11-06T13:39:06.665Z",
       "links": {
         "github": "https://github.com/xkx121029/Phtomt",
         "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -2708,29 +2725,31 @@ export const snapshot = {
         }
       ],
       "latest": {
-        "version": "v0.2.1264",
-        "build": 1264,
+        "version": "v0.2.9140",
+        "build": 9140,
         "channel": "dev",
-        "date": "2026-11-02",
+        "date": "2026-11-06",
         "published": true,
         "title": "开发版",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "apk": {
-          "file": "HappyAgent-0.2.1264.apk",
-          "size": 70876730,
-          "sizeText": "68 MB",
-          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+          "file": "HappyAgent-0.2.9140.apk",
+          "size": 72104856,
+          "sizeText": "69 MB",
+          "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
+          "updatedAt": "2026-11-06T13:39:06.661Z"
         },
         "notes": [
           "DEV 构建"
         ],
-        "downloads": 0
+        "downloads": 1
       },
       "stats": {
-        "totalDownloads": 4,
-        "lastDownloadAt": "2026-10-12T05:55:02.141Z",
+        "totalDownloads": 5,
+        "lastDownloadAt": "2026-11-06T13:50:14.841Z",
         "byVersion": {
-          "v0.1.384": 4
+          "v0.1.384": 4,
+          "v0.2.9140": 1
         },
         "recent": [
           {
@@ -2740,10 +2759,12 @@ export const snapshot = {
           {
             "day": "2026-10-12",
             "count": 2
+          },
+          {
+            "day": "2026-11-06",
+            "count": 1
           }
-        ],
-        "apkTotalSize": 365021675,
-        "apkTotalSizeText": "348 MB"
+        ]
       }
     },
     "features": [
@@ -2950,6 +2971,46 @@ export const snapshot = {
     ],
     "releases": [
       {
+        "version": "v0.2.9140",
+        "build": 9140,
+        "channel": "dev",
+        "date": "2026-11-06",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9140.apk",
+          "size": 72104856,
+          "sizeText": "69 MB",
+          "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
+          "updatedAt": "2026-11-06T13:39:06.661Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 1
+      },
+      {
+        "version": "v0.2.1278",
+        "build": 1278,
+        "channel": "dev",
+        "date": "2026-11-04",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.1278.apk",
+          "size": 71202078,
+          "sizeText": "68 MB",
+          "sha256": "4448afdc9615f7d83d746e4f6b967c3b562d4acf5bb379e1c43ca6b3fd43b7e3",
+          "updatedAt": "2026-11-04T12:04:19.745Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
         "version": "v0.2.1264",
         "build": 1264,
         "channel": "dev",
@@ -2961,7 +3022,8 @@ export const snapshot = {
           "file": "HappyAgent-0.2.1264.apk",
           "size": 70876730,
           "sizeText": "68 MB",
-          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370\r"
+          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370",
+          "updatedAt": "2026-11-02T16:23:00.954Z"
         },
         "notes": [
           "DEV 构建"
@@ -2980,7 +3042,8 @@ export const snapshot = {
           "file": "HappyAgent-0.2.1252.apk",
           "size": 70767522,
           "sizeText": "67 MB",
-          "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee\r"
+          "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee",
+          "updatedAt": "2026-11-01T11:48:05.172Z"
         },
         "notes": [
           "DEV 构建"
@@ -2999,7 +3062,8 @@ export const snapshot = {
           "file": "HappyAgent-0.2.1248.apk",
           "size": 69587050,
           "sizeText": "66 MB",
-          "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb\r"
+          "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb",
+          "updatedAt": "2026-10-31T13:50:46.566Z"
         },
         "notes": [
           "DEV 构建"
@@ -3018,7 +3082,8 @@ export const snapshot = {
           "file": "HappyAgent-0.2.1231.apk",
           "size": 69430446,
           "sizeText": "66 MB",
-          "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150\r"
+          "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150",
+          "updatedAt": "2026-10-29T12:38:53.649Z"
         },
         "notes": [
           "DEV 构建"
@@ -3037,7 +3102,8 @@ export const snapshot = {
           "file": "HappyAgent-0.2.1128.apk",
           "size": 69400718,
           "sizeText": "66 MB",
-          "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031\r"
+          "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031",
+          "updatedAt": "2026-10-26T13:49:09.315Z"
         },
         "notes": [
           "开发版构建"
@@ -3056,7 +3122,8 @@ export const snapshot = {
           "file": "HappyAgent-0.1.384.apk",
           "size": 14959209,
           "sizeText": "14 MB",
-          "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23"
+          "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23",
+          "updatedAt": "2026-09-20T13:39:57.479Z"
         },
         "notes": [
           "Debug 构建，用于内测与自用",
@@ -3066,6 +3133,18 @@ export const snapshot = {
       }
     ],
     "changelog": [
+      {
+        "version": "v0.2.9140",
+        "date": "2026-11-06",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "sections": []
+      },
+      {
+        "version": "v0.2.1278",
+        "date": "2026-11-04",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "sections": []
+      },
       {
         "version": "v0.2.1264",
         "date": "2026-11-02",
@@ -3082,18 +3161,6 @@ export const snapshot = {
         "version": "v0.2.1248",
         "date": "2026-10-31",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "sections": []
-      },
-      {
-        "version": "v0.2.1231",
-        "date": "2026-10-29",
-        "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
-        "sections": []
-      },
-      {
-        "version": "v0.2.1128",
-        "date": "2026-10-26",
-        "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
         "sections": []
       }
     ],

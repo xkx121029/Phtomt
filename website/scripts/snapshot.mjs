@@ -38,17 +38,6 @@ const compareVersion = (a, b) => {
   return 0
 }
 
-const humanSize = (bytes) => {
-  const units = ['B', 'KB', 'MB', 'GB']
-  let v = bytes
-  let u = 0
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024
-    u += 1
-  }
-  return `${v >= 10 || u === 0 ? Math.round(v) : v.toFixed(1)} ${units[u]}`
-}
-
 const site = readJSON('site', {})
 const features = readJSON('features', [])
 const releasesRaw = readJSON('releases', [])
@@ -75,14 +64,12 @@ const recent = Object.keys(byDay)
   .slice(-14)
   .map((day) => ({ day, count: byDay[day] }))
 
-const apkBytes = releases.reduce((sum, r) => sum + (r.apk?.size || 0), 0)
+// 安装包不在本站，不再汇总「本站占用」——那组数字早已没有对应的磁盘
 const summary = {
   totalDownloads: stats.totalDownloads || 0,
   lastDownloadAt: stats.lastDownloadAt || null,
   byVersion: stats.byVersion || {},
-  recent,
-  apkTotalSize: apkBytes,
-  apkTotalSizeText: humanSize(apkBytes)
+  recent
 }
 
 const siteWithLatest = { ...site, latest: releases[0] || null, stats: summary }
