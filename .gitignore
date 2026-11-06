@@ -278,7 +278,8 @@ desktop.ini
 .gitee-cache/
 
 # workbuddy 工作区（协作 agent 的记忆与产物）：只留在本机，绝不入库。
-# 历史上误提交过 .workbuddy/memory/2026-10-13.md（b54db55 加入、97dbc69 删除）。
+# 历史上误提交过 .workbuddy/memory/2026-10-13.md（b54db55 加入、97dbc69 删除），
+# 这里补规则防止再次发生；Android 构建与 CI 都不依赖该目录。
 .workbuddy/
 **/workbuddy/
 
