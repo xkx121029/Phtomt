@@ -1,5 +1,10 @@
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.security.MessageDigest
+import java.time.Duration
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -24,7 +29,7 @@ plugins {
 //   1. `-PbuildNumber=NN` 优先（CI 注入，可用于覆盖/回退）；
 //   2. 否则取 version.properties 里记录的上次值（首次以 git 提交数为基线），
 //      只要本次调用会产出 APK（assemble / bundle / build），就 +1；
-//      **回写发生在 package 任务成功之后**（见 persistBuildNumber），失败构建不消费版本号。
+//      **回写发生在 package 任务成功之后**（见下方 packaging 任务的 doLast），失败构建不消费版本号。
 //
 // 为什么放在 root：Gradle 会先配置 root 再配置子项目，`org.gradle.parallel=true`
 // 下 app/provider 的配置顺序不保证，各自算一遍会算出不同值（两边版本号错位）。
@@ -54,52 +59,370 @@ val apkBuilding = run {
     }
 }
 
+val injectedBuildNumber = (findProperty("buildNumber") as? String)?.toIntOrNull()
+
 val buildNumber: Int = run {
     val stored = readStoredBuildNumber()
-    val injected = (findProperty("buildNumber") as? String)?.toIntOrNull()
     // 基线取「已记录值」与「git 提交数」的较大者：即使期间新增了 commit，
     // 版本号也只增不减（versionCode 回退会导致覆盖安装失败）。
     val base = maxOf(stored, gitCommitCount(), 0)
-    val value = injected ?: (if (apkBuilding) base + 1 else maxOf(base, 1))
+    val value = injectedBuildNumber ?: (if (apkBuilding) base + 1 else maxOf(base, 1))
     maxOf(value, 1)
 }
 
-/**
- * 版本号回写。
- *
- * 回写时机从「配置阶段」挪到「打包任务成功之后」（见下方 package* 任务的 doLast 挂接）：
- * 配置阶段就写会导致 `--dry-run`、detekt/test、以及**编译失败的构建**同样吃掉一个版本号，
- * 并且让被跟踪的 version.properties 在每次构建后都变脏。现在只有真正产出 APK/AAB 的
- * package* 任务执行成功才消费版本号；构建中途失败时下一次会复用同一个号。
- */
-fun persistBuildNumber(value: Int) {
-    if (value <= readStoredBuildNumber()) return
-    runCatching {
-        versionPropsFile.writeText(
-            buildString {
-                appendLine("#Auto-incremented by Gradle")
-                appendLine(
-                    "#" + ZonedDateTime.now()
-                        .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ROOT))
-                )
-                appendLine("BUILD_NUMBER=$value")
-            }
-        )
-    }
-}
+// 版本号回写：只有真正产出 APK/AAB 的 package* 任务**成功之后**才写（见下方子项目 configureEach
+// 里的 doLast）。配置阶段就写的后果是：`--dry-run`、detekt/test、以及编译失败的构建都会吃掉
+// 一个版本号，并且让被跟踪的 version.properties 每次构建后都变脏。
+// 写成内联代码而不是脚本里的函数——任务动作不能引用脚本对象（配置缓存限制，见下方构建锁说明）。
 
 // 子项目通过 rootProject.extra["buildNumber"] 读取
 extra["buildNumber"] = buildNumber
 
-// 只有 APK/AAB 真正打包成功后才回写版本号：所有子模块的 package* 任务都挂一次，
-// persistBuildNumber 自带「只增不减」判断，多次调用只有第一次生效。
-if (apkBuilding) {
-    subprojects.forEach { p ->
-        p.tasks.matching {
-            it.name == "packageDebug" || it.name == "packageRelease" || it.name.endsWith("Bundle")
-        }.configureEach {
-            doLast { persistBuildNumber(buildNumber) }
+// ===========================================================================
+// 项目级构建锁（单构建槽位）
+//
+// 为什么需要：同一工作区经常有多条线同时跑 Gradle。实测过三种互相踩的方式——
+//   1. 两个进程写同一个 app/build/tmp/kotlin-classes，报 "Could not delete .../com"；
+//   2. 一个构建把另一个的 Gradle/Kotlin daemon 停掉，报 "daemon disappeared"；
+//   3. tool/bundle_host.mjs 重写 assets/agent-host 时被并行的 mergeAssets 占用，
+//      Windows 上 rename 直接 EPERM。
+// 这些不是某个任务的 bug，而是「同一 checkout 只允许一个构建在动共享产物」。
+//
+// 做法：给会互相踩的任务加一把文件锁（.gradle/build.lock），拿不到就**立刻报错并给出
+// 持有者信息**——不静默重试、不排队，避免把一次构建拖一整晚。
+// 被锁的任务：bundleHost（重写 assets）、merge*Assets（读 assets）、package*（写 APK/AAB）。
+//
+// 注意：这里刻意只锁「任务执行窗口」，不锁整个构建——配置阶段仍然可以并行，
+// 否则一个跑单测的构建会把所有打包构建堵死。
+// ===========================================================================
+fun isBuildLockTask(name: String): Boolean =
+    name == "bundleHost" ||
+        name == "bundleDebug" ||
+        name == "bundleRelease" ||
+        (name.startsWith("merge") && name.endsWith("Assets")) ||
+        // 编译才是真正的碰撞点：kotlin-classes 与 build/kotlin/.../caches-jvm 会被两个构建
+        // 同时写；Kotlin daemon 回退进程内重编时第一步就是清 kotlin-classes，清不掉就整个构建失败。
+        (name.startsWith("compile") && name.endsWith("Kotlin")) ||
+        name.startsWith("package")
+
+// 实现约束（改之前必须读）：
+//   配置缓存（org.gradle.configuration-cache，可能在本机/CI 被打开）不允许任务动作引用
+//   **脚本对象**——脚本级 val、脚本里的顶层函数都不行，否则报
+//   "cannot serialize Gradle script object references"，整个构建在存储缓存时失败。
+//   因此下面所有 doFirst/doLast 只捕获配置期的局部 String/Int/File，逻辑全部内联。
+//   「谁还持有锁」这类跨任务/跨项目的状态不放内存，而是写成
+//   .gradle/build.lock.d/<project>__<task> 标记文件：多个项目并行释放时也成立。
+//
+// 兼容的历史坑（别退回去）：
+//   - gradle.taskGraph.afterTask(...) → 配置缓存不支持注册任务图监听器，直接构建失败；
+//   - 在 configureEach 里 tasks.register(...) → "cannot be executed in the current context"。
+// ===========================================================================
+
+subprojects.forEach { p ->
+    val lockFile = rootProject.file(".gradle/build.lock")
+    val markerRoot = rootProject.file(".gradle/build.lock.d")
+    val hostAssets = rootProject.file("app/src/main/assets/agent-host")
+    val versionFile = versionPropsFile
+    // 陈旧阈值：默认 45 分钟，必须高于「全量编译最坏情况」——实测 :app:compileDebugKotlin
+    // 20–25 分钟，冷 daemon 再加约 9 分钟。阈值设成几分钟会把正常的长构建误判成死锁，
+    // 那是比「假锁堵住」更坏的失败模式。可用 -Phpa.lockStaleMinutes=NN 覆盖（慢机器调大）。
+    val staleMinutes = (findProperty("hpa.lockStaleMinutes") as? String)
+        ?.trim()?.toIntOrNull()?.takeIf { it > 0 } ?: 45
+    val staleMs = staleMinutes * 60_000L
+    val pid = ProcessHandle.current().pid()
+    // 进程名只用于锁记录（出事时能看出是谁占的）；取不到就退回 "java"，不能因此写不出完整记录。
+    val processName = runCatching {
+        ProcessHandle.current().info().command().orElse("")
+    }.getOrDefault("").let { if (it.isBlank()) "java" else File(it).name }
+    // 主机名用来区分「本机 pid 可探测」和「跨机器只能靠超时」。优先读环境变量，避免配置阶段做 DNS 解析。
+    val hostName = System.getenv("COMPUTERNAME")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("HOSTNAME")?.takeIf { it.isNotBlank() }
+        ?: runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrNull()?.takeIf { it.isNotBlank() }
+        ?: "unknown"
+    val user = System.getProperty("user.name").orEmpty()
+    val projectKey = p.path.removePrefix(":").replace(':', '_')
+    val number = buildNumber
+    val injected = injectedBuildNumber
+    val buildsApk = apkBuilding
+
+    // 兜底释放任务必须注册在 configureEach 之外：在任务「正在创建」的回调里再 register，
+    // Gradle 会直接抛 "DefaultTaskContainer#register(String, Action) on task set cannot be
+    // executed in the current context"，导致所有 package* 任务连创建都失败。
+    val releaseSlot = p.tasks.register("releaseBuildSlotLocks") {
+        description = "内部任务：释放本项目持有的 .gradle/build.lock 标记"
+        val markerDirPath = markerRoot.absolutePath
+        val lockPath = lockFile.absolutePath
+        val markerPrefix = "${projectKey}__"
+        val ownPid = pid
+        doLast {
+            val lock = File(lockPath)
+            // 只清理「确实由本进程持有」的标记：拿锁失败时锁属于别的构建，
+            // 它的 app__ 开头标记和我们同名，误删会让对方下一步判定失败。
+            val heldByUs = lock.exists() &&
+                runCatching { lock.readLines().firstOrNull() }.getOrNull() == "pid=$ownPid"
+            if (!heldByUs) return@doLast
+            val dir = File(markerDirPath)
+            dir.listFiles()?.forEach { if (it.name.startsWith(markerPrefix)) it.delete() }
+            // --parallel 下别的项目可能正在删自己的标记，给一点窗口再判断是否还有人持有
+            var waited = 0
+            while (waited < 20 && dir.listFiles()?.isNotEmpty() == true) {
+                Thread.sleep(50)
+                waited++
+            }
+            if (dir.listFiles().isNullOrEmpty()) lock.delete()
         }
+    }
+    p.tasks.matching { isBuildLockTask(it.name) }.configureEach {
+        val owner = path
+        val taskName = name
+        // 只有真正产出 APK/AAB 的任务才算「消费版本号」。不能把 package*Resources / package*Assets
+        // 也算进来：它们先于打包任务运行，写回之后同一个构建里的 packageDebug 会把自己刚写的号
+        // 判成「已被占用」，assembleDebug 每次都失败。
+        val consumesVersion = taskName == "packageDebug" || taskName == "packageRelease" ||
+            taskName == "packageDebugAndroidTest" || taskName == "packageReleaseAndroidTest" ||
+            taskName == "bundleDebug" || taskName == "bundleRelease" ||
+            (taskName.startsWith("package") && taskName.endsWith("Bundle"))
+        val mergingAssets = taskName.startsWith("merge") && taskName.endsWith("Assets") && p.path == ":app"
+        val markerPath = File(markerRoot, "${projectKey}__$taskName").absolutePath
+        val markerDirPath = markerRoot.absolutePath
+        val lockPath = lockFile.absolutePath
+        val localStaleMs = staleMs
+        val localStaleMinutes = staleMinutes
+        val localPid = pid
+        val localProcessName = processName
+        val localHost = hostName
+        val localUser = user
+        val localNumber = number
+        val localInjected = injected
+        val localVersionFile = versionFile.absolutePath
+        // 「这个版本号是我自己刚写的」凭据。不能只看 version.properties 的值：
+        // assemble 会先后跑 packageDebug 和 packageRelease，第二个任务必须能认出第一个的写回。
+        val localVersionMarker = rootProject.file(".gradle/build-number.marker").absolutePath
+        val localHostAssets = hostAssets.absolutePath
+        // 顺序很关键：先占槽位，再做版本号/资产校验——校验必须在锁内，
+        // 否则校验通过之后、真正写 APK 之前仍可能被另一个构建改写。
+        doFirst {
+            // ---------------- 1. 占住构建槽位 ----------------
+            val lock = File(lockPath)
+            val marker = File(markerPath)
+            marker.parentFile.mkdirs()
+            var owned = false
+            if (lock.exists()) {
+                // 锁记录必须完整：pid / process / task / started / host 缺一项，就无法判断持有者
+                // 是不是还活着，一律按陈旧处理。05:03 那次事故正是死记录（pid=99999）把流水线
+                // 无限期堵住且没有任何提示——旧实现既不探测 pid 存活，也没有可信的陈旧阈值。
+                val record = runCatching { lock.readText() }.getOrNull()
+                val fields = record?.lines()
+                    ?.mapNotNull { line ->
+                        val eq = line.indexOf('=')
+                        if (eq <= 0) null else line.substring(0, eq).trim() to line.substring(eq + 1).trim()
+                    }
+                    ?.toMap()
+                    ?: emptyMap()
+                val holderPid = fields["pid"]?.toLongOrNull()
+                val holderHost = fields["host"]
+                val holderTask = fields["task"]
+                val holderProcess = fields["process"]
+                val startedRaw = fields["started"]
+                val startedAt = startedRaw?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+                val ageMs = (startedAt?.let { Duration.between(it, OffsetDateTime.now()).toMillis() }
+                    ?: (System.currentTimeMillis() - lock.lastModified())).coerceAtLeast(0)
+                val sameHost = holderHost != null && holderHost.equals(localHost, ignoreCase = true)
+                // ProcessHandle.of(pid) 等价于 kill(pid, 0)：只探测存在性，不发信号。
+                // 跨主机时 pid 没有可比性，只能靠超时判断。
+                val holderAlive = if (holderPid != null && sameHost) {
+                    runCatching {
+                        val handle = ProcessHandle.of(holderPid)
+                        handle.isPresent && handle.get().isAlive
+                    }.getOrDefault(false)
+                } else {
+                    false
+                }
+                val incomplete = holderPid == null || holderHost.isNullOrBlank() ||
+                    holderTask.isNullOrBlank() || holderProcess.isNullOrBlank() || startedAt == null
+                val expired = ageMs > localStaleMs
+                val ageDesc = when {
+                    ageMs < 60_000 -> "${ageMs / 1000} 秒"
+                    ageMs < 3_600_000 -> "${ageMs / 60_000} 分钟"
+                    else -> "${ageMs / 3_600_000} 小时 ${(ageMs % 3_600_000) / 60_000} 分钟"
+                }
+                val staleReason = when {
+                    record == null -> "锁文件读不出来（可能正在被删除或已损坏）"
+                    incomplete -> "锁记录不完整，缺 pid / process / task / started / host 中的项" +
+                        "（pid=${holderPid ?: "无"}，process=${holderProcess ?: "无"}，" +
+                        "task=${holderTask ?: "无"}，started=${startedRaw ?: "无"}，host=${holderHost ?: "无"}）"
+                    sameHost && !holderAlive -> "持有进程 pid=$holderPid 在本机已经不存在"
+                    expired -> "持锁 $ageDesc，超过阈值 $localStaleMinutes 分钟" +
+                        (if (holderAlive) "（该进程仍存活，可能已经卡死）" else "")
+                    else -> null
+                }
+                if (staleReason == null && sameHost && holderPid == localPid) {
+                    // 同一个 Gradle 进程：同一构建里的另一个被锁任务（--parallel），
+                    // 或本 daemon 上一次构建崩溃留下的孤儿锁。一个 daemon 一次只跑一个构建，
+                    // 所以并发的另一个构建不可能拿到同一个 pid，这里不会误放行。
+                    owned = true
+                } else if (staleReason != null) {
+                    // 用 rename 抢占而不是 delete：rename 只有一个进程能成功，
+                    // delete 可能擦掉别人刚建好的新锁，让两个进程同时「持有」。
+                    val quarantine = File(lock.parentFile, "build.lock.stale-$localPid-${System.nanoTime()}")
+                    if (lock.renameTo(quarantine)) {
+                        val original = runCatching { quarantine.readText().trim() }.getOrDefault("")
+                        quarantine.delete()
+                        // 接管必须显式打印（不静默抢）：要能一眼看出「之前是谁、在跑什么任务、多久前」。
+                        logger.warn(
+                            "[build-lock] 锁被判定为陈旧并接管。\n" +
+                                "  原因：$staleReason\n" +
+                                "  原持有者：pid=${holderPid ?: "未知"}（${holderProcess ?: "进程名未知"}），" +
+                                "任务=${holderTask ?: "未知"}，主机=${holderHost ?: "未知"}\n" +
+                                "  开始于 ${startedRaw ?: "未知时间"}，距今 $ageDesc\n" +
+                                "  原记录全文：\n" +
+                                original.ifEmpty { "(空锁文件)" } + "\n" +
+                                "  接管者：pid=$localPid（$localHost），任务 $owner",
+                        )
+                        // 旧持有者已判定死亡，它留下的持有标记也要清掉：
+                        // 否则本构建结束时「标记目录非空」会让锁文件永远不释放——又是一个假锁。
+                        File(markerDirPath).listFiles()?.forEach { it.delete() }
+                    }
+                }
+            }
+            if (!owned) {
+                try {
+                    Files.createFile(lock.toPath()) // 原子：并发的另一个构建会在这里失败
+                } catch (e: FileAlreadyExistsException) {
+                    val info = runCatching { lock.readText().trim() }.getOrDefault("")
+                    fun lockField(key: String): String? = info.lineSequence()
+                        .firstOrNull { it.startsWith("$key=") }?.substringAfter('=')?.trim()
+                    val startedText = lockField("started")
+                    val heldMs = startedText
+                        ?.let { runCatching { Duration.between(OffsetDateTime.parse(it), OffsetDateTime.now()).toMillis() } }
+                        ?.getOrNull()?.coerceAtLeast(0)
+                    val heldDesc = when {
+                        heldMs == null -> "时长未知"
+                        heldMs < 60_000 -> "${heldMs / 1000} 秒"
+                        heldMs < 3_600_000 -> "${heldMs / 60_000} 分钟"
+                        else -> "${heldMs / 3_600_000} 小时 ${(heldMs % 3_600_000) / 60_000} 分钟"
+                    }
+                    throw GradleException(
+                        "另一个构建正在执行会改动共享产物的任务" +
+                            "（bundleHost / compile*Kotlin / merge*Assets / package*），本次构建在 $owner 处中止。\n" +
+                            "持有者：pid=${lockField("pid") ?: "未知"}（${lockField("host") ?: "主机未知"}），" +
+                            "任务=${lockField("task") ?: "未知"}，开始于 ${startedText ?: "未知"}，已持有 $heldDesc\n" +
+                            "原始锁记录（${lock.absolutePath}）：\n$info\n" +
+                            "这是「明确失败」，不是排队：本构建不会等待，也不会自动重试。\n" +
+                            "给重试脚本的判据：看到本条消息就说明锁被别人持有，等它结束或 Ctrl+C 之后再跑；" +
+                            "不要立刻循环重试，每次重试都会重新烧一遍编译。\n" +
+                            "若持有进程已不存在，或已持有超过 $localStaleMinutes 分钟，" +
+                            "下一次取锁会自动判定为陈旧并接管（同时打印原记录）；" +
+                            "探测不到时也可以删除 ${lock.absolutePath}。"
+                    )
+                }
+                lock.writeText(
+                    "pid=$localPid\n" +
+                        "process=$localProcessName\n" +
+                        "task=$owner\n" +
+                        "started=${OffsetDateTime.now().withNano(0)}\n" +
+                        "host=$localHost\n" +
+                        "user=$localUser\n"
+                )
+                logger.lifecycle("[build-lock] 获取成功：$owner（pid=$localPid，host=$localHost）")
+            }
+            marker.writeText(owner)
+
+            // ---------------- 2. 打包前确认版本号没被别人用掉 ----------------
+            // A、B 两个构建在配置阶段都读到 9142 并算出 9143，只靠「成功后回写」拦不住，
+            // 所以在锁内、写 APK 之前再读一次磁盘。
+            // 注意不能只判 stored >= localNumber：同一个构建里 assemble 会先后跑 packageDebug
+            // 和 packageRelease，第一把成功回写后，第二把会把自己刚写的号当成冲突。
+            // 因此用 .gradle/build-number.marker（pid + host + number）区分「自己写的」和「别人写的」。
+            if (buildsApk && consumesVersion && localInjected == null) {
+                val props = Properties()
+                runCatching {
+                    val f = File(localVersionFile)
+                    if (f.exists()) f.inputStream().use { props.load(it) }
+                }
+                val stored = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                val markerText = runCatching { File(localVersionMarker).readText() }.getOrDefault("")
+                fun markerField(key: String): String? = markerText.lineSequence()
+                    .firstOrNull { it.startsWith("$key=") }?.substringAfter('=')?.trim()
+                val wroteByUs = markerField("pid") == localPid.toString() &&
+                    markerField("host") == localHost &&
+                    markerField("number") == localNumber.toString()
+                if (stored > localNumber || (stored == localNumber && !wroteByUs)) {
+                    throw GradleException(
+                        "版本号 $localNumber 已被占用（version.properties 当前为 $stored，" +
+                            "回写凭据=${if (markerText.isBlank()) "无" else "不属于本次构建"}）。\n" +
+                            "另一个构建刚用掉了这个号；为避免两个 APK 拿到同一个 versionCode，" +
+                            "本次打包在产出 APK 之前中止。直接重试即可拿到新号。"
+                    )
+                }
+            }
+
+            // ---------------- 3. 合并资源前确认 host 资产是完整快照 ----------------
+            // bundle_host.mjs 在 Windows 上可能退化为「就地覆盖」，那几秒里目录是旧文件+新文件混合。
+            // 别的构建来读已被 .gradle/build.lock 挡住；这条闸门挡的是「构建期间被手工/其它工具同步」。
+            // 遍历顺序必须与 bundle_host.mjs 的 fingerprintOf 完全一致，否则指纹永远对不上。
+            if (mergingAssets) {
+                val dir = File(localHostAssets)
+                val versionOnDisk = File(dir, "VERSION")
+                if (versionOnDisk.isFile) {
+                    val expected = runCatching { versionOnDisk.readText().trim() }.getOrDefault("")
+                    val actual = runCatching {
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        fun walk(d: File) {
+                            for (f in (d.listFiles() ?: return).sortedBy { it.name }) {
+                                if (f.name == "VERSION") continue
+                                if (f.isDirectory) walk(f) else {
+                                    digest.update(f.relativeTo(dir).invariantSeparatorsPath.toByteArray())
+                                    digest.update(f.readBytes())
+                                }
+                            }
+                        }
+                        walk(dir)
+                        // 显式按无符号字节拼 hex：`"%02x".format(Byte)` 在负数上是平台相关的，
+                        // 指纹必须与 tool/bundle_host.mjs 的逐位结果一致，所以不做隐式转换。
+                        digest.digest().joinToString("") {
+                            (it.toInt() and 0xff).toString(16).padStart(2, '0')
+                        }.take(16)
+                    }.getOrNull()
+                    if (expected.isEmpty() || actual != expected) {
+                        throw GradleException(
+                            "assets/agent-host 的内容与它自己的 VERSION 指纹不一致：" +
+                                "VERSION=${expected.ifEmpty { "(空)" }}，实际内容=${actual ?: "(读取失败)"}。\n" +
+                                "该目录很可能正处于被就地覆盖的中途（另一个进程正在同步 host）。" +
+                                "此时 mergeAssets 会把半新半旧的 host 打进 APK，故中止。\n" +
+                                "处理：等其它构建/同步结束后重试；或运行 `node tool/bundle_host.mjs` 重新同步一次。\n" +
+                                "目录：${dir.absolutePath}"
+                        )
+                    }
+                }
+            }
+        }
+        if (buildsApk && consumesVersion) {
+            doLast {
+                // 只有 APK/AAB 真正打包成功后才消费版本号：失败的构建不烧号（下次复用同一个号）
+                val f = File(localVersionFile)
+                val props = Properties()
+                runCatching { if (f.exists()) f.inputStream().use { props.load(it) } }
+                val stored = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                if (localNumber > stored) {
+                    f.writeText(
+                        "#Auto-incremented by Gradle\n" +
+                            "#" + ZonedDateTime.now()
+                                .format(DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ROOT)) + "\n" +
+                            "BUILD_NUMBER=$localNumber\n"
+                    )
+                }
+                // 先写 version.properties、再写凭据：万一在这两步之间被杀，下一个构建会读到
+                // 更大的号，不会与本次已产出的 APK 撞号（反过来的顺序才会造成重复 versionCode）。
+                File(localVersionMarker).writeText(
+                    "pid=$localPid\nhost=$localHost\nnumber=$localNumber\n" +
+                        "written=${OffsetDateTime.now().withNano(0)}\n"
+                )
+            }
+        }
+        // 释放交给 finalizer：任务失败时 doLast 不执行，而它一定执行；
+        // 它也排在本任务所有 doLast（含上面的版本号回写）之后，顺序天然正确。
+        finalizedBy(releaseSlot)
     }
 }
 
