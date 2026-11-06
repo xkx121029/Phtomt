@@ -534,18 +534,13 @@ class MarqueeView @JvmOverloads constructor(
     /**
      * 阶段配色表：底色压深、文字近白、光晕比底色亮一档，强度按阶段递减。
      *
-     * 只取状态本身的语义色（蓝=观察、紫=思考、粉=执行、绿=完成、红=失败、琥珀=等待），
-     * 不走彩虹渐变；光晕强度最高只到 0.75，保证"亮但不刺眼"。
+     * 具体色值不在这里维护——统一取自 [FloatingUi.phaseTone]，与任务卡状态圆点、阶段徽章
+     * 共用同一套（同一阶段在胶囊和卡片上必须是同一个色，否则同一时刻两处颜色对不上）。
+     * 色相收在 VI 品牌色域内：雾蓝=观察、墨绿=思考、品红=执行、成功绿=完成、危险红=失败、琥珀=等待，
+     * 不走彩虹渐变；光晕强度最高只到 0.72，保证"亮但不刺眼"。
      */
-    private fun paletteOfPhase(phase: String): Palette = when (phase) {
-        "OBSERVING" -> Palette(0xFF2F5CD6.toInt(), 0xFFF2F6FF.toInt(), 0xFF8FB4FF.toInt(), 0.62f)
-        "THINKING" -> Palette(0xFF6440D4.toInt(), 0xFFF6F2FF.toInt(), 0xFFB9A5FF.toInt(), 0.56f)
-        "ACTING" -> Palette(0xFFD1366C.toInt(), 0xFFFFF5F8.toInt(), 0xFFFF9AB6.toInt(), 0.72f)
-        "DONE" -> Palette(0xFF0E8F66.toInt(), 0xFFEBFFF7.toInt(), 0xFF66E0B8.toInt(), 0.52f)
-        "ERROR" -> Palette(0xFFC23A3F.toInt(), 0xFFFFF3F3.toInt(), 0xFFFF9A9C.toInt(), 0.66f)
-        // PENDING（等待/刚起步）
-        else -> Palette(0xFFB0721C.toInt(), 0xFFFFF8EC.toInt(), 0xFFF3BE79.toInt(), 0.44f)
-    }
+    private fun paletteOfPhase(phase: String): Palette =
+        FloatingUi.phaseTone(phase).let { Palette(it.base, it.text, it.glow, it.intensity) }
 
     companion object {
         /** 胶囊两侧至少留出的空白：长文本封顶后也不能顶到屏幕边缘 */

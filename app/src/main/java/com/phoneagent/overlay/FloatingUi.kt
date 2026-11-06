@@ -151,15 +151,30 @@ object FloatingUi {
     // 暖色辅色（与主题调色板一致），用于「助手」徽章
     val ACCENT_WARM: Int = LightAppColors.accentWarm.toArgb()
 
-    // 阶段色（观察/思考/执行/完成/错误）——克制的语义色
-    fun phaseColor(phase: String): Int = when (phase) {
-        "OBSERVING" -> 0xFF3B6EF6.toInt()
-        "THINKING" -> 0xFF7C4DFF.toInt()
-        "ACTING" -> 0xFFEC407A.toInt()
-        "DONE" -> 0xFF00A877.toInt()
-        "ERROR" -> 0xFFE5484D.toInt()
-        else -> 0xFFF59E0B.toInt()
+    /**
+     * 阶段配色：底色 / 文字色 / 光晕色 / 光晕强度。
+     *
+     * 色相全部收在 VI 品牌色域内（docs/brand-vi.md 2.2 / 2.3）：
+     * 雾蓝=信息、琥珀=注意、墨玉绿深锚=品牌、成功/危险取语义色；
+     * 刻意避开 VI 明令不要的蓝紫区间，唯一强强调色留给「执行」的品红。
+     * 六个底色对白字的对比度均 ≥ 4.5:1（对照表见 CHANGELOG），可直接做实心胶囊。
+     */
+    data class PhaseTone(val base: Int, val text: Int, val glow: Int, val intensity: Float)
+
+    fun phaseTone(phase: String): PhaseTone = when (phase) {
+        // 雾蓝（高对比档 #35617D：裸雾蓝 #4A7C9B 只有 4.52:1，撑 14sp 白字太勉强）
+        "OBSERVING" -> PhaseTone(0xFF35617D.toInt(), 0xFFEFF5F9.toInt(), 0xFF84B6D4.toInt(), 0.62f)
+        // 墨绿：VI 的玄青容器（暗），比完成绿暗两档，靠明度区分「在思考」与「已完成」
+        "THINKING" -> PhaseTone(0xFF17453A.toInt(), 0xFFE9F7F1.toInt(), 0xFF5FD9B4.toInt(), 0.60f)
+        "ACTING" -> PhaseTone(0xFFD1366C.toInt(), 0xFFFFF5F8.toInt(), 0xFFFF9AB6.toInt(), 0.72f)
+        "DONE" -> PhaseTone(0xFF1F7A55.toInt(), 0xFFEBFFF7.toInt(), 0xFF6FD3A2.toInt(), 0.52f)
+        "ERROR" -> PhaseTone(0xFFC4463C.toInt(), 0xFFFFF3F3.toInt(), 0xFFFF9A90.toInt(), 0.66f)
+        // 琥珀（取站点口径 #A85A24：VI 端侧琥珀 #B4632A 对白字只有 4.41:1）
+        else -> PhaseTone(0xFFA85A24.toInt(), 0xFFFFF8EC.toInt(), 0xFFF0A868.toInt(), 0.44f)
     }
+
+    /** 只取一个实色的场合（任务卡状态圆点、阶段徽章、完成卡）：用阶段底色 */
+    fun phaseColor(phase: String): Int = phaseTone(phase).base
 
     /**
      * 胶囊形背景。
