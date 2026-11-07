@@ -374,6 +374,8 @@ internal fun AgentComposer(
     plan: TaskPlan? = null,
     onApprovePlan: () -> Unit = {},
     onCancelPlan: () -> Unit = {},
+    /** 模型 / 执行与授权两枚转盘：放在面板内部第一行，与 Coding 页节奏一致；横屏矮屏传 null */
+    dialRow: (@Composable () -> Unit)? = null,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
@@ -464,6 +466,7 @@ internal fun AgentComposer(
         ComposerPanel(
             modifier = Modifier.alpha(if (locked) 0.7f else 1f),
             focused = focused && !locked,
+            above = dialRow,
             field = { fieldModifier ->
             VoiceRecordGestureBox(
                 engine = voiceEngine,

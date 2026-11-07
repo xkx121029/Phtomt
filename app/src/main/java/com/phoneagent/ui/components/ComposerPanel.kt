@@ -74,7 +74,8 @@ fun ComposerPanel(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = fieldPad, end = AppSpacing.Sm, top = AppSpacing.Sm),
+                    // 两枚转盘卡的左右边缘与输入行、右侧动作键对齐
+                    .padding(start = fieldPad, end = AppSpacing.Xs, top = AppSpacing.Xs, bottom = AppSpacing.Xs),
             ) {
                 above()
             }

@@ -501,36 +501,36 @@ fun AgentScreen(
                     // 判断必须看 assist 而不是 shownAssist：后者只是退场动画的内容缓存，
                     // 用了它输入区会在浮层退场后一直消失
                     if (assist == null) {
-                        // 模型与授权等级：两张默认折叠的转盘卡，贴在输入框上方。
-                        // 与 Coding 页同一组件、同一交互（见 AgentConfigDialRow / ConfigDialCard）；
-                        // 矮屏（横屏手机）下不摆，见上方 shortScreen 说明
-                        if (!shortScreen) {
-                            AgentConfigDialRow(
-                                settings = settings,
-                                onPickModel = { name, endpointId ->
-                                    val ep = endpointId?.let { id -> settings.endpoints.firstOrNull { it.id == id } }
-                                    vm.saveSettings(
-                                        settings.copy(
-                                            model = name,
-                                            apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
-                                            apiKey = ep?.apiKey ?: settings.apiKey,
-                                        ),
-                                    )
-                                },
-                                onPickMode = { mode -> vm.saveSettings(settings.copy(actionMode = mode)) },
-                                modifier = Modifier.padding(
-                                    start = AgentGlassInnerPad,
-                                    end = AgentGlassInnerPad,
-                                    // 状态条不在时这两张卡就是面板的第一行，必须有顶部"壁厚"，
-                                    // 否则会贴着玻璃上边缘；状态条在场时它自带顶部留白，这里不再叠
-                                    top = if (showStrip) 0.dp else AgentGlassInnerPad,
-                                    bottom = AppSpacing.Xs,
-                                ),
-                            )
+                        // 模型与授权等级：两张默认折叠的转盘卡，现在是输入面板的第一行。
+                        // 与 Coding 页同一组件、同一位置；矮屏（横屏手机）下不摆——两张卡
+                        // 会把任务流压没，输入面在横屏只保留输入框本身
+                        val dialRow: (@Composable () -> Unit)? = if (shortScreen) {
+                            null
+                        } else {
+                            {
+                                AgentConfigDialRow(
+                                    settings = settings,
+                                    onPickModel = { name, endpointId ->
+                                        val ep = endpointId?.let { id ->
+                                            settings.endpoints.firstOrNull { it.id == id }
+                                        }
+                                        vm.saveSettings(
+                                            settings.copy(
+                                                model = name,
+                                                apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
+                                                apiKey = ep?.apiKey ?: settings.apiKey,
+                                            ),
+                                        )
+                                    },
+                                    onPickMode = { mode -> vm.saveSettings(settings.copy(actionMode = mode)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
 
                         AgentComposer(
                             vm = vm,
+                            dialRow = dialRow,
                             draft = draft,
                             onDraftChange = { draft = it },
                             mode = mode,

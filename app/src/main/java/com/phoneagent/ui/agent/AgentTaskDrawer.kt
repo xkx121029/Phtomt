@@ -229,7 +229,9 @@ private fun TaskPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    imageVector = AppIcons.Add,
+                    // 与输入行的「+（追加下一条任务）」区分：新建是新开一个任务，
+                    // 用「方框笔」表示撰写，加号只留给"往队列里再加一条"
+                    imageVector = AppIcons.NewSession,
                     contentDescription = null,
                     tint = if (newConversationEnabled) colors.onBrand else colors.onSurfaceRaised,
                     modifier = Modifier.size(18.dp),

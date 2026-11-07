@@ -470,31 +470,33 @@ fun CodingScreen(
                     onOpenFullscreen = onOpenMarkdownFullscreen,
                 )
 
-                // 模型与授权等级：两张独立小卡片，默认只露当前值，贴在输入框上方；
-                // 点开卡片才铺开转轴平行于屏幕的转盘（与 Agent 页共用同一组件与交互）
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = AppSpacing.Sm),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-                ) {
-                    ConfigDialCard(
-                        title = "模型",
-                        icon = AppIcons.SmartToy,
-                        options = modelOptions,
-                        selectedId = settings.model,
-                        onSelect = { name ->
-                            switchModel(name, settings.catalog.firstOrNull { it.name == name }?.endpointId)
-                        },
-                        note = if (pendingModelApply) "本轮后生效" else null,
-                        modifier = Modifier.weight(1f),
-                    )
-                    ConfigDialCard(
-                        title = "执行与授权",
-                        icon = AppIcons.Guard,
-                        options = approvalOptions,
-                        selectedId = settings.codingApprovalMode,
-                        onSelect = { switchApproval(it) },
-                        modifier = Modifier.weight(1f),
-                    )
+                // 模型与授权等级：两张折叠转盘卡，现在是输入面板的第一行——
+                // 与 Agent 页同一组件、同一位置，切换页面时这一排不会上下跳
+                val dialRow: @Composable () -> Unit = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                    ) {
+                        ConfigDialCard(
+                            title = "模型",
+                            icon = AppIcons.SmartToy,
+                            options = modelOptions,
+                            selectedId = settings.model,
+                            onSelect = { name ->
+                                switchModel(name, settings.catalog.firstOrNull { it.name == name }?.endpointId)
+                            },
+                            note = if (pendingModelApply) "本轮后生效" else null,
+                            modifier = Modifier.weight(1f),
+                        )
+                        ConfigDialCard(
+                            title = "执行与授权",
+                            icon = AppIcons.Guard,
+                            options = approvalOptions,
+                            selectedId = settings.codingApprovalMode,
+                            onSelect = { switchApproval(it) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
 
                 if (clientState.busy) {
@@ -518,8 +520,8 @@ fun CodingScreen(
                     onRemoveAttachment = { SharedFiles.remove(it) },
                     onStop = { bridge.uiClient.cancel() },
                     onSend = { send(it) },
+                    dialRow = dialRow,
                 )
-                Spacer(Modifier.height(AppSpacing.Sm))
             }
         }
 
@@ -1059,13 +1061,10 @@ private fun CodingComposer(
     onRemoveAttachment: (SharedFiles.Imported) -> Unit,
     onStop: () -> Unit,
     onSend: (String) -> Unit,
+    dialRow: @Composable () -> Unit,
 ) {
     val buzz = rememberHapticClick()
     Column(Modifier.fillMaxWidth()) {
-        if (values.busy) {
-            Spacer(Modifier.height(AppSpacing.Xs))
-            BusyLine()
-        }
         if (values.attachments.isNotEmpty()) {
             AttachmentRow(
                 attachments = values.attachments,
@@ -1082,6 +1081,7 @@ private fun CodingComposer(
             onAttach = onPickAttachment,
             onSend = { buzz(); onSend(values.draft); onDraftChange("") },
             onStop = { buzz(); onStop() },
+            dialRow = dialRow,
         )
     }
 }
@@ -1095,12 +1095,14 @@ private fun ComposerInputRow(
     onAttach: () -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    dialRow: @Composable () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     // 与 Agent 页共用同一个输入面板：容器、圆角、内边距、行高都由 ComposerPanel 决定，
     // 这里只提供本页的占位文案、附件入口与发送 / 停止动作
     ComposerPanel(
         focused = focused,
+        above = dialRow,
         leading = {
             ComposerActionButton(
                 icon = AppIcons.Attachment,
@@ -1146,28 +1148,6 @@ private fun composerHint(values: ComposerValues): String = when {
     !values.enabled -> "Coding 运行时未就绪，暂时无法使用"
     values.busy -> "正在 Coding，稍候…"
     else -> "描述要写的代码或脚本…"
-}
-
-/** 运行中的提示行：只说明"正在跑"，停止键在输入行右侧（手指本来就在那儿） */
-@Composable
-private fun BusyLine() {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(bottom = AppSpacing.Xs),
-    ) {
-        Icon(
-            AppIcons.Loading,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(14.dp),
-        )
-        Spacer(Modifier.width(AppSpacing.Sm))
-        Text(
-            "正在 Coding…",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }
 
 /** 附件行：文件名 + 大小，右侧可摘掉。附件本身已经在临时目录里，这里只是提示。 */
