@@ -491,10 +491,6 @@ fun AgentScreen(
                             needsUser = needsUser,
                             previewVisible = previewVisible,
                             onTogglePreview = { previewVisible = !previewVisible },
-                            // 规划期点的是「取消规划」，执行期才是「停止」
-                            onStop = {
-                                if (planPhase is PlanPhase.Planning) vm.cancelPlanning() else vm.stopAgent()
-                            },
                             paused = paused,
                             onTogglePause = { if (paused) vm.resumeAgent() else vm.pauseAgent() },
                             planning = planPhase is PlanPhase.Planning,
@@ -578,7 +574,11 @@ fun AgentScreen(
                                     draft = ""
                                 }
                             },
-                            onStop = { vm.stopAgent() },
+                            // 停止是运行中唯一的操作出口，统一走这里：
+                            // 规划期取消规划、执行期停止任务，两个阶段不会各自漂一条回调
+                            onStop = {
+                                if (planPhase is PlanPhase.Planning) vm.cancelPlanning() else vm.stopAgent()
+                            },
                             onDismissUser = { vm.dismissUser() },
                             focusRequester = focusRequester,
                         )

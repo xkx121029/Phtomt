@@ -53,6 +53,7 @@ import com.composables.icons.lucide.Menu
 import com.composables.icons.lucide.Mic
 import com.composables.icons.lucide.MousePointerClick
 import com.composables.icons.lucide.Palette
+import com.composables.icons.lucide.Paperclip
 import com.composables.icons.lucide.Pencil
 import com.composables.icons.lucide.Pause
 import com.composables.icons.lucide.Play
@@ -71,6 +72,7 @@ import com.composables.icons.lucide.SlidersHorizontal
 import com.composables.icons.lucide.SmartphoneNfc
 import com.composables.icons.lucide.Sparkles
 import com.composables.icons.lucide.Square
+import com.composables.icons.lucide.SquarePen
 import com.composables.icons.lucide.Star
 import com.composables.icons.lucide.Store
 import com.composables.icons.lucide.Terminal
@@ -108,6 +110,10 @@ object AppIcons {
 
     // ── 基础操作 ────────────────────────────────────────────────
     val Add: ImageVector get() = Lucide.Plus
+    /** 新建 / 撰写（开始一段新会话）：与「加号」区分，加号留给"追加内容" */
+    val NewSession: ImageVector get() = Lucide.SquarePen
+    /** 添加附件：回形针，与"新建"和"加号"都不共用图形 */
+    val Attachment: ImageVector get() = Lucide.Paperclip
     val Close: ImageVector get() = Lucide.X
     val Cancel: ImageVector get() = Lucide.CircleX
     val CheckCircle: ImageVector get() = Lucide.CircleCheck

@@ -72,6 +72,8 @@ import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.ComposerActionButton
+import com.phoneagent.ui.components.ComposerField
+import com.phoneagent.ui.components.ComposerPanel
 import com.phoneagent.ui.components.ConfigDialCard
 import com.phoneagent.ui.components.DialOption
 import com.phoneagent.ui.components.GlassHeaderScaffold
@@ -727,7 +729,7 @@ private fun SessionCapsule(
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
-                    AppIcons.Add,
+                    AppIcons.NewSession,
                     contentDescription = "新建会话",
                     tint = colors.onBrandContainer,
                     modifier = Modifier.size(15.dp),
@@ -1062,7 +1064,7 @@ private fun CodingComposer(
     Column(Modifier.fillMaxWidth()) {
         if (values.busy) {
             Spacer(Modifier.height(AppSpacing.Xs))
-            BusyLine(onStop = { buzz(); onStop() })
+            BusyLine()
         }
         if (values.attachments.isNotEmpty()) {
             AttachmentRow(
@@ -1079,6 +1081,7 @@ private fun CodingComposer(
             onDraftChange = onDraftChange,
             onAttach = onPickAttachment,
             onSend = { buzz(); onSend(values.draft); onDraftChange("") },
+            onStop = { buzz(); onStop() },
         )
     }
 }
@@ -1091,59 +1094,51 @@ private fun ComposerInputRow(
     onDraftChange: (String) -> Unit,
     onAttach: () -> Unit,
     onSend: () -> Unit,
+    onStop: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
-            .background(AppTheme.colors.surfaceRaised)
-            // 与操控页/对话页统一：上下各 4dp + 40dp 动作键 = 单行 48dp，
-            // 单行文字在 40dp 里竖直居中，多行时发送键贴行底
-            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Xs),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        ComposerActionButton(
-            icon = AppIcons.Add,
-            description = "添加附件",
-            onClick = onAttach,
-            enabled = values.enabled && !values.busy,
-        )
-        Spacer(Modifier.width(AppSpacing.Xs))
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 40.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            BasicTextField(
+    var focused by remember { mutableStateOf(false) }
+    // 与 Agent 页共用同一个输入面板：容器、圆角、内边距、行高都由 ComposerPanel 决定，
+    // 这里只提供本页的占位文案、附件入口与发送 / 停止动作
+    ComposerPanel(
+        focused = focused,
+        leading = {
+            ComposerActionButton(
+                icon = AppIcons.Attachment,
+                description = "添加附件",
+                onClick = onAttach,
+                enabled = values.enabled && !values.busy,
+            )
+        },
+        field = { fieldModifier ->
+            ComposerField(
                 value = values.draft,
                 onValueChange = onDraftChange,
+                placeholder = composerHint(values),
                 enabled = values.enabled && !values.busy,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                keyboardOptions = KeyboardOptions.Default,
+                modifier = fieldModifier,
                 maxLines = 4,
-                modifier = Modifier.fillMaxWidth(),
-                decorationBox = { inner ->
-                    Box {
-                        if (values.draft.isEmpty()) {
-                            Text(
-                                composerHint(values),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        inner()
-                    }
-                },
+                onFocusedChange = { focused = it },
             )
-        }
-        ComposerActionButton(
-            icon = AppIcons.Send,
-            description = "发送",
-            onClick = onSend,
-            enabled = canSend,
-        )
-    }
+        },
+        actions = {
+            // 运行中发送键换成停止：同一位置、同一尺寸，不新增一排按钮
+            if (values.busy) {
+                ComposerActionButton(
+                    icon = AppIcons.Stop,
+                    description = "停止",
+                    onClick = onStop,
+                    danger = true,
+                )
+            } else {
+                ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = "发送",
+                    onClick = onSend,
+                    enabled = canSend,
+                )
+            }
+        },
+    )
 }
 
 /** 输入区占位文案：禁用 / 运行中 / 空闲三种状态各说一件事 */
@@ -1153,9 +1148,9 @@ private fun composerHint(values: ComposerValues): String = when {
     else -> "描述要写的代码或脚本…"
 }
 
-/** 运行中的提示行：一行说明 + 停止键 */
+/** 运行中的提示行：只说明"正在跑"，停止键在输入行右侧（手指本来就在那儿） */
 @Composable
-private fun BusyLine(onStop: () -> Unit) {
+private fun BusyLine() {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(bottom = AppSpacing.Xs),
@@ -1171,16 +1166,7 @@ private fun BusyLine(onStop: () -> Unit) {
             "正在 Coding…",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
         )
-        OutlinedButton(
-            onClick = onStop,
-            contentPadding = PaddingValues(horizontal = AppSpacing.Md),
-        ) {
-            Icon(AppIcons.Stop, contentDescription = null, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("停止", style = MaterialTheme.typography.labelMedium)
-        }
     }
 }
 

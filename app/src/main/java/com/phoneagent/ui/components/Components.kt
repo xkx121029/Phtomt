@@ -216,10 +216,22 @@ fun ComposerActionButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** 停止这类破坏性动作：换成错误色，与发送键同尺寸但不抢主色 */
+    danger: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
     val shape = RoundedCornerShape(AppRadii.Tile)
+    val background = when {
+        !enabled -> colors.surfaceSunken
+        danger -> colors.errorContainer
+        else -> colors.brand
+    }
+    val tint = when {
+        !enabled -> colors.outlineStrong
+        danger -> colors.error
+        else -> colors.onBrand
+    }
     PressableScale(
         onPress = buzz,
         onClick = onClick,
@@ -227,13 +239,13 @@ fun ComposerActionButton(
         modifier = modifier
             .size(ComposerActionSize)
             .clip(shape)
-            .background(if (enabled) colors.brand else colors.surfaceSunken),
+            .background(background),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = icon,
                 contentDescription = description,
-                tint = if (enabled) colors.onBrand else colors.outlineStrong,
+                tint = tint,
                 modifier = Modifier.size(18.dp),
             )
         }

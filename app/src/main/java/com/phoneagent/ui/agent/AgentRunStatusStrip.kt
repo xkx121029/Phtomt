@@ -33,7 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
+import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -55,15 +57,14 @@ private fun formatElapsed(ms: Long): String {
 }
 
 /**
- * 运行状态条：相位灯 + 步数 / 阶段 + 用时 + 置信度 + 画面开关 + 停止。
+ * 运行状态条：相位灯 + 步数 / 阶段 + 用时 + 把握。
  *
  * 它是**运行状态的唯一口径**（步数 / 相位 / 用时只在这里报一次），
  * 任务流里的实时行只负责"AI 此刻在说什么"，两边不再逐字重复。
  *
- * 需要协助时整条切成 errorContainer 配色；不再另设「去回复」按钮——
- * 该状态下协助浮层本身就带着输入框，按钮与它是同一个入口的第二次出现。
- * 规划期（Planning）同样显示：执行尚未开始，出口按钮是「取消规划」而非「停止」，
- * 否则规划一卡住用户就没有任何取消入口，只能干等。
+ * 这里**不放停止键**：停止是输入行上的唯一出口（手指本来就在输入框上）。
+ * 同一张卡里再挂一个「停止」，等于同一个动作两个入口，还容易只改到其中一处。
+ * 需要协助时整条切成 errorContainer 配色；不再另设「去回复」按钮。
  */
 @Composable
 internal fun AgentRunStatusStrip(
@@ -73,11 +74,10 @@ internal fun AgentRunStatusStrip(
     needsUser: Boolean,
     previewVisible: Boolean,
     onTogglePreview: () -> Unit,
-    onStop: () -> Unit,
     /** 暂停 / 继续（运行中才有意义）：引擎在下一轮开头挂起，不消耗步数 */
     paused: Boolean = false,
     onTogglePause: () -> Unit = {},
-    /** 规划期：状态条照常出现，出口按钮变成「取消规划」 */
+    /** 规划期：状态条照常出现，只说明"正在规划" */
     planning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -192,7 +192,7 @@ internal fun AgentRunStatusStrip(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             modifier = Modifier.fillMaxWidth(),
         ) {
             if (confidence != null) {
@@ -201,30 +201,36 @@ internal fun AgentRunStatusStrip(
                     color = confidenceColor(confidence),
                 )
             }
-            AgentActionButton(
+            Spacer(Modifier.weight(1f))
+            // 画面与暂停都收成安静文字链：状态卡只报告状态，
+            // 主操作（停止 / 取消规划）统一留在输入行，不再这里重复一遍。
+            QuietLink(
                 text = if (previewVisible) "收起画面" else "看画面",
-                icon = AppIcons.Preview,
-                tone = if (previewVisible) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
                 onClick = onTogglePreview,
             )
-            Spacer(Modifier.weight(1f))
-            // 暂停只在真正执行中给：规划期没有"步"可暂停，暂停按钮会变成假按钮
             if (state.isRunning && !planning) {
-                AgentActionButton(
+                QuietLink(
                     text = if (paused) "继续" else "暂停",
-                    icon = if (paused) AppIcons.Play else AppIcons.Pause,
-                    tone = if (paused) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
                     onClick = onTogglePause,
                 )
             }
-            if (state.isRunning || planning) {
-                AgentActionButton(
-                    text = if (planning && !state.isRunning) "取消规划" else "停止",
-                    icon = if (planning && !state.isRunning) AppIcons.Close else AppIcons.Stop,
-                    tone = if (planning && !state.isRunning) AgentButtonTone.NEUTRAL else AgentButtonTone.DANGER,
-                    onClick = onStop,
-                )
-            }
         }
+    }
+}
+
+/** 状态条里的安静入口：纯文字，无边框无底色，受按时只做轻微回弹 */
+@Composable
+private fun QuietLink(text: String, onClick: () -> Unit) {
+    val buzz = rememberHapticClick()
+    PressableScale(
+        onPress = buzz,
+        onClick = onClick,
+        modifier = Modifier.padding(vertical = 8.dp, horizontal = AppSpacing.Xs),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = AppTheme.colors.onSurfaceRaised,
+        )
     }
 }

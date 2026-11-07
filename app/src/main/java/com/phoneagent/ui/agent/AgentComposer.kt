@@ -56,6 +56,8 @@ import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.ComposerActionButton
 import com.phoneagent.ui.components.ComposerActionSize
+import com.phoneagent.ui.components.ComposerField
+import com.phoneagent.ui.components.ComposerPanel
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
@@ -417,12 +419,6 @@ internal fun AgentComposer(
     }
     val currentDraft by rememberUpdatedState(draft)
 
-    val fieldPad by animateDpAsState(
-        targetValue = if (focused && !locked) AppSpacing.Lg else AppSpacing.Md,
-        animationSpec = tween(DurationFast, easing = EaseOut),
-        label = "composer-pad",
-    )
-
     val placeholder = when (mode) {
         ComposerMode.LOCKED -> lockHint.ifBlank { "请稍候…" }
         ComposerMode.PLAN_APPROVAL -> "请先批准或取消计划"
@@ -436,11 +432,7 @@ internal fun AgentComposer(
     // 底色交给玻璃，输入区才有"浮在任务流之上"的层次。
     // 玻璃板已退到屏幕里一段，这里把那段距离补回来，输入框在屏幕上仍是原来的位置
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
-            .background(AppTheme.colors.surfaceRaised)
-            .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xs),
+        modifier = modifier.fillMaxWidth(),
     ) {
         if (queueCount > 0) {
             QueueStrip(count = queueCount, onOpen = onOpenQueue)
@@ -467,23 +459,12 @@ internal fun AgentComposer(
             return@Column
         }
 
-        // 输入面：一个容器同时装下输入框与动作按钮。
-        // 右侧按钮贴着行底：文本涨到多行时，按钮留在右下角不动，不会跟着文字上下漂
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = fieldPad,
-                    end = AppSpacing.Sm,
-                    // 单行高度统一为 40dp 动作键 + 上下 4dp = 48dp；
-                    // 原先上下各 8dp 会撑到 56dp，三页输入框高度不一致
-                    top = AppSpacing.Xs,
-                    bottom = AppSpacing.Xs,
-                )
-                .alpha(if (locked) 0.7f else 1f),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
-        ) {
+        // 输入面：与 Coding 页共用同一个面板组件（ComposerPanel / ComposerField），
+        // 两页只换占位文案与右侧动作；容器、圆角、内边距、行高只在这里定义一次
+        ComposerPanel(
+            modifier = Modifier.alpha(if (locked) 0.7f else 1f),
+            focused = focused && !locked,
+            field = { fieldModifier ->
             VoiceRecordGestureBox(
                 engine = voiceEngine,
                 voiceEnabled = !locked && !focused,
@@ -521,43 +502,24 @@ internal fun AgentComposer(
                 },
                 onCancelRecord = { snackbar?.show("已取消发送") },
                 onRecordTooShort = { snackbar?.show("说话时间太短") },
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = ComposerActionSize),
+                modifier = fieldModifier,
             ) {
-                // 包裹内容而非 fillMaxSize：父级高度约束无上限，填满会把输入行撑到异常高
-                Box(
-                    // CenterStart 而不是 Center：只借它把单行文字在 40dp 高度里竖直居中，
-                    // 水平方向必须贴左——占位文案与真正输入的文字得落在同一条竖线上
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                if (draft.isEmpty()) {
-                    Text(
-                        // 键盘未拉起时提示语音手势；聚焦后（长按让位文本选择）只留纯占位
-                        text = if (!locked && !focused) "$placeholder · 长按语音" else placeholder,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurfaceRaised,
-                    )
-                }
-                BasicTextField(
+                ComposerField(
                     value = draft,
                     onValueChange = { if (!locked) onDraftChange(it) },
+                    // 键盘未拉起时提示语音手势；聚焦后（长按让位文本选择）只留纯占位
+                    placeholder = if (!locked && !focused) "$placeholder · 长按语音" else placeholder,
                     enabled = !locked,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    cursorBrush = SolidColor(colors.brand),
+                    modifier = Modifier.fillMaxWidth(),
+                    focusRequester = focusRequester,
                     maxLines = 5,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { focused = it.isFocused },
+                    onFocusedChange = { focused = it },
                 )
-                }
             }
-
-            // 次要动作跟主操作挤在同一行：停止 / 已手动处理是"运行中才会出现"的旁路出口，
-            // 不值得为它单独占掉一整行的高度
+            },
+            // 以下为输入行右侧动作：停止 / 已手动处理是"运行中才会出现"的旁路出口，
+            // 不值得单独占掉一整行的高度
+            actions = {
             when (mode) {
                 ComposerMode.GUIDE_AGENT -> AgentActionButton(
                     text = "已手动处理",
@@ -634,18 +596,16 @@ internal fun AgentComposer(
                 // 计划面板不走这一行（上面已经整块替换掉了），这里只为穷尽分支
                 ComposerMode.PLAN_APPROVAL -> Unit
             }
-        }
-
-        // 输入面下方的两枚同级开关：审核 AI / 先规划执行计划。
-        // 两者位置、字号、开关尺寸完全一致，各占一半宽度；不再跟一段解释文字并排，
-        // 开关本身就是完整语义（用户明确要求去掉「审核 AI」后的描述）。
-        if (mode == ComposerMode.NEW_TASK) {
+            },
+            // 输入面下方的两枚同级开关：审核 AI / 先规划执行计划。
+            // 两者位置、字号、开关尺寸完全一致，各占一半宽度；不再跟一段解释文字并排，
+            // 开关本身就是完整语义（用户明确要求去掉「审核 AI」后的描述）。
+            below = {
+            if (mode == ComposerMode.NEW_TASK) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = AppSpacing.Xs),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 ComposerToggleLabel(
                     label = "审核 AI",
@@ -660,7 +620,9 @@ internal fun AgentComposer(
                     modifier = Modifier.weight(1f),
                 )
             }
-        }
+            }
+            },
+        )
     }
 }
 
