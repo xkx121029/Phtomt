@@ -310,6 +310,39 @@ jobs:
             --notes-file release-notes.md \
             --prerelease
 
+      - name: Persist version counter
+        # 出包成功才把计数器推进一步（失败不烧号）。
+        # 位置必须在 Gitee 之前：Gitee 失败或被手动取消时，后面的步骤会被跳过；
+        # 若计数器写在 Gitee 之后，就会出现「GitHub Release 已发、号没涨」，下一跑重用同一个号
+        # （v0.2.9110-dev 与 v0.2.9110-beta 同 versionCode 就是这样产生的）。
+        # 回写固定在 nightly：它是计数器的权威副本，beta 跑完也写这里，
+        # 所以两条分支不会各长一个独立序列。GITHUB_TOKEN 造成的提交不会再次触发工作流。
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          for attempt in 1 2 3; do
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+            CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
+              -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+            # 若本地构建抢先推进过，就跳到它之后，绝不回退
+            TARGET=$CODE
+            if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
+            CONTENT=$(printf '#Auto-incremented by Gradle\n#%s\nBUILD_NUMBER=%s\n' \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET" | base64 -w0)
+            if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
+                 -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
+                 -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
+              echo "version.properties: $CUR -> $TARGET"
+              exit 0
+            fi
+            echo "回写冲突，重试 $attempt" >&2
+            sleep 3
+          done
+          echo "计数器回写失败：version.properties 仍停在 $CUR" >&2
+          exit 1
+
       - name: Publish Gitee Release
         # Gitee 不是构建目标，只是「发行版回传」：同一次 GitHub 构建、同一个 APK、
         # 同一个版本号与 tag 再挂一份到 Gitee 发行版，方便两边对照。
@@ -401,32 +434,4 @@ jobs:
             exit 0
           fi
 
-      - name: Persist version counter
-        # 出包成功才把计数器推进一步（失败不烧号）。
-        # 回写固定在 nightly：它是计数器的权威副本，beta 跑完也写这里，
-        # 所以两条分支不会各长一个独立序列。GITHUB_TOKEN 造成的提交不会再次触发工作流。
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CODE: ${{ steps.ver.outputs.version_code }}
-        run: |
-          for attempt in 1 2 3; do
-            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
-            CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
-              -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
-            # 若本地构建抢先推进过，就跳到它之后，绝不回退
-            TARGET=$CODE
-            if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
-            CONTENT=$(printf '#Auto-incremented by Gradle\n#%s\nBUILD_NUMBER=%s\n' \
-              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET" | base64 -w0)
-            if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
-                 -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
-                 -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
-              echo "version.properties: $CUR -> $TARGET"
-              exit 0
-            fi
-            echo "回写冲突，重试 $attempt" >&2
-            sleep 3
-          done
-          echo "计数器回写失败：version.properties 仍停在 $CUR" >&2
-          exit 1
+

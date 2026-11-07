@@ -443,9 +443,20 @@ CI 的号不是「读旧号 → 构建 → 让 Gradle 自增 → 按旧号打 ta
 | 落包 | 根 `build.gradle.kts` 第 76 行 + `app/build.gradle.kts` 第 117-118 行 | 注入值直接作为 `versionCode` / `0.2.<号>`，**不参与自增** |
 
 即 tag 与包内 `versionCode` 同源同值；`doLast` 只影响本机 `version.properties` 的落盘时机，CI 的计数器由
-`Persist version counter`（第 404 行起）在出包成功后用 API 推进，不读工作区文件。第 173 行新增
+`Persist version counter`（第 313 行起）在出包成功后用 API 推进，不读工作区文件。第 173 行新增
 `Assert APK version matches tag`，用 `aapt dump badging`（无 aapt 时退回 `output-metadata.json`）对最终 APK 硬断言，
 不一致就在发布前失败。
+
+**失败构建不消费号（CI 运行时证据）**：run 105（nightly）在 `Verify APK signature` 失败，
+`Upload APK artifact` / `Publish GitHub Release` / `Persist version counter` 全部 `skipped`——
+包只留在 runner 工作区，没有发出去，同一个号由后续 run 正常使用。
+
+**反向情况（已发生，已修）**：原顺序是「Publish GitHub Release → Publish Gitee → Persist」。
+run 94 / 95 / 97 都是 `Publish GitHub Release=success` 后 Gitee `failure`/`cancelled`，
+导致 `Persist=skipped`：GitHub 上已经有 tag 和 APK，但计数器没涨。下一跑（可能是另一渠道）
+读到同一个 COUNTER，算出同一个 versionCode、但 tag 带不同后缀，于是出现
+`v0.2.9110-dev` 与 `v0.2.9110-beta` 两份包同 versionCode 9110。
+现已把 `Persist` 挪到 `Publish Gitee` **之前**：Gitee 再怎么失败/取消，也不会把已发布的号留在原地。
 
 **已发生的错位（HTTP Range 只读 APK 内 `AndroidManifest.xml` 实测，27 个 Release 全查）**：
 
