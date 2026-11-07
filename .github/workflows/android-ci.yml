@@ -371,11 +371,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE: ${{ steps.ver.outputs.version_code }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
+          # fail-closed：3 次都写不进去就让这一次跑红。但失败必须留痕——
+          # 此时 GitHub Release 已经发出去了，只是号没涨，属于「已发布但计数器未推进」。
+          # 注意 Actions 的 bash 带 -e：读 sha/内容的 GET 失败会直接退出、跳过下面的提示，
+          # 所以这里先 set +e，把三类失败（读不到、PUT 被拒、重试耗尽）统一收口到最后那段。
+          set +e
+          FAIL_REASON=""
           for attempt in 1 2 3; do
-            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha 2>/dev/null)
             CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
-              -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+              -H "Accept: application/vnd.github.raw" 2>/dev/null | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
+            if [ -z "$SHA" ] || [ -z "$CUR" ]; then
+              FAIL_REASON="读不到 nightly 的 version.properties（sha='${SHA}' counter='${CUR}'）"
+              echo "读取失败：$FAIL_REASON，重试 $attempt" >&2
+              sleep 3
+              continue
+            fi
             # 若本地构建抢先推进过，就跳到它之后，绝不回退
             TARGET=$CODE
             if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
@@ -387,8 +400,17 @@ jobs:
               echo "version.properties: $CUR -> $TARGET"
               exit 0
             fi
+            FAIL_REASON="PUT 被拒（sha 冲突或权限不足），nightly 仍是 $CUR"
             echo "回写冲突，重试 $attempt" >&2
             sleep 3
           done
-          echo "计数器回写失败：version.properties 仍停在 $CUR" >&2
+          echo "::error title=版本计数器未推进::上一次已发布但计数器未推进 —— $TAG 的 GitHub Release 已发布（versionCode $CODE），nightly 的 version.properties 仍停在 ${CUR:-未知}：$FAIL_REASON。下一次运行会重复使用 versionCode $CODE，并因同名 tag $TAG 已存在而失败；请手动把 nightly 的 BUILD_NUMBER 改到 $((CODE + 1)) 或更大。"
+          {
+            echo "## ❌ 版本计数器未推进"
+            echo
+            echo "- 上一次已发布但计数器未推进：**$TAG 已发布**（versionCode \`$CODE\`），nightly 的 \`version.properties\` 仍停在 \`${CUR:-未知}\`。"
+            echo "- 失败原因：$FAIL_REASON"
+            echo "- 后果：下一次运行会**重复使用 versionCode \`$CODE\`**，并因同名 tag \`$TAG\` 已存在而在发布步骤失败。"
+            echo "- 处置：手动把 nightly 的 \`BUILD_NUMBER\` 改到 \`$((CODE + 1))\` 或更大，再重跑。"
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 1
