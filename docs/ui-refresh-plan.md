@@ -234,3 +234,112 @@ Agent / Coding 两套气质可切换。约束：Material 3 Expressive、emilkowa
 - 助理角色：已接入 `docs/assistant-role-contract.md` + `engine/runtime/AssistantRolePlan.kt`，
   按钮文案、说明、失败原因、跳转候选标签全部取自契约，UI 侧不再自写说法。
 - 编码任务类型：见「三」，需要引擎线在会话上透出 kind。
+
+## 九、缺陷修复：非成功结局的完成卡片活不到用户读完（本次）
+
+### 现象
+
+非成功结局（已中断 / 失败）时，完成卡片还在屏幕外：悬浮窗服务在卡片上屏前就被销毁，
+实测卡片存活不足 1.1s，用户读不到失败原因。成功态不受影响（卡片自然活满 8s）。
+
+### 根因
+
+销毁不是浮层自杀，是**引擎收尾主动收窗**：
+
+1. 任务队列 finally → `safeReset` → `AgentEngine.safeResetRuntime`，末尾
+   `FloatingWindowService.stop(appContext)`（`engine/AgentEngine.kt:848`）。
+2. 是否放行由守卫 `EngineRules.shouldFallbackReset` 决定，它返回 `phase != AgentState.Phase.DONE`
+   （`domain/rules/EngineRules.kt:30-33`）。
+3. 成功走 `DONE`，守卫拦下，服务不收，卡片自然活 8s；已中断/失败走 `IDLE`/`ERROR`，
+   守卫放行 → **任务一终态就收窗**，而此刻卡片通常还在「胶囊停留 800ms → 交接」这一段。
+4. 另有一处易漏：`stop()` 从 `Dispatchers.Default` 调用，不是主线程。
+
+修复前实测时序（9175，任务 `open the app called ZetaFakeApp`）：
+
+| 时刻 | 事件 |
+|---|---|
+| 21:37:08.852 | 引擎 give_up |
+| 21:37:09.241 | `done-card-build`（54ms） |
+| **21:37:10.897** | **`FGS stop call`（引擎收窗）** |
+| 21:37:12.358 | `done-card-apply`（1033ms） |
+| 21:37:13.6 | 帧里已是干净首页，卡片从未真正上屏 |
+
+即服务在卡片入场前 1.5s 已被杀，卡片实际可见 < 1.1s。
+
+### 修法（只改浮层，未动引擎）
+
+用户裁定：「销毁时机改为卡片被关闭/超时」，不用延长停留常量去凑。改动全部在
+`overlay/FloatingWindowService.kt`：
+
+| 位置 | 改动 | 作用 |
+|---|---|---|
+| `deferStopForDoneCard()`（L2882） | 卡片在屏或待交接 → 记 `stopPending` 并接管本次停止 | 不拒绝停止，只推迟执行 |
+| companion `stop()`（L3108） | 把停止决策投回主线程；被接管就不 `stopService` | 顺带修掉跨线程读写 `doneRoot`/`stopPending` |
+| `closeDoneCard()`（L2893） | 空卡片分支补 `stopSelf`；正常退场后 `stopSelf + removeWindow` | 真正销毁改由「卡片关闭/超时」驱动 |
+| `showDone` 卡片建不出的分支 | 清 `pendingDoneOutcome` | 否则 `stopPending` 永远挂着，前台通知退不掉 |
+
+`DONE_HOLD_MS = 800L`、`DONE_AUTO_CLOSE_MS = 8000L` 均未改动，成功链路一行未碰。
+
+### 修复后实测（9177）
+
+包：versionCode 9177 / 0.2.9177，`app/build/outputs/apk/debug/app-debug.apk`，
+71,331,629 B，构建 2026-11-08 06:13:12，emulator-5560。
+
+| 时刻 | 事件 |
+|---|---|
+| 22:27:56.272 | `translate intent=give_up` |
+| 22:27:59.263 | `done-card-build`（54ms） |
+| 22:28:03.069 | `done-card-apply`（2139ms） |
+| 22:28:03.084 | `done-card-first-frame` |
+| **22:28:11.114** | **`FGS stop call` = 首帧 + 8.03s**，由卡片自动关闭触发 |
+
+环形帧（1.1–2.1s/帧）：22:28:04.131 / 06.145 / 08.392 / 09.672 / 10.629 连续 5 帧卡片在线，
+11.144 已消失。**实际存活 8.03s**（修复前 < 1.1s）。
+
+卡片内容：标题「已中断」（= `TaskOutcome.ABORTED("已中断")`）、`耗时 5 分 35 秒 · 3 步`、
+原因「已放弃：AI 输出无法解析为意图」（本次引擎 give_up 原文）、正文「任务已放弃」、
+复制 / 完成 / 打开 Agent。
+
+### 证据边界（下一任必读）
+
+**本次没有「引擎请求 stop」的硬日志**——引擎不打印收窗动作。上面的结论是由三点推出来的：
+
+1. 同一 ABORTED 路径在修复前，收窗发生在 `done-card-build` 后约 1.6s；
+2. 本次卡片活过了那个时点（首帧在 build 后 3.8s 才出现）；
+3. 停止时刻精确落在卡片关闭（首帧 + 8.03s ≈ `DONE_AUTO_CLOSE_MS`）。
+
+这是**推断，不是日志直证**。若要硬证据，需在 `deferStopForDoneCard` 里加一行
+`HPA_PERF`（接管/放行）再跑一遍；本次按裁定未加。
+
+### 截图
+
+`docs/ui-shots/failfix2/`：`capsule-aborted-2208-00-372.png`（胶囊终态）、
+`card-visible-2208-04-131.png`、`card-visible-2208-09-629.png`（存活中）、
+`card-gone-2208-11-144.png`（消失）。
+
+## 十、截图纪律：raw → PNG 的 R/B 互换
+
+`adb shell screencap`（不带 `-p`）抓的是裸帧，头部 16 字节后是 4 字节/像素。
+按错误的字节序解析时 **R 与 B 会互换**，且人眼很容易把互换后的颜色当成"另一种设计"。
+本仓库确实踩过：同一块品牌绿，直出 PNG 是 `#58D8B0`，转换图是 `#B0D858`——
+正好互换；琥珀 `#A85A24` 互换后变成蓝色。
+
+### 判定规则
+
+1. 颜色结论**只能用直出 PNG**（`screencap -p`），或对像素做数值采样并写出 hex。
+2. 用裸帧转换图时必须标注转换脚本与通道顺序；没标注的，颜色相关结论一律不采信。
+3. 只做"有没有 / 停留多久 / 文字是什么"这类非颜色判断时，裸帧转换图仍可用，
+   但不得由它推出颜色结论。
+
+### 作废声明
+
+以下基于错误通道的颜色描述**全部撤回**，不要沿用：
+
+- `docs/ui-shots/handoff/`（h1–h4、f1）：「蓝色中断色」「绿底胶囊」等颜色描述作废；
+  其中"胶囊 → 卡片交接、各帧时间点、卡片字段文本"等非颜色结论仍然有效。
+- `docs/ui-shots/failfix/`（16 帧）：「红字失败原因」「绿底胶囊」「蓝点」等颜色描述作废；
+  其中"非成功结局卡片存活不足 1.1s"的时序结论仍然有效。
+
+正确颜色（9177 直出帧复测）：胶囊终态为琥珀 `#884820`（WAITING `#A85A24` 的 85% 合成），
+失败原因文字采样 `#A85820` ≈ `#A85A24`，与 `FloatingUi.phaseColor("WAITING")` 一致。
+中断用琥珀是刻意的（中断与未达成不是故障），不改为蓝。
