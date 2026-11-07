@@ -113,10 +113,13 @@ function onPrimaryClick() {
 
 onMounted(async () => {
   try {
-    const boot = await content.bootstrap()
-    site.value = boot.site || {}
-    releases.value = boot.releases || []
-    stats.value = boot.site?.stats || null
+    // 只取下载页真正要用的两份数据。原来走 content.bootstrap()，那会把功能特性、
+    // 常见问题、文档目录等一整包（原始 ~28KB）一起拉下来，这里一个字段都用不到。
+    // 主卡 + 历史表格只需要前 10 条，和原来 bootstrap 里的切法一致。
+    const [siteData, list] = await Promise.all([content.site(), content.releases('all', 10)])
+    site.value = siteData || {}
+    releases.value = Array.isArray(list) ? list : []
+    stats.value = siteData?.stats || null
   } catch {
     /* 读取失败时页面仍可展示骨架，下载按钮退回 GitHub Releases */
   } finally {
@@ -491,9 +494,10 @@ onMounted(async () => {
 }
 
 .empty {
-  display: grid;
-  gap: 8px;
+  /* 空态里是「一句话 + 一个行内链接」，用 grid 会把三段文字拆成三行带间隙，看着像渲染坏了 */
+  display: block;
   color: var(--ink-2);
+  line-height: 1.9;
 }
 
 .table-gap {
@@ -623,7 +627,9 @@ onMounted(async () => {
 
 @media (max-width: 880px) {
   .hero-card {
-    grid-template-columns: 1fr;
+    /* 用 minmax(0, 1fr) 而不是 1fr：按钮里的包名不换行，1fr 的 auto 最小宽度会被它撑到 424px，
+       360px 屏上整张卡片就横向溢出了 */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .hero-card__side {
@@ -631,6 +637,26 @@ onMounted(async () => {
     border-left: none;
     border-top: 1px solid var(--line);
     padding-top: 20px;
+  }
+}
+
+/* 窄屏放下「下载 HappyAgent-0.2.9160-stable.apk（68 MB）」这一整串要 424px，
+   不够宽就让按钮里的文字折行，而不是把卡片顶宽 */
+@media (max-width: 520px) {
+  .hero-card__actions .btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: start;
+  }
+
+  /* 窄屏下 td 默认折行会把「开发版」「2026-11-06」拆成两行；给表格一个下限宽度，
+     折行交给 .table-wrap 的横向滚动，列内容保持单行可读 */
+  .table-wrap table {
+    min-width: 460px;
+  }
+
+  .table-wrap td {
+    white-space: nowrap;
   }
 }
 </style>

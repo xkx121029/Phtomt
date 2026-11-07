@@ -4,6 +4,8 @@ dist-static/
 .env
 *.log
 .DS_Store
+# 质量检查的截图留档：体积大且随每次构建过期，只留在本地不提交
+qa-shots/
 # 运行时上传的 APK 与统计文件不入库（种子 APK 由 scripts/seed.mjs 从构建产物复制）
 public/apk/*.apk
 server/data/stats.json

@@ -260,8 +260,11 @@ export const content = {
       return site
     }),
   features: () => read('/api/features', (s) => s.features),
-  releases: (channel = 'all') =>
-    read(`/api/releases?channel=${encodeURIComponent(channel)}`, (s) => s.releases),
+  releases: (channel = 'all', limit) =>
+    read(
+      `/api/releases?channel=${encodeURIComponent(channel)}${limit ? `&limit=${limit}` : ''}`,
+      (s) => s.releases
+    ),
   latestRelease: () => read('/api/releases/latest', (s) => s.releases?.[0] || null),
   /**
    * 更新日志。有后端时服务端分页，静态站本地切片——

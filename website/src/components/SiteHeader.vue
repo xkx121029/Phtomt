@@ -364,6 +364,14 @@ watch(() => route.fullPath, () => {
   }
 }
 
+/* 360px 屏上「Happy Agent + 版本号」加上右侧三个图标会顶出视口 38px，
+   版本号本来就在页脚与下载页有，这里窄屏先让位 */
+@media (max-width: 520px) {
+  .brand__text em {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheet-enter-active .sheet__panel,
   .sheet-leave-active .sheet__panel {
