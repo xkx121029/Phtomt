@@ -169,6 +169,8 @@ class AgentEngine(
             shell = { cmd -> deviceShell(cmd) },
             memory = memory,
             virtualDisplay = { virtualDisplay },
+            // 模型直调 virtual_display launch 时同样校验落点：不符就降级
+            onVirtualDisplayUnusable = { reason -> abandonVirtualDisplay(reason) },
             // 失败时把"卡在哪一环"直接告诉用户与 AI，而不是统一报「需要注入通道」
             channelAdvice = { channelAdvice() },
         )
@@ -537,6 +539,8 @@ class AgentEngine(
         observe = { observe() },
         // 副屏模式：只有本任务真正挂上副屏时动作才走副屏通道
         virtualDisplay = { if (virtualDisplayActive) virtualDisplay else null },
+        // 副屏启动落点不符：整体降级主屏，并保留原因到下次成功创建
+        onVirtualDisplayUnusable = { reason -> abandonVirtualDisplay(reason) },
         // 执行通道偏好复用引擎持续缓存的设置快照，避免每条 shell 命令都挂起读 DataStore
         settingsSnapshot = { latestSettings },
     )
@@ -666,6 +670,8 @@ class AgentEngine(
 
     /** 若文本为中文则原样返回；否则调用 AI 翻译成简体中文（带缓存） */
     suspend fun translateText(text: String): String = aiTools.translateText(text)
+
+    suspend fun summarizeConversation(transcript: String): String = aiTools.summarizeConversation(transcript)
 
     /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
     private fun isMostlyChinese(text: String): Boolean = aiTools.isMostlyChinese(text)
@@ -1282,6 +1288,10 @@ class AgentEngine(
         log(AgentLog.Level.INFO, "任务开始：$task")
         log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
         val settingsVal = settings.settings.first()
+        // 用户显式放行明文时，日志里留一条明确的风险提示（Key 会明文上路）
+        if (settingsVal.allowCleartext && settingsVal.apiBaseUrl.trim().startsWith("http://", ignoreCase = true)) {
+            log(AgentLog.Level.WARN, com.phoneagent.core.ai.AiClient.CLEARTEXT_ALLOWED_NOTICE)
+        }
         // 任务级设置快照：执行阶段做记忆提炼/引导决策时复用同一份，避免中途读到的设置漂移
         taskSettingsVal = settingsVal
         // 动作模式：整个任务期间固定不动（每步读同一个值，档位不会中途漂移）
@@ -1471,6 +1481,8 @@ class AgentEngine(
                     ),
                     screenshot = null, temperature = 0.2,
                     protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
+                    structured = structuredOutputOf(settingsVal),
+                    guided = guidedDecodingOf(settingsVal),
                 ).getOrNull()?.action
             }
             if (refilled == null) break
@@ -1771,6 +1783,8 @@ class AgentEngine(
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
                 temperature = decisionTemperature(),
                 protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
+                structured = structuredOutputOf(settingsVal),
+                guided = guidedDecodingOf(settingsVal),
                 onRetry = { reason, waitMs ->
                     FloatingWindowService.resetThinking()
                     // 重试会重放文本，流式回显同步清零，避免界面叠加两遍
@@ -1935,6 +1949,14 @@ class AgentEngine(
                 visionDescription = desc?.takeIf { it.isNotBlank() }
                     ?: if (mainGetsImage) "（主模型直接读取截图，本步未生成文字描述）" else "",
                 screenshot = screenshot,
+                // 密码框输入的原文不能进本地轨迹：模型响应里对应的 text 字段换成「已输入 N 位」
+                receivedTextOverride = if (
+                    com.phoneagent.engine.execution.SensitiveInput.isPasswordInput(intent, snapshot)
+                ) {
+                    com.phoneagent.engine.execution.SensitiveInput.redactRawResponse(decision.rawContent, intent.text)
+                } else {
+                    null
+                },
             )
         }
 
@@ -2195,6 +2217,22 @@ class AgentEngine(
             settingsVal.endpoints.firstOrNull { it.id == AiClient.normalizeBaseUrl(baseUrl) }?.protocol,
         )
 
+    /**
+     * 决策请求是否带结构化输出约束：三态（自动/强制开/强制关）+ 模型库真实探测合流。
+     * 判定本身全在 [com.phoneagent.core.ai.StructuredOutputRouting]，这里只负责取设置。
+     */
+    private fun structuredOutputOf(settingsVal: AppSettings.Settings): Boolean =
+        com.phoneagent.core.ai.StructuredOutputRouting.resolve(
+            com.phoneagent.core.ai.StructuredOutputRouting.modeFromKey(settingsVal.structuredOutputMode),
+            com.phoneagent.core.ai.StructuredOutputRouting.probedOf(
+                settingsVal.catalog, settingsVal.apiBaseUrl, settingsVal.model,
+            ),
+        )
+
+    /** 端点级引导解码档位（手动档）；未入库端点按关闭处理 */
+    private fun guidedDecodingOf(settingsVal: AppSettings.Settings): com.phoneagent.core.ai.GuidedDecoding =
+        com.phoneagent.core.ai.StructuredOutputRouting.guidedOf(settingsVal.endpoints, settingsVal.apiBaseUrl)
+
     /** 每步决策温度：失败越频繁越鼓励换思路（对应温度文档第三节，逻辑下沉 EngineRules） */
     private fun decisionTemperature(): Double = EngineRules.decisionTemperature(consecutiveFailures)
 
@@ -2228,7 +2266,10 @@ class AgentEngine(
         visionModel: String,
         visionDescription: String,
         screenshot: android.graphics.Bitmap?,
-    ) = telemetry.recordStepTrace(step, sent, decision, visionSource, visionModel, visionDescription, screenshot)
+        receivedTextOverride: String? = null,
+    ) = telemetry.recordStepTrace(
+        step, sent, decision, visionSource, visionModel, visionDescription, screenshot, receivedTextOverride,
+    )
 
     private fun recordLocalStepTrace(step: Int, intent: AgentIntent) = telemetry.recordLocalStepTrace(step, intent)
 
@@ -2296,6 +2337,12 @@ class AgentEngine(
             com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail("系统直连执行异常：${it.message ?: "未知原因"}")
         }
         val ok = result is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok
+        // 三态：成功 / 已下发但读不到回执 / 根本没执行（见 VerifyRules.deviceOpsStatus）
+        val status = when (result) {
+            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok -> VerifyRules.STATUS_VERIFIED
+            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail ->
+                VerifyRules.deviceOpsStatus(ok = false, dispatched = result.dispatched)
+        }
         val text = when (result) {
             is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok -> result.text
             is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail -> result.reason
@@ -2306,11 +2353,16 @@ class AgentEngine(
         )
         recordStep(
             step, action,
-            VerifyRules.historyStatus(ok),
+            status,
             "", "", "直连结果：${text.take(200)}",
         )
         val title = "device_ops（$family${op.takeIf { it.isNotBlank() }?.let { "/$it" } ?: ""}）"
-        val injected = "$title ${if (ok) "结果" else "失败"}：\n$text"
+        val verdict = when (status) {
+            VerifyRules.STATUS_VERIFIED -> "结果"
+            VerifyRules.STATUS_UNVERIFIED -> "失败（命令已下发，但读不到回执，无法确认是否生效）"
+            else -> "失败（未执行：通道/参数/权限问题）"
+        }
+        val injected = "$title $verdict：\n$text"
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
         addConversation("assistant", injected)
         recordProgress(step, action)
@@ -2845,14 +2897,25 @@ class AgentEngine(
      * 降级是"明示"的——日志与界面事件流都会出现同一句原因，不再静默换屏。
      */
     private suspend fun degradeVirtualDisplay(reason: String): ScreenSnapshot {
+        abandonVirtualDisplay(reason)
+        return observe()
+    }
+
+    /**
+     * 把本任务从副屏降级到主屏，并把原因留在状态里（不立即重新观察）。
+     *
+     * 观察全失败与「启动落点不符」两条路径共用：`destroy(reason)` 会发布
+     * [com.phoneagent.device.screen.VirtualDisplayStatus.Degraded]，设置页不会再回到「已就绪」。
+     */
+    private suspend fun abandonVirtualDisplay(reason: String) {
+        if (!virtualDisplayActive) return
         virtualDisplayActive = false
-        runCatching { virtualDisplay?.destroy() }
+        runCatching { virtualDisplay?.destroy(reason) }
         log(
             AgentLog.Level.WARN,
             "副屏不可用，已降级主屏模式（后续步骤在主屏执行）：$reason",
         )
         pushFloating("副屏不可用，已降级主屏", "OBSERVING")
-        return observe()
     }
 
     // ---- 上下文注入已收口到 context/ContextInjector（重构批次 6），以下为转发 ----

@@ -67,6 +67,11 @@ internal class ExecutionCore(
      */
     private val virtualDisplay: () -> com.phoneagent.device.screen.VirtualDisplayAgent? = { null },
     /**
+     * 引擎钩子：副屏已不可用（启动落点不符等）。由引擎把本任务降级到主屏，
+     * 避免后续动作继续打在错误的屏上；默认空实现便于单测与旧调用点。
+     */
+    private val onVirtualDisplayUnusable: suspend (String) -> Unit = {},
+    /**
      * 任务级设置快照：引擎在主循环入口已读过一次设置，这里直接复用，
      * 避免每条 shell 命令都挂起读一次 DataStore（单任务上百步时是纯浪费的 IPC）。
      * 返回 null（引擎尚未读到）时回退到实时读取，行为与改造前一致。
@@ -293,8 +298,12 @@ internal class ExecutionCore(
                 target) { executor.scroll(target, action.direction ?: action.text ?: "up").isSuccess() }
             ActionType.TYPE_TEXT -> {
                 if ((x == null || y == null) && target == null) com.phoneagent.engine.execution.VerifyResult(false, "当前页面(${snapshot.packageName ?: "未知应用"})没有可输入控件(${action.target?.value ?: "坐标"})：目标应用若未打开，先 launch 到该应用，禁止在页面外凭空输入", "", "")
-                else verifier.executeAndVerify(baseline, target) { executor.typeText(action.text ?: "", target, x,
-                    y).isSuccess() }
+                else {
+                    val r = verifier.executeAndVerify(baseline, target) { executor.typeText(action.text ?: "", target, x,
+                        y).isSuccess() }
+                    // 密码框：只给结果打标记，正文仍交给执行器用；留档与回注会在执行层换成占位符
+                    if (target?.isPassword == true) r.copy(sensitiveInput = true) else r
+                }
             }
             ActionType.KEY -> handleKey(executor, action.keycode ?: "BACK")
             ActionType.LAUNCH -> {
@@ -506,8 +515,9 @@ internal class ExecutionCore(
             }
             ActionType.TYPE_TEXT -> {
                 val text = action.text ?: return fail("type 缺少要输入的文字")
-                // 输入注入到副屏当前焦点控件：AI 需先点击输入框
-                wrap(vd.typeText(text), "已在副屏输入：${text.take(30)}")
+                // 输入注入到副屏当前焦点控件：AI 需先点击输入框。
+                // 说明里只报位数：reason 会进本地轨迹与下一轮提示词，正文不能带出去
+                wrap(vd.typeText(text), "已在副屏输入 ${text.length} 位")
             }
             ActionType.KEY -> when ((action.keycode ?: "").uppercase()) {
                 "BACK" -> wrap(vd.keyevent(4), "已在副屏按返回")
@@ -527,7 +537,13 @@ internal class ExecutionCore(
                     delay(LAUNCH_SETTLE_MS)
                     ok("已在副屏启动应用: $pkg")
                 } else {
-                    fail("副屏启动应用失败: ${(r as com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail).reason}")
+                    val f = r as com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail
+                    // 命令成功但落点不符：把副屏整体降级，别让后续动作打在错的屏上
+                    if (f.landingMismatch) onVirtualDisplayUnusable(f.reason)
+                    fail(
+                        "副屏启动应用失败: ${f.reason}" +
+                            if (f.landingMismatch) "，已降级主屏" else "",
+                    )
                 }
             }
             ActionType.WAIT -> {
@@ -575,7 +591,9 @@ internal class ExecutionCore(
                     false, "闹钟参数不完整：缺少小时/分钟，未设定任何闹钟", "", "",
                 )
             }
-            com.phoneagent.device.clock.ClockRequests.alarm(hour, minute, action.repeatDays, action.text)
+            com.phoneagent.device.clock.ClockRequests.alarm(
+                hour, minute, action.repeatDays, action.text, action.alarmAtMillis,
+            )
         } else {
             val seconds = action.durationMs?.let { it / 1000 }
             if (seconds == null || seconds <= 0L) {
@@ -608,8 +626,12 @@ internal class ExecutionCore(
         TaskNoticeCenter.publishClock(outcome)
 
         return when (outcome) {
+            // 不能一律当成功：outcome.verified=false 表示「派发了但读不到回执」，
+            // 这里必须如实返回未确认，否则历史里会显示「已确认成功」——假成功。
+            // notDelivered=false 是因为动作确实已经交付过，禁止通道重试造成重复设置。
             is ClockOutcome.Done -> com.phoneagent.engine.execution.VerifyResult(
-                true, outcome.message, "", "", channel = outcome.kind.id, trace = trace,
+                outcome.verified, outcome.message, "", "",
+                notDelivered = false, channel = outcome.kind.id, trace = trace,
             )
             // 只把用户带到时钟页：不算成功，但动作没有再交付一次的风险，禁止通道重试造成重复设置
             is ClockOutcome.Manual -> com.phoneagent.engine.execution.VerifyResult(
@@ -787,7 +809,9 @@ internal class ExecutionCore(
             "type_text" -> {
                 val text = args["text"]?.takeIf { it.isNotEmpty() } ?: return fail("type_text 缺少参数 text")
                 val elem = strArg("target")?.let { elementOf(it) }
-                wrap(executor.typeText(text, elem, elem?.x, elem?.y))
+                val r = wrap(executor.typeText(text, elem, elem?.x, elem?.y))
+                // 端点直调同样受密码脱敏约束：留档/回注时正文换成占位符
+                if (elem?.isPassword == true) r.copy(sensitiveInput = true) else r
             }
             else -> fail("端点 $name 未实现")
         }

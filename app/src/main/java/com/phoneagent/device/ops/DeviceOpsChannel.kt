@@ -53,6 +53,8 @@ class DeviceOpsChannel(
     private val memory: MemoryStore? = null,
     /** 副屏代理：引擎按任务是否启用副屏提供；未启用时为 null */
     private val virtualDisplay: () -> VirtualDisplayAgent? = { null },
+    /** 引擎钩子：副屏启动落点不符时把任务降级主屏（默认空实现） */
+    private val onVirtualDisplayUnusable: suspend (String) -> Unit = {},
     /**
      * 注入通道不可用时的人话诊断（服务组件是否安装 / Shizuku 是否就绪 / 无线 ADB 是否连接）。
      *
@@ -67,8 +69,25 @@ class DeviceOpsChannel(
 
     sealed interface OpsResult {
         data class Ok(val text: String) : OpsResult
-        data class Fail(val reason: String) : OpsResult
+
+        /**
+         * 失败。
+         *
+         * [dispatched] 区分两种性质完全不同的失败：
+         * - `false`：**根本没执行**（通道不可用、参数非法、Provider 拒绝）；
+         * - `true`：**已下发但没读到回执/回读不一致**（命令交给系统了，只是无法确认结果）。
+         *
+         * 这个区分直接进步骤历史：前者是 ❌ 未生效，后者是 ⚠️ 已发送但不确认，
+         * 用户看到后该做的事完全不同（前者去修通道，后者去手机上核对）。
+         */
+        data class Fail(val reason: String, val dispatched: Boolean = false) : OpsResult
     }
+
+    /**
+     * 「已下发、读不到回执」的失败：命令确实交给系统了，但不能当成成功，也不能说成没执行。
+     * 单独一个函数是为了在 100 多处 Fail 站点里一眼能看出哪些属于这种情况。
+     */
+    private fun unconfirmed(reason: String): OpsResult.Fail = OpsResult.Fail(reason, dispatched = true)
 
     /**
      * 注入通道缺口的失败文案：保留原句（含替代路线），再追加端侧实测的通道诊断。
@@ -306,7 +325,7 @@ class DeviceOpsChannel(
                     "请先关掉正在用相机的应用（相机、扫码、视频通话），等半分钟散热后重试；" +
                     "也可以下拉控制中心手动打开",
             )
-            else -> OpsResult.Fail(
+            else -> unconfirmed(
                 "手电筒命令已下发，但 1.5 秒内没有收到「${if (on) "开" else "关"}」的状态回调，本机无法确认是否生效。" +
                     "请下拉控制中心看一眼手电筒图标${if (on) "是否已亮起" else "是否已熄灭"}；没变就手动点一下",
             )
@@ -392,7 +411,7 @@ class DeviceOpsChannel(
         return if (actual == value) {
             OpsResult.Ok("$label（回读 system/$key=$actual）")
         } else {
-            OpsResult.Fail(
+            unconfirmed(
                 "$label 未生效：回读 system/$key=${actual ?: "读不到"}，期望 $value。" +
                     "可能被自动亮度、省电模式或设备策略覆盖：请先关掉自动亮度/省电模式再试，" +
                     "也可以到 设置里手动改一次",
@@ -418,7 +437,7 @@ class DeviceOpsChannel(
                     return OpsResult.Ok("亮度已设为 $percent%（回读 ${current}%）")
                 }
             }
-            return OpsResult.Fail(
+            return unconfirmed(
                 "亮度未达到目标：回读 ${actual?.let { "$it%" } ?: "读不到"}，期望 $percent%。" +
                     "多半是「自动亮度」或省电策略在覆盖，请先关闭自动亮度再试，" +
                     "也可以到 设置 → 显示 → 亮度 手动拖到目标位置",
@@ -436,12 +455,18 @@ class DeviceOpsChannel(
     private fun volume(args: Map<String, String>): OpsResult {
         val am = context.getSystemService(AudioManager::class.java)
             ?: return OpsResult.Fail("音量：音频服务不可用。请按手机侧边的音量键手动调，或重启手机后再试")
+        // 未知 stream 不能静默落回 music：用户说"调铃声"，stream 拼错成 "rile" 就会去改媒体音量，
+        // 回读还是"成功"——AI 与用户都以为铃声变了。这里按写错 op 的同一口径回可选值。
         val stream = when ((args["stream"] ?: "music").lowercase()) {
+            "music", "media" -> AudioManager.STREAM_MUSIC
             "ring", "ringer" -> AudioManager.STREAM_RING
             "notification", "notify" -> AudioManager.STREAM_NOTIFICATION
             "alarm" -> AudioManager.STREAM_ALARM
-            "call", "voice" -> AudioManager.STREAM_VOICE_CALL
-            else -> AudioManager.STREAM_MUSIC
+            "call", "voice", "voice_call" -> AudioManager.STREAM_VOICE_CALL
+            else -> return OpsResult.Fail(
+                "volume 不支持 stream=${args["stream"]}；可选：music/ring/notification/alarm/call，" +
+                    "不传默认 music（媒体音量）",
+            )
         }
         val level = intArg(args, "level")
             ?: return OpsResult.Fail("volume 需要 level：0~100 的整数，例如 50 表示一半音量")
@@ -453,7 +478,7 @@ class DeviceOpsChannel(
             if (actual == target) {
                 OpsResult.Ok("音量已设为 $level%（回读 $actual/$max）")
             } else {
-                OpsResult.Fail(
+                unconfirmed(
                     "音量未生效：期望 $target/$max，回读 $actual/$max。" +
                         "勿扰模式或「固定音量」策略可能拦住了铃声/通知音量：" +
                         "请先关掉勿扰、或在 设置 → 声音 里检查「固定音量」，也可以直接按侧边音量键手动调",
@@ -513,7 +538,7 @@ class DeviceOpsChannel(
             if (actual == target) {
                 OpsResult.Ok("已切换到${when (target) { AudioManager.RINGER_MODE_VIBRATE -> "震动"; AudioManager.RINGER_MODE_SILENT -> "静音"; else -> "响铃" }}（回读 ringerMode=$actual）")
             } else {
-                OpsResult.Fail(
+                unconfirmed(
                     "声音模式未生效：期望 $target，回读 $actual（勿扰模式可能限制铃声）。" +
                         "请先关闭勿扰模式，或直接拨动手机侧边的静音/响铃开关",
                 )
@@ -549,7 +574,7 @@ class DeviceOpsChannel(
             return if (actual != null && expect(actual)) {
                 OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
             } else {
-                OpsResult.Fail("勿扰命令已执行，但回读 zen_mode=${actual ?: "读不到"}，与期望不一致。" +
+                unconfirmed("勿扰命令已执行，但回读 zen_mode=${actual ?: "读不到"}，与期望不一致。" +
                     "请下拉控制中心看一眼勿扰图标；部分 ROM 的「专注模式」会覆盖 zen_mode")
             }
         }
@@ -574,7 +599,7 @@ class DeviceOpsChannel(
             if (actual != null && expect(actual)) {
                 OpsResult.Ok("勿扰已${if (enable) "开启" else "关闭"}（回读 zen_mode=$actual）")
             } else {
-                OpsResult.Fail("勿扰切换未生效：回读 zen_mode=${actual ?: "读不到"}。" +
+                unconfirmed("勿扰切换未生效：回读 zen_mode=${actual ?: "读不到"}。" +
                     "请到 设置 → 通知 → 勿扰 手动确认一下")
             }
         }.getOrElse { OpsResult.Fail("勿扰切换失败：${it.message ?: "系统拒绝"}；请到 设置 → 通知 → 勿扰访问权限 检查授权") }
@@ -626,10 +651,10 @@ class DeviceOpsChannel(
         return when (actual) {
             if (enable) 1 else 0 ->
                 OpsResult.Ok("深色模式已${if (enable) "开启" else "关闭"}（回读 uimode night=$want）")
-            -1 -> OpsResult.Fail(
+            -1 -> unconfirmed(
                 "深色模式回读为「跟随时间自动切换」，命令没有定死档位。请到 设置 → 显示 → 深色模式 手动选「始终」",
             )
-            else -> OpsResult.Fail(
+            else -> unconfirmed(
                 "深色模式命令已执行，但回读=${if (actual == null) "读不到" else if (actual == 1) "yes" else "no"}，期望 $want，" +
                     "无法确认是否生效。请到 设置 → 显示 看一眼；系统回执：${out.trim().take(120)}",
             )
@@ -687,15 +712,18 @@ class DeviceOpsChannel(
             val noService = reply.contains("Can't find service", ignoreCase = true) ||
                 reply.contains("null NfcAdapter", ignoreCase = true) ||
                 reply.contains("Could not find provider", ignoreCase = true)
-            return OpsResult.Fail(
-                if (noService) {
+            return if (noService) {
+                // 服务拒绝执行：属于「根本没执行」
+                OpsResult.Fail(
                     "本机没有可用的 NFC 服务（系统回执：${reply.take(120).ifBlank { "无输出" }}）。" +
-                        "如果这台手机确实有 NFC，请到 设置 → 连接 → NFC 手动打开；没有 NFC 硬件就忽略这条指令"
-                } else {
+                        "如果这台手机确实有 NFC，请到 设置 → 连接 → NFC 手动打开；没有 NFC 硬件就忽略这条指令",
+                )
+            } else {
+                unconfirmed(
                     "NFC 命令已执行，但本机读不到 NFC 开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
-                        "请下拉控制中心看一眼 NFC 图标；系统回执：${reply.ifBlank { "无输出" }.take(200)}"
-                },
-            )
+                        "请下拉控制中心看一眼 NFC 图标；系统回执：${reply.ifBlank { "无输出" }.take(200)}",
+                )
+            }
         }
         val expect: (Int) -> Boolean = when (op) {
             "location" -> { v -> if (enable) v != 0 else v == 0 }
@@ -706,11 +734,11 @@ class DeviceOpsChannel(
             actual != null && expect(actual) ->
                 OpsResult.Ok("$op 已${if (enable) "开启" else "关闭"}（回读开关值=$actual）")
             actual != null ->
-                OpsResult.Fail("$op 命令已执行，但回读开关值=$actual，与期望${if (enable) "开启" else "关闭"}不一致。" +
+                unconfirmed("$op 命令已执行，但回读开关值=$actual，与期望${if (enable) "开启" else "关闭"}不一致。" +
                     "可能被飞行模式或设备策略阻止：请先关闭飞行模式/省电模式后重试，或下拉控制中心手动切换 $op")
             else ->
                 // 命令有回执但读不到真实开关值：不能当成设置成功，只能如实报「无法确认」
-                OpsResult.Fail("$op 命令已执行，但本机读不到开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
+                unconfirmed("$op 命令已执行，但本机读不到开关状态，无法确认是否${if (enable) "开启" else "关闭"}。" +
                     "请下拉控制中心看一眼 $op 图标；系统回执：${out.ifBlank { "无输出" }.take(200)}")
         }
     }
@@ -766,7 +794,7 @@ class DeviceOpsChannel(
             if (actual == value) return OpsResult.Ok("$ns/$key 已写入 $value（回读一致）")
             delay(300)
         }
-        return OpsResult.Fail(
+        return unconfirmed(
             "$ns/$key 写入未生效：回读=${actual ?: "读不到"}，期望 $value。" +
                 "请确认 key 名称拼写正确；有些项被系统锁定改不了，就不要继续硬改",
         )
@@ -806,7 +834,7 @@ class DeviceOpsChannel(
                 if (actual == text) {
                     OpsResult.Ok("已写入剪贴板（回读一致，${text.length} 字）")
                 } else {
-                    OpsResult.Fail(
+                    unconfirmed(
                         "剪贴板写入未确认：回读为「${actual?.take(40) ?: "读不到"}」。" +
                             "Android 10+ 限制后台读剪贴板，请把本应用切到前台后再让我写一次",
                     )
@@ -851,14 +879,14 @@ class DeviceOpsChannel(
                             // 命令有回执不等于开关变了：回查同一时分的闹钟行
                             val row = alarmRow(queryAlarms().orEmpty(), hour, minute)
                             when {
-                                row == null -> OpsResult.Fail(
+                                row == null -> unconfirmed(
                                     "已执行${if (enable) "启用" else "关闭"}，但回查不到 $hour:${"%02d".format(minute)} 的闹钟，" +
                                         "无法确认是否生效。请打开时钟应用看一眼这条闹钟的开关",
                                 )
                                 row.contains("enabled=$flag") -> OpsResult.Ok(
                                     "已${if (enable) "启用" else "关闭"} $hour:${"%02d".format(minute)} 的闹钟（回查 enabled=$flag）",
                                 )
-                                else -> OpsResult.Fail(
+                                else -> unconfirmed(
                                     "闹钟开关未改动：回查 $hour:${"%02d".format(minute)} 仍是 ${Regex("enabled=(\\d)")
                                         .find(row)?.groupValues?.get(1) ?: "未知"}。" +
                                         "部分厂商时钟不开放该字段，请打开时钟应用手动切换",
@@ -883,7 +911,7 @@ class DeviceOpsChannel(
                     // 删除命令有回执不等于行没了：回查一遍，还在就如实报失败
                     val after = queryAlarms().orEmpty()
                     if (after.contains("hour=$hour") && after.contains("minutes=$minute")) {
-                        OpsResult.Fail(
+                        unconfirmed(
                             "已执行删除，但回查时钟 Provider 仍能看到 $hour:${"%02d".format(minute)} 的闹钟。" +
                                 "请打开时钟应用手动删除这条",
                         )
@@ -903,7 +931,7 @@ class DeviceOpsChannel(
                             if (alarmRow(queryAlarms().orEmpty(), nh, nm) != null) {
                                 OpsResult.Ok("闹钟已改为 $nh:${"%02d".format(nm)}（回查新时间已存在）")
                             } else {
-                                OpsResult.Fail(
+                                unconfirmed(
                                     "改闹钟时间的命令已执行，但回查不到 $nh:${"%02d".format(nm)} 的闹钟，" +
                                         "无法确认是否生效。请打开时钟应用看一眼列表",
                                 )
@@ -1043,7 +1071,7 @@ class DeviceOpsChannel(
         }
         // 写入命令有回执不等于事件真的在库里：回查同名同开始时间的那条
         val row = findCalendarEvent("title=${quote(title)} AND dtstart=$startMs")
-            ?: return OpsResult.Fail(
+            ?: return unconfirmed(
                 "日历写入命令已执行，但回查不到「$title」这条日程，无法确认是否真的写入。" +
                     "请打开日历应用看一眼当天有没有这条；也可以先用 calendar_op list 确认。",
             )
@@ -1091,7 +1119,7 @@ class DeviceOpsChannel(
         }
         // 命令有回执不等于字段改了：按 _id 回查，逐个核对本次提交的值
         val row = findCalendarEvent("_id=$id")
-            ?: return OpsResult.Fail(
+            ?: return unconfirmed(
                 "更新命令已执行，但回查不到 id=$id 的日程，无法确认是否生效。" +
                     "若列表里也没有这条，说明它已被删除；否则请打开日历应用手动改一次。",
             )
@@ -1099,7 +1127,7 @@ class DeviceOpsChannel(
         return if (missing.isEmpty()) {
             OpsResult.Ok("已更新日程 id=$id（回查 ${expects.joinToString("、")} 均已生效）")
         } else {
-            OpsResult.Fail(
+            unconfirmed(
                 "日程已改动，但回查 ${missing.joinToString("、")} 与提交值不一致，可能被日历应用拒绝。" +
                     "请打开日历应用核对该日程。",
             )
@@ -1120,7 +1148,7 @@ class DeviceOpsChannel(
         }
         // 删除同样要看结果：按 _id 再查一次，还能查到就是没删掉
         if (findCalendarEvent("_id=$id") != null) {
-            return OpsResult.Fail(
+            return unconfirmed(
                 "删除命令已执行，但回查 id=$id 的日程还在，删除没有生效。请打开日历应用手动删除这条。",
             )
         }
@@ -1193,7 +1221,12 @@ class DeviceOpsChannel(
                 val pkg = resolvePackage(app) ?: app
                 // 记下最近一次在副屏里拉起的是谁：present 不带 app 时靠它把画面投回主屏
                 lastVirtualApp = pkg
-                outcome(agent.launch(pkg), "副屏启动应用")
+                val res = agent.launch(pkg)
+                // 命令成功但应用落在别的屏：副屏整体降级，后续动作不再打在错的屏上
+                if (res is VirtualDisplayAgent.Outcome.Fail && res.landingMismatch) {
+                    onVirtualDisplayUnusable(res.reason)
+                }
+                outcome(res, "副屏启动应用")
             }
             "tap" -> {
                 val x = intArg(args, "x"); val y = intArg(args, "y")
@@ -1533,7 +1566,7 @@ class DeviceOpsChannel(
         return if (pid.isEmpty()) {
             OpsResult.Ok("已${if (op == "force_stop") "强制停止" else "清理后台"}：$pkg（回读进程列表已无该应用）")
         } else {
-            OpsResult.Fail(
+            unconfirmed(
                 "$op 命令已执行，但 $pkg 仍在运行（pid=$pid），无法确认是否已停止。" +
                     "若它正在前台，请先切到别的应用再试；仍不行就手动在多任务里划掉。" +
                     "系统回执：${out.trim().take(120).ifEmpty { "无输出" }}",

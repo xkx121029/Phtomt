@@ -116,6 +116,8 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                         value = st.virtualDisplayEnabled,
                     ) { enabled ->
                         st.virtualDisplayEnabled = enabled
+                        // 用户手动关闭开关：清掉上一轮的降级原因/诊断，重新打开时从「已就绪」开始
+                        if (!enabled) com.phoneagent.device.screen.VirtualDisplayAgent.clearStatus()
                         save()
                     }
                     if (st.virtualDisplayEnabled) {

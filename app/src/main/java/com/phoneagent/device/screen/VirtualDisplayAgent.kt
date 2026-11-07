@@ -8,6 +8,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/** 状态里展示的降级时间（HH:mm）：用 Calendar 拼，避免 SimpleDateFormat 的线程安全问题 */
+private fun clockOf(atMillis: Long): String {
+    val c = java.util.Calendar.getInstance().apply { timeInMillis = atMillis }
+    return String.format(
+        java.util.Locale.getDefault(),
+        "%02d:%02d",
+        c.get(java.util.Calendar.HOUR_OF_DAY),
+        c.get(java.util.Calendar.MINUTE),
+    )
+}
+
 /**
  * 副屏状态：设置页与引擎日志读同一份事实，避免"开关看着开着，但没人知道卡在哪一环"。
  *
@@ -24,6 +35,12 @@ sealed interface VirtualDisplayStatus {
     data class Unsupported(val reason: String) : VirtualDisplayStatus
     /** 失败：写入被拒、shell 超时等，原因可展开看诊断 */
     data class Failed(val reason: String) : VirtualDisplayStatus
+    /**
+     * 运行中降级到主屏：副屏曾创建成功，但观察或启动落点校验失败。
+     * 保留原因与发生时间，直到下次成功创建副屏或用户手动关开关——
+     * 不能在任务收尾时被 destroy() 覆盖成"已就绪"。
+     */
+    data class Degraded(val reason: String, val atMillis: Long) : VirtualDisplayStatus
 
     /** 设置页展示口径 */
     data class Presentation(val title: String, val detail: String, val isFailure: Boolean)
@@ -37,6 +54,12 @@ sealed interface VirtualDisplayStatus {
             "已启用 display=${displayId}",
             "任务正在副屏上运行，不占用当前屏幕",
             isFailure = false,
+        )
+        // 降级原因优先于"Shizuku 掉线"：那正是用户最需要看到的那条事实
+        this is Degraded -> Presentation(
+            "已降级到主屏",
+            "原因：$reason（${clockOf(atMillis)}）· 本轮任务已在主屏继续",
+            isFailure = true,
         )
         !shizukuReady -> Presentation(
             "未激活 Shizuku",
@@ -83,6 +106,10 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         private const val SETTINGS_KEY = "overlay_display_devices"
         /** 等待系统真正挂上副屏的轮询上限 */
         private const val CREATE_TIMEOUT_MS = 8_000L
+        /** 写入后的回读窗口：settings put 的命令回执不可信，以回读到的设置值为准 */
+        private const val WRITE_VERIFY_TIMEOUT_MS = 5_000L
+        /** 起应用后回读任务栈落点的窗口：`am start --display` 成功不代表应用真的在副屏 */
+        private const val LAUNCH_VERIFY_TIMEOUT_MS = 3_000L
         /** 删除设置项后等待系统回收旧副屏的上限：不等它回收，新屏可能复用同一个 id，diff 就永远等不到 */
         private const val TEARDOWN_TIMEOUT_MS = 3_000L
         private const val POLL_INTERVAL_MS = 300L
@@ -103,6 +130,73 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         var lastDiagnostic: String = ""
             private set
 
+        /**
+         * 销毁后的状态迁移（纯函数，便于单测）。
+         *
+         * - 运行时降级（[degradedReason] 非空）：保留 [VirtualDisplayStatus.Degraded]，不回落到 Idle；
+         * - 正常收尾 / 用户主动关闭：原来有活动副屏才回 Idle；
+         * - 其余（创建失败等）：原样保留，避免把该给用户看的失败原因擦掉。
+         */
+        internal fun statusAfterDestroy(
+            previous: VirtualDisplayStatus,
+            degradedReason: String?,
+            atMillis: Long,
+        ): VirtualDisplayStatus = when {
+            degradedReason != null -> VirtualDisplayStatus.Degraded(degradedReason, atMillis)
+            previous is VirtualDisplayStatus.Active -> VirtualDisplayStatus.Idle
+            else -> previous
+        }
+
+        /** 起应用落点判定（纯函数）：见到副屏即成功；只在别的屏上出现或始终读不到都算失败 */
+        internal fun landingResult(expectedDisplayId: Int, seen: Set<Int>, waitedMs: Long): Outcome = when {
+            seen.contains(expectedDisplayId) -> Outcome.Ok("display=$expectedDisplayId")
+            seen.isNotEmpty() -> Outcome.Fail(
+                "应用未落在副屏（任务实际在 display=${seen.sorted().joinToString("/")}，期望 $expectedDisplayId）",
+                landingMismatch = true,
+            )
+            else -> Outcome.Fail(
+                "应用未落在副屏（等待 ${waitedMs}ms 后仍未读到该应用的任务栈）",
+                landingMismatch = true,
+            )
+        }
+
+        /**
+         * 解析 `am stack list`：按 RootTask 分块，块内出现该包名的 taskId 即记下块的 displayId。
+         * 同时兼容旧版 `Stack id=` 输出。
+         */
+        internal fun displayIdsInStackList(output: String, pkg: String): Set<Int> {
+            val ids = mutableSetOf<Int>()
+            var current: Int? = null
+            val displayRe = Regex("""displayId=(\d+)""")
+            for (raw in output.lineSequence()) {
+                val line = raw.trim()
+                if (line.startsWith("RootTask") || line.startsWith("Stack id=")) {
+                    current = displayRe.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                } else if (line.startsWith("taskId=") && line.contains("$pkg/")) {
+                    current?.let { ids.add(it) }
+                }
+            }
+            return ids
+        }
+
+        /** 解析 `dumpsys activity activities`：按 `displayId=N` 分段，段内 Task 的 I=包名/ 归属该屏 */
+        internal fun displayIdsInActivityDump(output: String, pkg: String): Set<Int> {
+            val ids = mutableSetOf<Int>()
+            var current: Int? = null
+            val displayRe = Regex("""displayId=(\d+)""")
+            for (raw in output.lineSequence()) {
+                val line = raw.trim()
+                if (line.startsWith("displayId=")) {
+                    current = displayRe.find(line)?.groupValues?.get(1)?.toIntOrNull()
+                    continue
+                }
+                if (line.contains("Task{") && line.contains("I=$pkg/")) {
+                    current?.let { ids.add(it) }
+                }
+            }
+            return ids
+        }
+
         private fun publish(next: VirtualDisplayStatus, diagnostic: String = "") {
             lastDiagnostic = diagnostic
             _status.value = next
@@ -119,6 +213,9 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
             runCatching { shizuku.executeShell("settings delete global $SETTINGS_KEY") }
             runCatching { shizuku.executeShell("rm -f $SHOT_PATH") }
         }
+
+        /** 用户手动关闭开关：清掉上一轮的降级原因/诊断，回到就绪态 */
+        fun clearStatus() = publish(VirtualDisplayStatus.Idle)
     }
 
     /** 已创建的副屏 displayId；null 表示未创建 */
@@ -136,7 +233,12 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
     /** 一次操作的执行结果 */
     sealed class Outcome {
         data class Ok(val output: String = "") : Outcome()
-        data class Fail(val reason: String) : Outcome()
+
+        /**
+         * [landingMismatch] 为 true 表示命令执行成功、但回读发现应用没落在副屏上。
+         * 调用方据此把副屏整体降级主屏，而不是继续在错误的屏上跑后续动作。
+         */
+        data class Fail(val reason: String, val landingMismatch: Boolean = false) : Outcome()
     }
 
     /** 当前副屏是否就绪 */
@@ -160,17 +262,25 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         clearOverlaySetting()
         waitOverlayGone()
         val before = listDisplayIds()
-        // 先清掉历史残留再写入，避免旧条目与新规格拼接产生多块屏
-        shizuku.executeShell("settings put global $SETTINGS_KEY $OVERLAY_SPEC").let {
-            if (it is ShizukuManager.ShellResult.Failure) {
-                val reason = "写入模拟显示设置失败：${it.reason}"
-                publish(
-                    VirtualDisplayStatus.Failed(reason),
-                    "$reason\n命令：settings put global $SETTINGS_KEY $OVERLAY_SPEC",
-                )
-                return Outcome.Fail(reason)
-            }
+        // 先清掉历史残留再写入，避免旧条目与新规格拼接产生多块屏。
+        // 判据是「回读」而不是「命令退出」：Shizuku 跑 settings put 时子进程会继承 stdout，
+        // 命令回执可能变成 "process hasn't exited"，但设置往往已经生效——拿回执判失败是误判。
+        val put = shizuku.executeShell("settings put global $SETTINGS_KEY $OVERLAY_SPEC")
+        val verified = awaitOverlayValue(OVERLAY_SPEC, WRITE_VERIFY_TIMEOUT_MS)
+        if (verified !is OverlayRead.Value || verified.raw != OVERLAY_SPEC) {
+            val reason = describeWriteFailure(put, verified)
+            publish(
+                VirtualDisplayStatus.Failed(reason),
+                buildString {
+                    appendLine(reason)
+                    appendLine("命令：settings put global $SETTINGS_KEY $OVERLAY_SPEC")
+                    append("命令回执：${describeResult(put)}")
+                },
+            )
+            return Outcome.Fail(reason)
         }
+        // 回读已生效，但命令回执是失败：如实记一条「未返回但已生效」，不冒充命令成功
+        val commandNotReturned = put is ShizukuManager.ShellResult.Failure
         val deadline = System.currentTimeMillis() + CREATE_TIMEOUT_MS
         while (System.currentTimeMillis() < deadline) {
             val fresh = listDisplayIds() - before
@@ -178,7 +288,14 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
             val candidate = fresh.firstOrNull { it != 0 }
             if (candidate != null) {
                 displayId = candidate
-                publish(VirtualDisplayStatus.Active(candidate), "")
+                publish(
+                    VirtualDisplayStatus.Active(candidate),
+                    if (commandNotReturned) {
+                        "写入命令未返回但已生效：回读 $SETTINGS_KEY=$OVERLAY_SPEC，display=$candidate"
+                    } else {
+                        ""
+                    },
+                )
                 return Outcome.Ok("display=$candidate")
             }
             delay(POLL_INTERVAL_MS)
@@ -196,16 +313,117 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         Outcome.Fail(reason)
     }
 
-    /** 释放副屏：清空 overlay 设置并复位状态（幂等，未创建时也会清一遍设置项） */
-    suspend fun destroy() = mutex.withLock {
+    /**
+     * 释放副屏：清空 overlay 设置并复位状态（幂等，未创建时也会清一遍设置项）。
+     *
+     * [degradedReason] 区分两条路径：
+     * - `null`：任务正常收尾 / 用户手动关闭 → 原来有活动副屏才回 Idle；
+     * - 非空：运行时降级（观察全失败、启动落点不符）→ 发布 [VirtualDisplayStatus.Degraded]，
+     *   把原因与发生时间留在设置页，直到下次成功创建副屏或用户关闭开关。
+     */
+    suspend fun destroy(degradedReason: String? = null) = mutex.withLock {
+        val previous = _status.value
+        val wasActive = previous is VirtualDisplayStatus.Active
+        val atMillis = System.currentTimeMillis()
         displayId = null
         if (shizuku.isAvailable()) {
-            clearOverlaySetting()
+            // 删除与写入同口径：settings delete 也可能不返回，以回读是否清空为准
+            val del = runCatching { shizuku.executeShell("settings delete global $SETTINGS_KEY") }.getOrNull()
+            val cleared = awaitOverlayCleared(TEARDOWN_TIMEOUT_MS + WRITE_VERIFY_TIMEOUT_MS)
+            if (!cleared && wasActive) {
+                val current = when (val read = readOverlaySetting()) {
+                    is OverlayRead.Value -> read.raw ?: ""
+                    OverlayRead.Unreadable -> "（回读失败）"
+                }
+                val reason = "关闭副屏失败：设置项未清空（回读「$current」）"
+                if (degradedReason == null) {
+                    publish(
+                        VirtualDisplayStatus.Failed(reason),
+                        buildString {
+                            appendLine(reason)
+                            appendLine("命令：settings delete global $SETTINGS_KEY")
+                            append("命令回执：${describeResult(del)}")
+                        },
+                    )
+                    return@withLock
+                }
+                // 降级路径：主结论仍是降级原因，关闭异常只补进诊断，不覆盖原因
+                publish(
+                    VirtualDisplayStatus.Degraded(degradedReason, atMillis),
+                    buildString {
+                        appendLine("降级原因：$degradedReason")
+                        appendLine(reason)
+                        appendLine("命令：settings delete global $SETTINGS_KEY")
+                        append("命令回执：${describeResult(del)}")
+                    },
+                )
+                return@withLock
+            }
             runCatching { shizuku.executeShell("rm -f $SHOT_PATH") }
         }
-        // 只有"确实在运行"才回到就绪态：刚失败的 Unsupported/Failed 要留在设置页上，
-        // 否则任务一收尾就把失败原因擦掉了，用户永远看不到该看到的诊断
-        if (_status.value is VirtualDisplayStatus.Active) publish(VirtualDisplayStatus.Idle)
+        // 正常收尾才回 Idle；运行时降级必须保留原因（见 statusAfterDestroy）
+        publish(statusAfterDestroy(previous, degradedReason, atMillis))
+    }
+
+    /** settings 回读结果：Value(raw=null) 表示未设置；Unreadable 表示 shell 读不出来 */
+    private sealed interface OverlayRead {
+        data class Value(val raw: String?) : OverlayRead
+        data object Unreadable : OverlayRead
+    }
+
+    /** 回读 overlay_display_devices：`settings get` 未设置时输出 "null" */
+    private suspend fun readOverlaySetting(): OverlayRead =
+        when (val r = shizuku.executeShell("settings get global $SETTINGS_KEY")) {
+            is ShizukuManager.ShellResult.Success ->
+                OverlayRead.Value(r.output.trim().takeUnless { it.isBlank() || it == "null" })
+            is ShizukuManager.ShellResult.Failure -> OverlayRead.Unreadable
+        }
+
+    /** 轮询等回读到期望值；超时返回最后一次读数（用于失败文案） */
+    private suspend fun awaitOverlayValue(expected: String, timeoutMs: Long): OverlayRead {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val read = readOverlaySetting()
+            if (read is OverlayRead.Value && read.raw == expected) return read
+            if (System.currentTimeMillis() >= deadline) return read
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
+    /** 轮询等设置项被清空（读为 null）；读失败按未清空处理 */
+    private suspend fun awaitOverlayCleared(timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            val read = readOverlaySetting()
+            if (read is OverlayRead.Value && read.raw == null) return true
+            if (System.currentTimeMillis() >= deadline) return false
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
+    private fun describeResult(result: ShizukuManager.ShellResult?): String = when (result) {
+        null -> "调用超时或通道不可用"
+        is ShizukuManager.ShellResult.Success -> "退出码 0"
+        is ShizukuManager.ShellResult.Failure -> "退出码 ${result.exitCode}：${result.reason}"
+    }
+
+    /**
+     * 写入失败的两种口径必须分开：
+     * - 命令没回来（超时 / Shizuku 的 "process hasn't exited"）：可能还在跑，但回读没看到目标值；
+     * - 命令正常返回但设置没变：是真的没写进去。
+     */
+    private fun describeWriteFailure(result: ShizukuManager.ShellResult, read: OverlayRead): String {
+        val current = when (read) {
+            is OverlayRead.Value -> read.raw ?: "（未设置）"
+            OverlayRead.Unreadable -> "（回读失败）"
+        }
+        val reason = (result as? ShizukuManager.ShellResult.Failure)?.reason.orEmpty()
+        val nonReturning = reason.contains("超时") || reason.contains("hasn't exited")
+        return if (nonReturning) {
+            "写入模拟显示设置失败：命令超时未返回，且回读未看到目标值（回读「$current」）"
+        } else {
+            "写入模拟显示设置失败：命令已返回但设置未生效（回读「$current」）"
+        }
     }
 
     /** 删除 overlay 设置项（失败不打断调用方：ensure 后面还有真正的判定） */
@@ -232,17 +450,64 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         val id = displayId ?: return Outcome.Fail("虚拟副屏未创建")
         val target = pkg.trim().trim('"')
         if (target.isBlank()) return Outcome.Fail("应用包名为空")
-        if (target.contains('/')) return run("am start --display $id -n $target")
-        val resolved = when (val r = shizuku.executeShell("cmd package resolve-activity --brief $target")) {
-            is ShizukuManager.ShellResult.Success ->
-                r.output.lineSequence().map { it.trim() }.lastOrNull { it.contains('/') }
-            is ShizukuManager.ShellResult.Failure -> null
-        }
-        return if (resolved != null) {
-            run("am start --display $id -n $resolved")
+        val started = if (target.contains('/')) {
+            run("am start --display $id -n $target")
         } else {
-            // 解析不到入口（少数 ROM 的 resolve-activity 行为差异）：monkey 同样支持指定 display
-            run("monkey -p $target --display $id -c android.intent.category.LAUNCHER 1")
+            val resolved = when (val r = shizuku.executeShell("cmd package resolve-activity --brief $target")) {
+                is ShizukuManager.ShellResult.Success ->
+                    r.output.lineSequence().map { it.trim() }.lastOrNull { it.contains('/') }
+                is ShizukuManager.ShellResult.Failure -> null
+            }
+            if (resolved != null) {
+                run("am start --display $id -n $resolved")
+            } else {
+                // 解析不到入口（少数 ROM 的 resolve-activity 行为差异）：monkey 同样支持指定 display
+                run("monkey -p $target --display $id -c android.intent.category.LAUNCHER 1")
+            }
+        }
+        if (started is Outcome.Fail) return started
+        // 命令成功 ≠ 落在副屏：应用已有主屏任务时，部分系统会把那个任务直接带到前台，
+        // `am start --display` 仍是退出码 0。必须回读任务栈归属，否则后续动作会打错屏。
+        return awaitLanding(target.substringBefore('/'), id)
+    }
+
+    /**
+     * 起应用后回读任务栈所在 display（`am stack list` 为主，旧版本退回 `dumpsys activity activities`）。
+     *
+     * 判定交给纯函数 [landingResult]：见到副屏即成功；只在别的屏上出现、或窗口内始终读不到，
+     * 都返回 [Outcome.Fail] 且 `landingMismatch = true`，由引擎降级主屏。
+     */
+    private suspend fun awaitLanding(pkg: String, expectedDisplayId: Int): Outcome {
+        val deadline = System.currentTimeMillis() + LAUNCH_VERIFY_TIMEOUT_MS
+        while (true) {
+            val seen = packageDisplayIds(pkg)
+            if (seen.contains(expectedDisplayId) || seen.isNotEmpty()) {
+                return landingResult(expectedDisplayId, seen, LAUNCH_VERIFY_TIMEOUT_MS)
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                return landingResult(expectedDisplayId, emptySet(), LAUNCH_VERIFY_TIMEOUT_MS)
+            }
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
+    /** 读该包名当前任务栈所在的 display 集合；两种 dump 都读不到时返回空集（按失败处理） */
+    private suspend fun packageDisplayIds(pkg: String): Set<Int> {
+        when (val r = shizuku.executeShell("am stack list")) {
+            is ShizukuManager.ShellResult.Success -> {
+                val ids = displayIdsInStackList(r.output, pkg)
+                // 输出里没有 RootTask/Stack 块说明命令可用但格式不认识，退回 activity dump
+                if (ids.isNotEmpty() || r.output.contains("RootTask") || r.output.contains("Stack id=")) {
+                    return ids
+                }
+            }
+            is ShizukuManager.ShellResult.Failure -> Unit
+        }
+        val dump = shizuku.executeShell("dumpsys activity activities")
+        return if (dump is ShizukuManager.ShellResult.Success) {
+            displayIdsInActivityDump(dump.output, pkg)
+        } else {
+            emptySet()
         }
     }
 
