@@ -23,17 +23,40 @@ CI 只负责建发行版并在 body 里写 GitHub 直链，附件由本脚本补
     4  GitHub / Gitee 接口调用失败
     5  服务端字节数校验不通过
 """
+import os
+import sys
+import time
+
+
+def _boot(msg):
+    """启动面包屑：只用内建模块直写日志，绝不经过 logging。
+
+    计划任务里出现过 Python 卡在 import 阶段、连一行日志都没有的情况，
+    没有这行就分不清「任务没跑」和「跑了但卡在启动」。所以它必须排在
+    所有重依赖（logging / subprocess / urllib）之前，且本身不能失败退出。
+    """
+    try:
+        state = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "hpa")
+        os.makedirs(state, exist_ok=True)
+        with open(os.path.join(state, "gitee-attach.log"), "a", encoding="utf-8") as f:
+            f.write("%s BOOT %s pid=%d argv=%s\n" % (
+                time.strftime("%Y-%m-%d %H:%M:%S"), msg, os.getpid(), sys.argv[1:]))
+    except Exception:
+        pass
+
+
+_boot("开始")
+
 import argparse
 import json
 import logging
 import logging.handlers
-import os
 import re
 import subprocess
-import sys
-import time
 import urllib.error
 import urllib.request
+
+_boot("依赖加载完成")
 
 GH_REPO = "xkx121029/Phtomt"
 GITEE_API = "https://gitee.com/api/v5/repos/xkx1029/Phtomt"
@@ -257,17 +280,20 @@ def main():
     setup_logging()
     # 计划任务每 30 分钟一轮，靠日志里这条头把「某轮为什么没动作」看明白
     log.info("---- 开始：pid=%d tag=%s apk=%s ----", os.getpid(), args.tag or "(自动)", args.apk or "(下载)")
+    _boot("日志系统就绪")
 
     token = os.environ.get("GITEE_TOKEN")
     if not token:
         log.error("未设置环境变量 GITEE_TOKEN，本次跳过。"
                   "设置方式：setx GITEE_TOKEN \"…\"（用户级），然后重开终端。")
         return EXIT_TOKEN
+    _boot("令牌已就绪")
 
     lock = acquire_lock()
     if lock is None:
         log.warning("上一轮仍在传输（锁被占用），本次跳过")
         return EXIT_BUSY
+    _boot("单实例锁已获取")
 
     try:
         run(args, token)

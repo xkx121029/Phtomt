@@ -79,7 +79,9 @@ function feedInfo() {
     fetchedAt: s.fetchedAt,
     degraded: s.degraded,
     repo: s.repo,
-    error: s.degraded ? s.error : ''
+    error: s.degraded ? s.error : '',
+    // 渠道判不出来（无后缀且标题没写）而按 dev 兜底的版本号，非空即需要修 CI 命名
+    unknownChannels: s.unknownChannels
   }
 }
 

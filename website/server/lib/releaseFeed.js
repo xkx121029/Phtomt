@@ -70,17 +70,24 @@ function repo() {
 /**
  * 渠道判定：以 CI 的 tag 命名为准（`v0.2.91xx-dev` / `v0.2.91xx-beta`）。
  * 少数手工打的包没有后缀，退一步看 Release 标题里的中文标识。
+ *
+ * 两处都判不出来时按 dev 兜底，并标记 `resolved: false` 供排查：
+ * 宁可把一个没标注的包说成开发版，也不能让它冒充稳定版去占首页主按钮。
  */
-export function channelOf(tag, name = '') {
+export function channelDetail(tag, name = '') {
   const t = String(tag || '').toLowerCase()
-  if (t.endsWith('-dev')) return 'dev'
-  if (t.endsWith('-beta')) return 'beta'
-  if (t.endsWith('-nightly')) return 'nightly'
-  if (t.endsWith('-stable')) return 'stable'
+  if (t.endsWith('-dev')) return { channel: 'dev', resolved: true }
+  if (t.endsWith('-beta')) return { channel: 'beta', resolved: true }
+  if (t.endsWith('-nightly')) return { channel: 'nightly', resolved: true }
+  if (t.endsWith('-stable')) return { channel: 'stable', resolved: true }
   const n = String(name || '')
-  if (n.includes('开发版') || /\(dev\)/i.test(n)) return 'dev'
-  if (n.includes('测试版') || /\(beta\)/i.test(n)) return 'beta'
-  return 'stable'
+  if (n.includes('开发版') || /\(dev\)/i.test(n)) return { channel: 'dev', resolved: true }
+  if (n.includes('测试版') || /\(beta\)/i.test(n)) return { channel: 'beta', resolved: true }
+  return { channel: 'dev', resolved: false }
+}
+
+export function channelOf(tag, name = '') {
+  return channelDetail(tag, name).channel
 }
 
 /** 构建号＝tag 末段数字；三段以后可能被手工灌成 2000092，所以只当展示用 */
@@ -102,10 +109,13 @@ function summaryOf(body) {
 function fromGithub(item) {
   const tag = String(item.tag_name || '')
   const asset = (item.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
+  const ch = channelDetail(tag, item.name)
   return {
     version: normalizeVersion(tag),
     build: buildOf(tag),
-    channel: channelOf(tag, item.name),
+    channel: ch.channel,
+    // false = 后缀和标题都没给出渠道，按 dev 兜底
+    channelResolved: ch.resolved,
     date: String(item.published_at || item.created_at || '').slice(0, 10),
     publishedAt: item.published_at || item.created_at || null,
     published: true,
@@ -239,7 +249,11 @@ export function snapshot() {
     fetchedAt: state.fetchedAt,
     degraded: state.degraded,
     error: state.error,
-    repo: repo()
+    repo: repo(),
+    // 后缀与标题都没标渠道、按 dev 兜底的版本号；列表非空说明 CI 命名该补后缀了
+    unknownChannels: state.list
+      .filter((r) => r.channelResolved === false)
+      .map((r) => r.version)
   }
 }
 
