@@ -1,0 +1,86 @@
+{
+  "provider": "freesound",
+  "query": "mechanical switch click",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:872341",
+      "title": "Click_9",
+      "author": "SignatureSoundsOrg",
+      "duration_seconds": 0.4735,
+      "preview_url": "https://cdn.freesound.org/previews/872/872341_19205925-hq.mp3",
+      "downloads": 300,
+      "page_url": "https://freesound.org/people/SignatureSoundsOrg/sounds/872341/",
+      "license_label": "Creative Commons 0",
+      "description": "Short click sound effect, with a mix of sharp, mechanical, digital and subtle clicks. Useful for games, UI sounds, buttons, switches, menus, Foley and general sound design. Find more sound effects, loops and samples at signaturesounds.org.",
+      "rating": 5.0,
+      "rating_count": 4
+    },
+    {
+      "id": "fs:778444",
+      "title": "Metallic_Click",
+      "author": "BlondPanda",
+      "duration_seconds": 0.606604,
+      "preview_url": "https://cdn.freesound.org/previews/778/778444_8927049-hq.mp3",
+      "downloads": 779,
+      "page_url": "https://freesound.org/people/BlondPanda/sounds/778444/",
+      "license_label": "Creative Commons 0",
+      "description": "The sound of a small mechanical button or switch being operated, leading to a high-pitched click.",
+      "rating": 4.4,
+      "rating_count": 12
+    },
+    {
+      "id": "fs:278205",
+      "title": "Switch Flip #1",
+      "author": "IanStarGem",
+      "duration_seconds": 0.975635,
+      "preview_url": "https://cdn.freesound.org/previews/278/278205_4965320-hq.mp3",
+      "downloads": 3454,
+      "page_url": "https://freesound.org/people/IanStarGem/sounds/278205/",
+      "license_label": "Creative Commons 0",
+      "description": "Switch Flip #1. Modify/use however you want. Recorded with a ZOOM H4n using built-in stereo mics. Edited & processed with FL Studio 11 & Edison. Recorded at an inactive Ski-Lift. Technically the original sound was not a switch, it was a rain-proof cover on a power outlet. If you use this in anything, please put it in the comments, me and other people may want to check it out!",
+      "rating": 4.7,
+      "rating_count": 32
+    },
+    {
+      "id": "fs:752755",
+      "title": "Toy Electronic Typewriter Power Switch Off",
+      "author": "sprinkleCipher",
+      "duration_seconds": 0.29356,
+      "preview_url": "https://cdn.freesound.org/previews/752/752755_14222278-hq.mp3",
+      "downloads": 330,
+      "page_url": "https://freesound.org/people/sprinkleCipher/sounds/752755/",
+      "license_label": "Creative Commons 0",
+      "description": "The sound of the power switch being switched off on a Barbie model e115c toy electronic typewriter",
+      "rating": 5.0,
+      "rating_count": 6
+    },
+    {
+      "id": "fs:830459",
+      "title": "Flashlight Click On",
+      "author": "shaunhillyard",
+      "duration_seconds": 0.636825,
+      "preview_url": "https://cdn.freesound.org/previews/830/830459_4759831-hq.mp3",
+      "downloads": 381,
+      "page_url": "https://freesound.org/people/shaunhillyard/sounds/830459/",
+      "license_label": "Creative Commons 0",
+      "description": "If you use this file please leave a comment on what you're using it for Im always curious :) ENJOY! Single mechanical button press recorded close-up. Medium volume, minimal background noise. Ideal for flashlight or small device button. Its Very easy to clean this sound up, some noise reduction and you're off!, left the file a raw as it can be.",
+      "rating": 4.8,
+      "rating_count": 9
+    },
+    {
+      "id": "fs:752756",
+      "title": "Toy Electronic Typewriter Power Switch On",
+      "author": "sprinkleCipher",
+      "duration_seconds": 0.770249,
+      "preview_url": "https://cdn.freesound.org/previews/752/752756_14222278-hq.mp3",
+      "downloads": 267,
+      "page_url": "https://freesound.org/people/sprinkleCipher/sounds/752756/",
+      "license_label": "Creative Commons 0",
+      "description": "The sound of a Barbie model e115c toy electronic typewriter's power switch being flipped and the electronic components powering on",
+      "rating": 4.8,
+      "rating_count": 5
+    }
+  ]
+}

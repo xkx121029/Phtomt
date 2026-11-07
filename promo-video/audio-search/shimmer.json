@@ -1,0 +1,7 @@
+{
+  "provider": "freesound",
+  "query": "subtle shimmer",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": []
+}

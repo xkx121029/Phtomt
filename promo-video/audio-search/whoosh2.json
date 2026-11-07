@@ -1,0 +1,112 @@
+{
+  "provider": "freesound",
+  "query": "whoosh transition",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:427823",
+      "title": "Whoosh #1",
+      "author": "Kinoton",
+      "duration_seconds": 0.8,
+      "preview_url": "https://cdn.freesound.org/previews/427/427823_2247456-hq.mp3",
+      "downloads": 5880,
+      "page_url": "https://freesound.org/people/Kinoton/sounds/427823/",
+      "license_label": "Creative Commons 0",
+      "description": "Short whoosh made by swinging a bamboo stick. Can be used as a transition effect or in combination with incoming blades, clubs, bullets, arrows and fists. (Different versions available in transitions pack) Recorder: MixPre-6; Microphone: Mk 012, cardioid; Processing: compressor, denoiser",
+      "rating": 4.4,
+      "rating_count": 51
+    },
+    {
+      "id": "fs:802119",
+      "title": "whoosh_fx",
+      "author": "ScythicBlade",
+      "duration_seconds": 1.0,
+      "preview_url": "https://cdn.freesound.org/previews/802/802119_17255508-hq.mp3",
+      "downloads": 92,
+      "page_url": "https://freesound.org/people/ScythicBlade/sounds/802119/",
+      "license_label": "Creative Commons 0",
+      "description": "A 1-second white-noise whoosh with a 0.1 s fade-in and 0.2 s fade-out envelope, ideal for marking section changes or transitions in a mix",
+      "rating": 3.4,
+      "rating_count": 9
+    },
+    {
+      "id": "fs:400372",
+      "title": "FastWhoosh.wav",
+      "author": "Psykoosiossi",
+      "duration_seconds": 0.52,
+      "preview_url": "https://cdn.freesound.org/previews/400/400372_2798307-hq.mp3",
+      "downloads": 2855,
+      "page_url": "https://freesound.org/people/Psykoosiossi/sounds/400372/",
+      "license_label": "Creative Commons 0",
+      "description": "Whoosh transition sound",
+      "rating": 4.3,
+      "rating_count": 24
+    },
+    {
+      "id": "fs:612072",
+      "title": "Whoosh-Pop?.aiff",
+      "author": "BrodieSound",
+      "duration_seconds": 1.44,
+      "preview_url": "https://cdn.freesound.org/previews/612/612072_1166611-hq.mp3",
+      "downloads": 877,
+      "page_url": "https://freesound.org/people/BrodieSound/sounds/612072/",
+      "license_label": "Creative Commons 0",
+      "description": "A whoosh and pop suitable for a reveal or transition.",
+      "rating": 4.8,
+      "rating_count": 19
+    },
+    {
+      "id": "fs:267950",
+      "title": "whoosh.wav",
+      "author": "anagar",
+      "duration_seconds": 0.756625,
+      "preview_url": "https://cdn.freesound.org/previews/267/267950_2198771-hq.mp3",
+      "downloads": 7459,
+      "page_url": "https://freesound.org/people/anagar/sounds/267950/",
+      "license_label": "Creative Commons 0",
+      "description": "Whoosh.",
+      "rating": 4.0,
+      "rating_count": 37
+    },
+    {
+      "id": "fs:234535",
+      "title": "Dry Transition",
+      "author": "Electroviolence",
+      "duration_seconds": 1.13,
+      "preview_url": "https://cdn.freesound.org/previews/234/234535_4238641-hq.mp3",
+      "downloads": 4157,
+      "page_url": "https://freesound.org/people/Electroviolence/sounds/234535/",
+      "license_label": "Creative Commons 0",
+      "description": "Dry digital transition effect",
+      "rating": 4.3,
+      "rating_count": 25
+    },
+    {
+      "id": "fs:620192",
+      "title": "SFX_WOOSH_002.wav",
+      "author": "henrikcederblad",
+      "duration_seconds": 1.17447,
+      "preview_url": "https://cdn.freesound.org/previews/620/620192_1819746-hq.mp3",
+      "downloads": 441,
+      "page_url": "https://freesound.org/people/henrikcederblad/sounds/620192/",
+      "license_label": "Creative Commons 0",
+      "description": "Some kind of (transitional) whooshing sound effect. Could be used e.g. in documentaries for illustrating transitions between different shots, or in games/interactive presentations for the same purpose.",
+      "rating": 4.7,
+      "rating_count": 6
+    },
+    {
+      "id": "fs:683096",
+      "title": "Woosh",
+      "author": "florianreichelt",
+      "duration_seconds": 1.71698,
+      "preview_url": "https://cdn.freesound.org/previews/683/683096_6253486-hq.mp3",
+      "downloads": 31117,
+      "page_url": "https://freesound.org/people/florianreichelt/sounds/683096/",
+      "license_label": "Creative Commons 0",
+      "description": "If you want to support me and my work or acknowledge that I provide my soundeffects for free - how about signing up to Epidemic Sound via the following link: http://share.epidemicsound.com/flo Epidemic Sound offers a massive library of sound effects and music and by using my link you not only get the first 30 DAYS FOR FREE but you can also CANCEL ANYTIME! Thus, if you only have one project right now you can literally get their entire Sound Library for free and then decide whether it suits your needs further. Alternatively, consider subscribing to my Youtube Channel: https://www.youtube.com/@florianreichelt Either way, I hope you have a good time with my sounds and can make your project work! All the best, Florian! Keywords: Sound effects, Whoosh, Swish, Rushing air, Fast motion, Wind, Flying, Transition, Movement, Speed, Airy, Swoosh, Zoom, Jet, Fast, Rush, Quick, Whip, Flurry, Rushing, Blowing, Swirl, Gust, Bluster, Sweep, Wooshing, Zipping, Flying by, Sailing, Flick.",
+      "rating": 4.6,
+      "rating_count": 509
+    }
+  ]
+}

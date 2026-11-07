@@ -1,0 +1,112 @@
+{
+  "provider": "freesound",
+  "query": "keyboard typing",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:690655",
+      "title": "Mechanical Keyboard Typing",
+      "author": "BetaFruit",
+      "duration_seconds": 1.76825,
+      "preview_url": "https://cdn.freesound.org/previews/690/690655_13812760-hq.mp3",
+      "downloads": 98,
+      "page_url": "https://freesound.org/people/BetaFruit/sounds/690655/",
+      "license_label": "Creative Commons 0",
+      "description": "Typing random characters on a mechanical keyboard, made as a sound effect for YouTube videos",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:813214",
+      "title": "Very_Fast_Typing_Short",
+      "author": "Capt.Jack",
+      "duration_seconds": 2.12463,
+      "preview_url": "https://cdn.freesound.org/previews/813/813214_7987620-hq.mp3",
+      "downloads": 86,
+      "page_url": "https://freesound.org/people/Capt.Jack/sounds/813214/",
+      "license_label": "Creative Commons 0",
+      "description": "Very fast typing on a mechanical keyboard. Recorded using a Pyle PDMIC-78",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:841238",
+      "title": "keyboard_typing_loop1.wav",
+      "author": "peoplearehappy",
+      "duration_seconds": 2.65388,
+      "preview_url": "https://cdn.freesound.org/previews/841/841238_18294953-hq.mp3",
+      "downloads": 167,
+      "page_url": "https://freesound.org/people/peoplearehappy/sounds/841238/",
+      "license_label": "Creative Commons 0",
+      "description": "keyboard typing made into a loop. recorded by me. edited in Audacity. free to use.",
+      "rating": 4.5,
+      "rating_count": 8
+    },
+    {
+      "id": "fs:527726",
+      "title": "Typing On A Keyboard",
+      "author": "lnab",
+      "duration_seconds": 1.45125,
+      "preview_url": "https://cdn.freesound.org/previews/527/527726_11672333-hq.mp3",
+      "downloads": 494,
+      "page_url": "https://freesound.org/people/lnab/sounds/527726/",
+      "license_label": "Creative Commons 0",
+      "description": "Quick typing on a keyboard followed by enter",
+      "rating": 5.0,
+      "rating_count": 5
+    },
+    {
+      "id": "fs:468106",
+      "title": "Click - Keyboard.wav",
+      "author": "Aquafeniz",
+      "duration_seconds": 0.594875,
+      "preview_url": "https://cdn.freesound.org/previews/468/468106_9930348-hq.mp3",
+      "downloads": 55,
+      "page_url": "https://freesound.org/people/Aquafeniz/sounds/468106/",
+      "license_label": "Creative Commons 0",
+      "description": "Foley : Keyboard Typing Clicks",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:233057",
+      "title": "Keyboard.wav",
+      "author": "LukeUPF",
+      "duration_seconds": 2.47002,
+      "preview_url": "https://cdn.freesound.org/previews/233/233057_4207519-hq.mp3",
+      "downloads": 204,
+      "page_url": "https://freesound.org/people/LukeUPF/sounds/233057/",
+      "license_label": "Creative Commons 0",
+      "description": "This sound consists on the effect of writing on a keyboard. The sound of typing the hard plastic keys with our fingers. The sound was recorded with a Zoom H4 recorder, while writing on a plastic keyboard. It was recorded inside the Tallers classrooms, in the UPF Poblenou campus in Barcelona.",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:513792",
+      "title": "tuyping with keyboard.wav",
+      "author": "lartti",
+      "duration_seconds": 1.57612,
+      "preview_url": "https://cdn.freesound.org/previews/513/513792_1654547-hq.mp3",
+      "downloads": 78,
+      "page_url": "https://freesound.org/people/lartti/sounds/513792/",
+      "license_label": "Creative Commons 0",
+      "description": "Typing with computer keyboard. Recorded with Zoom h1n. Keyboard is older type, not laptop keyboard.",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:411737",
+      "title": "keyboard.wav",
+      "author": "jimmyfisher",
+      "duration_seconds": 2.899,
+      "preview_url": "https://cdn.freesound.org/previews/411/411737_6502466-hq.mp3",
+      "downloads": 78,
+      "page_url": "https://freesound.org/people/jimmyfisher/sounds/411737/",
+      "license_label": "Creative Commons 0",
+      "description": "typing on my grandma's keyboard used dr-05 in her bedroom",
+      "rating": null,
+      "rating_count": null
+    }
+  ]
+}

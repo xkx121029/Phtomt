@@ -1,0 +1,21 @@
+{
+  "provider": "freesound",
+  "query": "sparkle magic shimmer",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:844398",
+      "title": "Mysterious Sparkle Flourish",
+      "author": "SkySpeira",
+      "duration_seconds": 3.94738,
+      "preview_url": "https://cdn.freesound.org/previews/844/844398_7155498-hq.mp3",
+      "downloads": 1778,
+      "page_url": "https://freesound.org/people/SkySpeira/sounds/844398/",
+      "license_label": "Creative Commons 0",
+      "description": "Just a mysterious sparkle flourish for those mystical and magical moments.",
+      "rating": 4.8,
+      "rating_count": 47
+    }
+  ]
+}

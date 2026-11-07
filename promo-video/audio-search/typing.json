@@ -1,0 +1,60 @@
+{
+  "provider": "freesound",
+  "query": "computer keyboard typing short",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:348238",
+      "title": "MECH-KEYBOARD-02.wav",
+      "author": "newagesoup",
+      "duration_seconds": 1.28033,
+      "preview_url": "https://cdn.freesound.org/previews/348/348238_4067257-hq.mp3",
+      "downloads": 1536,
+      "page_url": "https://freesound.org/people/newagesoup/sounds/348238/",
+      "license_label": "Creative Commons 0",
+      "description": "06.22.16: A keystroke from my Razer Blackwidow (2013)",
+      "rating": 4.9,
+      "rating_count": 20
+    },
+    {
+      "id": "fs:348239",
+      "title": "MECH-KEYBOARD-01.wav",
+      "author": "newagesoup",
+      "duration_seconds": 1.28033,
+      "preview_url": "https://cdn.freesound.org/previews/348/348239_4067257-hq.mp3",
+      "downloads": 2531,
+      "page_url": "https://freesound.org/people/newagesoup/sounds/348239/",
+      "license_label": "Creative Commons 0",
+      "description": "06.22.16: A keystroke from my Razer Blackwidow (2013)",
+      "rating": 4.6,
+      "rating_count": 34
+    },
+    {
+      "id": "fs:564229",
+      "title": "The Click of a Mouse",
+      "author": "njjjjjjjjjjjjjjjjjjjjjjjj",
+      "duration_seconds": 0.464399,
+      "preview_url": "https://cdn.freesound.org/previews/564/564229_10435241-hq.mp3",
+      "downloads": 120,
+      "page_url": "https://freesound.org/people/njjjjjjjjjjjjjjjjjjjjjjjj/sounds/564229/",
+      "license_label": "Creative Commons 0",
+      "description": "Hey everyone! Feel free to use this sound in all your projects. Thanks!",
+      "rating": 4.8,
+      "rating_count": 4
+    },
+    {
+      "id": "fs:813214",
+      "title": "Very_Fast_Typing_Short",
+      "author": "Capt.Jack",
+      "duration_seconds": 2.12463,
+      "preview_url": "https://cdn.freesound.org/previews/813/813214_7987620-hq.mp3",
+      "downloads": 86,
+      "page_url": "https://freesound.org/people/Capt.Jack/sounds/813214/",
+      "license_label": "Creative Commons 0",
+      "description": "Very fast typing on a mechanical keyboard. Recorded using a Pyle PDMIC-78",
+      "rating": null,
+      "rating_count": null
+    }
+  ]
+}

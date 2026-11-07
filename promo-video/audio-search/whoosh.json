@@ -1,0 +1,21 @@
+{
+  "provider": "freesound",
+  "query": "short soft whoosh",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:449645",
+      "title": "Transition,action,jump,pitch-shift,short,shimmer,whoosh,positive,soft.wav",
+      "author": "CJDeets",
+      "duration_seconds": 1.32238,
+      "preview_url": "https://cdn.freesound.org/previews/449/449645_8074450-hq.mp3",
+      "downloads": 567,
+      "page_url": "https://freesound.org/people/CJDeets/sounds/449645/",
+      "license_label": "Creative Commons 0",
+      "description": "I created this sound to create an anime like effect with a shimmering like quality. I used FL Studio and some pith and reverb plugins to get this effect.",
+      "rating": 4.0,
+      "rating_count": 8
+    }
+  ]
+}

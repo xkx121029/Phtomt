@@ -1,0 +1,86 @@
+{
+  "provider": "freesound",
+  "query": "cinematic riser",
+  "license_policy": "cc0",
+  "ordering": "relevance; popularity is supporting evidence only",
+  "results": [
+    {
+      "id": "fs:859482",
+      "title": "Cinematic Riser #3 subtle",
+      "author": "BeaconStudio",
+      "duration_seconds": 3.0,
+      "preview_url": "https://cdn.freesound.org/previews/859/859482_18689440-hq.mp3",
+      "downloads": 618,
+      "page_url": "https://freesound.org/people/BeaconStudio/sounds/859482/",
+      "license_label": "Creative Commons 0",
+      "description": "A short and subtle FX riser created and processed in-studio. The sample was created by taking several different low frequency sounds and combining and processing them.",
+      "rating": 4.8,
+      "rating_count": 6
+    },
+    {
+      "id": "fs:511875",
+      "title": "Riser Hit sfx 030.wav",
+      "author": "AudioPapkin",
+      "duration_seconds": 4.22311,
+      "preview_url": "https://cdn.freesound.org/previews/511/511875_8698658-hq.mp3",
+      "downloads": 291,
+      "page_url": "https://freesound.org/people/AudioPapkin/sounds/511875/",
+      "license_label": "Creative Commons 0",
+      "description": "Support me buy me coffee : https://buymeacoffee.com/audiopapkin Riser Hit effect,is perfect for cinematic uses,video games. Effects recorded from the field. Recording gear-Zoom h6 and microphone Oktava MK-012-01. Cubase 10.5 Sampler Native instruments Kontakt 61 Native instruments Reaktor 6 synth Audio editor-Wavosaur",
+      "rating": 4.5,
+      "rating_count": 6
+    },
+    {
+      "id": "fs:511861",
+      "title": "Riser Hit sfx 017.wav",
+      "author": "AudioPapkin",
+      "duration_seconds": 3.04472,
+      "preview_url": "https://cdn.freesound.org/previews/511/511861_8698658-hq.mp3",
+      "downloads": 352,
+      "page_url": "https://freesound.org/people/AudioPapkin/sounds/511861/",
+      "license_label": "Creative Commons 0",
+      "description": "Support me buy me coffee : https://buymeacoffee.com/audiopapkin Riser Hit effect,is perfect for cinematic uses,video games. Effects recorded from the field. Recording gear-Zoom h6 and microphone Oktava MK-012-01. Cubase 10.5 Sampler Native instruments Kontakt 61 Native instruments Reaktor 6 synth Audio editor-Wavosaur",
+      "rating": null,
+      "rating_count": null
+    },
+    {
+      "id": "fs:510292",
+      "title": "Riser Hit sfx 010.wav",
+      "author": "AudioPapkin",
+      "duration_seconds": 4.09252,
+      "preview_url": "https://cdn.freesound.org/previews/510/510292_8698658-hq.mp3",
+      "downloads": 384,
+      "page_url": "https://freesound.org/people/AudioPapkin/sounds/510292/",
+      "license_label": "Creative Commons 0",
+      "description": "Support me buy me coffee : https://buymeacoffee.com/audiopapkin Riser Hit effect,is perfect for cinematic uses,video games. Effects recorded from the field. Recording gear-Zoom h6 and microphone Oktava MK-012-01. Cubase 10.5 Sampler Native instruments Kontakt 61 Native instruments Reaktor 6 synth",
+      "rating": 4.8,
+      "rating_count": 4
+    },
+    {
+      "id": "fs:511864",
+      "title": "Riser Hit sfx 020.wav",
+      "author": "AudioPapkin",
+      "duration_seconds": 4.26957,
+      "preview_url": "https://cdn.freesound.org/previews/511/511864_8698658-hq.mp3",
+      "downloads": 403,
+      "page_url": "https://freesound.org/people/AudioPapkin/sounds/511864/",
+      "license_label": "Creative Commons 0",
+      "description": "Support me buy me coffee : https://buymeacoffee.com/audiopapkin Riser Hit effect,is perfect for cinematic uses,video games. Effects recorded from the field. Recording gear-Zoom h6 and microphone Oktava MK-012-01. Cubase 10.5 Sampler Native instruments Kontakt 61 Native instruments Reaktor 6 synth Audio editor-Wavosaur",
+      "rating": 4.4,
+      "rating_count": 7
+    },
+    {
+      "id": "fs:757581",
+      "title": "Riser Hit sfx 103",
+      "author": "AudioPapkin",
+      "duration_seconds": 4.768,
+      "preview_url": "https://cdn.freesound.org/previews/757/757581_8698658-hq.mp3",
+      "downloads": 273,
+      "page_url": "https://freesound.org/people/AudioPapkin/sounds/757581/",
+      "license_label": "Creative Commons 0",
+      "description": "Support me buy me coffee : https://buymeacoffee.com/audiopapkin Riser Hit effect,is perfect for cinematic uses,video games. Effects recorded from the field. Recording gear-Tascam Portacapture x8 and Microphone - RØDE NTG5 Native Instruments Kontakt 7 REAPER DAW - audio processing My YouTube channel: https://www.youtube.com/channel/UC3LZ6GTrLwgmpXbLLQnS0lw",
+      "rating": 4.9,
+      "rating_count": 12
+    }
+  ]
+}

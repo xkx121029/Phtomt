@@ -1,0 +1,13 @@
+{
+  "codec": "mp3",
+  "sample_rate": 48000,
+  "channels": 2,
+  "duration_seconds": 3.947375,
+  "sample_peak_dbfs": -4.037,
+  "rms_dbfs": -24.779,
+  "energy_window_seconds": 0.01,
+  "energy_peak_seconds": 0.665,
+  "active_start_seconds": 0.0,
+  "active_end_seconds": 2.81,
+  "activity_threshold_db_below_peak_rms": -40
+}
