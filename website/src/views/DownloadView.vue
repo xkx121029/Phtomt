@@ -13,7 +13,7 @@ const releases = ref([])
 const stats = ref(null)
 const ready = ref(false)
 
-/** 择优结果：拿到前主按钮沿用原来的默认直链，拿到后换成实测更快的那个 */
+/** 择优结果：拿到前主按钮沿用原来的默认直链，拿到后换成首字节响应更快的那个 */
 const best = ref(null)
 const probing = ref(false)
 const probeNote = ref('')
@@ -197,7 +197,7 @@ onMounted(async () => {
 
 
             <p class="hint hero-card__hint">
-              安装包托管在 GitHub / Gitee 的 Release 里，本站不保存文件；按钮会自动跳到当前更快的那个。
+              安装包托管在 GitHub / Gitee 的 Release 里，本站不保存文件；按钮已自动选择响应更快的下载源——按首字节时间判断，不代表实际下载速度，如速度不理想，可用上方「其他下载源」手动切换。
             </p>
             <p v-if="noStable" class="hint hero-card__hint">
               暂无稳定版，以下为最新测试版。稳定版发布后这里会自动切过去。

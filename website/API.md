@@ -242,7 +242,7 @@ curl -s "$BASE/api/stats"            # 下载统计
 1. 用 `site.links.gitee` 里的仓库去查 Gitee API 的 Release 列表（5 分钟内存缓存），按 tag / 资产名匹配附件，命中才算候选；
 2. 用 `site.links.github` 里的仓库按 `releases/download/<tag>/<资产名>` 规则直接拼 GitHub 地址（不依赖 API，避免限流）。
 
-`/api/download/sources/:version` 返回这份候选列表；浏览器对每个候选做一次 no-cors HEAD 实测首字节，取更快的那个。都测不通时页面回落到服务端 302（第一个候选或 Release 页）。
+`/api/download/sources/:version` 返回这份候选列表；浏览器对每个候选做一次 no-cors HEAD 实测首字节，取响应更快的那个（只反映 TTFB，不代表实际下载吞吐）。都测不通时页面回落到服务端 302（第一个候选或 Release 页）。
 
 ## 静态导出
 

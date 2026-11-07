@@ -10,7 +10,8 @@ import { pickGithubAsset } from './githubAsset.js'
  *   - GitHub：先调 api.github.com 确认真有这个版本的资产（API 带 CORS），拿到真实地址；
  *   - Gitee：附件是否 attach 成功只有服务端知道（Gitee 接口不带 CORS），由
  *     /api/download/sources/:version 查一次列表并回传已验证的资产地址。
- * 两边各做一次 no-cors HEAD 量首字节，选更快的那个，只发 HEAD 不下载包体。
+ * 两边各做一次 no-cors HEAD 量首字节，选响应更快的那个，只发 HEAD 不下载包体。
+ * 注意这只反映 TTFB，不代表真实吞吐，所以对外只说「响应更快」，不说「下载更快」。
  *
  * 结果按会话缓存 15 分钟（全部不通只缓存 2 分钟，好让线路恢复后尽快纠正）。
  */

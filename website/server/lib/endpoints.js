@@ -51,7 +51,7 @@ export const PUBLIC_ENDPOINTS = [
   { method: 'GET', path: '/api/openapi', desc: 'OpenAPI 3.1 规范（机器可读）' },
   { method: 'GET', path: '/api/download/latest', desc: '重定向到最新版（GitHub / Gitee Release）' },
   { method: 'GET', path: '/api/download/:version', desc: '下载指定版本：302 到 Release 资产，计入统计' },
-  { method: 'GET', path: '/api/download/sources/:version', desc: '该版本在 GitHub / Gitee 上的候选资产地址（供浏览器测速择优）' },
+  { method: 'GET', path: '/api/download/sources/:version', desc: '该版本在 GitHub / Gitee 上的候选资产地址（供浏览器按首字节时间择优）' },
   {
     method: 'GET',
     path: '/api/update/check',
