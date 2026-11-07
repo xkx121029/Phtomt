@@ -19,7 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,10 +31,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.feature.edge.EdgeLightingService
 import com.phoneagent.overlay.OverlayDisplaySettings
+import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import kotlinx.coroutines.delay
 
 /**
  * 标定预览框的颜色。
@@ -43,8 +48,10 @@ import com.phoneagent.ui.theme.AppSpacing
 private val CalibrationGuideBorder = Color(0xFFFFD600)
 
 /**
- * 界面效果页：运行时视觉反馈的**精调项**（点击光标 / 边缘光效标定 / 悬浮窗跑马灯样式）。
- * 显示与不显示的开关统一放在设置首页「常用」，本页不再重复。
+ * 界面效果页：运行时视觉反馈的显示开关与**精调项**。
+ *
+ * 跑马灯 / 任务卡状态行 / 边缘光效的显隐开关就在它们各自的分区里，
+ * 与它们控制的样式放在一起；设置首页「常用」只保留「浮层显示」这一个总开关。
  */
 @Composable
 internal fun SettingsVisual(
@@ -56,9 +63,35 @@ internal fun SettingsVisual(
 ) {
     val context = LocalContext.current
     val activity = LocalActivity.current
-    // 这一步只读开关状态用于决定标定预览要不要起；开关本身已统一收在设置首页「常用」面板，
-    // 本页不再提供第二处入口（同一开关只允许一处）。
-    val edgeLightingOn = remember { OverlayDisplaySettings.edgeLightingEnabled(context) }
+    // 边缘光效的开关与样式同页：开关决定要不要预览，标定决定长什么样
+    var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(context)) }
+    // 两处逐步文字是同一个设置（stepPlacement）的展开形态：勾两处 = both，只勾一处 = 对应值
+    val initialPlacement = remember { OverlayDisplaySettings.stepTextPlacement(context) }
+    var marqueeOn by remember { mutableStateOf(initialPlacement != StepTextPlacement.CARD) }
+    var cardOn by remember { mutableStateOf(initialPlacement != StepTextPlacement.MARQUEE) }
+    var stepTextHint by remember { mutableStateOf(false) }
+
+    fun updateStepText(nextMarquee: Boolean, nextCard: Boolean) {
+        if (!nextMarquee && !nextCard) {
+            // 两处都取消会让描述无处可显：保持原勾选并就地提示，不静默变成空状态
+            stepTextHint = true
+            return
+        }
+        val next = when {
+            nextMarquee && nextCard -> StepTextPlacement.BOTH
+            nextMarquee -> StepTextPlacement.MARQUEE
+            else -> StepTextPlacement.CARD
+        }
+        marqueeOn = nextMarquee
+        cardOn = nextCard
+        OverlayDisplaySettings.setStepTextPlacement(context, next)
+    }
+    LaunchedEffect(stepTextHint) {
+        if (stepTextHint) {
+            delay(2_500)
+            stepTextHint = false
+        }
+    }
 
     // 标定面板展开时起全屏预览；开关关掉就立刻收窗。
     // 这段原先挂在设置页根节点上，现在挪到本页：预览服务只服务这一个分区，
@@ -108,7 +141,7 @@ internal fun SettingsVisual(
             .padding(LocalNavClearance.current),
     ) {
         if (!embedded) {
-            SettingsPageHeader("界面效果", onBack, subtitle = "光标、光效标定与跑马灯样式；显示开关在设置首页「常用」")
+            SettingsPageHeader("界面效果", onBack, subtitle = "光标、边缘光效与跑马灯的显示和样式")
             Spacer(Modifier.height(AppSpacing.Page))
         }
 
@@ -147,8 +180,16 @@ internal fun SettingsVisual(
             subtitle = "任务执行时的屏幕边缘绿色光带",
             tone = SettingsTone.Brand,
         ) {
-            // 边缘光效的开关已移到设置首页「常用」面板（与跑马灯、任务卡状态行同组）；
-            // 本页只保留标定——标定是低频精调，值得独立一页，开关不是。
+            SettingsToggleRow(
+                title = "显示边缘光效",
+                subtitle = "任务执行时在屏幕边缘显示绿色光带；关闭就不建窗口、不占触摸，任务照常执行",
+                value = edgeLightingOn,
+            ) { next ->
+                edgeLightingOn = next
+                OverlayDisplaySettings.setEdgeLightingEnabled(context, next)
+            }
+            SettingsDivider(inset = false)
+            // 标定是低频精调，跟在开关下面：开了才需要调，关着也能改样式
             Column(Modifier.padding(start = AppSpacing.Lg, end = AppSpacing.Lg, top = AppSpacing.Md, bottom = AppSpacing.Md)) {
                 ExpandableCard(
                     title = "光效标定",
@@ -244,13 +285,39 @@ internal fun SettingsVisual(
             subtitle = if (st.floatingWindowEnabled) {
                 "跑马灯浮在屏幕底边之上，长宽随文字自适应：宽度超出一屏就滚动，内边距决定面板厚度"
             } else {
-                "当前悬浮窗已关闭，以下样式不会显示；重新开启上方总开关即可恢复"
+                "当前悬浮窗已关闭，以下样式不会显示；到设置首页「常用」重新开启「浮层显示」即可恢复"
             },
             tone = SettingsTone.Brand,
         ) {
+            // 两处逐步文字：同一个设置的展开形态，至少保留一处
+            SettingsCheckRow(
+                title = "顶部跑马灯",
+                subtitle = "描述在顶部光带滚动；不勾就整条不显示",
+                checked = marqueeOn,
+            ) { next ->
+                updateStepText(nextMarquee = next, nextCard = cardOn)
+            }
+            SettingsDivider(inset = false)
+            SettingsCheckRow(
+                title = "任务卡状态行",
+                subtitle = "描述出现在任务卡里；不勾就只留「第 n/m 步」",
+                checked = cardOn,
+            ) { next ->
+                updateStepText(nextMarquee = marqueeOn, nextCard = next)
+            }
+            if (stepTextHint) {
+                Text(
+                    "至少保留一处显示",
+                    modifier = Modifier.padding(start = AppSpacing.Page, end = AppSpacing.Page, top = AppSpacing.Xxs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            SettingsDivider(inset = false)
+            // 文案颜色以 `FloatingUi.phaseTone` 为准，改色时同步这里
             SettingsToggleRow(
                 title = "跟随状态变色",
-                subtitle = "底色由当前阶段决定：观察蓝 / 思考紫 / 执行粉 / 完成绿 / 出错红，不用自己配色",
+                subtitle = "底色由当前阶段决定：观察雾蓝 / 思考墨绿 / 执行品红 / 完成绿 / 出错红 / 等待琥珀，不用自己配色",
                 value = st.marqueeAutoColor,
             ) {
                 st.marqueeAutoColor = it

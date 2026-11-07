@@ -1,99 +1,97 @@
 package com.phoneagent.ui.home
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.phoneagent.device.a11y.AgentAccessibilityService
-import com.phoneagent.ui.model.PermissionItem
-import com.phoneagent.ui.model.PermissionKind
-import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.PressableScale
-import com.phoneagent.ui.components.SectionHeader
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.animateListItem
-import com.phoneagent.ui.theme.Accent
-import com.phoneagent.ui.theme.AppRadii
-import com.phoneagent.ui.theme.BrandNavy
-import com.phoneagent.ui.theme.EaseOut
-import com.phoneagent.ui.theme.Success
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.model.PermissionItem
+import com.phoneagent.ui.model.PermissionKind
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.Success
 
+/**
+ * 权限待办入口：**一行**，不再平铺 6 张权限卡。
+ *
+ * 授权是一次性动作，做完就不需要再看；平铺的卡片会永久占掉首屏一块高度，
+ * 与「设置 → 权限与执行通道」重复。这里只报还差几项，点进对应设置页去处理。
+ * 全部就绪（N=0）时整行不渲染——没有待办就不要留一个"已完成"的空壳。
+ */
+@Composable
+internal fun PermissionTodoLine(
+    permissions: List<PermissionItem>,
+    onOpen: () -> Unit,
+) {
+    val pending = permissions.count { !it.granted }
+    if (pending <= 0) return
+    val buzz = rememberHapticClick()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                buzz()
+                onOpen()
+            }
+            .padding(horizontal = AppSpacing.Xs, vertical = AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xxs),
+    ) {
+        Text(
+            text = "还缺 $pending 项授权",
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Icon(
+            AppIcons.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * 权限清单：设置页「授权」分段里用，每一项点未授权项直达对应系统页。
+ *
+ * 首页已不再平铺这组卡片（只留上面一行待办入口），这里是唯一的完整清单。
+ */
 @Composable
 internal fun PermissionRadar(
     permissions: List<PermissionItem>,
     context: android.content.Context,
     vm: MainViewModel,
 ) {
-    val pending = permissions.filter { !it.granted }
-    val pressHaptic = com.phoneagent.ui.components.rememberHapticPress()
+    val pressHaptic = rememberHapticPress()
 
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = if (pending.isEmpty()) "全部已就绪" else "尚需授权 ${pending.size} 项",
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (pending.isEmpty()) Success else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    Spacer(Modifier.height(10.dp))
-
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm), modifier = Modifier.fillMaxWidth()) {
         permissions.forEachIndexed { i, p ->
             val raw = rawPermissionIcon(p.kind)
             val itemColor = if (p.granted) Success else MaterialTheme.colorScheme.primary
             PressableScale(
-                modifier = Modifier.fillMaxWidth().animateListItem(8 + i),
+                modifier = Modifier.fillMaxWidth().animateListItem(i),
                 onPress = { if (!p.granted) pressHaptic() },
                 onClick = {
                     if (!p.granted) {
@@ -102,7 +100,11 @@ internal fun PermissionRadar(
                 },
             ) {
                 AppItemCard(
-                    containerColor = if (p.granted) Success.copy(alpha = 0.08f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    containerColor = if (p.granted) {
+                        Success.copy(alpha = 0.08f)
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    },
                 ) {
                     AppIconTile(
                         icon = raw,
@@ -121,19 +123,11 @@ internal fun PermissionRadar(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (p.granted) {
-                        StatusPill(
-                            text = "完成",
-                            color = Success,
-                            modifier = Modifier.padding(end = 14.dp),
-                        )
-                    } else {
-                        StatusPill(
-                            text = "去授权",
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(end = 14.dp),
-                        )
-                    }
+                    StatusPill(
+                        text = if (p.granted) "完成" else "去授权",
+                        color = itemColor,
+                        modifier = Modifier.padding(end = 14.dp),
+                    )
                 }
             }
         }
@@ -143,6 +137,7 @@ internal fun PermissionRadar(
 private fun rawPermissionIcon(kind: PermissionKind): ImageVector = when (kind) {
     PermissionKind.ACCESSIBILITY -> AppIcons.TouchApp
     PermissionKind.OVERLAY -> AppIcons.Camera
+    PermissionKind.WRITE_SETTINGS -> AppIcons.Tune
     PermissionKind.AUTOSTART -> AppIcons.Bolt
     PermissionKind.QUERY_ALL_PACKAGES -> AppIcons.Memory
     PermissionKind.NOTIFICATIONS -> AppIcons.Notifications

@@ -1,5 +1,6 @@
 ﻿package com.phoneagent.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -27,7 +28,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.phoneagent.core.ai.CatalogModel
@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 // 主题 / 界面效果 / 选项卡三页收成一页「外观与导航」（SettingsAppearance），
 // 三处改的都是「看起来什么样、导航怎么排」，分开摆只会让用户来回跳
 enum class SettingsPage { QUICK_START, HOME, APPEARANCE, AI_MODELS, MODEL_CATALOG, ONDEVICE, AGENT, LONG_RUN,
-    PERMISSIONS, DATA, UPDATE, ABOUT, CODING, CODING_ENV }
+    PERMISSIONS, PERMISSIONS_CHANNEL, DATA, UPDATE, ABOUT, LICENSES, CODING, CODING_ENV }
 
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
@@ -87,8 +87,16 @@ fun SettingsScreen(
     val twoPane = LocalIsExpanded.current
     // 双栏时左栏没有「主页」这一项，默认直接落在第一个分类上——
     // 一进来就是一块空白总览，等于让用户多点一次
-    var page by rememberSaveable {
+    // 故意不用 rememberSaveable：切走设置 Tab 后组合会被销毁，saveable 会把上次的子页
+    // 原样恢复回来，用户再进设置就停在半路；这里每次进入都从首页开始
+    var page by remember {
         mutableStateOf(if (twoPane) SettingsPage.AI_MODELS else SettingsPage.HOME)
+    }
+    // 返回键分层：子页 → 设置首页；设置首页再返回才交给外层（切回首页 Tab）。
+    // 之前子页直接掉回首页、下次进设置又停在原页，都是因为导航栈只有外层一层。
+    // 双栏没有"子页"概念（左栏常驻），返回仍按外层的 Tab 规则走。
+    BackHandler(enabled = !twoPane && page != SettingsPage.HOME) {
+        page = SettingsPage.HOME
     }
     // 工作台配置面板的跳转请求：只消费一次，消费后清空，避免设置页重组时反复翻页
     LaunchedEffect(initialPage) {
@@ -307,6 +315,10 @@ private fun SettingsPageContent(
             SettingsPage.LONG_RUN -> SettingsLongRun(vm = vm, onBack = backToHome)
             SettingsPage.PERMISSIONS -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings,
                 onBack = backToHome)
+            // 首页「执行通道」格直落本页的「执行通道」段：那格回答的就是通道通不通，
+            // 落「授权」段等于让用户在同一页里再点一次分段
+            SettingsPage.PERMISSIONS_CHANNEL -> SettingsPermissions(vm = vm, st = st, save = saveNonAiSettings,
+                onBack = backToHome, startOnChannel = true)
             SettingsPage.DATA -> SettingsData(
                 vm = vm, st = st,
                 save = saveNonAiSettings,
@@ -321,7 +333,13 @@ private fun SettingsPageContent(
                 onBack = backToHome,
                 onOpenDebug = { onOpenExtras(com.phoneagent.ui.ExtrasPage.Debug) },
                 onOpenTest = { onOpenExtras(com.phoneagent.ui.ExtrasPage.Test) },
+                onOpenLicenses = { onPage(SettingsPage.LICENSES) },
+                onOpenUpdate = { onPage(SettingsPage.UPDATE) },
+                onOpenQuickStart = { onPage(SettingsPage.QUICK_START) },
             )
+            // 许可是关于的二级页，但返回仍按两层口径回设置首页：
+            // 不做「三级页」导航栈，否则系统返回与其它子页的行为就不一致
+            SettingsPage.LICENSES -> SettingsLicenses(onBack = backToHome)
             SettingsPage.CODING -> SettingsCoding(
                 st = st,
                 save = saveNonAiSettings,

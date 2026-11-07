@@ -71,9 +71,13 @@ internal fun SettingsPermissions(
     st: SettingsState,
     save: () -> Unit,
     onBack: () -> Unit,
+    /** true = 直接落在「执行通道」段（首页执行通道格进来时用） */
+    startOnChannel: Boolean = false,
 ) {
     val context = LocalContext.current
     val permissions by vm.permissions.collectAsState()
+    // 两段各一屏：授权是一次性动作，执行通道是运行期状态，混在一页要滚三屏才能看完
+    var tab by remember { mutableStateOf(if (startOnChannel) PermissionTab.CHANNEL else PermissionTab.GRANT) }
 
     LaunchedEffect(Unit) {
         vm.refreshPermissions(context)
@@ -97,6 +101,22 @@ internal fun SettingsPermissions(
             subtitle = "授予系统权限，配置 shell 执行通路",
         )
         Spacer(Modifier.height(AppSpacing.Page))
+
+        // 分段控件与「外观与导航」同一套：两段各一屏，不靠长滚动切换上下文
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            PermissionTab.entries.forEachIndexed { i, item ->
+                SegmentedButton(
+                    selected = tab == item,
+                    onClick = { tab = item },
+                    shape = SegmentedButtonDefaults.itemShape(index = i, count = PermissionTab.entries.size),
+                ) {
+                    Text(item.label, style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+        Spacer(Modifier.height(AppSpacing.Md))
+
+        if (tab == PermissionTab.CHANNEL) {
 
         // 服务组件：无障碍 / 内置 Shizuku / Termux 三条通道都运行在独立应用
         // com.phoneagent.provider 里（随包附带的 APK，经 AIDL 调用），
@@ -176,10 +196,13 @@ internal fun SettingsPermissions(
                 )
                 Spacer(Modifier.height(AppSpacing.Sm))
                 Text(
-                    "无障碍、内置 Shizuku、Termux 三条通道运行在独立服务组件中；" +
-                        "其优点是主应用升级/重启不会导致无障碍掉线。",
+                    "无障碍与 shell 通道由独立服务组件承载",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SettingsWhyFold(
+                    "三条通道都运行在独立应用 com.phoneagent.provider 中（随包附带的 APK，经 AIDL 调用）；" +
+                        "主应用升级或重启时它不会被一起杀掉，无障碍因此不会掉线。",
                 )
                 if (installedVersion != null) {
                     // 把「已安装」与「真的能用」分开说：安装完但无障碍没开、或绑定失败时，
@@ -230,10 +253,11 @@ internal fun SettingsPermissions(
                     if (!a11yEnabled) {
                         Spacer(Modifier.height(AppSpacing.Sm))
                         Text(
-                            "无障碍服务未开启：AI 暂时无法读取屏幕与点击操作，请在系统设置中打开「Happy Agent 自动操作」（属于服务组件应用）。",
+                            "在系统设置中打开「Happy Agent 自动操作」",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        SettingsWhyFold("无障碍服务属于服务组件应用；未开启时 AI 无法读取屏幕与点击操作。")
                         // vivo/OriginOS + Android 13+ 专属：侧载应用的无障碍开关会被系统
                         // 自动撤销（受限设置），这是"开了又自动关"的首要根因，必须先解除
                         if (Build.MANUFACTURER.contains("vivo", ignoreCase = true) ||
@@ -249,13 +273,17 @@ internal fun SettingsPermissions(
                                     .padding(AppSpacing.Md),
                             ) {
                                 Text(
-                                    "若开关开了又被自动弹回（vivo/OriginOS 及 Android 13+ 常见）：\n" +
-                                        "1. 系统设置 → 应用 → 服务组件 → 右上角菜单 → 允许受限设置\n" +
-                                        "2. i管家 → 应用管理 → 服务组件：允许自启动、后台高耗电\n" +
-                                        "3. 多任务卡片下拉锁定本应用与服务组件\n" +
-                                        "完成后再回来开启无障碍即可，之后掉线会自动恢复。",
+                                    "开关被自动弹回（vivo/Android 13+ 常见）：\n" +
+                                        "1. 允许服务组件的受限设置\n" +
+                                        "2. 允许自启动与后台高耗电\n" +
+                                        "3. 多任务卡片锁定本应用与服务组件",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                                SettingsWhyFold(
+                                    "侧载应用的无障碍开关会被系统自动撤销（受限设置），" +
+                                        "这是「开了又自动关」的首要根因，必须先解除限制。",
+                                    modifier = Modifier.padding(top = AppSpacing.Xxs),
                                 )
                             }
                         }
@@ -332,23 +360,23 @@ internal fun SettingsPermissions(
                         }
                         WatchdogRow(
                             title = "保活看门狗",
-                            description = "服务组件常驻后台，主应用被杀或重启期间无障碍不掉线；伴随一条低优先级常驻通知",
+                            description = "服务组件常驻后台，主应用被杀也不掉线",
                             checked = w.enabled,
                             onChecked = { applyWatchdog(w.copy(enabled = it)) },
                         )
                         WatchdogRow(
                             title = "无障碍掉线自动修复",
                             description = if (w.canRepairA11y) {
-                                "无障碍被系统关闭时自动重新启用（已获得安全设置写入授权，优先直写）"
+                                "被系统关闭时自动重新开启（优先直写）"
                             } else {
-                                "经内置 Shizuku 执行 settings 命令自动拉起（需 Shizuku 在线）；完成授权引导后可改用零依赖的直写方式"
+                                "经内置 Shizuku 执行 settings 命令自动拉起"
                             },
                             checked = w.autoRepairA11y,
                             onChecked = { applyWatchdog(w.copy(autoRepairA11y = it)) },
                         )
                         WatchdogRow(
                             title = "Shizuku 服务自动恢复",
-                            description = "检测到 Shizuku 离线时经无线 ADB 自动重拉（已配对可静默完成，未配对则需先完成首次引导）",
+                            description = "离线时经无线 ADB 自动重拉",
                             checked = w.autoRepairShizuku,
                             onChecked = { applyWatchdog(w.copy(autoRepairShizuku = it)) },
                         )
@@ -412,15 +440,19 @@ internal fun SettingsPermissions(
                             ) {
                                 Text(
                                     if (w.a11yMasterEnabled) {
-                                        "无障碍开关处于开启状态，但服务未在运行（系统显示「此服务出现故障无法运行」）。" +
-                                            "常见原因是系统冻结/清理了服务组件的后台进程。看门狗会自动重置；" +
-                                            "若反复失败，请按下方系统保活设置处理。"
+                                        "无障碍开关开着，但服务没在跑（系统判为故障）。看门狗会自动重置。"
                                     } else {
-                                        "无障碍总开关已被系统关闭（服务组件仍在启用列表中）。看门狗会尝试自动补开。"
+                                        "无障碍总开关被系统关闭，看门狗会尝试补开。"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )
+                                if (w.a11yMasterEnabled) {
+                                    SettingsWhyFold(
+                                        "常见原因是系统冻结或清理了服务组件的后台进程（小米「此服务出现故障无法运行」）。" +
+                                            "看门狗会自动重置最多 3 次；仍失败说明被 ROM 冻结，请按下方系统保活设置处理。",
+                                    )
+                                }
                                 // 无安全设置写入授权、又没有 Shizuku 时，看门狗无法自行重置故障态，
                                 // 唯一可靠的恢复手段就是用户手动关再开一次——给出一键跳转，别让用户自己找
                                 Spacer(Modifier.height(AppSpacing.Sm))
@@ -472,9 +504,13 @@ internal fun SettingsPermissions(
                         Text("系统保活设置", style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(AppSpacing.Xxs))
                         Text(
-                            "在服务组件（无界面应用）的应用信息里把「省电策略」设为「无限制」，并在 i管家/安全中心里允许自启动。这些设置只能由系统界面完成。",
+                            "在服务组件的应用信息里把省电策略设为「无限制」，并允许自启动",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        SettingsWhyFold(
+                            "ROM 的进程冻结是无障碍「故障」的首因，这些设置只能由系统界面完成；" +
+                                "服务组件是无界面应用，i管家/安全中心里同样要允许它自启动。",
                         )
                         Spacer(Modifier.height(AppSpacing.Sm))
                         OutlinedButton(
@@ -510,9 +546,11 @@ internal fun SettingsPermissions(
             }
         }
 
-        Spacer(Modifier.height(AppSpacing.Lg))
+            Spacer(Modifier.height(AppSpacing.Lg))
+        }
 
-        SettingsSection(title = "系统权限", subtitle = "点击未授权项跳转对应授权页", tone = SettingsTone.Warm) {
+        if (tab == PermissionTab.GRANT) {
+            SettingsSection(title = "系统权限", subtitle = "点击未授权项跳转对应授权页", tone = SettingsTone.Warm) {
                 Column(Modifier.padding(horizontal = AppSpacing.Lg)) {
                     androidx.compose.foundation.layout.Row(
                         modifier = Modifier.fillMaxWidth().padding(top = AppSpacing.Xs),
@@ -558,11 +596,8 @@ internal fun SettingsPermissions(
                 }
                 val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
                 Column(Modifier.padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Xs)) {
-                    Text(
-                        rolePlan.explanation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // 长解释收进折叠：结论与按钮在上面，原理只在出问题时才看
+                    SettingsWhyFold(rolePlan.explanation, label = "为什么需要它")
                     Spacer(Modifier.height(AppSpacing.Sm))
                     // 区块内的主操作统一满宽按钮，与端侧视觉/数据页的行动按钮同一语言
                     Button(
@@ -637,7 +672,7 @@ internal fun SettingsPermissions(
                     }
                     Spacer(Modifier.height(AppSpacing.Md))
                     Text(
-                        "通知感知：开启后 AI 能读到通知（验证码/提醒），并支持「读取通知/清理通知」技能。",
+                        "让 AI 读到通知（验证码/提醒）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -660,9 +695,9 @@ internal fun SettingsPermissions(
                 SettingsToggleRow(
                     title = "对外控制接口",
                     subtitle = if (tokenTooShort && !st.externalControlEnabled) {
-                        "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（先设置至少 8 位口令才能开启）"
+                        "允许 Tasker 等自动化工具广播驱动本应用（先设置至少 8 位口令）"
                     } else {
-                        "允许 Tasker、MacroDroid 等自动化工具以广播驱动本应用（下发任务 / 停止 / 查询状态）"
+                        "允许 Tasker 等自动化工具广播驱动本应用"
                     },
                     value = st.externalControlEnabled,
                 ) { want ->
@@ -705,7 +740,9 @@ internal fun SettingsPermissions(
             }
 
             Spacer(Modifier.height(AppSpacing.Lg))
+        }
 
+        if (tab == PermissionTab.CHANNEL) {
             SettingsSection(
                 title = "执行通道优先级",
                 subtitle = "shell 执行通路的优先顺序（内置 Shizuku 为主，Termux 可选）",
@@ -733,7 +770,7 @@ internal fun SettingsPermissions(
                         when (st.executionChannel) {
                             "SHIZUKU" -> "仅认 Shizuku 服务就绪；未启动时可在下方一键启动。"
                             "TERMUX" -> "仅用 Termux（普通应用权限）：可跑 curl / python / 文本处理，不能执行系统命令。"
-                            else -> "优先 Shizuku 服务，其次引导会话（server 拉起前后均可执行 shell），最后 Termux；都不可用则走无障碍执行。"
+                            else -> "优先 Shizuku，其次引导会话，最后 Termux；都不可用时走无障碍。"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -744,14 +781,21 @@ internal fun SettingsPermissions(
 
             Spacer(Modifier.height(AppSpacing.Lg))
 
-        // 执行通道：内置 Shizuku（一键启动 / 首次引导）+ Termux 探测。
-        // 收进与分区同层的 20dp 栅格，卡片不再铺到屏幕边缘
-        ShizukuChannelCard(vm)
-        Spacer(Modifier.height(AppSpacing.Md))
-        TermuxChannelCard(vm)
+            // 执行通道：内置 Shizuku（一键启动 / 首次引导）+ Termux 探测。
+            // 收进与分区同层的 20dp 栅格，卡片不再铺到屏幕边缘
+            ShizukuChannelCard(vm)
+            Spacer(Modifier.height(AppSpacing.Md))
+            TermuxChannelCard(vm)
+        }
 
         Spacer(Modifier.height(AppSpacing.Xl))
     }
+}
+
+/** 本页两段：授权是一次性动作，执行通道是运行期状态 */
+private enum class PermissionTab(val label: String) {
+    GRANT("授权"),
+    CHANNEL("执行通道"),
 }
 
 // ==================== 看门狗配置面板的本地支撑 ====================

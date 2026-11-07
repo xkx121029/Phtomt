@@ -765,6 +765,23 @@ private fun ActivityContent(
                                                             }
                                                         },
                                                         onOpenExtras = { extrasPage = it },
+                                                        // 「还缺 N 项授权」直落权限页：首页这一行只报待办数，
+                                                        // 实际授权动作在设置里做，不给第二个改状态的地方
+                                                        onOpenPermissions = {
+                                                            settingsLanding = SettingsPage.PERMISSIONS
+                                                            selected = tabIndex(
+                                                                vm.settingsFlow.value,
+                                                                MainTabs.SETTINGS,
+                                                            )
+                                                        },
+                                                        // 状态条的执行通道格：同一个权限页，直接落在「执行通道」段
+                                                        onOpenChannel = {
+                                                            settingsLanding = SettingsPage.PERMISSIONS_CHANNEL
+                                                            selected = tabIndex(
+                                                                vm.settingsFlow.value,
+                                                                MainTabs.SETTINGS,
+                                                            )
+                                                        },
                                                     )
                                                 }
 

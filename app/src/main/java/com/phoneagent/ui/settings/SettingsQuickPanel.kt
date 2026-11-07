@@ -1,4 +1,4 @@
-﻿package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,173 +8,81 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.phoneagent.overlay.OverlayDisplaySettings
-import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppSpacing
-import kotlinx.coroutines.delay
 
 /**
- * 设置首页的「常用」面板：最常改的三件事直接在第一屏可操作，不再往二级页里藏。
+ * 设置首页的「常用」面板：一张卡里两层入口。
  *
- * 这一块的每一项都**只有这一个入口**：
- * - 执行方式（保守 / 均衡 / 自由）：原先在「任务行为」页，现移到这里，任务行为页只留步数与提示词；
- * - 主模型与线路：显示当前线路与模型，点一下直接进模型库挑选，省掉「云端模型 → 职责行 → 模型库」两跳；
- * - 浮层显示（桌面悬浮窗 / 顶部跑马灯 / 任务卡状态行 / 绿色边缘光效）：原先在「外观与导航 → 效果」里
- *   分三段摆放，现收在这一处；效果页只保留光标、标定与跑马灯样式这些低频项。
+ * - 第一层「就绪待办」：模型（含线路）与权限各一格，还差什么一眼看到，点格子直达；
+ * - 第二层「常用」：执行方式（只读，去 Agent 页改）与浮层显示总开关。
  *
- * 低频与危险项（清空数据、恢复默认、全自动审批、自由模式）仍留在各自页面并写明后果，
- * 首页只负责「今天就要用」的那几项。
+ * 两层合在一处、不再各占一张卡，是为了让下面六组设置入口回到折叠线以上：
+ * 设置首页首先是一张索引，不是三块面板的堆叠。
+ * 「主模型」行也已并进模型格——同一件事（现在用哪个模型、走哪条线、点进去换一个）
+ * 不需要占两行。
+ *
+ * 执行方式只展示不修改：值只有 Agent 页的转盘一个写入口，两处都能改同一个值必然漂移。
  */
 @Composable
 internal fun SettingsQuickPanel(
     st: SettingsState,
     save: () -> Unit,
     onPickModel: () -> Unit,
+    ctx: SettingsOverviewCtx,
+    onOpen: (SettingsPage) -> Unit,
 ) {
-    val context = LocalContext.current
-    // 浮层显示设置由浮层线的 OverlayDisplaySettings 统一读写（独立 prefs 文件）：
-    // 这里只做写入口，正在运行的跑马灯/光效靠它自己的监听即时生效，无需重启。
-    var stepPlacement by remember { mutableStateOf(OverlayDisplaySettings.stepTextPlacement(context)) }
-    var edgeLightingOn by remember { mutableStateOf(OverlayDisplaySettings.edgeLightingEnabled(context)) }
-    // 两个复选框是 stepPlacement 的展开形态：勾两处 = both，只勾顶部 = marquee，只勾卡片 = card
-    var marqueeOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.CARD) }
-    var cardOn by remember { mutableStateOf(stepPlacement != StepTextPlacement.MARQUEE) }
-    var stepTextHint by remember { mutableStateOf(false) }
-
-    fun updateStepText(nextMarquee: Boolean, nextCard: Boolean) {
-        if (!nextMarquee && !nextCard) {
-            // 两处都取消会让描述无处可显：保持原勾选并就地提示，不静默变成空状态
-            stepTextHint = true
-            return
-        }
-        val next = when {
-            nextMarquee && nextCard -> StepTextPlacement.BOTH
-            nextMarquee -> StepTextPlacement.MARQUEE
-            else -> StepTextPlacement.CARD
-        }
-        marqueeOn = nextMarquee
-        cardOn = nextCard
-        stepPlacement = next
-        OverlayDisplaySettings.setStepTextPlacement(context, next)
-    }
-    LaunchedEffect(stepTextHint) {
-        if (stepTextHint) {
-            delay(2_500)
-            stepTextHint = false
-        }
-    }
-
-    SettingsSection(
-        title = "常用设置",
-        subtitle = "最常改的几项都在这里，改完立即生效",
-        tone = SettingsTone.Brand,
-    ) {
-        // ---- 执行方式：给 AI 的授权范围 ----
-        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
-            Text(
-                "任务执行方式",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-            )
-            Spacer(Modifier.height(AppSpacing.Xxs))
-            Text(
-                "给 AI 的授权范围，与「执行通道」叠加生效",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(AppSpacing.Md))
-            val mode = com.phoneagent.engine.execution.ActionMode.fromKey(st.actionMode)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-            ) {
-                com.phoneagent.engine.execution.ActionMode.entries.forEach { item ->
-                    SettingsChoiceChip(
-                        label = item.label,
-                        selected = st.actionMode == item.key,
-                        onClick = {
-                            st.actionMode = item.key
-                            save()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-            Spacer(Modifier.height(AppSpacing.Sm))
-            Text(
-                text = mode.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (mode == com.phoneagent.engine.execution.ActionMode.FREE) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            // 自由模式是危险项：后果写在控件正下方，不靠用户去翻文档
-            if (mode == com.phoneagent.engine.execution.ActionMode.FREE) {
-                Spacer(Modifier.height(AppSpacing.Xs))
-                Text(
-                    "自由模式允许 AI 自写命令并直调无障碍端点，只在你信任当前任务时使用。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
+    SettingsSection(title = "常用", tone = SettingsTone.Brand) {
+        // ---- 就绪待办：还差哪一步 ----
+        ReadinessRow(
+            ctx = ctx,
+            onModel = {
+                // 点模型格 = 挑主模型；还没配好时先去快速开始（填 Key + 测连接一步到位）
+                if (ctx.st.apiKey.isNotBlank()) onPickModel()
+                else onOpen(SettingsPage.QUICK_START)
+            },
+            onPermission = { onOpen(SettingsPage.PERMISSIONS) },
+            onQuickStart = { onOpen(SettingsPage.QUICK_START) },
+        )
 
         SettingsDivider(inset = false)
 
-        // ---- 主模型与线路：一行看到当前用哪条线、哪个模型 ----
+        // ---- 执行方式：只读，改值去 Agent 页转盘 ----
+        val mode = com.phoneagent.engine.execution.ActionMode.fromKey(st.actionMode)
+        val freeMode = mode == com.phoneagent.engine.execution.ActionMode.FREE
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onPickModel)
+                .clickable { onOpen(SettingsPage.AGENT) }
                 .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
             Icon(
-                AppIcons.SmartToy,
+                AppIcons.Tune,
                 contentDescription = null,
                 tint = SettingsTone.Brand.accent(),
             )
             Column(Modifier.weight(1f)) {
                 Text(
-                    "主模型",
+                    "任务执行方式",
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
                 )
                 Spacer(Modifier.height(AppSpacing.Xxs))
-                // 模型名与线路各占一行：模型名不再和右侧控件抢宽度，大字号下也不会被挤成省略号
                 Text(
-                    text = st.model.ifBlank { "未选模型" },
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = if (st.model.isBlank()) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    // 线路名与模型名分开写：只说「已配置」看不出走的是哪条线
-                    text = "线路：" + st.baseUrl.let { endpointHost(it) }.ifBlank { "未配置" },
+                    // 只读值写在副行：这里只回答「现在是哪一档」，改动在 Agent 页做
+                    if (freeMode) "${mode.label} · 可自写命令，慎用" else "${mode.label} · 与执行通道叠加生效",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (freeMode) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -188,7 +96,9 @@ internal fun SettingsQuickPanel(
 
         SettingsDivider(inset = false)
 
-        // ---- 浮层显示：桌面悬浮窗 + 两处逐步文字 + 边缘光效 ----
+        // ---- 浮层显示：只留总开关 ----
+        // 顶部跑马灯 / 任务卡状态行 / 边缘光效三个子项已移进「外观与导航 → 界面效果」，
+        // 与它们各自控制的光带、光效放在同一分区：总开关在这里，样式在那边，一处只做一件事。
         Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -198,7 +108,7 @@ internal fun SettingsQuickPanel(
                     )
                     Spacer(Modifier.height(AppSpacing.Xxs))
                     Text(
-                        "任务进度浮在桌面；关闭时以下三项不生效",
+                        "任务进度浮在桌面显示",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -211,88 +121,7 @@ internal fun SettingsQuickPanel(
                     },
                 )
             }
-            if (!st.floatingWindowEnabled) {
-                Spacer(Modifier.height(AppSpacing.Xs))
-                Text(
-                    "悬浮窗已关闭：下面三项照常保存，重新打开悬浮窗后生效",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        SettingsDivider(inset = false)
-        CheckRow(
-            title = "顶部跑马灯",
-            subtitle = "描述在顶部光带滚动；不勾就整条不显示",
-            checked = marqueeOn,
-        ) { next ->
-            updateStepText(nextMarquee = next, nextCard = cardOn)
-        }
-        SettingsDivider(inset = false)
-        CheckRow(
-            title = "任务卡状态行",
-            subtitle = "描述出现在任务卡里；不勾就只留「第 n/m 步」",
-            checked = cardOn,
-        ) { next ->
-            updateStepText(nextMarquee = marqueeOn, nextCard = next)
-        }
-        if (stepTextHint) {
-            // 只做一次性提示，不弹系统 Toast：提示就近放在控件下方，读到就知道怎么改
-            Text(
-                "至少保留一处显示",
-                modifier = Modifier.padding(start = AppSpacing.Page, end = AppSpacing.Page, top = AppSpacing.Xxs),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        SettingsDivider(inset = false)
-        CheckRow(
-            title = "绿色边缘光效悬浮窗",
-            subtitle = "任务执行时在屏幕边缘显示绿色光带；不勾就不建窗口、不占触摸，任务照常执行",
-            checked = edgeLightingOn,
-        ) { next ->
-            edgeLightingOn = next
-            OverlayDisplaySettings.setEdgeLightingEnabled(context, next)
         }
         Spacer(Modifier.height(AppSpacing.Sm))
-    }
-}
-
-/**
- * 复选行：整行可点、可勾。
- *
- * 「逐步任务文字」和「绿色边缘光效」共用这一个：这组的语义是「要不要显示某一层」，
- * 不是单选互斥，也不是总开关，所以用 Checkbox 而不是 RadioButton / Switch。
- */
-@Composable
-private fun CheckRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
-            .padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = null)
-        Spacer(Modifier.width(AppSpacing.Md))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
-                ),
-            )
-            Spacer(Modifier.height(AppSpacing.Xxs))
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
     }
 }

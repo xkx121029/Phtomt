@@ -33,11 +33,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
-import com.phoneagent.ui.components.AppCardBorder
-import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalNavClearance
+import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
@@ -45,7 +44,6 @@ import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.ThemePalette
-import com.phoneagent.ui.theme.appBorderStroke
 
 // ========== 设置页导航条目（唯一定义点） ==========
 //
@@ -76,9 +74,15 @@ internal data class SettingsEntry(
 /** 一组设置入口：分区标题 + 同色相的一组条目 */
 internal data class SettingsGroup(
     val title: String,
-    val subtitle: String,
     val tone: SettingsTone,
     val entries: List<SettingsEntry>,
+    /**
+     * 标题右侧的待处理计数，null = 这一组没有待办。
+     *
+     * 用它替代标题下那句描述性副标题：分组叫什么标题已经说了，剩下值得占位的信息
+     * 只有「还差几项」——描述性文案在每次进设置时都要重读一遍，计数只需扫一眼数字。
+     */
+    val status: ((SettingsOverviewCtx) -> String?)? = null,
 )
 
 /**
@@ -97,8 +101,9 @@ internal data class SettingsGroup(
 internal fun settingsGroups(): List<SettingsGroup> = listOf(
     SettingsGroup(
         title = "执行通道与权限",
-        subtitle = "能不能执行：系统授权、shell 通道与外部控制",
         tone = SettingsTone.Warm,
+        // 只有存在待授权项时才占位；全部就绪的组不需要多一行「已就绪」
+        status = { ctx -> if (ctx.pendingPermissions > 0) "权限 ${ctx.pendingPermissions} 项" else null },
         entries = listOf(
             SettingsEntry(
                 page = SettingsPage.PERMISSIONS,
@@ -132,8 +137,8 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "模型与端侧视觉",
-        subtitle = "AI 从哪来：云端端点、模型职责与本地视觉",
         tone = SettingsTone.Brand,
+        status = { ctx -> if (ctx.st.apiKey.isBlank()) "模型未配置" else null },
         entries = listOf(
             SettingsEntry(
                 page = SettingsPage.AI_MODELS,
@@ -163,7 +168,6 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "任务行为与模式",
-        subtitle = "怎么干活：步数、提示词、执行文档与长线任务",
         tone = SettingsTone.Cool,
         entries = listOf(
             SettingsEntry(
@@ -187,7 +191,6 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "外观与导航",
-        subtitle = "长什么样：配色、运行时效果与底部导航",
         tone = SettingsTone.Brand,
         entries = listOf(
             // 主题 / 界面效果 / 选项卡原先三个同级入口，改的都是同一件事的两面，
@@ -207,7 +210,6 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "数据与记忆",
-        subtitle = "记住什么：页面记忆、导出、清空与恢复默认",
         tone = SettingsTone.Neutral,
         entries = listOf(
             SettingsEntry(
@@ -222,7 +224,6 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
     ),
     SettingsGroup(
         title = "关于与更新",
-        subtitle = "怎么更新、去哪求助",
         tone = SettingsTone.Neutral,
         entries = listOf(
             SettingsEntry(
@@ -270,9 +271,8 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
 /**
  * 设置主页（一级导航）。
  *
- * 视觉走 Material 3 Expressive：顶栏下方先给一条「就绪度」状态条（先去哪、还差什么一目了然），
- * 再是六块各自带色相的分区容器，条目用圆形图标底盘。未就绪时状态条下方补一句话，
- * 把「第一次用先做哪两步」说清楚；就绪后这行自动消失，不给老用户添噪音。
+ * 顶栏下方第一张卡是「常用」：上层是就绪待办（还差哪一步），下层是最常改的三项，
+ * 再往下一张张六块带色相的分区卡。首屏必须看得到分组入口——设置页首先是索引。
  *
  * 只有窄屏会走到这里：宽屏由 [SettingsScreen] 切换成「左分类 + 右详情」的双栏形态。
  */
@@ -309,24 +309,14 @@ internal fun SettingsHome(
                 .padding(LocalNavClearance.current),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
         ) {
-            // 就绪度状态条：把"能不能开工"最关键的两件事提到最前，点一下直达对应设置
-            ReadinessStrip(
+            // 一张「常用」卡里两层：就绪待办 + 高频项。合并后六组入口回到折叠线以上
+            SettingsQuickPanel(
+                st = st,
+                save = save,
+                onPickModel = onPickModel,
                 ctx = ctx,
-                onModel = {
-                    // 还没配好 → 快速开始（填 Key + 测试连接一步到位）；
-                    // 已配好 → 云端模型（多端点/职责分配才是日常要改的东西）
-                    onOpen(
-                        if (ctx.st.apiKey.isNotBlank()) SettingsPage.AI_MODELS
-                        else SettingsPage.QUICK_START
-                    )
-                },
-                onPermission = { onOpen(SettingsPage.PERMISSIONS) },
-                onQuickStart = { onOpen(SettingsPage.QUICK_START) },
+                onOpen = onOpen,
             )
-
-            // 高频项在第一屏可操作：执行方式、主模型/线路、浮层显示。
-            // 这些项在各自二级页里不再重复出现，避免「同一开关三处都能改」
-            SettingsQuickPanel(st = st, save = save, onPickModel = onPickModel)
 
             groups.forEach { group -> SettingsGroupSection(group, ctx, onOpen) }
 
@@ -364,19 +354,14 @@ internal fun SettingsOverviewPane(
                 .padding(horizontal = SettingsScreenPad),
             verticalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
         ) {
-            ReadinessStrip(
-                ctx = ctx,
-                onModel = {
-                    onOpen(
-                        if (ctx.st.apiKey.isNotBlank()) SettingsPage.AI_MODELS
-                        else SettingsPage.QUICK_START
-                    )
-                },
-                onPermission = { onOpen(SettingsPage.PERMISSIONS) },
-                onQuickStart = { onOpen(SettingsPage.QUICK_START) },
-            )
             // 宽屏默认落在「常用」：高频项与手机上同一块面板，不必先去左侧找分类
-            SettingsQuickPanel(st = st, save = save, onPickModel = onPickModel)
+            SettingsQuickPanel(
+                st = st,
+                save = save,
+                onPickModel = onPickModel,
+                ctx = ctx,
+                onOpen = onOpen,
+            )
             Text(
                 "更多设置从左侧选择",
                 style = MaterialTheme.typography.bodyMedium,
@@ -437,7 +422,10 @@ internal fun SettingsCatalogRail(
                 SettingsRailItem(
                     entry = entry,
                     summary = entry.summary(ctx),
-                    selected = entry.page == selected,
+                    // 执行通道深链与普通权限页是同一个入口的两种落点，选中态要认成同一项
+                    selected = entry.page == selected ||
+                        (entry.page == SettingsPage.PERMISSIONS &&
+                            selected == SettingsPage.PERMISSIONS_CHANNEL),
                     onClick = { onSelect(entry.page) },
                 )
             }
@@ -504,7 +492,20 @@ internal fun SettingsGroupSection(
     ctx: SettingsOverviewCtx,
     onOpen: (SettingsPage) -> Unit,
 ) {
-    SettingsSection(title = group.title, subtitle = group.subtitle, tone = group.tone) {
+    val badge = group.status?.invoke(ctx)
+    SettingsSection(
+        title = group.title,
+        tone = group.tone,
+        // 标题右侧只放待处理计数：能一眼扫到的只有数字，描述性副标题每次进设置都要重读
+        trailing = badge?.let { text ->
+            {
+                StatusPill(
+                    text = text,
+                    color = group.tone.accent(),
+                )
+            }
+        },
+    ) {
         group.entries.forEachIndexed { index, entry ->
             if (index > 0) SettingsDivider()
             SettingsRow(
@@ -520,15 +521,16 @@ internal fun SettingsGroupSection(
 }
 
 /**
- * 就绪度状态条：左右两格分别代表「模型」与「权限」，一格一个圆点表示是否就绪。
+ * 就绪待办：左右两格分别代表「模型」与「权限」，一格一个圆点表示是否就绪。
  *
  * 不放进度条、不放百分比——设置页要回答的是"还差哪一步"，不是"完成了多少"。
- * 两格都可点，直接落到对应设置页，省去在五组里找入口。
+ * 两格都可点，直接落到对应设置页。它和下面「常用」同属一张卡的两层：
+ * 先看还差什么，再改最常改的项，首屏不必被两块独立卡片占满。
  */
 @Composable
 // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
 @Suppress("LongMethod", "MaxLineLength")
-private fun ReadinessStrip(
+internal fun ReadinessRow(
     ctx: SettingsOverviewCtx,
     onModel: () -> Unit,
     onPermission: () -> Unit,
@@ -538,67 +540,62 @@ private fun ReadinessStrip(
     // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
     @Suppress("MaxLineLength")
     val modelReady = ctx.st.model.isNotBlank() && ctx.st.apiKey.isNotBlank()
-    androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Card),
-        color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(modifier = Modifier.height(IntrinsicSize.Min)) {
-                ReadinessCell(
-                    title = "AI 模型",
-                    value = when {
-                        ctx.st.apiKey.isBlank() -> "未配置"
-                        ctx.st.model.isNotBlank() -> ctx.st.model
-                        else -> "未选模型"
-                    },
-                    ready = modelReady,
-                    onClick = onModel,
+    Column {
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            ReadinessCell(
+                title = "AI 模型",
+                value = when {
+                    ctx.st.apiKey.isBlank() -> "未配置"
+                    ctx.st.model.isNotBlank() -> ctx.st.model
+                    else -> "未选模型"
+                },
+                // 线路名从「主模型」行并过来：格子里放不下的只有这个词，语义没变
+                hint = if (ctx.st.apiKey.isNotBlank()) "线路：" + endpointHost(ctx.st.baseUrl).ifBlank { "未配置" } else null,
+                ready = modelReady,
+                onClick = onModel,
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                Modifier
+                    .width(0.5.dp)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            )
+            ReadinessCell(
+                title = "运行权限",
+                value = when {
+                    ctx.permissionsReady -> "已就绪"
+                    ctx.pendingPermissions > 0 -> "待授权 ${ctx.pendingPermissions} 项"
+                    else -> "检测中"
+                },
+                ready = ctx.permissionsReady,
+                onClick = onPermission,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        // 未就绪时只给一行结论，不再铺两步教程：步骤在「快速开始」整页里，
+        // 这一行只负责把人送过去（首屏高度要留给下面的分组入口）
+        if (!modelReady || !ctx.permissionsReady) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(AppSize.Hairline)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = AppSpacing.Lg, end = AppSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "还没配好，先走一遍快速开始",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    Modifier
-                        .width(0.5.dp)
-                        .fillMaxHeight()
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                )
-                ReadinessCell(
-                    title = "运行权限",
-                    value = when {
-                        ctx.permissionsReady -> "已就绪"
-                        ctx.pendingPermissions > 0 -> "待授权 ${ctx.pendingPermissions} 项"
-                        else -> "检测中"
-                    },
-                    ready = ctx.permissionsReady,
-                    onClick = onPermission,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            // 首次使用的两步指引：只在未就绪时出现，就绪后自动收起。
-            // 右侧给一个直达「快速开始」的动作——只写步骤不给入口，等于让用户自己再找一遍
-            if (!modelReady || !ctx.permissionsReady) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(AppSize.Hairline)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = AppSpacing.Lg, end = AppSpacing.Sm, top = AppSpacing.Xs, bottom = AppSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "第一次使用：① 配好模型 → ② 开启无障碍权限 → 回「Agent」页直接说要做什么。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    androidx.compose.material3.TextButton(onClick = onQuickStart) {
-                        Text("开始配置")
-                    }
+                androidx.compose.material3.TextButton(onClick = onQuickStart) {
+                    Text("开始配置")
                 }
             }
         }
@@ -612,6 +609,8 @@ private fun ReadinessCell(
     ready: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 值下面的补一行信息（当前只有模型格用：线路名） */
+    hint: String? = null,
 ) {
     val buzz = rememberHapticClick()
     val dot = if (ready) AppTheme.colors.success else MaterialTheme.colorScheme.error
@@ -621,7 +620,7 @@ private fun ReadinessCell(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg),
+            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         Text(
             title,
@@ -642,6 +641,16 @@ private fun ReadinessCell(
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (hint != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

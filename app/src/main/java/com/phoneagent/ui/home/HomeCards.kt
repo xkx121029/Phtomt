@@ -21,13 +21,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -137,10 +134,11 @@ internal fun PrimaryActionCard(
 }
 
 /**
- * 首屏运行状态条：一条卡里三格，分别回答模型 / 无障碍 / 截屏能不能用。
+ * 首屏运行状态条：一条卡里四格，分别回答模型 / 无障碍 / 截屏 / 执行通道能不能用。
  *
  * 三张独立状态卡太占首屏高度，也把"待办"与"常用入口"挤到第二屏；压成一条后
- * 一眼扫完，点哪格去哪格。
+ * 一眼扫完，点哪格去哪格。第四格「执行通道」回答的是"AI 靠什么动手机"——
+ * 无障碍、内置 Shizuku、Termux 三选一，这是失败排查时最先要看的一项。
  */
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
@@ -150,9 +148,12 @@ internal fun HomeStatusStrip(
     model: String,
     a11yReady: Boolean,
     screenshotReady: Boolean,
+    channel: String,
+    channelReady: Boolean,
     onModel: () -> Unit,
     onA11y: () -> Unit,
     onScreenshot: () -> Unit,
+    onChannel: () -> Unit,
 ) {
     Surface(
         shape = RoundedCornerShape(AppRadii.Card),
@@ -182,6 +183,14 @@ internal fun HomeStatusStrip(
                 value = if (screenshotReady) "已授权" else "待授权",
                 ready = screenshotReady,
                 onClick = onScreenshot,
+                modifier = Modifier.weight(1f),
+            )
+            HomeStatusDivider()
+            HomeStatusCell(
+                label = "执行通道",
+                value = channel,
+                ready = channelReady,
+                onClick = onChannel,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -240,63 +249,5 @@ private fun HomeStatusDivider() {
             .fillMaxHeight()
             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
     )
-}
-
-/**
- * ACA（编码 agent）技能卡：主页「编码技能」区块用。
- *
- * 与 StatusCard 的差异只有两处：描述允许两行（skill 包的 description 常是
- * 一句话以上的英文），以及描述非中文时走 [translate] 自动翻成中文（失败
- * 回退原文，沿用主引擎的翻译缓存）。纯展示卡，不接点击。
- */
-@Composable
-internal fun AcaSkillCard(
-    icon: ImageVector,
-    name: String,
-    description: String,
-    meta: String,
-    iconColor: Color,
-    iconBackground: Color,
-    translate: suspend (String) -> String = { it },
-    modifier: Modifier = Modifier,
-) {
-    // 描述翻译：内容变化才重翻；空描述直接跳过
-    var shown by androidx.compose.runtime.remember(description) {
-        androidx.compose.runtime.mutableStateOf(description)
-    }
-    androidx.compose.runtime.LaunchedEffect(description) {
-        if (description.isBlank()) return@LaunchedEffect
-        shown = runCatching { translate(description) }.getOrNull() ?: description
-    }
-    androidx.compose.foundation.layout.Box(modifier) {
-        AppItemCard {
-            AppIconTile(
-                icon = icon,
-                tint = iconColor,
-                background = iconBackground,
-                tileSize = 44.dp,
-                iconSize = 22.dp,
-                modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 12.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).padding(vertical = 12.dp)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                if (shown.isNotBlank()) {
-                    Text(
-                        shown,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                }
-                Text(
-                    meta,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    maxLines = 1,
-                )
-            }
-        }
-    }
 }
 

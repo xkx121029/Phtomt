@@ -19,17 +19,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -282,6 +289,91 @@ internal fun SettingsPageHeader(title: String, onBack: () -> Unit, subtitle: Str
     }
 }
 
+/**
+ * 复选行：整行可点、可勾。
+ *
+ * 用于「要不要显示某一层」这类非互斥、也不是总开关的项（逐步文字位置、边缘光效）。
+ * 与 [SettingsToggleRow] 的区别只在语义：这里允许多项同时开，勾选框比开关更像清单。
+ */
+@Composable
+internal fun SettingsCheckRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
+            .padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Spacer(Modifier.width(AppSpacing.Md))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
+                ),
+            )
+            Spacer(Modifier.height(AppSpacing.Xxs))
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 「为什么」折叠：默认只留一行入口，点开才展开长解释。
+ *
+ * 设置页里的原理说明（省电策略、保活原理、回退规则）只在出问题时才有人读；
+ * 直接铺在页面上会把真正的操作按钮挤到两三屏之外。结论和动作留在页面上，解释收进这里。
+ */
+@Composable
+internal fun SettingsWhyFold(
+    text: String,
+    modifier: Modifier = Modifier,
+    label: String = "为什么",
+) {
+    if (text.isBlank()) return
+    var expanded by remember { mutableStateOf(false) }
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = AppSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(AppSpacing.Xxs))
+            Icon(
+                AppIcons.ChevronDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        if (expanded) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = AppSpacing.Xs),
+            )
+        }
+    }
+}
+
 /** 开关行：标题 + 可选说明 + 右侧开关，沿用全站圆角语言 */
 @Composable
 internal fun SettingsToggleRow(
@@ -314,7 +406,6 @@ internal fun SettingsToggleRow(
         Switch(checked = value, onCheckedChange = onChange)
     }
 }
-
 /** 带标签的表单字段 */
 @Composable
 internal fun LabeledField(label: String, content: @Composable () -> Unit) {

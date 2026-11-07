@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -53,6 +52,9 @@ fun HomeScreen(
     onRequestScreenshot: () -> Unit,
     onNavigate: (Int) -> Unit = {},
     onOpenExtras: (ExtrasPage) -> Unit = {},
+    onOpenPermissions: () -> Unit = {},
+    /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */
+    onOpenChannel: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val settings by vm.settingsFlow.collectAsState()
@@ -60,21 +62,32 @@ fun HomeScreen(
     val agent by vm.agentState.collectAsState()
     val permissions by vm.permissions.collectAsState()
     val screenshotActive by vm.screenshotActive.collectAsState()
-    // ACA（编码 agent）可用技能：流式扫描，列表逐条增长
-    val acaSkills by vm.acaSkills.collectAsState()
-    val acaScanning by vm.acaScanning.collectAsState()
-    val acaSkillErrors by vm.acaSkillErrors.collectAsState()
+    // 执行通道：Shizuku / Termux 的真实可用性，决定状态条第四格怎么报
+    val shizukuState by vm.shizukuState.collectAsState()
+    val termuxStatus by vm.termuxStatus.collectAsState()
+    val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
+    val termuxReady = termuxStatus.ready
+    val channel = when (settings.executionChannel) {
+        "SHIZUKU" -> if (shizukuReady) "Shizuku" else "未就绪"
+        "TERMUX" -> if (termuxReady) "Termux" else "未就绪"
+        else -> when {
+            shizukuReady -> "Shizuku"
+            termuxReady -> "Termux"
+            else -> "无障碍"
+        }
+    }
+    val channelReady = shizukuReady || termuxReady || a11y
 
     // 视觉模型入口已收进 设置 → 端侧视觉，主页不再展示
     LaunchedEffect(Unit) {
         vm.refreshStatus(context)
         vm.refreshA11yState(context)
         vm.refreshPermissions(context)
-        vm.refreshAcaSkills(context)
+        vm.refreshTermuxStatus()
     }
 
     // 从系统授权页（无障碍/悬浮窗/电池/通知）返回后立刻重读，否则首页仍显示「去授权」，
-    // 得切一次页才更新。技能扫描不进 ON_RESUME：那是有 TTL 的耗时磁盘扫描。
+    // 得切一次页才更新。
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -82,6 +95,7 @@ fun HomeScreen(
                 vm.refreshStatus(context)
                 vm.refreshA11yState(context)
                 vm.refreshPermissions(context)
+                vm.refreshTermuxStatus()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -139,13 +153,17 @@ fun HomeScreen(
             SectionHeader("运行状态")
             HomeStatusStrip(
                 modelReady = configured,
-                model = settings.model,
+                // 四格并排时模型名常被挤成省略号，这格只回答「配好了没有」；具体模型在「常用」卡里看
+                model = if (configured) "已配置" else "未配置",
                 a11yReady = a11y,
                 screenshotReady = screenshotActive,
+                channel = channel,
+                channelReady = channelReady,
                 onModel = { onNavigate(2) },
                 // 无障碍由「服务组件」提供：没装组件就先去装，别把用户丢进空的无障碍列表
                 onA11y = { vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY) },
                 onScreenshot = onRequestScreenshot,
+                onChannel = onOpenChannel,
             )
 
             // 常用入口只留两个：其余能力都收在底部导航（Coding / 记忆 / 设置）与「设置」里
@@ -174,45 +192,10 @@ fun HomeScreen(
         }
 
         val secondarySections: @Composable ColumnScope.() -> Unit = {
-            // 编码技能与权限雷达直接平铺：不再折成一行"点按展开"，
-            // 进页往下滑就能看到，少一次点击也少一处隐藏状态。
-            // 编码技能（ACA）：与编码 Agent 共用 filesDir/skills，主页只扫盘不启动
-            // node 子进程。流式输出 = 扫描逐条回调 + animateListItem 级联入场，
-            // 观感是技能一条条"流"出来；描述非中文时经主引擎翻译成中文。
-            SectionHeader("编码技能")
-            if (acaSkills.isEmpty()) {
-                Text(
-                    text = if (acaScanning) "正在扫描编码技能…" else "暂无可用编码技能",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-            }
-            acaSkills.forEachIndexed { index, skill ->
-                AcaSkillCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .animateListItem(index),
-                    icon = AppIcons.Code,
-                    name = skill.name,
-                    description = skill.description,
-                    meta = "v${skill.version} · ${skill.tools.size} 个工具 · ${skill.id}",
-                    iconColor = MaterialTheme.colorScheme.secondary,
-                    iconBackground = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
-                    translate = { vm.translate(it) },
-                )
-            }
-            if (acaSkillErrors.isNotEmpty()) {
-                Text(
-                    text = "无效技能包：${acaSkillErrors.joinToString("；")}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
-
-            SectionHeader("权限雷达")
-            PermissionRadar(permissions, context, vm)
+            // 编码技能已从首页移除：技能清单在 Coding Tab 与「设置 → 编码 Agent」各有入口，
+            // 首页再平铺一遍只是把第一屏让给重复信息。
+            // 权限改为一行待办入口，不再平铺 6 张卡（见 PermissionTodoLine）；N=0 时整行不显示。
+            PermissionTodoLine(permissions, onOpen = onOpenPermissions)
 
             // 版本号
             Spacer(Modifier.height(20.dp))
@@ -227,7 +210,9 @@ fun HomeScreen(
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                // 滚动列只铺宽，不铺满高：内容少时让列跟着内容收，
+                // 不再被 fillMaxSize 撑到视口高而在页尾留一块结构性的空区
+                .fillMaxWidth()
                 .verticalScroll(scrollState)
                 // 页眉净空必须垫在滚动容器**内部**（verticalScroll 之后再 padding）：
                 // 垫在容器外面只是把内容整体压低，页眉背后永远是一块纯底色，

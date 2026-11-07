@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -125,6 +127,12 @@ internal fun SettingsAbout(
     onOpenDebug: () -> Unit = {},
     /** 打开模型回归测试页 */
     onOpenTest: () -> Unit = {},
+    /** 打开「开源与致谢」二级页：许可与致谢合在一处，主页只留一行入口 */
+    onOpenLicenses: () -> Unit = {},
+    /** 打开更新页：版本号在线，检查更新不在同一页 */
+    onOpenUpdate: () -> Unit = {},
+    /** 打开快速开始：使用说明只留结论，步骤交给快速开始那一页 */
+    onOpenQuickStart: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
@@ -163,6 +171,9 @@ internal fun SettingsAbout(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(Modifier.height(AppSpacing.Sm))
+                // 版本号与更新动作原先分在两页：看到版本却不知道去哪查新版本，这里直接给入口
+                ActionRow(label = "检查更新", onClick = onOpenUpdate)
             }
         }
 
@@ -180,44 +191,32 @@ internal fun SettingsAbout(
 
         Spacer(Modifier.height(AppSpacing.Lg))
 
+        // 许可与致谢合成一页：两张静态长表放在主页只会让「关于」变成文档堆，
+        // 主页留一行入口，想看的人点进去看
         SettingsSection(
-            title = "开源许可",
-            subtitle = "本应用使用的第三方开源代码",
+            title = "开源与致谢",
+            subtitle = "第三方许可，以及参考过的实现",
             tone = SettingsTone.Neutral,
         ) {
-            LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
-            SettingsDivider(inset = false)
-            LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
-            SettingsDivider(inset = false)
-            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
-                Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
-                Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
-                Bullet("Shizuku 主程序（server/starter）亦随「服务组件」一并分发，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
-            }
-        }
-
-        Spacer(Modifier.height(AppSpacing.Lg))
-
-        SettingsSection(
-            title = "致谢",
-            subtitle = "以下项目只作思路参考，代码未内嵌进本应用",
-            tone = SettingsTone.Neutral,
-        ) {
-            CREDITS.forEachIndexed { index, credit ->
-                if (index > 0) SettingsDivider(inset = false)
-                CreditRow(credit) { openLink(context, credit.url) }
-            }
+            SettingsRow(
+                icon = AppIcons.Code,
+                title = "许可与致谢清单",
+                subtitle = "Shizuku 许可 · 7 个参考项目",
+                tone = SettingsTone.Neutral,
+                onClick = onOpenLicenses,
+            )
         }
 
         Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "使用说明", tone = SettingsTone.Neutral) {
             Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
-                Bullet("先在「AI 模型配置」里填好 API 地址与密钥并保存，配置未通过连接测试不会入库")
-                Bullet("再在「权限与执行通道」里开启无障碍服务；要用 shell 能力还需完成「内置 Shizuku」的首次启动引导")
-                Bullet("在 Agent 页直接说需求即可；打开输入栏的「先规划执行计划」后会先出计划再动手（默认关闭，直接执行）")
+                // 五条压成三条：操作步骤归「快速开始」，这里只留不看就会踩坑的结论
+                Bullet("先在「快速开始」里配好模型、开好无障碍，再回 Agent 页直接说需求")
                 Bullet("支付、删除、发布这类不可逆操作 AI 不会执行，会在动手前停下来交给你")
-                Bullet("任务执行期间的悬浮窗可随时停止任务、补充说明或接管操作")
+                Bullet("任务执行期间，悬浮窗可随时停止任务、补充说明或接管操作")
+                SettingsDivider(inset = false)
+                ActionRow(label = "打开快速开始", onClick = onOpenQuickStart)
             }
         }
 
@@ -260,6 +259,86 @@ internal fun SettingsAbout(
         }
 
         Spacer(Modifier.height(AppSpacing.Xl))
+    }
+}
+
+/**
+ * 「开源与致谢」二级页：第三方许可 + 参考过的实现。
+ *
+ * 从关于页进入；返回按两层口径直接回设置首页（与其余子页一致，不引入第三层）。
+ */
+@Composable
+internal fun SettingsLicenses(onBack: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = SettingsScreenPad)
+            .padding(LocalNavClearance.current),
+    ) {
+        SettingsPageHeader("开源与致谢", onBack, subtitle = "第三方许可与参考实现")
+        Spacer(Modifier.height(AppSpacing.Page))
+
+        SettingsSection(
+            title = "开源许可",
+            subtitle = "本应用使用的第三方开源代码",
+            tone = SettingsTone.Neutral,
+        ) {
+            LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
+            SettingsDivider(inset = false)
+            LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
+            SettingsDivider(inset = false)
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
+                Bullet("shell 执行通道基于 Shizuku API 构建，源码随本应用开源仓库一并分发（third_party/shizuku）")
+                Bullet("Shizuku API 版权所有 © 2021 RikkaW，依 MIT 许可证使用；完整许可证文本见源码 LICENSE 文件")
+                Bullet("Shizuku 主程序（server/starter）亦随「服务组件」一并分发，免装官方 App 直接拉起执行服务；依 Apache 2.0 许可证使用并保留其版权声明")
+            }
+        }
+
+        Spacer(Modifier.height(AppSpacing.Lg))
+
+        SettingsSection(
+            title = "致谢",
+            subtitle = "以下项目只作思路参考，代码未内嵌进本应用",
+            tone = SettingsTone.Neutral,
+        ) {
+            CREDITS.forEachIndexed { index, credit ->
+                if (index > 0) SettingsDivider(inset = false)
+                CreditRow(credit) { openLink(context, credit.url) }
+            }
+        }
+
+        Spacer(Modifier.height(AppSpacing.Xl))
+    }
+}
+
+/** 行内动作：左标题右箭头，用于卡片/分区里的轻量跳转（检查更新、打开快速开始） */
+@Composable
+private fun ActionRow(label: String, onClick: () -> Unit) {
+    val buzz = rememberHapticClick()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                buzz()
+                onClick()
+            }
+            .padding(vertical = AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.width(AppSpacing.Xxs))
+        Icon(
+            AppIcons.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
