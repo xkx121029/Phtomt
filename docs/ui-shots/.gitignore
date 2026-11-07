@@ -1,0 +1,46 @@
+# 本目录是 UI 走查与浮层取证的工作区：只有被文档引用的证据帧入库，
+# 裸帧、中间批次与一次性脚本一律留在本机——只忽略，不删除。
+# 说明见 docs/ui-refresh-plan.md 第十节「截图纪律」。
+
+# 裸帧（1080x2400，每帧约 10MB）：raw -> PNG 的中间产物，绝不入库
+*.raw
+
+# 一次性取证 / 转换 / 计时脚本
+/cap.sh
+/capraw.sh
+/capring.sh
+/raw2png.py
+/watch.sh
+/clock_scan.py
+/scan_s5.py
+/timing.sh
+/timing2.sh
+
+# uiautomator dump 与临时截屏
+/ui*.xml
+/*.mp4
+/cur.png
+/now.png
+/now2.png
+
+# 未被文档引用的中间批次截图（最终版见 final-*）
+/after-*.png
+
+# 临时目录（成批裸帧与帧序列，只在本机保留）
+/shots/
+/shots2/
+/shots3/
+/shots4/
+/s5/
+/live/
+/live2/
+/clockrun/
+/failinject/
+/failreal/
+/failrun/
+/last2/
+/liveraw/
+
+# failfix/ 的 16 帧是错误通道（R/B 互换）的转换图，颜色结论已由
+# failfix/README.md 撤回；正确证据见 failfix2/，帧本身只留本机
+/failfix/*.png
