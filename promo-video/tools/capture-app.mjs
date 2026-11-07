@@ -24,7 +24,6 @@ const STATES = [
     run: () => {
       S.theme = 'dark';
       S.palette = 'ink_green';
-      S.perms = { a11y: true, overlay: true, autostart: true, apps: true };
       S.agent.items = [];
       setTab('home');
     },
@@ -126,29 +125,30 @@ const STATES = [
       S.theme = 'dark'; S.palette = 'ink_green';
       seedMemoryPages();
       S.memory.tab = 'graph';
-      S.memory.anomalies = [
-        { anomalyType: '控件被广告遮挡', appPackage: 'com.tencent.mm' },
-        { anomalyType: '页面未加载完就点击', appPackage: 'com.android.settings' },
-        { anomalyType: '输入法抢焦点', appPackage: 'com.android.deskclock' },
-      ];
-      S.memory.profiles = [
-        { key: '常用字号', value: '最大档' },
-        { key: '习惯时间', value: '早 7:30 闹钟' },
-        { key: '偏好通道', value: '无障碍优先' },
-      ];
+      /* 对齐真机当前状态：任务记忆 13、异常 0、画像 0（统计卡 13/0/0） */
+      S.memory.anomalies = [];
+      S.memory.profiles = [];
       S.memory.taskMemories = [
-        {
-          id: 1, taskName: '把手机字体调到最大', label: '已验证', pill: 'ok',
-          steps: 4, goal: '让系统字号与界面元素同时变大',
-          requirements: ['不要动到无障碍服务本身'],
-          methods: ['设置 → 显示与亮度 → 字体大小 → 拖到最右'],
-        },
-        {
-          id: 2, taskName: '整理本月账单', label: '已验证', pill: 'ok',
-          steps: 6, goal: '把本月订单按类别汇总成一条清单',
-          requirements: [],
-          methods: ['读取订单列表 → 按商户归类 → 生成摘要卡片'],
-        },
+        { id: 1, taskName: '设明早上七点的闹钟', label: '进行中', pill: 'warn',
+          steps: 0, goal: '设明早上七点的闹钟', requirements: [], methods: [] },
+        { id: 2, taskName: '设明早上七点的闹钟', label: '未完成', pill: 'err',
+          steps: 0, goal: '设明早上七点的闹钟', requirements: [], methods: [] },
+        ...[
+          ['把屏幕亮度调到最高', '设置 → 显示与亮度 → 亮度拖到最右'],
+          ['打开时钟，设一个 10 分钟后的闹钟', '时钟 → 添加闹钟 → 设为 10 分钟后'],
+          ['把手机字体调到最大', '设置 → 显示与亮度 → 字体大小 → 拖到最右'],
+          ['打开相册，看看最近拍的照片', '相册 → 照片 → 最近项目'],
+          ['打开无线局域网设置', '设置 → 网络和互联网 → WLAN'],
+          ['查看电池电量', '设置 → 电池'],
+          ['打开蓝牙', '设置 → 已配对的设备 → 蓝牙开关'],
+          ['把媒体音量调到 50%', '音量键 → 滑杆拖到一半'],
+          ['打开飞行模式再关闭', '设置 → 网络和互联网 → 飞行模式'],
+          ['截一张当前屏幕', '电源键 + 音量下键'],
+          ['打开计算器', '桌面 → 计算器'],
+        ].map(([taskName, method], i) => ({
+          id: i + 3, taskName, label: '已验证', pill: 'ok',
+          steps: 2, goal: taskName, requirements: [], methods: [method],
+        })),
       ];
       setTab('memory');
     },
@@ -191,22 +191,6 @@ const STATES = [
         ],
       }];
       setTab('coding');
-    },
-  },
-  {
-    id: 'chat',
-    run: () => {
-      S.theme = 'dark'; S.palette = 'ink_green';
-      S.chat = [
-        { role: 'me', text: '这个 App 到底怎么接管手机的？' },
-        {
-          role: 'ai',
-          text:
-            '它不靠脚本。无障碍服务把当前页面读成一棵控件树，我看到的是「第 3 个可点击、文字是字体大小」，' +
-            '再由端侧转译层算出该点哪里。AI 只描述意图，坐标和通道都在本地决定。',
-        },
-      ];
-      setTab('chat');
     },
   },
   {

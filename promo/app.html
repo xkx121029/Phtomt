@@ -346,11 +346,12 @@ input,textarea{outline:none}
   background:var(--brand-c);color:var(--brand);
 }
 .lead-tile .ic{width:20px;height:20px}
-/* 主页品牌瓦片：BrandNavy → Accent 两段线性渐变，40dp，无阴影 */
+/* 主页品牌瓦片：BrandAnchor 纯色 + BrandMarkTint 亮格（品牌资产固定色，
+   不随主题/色板变化 —— Color.kt 里 BrandAnchor/BrandMarkTint 的注释） */
 .lead-tile.brand{
   width:40px;height:40px;
-  background:linear-gradient(135deg,#0A2E27,#0E7C66);
-  color:#fff;
+  background:#063A2E;
+  color:#5FD9B4;
 }
 
 /* 导航：固定在屏幕内底部（不随窗口改布局） */
@@ -519,7 +520,8 @@ input,textarea{outline:none}
   flex:1;padding:6px 10px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--muted);
   transition:background var(--t-fast),color var(--t-fast);
 }
-.seg button.on{background:var(--brand-c);color:var(--on-brand-c)}
+/* 分段控件：M3 SegmentedButton，选中 = secondaryContainer（= accentWarmContainer） */
+.seg button.on{background:var(--warm-c);color:var(--on-warm-c)}
 
 .field{display:flex;flex-direction:column;gap:6px;padding:12px 14px}
 .field label{font-size:11.5px;font-weight:600;letter-spacing:.3px;color:var(--muted)}
@@ -549,6 +551,45 @@ input,textarea{outline:none}
 .home-list .item{border:0;border-radius:0;background:transparent;border-bottom:1px solid var(--hair)}
 .home-list .item:last-child{border-bottom:0}
 .home-list .item:hover{background:color-mix(in srgb,var(--on-bg) 4%,transparent)}
+
+/* 主入口卡（PrimaryActionCard）：primary 10% 底 + 28% 描边，52dp 圆形主色徽标 */
+.primary-act{
+  display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  padding:16px;border-radius:24px;
+  background:color-mix(in srgb,var(--brand) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--brand) 28%,transparent);
+  transition:transform var(--t-fast) var(--ease);
+}
+.primary-act:active{transform:scale(.97)}
+.primary-act .item-t{flex:1;min-width:0}
+.pa-tile{
+  width:52px;height:52px;border-radius:99px;flex:none;display:grid;place-items:center;
+  background:var(--brand);color:var(--on-brand);
+}
+.pa-tile .ic{width:26px;height:26px}
+.primary-act .item-t b{font-size:21px;line-height:28px;font-weight:700;letter-spacing:0}
+.primary-act .item-t em{font-size:13.5px;line-height:19px}
+.primary-act .chev{color:var(--brand);flex:none}
+
+/* 运行状态条（HomeStatusStrip）：一条卡三格，分隔线 0.5dp */
+.strip3{
+  display:flex;align-items:stretch;
+  background:var(--card);border:1px solid var(--card-border);border-radius:24px;overflow:hidden;
+}
+.strip3 .cell{
+  flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;
+  padding:12px;background:none;border:0;text-align:left;
+}
+.strip3 .cell + .cell{border-left:1px solid var(--hair)}
+.strip3 .lbl{font-size:11px;line-height:14px;color:var(--muted)}
+.strip3 .val{display:flex;align-items:center;gap:5px;font-size:12.5px;line-height:17px;font-weight:500;
+  color:var(--on-bg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ACA 技能卡（AcaSkillCard）：描述两行 + meta 小字 */
+.item.aca{align-items:flex-start}
+.item.aca .itile{margin-top:2px}
+.item.aca .item-t em.desc{-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
+.item.aca .item-t em.meta{font-size:11px;line-height:15px;color:color-mix(in srgb,var(--muted) 72%,transparent)}
 
 .permit{display:flex;flex-direction:column;gap:8px;padding:13px 14px;border-radius:20px;
   background:var(--card);border:1px solid var(--card-border);text-align:left;width:100%;
@@ -752,8 +793,8 @@ input,textarea{outline:none}
 }
 .composer textarea::placeholder{color:var(--on-raised)}
 .sendbtn{
-  width:40px;height:40px;border-radius:14px;display:grid;place-items:center;flex:none;
-  background:var(--brand);color:var(--on-brand);margin-bottom:0;
+  width:40px;height:40px;border-radius:99px;display:grid;place-items:center;flex:none;
+  background:var(--sunken);color:var(--on-raised);margin-bottom:0;
   transition:transform var(--t-fast) var(--ease),opacity var(--t-fast);
 }
 .sendbtn:active{transform:scale(.94)}
@@ -765,14 +806,24 @@ input,textarea{outline:none}
 .review-row em{font-style:normal;flex:1;min-width:0;font-size:11px;line-height:16px;color:var(--muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* 对齐 AgentModeBar：Chip10 触发器、brandContainer 底、H12 V8、labelMedium */
-.modebar{display:flex;align-items:center;padding:0 0 2px;gap:8px}
+/* 对齐 AgentModeBar：两枚并排 chip（模型 / 执行与授权），raised 底、labelMedium */
+.modebar{display:flex;align-items:center;padding:0 0 8px;gap:8px}
 .mode-chip{
-  display:inline-flex;align-items:center;gap:4px;padding:8px 12px;border-radius:10px;
-  background:var(--brand-c);border:1px solid var(--line);color:var(--on-brand-c);
+  display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:12px;
+  background:var(--raised);border:1px solid var(--line);color:var(--on-raised);
   font-size:12px;line-height:16px;font-weight:500;transition:transform var(--t-fast) var(--ease);
 }
+.mode-chip .k{color:var(--muted);font-weight:400}
+.mode-chip .v{color:var(--brand);font-weight:600}
 .mode-chip:active{transform:scale(.96)}
+/* dock 底部两枚开关行（审核 AI / 先规划执行计划） */
+.review-row2{display:flex;align-items:center;gap:18px;padding:8px 2px 0}
+.sw-line{
+  flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:none;border:0;padding:0;color:var(--on-bg);cursor:pointer;
+  font-size:12px;line-height:16px;font-weight:500;white-space:nowrap;
+}
+.sw-line .switch{flex:none}
 .mode-panel{
   display:flex;flex-direction:column;border-radius:24px;overflow:hidden;
   background:var(--raised);border:1px solid var(--line);margin-bottom:8px;
@@ -1234,6 +1285,63 @@ input,textarea{outline:none}
 .grp-label b{display:block;font-size:12.5px;font-weight:600;letter-spacing:.2px}
 .grp-label em{font-style:normal;display:block;font-size:11px;line-height:16px;color:var(--muted)}
 .gcard{background:var(--card);border:1px solid var(--card-border);border-radius:24px;overflow:hidden}
+
+/* 常用设置面板（对齐 SettingsQuickPanel.kt） */.qk-block{padding:12px 18px 14px}
+.qk-t{display:block;font-size:14.5px;font-weight:600;line-height:20px}
+.qk-s{display:block;font-style:normal;font-size:12px;line-height:16px;color:var(--muted);margin-top:1px}
+.chips3{display:flex;gap:12px;margin-top:12px}
+.chip3{flex:1;height:40px;border-radius:12px;border:1px solid var(--outline);background:transparent;
+  color:var(--on-bg);font-size:13.5px;font-weight:600;cursor:pointer;transition:all var(--t-fast)}
+.chip3.on{background:var(--warm-c);border-color:var(--warm-c);color:var(--on-warm-c)}
+.qk-sum{display:block;font-style:normal;font-size:12px;color:var(--muted);margin-top:10px}
+.qk-model{display:flex;align-items:center;gap:14px;width:100%;padding:13px 18px;text-align:left;
+  position:relative;background:none;border:0;color:inherit;cursor:pointer;transition:background var(--t-fast)}
+.qk-model:hover{background:color-mix(in srgb,var(--on-bg) 4%,transparent)}
+.qk-model>.ic{width:22px;height:22px;color:var(--brand);flex:none}
+.qk-model .qt{flex:1;min-width:0}
+.qk-model .qt b{display:block;font-size:14.5px;font-weight:600;line-height:20px}
+.qk-model .qt i{display:block;font-style:normal;font-size:13px;font-weight:600;line-height:18px;margin-top:2px}
+.qk-model .qt em{display:block;font-style:normal;font-size:12px;line-height:16px;color:var(--muted);margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qk-model .chev{width:20px;height:20px;opacity:.45;flex:none}
+.qk-float{display:flex;align-items:center;gap:12px;padding:13px 18px;position:relative}
+.qk-float .ft{flex:1;min-width:0}
+.qk-float .ft b{display:block;font-size:14.5px;font-weight:600;line-height:20px}
+.qk-float .ft em{font-style:normal;display:block;font-size:12px;line-height:16px;color:var(--muted)}
+.ckrow{display:flex;align-items:center;gap:12px;width:100%;padding:13px 18px;text-align:left;
+  position:relative;background:none;border:0;color:inherit;cursor:pointer;transition:background var(--t-fast)}
+.ckrow:hover{background:color-mix(in srgb,var(--on-bg) 4%,transparent)}
+.qk-model::before,.qk-float::before,.ckrow::before{content:"";position:absolute;left:18px;right:18px;top:0;
+  height:1px;background:color-mix(in srgb,var(--outline) 22%,transparent)}
+.ckrow .ck{width:20px;height:20px;border-radius:6px;border:2px solid var(--outline);flex:none;
+  display:grid;place-items:center;color:transparent;transition:all var(--t-fast)}
+.ckrow.on .ck{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.ckrow .ck .ic{width:13px;height:13px}
+.ckrow .ct{flex:1;min-width:0}
+.ckrow .ct b{display:block;font-size:14.5px;line-height:20px}
+.ckrow.on .ct b{font-weight:600}
+.ckrow .ct em{font-style:normal;display:block;font-size:12px;line-height:16px;color:var(--muted);margin-top:1px}
+
+/* 就绪度条下方「第一次使用」两步指引（未就绪时出现） */
+.rd-firstuse{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:10px 16px 12px;
+  border-top:1px solid var(--hair);font-size:12px;line-height:17px;color:var(--muted)}
+.rd-firstuse span{flex:1}
+.rd-go{flex:none;background:none;border:0;color:var(--brand);font-size:13px;font-weight:600;
+  padding:4px 2px;cursor:pointer}
+
+/* 编码页顶部双 chip 行（对齐 CodingScreen）：会话 chip + 工作区 chip */
+.coding-top{display:flex;align-items:center;gap:10px;margin:2px 0 12px}
+.ct-chip{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border-radius:14px;
+  background:var(--card);border:1px solid var(--card-border);color:var(--on-bg);min-width:0;flex:1;cursor:pointer}
+.ct-chip .ic{width:17px;height:17px;color:var(--muted);flex:none}
+.ct-chip .ct-t{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-chip .ct-n{font-size:12px;color:var(--muted);flex:none}
+.ct-chip .dot{width:7px;height:7px;border-radius:99px;flex:none}
+.ct-plus{display:grid;place-items:center;width:28px;height:28px;border-radius:99px;
+  background:var(--brand);color:var(--on-brand);flex:none}
+.ct-plus .ic{width:14px;height:14px;color:var(--on-brand)}
+.ct-div{width:1px;height:18px;background:var(--outline);flex:none}
+.ct-sw{color:var(--brand);font-size:13.5px;font-weight:600;flex:none}
 
 .sec-box{
   border-radius:28px;overflow:hidden;margin:16px 0 0;padding-bottom:6px;
@@ -1828,6 +1936,10 @@ const ICONS = {
   chat:'<path d="M20.5 11.3a8 8 0 0 1-8 8H9l-4.8 2.6L5.4 17A7.9 7.9 0 1 1 20.5 11.3z"/>',
   send:'<path d="M3.6 20.4 21.4 12 3.6 3.6v6.6l12 1.8-12 1.8z"/>',
   code:'<path d="m8.4 8.2-3.8 3.8 3.8 3.8M15.6 8.2l3.8 3.8-3.8 3.8"/>',
+  /* Lucide Cpu：与真机 AppIcons.Memory 一致 */
+  cpu:'<rect x="4.6" y="4.6" width="14.8" height="14.8" rx="2.2"/><rect x="9.2" y="9.2" width="5.6" height="5.6" rx="0.8"/><path d="M9.2 2.6v2M14.8 2.6v2M9.2 19.4v2M14.8 19.4v2M2.6 9.2h2M2.6 14.8h2M19.4 9.2h2M19.4 14.8h2"/>',
+  /* BrandMark「亮格」：2×2 圆角方格，右上一格实心（几何与 BrandMark.kt 同源：格 6.3 缝 2.7 圆角 2.0 描边 1.55，居中于 24 网格） */
+  brandmark:'<rect x="13.35" y="4.35" width="6.3" height="6.3" rx="2" fill="currentColor" stroke="none"/><rect x="5.125" y="5.125" width="4.75" height="4.75" rx="1.225"/><rect x="5.125" y="14.125" width="4.75" height="4.75" rx="1.225"/><rect x="14.125" y="14.125" width="4.75" height="4.75" rx="1.225"/>',
   bolt:'<path d="M13.4 2.5 5 13.6h5.7L10 21.5l8.6-11.2h-5.8z"/>',
   memory:'<circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="19" r="2.2"/><path d="M12 7.2v9.6M7.2 12h9.6"/>',
   settings:'<path d="M4 7.5h8M17 7.5h3M4 16.5h3M12 16.5h8"/><circle cx="14.5" cy="7.5" r="2.1"/><circle cx="9.5" cy="16.5" r="2.1"/>',
@@ -1843,6 +1955,7 @@ const ICONS = {
   refresh:'<path d="M20 12a8 8 0 1 1-2.4-5.7M20 3.6V8h-4.4"/>',
   robot:'<rect x="4.5" y="8" width="15" height="11" rx="2.4"/><path d="M12 4v4M8.8 12.4h.01M15.2 12.4h.01M9.5 16h5"/>',
   checkCircle:'<circle cx="12" cy="12" r="8.4"/><path d="m8.6 12.3 2.3 2.3 4.6-5"/>',
+  check:'<path d="m5.5 12.6 4.3 4.3 8.7-9.2"/>',
   error:'<circle cx="12" cy="12" r="8.4"/><path d="M12 8v4.6M12 16h.01"/>',
   alert:'<path d="M12 3.6 21.4 20H2.6z"/><path d="M12 9v4.4M12 16.6h.01"/>',
   pause:'<path d="M9.2 5.5v13M14.8 5.5v13"/>',
@@ -1882,9 +1995,8 @@ const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':
 const VERSION = '0.2.128';
 const TABS = [
   {id:'home', label:'主页', icon:'home'},
-  {id:'chat', label:'对话', icon:'chat'},
   {id:'coding', label:'编码', icon:'code'},
-  {id:'agent', label:'操控', icon:'bolt'},
+  {id:'agent', label:'Agent', icon:'bolt'},
   {id:'memory', label:'记忆', icon:'memory'},
   {id:'settings', label:'设置', icon:'settings'}
 ];
@@ -1902,12 +2014,13 @@ const S = {
   marquee:true,
   autoCheck:true,
   channel:'稳定版',
-  tabOrder:['home','chat','coding','agent','memory','settings'],
-  tabsVisible:{home:true, chat:true, coding:true, agent:true, memory:true, settings:true},
-  perms:{a11y:false, overlay:false, autostart:true, apps:true},
-  screenShare:true,
-  model:'glm-4.7-flash',
-  endpoint:'https://open.bigmodel.cn/api/paas/v4',
+  tabOrder:['home','coding','agent','memory','settings'],
+  tabsVisible:{home:true, chat:false, coding:true, agent:true, memory:true, settings:true},
+  perms:{a11y:true, overlay:true, autostart:false, apps:true},
+  screenShare:false,
+  model:'spark-x2.6',
+  endpoint:'https://maas-api.cn-huabei-1.xf-yun.com/v2',
+  stepCard:false,
   onDevice:false,
   review:true,
   actionMode:'BALANCED',
@@ -2080,7 +2193,7 @@ function headerModel(){
     case 'agent': return {title:'Agent',
       sub:S.agent.running ? '正在执行：'+S.agent.task : '描述任务，AI 将逐步接管手机',
       actions:'agent'};
-    case 'memory': return {title:'记忆图谱', sub:'任务记忆、异常经验与用户画像', lead:'memory', actions:'memory'};
+    case 'memory': return {title:'记忆图谱', sub:'任务记忆、异常经验与用户画像', lead:'robot', actions:'memory'};
     case 'settings': return {title:'设置', sub:'按用途分层管理 AI 服务与运行行为'};
   }
   return {title:'', sub:''};
@@ -2089,13 +2202,13 @@ function renderHeader(){
   const m = headerModel();
   let lead = '';
   if(m.back) lead = '<button class="iconbtn" data-act="back" aria-label="返回">'+icon('back')+'</button>';
-  else if(m.brand) lead = '<span class="lead-tile brand">'+icon('sparkle','lg')+'</span>';
+  else if(m.brand) lead = '<span class="lead-tile brand">'+icon('brandmark','lg')+'</span>';
   else if(m.lead) lead = '<span class="lead-tile">'+icon(m.lead,'lg')+'</span>';
 
   let actions = '';
   if(m.actions === 'agent'){
     actions = '<div class="hdr-actions">'+
-      '<button class="iconbtn" data-act="open-memory" aria-label="记忆">'+icon('memory','lg')+'</button>'+
+      '<button class="iconbtn" data-act="open-memory" aria-label="记忆">'+icon('cpu','lg')+'</button>'+
       '<button class="iconbtn" data-act="drawer-open" aria-label="任务">'+icon('menu','lg')+'</button></div>';
   }else if(m.actions === 'memory'){
     actions = '<div class="hdr-actions"><button class="iconbtn brand" data-act="mem-refresh" aria-label="刷新">'+icon('refresh','lg')+'</button></div>';
@@ -2282,9 +2395,12 @@ function autoGrow(t){
    ============================================================ */
 function homeHTML(){
   const missing = permMissing();
-  const a11y = S.perms.a11y;
-  const ai = !!S.model;
   const run = S.agent.running;
+  const cells = [
+    {label:'模型', value:S.model || '未配置', ready:!!S.model, act:'tab:settings'},
+    {label:'无障碍', value:S.perms.a11y?'已开启':'未开启', ready:!!S.perms.a11y, act:'open-page:permissions'},
+    {label:'截屏', value:S.screenShare?'已授权':'待授权', ready:!!S.screenShare, act:'open-page:permissions'},
+  ];
   return (
     (run ? '<div class="banner" data-act="tab:agent">'+
       '<span class="dot brand run"></span>'+
@@ -2292,44 +2408,43 @@ function homeHTML(){
       '<span style="font-size:11px;color:var(--brand)">查看</span></div>'+
       '<div style="height:14px"></div>' : '')+
 
-    '<div class="sec"><h2>能力状态</h2></div>'+
-    '<button class="item" data-act="open-page:permissions">'+
-      '<span class="itile '+(a11y?'ok':'')+'">'+icon('touch')+'</span>'+
-      '<span class="item-t"><b>'+(a11y?'无障碍服务':'未开启')+'</b><em>'+(a11y?'已连接，可读取与操作':'点击前往开启')+'</em></span>'+
+    /* PrimaryActionCard：首屏唯一主落点 */
+    '<button class="primary-act" data-act="tab:agent">'+
+      '<span class="pa-tile">'+icon('sparkle')+'</span>'+
+      '<span class="item-t"><b>让 AI 替我做事</b>'+
+        '<em>'+(S.model ? '已接入 '+esc(S.model)+' · 说一句话就开始' : '下一步：先配置模型，再回来下达任务')+'</em></span>'+
+      icon('chev','chev')+
     '</button>'+
-    '<div class="grid2" style="margin-top:12px">'+
-      '<button class="item" data-act="toggle-screen">'+
-        '<span class="itile '+(S.screenShare?'warm':'')+'">'+icon('camera')+'</span>'+
-        '<span class="item-t"><b>屏幕捕获</b><em>'+(S.screenShare?'运行中，支持视觉理解':'点击授权截屏')+'</em></span>'+
-      '</button>'+
-      '<button class="item" data-act="open-page:cloud">'+
-        '<span class="itile '+(ai?'cool':'')+'">'+icon('key')+'</span>'+
-        '<span class="item-t"><b>'+(ai?'AI 已配置':'未配置')+'</b><em>'+(ai?esc(S.model):'接入模型后即可开始')+'</em></span>'+
-      '</button>'+
+
+    '<div class="sec"><h2>运行状态</h2></div>'+
+    '<div class="strip3">'+cells.map(c=>
+      '<button class="cell" data-act="'+c.act+'">'+
+        '<span class="lbl">'+c.label+'</span>'+
+        '<span class="val"><i class="dot '+(c.ready?'':'err')+'"></i>'+esc(c.value)+'</span>'+
+      '</button>').join('')+
     '</div>'+
 
-    '<div class="sec"><h2>快捷入口</h2></div>'+
-    '<button class="item" data-act="tab:agent">'+
-      '<span class="itile brand">'+icon('bolt')+'</span>'+
-      '<span class="item-t"><b>Agent</b><em>下达执行任务</em></span>'+
-    '</button>'+
-    '<div class="grid2" style="margin-top:12px">'+
-      '<button class="item" data-act="tab:settings">'+
-        '<span class="itile cool">'+icon('sliders')+'</span>'+
-        '<span class="item-t"><b>设置</b><em>模型与权限配置</em></span>'+
-      '</button>'+
+    '<div class="sec"><h2>常用</h2></div>'+
+    '<div class="grid2">'+
       '<button class="item" data-act="open-page:skill">'+
-        '<span class="itile cool">'+icon('memory')+'</span>'+
+        '<span class="itile cool">'+icon('cpu')+'</span>'+
         '<span class="item-t"><b>技能&amp;能力</b><em>Skill/MCP/ADB</em></span>'+
       '</button>'+
+      '<button class="item" data-act="open-page:browser">'+
+        '<span class="itile warm">'+icon('globe')+'</span>'+
+        '<span class="item-t"><b>浏览器</b><em>AI 上网、操作网页</em></span>'+
+      '</button>'+
     '</div>'+
-    '<button class="item" data-act="open-page:browser" style="margin-top:12px">'+
-      '<span class="itile warm">'+icon('globe')+'</span>'+
-      '<span class="item-t"><b>浏览器</b><em>AI 上网、操作网页的落点</em></span>'+
-    '</button>'+
 
     '<div class="sec"><h2>编码技能</h2></div>'+
-    '<p class="skill-empty">'+(S.scanning ? '正在扫描编码技能…' : '暂无可用编码技能')+'</p>'+
+    (S.acaSkills.length ? '<div class="stack">'+S.acaSkills.map(k=>
+      '<div class="item aca">'+
+        '<span class="itile warm">'+icon('code')+'</span>'+
+        '<span class="item-t"><b>'+esc(k.name)+'</b>'+
+          (k.desc?'<em class="desc">'+esc(k.desc)+'</em>':'')+
+          '<em class="meta">'+esc(k.meta)+'</em></span>'+
+      '</div>').join('')+'</div>'
+     : '<p class="skill-empty">'+(S.scanning ? '正在扫描编码技能…' : '暂无可用编码技能')+'</p>')+
 
     '<div class="sec"><h2>权限雷达</h2></div>'+
     '<p class="radar-note"'+(missing?'':' style="color:var(--ok)"')+'>'+
@@ -2347,9 +2462,15 @@ function homeHTML(){
 }
 const PERMS = [
   {k:'a11y', t:'无障碍服务', d:'AI 接管手机执行操作的必需能力', icon:'touch'},
-  {k:'overlay', t:'悬浮窗', d:'实时显示任务进度与跑马灯', icon:'eye'},
+  {k:'overlay', t:'悬浮窗', d:'实时显示任务进度与跑马灯', icon:'camera'},
   {k:'autostart', t:'自启动与后台', d:'省电白名单 + 厂商自启动管理', icon:'clock'},
   {k:'apps', t:'获取已安装程序', d:'用于识别并启动目标应用', icon:'apps'}
+];
+/* ACA 编码技能种子：与真机 filesDir/skills 的扫描结果一致（HomeScreen「编码技能」区） */
+S.acaSkills = [
+  {name:'设备内编码手册',
+   desc:'HPA 设备内编码环境（PRoot Linux + JDK + Gradle + Android SDK）的一键配置与构建手册：什么时候用 coding_env、用户需要亲手做什么、工作区与共享镜像目录、构建产物在哪、mksh 的限制以及常见故障的处理方式。',
+   meta:'v1.0.0 · 0 个工具 · happyac-coding'}
 ];
 
 /* ============================================================
@@ -2505,23 +2626,25 @@ const PLACEHOLDERS = {
 function composerHTML(){
   const mode = composerMode();
   const locked = mode === 'LOCKED';
-  const showReview = mode === 'NEW_TASK';
   const placeholder = PLACEHOLDERS[mode] || PLACEHOLDERS.NEW_TASK;
-  const sendIcon = mode === 'QUEUE_FOLLOW_UP' ? 'add' : 'chat';
+  const sendIcon = mode === 'QUEUE_FOLLOW_UP' ? 'add' : 'send';
   // 占位文案过长时按两行显示（Compose 侧占位是独立 Text，会自然折行）
   const full = locked ? placeholder : placeholder+' · 长按语音';
   const rows = full.length > 18 ? 2 : 1;
-  return '<div>'+
-    (showReview ? '<div class="review-row"><b>审核 AI</b>'+
-      '<em>独立复核每个动作是否真有页面证据</em>'+
-      '<button class="switch '+(S.review?'on':'')+'" data-act="review-toggle" role="switch" aria-checked="'+S.review+'"><i></i></button></div>' : '')+
-    '<div class="composer '+(locked?'locked':'')+'" id="composer">'+
+  return '<div class="composer '+(locked?'locked':'')+'" id="composer">'+
       '<textarea rows="'+rows+'" data-model="draft" data-send="agent" '+(locked?'disabled':'')+
         ' placeholder="'+esc(full)+'" aria-label="任务输入">'+esc(draft)+'</textarea>'+
       (locked ? '<button class="cancel-plan" data-act="agent-cancel-plan">取消规划</button>' : '')+
       '<button class="sendbtn '+(locked?'dim':'')+'" data-act="agent-send" aria-label="发送" '+(locked?'disabled':'')+'>'+icon(sendIcon,'s18')+'</button>'+
     '</div>'+
-  '</div>';
+    '<div class="review-row2">'+
+      '<button class="sw-line" data-act="review-toggle" role="switch" aria-checked="'+S.review+'" tabindex="-1">'+
+        '<span>审核 AI</span>'+
+        '<span class="switch '+(S.review?'on':'')+'"><i></i></span></button>'+
+      '<button class="sw-line" data-act="autocheck-toggle" role="switch" aria-checked="'+S.autoCheck+'" tabindex="-1">'+
+        '<span>先规划执行计划</span>'+
+        '<span class="switch '+(S.autoCheck?'on':'')+'"><i></i></span></button>'+
+    '</div>';
 }
 function modebarHTML(){
   const m = modeInfo();
@@ -2536,9 +2659,14 @@ function modebarHTML(){
           '<span class="mt"><b>'+d[0]+'</b><em>'+d[1]+'</em></span>'+
           (on?icon('checkCircle','sm'):'')+'</button>';
       }).join('')+'</div>' : '')+
-    '<div class="modebar"><button class="mode-chip" data-act="mode-toggle" aria-expanded="'+S.modeOpen+'">'+
-      icon(m.icon,'sm')+'<span>'+m.label+'</span>'+icon(S.modeOpen?'chevDown':'chevUp','sm')+
-    '</button></div>'+
+    /* 两枚并排 chip：模型 + 执行与授权（对齐 Composer 顶部的 ModelChip / ActionModeChip） */
+    '<div class="modebar">'+
+      '<button class="mode-chip" data-act="tab:settings">'+icon('robot','sm')+
+        '<span class="k">模型</span><span class="v">'+esc(S.model||'未配置')+'</span></button>'+
+      '<button class="mode-chip" data-act="mode-toggle" aria-expanded="'+S.modeOpen+'">'+
+        icon('guard','sm')+'<span class="k">执行与授权</span><span class="v">'+m.label+'</span>'+
+        icon(S.modeOpen?'chevDown':'chevDown','sm')+'</button>'+
+    '</div>'+
   '</div>';
 }
 function modeInfoOf(k){
@@ -2564,9 +2692,9 @@ function renderDock(){
     // 协助浮层占用底部操作区：输入面让位，避免同屏两个输入框
     h += assistHTML();
   }else{
-    h += composerHTML();
     const mode = composerMode();
     if(mode === 'NEW_TASK' || mode === 'QUEUE_FOLLOW_UP') h += modebarHTML();
+    h += composerHTML();
   }
   dock.innerHTML = h;
   const ta = dock.querySelector('textarea');
@@ -2670,20 +2798,16 @@ function codingHTML(){
     : '';
 
   return '<div style="display:flex;flex-direction:column;min-height:calc(var(--screen-h) - 200px)">'+
-    '<div class="ws-head">'+
-      '<button class="folder" data-act="coding-folder" aria-label="打开工作区目录">'+icon('folder','s18')+'</button>'+
-      '<div class="wt"><div class="wname"><b>'+esc(c.workspace)+'</b>'+
-        '<span class="conn"><span class="dot" style="background:'+connColor+'"></span>'+connWord+'</span></div>'+
-        '<em>'+esc(c.path)+'</em></div>'+
-      '<button class="ws-switch" data-act="coding-ws">切换</button>'+
-    '</div>'+
-    '<div style="height:4px"></div>'+
-    '<div class="session-head" data-act="coding-sessions">'+
-      '<span class="sth">'+icon('history','sm')+'</span>'+
-      '<span class="sttl">'+esc(session.title)+'</span>'+
-      '<span class="scount">'+c.sessions.length+' 个会话</span>'+
-      '<span class="chev">'+icon('chev','sm')+'</span>'+
-      '<button class="newbtn" data-act="coding-new">新会话</button>'+
+    /* 顶部双 chip 行（对齐 CodingScreen）：会话 chip（标题 / 会话数 / 新建）+ 工作区 chip（名称 / 连接点 / 切换） */
+    '<div class="coding-top">'+
+      '<button class="ct-chip" data-act="coding-sessions">'+icon('history','s16')+
+        '<span class="ct-t">'+esc(session.title)+'</span>'+
+        '<span class="ct-n">'+c.sessions.length+' 会话</span>'+
+        '<span class="ct-plus" data-act="coding-new">'+icon('add','xs')+'</span></button>'+
+      '<button class="ct-chip" data-act="coding-ws">'+icon('folder','s16')+
+        '<span class="ct-t">'+esc(c.workspace)+'</span>'+
+        '<span class="dot" style="background:'+connColor+'"></span>'+
+        '<span class="ct-div"></span><span class="ct-sw">切换</span></button>'+
     '</div>'+
     flow+
     '<div class="coding-dock">'+
@@ -2863,8 +2987,8 @@ const MEM_PROFILE = '#4A7C9B';   // MemoryProfile
 function memSegHTML(){
   const m = S.memory;
   return '<div class="seg" style="margin:8px 0 10px">'+
-    '<button class="'+(m.tab==='graph'?'on':'')+'" data-act="mem-tab:graph">图谱</button>'+
-    '<button class="'+(m.tab==='pages'?'on':'')+'" data-act="mem-tab:pages">页面记忆</button></div>';
+    '<button class="'+(m.tab==='graph'?'on':'')+'" data-act="mem-tab:graph">'+(m.tab==='graph'?'✓ ':'')+'图谱</button>'+
+    '<button class="'+(m.tab==='pages'?'on':'')+'" data-act="mem-tab:pages">'+(m.tab==='pages'?'✓ ':'')+'页面记忆</button></div>';
 }
 function memStatsHTML(){
   const m = S.memory;
@@ -3101,8 +3225,9 @@ function graphHTML(){
   const unit = Math.min(pageW, height);
   const itemY = (i,n)=> n<=1 ? 0.5 : 0.10 + 0.80*i/(n-1);
   const nodes = [];
+  // 节点：root=任务记忆（绿），左=异常经验（橙），右=用户画像（蓝），对齐 GraphCanvas
   nodes.push({id:'root', x:50, y:50, size:unit*0.17, color:'var(--brand)',
-    label:'AI 记忆', sub:'共 '+(an.length+pr.length)+' 条'});
+    label:'任务记忆', sub:m.taskMemories.length+' 条 共 '+(an.length+pr.length+m.taskMemories.length)+' 条'});
   nodes.push({id:'cat-anomaly', x:30, y:50, size:unit*0.13, color:MEM_ANOMALY,
     label:'异常经验', sub:an.length+' 条'});
   nodes.push({id:'cat-profile', x:70, y:50, size:unit*0.13, color:MEM_PROFILE,
@@ -3379,6 +3504,7 @@ function srowHTML(title, sub, summary, act, ic, tone){
 function settingsHTML(){
   const miss = permMissing();
   const visible = S.tabOrder.filter(id=>S.tabsVisible[id]).length;
+  const notReady = !!miss || !S.model;
   const readiness =
     '<div class="readiness">'+
       '<div class="rd" data-act="open-page:cloud"><span>AI 模型</span><b>'+
@@ -3387,41 +3513,81 @@ function settingsHTML(){
       '<div class="rd" data-act="open-page:permissions"><span>运行权限</span><b>'+
         '<span class="dot '+(miss?'err':'')+'"></span>'+
         (miss?'待授权 '+miss+' 项':'已就绪')+'</b></div>'+
+      (notReady
+        ? '<div class="rd-firstuse"><span>第一次使用：① 配好模型 → ② 开启无障碍权限 → 回「Agent」页直接说要做什么。</span>'+
+          '<button class="rd-go" data-act="open-page:cloud">开始配置</button></div>'
+        : '')+
     '</div>';
 
-  const g1 = '<div class="grp-label" data-tone="brand"><b>AI 接入</b><em>云端模型与端侧视觉</em></div>'+
+  /* 常用设置面板（对齐 SettingsQuickPanel.kt）：执行方式 / 主模型 / 浮层显示 */
+  const quick =
+    grpLabel('常用设置','最常改的几项都在这里，改完立即生效','brand')+
     '<div class="gcard">'+
-      srowHTML('云端模型','端点 / 模型库 / 职责分配', S.model||'未配置', 'open-page:cloud', 'key', 'brand')+
+      '<div class="qk-block">'+
+        '<b class="qk-t">任务执行方式</b><em class="qk-s">给 AI 的授权范围，与「执行通道」叠加生效</em>'+
+        '<div class="chips3">'+['CONSERVATIVE','BALANCED','FREE'].map(k=>
+          '<button class="chip3 '+(S.actionMode===k?'on':'')+'" data-act="mode:'+k+'">'+modeInfoOf(k).label+'</button>').join('')+'</div>'+
+        '<em class="qk-sum">'+modeInfoOf(S.actionMode).summary+'</em>'+
+      '</div>'+
+      '<button class="qk-model" data-act="open-page:cloud">'+icon('robot')+
+        '<span class="qt"><b>主模型</b><i>'+esc(S.model||'未选模型')+'</i>'+
+        '<em>线路：'+esc(endpointHost(S.endpoint)||'未配置')+'</em></span>'+
+        icon('chev','chev')+'</button>'+
+      '<div class="qk-float">'+
+        '<span class="ft"><b>浮层显示</b><em>任务进度浮在桌面；关闭时以下三项不生效</em></span>'+
+        '<button class="switch '+(S.floating?'on':'')+'" data-act="floating-toggle" role="switch" aria-checked="'+S.floating+'"><i></i></button>'+
+      '</div>'+
+      ckRowHTML('顶部跑马灯','描述在顶部光带滚动；不勾就整条不显示', S.marquee,'marquee-toggle')+
+      ckRowHTML('任务卡状态行','描述出现在任务卡里；不勾就只留「第 n/m 步」', S.stepCard,'stepcard-toggle')+
+      ckRowHTML('绿色边缘光效悬浮窗','任务执行时在屏幕边缘显示绿色光带；不勾就不建窗口、不占触摸，任务照常执行', S.edgeGlow,'glow-toggle')+
+    '</div>';
+
+  const g1 = grpLabel('执行通道与权限','能不能执行：系统授权、shell 通道与外部控制','warm')+
+    '<div class="gcard">'+
+      srowHTML('权限与执行通道','无障碍 / 截图 / Shizuku / Termux / 外部控制', miss?'待授权 '+miss+' 项':'全部就绪', 'open-page:permissions', 'guard', 'warm')+
+      srowHTML('编码 Agent','运行时 / 审批档位 / 工作区', '审批：'+approvalLabel(), 'open-page:codingcfg', 'code', 'warm')+
+    '</div>';
+
+  const g2 = grpLabel('模型与端侧视觉','AI 从哪来：云端端点、模型职责与本地视觉','brand')+
+    '<div class="gcard">'+
+      srowHTML('云端模型','端点 / 模型库 / 职责分配', S.model||'未配置', 'open-page:cloud', 'robot', 'brand')+
       srowHTML('端侧视觉','本地 3B 模型下载与启用', S.onDevice?'已启用':'已关闭', 'open-page:ondevice', 'camera', 'brand')+
-      srowHTML('编码 Agent','运行时 / 审批档位 / 工作区', '审批：'+approvalLabel(), 'open-page:codingcfg', 'code', 'brand')+
     '</div>';
 
-  const g2 = '<div class="grp-label" data-tone="cool"><b>运行行为</b><em>执行参数、提示词与长线任务</em></div>'+
+  const g3 = grpLabel('任务行为与模式','怎么干活：步数、提示词、执行文档与长线任务','cool')+
     '<div class="gcard">'+
-      srowHTML('运行与提示词','步数上限 / 悬浮窗 / 页面记忆 / 提示词', S.stepLimit?'最多 '+S.stepLimit+' 步':'不设限', 'open-page:runtime', 'sliders', 'cool')+
+      srowHTML('任务行为','步数 / 提示词 / 执行文档 / 副屏', S.stepLimit?'最多 '+S.stepLimit+' 步':'不限步数', 'open-page:runtime', 'sliders', 'cool')+
       srowHTML('长线任务','执行策略 / 断点续传 / 任务模板', '任务管理', 'open-page:longtask', 'history', 'cool')+
     '</div>';
 
-  const g3 = '<div class="grp-label" data-tone="warm"><b>设备接入</b><em>系统权限与 shell 执行通道</em></div>'+
+  const g4 = grpLabel('外观与导航','长什么样：配色、运行时效果与底部导航','brand')+
     '<div class="gcard">'+
-      srowHTML('权限与执行通道','无障碍 / 悬浮窗 / Shizuku / Termux', miss?'待授权 '+miss+' 项':'全部就绪', 'open-page:permissions', 'shield', 'warm')+
+      srowHTML('外观与导航','配色 / 框线 / 光标与光效标定 / 选项卡', paletteLabel()+' · '+visible+' 个选项卡', 'open-page:theme', 'palette', 'brand')+
     '</div>';
 
-  const g4 = '<div class="grp-label" data-tone="brand"><b>外观</b><em>配色风格与运行时视觉效果</em></div>'+
+  const g5 = grpLabel('数据与记忆','记住什么：页面记忆、导出、清空与恢复默认','neutral')+
     '<div class="gcard">'+
-      srowHTML('主题','配色 / 框线 / 磨砂', paletteLabel()+' · '+(S.borders?'标准':'无框线'), 'open-page:theme', 'palette', 'brand')+
-      srowHTML('界面效果','点击光标 / 边缘光效 / 悬浮窗跑马灯', '光效'+(S.edgeGlow?'开':'关'), 'open-page:effects', 'sparkle', 'brand')+
-      srowHTML('底部选项卡','可见性 / 排序', visible+' 个可见', 'open-page:tabs', 'apps', 'brand')+
+      srowHTML('数据与记忆','页面记忆 / 导出 / 清空记忆 / 恢复默认', S.pageMemory?'页面记忆开':'页面记忆关', 'open-page:data', 'folder', 'neutral')+
     '</div>';
 
-  const g5 = '<div class="grp-label" data-tone="neutral"><b>系统</b><em>本机数据与帮助信息</em></div>'+
+  const g6 = grpLabel('关于与更新','怎么更新、去哪求助','neutral')+
     '<div class="gcard">'+
-      srowHTML('数据与存储','导出 / 清空记忆 / 恢复默认', '本机数据', 'open-page:data', 'storage', 'neutral')+
-      srowHTML('软件更新','检查新版本 / 接收渠道 / 自动检查', 'v'+VERSION, 'open-page:update', 'update', 'neutral')+
+      srowHTML('软件更新','检查新版本 / 接收渠道 / 自动检查', 'v'+VERSION, 'open-page:update', 'refresh', 'neutral')+
       srowHTML('关于与帮助','版本 / 开源仓库 / 使用说明 / 隐私', 'v'+VERSION, 'open-page:about', 'info', 'neutral')+
     '</div>';
 
-  return readiness+g1+g2+g3+g4+g5+'<div class="version">v'+VERSION+' · com.phoneagent</div>';
+  return readiness+quick+g1+g2+g3+g4+g5+g6+'<div class="version">v'+VERSION+' · com.phoneagent</div>';
+}
+/* 端点地址 → 展示用的线路主机名（对齐 SettingsQuickPanel.endpointHost） */
+function endpointHost(url){
+  const m = String(url||'').match(/^https?:\/\/([^/]+)/);
+  return m ? m[1] : String(url||'');
+}
+/* 复选行（对齐 SettingsQuickPanel.CheckRow）：整行可点、方形勾选框 */
+function ckRowHTML(title, sub, on, act){
+  return '<button class="ckrow '+(on?'on':'')+'" data-act="'+act+'" role="checkbox" aria-checked="'+on+'">'+
+    '<span class="ck">'+icon('check','xs')+'</span>'+
+    '<span class="ct"><b>'+title+'</b><em>'+esc(sub)+'</em></span></button>';
 }
 
 /* ---------- 二级页通用 ---------- */
@@ -4881,6 +5047,7 @@ function handle(act, val, el){
       S.screenShare = !S.screenShare; render();
       toast(S.screenShare ? '屏幕捕获已授权' : '屏幕捕获已关闭'); return;
     case 'review-toggle': S.review = !S.review; render(); return;
+    case 'autocheck-toggle': S.autoCheck = !S.autoCheck; render(); return;
     case 'agent-send': sendTask(); return;
     case 'agent-approve': approvePlan(); return;
     case 'agent-cancel-plan': cancelPlan(); return;
@@ -5025,6 +5192,7 @@ function handle(act, val, el){
     case 'cursor-toggle': S.clickCursor = !S.clickCursor; applyChrome(); render(); return;
     case 'glow-toggle': S.edgeGlow = !S.edgeGlow; applyChrome(); render(); return;
     case 'marquee-toggle': S.marquee = !S.marquee; render(); return;
+    case 'stepcard-toggle': S.stepCard = !S.stepCard; render(); return;
     case 'tab-move': {
       const [id, dir] = String(val).split(':');
       const idx = S.tabOrder.indexOf(id);
