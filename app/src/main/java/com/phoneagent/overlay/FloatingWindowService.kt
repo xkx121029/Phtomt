@@ -58,6 +58,8 @@ import com.phoneagent.BuildConfig
 import com.phoneagent.R
 import com.phoneagent.core.window.OverlayWindowSpec
 import com.phoneagent.data.prefs.AppSettings
+import com.phoneagent.domain.model.TaskOutcome
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.runtime.TaskNotice
 import com.phoneagent.engine.runtime.TaskNoticeCenter
 import kotlinx.coroutines.CoroutineScope
@@ -194,8 +196,26 @@ class FloatingWindowService : Service() {
     private var doneCopy: TextView? = null
     /** 卡片当前展示的完整结果文本（「复制」写剪贴板用） */
     private var doneMessage = ""
-    /** 结果是否按失败/放弃处理：决定标题与状态圆点的语义色 */
-    private var doneFailed = false
+    /** 元信息行（耗时 / 步数 / 执行通道）：引擎没给的信息直接省略该行 */
+    private var doneMeta: TextView? = null
+    /** 失败原因行：只在非成功且有原因时出现 */
+    private var doneReason: TextView? = null
+    /** 等待交接的终态：胶囊停留期间先存着，交接时再一次性落到卡片上 */
+    private var pendingDoneOutcome: TaskOutcome? = null
+    /**
+     * 胶囊 → 完成卡片的交接。
+     *
+     * 顺序是刻意的：胶囊先切终态色停 [DONE_HOLD_MS]，再和任务卡一起淡出，
+     * 同一拍卡片淡入。不做位移、不做弹性、不做缩放——这一步是"让位"，不是新一次入场。
+     */
+    private val doneHandoff = Runnable {
+        if (pendingDoneOutcome == null) return@Runnable
+        pendingDoneOutcome = null
+        fadeOutAndHide(root, OverlayMotion.ExitMs)
+        fadeOutMarquee(OverlayMotion.ExitMs)
+        // 首帧耗时从交接开始算：停留的 800ms 是刻意等待，不该混进性能口径
+        revealDoneCard(SystemClock.uptimeMillis())
+    }
     /** 用户正在按住/滚动/拖拽卡片：期间暂停 8s 自动关闭，松手后重新计时 */
     private var doneInteracting = false
     /** 下滑关闭：按下时的 rawY 与已累计的下移量（只允许向下） */
@@ -203,6 +223,15 @@ class FloatingWindowService : Service() {
     private var doneDragOffset = 0f
     /** 截图隐藏前完成卡片是否可见，用于截图后原样恢复 */
     private var doneVisibleBeforeHide = false
+
+    /**
+     * 引擎已请求停止服务，但完成卡片还没走完自己的生命周期。
+     *
+     * 非成功结局（已中断/失败）里，引擎收尾会立刻收窗，而卡片通常还停在
+     * 「胶囊停留 → 交接」这一段，导致用户读不到失败原因。此时把停止时机
+     * 交给卡片自己的关闭/超时（[closeDoneCard] 末尾即 `stopSelf`）。
+     */
+    private var stopPending = false
     private val doneAutoClose = Runnable { closeDoneCard() }
 
     /**
@@ -656,7 +685,11 @@ class FloatingWindowService : Service() {
     private fun setMarqueeVisible(visible: Boolean) {
         marqueeRequestedVisible = visible
         val v = if (visible && stepPlacement != StepTextPlacement.CARD) View.VISIBLE else View.GONE
-        marquee?.visibility = v
+        marquee?.apply {
+            // 交接淡出可能刚把透明度降到 0：重新显示时从 1 开始
+            if (v == View.VISIBLE) alpha = 1f
+            visibility = v
+        }
     }
 
     /**
@@ -1790,11 +1823,17 @@ class FloatingWindowService : Service() {
      * 用于新任务开始时清除上一个任务完成态的残留。
      */
     private fun resetPanel() {
+        // 上一次收尾的交接可能还挂在 800ms 停留里：新任务开始必须取消，
+        // 否则它会在新任务跑到一半时把面板和跑马灯一起淡掉
+        handler.removeCallbacks(doneHandoff)
+        pendingDoneOutcome = null
         // 新任务开始时把上一次的完成卡片收起来（它可能还在 8s 自动关闭倒计时里）。
         // 只隐藏不销毁：窗口在任务开始时已预热，留着下次完成态直接复用
         hideDoneCardNow()
         // 完成态会把顶部任务卡整块让位给完成卡片；新任务必须把它放回来
         root?.visibility = View.VISIBLE
+        root?.alpha = 1f
+        marquee?.alpha = 1f
         dot?.visibility = View.VISIBLE
         setMarqueeVisible(true)
         statusRow?.visibility = View.VISIBLE
@@ -2274,8 +2313,21 @@ class FloatingWindowService : Service() {
                         ),
                     )
                     else -> showDone(
-                        intent.getStringExtra("message")
-                            ?: "已关闭蓝牙并回到桌面。共执行 3 步，用时 12 秒。",
+                        TaskOutcome(
+                            // result 缺省按成功预览；要拍失败态就传 failed / aborted / not_achieved
+                            status = when (intent.getStringExtra("result")) {
+                                "failed" -> TaskStatus.FAILED
+                                "aborted" -> TaskStatus.ABORTED
+                                "not_achieved" -> TaskStatus.NOT_ACHIEVED
+                                else -> TaskStatus.SUCCESS
+                            },
+                            summary = intent.getStringExtra("message")
+                                ?: "已关闭蓝牙并回到桌面。共执行 3 步，用时 12 秒。",
+                            elapsedMs = intent.getLongExtra("elapsed", 12_000L),
+                            steps = intent.getIntExtra("steps", 3),
+                            channel = intent.getStringExtra("channel") ?: "无障碍",
+                            failureReason = intent.getStringExtra("reason").orEmpty(),
+                        ),
                     )
                 }
             }
@@ -2291,27 +2343,67 @@ class FloatingWindowService : Service() {
     }
 
     /**
-     * 任务完成：顶部任务卡让位，底部拉起独立的完成卡片，并同步通知。
+     * 任务收尾：胶囊先切终态色停留约 800ms，再淡出让位给完成卡片。
      *
-     * @param message 引擎给的完成摘要（可能只有一行，也可能包含多行结果）
+     * 成败只认 [TaskOutcome.status]，不再从摘要里搜「失败 / 放弃 / 未完成」——
+     * 那种猜法会把「已完成登录，但支付失败」判成失败，也会把没有任何关键词的失败判成功。
+     *
+     * @param outcome 引擎给出的终态、摘要与耗时/步数/通道/失败原因
      */
-    fun showDone(message: String) {
+    fun showDone(outcome: TaskOutcome) {
         handler.post {
-            val startedAt = SystemClock.uptimeMillis()
+            pendingDoneOutcome = outcome
             // 用户收起面板时任务恰好收尾：先复位收起态（下一个任务开始时面板要能自己回来）
             showFromUser()
             stopDotPulse()
             collapseThinking()
             hideSheet()
             hideKeyboard()
-            // 完成卡片独占屏幕：顶部任务卡 / 跑马灯 / 悬浮球全部让位，
-            // 否则底部卡片会和顶部卡片同时压在同一块画面上
+            // 完成卡片在这 800ms 里预热：窗口与文案先建好，交接时只翻可见性 + 淡入，
+            // 避免"胶囊已经淡出、卡片还没画出来"的空档
+            val t0 = SystemClock.uptimeMillis()
+            doneMessage = outcome.summary
+            val cardReady = ensureDoneWindow()
+            if (cardReady) {
+                applyDoneContent(outcome)
+                OverlayPerf.code("done-card-build", t0)
+            }
+            // 终态先落在胶囊与任务卡上：这一段是用户对"任务结束"的唯一即时反馈，
+            // 不能被卡片入场吞掉。例外是用户主动收起面板——那属于用户意图，不替他弹回来。
+            val phase = terminalPhase(outcome.status)
+            currentPhase = phase
+            marquee?.let { applyMarqueePalette(it) }
+            dot?.setBackgroundColor(dotColor(phase))
+            phaseChip?.apply {
+                text = outcome.status.label
+                setTextColor(FloatingUi.ON_BRAND)
+                background = FloatingUi.capsule(
+                    this@FloatingWindowService,
+                    FloatingUi.RADIUS_CHIP / 2,
+                    FloatingUi.phaseColor(phase),
+                )
+            }
+            // 悬浮球先收：它是"唤起面板"的入口，收尾期间留着会被误点
             miniRoot?.visibility = View.GONE
-            root?.visibility = View.GONE
-            setMarqueeVisible(false)
-            showDoneCard(message, startedAt)
-            updateNotification("任务完成：$message", "Happy Agent")
+            updateNotification("${outcome.status.label}：${outcome.summary}", "Happy Agent")
+            handler.removeCallbacks(doneHandoff)
+            if (cardReady) {
+                handler.postDelayed(doneHandoff, DONE_HOLD_MS)
+            } else {
+                // 卡片建不出来就不会有交接：把待交接结果丢掉，否则引擎随后的收窗请求
+                // 会被 [deferStopForDoneCard] 一直挂着，前台通知退不掉
+                pendingDoneOutcome = null
+            }
+            // 卡片建不出来（窗口被系统拒绝）时不做交接：胶囊的终态色是唯一还能看完的信息，
+            // 不能把它也淡掉，让屏幕上什么都不剩
         }
+    }
+
+    /** 终态 → 胶囊阶段色：中断与未达成走等待琥珀（不是链路故障），失败才用危险红 */
+    private fun terminalPhase(status: TaskStatus): String = when (status) {
+        TaskStatus.SUCCESS -> "DONE"
+        TaskStatus.FAILED -> "ERROR"
+        TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> "WAITING"
     }
 
     /**
@@ -2399,6 +2491,22 @@ class FloatingWindowService : Service() {
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
         card.addView(statusRow)
+
+        // 2.5) 元信息 + 失败原因：都是"引擎有才显示"的行，缺数据时整行不出现，
+        //      不写"耗时未知 / 通道未知"这类噪音
+        doneMeta = TextView(this).apply {
+            textSize = 11f
+            setPadding(dp(30), dp(2), 0, 0)
+            themed { p -> setTextColor(p.textTertiary) }
+            visibility = View.GONE
+        }
+        card.addView(doneMeta)
+        doneReason = TextView(this).apply {
+            textSize = 12f
+            setPadding(dp(30), dp(6), 0, 0)
+            visibility = View.GONE
+        }
+        card.addView(doneReason)
 
         // 3) 正文：内容自适应、超长时限高内部滚动；底部渐变遮罩只在真的滚得动时出现
         val bodyFrame = FrameLayout(this)
@@ -2567,32 +2675,29 @@ class FloatingWindowService : Service() {
         return true
     }
 
-    private fun showDoneCard(message: String, startedAt: Long) {
-        val t0 = SystemClock.uptimeMillis()
-        doneMessage = message
-        doneFailed = message.contains("失败") ||
-            message.contains("放弃") ||
-            message.contains("未完成")
-        if (!ensureDoneWindow()) return
-        OverlayPerf.code("done-card-build", t0)
-        applyDoneContent(message)
+    /**
+     * 交接：胶囊与任务卡淡出、完成卡片淡入，两件事同一拍开始。
+     *
+     * 卡片在停留期已建好并写好内容，这里只翻可见性 + 透明度，
+     * 所以"胶囊消失"与"卡片出现"之间不会露出空档。
+     */
+    private fun revealDoneCard(startedAt: Long) {
         val rv = doneRoot ?: return
         rv.visibility = View.VISIBLE
-        rv.post {
-            val postAt = SystemClock.uptimeMillis()
-            OverlayPerf.log("done-card-apply", "${postAt - t0}ms")
-            val card = doneCard ?: return@post
-            val h = card.height.coerceAtLeast(dp(1)).toFloat()
+        doneCard?.let { card ->
             card.animate().cancel()
-            card.translationY = h
+            // 只做透明度：这是让位，不加位移、弹性或缩放
+            card.translationY = 0f
             card.alpha = 0f
-            // 进入：自下而上 + 淡入；时长与曲线走令牌（强调档强调"任务完成"）
             card.animate()
-                .translationY(0f)
                 .alpha(1f)
                 .setDuration(OverlayMotion.EmphasisMs.toLong())
                 .setInterpolator(OverlayMotion.EaseOut)
                 .start()
+        }
+        rv.post {
+            val postAt = SystemClock.uptimeMillis()
+            OverlayPerf.log("done-card-apply", "${postAt - startedAt}ms")
             // 正文真的超出限高才显示渐变遮罩（短结果下不出现多余的灰带）
             val scroll = doneScroll
             val body = doneBody
@@ -2607,13 +2712,62 @@ class FloatingWindowService : Service() {
         }
     }
 
-    /** 把结果写进卡片：标题/状态色/正文/复制按钮复位 */
-    private fun applyDoneContent(message: String) {
-        val success = !doneFailed
-        val tone = if (success) FloatingUi.phaseColor("DONE") else FloatingUi.phaseColor("ERROR")
-        doneTitle?.text = if (success) "已完成" else "未完成"
+    /** 淡出后隐藏：只用于收尾交接，离开的窗口不参与后续布局 */
+    private fun fadeOutAndHide(view: View?, durationMs: Int) {
+        if (view == null) return
+        view.animate().cancel()
+        if (view.visibility != View.VISIBLE) {
+            view.alpha = 1f
+            return
+        }
+        view.animate()
+            .alpha(0f)
+            .setDuration(durationMs.toLong())
+            .setInterpolator(OverlayMotion.EaseIn)
+            .withEndAction {
+                view.visibility = View.GONE
+                // 复位透明度：下一次任务复用时从 1 开始，不然会带着上一次的残影
+                view.alpha = 1f
+            }
+            .start()
+    }
+
+    /** 跑马灯是独立窗口：隐藏状态仍按 [setMarqueeVisible] 的规则走，只是先淡出再落 GONE */
+    private fun fadeOutMarquee(durationMs: Int) {
+        marqueeRequestedVisible = false
+        val v = marquee ?: return
+        v.animate().cancel()
+        if (v.visibility != View.VISIBLE) {
+            v.alpha = 1f
+            return
+        }
+        v.animate()
+            .alpha(0f)
+            .setDuration(durationMs.toLong())
+            .setInterpolator(OverlayMotion.EaseIn)
+            .withEndAction {
+                v.visibility = View.GONE
+                v.alpha = 1f
+            }
+            .start()
+    }
+
+    /** 把结果写进卡片：标题/状态色/正文/元信息/失败原因/复制按钮复位 */
+    private fun applyDoneContent(outcome: TaskOutcome) {
+        val success = outcome.status == TaskStatus.SUCCESS
+        val tone = when (outcome.status) {
+            TaskStatus.SUCCESS -> FloatingUi.phaseColor("DONE")
+            TaskStatus.FAILED -> FloatingUi.phaseColor("ERROR")
+            // 中断与未达成不是故障：用等待琥珀，避免把"用户停手"画成出错
+            TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> FloatingUi.phaseColor("WAITING")
+        }
+        doneTitle?.text = outcome.status.label
         doneStatusDot?.apply {
-            text = if (success) "✓" else "✕"
+            text = when (outcome.status) {
+                TaskStatus.SUCCESS -> "✓"
+                TaskStatus.FAILED -> "✕"
+                TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> "!"
+            }
             setTextColor(tone)
             background = FloatingUi.capsule(
                 this@FloatingWindowService,
@@ -2622,15 +2776,46 @@ class FloatingWindowService : Service() {
                 (tone and 0x00FFFFFF) or 0x24000000,
             )
         }
-        val raw = message.trim()
+        val raw = outcome.summary.trim()
         // 引擎只给了一行"任务完成"时，补一句可执行的下一步；有细节就原样展示
         doneBody?.text = if (raw.isEmpty() || raw == "任务完成" || raw == "任务已完成") {
-            "任务已结束。打开 Agent 可以查看完整过程与结果。"
+            if (success) "任务已结束。打开 Agent 可以查看完整过程与结果。" else outcome.status.label
         } else {
             raw
         }
+        // 元信息：引擎给什么显示什么，缺一项就少一项，不拿默认值凑
+        val meta = buildDoneMeta(outcome)
+        doneMeta?.apply {
+            text = meta
+            visibility = if (meta.isEmpty()) View.GONE else View.VISIBLE
+        }
+        // 失败原因：摘要本身已经是原因时不再重复一遍
+        val reason = outcome.failureReason.trim()
+        val showReason = reason.isNotEmpty() && reason != raw
+        doneReason?.apply {
+            text = if (showReason) reason else ""
+            setTextColor(tone)
+            visibility = if (showReason) View.VISIBLE else View.GONE
+        }
         doneCopy?.text = "复制"
         doneScroll?.scrollTo(0, 0)
+    }
+
+    /** 「耗时 12 秒 · 3 步 · 无障碍」；全空返回空串，卡片直接省略该行 */
+    private fun buildDoneMeta(outcome: TaskOutcome): String = buildList {
+        if (outcome.elapsedMs > 0) add("耗时 ${formatElapsed(outcome.elapsedMs)}")
+        if (outcome.steps > 0) add("${outcome.steps} 步")
+        if (outcome.channel.isNotBlank()) add(outcome.channel)
+    }.joinToString(" · ")
+
+    /** 秒级够用：任务是分钟量级，再多一位小数只会让收尾行变吵 */
+    private fun formatElapsed(ms: Long): String {
+        val seconds = (ms / 1000L).coerceAtLeast(1L)
+        return if (seconds < 60L) {
+            "$seconds 秒"
+        } else {
+            "${seconds / 60L} 分 ${seconds % 60L} 秒"
+        }
     }
 
     /** 复制完整结果到剪贴板；1.4s 内按钮显示"已复制"（状态保持，不是动效） */
@@ -2685,6 +2870,25 @@ class FloatingWindowService : Service() {
         }
     }
 
+    /**
+     * 完成卡片还在屏上、或正等胶囊交接时，接住引擎这一次「收窗」请求。
+     *
+     * 引擎的停止语义是"这次任务结束了"；卡片还要把结论与失败原因交给用户读。
+     * 两者可以错开：窗口的可见时长上限由卡片自己管（[DONE_HOLD_MS] 停留 + [DONE_AUTO_CLOSE_MS]
+     * 自动关闭），关闭那一步本来就会 `stopSelf`，服务不会悬着。
+     *
+     * @return true 表示停止时机已由本服务接管，调用方不要再 `stopService`
+     */
+    private fun deferStopForDoneCard(): Boolean {
+        // 既没有卡片、也没有待交接的结果：这次停止与收尾无关，照常执行
+        if (doneRoot == null && pendingDoneOutcome == null) {
+            stopPending = false
+            return false
+        }
+        stopPending = true
+        return true
+    }
+
     /** 退场：向上淡出（不复用"下滑抽走"——那会被读成系统回收），动画结束后才移除窗口 */
     private fun closeDoneCard() {
         handler.removeCallbacks(doneAutoClose)
@@ -2692,6 +2896,11 @@ class FloatingWindowService : Service() {
         val rootView = doneRoot
         if (card == null || rootView == null) {
             removeDoneCardNow()
+            // 停止请求被挂起过、而卡片已经不在：这里补一次收尾，别让前台通知永远挂着
+            if (stopPending) {
+                stopPending = false
+                stopSelf()
+            }
             return
         }
         OverlayMotion.exit(card, durationMs = OverlayMotion.ExitMs) {
@@ -2717,6 +2926,9 @@ class FloatingWindowService : Service() {
         doneTitle = null
         doneStatusDot = null
         doneBody = null
+        doneMeta = null
+        doneReason = null
+        pendingDoneOutcome = null
         doneScroll = null
         doneFade = null
         doneCopy = null
@@ -2866,6 +3078,14 @@ class FloatingWindowService : Service() {
         /** 完成卡片静止自动关闭时长（毫秒）：按压/滚动/拖拽期间暂停计时 */
         private const val DONE_AUTO_CLOSE_MS = 8000L
 
+        /**
+         * 收尾时胶囊停留在终态色的时长（毫秒）。
+         *
+         * 700–900ms 是"看得见但不拖沓"的窗口：低于 500ms 会被卡片入场直接盖掉，
+         * 高于 1s 会让用户以为卡住了。**实测截图若临时加长，事后必须调回这个值。**
+         */
+        private const val DONE_HOLD_MS = 800L
+
         /** 「复制」按钮显示"已复制"的保持时长（毫秒）：状态保持，不属于动效 */
         private const val COPY_FEEDBACK_MS = 1400L
 
@@ -2886,24 +3106,39 @@ class FloatingWindowService : Service() {
         }
 
         fun stop(context: Context) {
-            // 直接 stopService：后台调用不抛异常，onDestroy 中会 removeWindow 清理悬浮窗
-            runCatching { context.stopService(Intent(context, FloatingWindowService::class.java)) }
+            // 引擎收尾（AgentEngine.safeResetRuntime）在任务终态时立刻要求收窗。若完成卡片
+            // 刚交接上屏或还在等交接，直接 stopService 会在用户读到失败原因前把窗口摘掉
+            // （实测非成功结局存活不足 1.1s）。这里只把"停止"延后，不拒绝：
+            // 卡片关闭/超时后由 closeDoneCard 里的 stopSelf 收尾。
+            val svc = instance
+            if (svc == null) {
+                runCatching { context.stopService(Intent(context, FloatingWindowService::class.java)) }
+                return
+            }
+            // 引擎的收尾跑在 Dispatchers.Default 上，而卡片状态只在主线程读写：
+            // 把停止决策投回主线程，避免跨线程读 doneRoot / 写 stopPending
+            svc.handler.post {
+                if (svc.deferStopForDoneCard()) return@post
+                // 直接 stopService：后台调用不抛异常，onDestroy 中会 removeWindow 清理悬浮窗
+                runCatching { context.stopService(Intent(context, FloatingWindowService::class.java)) }
+            }
         }
 
-        /** 任务完成后：悬浮窗清空内容显示打勾动效 */
-        fun showDone(message: String) {
-            // 完成态先落状态总线（Widget 用），再走悬浮窗的打勾动效；
+        /** 任务收尾：终态由引擎显式给出（成功/失败/中断/未达成），总线与卡片共用同一份结果 */
+        fun showDone(outcome: TaskOutcome) {
+            // 完成态先落状态总线（Widget 用），再走悬浮窗的收尾交接；
             // 悬浮窗关闭时（instance 为空）总线也要拿到完成事件
             AgentStatusStore.update(
                 AgentStatusStore.Snapshot(
                     task = instance?.currentTask ?: "任务",
-                    status = message,
-                    reasoning = message,
-                    phase = "DONE",
+                    status = "${outcome.status.label}：${outcome.summary}",
+                    reasoning = outcome.summary,
+                    // 成功的终态是 DONE；失败/中断/未达成都不能让 Widget 显示"完成"
+                    phase = if (outcome.status == TaskStatus.SUCCESS) "DONE" else "ERROR",
                     done = true,
                 ),
             )
-            instance?.showDone(message)
+            instance?.showDone(outcome)
         }
 
         /** 显示交互面板（批准/澄清/指导） */
