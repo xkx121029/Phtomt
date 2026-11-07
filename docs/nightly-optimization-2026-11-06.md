@@ -429,3 +429,29 @@ RUN 1 期间同一构建内有 **11 个**被锁任务共享同一把锁（`bundl
 **取舍说明**：第 2 条按 pid 重入的前提是「一个 daemon 一次只跑一个构建」——Gradle 的 daemon 确实是串行执行构建的，
 所以同一 pid 出现两个并发构建不成立；跨机器的锁只能靠超时，这部分不受本次改动影响。
 
+### 7.10 版本号回写挪到 doLast 后，CI 的 tag 会不会差一版
+
+**结论：CI 不会差一版；差一版的是本机 `hpa-publish` 发出的一版 `v0.2.9140`（差 1）。**
+
+CI 的号不是「读旧号 → 构建 → 让 Gradle 自增 → 按旧号打 tag」，而是：
+
+| 环节 | 文件/字段 | 说明 |
+|---|---|---|
+| 取号 | `android-ci.yml` 第 137-144 行 | 从 **nightly 分支** `version.properties` 读 `BUILD_NUMBER=COUNTER`，自己算 `CODE=COUNTER+1` |
+| 命名 | 第 147-150 行 | `version_code=CODE`、`tag=v0.2.$CODE-$CHANNEL`、`apk=HappyAgent-0.2.$CODE-$CHANNEL.apk` |
+| 注入 | 第 163-166 行 | `-PbuildNumber=$CODE` 传给 Gradle |
+| 落包 | 根 `build.gradle.kts` 第 76 行 + `app/build.gradle.kts` 第 117-118 行 | 注入值直接作为 `versionCode` / `0.2.<号>`，**不参与自增** |
+
+即 tag 与包内 `versionCode` 同源同值；`doLast` 只影响本机 `version.properties` 的落盘时机，CI 的计数器由
+`Persist version counter`（第 404 行起）在出包成功后用 API 推进，不读工作区文件。第 173 行新增
+`Assert APK version matches tag`，用 `aapt dump badging`（无 aapt 时退回 `output-metadata.json`）对最终 APK 硬断言，
+不一致就在发布前失败。
+
+**已发生的错位（HTTP Range 只读 APK 内 `AndroidManifest.xml` 实测，27 个 Release 全查）**：
+
+- 唯一错位：`v0.2.9140` / `HappyAgent-0.2.9140.apk` —— tag 与 Release 名写 9140，包内 `versionCode=9139`、`versionName=0.2.9139`，**差 1 版**。
+- 来源不是 CI：无渠道后缀、Release 名是「v0.2.9140 开发版」，出自本机 `.trae/skills/hpa-publish/scripts/publish.mjs`：
+  第 37-44 行先读 `version.properties` 得到 9140；第 55-63 行发现 `app-debug.apk` 已存在就**跳过构建**；
+  第 182-183 行把这份旧 APK（9139）按 9140 的名字复制发布。
+- 其余 CI 包全部一致（tag 数字 == 包内 `versionCode`）；早期 `-dev` 包的 `versionName` 带 `-dev` 后缀，属当时的命名差异，不是版本错位。
+

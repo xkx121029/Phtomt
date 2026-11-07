@@ -170,6 +170,45 @@ jobs:
           mv app/build/outputs/apk/debug/app-debug.apk "${{ steps.ver.outputs.apk }}"
           ls -lh "${{ steps.ver.outputs.apk }}"
 
+      - name: Assert APK version matches tag
+        # tag / Release 名 / APK 文件名都来自上一步注入的 version_code（见 Compute version + tag）。
+        # 这里对**最终产物**硬断言：包内 versionCode 必须等于 tag 里的号，versionName 必须是 0.2.<号>。
+        # 目的：一旦以后有人改回「构建后自增」或绕开 -PbuildNumber，tag 会指向上一版的包；
+        # 这一步在发布前直接红，避免发出「tag 与包内版本永久错一位」的 Release。
+        env:
+          APK: ${{ steps.ver.outputs.apk }}
+          EXPECT_CODE: ${{ steps.ver.outputs.version_code }}
+        run: |
+          AAPT="$(command -v aapt || true)"
+          if [ -z "$AAPT" ]; then
+            for root in "$ANDROID_HOME" "$ANDROID_SDK_ROOT" "$HOME/Android/Sdk"; do
+              if [ -d "$root/build-tools" ]; then
+                AAPT=$(ls "$root/build-tools/"*/aapt 2>/dev/null | sort -V | tail -1)
+              fi
+              [ -n "$AAPT" ] && break
+            done
+          fi
+          if [ -n "$AAPT" ]; then
+            BADGING=$("$AAPT" dump badging "$APK" | head -1)
+            CODE=$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+            NAME=$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
+          else
+            # 没有 aapt 时退回 AGP 生成的元数据（与最终 APK 同一次打包产出）
+            META=app/build/outputs/apk/debug/output-metadata.json
+            CODE=$(jq -r '.elements[0].versionCode' "$META")
+            NAME=$(jq -r '.elements[0].versionName' "$META")
+          fi
+          echo "包内：versionCode=$CODE versionName=$NAME；tag 预期：v0.2.$EXPECT_CODE"
+          if [ "$CODE" != "$EXPECT_CODE" ]; then
+            echo "::error title=版本号与 tag 不一致::tag 将使用 $EXPECT_CODE，但 APK 实际是 $CODE（相差 $((CODE - EXPECT_CODE))）"
+            exit 1
+          fi
+          if [ "$NAME" != "0.2.$EXPECT_CODE" ]; then
+            echo "::error title=versionName 与 tag 不一致::期望 0.2.$EXPECT_CODE，实际 $NAME"
+            exit 1
+          fi
+          echo "- ✅ 包内版本与 tag 一致：versionCode=$CODE，versionName=$NAME" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify APK signature
         # 硬断言：CI 包必须与本机 hpa-publish 的包同证书，否则用户无法覆盖安装。
         # 只检查「文件被还原」不够——AGP 可能压根没用它，所以这里直接验最终 APK。
