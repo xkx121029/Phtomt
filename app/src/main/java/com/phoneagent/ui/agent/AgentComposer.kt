@@ -417,16 +417,10 @@ internal fun AgentComposer(
     }
     val currentDraft by rememberUpdatedState(draft)
 
-    val fieldShape = RoundedCornerShape(if (focused && !locked) AppRadii.Hero else AppRadii.Card)
     val fieldPad by animateDpAsState(
         targetValue = if (focused && !locked) AppSpacing.Lg else AppSpacing.Md,
         animationSpec = tween(DurationFast, easing = EaseOut),
         label = "composer-pad",
-    )
-    val fieldElevation by animateDpAsState(
-        targetValue = if (focused && !locked) 6.dp else 0.dp,
-        animationSpec = tween(DurationFast, easing = EaseOut),
-        label = "composer-elevation",
     )
 
     val placeholder = when (mode) {
@@ -444,7 +438,9 @@ internal fun AgentComposer(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = AgentGlassInnerPad, vertical = AppSpacing.Md),
+            .clip(RoundedCornerShape(AppRadii.Card))
+            .background(AppTheme.colors.surfaceRaised)
+            .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xs),
     ) {
         if (queueCount > 0) {
             QueueStrip(count = queueCount, onOpen = onOpenQueue)
@@ -476,14 +472,6 @@ internal fun AgentComposer(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(fieldElevation, fieldShape)
-                .clip(fieldShape)
-                .background(colors.surfaceRaised)
-                .border(
-                    width = 1.dp,
-                    color = if (focused && !locked) colors.brand.copy(alpha = 0.45f) else colors.outlineSoft,
-                    shape = fieldShape,
-                )
                 .padding(
                     start = fieldPad,
                     end = AppSpacing.Sm,

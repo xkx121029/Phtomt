@@ -68,6 +68,7 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationNormal
+import com.phoneagent.ui.workbench.rememberConversationSummaryText
 import com.phoneagent.ui.theme.EaseOut
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -350,8 +351,7 @@ fun AgentScreen(
     } else {
         {
             AgentHeaderBar(
-                running = agent.isRunning,
-                runningTask = agent.task,
+                summary = rememberConversationSummaryText(vm),
                 onOpenTasks = { setDrawerOpen(true) },
                 onOpenMemory = onOpenMemory,
             )

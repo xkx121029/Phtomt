@@ -40,6 +40,22 @@ internal class AiTools(
         return translated
     }
 
+    /** 页面顶部的对话摘要；沿用主模型和端点协议，不经过任务执行链路。 */
+    suspend fun summarizeConversation(transcript: String): String {
+        val settingsVal = settings.settings.first()
+        if (settingsVal.apiBaseUrl.isBlank() || settingsVal.apiKey.isBlank() || transcript.isBlank()) return ""
+        val prompt = "请为以下对话写一句简短的当前信息总结，不超过32字。概括目标、已完成工作和下一步，" +
+            "不要使用标题、引号或Markdown。只输出总结。\n\n$transcript"
+        return aiClient.chatText(
+            baseUrl = settingsVal.apiBaseUrl,
+            apiKey = settingsVal.apiKey,
+            model = settingsVal.model,
+            messages = listOf(ChatMessageDto("user", listOf(ContentPart(type = "text", text = prompt)))),
+            temperature = 0.2,
+            protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
+        ).getOrDefault("").lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(48).orEmpty()
+    }
+
     /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
     fun isMostlyChinese(text: String): Boolean = EngineRules.isMostlyChinese(text)
 

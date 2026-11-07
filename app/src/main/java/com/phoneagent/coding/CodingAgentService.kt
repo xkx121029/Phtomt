@@ -61,8 +61,8 @@ class CodingAgentService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "编码 Agent", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "保持编码 Agent 在后台运行"
+                NotificationChannel(CHANNEL_ID, "Coding Agent", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "保持 Coding Agent 在后台运行"
                 },
             )
         }
@@ -70,8 +70,8 @@ class CodingAgentService : Service() {
 
     private fun startForegroundNotification() {
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("编码 Agent")
-            .setContentText("编码 Agent 正在后台运行")
+            .setContentTitle("Coding Agent")
+            .setContentText("Coding Agent 正在后台运行")
             .setSmallIcon(R.drawable.ic_stat_agent)
             .setOngoing(true)
             .build()

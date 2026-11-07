@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,8 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.data.prefs.AppSettings
+import org.koin.compose.koinInject
 import com.phoneagent.data.prefs.WorkbenchView
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.agent.AgentChrome
@@ -104,8 +108,37 @@ fun WorkbenchScreen(
     onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
     val settings by vm.settingsFlow.collectAsState()
-
+    val conversationSummary = rememberConversationSummary()
+    val summary by conversationSummary.text.collectAsState()
+    val agentState by vm.agentState.collectAsState()
+    val agentTurns by vm.chatTurns.collectAsState()
+    val codingUi by koinInject<CodingAgentBridge>().uiClient.state.collectAsState()
     val view = WorkbenchView.normalize(settings.workbenchView)
+    val agentBusy = agentState.isRunning || agentTurns.lastOrNull()?.answer?.isBlank() == true
+    val agentTranscript = buildList {
+        if (agentState.task.isNotBlank()) add("用户：" + agentState.task)
+        if (agentState.message.isNotBlank()) add("助手：" + agentState.message)
+        agentTurns.forEach { turn ->
+            add("用户：" + turn.question)
+            if (turn.answer.isNotBlank()) add("助手：" + turn.answer)
+        }
+    }.joinToString("\n").takeLast(7000)
+    val codingTranscript = codingUi.messages.map { (if (it.role == "user") "用户：" else "助手：") + it.text }
+        .joinToString("\n").takeLast(7000)
+    LaunchedEffect(agentBusy, agentTranscript) {
+        if (!agentBusy && agentTranscript.isNotBlank()) {
+            conversationSummary.submit(agentTranscript, agentTurns.lastOrNull()?.question ?: agentState.task)
+        }
+    }
+    LaunchedEffect(view, codingUi.busy, codingTranscript) {
+        if (view == WorkbenchView.CODING && !codingUi.busy && codingTranscript.isNotBlank()) {
+            conversationSummary.submit(codingTranscript, codingUi.messages.lastOrNull { it.role == "user" }?.text ?: "继续 Coding 对话")
+        }
+    }
+    LaunchedEffect(view) {
+        if (view == WorkbenchView.AGENT && agentTranscript.isBlank() ||
+            view == WorkbenchView.CODING && codingTranscript.isBlank()) conversationSummary.reset()
+    }
 
     var configOpen by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -128,6 +161,7 @@ fun WorkbenchScreen(
             // 把"身份"和"功能入口"压到最小，正文才是唯一主角。
             WorkbenchTopBar(
                 view = view,
+                summary = summary,
                 menuOpen = menuOpen,
                 onMenuOpenChange = { menuOpen = it },
                 onOpenDrawer = { drawerOpen = true },
@@ -169,7 +203,7 @@ fun WorkbenchScreen(
                         vm = vm,
                         modifier = Modifier.fillMaxSize(),
                         onOpenMarkdownFullscreen = onOpenMarkdownFullscreen,
-                        // 顶栏已由壳层画，编码页不再重复一条自己的页眉
+                        // 顶栏已由壳层画，Coding 页不再重复一条自己的页眉
                         showHeader = false,
                     )
                 } else {
@@ -230,7 +264,7 @@ fun WorkbenchScreen(
  * 顶栏：左边开任务抽屉，右边溢出菜单。不画标题、不叠玻璃板、不加分割线。
  *
  * 视图切换、工作台配置、记忆都收进溢出菜单——顶栏只留"两个入口"，
- * 其余功能不跟正文抢位置。编码视图没有任务抽屉，汉堡位留空占位，
+ * 其余功能不跟正文抢位置。Coding 视图没有任务抽屉，汉堡位留空占位，
  * 两枚图标仍分别贴住左右边。
  */
 @Composable
@@ -238,6 +272,7 @@ fun WorkbenchScreen(
 @Suppress("LongParameterList")
 private fun WorkbenchTopBar(
     view: String,
+    summary: String,
     menuOpen: Boolean,
     onMenuOpenChange: (Boolean) -> Unit,
     onOpenDrawer: () -> Unit,
@@ -261,7 +296,13 @@ private fun WorkbenchTopBar(
                 onClick = onOpenDrawer,
             )
         }
-        Spacer(Modifier.weight(1f))
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).padding(horizontal = AppSpacing.Md),
+        )
         Box {
             TopBarAction(
                 icon = AppIcons.More,
@@ -275,7 +316,7 @@ private fun WorkbenchTopBar(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (view == WorkbenchView.CODING) "切换到 Agent" else "切换到编码工作台",
+                            if (view == WorkbenchView.CODING) "切换到 Agent" else "切换到 Coding 工作台",
                         )
                     },
                     onClick = onSelectView,
@@ -313,7 +354,7 @@ private fun TopBarAction(
 /**
  * 配置面板：把散落各处的入口按功能聚类，一处找齐。
  *
- * 只做两件事：能就地改的（风格 / 默认视图 / 编码审批）直接改并即时落盘；
+ * 只做两件事：能就地改的（风格 / 默认视图 / Coding 审批）直接改并即时落盘；
  * 需要成组表单项的（模型、权限、导航、数据）给一条深链，跳到设置页对应分类，
  * 不在面板里重造一份表单——配置项仍然只有设置页那一份真源。
  */
@@ -400,7 +441,7 @@ private fun WorkbenchConfigPanel(
                     label = "默认视图",
                     options = listOf(
                         WorkbenchView.AGENT to "Agent",
-                        WorkbenchView.CODING to "编码",
+                        WorkbenchView.CODING to "Coding",
                     ),
                     selected = WorkbenchView.normalize(settings.workbenchView),
                     onSelect = { id -> onSave(settings.copy(workbenchView = id)) },
@@ -420,9 +461,9 @@ private fun WorkbenchConfigPanel(
                 )
             }
 
-            ConfigGroup("编码") {
+            ConfigGroup("Coding") {
                 LinkRow(
-                    label = "编码环境",
+                    label = "Coding 环境",
                     value = "运行时 / 构建环境",
                     onClick = { onOpenSettingsPage(SettingsPage.CODING_ENV) },
                 )

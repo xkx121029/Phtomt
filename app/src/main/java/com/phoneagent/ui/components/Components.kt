@@ -52,8 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.theme.AppRadii
@@ -462,6 +464,9 @@ fun AppTopBar(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    /** 标题字号：默认大标题；承载摘要这类长文本的页面可传更紧凑的样式 */
+    titleStyle: TextStyle = MaterialTheme.typography.headlineMedium,
+    titleMaxLines: Int = Int.MAX_VALUE,
     leadingIcon: ImageVector? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
@@ -500,7 +505,9 @@ fun AppTopBar(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                style = titleStyle.copy(fontWeight = FontWeight.Bold),
+                maxLines = titleMaxLines,
+                overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
                 Spacer(Modifier.height(2.dp))

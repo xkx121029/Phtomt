@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +37,7 @@ import com.phoneagent.ui.theme.AppTheme
  */
 @Composable
 internal fun AgentHeaderBar(
-    running: Boolean,
-    runningTask: String,
+    summary: String,
     modifier: Modifier = Modifier,
     /** 打开任务抽屉（历史任务列表 + 新建任务入口） */
     onOpenTasks: () -> Unit = {},
@@ -48,12 +48,11 @@ internal fun AgentHeaderBar(
 
     Column(modifier = modifier.fillMaxWidth()) {
         AppTopBar(
-            title = "Agent",
-            subtitle = if (running && runningTask.isNotBlank()) {
-                "正在执行：$runningTask"
-            } else {
-                "描述任务，AI 将逐步接管手机"
-            },
+            title = summary,
+            subtitle = null,
+            // 摘要不是标题：压到正文级字号、最多两行，把视觉重量让给对话本身
+            titleStyle = MaterialTheme.typography.titleMedium,
+            titleMaxLines = 2,
             // 左右留白不在这里给：顶栏玻璃板的外边距会随吸顶进度收放，
             // 留白由板子通过 LocalHeaderContentPad 下发，标题才会始终落在
             // 距屏幕 20dp 的竖直线上、横向原地不动

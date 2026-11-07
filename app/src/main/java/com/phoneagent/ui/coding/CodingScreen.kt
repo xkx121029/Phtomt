@@ -94,6 +94,7 @@ import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.components.toolRunState
 import com.phoneagent.ui.components.toolStatusStyle
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.workbench.rememberCodingConversationSummaryText
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
@@ -104,11 +105,11 @@ import org.koin.compose.koinInject
 import java.io.File
 
 /**
- * 编码页（Superagent 融合 Phase 5）：三形态之一的 vibecoding。
+ * Coding 页（Superagent 融合 Phase 5）：三形态之一的 vibecoding。
  *
  * 会话（对话记录）与 agent 记忆都按工作区隔离，存在 `<工作区>/.happyac/` 里：
- * 一个工作区可以有多个会话，切工作区就切了一整套记忆；编码页用的是自己的 agent
- * 连接（[CodingAgentBridge.uiClient]），操控页委托的编码任务不会再冲掉这里的对话。
+ * 一个工作区可以有多个会话，切工作区就切了一整套记忆；Coding 页用的是自己的 agent
+ * 连接（[CodingAgentBridge.uiClient]），操控页委托的 Coding 任务不会再冲掉这里的对话。
  * 审批以内嵌卡片呈现——项目铁律：审批绝不走系统弹窗。
  */
 @Composable
@@ -127,7 +128,7 @@ fun CodingScreen(
     val appSettings = koinInject<AppSettings>()
     val runtimeState by runtime.state.collectAsState()
     val clientState by bridge.uiClient.state.collectAsState()
-    // 模型与审批档位是全局设置：编码页的选择器直接读写它，和设置页保持同一份真值
+    // 模型与审批档位是全局设置：Coding页的选择器直接读写它，和设置页保持同一份真值
     val settings by vm.settingsFlow.collectAsState()
 
     val context = LocalContext.current
@@ -190,7 +191,7 @@ fun CodingScreen(
     LaunchedEffect(workspace.id) {
         startSession(workspace, null)
         runCatching { bridge.ensureUiConnected() }
-            .onFailure { snackbar?.show(it.message ?: "编码 Agent 连接失败") }
+            .onFailure { snackbar?.show(it.message ?: "Coding Agent 连接失败") }
     }
 
     // 一轮结束后落盘：流式输出过程中不动文件，避免每个 token 都写一次。
@@ -219,7 +220,7 @@ fun CodingScreen(
     fun newSession() {
         if (bridge.uiClient.state.value.busy) {
             bridge.uiClient.cancel()
-            snackbar?.show("已停止当前编码任务")
+            snackbar?.show("已停止当前 Coding 任务")
         }
         saveCurrent()
         val st = CodingWorkspaces.state(context, workspace)
@@ -240,7 +241,7 @@ fun CodingScreen(
             return
         }
         if (bridge.uiClient.state.value.busy) {
-            snackbar?.show("编码进行中，结束后再切换会话")
+            snackbar?.show("Coding 进行中，结束后再切换会话")
             return
         }
         saveCurrent()
@@ -254,7 +255,7 @@ fun CodingScreen(
 
     fun deleteSession(session: CodingWorkspaces.SessionMeta) {
         if (bridge.uiClient.state.value.busy && session.id == activeSessionId) {
-            snackbar?.show("编码进行中，结束后再删除会话")
+            snackbar?.show("Coding 进行中，结束后再删除会话")
             return
         }
         CodingWorkspaces.deleteSession(context, workspace, session.id)
@@ -277,7 +278,7 @@ fun CodingScreen(
         }
         if (bridge.uiClient.state.value.busy) {
             bridge.uiClient.cancel()
-            snackbar?.show("已切换到新工作区，进行中的编码任务已停止")
+            snackbar?.show("已切换到新工作区，进行中的 Coding 任务已停止")
         }
         bridge.restartForWorkspaceChange()
         workspaceId = activated.id
@@ -307,6 +308,13 @@ fun CodingScreen(
 
     // 系统分享进来的文件：附件区唯一真值源（见 SharedFiles）
     val sharedAttachments by SharedFiles.pending.collectAsState()
+    val pickAttachment = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            SharedFiles.import(context, listOf(uri))
+                .onFailure { snackbar?.show(it.message ?: "附件导入失败") }
+        }
+    }
 
     fun send(raw: String) {
         val text = raw.trim()
@@ -315,7 +323,7 @@ fun CodingScreen(
         scope.launch {
             runCatching { bridge.ensureUiConnected() }
                 .onFailure {
-                    snackbar?.show(it.message ?: "编码运行时未就绪")
+                    snackbar?.show(it.message ?: "Coding 运行时未就绪")
                     return@launch
                 }
             bridge.uiClient.sendPrompt(withAttachmentHint(text, files))
@@ -323,7 +331,7 @@ fun CodingScreen(
         }
     }
 
-    // 系统分享的文件落盘完成后：切到临时编码区、把附件挂进输入区，
+    // 系统分享的文件落盘完成后：切到临时目录、把附件挂进输入区，
     // 等工作区切完由 LaunchedEffect(workspace.id) 起好会话。不自动发消息——
     // 解读什么、怎么解读，让用户看一眼附件再决定（草稿里先放一句默认意图，可直接改）。
     LaunchedEffect(sharedAttachments.isNotEmpty()) {
@@ -360,7 +368,7 @@ fun CodingScreen(
             appSettings.update(next)
             runCatching { bridge.applyConfigChange() }
                 .onSuccess { snackbar?.show("已切换到 $trimmed") }
-                .onFailure { snackbar?.show("切换失败：${it.message ?: "编码 Agent 未连接"}") }
+                .onFailure { snackbar?.show("切换失败：${it.message ?: "Coding Agent 未连接"}") }
         }
     }
 
@@ -401,7 +409,13 @@ fun CodingScreen(
         GlassHeaderScaffold(
             modifier = Modifier.fillMaxSize(),
             header = if (showHeader) {
-                { AppTopBar(title = "编码", subtitle = "vibecoding · 设备端编码 Agent") }
+                {
+                    AppTopBar(
+                        title = rememberCodingConversationSummaryText(bridge),
+                        titleStyle = MaterialTheme.typography.titleMedium,
+                        titleMaxLines = 2,
+                    )
+                }
             } else {
                 null
             },
@@ -498,6 +512,7 @@ fun CodingScreen(
                         attachments = sharedAttachments,
                     ),
                     onDraftChange = { draft = it },
+                    onPickAttachment = { pickAttachment.launch("image/*") },
                     onRemoveAttachment = { SharedFiles.remove(it) },
                     onStop = { bridge.uiClient.cancel() },
                     onSend = { send(it) },
@@ -741,7 +756,7 @@ private fun ConnDot(conn: ConnState) {
     )
 }
 
-/** 编码会话流：user/assistant 气泡 + 工具调用卡 + 审批卡 */
+/** Coding 会话流：user/assistant 气泡 + 工具调用卡 + 审批卡 */
 @Composable
 private fun ConversationFlow(
     messages: List<ChatMessage>,
@@ -755,7 +770,7 @@ private fun ConversationFlow(
     if (messages.isEmpty()) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text(
-                "描述要写的代码或脚本，编码 Agent 会自己动手",
+                "描述要写的代码或脚本，Coding Agent 会自己动手",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -957,7 +972,7 @@ private fun RunStatusLine(
     }
 }
 
-/** 审批技能卡（铁律）：编码 agent 请求执行敏感工具时的内嵌审批——允许 / 拒绝就在卡片上，
+/** 审批技能卡（铁律）：Coding agent 请求执行敏感工具时的内嵌审批——允许 / 拒绝就在卡片上，
  * 决议后置灰落定，绝不弹系统对话框。
  *
  * 与工具卡共用 [SkillCard] 外壳（不可展开，正文常显），两页所有卡片只长一个样子。
@@ -986,7 +1001,7 @@ private fun ApprovalCard(msg: ChatMessage) {
     ) {
         Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
             Text(
-                text = "编码 Agent 请求执行「$toolLabel」，确认后才会真正执行。",
+                text = "Coding Agent 请求执行「$toolLabel」，确认后才会真正执行。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -1029,7 +1044,7 @@ private data class ComposerValues(
 )
 
 /**
- * 底部输入区：busy 显示「编码中…」与停止按钮；运行时未安装时整体禁用并提示。
+ * 底部输入区：busy 显示「正在 Coding…」与停止按钮；运行时未安装时整体禁用并提示。
  *
  * 草稿与附件由页面层持有：系统分享文件进来时要把附件（以及一句默认意图）
  * 直接预置到输入区里，状态留在这层就做不到了。
@@ -1038,13 +1053,17 @@ private data class ComposerValues(
 private fun CodingComposer(
     values: ComposerValues,
     onDraftChange: (String) -> Unit,
+    onPickAttachment: () -> Unit,
     onRemoveAttachment: (SharedFiles.Imported) -> Unit,
     onStop: () -> Unit,
     onSend: (String) -> Unit,
 ) {
     val buzz = rememberHapticClick()
     Column(Modifier.fillMaxWidth()) {
-        if (values.busy) BusyLine(onStop = { buzz(); onStop() })
+        if (values.busy) {
+            Spacer(Modifier.height(AppSpacing.Xs))
+            BusyLine(onStop = { buzz(); onStop() })
+        }
         if (values.attachments.isNotEmpty()) {
             AttachmentRow(
                 attachments = values.attachments,
@@ -1058,6 +1077,7 @@ private fun CodingComposer(
             canSend = values.enabled && !values.busy &&
                 (values.draft.isNotBlank() || values.attachments.isNotEmpty()),
             onDraftChange = onDraftChange,
+            onAttach = onPickAttachment,
             onSend = { buzz(); onSend(values.draft); onDraftChange("") },
         )
     }
@@ -1069,6 +1089,7 @@ private fun ComposerInputRow(
     values: ComposerValues,
     canSend: Boolean,
     onDraftChange: (String) -> Unit,
+    onAttach: () -> Unit,
     onSend: () -> Unit,
 ) {
     Row(
@@ -1081,6 +1102,13 @@ private fun ComposerInputRow(
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Xs),
         verticalAlignment = Alignment.Bottom,
     ) {
+        ComposerActionButton(
+            icon = AppIcons.Add,
+            description = "添加附件",
+            onClick = onAttach,
+            enabled = values.enabled && !values.busy,
+        )
+        Spacer(Modifier.width(AppSpacing.Xs))
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1120,8 +1148,8 @@ private fun ComposerInputRow(
 
 /** 输入区占位文案：禁用 / 运行中 / 空闲三种状态各说一件事 */
 private fun composerHint(values: ComposerValues): String = when {
-    !values.enabled -> "编码运行时未就绪，无法编码"
-    values.busy -> "编码中，稍候…"
+    !values.enabled -> "Coding 运行时未就绪，暂时无法使用"
+    values.busy -> "正在 Coding，稍候…"
     else -> "描述要写的代码或脚本…"
 }
 
@@ -1140,7 +1168,7 @@ private fun BusyLine(onStop: () -> Unit) {
         )
         Spacer(Modifier.width(AppSpacing.Sm))
         Text(
-            "编码中…",
+            "正在 Coding…",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
@@ -1156,7 +1184,7 @@ private fun BusyLine(onStop: () -> Unit) {
     }
 }
 
-/** 附件行：文件名 + 大小，右侧可摘掉。附件本身已经在临时编码区里，这里只是提示。 */
+/** 附件行：文件名 + 大小，右侧可摘掉。附件本身已经在临时目录里，这里只是提示。 */
 @Composable
 private fun AttachmentRow(
     attachments: List<SharedFiles.Imported>,
@@ -1209,10 +1237,10 @@ private fun AttachmentRow(
 }
 
 /**
- * 把附件写进消息正文再发给编码 agent。
+ * 把附件写进消息正文再发给 Coding agent。
  *
  * agent 只有工作区相对路径这一种寻址方式，它看不到"用户刚刚分享了什么"；
- * 附件已经在临时编码区根目录里，所以这里直接给出文件名，让它用 read_file 打开。
+ * 附件已经在临时目录根目录里，所以这里直接给出文件名，让它用 read_file 打开。
  * 附件清单也写进用户气泡，回看历史时能知道当时带了哪些文件。
  */
 private fun withAttachmentHint(text: String, attachments: List<SharedFiles.Imported>): String {
@@ -1241,7 +1269,7 @@ private fun isAppOwnedPath(context: Context, path: String): Boolean {
     return roots.any { path == it || path.startsWith("$it/") }
 }
 
-/** 打开「所有文件访问」授权页：让编码 agent 能直接用路径读写用户选的目录 */
+/** 打开「所有文件访问」授权页：让Coding agent 能直接用路径读写用户选的目录 */
 internal fun openAllFilesAccessSettings(context: Context) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
     runCatching {
