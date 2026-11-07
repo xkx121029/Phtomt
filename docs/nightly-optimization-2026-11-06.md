@@ -466,3 +466,59 @@ run 94 / 95 / 97 都是 `Publish GitHub Release=success` 后 Gitee `failure`/`ca
   第 182-183 行把这份旧 APK（9139）按 9140 的名字复制发布。
 - 其余 CI 包全部一致（tag 数字 == 包内 `versionCode`）；早期 `-dev` 包的 `versionName` 带 `-dev` 后缀，属当时的命名差异，不是版本错位。
 
+### 7.11 publish.mjs 断源、34MB 包定性、计数器对齐（本轮，未推送）
+
+#### 7.11.1 `publish.mjs`：不再「APK 存在就跳过」，并加发布前断言
+
+`.trae/skills/hpa-publish/scripts/publish.mjs`（`.trae` 已 gitignore，不入库）改了三处：
+
+| 位置 | 原来 | 现在 |
+|---|---|---|
+| 构建 | `execSync('.\\gradlew.bat :app:assembleDebug')`，不自带号 | `-PbuildNumber=${buildNumber}`，包内版本与发布号同源 |
+| 跳过判断 | `apkPath` 存在就跳过构建 | 先读 `output-metadata.json` 的 `versionCode`，**等于待发布号才跳过**；缺失/不一致/文件为空一律重编 |
+| 发布前 | 无 | 断言 `versionCode === buildNumber` 且 `versionName === 0.2.<号>`，不符 `exit 1`，与 CI 的 `Assert APK version matches tag` 同口径 |
+
+行为验证：把 `publish.mjs` 里「4. 构建」到「5. sha256」之间的**真实源码**抽出来，在临时目录跑四个场景（Gradle 用 stub 替身，不联网）：
+
+| 场景 | 输入 | 结果 |
+|---|---|---|
+| 一致 | APK 存在，metadata `9159`，待发 `9159` | 不构建，断言通过 |
+| 元数据落后 | metadata `9158`，待发 `9159` | 触发重编，重编后通过 |
+| 重编失败 | metadata `9158`，重编后仍 `9158` | `[ERR] 包内 versionCode=9158，待发布号=9159（相差 -1），拒绝发布`，退出码 1 |
+| 无元数据 | 有 APK、无 `output-metadata.json` | 触发重编，重编后通过 |
+
+#### 7.11.2 34MB 的五个 beta 包：全部缺内置编码运行时
+
+只读读取 APK 的 ZIP 中央目录（`zipfile.namelist()` / HTTP Range 读 central directory），逐个查五个条目：
+
+| Release | 包大小 | 条目数 | `libnode.so` / 3×`libicu*` / `assets/agent-host/host-stdio.js` |
+|---|---|---|---|
+| `v0.2.9109-beta` | 34,065,237 B | 581 | **5 项全缺** |
+| `v0.2.9110-beta` | 34,065,233 B | 581 | **5 项全缺** |
+| `v0.2.9113-beta` | 34,089,045 B | 581 | **5 项全缺** |
+| `v0.2.9114-beta` | 34,089,041 B | 581 | **5 项全缺** |
+| `v0.2.9116-beta` | 34,089,049 B | 581 | **5 项全缺** |
+| 对照 `v0.2.9106-beta` / `9117-dev` / `9118-beta` | 71.3 MB | 636 | 5 项齐全 |
+
+结论：不是「当年正常的小包」，是**同类事故包**——能装能启动，但 Coding 功能不可用。
+用户已装的不因删文件而变好，所以**不删 Release**，只在描述里加警示。
+
+- Gitee 侧已加（9109 在 Gitee 不存在）：`v0.2.9110-beta` / `9113-beta` / `9114-beta` / `9116-beta`，脚本幂等（body 已含「缺少内置编码运行时」就跳过）。
+- GitHub 侧**被阻塞**：本机无任何非交互 GitHub 凭据（`git credential fill` 两次超时；无 `gh` CLI；无 `GH_TOKEN`/`GITHUB_TOKEN`；远端 URL 未内嵌 token）。脚本已备好，拿到 token 后执行同一脚本即可。
+
+#### 7.11.3 版本号倒退：nightly 计数器对齐到 9159（仅本地提交）
+
+- 本机 `version.properties` = **9159**；nightly 分支 = **9121**；CI 取号是 `COUNTER+1` → 下一跑会发 **9122**，对已装 9156+ 的用户是版本倒退。
+- 已在 nightly 本地提交 `74fce0f`：`version.properties` 改为 `9159`，下一跑 CI 产出 **9160** 起。
+- 该提交同时把 nightly 分支的 `Persist version counter` 升级为与 main 同口径（见 7.11.4）——**nightly 的 push 事件用的是 nightly 自己的 workflow 文件**，只改 main 不够。
+- 前提提醒：CI 读的是 GitHub 上 nightly 的 `version.properties`（`gh api ... ?ref=nightly`），所以要等分支推送后才生效；若期间整条历史被重写，新历史里的 nightly 也必须是 9159，不能把 9121 带回来。
+
+#### 7.11.4 `Persist version counter` 的写目标与失败留痕
+
+- 写目标：**nightly 分支**的 `version.properties`（`-f branch=nightly`），beta 跑完也写这里，全仓一条计数器。
+- 原实现的漏洞：Actions 的 bash 带 `-e`，读 `sha`/内容的 GET 一旦失败就**直接退出**，连 `计数器回写失败` 那行都打不出来，等于静默失败。
+- 现在：`set +e` 收口三类失败（读不到 / PUT 被拒 / 3 次重试耗尽），统一走一条出口，输出
+  `::error title=版本计数器未推进::上一次已发布但计数器未推进 —— <tag> 的 GitHub Release 已发布（versionCode N），nightly 仍停在 M：<原因>…`
+  并写入 `$GITHUB_STEP_SUMMARY`（后果 + 人工修法：把 nightly 的 `BUILD_NUMBER` 改到 `N+1` 或更大）。
+- 验证：用 stub `gh`（PUT 恒失败 / PUT 成功）实跑该 step 的 bash，失败场景退出码 1 且 summary 四行齐全，成功场景打印 `9121 -> 9122` 且退出码 0。
+
