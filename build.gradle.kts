@@ -5,9 +5,12 @@ import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.security.MessageDigest
+import java.lang.management.ManagementFactory
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -181,6 +184,16 @@ subprojects.forEach { p ->
     val processName = runCatching {
         ProcessHandle.current().info().command().orElse("")
     }.getOrDefault("").let { if (it.isBlank()) "java" else File(it).name }
+    // 进程启动时间：用来识别「pid 已被复用」。锁记录里的 pid 还存在、但启动时间对不上，
+    // 说明原持有者早就退出了、这个 pid 现在是别的进程（pid 会回卷）。这比「进程活着但卡死」
+    // 常见得多，不该让下一个人干等满 60 分钟才敢接管。
+    // 取不到进程创建时间时退回 JVM 启动时间（同一进程内，误差在秒级；比较时留 5 秒容差）。
+    val procStart = runCatching {
+        ProcessHandle.current().info().startInstant().orElse(null)
+            ?: Instant.ofEpochMilli(ManagementFactory.getRuntimeMXBean().startTime)
+    }.getOrNull()?.let {
+        OffsetDateTime.ofInstant(it, ZoneId.systemDefault()).withNano(0).toString()
+    }.orEmpty()
     // 主机名用来区分「本机 pid 可探测」和「跨机器只能靠超时」。优先读环境变量，避免配置阶段做 DNS 解析。
     val hostName = System.getenv("COMPUTERNAME")?.takeIf { it.isNotBlank() }
         ?: System.getenv("HOSTNAME")?.takeIf { it.isNotBlank() }
@@ -214,6 +227,7 @@ subprojects.forEach { p ->
         val localStaleMinutes = staleMinutes
         val localPid = pid
         val localProcessName = processName
+        val localProcStart = procStart
         val localHost = hostName
         val localUser = user
         val localNumber = number
@@ -272,6 +286,17 @@ subprojects.forEach { p ->
                 }
                 val incomplete = holderPid == null || holderHost.isNullOrBlank() ||
                     holderTask.isNullOrBlank() || holderProcess.isNullOrBlank() || startedAt == null
+                // pid 复用识别：锁里的 pid 还活着，但启动时间对不上 → 那个 pid 现在是别的进程。
+                // procstart 缺失或解析不出时不做这个判断（宁可退回超时，也不能把正在跑的长构建抢了）。
+                val holderProcStartRaw = fields["procstart"]
+                val holderProcStart = holderProcStartRaw?.takeIf { it.isNotBlank() }
+                    ?.let { runCatching { OffsetDateTime.parse(it).toInstant() }.getOrNull() }
+                val holderActualProcStart = holderPid?.takeIf { holderAlive && sameHost }?.let { hp ->
+                    runCatching { ProcessHandle.of(hp).get().info().startInstant().orElse(null) }.getOrNull()
+                }
+                // 5 秒容差：记录截到秒，且写记录时可能用 JVM 启动时间兜底，与进程创建时间差零点几秒。
+                val pidReused = holderProcStart != null && holderActualProcStart != null &&
+                    kotlin.math.abs(Duration.between(holderProcStart, holderActualProcStart).toMillis()) > 5_000L
                 val expired = ageMs > localStaleMs
                 // 锁文件还在、但一个持有标记都没有：说明上一次释放只删了标记、没删成锁
                 // （或锁被手工留下）。给 2 分钟容差，避开「刚 createFile、还没写标记」的窗口。
@@ -288,6 +313,10 @@ subprojects.forEach { p ->
                         "（pid=${holderPid ?: "无"}，process=${holderProcess ?: "无"}，" +
                         "task=${holderTask ?: "无"}，started=${startedRaw ?: "无"}，host=${holderHost ?: "无"}）"
                     sameHost && !holderAlive -> "持有进程 pid=$holderPid 在本机已经不存在"
+                    sameHost && holderAlive && pidReused -> "pid=$holderPid 已被复用：锁记录里的进程启动时间是 " +
+                        "$holderProcStartRaw，而该 pid 现在的启动时间是 " +
+                        "${OffsetDateTime.ofInstant(holderActualProcStart!!, ZoneId.systemDefault()).withNano(0)}" +
+                        "（原持有者已退出，pid 被别的进程占了）"
                     orphaned -> "锁文件存在但没有任何持有标记（上一次释放没有清干净）"
                     expired -> "持锁 $ageDesc，超过阈值 $localStaleMinutes 分钟" +
                         (if (holderAlive) "（该进程仍存活，可能已经卡死）" else "")
@@ -356,6 +385,7 @@ subprojects.forEach { p ->
                 lock.writeText(
                     "pid=$localPid\n" +
                         "process=$localProcessName\n" +
+                        "procstart=$localProcStart\n" +
                         "task=$owner\n" +
                         "started=${OffsetDateTime.now().withNano(0)}\n" +
                         "host=$localHost\n" +
