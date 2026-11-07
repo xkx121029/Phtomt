@@ -346,6 +346,9 @@ onMounted(async () => {
   font-weight: 600;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  /* v0.2.2000092-beta 这种 17 字符的版本号在 360px 屏上会顶出卡片，
+     断行只在真的放不下时触发，正常版本号仍是一行 */
+  overflow-wrap: anywhere;
 }
 
 .hero-card__title {
