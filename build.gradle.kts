@@ -4,6 +4,7 @@ import org.gradle.api.services.BuildServiceParameters
 import java.io.File
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.lang.management.ManagementFactory
 import java.time.Duration
@@ -309,6 +310,7 @@ subprojects.forEach { p ->
                 }
                 val staleReason = when {
                     record == null -> "锁文件读不出来（可能正在被删除或已损坏）"
+                    incomplete && ageMs < 5_000 -> null
                     incomplete -> "锁记录不完整，缺 pid / process / task / started / host 中的项" +
                         "（pid=${holderPid ?: "无"}，process=${holderProcess ?: "无"}，" +
                         "task=${holderTask ?: "无"}，started=${startedRaw ?: "无"}，host=${holderHost ?: "无"}）"
@@ -322,10 +324,11 @@ subprojects.forEach { p ->
                         (if (holderAlive) "（该进程仍存活，可能已经卡死）" else "")
                     else -> null
                 }
-                if (staleReason == null && sameHost && holderPid == localPid) {
-                    // 同一个 Gradle 进程：同一构建里的另一个被锁任务（--parallel），
-                    // 或本 daemon 上一次构建崩溃留下的孤儿锁。一个 daemon 一次只跑一个构建，
-                    // 所以并发的另一个构建不可能拿到同一个 pid，这里不会误放行。
+                if (sameHost && holderPid == localPid) {
+                    // ① 先认自己：首行 pid 就是当前 JVM（同一构建里的其它被锁任务 / 本 daemon
+                    // 上一次构建没释放干净的残留），直接放行并记标记，不参与任何陈旧判定。
+                    // 这个分支必须优先于 staleReason——否则 --parallel 下自己的锁会被自己判成陈旧。
+                    // 一个 daemon 一次只跑一个构建，别的构建不可能同 pid，不会误放行。
                     owned = true
                 } else if (staleReason != null) {
                     // 用 rename 抢占而不是 delete：rename 只有一个进程能成功，
@@ -355,7 +358,27 @@ subprojects.forEach { p ->
                 try {
                     Files.createFile(lock.toPath()) // 原子：并发的另一个构建会在这里失败
                 } catch (e: FileAlreadyExistsException) {
-                    val info = runCatching { lock.readText().trim() }.getOrDefault("")
+                    // 同一构建的另一个被锁任务 / 另一个构建可能刚 createFile、完整记录还没 move 进来。
+                    // 只在这个毫秒级窗口里做有界重读（最多 2 秒）；读到的记录不是自己就立刻失败，不排队等锁。
+                    var info = ""
+                    var selfOwned = false
+                    var waitedMs = 0L
+                    while (waitedMs < 2_000L) {
+                        info = runCatching { lock.readText().trim() }.getOrDefault("")
+                        if (info.lineSequence().firstOrNull() == "pid=$localPid") {
+                            selfOwned = true
+                            break
+                        }
+                        val recordComplete = listOf("pid=", "process=", "procstart=", "task=", "started=", "host=")
+                            .all { key -> info.lineSequence().any { it.startsWith(key) } }
+                        if (recordComplete) break
+                        Thread.sleep(50)
+                        waitedMs += 50
+                    }
+                    if (selfOwned) {
+                        // 锁已经是自己的（同一构建的另一个任务先拿到）：直接放行，不再重写记录。
+                        owned = true
+                    } else {
                     fun lockField(key: String): String? = info.lineSequence()
                         .firstOrNull { it.startsWith("$key=") }?.substringAfter('=')?.trim()
                     val startedText = lockField("started")
@@ -373,7 +396,8 @@ subprojects.forEach { p ->
                             "（bundleHost / compile*Kotlin / merge*Assets / package*），本次构建在 $owner 处中止。\n" +
                             "持有者：pid=${lockField("pid") ?: "未知"}（${lockField("host") ?: "主机未知"}），" +
                             "任务=${lockField("task") ?: "未知"}，开始于 ${startedText ?: "未知"}，已持有 $heldDesc\n" +
-                            "原始锁记录（${lock.absolutePath}）：\n$info\n" +
+                            "原始锁记录（${lock.absolutePath}）：\n" +
+                            info.ifBlank { "（空：另一个构建可能正在写入完整记录，这是毫秒级窗口）" } + "\n" +
                             "这是「明确失败」，不是排队：本构建不会等待，也不会自动重试。\n" +
                             "给重试脚本的判据：看到本条消息就说明锁被别人持有，等它结束或 Ctrl+C 之后再跑；" +
                             "不要立刻循环重试，每次重试都会重新烧一遍编译。\n" +
@@ -381,17 +405,42 @@ subprojects.forEach { p ->
                             "下一次取锁会自动判定为陈旧并接管（同时打印原记录）；" +
                             "探测不到时也可以删除 ${lock.absolutePath}。"
                     )
+                    }
                 }
-                lock.writeText(
-                    "pid=$localPid\n" +
+                if (!owned) {
+                    // 记录必须原子落盘：完整内容先写进临时文件，再整体 move 到锁路径。
+                    // 「createFile 占位 → writeText 写内容」中间有一个可被读到的空窗，别的构建会
+                    // 读到空锁文件、判成记录不完整进而接管，和 createFile 打架。
+                    val recordText = "pid=$localPid\n" +
                         "process=$localProcessName\n" +
                         "procstart=$localProcStart\n" +
                         "task=$owner\n" +
                         "started=${OffsetDateTime.now().withNano(0)}\n" +
                         "host=$localHost\n" +
                         "user=$localUser\n"
-                )
-                logger.lifecycle("[build-lock] 获取成功：$owner（pid=$localPid，host=$localHost）")
+                    val tmp = File(lock.parentFile, "build.lock.tmp-$localPid-${System.nanoTime()}")
+                    tmp.writeText(recordText)
+                    try {
+                        Files.move(
+                            tmp.toPath(),
+                            lock.toPath(),
+                            StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING,
+                        )
+                    } catch (e: Exception) {
+                        // 个别文件系统不支持 ATOMIC_MOVE 的替换语义；同盘 rename 同样不会留下半个文件。
+                        runCatching {
+                            Files.move(tmp.toPath(), lock.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        }.onFailure { fail ->
+                            runCatching { tmp.delete() }
+                            throw GradleException(
+                                "写锁记录失败（${lock.absolutePath}）：${fail.message}。删掉这个文件后重试。",
+                                fail,
+                            )
+                        }
+                    }
+                    logger.lifecycle("[build-lock] 获取成功：$owner（pid=$localPid，host=$localHost）")
+                }
             }
             marker.writeText(owner)
 

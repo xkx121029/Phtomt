@@ -395,3 +395,37 @@ Gradle 里一个 task 在一次构建中只执行一次；释放任务挂在第�
 说明：两次构建都带 `-x verifyProviderAssets`——那是 provider 源码指纹与 assets 不一致的既有闸门（其它线改动所致），
 与本轮改动无关，绕开它才能走到打包。B 在**第一个被锁任务**就被挡下，因此不存在「两个构建都算到 9154 并各自打包」的路径。
 
+### 7.9 同构建内并行任务的锁竞态（`--parallel` 下自己咬自己）
+
+**现场**（引擎线 `assembleDebug`）：一次构建里 8 个被锁任务同时报错，锁记录显示 `(空锁文件)`，
+而报错里的「持有者 pid」就是那次构建自己；`--no-parallel` 能绕过，说明是时序竞态而不是逻辑判断错。
+
+**根因**：`Files.createFile` 占位 → `writeText` 写内容之间有几毫秒，进程内其它被锁任务读到这个空文件，
+判「记录不完整」→ 走陈旧接管 → `rename` 与 `createFile` 互相打架。`org.gradle.parallel=true` 时
+一次构建里同时进入取锁逻辑的任务可以有很多个，窗口虽小但必被踩到。
+
+**三条一起改，缺一不可**：
+
+| # | 改法 | 说明 |
+|---|---|---|
+| 1 | 记录原子落盘 | 完整内容先写 `build.lock.tmp-<pid>-<nano>`，再 `Files.move(..., ATOMIC_MOVE, REPLACE_EXISTING)`；不支持 ATOMIC_MOVE 时退回普通 move（同盘 rename，同样不会留下半个文件） |
+| 2 | 同进程可重入 | 先判「首行 pid 是不是自己」——是就直接放行并写本任务的标记，**不参与任何陈旧判定**；这是同一构建内多个任务共享一把锁的正确语义 |
+| 3 | 判定顺序固定 | 自己 pid → pid 存活 + `procstart` 一致 → 超过 60 分钟 → 孤儿锁（无标记且超过 2 分钟）；顺序错了会出现「自己的锁被自己判成陈旧」 |
+| 4 | 空窗兜底 | 「记录不完整」只在锁文件已存在超过 5 秒时才算陈旧；`createFile` 失败后做**有界重读**（最多 2 秒，50ms 一次）：读到自己的 pid 就放行，读到别人的完整记录立即失败，不排队等锁 |
+
+**验收（无 `--no-parallel`，连续 3 次）**：
+
+| 轮次 | 结果 | 耗时 |
+|---|---|---|
+| RUN 1 | `BUILD SUCCESSFUL` | 18m 37s（含一次真实全量编译） |
+| RUN 2 | `BUILD SUCCESSFUL` | 3m 8s |
+| RUN 3 | `BUILD SUCCESSFUL` | 2m 39s |
+
+三次日志统计：「锁被判定为陈旧并接管」**0 次**，「这是「明确失败」」**0 次**。
+RUN 1 期间同一构建内有 **11 个**被锁任务共享同一把锁（`bundleHost`、`compileDebugKotlin`、
+`mergeDebugAssets`、`packageDebug`、`packageDebugResources`，以及 env-api / provider-api 的编译与打包任务），
+每个任务各写一个标记文件，构建结束由 `release-service` 一次性删标记并删锁（`lock=true，剩余标记=0`）。
+
+**取舍说明**：第 2 条按 pid 重入的前提是「一个 daemon 一次只跑一个构建」——Gradle 的 daemon 确实是串行执行构建的，
+所以同一 pid 出现两个并发构建不成立；跨机器的锁只能靠超时，这部分不受本次改动影响。
+
