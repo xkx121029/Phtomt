@@ -45,7 +45,29 @@ def _boot(msg):
         pass
 
 
+def _raise_priority():
+    """把自身提到 ABOVE_NORMAL，别让 import 被饿死。
+
+    计划任务默认以 BelowNormal 拉起。机器被别的活打满时（实测系统 CPU 99%），
+    同一个 import 在 BelowNormal 下要 4.95s、普通优先级 0.68s；实际出现过
+    7 分钟只加载 33 个 DLL、线程一直 Ready 等 CPU 的情况，看起来就像「启动卡死」。
+    只提自己，不改系统设置，也不需要管理员权限。
+    """
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        # 必须显式声明：GetCurrentProcess 返回 64 位伪句柄，按默认 c_int 截断会变成无效句柄
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+        k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k.SetPriorityClass.restype = ctypes.c_int
+        # 0x8000 = ABOVE_NORMAL_PRIORITY_CLASS
+        return bool(k.SetPriorityClass(k.GetCurrentProcess(), 0x8000))
+    except Exception:
+        return False
+
+
 _boot("开始")
+_boot("优先级提升=%s" % _raise_priority())
 
 import argparse
 import json
