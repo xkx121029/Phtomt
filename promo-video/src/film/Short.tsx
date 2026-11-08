@@ -30,28 +30,28 @@ export const FilmShort: React.FC<{ bgm: boolean }> = ({ bgm }) => {
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
       <Sequence from={SHORT.t1} durationInFrames={SHORT.t2 - SHORT.t1} name="T1 一句话">
         <AbsoluteFill>
-          <Stage glow={C.jade} glowStrength={0.075} topLight={0.03} scrim={0.18} />
+          <Stage glow={C.jade} glowStrength={0.075} topLight={0.03} scrim={0.18} geometry={0.78} />
           <S1Sentence typeStartBeat={0.6} charFrames={1.6} />
         </AbsoluteFill>
       </Sequence>
 
       <Sequence from={SHORT.t2} durationInFrames={SHORT.t3 - SHORT.t2} name="T2 框选控件">
         <AbsoluteFill>
-          <Stage glow={C.mist} glowStrength={0.1} topLight={0.04} scrim={0.6} />
+          <Stage glow={C.mist} glowStrength={0.1} topLight={0.04} scrim={0.6} geometry={0.34} />
           <S4Scan />
         </AbsoluteFill>
       </Sequence>
 
       <Sequence from={SHORT.t3} durationInFrames={SHORT.t4 - SHORT.t3} name="T3 执行">
         <AbsoluteFill>
-          <Stage glow={C.jade} glowStrength={0.13} topLight={0.02} scrim={0.62} />
+          <Stage glow={C.jade} glowStrength={0.13} topLight={0.02} scrim={0.62} geometry={0.32} />
           <S5Exec />
         </AbsoluteFill>
       </Sequence>
 
       <Sequence from={SHORT.t4} durationInFrames={SHORT.total - SHORT.t4} name="T4 品牌">
         <AbsoluteFill>
-          <Stage glow={C.jade} glowStrength={0.06} topLight={0.015} scrim={0.34} />
+          <Stage glow={C.jade} glowStrength={0.06} topLight={0.015} scrim={0.34} geometry={0.6} />
           <S8Outro slamBeat={4} markBeat={9} />
         </AbsoluteFill>
       </Sequence>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from 'remotion';
 import { Device } from '../chrome/Device';
+import { GeometryStage } from '../chrome/GeometryStage';
 import { C, F } from '../tokens';
 import { beatF } from '../beat';
 
@@ -39,15 +40,18 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
   glowH = 900,
 }) => {
   const frame = useCurrentFrame();
-  const swapAt = beatF(4);
+  // S7a 只占 4 拍（≈55f），换色板与慢推都按这个窗口压缩
+  const swapAt = beatF(1.5);
 
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
+      {/* 立体几何场景：格子缝里能看到，四张卡压在它上面 */}
+      <GeometryStage strength={0.55} />
       {QUADS.map((q, i) => {
         const col = i % 2;
         const row = Math.floor(i / 2);
         const local = frame - q.delay;
-        const push = interpolate(local, [0, 150], [0, 1], {
+        const push = interpolate(local, [0, 56], [0, 1], {
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
           easing: Easing.bezier(0.33, 0, 0.15, 1),
@@ -167,24 +171,46 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
             >
               <span
                 style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 7,
-                  background: C.jade,
-                  boxShadow: `0 0 10px ${C.jade}`,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: F.sans,
-                  fontSize: 34,
-                  fontWeight: 500,
-                  color: C.ink,
-                  letterSpacing: '0.02em',
-                  textShadow: '0 2px 16px rgba(0,0,0,0.9)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  padding: '9px 18px 9px 14px',
+                  borderRadius: 99,
+                  background: 'rgba(27,31,28,0.86)',
+                  border: `1px solid ${C.line2}`,
+                  backdropFilter: 'blur(8px)',
                 }}
               >
-                {q.label}
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: 9,
+                    background: C.jade,
+                    boxShadow: `0 0 12px ${C.jade}`,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: F.mono,
+                    fontSize: 26,
+                    color: C.ink3,
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span
+                  style={{
+                    fontFamily: F.sans,
+                    fontSize: 34,
+                    fontWeight: 500,
+                    color: C.ink,
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {q.label}
+                </span>
               </span>
             </div>
           </div>

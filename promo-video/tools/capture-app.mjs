@@ -193,6 +193,110 @@ const STATES = [
       setTab('coding');
     },
   },
+  /* 三个「设备内编码」示例：同一套真机 UI，不同语言 / 不同任务，供 S7 能力墙轮播 */
+  {
+    id: 'coding-python',
+    run: () => {
+      S.theme = 'dark'; S.palette = 'ink_green';
+      S.coding.workspace = 'happy-agent';
+      S.coding.path = '~/workspace/happy-agent';
+      S.coding.conn = 'connected';
+      S.coding.busy = false;
+      S.coding.active = 1;
+      S.coding.sessions = [{
+        id: 1, title: '整理监控录像',
+        messages: [
+          { role: 'me', text: '把 /clips 下昨天的录像按小时归档，空文件删掉。' },
+          {
+            role: 'ai',
+            text: '先按修改时间分组，再跳过 0 字节文件，最后打印归档结果。',
+            code:
+              'from pathlib import Path\n' +
+              'import shutil, datetime\n\n' +
+              'for clip in Path("/clips").glob("*.mp4"):\n' +
+              '    if clip.stat().st_size == 0:\n' +
+              '        clip.unlink(); continue\n' +
+              '    hour = datetime.fromtimestamp(clip.stat().st_mtime).hour\n' +
+              '    dest = Path(f"/archive/{hour:02d}")\n' +
+              '    dest.mkdir(parents=True, exist_ok=True)\n' +
+              '    shutil.move(str(clip), str(dest / clip.name))',
+            file: 'archive_clips.py', lang: 'Python',
+          },
+          { role: 'ai', text: '已归档 37 个文件，跳过 2 个空文件。' },
+        ],
+      }];
+      setTab('coding');
+    },
+  },
+  {
+    id: 'coding-canvas',
+    run: () => {
+      S.theme = 'dark'; S.palette = 'ink_green';
+      S.coding.workspace = 'happy-agent';
+      S.coding.path = '~/workspace/happy-agent';
+      S.coding.conn = 'connected';
+      S.coding.busy = false;
+      S.coding.active = 1;
+      S.coding.sessions = [{
+        id: 1, title: '官网几何加载动画',
+        messages: [
+          { role: 'me', text: '给官网写一个立体几何的加载动画，别用第三方库。' },
+          {
+            role: 'ai',
+            text: '用 Canvas 画等距立方体，按时间驱动旋转和明暗，设备像素比单独处理。',
+            code:
+              'const dpr = window.devicePixelRatio || 1\n' +
+              'canvas.width = W * dpr; c.scale(dpr, dpr)\n\n' +
+              'function frame(t) {\n' +
+              '  c.clearRect(0, 0, W, H)\n' +
+              '  const a = t / 1600, s = Math.cos(a) * 18\n' +
+              '  isoCube(c, W / 2, H / 2 + Math.sin(a) * 8, s)\n' +
+              '  requestAnimationFrame(frame)\n' +
+              '}\n' +
+              'requestAnimationFrame(frame)',
+            file: 'geometry.ts', lang: 'TypeScript',
+          },
+          { role: 'ai', text: '已写入 geometry.ts，60fps 下无重排。' },
+        ],
+      }];
+      setTab('coding');
+    },
+  },
+  {
+    id: 'coding-compose',
+    run: () => {
+      S.theme = 'dark'; S.palette = 'ink_green';
+      S.coding.workspace = 'happy-agent';
+      S.coding.path = '~/workspace/happy-agent';
+      S.coding.conn = 'connected';
+      S.coding.busy = false;
+      S.coding.active = 1;
+      S.coding.sessions = [{
+        id: 1, title: '设置页呼吸指示灯',
+        messages: [
+          { role: 'me', text: '任务运行时在状态条加一个会呼吸的绿点，别太闪。' },
+          {
+            role: 'ai',
+            text: '用 infiniteTransition 驱动 alpha，减少动效偏好下静态常亮。',
+            code:
+              '@Composable\n' +
+              'fun PulseDot(reduceMotion: Boolean) {\n' +
+              '  val alpha by animateFloat(\n' +
+              '    target = 1f, tween(1100, RepeatMode.Reverse)\n' +
+              '  )\n' +
+              '  Box(Modifier.size(8.dp)\n' +
+              '    .clip(CircleShape)\n' +
+              '    .background(Brand.copy(alpha = alpha))\n' +
+              '  )\n' +
+              '}',
+            file: 'PulseDot.kt', lang: 'Kotlin',
+          },
+          { role: 'ai', text: '已接入 HomeStatusStrip，构建通过。' },
+        ],
+      }];
+      setTab('coding');
+    },
+  },
   {
     id: 'settings',
     run: () => {
@@ -302,3 +406,29 @@ execFileSync('ffmpeg', [
   path.join(OUT, 'agent-plan-panel.png'),
 ]);
 console.log(`panel crop ${cw}x${ch} @ ${cx},${cy} → agent-plan-panel.png`);
+
+// 按实测 bbox 裁出三个编码示例的「提问 + 代码卡」特写（供 S7b 几何场景卡片使用）
+for (const id of ['coding-python', 'coding-canvas', 'coding-compose']) {
+  const st = layout[id];
+  const me = st?.['.chat-me']?.[0];
+  const code = st?.['.code-card']?.[0];
+  if (!me || !code) {
+    console.log(`card crop ${id}: skip (missing bbox)`);
+    continue;
+  }
+  const x = 12;
+  const y = Math.max(96, Math.round(me.y - 14));
+  const w = 388;
+  const h = Math.min(SCREEN.h - y, Math.round(code.y + code.h - y + 72));
+  const kx = Math.round(x * DPR);
+  const ky = Math.round(y * DPR);
+  const kw = Math.round(w * DPR);
+  const kh = Math.round(h * DPR);
+  execFileSync('ffmpeg', [
+    '-y', '-v', 'error',
+    '-i', path.join(OUT, `${id}.png`),
+    '-vf', `crop=${kw}:${kh}:${kx}:${ky}`,
+    path.join(OUT, `${id}-card.png`),
+  ]);
+  console.log(`card crop ${id} ${kw}x${kh} @ ${kx},${ky}`);
+}

@@ -1,6 +1,7 @@
 import React from 'react';
-import { AbsoluteFill, Img, staticFile } from 'remotion';
-import { C, SCREEN } from '../tokens';
+import { AbsoluteFill } from 'remotion';
+import { C } from '../tokens';
+import { GeometryStage } from './GeometryStage';
 
 /**
  * 舞台背景：近黑场 + 两团极淡色辉 + 静态胶片颗粒 + 暗角。
@@ -19,6 +20,8 @@ export const Stage: React.FC<{
   glowH?: number;
   /** 底部压暗高度：横版 420，竖版 520 */
   scrimH?: number;
+  /** 立体几何场景强度 0–1；0 = 关闭（默认），信息密集的镜头调低 */
+  geometry?: number;
 }> = ({
   glow = C.jade,
   glowStrength = 0.1,
@@ -27,9 +30,12 @@ export const Stage: React.FC<{
   glowW = 1500,
   glowH = 1300,
   scrimH = 420,
+  geometry = 0,
 }) => {
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
+      {/* 立体几何场景：压在辉光/压暗/颗粒之下，永远不抢前景文字 */}
+      {geometry > 0 ? <GeometryStage strength={geometry} /> : null}
       {/* 中央主辉光 */}
       <div
         style={{
