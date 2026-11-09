@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.AppCardBorder
@@ -187,41 +186,44 @@ internal fun SettingsTheme(
                 // 预览所见 = 全局所得
                 val previewTint = glassTintPreview(st.glassTintOffset)
                 val previewGlass = rememberGlassState()
+                // 说明文字放在玻璃框**外面**：放进去会被玻璃板糊成一条亮带，
+                // 使"玻璃上的字 vs 玻璃内最亮处"退到 1.3:1。框内只留渐变与玻璃板。
+                Text(
+                    "滚过玻璃下方的内容",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Frosted sample · 0123456789",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(AppSpacing.Sm))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(96.dp)
                         .clip(RoundedCornerShape(AppRadii.Tile)),
                 ) {
-                    // 取样源：刻意用高饱和渐变 + 中英文，玻璃透不透一眼可辨
-                    Row(
+                    // 取样源：用容器色三段渐变做「滚过玻璃下方的内容」。
+                    // 早先用硬编码的高饱和蓝→绿→黄，深色主题下玻璃板上的浅字与最亮处
+                    // 只有 1.9:1（不到 AA）；容器色本身按「其上放 on*Container 文字」设计，
+                    // 既透得出色相变化，又不把最坏情况推到不可读。
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .hazeSource(previewGlass)
                             .background(
                                 Brush.horizontalGradient(
                                     listOf(
-                                        Color(0xFF5FA0C9), Color(0xFF9AC98F), Color(0xFFE4B45C),
+                                        MaterialTheme.colorScheme.primaryContainer,
+                                        MaterialTheme.colorScheme.secondaryContainer,
+                                        MaterialTheme.colorScheme.tertiaryContainer,
                                     ),
                                 ),
-                            )
-                            .padding(horizontal = AppSpacing.Lg),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text(
-                                "滚过玻璃下方的内容",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
-                            )
-                            Text(
-                                "Frosted sample · 0123456789",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.8f),
-                            )
-                        }
-                    }
+                            ),
+                    )
                     // 玻璃浮板：与真实页眉同款材质（同模糊半径档位 + 高光 + 描边），
                     // 只铺样片下半部、四边留白，模拟"内容滚到玻璃下"的观感
                     GlassSurface(
@@ -245,6 +247,9 @@ internal fun SettingsTheme(
                                 "玻璃页眉预览",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
+                                // 用 onPrimaryContainer：与样片渐变的起始色是官方配对，
+                                // 深色主题下是浅青白，压在玻璃中部暗区上过 AA
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
                     }
