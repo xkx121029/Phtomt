@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import rikka.shizuku.Shizuku
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.util.concurrent.TimeUnit
 
 /**
  * Shizuku 管理器：封装生命周期、权限检查、shell 命令执行。
@@ -152,8 +151,13 @@ class ShizukuManager {
             }
             val output = reader.readText()
             errorThread.join(5_000)
-            // 带超时等待退出：命令卡死时强杀并按失败返回，而不是永久挂死调用线程
-            val finished = process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            // 带超时等待退出：命令卡死时强杀并按失败返回，而不是永久挂死调用线程。
+            // 不能用 Process.waitFor(timeout, unit)：它内部轮询 exitValue() 只捕获
+            // IllegalThreadStateException，而 Shizuku 的 exitValue() 经 Binder 传回的是
+            // RuntimeException("process hasn't exited")，首次轮询就会逃出去——
+            // 命令明明还在跑（settings put 的子进程继承了管道，readText 先于退出返回），
+            // 却被误判成失败。这里自己轮询，两种「还活着」的异常都当继续等。
+            val finished = waitForExit(process, SHELL_TIMEOUT_MS)
             if (!finished) {
                 process.destroy()
                 runCatching { reader.close() }
@@ -175,6 +179,34 @@ class ShizukuManager {
             }
         } catch (e: Exception) {
             ShellResult.Failure(reason = "shell 执行异常: ${e.message}")
+        }
+    }
+
+    /**
+     * 轮询等待进程退出。
+     *
+     * Shizuku 的 exitValue() 跨 Binder 时，服务端的 IllegalThreadStateException 会被
+     * 还原成 RuntimeException("process hasn't exited")；只捕获 IllegalThreadStateException
+     * 的等待逻辑（如 Process.waitFor(timeout)）会把「仍在运行」当成异常立刻抛出。
+     */
+    private fun waitForExit(process: java.lang.Process, timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (true) {
+            try {
+                process.exitValue()
+                return true
+            } catch (e: IllegalThreadStateException) {
+                // 仍在运行，继续等
+            } catch (e: RuntimeException) {
+                if (e.message?.contains("hasn't exited") != true) throw e
+            }
+            if (System.currentTimeMillis() >= deadline) return false
+            try {
+                Thread.sleep(50)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
         }
     }
 
