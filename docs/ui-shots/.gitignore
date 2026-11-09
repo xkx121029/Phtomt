@@ -26,6 +26,14 @@
 # 未被文档引用的中间批次截图（最终版见 final-*）
 /after-*.png
 
+# 磨砂样片可读性调参的中间迭代帧（9182→9185 逐版试色）：只留本机当过程记录，
+# 对外证据只用 9185 的玻璃样片与 glass-compare-9181-vs-9185-frost-dark.png
+/glass-after-07-frost-preview-dark-9182.png
+/glass-after-07-frost-preview-dark-9183.png
+/glass-after-07-frost-preview-dark-9184.png
+/glass-after-07-frost-preview-dark-9185.png
+/glass-after-08-frost-preview-light-9185.png
+
 # 临时目录（成批裸帧与帧序列，只在本机保留）
 /shots/
 /shots2/
