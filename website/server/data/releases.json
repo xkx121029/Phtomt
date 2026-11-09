@@ -1,5 +1,24 @@
 [
   {
+    "version": "v0.2.9179",
+    "build": 9179,
+    "channel": "dev",
+    "date": "2026-11-09",
+    "published": true,
+    "title": "开发版",
+    "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+    "apk": {
+      "file": "HappyAgent-0.2.9179.apk",
+      "size": 71342189,
+      "sizeText": "68 MB",
+      "sha256": "57268e9ff7d1d1e902099c5971ebbe3ca764fd4f606cd9bbde0d9851d76da54e\r",
+      "updatedAt": "2026-11-09T14:07:45.674Z"
+    },
+    "notes": [
+      "DEV 构建"
+    ]
+  },
+  {
     "version": "v0.2.9160",
     "build": 9160,
     "channel": "nightly",
