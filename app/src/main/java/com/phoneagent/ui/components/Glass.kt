@@ -28,7 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -43,17 +45,19 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import kotlin.math.max
 
 /**
- * 浮层材质：纯色抬高面 + 一道发丝描边。
+ * 毛玻璃（亚克力 / 磨砂）材质。
  *
  * ## 用在哪，不用在哪
- * 只有**真正浮在滚动内容之上**的固定 chrome 才用：顶栏、底部输入区、浮层面板。
- * 平铺在页面底色上的卡片一律不用——它本来就在底色上，多一层抬高面只会让页面变成
- * 一层叠一层的面板。这里刻意不做背景模糊、不做半透明叠色：工具界面靠边界与留白分层，
- * 不靠"内容从背后透出来"。
+ * 只有**真正浮在滚动内容之上**的固定 chrome 才配得上毛玻璃：顶栏、底部输入区、
+ * 浮层面板。平铺在页面底色上的卡片一律不要用——它背后没有任何东西可模糊，
+ * 玻璃只会退化成一层灰蒙蒙的半透明，反而把层次搅乱。
  *
  * ## 怎么用
  * 取样源与玻璃面必须放在同一个 Box 里当兄弟节点，取样源在前：
@@ -115,15 +119,49 @@ fun GlassSurface(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
-    // 纯色悬浮面：不做背景模糊、不做半透明叠色，也不再画顶部受光高光。
-    // 浮在滚动内容之上的 chrome 用一块不透明的抬高面色 + 一道发丝描边就够，
-    // 内容从下面经过时被干净地挡住，读起来是"工具面板"而不是"磨砂玻璃"。
     Box(
         modifier = modifier
             .clip(shape)
-            .background(colors.surfaceRaised)
-            .appBorder(1.dp, colors.outlineSoft, shape),
+            .hazeEffect(
+                state = hazeState,
+                style = HazeStyle(
+                    // 不透明底色：节点边界处若取样源没覆盖到，露出的应当就是页面底色
+                    backgroundColor = colors.surfaceBase,
+                    // 叠在模糊结果之上的一层底色，浓淡由它决定
+                    tint = HazeTint(tintOverride ?: colors.glassTint),
+                    blurRadius = blurRadius,
+                    noiseFactor = GlassTokens.Noise,
+                    // 不支持背景模糊时的替身：接近不透明，保证文字仍然读得清
+                    fallbackTint = HazeTint(colors.glassFallback),
+                ),
+            ) {
+                // 必须显式放行取样区，否则整块玻璃会一个字都不画（表现为完全透明）。
+                // 原因：Haze 默认只画「zIndex 严格小于本层取样源」的区域，而取样源的 zIndex
+                // 由 ModifierLocalCurrentHazeZIndex 逐层累加着传给后代。全局悬浮导航栏在内容层
+                // 之外又套了一层取样源，它把 zIndex=0 传给了本页所有后代；本页自己的取样源
+                // zIndex 也是 0，于是过滤条件 0 < 0 为 false，本页取样区被全部滤掉 →
+                // areas 为空 → hazeEffect 直接跳过绘制。这里本面只取样同一 Box 下的兄弟取样源，
+                // 不存在把自己画进取样层的自反馈，过滤没有意义，一律放行。
+                canDrawArea = { true }
+            }
+            .appBorder(1.dp, colors.glassBorder, shape),
     ) {
+        if (showSheen && colors.glassSheen.alpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawBehind {
+                        drawRect(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to colors.glassSheen,
+                                    GlassTokens.SheenFade to Color.Transparent,
+                                ),
+                            )
+                        )
+                    }
+            )
+        }
         content()
     }
 }

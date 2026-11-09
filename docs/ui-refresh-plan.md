@@ -122,6 +122,7 @@ Agent / Coding 两套气质可切换。约束：Material 3 Expressive、emilkowa
 - **去掉玻璃质感**：[Glass.kt](../../app/src/main/java/com/phoneagent/ui/components/Glass.kt) 的浮层面改为
   不透明 `surfaceRaised` + 一道 `outlineSoft` 发丝描边，删除背景模糊、tint 叠色与顶部受光高光。
   顶栏、输入区、悬浮导航栏全部由「磨砂玻璃」变为实色工具面板，滚动内容不再从下方透出。
+  （**该决定已在第十一节撤回，磨砂玻璃按用户要求恢复**；本节其余改动仍生效。）
 - **间距 / 圆角收令牌**：设置包内 `padding`、`spacedBy`、`Spacer` 与 `RoundedCornerShape` 的裸 dp
   统一换成 `AppSpacing` / `AppRadii`，并把 3/6/10/14/18/28 这些零散值收进 4pt 刻度
   （`Xxs=2 / Xs=4 / Sm=8 / Md=12 / Lg=16 / Page=20 / Xl=24 / Xxl=32`）。
@@ -343,3 +344,67 @@ Agent / Coding 两套气质可切换。约束：Material 3 Expressive、emilkowa
 正确颜色（9177 直出帧复测）：胶囊终态为琥珀 `#884820`（WAITING `#A85A24` 的 85% 合成），
 失败原因文字采样 `#A85820` ≈ `#A85A24`，与 `FloatingUi.phaseColor("WAITING")` 一致。
 中断用琥珀是刻意的（中断与未达成不是故障），不改为蓝。
+
+## 十一、磨砂玻璃恢复（本次，撤回第五节的一项视觉决定）
+
+### 谁去掉的
+
+`aa41019`「界面焕新 阶段2：纯色面替换玻璃质感，设置间距圆角收令牌」。它把
+`Glass.kt` 的 `GlassSurface` 从 Haze 真模糊改成不透明 `surfaceRaised` + `outlineSoft` 描边，
+删掉 tint 叠色与顶部受光高光。**只动了这一个函数体**，调用点、
+`glassTint` / `glassFallback` / `glassBorder` / `glassSheen` 色板令牌、
+`hazeSource` 取样源、Haze 1.4.0 依赖、主题页「浓淡」滑杆全部原样留着。
+因此恢复 = 反向取回 `aa41019^` 的 `Glass.kt`，其他文件零改动。
+
+### 恢复范围
+
+| 位置 | 材质 |
+|---|---|
+| 页眉（`GlassHeaderScaffold` 吸顶/浮起两态） | 真模糊 36dp + tint + 顶部受光渐变 + 发丝边 |
+| Agent 页输入区 dock | 同上 |
+| 底部导航栏 | 同上 |
+| 设置 → 外观与导航 → 磨砂玻璃预览样片 | 同上（背后是刻意放的高饱和渐变） |
+
+**未回退**第五节之后的内容收敛：首页 6 张权限卡、编码技能区、重复 `PermissionRadar`、
+间距/圆角令牌收拢、主模型竖排、文案中文化全部保持删除/修改后的状态。
+磨砂只加回视觉层。
+
+### 代价（必须知道的）
+
+Haze 1.4.0 的 `hazeEffect` = 每个玻璃面一个离屏 layer + 一次 `RenderEffect.blur`，
+滚动时逐帧重新捕捉下层并模糊。同屏最多 3 个（页眉 + 输入区 + 导航栏）。
+
+模拟器（`emulator-5560`，`-gpu swiftshader_indirect` 软件光栅）同场景滚动 10 个来回：
+
+| 指标 | 纯色 9181 | 磨砂 9180 |
+|---|---|---|
+| 总帧数 | 59 | 63 |
+| p50 | 150ms | 150ms |
+| p90 | 200ms | **400ms** |
+| p95 | 200ms | **450ms** |
+| p99 | 200ms | **900ms** |
+| Janky | 100% | 100% |
+
+**读法**：该模拟器是软件渲染，绝对帧率（p50=150ms ≈ 6.7fps）对真机没有参考价值，
+只能看相对变化——p50 不变，**长尾恶化 2–4.5 倍**。真机上模糊由 GPU 承担，长尾会小得多，
+但「滚动越快越容易掉帧、低端机更明显」这个方向不会变。
+
+降级路径：Haze 的 `blurEnabled` 在 API 31 以下为 false，自动退回 `glassFallback`
+（88% 不透明底色），效果等于"半透明实色片"，不影响可读性。
+
+### 可读性实测
+
+预览样片（背后是高饱和黄绿渐变，属最坏情况）深色模式下：玻璃上浅色文字与玻璃上最亮区
+对比度约 **1.9:1**，不足 AA；与最暗区约 5.3:1（逐像素采样）。这是原设计的既有边界——
+玻璃下压高亮内容时靠「浓淡」滑杆调高不透明度。真实页面（深色底 + 深色卡片）模糊后亮度低，
+按 `glassTint` 45% 与 `onSurfaceVariant` 合成**推算**约 6.7:1，过 AA；该数字为推算，未逐像素采样。
+
+### 截图
+
+前后两版同场景对照（前 = 9181 纯色，后 = 9180 磨砂）：
+
+- `glass-before-02-settings-scroll-dark.png` / `glass-after-02-settings-scroll-dark.png`
+- `glass-before-04-frost-preview-dark.png` / `glass-after-06-frost-preview-dark.png`
+- `glass-before-05-frost-preview-light.png` / `glass-after-05-frost-preview-light.png`
+- `glass-after-01-home-dark.png`、`glass-after-03-settings-scroll-light.png`、
+  `glass-after-04-agent-dock-light.png`
