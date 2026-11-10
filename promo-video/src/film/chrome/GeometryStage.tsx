@@ -98,7 +98,8 @@ const Box3D: React.FC<{ w: number; h: number; d: number; color: string; a: numbe
           a * shade * 0.7
         )})`,
         border: `1px solid ${color}${hx(Math.min(0.65, a * 4))}`,
-        boxShadow: `inset 0 0 34px ${color}${hx(a * 0.9)}`,
+        // 不用 inset boxShadow：66 个带阴影的 3D 面会让软件合成本帧重绘，
+        // 明暗已经由 linear-gradient 的 shade 系数表达，视觉几乎无损。
       }}
     />
   );
@@ -222,8 +223,10 @@ const Gate3D: React.FC<{ s: number; color: string; a: number }> = ({ s, color, a
         marginLeft: (-s * 0.9) / 2,
         marginTop: (-s * 0.9) / 2,
         borderRadius: '50%',
-        background: `radial-gradient(closest-side, ${color}${hx(a * 1.1)}, transparent 72%)`,
-        filter: 'blur(18px)',
+        // filter 在 preserve-3d 子树里会强制离屏渲染，改用更宽的双段径向渐变做柔光
+        background: `radial-gradient(closest-side, ${color}${hx(a * 0.7)}, ${color}${hx(
+          a * 0.22
+        )} 46%, transparent 82%)`,
       }}
     />
   </div>
@@ -259,13 +262,13 @@ const GridPlane: React.FC<{
       height: 6000,
       marginLeft: -3000,
       marginTop: -3000,
-      transform: `translateZ(-120px) rotateX(${ceiling ? -84 : 84}deg)`,
+      // 网格滚动走 transform（合成阶段、纹理可缓存），不走 backgroundPosition（每帧重绘 36M 像素）
+      transform: `translateZ(-120px) rotateX(${ceiling ? -84 : 84}deg) translateY(${travel * 1.35}px)`,
       transformStyle: 'preserve-3d',
       backgroundImage: [
         `repeating-linear-gradient(0deg, ${color}${hx(alpha)} 0px, ${color}${hx(alpha)} 1px, transparent 1px, transparent 150px)`,
         `repeating-linear-gradient(90deg, ${color}${hx(alpha)} 0px, ${color}${hx(alpha)} 1px, transparent 1px, transparent 150px)`,
       ].join(','),
-      backgroundPosition: `0px ${-travel * 1.35}px, ${-travel * 1.35}px 0px`,
       maskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.62) 42%, transparent 88%)`,
       WebkitMaskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.62) 42%, transparent 88%)`,
     }}
@@ -357,21 +360,23 @@ export const GeometryStage: React.FC<{
 
             return (
               <React.Fragment key={i}>
-                {/* 地面投影：与该实体同一 Z 深度，躺在旋转后的地面上 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: '50%',
-                    top: '50%',
-                    width: size * 2.6,
-                    height: size * 2.6,
-                    marginLeft: -size * 1.3,
-                    marginTop: -size * 1.3,
-                    borderRadius: '50%',
-                    background: `radial-gradient(closest-side, rgba(0,0,0,0.55), transparent 72%)`,
-                    transform: `translate3d(${x}px, ${groundY}px, ${s.z}px) rotateX(84deg)`,
-                  }}
-                />
+                {/* 地面投影：只给悬浮实体（立柱本身贴地，投影看不出来），少 8 个大渐变层 */}
+                {!isPillar && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '50%',
+                      top: '50%',
+                      width: size * 2.6,
+                      height: size * 2.6,
+                      marginLeft: -size * 1.3,
+                      marginTop: -size * 1.3,
+                      borderRadius: '50%',
+                      background: `radial-gradient(closest-side, rgba(0,0,0,0.55), transparent 72%)`,
+                      transform: `translate3d(${x}px, ${groundY}px, ${s.z}px) rotateX(84deg)`,
+                    }}
+                  />
+                )}
                 {/* 实体本体 */}
                 <div
                   style={{
@@ -392,8 +397,8 @@ export const GeometryStage: React.FC<{
             );
           })}
 
-          {/* 体积光：几层半透明光幕在不同 Z 上，随相机推进产生视差 */}
-          {[-1900, -1200, -600].map((z, i) => (
+          {/* 体积光：两层半透明光幕在不同 Z 上，随相机推进产生视差 */}
+          {[-1700, -700].map((z, i) => (
             <div
               key={z}
               style={{
