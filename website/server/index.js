@@ -12,10 +12,15 @@ import { aiRouter, aiAdminRouter } from './routes/ai.js'
 import { openApiDocument } from './lib/openapi.js'
 import { renderHtml } from './lib/htmlShell.js'
 import { init as initReleaseFeed } from './lib/releaseFeed.js'
+import { initGiteeAssets } from './lib/externalAssets.js'
 
 // 版本数据以 GitHub Releases 为准：先把首份数据拉回来再对外服务，
 // 拉到就全站按它走；拉不到自动降级到 releases.json，接口里会标明 degraded。
 const feed = await initReleaseFeed()
+
+// Gitee 的 Release 列表在后台预热 + 定时刷新：下载 302 只读内存，
+// 不再让用户点一次下载先等 Gitee 接口（接口超时是 6 秒）。
+initGiteeAssets()
 
 const app = express()
 

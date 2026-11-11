@@ -1,19 +1,23 @@
 import { apiBaseUrl, staticOnly } from '../api/client.js'
 import { pickFastest } from './downloadRank.js'
-import { pickGithubAsset } from './githubAsset.js'
 
 /**
  * 下载源择优（在用户浏览器里实测）。
  *
  * 安装包只在 GitHub / Gitee 的 Release 里，官网上没有 APK 文件，所以这里比较的是
  * 两个外部资产地址：
- *   - GitHub：先调 api.github.com 确认真有这个版本的资产（API 带 CORS），拿到真实地址；
+ *   - GitHub：资产地址按 tag + 文件名就能拼出来，本地直接算，立刻开始探测；
  *   - Gitee：附件是否 attach 成功只有服务端知道（Gitee 接口不带 CORS），由
- *     /api/download/sources/:version 查一次列表并回传已验证的资产地址。
+ *     /api/download/sources/:version 回传已验证的资产地址。
  * 两边各做一次 no-cors HEAD 量首字节，选响应更快的那个，只发 HEAD 不下载包体。
  * 注意这只反映 TTFB，不代表真实吞吐，所以对外只说「响应更快」，不说「下载更快」。
  *
+ * 为什么不先调 api.github.com 确认资产：那是一次额外的跨域往返，慢起来要 2.5 秒，
+ * 而且匿名限额只有 60 次/小时/IP（同一出口的多个访客会互相挤掉）。服务端返回的
+ * GitHub 地址本来就是同一条命名规则拼的，本地再拼一次结果一致，没必要验。
+ *
  * 结果按会话缓存 15 分钟（全部不通只缓存 2 分钟，好让线路恢复后尽快纠正）。
+ * 存在 localStorage 而不是 sessionStorage：同一台机器开多个标签页时不用重复探测。
  */
 
 const CACHE_KEY = 'phtomt-download-source'
@@ -25,7 +29,7 @@ const SLOW_MS = 1200
 
 function readCache(version) {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY)
+    const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
     const data = JSON.parse(raw)
     if (!data || data.version !== version) return null
@@ -39,7 +43,7 @@ function readCache(version) {
 
 function writeCache(payload) {
   try {
-    sessionStorage.setItem(CACHE_KEY, JSON.stringify({ ...payload, cachedAt: Date.now() }))
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ ...payload, cachedAt: Date.now() }))
   } catch {
     /* 隐私模式写不进去也不影响下载 */
   }
@@ -55,10 +59,18 @@ export function cachedDownloadSource(version) {
   return version ? readCache(String(version)) : null
 }
 
-/** 从站点链接里取出 GitHub 仓库坐标 */
-function repoOf(site) {
+/** GitHub：资产地址按 tag + 文件名拼，和服务端 server/lib/externalAssets.js 同一条规则 */
+function githubCandidate(site, release) {
   const m = String(site?.links?.github || '').match(/github\.com\/([^/]+)\/([^/?#]+)/)
-  return m ? `${m[1]}/${m[2]}` : ''
+  const file = release?.apk?.file
+  const version = String(release?.version || '').trim()
+  if (!m || !file || !version) return null
+  const tag = /^v/i.test(version) ? version : `v${version}`
+  return {
+    id: 'github',
+    label: 'GitHub Release',
+    url: `https://github.com/${m[1]}/${m[2]}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(file)}`
+  }
 }
 
 /** 只发 HEAD，量到响应头为止；跨域资产读不到状态码，只能判通与不通 */
@@ -80,25 +92,6 @@ async function headTiming(url) {
     return { status: 'down', detail: err?.name === 'AbortError' ? '超时' : '网络不可达' }
   } finally {
     clearTimeout(timer)
-  }
-}
-
-/** GitHub：用 API 确认这个版本真的有资产，顺便拿到真实下载地址 */
-async function githubCandidate(site, release) {
-  const repo = repoOf(site)
-  if (!repo || !release?.apk?.file || !release?.version) return null
-  try {
-    const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
-      headers: { Accept: 'application/vnd.github+json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT)
-    })
-    if (!res.ok) return null
-    const list = await res.json()
-    const hit = pickGithubAsset(list, release)
-    return hit ? { id: 'github', label: 'GitHub Release', ...hit } : null
-  } catch {
-    return null
   }
 }
 
@@ -128,18 +121,19 @@ export async function resolveDownloadSource(release, { site, refresh = false } =
   const cached = refresh ? null : readCache(release.version)
   if (cached) return cached
 
-  // 两路并行：GitHub API 直查 + 服务端候选（Gitee 已验证）
-  const [apiGithub, server] = await Promise.all([
-    githubCandidate(site, release),
-    serverCandidates(release)
-  ])
+  // GitHub 地址本地就能拼，探测立刻开跑，不必等 /sources 回来；
+  // /sources 只负责带回来「Gitee 侧已验证的那个地址」。
+  const github = githubCandidate(site, release)
+  const githubProbe = github ? headTiming(github.url) : null
+  const server = await serverCandidates(release)
 
-  // GitHub 以 API 结果为准；API 不通时保留服务端按规则拼出的地址作为候选
-  const list = apiGithub
-    ? [apiGithub, ...server.filter((c) => c.id !== 'github')]
-    : server.slice()
+  const list = server.slice()
+  if (github && !list.some((c) => c.url === github.url)) list.push(github)
 
-  const probes = await Promise.all(list.map((c) => headTiming(c.url)))
+  // 已经在跑的那次探测直接复用，不重复发请求
+  const probes = await Promise.all(
+    list.map((c) => (github && c.url === github.url ? githubProbe : headTiming(c.url)))
+  )
   const withProbe = list.map((c, i) => ({ ...c, probe: probes[i] }))
   const decided = pickFastest(withProbe)
 

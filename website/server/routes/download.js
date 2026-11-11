@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { fail, recordDownload } from '../lib/helpers.js'
 import { downloadTarget, findRelease } from '../lib/releaseFeed.js'
-import { externalAssets, preferredAsset, releasePage } from '../lib/externalAssets.js'
+import { SOURCES_WAIT, externalAssets, preferredAsset, releasePage } from '../lib/externalAssets.js'
 
 /**
  * 下载入口只做跳转。
@@ -37,7 +37,7 @@ downloadRouter.get('/sources/:version', async (req, res) => {
   if (!release || release.published === false) {
     return fail(res, 404, 'not_found', `未找到版本 ${req.params.version}`)
   }
-  const candidates = await externalAssets(release)
+  const candidates = await externalAssets(release, { wait: SOURCES_WAIT })
   res.setHeader('Cache-Control', 'no-store')
   return res.json({
     version: release.version,
