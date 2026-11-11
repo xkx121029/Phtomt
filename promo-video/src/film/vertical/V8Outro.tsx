@@ -65,7 +65,7 @@ export const V8Outro: React.FC = () => {
           height: 1400,
           transform: 'translate(-50%,-50%)',
           background:
-            'radial-gradient(closest-side, rgba(95,217,180,0.16), rgba(95,217,180,0.05) 46%, transparent 74%)',
+            'radial-gradient(closest-side, rgba(var(--rgb-jade),0.16), rgba(var(--rgb-jade),0.05) 46%, transparent 74%)',
           opacity: interpolate(frame, [MARK - 40, MARK + 20], [0.25, 1], {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
@@ -84,7 +84,7 @@ export const V8Outro: React.FC = () => {
           height: 760,
           transform: 'translate(-50%,-50%)',
           background:
-            'radial-gradient(closest-side, rgba(226,255,247,0.95), rgba(95,217,180,0.34) 26%, transparent 62%)',
+            'radial-gradient(closest-side, rgba(var(--rgb-jade),0.95), rgba(var(--rgb-jade),0.34) 26%, transparent 62%)',
           opacity: flash * 0.6,
           mixBlendMode: 'screen',
           pointerEvents: 'none',
@@ -100,8 +100,8 @@ export const V8Outro: React.FC = () => {
             height: 190 + Math.min(t, 20) * 30,
             transform: 'translate(-50%,-50%)',
             borderRadius: '50%',
-            border: `3px solid rgba(140,240,214,${Math.max(0, 0.8 - t / 20)})`,
-            boxShadow: `0 0 40px rgba(95,217,180,${Math.max(0, 0.4 - t / 24)})`,
+            border: `3px solid rgba(var(--rgb-jade),${Math.max(0, 0.8 - t / 20)})`,
+            boxShadow: `0 0 40px rgba(var(--rgb-jade),${Math.max(0, 0.4 - t / 24)})`,
             pointerEvents: 'none',
           }}
         />
@@ -144,9 +144,9 @@ export const V8Outro: React.FC = () => {
               overflow: 'hidden',
               transform: `scale(${scale})`,
               transformOrigin: 'center center',
-              backgroundColor: isFilled ? `rgba(95,217,180,${strokeO})` : 'rgba(9,12,11,0.92)',
-              border: `${Math.round(8 * conv)}px solid rgba(95,217,180,${strokeO})`,
-              boxShadow: `0 0 ${30 * bloom}px rgba(95,217,180,${0.3 * bloom})`,
+              backgroundColor: isFilled ? `rgba(var(--rgb-jade),${strokeO})` : 'rgba(var(--rgb-bg),0.92)',
+              border: `${Math.round(8 * conv)}px solid rgba(var(--rgb-jade),${strokeO})`,
+              boxShadow: `0 0 ${30 * bloom}px rgba(var(--rgb-jade),${0.3 * bloom})`,
             }}
           >
             <Img
@@ -191,7 +191,7 @@ export const V8Outro: React.FC = () => {
                 whiteSpace: 'pre',
                 opacity: p,
                 transform: `translateY(${(1 - p) * 26 + jitter * 0.2}px)`,
-                textShadow: `0 ${6 * p}px ${24 * p}px rgba(0,0,0,0.7)`,
+                textShadow: `0 ${6 * p}px ${24 * p}px rgba(var(--rgb-halo),0.7)`,
               }}
             >
               {ch}
@@ -220,7 +220,7 @@ export const V8Outro: React.FC = () => {
               easing: Easing.bezier(0.16, 1, 0.3, 1),
             }),
             height: 2,
-            background: `linear-gradient(90deg, rgba(95,217,180,0.06), ${C.jade}, rgba(95,217,180,0.06))`,
+            background: `linear-gradient(90deg, rgba(var(--rgb-jade),0.06), ${C.jade}, rgba(var(--rgb-jade),0.06))`,
             marginBottom: 30,
           }}
         />

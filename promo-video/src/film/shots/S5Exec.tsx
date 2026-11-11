@@ -69,9 +69,9 @@ export const S5Exec: React.FC = () => {
                 width: 358,
                 height: 62,
                 borderRadius: 16,
-                border: `2px solid rgba(95,217,180,${o})`,
-                background: `rgba(95,217,180,${0.10 * o})`,
-                boxShadow: `0 0 ${26 * o}px rgba(95,217,180,${0.55 * o}), inset 0 0 ${22 * o}px rgba(95,217,180,${0.3 * o})`,
+                border: `2px solid rgba(var(--rgb-jade),${o})`,
+                background: `rgba(var(--rgb-jade),${0.10 * o})`,
+                boxShadow: `0 0 ${26 * o}px rgba(var(--rgb-jade),${0.55 * o}), inset 0 0 ${22 * o}px rgba(var(--rgb-jade),${0.3 * o})`,
               }}
             />
           );
@@ -86,7 +86,7 @@ export const S5Exec: React.FC = () => {
             width: 372,
             height: 2.5,
             borderRadius: 2,
-            background: 'rgba(232,234,230,0.10)',
+            background: 'rgba(var(--rgb-ink),0.10)',
           }}
         >
           <div
@@ -95,7 +95,7 @@ export const S5Exec: React.FC = () => {
               height: '100%',
               borderRadius: 2,
               background: C.jade,
-              boxShadow: `0 0 10px rgba(95,217,180,0.6)`,
+              boxShadow: `0 0 10px rgba(var(--rgb-jade),0.6)`,
             }}
           />
         </div>

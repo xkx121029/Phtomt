@@ -53,7 +53,7 @@ export const Caption: React.FC<{
           lineHeight: 1.24,
           letterSpacing: '0.005em',
           color: C.ink,
-          textShadow: '0 2px 24px rgba(0,0,0,0.75)',
+          textShadow: '0 2px 24px rgba(var(--rgb-halo),0.75)',
           whiteSpace: 'nowrap',
         }}
       >
@@ -69,7 +69,7 @@ export const Caption: React.FC<{
             color: C.ink2,
             letterSpacing: '0.01em',
             whiteSpace: 'nowrap',
-            textShadow: '0 2px 18px rgba(0,0,0,0.8)',
+            textShadow: '0 2px 18px rgba(var(--rgb-halo),0.8)',
           }}
         >
           {lead}

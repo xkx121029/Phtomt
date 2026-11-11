@@ -448,3 +448,53 @@ CSS `preserve-3d` 让单帧成本明显上升（30 帧样本：关掉 3D 场景 
 S1 透视地面 + 柱廊 + 远端门环成立；S7b / V7b 三张代码卡（横版三列 ±7°、竖版上二下一）chip 完整可读；
 S8 / V8 品牌标与字幕清晰；短版 T2 设备控件、T4 落标光环无遮挡。
 无白屏、无右侧透明竖带、无文字重叠、无压缩色带。
+
+---
+
+## 10. 浅色主题版本（2026-11-11）
+
+用户要求「做一个浅色主题版本」。范围确认：**整套片子浅色**（舞台 / 字幕 / 3D 场景 / 卡片全换），
+手机内截图保留深色作为亮底对比；先交付 4 张预览帧确认风格，再决定是否铺开渲 6 支成片。
+
+### 10.1 双主题机制
+
+`src/film/tokens.ts` 仍是唯一事实源，新增：
+
+- `Theme = 'dark' | 'light'` 与 `DARK` / `LIGHT` 两套 `Palette`。`C` 从 `as const` 改成可变对象，
+  `setTheme()` 在装配层组件函数体第一行原地 `Object.assign`（渲染时同步生效、每帧幂等），
+  组件里 137 处 `C.*` 引用一行未改。
+- `themeCSS(theme)` 在根 `AbsoluteFill` 上挂 `--rgb-jade / --rgb-mist / --rgb-ink / --rgb-bg /
+  --rgb-panel / --rgb-pill / --rgb-pill2 / --rgb-shadow / --rgb-halo / --shade / --bg`。
+  98 处硬编码 RGB 三元组统一改成 `rgba(var(--rgb-*), α)`：CSS 变量靠 DOM 继承，
+  **不需要把普通字符串改成模板字符串，也不用动引号**，这是本次能低风险全量改色的关键。
+- `themeGlow()` 把深色辉光按 70% 混白，得到亮底上可读的淡辉光（Stage / Device 各一处）。
+- `GeometryStage` 的 `SOLIDS[].color` 从「模块加载时求值的色值」改成 `keyof Palette`，
+  渲染时再取 `C[s.color]`——否则顶层常量会锁死深色。
+
+三个 composition 的 `defaultProps` 加 `theme: 'dark'`，`Film` / `FilmVertical` / `FilmShort`
+签名加 `theme?: Theme`；**不传 props 的所有既有命令、工作台、深色成片行为完全不变**。
+
+### 10.2 亮色档取值与配套调整
+
+与 `promo/app.html` 的 `data-theme="light"` 同一套色板：舞台 `#F4F5F2` 暖白（不用纯白，避免死白），
+主文字 `#1B211D` 深墨，`jade #0E7C66` / `mist #4A7C9B` / `amber #B0592C`。
+
+- 文字阴影、暗角改白色光晕 / 淡墨收边；`ink3 / ink4` 在亮底上加深。
+- `--shade` 把卡片投影与地面投影的 alpha 统一乘 0.3（`calc(0.9 * var(--shade))`）：
+  亮底上 0.9 的黑影会读成「脏污」，实测第一版 S1 就出现了地面黑斑。
+- 胶片颗粒 `0.055 → 0.028`；设备机身阴影**不缩放**（深色手机在亮底上需要真实投影）。
+- 3D 实体、网格、门环仍按真实 Z 深度排布，只是换成青绿 / 雾蓝的淡色调。
+
+### 10.3 深色零回归
+
+`DARK` 全部取值与历史版本逐字一致，`--shade` 深色档为 1，`calc(α * 1)` 等价原值。
+实测：改造后深色 S1（frame 16，`theme:'dark'`）与改造前基线 `out/qa/scene5-s1.png`
+的 **PSNR = inf（逐像素完全一致）**。
+
+### 10.4 预览与后续
+
+预览帧：`out/qa/light-s1.png`（S1）、`light-s7b.png`（S7b）、`light-v7b.png`（V7b 竖版）、
+`light-t2.png`（短版 T2）。渲染方式：`--props='{"bgm":true,"theme":"light"}'`。
+
+风格确认后铺开成片：沿用 §9.6 的多进程并行与 §9.7 的无 BGM 音轨无损合成，
+输出 6 支 `out/light-*.mp4`（横版 / 竖版 / 短版 × 带 / 无 BGM），不覆盖现有深色成片。

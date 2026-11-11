@@ -17,7 +17,7 @@ export const RemotionRoot: React.FC = () => {
         fps={FPS}
         width={1920}
         height={1080}
-        defaultProps={{ bgm: true }}
+        defaultProps={{ bgm: true, theme: 'dark' }}
       />
       <Composition
         id="HappyAgentShort"
@@ -26,7 +26,7 @@ export const RemotionRoot: React.FC = () => {
         fps={FPS}
         width={1920}
         height={1080}
-        defaultProps={{ bgm: true }}
+        defaultProps={{ bgm: true, theme: 'dark' }}
       />
       <Composition
         id="HappyAgentVertical"
@@ -35,7 +35,7 @@ export const RemotionRoot: React.FC = () => {
         fps={FPS}
         width={1080}
         height={1920}
-        defaultProps={{ bgm: true }}
+        defaultProps={{ bgm: true, theme: 'dark' }}
       />
     </>
   );

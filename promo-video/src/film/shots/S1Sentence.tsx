@@ -94,7 +94,7 @@ export const S1Sentence: React.FC<{
           width: glowW,
           height: 460,
           transform: 'translate(-50%,-50%)',
-          background: `radial-gradient(closest-side, rgba(95,217,180,${
+          background: `radial-gradient(closest-side, rgba(var(--rgb-jade),${
             0.10 * warm + 0.02
           }), transparent 70%)`,
           filter: 'blur(10px)',
@@ -111,7 +111,7 @@ export const S1Sentence: React.FC<{
           height: 120,
           transform: 'translate(-50%,-50%)',
           background:
-            'radial-gradient(closest-side, rgba(95,217,180,0.10), rgba(95,217,180,0.03) 52%, transparent 76%)',
+            'radial-gradient(closest-side, rgba(var(--rgb-jade),0.10), rgba(var(--rgb-jade),0.03) 52%, transparent 76%)',
           filter: 'blur(16px)',
           opacity: pillOpacity * pillFade * (0.5 + warm * 0.5),
         }}
@@ -153,11 +153,11 @@ export const S1Sentence: React.FC<{
               height: 152,
             borderRadius: 76,
             background:
-              'linear-gradient(180deg, rgba(38,44,41,0.92) 0%, rgba(22,26,24,0.95) 100%)',
+              'linear-gradient(180deg, rgba(var(--rgb-pill),0.92) 0%, rgba(var(--rgb-pill2),0.95) 100%)',
             boxShadow: [
-              'inset 0 0 0 1px rgba(232,234,230,0.14)',
+              'inset 0 0 0 1px rgba(var(--rgb-ink),0.14)',
               'inset 0 1px 0 rgba(255,255,255,0.10)',
-              '0 26px 64px -18px rgba(0,0,0,0.9)',
+              '0 26px 64px -18px rgba(var(--rgb-shadow),calc(0.9 * var(--shade)))',
             ].join(','),
             display: 'flex',
             alignItems: 'center',
@@ -172,7 +172,7 @@ export const S1Sentence: React.FC<{
               position: 'absolute',
               inset: 0,
               background:
-                'linear-gradient(90deg, rgba(95,217,180,0.20) 0%, rgba(95,217,180,0.07) 46%, rgba(95,217,180,0) 78%)',
+                'linear-gradient(90deg, rgba(var(--rgb-jade),0.20) 0%, rgba(var(--rgb-jade),0.07) 46%, rgba(var(--rgb-jade),0) 78%)',
               opacity: warm,
               pointerEvents: 'none',
             }}
@@ -226,7 +226,7 @@ export const S1Sentence: React.FC<{
                 borderRadius: 2,
                 background: C.jade,
                 opacity: cursorOn ? 1 : 0.12,
-                boxShadow: `0 0 ${dotGlow}px rgba(95,217,180,${0.5 * collapse})`,
+                boxShadow: `0 0 ${dotGlow}px rgba(var(--rgb-jade),${0.5 * collapse})`,
                 transform: `scaleY(${1 - collapse * 0.55}) scale(${dotScale})`,
               }}
             />

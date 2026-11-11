@@ -98,7 +98,7 @@ export const S7Coding: React.FC<{ vertical?: boolean }> = ({ vertical = false })
             color: C.ink,
             letterSpacing: '0.02em',
             marginTop: 12,
-            textShadow: '0 10px 40px rgba(0,0,0,0.8)',
+            textShadow: '0 10px 40px rgba(var(--rgb-halo),0.8)',
           }}
         >
           真的在写代码
@@ -134,7 +134,7 @@ export const S7Coding: React.FC<{ vertical?: boolean }> = ({ vertical = false })
                 overflow: 'hidden',
                 border: `1px solid ${C.line2}`,
                 background: C.panel,
-                boxShadow: '0 40px 90px -30px rgba(0,0,0,0.95), 0 0 0 1px rgba(95,217,180,0.06)',
+                boxShadow: '0 40px 90px -30px rgba(var(--rgb-shadow),calc(0.95 * var(--shade))), 0 0 0 1px rgba(var(--rgb-jade),0.06)',
               }}
             >
               <Img

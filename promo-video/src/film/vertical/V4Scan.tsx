@@ -67,7 +67,7 @@ export const V4Scan: React.FC = () => {
                 top: scanY - 52,
                 height: 52,
                 background:
-                  'linear-gradient(180deg, rgba(132,182,212,0) 0%, rgba(132,182,212,0.10) 100%)',
+                  'linear-gradient(180deg, rgba(var(--rgb-mist),0) 0%, rgba(var(--rgb-mist),0.10) 100%)',
               }}
             />
             <div
@@ -78,7 +78,7 @@ export const V4Scan: React.FC = () => {
                 top: scanY,
                 height: 2,
                 background: C.mist,
-                boxShadow: `0 0 10px 1px rgba(132,182,212,0.55)`,
+                boxShadow: `0 0 10px 1px rgba(var(--rgb-mist),0.55)`,
               }}
             />
           </>

@@ -75,9 +75,9 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
               height: th,
               overflow: 'hidden',
               borderRadius: 20,
-              backgroundColor: '#070908',
+              backgroundColor: 'var(--bg)',
               boxShadow:
-                'inset 0 0 0 1px rgba(232,234,230,0.10), 0 18px 60px -30px rgba(0,0,0,0.9)',
+                'inset 0 0 0 1px rgba(var(--rgb-ink),0.10), 0 18px 60px -30px rgba(var(--rgb-shadow),calc(0.9 * var(--shade)))',
             }}
           >
             <div
@@ -89,7 +89,7 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
                 height: glowH,
                 transform: 'translate(-50%,-50%)',
                 background:
-                  'radial-gradient(closest-side, rgba(95,217,180,0.10), transparent 70%)',
+                  'radial-gradient(closest-side, rgba(var(--rgb-jade),0.10), transparent 70%)',
                 filter: 'blur(12px)',
               }}
             />
@@ -131,10 +131,10 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
                 position: 'absolute',
                 inset: 0,
                 background: [
-                  'linear-gradient(to bottom, #070908 2%, rgba(7,9,8,0) 22%)',
-                  'linear-gradient(to top, #070908 12%, rgba(7,9,8,0) 34%)',
-                  'linear-gradient(to right, rgba(7,9,8,0.72) 0%, rgba(7,9,8,0) 15%)',
-                  'linear-gradient(to left, rgba(7,9,8,0.72) 0%, rgba(7,9,8,0) 15%)',
+                  'linear-gradient(to bottom, var(--bg) 2%, rgba(var(--rgb-bg),0) 22%)',
+                  'linear-gradient(to top, var(--bg) 12%, rgba(var(--rgb-bg),0) 34%)',
+                  'linear-gradient(to right, rgba(var(--rgb-bg),0.72) 0%, rgba(var(--rgb-bg),0) 15%)',
+                  'linear-gradient(to left, rgba(var(--rgb-bg),0.72) 0%, rgba(var(--rgb-bg),0) 15%)',
                 ].join(','),
                 pointerEvents: 'none',
               }}
@@ -149,7 +149,7 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
                 bottom: 0,
                 height: 170,
                 background:
-                  'linear-gradient(to top, rgba(7,9,8,0.95) 0%, rgba(7,9,8,0.78) 40%, rgba(7,9,8,0) 100%)',
+                  'linear-gradient(to top, rgba(var(--rgb-bg),0.95) 0%, rgba(var(--rgb-bg),0.78) 40%, rgba(var(--rgb-bg),0) 100%)',
                 pointerEvents: 'none',
               }}
             />
@@ -176,7 +176,7 @@ export const S7Wall: React.FC<{ qw?: number; qh?: number; glowW?: number; glowH?
                   gap: 14,
                   padding: '9px 18px 9px 14px',
                   borderRadius: 99,
-                  background: 'rgba(27,31,28,0.86)',
+                  background: 'rgba(var(--rgb-panel),0.86)',
                   border: `1px solid ${C.line2}`,
                   backdropFilter: 'blur(8px)',
                 }}

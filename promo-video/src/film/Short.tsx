@@ -1,6 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, Audio, Sequence, interpolate, staticFile, useCurrentFrame } from 'remotion';
-import { C } from './tokens';
+import { C, setTheme, themeCSS, type Theme } from './tokens';
 import { Stage } from './chrome/Stage';
 import { S1Sentence } from './shots/S1Sentence';
 import { S4Scan } from './shots/S4Scan';
@@ -25,9 +25,10 @@ const ShortBgm: React.FC = () => {
  * 15s 横版短版：钩子 → 它看清屏幕 → 它自己动手 → 品牌。
  * 四个镜头复用长版组件，只压内部节奏（打字加快、落标提前），时间表来自 audio-short.ts。
  */
-export const FilmShort: React.FC<{ bgm: boolean }> = ({ bgm }) => {
+export const FilmShort: React.FC<{ bgm: boolean; theme?: Theme }> = ({ bgm, theme = 'dark' }) => {
+  setTheme(theme);
   return (
-    <AbsoluteFill style={{ backgroundColor: C.bg }}>
+    <AbsoluteFill style={{ backgroundColor: C.bg, ...themeCSS(theme) }}>
       <Sequence from={SHORT.t1} durationInFrames={SHORT.t2 - SHORT.t1} name="T1 一句话">
         <AbsoluteFill>
           <Stage glow={C.jade} glowStrength={0.075} topLight={0.03} scrim={0.18} geometry={0.78} />

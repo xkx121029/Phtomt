@@ -1,6 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, Sequence } from 'remotion';
-import { C } from '../tokens';
+import { C, setTheme, themeCSS, type Theme } from '../tokens';
 import { SHOTS, shotDur, beatF } from '../beat';
 import { Stage } from '../chrome/Stage';
 import { S1Sentence } from '../shots/S1Sentence';
@@ -29,9 +29,10 @@ const S7B_FROM = beatF(80);
  * 拍号、镜头边界、SFX 钉帧全部沿用横版（beat.ts / audio.ts）——
  * 竖版只换构图，不换节奏，也不换声音。
  */
-export const FilmVertical: React.FC<{ bgm: boolean }> = ({ bgm }) => {
+export const FilmVertical: React.FC<{ bgm: boolean; theme?: Theme }> = ({ bgm, theme = 'dark' }) => {
+  setTheme(theme);
   return (
-    <AbsoluteFill style={{ backgroundColor: C.bg }}>
+    <AbsoluteFill style={{ backgroundColor: C.bg, ...themeCSS(theme) }}>
       <Sequence from={SHOTS.s1_sentence.from} durationInFrames={shotDur('s1_sentence')} name="V1 一句话">
         <AbsoluteFill>
           <Stage glow={C.jade} glowStrength={0.075} topLight={0.03} scrim={0.16} geometry={0.8} {...V_STAGE} />

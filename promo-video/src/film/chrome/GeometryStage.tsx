@@ -1,6 +1,6 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig } from 'remotion';
-import { C } from '../tokens';
+import { C, type Palette } from '../tokens';
 
 /**
  * 3D 几何场景背景 —— 不是「把几何体贴在背景上」，而是一个有相机的空间。
@@ -29,7 +29,7 @@ type Solid = {
   s: number;
   /** box 专用：高度倍数（立柱） */
   h?: number;
-  color: string;
+  color: keyof Palette;
   /** 面填充透明度 */
   a: number;
   phase: number;
@@ -39,27 +39,27 @@ type Solid = {
 
 const SOLIDS: Solid[] = [
   // 左侧柱廊：同一尺寸、逐级退到远处，透视自然收拢成走廊
-  { kind: 'box', fx: 0.05, fy: 0.55, z: -320, s: 128, h: 2.5, color: C.jade, a: 0.10, phase: 0.2 },
-  { kind: 'box', fx: 0.09, fy: 0.55, z: -820, s: 128, h: 2.5, color: C.jade, a: 0.09, phase: 1.1 },
-  { kind: 'box', fx: 0.14, fy: 0.55, z: -1380, s: 128, h: 2.5, color: C.jade, a: 0.08, phase: 2.0 },
-  { kind: 'box', fx: 0.19, fy: 0.55, z: -1980, s: 128, h: 2.5, color: C.jade, a: 0.07, phase: 2.9 },
+  { kind: 'box', fx: 0.05, fy: 0.55, z: -320, s: 128, h: 2.5, color: 'jade', a: 0.10, phase: 0.2 },
+  { kind: 'box', fx: 0.09, fy: 0.55, z: -820, s: 128, h: 2.5, color: 'jade', a: 0.09, phase: 1.1 },
+  { kind: 'box', fx: 0.14, fy: 0.55, z: -1380, s: 128, h: 2.5, color: 'jade', a: 0.08, phase: 2.0 },
+  { kind: 'box', fx: 0.19, fy: 0.55, z: -1980, s: 128, h: 2.5, color: 'jade', a: 0.07, phase: 2.9 },
   // 右侧柱廊
-  { kind: 'box', fx: 0.95, fy: 0.55, z: -320, s: 128, h: 2.5, color: C.mist, a: 0.09, phase: 0.7 },
-  { kind: 'box', fx: 0.91, fy: 0.55, z: -820, s: 128, h: 2.5, color: C.mist, a: 0.08, phase: 1.6 },
-  { kind: 'box', fx: 0.86, fy: 0.55, z: -1380, s: 128, h: 2.5, color: C.mist, a: 0.075, phase: 2.5 },
-  { kind: 'box', fx: 0.81, fy: 0.55, z: -1980, s: 128, h: 2.5, color: C.mist, a: 0.065, phase: 3.4 },
+  { kind: 'box', fx: 0.95, fy: 0.55, z: -320, s: 128, h: 2.5, color: 'mist', a: 0.09, phase: 0.7 },
+  { kind: 'box', fx: 0.91, fy: 0.55, z: -820, s: 128, h: 2.5, color: 'mist', a: 0.08, phase: 1.6 },
+  { kind: 'box', fx: 0.86, fy: 0.55, z: -1380, s: 128, h: 2.5, color: 'mist', a: 0.075, phase: 2.5 },
+  { kind: 'box', fx: 0.81, fy: 0.55, z: -1980, s: 128, h: 2.5, color: 'mist', a: 0.065, phase: 3.4 },
   // 悬浮实体：分布在不同深度，彼此会互相遮挡
-  { kind: 'sphere', fx: 0.70, fy: 0.27, z: -560, s: 118, color: C.mist, a: 0.085, phase: 1.4, spin: 5 },
-  { kind: 'box', fx: 0.28, fy: 0.31, z: -1000, s: 96, color: C.jade, a: 0.08, phase: 2.2, spin: -6 },
-  { kind: 'cone', fx: 0.24, fy: 0.72, z: -700, s: 132, color: C.amber, a: 0.065, phase: 3.4, spin: 3 },
-  { kind: 'sphere', fx: 0.78, fy: 0.70, z: -1220, s: 104, color: C.jade, a: 0.07, phase: 4.1, spin: -4 },
-  { kind: 'box', fx: 0.44, fy: 0.20, z: -1650, s: 88, color: C.mist, a: 0.06, phase: 5.0, spin: 4 },
-  { kind: 'cone', fx: 0.62, fy: 0.76, z: -1780, s: 112, color: C.jade, a: 0.055, phase: 5.7, spin: -3 },
+  { kind: 'sphere', fx: 0.70, fy: 0.27, z: -560, s: 118, color: 'mist', a: 0.085, phase: 1.4, spin: 5 },
+  { kind: 'box', fx: 0.28, fy: 0.31, z: -1000, s: 96, color: 'jade', a: 0.08, phase: 2.2, spin: -6 },
+  { kind: 'cone', fx: 0.24, fy: 0.72, z: -700, s: 132, color: 'amber', a: 0.065, phase: 3.4, spin: 3 },
+  { kind: 'sphere', fx: 0.78, fy: 0.70, z: -1220, s: 104, color: 'jade', a: 0.07, phase: 4.1, spin: -4 },
+  { kind: 'box', fx: 0.44, fy: 0.20, z: -1650, s: 88, color: 'mist', a: 0.06, phase: 5.0, spin: 4 },
+  { kind: 'cone', fx: 0.62, fy: 0.76, z: -1780, s: 112, color: 'jade', a: 0.055, phase: 5.7, spin: -3 },
   // 远端台基：扁平长方体，让走廊尽头有「建筑」而不是空地
-  { kind: 'box', fx: 0.34, fy: 0.60, z: -2050, s: 150, h: 0.32, color: C.jade, a: 0.07, phase: 0 },
-  { kind: 'box', fx: 0.66, fy: 0.60, z: -2050, s: 150, h: 0.32, color: C.mist, a: 0.06, phase: 0 },
+  { kind: 'box', fx: 0.34, fy: 0.60, z: -2050, s: 150, h: 0.32, color: 'jade', a: 0.07, phase: 0 },
+  { kind: 'box', fx: 0.66, fy: 0.60, z: -2050, s: 150, h: 0.32, color: 'mist', a: 0.06, phase: 0 },
   // 远端的光环门：场景的消失点
-  { kind: 'gate', fx: 0.50, fy: 0.43, z: -2450, s: 250, color: C.jade, a: 0.075, phase: 0 },
+  { kind: 'gate', fx: 0.50, fy: 0.43, z: -2450, s: 250, color: 'jade', a: 0.075, phase: 0 },
 ];
 
 /** 0–1 → 2 位十六进制 alpha，拼成 8 位色值 */
@@ -269,8 +269,8 @@ const GridPlane: React.FC<{
         `repeating-linear-gradient(0deg, ${color}${hx(alpha)} 0px, ${color}${hx(alpha)} 1px, transparent 1px, transparent 150px)`,
         `repeating-linear-gradient(90deg, ${color}${hx(alpha)} 0px, ${color}${hx(alpha)} 1px, transparent 1px, transparent 150px)`,
       ].join(','),
-      maskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.62) 42%, transparent 88%)`,
-      WebkitMaskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.62) 42%, transparent 88%)`,
+      maskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(var(--rgb-shadow),1) 0%, rgba(var(--rgb-shadow),0.62) 42%, transparent 88%)`,
+      WebkitMaskImage: `radial-gradient(ellipse 58% 58% at 50% 50%, rgba(var(--rgb-shadow),1) 0%, rgba(var(--rgb-shadow),0.62) 42%, transparent 88%)`,
     }}
   />
 );
@@ -297,7 +297,7 @@ export const GeometryStage: React.FC<{
       <AbsoluteFill
         style={{
           background: `radial-gradient(78% 34% at 50% 43%, ${C.jade}${hx(0.06 * boost)}, transparent 70%),
-                       linear-gradient(180deg, #070908 0%, rgba(7,9,8,0) 34%, rgba(7,9,8,0) 76%, #070908 100%)`,
+                       linear-gradient(180deg, var(--bg) 0%, rgba(var(--rgb-bg),0) 34%, rgba(var(--rgb-bg),0) 76%, var(--bg) 100%)`,
         }}
       />
       {/* 地平线光带 + 地面反射：把走廊的消失点钉住 */}
@@ -372,7 +372,7 @@ export const GeometryStage: React.FC<{
                       marginLeft: -size * 1.3,
                       marginTop: -size * 1.3,
                       borderRadius: '50%',
-                      background: `radial-gradient(closest-side, rgba(0,0,0,0.55), transparent 72%)`,
+                      background: `radial-gradient(closest-side, rgba(var(--rgb-shadow),calc(0.55 * var(--shade))), transparent 72%)`,
                       transform: `translate3d(${x}px, ${groundY}px, ${s.z}px) rotateX(84deg)`,
                     }}
                   />
@@ -391,7 +391,7 @@ export const GeometryStage: React.FC<{
                     }deg)`,
                   }}
                 >
-                  <Shape3D kind={s.kind} s={size} h={s.h ?? 1} color={s.color} a={a} />
+                  <Shape3D kind={s.kind} s={size} h={s.h ?? 1} color={C[s.color]} a={a} />
                 </div>
               </React.Fragment>
             );
@@ -422,7 +422,7 @@ export const GeometryStage: React.FC<{
       {/* 全局雾 + 暗角：把前景文字从空间里分离出来 */}
       <AbsoluteFill
         style={{
-          background: `radial-gradient(120% 92% at 50% 46%, transparent 38%, rgba(7,9,8,0.82) 100%)`,
+          background: `radial-gradient(120% 92% at 50% 46%, transparent 38%, rgba(var(--rgb-bg),0.82) 100%)`,
         }}
       />
     </AbsoluteFill>

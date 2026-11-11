@@ -1,10 +1,10 @@
 import React from 'react';
 import { AbsoluteFill } from 'remotion';
-import { C } from '../tokens';
+import { C, getTheme, themeGlow } from '../tokens';
 import { GeometryStage } from './GeometryStage';
 
 /**
- * 舞台背景：近黑场 + 两团极淡色辉 + 静态胶片颗粒 + 暗角。
+ * 舞台背景：纯色场 + 极淡色辉 + 静态胶片颗粒 + 暗角；深/浅主题由 tokens 驱动。
  * 颗粒用固定 SVG 噪声（不逐帧变化），避免闪动与不确定性。
  */
 export const Stage: React.FC<{
@@ -32,6 +32,7 @@ export const Stage: React.FC<{
   scrimH = 420,
   geometry = 0,
 }) => {
+  const isLight = getTheme() === 'light';
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg }}>
       {/* 立体几何场景：压在辉光/压暗/颗粒之下，永远不抢前景文字 */}
@@ -45,7 +46,7 @@ export const Stage: React.FC<{
           width: glowW,
           height: glowH,
           transform: 'translate(-50%,-50%)',
-          background: `radial-gradient(closest-side, ${glow}${Math.round(
+          background: `radial-gradient(closest-side, ${themeGlow(glow)}${Math.round(
             glowStrength * 255
           )
             .toString(16)
@@ -58,7 +59,7 @@ export const Stage: React.FC<{
         style={{
           position: 'absolute',
           inset: 0,
-          background: `linear-gradient(180deg, rgba(132,182,212,${
+          background: `linear-gradient(180deg, rgba(var(--rgb-mist),${
             topLight * 2.2
           }) 0%, transparent 34%)`,
         }}
@@ -71,13 +72,13 @@ export const Stage: React.FC<{
           right: 0,
           bottom: 0,
           height: scrimH,
-          background: `linear-gradient(0deg, rgba(7,9,8,${scrim}) 0%, rgba(7,9,8,0) 100%)`,
+          background: `linear-gradient(0deg, rgba(var(--rgb-bg),${scrim}) 0%, rgba(var(--rgb-bg),0) 100%)`,
         }}
       />
       {/* 胶片颗粒（静态） */}
       <AbsoluteFill
         style={{
-          opacity: 0.055,
+          opacity: isLight ? 0.028 : 0.055,
           mixBlendMode: 'overlay',
           backgroundImage:
             "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='n'/></svg>\")",
@@ -88,7 +89,7 @@ export const Stage: React.FC<{
       <AbsoluteFill
         style={{
           background:
-            'radial-gradient(118% 88% at 50% 46%, transparent 42%, rgba(0,0,0,0.72) 100%)',
+            'radial-gradient(118% 88% at 50% 46%, transparent 42%, rgba(var(--rgb-shadow),calc(0.72 * var(--shade))) 100%)',
         }}
       />
     </AbsoluteFill>

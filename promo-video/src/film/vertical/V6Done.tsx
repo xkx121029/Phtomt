@@ -94,7 +94,7 @@ export const V6Done: React.FC = () => {
               transform: `scale(${numScale})`,
               transformOrigin: 'center bottom',
               display: 'inline-block',
-              textShadow: `0 0 ${44 * (1 + flash * 3)}px rgba(95,217,180,${0.18 + flash})`,
+              textShadow: `0 0 ${44 * (1 + flash * 3)}px rgba(var(--rgb-jade),${0.18 + flash})`,
             }}
           >
             {count}

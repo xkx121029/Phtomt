@@ -82,7 +82,7 @@ export const VHeadline: React.FC<{
           lineHeight: 1.2,
           letterSpacing: '0.004em',
           color: C.ink,
-          textShadow: '0 3px 30px rgba(0,0,0,0.8)',
+          textShadow: '0 3px 30px rgba(var(--rgb-halo),0.8)',
           whiteSpace: 'pre-line',
         }}
       >
@@ -98,7 +98,7 @@ export const VHeadline: React.FC<{
             lineHeight: 1.42,
             letterSpacing: '0.01em',
             color: C.ink2,
-            textShadow: '0 2px 20px rgba(0,0,0,0.85)',
+            textShadow: '0 2px 20px rgba(var(--rgb-halo),0.85)',
             whiteSpace: 'pre-line',
           }}
         >
@@ -155,7 +155,7 @@ export const VCaption: React.FC<{
           fontWeight: 500,
           lineHeight: 1.24,
           color: C.ink,
-          textShadow: '0 2px 26px rgba(0,0,0,0.8)',
+          textShadow: '0 2px 26px rgba(var(--rgb-halo),0.8)',
           whiteSpace: 'nowrap',
         }}
       >
@@ -171,7 +171,7 @@ export const VCaption: React.FC<{
             color: C.ink2,
             letterSpacing: '0.012em',
             whiteSpace: 'nowrap',
-            textShadow: '0 2px 18px rgba(0,0,0,0.85)',
+            textShadow: '0 2px 18px rgba(var(--rgb-halo),0.85)',
           }}
         >
           {lead}

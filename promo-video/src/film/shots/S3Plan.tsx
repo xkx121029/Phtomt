@@ -95,7 +95,7 @@ export const S3Plan: React.FC = () => {
               position: 'absolute',
               inset: -4,
               borderRadius: 34,
-              boxShadow: '0 60px 120px -30px rgba(0,0,0,0.95), 0 0 0 1px rgba(232,234,230,0.10)',
+              boxShadow: '0 60px 120px -30px rgba(var(--rgb-shadow),calc(0.95 * var(--shade))), 0 0 0 1px rgba(var(--rgb-ink),0.10)',
             }}
           />
           <div

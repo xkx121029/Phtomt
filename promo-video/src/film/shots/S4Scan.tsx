@@ -73,7 +73,7 @@ export const S4Scan: React.FC = () => {
                 top: scanY - 52,
                 height: 52,
                 background:
-                  'linear-gradient(180deg, rgba(132,182,212,0) 0%, rgba(132,182,212,0.10) 100%)',
+                  'linear-gradient(180deg, rgba(var(--rgb-mist),0) 0%, rgba(var(--rgb-mist),0.10) 100%)',
               }}
             />
             <div
@@ -84,7 +84,7 @@ export const S4Scan: React.FC = () => {
                 top: scanY,
                 height: 2,
                 background: C.mist,
-                boxShadow: `0 0 10px 1px rgba(132,182,212,0.55)`,
+                boxShadow: `0 0 10px 1px rgba(var(--rgb-mist),0.55)`,
               }}
             />
           </>
@@ -162,7 +162,7 @@ export const S4Scan: React.FC = () => {
                 top: labelY,
                 width: Math.max(0, (labelX - p1.x - 20) * interpolate(frame, [tf, tf + 10], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })),
                 height: 1,
-                background: `linear-gradient(90deg, rgba(132,182,212,0.55), rgba(132,182,212,0.15))`,
+                background: `linear-gradient(90deg, rgba(var(--rgb-mist),0.55), rgba(var(--rgb-mist),0.15))`,
               }}
             />
             <div

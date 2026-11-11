@@ -1,6 +1,6 @@
 import React from 'react';
 import { Img, staticFile, useVideoConfig } from 'remotion';
-import { C, SCREEN } from '../tokens';
+import { C, SCREEN, themeGlow } from '../tokens';
 
 export type DeviceXform = {
   x?: number;
@@ -107,7 +107,7 @@ export const Device: React.FC<{
             marginLeft: -bodyW * 1.3,
             marginTop: -bodyH * 0.95,
             borderRadius: '50%',
-            background: `radial-gradient(closest-side, ${glow}${Math.round(
+            background: `radial-gradient(closest-side, ${themeGlow(glow)}${Math.round(
               glowStrength * 255
             )
               .toString(16)
@@ -128,9 +128,9 @@ export const Device: React.FC<{
                 background:
                   'conic-gradient(from 208deg at 50% 50%, #080b0a 0deg, #767e73 26deg, #2a302c 64deg, #0a0e0c 128deg, #050807 196deg, #1c211e 250deg, #7d857a 300deg, #141917 332deg, #080b0a 360deg)',
                 boxShadow: [
-                  `0 ${30 * shadow}px ${80 * shadow}px -${20 * shadow}px rgba(0,0,0,0.94)`,
-                  `0 ${8 * shadow}px ${22 * shadow}px -${8 * shadow}px rgba(0,0,0,0.75)`,
-                  'inset 0 0 0 1px rgba(0,0,0,0.85)',
+                  `0 ${30 * shadow}px ${80 * shadow}px -${20 * shadow}px rgba(var(--rgb-shadow),0.94)`,
+                  `0 ${8 * shadow}px ${22 * shadow}px -${8 * shadow}px rgba(var(--rgb-shadow),0.75)`,
+                  'inset 0 0 0 1px rgba(var(--rgb-shadow),0.85)',
                 ].join(','),
               }}
             />
@@ -142,7 +142,7 @@ export const Device: React.FC<{
                 borderRadius: bodyR - sw * 0.004,
                 background:
                   'linear-gradient(158deg,#1a201d 0%,#0c100e 34%,#070a09 62%,#121614 100%)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.10), inset 0 -1px 1px rgba(0,0,0,0.9)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.10), inset 0 -1px 1px rgba(var(--rgb-shadow),0.9)',
               }}
             />
             {/* 侧键 */}
@@ -194,7 +194,7 @@ export const Device: React.FC<{
             overflow: 'hidden',
             background: '#000',
             boxShadow: framed
-              ? 'inset 0 0 0 1px rgba(0,0,0,0.9), 0 0 0 0.5px rgba(255,255,255,0.06)'
+              ? 'inset 0 0 0 1px rgba(var(--rgb-shadow),0.9), 0 0 0 0.5px rgba(255,255,255,0.06)'
               : undefined,
           }}
         >
@@ -260,7 +260,7 @@ export const Device: React.FC<{
               position: 'absolute',
               inset: 0,
               background:
-                'radial-gradient(136% 108% at 50% 50%, transparent 66%, rgba(0,0,0,0.26) 100%)',
+                'radial-gradient(136% 108% at 50% 50%, transparent 66%, rgba(var(--rgb-shadow),0.26) 100%)',
               pointerEvents: 'none',
             }}
           />
@@ -285,7 +285,7 @@ export const Device: React.FC<{
               inset: 0,
               borderRadius: bodyR,
               boxShadow:
-                'inset 1px 1px 0 rgba(95,217,180,0.16), inset 0 0 24px rgba(95,217,180,0.05), inset -1px -1px 0 rgba(255,255,255,0.045)',
+                'inset 1px 1px 0 rgba(var(--rgb-jade),0.16), inset 0 0 24px rgba(var(--rgb-jade),0.05), inset -1px -1px 0 rgba(255,255,255,0.045)',
               pointerEvents: 'none',
             }}
           />
