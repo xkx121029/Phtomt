@@ -49,6 +49,8 @@
 
 ## 项目结构
 
+> 顶层目录职责、模块依赖、版本号流向、训练器边界与产物落点，见 [docs/project-structure.md](docs/project-structure.md)。
+
 ```
 happy_phone agent/
 ├── app/
