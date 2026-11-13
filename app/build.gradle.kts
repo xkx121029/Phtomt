@@ -373,6 +373,19 @@ val bundleHost by tasks.registering(Exec::class) {
     workingDir = rootProject.projectDir
     environment("HACA_ROOT", hacaRoot)
     commandLine("node", "tool/bundle_host.mjs")
+    // 声明输入/输出，让「上游源码没变」的构建直接判定 UP-TO-DATE。
+    // 之前这里没有任何 inputs/outputs：每次构建都要起一次 node、重写 45 个 asset
+    // 文件并抢构建锁。实测写出的内容不变，所以 mergeAssets 本来就命中 UP-TO-DATE；
+    // 这项省的是每次约 1.5s 的 node 启动与无谓文件重写，产物不变。
+    inputs.dir("$hacaRoot/packages/agent-core/src")
+        .withPropertyName("hacaAgentCoreSrc")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .skipWhenEmpty()
+    inputs.file(rootProject.file("tool/bundle_host.mjs"))
+        .withPropertyName("bundleHostScript")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(file("src/main/assets/agent-host"))
+        .withPropertyName("agentHostAssets")
     onlyIf { file("$hacaRoot/packages/agent-core/src/index.js").exists() }
 }
 
@@ -520,6 +533,16 @@ verifyProviderAssets.configure { mustRunAfter(syncProviderDebug, syncProviderRel
 tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(syncProviderDebug) }
 tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncProviderRelease) }
 
+// 干净检出兜底：assets 内的 *.apk 被 .gitignore 忽略，全新 clone 上 merge*Assets 会因
+// verifyProviderAssets 报「缺少 provider.apk」直接失败。只在文件确实缺失时补挂同步任务，
+// 正常迭代（APK 已在）不会多出依赖，也不会触发 :provider 重编。
+if (!file("src/debug/assets/provider/provider.apk").exists()) {
+    tasks.matching { it.name == "mergeDebugAssets" }.configureEach { dependsOn(syncProviderDebug) }
+}
+if (!file("src/release/assets/provider/provider.apk").exists()) {
+    tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { dependsOn(syncProviderRelease) }
+}
+
 // ---------------------------------------------------------------------------
 // 编码环境组件 APK（assets 内静态资产）。
 // 构建时由 :app:syncEnvDebug / syncEnvRelease 从 :env 产物同步到
@@ -563,3 +586,11 @@ tasks.register("syncEnvAssets") {
 // 同一次调用里跑 syncEnvAssets + assemble* 时，assets 合并必须等同步落盘完成
 tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(syncEnvDebug) }
 tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncEnvRelease) }
+
+// env.apk 不进仓库：干净检出时自动补一次同步，避免装出「编码通道全部不可用」的静默坏包。
+if (!file("src/debug/assets/env/env.apk").exists()) {
+    tasks.matching { it.name == "mergeDebugAssets" }.configureEach { dependsOn(syncEnvDebug) }
+}
+if (!file("src/release/assets/env/env.apk").exists()) {
+    tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { dependsOn(syncEnvRelease) }
+}

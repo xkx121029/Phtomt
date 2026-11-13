@@ -99,41 +99,29 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Detekt (static analysis)
+      - name: Detekt + Lint (static analysis, non-blocking)
+        # 两个都不阻断出包（存量问题未清理完），合并到同一次 Gradle 调用：
+        # 每次 ./gradlew 都要重跑一遍配置阶段（本工程实测 20~40s/次），
+        # 同一次调用里跑多任务是 CI 上最直接的时间节省。--continue 保证
+        # detekt 失败时 lint 仍然执行、报告都能上传。
+        #
         # 任务名必须带 :app 前缀：detekt 配置与基线只挂在 :app 上，
         # 跑根项目的 `detekt` 不带基线路径，存量问题会全量报错。
-        #
-        # 只报告、不阻断出包：当前还有约 180 条存量问题（MagicNumber 56、
-        # ReturnCount 28、MaxLineLength 25、CyclomaticComplexMethod 20…），
-        # 大多在基线生成之后新增。清理完之前它不该挡住产包，
-        # 报告仍随 artifact 上传；清理后把 continue-on-error 去掉即可恢复阻断。
-        # 数字以本地 `app/build/reports/detekt/detekt.xml` 实际条目为准，会随清理下降。
+        # 存量约 180 条（MagicNumber 56、ReturnCount 28、MaxLineLength 25、
+        # CyclomaticComplexMethod 20…），大多在基线生成之后新增。清理完之前它不该挡住产包，
+        # 清理后把 continue-on-error 去掉即可恢复阻断，并把这个步骤拆回独立步骤。
         continue-on-error: true
-        run: ./gradlew :app:detekt --stacktrace
+        run: ./gradlew :app:detekt :app:lintDebug --continue --stacktrace
 
-      - name: Detekt baseline guard (fail if exemptions grow)
-        # 基线只减不增的守卫是确定性的（当前 1543 条 = 记录值），保留阻断
-        run: ./gradlew :app:checkDetektBaseline --stacktrace
+      - name: Detekt baseline guards
+        # 基线只减不增 + 分类合计必须等于总条目数（防止只改总数不更新分类表）。
+        # 两条守卫都是确定性的、秒级完成，合并成一次调用省一次配置开销。
+        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown --stacktrace
 
-      - name: Detekt baseline breakdown (must match total)
-        # 分类合计必须等于总条目数：防止只改总数不更新分类表，让"基线降了"看不出清的是噪音还是结构问题
-        run: ./gradlew :app:checkDetektBaselineBreakdown --stacktrace
-
-      - name: Unit Tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
-      - name: Unit Test Coverage Report
-        run: ./gradlew :app:createDebugUnitTestCoverageReport --stacktrace
-
-      - name: Pure-logic coverage gate
-        # 只对无副作用的纯逻辑包设阈值（防回落，不是目标值）；真机依赖的包不设，避免逼人造测试
-        run: ./gradlew :app:checkPureLogicCoverage --stacktrace
-
-      - name: Lint
-        # 存量 lint 问题（MissingPermission 等）尚未清理完，暂不阻断出包；
-        # 报告仍会上传，修复后再改为阻断
-        continue-on-error: true
-        run: ./gradlew :app:lintDebug --stacktrace
+      - name: Unit tests + coverage gates
+        # 测试、覆盖率报告、纯逻辑覆盖率闸门一次跑完：后两者都依赖测试结果，
+        # 历史实现是三次独立 ./gradlew，每次都要重新配置整个工程。
+        run: ./gradlew :app:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage --stacktrace
 
       - name: Compute version + tag
         id: ver
@@ -159,17 +147,16 @@ jobs:
           echo "apk=HappyAgent-0.2.$CODE-$CHANNEL.apk" >> "$GITHUB_OUTPUT"
           echo "本次版本：0.2.$CODE-$CHANNEL（计数器 $COUNTER -> $CODE）"
 
-      - name: Sync provider + env assets
+      - name: Sync assets + assemble Debug APK
         # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
         # 干净检出后 assets 里只剩 version.txt，verifyProviderAssets 会直接拦下。
-        # 先由各自模块构建并同步进 assets，再走 assemble。
-        run: ./gradlew :app:syncProviderAssets :app:syncEnvAssets --stacktrace
-
-      - name: Assemble Debug APK
-        # HPA_DEBUG_KEYSTORE / HPA_DEBUG_KEYSTORE_PASS 由上一步写入 $GITHUB_ENV，
+        # 这里把「同步」和「assemble」放进同一次 Gradle 调用（历史是两次独立调用，
+        # 配置阶段要跑两遍）；顺序由 app/build.gradle.kts 里的 mustRunAfter 保证。
+        #
+        # HPA_DEBUG_KEYSTORE / HPA_DEBUG_KEYSTORE_PASS 由 keystore 步骤写入 $GITHUB_ENV，
         # :app 的 build.gradle.kts 据此显式配置 signingConfigs.debug。
         run: |
-          ./gradlew :app:assembleDebug \
+          ./gradlew :app:syncProviderAssets :app:syncEnvAssets :app:assembleDebug \
             -PbuildNumber=${{ steps.ver.outputs.version_code }} \
             -Pchannel=${{ env.CHANNEL }} \
             --stacktrace
@@ -314,10 +301,19 @@ jobs:
           **签名**：debug 签名（Android 调试证书）。可直接安装运行；
           已装过 release 签名版本（应用市场包）的机器无法覆盖安装，需先卸载。
           EOF
-          gh release create "$TAG" "$APK" \
-            --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
-            --notes-file release-notes.md \
-            --prerelease
+          # 幂等：tag 已存在时不再 create（会 400 并让整个 run 红），而是直接补齐 APK 资产。
+          # 这解开了一个自锁：Release 成功但 Persist 失败 → 下一次 run 重算出同一个
+          # versionCode、tag 撞车 → 发布步骤永远失败、Persist 永远轮不到，只能人工改
+          # nightly 的计数器。改成幂等后，下一次 run 能自己走完并推进计数器。
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，补传/覆盖 APK 资产（沿用原 release notes）"
+            gh release upload "$TAG" "$APK" --clobber
+          else
+            gh release create "$TAG" "$APK" \
+              --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+              --notes-file release-notes.md \
+              --prerelease
+          fi
 
       - name: Persist version counter
         # 出包成功才把计数器推进一步（失败不烧号）。

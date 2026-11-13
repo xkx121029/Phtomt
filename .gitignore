@@ -50,7 +50,10 @@ Desktop.ini
 *.class
 
 # Project specific
-version.properties
+# version.properties 不在忽略列表里：它是唯一版本计数器，必须入库并被跟踪
+# （root build.gradle.kts 读写它，CI 从 nightly 分支读它；一旦被忽略，
+# 干净检出后新建的同名文件不会进版本库，计数器会分叉）。
+# 历史遗留的忽略规则已删除，避免和「实际已被 git 跟踪」的状态自相矛盾。
 BUGS/
 # 推广物料：演示视频体积大，不进源码库（单文件 HTML 复刻仍入库）
 promo/*.webm
