@@ -13,7 +13,7 @@
 - 🤖 **AI 驱动决策** — 主模型决策 + 思考模型规划，支持流式输出与结构化意图
 - 🔀 **三形态路由** — 每次输入先判定是「手机操控 / 编码委托 / 纯对话」，再决定走哪条执行体
 - 👁️ **多源视觉** — 端侧 3B（GGUF + JNI）框选 + 云端视觉模型描述 + ML Kit 中文 OCR 兜底，按页面复杂度自动分流
-- 🖱️ **AI 只描述意图** — 44 个意图交给端侧转译层，AI 不写命令、不选通道、不算坐标
+- 🖱️ **AI 只描述意图** — 65 个意图交给端侧转译层，AI 不写命令、不选通道、不算坐标
 - 🔒 **三档动作模式** — 保守 / 均衡 / 自由，与执行通道正交，连续越权即收尾
 - 🧩 **独立权限 Provider** — 无障碍 + 内嵌 Shizuku server + 无线 ADB 引导 + Termux，随包安装、签名级 AIDL
 - 🛡️ **安全防护** — 敏感页只读、手机号/身份证/银行卡脱敏、不可逆动作强制二次确认
@@ -23,7 +23,7 @@
 - 🪟 **悬浮窗 + 通知 + Widget + 磁贴** — 四套入口共同呈现任务状态
 - 🧠 **记忆体系** — 用户画像、经验规则、异常经验、页面记忆（虚拟线框画面 + 控件热点）
 - 💻 **设备内编码** — PRoot + Alpine + JDK + Gradle + Android SDK 一键安装，可在手机上直接 `assembleDebug`
-- 🌐 **中文 / 英文双语提示词** — 59 个提示词区块按任务类型裁切装配
+- 🌐 **中文 / 英文双语提示词** — 60 个提示词区块按任务类型裁切装配
 - 📱 **Material 3 Expressive** — Compose 实现，深色模式、四套色板、统一动效体系
 
 ## 技术栈
@@ -60,8 +60,10 @@ happy_phone agent/
 │       │   ├── core/                       # 跨层基础设施（零业务语义）
 │       │   │   ├── AgentBudgets.kt         # 回注 AI 的字符预算（4000）唯一数值定义点
 │       │   │   ├── ai/                     # AiClient / ModelCatalog / VisionRouting / ProviderPresets
+│       │   │   │                           # StructuredOutputRouting / IncrementalIntentParser / IntentJsonRepair
 │       │   │   ├── log/                    # AppLog 日志门面 + runCatchingLogged
 │       │   │   ├── notify/                 # 任务进度 / 主动反馈 / 配对向导通知
+│       │   │   ├── perf/StartupTrace.kt    # 冷启动阶段耗时
 │       │   │   ├── security/               # SensitivePageDetector + DataSanitizer + SecretCodec
 │       │   │   ├── text/                   # HtmlToMarkdown / HumanTranslator / TimeFormats
 │       │   │   └── window/OverlayWindowSpec.kt
@@ -77,29 +79,44 @@ happy_phone agent/
 │       │   │   └── export/LogExporter.kt   # 日志与诊断报告导出
 │       │   ├── device/                     # 设备能力接入（全部经 Provider 转发）
 │       │   │   ├── a11y/                   # AgentAccessibilityService（远程门面）/ ActionExecutor
+│       │   │   ├── capability/             # DeviceCapability / DeviceCapabilityReader（能力探测）
+│       │   │   ├── clock/ClockChannel.kt   # 闹钟 / 计时器通道
+│       │   │   ├── ops/                    # 设备操作：框架 + 按领域拆分
+│       │   │   │                           # DeviceOpsChannel（分发）/ FileOps / AlarmOps / CalendarOps
+│       │   │   │                           # OpsArgs · ShellQuote · OpsFormat · GlobPattern（纯函数）
 │       │   │   ├── perception/ForegroundProbe.kt   # UsageStats 前台应用交叉验证
 │       │   │   ├── provider/ProviderManager.kt     # 安装引导 / 版本比对 / AIDL 绑定 / 自检
 │       │   │   ├── screen/                 # ScreenCapture / ScreenSharingService / VirtualDisplayAgent
 │       │   │   ├── shell/                  # ShizukuManager / ShizukuBootstrap / TermuxBridge / AdbStatus
 │       │   │   └── vision/                 # OnDeviceVision / NativeVisionEngine / LocalDetector
+│       │   │                               # DebugCaptures（StepShot / StepTrace，调试留档）
 │       │   ├── engine/                     # Agent 编排
-│       │   │   ├── AgentEngine.kt          # ReAct 主循环骨架（约 3200 行）
+│       │   │   ├── AgentEngine.kt          # ReAct 主循环骨架（约 3200 行：编排 + 状态暴露）
 │       │   │   ├── AgentPrompts.kt         # 提示词门面（正文在 prompt/ 下）
 │       │   │   ├── TaskKindDetector.kt     # 任务类型唯一判定点（词表 + 计分）
 │       │   │   ├── TaskRoute.kt            # 三形态路由决策
+│       │   │   ├── IntentRouter.kt         # 入口指令归一（分享 / 深链 / 语音）
+│       │   │   ├── AppInventory.kt         # 已安装应用清单与包名归一
 │       │   │   ├── TaskSession.kt / DeviceFacts.kt / MemoryBrief.kt / RuleScoper.kt
 │       │   │   ├── AgentResponseParser.kt / DecisionModels.kt
+│       │   │   ├── loop/                   # StepRunner / StepSession / TaskRunner
+│       │   │   │                           # ObservationPhase / DecisionPhase / ExecutionPhase
 │       │   │   ├── runtime/                # EngineStore / TaskLifecycle / UserGate / UiBridge
 │       │   │   │                           # TelemetryRecorder / TaskFinalizer / EngineLimits / StepTexts
+│       │   │   │                           # LoopGuard / StepObserver / ExecutionFeedback / TaskNoticeStore
 │       │   │   ├── planning/PlanningFlow.kt        # 歧义检测 / 澄清 / 计划生成 / 模板复用 / 批准
 │       │   │   ├── decision/               # DecisionConfig / DecisionPolicy / VisionResultCache
 │       │   │   ├── execution/              # IntentTranslator / IntentResolver / ExecutionCore
 │       │   │   │                           # ClickRunner / VerifiedClickExecutor / ShellRules
-│       │   │   │                           # ActionMode + ActionPolicy / AppNameResolver / CapabilityManager
+│       │   │   │                           # ActionMode（含 ActionPolicy）/ ChannelPolicy / ChannelLadder
+│       │   │   │                           # DegradationPolicy / VerifyRules / SensitiveInput
+│       │   │   │                           # AppNameResolver / CapabilityManager / ClockFallback
 │       │   │   ├── perception/             # PageAnnotator（语义 ID）/ ControlTreeBuilder / PageFingerprint
 │       │   │   ├── context/ContextInjector.kt      # 记忆 / 规则 / 环境事实注入
+│       │   │   ├── docs/                   # TaskDocRepository / MethodDoc / OfflineMethodDocRetriever
 │       │   │   ├── memory/PageMemoryRecorder.kt    # 页面记忆采集
-│       │   │   ├── prompt/                 # PromptCatalog（59 区块）/ PromptBodies / PromptAssembler
+│       │   │   ├── perf/StageTiming.kt             # 分阶段耗时采样
+│       │   │   ├── prompt/                 # PromptCatalog（60 区块）/ PromptBodies / PromptAssembler
 │       │   │   ├── coding/CodingAgentBridge.kt     # vibecoding 委托桥
 │       │   │   ├── connect/AiTools.kt              # 连接测试 / 模型列表 / 能力探测
 │       │   │   ├── skill/SkillRunner.kt            # 技能 / 宏 / MCP 执行
@@ -110,7 +127,8 @@ happy_phone agent/
 │       │   │   ├── env/                    # CodingEnvClient / CodingEnvBootstrap / ProjectToolchainProbe
 │       │   │   ├── skill/AcaSkillCatalog.kt# 随包 skill 落盘与扫描
 │       │   │   ├── SharedFiles.kt          # 系统分享进来的文件 + 容器格式文本摘录
-│       │   │   └── CodingAgentService.kt / EditorActivity.kt / PreviewActivity.kt
+│       │   │   └── CodingAgentService.kt / CodingRuntimeManager.kt
+│       │   │                               # EditorActivity.kt / PreviewActivity.kt
 │       │   ├── feature/                    # 功能域
 │       │   │   ├── browser/                # BrowserChannel / BrowserExecutor / BrowserGuard
 │       │   │   │                           # HeadlessWebHost / script（导航·交互·读取）
@@ -118,6 +136,7 @@ happy_phone agent/
 │       │   │   │                           # SkillCompat / SkillParamInferencer / MacroStepExpander
 │       │   │   ├── mcp/                    # McpClient / McpManager / McpMarketplace / McpRetryPolicy
 │       │   │   ├── adskip/AdContentFilter.kt       # 运行时广告识别与剔除
+│       │   │   ├── agentdoc/                # AgentDocRepository / DocMatcher（任务做法文档）
 │       │   │   ├── document/DocumentEngine.kt      # 文档落盘 + Agent 页内嵌预览
 │       │   │   ├── assistant/              # 数字助理角色 + VoiceInteractionService + Assist 上下文
 │       │   │   ├── entry/                  # TaskEntry（分享/深链入口）+ TaskControlReceiver
@@ -129,17 +148,19 @@ happy_phone agent/
 │       │   ├── overlay/                    # FloatingWindowService / FloatingUi / MarqueeView
 │       │   │                               # CursorOverlayService / PageMarkOverlayService
 │       │   │                               # AgentTileService / AgentStatusWidgetProvider / SuccessMarkView
+│       │   │                               # AgentStatusStore / OverlayMotion / TaskNoticePresentation
 │       │   ├── ui/                         # 界面层（页面 = 入口 + 单一职责拆分文件）
 │       │   │   ├── MainActivity.kt / MainTabs.kt / MainViewModel.kt
 │       │   │   ├── home/ · chat/ · coding/ · agent/ · memory/ · settings/ · skill/
 │       │   │   ├── debug/                  # 执行流 / 指标 / 对话 / 日志 四个视角
-│       │   │   ├── browser/ · test/ · onboarding/ · voice/ · model/
+│       │   │   ├── browser/ · test/ · onboarding/ · voice/ · model/ · workbench/
 │       │   │   ├── components/             # Components / Glass / Markdown / Haptic / Formatters
 │       │   │   ├── theme/                  # Color / Type / Theme / Motion / MotionHelpers
 │       │   │   └── icons/AppIcons.kt
 │       │   └── di/AppModule.kt             # Koin 依赖注入
 │       ├── assets/
-│       │   ├── agent-host/                 # 内置 Node 运行时执行体（由 tool/bundle_host.mjs 生成，不入库）
+│       │   ├── agent-host/                 # 内置 Node 运行时执行体（由 tool/bundle_host.mjs 生成，必须入库）
+│       │   ├── editor/index.html           # 编码工作区 WebView 界面
 │       │   └── skills/happyac-coding/      # 随包编码手册 skill（skill.json + prompt.md）
 │       └── res/
 ├── provider/                       # 独立权限服务 APK（无障碍 + 内嵌 Shizuku + 无线 ADB 引导 + Termux）
@@ -153,16 +174,17 @@ happy_phone agent/
 │   └── provider-assets/            # Provider 源码指纹（构建时校验）
 ├── docs/build-modules.md           # 可选构建模块的配置、任务与兼容性校验说明
 ├── docs/release-pipeline.md        # 发版链路：CI 触发与断言、GitHub 产物、Gitee 附件补挂（手动）、Gitea 现状
+├── docs/refactor/                  # 重构：optimization-backlog（清单）/ optimization-executed（执行记录）/ phase-b-step-runner
 ├── promo/                          # 单文件 HTML 交互式 UI 复刻（app.html / index.html / ui-film.html）
 ├── tool/                           # 构建辅助脚本：bundle_host.mjs（同步编码 host）/ bundle_runtime.py（打包 Node 运行时）/ ICU 裁剪
 ├── website/                        # 官网（Vue3 SPA + Express 内容 API，见 website/API.md）
 ├── tests/                          # 提示词批量测试脚本（Node）
 ├── 杂项/                           # 设计 / 复盘文档
 ├── .github/workflows/              # android-ci（编译 + 测试 + detekt + lint）/ site-pages
-├── build.gradle.kts · settings.gradle.kts（`version.properties` 由构建生成，不入库）
+├── build.gradle.kts · settings.gradle.kts · version.properties（唯一版本计数器，入库）
 ```
 
-**代码规模**（以当前工作区为准）：`app` 主模块 **273** 个 Kotlin 源文件、约 **6.4 万**行；单元测试 **73** 个文件、**793** 个 `@Test`（含 debug 变体专有的日志转发测试）；`:provider` 29 个源文件；`:env` 4 个源文件。
+**代码规模**（以当前工作区为准）：`app` 主模块 **342** 个 Kotlin 源文件、**87,404** 行；单元测试 **118** 个文件（`src/test` 113 + `src/testDebug` 5）、**1221** 个 `@Test`；`:provider` 29 个源文件（另有 1 个测试文件）；`:env` 4 个源文件；`third_party/shizuku` 54 个源文件。
 
 另有 `app/src/debug` 一套**仅 debug 变体**的日志转发通道（`LogServerCore` / `LogTransferSession` / `UsbDebugWatcher`），把 logcat 与应用内日志经本机端口推给 `tool/hpa_log_receiver.py`，release 包里不存在这段代码。
 
@@ -191,7 +213,7 @@ cd happy_phone-agent
 
 版本号由根 `build.gradle.kts` 统一计算，`:app` 与 `:provider` 读同一个值：`versionCode = buildNumber`、`versionName = "0.2.$buildNumber"`。取值优先级是 `-PbuildNumber=NN`（CI 用 `github.run_number` 注入）> `version.properties` 记录值 > git 提交数；只有真正产出 APK 的任务（`assemble` / `bundle` / `build`）才会自增并回写，跑 detekt / 单测不吃版本号。版本号只增不减，避免 `versionCode` 回退导致覆盖安装失败。
 
-`version.properties` 不入库（见 `.gitignore`），首次构建时以 git 提交数为基线自动生成。
+`version.properties` 已入库，是版本号唯一的真值来源；文件丢失时才以 git 提交数为基线重新生成。
 
 ### 3. 改了子模块 / 首次克隆之后
 
@@ -221,13 +243,22 @@ cd happy_phone-agent
 ### 5. 质量闸门
 
 ```bash
-./gradlew detekt                    # 静态检查（规则见 config/detekt/detekt.yml）
-./gradlew :app:checkDetektBaseline  # 基线只减不增，已挂到 check
-./gradlew :app:testDebugUnitTest    # 单元测试
+./gradlew :app:detekt                       # 静态检查（规则见 config/detekt/detekt.yml）
+./gradlew :app:checkDetektBaseline          # 基线只减不增，已挂到 check
+./gradlew :app:checkDetektBaselineBreakdown # 基线分类合计必须等于总条目数
+./gradlew :app:testDebugUnitTest            # 单元测试
+./gradlew :app:createDebugUnitTestCoverageReport
+./gradlew :app:checkPureLogicCoverage       # 纯逻辑包覆盖率防回落
 ./gradlew :app:lintDebug
 ```
 
-CI（[android-ci.yml](.github/workflows/android-ci.yml)）在 PR / push 到 main 时按 detekt → 基线守卫 → 单测 → 覆盖率 → lint → assembleDebug 的顺序跑完整条门禁。
+三点值得说明：
+
+- **基线分类计数**：只记总数有个盲区——清 100 条超长行和修 1 个巨型类，在总数上看起来一样。所以额外记一份 [baseline-breakdown.txt](config/detekt/baseline-breakdown.txt)，让"基线降了"能看出是清了噪音还是清了结构问题。当前 1543 条里 `MaxLineLength`(482) + `MagicNumber`(433) 占 59%，真正反映结构的 `LargeClass` / `CyclomaticComplexMethod` / `LongMethod` 合计约 12%。
+- **覆盖率只对纯逻辑包设阈值**：本工程主体是无障碍 / Shizuku / 悬浮窗这类只能在真机跑的逻辑，全局阈值只会逼人写无意义测试。阈值取"当前实测值"用于**防回落**，不是目标值：`domain/rules` 85%、`core/text` 87%、`engine/execution` 45%、`device/ops` 17%（后者多为 shell 命令拼装，JVM 测不到）。
+- **`detekt` 任务在 CI 中仍是 `continue-on-error`**：存量还有 172 条（多为基线生成后新增），清理完再去掉即可恢复阻断。基线守卫本身是确定性阻断的。
+
+CI（[android-ci.yml](.github/workflows/android-ci.yml)）在 PR / push 到 main 时按 detekt → 基线守卫 → 基线分类校验 → 单测 → 覆盖率 → 覆盖率闸门 → lint → assembleDebug 的顺序跑完整条门禁。
 
 ### 6. 可选构建模块（按需启用）
 
@@ -279,7 +310,7 @@ CI（[android-ci.yml](.github/workflows/android-ci.yml)）在 PR / push 到 main
 
 ### 意图转译层 — AI 只说做什么
 
-44 个合法意图（[IntentType](app/src/main/java/com/phoneagent/domain/model/AgentIntent.kt#L133-L205)）经 [IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) 的策略表落到 34 种 `ActionType`。AI **不输出命令、不输出像素坐标、不选通道**。
+65 个意图常量（[IntentType](app/src/main/java/com/phoneagent/domain/model/AgentIntent.kt#L186-L298)）经 [IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) 的策略表落到 38 种 `ActionType`。AI **不输出命令、不输出像素坐标、不选通道**。
 
 转译有三种结果：
 
@@ -300,9 +331,9 @@ CI（[android-ci.yml](.github/workflows/android-ci.yml)）在 PR / push 到 main
 
 | 档位 | 放行范围 |
 |---|---|
-| 保守 CONSERVATIVE | 23 项低风险意图（只读 / 导航 / 滚动 / 本地读写 / 只读浏览） |
-| 均衡 BALANCED（默认） | 前置 + 16 项中风险 + 3 项高风险，即转译层全部意图 |
-| 自由 FREE | 前置 + `shell`（AI 自写命令）+ `a11y`（18 个无障碍端点直调，AI 自写命令首次执行前需用户确认） |
+| 保守 CONSERVATIVE | 35 项低风险意图（只读 / 导航 / 滚动 / 本地读写 / 只读浏览） |
+| 均衡 BALANCED（默认） | 前置 + 21 项中风险 + 5 项高风险，即除 4 项自由档专属外的 61 项 |
+| 自由 FREE | 前置 + `terminal_op` / `shell`（AI 自写命令）/ `virtual_display` / `a11y`（18 个无障碍端点直调，首次执行前需用户确认） |
 
 门控点只有一处：主循环里技能归一化之后、浏览器分流之前。这个位置是刻意的——`browse_*` 不走转译层，只有卡在这里才能一并覆盖。连续 3 次被拒即收尾，并提示用户去放宽档位。
 
@@ -406,7 +437,7 @@ settings_btn / sort_btn / clear_input
 
 两条实现约束：元素特征一次性预计算（原实现按 26 个类别各扫一遍全量元素，长列表页会重复生成数千字符串）；`dlg_dismiss` 只在确认是真弹窗（存在正向按钮且元素 ≤ 8）时才标定，避免把普通页的「取消」误判成关闭弹窗。
 
-### 提示词 — 59 个区块按任务裁切
+### 提示词 — 60 个区块按任务裁切
 
 [PromptCatalog](app/src/main/java/com/phoneagent/engine/prompt/PromptCatalog.kt) 是全项目提示词正文的唯一清单，每个区块带装配条件（`requires` / `excludes`），由 `PromptAssembler` 排序、拼接、整组一次性渲染占位符。
 

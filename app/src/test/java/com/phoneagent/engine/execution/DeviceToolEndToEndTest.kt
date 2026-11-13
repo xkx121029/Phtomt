@@ -5,6 +5,7 @@ import android.content.Context
 import com.phoneagent.device.clock.ClockRequest
 import com.phoneagent.device.clock.ClockRequests
 import com.phoneagent.device.ops.DeviceOpsChannel
+import com.phoneagent.device.ops.OpsResult
 import com.phoneagent.device.shell.ShizukuManager
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
@@ -226,6 +227,39 @@ class DeviceToolEndToEndTest {
         assertTrue("必须给出下一步：${out.single()}", out.single().contains("控制中心"))
     }
 
+    // ------------------------------------------------- 失败三态：已下发未回读 vs 根本没执行
+
+    @Test
+    fun `NFC 已执行但读不到状态_标记为已下发`() = runTest {
+        val r = Harness().runOps("device_control", "nfc", mapOf("enable" to "true"))
+
+        assertTrue("应是失败：$r", r is OpsResult.Fail)
+        assertTrue("命令确实下发到了系统，不能算'没执行'", (r as OpsResult.Fail).dispatched)
+    }
+
+    @Test
+    fun `没有注入通道_写设置失败标记为未执行`() = runTest {
+        val r = Harness(shellAvailable = false).runOps(
+            "settings_op", "set",
+            mapOf("namespace" to "system", "key" to "screen_brightness", "value" to "120"),
+        )
+
+        assertTrue("应是失败：$r", r is OpsResult.Fail)
+        assertFalse("通道没连上，命令根本没发出去", (r as OpsResult.Fail).dispatched)
+    }
+
+    @Test
+    fun `写设置没有回读_标记为已下发但未确认`() = runTest {
+        // FakeDevice 不认识 settings put/get：命令有回执（空串），但回读不到值
+        val r = Harness().runOps(
+            "settings_op", "set",
+            mapOf("namespace" to "system", "key" to "screen_brightness", "value" to "120"),
+        )
+
+        assertTrue("应是失败：$r", r is OpsResult.Fail)
+        assertTrue("命令已交给系统，只是读不到回执", (r as OpsResult.Fail).dispatched)
+    }
+
     // ------------------------------------------------------------------ 工具方法
 
     private fun intent(
@@ -379,6 +413,9 @@ class DeviceToolEndToEndTest {
 
         val messages = mutableListOf<String>()
 
+        /** 直接跑一条系统直连（跳过转译），用于断言失败三态这类执行层细节 */
+        suspend fun runOps(family: String, op: String?, args: Map<String, String>) = ops.run(family, op, args)
+
         suspend fun runTask(script: List<AgentIntent>): List<String> {
             for (decision in script) {
                 val result = when (val t = translator.translate(decision, ScreenSnapshot())) {
@@ -406,8 +443,8 @@ class DeviceToolEndToEndTest {
             ).message()
 
             ActionType.DEVICE_OPS -> when (val r = ops.run(action.endpoint.orEmpty(), action.op, action.args.orEmpty())) {
-                is DeviceOpsChannel.OpsResult.Ok -> r.text
-                is DeviceOpsChannel.OpsResult.Fail -> r.reason
+                is OpsResult.Ok -> r.text
+                is OpsResult.Fail -> r.reason
             }
 
             else -> "未覆盖的动作：${action.type}"

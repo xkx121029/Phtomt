@@ -24,8 +24,11 @@ class ProcessTransport : AgentTransport {
         listener?.onOpen()
     }
 
-    override fun send(obj: JSONObject) {
-        LocalAgent.process?.send(obj.toString())
+    override fun send(obj: JSONObject): Boolean {
+        val proc = LocalAgent.process ?: return false
+        // 写失败（管道已断 / 进程刚退出）必须回报给调用方：以前直接吞掉，
+        // 界面把 prompt 发进虚空后 busy 永远停在 true，只能靠用户点停止自救。
+        return proc.send(obj.toString())
     }
 
     override fun disconnect() {

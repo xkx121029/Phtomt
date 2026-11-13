@@ -77,7 +77,12 @@ export class HostBridge extends EventEmitter {
     this.#pending.delete(String(line.id));
     clearTimeout(entry.timer);
     if (line.type === 'error') {
-      const err = new Error(String(line.error ?? 'host error'));
+      // 宿主明确拒绝（凭据不匹配）时给一句能对症的话：以前宿主静默丢弃，
+      // 这里只能等满 30s 变成 "host did not answer"，排查方向完全是错的。
+      const text = line.code === 'HOST_UNAUTHORIZED'
+        ? 'host rejected the request (token mismatch); reopen the coding page and retry'
+        : String(line.error ?? 'host error');
+      const err = new Error(text);
       err.code = line.code;
       entry.reject(err);
     } else {

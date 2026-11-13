@@ -281,6 +281,16 @@ def bundle_abi(android_abi, keep_cache):
             tname = type(entry).__name__
             if tname in ("DynamicEntryLibrary", "DynamicSharedObject") and entry.name in rename:
                 entry.name = rename[entry.name]
+            elif tname in ("DynamicEntryRunPath", "DynamicEntryRpath"):
+                # 上游 termux 包把 RUNPATH 写死成 /data/data/com.termux/files/usr/lib，
+                # 这个路径在真机/模拟器上都不存在。改成 $ORIGIN：让加载器在本文件所在
+                # 目录（安装后的 nativeLibraryDir）里找兄弟库。
+                # 这样启动宿主时就不必再传 LD_LIBRARY_PATH——在 x86_64 模拟器上，arm64
+                # 应用跑在 NDK 翻译层，exec 会经过 x86_64 的 binfmt runner，而该变量会
+                # 被它继承，导致它拿 arm64 的 libz/libcrypto 去链接自己，报
+                # "CANNOT LINK EXECUTABLE ... EM_AARCH64 (183) instead of EM_X86_64 (62)"
+                # 后立刻退出。
+                entry.name = "$ORIGIN"
         for vr in binary.symbols_version_requirement:
             if vr.name in rename:
                 vr.name = rename[vr.name]

@@ -1,7 +1,5 @@
 package com.phoneagent.domain.model
 
-import android.provider.Settings
-
 /**
  * 软件页面直达索引库：常用软件可直达/稳定到达的页面清单。
  *
@@ -30,13 +28,13 @@ object AppPageIndex {
         App(
             name = "系统设置", packageName = "com.android.settings",
             pages = listOf(
-                Page(1, "Wi-Fi", Entry(intentAction = Settings.ACTION_WIFI_SETTINGS, packageName = "com.android.settings")),
-                Page(2, "蓝牙", Entry(intentAction = Settings.ACTION_BLUETOOTH_SETTINGS, packageName = "com.android.settings")),
-                Page(3, "显示", Entry(intentAction = Settings.ACTION_DISPLAY_SETTINGS, packageName = "com.android.settings")),
-                Page(4, "应用管理", Entry(intentAction = Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS, packageName = "com.android.settings")),
-                Page(5, "存储", Entry(intentAction = Settings.ACTION_INTERNAL_STORAGE_SETTINGS, packageName = "com.android.settings")),
-                Page(6, "声音", Entry(intentAction = Settings.ACTION_SOUND_SETTINGS, packageName = "com.android.settings")),
-                Page(7, "位置", Entry(intentAction = Settings.ACTION_LOCATION_SOURCE_SETTINGS, packageName = "com.android.settings")),
+                Page(1, "Wi-Fi", Entry(intentAction = "android.settings.WIFI_SETTINGS", packageName = "com.android.settings")),
+                Page(2, "蓝牙", Entry(intentAction = "android.settings.BLUETOOTH_SETTINGS", packageName = "com.android.settings")),
+                Page(3, "显示", Entry(intentAction = "android.settings.DISPLAY_SETTINGS", packageName = "com.android.settings")),
+                Page(4, "应用管理", Entry(intentAction = "android.settings.MANAGE_APPLICATIONS_SETTINGS", packageName = "com.android.settings")),
+                Page(5, "存储", Entry(intentAction = "android.settings.INTERNAL_STORAGE_SETTINGS", packageName = "com.android.settings")),
+                Page(6, "声音", Entry(intentAction = "android.settings.SOUND_SETTINGS", packageName = "com.android.settings")),
+                Page(7, "位置", Entry(intentAction = "android.settings.LOCATION_SOURCE_SETTINGS", packageName = "com.android.settings")),
             ),
         ),
         App(

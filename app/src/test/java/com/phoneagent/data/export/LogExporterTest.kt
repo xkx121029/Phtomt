@@ -3,7 +3,7 @@ package com.phoneagent.data.export
 import android.content.Context
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ConversationMessage
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepTrace
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

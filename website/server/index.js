@@ -9,6 +9,7 @@ import { updateRouter } from './routes/update.js'
 import { agentDocsRouter } from './routes/agentDocs.js'
 import { adminRouter } from './routes/admin.js'
 import { aiRouter, aiAdminRouter } from './routes/ai.js'
+import { feedbackRouter, feedbackAdminRouter } from './routes/feedback.js'
 import { openApiDocument } from './lib/openapi.js'
 import { renderHtml } from './lib/htmlShell.js'
 import { init as initReleaseFeed } from './lib/releaseFeed.js'
@@ -51,6 +52,8 @@ app.use('/api/ai', aiRouter)
 app.use('/api/download', downloadRouter)
 app.use('/api/update', updateRouter)
 app.use('/api/agent-docs', agentDocsRouter)
+app.use('/api/feedback', feedbackRouter)
+app.use('/api/admin/feedback', feedbackAdminRouter)
 app.use('/api/admin/ai', aiAdminRouter)
 app.use('/api/admin', adminRouter)
 

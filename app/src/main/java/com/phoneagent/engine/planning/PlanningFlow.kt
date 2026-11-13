@@ -100,6 +100,19 @@ internal class PlanningFlow(
         store.sessionContextCache = null
         ui.log(com.phoneagent.domain.model.AgentLog.Level.INFO, "开始规划任务：$task")
         scope.launch {
+            // 「动手前先出计划」关闭（默认）时跳过整个规划阶段，直接进执行。
+            // 这里只跳过「先出计划让人确认」：任务上下文注入、方法文档检索、权限检查、会话承接
+            // 都在执行链（AgentEngine.run）里照常进行，第一步决策所需的信息由执行链自己取。
+            val planFirst = runCatching { settings.settings.first().planBeforeAct }.getOrDefault(false)
+            if (!planFirst) {
+                store.planStream.value = ""
+                store.planPhase.value = PlanPhase.Idle
+                store.activePlan = null
+                ui.clearFloatingQuery()
+                ui.log(com.phoneagent.domain.model.AgentLog.Level.INFO, "未启用「先出计划」：跳过规划，直接执行任务")
+                launchTask(task, null)
+                return@launch
+            }
             // 模板命中（v2.2 6.5）：目标相似且健康 → 直接复用历史脚本，零云端规划调用
             val tmpl = runCatching { com.phoneagent.data.store.TaskStore.matchTemplate(appContext, task) }.getOrNull()
             if (tmpl != null && tmpl.plan.steps.isNotEmpty()) {

@@ -55,6 +55,7 @@ curl -s -X POST "$BASE/api/admin/login" \
 | GET | `/api/download/sources/:version` | 该版本可用的下载候选（Gitee 已验证 + GitHub 按规则拼） |
 | GET | `/api/update/check` | 客户端检查更新（频道 + 版本判定） |
 | GET | `/api/update/download/:version` | 客户端下载更新（302 到 Release 资产，与官网同一套择优规则） |
+| POST | `/api/feedback` | 客户端执行数据反馈（用户主动开启后上报，服务端按白名单重建并落盘） |
 
 ### 客户端自动更新
 
@@ -83,6 +84,24 @@ curl -s "$BASE/api/update/check?channel=beta&version=0.2.780&build=780"
 
 `/api/update/download/:version` 与 `/api/download/:version` 同源：按版本记录里的资产名去 Gitee 查附件（有则优先）、按仓库规则拼 GitHub 资产地址，命中第一个就 302（响应头 `X-Update-Source` 标明来源）。两边都拿不到时 302 到 Release 页面，而不是回落到本站文件——本站不再保存任何安装包。
 
+## 执行数据反馈
+
+App 里的「云端反馈」默认关闭。用户主动开启后，每次任务结束向 `/api/feedback` 上报一条脱敏记录；关闭时客户端不采集、不落盘、不联网。
+
+请求体只包含结构性指标，客户端与服务端都会做白名单裁剪：
+
+| 字段 | 说明 |
+| --- | --- |
+| `schema` / `event` | 协议版本与事件名（固定 `task_finished`） |
+| `installId` | 客户端随机生成的安装 UUID，不来自系统标识 |
+| `app` | version / build / android API 级别 |
+| `task` | 状态、总耗时、步数、成功步数、动作类型分布、每步 `{type, send, verify, ok, ms}` |
+| `metrics` | token 用量、请求次数、平均延迟、视觉与执行次数/耗时 |
+
+**不接收**：任务文本、用户输入内容、页面元素文字、坐标、截图、应用包名、设备型号、账号信息。`4xx` 明确拒绝，`5xx` 时客户端保留在本地队列下次重试。
+
+响应：`202 { "ok": true, "id": "<记录 ID>" }`，数据按月写入 `server/data/feedback/YYYY-MM.jsonl`。
+
 ## 管理端点
 
 全部需要 `Authorization: Bearer <token>`。
@@ -95,6 +114,8 @@ curl -s "$BASE/api/update/check?channel=beta&version=0.2.780&build=780"
 | GET | `/api/admin/session` | 校验当前令牌是否有效 |
 | GET | `/api/admin/overview` | 后台概览：计数 / 数据目录 / 最近操作 |
 | GET | `/api/admin/audit` | 操作留痕（最近 300 条） |
+| GET | `/api/admin/feedback` | 客户端执行数据反馈（最近两个月，默认 100 条）与统计 |
+| DELETE | `/api/admin/feedback` | 清除反馈记录；`?month=YYYY-MM` 指定月份，缺省清空最近 12 个月 |
 
 ### 版本与安装包
 

@@ -13,10 +13,12 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.IntentTranslator
+import com.phoneagent.engine.execution.SensitiveInput
 import com.phoneagent.engine.execution.VerifyResult
 import com.phoneagent.engine.execution.VerifyRules
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
@@ -40,7 +42,8 @@ internal class ExecutionUiHooks(
     val emitHintRequest: (String) -> Unit,
     val awaitUserHint: suspend () -> String,
     val pushThinking: (String?, String?) -> Unit,
-    val showDone: (String) -> Unit,
+    /** 收尾出口：摘要 / 终态 / 失败原因。终态由执行阶段显式给出，展示层不再从文案猜 */
+    val showDone: (String, TaskStatus, String) -> Unit,
     val setAgentRunning: (Boolean) -> Unit,
     val addConversation: (String, String) -> Unit,
 )
@@ -203,11 +206,16 @@ internal class ExecutionPhase(
         var verify = VerifyResult(false, "", "", "")
         var isStructuralError = false
         var verified = false
+        // 密码类输入：本步之后的对话留档、执行记录与回注一律用占位符，正文只用于这次执行
+        val sensitiveIntent = SensitiveInput.isPasswordInput(intent, session.semanticSnapshot)
         when (translation) {
             is IntentTranslator.TranslationResult.Command -> {
                 val act = translation.action
                 action = act
-                ui.addConversation(if (session.fromLocal) "local" else "assistant", intent.toString())
+                ui.addConversation(
+                    if (session.fromLocal) "local" else "assistant",
+                    (if (sensitiveIntent) SensitiveInput.redactIntent(intent) else intent).toString(),
+                )
                 ui.log(
                     AgentLog.Level.INFO,
                     "意图转译为动作：intent=${intent.intent} → action.type=${act.type} pkg=${act.packageName} " +
@@ -278,8 +286,9 @@ internal class ExecutionPhase(
                             ),
                         )
                         ui.setAgentRunning(false)
-                        // 放弃收尾：不学模板（learnTemplate）、不弹保存模板确认，收尾提示文案用「任务已放弃」
-                        ui.showDone("任务已放弃")
+                        // 放弃收尾：终态显式给 ABORTED，展示层不再靠「放弃」二字猜；
+                        // 原因单独带上，完成卡片能说清为什么停
+                        ui.showDone("任务已放弃", TaskStatus.ABORTED, "已放弃：$doneSummary")
                         // 任务记忆走失败口径，结论带「已放弃」前缀，会话承接时能看出是主动放弃
                         finish.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, "已放弃：$doneSummary")
                         return StepOutcome.Return
@@ -317,8 +326,28 @@ internal class ExecutionPhase(
                     return StepOutcome.Continue
                 }
                 // 系统直连（设备状态/设置/剪贴板/闹钟管理/副屏/记忆检索）：同样纯端侧代办，
-                // 不经过 GUI、不触发 shell 确认（命令由端侧拼装，AI 只选 op）
+                // 不经过 GUI、不触发 shell 确认（命令由端侧拼装，AI 只选 op）。
+                // 但不可逆子操作（file_write 覆盖文件 / app_manage 强停应用）必须先过确认门：
+                // 这条分支在下面的通用确认门之前 return，不在这里拦就等于确认门永远走不到。
                 if (act.type == ActionType.DEVICE_OPS) {
+                    if (act.needsUserConfirmation && !device.awaitActionConfirmation(act)) {
+                        val cancelReason = "用户取消了该操作"
+                        ui.log(AgentLog.Level.WARN, "用户取消系统直连的不可逆操作，已跳过执行：${act.endpoint}/${act.op}")
+                        messages.add(
+                            ChatMessageDto(
+                                role = "user",
+                                content = listOf(
+                                    ContentPart(
+                                        type = "text",
+                                        text = "⚠️ 用户拒绝执行该不可逆操作，请改用其他方案或询问用户，不要重复请求同一操作。",
+                                    ),
+                                ),
+                            ),
+                        )
+                        record.recordsIntoHistory(step, act, VerifyResult(false, cancelReason, "", ""))
+                        record.stepShotCapture(step, act, false)
+                        return StepOutcome.Continue
+                    }
                     device.handleDeviceOps(step, act, messages)
                     return StepOutcome.Continue
                 }
@@ -398,19 +427,26 @@ internal class ExecutionPhase(
                 // 点击类动作不再交给外层重跑：ClickRunner 内部已把"活节点直点 → 手势点击 → 快照坐标 →
                 // 滚动查找"逐级穷尽过一遍，外层再重跑只是把同一串动作重复执行（还可能造成重复副作用）
                 while (!verified &&
-                    VerifyRules.shouldRetry(act.type, verify.reason, times, coroutineContextIsActive())
+                    VerifyRules.shouldRetry(
+                        act.type, verify.reason, times, coroutineContextIsActive(),
+                        notDelivered = verify.notDelivered,
+                    )
                 ) {
                     times++
                     ui.log(AgentLog.Level.WARN, "动作未生效（第 $times 次重试）：${act.type}")
                     repeat(3) { kotlinx.coroutines.delay(300) }
                     val v2 = device.execute(act, device.reobserve())
+                    verify = v2
                     verified = v2.success
                 }
             }
             is IntentTranslator.TranslationResult.Failed -> {
                 val reason = translation.reason
                 ui.log(AgentLog.Level.WARN, "意图转译失败：$reason")
-                ui.addConversation("assistant", intent.toString())
+                ui.addConversation(
+                    "assistant",
+                    (if (intent.intent == IntentType.INPUT) SensitiveInput.redactIntent(intent) else intent).toString(),
+                )
                 ui.setState(
                     ui.state().copy(
                         phase = AgentState.Phase.ACTING,
@@ -433,7 +469,10 @@ internal class ExecutionPhase(
                 // 绝大多数情况下已被 fillMissingParam 补全成 Command/Failed；此处仅作 sealed 穷尽兜底，按失败处理
                 val reason = translation.reason
                 ui.log(AgentLog.Level.WARN, "意图缺参未补全：$reason")
-                ui.addConversation("assistant", intent.toString())
+                ui.addConversation(
+                    "assistant",
+                    (if (intent.intent == IntentType.INPUT) SensitiveInput.redactIntent(intent) else intent).toString(),
+                )
                 ui.setState(
                     ui.state().copy(
                         phase = AgentState.Phase.ACTING,
@@ -452,6 +491,12 @@ internal class ExecutionPhase(
                 isStructuralError = true
                 verified = false
             }
+        }
+
+        // 密码正文到此为止：后面的留档、状态回显与提示词回注全部使用脱敏副本。
+        // 判定同时看「意图目标是不是密码框」（翻译前就能确定）与「执行结果是否命中密码框」（重定位后才知道）。
+        if (sensitiveIntent || verify.sensitiveInput) {
+            action = SensitiveInput.redactAction(action)
         }
 
         counters.setConsecutiveFailures(if (verified) 0 else counters.consecutiveFailures() + 1)
@@ -655,6 +700,8 @@ internal class ExecutionPhase(
             }
         }
 
+        // 用户指导后的重新执行可能换了动作：落档前再按执行结果补一次脱敏，避免密码被引导路径带回轨迹
+        if (verify.sensitiveInput) action = SensitiveInput.redactAction(action)
         ui.log(AgentLog.Level.INFO, "执行动作：${action.type}（${if (verified) "已验证生效" else "待确认"}）")
         record.recordsIntoHistory(step, action, verify)
         // 页面记忆：动作是否真实生效（下一步换页时据此决定要不要记路径边）

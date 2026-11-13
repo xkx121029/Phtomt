@@ -139,6 +139,16 @@ internal class UserGate(
     suspend fun awaitActionConfirmation(action: AgentAction): Boolean {
         val summary = buildString {
             append(actionLabel(action.type))
+            // 系统直连的子操作必须点名：确认框只写「系统直连」时，用户根本看不出要覆盖哪个文件、
+            // 要强停哪个应用，这个确认等于没有信息量。
+            if (action.type == ActionType.DEVICE_OPS) {
+                listOfNotNull(action.endpoint, action.op)
+                    .filter { it.isNotBlank() }
+                    .joinToString("/")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { append("：$it") }
+                action.summary?.takeIf { it.isNotBlank() }?.let { append("（${it.take(40)}）") }
+            }
             action.target?.value?.takeIf { it.isNotBlank() }?.let { append("：$it") }
             action.text?.takeIf { it.isNotBlank() }?.let { append("（${it.take(30)}）") }
         }

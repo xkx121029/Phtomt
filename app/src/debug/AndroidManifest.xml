@@ -3,9 +3,11 @@
   debug 变体专有清单：只在这里注册日志传输的启动 Provider。
   release 变体不合并本文件，因此正式包里既没有这个 Provider，也没有 src/debug 下的任何代码。
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <application>
+    <application tools:replace="android:usesCleartextTraffic"
+        android:usesCleartextTraffic="true">
         <provider
             android:name=".debug.logtransfer.DebugLogBridgeInitializer"
             android:authorities="${applicationId}.debug.logtransfer"

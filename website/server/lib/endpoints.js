@@ -57,7 +57,12 @@ export const PUBLIC_ENDPOINTS = [
     path: '/api/update/check',
     desc: '客户端检查更新：?channel=stable|beta|dev|nightly&version=&build=，按频道矩阵判定是否升级并返回下载信息'
   },
-  { method: 'GET', path: '/api/update/download/:version', desc: '旧客户端兼容入口：同样 302 到 Release 资产' }
+  { method: 'GET', path: '/api/update/download/:version', desc: '旧客户端兼容入口：同样 302 到 Release 资产' },
+  {
+    method: 'POST',
+    path: '/api/feedback',
+    desc: '客户端执行数据反馈（用户主动开启后上报）：只接收动作类型 / 成败 / 耗时 / token 用量等脱敏字段，不接收任务文本、输入内容、截图、包名与设备标识；返回 202 与记录 id'
+  }
 ]
 
 /** 管理端点：需要 Authorization: Bearer <token> */
@@ -101,5 +106,7 @@ export const ADMIN_ENDPOINTS = [
   { method: 'POST', path: '/api/admin/ai/test', desc: '用当前表单值测一次连通性，返回延迟与模型回复' },
   { method: 'POST', path: '/api/admin/ai/preview', desc: '预览一次提问实际注入给模型的项目资料与命中的来源' },
   { method: 'GET', path: '/api/admin/ai/logs', desc: '问答留痕：访客提问与回答（IP 已打码），支持 ?q=&page=&size=' },
-  { method: 'DELETE', path: '/api/admin/ai/logs', desc: '清空问答留痕' }
+  { method: 'DELETE', path: '/api/admin/ai/logs', desc: '清空问答留痕' },
+  { method: 'GET', path: '/api/admin/feedback', desc: '客户端反馈记录（最近两个月，默认 100 条）与统计：?limit=' },
+  { method: 'DELETE', path: '/api/admin/feedback', desc: '清除反馈记录，可指定 ?month=YYYY-MM，缺省清空最近 12 个月' }
 ]

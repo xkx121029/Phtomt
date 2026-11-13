@@ -87,16 +87,50 @@ class AgentClient(
     /** 界面主动发起的 RPC 的回调表，按 id 索引；断线时整体以错误回包落空（不能静默丢弃，否则 UI 卡在加载态）。 */
     private val pending = java.util.concurrent.ConcurrentHashMap<String, (JSONObject) -> Unit>()
 
+    /** 每个挂起 RPC 的超时任务：回包/断线/超时三选一，先到先得。 */
+    private val pendingTimeouts = java.util.concurrent.ConcurrentHashMap<String, Runnable>()
+
     /**
      * 断线时把所有挂起的界面 RPC 以错误回包收尾。回调内部自带主线程投递，
      * 从读线程/连接线程直接调用也安全——调用方 onResult 能立刻收到失败而不是永远挂起。
      */
     private fun failPending(reason: String) {
         for (id in pending.keys.toList()) {
+            pendingTimeouts.remove(id)?.let { main.removeCallbacks(it) }
             pending.remove(id)?.let { cb ->
                 runCatching { cb(JSONObject().put("id", id).put("type", "error").put("error", reason)) }
             }
         }
+    }
+
+    /**
+     * 登记一个挂起 RPC，并挂上超时。
+     *
+     * 以前只靠断线回调清理：宿主活着但某个方法迟迟不回（比如阻塞在 env 任务里），
+     * 界面就会永久停在加载态，用户没有任何可操作入口。超时后按错误回包处理，
+     * 语义与「对端明确失败」一致。
+     */
+    private fun registerPending(
+        id: String,
+        timeoutMs: Long,
+        timeoutReason: String,
+        cb: (JSONObject) -> Unit,
+    ) {
+        pending[id] = { reply ->
+            pendingTimeouts.remove(id)?.let { main.removeCallbacks(it) }
+            cb(reply)
+        }
+        if (timeoutMs <= 0) return
+        val task = Runnable {
+            pendingTimeouts.remove(id)
+            pending.remove(id)?.let { c ->
+                runCatching {
+                    c(JSONObject().put("id", id).put("type", "error").put("error", timeoutReason))
+                }
+            }
+        }
+        pendingTimeouts[id] = task
+        main.postDelayed(task, timeoutMs)
     }
 
     /** 回包统一投到主线程，调用方可以直接改 Compose 状态。 */
@@ -119,17 +153,23 @@ class AgentClient(
 
         override fun onClosed(reason: String) {
             update { it.copy(conn = ConnState.DISCONNECTED, busy = false) }
-            failPending("连接已断开：$reason")
+            failPending("连接已断开：${closedReason(reason)}")
             // 连接断开要自愈（host 进程被杀很常见）。用户主动断开时
             // lastConnect 已被清空，这里自然不会重连。
             scheduleReconnect()
         }
 
         override fun onFailure(message: String) {
-            update { it.copy(conn = ConnState.DISCONNECTED, busy = false, error = message) }
-            failPending(message)
+            update { it.copy(conn = ConnState.DISCONNECTED, busy = false, error = friendlyError(message)) }
+            failPending(friendlyError(message))
             scheduleReconnect()
         }
+    }
+
+    /** 断开原因本地化：`agent process exited` 这类内部原因不该直接出现在界面上。 */
+    private fun closedReason(reason: String): String = when (reason) {
+        "agent process exited" -> "编码 Agent 进程已退出"
+        else -> reason.ifBlank { "连接已断开" }
     }
 
     /**
@@ -164,17 +204,22 @@ class AgentClient(
     fun call(method: String, params: JSONObject, onResult: (Any?, String?) -> Unit) {
         val t = transport
         if (t == null) {
-            onResult(null, "未连接 agent")
+            onResult(null, "编码 Agent 未连接")
             return
         }
         val id = nextId()
-        pending[id] = { reply ->
+        registerPending(id, RPC_TIMEOUT_MS, "编码 Agent 未响应（$method 超时）") { reply ->
             val isError = reply.optString("type") == "error"
             val raw = reply.opt("result")?.takeIf { it !== JSONObject.NULL }
-            val error = if (isError) reply.optString("error") else null
+            val error = if (isError) friendlyError(reply.optString("error")) else null
             main.post { onResult(if (isError) null else raw, error) }
         }
-        t.send(requestWith(id, method, params))
+        if (!t.send(requestWith(id, method, params))) {
+            // 写失败：立刻以错误收尾，别等超时
+            pendingTimeouts.remove(id)?.let { main.removeCallbacks(it) }
+            pending.remove(id)
+            onResult(null, "编码 Agent 连接已断开")
+        }
     }
 
     // ---------- connections ----------
@@ -209,14 +254,45 @@ class AgentClient(
      */
     private fun scheduleReconnect() {
         val again = lastConnect ?: return
-        if (reconnectAttempts >= 3) return
+        if (reconnectAttempts >= MAX_RECONNECT) {
+            // 次数耗尽必须给出终态：以前直接 return，界面还停在「正在重连…」，
+            // 实际上永远不会再连——用户看到的是一个持续撒谎的状态，也没有重试入口。
+            update {
+                it.copy(
+                    conn = ConnState.DISCONNECTED,
+                    busy = false,
+                    error = "编码 Agent 已连续 $MAX_RECONNECT 次重连失败，请检查运行时与模型配置后重试",
+                )
+            }
+            return
+        }
         reconnectAttempts += 1
         val attempt = reconnectAttempts
+        // 把「第几次重连」写进错误行：以前只有一句静态的「正在重连…」，
+        // 与真实进度脱节，用户分不清是在重试还是已经放弃。
+        update {
+            it.copy(
+                conn = ConnState.DISCONNECTED,
+                error = "编码宿主已退出，正在重连（第 $attempt/$MAX_RECONNECT 次）…",
+            )
+        }
         main.postDelayed({
             if (_state.value.conn != ConnState.CONNECTED) {
                 again(true)
             }
         }, 1200L * attempt)
+    }
+
+    /**
+     * 手动重试：重置重连预算后按上次的连接方式重连。
+     * 自动重连耗尽后界面必须留一条自助路径，否则只能杀进程重来。
+     */
+    fun retryConnect() {
+        if (_state.value.conn == ConnState.CONNECTED) return
+        val again = lastConnect ?: return update { it.copy(error = "请先进入编码页发起一次连接") }
+        reconnectAttempts = 0
+        update { it.copy(conn = ConnState.CONNECTING, error = null) }
+        again(true)
     }
 
     fun disconnect() {
@@ -249,7 +325,10 @@ class AgentClient(
             return
         }
         // 界面自己发起的调用先认领：它的 id 前缀是 c，agent 的请求是 h，两向不串。
-        pending.remove(obj.optString("id"))?.let { cb ->
+        val replyId = obj.optString("id")
+        pending.remove(replyId)?.let { cb ->
+            // 回包到了，撤掉这条 RPC 的超时任务，避免超时后再补一个错误回包
+            pendingTimeouts.remove(replyId)?.let { main.removeCallbacks(it) }
             cb(obj)
             return
         }
@@ -259,7 +338,13 @@ class AgentClient(
                 // 界面上可能有两条连接（引擎 + 编码页），同一个请求只处理一次，
                 // 否则两边都会执行并各回一份包。
                 if (claimReverseRequest(obj.optString("id"))) {
-                    hostBridge.handle(obj) { reply -> transport?.send(reply) }
+                    hostBridge.handle(obj) { reply ->
+                        // 回包发不出去（管道已断）只能记日志：对端会自行超时降级，
+                        // 这里没有可补救的路径。
+                        if (transport?.send(reply) != true) {
+                            android.util.Log.w("AgentClient", "反向回包发送失败：${reply.optString("id")}")
+                        }
+                    }
                 }
             }
             "event" -> {
@@ -276,12 +361,70 @@ class AgentClient(
                     ?.let { sessionId = it }
                 result.optString("runId").takeIf { it.isNotEmpty() }?.let { lastRunId = it }
             }
-            "error" -> update { it.copy(error = obj.optString("error")) }
+            "error" -> update { it.copy(error = friendlyError(obj.optString("error"))) }
             else -> Unit
         }
     }
 
+    /**
+     * 把宿主/网关的英文错误翻成中文可读文案。
+     *
+     * provider 的报错（`HTTP 500 from …` / `network error talking to …`）是最常见的
+     * 失败场景，以前原样透传到界面。这里只做**前缀归类 + 保留原始细节**：
+     * 认不出的原样返回，宁可显示英文也不能把有用的现场信息吞掉。
+     */
+    private fun friendlyError(raw: String): String {
+        val msg = raw.trim()
+        // 已经是中文（本地生成的文案）或空串就不再处理
+        if (msg.isEmpty() || msg.any { it.code in CJK_RANGE }) return msg
+        val detail = msg.substringAfter(": ", "").trim().ifEmpty { msg }
+        val http = HTTP_CODE.matchEntire(msg)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return when {
+            http == null -> classifyNonHttp(msg, detail)
+            http == HTTP_UNAUTHORIZED || http == HTTP_FORBIDDEN ->
+                "模型鉴权失败（$msg）：请检查 API Key 是否有该模型的权限"
+            http == HTTP_NOT_FOUND -> "模型接口不存在（$msg）：请检查 Base URL 与模型名"
+            http == HTTP_TOO_MANY -> "模型请求被限流（$msg）：稍后重试或更换模型"
+            http >= HTTP_SERVER_ERROR -> "模型服务端错误（$msg）：网关或模型暂时不可用"
+            else -> "模型请求失败（$msg）"
+        }
+    }
+
+    /** 非 HTTP 类错误的前缀归类（friendlyError 的第二个分支，拆开只为压住圈复杂度） */
+    private fun classifyNonHttp(msg: String, detail: String): String = when {
+        msg.startsWith("network error talking to") -> "无法连接模型服务（$detail）：请检查网络与 Base URL"
+        msg.startsWith("provider stream error") -> "模型流式返回错误（$detail）"
+        msg == "unauthorized" -> "宿主拒绝了本次请求（凭据不匹配），请重开编码页重试"
+        msg.startsWith("host rejected the request") -> "宿主拒绝了本次请求（凭据不匹配），请重开编码页重试"
+        msg == "prompt requires text" -> "空消息不会发送，请输入内容"
+        msg.startsWith("unknown session") -> "会话已失效，请新建会话后重试"
+        msg.startsWith("unknown method") -> "宿主不支持该操作（$msg），请更新到最新版本"
+        else -> msg
+    }
+
     companion object {
+        /** CJK 统一表意文字区段：用来判断一条错误是不是已经本地化过 */
+        private val CJK_RANGE = 0x4E00..0x9FFF
+
+        /** `HTTP 500 from <url>` 的头部匹配：只取状态码，具体 URL 留在原文里 */
+        private val HTTP_CODE = Regex("^HTTP (\\d{3})\\b.*")
+
+        // HTTP 状态码分类（provider 报错归类用）
+        private const val HTTP_UNAUTHORIZED = 401
+        private const val HTTP_FORBIDDEN = 403
+        private const val HTTP_NOT_FOUND = 404
+        private const val HTTP_TOO_MANY = 429
+        private const val HTTP_SERVER_ERROR = 500
+
+        /** 自动重连的连续失败上限：超过后转为终态错误，由用户手动重试 */
+        private const val MAX_RECONNECT = 3
+
+        /** 界面 RPC 的默认等待上限：宿主活着但不回包的场景必须有出口 */
+        private const val RPC_TIMEOUT_MS = 20_000L
+
+        /** 取消请求的等待上限：短于普通 RPC——用户等的是「停」，不是结果 */
+        private const val CANCEL_TIMEOUT_MS = 8_000L
+
         /** 已处理过的反向请求 id：两条连接共享，保证一次请求只执行一次。 */
         private val handledReverse = java.util.Collections.newSetFromMap(
             java.util.concurrent.ConcurrentHashMap<String, Boolean>(),
@@ -355,7 +498,7 @@ class AgentClient(
 
     // ---------- actions ----------
     fun sendPrompt(text: String) {
-        val t = transport ?: return update { it.copy(error = "not connected") }
+        val t = transport ?: return update { it.copy(error = "编码 Agent 未连接") }
         // 新一轮必须从新的 assistant 气泡开始：上一轮若是报错/断流收场，
         // assistantKey 还停在旧气泡上，继续拼会把新回答接在旧回答后面。
         assistantKey = null
@@ -375,10 +518,12 @@ class AgentClient(
         // provider 抛网络错时 host 不会再补 done 事件（agent.prompt 直接抛出，rpc 只回错误包），
         // 以前没认领这个回包 → busy 永远停在 true：界面卡在「编码中…」、停止键发了 cancel
         // 也只会拿到 no active run，新消息也发不出去。这里必须自己把 busy 放下。
+        // 一轮 run 的时长不可预估（工具循环可能跑很久），所以只登记回包、不挂超时；
+        // 断线由 failPending 兜底，写失败在下面立刻收尾。
         val id = nextId()
-        pending[id] = { reply ->
+        registerPending(id, 0, "") { reply ->
             val isError = reply.optString("type") == "error"
-            val err = if (isError) reply.optString("error").ifEmpty { "编码请求失败" } else null
+            val err = if (isError) friendlyError(reply.optString("error").ifEmpty { "编码请求失败" }) else null
             // 回包里的 sessionId 仍要认领：pending 先于 type 分支消费回包，
             // 不在这里处理，未指定会话的连接就再也拿不到 host 分配的 id。
             reply.optJSONObject("result")?.let { result ->
@@ -411,11 +556,30 @@ class AgentClient(
             }
         }
         // 带上 sessionId 才有对话连续性；为空时 host 会新建一个并在 response 里回传。
-        t.send(requestWith(id, "prompt", JSONObject().put("text", text).put("sessionId", sessionId ?: "")))
+        val sent = t.send(
+            requestWith(id, "prompt", JSONObject().put("text", text).put("sessionId", sessionId ?: "")),
+        )
+        if (!sent) {
+            // 管道已断：这条 prompt 没有送达宿主，必须自己退出一轮的状态，
+            // 否则界面停在「编码中…」，用户只能杀进程。
+            pending.remove(id)
+            update {
+                it.copy(
+                    busy = false,
+                    error = "编码 Agent 连接已断开，请重新发送",
+                    phase = "",
+                    runStartedAt = null,
+                )
+            }
+        }
     }
 
     fun respondApproval(callId: String, approved: Boolean) {
-        transport?.send(request("approve", JSONObject().put("callId", callId).put("approved", approved)))
+        if (transport?.send(request("approve", JSONObject().put("callId", callId).put("approved", approved))) != true) {
+            // 没送出去就不能把卡片置为已决议，否则用户以为批准生效、实际工具永远不会跑
+            update { it.copy(error = "审批回执发送失败：编码 Agent 连接已断开") }
+            return
+        }
         update { s ->
             val idx = s.messages.indexOfFirst { it.approvalCallId == callId }
             val msgs = if (idx >= 0) s.messages.toMutableList().also { it[idx] = it[idx].copy(approvalResolved = approved) } else s.messages
@@ -436,11 +600,11 @@ class AgentClient(
     }
 
     fun cancel() {
-        val t = transport ?: return update { it.copy(error = "not connected") }
+        val t = transport ?: return update { it.copy(error = "编码 Agent 未连接") }
         // host 按 sessionId 查 abortController；不带 sessionId 的 cancel 会被当成空操作，
         // 用户以为停了，模型其实还在跑、还在烧 token。
         val id = nextId()
-        pending[id] = { reply ->
+        registerPending(id, CANCEL_TIMEOUT_MS, "取消请求超时") { reply ->
             // cancelled=false 说明 host 侧这一轮已经结束（比如请求早就失败了），
             // 没有任何活动 run 可停。此时界面必须自己退出「编码中」，否则停止键
             // 点了没反应、输入框也一直锁着；cancelled=true 则等 host 的 cancelled
@@ -448,17 +612,29 @@ class AgentClient(
             val cancelled = reply.optJSONObject("result")?.optBoolean("cancelled") ?: false
             if (!cancelled) main.post { update { s -> s.copy(busy = false) } }
         }
-        t.send(requestWith(id, "cancel", JSONObject().put("sessionId", sessionId ?: "")))
+        if (!t.send(requestWith(id, "cancel", JSONObject().put("sessionId", sessionId ?: "")))) {
+            // 连取消都发不出去，只能本地收尾，否则停止键彻底失效
+            pendingTimeouts.remove(id)?.let { main.removeCallbacks(it) }
+            pending.remove(id)
+            update { it.copy(busy = false, error = "停止请求未能送达：编码 Agent 连接已断开") }
+        }
     }
 
     fun undoLastRun() {
-        val run = lastRunId ?: return update { it.copy(error = "nothing to undo yet") }
-        transport?.send(request("undo", JSONObject().put("sessionId", sessionId ?: "").put("runId", run)))
+        val run = lastRunId ?: return update { it.copy(error = "还没有可撤销的一轮改动") }
+        val req = request("undo", JSONObject().put("sessionId", sessionId ?: "").put("runId", run))
+        if (transport?.send(req) != true) {
+            return update { it.copy(error = "撤销请求未能送达：编码 Agent 连接已断开") }
+        }
         update { it.copy(error = null) }
     }
 
     fun newSession() {
-        transport?.send(request("new_session", JSONObject()))
+        // 新会话请求没送达时不能清空本地列表：那会让用户以为换了一个会话，
+        // 实际宿主那边还留着旧上下文，下一次发消息又会被接回旧对话。
+        if (transport?.send(request("new_session", JSONObject())) != true) {
+            return update { it.copy(error = "新建会话失败：编码 Agent 连接已断开") }
+        }
         assistantKey = null
         // 固定会话（引擎）不能置空——置空后事件就没有归属可匹配了；
         // 改为换一个全新 id，语义仍是"清掉上下文重新开始"

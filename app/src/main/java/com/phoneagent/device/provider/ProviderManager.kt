@@ -168,6 +168,13 @@ object ProviderManager {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        // 别让「打开方式」弹出来：设备上常装有同样声明能打开 APK 的应用（文件管理器、浏览器），
+        // 实测模拟器上就会弹「打开方式：Happy Agent / 悦览 / 应用安装器」，选错等于白跑一趟。
+        // 能解析到系统安装器就锁定它，解析不到才交回系统自选。
+        val installerPkg = context.packageManager.queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName }
+            .firstOrNull { pkg -> pkg.contains("packageinstaller", ignoreCase = true) }
+        if (installerPkg != null) intent.setPackage(installerPkg)
         context.startActivity(intent)
         InstallLaunch.Started
     }.getOrElse { e ->

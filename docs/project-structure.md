@@ -75,17 +75,17 @@ happy_phone agent/
 
 ## 二、`app/` 内部结构
 
-`app/src/main/java/com/phoneagent/`（约 325 个 Kotlin 文件）：
+`app/src/main/java/com/phoneagent/`（335 个 Kotlin 文件、87,219 行；单测另有 115 个文件 / 1189 个 `@Test`）：
 
 | 包 | 职责 | 典型内容 |
 | --- | --- | --- |
 | `coding/` | 设备内编码 Agent（Node host 进程、运行时引导、技能） | `AgentProcess`、`RuntimeBootstrap`、`HostBridgeServer` |
 | `core/` | 横切能力 | `ai/` 模型客户端与结构化输出、`security/`、`log/`、`notify/`、`perf/`、`text/`、`window/` |
 | `data/` | 持久化 | `prefs/`（AppSettings）、`store/`、`export/` |
-| `device/` | 设备能力 | `a11y/` 无障碍快照、`provider/` 通道管理、`perception/`、`screen/`、`shell/`、`vision/`、`clock/`、`ops/` |
+| `device/` | 设备能力 | `a11y/` 无障碍快照、`provider/` 通道管理、`capability/` 能力探测、`perception/`、`screen/`、`shell/`、`vision/`、`clock/`、`ops/` |
 | `domain/` | 纯模型与规则 | `model/`（AgentAction、CapabilitySpec 等）、`rules/` |
-| `engine/` | ReAct 主循环与执行 | `loop/`、`planning/`、`decision/`、`execution/`、`prompt/`、`memory/`、`context/`、`skill/`、`runtime/` |
-| `feature/` | 面向功能的能力模块 | `assistant/`、`browser/`、`mcp/`、`skill/`、`task/`、`voice/`、`document/`、`notify/`、`update/`、`adskip/`、`edge/`、`entry/`、`test/` |
+| `engine/` | ReAct 主循环与执行 | `loop/`、`planning/`、`decision/`、`execution/`、`prompt/`、`memory/`、`context/`、`docs/`、`perf/`、`skill/`、`runtime/` |
+| `feature/` | 面向功能的能力模块 | `assistant/`、`browser/`、`mcp/`、`skill/`、`task/`、`voice/`、`agentdoc/`、`document/`、`notify/`、`update/`、`adskip/`、`edge/`、`entry/`、`test/` |
 | `overlay/` | 悬浮窗 / 底部胶囊 / 结果卡 | `FloatingWindowService` 等 |
 | `ui/` | Compose 界面 | `home/`、`agent/`、`chat/`、`coding/`、`settings/`、`workbench/`、`theme/`、`onboarding/`、`browser/`、`memory/`、`skill/`、`voice/`、`debug/`、`icons/`、`components/` |
 | `di/` | Koin 依赖注入 | `AppModule` |

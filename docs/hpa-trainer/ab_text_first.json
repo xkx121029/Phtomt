@@ -1,0 +1,81 @@
+{
+ "run_at": "2026-11-07",
+ "images": {
+  "vision": "agnes-3.0-flash（多模态，看截图）",
+  "text": "spark-x2.6（纯文本，看元素树）"
+ },
+ "setup": {
+  "tasks": [
+   "account.Railway12306ChangePassword",
+   "alipay.AnalyzeSpending",
+   "bilibili.CoinVideoTask"
+  ],
+  "trials": 1,
+  "episode_timeout_s": 900,
+  "mode_policy": "候选任务全部为 L2/L3，每个任务两种模式各跑一集；文本模式下元素数 < 3 时该步退回截图"
+ },
+ "raw": {
+  "vision": [
+   {"task_id": "account.Railway12306ChangePassword", "success": false, "steps": 3, "runtime_s": 17.2, "tokens": 9198, "stop_reason": "REPETITIVE_LOOP"},
+   {"task_id": "alipay.AnalyzeSpending", "success": false, "steps": 10, "runtime_s": 42.3, "tokens": 30862, "stop_reason": "REPETITIVE_LOOP"},
+   {"task_id": "bilibili.CoinVideoTask", "success": false, "steps": 21, "runtime_s": 105.2, "tokens": 59807, "stop_reason": "ActionType.COMPLETE"}
+  ],
+  "text": [
+   {"task_id": "account.Railway12306ChangePassword", "success": false, "steps": 0, "text_steps": 16, "runtime_s": 900.0, "tokens": 58515, "stop_reason": "EpisodeTimeout", "elements_avg": 3.2, "elements_zero": 14},
+   {"task_id": "alipay.AnalyzeSpending", "success": false, "steps": 9, "text_steps": 9, "runtime_s": 644.6, "tokens": 34723, "stop_reason": "REPETITIVE_LOOP", "elements_avg": 0.0, "elements_zero": 0},
+   {"task_id": "bilibili.CoinVideoTask", "success": false, "steps": 0, "text_steps": 5, "runtime_s": 900.0, "tokens": 26372, "stop_reason": "EpisodeTimeout", "elements_avg": 16.8, "elements_zero": 3}
+  ]
+ },
+ "derived": {
+  "vision": {
+   "episodes": 3, "success": 0, "decisions": 34, "total_tokens": 99867,
+   "tokens_per_decision": 2937, "seconds_per_decision": 4.9, "upgrades": 0
+  },
+  "text": {
+   "episodes": 3, "success": 0, "decisions": 30, "total_tokens": 119610,
+   "tokens_per_decision": 3987, "seconds_per_decision": 81.4, "upgrades": 0
+  },
+  "delta": {
+   "tokens_per_decision": "+36%（文本更贵，不是更便宜）",
+   "seconds_per_decision": "×16.6（文本慢一个数量级）",
+   "success_rate": "0/3 vs 0/3（没有质量增益证据）",
+   "timeouts": "文本 2/3 集在 900s 内连一步都没完成（页面卡死），截图模式 3/3 都跑完"
+  }
+ },
+ "observation_audit": {
+  "claim_reviewed": "30 次文本决策里 17 步元素列表为空（57%）",
+  "verdict": "测量口径错误，不是采集失败",
+  "root_cause": "_evict_old_records(keep_recent=2) 会把较早记录的 observation 置为 None；对照表用 agent._history 统计元素数，被裁剪的记录一律算成 0，于是把「历史被裁剪」误读成「采集到空树」。",
+  "evidence": {
+   "code": "bench_env/agent/base.py#L218-L224",
+   "probe_stats": {"calls": 17, "ok": 17, "empty": 0, "sparse": 0, "timeout": 0, "js_error": 0},
+   "per_episode_obs_valid": [
+    {"task_id": "account.Railway12306ChangePassword", "obs_valid_steps": 16, "obs_steps": 16},
+    {"task_id": "alipay.AnalyzeSpending", "obs_valid_steps": 9, "obs_steps": 9}
+   ],
+   "capture_cost_ms": 22.7,
+   "elements_per_page": 26
+  },
+  "instrumentation_added": [
+   "env.element_probe_stats：calls/ok/empty/sparse/timeout/js_error，跨浏览器重建累计到 /data/element_probe/stats.json",
+   "空树抽样落盘 /data/element_probe/<ts>_<reason>_<n>.json(+jpg)：route、readyState、bodyChildren、docEls、iframes、elapsed，每个原因最多 12 份",
+   "同源 iframe / shadowRoot 兜底扫描（坐标带 iframe 偏移，避免「应用在 iframe 里」被误判为空页面）",
+   "agent.obs_steps / obs_valid_steps：观测有效率以决策步为准，不再依赖被裁剪的 _history",
+   "GET /api/element_probe、/api/health.element_probe"
+  ]
+ },
+ "conclusions": [
+  "1) 默认路由不改：agent 决策继续用截图 + 多模态。文本优先在本项目里既慢一个数量级、每步 token 反而多 36%，且当前样本下没有成功率增益。",
+  "2) 每步 token 低的前提不成立：agnes 单步 prompt ≈2.7k token 已包含降采样后的截图；元素树 prompt ≈2.6k + spark 的 900 token 推理输出，所以文本更贵。",
+  "3) 「57% 空树」已归因为测量口径错误（见 observation_audit）：采集本身 17/17 成功、26 个元素、22.7ms，观测有效率 16/16 与 9/9。文本模式的真实短板是模型速度（≈60s/步）和重复点击后页面卡死（2/3 集 900s 超时），不是看不见界面。",
+  "4) spark 的正确用法是低频高价值：进化多候选 + 评审、失败复盘、任务文档、A/B 多 judge。这些调用每集只有个位数次，token 单价高但总量可控。",
+  "5) 要烧到 10 亿/月，瓶颈不是路由而是 episode 吞吐：按截图模式 ≈3k token/步、10–20 步/集 ≈30–60k token/集，1 亿 token ≈ 2000–3000 集，10 亿需要 2–3 万集/月（约 1 集/分钟，全天不停）。单环境当前只能 1 集/1–3 分钟，需要并行环境或提高单集步数预算。"
+ ],
+ "next": [
+  "保持 agent 路由为 screenshot-first，不切文本默认。",
+  "spark 侧继续用：evolve_candidates=3 + 评审、postmortem_count=3、taskdoc、多 judge 投票。",
+  "记账已改为单源：token_usage 每次 record 都在「文件锁 + 读盘 + 改 + 写盘」同一临界区完成，snapshot 按 mtime 重读；token_quota 判断为全局累计。并行前还缺：两个实例必须挂同一个 /data 卷。",
+  "吞吐侧：评估多环境并行（同一 NAS 上再起一个 trainer 或 batch_size>1）以逼近月度目标；已设 token_quota=1e9 / soft=900M 作为上限保护。",
+  "文本模式的两个真实短板待处理：spark 单步 60s+ 的速度，以及重复点击后页面卡死（900s 超时）。"
+ ]
+}

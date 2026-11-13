@@ -70,6 +70,129 @@ val checkDetektBaseline by tasks.registering {
 
 tasks.named("check") { dependsOn(checkDetektBaseline) }
 
+// ---------------------------------------------------------------------------
+// detekt 基线的**分类**计数。
+//
+// 只记总数（1543）有个盲区：清掉 100 条超长行和修掉 1 个巨型类，在总数上看起来一样。
+// 实测基线里 MaxLineLength(482) + MagicNumber(433) 占了 59%，而真正反映结构的
+// LargeClass / CyclomaticComplexMethod / LongMethod 合计不到 12%。所以额外记一份分类表，
+// 让"基线降了"能看出是清了噪音还是清了结构问题。
+//
+// 校验规则：分类合计必须等于 baseline-count.txt 的总数，否则说明有人手改了基线却没同步分类表。
+// ---------------------------------------------------------------------------
+val detektBaselineBreakdownFile = rootProject.file("config/detekt/baseline-breakdown.txt")
+
+fun detektRuleOf(idLine: String): String {
+    // 基线条目形如 <ID>MaxLineLength:SomeFile.kt$...</ID>，取冒号前的规则名
+    val raw = idLine.trim().removePrefix("<ID>").substringBefore("</ID>")
+    return raw.substringBefore(':').trim()
+}
+
+val checkDetektBaselineBreakdown by tasks.registering {
+    group = "verification"
+    description = "校验 detekt 基线的分类计数与总数一致（防止只改总数不更新分类）"
+    doLast {
+        val lines = detektBaselineFile.takeIf { it.exists() }?.readLines().orEmpty()
+        val byRule = lines.filter { it.trimStart().startsWith("<ID>") }
+            .groupingBy { detektRuleOf(it) }
+            .eachCount()
+            .toList()
+            .sortedByDescending { it.second }
+        val total = byRule.sumOf { it.second }
+        val rendered = buildString {
+            appendLine("# detekt 基线的规则分布（自动生成，check 会校验合计 = baseline-count.txt）")
+            appendLine("# 规则名                                        条数")
+            byRule.forEach { (rule, count) -> appendLine("%-44s %d".format(rule, count)) }
+            appendLine("# 合计 $total")
+        }
+        val recorded = detektBaselineBreakdownFile.takeIf { it.exists() }?.readText()
+        if (recorded == null) {
+            detektBaselineBreakdownFile.writeText(rendered)
+            logger.lifecycle("已生成 ${detektBaselineBreakdownFile.name}（合计 $total 条）")
+        } else {
+            val recordedTotal = Regex("""#\s*合计\s*(\d+)""").find(recorded)?.groupValues?.get(1)?.toIntOrNull()
+            val countTotal = countDetektBaselineEntries(detektBaselineFile)
+            if (recordedTotal != null && recordedTotal != countTotal) {
+                throw GradleException(
+                    "detekt 分类表记录的合计（$recordedTotal）与基线条目数（$countTotal）不一致：" +
+                        "请在清理基线后重新生成 ${detektBaselineBreakdownFile.name}（删掉该文件再跑一次 check）。",
+                )
+            }
+        }
+    }
+}
+
+tasks.named("check") { dependsOn(checkDetektBaselineBreakdown) }
+
+// ---------------------------------------------------------------------------
+// 覆盖率闸门（只对**纯逻辑包**生效）。
+//
+// 不对全量设阈值：本工程主体是无障碍 / Shizuku / 悬浮窗这类只能在真机上跑的逻辑，
+// 全局阈值只会逼人写无意义的测试。但下面这几个包是无副作用的纯逻辑（规则、转译、
+// 文本转换、新拆出的设备能力工具），完全可以在 JVM 覆盖住，设阈值是有意义的。
+//
+// 阈值按"不低于当前实测值"起步，随补测逐步抬高，避免一上来就红。
+// ---------------------------------------------------------------------------
+// 阈值取「当前实测值」为基线，只用来防**回落**（覆盖率掉了就失败），
+// 不是"应该达到"的目标：domain/rules 实测 85.6%、core/text 87.7%、
+// engine/execution 45.6%、device/ops 17.1%（后者多为 shell 命令拼装，JVM 测不到）。
+// 补测后请一并抬高这里的数字。
+val coverageRules = mapOf(
+    "com/phoneagent/domain/rules" to 0.85,
+    "com/phoneagent/core/text" to 0.87,
+    "com/phoneagent/engine/execution" to 0.45,
+    "com/phoneagent/device/ops" to 0.17,
+)
+
+val checkPureLogicCoverage by tasks.registering {
+    group = "verification"
+    description = "校验纯逻辑包的单元测试覆盖率不低于阈值（不含真机依赖的包）"
+    // 依赖 AGP 生成的覆盖率 XML 报告
+    dependsOn("createDebugUnitTestCoverageReport")
+    doLast {
+        val xml = layout.buildDirectory.file("reports/coverage/test/debug/report.xml").get().asFile
+        if (!xml.exists()) {
+            throw GradleException(
+                "找不到覆盖率报告 ${xml.path}；该闸门需要先跑 createDebugUnitTestCoverageReport。",
+            )
+        }
+        val text = xml.readText()
+        // JaCoCo XML：<package name="com/phoneagent/domain/rules">...<counter type="LINE" missed=".." covered=".."/>
+        val failures = mutableListOf<String>()
+        coverageRules.forEach { (pkg, threshold) ->
+            val pkgBlock = Regex("""<package name="${Regex.escape(pkg)}">([\s\S]*?)</package>""")
+                .find(text)?.groupValues?.get(1)
+            if (pkgBlock == null) {
+                logger.lifecycle("覆盖率闸门：未在报告中找到 $pkg（包内可能没有可执行行），跳过")
+                return@forEach
+            }
+            val lineCounter = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
+                .findAll(pkgBlock).lastOrNull()
+            if (lineCounter == null) {
+                logger.lifecycle("覆盖率闸门：$pkg 没有 LINE 计数器，跳过")
+                return@forEach
+            }
+            val missed = lineCounter.groupValues[1].toInt()
+            val covered = lineCounter.groupValues[2].toInt()
+            val total = missed + covered
+            if (total == 0) return@forEach
+            val ratio = covered.toDouble() / total
+            val pct = "%.1f%%".format(ratio * 100)
+            if (ratio + 1e-9 < threshold) {
+                failures += "  $pkg 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（$covered/$total）"
+            } else {
+                logger.lifecycle("覆盖率闸门通过：$pkg $pct ≥ ${"%.0f%%".format(threshold * 100)}")
+            }
+        }
+        if (failures.isNotEmpty()) {
+            throw GradleException(
+                "纯逻辑包覆盖率低于阈值：\n${failures.joinToString("\n")}\n" +
+                    "请补测，或在 app/build.gradle.kts 的 coverageRules 里调整阈值（需说明理由）。",
+            )
+        }
+    }
+}
+
 /**
  * 版本号由根 build.gradle.kts 统一计算（每次产出 APK 的构建自增一次并回写
  * version.properties），这里只读取同一个值，保证 :app 与 :provider 版本一致。

@@ -47,6 +47,8 @@ import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationInstant
 import com.phoneagent.ui.theme.EaseOut
 import kotlinx.coroutines.launch
+import com.phoneagent.device.vision.StepShot
+import com.phoneagent.device.vision.StepTrace
 
 /**
  * 调试页的四个视角。

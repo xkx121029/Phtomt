@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,6 +91,48 @@ internal fun SettingsData(
             ) { enabled ->
                 st.pageMemoryEnabled = enabled
                 save()
+            }
+        }
+
+        Spacer(Modifier.height(AppSpacing.Lg))
+
+        // ---- 云端反馈：默认关闭，开启后每次任务结束上传一条脱敏执行记录 ----
+        SettingsSection(
+            title = "云端反馈",
+            subtitle = "默认关闭；开启后帮助我们定位真实执行问题",
+            tone = SettingsTone.Cool,
+        ) {
+            SettingsToggleRow(
+                title = "上传执行数据（已去隐私）",
+                subtitle = "每次任务结束上传一次：动作类型、成败结果、耗时与 token 用量。" +
+                    "不含任务内容、输入文字、截图、应用包名、账号与设备标识",
+                value = st.feedbackUploadEnabled,
+                onChange = {
+                    st.feedbackUploadEnabled = it
+                    save()
+                },
+            )
+            SettingsDivider()
+            Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
+                LabeledField("反馈服务地址") {
+                    OutlinedTextField(
+                        value = st.feedbackBaseUrl,
+                        onValueChange = { st.feedbackBaseUrl = it },
+                        singleLine = true,
+                        placeholder = { Text("https://hpa.linshuxu.us.kg") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Text(
+                    "默认使用官方站点；自建部署时可改成自己的地址",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(AppSpacing.Sm))
+                OutlinedButton(onClick = { save(); message = "已保存反馈设置" }) {
+                    Text("保存地址")
+                }
             }
         }
 

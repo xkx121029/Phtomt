@@ -4,7 +4,7 @@ import android.content.Context
 import com.phoneagent.core.log.runCatchingLogged
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.AgentState
-import com.phoneagent.domain.model.StepShot
+import com.phoneagent.device.vision.StepShot
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.PendingTaskQueue
 import com.phoneagent.engine.RouteDecision

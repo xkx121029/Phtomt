@@ -48,8 +48,10 @@ import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepShot
+import com.phoneagent.device.vision.StepShot
+import com.phoneagent.domain.model.TaskOutcome
 import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.network.CloudAgent
 import com.phoneagent.engine.perception.PageAnnotator
 import com.phoneagent.engine.perception.PageFingerprint
@@ -93,6 +95,7 @@ import com.phoneagent.engine.runtime.EngineLimits.METHOD_DOC_STEP_TIMEOUT_MS
 import com.phoneagent.engine.runtime.EngineLimits.VISION_FALLBACK_THRESHOLD
 import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_DECIDE_MS
 import com.phoneagent.engine.runtime.EngineLimits.WATCHDOG_VISION_MS
+import com.phoneagent.device.ops.OpsResult
 
 /**
  * Agent 引擎：编排“观察 → 本地/云端决策 → 带验证执行 → 记录”的 ReAct 循环。
@@ -181,10 +184,12 @@ class AgentEngine(
     private val uiBridge = UiBridge(appContext, settings, store)
     /** 遥测记录器：指标 / 轨迹 / 事件流 / 会话归档 / 调试持久化（重构批次 2，见 [TelemetryRecorder]） */
     private val telemetry = TelemetryRecorder(appContext, memory, store)
+    /** 云端反馈上报：开关默认关闭；开启后任务收尾上传一条脱敏执行记录 */
+    private val feedbackReporter = com.phoneagent.engine.network.FeedbackReporter(appContext)
     /** 任务收尾：任务记忆终态 / 模板健康回写 / 记忆提炼（重构批次 8，见 [TaskFinalizer]） */
     private val finalizer = com.phoneagent.engine.runtime.TaskFinalizer(
         store, memory, aiClient, appContext, deviceFacts, telemetry, scope,
-        log = { level, message, detail -> log(level, message, detail) },
+        log = { level, message, detail -> uiBridge.log(level, message, detail) },
     )
     /** AI 连接工具：翻译 / 连接测试 / 模型列表 / 能力探测（重构批次 3，见 [com.phoneagent.engine.connect.AiTools]） */
     private val aiTools = com.phoneagent.engine.connect.AiTools(settings, aiClient)
@@ -222,7 +227,7 @@ class AgentEngine(
     private val userGate = com.phoneagent.engine.runtime.UserGate(
         store, uiBridge,
         mutateTaskMemory = { transform -> finalizer.mutateTaskMemory(transform) },
-        actionLabel = { type -> actionLabel(type) },
+        actionLabel = { type -> EngineRules.actionLabel(type) },
     )
     /** 页面记忆采集器：任务执行自动沉淀页面热点与跳转路径（内存快照 + 异步落库，见 PageMemoryRecorder） */
     private val pageMemoryRecorder = PageMemoryRecorder(memory, scope)
@@ -231,9 +236,9 @@ class AgentEngine(
     /** 观察段执行器：页面标注 / semanticId 回填 / 截图决策与复用（重构阶段 B1，见 [StepObserver]） */
     private val stepObserver = StepObserver(
         capture = { tryOrNull("截图失败") { captureScreenshot() } },
-        log = { level, message -> log(level, message) },
+        log = { level, message -> uiBridge.log(level, message) },
         treeStats = { AgentAccessibilityService.instance?.lastTreeStats },
-        mainSeesImage = { s -> mainSeesImage(s) },
+        mainSeesImage = { s -> decisionConfig.mainSeesImage(s) },
     )
     /**
      * 观察阶段执行器（阶段 B2）：读屏 → 掉线检测 → 广告过滤 → 标注截图 → 敏感页 → 页面记忆。
@@ -251,19 +256,19 @@ class AgentEngine(
         },
         virtualDisplayActive = { virtualDisplayActive },
         onPageObserved = { snapshot, annotated -> pageMemoryRecorder.onPageObserved(snapshot, annotated) },
-        pageMemoryHintFor = { snapshot, hit -> pageMemoryHintFor(snapshot, hit) },
+        pageMemoryHintFor = { snapshot, hit -> contextInjector.pageMemoryHintFor(snapshot, hit) },
         updatePageMarks = { hit ->
             com.phoneagent.overlay.PageMarkOverlayService.update(appContext, hit?.hotspots.orEmpty())
         },
         bumpSensitiveTakeover = { ++sensitiveTakeoverStreak },
         hooks = com.phoneagent.engine.loop.ObservationHooks(
-            log = { level, message -> log(level, message) },
-            pushFloating = { status, phase -> pushFloating(status, phase) },
-            showInteraction = { type, title, content -> showFloatingInteraction(type, title, content) },
+            log = { level, message -> uiBridge.log(level, message) },
+            pushFloating = { status, phase -> uiBridge.pushFloating(status, phase) },
+            showInteraction = { type, title, content -> uiBridge.showFloatingInteraction(type, title, content) },
             setMessage = { message -> _state.value = _state.value.copy(message = message) },
             setNeedsUser = { _needsUser.value = it },
             emitHintRequest = { reason -> _userHintRequest.tryEmit(reason) },
-            awaitUserHint = { awaitUserHint() },
+            awaitUserHint = { userGate.awaitUserHint() },
         ),
     )
     /**
@@ -277,7 +282,7 @@ class AgentEngine(
         skillRunner = skillRunner,
         macro = com.phoneagent.engine.loop.MacroRelay(
             active = { macroQueue.isNotEmpty() || macroName.isNotBlank() },
-            next = { messages -> nextMacroIntent(messages) },
+            next = { messages -> skillRunner.nextMacroIntent(messages) },
             name = { macroName },
             dispatched = { macroDispatched },
             start = { normalized ->
@@ -293,8 +298,8 @@ class AgentEngine(
             },
         ),
         hooks = com.phoneagent.engine.loop.DecisionHooks(
-            log = { level, message -> log(level, message) },
-            pushFloating = { status, phase -> pushFloating(status, phase) },
+            log = { level, message -> uiBridge.log(level, message) },
+            pushFloating = { status, phase -> uiBridge.pushFloating(status, phase) },
             markDecisionFatal = { message ->
                 _state.value = _state.value.copy(
                     phase = AgentState.Phase.ERROR,
@@ -329,7 +334,7 @@ class AgentEngine(
         invokeVisionAsk = { step, vision, messages, screenshot, settingsVal ->
             invokeVisionAsk(step, vision, messages, screenshot, settingsVal)
         },
-        recordLocalTrace = { step, intent -> recordLocalStepTrace(step, intent) },
+        recordLocalTrace = { step, intent -> telemetry.recordLocalStepTrace(step, intent) },
         decisionFailureStreak = { decisionFailureStreak },
         setDecisionFailureStreak = { decisionFailureStreak = it },
         skillErrorStreak = { skillErrorStreak },
@@ -347,18 +352,20 @@ class AgentEngine(
         loopGuard = loopGuard,
         currentPlan = { activePlan },
         ui = com.phoneagent.engine.loop.ExecutionUiHooks(
-            log = { level, message -> log(level, message) },
-            pushFloating = { status, phase -> pushFloating(status, phase) },
+            log = { level, message -> uiBridge.log(level, message) },
+            pushFloating = { status, phase -> uiBridge.pushFloating(status, phase) },
             state = { _state.value },
             setState = { state -> _state.value = state },
-            showFloatingInteraction = { type, title, content -> showFloatingInteraction(type, title, content) },
+            showFloatingInteraction = { type, title, content -> uiBridge.showFloatingInteraction(type, title, content) },
             setNeedsUser = { need -> _needsUser.value = need },
             emitHintRequest = { reason -> _userHintRequest.tryEmit(reason) },
-            awaitUserHint = { awaitUserHint() },
-            pushThinking = { sent, delta -> pushThinking(sent, delta) },
-            showDone = { text -> FloatingWindowService.showDone(text) },
+            awaitUserHint = { userGate.awaitUserHint() },
+            pushThinking = { sent, delta -> uiBridge.pushThinking(sent, delta) },
+            showDone = { text, status, reason ->
+                FloatingWindowService.showDone(buildOutcome(status, text, reason))
+            },
             setAgentRunning = { running -> AgentAccessibilityService.agentRunning = running },
-            addConversation = { role, content -> addConversation(role, content) },
+            addConversation = { role, content -> uiBridge.addConversation(role, content) },
         ),
         record = com.phoneagent.engine.loop.ExecutionRecordHooks(
             recordStep = { step, action, status, before, after, reason ->
@@ -406,8 +413,8 @@ class AgentEngine(
             },
             execute = { action, snapshot -> safeExecute(action, snapshot) },
             reobserve = { observe() },
-            ensureShellApproval = { action -> ensureShellApproval(action) },
-            awaitActionConfirmation = { action -> awaitActionConfirmation(action) },
+            ensureShellApproval = { action -> userGate.ensureShellApproval(action) },
+            awaitActionConfirmation = { action -> userGate.awaitActionConfirmation(action) },
             handleRemember = { task, step, action -> handleRemember(task, step, action) },
             handleDeviceQuery = { step, action, messages -> handleDeviceQuery(step, action, messages) },
             handleDeviceOps = { step, action, messages -> handleDeviceOps(step, action, messages) },
@@ -421,7 +428,7 @@ class AgentEngine(
                 suspend fun once(): AgentIntent? = withVisionWatchdog(WATCHDOG_DECIDE_MS) {
                     cloudAgent.decideWithUserHint(
                         sv.apiBaseUrl, sv.apiKey, sv.model, messages, hint,
-                        onDelta = { pushThinking(delta = it) },
+                        onDelta = { uiBridge.pushThinking(delta = it) },
                         protocol = protocolOf(sv.apiBaseUrl, sv),
                     ).getOrNull()
                 }
@@ -432,7 +439,7 @@ class AgentEngine(
                 guided
             },
             actionMode = { activeActionMode },
-            idempotencyDone = { snapshot -> idempotencyDone(snapshot) },
+            idempotencyDone = { snapshot -> EngineRules.idempotencyDone(snapshot) },
             a11yDisconnectedNote = {
                 if (AgentAccessibilityService.instance == null) "（无障碍服务已断开）" else ""
             },
@@ -451,7 +458,7 @@ class AgentEngine(
                     pendingTemplatePlan = activePlan
                     requestConfirmSaveTemplate()
                 } else {
-                    FloatingWindowService.showDone(doneSummary)
+                    FloatingWindowService.showDone(buildOutcome(TaskStatus.SUCCESS, doneSummary))
                 }
             },
             distillMemories = { summary ->
@@ -521,11 +528,11 @@ class AgentEngine(
     /** 规划流：歧义检测/澄清/计划生成/批准（重构批次 4，见 [com.phoneagent.engine.planning.PlanningFlow]） */
     private val planningFlow = com.phoneagent.engine.planning.PlanningFlow(
         appContext, settings, aiClient, memory, scope, store, uiBridge, contextInjector,
-        shellChannelAvailable = { shellChannelAvailable() },
-        reasoningCfg = { reasoningConfig(it) },
-        emitSay = { text, runKey, step -> emitSayEvent(text, runKey, step) },
+        shellChannelAvailable = { executionCore.shellChannelAvailable() },
+        reasoningCfg = { decisionConfig.reasoningConfig(it) },
+        emitSay = { text, runKey, step -> telemetry.emitSayEvent(text, runKey, step) },
         rememberChatTurn = { q, a -> rememberChatTurn(q, a) },
-        launchTask = { t, p -> launchSingleTask(t, p) },
+        launchTask = { t, p -> lifecycle.launchSingleTask(t, p) },
         // 配置预检要同步拿到当前设置：读不到（极早期）时返回默认值，让预检不阻断正常流程
         settingsSnapshot = { latestSettings ?: com.phoneagent.data.prefs.AppSettings.Settings() },
         docRepository = docRepository,
@@ -535,7 +542,7 @@ class AgentEngine(
     private val executionCore = com.phoneagent.engine.execution.ExecutionCore(
         appContext, settings, shizukuManager, adbTransport, termuxBridge, documentEngine,
         intentResolver, appNameResolver, store, uiBridge, contextInjector,
-        recordExecMs = { ms -> recordExecMs(ms) },
+        recordExecMs = { ms -> telemetry.recordExecMs(ms) },
         observe = { observe() },
         // 副屏模式：只有本任务真正挂上副屏时动作才走副屏通道
         virtualDisplay = { if (virtualDisplayActive) virtualDisplay else null },
@@ -635,7 +642,7 @@ class AgentEngine(
     val executionHistory: StateFlow<List<StepRecord>> get() = _executionHistory.asStateFlow()
     val stepShot: StateFlow<StepShot> get() = _stepShot.asStateFlow()
     private val _traces by store::traces
-    val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> get() = _traces.asStateFlow()
+    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> get() = _traces.asStateFlow()
 
     // ---- 规划/澄清/批准流程 ----
     private val _planPhase by store::planPhase
@@ -665,6 +672,8 @@ class AgentEngine(
         set(value) { store.currentTaskMemory = value }
     private var completedSteps by store::completedSteps
     private var totalPlannedSteps by store::totalPlannedSteps
+    /** 本任务最后一次实际交付动作的通道中文名；空串 = 未记录（完成卡片据此省略，不编造） */
+    private var lastChannelLabel = ""
 
     // ---- 设置页工具型 AI 调用已收口到 connect/AiTools（重构批次 3），以下为转发 ----
 
@@ -673,8 +682,31 @@ class AgentEngine(
 
     suspend fun summarizeConversation(transcript: String): String = aiTools.summarizeConversation(transcript)
 
-    /** 粗略判断文本是否以中文为主（含中文字符比例 > 30%） */
-    private fun isMostlyChinese(text: String): Boolean = aiTools.isMostlyChinese(text)
+    // 下面三个是 UI（设置页的连接测试 / 获取模型 / 能力探测）的唯一入口：
+    // aiTools 本身是私有协作者，所以这三层转发必须留在本类上，不能当作冗余删除。
+
+    /** 测试主模型连接是否可用（设置保存前校验用） */
+    suspend fun testConnection(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<String> = aiTools.testConnection(baseUrl, apiKey, model, protocol)
+
+    /** 拉取端点可用模型列表（设置页「获取模型」） */
+    suspend fun listModels(
+        baseUrl: String,
+        apiKey: String,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<List<String>> = aiTools.listModels(baseUrl, apiKey, protocol)
+
+    /** 探测单个模型的能力（识图 / 工具调用） */
+    suspend fun probeModel(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        protocol: ApiProtocol = ApiProtocol.OPENAI,
+    ): Result<com.phoneagent.core.ai.ModelAbility> = aiTools.probeModel(baseUrl, apiKey, model, protocol)
 
     // ---- 第 11 层：多任务队列（队列与 worker 已收口到 runtime/TaskLifecycle，重构批次 5） ----
     val taskQueue: StateFlow<List<String>> get() = lifecycle.taskQueue
@@ -753,16 +785,32 @@ class AgentEngine(
      * 悬浮窗是可选能力——关闭或未授权时任务照常执行，进度只在 App 内展示。
      * （App 在后台时 startForegroundService 可能受限，需兜底防崩溃）
      */
-    private suspend fun maybeStartFloating() = uiBridge.maybeStartFloating()
 
-    private fun pushFloating(status: String, phase: String) = uiBridge.pushFloating(status, phase)
 
-    private fun pushThinking(sent: String? = null, delta: String? = null) = uiBridge.pushThinking(sent, delta)
 
-    private fun showFloatingInteraction(type: String, title: String, content: String, options: List<String>? = null) =
-        uiBridge.showFloatingInteraction(type, title, content, options)
+    /**
+     * 组装交回展示层的任务结果。
+     *
+     * 终态由调用点**显式**给出（谁收尾谁定性）；耗时、步数、执行通道都取本任务的真实数据，
+     * 取不到就留空，让完成卡片省略该行——不补一个看起来合理的默认值。
+     */
+    private fun buildOutcome(
+        status: TaskStatus,
+        summary: String,
+        failureReason: String = "",
+    ): TaskOutcome {
+        val st = _state.value
+        val elapsed = if (st.startedAtMillis > 0) System.currentTimeMillis() - st.startedAtMillis else 0L
+        return TaskOutcome(
+            status = status,
+            summary = summary,
+            elapsedMs = elapsed.coerceAtLeast(0L),
+            steps = maxOf(st.stepCount, completedSteps),
+            channel = lastChannelLabel,
+            failureReason = failureReason,
+        )
+    }
 
-    private fun clearFloatingQuery() = uiBridge.clearFloatingQuery()
 
     /**
      * 上一步执行结果文本（✅/⚠️/❌），供决策 Prompt 使用。
@@ -771,9 +819,6 @@ class AgentEngine(
      */
     private fun lastStepResultText(lang: PromptLang): String =
         StepTexts.lastStepResult(_executionHistory.value, lang)
-
-    private fun log(level: AgentLog.Level, message: String, detail: String? = null) =
-        uiBridge.log(level, message, detail)
 
     /**
      * 把「可能抛异常」的调用降级为 null，但显式放行协程取消。
@@ -790,7 +835,7 @@ class AgentEngine(
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
-            log(AgentLog.Level.WARN, "$message：${e.message ?: e.javaClass.simpleName}")
+            uiBridge.log(AgentLog.Level.WARN, "$message：${e.message ?: e.javaClass.simpleName}")
             null
         }
 
@@ -823,15 +868,8 @@ class AgentEngine(
         scope.launch { releaseVirtualDisplay() }
     }
 
-    private fun apiLog(request: String, response: String, latencyMs: Long) =
-        uiBridge.apiLog(request, response, latencyMs)
-
-    private fun addConversation(role: String, content: String, hasImage: Boolean = false) =
-        uiBridge.addConversation(role, content, hasImage)
-
     fun clearDebug() = uiBridge.clearDebug()
 
-    private fun persistDebug() = telemetry.persistDebug()
 
     init {
         // 回载上次的调试记录（日志/轨迹/执行历史/对话/会话归档）。
@@ -885,7 +923,7 @@ class AgentEngine(
     fun retryLastTask() {
         val task = store.lastFullTask
         if (task.isBlank()) return
-        log(AgentLog.Level.INFO, "用户选择重试上一次任务")
+        uiBridge.log(AgentLog.Level.INFO, "用户选择重试上一次任务")
         start(task)
     }
 
@@ -899,7 +937,6 @@ class AgentEngine(
      */
     fun chatTurn(task: String) = lifecycle.start(task, chatOnly = true)
 
-    private fun launchSingleTask(task: String, plan: TaskPlan? = null) = lifecycle.launchSingleTask(task, plan)
 
     // ==================== 对话边界 ====================
 
@@ -930,7 +967,7 @@ class AgentEngine(
         // 上一段对话残留的「批准计划 / 需要澄清」面板必须收掉：任务已被作废，
         // 留着按钮只会点了没反应
         FloatingWindowService.interaction(null, null, null)
-        log(AgentLog.Level.INFO, "已新建对话（上一段对话的上下文与视图已清空）")
+        uiBridge.log(AgentLog.Level.INFO, "已新建对话（上一段对话的上下文与视图已清空）")
     }
 
     /** 记下本对话内的一次纯对话问答，供下一轮承接（新建对话时清空） */
@@ -1009,7 +1046,6 @@ class AgentEngine(
      * 反向搜索优势：AI 可能在 JSON 前输出解释文字，从末尾反向搜索能精准定位
      * 实际输出的 JSON 对象，避免被前文干扰。
      */
-    private fun extractJsonObject(content: String): String = EngineRules.extractJsonObject(content)
 
     /**
      * 从字符串末尾反向搜索最外层完整 JSON 对象。
@@ -1018,7 +1054,6 @@ class AgentEngine(
      *
      * @return 提取到的 JSON 字符串，若未找到有效 JSON 则返回 null
      */
-    private fun extractJsonBackward(text: String): String? = EngineRules.extractJsonBackward(text)
 
     /** 查询最近一次任务的检查点（供中断后展示/续传） */
     suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? =
@@ -1038,12 +1073,12 @@ class AgentEngine(
             if (plan.steps.isEmpty()) return@launch
             pendingTask = ck.task
             activePlan = plan
-            log(AgentLog.Level.INFO, "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步）")
+            uiBridge.log(AgentLog.Level.INFO, "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步）")
             com.phoneagent.core.notify.ActiveNotifier.notify(
                 appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CHECKPOINT,
                 "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步。",
             )
-            launchSingleTask(ck.task, plan)
+            lifecycle.launchSingleTask(ck.task, plan)
         }
     }
 
@@ -1085,7 +1120,7 @@ class AgentEngine(
         // 复用的截图缓存必须随任务结束释放：一张全屏位图动辄 8MB 原生内存，
         // 留在引擎单例上等于任务结束后还占着不放
         stepObserver.reset()
-        log(AgentLog.Level.WARN, "任务已停止")
+        uiBridge.log(AgentLog.Level.WARN, "任务已停止")
     }
 
     // ---- 用户协作门已收口到 runtime/UserGate（重构批次 7），以下为转发 ----
@@ -1099,8 +1134,8 @@ class AgentEngine(
         store.setPaused(true)
         // 搁置是用户主动行为，界面上必须看得见：否则状态条仍显示「第 N 步」，用户以为还在跑
         store.state.value = store.state.value.copy(message = PAUSED_NOTE)
-        pushFloating("已暂停", "OBSERVING")
-        log(AgentLog.Level.INFO, "任务已搁置：等待用户恢复")
+        uiBridge.pushFloating("已暂停", "OBSERVING")
+        uiBridge.log(AgentLog.Level.INFO, "任务已搁置：等待用户恢复")
     }
 
     /** 用户恢复：解除搁置，任务从当前步继续 */
@@ -1111,11 +1146,10 @@ class AgentEngine(
         if (store.state.value.message == PAUSED_NOTE) {
             store.state.value = store.state.value.copy(message = "")
         }
-        pushFloating("继续执行", "OBSERVING")
-        log(AgentLog.Level.INFO, "用户已恢复任务，从当前步继续执行")
+        uiBridge.pushFloating("继续执行", "OBSERVING")
+        uiBridge.log(AgentLog.Level.INFO, "用户已恢复任务，从当前步继续执行")
     }
 
-    private suspend fun awaitResume() = userGate.awaitResume()
 
     /** 用户协作者：提供下一步指导 */
     fun provideUserHint(hint: String) = userGate.provideUserHint(hint)
@@ -1124,9 +1158,7 @@ class AgentEngine(
 
     fun resolveShellApproval(approve: Boolean) = userGate.resolveShellApproval(approve)
 
-    private suspend fun ensureShellApproval(action: AgentAction): Boolean = userGate.ensureShellApproval(action)
 
-    private suspend fun awaitActionConfirmation(action: AgentAction): Boolean = userGate.awaitActionConfirmation(action)
 
     // processQueue 已随任务队列收口到 runtime/TaskLifecycle（重构批次 5）
 
@@ -1155,14 +1187,27 @@ class AgentEngine(
         } catch (e: Throwable) {
             // runInner 内的未捕获异常在此收敛，不让它穿透到 processQueue ——
             // 否则队列协程会被一起带走，界面永久停在「运行中」、后续排队任务也不再执行
-            log(AgentLog.Level.ERROR, "任务异常终止：${e.message}", e.stackTraceToString().take(1200))
+            uiBridge.log(AgentLog.Level.ERROR, "任务异常终止：${e.message}", e.stackTraceToString().take(1200))
             safeResetRuntime(owned?.taskId, "任务异常终止：${e.message ?: e.javaClass.simpleName}")
         } finally {
             val mem = owned
             if (mem != null) finalizer.finishTaskMemory(mem.taskId, TaskMemoryEntry.STATUS_FAILED)
             // 归档本次任务会话（侧边栏数据源）。与上面同理按 taskId 归属，
             // 且不能有挂起调用：协程已被取消时挂起点会直接抛出，收尾就丢了
-            mem?.taskId?.let { settleTaskSession(it, cancelled) }
+            mem?.taskId?.let { telemetry.settleTaskSession(it, cancelled) }
+            // 云端反馈（默认关闭）：只在用户主动开启时上报；payload 已在 Reporter 内做去隐私裁剪。
+            // 指标只属于“当前任务”，旧任务的异步收尾不能把新任务的指标混进来。
+            val feedback = latestSettings
+            if (feedback?.feedbackUploadEnabled == true) {
+                mem?.taskId?.let { taskId ->
+                    feedbackReporter.submit(
+                        baseUrl = feedback.feedbackBaseUrl,
+                        session = telemetry.taskSession(taskId),
+                        records = store.executionHistory.value.filter { it.taskId == taskId },
+                        metrics = if (taskId == currentTaskId) store.metrics.value else AgentMetrics(),
+                    )
+                }
+            }
             // 无论成功 / 失败 / 用户停止 / 异常，任务一结束就撤下点击光标。
             // 光标是「任务正在执行」的视觉反馈，任务结束后它仍停在最后一次点击的位置，
             // 屏幕上就凭空多出一个不属于任何操作的光标。
@@ -1271,7 +1316,7 @@ class AgentEngine(
         onMemoryCreated(taskMemory)
         scope.launch { runCatching { memory.upsertTaskMemory(taskMemory) } }
         // 侧边栏：任务一开跑就先占一条「进行中」会话，用户随时能在任务列表里看到它
-        startTaskSession(
+        telemetry.startTaskSession(
             TaskSession(
                 taskId = currentTaskId,
                 title = task,
@@ -1285,18 +1330,18 @@ class AgentEngine(
         // 读取执行策略（v2.2 7）：记录当前模式，供任务标签区分
         val strategy = runCatching { com.phoneagent.data.store.TaskStore.getStrategy(appContext) }
             .getOrDefault(com.phoneagent.data.store.ExecutionStrategy.AUTO)
-        log(AgentLog.Level.INFO, "任务开始：$task")
-        log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
+        uiBridge.log(AgentLog.Level.INFO, "任务开始：$task")
+        uiBridge.log(AgentLog.Level.INFO, "执行策略=${strategy.name}")
         val settingsVal = settings.settings.first()
         // 用户显式放行明文时，日志里留一条明确的风险提示（Key 会明文上路）
         if (settingsVal.allowCleartext && settingsVal.apiBaseUrl.trim().startsWith("http://", ignoreCase = true)) {
-            log(AgentLog.Level.WARN, com.phoneagent.core.ai.AiClient.CLEARTEXT_ALLOWED_NOTICE)
+            uiBridge.log(AgentLog.Level.WARN, com.phoneagent.core.ai.AiClient.CLEARTEXT_ALLOWED_NOTICE)
         }
         // 任务级设置快照：执行阶段做记忆提炼/引导决策时复用同一份，避免中途读到的设置漂移
         taskSettingsVal = settingsVal
         // 动作模式：整个任务期间固定不动（每步读同一个值，档位不会中途漂移）
         activeActionMode = ActionMode.fromKey(settingsVal.actionMode)
-        log(AgentLog.Level.INFO, "动作模式=${activeActionMode.label}（${activeActionMode.key}）")
+        uiBridge.log(AgentLog.Level.INFO, "动作模式=${activeActionMode.label}（${activeActionMode.key}）")
         val lang = runCatching { PromptLang.valueOf(settingsVal.promptLanguage) }.getOrDefault(PromptLang.CN)
         currentLang = lang
         // 方法文档的注入分两处，刻意不在这里预取：
@@ -1307,12 +1352,12 @@ class AgentEngine(
         // 提示词里的"能看图"必须与实际是否真的发图一致：关掉"附送屏幕截图"后每步都不带图，
         // 此时仍告诉 AI"可视"会让它去描述图里看到的东西（实际没收到图）。
         // 判定走三态（见 VisionRouting）：AUTO 听模型库里真实探测出的能力，ON/OFF 是用户覆盖
-        val effectiveHasVision = mainSeesImage(settingsVal) && settingsVal.attachScreenshot
+        val effectiveHasVision = decisionConfig.mainSeesImage(settingsVal) && settingsVal.attachScreenshot
         // 技能区块：可用 MCP 技能（含参数）+ 调用格式 + 已停用技能，随系统提示注入（一次任务构建一次）
-        val skillsPrompt = skillPromptText()
+        val skillsPrompt = skillRunner.skillPromptText()
         val messages = mutableListOf<ChatMessageDto>().apply {
             // task 只用于按任务类型裁剪与当下无关的大块（见 TaskKindDetector），不参与正文渲染
-            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, shellChannelAvailable(), skills = skillsPrompt, actionMode = activeActionMode, task = task)))))
+            add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.system(lang, settingsVal.systemPrompt, effectiveHasVision, executionCore.shellChannelAvailable(), skills = skillsPrompt, actionMode = activeActionMode, task = task)))))
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = AgentPrompts.capabilitiesLang(lang, effectiveHasVision)))))
             // 执行通道与坐标对 AI 透明：端侧自动选择执行方式，AI 无需指定通道或坐标
             add(ChatMessageDto(role = "system", content = listOf(ContentPart(type = "text", text = when (lang) {
@@ -1350,7 +1395,7 @@ class AgentEngine(
                     ),
                 ),
             )
-            log(AgentLog.Level.INFO, "副屏模式已启用：任务在模拟副屏上运行（display=${virtualDisplay?.displayId}）")
+            uiBridge.log(AgentLog.Level.INFO, "副屏模式已启用：任务在模拟副屏上运行（display=${virtualDisplay?.displayId}）")
         }
 
         val maxSteps = settingsVal.maxSteps
@@ -1358,6 +1403,8 @@ class AgentEngine(
         // 无障碍服务在本任务中是否观测到过在线：用于识别"任务中途掉线"（vivo 安全守护清除授权等）。
         // 服务一旦中途掉线，读屏与操作通道全断，继续跑只会变成"读不到→反复重启应用"的盲循环（真机 BUG 22）
         var a11ySeenAlive = false
+        // 新任务的通道记录清零：上一个任务用过的通道不能顶替这一次的事实
+        lastChannelLabel = ""
         AgentAccessibilityService.agentRunning = true
         _state.value = AgentState(
             isRunning = true,
@@ -1365,12 +1412,12 @@ class AgentEngine(
             phase = AgentState.Phase.OBSERVING,
             startedAtMillis = System.currentTimeMillis(),
         )
-        maybeStartFloating()
-        pushFloating("开始执行", "OBSERVING")
+        uiBridge.maybeStartFloating()
+        uiBridge.pushFloating("开始执行", "OBSERVING")
         // 主循环壳（阶段 B2）：搁置等待 / 取消检查 / 步数推进 / 重试回退 / 失败与最大步数收尾
         // 全部收口到 TaskRunner；每轮固定三步（观察 → 决策 → 执行），各自返回 StepOutcome。
         val taskRunner = com.phoneagent.engine.loop.TaskRunner(
-            awaitResume = { awaitResume() },
+            awaitResume = { userGate.awaitResume() },
             isActive = { coroutineContext.isActive },
             onStepStart = { s ->
                 _state.value = _state.value.copy(
@@ -1378,12 +1425,22 @@ class AgentEngine(
                     stepCount = s,
                     hasAccessibility = AgentAccessibilityService.isServiceEnabled(appContext),
                 )
-                pushFloating("正在观察屏幕", "OBSERVING")
+                uiBridge.pushFloating("正在观察屏幕", "OBSERVING")
             },
             onStepRolledBack = { s ->
                 _state.value = _state.value.copy(stepCount = s.coerceAtLeast(0))
             },
             onFatal = { outcome ->
+                // 失败也走完成卡片：用户必须看到「为什么停」，而不是只在跑马灯上闪一下
+                runCatching {
+                    FloatingWindowService.showDone(
+                        buildOutcome(
+                            TaskStatus.FAILED,
+                            outcome.taskMemoryNote.ifBlank { outcome.reason },
+                            outcome.reason,
+                        ),
+                    )
+                }
                 finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, outcome.taskMemoryNote)
                 stop()
             },
@@ -1393,8 +1450,18 @@ class AgentEngine(
                     message = "达到最大步数限制",
                     failureKind = AgentState.FailureKind.MAX_STEPS,
                 )
-                log(AgentLog.Level.WARN, "达到最大步数限制，自动停止")
-                pushFloating("达到最大步数限制", "ERROR")
+                uiBridge.log(AgentLog.Level.WARN, "达到最大步数限制，自动停止")
+                uiBridge.pushFloating("达到最大步数限制", "ERROR")
+                // 步数用尽不是链路故障：终态给 NOT_ACHIEVED，卡片说「未达成」而不是「失败」
+                runCatching {
+                    FloatingWindowService.showDone(
+                        buildOutcome(
+                            TaskStatus.NOT_ACHIEVED,
+                            "达到最大步数限制",
+                            "已执行 $maxSteps 步仍未拿到完成证据",
+                        ),
+                    )
+                }
                 // 收尾段（阶段 B4）：模板健康回写 + 任务记忆失败终态 + 失败路径记忆提炼已迁到 TaskFinalizer
                 finalizer.finishOnMaxSteps(task, settingsVal)
                 stop()
@@ -1543,12 +1610,12 @@ class AgentEngine(
         val complexPage = snapshot.elements.size <= VISION_FALLBACK_THRESHOLD
         // 元素树稀疏/为空时必须拿到视觉配置（force）：此时视觉是唯一的信息来源，
         // 不能因为「视觉总开关关着」就把这一路掐掉，否则 AI 面对的是完全不可见的页面
-        val visionCfg = visionConfig(settingsVal, force = complexPage)
+        val visionCfg = decisionConfig.visionConfig(settingsVal, force = complexPage)
         // 云端视觉配置是否就绪：有配置且没有明确指定只走 LOCAL
         val cloudReady = visionCfg != null && settingsVal.visionMode != "LOCAL"
         // 主模型自身能识图（三态合流，见 VisionRouting）且本轮确实拍到了图 → 图片直接进主模型上下文。
         // 局部变量刻意不叫 mainSeesImage：那是"能力判定"，这里还要叠加"本轮有图"
-        val mainGetsImage = mainSeesImage(settingsVal) && settingsVal.attachScreenshot && screenshot != null
+        val mainGetsImage = decisionConfig.mainSeesImage(settingsVal) && settingsVal.attachScreenshot && screenshot != null
         // 三条视觉链路（端侧 3B / 云端描述 / 端侧描述）怎么走，以及"主模型识图时跳过视觉描述"：
         // 路由判据（含"复杂任务且云端可用时跳过 3B，但云端不可用时必须回落 3B"）下沉 VisionRouting.route，可单测
         val route = VisionRouting.route(
@@ -1581,7 +1648,7 @@ class AgentEngine(
             localRegions = cachedVision.regions
             externalUsed = cachedVision.usedExternal
             if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
-            log(AgentLog.Level.INFO, "页面未变，复用上一步视觉结果（省一次视觉调用）")
+            uiBridge.log(AgentLog.Level.INFO, "页面未变，复用上一步视觉结果（省一次视觉调用）")
         }
         val needVisionRun = cachedVision == null
         if (screenshot != null && needVisionRun) {
@@ -1589,7 +1656,7 @@ class AgentEngine(
             // 观察已结束、视觉分析还没开始时先切状态：视觉链路（端侧 3B / 云端视觉）可能耗时数十秒，
             // 之前界面一直停在“观察屏幕”，用户会以为卡死
             _state.value = _state.value.copy(phase = AgentState.Phase.THINKING, message = "正在识别屏幕内容...")
-            pushFloating("正在识别屏幕内容", "THINKING")
+            uiBridge.pushFloating("正在识别屏幕内容", "THINKING")
             // 看门狗：视觉链路全是阻塞式调用（云端 OkHttp 读超时 120s、端侧 3B 单次 20s 且同一步可能调用两次），
             // 超时即放弃视觉描述，仅用无障碍元素树继续决策，保证主循环不被打死
             val triedOnDevice3b = useOnDevice3b
@@ -1597,26 +1664,26 @@ class AgentEngine(
                 // 1) 优先：端侧 3B 视觉控件框选（类型 + 用途 + 归一化坐标）。
                 //    混合模式下 3B 仅用于简单任务，复杂任务跳过此处直接走云端
                 if (useOnDevice3b) {
-                    log(AgentLog.Level.INFO, "端侧视觉 3B 控件识别…")
+                    uiBridge.log(AgentLog.Level.INFO, "端侧视觉 3B 控件识别…")
                     val t0 = System.nanoTime()
                     val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
                         context = appContext,
                         bitmap = shot,
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
                     )
-                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
                         // 跳过描述时仍保留框选坐标：hint 目标定位要靠它，文字描述则可以不给
                         if (wantVisionDesc) desc = com.phoneagent.device.vision.ControlFormat.describe(controls)
                     } else {
-                        log(AgentLog.Level.INFO, "端侧视觉未就绪/不可用，回退云端或本地")
+                        uiBridge.log(AgentLog.Level.INFO, "端侧视觉未就绪/不可用，回退云端或本地")
                     }
                 }
                 // 2) 云端视觉（只产文字描述，主模型能看图时整段跳过）
                 if (desc.isNullOrBlank() && cloudVision && wantVisionDesc) {
-                    log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
+                    uiBridge.log(AgentLog.Level.INFO, "视觉模型描述截图…（${visionCfg?.model}）")
                     val t0 = System.nanoTime()
                     // 提问带目的：把"这次任务想推进什么"直接写进提问，视觉模型不必再整屏铺开罗列
                     desc = aiClient.visionAsk(
@@ -1627,7 +1694,7 @@ class AgentEngine(
                         purpose = "根据用户任务「$task」，找出当前页面上可用于推进任务的操作目标",
                         protocol = protocolOf(visionCfg?.baseUrl ?: "", settingsVal),
                     ).getOrNull()?.text
-                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                 }
                 // 3) LOCAL，或 AUTO 云端失败/未配置 → 端侧（OCR/3B）识别兜底。
                 //    本地读图统一由进程内端侧视觉承担
@@ -1635,14 +1702,14 @@ class AgentEngine(
                 if (desc.isNullOrBlank() && !externalUsed && !triedOnDevice3b &&
                     (settingsVal.visionMode == "LOCAL" || settingsVal.visionMode == "AUTO")
                 ) {
-                    log(AgentLog.Level.INFO, "端侧视觉识别（LOCAL/兜底）…")
+                    uiBridge.log(AgentLog.Level.INFO, "端侧视觉识别（LOCAL/兜底）…")
                     val t0 = System.nanoTime()
                     val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
                         context = appContext,
                         bitmap = shot,
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
                     )
-                    recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
@@ -1652,21 +1719,21 @@ class AgentEngine(
                         // 只记日志，不往上下文里写「未识别到控件」：
                         // 那句话会被 AI 当成"页面上没有可操作控件"的事实，从而放弃尝试、编造动作或直接收尾，
                         // 而真实情况只是这一路视觉没结果，元素树/其它来源仍然有效
-                        log(AgentLog.Level.WARN, "端侧视觉不可用，本地无可识别控件")
+                        uiBridge.log(AgentLog.Level.WARN, "端侧视觉不可用，本地无可识别控件")
                     }
                 }
                 if (!desc.isNullOrBlank()) pageText += "\n\n## 视觉描述（截图）\n$desc"
                 true
             }
             if (visionDone == null) {
-                log(AgentLog.Level.WARN, "视觉分析超过 ${WATCHDOG_VISION_MS / 1000}s 未返回，本步放弃视觉描述，改用无障碍元素树继续决策")
+                uiBridge.log(AgentLog.Level.WARN, "视觉分析超过 ${WATCHDOG_VISION_MS / 1000}s 未返回，本步放弃视觉描述，改用无障碍元素树继续决策")
                 desc = null
             }
             // 元素树稀疏且视觉也没产出：这一步 AI 实际上"什么都看不到"，
             // 必须明确记下来，否则用户只会看到 AI 在乱猜，不知道是两条感知链路同时空了。
             // 主模型自己能看图（mainGetsImage）时不算"看不到"，那种情况下不发这条警告
             if (complexPage && desc.isNullOrBlank() && localRegions.isNullOrEmpty() && !mainGetsImage) {
-                log(
+                uiBridge.log(
                     AgentLog.Level.WARN,
                     "元素树稀疏（${snapshot.elements.size} 个元素）且视觉链路未产出内容：" +
                         "元素树统计=${AgentAccessibilityService.instance?.lastTreeStats ?: "无统计"}" +
@@ -1683,7 +1750,7 @@ class AgentEngine(
             }
         }
         // 记忆与经验规则：两者互斥去重（同一条内容只注入一遍），故必须一起算
-        val (memoryText, ruleText) = memoryAndRules(task, snapshot)
+        val (memoryText, ruleText) = contextInjector.memoryAndRules(task, snapshot)
         // 云端执行文档：任务命中的标准操作流程。规划阶段已注入过一次，这里用**当前前台包名**再匹配一次——
         // 任务中途才切进目标应用（比如先在外卖 App 下单、跳到支付宝付款）时也能拿到对应手册。
         // 正文有磁盘缓存，正常情况下是本地读取，不增加决策延迟；离线/失败有一分钟冷却（见 AgentDocRepository）。
@@ -1718,9 +1785,9 @@ class AgentEngine(
         }
         if (_state.value.stepCount == 0) {
             if (stepDocs.isEmpty()) {
-                log(AgentLog.Level.INFO, "方法文档：没有对应方法，按常规探索继续")
+                uiBridge.log(AgentLog.Level.INFO, "方法文档：没有对应方法，按常规探索继续")
             } else {
-                log(AgentLog.Level.INFO, "方法文档：命中 ${stepDocs.size} 篇（${stepDocs.first().summary.take(40)}）")
+                uiBridge.log(AgentLog.Level.INFO, "方法文档：命中 ${stepDocs.size} 篇（${stepDocs.first().summary.take(40)}）")
             }
         }
         val methodHint = when {
@@ -1754,15 +1821,15 @@ class AgentEngine(
                 if (assist.isBlank()) "" else "\n## 用户唤起助理时正看着的页面\n$assist\n"
             } +
             // 环境上下文（时间/前台应用/网络/电量）+ 会话承接（上一轮任务）：页面元素树里读不到的事实
-            AgentPrompts.environment(currentLang, envFacts(snapshot)) +
-            sessionContextText(task, currentLang)
+            AgentPrompts.environment(currentLang, contextInjector.envFacts(snapshot)) +
+            contextInjector.sessionContextText(task, currentLang)
         val userMsg = ChatMessageDto(role = "user", content = mutableListOf(ContentPart(type = "text", text = userText)))
-        addConversation("user", userText, hasImage = mainGetsImage)
+        uiBridge.addConversation("user", userText, hasImage = mainGetsImage)
 
         _state.value = _state.value.copy(phase = AgentState.Phase.THINKING, message = "正在思考下一步...")
-        pushFloating("正在思考下一步", "THINKING")
+        uiBridge.pushFloating("正在思考下一步", "THINKING")
         // 实时展示发送给 AI 的决策上下文
-        pushThinking(sent = userText)
+        uiBridge.pushThinking(sent = userText)
         val startNano = System.nanoTime()
         // 主模型能识图（三态合流见 mainSeesImage）时把截图直接交给它；否则只收视觉描述后的文本，
         // 避免不支持图片的模型因 image_url 报错（旧行为是恒不发图，这里改为按能力发）
@@ -1781,7 +1848,7 @@ class AgentEngine(
                 ),
                 screenshot = if (mainGetsImage) screenshot else null,
                 // 温度 v0.1 文档：每步决策 = 0.1；失败 3 次进入重规划 = 0.5
-                temperature = decisionTemperature(),
+                temperature = EngineRules.decisionTemperature(consecutiveFailures),
                 protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
                 structured = structuredOutputOf(settingsVal),
                 guided = guidedDecodingOf(settingsVal),
@@ -1792,11 +1859,11 @@ class AgentEngine(
                     // 把「在等什么、等多久」透到状态条：否则用户只看到界面停住，以为卡死
                     val note = if (waitMs > 0) "$reason，${(waitMs / 1000).coerceAtLeast(1)} 秒后重试" else reason
                     _state.value = _state.value.copy(retryingNote = note, message = note)
-                    pushFloating(note, "THINKING")
-                    log(AgentLog.Level.WARN, "AI 调用重试：$note")
+                    uiBridge.pushFloating(note, "THINKING")
+                    uiBridge.log(AgentLog.Level.WARN, "AI 调用重试：$note")
                 },
                 onDelta = {
-                    pushThinking(delta = it)
+                    uiBridge.pushThinking(delta = it)
                     // 同步累积到 Agent 页的流式回显（悬浮窗与 App 内看到同一份内容）
                     _decisionStream.value += it
                 },
@@ -1804,7 +1871,7 @@ class AgentEngine(
         }
         if (result == null) {
             decisionTimeoutStreak += 1
-            log(
+            uiBridge.log(
                 AgentLog.Level.WARN,
                 "单步云端决策超过 ${WATCHDOG_DECIDE_MS / 1000}s，本步改为等待，下一轮重试以防卡死" +
                     "（连续第 $decisionTimeoutStreak 次）",
@@ -1814,7 +1881,7 @@ class AgentEngine(
             if (decisionTimeoutStreak >= MAX_DECISION_TIMEOUT_STREAK) {
                 throw com.phoneagent.engine.runtime.DecisionTimeoutExhaustedException(decisionTimeoutStreak)
             }
-            pushFloating("AI 决策超时，将自动重试", "THINKING")
+            uiBridge.pushFloating("AI 决策超时，将自动重试", "THINKING")
             // 超时降级必须进用户可见出口：只写日志/通知的话，任务卡状态里看不出「已改用等待重试」
             TaskNoticeCenter.publishDegradation(
                 DegradationTrigger.MODEL_TIMEOUT,
@@ -1835,7 +1902,7 @@ class AgentEngine(
         // 抛出后由主循环计数降级为 wait 重试，达到上限才收尾
         val decision = result.getOrElse { err ->
             if (err is kotlinx.coroutines.CancellationException) throw err
-            log(AgentLog.Level.ERROR, "AI 调用失败：${err.message ?: err.javaClass.simpleName}")
+            uiBridge.log(AgentLog.Level.ERROR, "AI 调用失败：${err.message ?: err.javaClass.simpleName}")
             throw err
         }
         // 决策已完成：正文已落 trace（可在步骤卡的"原始数据"里回看），清空流式回显避免与下一步混淆
@@ -1845,8 +1912,8 @@ class AgentEngine(
         if (_state.value.retryingNote.isNotEmpty()) {
             _state.value = _state.value.copy(retryingNote = "")
         }
-        apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
-        recordMetrics(decision)
+        uiBridge.apiLog(userText, decision.rawContent.ifBlank { "（无正文，可能为错误）" }, latencyMs)
+        telemetry.recordMetrics(decision)
         var intent = decision.action
         // 视觉定位：给元素树里定位不到的目标算出像素坐标，供转译层本次定位使用。
         // 只有"端侧在元素树里已经命中"的目标才跳过这一步——那种情况下转译层会直接精确定位到控件。
@@ -1877,17 +1944,17 @@ class AgentEngine(
                         local != null -> local
                         // 2) 本地没匹配上，且端侧视觉这一路确实是活的：发一次精定位
                         externalUsed -> {
-                            log(AgentLog.Level.INFO, "端侧视觉定位目标：$targetText")
+                            uiBridge.log(AgentLog.Level.INFO, "端侧视觉定位目标：$targetText")
                             val t0 = System.nanoTime()
                             val p = com.phoneagent.device.vision.OnDeviceVision.locate(
                                 appContext, shot, targetText, EXTERNAL_VISION_TIMEOUT,
                             )
-                            recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                            telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                             p
                         }
                         // 3) 最后才是云端：同一张图再上传一次，代价最高
                         cloudVision -> {
-                            log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
+                            uiBridge.log(AgentLog.Level.INFO, "视觉模型定位目标：$targetText")
                             val t0 = System.nanoTime()
                             val ans = aiClient.visionAsk(
                                 baseUrl = visionCfg?.baseUrl ?: "",
@@ -1898,7 +1965,7 @@ class AgentEngine(
                                 target = targetText,
                                 protocol = protocolOf(visionCfg?.baseUrl ?: "", settingsVal),
                             ).getOrNull()
-                            recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                            telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
                             val ax = ans?.x
                             val ay = ans?.y
                             // 云端这次定位已经花过钱：把结果并进本地表，本次与后续的字符串匹配都能命中，
@@ -1920,7 +1987,7 @@ class AgentEngine(
                     }
                 }
                 if (pos != null) {
-                    lastVisualCoordinate = (pos.first * screenWidth()).toInt() to (pos.second * screenHeight()).toInt()
+                    lastVisualCoordinate = (pos.first * contextInjector.screenWidth()).toInt() to (pos.second * contextInjector.screenHeight()).toInt()
                 }
             }
         }
@@ -1940,7 +2007,7 @@ class AgentEngine(
         // say 不落决策轨迹：它不是一步操作，落档会在任务流里凭空多出一条「说」的步骤
         // （只有 trace、没有执行记录），读起来像是工具没被识别出来
         if (intent.intent != IntentType.SAY) {
-            recordStepTrace(
+            telemetry.recordStepTrace(
                 step = _state.value.stepCount,
                 sent = userText,
                 decision = decision,
@@ -1961,10 +2028,10 @@ class AgentEngine(
         }
 
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
-            intent.intent != IntentType.GIVE_UP && needsReviewIntent(intent, snapshot)
+            intent.intent != IntentType.GIVE_UP && EngineRules.needsReviewIntent(intent, snapshot)
         return if (reviewOn) {
             // 独立审核者复核：防止执行者脑补现状/点到不存在的控件（仅关键/无元素证据意图进入审核）
-            log(AgentLog.Level.INFO, "审核者复核意图…")
+            uiBridge.log(AgentLog.Level.INFO, "审核者复核意图…")
             _state.value = _state.value.copy(message = "审核者复核意图…")
             reviewAction(task, snapshot, annotated, intent, settingsVal)
         } else {
@@ -1974,9 +2041,6 @@ class AgentEngine(
 
     /** 本地硬规则预筛：仅当意图确实需要独立审核（完成判断、目标无元素证据的点击/输入）才升审核；
      *  其余动作由执行层验证兜底，跳过二次调用以降低开销（门槛逻辑下沉 EngineRules，便于单测） */
-    private fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean =
-        EngineRules.needsReviewIntent(intent, snapshot)
-
     /** 用独立的审核者 AI 复核执行者意图是否基于当前页面证据；
      *  审核者输出 {pass, why, freefix}，拒绝且给修正时用修正意图，否则沿用原意图（执行层兜底） */
     private suspend fun reviewAction(
@@ -1987,7 +2051,7 @@ class AgentEngine(
         settingsVal: AppSettings.Settings,
     ): AgentIntent {
         // 审核者模型：非链路聚合时用主模型；开了思考能力/链路聚合时用思考模型（同模型复核）
-        val cfg = reasoningConfig(settingsVal)
+        val cfg = decisionConfig.reasoningConfig(settingsVal)
         val baseUrl = cfg?.baseUrl ?: settingsVal.apiBaseUrl
         val apiKey = cfg?.apiKey ?: settingsVal.apiKey
         val model = cfg?.model ?: settingsVal.model
@@ -2021,10 +2085,10 @@ class AgentEngine(
             ).getOrNull()
         } ?: run {
             FloatingWindowService.updateReviewText("审核超时或失败，沿用执行者「${intent.intent}」")
-            log(AgentLog.Level.WARN, "审核 AI 超时（${WATCHDOG_DECIDE_MS / 1000}s）或失败，降级放行执行者意图")
+            uiBridge.log(AgentLog.Level.WARN, "审核 AI 超时（${WATCHDOG_DECIDE_MS / 1000}s）或失败，降级放行执行者意图")
             return intent
         }
-        val root = runCatching { json.parseToJsonElement(extractJsonObject(raw)).jsonObject }.getOrNull()
+        val root = runCatching { json.parseToJsonElement(EngineRules.extractJsonObject(raw)).jsonObject }.getOrNull()
         if (root == null) {
             FloatingWindowService.updateReviewText("审核结果解析失败，沿用执行者「${intent.intent}」")
             return intent
@@ -2036,14 +2100,14 @@ class AgentEngine(
         }
         val why = root["why"]?.jsonPrimitive?.content ?: "无理由"
         FloatingWindowService.updateReviewText("✗ 执行者「${intent.intent}」被拒绝：$why")
-        log(AgentLog.Level.WARN, "审核者拒绝：$why")
+        uiBridge.log(AgentLog.Level.WARN, "审核者拒绝：$why")
         // 审核者给出有证据的修正意图时采用；否则沿用原意图（由执行层兜底失败并注入反馈）
         val fix = root["freefix"]
         if (fix is kotlinx.serialization.json.JsonObject) {
             val correction = runCatching { json.decodeFromString<AgentIntent>(fix.toString()) }.getOrNull()
             if (correction != null) {
                 FloatingWindowService.updateReviewText("✗ 执行者「${intent.intent}」被拒绝：$why；采用修正「${correction.intent}」")
-                log(AgentLog.Level.WARN, "采用审核者修正意图：${correction.intent}")
+                uiBridge.log(AgentLog.Level.WARN, "采用审核者修正意图：${correction.intent}")
                 return correction
             }
         }
@@ -2051,30 +2115,8 @@ class AgentEngine(
     }
 
     /** 测试主模型连接是否可用（用于设置保存前的校验） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<String> =
-        aiTools.testConnection(baseUrl, apiKey, model, protocol)
-
-    suspend fun listModels(baseUrl: String, apiKey: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<List<String>> =
-        aiTools.listModels(baseUrl, apiKey, protocol)
-
-    suspend fun probeModel(baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI): Result<ModelAbility> =
-        aiTools.probeModel(baseUrl, apiKey, model, protocol)
-
     // ---- 技能 / 宏 / MCP 已收口到 skill/SkillRunner（重构批次 6），以下为转发 ----
 
-    private suspend fun skillPromptText(): String = skillRunner.skillPromptText()
-
-    private fun macroPrecheckReason(skill: com.phoneagent.feature.skill.Skill): String? =
-        skillRunner.macroPrecheckReason(skill)
-
-    private fun nextMacroIntent(messages: MutableList<ChatMessageDto>): AgentIntent? =
-        skillRunner.nextMacroIntent(messages)
-
-    private suspend fun invokeMcpSkill(
-        step: Int,
-        mcp: com.phoneagent.feature.skill.SkillCompat.Normalized.Mcp,
-        messages: MutableList<ChatMessageDto>,
-    ) = skillRunner.invokeMcpSkill(step, mcp, messages)
 
     private suspend fun inferMissingArgs(
         intent: com.phoneagent.domain.model.AgentIntent,
@@ -2113,7 +2155,7 @@ class AgentEngine(
             return
         }
         // force = true：追问是 AI 明确提出的取数请求，不受「视觉总开关」影响（与元素树稀疏时同理）
-        val cfg = visionConfig(settingsVal, force = true)
+        val cfg = decisionConfig.visionConfig(settingsVal, force = true)
         if (cfg == null) {
             messages.add(
                 ChatMessageDto(
@@ -2127,9 +2169,9 @@ class AgentEngine(
             return
         }
         val target = vision.target
-        log(AgentLog.Level.INFO, "看图追问：$question（定位目标=${target ?: "无"}）")
+        uiBridge.log(AgentLog.Level.INFO, "看图追问：$question（定位目标=${target ?: "无"}）")
         _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "看图追问：${question.take(30)}")
-        pushFloating("看图追问：${question.take(30)}", "ACTING")
+        uiBridge.pushFloating("看图追问：${question.take(30)}", "ACTING")
         // 同一步骤的看门狗：云端视觉读超时可达 120s，套上它保证主循环不被拖死
         val t0 = System.nanoTime()
         val answer = withVisionWatchdog(WATCHDOG_VISION_MS) {
@@ -2144,7 +2186,7 @@ class AgentEngine(
                 protocol = protocolOf(cfg.baseUrl, settingsVal),
             )
         }
-        recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+        telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
         val ans = answer?.getOrNull()
         val text = ans?.text?.trim().orEmpty()
         val x = ans?.x
@@ -2166,7 +2208,7 @@ class AgentEngine(
             }
             // 带了目标且拿回坐标：写成像素坐标供**紧接着的那一步**复用一次（下一步开头会自然清零）
             x != null && y != null && target != null -> {
-                lastVisualCoordinate = (x * screenWidth()).toInt() to (y * screenHeight()).toInt()
+                lastVisualCoordinate = (x * contextInjector.screenWidth()).toInt() to (y * contextInjector.screenHeight()).toInt()
                 injected = "看图追问「$question」的结论：${text.ifBlank { "（无文字说明）" }}\n" +
                     "目标「$target」位于比例坐标(x=${"%.3f".format(x)}, y=${"%.3f".format(y)})；" +
                     "如需点击它，可用 by_hint 写同一句目标描述，端侧会复用这次定位。"
@@ -2186,13 +2228,13 @@ class AgentEngine(
             detail = detail,
         )
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
-        addConversation("assistant", injected)
+        uiBridge.addConversation("assistant", injected)
         if (failed) {
-            log(AgentLog.Level.WARN, "看图追问失败：$question")
-            pushFloating("看图追问失败", "ERROR")
+            uiBridge.log(AgentLog.Level.WARN, "看图追问失败：$question")
+            uiBridge.pushFloating("看图追问失败", "ERROR")
         } else {
-            log(AgentLog.Level.INFO, "看图追问返回：${text.take(200)}")
-            pushFloating("看图追问已返回", "THINKING")
+            uiBridge.log(AgentLog.Level.INFO, "看图追问返回：${text.take(200)}")
+            uiBridge.pushFloating("看图追问已返回", "THINKING")
             recordProgress(step, action)
         }
         delay(200)
@@ -2200,13 +2242,6 @@ class AgentEngine(
 
     // ---- 决策链路模型配置已收口到 decision/DecisionConfig（重构批次 8），以下为转发 ----
 
-    private fun mainSeesImage(s: AppSettings.Settings): Boolean = decisionConfig.mainSeesImage(s)
-
-    private fun visionConfig(settingsVal: AppSettings.Settings, force: Boolean = false): VisionConfig? =
-        decisionConfig.visionConfig(settingsVal, force)
-
-    private fun reasoningConfig(settingsVal: AppSettings.Settings): ReasoningConfig? =
-        decisionConfig.reasoningConfig(settingsVal)
 
     /**
      * 端点协议解析：按归一化 URL 匹配模型库端点的协议档位。
@@ -2234,44 +2269,28 @@ class AgentEngine(
         com.phoneagent.core.ai.StructuredOutputRouting.guidedOf(settingsVal.endpoints, settingsVal.apiBaseUrl)
 
     /** 每步决策温度：失败越频繁越鼓励换思路（对应温度文档第三节，逻辑下沉 EngineRules） */
-    private fun decisionTemperature(): Double = EngineRules.decisionTemperature(consecutiveFailures)
 
     /**
      * 判断动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等）。
      * 依据动作类型 + 目标 label/理由 中的触发词。
      */
-    private fun isFinalSubmit(action: AgentAction, type: String): Boolean = EngineRules.isFinalSubmit(action, type)
 
     /** 幂等判定：当前页面是否已出现"完成成功"证据（避免重复执行副作用后再次触发） */
-    private fun idempotencyDone(snapshot: ScreenSnapshot): Boolean = EngineRules.idempotencyDone(snapshot)
 
     // ---- 执行家族已收口到 execution/ExecutionCore（重构批次 7b），以下为转发 ----
 
     private suspend fun safeExecute(action: AgentAction, snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult =
-        executionCore.safeExecute(action, snapshot)
+        executionCore.safeExecute(action, snapshot).also { result ->
+            // 记下最后一次真实交付动作用的通道，供收尾卡片展示；动作未经过通道选择时保留上一次的值
+            if (result.channel.isNotBlank()) {
+                lastChannelLabel = com.phoneagent.engine.execution.ChannelKind.entries
+                    .firstOrNull { it.id == result.channel }?.label.orEmpty()
+            }
+        }
 
-    private suspend fun shellChannelAvailable(): Boolean = executionCore.shellChannelAvailable()
 
-    private fun recordMetrics(decision: com.phoneagent.core.ai.AiDecision) = telemetry.recordMetrics(decision)
 
-    private fun recordVisionMs(elapsedMs: Long) = telemetry.recordVisionMs(elapsedMs)
 
-    private fun recordExecMs(elapsedMs: Long) = telemetry.recordExecMs(elapsedMs)
-
-    private fun recordStepTrace(
-        step: Int,
-        sent: String,
-        decision: com.phoneagent.core.ai.AiDecision,
-        visionSource: String,
-        visionModel: String,
-        visionDescription: String,
-        screenshot: android.graphics.Bitmap?,
-        receivedTextOverride: String? = null,
-    ) = telemetry.recordStepTrace(
-        step, sent, decision, visionSource, visionModel, visionDescription, screenshot, receivedTextOverride,
-    )
-
-    private fun recordLocalStepTrace(step: Int, intent: AgentIntent) = telemetry.recordLocalStepTrace(step, intent)
 
     // ==================== 记忆读写 ====================
 
@@ -2291,13 +2310,13 @@ class AgentEngine(
                 confidence = action.confidence ?: 0.7,
             )
         }.getOrNull()
-        log(AgentLog.Level.INFO, "写入记忆：$content")
+        uiBridge.log(AgentLog.Level.INFO, "写入记忆：$content")
         recordStep(step, action, VerifyRules.STATUS_VERIFIED, "", "", "已写入记忆")
         if (upsert == null) return
-        emitMemoryEvent(upsert, "r$currentTaskId", step)
+        telemetry.emitMemoryEvent(upsert, "r$currentTaskId", step)
         // 记忆变了 → 作废素材缓存，让后续步骤立刻用上刚记下的信息
         memoryRawCache = null
-        pushFloating("记住了：${content.take(20)}", "THINKING")
+        uiBridge.pushFloating("记住了：${content.take(20)}", "THINKING")
     }
 
     /**
@@ -2308,16 +2327,16 @@ class AgentEngine(
     private suspend fun handleDeviceQuery(step: Int, action: AgentAction, messages: MutableList<ChatMessageDto>) {
         val kind = action.text?.trim().orEmpty().ifBlank { "all" }
         val filter = action.summary?.trim().orEmpty()
-        val text = runCatching { deviceQueryText(kind, filter) }
+        val text = runCatching { contextInjector.deviceQueryText(kind, filter) }
             .getOrDefault("查询失败")
             .take(MAX_DEVICE_QUERY_OUTPUT)
-        log(AgentLog.Level.INFO, "查询本机信息：kind=$kind filter=${filter.ifBlank { "-" }} → ${text.take(120)}")
+        uiBridge.log(AgentLog.Level.INFO, "查询本机信息：kind=$kind filter=${filter.ifBlank { "-" }} → ${text.take(120)}")
         recordStep(step, action, VerifyRules.STATUS_VERIFIED, "", "", "查询结果：${text.take(200)}")
         val injected = "device_query（kind=$kind）查询结果：\n$text"
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
-        addConversation("assistant", injected)
+        uiBridge.addConversation("assistant", injected)
         recordProgress(step, action)
-        pushFloating("已查到本机信息", "THINKING")
+        uiBridge.pushFloating("已查到本机信息", "THINKING")
         delay(200)
     }
 
@@ -2334,20 +2353,20 @@ class AgentEngine(
         val result = runCatching {
             deviceOpsChannel.run(family, op.ifBlank { null }, action.args.orEmpty())
         }.getOrElse {
-            com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail("系统直连执行异常：${it.message ?: "未知原因"}")
+            com.phoneagent.device.ops.OpsResult.Fail("系统直连执行异常：${it.message ?: "未知原因"}")
         }
-        val ok = result is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok
+        val ok = result is com.phoneagent.device.ops.OpsResult.Ok
         // 三态：成功 / 已下发但读不到回执 / 根本没执行（见 VerifyRules.deviceOpsStatus）
         val status = when (result) {
-            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok -> VerifyRules.STATUS_VERIFIED
-            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail ->
+            is com.phoneagent.device.ops.OpsResult.Ok -> VerifyRules.STATUS_VERIFIED
+            is com.phoneagent.device.ops.OpsResult.Fail ->
                 VerifyRules.deviceOpsStatus(ok = false, dispatched = result.dispatched)
         }
         val text = when (result) {
-            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Ok -> result.text
-            is com.phoneagent.device.ops.DeviceOpsChannel.OpsResult.Fail -> result.reason
+            is com.phoneagent.device.ops.OpsResult.Ok -> result.text
+            is com.phoneagent.device.ops.OpsResult.Fail -> result.reason
         }
-        log(
+        uiBridge.log(
             if (ok) AgentLog.Level.INFO else AgentLog.Level.WARN,
             "系统直连：$family/${op.ifBlank { "-" }} → ${text.take(160)}",
         )
@@ -2364,9 +2383,9 @@ class AgentEngine(
         }
         val injected = "$title $verdict：\n$text"
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
-        addConversation("assistant", injected)
+        uiBridge.addConversation("assistant", injected)
         recordProgress(step, action)
-        pushFloating(if (ok) "已执行系统直连" else "直连未完成", "THINKING")
+        uiBridge.pushFloating(if (ok) "已执行系统直连" else "直连未完成", "THINKING")
         delay(200)
     }
 
@@ -2426,9 +2445,9 @@ class AgentEngine(
     private fun handleSay(step: Int, action: AgentAction) {
         val text = action.text.orEmpty().trim()
         if (text.isEmpty()) return
-        log(AgentLog.Level.INFO, "AI 说话：${text.take(120)}")
-        emitSayEvent(text, "r$currentTaskId", step)
-        pushFloating(text.take(20), "THINKING")
+        uiBridge.log(AgentLog.Level.INFO, "AI 说话：${text.take(120)}")
+        telemetry.emitSayEvent(text, "r$currentTaskId", step)
+        uiBridge.pushFloating(text.take(20), "THINKING")
     }
 
     /**
@@ -2446,15 +2465,15 @@ class AgentEngine(
         val written = if (text.isNotEmpty()) {
             documentEngine?.writeDocument(text, title)?.takeIf { it.isNotBlank() }
         } else null
-        log(
+        uiBridge.log(
             AgentLog.Level.INFO,
             "引导用户回 Agent 页：${written?.let { "并展示文档 $it" } ?: "看已有结果"}",
         )
         // 没带正文时任务流里没东西可看，留一句话说明为什么把用户叫回来
         if (written == null) {
-            emitSayEvent(title.ifBlank { "结果已经准备好，回 Agent 页看吧" }, "r$currentTaskId", step)
+            telemetry.emitSayEvent(title.ifBlank { "结果已经准备好，回 Agent 页看吧" }, "r$currentTaskId", step)
         }
-        pushFloating(if (written != null) "已回到 Agent 页看结果" else "已回到 Agent 页", "THINKING")
+        uiBridge.pushFloating(if (written != null) "已回到 Agent 页看结果" else "已回到 Agent 页", "THINKING")
         com.phoneagent.ui.MainActivity.showAgentPage(appContext, showDocument = written != null)
     }
 
@@ -2477,12 +2496,12 @@ class AgentEngine(
     ): Pair<AgentAction, com.phoneagent.engine.execution.VerifyResult> {
         val op = intent.intent
         val label = browserChannel.label(op)
-        log(
+        uiBridge.log(
             AgentLog.Level.INFO,
             "内置浏览器：$op uri=${intent.uri ?: "-"} target=${intent.target?.value ?: "-"} text=${intent.text ?: "-"}",
         )
         _state.value = _state.value.copy(phase = AgentState.Phase.ACTING, message = "浏览器：$label")
-        pushFloating("浏览器：$label", "ACTING")
+        uiBridge.pushFloating("浏览器：$label", "ACTING")
         // 用于留档的合成动作：浏览器意图不经转译层，但调试面板/执行流仍要看得到"这一步在干什么"
         val record = AgentAction(
             type = op,
@@ -2519,42 +2538,42 @@ class AgentEngine(
                     "（正文里的链接文字与「可操作元素」清单都在里面，清单里的文字可原样用于 browse_click / browse_input）。"
         }
         messages.add(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = injected))))
-        addConversation("assistant", injected)
+        uiBridge.addConversation("assistant", injected)
         when (outcome) {
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok -> {
                 browseMissingStreak = 0
                 consecutiveFailures = 0
                 recordProgress(step, record)
-                pushFloating("浏览器：$label 完成", "THINKING")
+                uiBridge.pushFloating("浏览器：$label 完成", "THINKING")
             }
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Missing -> {
                 // 缺参属"AI 表述不完整"：只提示一次让它补全，连续多次仍不补全则收尾，避免无限追问
                 browseMissingStreak++
                 consecutiveFailures++
-                log(AgentLog.Level.WARN, "浏览器意图缺参（第 $browseMissingStreak 次）：$op → ${text.take(120)}")
-                pushFloating("浏览器：$label 缺参数", "THINKING")
+                uiBridge.log(AgentLog.Level.WARN, "浏览器意图缺参（第 $browseMissingStreak 次）：$op → ${text.take(120)}")
+                uiBridge.pushFloating("浏览器：$label 缺参数", "THINKING")
             }
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused -> {
                 // 只读护栏的拒绝是"设计如此"，不是工具坏了：明确告诉 AI 不要再重试同一个动作
                 browseMissingStreak = 0
                 consecutiveFailures++
-                log(AgentLog.Level.WARN, "只读模式拒绝浏览器操作：$op → ${text.take(120)}")
-                pushFloating("浏览器：$label 已按只读规则拒绝", "THINKING")
+                uiBridge.log(AgentLog.Level.WARN, "只读模式拒绝浏览器操作：$op → ${text.take(120)}")
+                uiBridge.pushFloating("浏览器：$label 已按只读规则拒绝", "THINKING")
             }
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed -> {
                 browseMissingStreak = 0
                 consecutiveFailures++
-                log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
-                pushFloating("浏览器：$label 未成功", "THINKING")
+                uiBridge.log(AgentLog.Level.WARN, "浏览器操作失败（第 $consecutiveFailures 次）：$op → ${text.take(120)}")
+                uiBridge.pushFloating("浏览器：$label 未成功", "THINKING")
             }
         }
         if (browseMissingStreak >= MAX_BROWSE_MISSING_STREAK) {
-            log(AgentLog.Level.ERROR, "连续 $browseMissingStreak 次浏览器意图缺参，停止任务：$text")
+            uiBridge.log(AgentLog.Level.ERROR, "连续 $browseMissingStreak 次浏览器意图缺参，停止任务：$text")
             _state.value = _state.value.copy(
                 phase = AgentState.Phase.ERROR,
                 message = "浏览器意图连续缺少必要参数，已停止任务",
             )
-            pushFloating("浏览器意图缺参，已停止", "ERROR")
+            uiBridge.pushFloating("浏览器意图缺参，已停止", "ERROR")
             finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED)
             stop()
         }
@@ -2569,24 +2588,15 @@ class AgentEngine(
     }
 
     /** 记忆写入事件入流（转发 [TelemetryRecorder.emitMemoryEvent]，重构批次 2） */
-    private fun emitMemoryEvent(upsert: AiMemoryUpsert, runKey: String, step: Int) =
-        telemetry.emitMemoryEvent(upsert, runKey, step)
-
     /** AI 说话事件入流（转发 [TelemetryRecorder.emitSayEvent]，重构批次 2） */
-    private fun emitSayEvent(text: String, runKey: String, step: Int) =
-        telemetry.emitSayEvent(text, runKey, step)
-
     // ==================== 任务会话归档（Agent 页侧边栏） ====================
 
-    private fun startTaskSession(session: TaskSession) = telemetry.startTaskSession(session)
 
-    private fun settleTaskSession(taskId: Long, cancelled: Boolean) = telemetry.settleTaskSession(taskId, cancelled)
 
     private fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) =
         telemetry.updateTaskSession(taskId, transform)
 
     /** 回载/清空会话归档（由持久化层调用） */
-    private fun replaceTaskSessions(list: List<TaskSession>) = telemetry.replaceTaskSessions(list)
 
     /** 撤销一条刚写入的记忆：删库 + 从事件流移除（卡片随之消失） */
     suspend fun dismissMemoryEvent(id: Long) = telemetry.dismissMemoryEvent(id)
@@ -2601,16 +2611,6 @@ class AgentEngine(
      * 画像 + 记忆 + 规则每任务只读一次库并缓存（记忆被写入后缓存作废）；
      * 异常经验随页面变化，按页面指纹单独缓存，换页才重新查。
      */
-    private suspend fun memoryAndRules(task: String, snapshot: ScreenSnapshot): Pair<String, String> =
-        contextInjector.memoryAndRules(task, snapshot)
-
-    private suspend fun anomalyHint(snapshot: ScreenSnapshot): String = contextInjector.anomalyHint(snapshot)
-
-    private suspend fun pageMemoryHintFor(snapshot: ScreenSnapshot, hit: com.phoneagent.data.store.PageMemoryEntry?): String =
-        contextInjector.pageMemoryHintFor(snapshot, hit)
-
-    private suspend fun pageMemoryPlanningLines(task: String, lang: PromptLang): List<String> =
-        contextInjector.pageMemoryPlanningLines(task, lang)
 
     private fun recordStep(
         step: Int,
@@ -2676,13 +2676,13 @@ class AgentEngine(
 
     /** 将一步动作拼装成人类可读的执行说明（用 AI 的 reasoning/reason + 验证结果）；拼装逻辑下沉 VerifyRules */
     private fun actionDescription(action: AgentAction, verified: Boolean): String =
-        VerifyRules.actionDescription(action, verified, actionLabel(action.type))
+        VerifyRules.actionDescription(action, verified, EngineRules.actionLabel(action.type))
 
     /** 每步执行成功后，把该步摘要写入任务记忆（已验证有效的做法，供后续步骤复用） */
     private fun recordProgress(step: Int, action: AgentAction) {
         completedSteps++
         loopGuard.onProgress()
-        val label = actionLabel(action.type)
+        val label = EngineRules.actionLabel(action.type)
         val reason = action.reasoning?.takeIf { it.isNotBlank() } ?: action.reason?.takeIf { it.isNotBlank() }
         val note = if (reason != null) "第${step}步: $label（$reason）" else "第${step}步: $label"
         // 写进任务记忆而不是易失的内存队列：记忆会落库并注入每轮决策，中途被压缩掉的历史也能找回来
@@ -2695,7 +2695,7 @@ class AgentEngine(
 
     /** 任务完成后，通过悬浮窗交互请用户确认是否保存为模板（不自动入库） */
     private fun requestConfirmSaveTemplate() {
-        showFloatingInteraction(
+        uiBridge.showFloatingInteraction(
             type = "savetemplate",
             title = "保存执行模板",
             content = "本次任务已完成，是否将步骤保存为模板，供下次复用？",
@@ -2713,10 +2713,10 @@ class AgentEngine(
         pendingTemplateTask = null
         pendingTemplatePlan = null
         // 应答后即隐藏"保存模板"交互面板
-        clearFloatingQuery()
+        uiBridge.clearFloatingQuery()
         if (!save) {
             // 用户选择不保存：直接显示完成动效
-            FloatingWindowService.showDone("任务完成")
+            FloatingWindowService.showDone(buildOutcome(TaskStatus.SUCCESS, "任务完成"))
             return
         }
         scope.launch {
@@ -2729,16 +2729,15 @@ class AgentEngine(
                         executionCount = 1, successCount = 1, failedStreak = 0, enabled = true,
                     ),
                 )
-                log(AgentLog.Level.INFO, "用户确认，模板已入库：$task")
-                FloatingWindowService.showDone("任务完成且已保存模板")
+                uiBridge.log(AgentLog.Level.INFO, "用户确认，模板已入库：$task")
+                FloatingWindowService.showDone(buildOutcome(TaskStatus.SUCCESS, "任务完成且已保存模板"))
             } catch (e: Exception) {
-                log(AgentLog.Level.WARN, "模板入库失败：${e.message}")
-                FloatingWindowService.showDone("任务完成")
+                uiBridge.log(AgentLog.Level.WARN, "模板入库失败：${e.message}")
+                FloatingWindowService.showDone(buildOutcome(TaskStatus.SUCCESS, "任务完成"))
             }
         }
     }
 
-    private fun actionLabel(type: String): String = EngineRules.actionLabel(type)
 
     private fun recordsIntoHistory(
         step: Int,
@@ -2757,7 +2756,6 @@ class AgentEngine(
      * 信箱是单槽缓冲（CONFLATED），且 [provideUserHint] / [dismissUser] 只在 [_needsUser] 为 true 时投递：
      * 用户抢在订阅之前输入的内容会被缓冲住，订阅一到就能取走，不会像原先 SharedFlow 那样被静默丢弃。
      */
-    private suspend fun awaitUserHint(): String = userGate.awaitUserHint()
 
     /**
      * 截图：副屏模式只读副屏（screencap -d），主屏模式读主屏。
@@ -2772,7 +2770,7 @@ class AgentEngine(
                 val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                 if (bmp != null) return bmp
             }
-            log(
+            uiBridge.log(
                 AgentLog.Level.WARN,
                 "副屏截图不可用（${virtualDisplay?.lastScreenshotError ?: "原因未知"}）：" +
                     "本轮不带截图，只用副屏无障碍元素树决策",
@@ -2790,16 +2788,16 @@ class AgentEngine(
         if (!settingsVal.virtualDisplayEnabled) return false
         val vd = virtualDisplay
         if (vd == null) {
-            log(AgentLog.Level.WARN, "副屏模式需要 Shizuku 通道，当前不可用，已降级主屏模式")
+            uiBridge.log(AgentLog.Level.WARN, "副屏模式需要 Shizuku 通道，当前不可用，已降级主屏模式")
             return false
         }
         return when (val r = vd.ensure()) {
             is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Ok -> true
             is com.phoneagent.device.screen.VirtualDisplayAgent.Outcome.Fail -> {
-                log(AgentLog.Level.WARN, "副屏创建失败，已降级主屏模式：${r.reason}")
+                uiBridge.log(AgentLog.Level.WARN, "副屏创建失败，已降级主屏模式：${r.reason}")
                 com.phoneagent.device.screen.VirtualDisplayAgent.lastDiagnostic
                     .takeIf { it.isNotBlank() }
-                    ?.let { log(AgentLog.Level.INFO, "副屏诊断：$it") }
+                    ?.let { uiBridge.log(AgentLog.Level.INFO, "副屏诊断：$it") }
                 false
             }
         }
@@ -2820,7 +2818,7 @@ class AgentEngine(
         val a11y = AgentAccessibilityService.instance
         if (a11y == null) {
             // 「只截图不读树」的直接证据：说明是会话没连上，而不是元素树被筛选条件清空
-            log(
+            uiBridge.log(
                 AgentLog.Level.WARN,
                 "无障碍会话未连接：" +
                     (com.phoneagent.device.provider.ProviderManager.lastError.value
@@ -2832,8 +2830,8 @@ class AgentEngine(
         } ?: ScreenSnapshot(
             missingAccessibility = true,
             // 无障碍不可用时也填充真实屏幕尺寸（供 ShellCommands 比例坐标换算）
-            screenWidth = screenWidth(),
-            screenHeight = screenHeight(),
+            screenWidth = contextInjector.screenWidth(),
+            screenHeight = contextInjector.screenHeight(),
         )
         _state.value = _state.value.copy(
             hasAccessibility = AgentAccessibilityService.instance != null,
@@ -2864,7 +2862,7 @@ class AgentEngine(
         if (tree != null && tree.elements.isNotEmpty()) {
             val shot = vd.screenshot()
             if (shot == null) {
-                log(
+                uiBridge.log(
                     AgentLog.Level.INFO,
                     "副屏截图不可用（${vd.lastScreenshotError ?: "原因未知"}），本轮按无障碍树观察（$stats）",
                 )
@@ -2911,33 +2909,24 @@ class AgentEngine(
         if (!virtualDisplayActive) return
         virtualDisplayActive = false
         runCatching { virtualDisplay?.destroy(reason) }
-        log(
+        uiBridge.log(
             AgentLog.Level.WARN,
             "副屏不可用，已降级主屏模式（后续步骤在主屏执行）：$reason",
         )
-        pushFloating("副屏不可用，已降级主屏", "OBSERVING")
+        uiBridge.pushFloating("副屏不可用，已降级主屏", "OBSERVING")
     }
 
     // ---- 上下文注入已收口到 context/ContextInjector（重构批次 6），以下为转发 ----
 
-    private fun screenWidth(): Int = contextInjector.screenWidth()
-    private fun screenHeight(): Int = contextInjector.screenHeight()
 
     // 真实屏幕尺寸（不依赖无障碍服务）：直接问 WindowManager，取数细节见 [DeviceFacts]
-    private fun realScreenWidth(): Int = contextInjector.realScreenWidth()
 
-    private fun realScreenHeight(): Int = contextInjector.realScreenHeight()
 
-    private fun installedAppList(): String = contextInjector.installedAppList()
 
     /** 累计前台应用出现次数（同一任务内），供经验规则推断作用域；本 App 自己不计入 */
-    private fun noteForeground(pkg: String) = contextInjector.noteForeground(pkg)
 
-    private fun envFacts(snapshot: ScreenSnapshot? = null) = contextInjector.envFacts(snapshot)
 
-    private fun deviceQueryText(kind: String, filter: String) = contextInjector.deviceQueryText(kind, filter)
 
-    private fun sessionContextText(task: String, lang: PromptLang) = contextInjector.sessionContextText(task, lang)
 
     // ---- 任务路由（Superagent 融合 Phase 4）：普通对话 / 原操控链路 ----
 
@@ -2970,10 +2959,10 @@ class AgentEngine(
                 temperature = CHAT_TEMPERATURE,
                 protocol = protocolOf(settingsVal.apiBaseUrl, settingsVal),
             ).getOrElse { "抱歉，这次没有答上来（${it.message ?: "网络或模型异常"}）。请稍后再试。" }
-            addConversation("assistant", answer)
+            uiBridge.addConversation("assistant", answer)
             rememberChatTurn(task, answer)
             AgentStatusStore.update(AgentStatusStore.Snapshot(task = task, status = answer.take(80)))
-            log(AgentLog.Level.INFO, "对话直答完成")
+            uiBridge.log(AgentLog.Level.INFO, "对话直答完成")
         } finally {
             // 合并形态：对话页被并入 Agent 页后，这一问一答要靠时间线气泡留在原地。
             // 停止/取消也要收尾，否则气泡会永远停在「正在回答」
@@ -3036,12 +3025,12 @@ class AgentEngine(
         }.getOrNull()
         val parsed = raw?.let(IntentRouter::parse)
         if (parsed == null) {
-            log(AgentLog.Level.WARN, "意图判定未得到明确结果，按手机操控任务处理：${raw?.take(60).orEmpty()}")
+            uiBridge.log(AgentLog.Level.WARN, "意图判定未得到明确结果，按手机操控任务处理：${raw?.take(60).orEmpty()}")
             return TaskIntent.AGENT
         }
         if (intentCache.size >= MAX_INTENT_CACHE) intentCache.clear()
         intentCache[task] = parsed
-        log(AgentLog.Level.INFO, "意图判定：${IntentRouter.label(parsed)}")
+        uiBridge.log(AgentLog.Level.INFO, "意图判定：${IntentRouter.label(parsed)}")
         return parsed
     }
 

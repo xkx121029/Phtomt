@@ -40,6 +40,11 @@ data class VerifyResult(
     val trace: String = "",
     /** 因某项设备能力缺失而失败时的稳定编号（见 `DeviceCapability.code`），便于统一回注原因 */
     val capabilityCode: String = "",
+    /**
+     * 本步是否向**密码框**输入了内容。为 true 时执行层会把动作里的正文换成占位符再留档/回注：
+     * 密码只用于这一次执行，不落本地轨迹、不进下一轮提示词。
+     */
+    val sensitiveInput: Boolean = false,
 )
 
 /**

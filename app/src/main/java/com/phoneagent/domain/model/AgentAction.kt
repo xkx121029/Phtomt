@@ -81,6 +81,14 @@ data class AgentAction(
     val minute: Int? = null,
     /** set_alarm：重复星期（Android Calendar 常量，周日=1…周六=7；空=一次性） */
     val repeatDays: List<Int>? = null,
+    /**
+     * set_alarm：端侧从口语时间换算出的目标触发时刻（毫秒）。
+     *
+     * AI 不需要填写：由 [com.phoneagent.engine.execution.IntentTranslator] 在转译时统一算出，
+     * 用来把「明天下午三点」「三天后早上七点」这类相对日期带到执行层——
+     * AlarmClock 意图本身只能按 HH:mm 排"下一次"，不带日期就会被排到今天。
+     */
+    val alarmAtMillis: Long? = null,
 )
 
 /** 动作目标 */
@@ -166,15 +174,17 @@ object ActionType {
     /** 系统直连子操作（endpoint=能力族，op=子操作，args=参数）；纯端侧落地，不操控屏幕 */
     const val DEVICE_OPS = "device_ops"
 
-    /** 文档动作别名 → 引擎动作的映射 */
+    /**
+     * 文档动作别名 → 引擎动作的映射。
+     *
+     * 只放**改过名**的动作，不是全量表：查不到就按原值使用（见 ExecutionCore 的 `ALIAS[type] ?: type`）。
+     * 因此 `KEY`、`LAUNCH`、`OPEN` 这类同名项不要写进来——自映射既无意义，又会让人误以为它们改过名。
+     */
     val ALIAS: Map<String, String> = mapOf(
         TAP to CLICK,
         LONG_PRESS to LONG_CLICK,
-        KEY to KEY,
-        LAUNCH to LAUNCH,
         SCROLL_TO to SCROLL,
         ABORT to TASK_DONE,
         TASK_COMPLETE to TASK_DONE,
-        OPEN to OPEN,
     )
 }

@@ -204,7 +204,10 @@ class CodingEventReducerTest {
         assertEquals(ConnState.DISCONNECTED, r.conn)
         assertEquals(false, r.busy)
         assertNull(r.assistantKey)
-        assertTrue("错误文案含退出码与重连提示", r.error!!.contains("代码 7") && r.error!!.contains("正在重连"))
+        // 这里只断言事实描述（退出码）；「正在重连」由 AgentClient 按实际尝试次数单独更新，
+        // 不能写进这条文案——否则重连耗尽后界面会一直显示"正在重连"。
+        assertTrue("错误文案含退出码", r.error!!.contains("代码 7"))
+        assertFalse("不含重连进度（由 AgentClient 负责）", r.error!!.contains("正在重连"))
         assertTrue("AgentClient 据此调度退避重连", r.hostExited)
     }
 

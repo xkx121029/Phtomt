@@ -6,6 +6,8 @@ import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.app.assist.AssistContent
 import android.app.assist.AssistStructure
+import android.speech.RecognitionService
+import android.speech.SpeechRecognizer
 import android.content.Intent
 import android.view.View
 import com.phoneagent.ui.MainActivity
@@ -16,7 +18,8 @@ import com.phoneagent.ui.MainActivity
  * - [HpaVoiceInteractionService]：助理服务入口（系统绑定）；
  * - [HpaVoiceInteractionSessionService]：会话服务（系统在每次唤起时实例化）；
  * - [HpaVoiceInteractionSession]：会话本体——收取 AssistStructure 屏幕上下文，
- *   暂存到 [AssistContextStore] 供引擎决策注入，然后把用户带回 Agent 页输入任务。
+ *   暂存到 [AssistContextStore] 供引擎决策注入，然后把用户带回 Agent 页输入任务；
+ * - [HpaRecognitionService]：仅为满足助理资格而声明的识别服务占位（本应用语音输入不走它）。
  *
  * 会话刻意不做自有 UI：输入与任务流都在 Agent 页里，助理唤起只是"带屏带电回来"的入口。
  * 收到的屏幕文本仅暂存内存、90 秒过期（见 [AssistContextStore]），不落盘。
@@ -84,5 +87,27 @@ class HpaVoiceInteractionSession(service: VoiceInteractionSessionService) :
 
         /** 空白归并正则：每次唤起助理都会走一次，预编译复用 */
         private val WS_RUN_RE = Regex("\\s+")
+    }
+}
+
+/**
+ * 助理资格的必需占位：`voice_interaction_service.xml` 里声明的 recognitionService 必须是
+ * 一个真实存在的 [RecognitionService] 实现，否则系统解析 meta-data 时会直接判定
+ * 「No recognitionService specified」，整个助理服务作废——表现就是系统
+ * 「默认数字助理应用」列表里根本没有本应用。
+ *
+ * 本应用的语音输入不经过这条通道，所以这里不做识别：不参与系统识别服务竞争
+ * （`recognition_service.xml` 里 `selectableAsDefault=false`），一旦被调用立即报错，
+ * 而不是假装在听。
+ */
+class HpaRecognitionService : RecognitionService() {
+    override fun onStartListening(recognizerIntent: Intent, listener: Callback) {
+        runCatching { listener.error(SpeechRecognizer.ERROR_CLIENT) }
+    }
+
+    override fun onStopListening(listener: Callback) = Unit
+
+    override fun onCancel(listener: Callback) {
+        runCatching { listener.error(SpeechRecognizer.ERROR_CLIENT) }
     }
 }

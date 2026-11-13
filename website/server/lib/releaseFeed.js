@@ -90,11 +90,18 @@ export function channelOf(tag, name = '') {
   return channelDetail(tag, name).channel
 }
 
-/** 构建号＝tag 末段数字；三段以后可能被手工灌成 2000092，所以只当展示用 */
+/**
+ * 构建号＝tag 末段数字；三段以后可能被手工灌成 2000092，所以只当展示用。
+ *
+ * 末段要先把渠道后缀（-dev / -beta / -nightly / -stable）剥掉再取数字：
+ * `v0.2.9160-dev` 直接 Number('9160-dev') 会得到 NaN，早前所有带后缀的版本
+ * build 号都被显示成 0，客户端的更新比较跟着失效。
+ */
 function buildOf(tag) {
   const parts = String(tag || '').replace(/^v/i, '').split('.')
-  const last = Number(parts[parts.length - 1])
-  return Number.isFinite(last) ? last : 0
+  const last = String(parts[parts.length - 1] || '').split('-')[0]
+  const n = Number(last)
+  return Number.isFinite(n) ? n : 0
 }
 
 /** 把 GitHub 的正文压成一句摘要：去掉 Markdown 标记，取第一段有效文字 */

@@ -5,7 +5,7 @@ import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase

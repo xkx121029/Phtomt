@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 占位识别服务声明：系统要求「默认数字助理」必须带 recognitionService，
+     否则助理服务的 meta-data 解析失败、应用不会出现在「默认数字助理应用」列表里。
+     selectableAsDefault=false 表示不参与系统识别服务竞争，不影响本应用自己的语音输入 -->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:selectableAsDefault="false" />

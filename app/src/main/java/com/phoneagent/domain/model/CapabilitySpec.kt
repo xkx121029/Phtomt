@@ -220,10 +220,10 @@ object CapabilityRegistry {
         // ---- 低风险（保守模式放行） ----
         CapabilitySpec(
             intent = IntentType.SET_ALARM, name = "定闹钟", category = "时钟",
-            summary = "直接在本机时钟应用创建闹钟（不经语音助手、不模拟点击）：hour/minute 为 24 小时制，或只给 when（「7点半」「半小时后」「明天早上6点」「每天7点」）由端侧解析；repeat_days 可写「每天/工作日/周一三五」；text 为标签。LOW 风险：保守档也允许，可撤销、不改动用户数据。",
+            summary = "直接在本机时钟应用创建闹钟（不经语音助手、不模拟点击）：hour/minute 为 24 小时制，或只给 when（「7点半」「半小时后」「明天早上6点」「每天7点」）由端侧解析；repeat_days 可写「每天/工作日/周一三五」；text 为标签。LOW 风险：保守档也允许，可撤销、不改动用户数据。凡用户说了相对日期（明早/今晚/明天下午/三天后）必须原样放进 when，不要自己换算成 hour/minute（模型自行加减 12 小时会把「明早 7 点」变成「今天 19 点」）。",
             params = listOf(
-                CapabilityParam("when", "时间说法", "text", description = "口语时间：「7点半」「半小时后」「明天早上6点」「每天7点」"),
-                CapabilityParam("hour", "小时", "number", description = "24 小时制 0~23；与 when 二选一"),
+                CapabilityParam("when", "时间说法", "text", description = "口语时间，优先用它：「7点半」「半小时后」「明天早上6点」「每天7点」；含相对日期时原样抄录，由端侧换算"),
+                CapabilityParam("hour", "小时", "number", description = "24 小时制 0~23；与 when 二选一。用户说了 明早/今晚/明天/后天 时必须用 when，不要自行加减 12 小时"),
                 CapabilityParam("minute", "分钟", "number", description = "0~59，缺省 0"),
                 CapabilityParam("repeat_days", "重复星期", "text", description = "「每天」「工作日」「周末」「周一三五」，也接受 mon..sun 列表"),
                 CapabilityParam("text", "标签", "text", description = "闹钟标签，如「起床」"),

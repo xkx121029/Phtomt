@@ -332,55 +332,70 @@ export class Agent {
           tools: this.registry.schemas().length,
         });
 
-        for await (const ev of this.provider.stream({ messages: requestMessages, tools: this.registry.schemas(), signal })) {
-          if (signal?.aborted) break;
-          streamEvents += 1;
-          if (!firstEventAt) {
-            firstEventAt = Date.now();
-            // 首包延迟是网关/模型健康度最直接的指标；没有它，卡住时无法区分
-            // 「网关在缓冲」和「模型在思考」。
-            this.#emit({
-              type: 'provider_first_token',
-              sessionId: session.id,
-              runId: run.id,
-              iteration: iter + 1,
-              ms: firstEventAt - requestStartedAt,
-              kind: ev.type,
-            });
+        let streamError = null;
+        try {
+          for await (const ev of this.provider.stream({ messages: requestMessages, tools: this.registry.schemas(), signal })) {
+            if (signal?.aborted) break;
+            streamEvents += 1;
+            if (!firstEventAt) {
+              firstEventAt = Date.now();
+              // 首包延迟是网关/模型健康度最直接的指标；没有它，卡住时无法区分
+              // 「网关在缓冲」和「模型在思考」。
+              this.#emit({
+                type: 'provider_first_token',
+                sessionId: session.id,
+                runId: run.id,
+                iteration: iter + 1,
+                ms: firstEventAt - requestStartedAt,
+                kind: ev.type,
+              });
+            }
+            if (ev.type === 'text') {
+              textTracker.push(ev.delta);
+              assistant.content = textTracker.text;
+              this.#emit({
+                type: 'text',
+                delta: ev.delta,
+                sessionId: session.id,
+                runId: run.id,
+                ...(subagent ? { subagentId: subagent.id, parentRunId: subagent.parentRunId } : {}),
+              });
+            } else if (ev.type === 'thinking') {
+              // 推理过程不进 assistant.content：它不该被回灌给模型，也不该占正文 token。
+              this.#emit({
+                type: 'thinking',
+                delta: ev.delta,
+                sessionId: session.id,
+                runId: run.id,
+                ...(subagent ? { subagentId: subagent.id, parentRunId: subagent.parentRunId } : {}),
+              });
+            } else if (ev.type === 'tool_call') {
+              const key = ev.index ?? pending.size;
+              if (!pending.has(key)) pending.set(key, { id: ev.id, name: ev.name, argsJson: '' });
+              const p = pending.get(key);
+              if (ev.id) p.id = ev.id;
+              if (ev.name) p.name = ev.name;
+              p.argsJson += ev.argsDelta || '';
+            } else if (ev.type === 'finish') {
+              usage = ev.usage;
+            }
           }
-          if (ev.type === 'text') {
-            textTracker.push(ev.delta);
-            assistant.content = textTracker.text;
-            this.#emit({
-              type: 'text',
-              delta: ev.delta,
-              sessionId: session.id,
-              runId: run.id,
-              ...(subagent ? { subagentId: subagent.id, parentRunId: subagent.parentRunId } : {}),
-            });
-          } else if (ev.type === 'thinking') {
-            // 推理过程不进 assistant.content：它不该被回灌给模型，也不该占正文 token。
-            this.#emit({
-              type: 'thinking',
-              delta: ev.delta,
-              sessionId: session.id,
-              runId: run.id,
-              ...(subagent ? { subagentId: subagent.id, parentRunId: subagent.parentRunId } : {}),
-            });
-          } else if (ev.type === 'tool_call') {
-            const key = ev.index ?? pending.size;
-            if (!pending.has(key)) pending.set(key, { id: ev.id, name: ev.name, argsJson: '' });
-            const p = pending.get(key);
-            if (ev.id) p.id = ev.id;
-            if (ev.name) p.name = ev.name;
-            p.argsJson += ev.argsDelta || '';
-          } else if (ev.type === 'finish') {
-            usage = ev.usage;
-          }
+        } catch (err) {
+          // 网关中途断流 / 内容审核 / 连接重置：错误照常上抛让 rpc 回错误包，
+          // 但先把已经吐出来的正文记进会话历史——否则下一轮模型看不到自己刚说过什么，
+          // 界面上的半截回答落盘后也会消失。
+          if (!signal?.aborted) streamError = err;
         }
         if (signal?.aborted) {
           this.#emit({ type: 'cancelled', sessionId: session.id, runId: run.id });
           return { text: '(cancelled)', run, session, cancelled: true };
+        }
+        if (streamError) {
+          // 先落盘半截正文，再抛出原始错误（由 rpc 转成错误包回给客户端）
+          if (assistant.content.trim()) {
+            session.messages.push({ role: 'assistant', content: assistant.content });
+          }
+          throw streamError;
         }
         this.#emit({
           type: 'provider_stream_end',
@@ -435,7 +450,10 @@ export class Agent {
       }
 
       const lastAssistant = [...session.messages].reverse().find((m) => m.role === 'assistant');
-      finalText = (lastAssistant?.content ?? '') + `\n\n[stopped: reached ${this.maxIterations} tool iterations]`;
+      // 中文收尾提示：这段文本在没有流式事件时会作为兜底正文展示给用户，
+      // 原来拼的是 `[stopped: reached N tool iterations]`，用户只看到内部术语。
+      const limitReason = `已达到单轮 ${this.maxIterations} 轮工具循环上限，本轮提前结束。可以让我继续，或把任务拆小一些。`;
+      finalText = (lastAssistant?.content ?? '') + `\n\n[${limitReason}]`;
       this.#emit({
         type: 'done',
         sessionId: session.id,
@@ -445,6 +463,7 @@ export class Agent {
         toolCount: run.toolCalls.length,
         usage: run.usage,
         stopped: true,
+        limitReason,
         ...(subagent ? { subagentId: subagent.id, parentRunId: subagent.parentRunId } : {}),
       });
       return { text: finalText, run, session };

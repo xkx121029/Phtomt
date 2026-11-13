@@ -101,7 +101,7 @@ class ExecutionPhaseTest {
                 emitHintRequest = { },
                 awaitUserHint = { f.userHint },
                 pushThinking = { sent: String?, _: String? -> f.thinkings += sent.orEmpty() },
-                showDone = { f.done += it },
+                showDone = { text, _, _ -> f.done += text },
                 setAgentRunning = { },
                 addConversation = { role: String, content: String -> f.conversations += "$role:$content" },
             ),

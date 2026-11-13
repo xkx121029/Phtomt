@@ -152,13 +152,18 @@ class AgentProcess(
         }
     }
 
-    fun send(line: String) {
-        try {
+    /** 写一行；返回 false 表示管道不可用（未启动 / 已断开 / 写入抛异常）。 */
+    fun send(line: String): Boolean {
+        val w = lineWriter
+        if (w == null || !running) return false
+        return try {
             // 整行互斥交给 LineWriter：JSON-lines 要求"一行 = 一条消息"，
             // 并发写不能把两行拼成一行（host 侧解析失败）。
-            lineWriter?.writeLine(line)
+            w.writeLine(line)
+            true
         } catch (e: Exception) {
             Log.w(TAG, "send failed: ${e.message}")
+            false
         }
     }
 

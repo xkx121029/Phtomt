@@ -103,9 +103,21 @@ class CodingEnvClient(private val context: Context) {
         withTimeoutOrNull(timeoutMs) { state.first { !it.running } }
 
     /** 绑定、代理与生命周期全部交给 [EnvBinder]，这里只关心它给出的代理 */
-    private val binder = EnvBinder(context) { bound ->
+    private val binder = EnvBinder(context, onBoundChanged = { bound ->
         _state.update { it.copy(bound = bound) }
-    }
+    }, onLost = {
+        // 组件进程死亡/解绑：正在跑的任务不可能再有回调了。以前只把 bound 置 false，
+        // running 一直是 true → awaitFinished 白等到超时（默认 30 分钟），最后还报
+        // 「仍在执行」，把"组件崩了"误报成"还在跑"。
+        _state.update { current ->
+            if (!current.running) current else current.copy(
+                running = false,
+                finished = true,
+                ok = false,
+                message = "编码环境组件已断开，任务中断；请重试（若反复出现请重新安装组件）",
+            )
+        }
+    })
 
     // ==================== 状态读取 ====================
 
@@ -294,6 +306,8 @@ class CodingEnvClient(private val context: Context) {
 internal class EnvBinder(
     private val context: Context,
     private val onBoundChanged: (Boolean) -> Unit,
+    /** 连接意外丢失（进程死亡 / binding died）：调用方据此收尾正在跑的任务 */
+    private val onLost: () -> Unit = {},
 ) {
     private companion object {
         const val TAG = "EnvBinder"
@@ -327,6 +341,8 @@ internal class EnvBinder(
         override fun onServiceDisconnected(name: ComponentName?) {
             remote = null
             onBoundChanged(false)
+            // 组件进程被杀：同样收尾在跑的任务（见 [invalidate] 的说明）
+            runCatching { onLost() }
         }
 
         override fun onBindingDied(name: ComponentName?) {
@@ -392,6 +408,8 @@ internal class EnvBinder(
         binding = false
         onBoundChanged(false)
         runCatching { context.unbindService(connection) }
+        // 意外断连要通知上层：正在跑的任务不会再有 onFinished 回调了
+        runCatching { onLost() }
     }
 }
 

@@ -103,10 +103,11 @@ jobs:
         # 任务名必须带 :app 前缀：detekt 配置与基线只挂在 :app 上，
         # 跑根项目的 `detekt` 不带基线路径，存量问题会全量报错。
         #
-        # 只报告、不阻断出包：当前还有 515 条存量问题（MagicNumber 193、
-        # MaxLineLength 122、ReturnCount 61…），大多是历史文件（CapabilitySpec.kt、
-        # ExecutionPhase.kt 等）在基线生成之后新增的。清理完之前它不该挡住产包，
+        # 只报告、不阻断出包：当前还有约 180 条存量问题（MagicNumber 56、
+        # ReturnCount 28、MaxLineLength 25、CyclomaticComplexMethod 20…），
+        # 大多在基线生成之后新增。清理完之前它不该挡住产包，
         # 报告仍随 artifact 上传；清理后把 continue-on-error 去掉即可恢复阻断。
+        # 数字以本地 `app/build/reports/detekt/detekt.xml` 实际条目为准，会随清理下降。
         continue-on-error: true
         run: ./gradlew :app:detekt --stacktrace
 
@@ -114,11 +115,19 @@ jobs:
         # 基线只减不增的守卫是确定性的（当前 1543 条 = 记录值），保留阻断
         run: ./gradlew :app:checkDetektBaseline --stacktrace
 
+      - name: Detekt baseline breakdown (must match total)
+        # 分类合计必须等于总条目数：防止只改总数不更新分类表，让"基线降了"看不出清的是噪音还是结构问题
+        run: ./gradlew :app:checkDetektBaselineBreakdown --stacktrace
+
       - name: Unit Tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Unit Test Coverage Report
         run: ./gradlew :app:createDebugUnitTestCoverageReport --stacktrace
+
+      - name: Pure-logic coverage gate
+        # 只对无副作用的纯逻辑包设阈值（防回落，不是目标值）；真机依赖的包不设，避免逼人造测试
+        run: ./gradlew :app:checkPureLogicCoverage --stacktrace
 
       - name: Lint
         # 存量 lint 问题（MissingPermission 等）尚未清理完，暂不阻断出包；

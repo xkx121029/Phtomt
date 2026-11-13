@@ -29,7 +29,7 @@ object RuntimeBootstrap {
         "" // 老资产没带指纹：退化为每次解压一次，安全但慢
     }
 
-    class Runtime(val nodePath: String, val libDir: String)
+    class Runtime(val nodePath: String)
 
     fun ensureHost(context: Context): File {
         val hostDir = File(context.filesDir, HOST_ASSET)
@@ -49,12 +49,15 @@ object RuntimeBootstrap {
      * 生成进 app/src/main/jniLibs），PackageManager 会把 lib*.so 解压到本包的
      * nativeLibraryDir——Android 10+ 唯一允许 exec 的位置，与 HACA 已验证的自包
      * exec 模式一致。
+     *
+     * 依赖库不靠 LD_LIBRARY_PATH 找：打包时把每个 .so 的 RUNPATH 改写成了 $ORIGIN
+     * （见 tool/bundle_runtime.py），加载器会直接在 libnode.so 所在目录解析兄弟库。
      */
     fun runtime(context: Context): Runtime {
         val libDir = context.applicationInfo.nativeLibraryDir
         val node = File(libDir, "libnode.so")
         check(node.exists()) { "内置编码运行时缺失：libnode.so 不在 $libDir（请安装完整打包的 APK）" }
-        return Runtime(node.absolutePath, libDir)
+        return Runtime(node.absolutePath)
     }
 
     /**

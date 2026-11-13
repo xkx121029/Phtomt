@@ -58,19 +58,27 @@ object DataSanitizer {
     private val phoneRegex = Regex("(?<!\\d)1[3-9]\\d{9}(?!\\d)")
     private val bankRegex = Regex("(?<!\\d)\\d{16,19}(?!\\d)")
     private val idRegex = Regex("(?<!\\d)\\d{17}[0-9Xx](?!\\d)")
+    /** 模型 API Key（sk- 前缀，51 位上下）。实测泄漏路径：用户把 Key 停在设置页，
+     *  页面控件文本被读进决策提示词，再被诊断报告原样导出到「下载/」。 */
+    private val apiKeyRegex = Regex("sk-[A-Za-z0-9_\\-]{12,}")
+    /** 短信验证码：只认「验证码」后紧跟的 4~8 位数字，避免误伤普通金额/时间 */
+    private val smsCodeRegex = Regex("(?<=验证码[^0-9]{0,8})\\d{4,8}")
 
     fun sanitize(text: String): String {
+        // Key 与验证码的判断不看数字总量（Key 里可能只有零星数字），先做这两条
+        var out = text
+        out = apiKeyRegex.replace(out) { it.value.take(6) + "****" + it.value.takeLast(2) }
+        out = smsCodeRegex.replace(out, "******")
         // 快速通道：手机号 11 位、身份证 17 位起、银行卡 16 位起——少于 11 个数字的文本
         // 不可能命中任何一条脱敏规则，直接返回。控件标签/日志正文绝大多数不含数字，
         // 这一步省掉的是每步数百次无意义的正则扫描。
         var digits = 0
-        for (c in text) {
+        for (c in out) {
             if (c in '0'..'9') digits++
             if (digits >= 11) break
         }
-        if (digits < 11) return text
+        if (digits < 11) return out
 
-        var out = text
         // 先脱敏最长的身份证号（18 位），避免其 16~19 位数字被银行卡正则先行匹配而残留
         out = idRegex.replace(out) { it.value.take(6) + "********" + it.value.takeLast(4) }
         out = phoneRegex.replace(out) { it.value.take(3) + "****" + it.value.takeLast(4) }

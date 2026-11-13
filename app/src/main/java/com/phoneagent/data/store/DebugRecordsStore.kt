@@ -7,7 +7,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.TaskSession

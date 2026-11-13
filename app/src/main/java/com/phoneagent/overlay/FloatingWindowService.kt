@@ -730,7 +730,8 @@ class FloatingWindowService : Service() {
                     ?.bottom
             } else null
         }.getOrNull() ?: 0
-        return (maxOf(navBar, dp(marqueeBottomGap)) - marqueeGlowPad).coerceAtLeast(0)
+        // 纯算术已抽到 OverlayGeometry（可单测）；这里只负责取系统 inset 与 dp 换算
+        return OverlayGeometry.marqueeBottomOffset(navBar, dp(marqueeBottomGap), marqueeGlowPad)
     }
 
     // ==================== 降级提示细条 ====================
@@ -920,11 +921,16 @@ class FloatingWindowService : Service() {
 
     /** 细条底边：底部胶囊（含导航栏净空）之上再留 8dp，胶囊高度动态，取不到时用经验值兜底 */
     private fun noticeBottomOffset(): Int {
-        // 胶囊窗口的测量高度含上下光晕留白，扣掉才是胶囊体本身的厚度
-        val capsuleHeight = marquee?.takeIf { it.visibility == View.VISIBLE && it.height > 0 }
-            ?.let { (it.height - 2 * marqueeGlowPad).coerceAtLeast(0) }
-            ?: dp(NOTICE_MARQUEE_FALLBACK_HEIGHT_DP)
-        return marqueeBottomOffset() + capsuleHeight + dp(FloatingUi.PAD)
+        // 胶囊窗口的测量高度含上下光晕留白，扣掉才是胶囊体本身的厚度（公式见 OverlayGeometry）
+        val visible = marquee?.visibility == View.VISIBLE
+        return OverlayGeometry.noticeBottomOffset(
+            marqueeBottomPx = marqueeBottomOffset(),
+            capsuleVisible = visible,
+            windowHeight = marquee?.height ?: 0,
+            glowPadPx = marqueeGlowPad,
+            fallbackCapsulePx = dp(NOTICE_MARQUEE_FALLBACK_HEIGHT_DP),
+            gapPx = dp(FloatingUi.PAD),
+        )
     }
 
     /**

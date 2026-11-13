@@ -39,4 +39,20 @@ class DataSanitizerTest {
         val text = "流水号 00000000000"
         assertEquals(text, DataSanitizer.sanitize(text))
     }
+
+    @Test
+    fun `API Key 在导出前被掩码`() {
+        // 实测泄漏路径：设置页停着 Key → 页面文本进提示词 → 诊断报告原样导出到「下载/」
+        val raw = "页面提示：https://api.example.cn/v1、sk-test0000000000000000000000000000000000000000、agnes-2.5-flash"
+        val out = DataSanitizer.sanitize(raw)
+        assertEquals(false, out.contains("sk-test0000000000"))
+        assertEquals(true, out.contains("sk-tes****00"))
+    }
+
+    @Test
+    fun `验证码只在验证码字样后被掩码`() {
+        assertEquals("验证码 ******，5 分钟内有效", DataSanitizer.sanitize("验证码 482913，5 分钟内有效"))
+        // 没有「验证码」上下文时不动数字，避免误伤金额与时间
+        assertEquals("余额 482913 元", DataSanitizer.sanitize("余额 482913 元"))
+    }
 }

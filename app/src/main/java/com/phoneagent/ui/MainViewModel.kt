@@ -58,6 +58,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.phoneagent.device.vision.StepShot
+import com.phoneagent.device.vision.StepTrace
 
 /** ACA 技能目录扫描结果的有效期：切 Tab 回来的重复触发走缓存，不重复扫盘 */
 private const val ACA_SKILLS_TTL_MS = 60_000L
@@ -109,8 +111,8 @@ class MainViewModel(
     val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
     val metrics: StateFlow<AgentMetrics> = engine.metrics
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
-    val stepShot: StateFlow<com.phoneagent.domain.model.StepShot> = engine.stepShot
-    val traces: StateFlow<List<com.phoneagent.domain.model.StepTrace>> = engine.traces
+    val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> = engine.stepShot
+    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> = engine.traces
     /** 任务会话归档（Agent 页侧边栏）：最新一次任务在最前 */
     val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> = engine.taskSessions
     /** 当前对话的起点：实时视图只铺开这之后的任务，承接块也只取这之后的往来 */
@@ -340,6 +342,12 @@ class MainViewModel(
                 granted = Settings.canDrawOverlays(context),
             ),
             PermissionItem(
+                kind = PermissionKind.WRITE_SETTINGS,
+                title = "修改系统设置",
+                description = "调节亮度、息屏时间、自动旋转等设备设置",
+                granted = Settings.System.canWrite(context),
+            ),
+            PermissionItem(
                 kind = PermissionKind.AUTOSTART,
                 title = "自启动与后台",
                 description = "省电白名单 + 厂商自启动管理",
@@ -436,6 +444,8 @@ class MainViewModel(
                 Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             PermissionKind.OVERLAY ->
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+            PermissionKind.WRITE_SETTINGS ->
+                Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}"))
             PermissionKind.QUERY_ALL_PACKAGES ->
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
             else -> return
@@ -546,6 +556,24 @@ class MainViewModel(
     fun startAgent(task: String) {
         if (task.isBlank()) return
         engine.start(task)
+    }
+
+    /**
+     * 保存配置并起跑任务：写入设置后立刻发任务，写入完成之前不启动引擎。
+     *
+     * 为什么必须在 ViewModel 作用域里做：开屏引导最后一页点「试试」之后，引导组合会
+     * 立即被销毁（[onboardingDismissed] 置真），页面协程随之取消——按"页面协程里
+     * 先 save 再 start"的写法，写入很可能中途被取消，任务用旧配置起跑。
+     *
+     * 运行中走 [startAgent]（排队追加），空闲走 [startPlanning]，
+     * 与深链 / 分享入口的路由完全一致。
+     */
+    fun saveThenStartTask(value: AppSettings.Settings, task: String) {
+        if (task.isBlank()) return
+        viewModelScope.launch {
+            settings.update(value)
+            if (agentState.value.isRunning) startAgent(task) else startPlanning(task)
+        }
     }
 
     fun stopAgent() = engine.stop()

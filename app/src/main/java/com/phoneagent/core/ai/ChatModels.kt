@@ -26,6 +26,16 @@ data class ChatRequest(
     val tools: List<ToolSpec>? = null,
     /** 工具选择策略（如 "auto"）；与 [tools] 同时出现才有意义 */
     val tool_choice: String? = null,
+    /**
+     * vLLM 引导解码：顶层 `guided_json`（值为 JSON Schema）。
+     * 与 [jsonSchema] 互斥，由端点档位 [GuidedDecoding] 决定只下发哪一个。
+     */
+    @SerialName("guided_json") val guidedJson: JsonElement? = null,
+    /**
+     * SGLang 引导解码：顶层 `json_schema`（值为 JSON Schema）。
+     * 注意与 [ResponseFormat.json_schema] 不是同一层字段——后者在 `response_format` 里面。
+     */
+    @SerialName("json_schema") val jsonSchema: JsonElement? = null,
 )
 
 /** 工具声明（OpenAI tools 字段的单项） */

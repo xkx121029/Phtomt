@@ -299,7 +299,7 @@ Happy Phone Agent 诊断报告
 步骤：[5/5] 按计划执行下一步
 上一步结果：⚠️ 已发送但未确认: launch
 连续失败：1
-页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-****REDACTED****、agnes-2.5-flash
 
 # 执行状态三态
 上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
@@ -341,7 +341,7 @@ Happy Phone Agent 诊断报告
 可交互元素（共 15 个）：
   [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
   [#1] android.widget.EditText(EditText) label="https://api.agnes-ai.cn/v1/chat/completions" center=(720,164) bounds=(126,58)-(1314,271)
-  [#2] android.widget.EditText(EditText) label="sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq" center=(720,507) bounds=(126,380)-(1314,635)
+  [#2] android.widget.EditText(EditText) label="sk-****REDACTED****" center=(720,507) bounds=(126,380)-(1314,635)
   [#3] android.widget.EditText(EditText) label="agnes-2.5-flash" center=(720,871) bounds=(126,744)-(1314,999)
   [#4] android.view.View(View) center=(1223,1378) bounds=(1132,1294)-(1314,1462)
   [#5] android.view.View(View) center=(323,1739) bounds=(126,1655)-(521,1823)
@@ -795,7 +795,7 @@ Happy Phone Agent 诊断报告
 步骤：[5/5] 按计划执行下一步
 上一步结果：⚠️ 已发送但未确认: launch
 连续失败：1
-页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-****REDACTED****、agnes-2.5-flash
 
 # 执行状态三态
 上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效
@@ -837,7 +837,7 @@ Happy Phone Agent 诊断报告
 可交互元素（共 15 个）：
   [#0] android.widget.ScrollView(Scrollable) center=(720,1515) bounds=(0,142)-(1440,2888)
   [#1] android.widget.EditText(EditText) label="https://api.agnes-ai.cn/v1/chat/completions" center=(720,164) bounds=(126,58)-(1314,271)
-  [#2] android.widget.EditText(EditText) label="sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq" center=(720,507) bounds=(126,380)-(1314,635)
+  [#2] android.widget.EditText(EditText) label="sk-****REDACTED****" center=(720,507) bounds=(126,380)-(1314,635)
   [#3] android.widget.EditText(EditText) label="agnes-2.5-flash" center=(720,871) bounds=(126,744)-(1314,999)
   [#4] android.view.View(View) center=(1223,1378) bounds=(1132,1294)-(1314,1462)
   [#5] android.view.View(View) center=(323,1739) bounds=(126,1655)-(521,1823)
@@ -1051,7 +1051,7 @@ Happy Phone Agent 诊断报告
 步骤：[5/5] 按计划执行下一步
 上一步结果：⚠️ 已发送但未确认: launch
 连续失败：1
-页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-YE66lIC0LsqN20JO52yWYC7j9WCVBE9BFvRTA7ianpVFo9pq、agnes-2.5-flash
+页面提示：页面类型：form；主要控件：https://api.agnes-ai.cn/v1/chat/completions、sk-****REDACTED****、agnes-2.5-flash
 
 # 执行状态三态
 上一步结果格式：✅ 已确认成功 / ⚠️ 已发送未确认 / ❌ 未生效

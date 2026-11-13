@@ -7,7 +7,7 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.Clarification
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
 import com.phoneagent.engine.ClarifyAnswered

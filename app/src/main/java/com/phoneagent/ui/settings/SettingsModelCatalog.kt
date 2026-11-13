@@ -221,6 +221,7 @@ internal fun SettingsModelCatalog(
                                                     it.copy(
                                                         vision = ability.vision,
                                                         tools = ability.tools,
+                                                        jsonSchema = ability.jsonSchema,
                                                         note = ability.note,
                                                         probedAt = System.currentTimeMillis(),
                                                     )
@@ -278,7 +279,7 @@ private fun CatalogModelRow(
                         fontWeight = FontWeight.Medium,
                     )
                     Spacer(Modifier.height(AppSpacing.Xs))
-                    AbilityBadges(model.vision, model.tools)
+                    AbilityBadges(model.vision, model.tools, model.jsonSchema)
                 }
                 if (selected) {
                     Icon(

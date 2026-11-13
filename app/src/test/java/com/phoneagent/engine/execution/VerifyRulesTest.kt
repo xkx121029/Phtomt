@@ -59,7 +59,20 @@ class VerifyRulesTest {
     @Test
     fun shouldRetry_首次失败且可重试_语义类动作值得重试() {
         assertTrue(
-            VerifyRules.shouldRetry(ActionType.SCROLL, "页面未变化，动作可能未生效", attempt = 1, active = true),
+            VerifyRules.shouldRetry(
+                ActionType.SCROLL, "页面未变化，动作可能未生效",
+                attempt = 1, active = true, notDelivered = true,
+            ),
+        )
+    }
+
+    @Test
+    fun shouldRetry_已交付但未确认_绝不重跑() {
+        // 闹钟降级链整条重跑两次 = 闹钟列表里两条一样的条目，属于重复副作用
+        assertFalse(
+            VerifyRules.shouldRetry(
+                ActionType.SCROLL, "页面未变化", attempt = 1, active = true, notDelivered = false,
+            ),
         )
     }
 
@@ -67,32 +80,55 @@ class VerifyRulesTest {
     fun shouldRetry_已达上限_不再重试() {
         // 上限是"含首次执行的总尝试次数"，attempt 到了上限就不再重试
         val last = VerifyRules.MAX_ATTEMPTS - 1
-        assertTrue(VerifyRules.shouldRetry(ActionType.SCROLL, "页面未变化", attempt = last, active = true))
+        assertTrue(
+            VerifyRules.shouldRetry(
+                ActionType.SCROLL, "页面未变化", attempt = last, active = true, notDelivered = true,
+            ),
+        )
         assertFalse(
-            VerifyRules.shouldRetry(ActionType.SCROLL, "页面未变化", attempt = VerifyRules.MAX_ATTEMPTS, active = true),
+            VerifyRules.shouldRetry(
+                ActionType.SCROLL, "页面未变化", attempt = VerifyRules.MAX_ATTEMPTS,
+                active = true, notDelivered = true,
+            ),
         )
     }
 
     @Test
     fun shouldRetry_结构性错误_即使未达上限也不重试() {
         assertFalse(
-            VerifyRules.shouldRetry(ActionType.SHELL, "未知 shell 命令: xxx", attempt = 1, active = true),
+            VerifyRules.shouldRetry(
+                ActionType.SHELL, "未知 shell 命令: xxx", attempt = 1, active = true, notDelivered = true,
+            ),
         )
         assertFalse(
-            VerifyRules.shouldRetry(ActionType.A11Y_CALL, "缺少参数: target", attempt = 1, active = true),
+            VerifyRules.shouldRetry(
+                ActionType.A11Y_CALL, "缺少参数: target", attempt = 1, active = true, notDelivered = true,
+            ),
         )
     }
 
     @Test
     fun shouldRetry_点击类_交给执行器内部重试而不是外层() {
         // ClickRunner 内部已逐级穷尽定位方式，外层重跑只会重复同一串动作（还可能重复副作用）
-        assertFalse(VerifyRules.shouldRetry(ActionType.CLICK, "页面未变化", attempt = 1, active = true))
-        assertFalse(VerifyRules.shouldRetry(ActionType.LONG_PRESS, "页面未变化", attempt = 1, active = true))
+        assertFalse(
+            VerifyRules.shouldRetry(
+                ActionType.CLICK, "页面未变化", attempt = 1, active = true, notDelivered = true,
+            ),
+        )
+        assertFalse(
+            VerifyRules.shouldRetry(
+                ActionType.LONG_PRESS, "页面未变化", attempt = 1, active = true, notDelivered = true,
+            ),
+        )
     }
 
     @Test
     fun shouldRetry_任务已取消_不再重试() {
-        assertFalse(VerifyRules.shouldRetry(ActionType.SCROLL, "页面未变化", attempt = 1, active = false))
+        assertFalse(
+            VerifyRules.shouldRetry(
+                ActionType.SCROLL, "页面未变化", attempt = 1, active = false, notDelivered = true,
+            ),
+        )
     }
 
     // ---- 步后等待 ----
@@ -150,5 +186,22 @@ class VerifyRulesTest {
         val text = VerifyRules.actionDescription(action, verified = true, label = "返回")
 
         assertEquals("✅ 已生效 · 返回", text)
+    }
+
+    @Test
+    fun deviceOpsStatus_成功为已验证() {
+        assertEquals(VerifyRules.STATUS_VERIFIED, VerifyRules.deviceOpsStatus(ok = true, dispatched = false))
+    }
+
+    @Test
+    fun deviceOpsStatus_已下发未回读为未确认() {
+        // 命令交给系统了，只是读不到回执：不能吓唬用户说"没执行"
+        assertEquals(VerifyRules.STATUS_UNVERIFIED, VerifyRules.deviceOpsStatus(ok = false, dispatched = true))
+    }
+
+    @Test
+    fun deviceOpsStatus_根本没执行为failed() {
+        // StepTexts 用 "failed" 渲染 ❌（通道不可用/参数非法这类用户要改配置的情况）
+        assertEquals("failed", VerifyRules.deviceOpsStatus(ok = false, dispatched = false))
     }
 }

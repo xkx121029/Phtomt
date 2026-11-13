@@ -588,6 +588,10 @@ internal class DeviceOpsStrategy(private val family: String) : IntentTranslation
                 uri = intent.uri,
                 summary = intent.summary ?: intent.target?.let { it.toString() },
                 reason = reasonOf(intent),
+                // 不可逆确认门与语义意图同口径：能力注册表标了 needsConfirmation 的（file_write/app_manage）
+                // 必须问用户。此前这里只信模型自己填的 needs_confirmation，提示词写着"会被用户确认"，
+                // 实际却直接执行——覆盖用户文件/强停应用没有任何确认。
+                needsUserConfirmation = intent.needsConfirmation || spec?.needsConfirmation == true,
             ),
         )
     }

@@ -81,21 +81,12 @@ internal fun SettingsQuickStart(
     var testHint by remember { mutableStateOf<String?>(null) }
     var testOk by remember { mutableStateOf(false) }
 
-    val modelReady = st.apiKey.isNotBlank() && st.model.isNotBlank() && st.baseUrl.isNotBlank()
+    // 就绪口径与开屏引导共用同一个函数：一边只看 Key、一边还要求模型名会给出两种结论
+    val modelReady = st.modelReady()
 
     /** 落库前把端点与模型库对齐，避免"模型能跑但模型库里找不到"的割裂状态 */
-    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-    @Suppress("MaxLineLength")
     fun commit() {
-        if (st.baseUrl.isBlank()) return
-        val id = ensureEndpoint(st, st.baseUrl, st.apiKey, st.protocolOf(st.baseUrl)) ?: return
-        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-        @Suppress("MaxLineLength")
-        val i = st.endpoints.indexOfFirst { it.id == id }
-        if (i >= 0 && st.endpoints[i].apiKey != st.apiKey.trim()) {
-            st.endpoints[i] = st.endpoints[i].copy(apiKey = st.apiKey.trim())
-        }
-        ensureCatalogModel(st, st.baseUrl, st.model)
+        commitModelConfig(st)
         save()
     }
 
@@ -424,7 +415,7 @@ private fun QuickStartProgress(modelReady: Boolean, accessibilityReady: Boolean)
 }
 
 /** 三个可直接执行的任务：覆盖操控、记录、联网三条典型路径，让用户第一次就看到它能干什么 */
-private val FirstTasks = listOf(
+internal val FirstTasks = listOf(
     "打开设置，把屏幕亮度调到一半",
     "在备忘录里记一条：明天十点开会",
     "用浏览器搜索附近的咖啡店",
@@ -437,7 +428,7 @@ private val FirstTasks = listOf(
  * 这里按最常见的几类失败给出"下一步该做什么"，无法归类时保留原文兜底，
  * 不吞掉细节。
  */
-private fun connectionFailureText(raw: String?): String {
+internal fun connectionFailureText(raw: String?): String {
     val msg = raw?.trim().orEmpty()
     if (msg.isEmpty()) return "连接失败，请检查网络后重试"
     val lower = msg.lowercase()

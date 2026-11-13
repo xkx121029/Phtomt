@@ -72,9 +72,19 @@ internal object VerifyRules {
      *
      * @param attempt 当前已尝试次数（首次执行后为 1）
      * @param active 协程是否仍在运行：任务被取消/暂停时不再重试
+     * @param notDelivered 动作是否**根本没交付到设备**。只有未交付才允许重试；
+     *   「已交付但没确认」再跑一遍就是重复副作用——闹钟降级链整条重跑两次，
+     *   结果就是闹钟列表里出现两条一样的条目。
      */
-    fun shouldRetry(type: String, reason: String, attempt: Int, active: Boolean): Boolean =
-        active && attempt < MAX_ATTEMPTS && !isStructuralError(reason) && !isClickLike(type)
+    fun shouldRetry(
+        type: String,
+        reason: String,
+        attempt: Int,
+        active: Boolean,
+        notDelivered: Boolean,
+    ): Boolean =
+        active && attempt < MAX_ATTEMPTS && notDelivered &&
+            !isStructuralError(reason) && !isClickLike(type)
 
     /**
      * 动作执行后的界面稳定等待（毫秒）。
@@ -106,6 +116,22 @@ internal object VerifyRules {
 
     /** 验证结果 → 执行历史状态 */
     fun historyStatus(verified: Boolean): String = if (verified) STATUS_VERIFIED else STATUS_UNVERIFIED
+
+    /**
+     * 系统直连（device_ops）的三态结论。
+     *
+     * 与普通动作不同，直连失败要再分一层：命令是否真的下发到系统了。
+     * - 成功 → [STATUS_VERIFIED]（✅）
+     * - 已下发但读不到回执/回读不一致 → [STATUS_UNVERIFIED]（⚠️，用户去手机上核对）
+     * - 根本没执行（通道不可用、参数非法、Provider 拒绝）→ `"failed"`（❌，用户去修通道/改参数）
+     *
+     * `"failed"` 是 [com.phoneagent.engine.runtime.StepTexts] 已有的字面量分支，不是新状态。
+     */
+    fun deviceOpsStatus(ok: Boolean, dispatched: Boolean): String = when {
+        ok -> STATUS_VERIFIED
+        dispatched -> STATUS_UNVERIFIED
+        else -> "failed"
+    }
 
     /**
      * 把一步动作拼装成人类可读的执行说明（步骤留档用）。

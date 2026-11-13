@@ -17,6 +17,7 @@ import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TASK_SESSIONS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TRACES
 import kotlinx.coroutines.flow.update
+import com.phoneagent.device.vision.StepTrace
 
 /**
  * 引擎遥测记录器（重构批次 2）：指标聚合、每步决策调试轨迹、记忆/say 事件流、
@@ -104,7 +105,7 @@ internal class TelemetryRecorder(
     ) {
         // 追加与裁剪在同一次 CAS 内完成：两步写会并发突破上限、并可能丢掉另一线程刚写入的轨迹
         store.appendTrace(
-            com.phoneagent.domain.model.StepTrace(
+            com.phoneagent.device.vision.StepTrace(
                 taskId = store.currentTaskId,
                 taskName = store.currentTaskName,
                 step = step,
@@ -137,7 +138,7 @@ internal class TelemetryRecorder(
         // 端侧轨迹同样会落盘：输入类意图的正文只记位数，不记原文（密码可能就在里面）
         val recorded = com.phoneagent.engine.execution.SensitiveInput.redactIntent(intent)
         store.appendTrace(
-            com.phoneagent.domain.model.StepTrace(
+            com.phoneagent.device.vision.StepTrace(
                 taskId = store.currentTaskId,
                 taskName = store.currentTaskName,
                 step = step,
@@ -222,6 +223,10 @@ internal class TelemetryRecorder(
         }
         persistDebug()
     }
+
+    /** 读取一条会话（不存在返回 null）；供任务收尾时的云端反馈取快照 */
+    fun taskSession(taskId: Long): TaskSession? =
+        store.taskSessions.value.firstOrNull { it.taskId == taskId }
 
     /** 就地改写一条会话（不存在则忽略） */
     fun updateTaskSession(taskId: Long, transform: (TaskSession) -> TaskSession) {

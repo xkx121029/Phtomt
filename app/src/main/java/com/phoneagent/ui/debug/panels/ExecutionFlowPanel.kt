@@ -50,8 +50,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepShot
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepShot
+import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.debug.ConfidenceBar

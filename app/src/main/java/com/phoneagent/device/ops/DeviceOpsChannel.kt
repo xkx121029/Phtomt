@@ -67,21 +67,10 @@ class DeviceOpsChannel(
     /** 最近一次在副屏里拉起的包名：`present` 不带 app 时靠它把画面投回主屏 */
     private var lastVirtualApp: String? = null
 
-    sealed interface OpsResult {
-        data class Ok(val text: String) : OpsResult
-
-        /**
-         * 失败。
-         *
-         * [dispatched] 区分两种性质完全不同的失败：
-         * - `false`：**根本没执行**（通道不可用、参数非法、Provider 拒绝）；
-         * - `true`：**已下发但没读到回执/回读不一致**（命令交给系统了，只是无法确认结果）。
-         *
-         * 这个区分直接进步骤历史：前者是 ❌ 未生效，后者是 ⚠️ 已发送但不确认，
-         * 用户看到后该做的事完全不同（前者去修通道，后者去手机上核对）。
-         */
-        data class Fail(val reason: String, val dispatched: Boolean = false) : OpsResult
-    }
+    /**
+     * 结果类型已上提为顶层 [com.phoneagent.device.ops.OpsResult]（拆分的领域实现共用同一类型）。
+     * 本类内所有 `OpsResult.Ok(...)` / `OpsResult.Fail(...)` 直接解析到那个顶层类型。
+     */
 
     /**
      * 「已下发、读不到回执」的失败：命令确实交给系统了，但不能当成成功，也不能说成没执行。
@@ -850,355 +839,19 @@ class DeviceOpsChannel(
 
     // ------------------------------------------------------------ alarm_manage
 
-    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
-    @Suppress("CyclomaticComplexMethod", "ReturnCount")
-    private suspend fun alarmManage(op: String, args: Map<String, String>): OpsResult {
-        val uriOut = queryAlarms()
-            ?: return OpsResult.Fail("闹钟管理：读不到时钟应用的闹钟数据。系统没有开放闹钟数据库访问，" +
-                "需要 Root/Shizuku 的时钟 Provider；没有时可改走 open_app 打开时钟应用用手势操作，或重新 set_alarm 新增。")
-        if (op == "list") return OpsResult.Ok("现有闹钟：\n$uriOut")
-        val hour = intArg(args, "hour")
-        val minute = intArg(args, "minute")
-        if (hour == null || minute == null) {
-            return OpsResult.Fail(
-                "alarm_manage 的 $op 需要 hour 与 minute 定位已有闹钟，例如 hour=7、minute=30；" +
-                    "不确定现有闹钟时间时先调 alarm_manage（op=list）看一眼",
-            )
-        }
-        val where = "hour=$hour AND minutes=$minute"
-        return when (op) {
-            "enable" -> {
-                val enable = boolArg(args,
-                    "enable") ?: return OpsResult.Fail(
-                    "alarm_manage enable 需要 enable：true 表示启用这条闹钟，false 表示关闭，例如 enable=false",
-                )
-                val flag = if (enable) "1" else "0"
-                updateAlarm(where, listOf(Triple("enabled", "i", flag)))
-                    .fold(
-                        {
-                            // 命令有回执不等于开关变了：回查同一时分的闹钟行
-                            val row = alarmRow(queryAlarms().orEmpty(), hour, minute)
-                            when {
-                                row == null -> unconfirmed(
-                                    "已执行${if (enable) "启用" else "关闭"}，但回查不到 $hour:${"%02d".format(minute)} 的闹钟，" +
-                                        "无法确认是否生效。请打开时钟应用看一眼这条闹钟的开关",
-                                )
-                                row.contains("enabled=$flag") -> OpsResult.Ok(
-                                    "已${if (enable) "启用" else "关闭"} $hour:${"%02d".format(minute)} 的闹钟（回查 enabled=$flag）",
-                                )
-                                else -> unconfirmed(
-                                    "闹钟开关未改动：回查 $hour:${"%02d".format(minute)} 仍是 ${Regex("enabled=(\\d)")
-                                        .find(row)?.groupValues?.get(1) ?: "未知"}。" +
-                                        "部分厂商时钟不开放该字段，请打开时钟应用手动切换",
-                                )
-                            }
-                        },
-                        { OpsResult.Fail(
-                            "改闹钟开关失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）。" +
-                                "请到应用设置里确认注入通道已连接并授权，或打开时钟应用手动切换这条闹钟",
-                        ) },
-                    )
-            }
-            "delete" -> {
-                val out = shell("content delete --uri ${alarmUri()} --where ${quote(where)}")
-                if (out.isNullOrBlank()) {
-                    OpsResult.Fail(
-                        "删除闹钟失败：注入通道不可用或时钟 Provider 拒绝。" +
-                            "请到应用设置里确认 Shizuku/无线 ADB 已连接并授权后重试，" +
-                            "或打开时钟应用手动删掉这条闹钟",
-                    )
-                } else {
-                    // 删除命令有回执不等于行没了：回查一遍，还在就如实报失败
-                    val after = queryAlarms().orEmpty()
-                    if (after.contains("hour=$hour") && after.contains("minutes=$minute")) {
-                        unconfirmed(
-                            "已执行删除，但回查时钟 Provider 仍能看到 $hour:${"%02d".format(minute)} 的闹钟。" +
-                                "请打开时钟应用手动删除这条",
-                        )
-                    } else {
-                        OpsResult.Ok("已删除 $hour:${"%02d".format(minute)} 的闹钟（回查已不存在；${out.take(200)}）")
-                    }
-                }
-            }
-            "update" -> {
-                val nh = intArg(args, "new_hour")
-                    ?: return OpsResult.Fail("alarm_manage update 需要 new_hour：改后的小时（0~23），例如 new_hour=8")
-                val nm = intArg(args, "new_minute")
-                    ?: return OpsResult.Fail("alarm_manage update 需要 new_minute：改后的分钟（0~59），例如 new_minute=15")
-                updateAlarm(where, listOf(Triple("hour", "i", nh.toString()), Triple("minutes", "i", nm.toString())))
-                    .fold(
-                        {
-                            if (alarmRow(queryAlarms().orEmpty(), nh, nm) != null) {
-                                OpsResult.Ok("闹钟已改为 $nh:${"%02d".format(nm)}（回查新时间已存在）")
-                            } else {
-                                unconfirmed(
-                                    "改闹钟时间的命令已执行，但回查不到 $nh:${"%02d".format(nm)} 的闹钟，" +
-                                        "无法确认是否生效。请打开时钟应用看一眼列表",
-                                )
-                            }
-                        },
-                        { OpsResult.Fail(
-                            "改闹钟时间失败：${it.message ?: "未知原因"}（需要 Root/Shizuku 且厂商时钟开放 Provider）。" +
-                                "请到应用设置里确认注入通道已连接并授权，或打开时钟应用手动改时间",
-                        ) },
-                    )
-            }
-            else -> OpsResult.Fail("alarm_manage 只支持 list/enable/delete/update")
-        }
-    }
+    // 闹钟管理的实现已拆到 AlarmOps.kt（含「写后回查」约束）；这里只保留委托。
+    private val alarmOps by lazy { AlarmOps(shell) }
 
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private suspend fun updateAlarm(where: String, binds: List<Triple<String, String, String>>): kotlin.Result<String> {
-        val bind = binds.joinToString(" ") { (k, type, v) -> "--bind $k:$type:${quote(v)}" }
-        val out = shell("content update --uri ${alarmUri()} --where ${quote(where)} $bind")
-            ?: return kotlin.Result.failure(IllegalStateException("注入通道不可用"))
-        if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
-            return kotlin.Result.failure(IllegalStateException("Provider 未匹配到该闹钟或拒绝写入"))
-        }
-        return kotlin.Result.success(out.take(200))
-    }
-
-    /** 从闹钟 Provider 的输出里挑出「某时某分」那一行（写后回查用） */
-    private fun alarmRow(query: String, hour: Int, minute: Int): String? =
-        query.lineSequence()
-            .firstOrNull { it.contains("hour=$hour") && it.contains("minutes=$minute") }
-            ?.trim()
-
-    /** 最近一次查询成功的闹钟 Provider URI：写/删沿用同一条，避免厂商机上 AOSP URI 不生效 */
-    private var alarmUriInUse: String? = null
-
-    /** 依次尝试常见时钟 Provider，返回第一条可用输出 */
-    private suspend fun queryAlarms(): String? {
-        for (uri in ALARM_URIS) {
-            val out = shell("content query --uri $uri --projection _id:hour:minutes:enabled:label") ?: continue
-            if (out.isNotBlank() && !out.contains("Error", ignoreCase = true) && !out.contains("No result",
-                ignoreCase = true)) {
-                alarmUriInUse = uri
-                return out.take(2000)
-            }
-        }
-        alarmUriInUse = null
-        return null
-    }
-
-    /** 写/删闹钟用哪条 URI：优先用刚才查询成功的那条 */
-    private fun alarmUri(): String = alarmUriInUse ?: ALARM_URI
+    private suspend fun alarmManage(op: String, args: Map<String, String>): OpsResult =
+        alarmOps.run(op, args)
 
     // ---------------------------------------------------------- calendar_op
 
-    /**
-     * 日历事件读写（对齐 Eta 的 list_calendars / create|update|delete_calendar_event）。
-     *
-     * 走注入通道的 `content` 命令而不是 ContentResolver：日历 Provider 的读写权限只有系统/日历应用持有，
-     * 以本应用身份直接调用会被拒；以 shell 身份执行才拿得到（与闹钟管理同一个思路）。
-     * 没有通道时不假装成功，直接给中文原因 + 替代路线。
-     */
-    private suspend fun calendarOp(op: String, args: Map<String, String>): OpsResult = when (op) {
-        "list" -> calendarList(args)
-        "create" -> calendarCreate(args)
-        "update" -> calendarUpdate(args)
-        "delete" -> calendarDelete(args)
-        else -> OpsResult.Fail("calendar_op 只支持 list/create/update/delete")
-    }
+    // 日历的实现已拆到 CalendarOps.kt（含"写后回查"与通道诊断拼接）；这里只保留委托。
+    private val calendarOps by lazy { CalendarOps(shell) { channelAdvice() } }
 
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private suspend fun calendarList(args: Map<String, String>): OpsResult {
-        val days = (args["days"]?.toLongOrNull() ?: 30L).coerceIn(1L, 365L)
-        val limit = (args["limit"]?.toIntOrNull() ?: 20).coerceIn(1, 100)
-        val query = args["query"]?.trim().orEmpty()
-        val now = System.currentTimeMillis()
-        val until = now + days * 24 * 3600_000L
-        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-        @Suppress("MaxLineLength")
-        val out = shell("content query --uri $CALENDAR_URI --projection _id:title:dtstart:dtend --where ${quote("dtstart>=$now AND dtstart<=$until")} --sort ${quote("dtstart ASC")}")
-            ?: return noChannel(
-                "读日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动查看。",
-            )
-        val rows = out.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("No result") && !it.startsWith("Error") }
-            .filter { query.isEmpty() || it.contains(query, ignoreCase = true) }
-            .take(limit)
-            .map { line -> formatCalendarRow(line) }
-            .toList()
-        if (rows.isEmpty()) {
-            return OpsResult.Ok("未来 $days 天没有${if (query.isEmpty()) "" else "标题含「$query」的"}日程。")
-        }
-        return OpsResult.Ok("未来 $days 天的日程（${rows.size} 条）：\n" + rows.joinToString("\n") { "- $it" }.take(4000))
-    }
-
-    /** 把 `Row: 0 _id=.., title=..` 这类原始行压成「时间 · 标题 · id」 */
-    private fun formatCalendarRow(line: String): String {
-        fun field(key: String): String? =
-            Regex("$key=([^,]+)").find(line)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
-        val id = field("_id") ?: "?"
-        val title = field("title") ?: "（无标题）"
-        val start = field("dtstart")?.toLongOrNull()?.let { formatCalendarTime(it) } ?: "时间未知"
-        val end = field("dtend")?.toLongOrNull()?.let { formatCalendarTime(it) }
-        return "$start${if (end != null) " ~ $end" else ""} · $title（id=$id）"
-    }
-
-    private fun formatCalendarTime(ms: Long): String = CALENDAR_TIME.format(Date(ms))
-
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount", "MaxLineLength")
-    private suspend fun calendarCreate(args: Map<String, String>): OpsResult {
-        val title = args["title"]?.trim().orEmpty()
-        if (title.isEmpty()) return OpsResult.Fail("calendar_op create 需要 title（事件标题）")
-        val startText = args["start"]?.trim().orEmpty()
-        if (startText.isEmpty()) return OpsResult.Fail("calendar_op create 需要 start（如「2026-11-05 09:00」）")
-        val startMs = parseCalendarTime(startText)
-            ?: return OpsResult.Fail("读不懂 start=$startText；请写成「YYYY-MM-DD HH:mm」或毫秒时间戳")
-        val endMs = args["end"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
-            parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 end=$text；请写成「YYYY-MM-DD HH:mm」或毫秒时间戳")
-        } ?: (startMs + (args["duration_min"]?.toLongOrNull() ?: 60L) * 60_000L)
-        val calendarId = args["calendar_id"]?.toLongOrNull() ?: 1L
-        val allDay = boolArg(args, "all_day") ?: false
-        val binds = buildList {
-            add("calendar_id:i:$calendarId")
-            add("title:s:${quote(title)}")
-            add("dtstart:l:$startMs")
-            add("dtend:l:$endMs")
-            add("allDay:i:${if (allDay) 1 else 0}")
-            add("eventTimezone:s:${quote(java.util.TimeZone.getDefault().id)}")
-        }.joinToString(" --bind ")
-        val out = shell("content insert --uri $CALENDAR_URI --bind $binds")
-            ?: return noChannel("写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动新建。")
-        if (out.contains("Error", ignoreCase = true) || out.contains("Exception", ignoreCase = true)) {
-            return OpsResult.Fail("日历 Provider 拒绝写入：${out.take(200)}。可改走 open_app 打开日历应用手动新建。")
-        }
-        // 写入命令有回执不等于事件真的在库里：回查同名同开始时间的那条
-        val row = findCalendarEvent("title=${quote(title)} AND dtstart=$startMs")
-            ?: return unconfirmed(
-                "日历写入命令已执行，但回查不到「$title」这条日程，无法确认是否真的写入。" +
-                    "请打开日历应用看一眼当天有没有这条；也可以先用 calendar_op list 确认。",
-            )
-        val newId = Regex("_id=(\\d+)").find(row)?.groupValues?.get(1)
-        return OpsResult.Ok(
-            "已新建日程「$title」：${formatCalendarTime(startMs)} ~ ${formatCalendarTime(endMs)}" +
-                "（calendar_id=$calendarId，回查 id=${newId ?: "?"}）",
-        )
-    }
-
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private suspend fun calendarUpdate(args: Map<String, String>): OpsResult {
-        val id = args["event_id"]?.trim().orEmpty()
-        if (id.isEmpty()) return OpsResult.Fail("calendar_op update 需要 event_id（从 calendar_op list 结果里取）")
-        val binds = buildList {
-            args["title"]?.trim()?.takeIf { it.isNotEmpty() }?.let { add("title:s:${quote(it)}") }
-            args["start"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
-                val ms = parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 start=$text；请写成「YYYY-MM-DD HH:mm」")
-                add("dtstart:l:$ms")
-            }
-            args["end"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
-                val ms = parseCalendarTime(text) ?: return OpsResult.Fail("读不懂 end=$text；请写成「YYYY-MM-DD HH:mm」")
-                add("dtend:l:$ms")
-            }
-            boolArg(args, "all_day")?.let { add("allDay:i:${if (it) 1 else 0}") }
-        }
-        if (binds.isEmpty()) return OpsResult.Fail("calendar_op update 至少要给一个要改的字段（title/start/end/all_day）")
-        // 记录「改完之后应该读到什么」，用于写后回查
-        val expects = buildList {
-            args["title"]?.trim()?.takeIf { it.isNotEmpty() }?.let { add("title=$it") }
-            args["start"]?.trim()?.takeIf { it.isNotEmpty() }?.let { text ->
-                parseCalendarTime(text)?.let { add("dtstart=$it") }
-            }
-            boolArg(args, "all_day")?.let { add("allDay=${if (it) 1 else 0}") }
-        }
-        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-        @Suppress("MaxLineLength")
-        val out = shell("content update --uri $CALENDAR_URI --where ${quote("_id=$id")} --bind ${binds.joinToString(" --bind ")}")
-            ?: return noChannel(
-                "写日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动改这条日程。",
-            )
-        if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
-            return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝写入。先用 calendar_op list 确认 id。")
-        }
-        // 命令有回执不等于字段改了：按 _id 回查，逐个核对本次提交的值
-        val row = findCalendarEvent("_id=$id")
-            ?: return unconfirmed(
-                "更新命令已执行，但回查不到 id=$id 的日程，无法确认是否生效。" +
-                    "若列表里也没有这条，说明它已被删除；否则请打开日历应用手动改一次。",
-            )
-        val missing = expects.filterNot { row.contains(it) }
-        return if (missing.isEmpty()) {
-            OpsResult.Ok("已更新日程 id=$id（回查 ${expects.joinToString("、")} 均已生效）")
-        } else {
-            unconfirmed(
-                "日程已改动，但回查 ${missing.joinToString("、")} 与提交值不一致，可能被日历应用拒绝。" +
-                    "请打开日历应用核对该日程。",
-            )
-        }
-    }
-
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private suspend fun calendarDelete(args: Map<String, String>): OpsResult {
-        val id = args["event_id"]?.trim().orEmpty()
-        if (id.isEmpty()) return OpsResult.Fail("calendar_op delete 需要 event_id（从 calendar_op list 结果里取）")
-        val out = shell("content delete --uri $CALENDAR_URI --where ${quote("_id=$id")}")
-            ?: return noChannel(
-                "删日历需要 Shizuku 或无线 ADB 注入通道；当前不可用。可改走 open_app 打开日历应用手动删除这条日程。",
-            )
-        if (out.isBlank() || out.contains("0 rows", ignoreCase = true)) {
-            return OpsResult.Fail("没有找到 id=$id 的日程，或日历 Provider 拒绝删除。先用 calendar_op list 确认 id。")
-        }
-        // 删除同样要看结果：按 _id 再查一次，还能查到就是没删掉
-        if (findCalendarEvent("_id=$id") != null) {
-            return unconfirmed(
-                "删除命令已执行，但回查 id=$id 的日程还在，删除没有生效。请打开日历应用手动删除这条。",
-            )
-        }
-        return OpsResult.Ok("已删除日程 id=$id（回查已不存在）")
-    }
-
-    /** 回查单条日历事件：命中返回原始行；读不到或不存在返回 null */
-    private suspend fun findCalendarEvent(where: String): String? {
-        val out = shell(
-            "content query --uri $CALENDAR_URI --projection _id:title:dtstart:dtend:allDay --where ${quote(where)}",
-        ) ?: return null
-        if (out.contains("Error", ignoreCase = true)) return null
-        return out.lineSequence()
-            .map { it.trim() }
-            .firstOrNull { it.contains("_id=") && !it.startsWith("No result") }
-    }
-
-    /**
-     * 时间解析：纯数字按毫秒时间戳；否则依次尝试几种常见写法。
-     * 只到分钟精度——日历事件的秒级误差没有意义，少给模型一种"猜格式"的负担。
-     */
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun parseCalendarTime(raw: String): Long? {
-        val text = raw.trim()
-        text.toLongOrNull()?.let { return it }
-        val patterns = listOf(
-            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-dd",
-            "MM-dd HH:mm", "M月d日 HH:mm", "M月d日",
-        )
-        for (p in patterns) {
-            val fmt = SimpleDateFormat(p, Locale.getDefault()).apply { isLenient = false }
-            val parsed = runCatching { fmt.parse(text) }.getOrNull() ?: continue
-            if (parsed != null) return parsed.time
-        }
-        // 只给了「HH:mm」：按今天算，已过去则顺延到明天
-        runCatching { SimpleDateFormat("HH:mm",
-            Locale.getDefault()).apply { isLenient = false }.parse(text) }.getOrNull()
-            ?.let { t ->
-                val cal = java.util.Calendar.getInstance().apply {
-                    time = t
-                    val now = java.util.Calendar.getInstance()
-                    set(java.util.Calendar.YEAR, now.get(java.util.Calendar.YEAR))
-                    set(java.util.Calendar.DAY_OF_YEAR, now.get(java.util.Calendar.DAY_OF_YEAR))
-                    if (timeInMillis <= now.timeInMillis) add(java.util.Calendar.DAY_OF_YEAR, 1)
-                }
-                return cal.timeInMillis
-            }
-        return null
-    }
+    private suspend fun calendarOp(op: String, args: Map<String, String>): OpsResult =
+        calendarOps.run(op, args)
 
     // ---------------------------------------------------------- virtual_display
 
@@ -1380,163 +1033,17 @@ class DeviceOpsChannel(
         }
     }
 
-    // ---------------------------------------------------------------- file_read
+    // ---------------------------------------------------------------- file_read / file_write
 
-    /**
-     * 只读文件族（对齐 Eta 的 read_file / stat_file / list_directory / glob_files / grep_files）。
-     * 只允许 /sdcard、/storage 与应用私有目录，避免 AI 一把梭到 /data 或系统目录；
-     * 扫描类操作有节点/条数/文件大小上限，防止把整棵树读进上下文。
-     */
-    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
-    @Suppress("LongMethod", "CyclomaticComplexMethod", "MaxLineLength")
-    private suspend fun fileRead(op: String, args: Map<String, String>): OpsResult = withContext(Dispatchers.IO) {
-        when (op) {
-            "read" -> {
-                val raw = args["path"]?.trim().orEmpty()
-                if (raw.isEmpty()) return@withContext OpsResult.Fail("file_read 的 read 需要 path（绝对路径，如 /sdcard/Download/a.txt）")
-                // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-                @Suppress("MaxLineLength")
-                val f = resolvePath(raw) ?: return@withContext OpsResult.Fail("路径不可访问：$raw（仅支持 /sdcard、/storage 与应用私有目录）")
-                if (!f.exists()) {
-                    return@withContext OpsResult.Fail(
-                        "文件不存在：${f.path}。请先用 file_read（op=list）看一眼所在目录里实际有哪些文件名",
-                    )
-                }
-                if (f.isDirectory) return@withContext OpsResult.Fail("${f.path} 是目录；列目录请用 op=list")
-                val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
-                    ?: return@withContext OpsResult.Fail(
-                        "读取失败：${f.path} 是二进制文件或不是 UTF-8 文本，读出来也是乱码。" +
-                            "若只是想确认它存在，用 op=stat 看大小和时间即可",
-                    )
-                val cap = 4000
-                OpsResult.Ok(buildString {
-                    appendLine("${f.path}（${f.length()} 字节）")
-                    append(if (text.length > cap) text.take(cap) + "\n…（已截断，全文 ${text.length} 字符）" else text)
-                })
-            }
-            "list" -> {
-                val dir = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
-                    ?: return@withContext OpsResult.Fail("路径不可访问；list 支持 /sdcard、/storage 与应用私有目录")
-                if (!dir.isDirectory) return@withContext OpsResult.Fail("不是目录：${dir.path}")
-                val limit = (args["limit"]?.toIntOrNull() ?: 200).coerceIn(1, 500)
-                val all = runCatching { dir.listFiles() }.getOrNull().orEmpty()
-                    .sortedWith(compareBy<File>({ !it.isDirectory }, { it.name.lowercase() }))
-                OpsResult.Ok(buildString {
-                    appendLine("${dir.path} 共 ${all.size} 项${if (all.size > limit) "（只列前 $limit 项）" else ""}")
-                    all.take(limit).forEach { c ->
-                        appendLine(if (c.isDirectory) "- [目录] ${c.name}/" else "- [文件] ${c.name}（${c.length()} 字节）")
-                    }
-                }.trimEnd())
-            }
-            "stat" -> {
-                val f = resolvePath(args["path"]?.trim().orEmpty())
-                    ?: return@withContext OpsResult.Fail("stat 需要可访问的 path")
-                if (!f.exists()) return@withContext OpsResult.Fail("路径不存在：${f.path}")
-                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA).format(Date(f.lastModified()))
-                OpsResult.Ok("${f.path}\n类型：${if (f.isDirectory) "目录" else "文件"}\n" +
-                    "大小：${f.length()} 字节\n修改时间：$time\n可读：${f.canRead()} 可写：${f.canWrite()}")
-            }
-            "glob" -> {
-                val pattern = args["pattern"]?.trim().orEmpty()
-                if (pattern.isEmpty()) return@withContext OpsResult.Fail("glob 需要 pattern（如 **/*.md）")
-                val root = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
-                    ?: return@withContext OpsResult.Fail("glob 的搜索根不可访问")
-                if (!root.isDirectory) return@withContext OpsResult.Fail("glob 的 path 必须是目录：${root.path}")
-                val limit = (args["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
-                val regex = globToRegex(pattern)
-                val basePath = root.path.trimEnd('/')
-                val hits = ArrayList<String>()
-                walkFiles(root) { f ->
-                    val rel = f.path.trimEnd('/').removePrefix("$basePath/")
-                    if (regex.matches(rel)) {
-                        hits.add("${f.path}（${f.length()} 字节）")
-                        hits.size >= limit
-                    } else false
-                }
-                if (hits.isEmpty()) OpsResult.Ok("没有匹配「$pattern」的文件（根目录：${root.path}）")
-                else OpsResult.Ok("匹配 ${hits.size} 个文件（根目录：${root.path}）：\n" + hits.joinToString("\n") { "- $it" })
-            }
-            "grep" -> {
-                val pattern = args["pattern"]?.trim().orEmpty()
-                if (pattern.isEmpty()) return@withContext OpsResult.Fail("grep 需要 pattern（正则表达式）")
-                val regex = runCatching { Regex(pattern) }.getOrElse {
-                    return@withContext OpsResult.Fail("grep 的正则不合法：${it.message ?: pattern}")
-                }
-                val root = resolvePath(args["path"]?.trim().orEmpty(), "/sdcard")
-                    ?: return@withContext OpsResult.Fail("grep 的搜索根不可访问")
-                if (!root.isDirectory) return@withContext OpsResult.Fail("grep 的 path 必须是目录：${root.path}")
-                val limit = (args["limit"]?.toIntOrNull() ?: 100).coerceIn(1, 500)
-                val hits = ArrayList<String>()
-                walkFiles(root) { f ->
-                    if (f.length() > maxScanBytes) return@walkFiles false
-                    val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull() ?: return@walkFiles false
-                    var added = false
-                    text.lineSequence().forEachIndexed { idx, line ->
-                        if (hits.size < limit && regex.containsMatchIn(line)) {
-                            hits.add("${f.path}:${idx + 1}: ${line.trim().take(160)}")
-                            added = true
-                        }
-                    }
-                    if (!added) false else hits.size >= limit
-                }
-                if (hits.isEmpty()) OpsResult.Ok("没有匹配「$pattern」的内容（根目录：${root.path}）")
-                else OpsResult.Ok("匹配 ${hits.size} 处（根目录：${root.path}）：\n" + hits.joinToString("\n") { "- $it" })
-            }
-            else -> OpsResult.Fail("file_read 只支持 op=read/list/stat/glob/grep")
-        }
-    }
+    // 文件族的实现已拆到 FileOps.kt（路径越界防护、glob、遍历都在那边）；
+    // 这里只保留委托，保证 run() 的分派表不动。
+    private val fileOps by lazy { FileOps(context) }
 
-    // ---------------------------------------------------------------- file_write
+    private suspend fun fileRead(op: String, args: Map<String, String>): OpsResult =
+        fileOps.read(op, args)
 
-    /** 改文件族（write/append/edit）；edit 要求原文在文件中唯一出现，避免误替换。 */
-    // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
-    @Suppress("CyclomaticComplexMethod")
-    private suspend fun fileWrite(op: String, args: Map<String, String>): OpsResult = withContext(Dispatchers.IO) {
-        val raw = args["path"]?.trim().orEmpty()
-        if (raw.isEmpty()) return@withContext OpsResult.Fail("file_write 需要 path（目标文件绝对路径）")
-        val f = resolvePath(raw) ?: return@withContext OpsResult.Fail("路径不可访问：$raw（仅支持 /sdcard、/storage 与应用私有目录）")
-        when (op) {
-            "write", "append" -> {
-                val text = args["text"] ?: return@withContext OpsResult.Fail("file_write 的 $op 需要 text（写入内容）")
-                runCatching {
-                    if (op == "write") {
-                        f.parentFile?.mkdirs()
-                        f.writeText(text, Charsets.UTF_8)
-                    } else {
-                        f.parentFile?.mkdirs()
-                        f.appendText(text, Charsets.UTF_8)
-                    }
-                }.getOrElse {
-                    return@withContext OpsResult.Fail(
-                        "写入失败：${it.message ?: "系统拒绝"}。请换到 /sdcard/Download 或 /sdcard/Documents 这类可写目录再试，" +
-                            "并确认文件名没有被系统保留",
-                    )
-                }
-                OpsResult.Ok("已${if (op == "write") "覆盖写入" else "追加"}：${f.path}（现 ${f.length()} 字节）")
-            }
-            "edit" -> {
-                val old = args["old"].orEmpty()
-                val new = args["new"].orEmpty()
-                if (old.isEmpty()) return@withContext OpsResult.Fail("file_write 的 edit 需要 old（被替换的原文）")
-                if (!f.isFile) return@withContext OpsResult.Fail("edit 的目标不是已存在的文件：${f.path}")
-                val text = runCatching { f.readText(Charsets.UTF_8) }.getOrNull()
-                    ?: return@withContext OpsResult.Fail("读取失败（非 UTF-8 文本）：${f.path}")
-                val count = countOccurrences(text, old)
-                when {
-                    count == 0 -> OpsResult.Fail("edit 失败：文件里没有这段原文（${old.take(40)}…）")
-                    count > 1 -> OpsResult.Fail("edit 失败：原文出现 $count 次，请给一段更长的唯一片段")
-                    else -> {
-                        val idx = text.indexOf(old)
-                        val updated = text.replaceRange(idx, idx + old.length, new)
-                        runCatching { f.writeText(updated, Charsets.UTF_8) }
-                            .getOrElse { return@withContext OpsResult.Fail("写入失败：${it.message ?: "系统拒绝"}") }
-                        OpsResult.Ok("已替换 1 处：${f.path}（${text.length} → ${updated.length} 字符）")
-                    }
-                }
-            }
-            else -> OpsResult.Fail("file_write 只支持 op=write/append/edit")
-        }
-    }
+    private suspend fun fileWrite(op: String, args: Map<String, String>): OpsResult =
+        fileOps.write(op, args)
 
     // ---------------------------------------------------------------- app_manage
 
@@ -1652,82 +1159,8 @@ class DeviceOpsChannel(
 
     // ------------------------------------------------------------------ helpers
 
-    /** 单文件扫描上限：超过这个大小不读内容，避免 grep 拖垮内存 */
-    private val maxScanBytes = 512 * 1024L
-
-    /** 允许文件能力操作的根目录（其余路径一律拒绝，防止 AI 误伤系统目录） */
-    private val fileRoots: List<String> by lazy {
-        listOf("/sdcard", "/storage", context.filesDir.path, context.cacheDir.path) +
-            listOfNotNull(context.externalCacheDir?.path, context.getExternalFilesDir(null)?.path)
-    }
-
-    /** 绝对路径直接用；相对路径按 /sdcard 解析；解析后必须落在 [fileRoots] 之内 */
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun resolvePath(raw: String, default: String? = null): File? {
-        val p = raw.trim().trim('"').ifEmpty { default ?: return null }
-        val f = if (p.startsWith("/")) File(p) else File("/sdcard", p)
-        val canonical = runCatching { f.canonicalFile }.getOrNull() ?: return null
-        val path = canonical.path
-        return canonical.takeIf { fileRoots.any { root -> path == root || path.startsWith("$root/") } }
-    }
-
-    /** `*` 不跨目录、`**` 跨目录、`?` 单字符（覆盖 Eta glob 的常见写法） */
-    private fun globToRegex(glob: String): Regex {
-        val sb = StringBuilder()
-        var i = 0
-        while (i < glob.length) {
-            val c = glob[i]
-            when {
-                c == '*' && i + 1 < glob.length && glob[i + 1] == '*' -> {
-                    sb.append(".*")
-                    i++
-                }
-                c == '*' -> sb.append("[^/]*")
-                c == '?' -> sb.append("[^/]")
-                c in "\\.[]{}()+^$|" -> sb.append('\\').append(c)
-                else -> sb.append(c)
-            }
-            i++
-        }
-        return Regex(sb.toString())
-    }
-
-    /**
-     * 广度优先遍历目录（跳过隐藏目录），onFile 返回 true 表示"够了，停"。
-     * 节点数上限兜底，避免 /sdcard 上有超大目录时扫描停不下来。
-     */
-    // 嵌套结构是协议/匹配逻辑本身，扁平化风险较高，此处按规则豁免
-    @Suppress("NestedBlockDepth", "ReturnCount")
-    private fun walkFiles(root: File, maxNodes: Int = 20000, onFile: (File) -> Boolean): Boolean {
-        val queue = ArrayDeque<File>().apply { add(root) }
-        var nodes = 0
-        while (queue.isNotEmpty()) {
-            val dir = queue.removeFirst()
-            val children = runCatching { dir.listFiles() }.getOrNull() ?: continue
-            for (c in children) {
-                nodes++
-                if (nodes > maxNodes) return false
-                if (c.isDirectory) {
-                    if (!c.name.startsWith(".")) queue.add(c)
-                } else if (onFile(c)) {
-                    return true
-                }
-            }
-        }
-        return false
-    }
-
-    private fun countOccurrences(text: String, needle: String): Int {
-        if (needle.isEmpty()) return 0
-        var count = 0
-        var idx = text.indexOf(needle)
-        while (idx >= 0) {
-            count++
-            idx = text.indexOf(needle, idx + needle.length)
-        }
-        return count
-    }
+    // 文件路径解析 / glob / 目录遍历已随文件族一起搬到 FileOps.kt；
+    // 参数解析与格式化见 OpsArgs.kt。这里只留本类自用的解析helper。
 
     // 分派函数多处早退以保证可读性，此处按规则豁免
     @Suppress("ReturnCount")
@@ -1744,24 +1177,16 @@ class DeviceOpsChannel(
         }?.packageName
     }
 
-    private fun intArg(args: Map<String, String>, key: String): Int? =
-        args[key]?.trim()?.takeIf { it.isNotEmpty() }?.toIntOrNull()
+    private fun intArg(args: Map<String, String>, key: String): Int? = OpsArgs.int(args, key)
 
-    private fun boolArg(args: Map<String, String>, key: String): Boolean? {
-        val raw = args[key]?.trim()?.lowercase() ?: return null
-        return when (raw) {
-            "true", "1", "on", "yes", "开", "开启" -> true
-            "false", "0", "off", "no", "关", "关闭" -> false
-            else -> null
-        }
-    }
+    private fun boolArg(args: Map<String, String>, key: String): Boolean? = OpsArgs.bool(args, key)
 
-    private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+    private fun quote(value: String): String = ShellQuote.of(value)
 
     private fun freeBytes(path: String): Long = runCatching { StatFs(path).availableBytes }.getOrDefault(0L)
     private fun totalBytes(path: String): Long = runCatching { StatFs(path).totalBytes }.getOrDefault(0L)
-    private fun mb(bytes: Long): String = String.format(Locale.US, "%.0fMB", bytes / 1024.0 / 1024.0)
-    private fun gb(bytes: Long): String = String.format(Locale.US, "%.1fGB", bytes / 1024.0 / 1024.0 / 1024.0)
+    private fun mb(bytes: Long): String = OpsFormat.mb(bytes)
+    private fun gb(bytes: Long): String = OpsFormat.gb(bytes)
 
     @Suppress("DEPRECATION")
     private fun android.content.pm.ApplicationInfo.systemFlag(): Boolean =
@@ -1769,25 +1194,6 @@ class DeviceOpsChannel(
 
     private companion object {
         private val KEY_RE = Regex("[A-Za-z0-9_.]+")
-
-        /** 不同厂商时钟 Provider 的 authority（AOSP / OPPO / MIUI / 华为 / 荣耀 / Google） */
-        private val ALARM_URIS = listOf(
-            "content://com.android.deskclock/alarm",
-            "content://com.oplus.alarmclock/alarm",
-            "content://com.coloros.alarmclock/alarm",
-            "content://com.miui.clock/alarm",
-            "content://com.huawei.clock/alarm",
-            "content://com.hihonor.clock/alarm",
-            "content://com.google.android.deskclock/alarm",
-        )
-
-        /** 写入/删除时使用的 URI：先用 AOSP，失败再换厂商（由 content 命令报错暴露） */
-        private const val ALARM_URI = "content://com.android.deskclock/alarm"
-
-        /** 日历事件 Provider（AOSP / 绝大多数厂商共用这一份 authority） */
-        private const val CALENDAR_URI = "content://com.android.calendar/events"
-
-        /** 日历结果里的时间展示格式：到分钟即可，秒级没有意义 */
-        private val CALENDAR_TIME = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        // 闹钟/日历的 Provider URI 与时间格式已随 AlarmOps / CalendarOps 各自带走
     }
 }

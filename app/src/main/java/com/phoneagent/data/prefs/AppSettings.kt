@@ -3,9 +3,13 @@
 package com.phoneagent.data.prefs
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -19,7 +23,18 @@ import com.phoneagent.ui.TabPrefsCodec
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.agentStore by preferencesDataStore(name = "agent_settings")
+/**
+ * 设置存储。
+ *
+ * 必须带 corruptionHandler：DataStore 读到损坏/截断的 protobuf 会抛 CorruptionException，
+ * 默认会沿 Flow 冒到未捕获的协程而**直接杀进程**（实测：写入一个坏文件后冷启动必闪退，
+ * 用户看到的就是「点了图标就消失」）。这里改为丢弃坏档、回到默认值——
+ * 代价只是丢设置，用户还能重新配置，不会连应用都进不去。
+ */
+private val Context.agentStore: DataStore<Preferences> by preferencesDataStore(
+    name = "agent_settings",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * 工作台形态（[AppSettings.Settings.agentSurface] 的取值）。
@@ -51,6 +66,12 @@ class AppSettings(private val context: Context) {
          * ON/OFF=用户强制覆盖，探测不参与。判定收口在 [com.phoneagent.core.ai.VisionRouting]。
          */
         val mainVisionMode: String = "AUTO",
+        /**
+         * 决策请求是否带结构化输出约束（`response_format=json_schema`）的三态：
+         * AUTO=按模型库探测结果决定（没测出就不发，与旧行为一致）；ON/OFF=强制覆盖。
+         * 判定收口在 [com.phoneagent.core.ai.StructuredOutputRouting]。
+         */
+        val structuredOutputMode: String = "AUTO",
         val temperature: Double = 0.4,
         /** 最大运行步数，0 表示不设限 */
         val maxSteps: Int = 0,
@@ -129,6 +150,19 @@ class AppSettings(private val context: Context) {
          */
         val pageMemoryEnabled: Boolean = true,
         /**
+         * 动手前是否先出计划让用户确认。
+         *
+         * 默认 false：大多数日常任务（打开应用、点几下、输入一句话）先规划反而更慢，
+         * 用户看到的是"还要点一下确认才开始"。关闭时**只跳过规划阶段**——任务上下文注入、
+         * 方法文档检索、权限检查、会话承接照常进行，第一步决策所需的信息由执行链自己取。
+         */
+        val planBeforeAct: Boolean = false,
+        /**
+         * 允许 http:// 明文端点。默认 false（release 包不含全局明文许可）。
+         * 打开后 API Key 与聊天内容会明文经过网络，仅用于本地自建服务/内网调试。
+         */
+        val allowCleartext: Boolean = false,
+        /**
          * 副屏模式：任务在模拟辅助显示（overlay_display_devices）上运行，不抢占用户前台。
          * 开启后截图改走 `screencap -d`、点击输入改走 `input -d`；读不到无障碍元素树，决策只能依赖视觉。
          * 需要 Shizuku 通道，且设备未禁用系统「模拟辅助显示」。
@@ -185,6 +219,15 @@ class AppSettings(private val context: Context) {
         val docLastError: String = "",
         /** 上次成功同步到的文档篇数；由仓库写入，设置页只读 */
         val docCount: Int = 0,
+        // ---- 云端反馈：任务结束后上传去隐私的执行数据（默认关闭） ----
+        /**
+         * 是否上传任务执行数据。默认关闭；开启后每次任务结束向 [feedbackBaseUrl] 发一条
+         * 脱敏记录（动作类型 / 结果 / 耗时 / token 用量），不含任务内容、输入文字、截图、
+         * 应用包名与设备标识。见 [com.phoneagent.engine.network.FeedbackReporter]。
+         */
+        val feedbackUploadEnabled: Boolean = false,
+        /** 反馈接收服务地址，默认与官网同域（自建部署时可改） */
+        val feedbackBaseUrl: String = "https://hpa.linshuxu.us.kg",
         // ---- 对外控制接口（Tasker / MacroDroid / 自动化工具广播下发任务） ----
         /** 是否接受外部广播下发任务（默认关闭；开启后任何应用都能按 [externalControlToken] 校验驱动本应用） */
         val externalControlEnabled: Boolean = false,
@@ -222,6 +265,11 @@ class AppSettings(private val context: Context) {
                 model.isBlank() -> "还没有选择模型。请到「设置 → 模型与接入」选择主模型后再下达任务。"
                 apiKey.isBlank() -> "还没有填写 API Key。请到「设置 → 模型与接入」填写后再下达任务。"
                 apiBaseUrl.isBlank() -> "还没有填写接口地址。请到「设置 → 模型与接入」填写后再下达任务。"
+                // 默认禁止明文：http 端点必须先由用户显式打开「允许 http 端点」，否则一律拦下并说明风险
+                !allowCleartext && apiBaseUrl.trim().startsWith("http://", ignoreCase = true) ->
+                    "接口地址是 http 明文，默认禁止。请改用 https://；" +
+                        "若确需连接自建/内网服务，请到「设置 → 模型与接入」打开「允许 http 端点」——" +
+                        "开启后 API Key 与聊天内容会明文经过网络，只建议用于本机或可信内网。"
                 // 公网 + http 会把 Key 明文发出去：拦下来并说清怎么改，比静默泄露强
                 else -> com.phoneagent.core.ai.AiClient.cleartextProblem(apiBaseUrl)
             }
@@ -233,6 +281,8 @@ class AppSettings(private val context: Context) {
         val MODEL = stringPreferencesKey("model")
         /** 主模型识图三态（AUTO/ON/OFF），见 [Settings.mainVisionMode] */
         val MAIN_VISION_MODE = stringPreferencesKey("main_vision_mode")
+        /** 结构化输出三态（AUTO/ON/OFF），见 [Settings.structuredOutputMode] */
+        val STRUCTURED_OUTPUT_MODE = stringPreferencesKey("structured_output_mode")
         /** 旧版手填布尔「启用视觉理解」——**仅用于迁移**（true→ON，false/未写→AUTO），不再写入 */
         val HAS_VISION = booleanPreferencesKey("has_vision")
         val TEMPERATURE = doublePreferencesKey("temperature")
@@ -277,6 +327,10 @@ class AppSettings(private val context: Context) {
         val CURSOR_CLICK_SYNC = booleanPreferencesKey("cursor_click_sync")
         /** 页面记忆总开关，见 [Settings.pageMemoryEnabled] */
         val PAGE_MEMORY_ENABLED = booleanPreferencesKey("page_memory_enabled")
+        /** 动手前是否先出计划，见 [Settings.planBeforeAct] */
+        val PLAN_BEFORE_ACT = booleanPreferencesKey("plan_before_act")
+        /** 是否允许 http 明文端点，见 [Settings.allowCleartext] */
+        val ALLOW_CLEARTEXT = booleanPreferencesKey("allow_cleartext")
         /** 副屏模式开关，见 [Settings.virtualDisplayEnabled] */
         val VIRTUAL_DISPLAY_ENABLED = booleanPreferencesKey("virtual_display_enabled")
         /** 主题：无框线模式，见 [Settings.borderless] */
@@ -308,6 +362,9 @@ class AppSettings(private val context: Context) {
         val DOC_LAST_SYNC_AT = longPreferencesKey("doc_last_sync_at")
         val DOC_LAST_ERROR = stringPreferencesKey("doc_last_error")
         val DOC_COUNT = intPreferencesKey("doc_count")
+        /** 云端反馈：开关与服务地址，见 [Settings.feedbackUploadEnabled] */
+        val FEEDBACK_UPLOAD_ENABLED = booleanPreferencesKey("feedback_upload_enabled")
+        val FEEDBACK_BASE_URL = stringPreferencesKey("feedback_base_url")
         /** 对外控制：开关与口令，见 [Settings.externalControlEnabled] */
         val EXTERNAL_CONTROL_ENABLED = booleanPreferencesKey("external_control_enabled")
         val EXTERNAL_CONTROL_TOKEN = stringPreferencesKey("external_control_token")
@@ -365,6 +422,7 @@ class AppSettings(private val context: Context) {
             // 迁移：老用户勾过「启用视觉理解」的迁到 ON（明确覆盖）；没勾过的落到 AUTO，改由模型库探测结果决定
             mainVisionMode = prefs[Keys.MAIN_VISION_MODE]
                 ?: if (prefs[Keys.HAS_VISION] == true) "ON" else "AUTO",
+            structuredOutputMode = prefs[Keys.STRUCTURED_OUTPUT_MODE] ?: "AUTO",
             temperature = prefs[Keys.TEMPERATURE] ?: 0.4,
             maxSteps = prefs[Keys.MAX_STEPS] ?: 0,
             attachScreenshot = prefs[Keys.SCREENSHOT] ?: true,
@@ -409,6 +467,8 @@ class AppSettings(private val context: Context) {
             cursorOverlayEnabled = prefs[Keys.CURSOR_OVERLAY_ENABLED] ?: true,
             cursorClickSync = prefs[Keys.CURSOR_CLICK_SYNC] ?: false,
             pageMemoryEnabled = prefs[Keys.PAGE_MEMORY_ENABLED] ?: true,
+            planBeforeAct = prefs[Keys.PLAN_BEFORE_ACT] ?: false,
+            allowCleartext = prefs[Keys.ALLOW_CLEARTEXT] ?: false,
             virtualDisplayEnabled = prefs[Keys.VIRTUAL_DISPLAY_ENABLED] ?: false,
             borderless = prefs[Keys.BORDERLESS] ?: false,
             palette = prefs[Keys.PALETTE] ?: "ink_green",
@@ -429,6 +489,8 @@ class AppSettings(private val context: Context) {
             docLastSyncAt = prefs[Keys.DOC_LAST_SYNC_AT] ?: 0L,
             docLastError = prefs[Keys.DOC_LAST_ERROR] ?: "",
             docCount = prefs[Keys.DOC_COUNT] ?: 0,
+            feedbackUploadEnabled = prefs[Keys.FEEDBACK_UPLOAD_ENABLED] ?: false,
+            feedbackBaseUrl = prefs[Keys.FEEDBACK_BASE_URL] ?: "https://hpa.linshuxu.us.kg",
             externalControlEnabled = prefs[Keys.EXTERNAL_CONTROL_ENABLED] ?: false,
             externalControlToken = SecretCodec.decrypt(prefs[Keys.EXTERNAL_CONTROL_TOKEN] ?: ""),
             onboardingDone = prefs[Keys.ONBOARDING_DONE] ?: false,
@@ -469,6 +531,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.API_KEY] = SecretCodec.encrypt(settings.apiKey.trim())
             prefs[Keys.MODEL] = settings.model.trim()
             prefs[Keys.MAIN_VISION_MODE] = settings.mainVisionMode
+            prefs[Keys.STRUCTURED_OUTPUT_MODE] = settings.structuredOutputMode
             prefs[Keys.TEMPERATURE] = settings.temperature
             prefs[Keys.MAX_STEPS] = settings.maxSteps
             prefs[Keys.SCREENSHOT] = settings.attachScreenshot
@@ -508,6 +571,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.CURSOR_OVERLAY_ENABLED] = settings.cursorOverlayEnabled
             prefs[Keys.CURSOR_CLICK_SYNC] = settings.cursorClickSync
             prefs[Keys.PAGE_MEMORY_ENABLED] = settings.pageMemoryEnabled
+            prefs[Keys.PLAN_BEFORE_ACT] = settings.planBeforeAct
+            prefs[Keys.ALLOW_CLEARTEXT] = settings.allowCleartext
             prefs[Keys.VIRTUAL_DISPLAY_ENABLED] = settings.virtualDisplayEnabled
             prefs[Keys.BORDERLESS] = settings.borderless
             prefs[Keys.PALETTE] = settings.palette
@@ -534,6 +599,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.DOC_MAX_CHARS] = settings.docMaxChars.coerceIn(200, 4000)
             // 同步状态（DOC_LAST_SYNC_AT / DOC_LAST_ERROR / DOC_COUNT）不在这里整体回写：
             // 设置页表单没有这三个字段，写了会把仓库刚记下的状态打回默认值
+            prefs[Keys.FEEDBACK_UPLOAD_ENABLED] = settings.feedbackUploadEnabled
+            prefs[Keys.FEEDBACK_BASE_URL] = settings.feedbackBaseUrl.trim().trimEnd('/')
             prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled
             prefs[Keys.EXTERNAL_CONTROL_TOKEN] = SecretCodec.encrypt(settings.externalControlToken)
             // onboardingDone 不在这里整体回写：设置表单没有该字段，会把 true 覆盖成 false

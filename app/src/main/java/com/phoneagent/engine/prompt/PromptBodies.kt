@@ -102,7 +102,7 @@ internal object PromptBodies {
     | set_timer | 设倒计时（直达本机时钟应用，不经语音助手） | duration_seconds（秒，如 1800=30 分钟）；text(标签) 可选 |
     | wait_for | 可验证等待：等到目标出现再继续，比固定时长盲等可靠 | text(要出现的文字) 或 app(要进入前台的包名)；wait_ms(超时毫秒，默认 10000，上限 60000) |
     | device_info | 读设备详情（不操作屏幕，不碰 GUI） | op=status/network/storage/memory/battery/display/sound/apps/inspect_app；inspect_app 时 app(包名或应用名) |
-    | device_control | 直接改设备状态（不经 GUI、不模拟点击） | op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/wifi/bluetooth/airplane/location/nfc；参数放 args（level/stream/mode/action/seconds/enable） |
+    | device_control | 直接改设备状态（不经 GUI、不模拟点击） | op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/dark_mode/wifi/bluetooth/airplane/location/nfc；参数放 args：brightness/volume 必给 level(0~100)，volume 可加 stream(music/ring/notification/alarm/call)，media 给 action(play/pause/next/prev/stop)，sound_mode 给 mode(ring/vibrate/silent)，dnd/rotation/dark_mode/wifi/bluetooth/airplane/location/nfc 必给 enable(true/false)，screen_timeout 给 seconds(5~1800)；wifi/bluetooth/airplane/location/nfc/dark_mode 需 Shizuku/ADB |
     | settings_op | 读写系统设置（不操作屏幕） | op=get/set；args={namespace(system/secure/global),key,value} |
     | clipboard | 读写系统剪贴板 | op=get/set/clear；text(op=set) |
     | alarm_manage | 管理时钟里已有的闹钟（读/开关/删除/改时间；读取他人数据需 Root 或 Shizuku） | op=list/enable/delete/update；args={hour,minute,enable,new_hour,new_minute} |
@@ -153,7 +153,7 @@ internal object PromptBodies {
     | set_timer | Set a countdown (straight to the device clock app, no voice assistant) | duration_seconds (e.g. 1800 = 30 min); text (label) optional |
     | wait_for | Verifiable wait: continue only after the target appears (better than a blind fixed wait) | text (text to appear) or app (package to come to the foreground); wait_ms (timeout, default 10000, max 60000) |
     | device_info | Read device details (no screen operation, no GUI) | op=status/network/storage/memory/battery/display/sound/apps/inspect_app; for inspect_app also app (package or label) |
-    | device_control | Change device state directly (no GUI, no simulated taps) | op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/wifi/bluetooth/airplane/location/nfc; put parameters in args (level/stream/mode/action/seconds/enable) |
+    | device_control | Change device state directly (no GUI, no simulated taps) | op=flashlight_on/flashlight_off/brightness/volume/media/sound_mode/dnd/screen_timeout/rotation/dark_mode/wifi/bluetooth/airplane/location/nfc; parameters in args: brightness/volume require level (0~100), volume may add stream (music/ring/notification/alarm/call), media takes action (play/pause/next/prev/stop), sound_mode takes mode (ring/vibrate/silent), dnd/rotation/dark_mode/wifi/bluetooth/airplane/location/nfc require enable (true/false), screen_timeout takes seconds (5~1800); wifi/bluetooth/airplane/location/nfc/dark_mode need Shizuku/ADB |
     | settings_op | Read/write system settings (no screen operation) | op=get/set; args={namespace(system/secure/global),key,value} |
     | clipboard | Read/write the system clipboard | op=get/set/clear; text (for op=set) |
     | alarm_manage | Manage existing alarms in the clock app (list/enable/delete/change time; reading others' data needs Root or Shizuku) | op=list/enable/delete/update; args={hour,minute,enable,new_hour,new_minute} |
@@ -729,6 +729,7 @@ internal object PromptBodies {
     上一步结果：{last_result}
     连续失败：{failures}
     页面提示：{context_hint}
+    方法文档：端侧已在动手前查阅。给出「方法文档」时按它的前提/成功判断点/易错点做；写明「没有对应方法」时按常规判断继续，不要停住。
     """.trimIndent()
     internal val DEC_HEADER_EN: String = """
     【Execution Decision】
@@ -738,6 +739,7 @@ internal object PromptBodies {
     Last step result: {last_result}
     Consecutive failures: {failures}
     Page hint: {context_hint}
+    Method docs: looked up on-device before acting. If method docs are given, follow their preconditions / success checks / pitfalls; if they say no method matched, proceed with normal judgement and do not stop.
     """.trimIndent()
 
     // ---- dec.tri_state ----

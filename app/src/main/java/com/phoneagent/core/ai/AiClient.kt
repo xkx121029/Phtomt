@@ -73,6 +73,10 @@ class AiClient(
         /** 错误正文截断长度：够看清原因，又不至于把整段 HTML 错误页塞进界面 */
         private const val MAX_ERROR_SNIPPET = 60
 
+        /** 用户打开「允许 http 端点」后的风险提示：设置页开关与任务日志共用同一句话 */
+        const val CLEARTEXT_ALLOWED_NOTICE =
+            "已允许 http 明文端点：API Key 与聊天内容会明文经过网络，仅建议用于本机或可信内网。"
+
         fun create(): AiClient {
             val http = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -97,7 +101,8 @@ class AiClient(
          * 自建推理服务（Ollama、LM Studio、one-api、vLLM 等）常被填成 `192.168.1.5:8000/v1`
          * 或 `localhost:11434/v1`；而 OkHttp 的 `Request.url()` 要求带完整协议头，缺协议会直接抛异常。
          * 因此未写协议时按主机推断：本机/内网补 `http://`，公网域名补 `https://`；
-         * 已写 `http://` 的地址原样保留 —— 明文流量是否放行由清单的 usesCleartextTraffic 决定。
+         * 已写 `http://` 的地址原样保留 —— 明文流量默认被清单拦下（release），
+         * 只有 debug 构建或用户显式打开「允许 http 端点」时才放行（见 AppSettings.Settings.configProblem）。
          */
         internal fun normalizeBaseUrl(raw: String): String {
             val base = raw.trim().trimEnd('/')
@@ -254,8 +259,19 @@ class AiClient(
         onRetry: ((reason: String, delayMs: Long) -> Unit)? = null,
         /** API 协议档位；非 OpenAI 兼容端点由对应协议适配器转译线格式 */
         protocol: ApiProtocol = ApiProtocol.OPENAI,
+        /**
+         * 是否在本轮请求里带结构化输出约束（`response_format=json_schema`）。
+         * 默认 `false` = 与历史行为一致（只靠提示词 + 本地解析）；由
+         * [StructuredOutputRouting.resolve] 按「三态 + 模型库探测结果」算出后传入。
+         */
+        structured: Boolean = false,
+        /** 端点级引导解码（手动档）；非 [GuidedDecoding.OFF] 时替代 `response_format` */
+        guided: GuidedDecoding = GuidedDecoding.OFF,
     ): Result<AiDecision> = withContext(Dispatchers.IO) {
         val adapter = ChatProtocols.of(protocol)
+        // 这两个都必须可改：服务端在流式里拒绝结构化字段时会就地降级重试一次
+        var useStructured = structured
+        var useGuided = guided
         // 显式标注泛型：while(true) 循环体里有面向 for 的 break，编译器把 lambda
         // 返回类型推成 AiDecision | Unit（= Any），这里收口回 AiDecision
         runCatching<AiDecision> {
@@ -280,7 +296,8 @@ class AiClient(
                         .url(chatCompletionsUrl(baseUrl))
                         .header("Authorization", "Bearer $apiKey")
                         .post(buildStreamRequestBody(msgs, model, temperature, thinking = false,
-                            streamOptions = StreamOptions()))
+                            streamOptions = StreamOptions(),
+                            extras = decisionBodyExtras(useStructured, useGuided)))
                         .build()
                 }
             var request = actionRequest(activeMessages)
@@ -371,6 +388,20 @@ class AiClient(
                             // 401/403/404 属鉴权/地址错误，重试不会变好，直接失败
                             // （对齐能力探测链路 probeBlocker 的"整体失败"口径）
                             if (status == 401 || status == 403 || status == 404) break
+                            // 服务端明确抱怨结构化字段：摘掉约束立刻重发一次（不占网络重试预算）。
+                            // 引导解码同样属于"可能不被认识"的字段，一并摘掉，避免同一请求反复 400。
+                            if ((useStructured || useGuided != GuidedDecoding.OFF) &&
+                                StructuredOutputRouting.isStructuredRejection(status, lastErr)
+                            ) {
+                                useStructured = false
+                                useGuided = GuidedDecoding.OFF
+                                AppLog.w("AiClient", "服务端拒绝结构化输出字段（HTTP $status），已去掉约束重试一次")
+                                onRetry?.invoke("服务端不支持结构化输出，已去掉约束重试", 0L)
+                                request = actionRequest(activeMessages)
+                                status = -1
+                                lastErr = null
+                                continue@loop
+                            }
                             continue
                         }
                         // 增量解析已命中：JSON 已经闭合且可解析，不必再等服务端关闭流。
@@ -410,7 +441,8 @@ class AiClient(
                                 Request.Builder()
                                     .url(chatCompletionsUrl(baseUrl))
                                     .header("Authorization", "Bearer $apiKey")
-                                    .post(buildRequestBody(messages, screenshot, model, temperature))
+                                    .post(buildRequestBody(messages, screenshot, model, temperature,
+                                        extras = decisionBodyExtras(useStructured, useGuided)))
                                     .build()
                             }
                             val fbContent = executeWithRetry(fallbackRequest, adapter?.let { a -> a::extractText })
@@ -717,13 +749,40 @@ class AiClient(
                     notes += "工具：该协议未探测（真实可用性以实际调用为准）"
                 }
 
-                ModelAbility(vision = vision, tools = tools, note = notes.joinToString("；"))
+                // 4) 结构化输出（response_format=json_schema）：仅 OpenAI 兼容协议可探测。
+                //    多数服务端用 400/415/422 拒绝，probeVerdict 对 400 返回 null（未测出），
+                //    于是 AUTO 档不会贸然下发一个可能直接 400 的字段 —— 与旧行为一致。
+                var jsonSchema: Boolean? = null
+                if (adapter == null) {
+                    val minimalSchema = json.parseToJsonElement(
+                        """{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}""",
+                    )
+                    val schemaCall = rawPost(
+                        baseUrl, apiKey, model,
+                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                            text = "请只输出 JSON：{\"ok\":true}")))),
+                        null,
+                        adapter,
+                        ResponseFormat(
+                            type = "json_schema",
+                            json_schema = JsonSchemaSpec(name = "probe_ok", strict = false, schema = minimalSchema),
+                        ),
+                    )
+                    probeBlocker(schemaCall)?.let { error(it) }
+                    jsonSchema = probeVerdict(schemaCall.status)
+                    if (jsonSchema == null) notes += "结构化输出：${probeNote(schemaCall)}"
+                } else {
+                    notes += "结构化输出：该协议未探测"
+                }
+
+                ModelAbility(vision = vision, tools = tools, jsonSchema = jsonSchema,
+                    note = notes.joinToString("；"))
             }
         }
 
     /**
      * 单发 POST（无重试）：探测走这条，不做退避。
-     * [adapter] 为 null 时按 OpenAI ChatRequest 构建（[tools] 仅此路径有意义）；
+     * [adapter] 为 null 时按 OpenAI ChatRequest 构建（[tools]/[responseFormat] 仅此路径有意义）；
      * 非 null 时由协议适配器构建线格式。
      */
     private fun rawPost(
@@ -733,6 +792,7 @@ class AiClient(
         messages: List<ChatMessageDto>,
         tools: List<ToolSpec>?,
         adapter: ChatProtocolAdapter?,
+        responseFormat: ResponseFormat? = null,
     ): RawResponse {
         val request = if (adapter != null) {
             protocolRequest(adapter, baseUrl, apiKey, model, messages, temperature = 0.4, maxTokens = 64,
@@ -746,6 +806,7 @@ class AiClient(
                         ChatRequest(
                             model = model, messages = messages, temperature = 0.4, max_tokens = 64,
                             tools = tools, tool_choice = if (tools != null) "auto" else null,
+                            response_format = responseFormat,
                         ),
                     ),
                 )
@@ -1060,8 +1121,43 @@ class AiClient(
     }
 
     /**
+     * 决策请求的结构化输出附加字段。
+     *
+     * 三者互斥，按优先级只取一个（同时下发两套约束会被部分服务端直接判 400）：
+     * 引导解码（手动档最高）> `response_format`（开关 + 探测）> 无（只靠提示词）。
+     */
+    internal fun decisionBodyExtras(structured: Boolean, guided: GuidedDecoding): ActionBodyExtras {
+        val schema = actionSchemaElement
+        return when (guided) {
+            GuidedDecoding.VLLM -> ActionBodyExtras(guidedJson = schema)
+            GuidedDecoding.SGLANG -> ActionBodyExtras(jsonSchema = schema)
+            GuidedDecoding.OFF -> if (structured) {
+                ActionBodyExtras(
+                    responseFormat = ResponseFormat(
+                        type = "json_schema",
+                        json_schema = JsonSchemaSpec(name = "agent_action", strict = false, schema = schema),
+                    ),
+                )
+            } else {
+                ActionBodyExtras()
+            }
+        }
+    }
+
+    /** 决策请求可选的顶层结构化字段；全空时请求体与历史版本一致（只有提示词约束） */
+    internal data class ActionBodyExtras(
+        val responseFormat: ResponseFormat? = null,
+        val guidedJson: kotlinx.serialization.json.JsonElement? = null,
+        val jsonSchema: kotlinx.serialization.json.JsonElement? = null,
+    )
+
+    /** [ACTION_SCHEMA] 只解析一次（每次请求都 parse 是纯浪费） */
+    private val actionSchemaElement: kotlinx.serialization.json.JsonElement by lazy {
+        json.parseToJsonElement(ACTION_SCHEMA)
+    }
+
+    /**
      * 请求体构建辅助函数：接收 ChatRequest 构建器，序列化为 JSON 正文。
-     * 消除 5 个 buildXxxRequestBody 方法中的重复逻辑。
      */
     private fun buildRequest(request: ChatRequest): okhttp3.RequestBody =
         json.encodeToString(ChatRequest.serializer(), request).toRequestBody(jsonMediaType)
@@ -1233,15 +1329,18 @@ class AiClient(
     }
 
     /** 流式文本请求体（stream=true）；规划阶段用 extractJsonObject 解析，故不强制 response_format */
-    private fun buildStreamRequestBody(
+    internal fun buildStreamRequestBody(
         messages: List<ChatMessageDto>,
         model: String,
         temperature: Double,
         thinking: Boolean = false,
         streamOptions: StreamOptions? = null,
+        extras: ActionBodyExtras? = null,
     ): okhttp3.RequestBody = buildRequest(
         ChatRequest(model = model, messages = messages, temperature = temperature, max_tokens = 4096, stream = true,
-            thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions),
+            thinking = if (thinking) ThinkingSpec() else null, stream_options = streamOptions,
+            response_format = extras?.responseFormat, guidedJson = extras?.guidedJson,
+            jsonSchema = extras?.jsonSchema),
     )
 
     /**
@@ -1331,12 +1430,16 @@ class AiClient(
         return null
     }
 
-    /** 组装请求体：以结构化输出约束 JSON，并支持图片输入 */
+    /**
+     * 组装请求体：以结构化输出约束 JSON，并支持图片输入。
+     * [extras] 为 `null` 时保持历史行为（`json_object` + agent_action schema）。
+     */
     private fun buildRequestBody(
         messages: List<ChatMessageDto>,
         screenshot: Bitmap?,
         model: String,
         temperature: Double,
+        extras: ActionBodyExtras? = null,
     ): okhttp3.RequestBody {
         val finalMessages = messages.toMutableList()
         if (screenshot != null) {
@@ -1344,12 +1447,12 @@ class AiClient(
             val merged = finalMessages.last().content.toMutableList() + imagePart
             finalMessages[finalMessages.lastIndex] = finalMessages.last().copy(content = merged)
         }
+        val bodyExtras = extras ?: decisionBodyExtras(structured = true, guided = GuidedDecoding.OFF)
         return buildRequest(
             ChatRequest(
                 model = model, messages = finalMessages, temperature = temperature, max_tokens = 4096,
-                response_format = ResponseFormat(type = "json_object",
-                    json_schema = JsonSchemaSpec(name = "agent_action", strict = false,
-                    schema = json.parseToJsonElement(ACTION_SCHEMA))),
+                response_format = bodyExtras.responseFormat, guidedJson = bodyExtras.guidedJson,
+                jsonSchema = bodyExtras.jsonSchema,
             ),
         )
     }

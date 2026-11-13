@@ -10,7 +10,7 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ConversationMessage
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepTrace
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject

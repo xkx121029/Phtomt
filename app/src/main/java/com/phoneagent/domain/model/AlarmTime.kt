@@ -142,7 +142,7 @@ object AlarmTimeParser {
      * 之前的 [RELATIVE] 只认小时/分钟，`三天后` 会被当作无法识别；而口语里它常和具体时刻连用，
      * 这里只负责剥出"天偏移"，时刻仍交给后面的 CLOCK/PERIOD 解析。
      */
-    private val DAY_AFTER = Regex("""^(?:再过|过)?(大后天|[0-9]+|[一二两三四五六七八九十]+)天(?:后|以后|之后)""")
+    private val DAY_AFTER = Regex("""^(?:再过|过)?(大后天|(?:[0-9]+|[一二两三四五六七八九十]+)天(?:后|以后|之后))""")
 
     /** 行尾时刻：不能带 `^`（要允许前面还有星期/时段前缀），只用 `$` 钉住结尾 */
     private val CLOCK = Regex("""([0-9]{1,2}|[一二两三四五六七八九十]{1,3})(?:[:：点时])(半|[0-9]{1,2}|[一二两三四五六七八九十]{1,3})?分?$""")
@@ -159,9 +159,11 @@ object AlarmTimeParser {
         var text = normalized
         var explicitOffset: Int? = null
         DAY_AFTER.find(text)?.takeIf { it.range.first == 0 }?.let { m ->
-            explicitOffset = when (m.groupValues[1]) {
+            explicitOffset = when (val token = m.groupValues[1]) {
+                // 「大后天」是固定词，后面不带「天/后」
                 "大后天" -> 3
-                else -> number(m.groupValues[1])
+                // 「三天后 / 3天以后」：剥掉「天…后」再数字
+                else -> number(token.substringBefore('天'))
             }
             text = text.substring(m.value.length)
             if (text.isBlank()) {

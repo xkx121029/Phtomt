@@ -60,8 +60,6 @@ object LocalAgent {
     ) {
         lastConfig = config
         var gen = 0
-        // 引擎循环刻意兜底捕获，避免单个异常打断整个任务，此处按规则豁免
-        @Suppress("TooGenericExceptionCaught")
         var alreadyRunning = false
         synchronized(startLock) {
             if (process?.isAlive == true) {
@@ -201,9 +199,11 @@ object LocalAgent {
                 "HAPPY_ACA_ANDROID" to "1",
                 // Optional scripted scenario for offline tool-loop demos.
                 "HAPPY_ACA_MOCK_SCRIPT" to RuntimeBootstrap.scenarioPath(context, config.mockScript),
-                // bionic does not search the app's files dir by default; the
-                // extracted libs (libz.so.1, libcrypto.so.3, ...) live there.
-                "LD_LIBRARY_PATH" to runtime.libDir,
+                // 不传 LD_LIBRARY_PATH：随包 .so 的 RUNPATH 在打包时已被改写成 $ORIGIN
+                // （tool/bundle_runtime.py），加载器直接在 libnode.so 所在目录找兄弟库。
+                // 在 x86_64 模拟器上（arm64 应用跑在 NDK 翻译层），exec 会先经过 x86_64
+                // 的 binfmt runner，而这个变量会被它继承——它会拿 lib 目录里 arm64 的
+                // libz/libcrypto 去链接自己，报 EM_AARCH64 instead of EM_X86_64 后立即退出。
             )
             caBundlePath?.let { env["NODE_EXTRA_CA_CERTS"] = it }
             var created: AgentProcess? = null

@@ -11,6 +11,11 @@
     <!-- 编码 Agent 宿主前台服务：targetSdk 34 起，dataSync 型 FGS 必须显式声明该权限 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 设备设置类操作（亮度/息屏时间/自动旋转等）要以本应用身份写 Settings.System。
+         WRITE_SETTINGS 属受保护权限，声明后还需用户在「修改系统设置」页手动允许
+         （DeviceOpsChannel 用 Settings.System.canWrite 判定，未授权时回落注入通道） -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -73,8 +78,14 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PhoneAgent"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         tools:targetApi="34">
+
+        <!-- usesCleartextTraffic=false：正式包默认禁止明文。
+             自建/内网的 http 端点只在两种情况下放行：
+             ① debug 构建（src/debug/AndroidManifest.xml 覆盖为 true）；
+             ② 用户在设置里显式打开「允许 http 端点」（应用层校验，仍会提示 Key 明文传输）。
+             正式包不携带全局明文许可，避免任何一处漏配的 http 请求把 API Key 裸奔到公网。 -->
 
         <!-- windowSoftInputMode 必须显式声明为 adjustResize：
              不声明时系统按 adjustUnspecified 自行选择，非滚动容器（Compose 根视图不是 ScrollView）
@@ -247,14 +258,31 @@
             <intent-filter>
                 <action android:name="android.service.voice.VoiceInteractionService" />
             </intent-filter>
+            <!-- 键名必须是 VoiceInteractionService.SERVICE_META_DATA 的精确值（下划线），
+                 写成 android.voiceinteraction 会让系统解析不到 XML，进而把本应用从
+                 「默认数字助理应用」列表里剔除 -->
             <meta-data
-                android:name="android.voiceinteraction"
+                android:name="android.voice_interaction"
                 android:resource="@xml/voice_interaction_service" />
         </service>
         <service
             android:name=".feature.assistant.HpaVoiceInteractionSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <!-- 助理资格的硬性要求：meta-data 里声明的 recognitionService 必须真实存在且可解析，
+             否则 VoiceInteractionServiceInfo 直接报「No recognitionService specified」，
+             整个助理服务随之作废。selectableAsDefault=false，用户无法把它选成系统识别服务 -->
+        <service
+            android:name=".feature.assistant.HpaRecognitionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SPEECH_RECOGNITION_SERVICE">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
 
         <!-- 对外控制接口：Tasker/MacroDroid 等广播下发任务/查询状态（设置里开关+口令双闸门） -->
         <receiver

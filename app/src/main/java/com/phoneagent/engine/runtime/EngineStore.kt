@@ -11,8 +11,8 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.StepRecord
-import com.phoneagent.domain.model.StepShot
-import com.phoneagent.domain.model.StepTrace
+import com.phoneagent.device.vision.StepShot
+import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.engine.ClarifyAnswered

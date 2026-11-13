@@ -93,6 +93,38 @@ function collectFiles(dir, base = dir, acc = []) {
   return acc;
 }
 
+/**
+ * 目录内容的指纹（排序遍历，结果与文件系统返回顺序无关）。
+ * 写入前后各算一次并比对：能抓住「其它进程同时在改 assets/agent-host」这类
+ * 只在并发下出现、平时完全看不见的半成品。
+ */
+function fingerprintOf(dir, exclude = new Set()) {
+  const digest = createHash('sha256');
+  // 必须与历史算法完全一致（每个目录内按名字排序、深度优先），否则指纹会无故变化，
+  // 已装机的设备会被判定为「host 有更新」而重新解压一次。
+  const walk = (d) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (exclude.has(entry.name)) continue;
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else {
+        digest.update(path.relative(dir, p).replaceAll('\\', '/'));
+        digest.update(fs.readFileSync(p));
+      }
+    }
+  };
+  walk(dir);
+  return digest.digest('hex').slice(0, 16);
+}
+
+function runCatchingRead(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 fs.mkdirSync(workDir, { recursive: true });
 fs.rmSync(staging, { recursive: true, force: true });
 fs.rmSync(backup, { recursive: true, force: true });
@@ -116,23 +148,14 @@ try {
   // 内容指纹写进 assets。RuntimeBootstrap 拿它和已解压的那份比：
   // 一致就复用，不一致才重新解压。以前靠手工 bump HOST_VERSION 常量，
   // 忘了 bump 的后果是「装了新 APK，设备还在跑旧 host」——静默、且极难查。
-  const digest = createHash('sha256');
-  const walk = (dir) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const p = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(p);
-      else {
-        digest.update(path.relative(staging, p).replaceAll('\\', '/'));
-        digest.update(fs.readFileSync(p));
-      }
-    }
-  };
-  walk(staging);
-  const fingerprint = digest.digest('hex').slice(0, 16);
+  const fingerprint = fingerprintOf(staging, new Set(['VERSION']));
   fs.writeFileSync(path.join(staging, 'VERSION'), fingerprint + '\n', 'utf8');
 
   if (!acquireLock()) {
-    console.error('[bundle-host] 等待同步锁超时（另一个构建正在同步），本次跳过');
+    console.error(
+      `[bundle-host] 等待同步锁超时（30s）：另一个构建正在同步 ${path.relative(root, outDir)}。\n` +
+        `若确认没有其它构建在跑，可删除 ${path.relative(root, lockDir)} 后重试。`,
+    );
     fs.rmSync(staging, { recursive: true, force: true });
     process.exit(1);
   }
@@ -179,6 +202,18 @@ try {
   }
   fs.rmSync(staging, { recursive: true, force: true });
   fs.rmSync(backup, { recursive: true, force: true });
+
+  // 写完自检：目标目录的内容指纹必须与 staging 一致，VERSION 文件也必须指向它。
+  // 覆盖路径（rename 被占用时）存在"旧文件 + 新文件"并存的短暂窗口，如果那一刻
+  // 有别的进程把目录写坏，这一步会立刻暴露，而不是把一个半新半旧的 host 打进 APK。
+  const written = fingerprintOf(outDir, new Set(['VERSION']));
+  const versionOnDisk = runCatchingRead(path.join(outDir, 'VERSION'));
+  if (written !== fingerprint || versionOnDisk !== fingerprint) {
+    throw new Error(
+      `[bundle-host] 写完校验失败：期望指纹 ${fingerprint}，实际 ${written}，VERSION=${versionOnDisk || '(缺失)'}；` +
+        '可能有其它进程同时在改 assets/agent-host',
+    );
+  }
 
   const count = (dir) =>
     fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => n + (e.isDirectory() ? count(path.join(dir, e.name)) : 1), 0);

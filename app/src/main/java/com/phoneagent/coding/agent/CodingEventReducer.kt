@@ -243,7 +243,9 @@ internal object CodingEventReducer {
             assistantKey = null,
             busy = false,
             conn = ConnState.DISCONNECTED,
-            error = "编码宿主已退出（代码 $code），正在重连…",
+            // 这里只描述事实，不加「正在重连…」：重连进度由 AgentClient 按实际尝试次数更新，
+            // 否则重连耗尽后界面还会一直显示正在重连。
+            error = "编码宿主已退出（代码 $code）",
             hostExited = true,
             phase = "",
         )

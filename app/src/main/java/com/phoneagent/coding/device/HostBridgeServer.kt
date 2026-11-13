@@ -42,6 +42,9 @@ class HostBridgeServer(
         const val MIN_ENV_TIMEOUT_SEC = 30L
         const val MAX_ENV_TIMEOUT_SEC = 3_600L
         const val MILLIS_PER_SEC = 1_000L
+
+        /** 鉴权失败的错误码：与 Node 侧 host-bridge.js 的 HOST_UNAUTHORIZED 对齐 */
+        const val UNAUTHORIZED_CODE = "HOST_UNAUTHORIZED"
     }
 
     /** 环境编排器；首次用到时才创建，避免每个进程启动都多一个对象 */
@@ -65,11 +68,21 @@ class HostBridgeServer(
      */
     fun handle(request: JSONObject, respond: (JSONObject) -> Unit) {
         val id = request.optString("id")
+        // 没有 id 就无法回包（协议靠 id 对齐），只能丢弃。
         if (id.isEmpty()) return
         val params = request.optJSONObject("params") ?: JSONObject()
         val expected = expectedToken()
         if (expected.isNotEmpty() && params.optString("token") != expected) {
-            // 静默拒绝：不回包、不说明缺哪一项——对端没有凭据就不该知道细节。
+            // 早期版本在这里静默丢弃，代价是 Node 侧要死等满 30s 才降级成
+            // 「host did not answer」——排查时看到的是"宿主没响应"而不是"鉴权失败"。
+            // 这里改成回一个不含细节的错误包：对端只知道这次调用被拒，
+            // 不会从文案里得到缺哪一项凭据。
+            runCatching {
+                respond(
+                    JSONObject().put("id", id).put("type", "error")
+                        .put("error", "unauthorized").put("code", UNAUTHORIZED_CODE),
+                )
+            }
             return
         }
         val method = request.optString("method")

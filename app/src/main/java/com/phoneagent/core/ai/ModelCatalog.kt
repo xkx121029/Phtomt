@@ -20,6 +20,11 @@ data class Endpoint(
     val apiKey: String,
     /** API 协议档位（[ApiProtocol.id]）；旧数据无此字段默认 OpenAI 兼容 */
     val protocol: String = "openai",
+    /**
+     * 引导解码档位（[GuidedDecoding.key]）：自建推理服务的强约束，手动开启、不自动探测。
+     * 旧数据无此字段默认关闭，行为与历史版本一致。
+     */
+    val guidedDecoding: String = "OFF",
 )
 
 /**
@@ -33,6 +38,8 @@ data class CatalogModel(
     val name: String,
     val vision: Boolean? = null,
     val tools: Boolean? = null,
+    /** 是否接受 `response_format=json_schema`（结构化输出）；`null` = 未测出 */
+    val jsonSchema: Boolean? = null,
     /** 未测出时的原文摘要，UI 折叠展示 */
     val note: String = "",
     /** 上次探测时间（仅展示，不做自动过期重探） */
@@ -44,6 +51,8 @@ data class CatalogModel(
 data class ModelAbility(
     val vision: Boolean?,
     val tools: Boolean?,
+    /** 是否接受 `response_format=json_schema`；`null` = 未测出（与"不支持"分开） */
+    val jsonSchema: Boolean? = null,
     val note: String = "",
 )
 

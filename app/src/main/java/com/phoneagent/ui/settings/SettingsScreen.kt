@@ -443,6 +443,9 @@ class SettingsState(initial: AppSettings.Settings) {
     var docLastSyncAt by mutableLongStateOf(initial.docLastSyncAt)
     var docCount by mutableIntStateOf(initial.docCount)
     var docLastError by mutableStateOf(initial.docLastError)
+    // 云端反馈：默认关闭；开启后任务结束上传去隐私的执行数据
+    var feedbackUploadEnabled by mutableStateOf(initial.feedbackUploadEnabled)
+    var feedbackBaseUrl by mutableStateOf(initial.feedbackBaseUrl)
     // 对外控制接口：Tasker 等广播下发任务的开关与口令
     var externalControlEnabled by mutableStateOf(initial.externalControlEnabled)
     var externalControlToken by mutableStateOf(initial.externalControlToken)
@@ -523,6 +526,8 @@ class SettingsState(initial: AppSettings.Settings) {
         docLastSyncAt = s.docLastSyncAt
         docCount = s.docCount
         docLastError = s.docLastError
+        feedbackUploadEnabled = s.feedbackUploadEnabled
+        feedbackBaseUrl = s.feedbackBaseUrl
         externalControlEnabled = s.externalControlEnabled
         externalControlToken = s.externalControlToken
         // 审批档位与 Tab 配置同回填：漏了的话任一设置页保存一次就会把它们打回默认值
@@ -615,6 +620,8 @@ class SettingsState(initial: AppSettings.Settings) {
         docBaseUrl = docBaseUrl,
         docTtlMinutes = docTtlMinutes,
         docMaxChars = docMaxChars,
+        feedbackUploadEnabled = feedbackUploadEnabled,
+        feedbackBaseUrl = feedbackBaseUrl,
         externalControlEnabled = externalControlEnabled,
         externalControlToken = externalControlToken.trim(),
         codingApprovalMode = codingApprovalMode,

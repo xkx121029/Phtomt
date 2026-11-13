@@ -40,6 +40,12 @@ data class UiElement(
     val scrollable: Boolean = false,
     /** 是否可编辑（输入框） */
     val editable: Boolean = false,
+    /**
+     * 是否密码输入框（`TYPE_TEXT_VARIATION_PASSWORD` / `WEB_PASSWORD` / 数字密码）。
+     * 端侧据此决定「输入内容要不要对外记录」：密码框的正文只用于本次执行，
+     * 不进执行轨迹、不进提示词。
+     */
+    val isPassword: Boolean = false,
     /** View id 资源名（如 "button_send"） */
     val viewId: String? = null,
     /** 端侧本地标定的语义 id（如 "dlg_allow"、"search_box"），供 AI 直接按 target.id 选择 */

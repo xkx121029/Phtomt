@@ -72,9 +72,10 @@ import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.appBorderStroke
 
 import kotlinx.coroutines.launch
+import com.phoneagent.device.vision.StepShot
 
 @Composable
-internal fun StepShotPanel(shot: com.phoneagent.domain.model.StepShot) {
+internal fun StepShotPanel(shot: com.phoneagent.device.vision.StepShot) {
     if (shot.step == 0 && shot.screenshot == null) return
     Card(
         modifier = Modifier.fillMaxWidth(),

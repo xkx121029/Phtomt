@@ -575,4 +575,32 @@ class IntentTranslatorStrategyTest {
         )
         assertTrue("应指出格式不合法，实际: $reason", reason.contains("格式不合法"))
     }
+
+    // ---- 不可逆系统直连：确认门必须由能力表兜底，而不是只信模型自己填的 needs_confirmation ----
+
+    @Test
+    fun file_write_覆盖用户文件必须要求确认() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(
+                intent = IntentType.FILE_WRITE,
+                op = "write",
+                args = mapOf("path" to "/sdcard/notes.txt", "text" to "hi"),
+            ),
+            snapshot(),
+        )
+        assertEquals(ActionType.DEVICE_OPS, action.type)
+        assertTrue("能力表标了需确认，模型没填也必须弹确认", action.needsUserConfirmation)
+    }
+
+    @Test
+    fun device_control_常规开关不该弹确认() {
+        mode(Mode.SHIZUKU)
+        val action = command(
+            AgentIntent(intent = IntentType.DEVICE_CONTROL, op = "brightness", args = mapOf("level" to "50")),
+            snapshot(),
+        )
+        assertEquals(ActionType.DEVICE_OPS, action.type)
+        assertEquals("亮度不是不可逆操作", false, action.needsUserConfirmation)
+    }
 }

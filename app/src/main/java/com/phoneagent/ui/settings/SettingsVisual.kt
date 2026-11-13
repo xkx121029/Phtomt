@@ -1,4 +1,4 @@
-﻿package com.phoneagent.ui.settings
+package com.phoneagent.ui.settings
 
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke

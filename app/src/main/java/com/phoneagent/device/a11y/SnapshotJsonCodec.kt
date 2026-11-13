@@ -76,6 +76,7 @@ object SnapshotJsonCodec {
         longClickable = obj.optBoolean("longClickable", false),
         scrollable = obj.optBoolean("scrollable", false),
         editable = obj.optBoolean("editable", false),
+        isPassword = obj.optBoolean("isPassword", false),
         viewId = obj.stringOrNull("viewId"),
         semanticId = obj.stringOrNull("semanticId"),
         packageName = obj.stringOrNull("packageName"),

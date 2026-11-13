@@ -63,6 +63,7 @@ import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
+import com.phoneagent.core.ai.GuidedDecoding
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.ai.ProviderPreset
 import com.phoneagent.data.prefs.AppSettings
@@ -168,6 +169,31 @@ internal fun ensureCatalogModel(st: SettingsState, baseUrl: String, name: String
     if (st.catalog.none { it.endpointId == id && it.name == trimmed }) {
         st.catalog.add(CatalogModel(endpointId = id, name = trimmed))
     }
+}
+
+/**
+ * 主模型是否已填齐：地址 / Key / 模型名三件齐全才算能跑。
+ *
+ * 「快速开始」与开屏引导都按这一条判定，避免一边只看 Key、一边还要求模型名。
+ */
+internal fun SettingsState.modelReady(): Boolean =
+    apiKey.isNotBlank() && model.isNotBlank() && baseUrl.isNotBlank()
+
+/**
+ * 把当前表单里的「主模型配置」写进模型库（端点 + 端点 Key + 模型条目）。
+ *
+ * 落库前的对齐动作只有这一份实现：「快速开始」与开屏向导都调它，
+ * 否则两条冷启动路径很容易一边同步端点、一边忘了同步模型库，
+ * 出现"模型能跑但模型库里找不到"的割裂状态。调用方负责随后的保存。
+ */
+internal fun commitModelConfig(st: SettingsState) {
+    if (st.baseUrl.isBlank()) return
+    val id = ensureEndpoint(st, st.baseUrl, st.apiKey, st.protocolOf(st.baseUrl)) ?: return
+    val i = st.endpoints.indexOfFirst { it.id == id }
+    if (i >= 0 && st.endpoints[i].apiKey != st.apiKey.trim()) {
+        st.endpoints[i] = st.endpoints[i].copy(apiKey = st.apiKey.trim())
+    }
+    ensureCatalogModel(st, st.baseUrl, st.model)
 }
 
 // ========== 共享 UI 组件 ==========
@@ -608,9 +634,9 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
     }
 }
 
-/** 能力徽章：识图 / 纯文字 / 工具。null = 未测出，与"不支持"分开显示 */
+/** 能力徽章：识图 / 纯文字 / 工具 / 结构化输出。null = 未测出，与"不支持"分开显示 */
 @Composable
-internal fun AbilityBadges(vision: Boolean?, tools: Boolean?) {
+internal fun AbilityBadges(vision: Boolean?, tools: Boolean?, jsonSchema: Boolean? = null) {
     Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm), verticalAlignment = Alignment.CenterVertically) {
         when (vision) {
             true -> CapChip("识图 ✓", true)
@@ -621,6 +647,11 @@ internal fun AbilityBadges(vision: Boolean?, tools: Boolean?) {
             true -> CapChip("工具 ✓", true)
             false -> CapChip("无工具", false)
             null -> CapChip("工具 ?", null)
+        }
+        when (jsonSchema) {
+            true -> CapChip("结构化 ✓", true)
+            false -> CapChip("无结构化", false)
+            null -> CapChip("结构化 ?", null)
         }
     }
 }
@@ -664,6 +695,8 @@ internal fun EndpointCard(
     hint: String?,
     protocol: String = "openai",
     onProtocol: ((String) -> Unit)? = null,
+    guidedDecoding: String = "OFF",
+    onGuidedDecoding: ((String) -> Unit)? = null,
     onBaseUrl: (String) -> Unit,
     onApiKey: (String) -> Unit,
     onFetch: () -> Unit,
@@ -712,6 +745,29 @@ internal fun EndpointCard(
                                 label = { Text(p.label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
                             )
                         }
+                    }
+                }
+            }
+            if (onGuidedDecoding != null) {
+                Spacer(Modifier.height(AppSpacing.Sm))
+                LabeledField("引导解码（自建服务）") {
+                    Column {
+                        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+                            GuidedDecoding.entries.forEach { g ->
+                                FilterChip(
+                                    selected = GuidedDecoding.fromKey(guidedDecoding) == g,
+                                    onClick = { buzz(); onGuidedDecoding(g.key) },
+                                    label = { Text(g.label, style = MaterialTheme.typography.labelMedium, maxLines = 1) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(AppSpacing.Xxs))
+                        Text(
+                            "把动作 schema 直接交给采样器：vLLM 用 guided_json、SGLang 用 json_schema。" +
+                                "开启后不再下发 response_format，避免两套约束打架",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }

@@ -20,11 +20,15 @@ internal object StepTexts {
     fun lastStepResult(history: List<StepRecord>, lang: PromptLang): String {
         val last = history.lastOrNull() ?: return ""
         val action = last.action?.run { "${type}${reason?.let { "($it)" } ?: ""}" } ?: "-"
+        // detail 是执行层给出的「为什么成/不成」（如「回读 40%，期望 50%」）。
+        // 只回注 type(reason) 时模型看不到失败原因，下一轮只能瞎试；这里原样带上。
+        val detail = last.detail.trim()
+        val fact = if (detail.isEmpty()) action else "$action；结果：$detail"
         val cn = lang == PromptLang.CN
         return when {
-            last.isConfirmed -> if (cn) "✅ 已确认成功: $action" else "✅ verified: $action"
-            last.verificationResult == "failed" -> if (cn) "❌ 未生效: $action" else "❌ failed: $action"
-            else -> if (cn) "⚠️ 已发送但未确认: $action" else "⚠️ sent but unverified: $action"
+            last.isConfirmed -> if (cn) "✅ 已确认成功: $fact" else "✅ verified: $fact"
+            last.verificationResult == "failed" -> if (cn) "❌ 未生效: $fact" else "❌ failed: $fact"
+            else -> if (cn) "⚠️ 已发送但未确认: $fact" else "⚠️ sent but unverified: $fact"
         }
     }
 

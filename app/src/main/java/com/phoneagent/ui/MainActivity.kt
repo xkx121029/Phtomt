@@ -117,8 +117,7 @@ import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
 import com.phoneagent.ui.home.HomeScreen
 import com.phoneagent.ui.memory.MemoryGraphScreen
-import com.phoneagent.ui.onboarding.OnboardingPermissionScreen
-import com.phoneagent.ui.onboarding.OnboardingScreen
+import com.phoneagent.ui.onboarding.OnboardingFlow
 import com.phoneagent.ui.settings.SettingsPage
 import com.phoneagent.ui.settings.SettingsScreen
 import com.phoneagent.ui.theme.AppRadii
@@ -282,8 +281,10 @@ private fun ActivityContent(
     // 避免老用户冷启动时默认值（onboardingDone=false）抢先一帧、闪一下引导页
     val onboardingDone by vm.onboardingState.collectAsState()
     var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
-    // 开屏引导阶段标记：false = 欢迎介绍，true = 权限配置
-    var onboardingPermsStage by rememberSaveable { mutableStateOf(false) }
+    // -1 = 还没选过 Tab：本轮落点由设置里的「启动默认页」决定；
+    // 用户一碰底部导航（或深链写入）selected 就变成真实索引，进程重建后按 rememberSaveable 恢复。
+    // 声明提前到引导门控之前：引导最后一页点「试试」要直接把落点改成 Agent 页。
+    var selected by rememberSaveable { mutableStateOf(-1) }
     when {
         onboardingDone == null -> {
             Box(
@@ -295,32 +296,38 @@ private fun ActivityContent(
         }
 
         onboardingDone == false && !onboardingDismissed -> {
-            // 两阶段开屏引导：先欢迎介绍，后权限配置；返回手势可回退上一阶段
-            if (!onboardingPermsStage) {
-                OnboardingScreen(onFinish = { onboardingPermsStage = true })
-            } else {
-                OnboardingPermissionScreen(
-                    vm = vm,
-                    onFinish = {
-                        vm.completeOnboarding()
-                        onboardingDismissed = true
-                    },
-                    onBack = { onboardingPermsStage = false },
-                )
-            }
+            // 一条线性引导：介绍 → 装服务组件 → 开权限 → 连模型 → 试第一个任务。
+            // 起跑由引导页自己发起（它要把刚填的模型一起落盘），这里只负责收尾与落点：
+            // 记住引导已完成、退掉引导层、把当前 Tab 切到 Agent 页。
+            OnboardingFlow(
+                vm = vm,
+                onFinish = {
+                    vm.completeOnboarding()
+                    onboardingDismissed = true
+                },
+                onStartTask = {
+                    vm.completeOnboarding()
+                    onboardingDismissed = true
+                    selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
+                },
+            )
             return
         }
     }
 
     // -1 = 还没选过 Tab：本轮落点由设置里的「启动默认页」决定；
     // 用户一碰底部导航（或深链写入）selected 就变成真实索引，进程重建后按 rememberSaveable 恢复。
-    var selected by rememberSaveable { mutableStateOf(-1) }
+    // （声明在引导门控之前，见上）
     var extrasPage by rememberSaveable(stateSaver = ExtrasPageSaver) { mutableStateOf<ExtrasPage?>(null) }
     val snackbarState = remember { SnackbarState() }
     val activity = androidx.activity.compose.LocalActivity.current as ComponentActivity
     // 首次打开的服务组件安装提示：Provider 未安装/版本落后，且没对当前随包版本点过「稍后」
     // 才出现；只在进入应用时判断一次，点「稍后」后记住该版本，不再每次冷启动都弹。
-    var providerPromptVisible by remember { mutableStateOf(shouldShowProviderInstallPrompt(activity)) }
+    // 刚走完向导的这一次不弹：向导里已经有一整步「安装服务组件」，
+    // 结束向导后再盖一层同样的提示是重复打扰（下次启动仍会按上面的规则提示）。
+    var providerPromptVisible by remember {
+        mutableStateOf(!onboardingDismissed && shouldShowProviderInstallPrompt(activity))
+    }
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
 

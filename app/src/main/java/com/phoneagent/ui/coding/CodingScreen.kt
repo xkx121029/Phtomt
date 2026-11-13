@@ -457,11 +457,32 @@ fun CodingScreen(
 
                 if (clientState.error != null) {
                     Spacer(Modifier.height(AppSpacing.Xs))
-                    Text(
-                        clientState.error ?: "",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                    ) {
+                        Text(
+                            clientState.error ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // 重连耗尽 / 连接断开后必须给一条自助路径：
+                        // 以前只能杀进程重进，用户没有任何可点的入口。
+                        if (clientState.conn == ConnState.DISCONNECTED) {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        runCatching { bridge.ensureUiConnected() }
+                                            .onFailure {
+                                                snackbar?.show(it.message ?: "重连失败，请检查运行时与模型配置")
+                                            }
+                                    }
+                                },
+                            ) { Text("重连") }
+                        }
+                    }
                 }
 
                 ConversationFlow(
