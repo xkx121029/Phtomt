@@ -102,14 +102,21 @@ function fingerprintOf(dir, exclude = new Set()) {
   const digest = createHash('sha256');
   // 必须与历史算法完全一致（每个目录内按名字排序、深度优先），否则指纹会无故变化，
   // 已装机的设备会被判定为「host 有更新」而重新解压一次。
+  //
+  // 排序用 JS 默认的码元比较（与构建期 Java 的 String 排序一致），不能用
+  // localeCompare：后者受运行环境影响，同样的目录可能排出不同顺序。
+  // 逐字节哈希前剔除 CR：Windows 工作区是 CRLF、CI 是 LF，不去掉的话
+  // 同一份提交会在两边算出不同指纹（mergeDebugAssets 的闸门正因此失败过）。
   const walk = (d) => {
-    for (const entry of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    const entries = fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
       if (exclude.has(entry.name)) continue;
       const p = path.join(d, entry.name);
       if (entry.isDirectory()) walk(p);
       else {
         digest.update(path.relative(dir, p).replaceAll('\\', '/'));
-        digest.update(fs.readFileSync(p));
+        const bytes = fs.readFileSync(p);
+        digest.update(bytes.filter((b) => b !== 0x0d));
       }
     }
   };

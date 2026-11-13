@@ -489,7 +489,10 @@ subprojects.forEach { p ->
                                 if (f.name == "VERSION") continue
                                 if (f.isDirectory) walk(f) else {
                                     digest.update(f.relativeTo(dir).invariantSeparatorsPath.toByteArray())
-                                    digest.update(f.readBytes())
+                                    // 先剔除 CR：仓库里存的是 LF，Windows 检出会变成 CRLF。
+                                    // 同一份内容在两种工作区必须算出同一个指纹，否则 CI 干净检出
+                                    // 一定和本机指纹对不上，mergeAssets 直接失败。
+                                    digest.update(f.readBytes().filter { it != 13.toByte() }.toByteArray())
                                 }
                             }
                         }
