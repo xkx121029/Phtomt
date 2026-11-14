@@ -42,12 +42,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up JDK 17
-        # compileOptions / jvmTarget 均为 17，AGP 8.13 最低要求也是 17
+      - name: Set up JDK 21
+        # 与本地口径对齐：本机 JAVA_HOME 是 JDK 21，assembleDebug / detekt / 单测都在 21 上跑过。
+        # 这里不依赖 17 的任何东西——工程没有 jvmToolchain、没有 org.gradle.java.home，
+        # JDK 17 只是 AGP 8.13 对「运行 Gradle 的 JVM」的最低要求，不影响字节码：
+        # compileOptions / jvmTarget 固定 17（vendored shizuku 模块是 11），换 21 出的包不变。
+        # 之前 CI 用 17、本地 21，属于两套 JVM 行为（javac/JVM 告警、插件探测）不一致的来源。
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Set up Gradle cache
         # 只缓存 Gradle 用户目录（依赖与 wrapper），不缓存 app/build
