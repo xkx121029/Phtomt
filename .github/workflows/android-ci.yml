@@ -15,6 +15,14 @@ on:
         type: choice
         options: [beta, dev]
         default: beta
+  # 每日兜底：避免 nightly 长时间只有 [skip ci] 提交而从未被验证
+  schedule:
+    - cron: '30 18 * * *'
+
+# 同一分支连推时取消旧运行，避免重复占用 runner
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # 最小权限：只读代码 + 写 Release
 permissions:

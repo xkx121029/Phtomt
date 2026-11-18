@@ -2,6 +2,11 @@
 
 > 一个基于 AI 的 Android 智能体应用：用一句自然语言描述，让手机自己把事做完。
 
+[![Android CI](https://github.com/xkx121029/Phtomt/actions/workflows/android-ci.yml/badge.svg)](https://github.com/xkx121029/Phtomt/actions/workflows/android-ci.yml)
+[![Wiki](https://img.shields.io/badge/docs-Wiki-blue)](https://github.com/xkx121029/Phtomt/wiki)
+
+完整文档见 [Wiki](https://github.com/xkx121029/Phtomt/wiki)（35 页：构建发版、渠道模型、运行时契约、引擎参数、代码导读）；仓库内 `docs/` 是权威源，`docs/README.md` 为索引。
+
 ## 简介
 
 **Happy Phone Agent**（应用名：Happy Agent）是一款运行在 Android 设备上的 AI 智能体 App。用户用自然语言描述一个目标（例如"帮我订一份外卖"、"把微信消息全部标为已读"），应用会自动规划步骤、观察当前页面、做出决策，并在授权范围内执行点击 / 滑动 / 输入，完成任务。

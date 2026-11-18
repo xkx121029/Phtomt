@@ -1,0 +1,22 @@
+# 默认所有代码由维护者评审
+* @xkx121029
+
+# 引擎与执行链
+/app/src/main/java/com/phoneagent/engine/ @xkx121029
+/app/src/main/java/com/phoneagent/device/ @xkx121029
+
+# 运行时闭包与构建
+/app/src/main/jniLibs/ @xkx121029
+/app/src/main/assets/agent-host/ @xkx121029
+/app/build.gradle.kts @xkx121029
+/build.gradle.kts @xkx121029
+
+# CI 与发布
+/.github/ @xkx121029
+/tool/ @xkx121029
+
+# 官网
+/website/ @xkx121029
+
+# 文档
+/docs/ @xkx121029

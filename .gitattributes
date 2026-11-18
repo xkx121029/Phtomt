@@ -1,0 +1,20 @@
+# 行尾：源码与文本统一 LF，Windows 脚本保留 CRLF
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制：禁止 diff / 行尾转换，避免误判为文本
+*.so binary
+*.jar binary
+*.apk binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.gguf binary
+*.wav binary
+*.mp4 binary
+*.keystore binary
+
+# 生成物：合并时不要试图逐行合并
+version.properties merge=ours

@@ -281,6 +281,14 @@ desktop.ini
 .workbuddy/
 **/workbuddy/
 
+# 构建/调试临时产物：只留本机，不入库
+*.log
+fr_disasm.txt
+Screenshot_*.png
+_probe*
+杂项/hpa_diagnostic_*.txt
+杂项/hpa_logs_*.json
+
 # ---------------------------------------------------------------------------
 # 目录结构整理（2026-11-11）：临时日志与产物暂存，只留本机，避免误入库
 # 说明见 docs/project-structure.md 第七、八节
