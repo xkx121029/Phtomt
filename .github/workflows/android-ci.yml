@@ -19,11 +19,6 @@ on:
   schedule:
     - cron: '30 18 * * *'
 
-# 同一分支连推时取消旧运行，避免重复占用 runner
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 # 最小权限：只读代码 + 写 Release
 permissions:
   contents: write
