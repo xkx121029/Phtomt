@@ -1414,13 +1414,20 @@ internal class ExecutionCore(
                     }
                     if (failed == null) {
                         delay(300)
+                        // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
+                        // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
+                        val verdict = confirmFallbackDelivery(snapshot)
                         delivered = VerifyResult(
-                            true,
-                            "$originalReason；已自动切换 shell 通道执行: ${commands.orEmpty().joinToString(" && ")}",
-                            "",
-                            "",
+                            verdict.success,
+                            "$originalReason；已自动切换 shell 通道执行: " +
+                                commands.orEmpty().joinToString(" && ") + verdict.suffix,
+                            verdict.beforeFingerprint,
+                            verdict.afterFingerprint,
+                            // 命令已经下发到系统 = 已交付：绝不能标 notDelivered，
+                            // 否则外层会换一条通道把同一下再执行一遍（发送/删除就是重复副作用）
+                            notDelivered = false,
                         )
-                        ChannelStepResult.Delivered(confirmed = true)
+                        ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
                         ChannelStepResult.NotDelivered(failed)
                     }
@@ -1464,6 +1471,41 @@ internal class ExecutionCore(
             else -> null
         }
     }
+
+    /**
+     * shell 兜底之后的页面级确认（[ShellFallbackPolicy] 的采样实现）。
+     *
+     * 取样节奏与点击链路同一套 [VerifyTiming]：一旦回读到页面变化立即返回，不必等满观察窗；
+     * 读不到页面（无障碍断开 / Provider 超时）按「未确认」处理，不拿命令退出码冒充生效。
+     */
+    private suspend fun confirmFallbackDelivery(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
+        val beforeFp = runCatching { PageFingerprint.computeMeaningful(before) }.getOrNull()
+        if (beforeFp.isNullOrBlank()) return ShellFallbackPolicy.judge(null, null)
+        // 最后一次成功回读到的指纹：两次取样都没变化时用它区分「页面没变」与「读不到页面」，
+        // 这两种情况给 AI 的下一步提示完全不同（一个该换落点，一个该等页面可读）
+        var lastAfterFp: String? = null
+        for (delayMs in VerifyTiming.SAMPLE_DELAYS_MS) {
+            delay(delayMs)
+            val after = readPageQuietly() ?: continue
+            val afterFp = PageFingerprint.computeMeaningful(after)
+            lastAfterFp = afterFp
+            if (afterFp != beforeFp) break
+        }
+        return ShellFallbackPolicy.judge(beforeFp, lastAfterFp)
+    }
+
+    /** 读一份当前页面；读不到（无障碍断开 / 元素树为空壳）返回 null，不抛异常打断任务 */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun readPageQuietly(): ScreenSnapshot? =
+        try {
+            val page = observe()
+            if (page.missingAccessibility) null else page
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // 取消是控制流：必须原样抛出，否则用户停止后这一步还会继续等取样
+            throw e
+        } catch (e: Throwable) {
+            null
+        }
 
     /** 把动作翻译成替代通道的 shell 命令；无对应命令返回 null */
     // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
