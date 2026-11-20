@@ -6,6 +6,21 @@ name: Android CI
 on:
   push:
     branches: [main, nightly]
+    # 只有会影响 APK 的改动才触发构建与发布。
+    # main 上混着大量纯文档/官网数据同步提交（chore(site)/docs），每一个都会跑完整
+    # 构建、消耗一个版本号、切一个 beta Release（workflow 里 Publish GitHub Release 的
+    # 条件是 event_name != pull_request，push 就会发布）。版本计数器本来就紧张（见
+    # Compute version + tag），这些提交不该再烧号。
+    # 注意：paths-ignore 只在「本次提交改动的文件全部命中」时才跳过；同时改了代码和
+    # README 的提交照常触发。需要强制出包时用 workflow_dispatch。
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - 'promo/**'
+      - 'promo-video/**'
+      - 'BUGS/**'
+      - '**/*.md'
+      - '.github/workflows/site-pages.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
