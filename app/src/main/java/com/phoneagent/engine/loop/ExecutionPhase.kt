@@ -17,6 +17,7 @@ import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.CompletionEvidence
+import com.phoneagent.engine.execution.DangerousTargetWords
 import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.InputCommitRules
@@ -502,8 +503,17 @@ internal class ExecutionPhase(
                     return StepOutcome.Continue
                 }
                 // 不可逆动作确认门：AI/转译层标记 needsUserConfirmation 的动作，执行前先问用户。
-                // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行
-                if (act.needsUserConfirmation && !device.awaitActionConfirmation(act)) {
+                // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行。
+                // 点击另按标签过一遍危险词：模型可以用最通用的 tap 按文字去点「删除」，
+                // 那条路上没有任何意图标记，只信 needsUserConfirmation 等于把门挂在模型自觉上。
+                val hazard = hazardWordOf(act)
+                if (hazard != null && !act.needsUserConfirmation) {
+                    ui.log(
+                        AgentLog.Level.WARN,
+                        "点击目标「${act.target?.value}」命中危险词「$hazard」，转用户确认",
+                    )
+                }
+                if ((act.needsUserConfirmation || hazard != null) && !device.awaitActionConfirmation(act)) {
                     val cancelReason = "用户取消了该操作"
                     ui.log(AgentLog.Level.WARN, "用户取消不可逆操作，已跳过执行：${act.type}")
                     messages.add(
@@ -822,7 +832,10 @@ internal class ExecutionPhase(
                             // 不可逆动作确认门与常规路径同口径：引导回来的动作若带 needsUserConfirmation，
                             // 执行前必须先问用户。原先这里直接执行，等于用户给一次指导就能越过确认门
                             // 执行删除/发送等不可逆操作（转译层会给 DELETE 等语义控件自动打上该标志）。
-                            if (guidedAction.needsUserConfirmation && !device.awaitActionConfirmation(guidedAction)) {
+                            // 危险词兜底在这里同样不能省：否则改走引导路径就能绕过常规路径的新增判定。
+                            val gHazard = hazardWordOf(guidedAction)
+                            val needsGate = guidedAction.needsUserConfirmation || gHazard != null
+                            if (needsGate && !device.awaitActionConfirmation(guidedAction)) {
                                 ui.log(
                                     AgentLog.Level.WARN,
                                     "用户取消引导后的不可逆操作，已跳过执行：${guidedAction.type}",
@@ -1045,4 +1058,16 @@ internal class ExecutionPhase(
      * 保持"用户停止后不再重试"的行为不变。
      */
     private suspend fun coroutineContextIsActive(): Boolean = kotlin.coroutines.coroutineContext.isActive
+
+    /**
+     * 点击目标的危险词兜底（转译层的语义标记之外的第三条路，见 [DangerousTargetWords]）。
+     *
+     * 只对 TAP 生效：模型要绕过「删除/支付」这类语义意图，唯一更省事的写法就是 tap + 目标文字，
+     * 而那一下的 target.value 就是屏幕上的标签。长按/滑动不在此列——它们本身不产生不可逆副作用，
+     * 后续菜单里的那一下删除仍会走 TAP 再被拦一次。
+     *
+     * @return 命中的危险词；不需要额外确认时返回 null
+     */
+    private fun hazardWordOf(action: AgentAction): String? =
+        if (action.type == ActionType.TAP) DangerousTargetWords.hit(action.target?.value) else null
 }
