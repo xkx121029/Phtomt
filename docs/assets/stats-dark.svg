@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 208" width="1200" height="208" role="img" aria-label="Happy Phone Agent at a glance">
+  <title>Happy Phone Agent · 项目数据</title>
+  <defs>
+    <pattern id="s-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M20 0H0v20" fill="none" stroke="#131C18" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="208" rx="18" fill="#0C1412"/>
+  <rect width="1200" height="208" rx="18" fill="url(#s-grid)"/>
+  <rect x="0.5" y="0.5" width="1199" height="207" rx="18" fill="none" stroke="#1E2A25"/>
+  <rect x="0" y="0" width="6" height="208" fill="#5FD9B4"/>
+
+  <g font-family="'Segoe UI','Helvetica Neue',Helvetica,Arial,'Microsoft YaHei',sans-serif">
+    <g>
+      <text x="56" y="112" font-size="52" font-weight="700" fill="#F1F4F1">14</text>
+      <text x="56" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">MODULES</text>
+    </g>
+    <g transform="translate(196 0)">
+      <text x="40" y="112" font-size="52" font-weight="700" fill="#F1F4F1">356</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">KOTLIN FILES</text>
+    </g>
+    <g transform="translate(392 0)">
+      <text x="40" y="112" font-size="52" font-weight="700" fill="#F1F4F1">91,003</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">LINES OF CODE</text>
+    </g>
+    <g transform="translate(628 0)">
+      <text x="40" y="112" font-size="52" font-weight="700" fill="#5FD9B4">1,287</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">UNIT TESTS</text>
+    </g>
+    <g transform="translate(856 0)">
+      <text x="40" y="112" font-size="52" font-weight="700" fill="#F1F4F1">65</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">INTENTS</text>
+    </g>
+    <g transform="translate(1044 0)">
+      <text x="40" y="112" font-size="52" font-weight="700" fill="#F1F4F1">3</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#6E7C75">CHANNELS</text>
+    </g>
+  </g>
+
+  <g stroke="#1E2A25" stroke-width="1">
+    <line x1="180" y1="46" x2="180" y2="162"/>
+    <line x1="376" y1="46" x2="376" y2="162"/>
+    <line x1="612" y1="46" x2="612" y2="162"/>
+    <line x1="840" y1="46" x2="840" y2="162"/>
+    <line x1="1028" y1="46" x2="1028" y2="162"/>
+  </g>
+
+</svg>

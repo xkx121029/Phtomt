@@ -61,10 +61,14 @@ Happy Agent 是一个运行在 Android 上的 AI 智能体。你说"帮我把微
 
 ## 📌 项目速览
 
+<p align="center">
+  <img src="docs/assets/stats-light.svg#gh-light-mode-only" width="900" alt="Happy Phone Agent 项目数据">
+  <img src="docs/assets/stats-dark.svg#gh-dark-mode-only" width="900" alt="Happy Phone Agent 项目数据">
+</p>
+
 | | |
 |---|---|
 | **形态** | Android 原生应用（Kotlin + Compose），14 个 Gradle 模块 |
-| **代码量** | 主模块 356 个 Kotlin 文件、91,003 行；单元测试 1,287 个 `@Test` |
 | **能力模型** | 65 个意图（4 档风险）→ 37 种动作，3 条执行通道 |
 | **模型要求** | 任意 OpenAI 兼容端点；默认 `glm-4.7-flash`，无强制云依赖 |
 | **系统要求** | Android 8.0+（API 26），无需 Root、无需单独安装 Shizuku |
@@ -263,6 +267,12 @@ flowchart TB
 
 每次输入进执行体前先判定形态，唯一判定点是 [TaskKindDetector](app/src/main/java/com/phoneagent/engine/TaskKindDetector.kt)：
 
+<p align="center">
+  <img src="docs/assets/routing-light.svg#gh-light-mode-only" width="900" alt="三形态路由：Coding / Chat / Agent">
+  <img src="docs/assets/routing-dark.svg#gh-dark-mode-only" width="900" alt="三形态路由：Coding / Chat / Agent">
+</p>
+
+
 | 形态 | 判据 | 执行体 |
 |---|---|---|
 | **Coding** | 编码词命中数 ≥ 对话词与操作词 | 委托设备端编码 agent，不进 ReAct 感知循环 |
@@ -288,6 +298,12 @@ flowchart TB
 ### 动作模式
 
 [ActionMode](app/src/main/java/com/phoneagent/engine/execution/ActionMode.kt) 与通道模式（`CapabilityManager.Mode`）**正交**：通道模式回答"能不能执行"（设备有没有权限），动作模式回答"允不允许 AI 提出这类请求"（用户给了多大授权）。
+
+<p align="center">
+  <img src="docs/assets/modes-light.svg#gh-light-mode-only" width="900" alt="动作模式三档授权">
+  <img src="docs/assets/modes-dark.svg#gh-dark-mode-only" width="900" alt="动作模式三档授权">
+</p>
+
 
 | 档位 | 放行范围 |
 |---|---|
@@ -352,19 +368,12 @@ sequenceDiagram
 
 通道选择的唯一判据是 [ShellRules.pickChannel](app/src/main/java/com/phoneagent/engine/execution/ShellRules.kt)：
 
-```mermaid
-flowchart LR
-    Q{"executionChannel"}
-    Q -->|AUTO| S1["Shizuku binder"]
-    Q -->|AUTO| S2["ADB 引导会话"]
-    Q -->|AUTO| S3["Termux"]
-    Q -->|"显式 SHIZUKU"| S1
-    Q -->|"显式 TERMUX"| S3
-    S1 -. 不可用 .-> S2 -. 不可用 .-> S3 -. 不可用 .-> NONE["NONE"]
-    S1 -->|可用| OK["执行"]
-    S2 -->|可用| OK
-    S3 -->|可用| OK
-```
+<p align="center">
+  <img src="docs/assets/channels-light.svg#gh-light-mode-only" width="900" alt="执行通道阶梯：Shizuku → ADB → Termux">
+  <img src="docs/assets/channels-dark.svg#gh-dark-mode-only" width="900" alt="执行通道阶梯：Shizuku → ADB → Termux">
+</p>
+
+
 
 | 通道 | 权限级别 | 能做什么 |
 |---|---|---|

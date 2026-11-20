@@ -61,10 +61,14 @@ Two hard boundaries separate it from the usual "remote-controlled AI" approach:
 
 ## 📌 At a glance
 
+<p align="center">
+  <img src="docs/assets/stats-light.svg#gh-light-mode-only" width="900" alt="Happy Phone Agent at a glance">
+  <img src="docs/assets/stats-dark.svg#gh-dark-mode-only" width="900" alt="Happy Phone Agent at a glance">
+</p>
+
 | | |
 |---|---|
 | **Shape** | Native Android app (Kotlin + Compose), 14 Gradle modules |
-| **Size** | 356 Kotlin files and 91,003 lines in the main module; 1,287 `@Test` cases |
 | **Capability model** | 65 intents across 4 risk tiers → 37 actions, 3 execution channels |
 | **Model needs** | Any OpenAI-compatible endpoint; defaults to `glm-4.7-flash`, no mandatory cloud |
 | **Requirements** | Android 8.0+ (API 26), no root, no separate Shizuku install |
@@ -264,6 +268,12 @@ Dependencies point one way; `core` / `domain` sit at the bottom:
 
 Every input is classified before it reaches an executor, and there is exactly one classifier: [TaskKindDetector](app/src/main/java/com/phoneagent/engine/TaskKindDetector.kt).
 
+<p align="center">
+  <img src="docs/assets/routing-light.svg#gh-light-mode-only" width="900" alt="Three-shape routing: Coding / Chat / Agent">
+  <img src="docs/assets/routing-dark.svg#gh-dark-mode-only" width="900" alt="Three-shape routing: Coding / Chat / Agent">
+</p>
+
+
 | Shape | Rule | Executor |
 |---|---|---|
 | **Coding** | coding-term hits ≥ chat-term and action-term hits | delegated to the on-device coding agent, no ReAct perception loop |
@@ -289,6 +299,12 @@ The nine `browse_*` intents, plus `see` and `web_search`, are not in the action 
 ### Action modes
 
 [ActionMode](app/src/main/java/com/phoneagent/engine/execution/ActionMode.kt) is **orthogonal** to the channel mode (`CapabilityManager.Mode`): channel mode answers "can this execute" (does the device have the permission), action mode answers "may the AI ask for this" (how much authorization the user granted).
+
+<p align="center">
+  <img src="docs/assets/modes-light.svg#gh-light-mode-only" width="900" alt="Three authorization tiers">
+  <img src="docs/assets/modes-dark.svg#gh-dark-mode-only" width="900" alt="Three authorization tiers">
+</p>
+
 
 | Tier | Allowed |
 |---|---|
@@ -353,19 +369,12 @@ sequenceDiagram
 
 Channel selection has a single decision point, [ShellRules.pickChannel](app/src/main/java/com/phoneagent/engine/execution/ShellRules.kt):
 
-```mermaid
-flowchart LR
-    Q{"executionChannel"}
-    Q -->|AUTO| S1["Shizuku binder"]
-    Q -->|AUTO| S2["ADB bootstrap session"]
-    Q -->|AUTO| S3["Termux"]
-    Q -->|"explicit SHIZUKU"| S1
-    Q -->|"explicit TERMUX"| S3
-    S1 -. unavailable .-> S2 -. unavailable .-> S3 -. unavailable .-> NONE["NONE"]
-    S1 -->|available| OK["Execute"]
-    S2 -->|available| OK
-    S3 -->|available| OK
-```
+<p align="center">
+  <img src="docs/assets/channels-light.svg#gh-light-mode-only" width="900" alt="Execution channel ladder: Shizuku → ADB → Termux">
+  <img src="docs/assets/channels-dark.svg#gh-dark-mode-only" width="900" alt="Execution channel ladder: Shizuku → ADB → Termux">
+</p>
+
+
 
 | Channel | Privilege | Can do |
 |---|---|---|

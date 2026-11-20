@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 344" width="1200" height="344" role="img" aria-label="Three-shape routing">
+  <title>Three-shape routing · TaskKindDetector</title>
+  <rect width="1200" height="344" rx="18" fill="#F7F6F3"/>
+  <rect x="0.5" y="0.5" width="1199" height="343" rx="18" fill="none" stroke="#E2DFD7"/>
+
+  <!-- 输入 -->
+  <g>
+    <rect x="44" y="126" width="196" height="92" rx="18" fill="#063A2E"/>
+    <g transform="translate(70 152)" fill="none" stroke="#5FD9B4" stroke-width="1.6">
+      <rect x="0" y="0" width="14" height="14" rx="3.5"/>
+      <rect x="0" y="20" width="14" height="14" rx="3.5"/>
+      <rect x="20" y="20" width="14" height="14" rx="3.5"/>
+      <rect x="20" y="0" width="14" height="14" rx="3.5" fill="#5FD9B4" stroke="#5FD9B4"/>
+    </g>
+    <text x="112" y="160" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="20" font-weight="700" fill="#F1F4F1" letter-spacing="1.2">INPUT</text>
+    <text x="112" y="186" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#8FA79C">natural language</text>
+    <text x="70" y="205" font-family="'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#8FA79C">TaskKindDetector</text>
+  </g>
+
+  <!-- 连线 -->
+  <g fill="none" stroke="#B9C3BD" stroke-width="2" stroke-linecap="round">
+    <path d="M240 172 C 300 172, 300 68, 360 68"/>
+    <path d="M240 172 H 360"/>
+    <path d="M240 172 C 300 172, 300 276, 360 276"/>
+  </g>
+  <g fill="#0E7C66">
+    <path d="M352 62 l10 6 -10 6 z"/>
+    <path d="M352 166 l10 6 -10 6 z"/>
+    <path d="M352 270 l10 6 -10 6 z"/>
+  </g>
+
+  <!-- 分支卡片 -->
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <!-- CODING -->
+    <rect x="360" y="32" width="800" height="72" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="360" y="32" width="6" height="72" rx="3" fill="#0E7C66"/>
+    <text x="392" y="64" font-size="19" font-weight="700" fill="#063A2E" letter-spacing="1">CODING</text>
+    <text x="392" y="88" font-size="13" fill="#6D766F">coding-word hits ≥ chat and action hits</text>
+    <text x="1004" y="64" font-size="13" fill="#6D766F">delegated</text>
+    <text x="1004" y="84" font-size="13" fill="#6D766F">no perception loop</text>
+
+    <!-- CHAT -->
+    <rect x="360" y="136" width="800" height="72" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="360" y="136" width="6" height="72" rx="3" fill="#B9A26A"/>
+    <text x="392" y="168" font-size="19" font-weight="700" fill="#063A2E" letter-spacing="1">CHAT</text>
+    <text x="392" y="192" font-size="13" fill="#6D766F">chat terms only; doc / open / browse / fetch / assistant all miss</text>
+    <text x="1014" y="168" font-size="13" fill="#6D766F">1 call</text>
+    <text x="1014" y="188" font-size="13" fill="#6D766F">T = 0.3</text>
+
+    <!-- AGENT -->
+    <rect x="360" y="240" width="800" height="72" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="360" y="240" width="6" height="72" rx="3" fill="#5FD9B4"/>
+    <text x="392" y="272" font-size="19" font-weight="700" fill="#063A2E" letter-spacing="1">AGENT</text>
+    <text x="392" y="296" font-size="13" fill="#6D766F">everything else</text>
+    <text x="1014" y="272" font-size="13" fill="#6D766F">ReAct</text>
+    <text x="1014" y="292" font-size="13" fill="#6D766F">full loop</text>
+  </g>
+</svg>
