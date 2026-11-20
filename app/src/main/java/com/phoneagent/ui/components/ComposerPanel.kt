@@ -29,7 +29,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.phoneagent.ui.theme.AppBorders
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -86,6 +88,13 @@ fun ComposerPanel(
         animationSpec = tween(DurationFast, easing = EaseOut),
         label = "composer-ring",
     )
+    // 无框线风格下 appBorder 不画任何东西，聚焦就只剩底色这一条线索：
+    // 输入框提亮到品牌淡底，仍在"下沉"的那一档里，不会读成另一块面板
+    val pillFill by animateColorAsState(
+        targetValue = if (focused && !AppBorders.enabled) colors.brandContainer else colors.surfaceSunken,
+        animationSpec = tween(DurationFast, easing = EaseOut),
+        label = "composer-fill",
+    )
 
     Column(
         modifier = modifier
@@ -108,7 +117,7 @@ fun ComposerPanel(
                 .fillMaxWidth()
                 .padding(horizontal = ComposerPillInset)
                 .clip(pillShape)
-                .background(colors.surfaceSunken)
+                .background(pillFill)
                 .appBorder(1.dp, ringColor, pillShape)
                 .padding(
                     // 无左入口时文字自己让出 16dp；有左入口时由入口占掉这段，文字紧跟其后
@@ -172,6 +181,7 @@ fun ComposerField(
                 color = colors.onSurfaceRaised,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         BasicTextField(
