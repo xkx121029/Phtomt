@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 296" width="1200" height="296" role="img" aria-label="Action modes">
+  <title>ActionMode · 三档授权</title>
+  <rect width="1200" height="296" rx="18" fill="#0C1412"/>
+  <rect x="0.5" y="0.5" width="1199" height="295" rx="18" fill="none" stroke="#1E2A25"/>
+
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <g stroke="#1E2A25" stroke-width="1" stroke-dasharray="3 7">
+      <line x1="320" y1="36" x2="320" y2="256"/>
+      <line x1="880" y1="36" x2="880" y2="256"/>
+    </g>
+
+    <text x="56" y="72" font-size="17" font-weight="700" fill="#F1F4F1" letter-spacing="1">CONSERVATIVE</text>
+    <text x="56" y="94" font-size="12" fill="#8B9A93">read-only · navigation · local</text>
+    <rect x="320" y="52" width="284" height="40" rx="10" fill="#26332D"/>
+    <text x="620" y="78" font-size="14" font-weight="600" fill="#8B9A93">35 intents</text>
+
+    <text x="56" y="148" font-size="17" font-weight="700" fill="#F1F4F1" letter-spacing="1">BALANCED</text>
+    <text x="56" y="170" font-size="12" fill="#8B9A93">default tier</text>
+    <rect x="320" y="128" width="495" height="40" rx="10" fill="#5FD9B4"/>
+    <text x="831" y="154" font-size="14" font-weight="600" fill="#5FD9B4">61 intents</text>
+
+    <text x="56" y="224" font-size="17" font-weight="700" fill="#F1F4F1" letter-spacing="1">FREE</text>
+    <text x="56" y="246" font-size="12" fill="#8B9A93">+ shell · a11y · virtual display</text>
+    <rect x="320" y="204" width="560" height="40" rx="10" fill="#123328" stroke="#2E6B58"/>
+    <text x="896" y="230" font-size="14" font-weight="600" fill="#9FB0A8">65 + 4 extended</text>
+
+    <circle cx="880" cy="224" r="6" fill="#5FD9B4"/>
+    <circle cx="880" cy="224" r="12" fill="none" stroke="#5FD9B4" stroke-width="1.4" opacity="0.6"/>
+  </g>
+</svg>
