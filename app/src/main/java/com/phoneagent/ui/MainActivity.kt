@@ -112,6 +112,7 @@ import com.phoneagent.ui.components.WindowWidthRail
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarState
 import com.phoneagent.ui.components.SnackbarType
+import com.phoneagent.ui.components.StartupSkeleton
 import com.phoneagent.ui.components.rememberGlassState
 import com.phoneagent.ui.components.rememberHapticPress
 import com.phoneagent.ui.debug.DebugScreen
@@ -279,8 +280,10 @@ private fun ActivityContent(
     pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
     entrySignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
 ) {
-    // 新手引导门控：状态为 null 说明还没从 DataStore 读到真实值，先铺纯底色，
-    // 避免老用户冷启动时默认值（onboardingDone=false）抢先一帧、闪一下引导页
+    // 新手引导门控：完成标记还没读到（镜像没写过、DataStore 也还没回）时铺**骨架屏**而不是纯色。
+    // 纯色的观感与 windowBackground 白底完全相同，用户看到的就是「点了图标先白一下」；
+    // 骨架屏至少说明界面已经在、内容待填。同时避免老用户冷启动时默认值（onboardingDone=false）
+    // 抢先一帧、闪一下引导页。
     val onboardingDone by vm.onboardingState.collectAsState()
     var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
     // -1 = 还没选过 Tab：本轮落点由设置里的「启动默认页」决定；
@@ -289,11 +292,7 @@ private fun ActivityContent(
     var selected by rememberSaveable { mutableStateOf(-1) }
     when {
         onboardingDone == null -> {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-            )
+            StartupSkeleton()
             return
         }
 
