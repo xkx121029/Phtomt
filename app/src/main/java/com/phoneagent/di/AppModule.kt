@@ -88,8 +88,23 @@ private val appModule = module {
     single { com.phoneagent.engine.coding.CodingAgentBridge(androidContext(), get(), get(), get()) }
 
     viewModel {
+        // 全部用具名参数：13 个 get() 的位置参数一旦有人调整构造顺序就会静默错配。
+        // 引擎走 provider 惰性求值（见 MainViewModel 的 engine 注释）：这里不构造它，
+        // 首次访问时才由 Koin 建整张对象图。
         MainViewModel(
-            get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            settings = get(),
+            engineProvider = { get() },
+            testEngine = get(),
+            shizukuManager = get(),
+            termuxBridge = get(),
+            documentEngine = get(),
+            memoryStore = get(),
+            skillRegistry = get(),
+            mcpManager = get(),
+            mcpStore = get(),
+            shizukuBootstrap = get(),
+            adbPairingFlow = get(),
+            updateManager = get(),
         )
     }
 }
