@@ -193,7 +193,14 @@ class VerifiedClickExecutor(
             }
         }
         if (!captured) {
-            return VerifyResult(true, "已执行；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")
+            // 与 ClickRunner 同一口径：读不到页面只算"未确认"，既不是成功也不是失败
+            return VerifyResult(
+                false,
+                "已执行；此刻读不到页面，变化未能确认，以下一步观察为准",
+                "",
+                "",
+                unconfirmed = true,
+            )
         }
         // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
         // 早判"未生效"会让 AI 重放动作（重复提交/重复滑动），副作用不可撤销

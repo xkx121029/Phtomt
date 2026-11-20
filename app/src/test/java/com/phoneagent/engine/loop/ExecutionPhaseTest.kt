@@ -18,11 +18,14 @@ import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.PendingInput
 import com.phoneagent.engine.execution.VerifyResult
+import com.phoneagent.engine.execution.controlStateOf
 import com.phoneagent.engine.perception.AnnotatedPage
+import com.phoneagent.engine.perception.PageFingerprint
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
 import com.phoneagent.engine.runtime.LoopGuard
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -476,6 +479,90 @@ class ExecutionPhaseTest {
         // 引导动作接进既有链路后由末尾统一留档一次（浏览器分支本身不重复落档）
         assertEquals(1, fixture.f.histories)
     }
+
+    /**
+     * 连点 12 个开关：整页文字与坐标全都不变，每步只有被点那个开关的 `isSelected` 翻转。
+     *
+     * 旧代码里页面指纹（`PageFingerprint.compute`）不含 `isSelected` / `currentValue`，
+     * 而成功判据（`controlStateOf`）恰恰只看它们——于是 12 步每一步都被判成 ✅ 生效，
+     * 页面级止损却数到第 12 步认定「同一页面连续无推进」，写 `STATUS_FAILED` 并 `stopEngine`。
+     * 这条用例把「成功判据看到的变化」和「止损看到的变化」锁在同一组事实上。
+     */
+    @Test
+    fun `同一设置页连点 12 个开关_不得判定路径已死`() = runTest {
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(AgentAction(type = ActionType.CLICK)),
+            verify = VerifyResult(true, "已点击（目标控件状态已变化）", "", ""),
+        )
+        val pages = (0..12).map(::settingsPage)
+        // 前提校验：每步确实改变了目标控件的关键状态（成功判据成立），且同一页面的两个状态
+        // 必须算出不同指纹（止损判据也成立）。第二条就是旧代码挂掉的地方。
+        for (i in 1..12) {
+            val before = pages[i - 1].elements[i - 1]
+            val after = pages[i].elements[i - 1]
+            assertNotEquals("第 $i 步必须真的改变了控件状态", controlStateOf(before), controlStateOf(after))
+            assertNotEquals(
+                "第 $i 步同一页面状态不得算出相同指纹",
+                PageFingerprint.compute(pages[i - 1]),
+                PageFingerprint.compute(pages[i]),
+            )
+        }
+        val outcomes = (1..12).map { i ->
+            fixture.phase.run(session(AgentIntent(intent = IntentType.TAP), step = i, snapshot = pages[i]))
+        }
+        assertTrue("12 步都应继续执行，实际：$outcomes", outcomes.all { it == StepOutcome.Continue })
+        assertEquals("不得以 STATUS_FAILED 收尾", 0, fixture.f.finished.size)
+        assertEquals("不得停止引擎", 0, fixture.f.stops)
+        assertTrue("不应出现路径已死日志", fixture.f.logs.none { it.contains("路径不通") })
+    }
+
+    /**
+     * 读不到页面（Provider 取树超时）连续三步：必须累计失败计数并触发「连续 3 次请求用户介入」。
+     * 旧代码把这类结果写成 `success = true`，计数每步清零，这条唯一的兜底永远不触发。
+     */
+    @Test
+    fun `连续读不到页面_失败计数累计并请求用户介入`() = runTest {
+        val unconfirmed = VerifyResult(
+            false,
+            "已点击；此刻读不到页面，变化未能确认，以下一步观察为准",
+            "",
+            "",
+            unconfirmed = true,
+        )
+        val fixture = Fixture(verify = unconfirmed)
+        repeat(3) { i ->
+            fixture.phase.run(session(AgentIntent(intent = IntentType.TAP), step = i + 1))
+        }
+        assertEquals("未确认必须累计失败计数", 3, fixture.failures)
+        assertEquals("连续 3 次后应请求用户介入一次", 1, fixture.f.interactions.size)
+        assertTrue(fixture.f.needsUser)
+        assertEquals("未确认不记进展", 0, fixture.f.progresses.size)
+        assertEquals("未确认不存检查点", 0, fixture.f.checkpoints)
+    }
+
+    /** 一个设置页快照：12 个开关，前 [toggled] 个已打开；文字、坐标、viewId 全都不变 */
+    private fun settingsPage(toggled: Int) = ScreenSnapshot(
+        packageName = "com.android.settings",
+        screenWidth = 1080,
+        screenHeight = 2400,
+        elements = (0 until 12).map { i ->
+            UiElement(
+                index = i,
+                className = "android.widget.Switch",
+                type = "Switch",
+                text = "选项$i",
+                isSelected = i < toggled,
+                x = 540,
+                y = 200 + i * 160,
+                left = 100,
+                top = 180 + i * 160,
+                right = 980,
+                bottom = 260 + i * 160,
+                clickable = true,
+                viewId = "switch_widget_$i",
+            )
+        },
+    )
 
     @Test
     fun `转译失败按结构错误回注原因`() = runTest {
