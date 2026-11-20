@@ -75,7 +75,7 @@ happy_phone agent/
 
 ## 二、`app/` 内部结构
 
-`app/src/main/java/com/phoneagent/`（335 个 Kotlin 文件、87,219 行；单测另有 115 个文件 / 1189 个 `@Test`）：
+`app/src/main/java/com/phoneagent/`（356 个 Kotlin 文件、91,042 行；单测另有 120 个文件 / 1,256 个 `@Test`。数字由 `tool/count-code.sh` 生成，别手改）：
 
 | 包 | 职责 | 典型内容 |
 | --- | --- | --- |
