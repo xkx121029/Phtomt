@@ -189,12 +189,9 @@ internal class ExecutionCore(
             }
         }
 
-        // 幂等保护（v2.2 5.4）：副作用意图（提交/发送/下单/支付/删除）已由页面证明完成 → 跳过，防重复副作用与误触
-        if (EngineRules.isFinalSubmit(action, type) && EngineRules.idempotencyDone(snapshot)) {
-            return com.phoneagent.engine.execution.VerifyResult(true, "检测到页面已含完成证据（如「提交成功」），跳过重复副作用操作", "", "").also {
-                recordExecMs((System.nanoTime() - execT0) / 1_000_000)
-            }
-        }
+        // 幂等保护不在这一层做了：判据要读「本任务执行历史」，动作是否下发由执行阶段（ExecutionPhase）
+        // 在下发前判定。原先这里只看页面文字（「已完成/操作成功」），待办详情页的状态标签就让整条
+        // 删除被跳过、却没真正下发（HAPP-5 P0-1）。
 
         // 解析动作目标：定位口径的唯一入口在 IntentResolver（原引擎内的 resolveTarget/resolvePoint 已并入）
         val resolved = intentResolver.resolveAction(action, snapshot)

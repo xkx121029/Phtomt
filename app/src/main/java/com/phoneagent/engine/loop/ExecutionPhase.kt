@@ -14,6 +14,7 @@ import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStatus
+import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.CompletionEvidence
@@ -103,6 +104,10 @@ internal class ExecutionDeviceHooks(
     val decideWithUserHint: suspend (MutableList<ChatMessageDto>, String) -> AgentIntent?,
     val actionMode: () -> ActionMode,
     val idempotencyDone: (ScreenSnapshot) -> Boolean,
+    /** 本任务内已确认下发的副作用动作（幂等判据的唯一来源，见 [EngineRules.idempotencyVerdict]） */
+    val committedEffects: () -> List<EngineRules.CommittedEffect>,
+    /** 动作真的下发且验证成功后记账：后面的步骤据此才能判"这次是重复副作用" */
+    val recordEffect: (AgentAction, Int) -> Unit,
     /** 协助文案里的无障碍断线提示（原 `AgentAccessibilityService.instance == null` 判定） */
     val a11yDisconnectedNote: () -> String,
 )
@@ -256,11 +261,12 @@ internal class ExecutionPhase(
                     ceil(plan.steps.size * 0.6).toInt()
                 else
                     3
-                // 证据优先：当前页面已出现明确的"完成"证据时（复用 EngineRules.idempotencyDone，
-                // 与幂等保护同一口径；判定含稀疏守卫，普通列表页的历史"已完成"字样不算证据），
-                // 即便提前宣称完成也直接放行，不再为凑步数空跑；无证据时才沿用上面的步数门槛照旧拦截。
+                // 证据优先：当前页面已出现明确的"完成"证据时，即便提前宣称完成也直接放行，不再为凑步数空跑。
+                // P0 修复（HAPP-5）：证据不再只是页面文字——页面上的「已完成」可能是任务还没做时的状态标签，
+                // 所以要求「本任务内真的下发并确认过副作用动作」+「当前页面出现完成确认语」同时成立。
                 // 放弃（GIVE_UP）不属"完成"，不适用证据放行，仍按原门槛拦截。
-                val hasDoneEvidence = intent.intent != IntentType.GIVE_UP && device.idempotencyDone(snapshot)
+                val hasDoneEvidence = intent.intent != IntentType.GIVE_UP &&
+                    device.committedEffects().isNotEmpty() && device.idempotencyDone(snapshot)
                 // 输入闭环：填进输入框 ≠ 提交。凡是有提交语义的操作，完成前必须真的落到提交动作，
                 // 否则判分读到的是空答案（真机失败：正文已输入答题框，直接 finish，页面从未提交）。
                 val pendingInput = counters.pendingInput()
@@ -485,6 +491,26 @@ internal class ExecutionPhase(
                     counters.setSayStreak(0)
                     return StepOutcome.Continue
                 }
+                // 幂等保护（P0 修复，HAPP-5）：判据绑「本任务执行历史」，页面文字本身不算"已经做过"。
+                // 旧实现只看页面是否出现「已完成/操作成功/已提交」，待办详情页的状态标签就让整条删除被跳过，
+                // 动作压根没下发却记成 ✅。现在的取向：
+                // - 本任务内确实下发并确认过同一动作 → 跳过，不重复副作用；
+                // - 不可逆动作（删除/支付/下单）证据不足 → 交用户确认，既不静默成功、也不静默重放。
+                val idempotency = EngineRules.idempotencyVerdict(device.committedEffects(), act, act.type, snapshot)
+                if (idempotency is EngineRules.IdempotencyVerdict.Skip) {
+                    val skipReason = "本任务第 ${idempotency.step} 步已下发并确认过同一动作「" +
+                        (act.target?.value ?: act.type) + "」，本次不重复执行"
+                    ui.log(AgentLog.Level.INFO, "幂等跳过：$skipReason")
+                    record.recordsIntoHistory(step, act, VerifyResult(true, skipReason, "", ""))
+                    record.stepShotCapture(step, act, true)
+                    counters.setSayStreak(0)
+                    return StepOutcome.Continue
+                }
+                val idempotencyConfirmReason =
+                    (idempotency as? EngineRules.IdempotencyVerdict.NeedsConfirm)?.reason
+                if (idempotencyConfirmReason != null) {
+                    ui.log(AgentLog.Level.WARN, "幂等保护请求用户确认：$idempotencyConfirmReason")
+                }
                 // 自由模式：AI 自写命令在本任务首次执行前要向用户确认一次。
                 // 拒绝不等于放弃任务——把"用户拒绝了这条命令"回注给 AI，让它换条路子继续干。
                 if (!device.ensureShellApproval(act)) {
@@ -502,8 +528,14 @@ internal class ExecutionPhase(
                     return StepOutcome.Continue
                 }
                 // 不可逆动作确认门：AI/转译层标记 needsUserConfirmation 的动作，执行前先问用户。
+                // 幂等保护也会走这道门（[EngineRules.IdempotencyVerdict.NeedsConfirm]）：
+                // 不可逆动作在"没做过但页面像做完了"或"做过但页面不再是完成态"时，必须先问用户。
                 // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行
-                if (act.needsUserConfirmation && !device.awaitActionConfirmation(act)) {
+                val confirmAction =
+                    if (idempotencyConfirmReason != null) act.copy(reason = idempotencyConfirmReason) else act
+                if ((act.needsUserConfirmation || idempotencyConfirmReason != null) &&
+                    !device.awaitActionConfirmation(confirmAction)
+                ) {
                     val cancelReason = "用户取消了该操作"
                     ui.log(AgentLog.Level.WARN, "用户取消不可逆操作，已跳过执行：${act.type}")
                     messages.add(
@@ -542,6 +574,9 @@ internal class ExecutionPhase(
                     verify = v2
                     verified = v2.success
                 }
+                // 幂等历史：只有这次真的下发且验证成功才记账。这是"跳过重复副作用"的唯一依据——
+                // 页面文字不是（页面说「已完成」不代表我们做过），所以记在引擎自己这边。
+                if (verified && EngineRules.isFinalSubmit(act, act.type)) device.recordEffect(act, step)
             }
             is IntentTranslator.TranslationResult.Failed -> {
                 val reason = translation.reason
