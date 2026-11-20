@@ -153,7 +153,9 @@ internal object AfterObservationPolicy {
                 }
             }
         }
-        val sanitized = DataSanitizer.sanitize(text)
+        // 整页上下文口径：任一快照里有密码框，就把差异文本里的独立 4~8 位数字按验证码掩码。
+        // 差异文本里只会出现标签，本页的「验证码」引导词往往在别的控件上，逐串 sanitize 抓不到。
+        val sanitized = DataSanitizer.sanitizePage(text, before.hasPasswordField || after.hasPasswordField)
         return if (sanitized.length > MAX_DIFF_TEXT) sanitized.take(MAX_DIFF_TEXT) + "…" else sanitized
     }
 
