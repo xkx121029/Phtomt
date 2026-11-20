@@ -16,12 +16,13 @@ object SensitivePageDetector {
 
     /**
      * 敏感应用包名特征。
-     * 支付宝本体是 com.eg.android.AlipayGphone，而列表里原先写的 "com.alipay" 是开放平台
-     * SDK 的包名——`contains("com.alipay")` 在支付宝正式包名里命中不了（串里是
-     * android.alipaygphone，没有 com.alipay 子串），支付页因此从未进过只读。
+     * 支付宝有两条包名都要在表里，是并集不是替换：
+     * - `com.eg.android.AlipayGphone` 是支付宝本体（原先表里只有 SDK 包名，正式包名永远不命中）；
+     * - `com.alipay` 是开放平台 SDK 的包名，出现在大量第三方 App 内嵌的支付页上
+     *   （`com.alipay.android.app` 之类），删掉它等于在这类页面上放弃只读保护。
      */
     private val sensitivePackages = listOf(
-        "com.eg.android.alipaygphone", "com.unionpay", "com.icbc", "com.ccb",
+        "com.eg.android.alipaygphone", "com.alipay", "com.unionpay", "com.icbc", "com.ccb",
         "com.cmbchina", "com.bankcomm", "com.android.bankabc", "cn.com.spdb",
         // 中行/建行系：子应用与插件统一挂在 com.chinamworld.* 前缀下
         "com.chinamworld",

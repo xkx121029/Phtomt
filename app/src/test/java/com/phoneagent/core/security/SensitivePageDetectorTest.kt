@@ -50,6 +50,24 @@ class SensitivePageDetectorTest {
             el(1, text = "输入密码", editable = true, isPassword = true),
         )
         assertTrue(SensitivePageDetector.isSensitive(page))
+        assertTrue(
+            SensitivePageDetector.isSensitive(
+                snapshot("com.eg.android.AlipayGphone", el(0, text = "确认支付")),
+            ),
+        )
+        assertTrue(
+            SensitivePageDetector.isSensitive(
+                snapshot("com.eg.android.AlipayGphone", el(0, text = "输入密码", editable = true)),
+            ),
+        )
+    }
+
+    @Test
+    fun `支付宝 SDK 包名仍在白名单里`() {
+        // com.alipay 是开放平台 SDK 包名，第三方 App 内嵌支付页会用它；
+        // 白名单方向是「宁可多收」，这条不能被正式包名替换掉
+        val page = snapshot("com.alipay.android.app", el(0, text = "银行卡"))
+        assertTrue(SensitivePageDetector.isSensitive(page))
     }
 
     @Test
