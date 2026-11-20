@@ -22,6 +22,7 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.ui.model.PermissionItem
 import com.phoneagent.ui.model.PermissionKind
+import com.phoneagent.ui.chat.ChatSessionState
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
@@ -112,6 +113,15 @@ class MainViewModel(
 
     val logs: StateFlow<List<AgentLog>> = engine.logs
     val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
+
+    /**
+     * 对话页的会话状态（气泡 + 同步游标）。
+     *
+     * 由 ViewModel 持有而不是页面 `rememberSaveable`：气泡随会话无限增长，
+     * 序列化进 Bundle 会在长会话上顶到 1MB 上限。详见 [ChatSessionState]。
+     */
+    internal val chatSession = ChatSessionState()
+
     val metrics: StateFlow<AgentMetrics> = engine.metrics
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
     val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> = engine.stepShot
