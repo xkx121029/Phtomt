@@ -42,6 +42,14 @@
 - **Vue / Git / GitHub 模块**：`vueCheck` / `vueInstall` / `vueDev` / `vueBuild`、`gitCheck` / `gitStatus` / `gitInfo`、`githubCheck` / `githubLink` / `githubSync`（推送默认演练，需 `-PconfirmSync=true`）
 - 配置说明、启用/禁用验证矩阵见 `docs/build-modules.md`
 
+### 构建（组件资产与流水线闸门）
+
+- **组件资产不再回落 debug 包**：`syncProviderRelease` / `syncEnvRelease` 在缺 `app/upload-signing.properties` 时原本改从 debug 产物复制，会把 `src/release/assets/` 里已同步的正式资产就地覆盖成 debug 证书的 APK。两者对外都是 signature 级权限（`BIND_PROVIDER` / `BIND_ENV`），签名不一致时组件装得上、主应用永远绑不上；校验闸门只看源码指纹与文件存在性，看不出签名，所以这种包会全绿地发出去。现新增前置任务 `:app:requireUploadSigning`，缺密钥直接失败并提示改用 `:app:syncProviderDebug` / `:app:syncEnvDebug`。**缺陷类定义：凡是以 signature 级权限保护、且资产由 debug 回落填充的组件，都会产出「装得上、连不上」的包**——判断手法是看同步任务里有没有 `else` 分支换产物来源。
+- **资产闸门按变体拆开**：`verifyProviderAssetsDebug` / `verifyProviderAssetsRelease`，`mergeDebugAssets` 只依赖前者、`mergeReleaseAssets` 只依赖后者；`verifyProviderAssets` 保留为合并入口。原来一个任务同时查两个变体，导致只编 debug 也被 release 资产缺失挡住，无密钥环境只能靠「拿 debug 包填进 release 目录」才能通过构建。
+- **CI 补 release 变体闸门**：新增 `compileReleaseKotlin` / `minifyReleaseWithR8` / `lintVitalRelease` 一步（不用 `assembleRelease`，它会拉起需要签名的资产同步）。此前 release 变体（`isMinifyEnabled` + `isShrinkResources` + proguard 规则）从未被任何流水线构建过。
+- **CI 同步步骤改只同步 debug 变体**：`:app:syncProviderAssets` / `:app:syncEnvAssets` 改 `:app:syncProviderDebug` / `:app:syncEnvDebug`——只出 debug 包时不需要 release 资产，而 umbrella 任务会带上必然失败的 release 分支。
+- **纯文档提交不再出包**：`android-ci.yml` 的 push 触发加 `paths-ignore`（`website/**`、`docs/**`、`promo/**`、`promo-video/**`、`BUGS/**`、`**/*.md`、`site-pages.yml`）。此前每个官网数据同步提交都会跑完整构建、消耗一个版本号、切一个 beta Release。
+
 ### 官网
 
 - **GitHub Pages 静态站回连主站**：`site-pages.yml` 构建时注入 `VITE_API_BASE`（默认 `https://hpa.linshuxu.us.kg`，可用仓库变量 `SITE_API_BASE` 覆盖），更新日志、发布数据与 AI 问答改为实时读取主站接口，不再是构建期快照
