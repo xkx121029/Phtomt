@@ -1640,7 +1640,7 @@ class AgentEngine(
         pageMemoryHint: String = "",
     ): AgentIntent? {
         // 数据脱敏后再发送
-        val safeText = DataSanitizer.sanitize(snapshot.toAiText())
+        val safeText = DataSanitizer.sanitizePage(snapshot.toAiText(), snapshot.hasPasswordField)
         val planSteps = activePlan?.steps?.mapIndexed { i, s -> "${i + 1}. ${s.description}" }?.joinToString("\n")
         val planNote = if (!planSteps.isNullOrBlank()) "\n\n## 已批准的执行计划\n$planSteps" else ""
         // 视觉链路：主模型不支持图片输入时，先用视觉模型描述截图，再让主模型基于文本决策。
@@ -2104,7 +2104,7 @@ class AgentEngine(
         val baseUrl = cfg?.baseUrl ?: settingsVal.apiBaseUrl
         val apiKey = cfg?.apiKey ?: settingsVal.apiKey
         val model = cfg?.model ?: settingsVal.model
-        val safePage = DataSanitizer.sanitize(snapshot.toAiText())
+        val safePage = DataSanitizer.sanitizePage(snapshot.toAiText(), snapshot.hasPasswordField)
         val user = buildString {
             appendLine("## 任务")
             appendLine(task)
