@@ -1,15 +1,28 @@
 #!/bin/sh
-# 提交后自动把当前提交推送到 nightly（gitee 远程配了 Gitee + GitHub 双推送地址）。
-# 推送失败不阻断提交流程，稍后可手动执行：git push gitee HEAD:nightly
-if ! git config --get remote.gitee.url >/dev/null 2>&1; then
-    exit 0
+# 提交后把当前 HEAD 自动镜像到 nightly。
+#
+# 远程名：Gitea 只是 GitHub 的镜像（docs/release-pipeline.md 第 7 节），远程名是
+# gitea，不是 gitee。两个名字都认，取先配置的那个；都没有时直接退出。
+#
+# 只做快进推送：nightly 上有本地缺失的提交时静默跳过。本机日常分支与 nightly 长期
+# 分叉（main..nightly / nightly..main 都不为 0），非快进推送必然被拒，没必要在每次
+# 提交上刷一行失败提示。确实需要时手动推：
+#   git push gitea <分支名>:nightly
+remote=""
+for r in gitee gitea; do
+    if git config --get "remote.$r.url" >/dev/null 2>&1; then
+        remote="$r"
+        break
+    fi
+done
+[ -n "$remote" ] || exit 0
+
+tracking="refs/remotes/$remote/nightly"
+if git show-ref --verify --quiet "$tracking"; then
+    git merge-base --is-ancestor "$tracking" HEAD 2>/dev/null || exit 0
 fi
 
-head_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-if [ "$head_branch" = "nightly" ]; then
-    git push gitee nightly >/dev/null 2>&1 || echo "[hook] nightly 推送失败，请稍后手动执行：git push gitee nightly"
-else
-    git push gitee "HEAD:nightly" >/dev/null 2>&1 || echo "[hook] 推送 nightly 失败，请稍后手动执行：git push gitee HEAD:nightly"
-fi
+git push "$remote" HEAD:nightly >/dev/null 2>&1 \
+    || echo "[hook] 快进推送 nightly 失败，请稍后手动执行：git push $remote HEAD:nightly"
 
 exit 0
