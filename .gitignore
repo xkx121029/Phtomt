@@ -95,7 +95,7 @@ Pods/
 .nuxt/
 .vite/
 coverage/
-release/
+/release/
 *.apk
 *.aab
 *.ap_
@@ -197,7 +197,8 @@ Pods/
 .nuxt/
 .vite/
 coverage/
-release/
+# release/ 不加锚点会误吞 app/src/release/（Provider 资产要入库）
+/release/
 *.apk
 *.aab
 *.ap_
