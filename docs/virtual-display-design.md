@@ -13,15 +13,15 @@
 | 开关持久化 | `app/src/main/java/com/phoneagent/data/prefs/AppSettings.kt` | `Settings.virtualDisplayEnabled`、`Keys.VIRTUAL_DISPLAY_ENABLED`（默认 `false`） |
 | 能力声明（给模型） | `app/src/main/java/com/phoneagent/domain/model/CapabilitySpec.kt` | `IntentType.VIRTUAL_DISPLAY` 的 `CapabilitySpec`，`category = "自由模式"` |
 | 能力探测 | `app/src/main/java/com/phoneagent/device/capability/DeviceCapabilityReader.kt` | `virtualDisplaySupported = shizukuReady()` |
-| 任务开始时创建 | `app/src/main/java/com/phoneagent/engine/AgentEngine.kt` | `prepareVirtualDisplay()`（约 L2783） |
+| 任务开始时创建 | `app/src/main/java/com/phoneagent/engine/AgentEngine.kt` | `prepareVirtualDisplay()`（约 L2845） |
 | 创建 / 起应用 / 观察 / 执行 / 销毁的底层 | `app/src/main/java/com/phoneagent/device/screen/VirtualDisplayAgent.kt` | `ensure()` / `launch()` / `screenshot()` / `tap()` 等 / `destroy()` |
-| 副屏观察 | `app/src/main/java/com/phoneagent/engine/AgentEngine.kt` | `observeVirtualDisplay()`（约 L2845）、`degradeVirtualDisplay()`（约 L2893） |
+| 副屏观察 | `app/src/main/java/com/phoneagent/engine/AgentEngine.kt` | `observeVirtualDisplay()`（约 L2907）、`degradeVirtualDisplay()`（约 L2955） |
 | 副屏元素树 | `app/src/main/java/com/phoneagent/device/a11y/AgentAccessibilityService.kt` | `captureScreenOnDisplay(displayId)`（约 L180） |
-| 副屏动作分发 | `app/src/main/java/com/phoneagent/engine/execution/ExecutionCore.kt` | `executeOnVirtualDisplay()`（约 L456） |
-| 模型直调副屏 | `app/src/main/java/com/phoneagent/device/ops/DeviceOpsChannel.kt` | `virtualDisplayOp()`（约 L1205） |
-| 销毁 | `AgentEngine.kt` | `releaseVirtualDisplay()`（约 L2803），由 `finish()` 内 `scope.launch { ... }`（约 L817）调用 |
+| 副屏动作分发 | `app/src/main/java/com/phoneagent/engine/execution/ExecutionCore.kt` | `executeOnVirtualDisplay()`（约 L469） |
+| 模型直调副屏 | `app/src/main/java/com/phoneagent/device/ops/DeviceOpsChannel.kt` | `virtualDisplayOp()`（约 L863） |
+| 销毁 | `AgentEngine.kt` | `releaseVirtualDisplay()`（约 L2865），由 `finish()` 内 `scope.launch { ... }`（约 L883）调用 |
 | 开机残留清理 | `app/src/main/java/com/phoneagent/PhoneAgentApp.kt` | `VirtualDisplayAgent.cleanupGhost(shizuku)`（约 L44） |
-| 状态展示 | `VirtualDisplayAgent.kt` / `app/src/main/java/com/phoneagent/ui/settings/SettingsAgent.kt` | `VirtualDisplayStatus.present()` / `VirtualDisplayStatusBlock`（约 L300） |
+| 状态展示 | `VirtualDisplayAgent.kt` / `app/src/main/java/com/phoneagent/ui/settings/SettingsAgent.kt` | `VirtualDisplayStatus.present()` / `VirtualDisplayStatusBlock`（约 L304） |
 | shell 执行（含超时） | `provider/src/main/java/com/phoneagent/provider/shell/ShizukuManager.kt` | `executeShell()`（L119）、`waitForExit()`（约 L192） |
 
 关键常量（`VirtualDisplayAgent` 伴生对象）：
