@@ -55,6 +55,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -93,15 +95,17 @@ class MainViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings.Settings())
 
     /**
-     * 新手引导状态：null = 尚未从 DataStore 读到真实值。
+     * 新手引导状态：null = 既没有门控镜像、也还没从 DataStore 读到真实值。
      *
+     * 先用 [AppSettings.onboardingGate] 的 SharedPreferences 镜像回答门控（同步读、毫秒级），
+     * 随后仍以 DataStore 的值为准覆盖它——镜像只是加速，不改权威源。
      * 不能直接用 [settingsFlow] 判定——它的初始值是默认 Settings（onboardingDone=false），
-     * 老用户冷启动会先闪一帧引导页再跳回主界面；这里用 null 表示"还没读盘"，
-     * 首帧只铺纯底色，读到真实值后才决定渲染引导页还是主界面。
+     * 老用户冷启动会先闪一帧引导页再跳回主界面。
      */
-    val onboardingState: StateFlow<Boolean?> = settings.settings
-        .map { it.onboardingDone as Boolean? }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val onboardingState: StateFlow<Boolean?> = flow<Boolean?> {
+        settings.onboardingGate()?.let { emit(it) }
+        emitAll(settings.settings.map { it.onboardingDone as Boolean? })
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** 结束新手引导：把完成标记落盘，下次启动直接进主界面 */
     fun completeOnboarding() {
