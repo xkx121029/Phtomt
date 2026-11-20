@@ -201,7 +201,7 @@ object A11yEndpoints {
 /**
  * 声明式能力注册表：**能力 → 需求**的单一事实来源。
  *
- * 覆盖 [IntentType.ALL] 的全部 44 项能力。下游派生关系：
+ * 覆盖 [IntentType.ALL] 的全部 65 项能力（键集由 `CapabilityRegistryTest` 断言与 `ALL` 相等）。下游派生关系：
  * - [com.phoneagent.engine.execution.ActionPolicy] 的三档风险集合（运行时门控）
  * - [com.phoneagent.feature.skill.SkillCatalog] 的内置技能（→ App 内技能列表、技能名解析、缺参推断）
  * - [IntentType.TO_ACTION] / [IntentType.VIA_OTHER_CHANNELS]（转译层与通道登记）
