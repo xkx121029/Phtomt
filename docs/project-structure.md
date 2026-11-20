@@ -30,7 +30,7 @@ happy_phone agent/
 ├── provider-api/             [源] 主应用 ↔ Provider 的 AIDL + Parcelable 契约
 ├── env/                      [源] 编码环境独立 APK（targetSdk 28，承载 PRoot + Alpine）
 ├── env-api/                  [源] 主应用 ↔ env 组件的 AIDL 契约
-├── third_party/shizuku/      [外] vendor 的 Shizuku 客户端 + server 源码（8 个 Gradle 模块）
+├── third_party/shizuku/      [外] vendor 的 Shizuku 客户端 + server 源码（9 个 Gradle 模块）
 ├── config/                   [源] detekt 基线、可选构建模块开关、Provider 资产指纹
 ├── gradle/                   [源] version catalog（libs.versions.toml）+ wrapper
 ├── tool/                     [源] 维护脚本：agent-host 打包、运行时 so 打包、Gitee 补传等
