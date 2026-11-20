@@ -15,7 +15,7 @@
 ## 0. 结论（先看这里）
 
 1. **架构路线不同，不是谁多谁少**：Eta 把能力声明放进机器可读的 JSON Schema（模型按函数签名调用，参数错误在协议层就被挡住）；我们把能力声明写进提示词 Markdown 意图表（模型输出单意图 JSON，端侧门控兜底）。
-2. **Eta 的工具面显著更宽**：常规档约 48 项、全开约 124 项（含 41 项敏感只读、23 项手机域、9 项设备直连、7 项文件、3 项终端、2 项子代理）；我们固定 46 项能力，其中屏幕操作占 23 项。
+2. **Eta 的工具面显著更宽**：常规档约 48 项、全开约 124 项（含 41 项敏感只读、23 项手机域、9 项设备直连、7 项文件、3 项终端、2 项子代理）；我们固定 65 项能力（`CapabilityRegistry.all`），其中屏幕通道占 24 项。
 3. **Eta 的设备直连覆盖面更广**：闹钟/计时器之外还有音量、媒体、手电筒、亮度、息屏、勿扰、响铃、热点、日历 CRUD、闹钟读改删、便签 CRUD、系统开关、应用冻结。
 4. **我们在“语义化 + 风险分级 + 中文运营规则”上更强**：15 个高层语义意图（返回/回桌面/刷新/关闭/收藏/复制/清空/搜索/分享/下载/新增/切换/发送/确认/删除），四档风险 + 三档动作模式 + 不可逆确认，以及目标定位、动作合并、失败路径、倒计时广告、国产应用速查等中文场景规则。
 5. **Eta 的提示词只讲纪律，不讲清单**：能力在 `tools` 里，system 只写“怎么用、什么时候不该用”（观察/坐标空间/observation_id/lease/结果三态）；我们把“有哪些能力”也写进 system，因此提示词更长、更依赖金样本锁字节。
@@ -30,9 +30,9 @@
 |---|---|---|
 | 能力暴露方式 | function calling（`tools` JSON Schema） | 单意图 JSON（`intent` + 扁平字段/`args`） |
 | 单轮可调用数量 | 允许多个工具同轮并行 | 铁律第 3 条：每步只输出一个意图 |
-| 能力数量 | 常规档 48 项；全开约 124 项 | 46 项 |
-| 风险/权限模型 | Root 三档（NONE/PARTIAL/REQUIRED）+ 2 个敏感开关 + 每轮能力投影 | 4 档 RiskTier（LOW 25 / MID 16 / HIGH 3 / EXT 2）+ 3 档动作模式 |
-| 执行通道 | Root Shell / 无障碍 / 离屏浏览器 / 文件 / 终端 / 虚拟屏 | SCREEN 23 / BROWSER 6 / LOCAL 10 / SHELL 2 / CLOCK 2 / VISION 1 / VOICE 1 / A11Y 1 |
+| 能力数量 | 常规档 48 项；全开约 124 项 | 65 项 |
+| 风险/权限模型 | Root 三档（NONE/PARTIAL/REQUIRED）+ 2 个敏感开关 + 每轮能力投影 | 4 档 RiskTier（LOW 35 / MID 21 / HIGH 5 / EXT 4）+ 3 档动作模式 |
+| 执行通道 | Root Shell / 无障碍 / 离屏浏览器 / 文件 / 终端 / 虚拟屏 | SCREEN 24 / LOCAL 14 / DEVICE 10 / BROWSER 10 / SHELL 2 / CLOCK 2 / VISION 1 / VOICE 1 / A11Y 1 |
 | 提示词规模 | 1 段主 system + 5 段条件 system（终端/托管搜索/浏览器/子代理/人格）+ 记忆段 + 技能段 | 9 组 60 个区块（SYSTEM 21 / ACTION_MODE 3 / CAPABILITIES 2 / SKILLS 6 / PLANNING 9 / DECISION 16 / DOCS 1 / REVIEW 1 / DISTILL 1） |
 | 提示词稳定性 | 系统提示只放会话内稳定事实，靠前缀缓存；瞬时状态走工具结果 | 逐区块 sha256 金样本锁字节（`PromptSnapshotTest`） |
 | 观察机制 | `observe_screen` 显式观察，节点 + `observation_id` + 可选截图；动作结果带 `after` 新界面 | 引擎每步自动采集页面块，无显式观察工具、无 `observation_id` |
@@ -328,7 +328,7 @@
 - `.../subagent/AgentSubagentToolCatalog.kt`、`.../model/AgentConversationToolCatalog.kt`：子代理与历史检索工具
 
 ### 本项目
-- `app/src/main/java/com/phoneagent/domain/model/CapabilitySpec.kt`：46 项能力声明 + 通道/风险/权限/确认 + 18 项 a11y 端点白名单
+- `app/src/main/java/com/phoneagent/domain/model/CapabilitySpec.kt`：65 项能力声明 + 通道/风险/权限/确认 + 18 项 a11y 端点白名单
 - `app/src/main/java/com/phoneagent/engine/prompt/PromptCatalog.kt`：9 组 60 个提示词区块与装配条件
 - `app/src/main/java/com/phoneagent/engine/prompt/PromptBodies.kt`：区块正文（意图表 CN/EN 等）
 - `app/src/main/java/com/phoneagent/engine/prompt/PromptAssembler.kt`：按 `PromptFlag` 裁剪、互斥组、占位符渲染
