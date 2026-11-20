@@ -228,7 +228,7 @@ internal class ExecutionCore(
         // 指纹基准同步换成"此刻"的页面：否则这期间页面自身的漂移会被当成"动作已生效"。
         var baseline = snapshot
         if (type in RELOCATE_BEFORE_TYPES) {
-            val fresh = runCatchingLogged(TAG, "执行前重定位截图") { service.captureScreen() }
+            val fresh = runCatchingLogged(TAG, "执行前重定位截图") { service.captureScreenAsync() }
                 .getOrNull()?.takeUnless { it.missingAccessibility }
             if (fresh != null && fresh.packageName == snapshot.packageName) {
                 baseline = fresh
@@ -1199,7 +1199,7 @@ internal class ExecutionCore(
         while (waited < LAUNCH_SETTLE_MS) {
             delay(LAUNCH_POLL_MS)
             waited += LAUNCH_POLL_MS
-            val now = runCatchingLogged(TAG, "启动后轮询截图") { service.captureScreen() }.getOrNull() ?: continue
+            val now = runCatchingLogged(TAG, "启动后轮询截图") { service.captureScreenAsync() }.getOrNull() ?: continue
             if (now.missingAccessibility) continue
             observed = true
             if (now.packageName == targetPkg || PageFingerprint.computeMeaningful(now) != beforeFp) return true
