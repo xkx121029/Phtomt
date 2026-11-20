@@ -402,19 +402,51 @@ tasks.matching { it.name.startsWith("pre") && it.name.endsWith("Build") }.config
 }
 
 // ---------------------------------------------------------------------------
-// 权限 Provider APK（assets 内静态资产）：Provider 构建产物直接提交在
-// src/{debug,release}/assets/provider/ 下，普通主应用构建【不再】先编译
-// :provider——Provider 变更频率低，避免每次迭代都为它买单。
+// 权限 Provider APK（assets 内静态资产）：由 :provider 产物同步进
+// src/{debug,release}/assets/provider/ 下，**不入库**（`*.apk` 与 `app/src/release/`
+// 都被 .gitignore 忽略）。普通主应用构建【不再】先编译 :provider——Provider 变更
+// 频率低，避免每次迭代都为它买单。
 // 按变体分目录保证签名一致：debug 主应用 ↔ debug 证书 Provider，release ↔
 // upload 证书；签名不一致会导致 signature 级 BIND_PROVIDER 绑定被拒。
+// release 变体的资产必须用上传证书签名，所以缺 app/upload-signing.properties 时
+// 【不会】回落到 debug 包，而是直接失败（见 requireUploadSigning 的注释）。
 // Provider 模块有改动后手动执行一次：
-//   .\gradlew.bat :app:syncProviderAssets
+//   .\gradlew.bat :app:syncProviderAssets    # debug + release（需上传密钥）
+//   .\gradlew.bat :app:syncProviderDebug     # 只同步 debug（CI / 无上传密钥）
 // ---------------------------------------------------------------------------
 val providerBuildDir = project(":provider").layout.buildDirectory
 
+// release 变体的组件 APK 必须与 release 主应用同证书：Provider 与主应用之间、
+// env 组件与主应用之间都是 signature 级权限（BIND_PROVIDER / BIND_ENV）。缺上传密钥时
+// 绝不能拿 debug 包顶上，原因有两条：
+//   1. 闸门（verifyProviderAssets*）只比源码指纹和文件存在性，看不出签名，
+//      于是「装得上、直连全废」的包会一路全绿地发出去；
+//   2. 回落写的是 src/release/assets/... 这个**和正式资产同一个路径**的文件，
+//      会把已经同步好的正确资产就地覆盖成签名不匹配的版本。
+// 因此把「有没有上传密钥」做成独立的前置任务：它先于 :provider:assembleRelease 失败，
+// 不白烧一次 release 编译，报错里直接给出该用什么命令。
+val requireUploadSigning by tasks.registering {
+    group = "provider"
+    description = "断言 app/upload-signing.properties 存在（release 变体的组件 APK 必须用上传证书签名）"
+    // 只捕获局部 File，不引用脚本对象（配置缓存约束，见根 build.gradle.kts 顶部的说明）
+    val propsFile = rootProject.file("app/upload-signing.properties").absoluteFile
+    doFirst {
+        if (!propsFile.exists()) {
+            throw GradleException(
+                "缺少 ${propsFile.absolutePath}：无法生成 release 变体的组件 APK（provider / env）。\n" +
+                    "组件与主应用之间是 signature 级权限（BIND_PROVIDER / BIND_ENV），" +
+                    "签名不一致时组件装得上、但主应用永远绑不上（表现为通道全废），" +
+                    "所以这里不回落到 debug 包。\n" +
+                    "处理：配好上传密钥后重试；只编 debug 变体时改为执行 " +
+                    ":app:syncProviderDebug / :app:syncEnvDebug。",
+            )
+        }
+    }
+}
+
 val syncProviderDebug by tasks.registering(Copy::class) {
     group = "provider"
-    description = "把最新 provider-debug.apk 同步进主应用 debug assets（提交进仓库）"
+    description = "把最新 provider-debug.apk 同步进主应用 debug assets（产物不入库）"
     dependsOn(":provider:assembleDebug", ":provider:writeProviderVersion")
     from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
     from(providerBuildDir.file("provider/version.txt"))
@@ -430,15 +462,14 @@ val syncProviderDebug by tasks.registering(Copy::class) {
 
 val syncProviderRelease by tasks.registering(Copy::class) {
     group = "provider"
-    description = "把最新 provider-release.apk 同步进主应用 release assets（提交进仓库）"
-    if (rootProject.file("app/upload-signing.properties").exists()) {
-        dependsOn(":provider:assembleRelease", ":provider:writeProviderVersion")
-        from(providerBuildDir.file("outputs/apk/release/provider-release.apk")) { rename { "provider.apk" } }
-    } else {
-        // 未配置上传密钥时回落 debug 包（本地 release 构建同样用 debug 证书）
-        dependsOn(":provider:assembleDebug", ":provider:writeProviderVersion")
-        from(providerBuildDir.file("outputs/apk/debug/provider-debug.apk")) { rename { "provider.apk" } }
-    }
+    description = "把最新 provider-release.apk 同步进主应用 release assets（需上传密钥，产物不入库）"
+    // 先断言密钥，再编 release 包。实测：断言确实排在 :provider:assembleRelease 之前，
+    // 但 parallel=true 下仍可能先跑几个秒级的依赖任务（实测只有 mergeReleaseJniLibFolders），
+    // 不会触发 Kotlin 编译或 R8——真正的重活都在断言通过之后。
+    dependsOn(requireUploadSigning)
+    mustRunAfter(requireUploadSigning)
+    dependsOn(":provider:assembleRelease", ":provider:writeProviderVersion")
+    from(providerBuildDir.file("outputs/apk/release/provider-release.apk")) { rename { "provider.apk" } }
     from(providerBuildDir.file("provider/version.txt"))
     into(file("src/release/assets/provider"))
     // 同 debug：记下这份 APK 对应的源码指纹
@@ -498,43 +529,60 @@ val providerStampFiles = mapOf(
     "release" to providerStampDir.resolve("release.sha256"),
 )
 
-val verifyProviderAssets by tasks.registering {
-    group = "provider"
-    description = "校验 assets 内 Provider APK 是否与当前 Provider 源码一致（不一致请执行 :app:syncProviderAssets）"
-    doLast {
-        val expected = providerSourceDigest()
-        val apkFiles = mapOf(
-            "debug" to file("src/debug/assets/provider/provider.apk"),
-            "release" to file("src/release/assets/provider/provider.apk"),
-        )
-        val problems = providerStampFiles.mapNotNull { (variant, stampFile) ->
-            when {
+val verifyProviderEntries = listOf(
+    "debug" to "syncProviderDebug",
+    "release" to "syncProviderRelease",
+)
+
+// 按变体分别校验。之前是一个任务同时查 debug + release：结果是「只编 debug」也会被
+// release 资产的缺失挡住，于是无上传密钥的环境（CI、干净检出）必须靠「把 debug 包填进
+// release 目录」才能通过构建——那正是 P0-2 的成因。现在每个 merge*Assets 只依赖自己变体的校验。
+val verifyProviderVariant = verifyProviderEntries.associate { (variant, syncTask) ->
+    variant to tasks.register("verifyProviderAssets${variant.replaceFirstChar { it.uppercase() }}") {
+        group = "provider"
+        description = "校验 $variant 变体的 Provider APK 是否与当前源码一致（不一致请执行 :app:$syncTask）"
+        val apkFile = file("src/$variant/assets/provider/provider.apk")
+        doLast {
+            val expected = providerSourceDigest()
+            val stampFile = providerStampFiles.getValue(variant)
+            val problem = when {
                 !stampFile.exists() -> "$variant：缺少源码指纹记录（从未同步过 Provider 资产）"
-                stampFile.readText().trim() != expected -> "$variant：Provider 源码已变更，assets 内的 APK 是旧版本"
+                stampFile.readText().trim() != expected ->
+                    "$variant：Provider 源码已变更，assets 内的 APK 是旧版本"
                 // 指纹只能证明"同步过"，不能证明"文件还在"：*.apk 被 .gitignore 忽略，
                 // 干净检出后 assets 里往往只剩 version.txt，打包出去就是"装得上、直连全废"的坏包
-                !apkFiles.getValue(variant).exists() ->
-                    "$variant：assets 内缺少 provider.apk（干净检出后需执行 :app:syncProviderAssets）"
+                !apkFile.exists() -> "$variant：assets 内缺少 provider.apk（干净检出后需执行 :app:$syncTask）"
                 else -> null
             }
-        }
-        if (problems.isNotEmpty()) {
-            throw GradleException(
-                buildString {
-                    appendLine("Provider 资产与源码不一致：")
-                    problems.forEach { appendLine("  - $it") }
-                    appendLine("当前源码指纹：$expected")
-                    appendLine("请执行 .\\gradlew.bat :app:syncProviderAssets 重新打包后再构建。")
-                },
-            )
+            if (problem != null) {
+                throw GradleException(
+                    buildString {
+                        appendLine("Provider 资产与源码不一致：")
+                        appendLine("  - $problem")
+                        appendLine("当前源码指纹：$expected")
+                        appendLine("请执行 .\\gradlew.bat :app:$syncTask 重新打包后再构建。")
+                    },
+                )
+            }
         }
     }
 }
 
-tasks.matching { it.name == "mergeDebugAssets" }.configureEach { dependsOn(verifyProviderAssets) }
-tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { dependsOn(verifyProviderAssets) }
-// 同一次调用里先同步再校验：syncProviderAssets 会刷新指纹，不应被校验当成旧版本
-verifyProviderAssets.configure { mustRunAfter(syncProviderDebug, syncProviderRelease) }
+// 合并入口：:app:verifyProviderAssets 仍然存在（文档与 CHANGELOG 都引用它），两个变体全查；
+// 构建期按上面的变体任务分别校验，不再用它。
+val verifyProviderAssets by tasks.registering {
+    group = "provider"
+    description = "校验两个变体的 Provider APK 与源码一致（合并入口，构建期按变体分别校验）"
+    dependsOn(verifyProviderVariant.values)
+}
+
+// 同一次调用里先同步再校验：sync* 会刷新指纹，不应被校验当成旧版本
+verifyProviderVariant.values.forEach { it.configure { mustRunAfter(syncProviderDebug, syncProviderRelease) } }
+
+tasks.matching { it.name == "mergeDebugAssets" }
+    .configureEach { dependsOn(verifyProviderVariant.getValue("debug")) }
+tasks.matching { it.name == "mergeReleaseAssets" }
+    .configureEach { dependsOn(verifyProviderVariant.getValue("release")) }
 
 // 同一次调用里跑 syncProviderAssets + assemble* 时，assets 合并必须等同步落盘完成
 // （两个任务共同读写 src/{debug,release}/assets/provider，Gradle 无法自动推断顺序）
@@ -542,8 +590,10 @@ tasks.matching { it.name == "mergeDebugAssets" }.configureEach { mustRunAfter(sy
 tasks.matching { it.name == "mergeReleaseAssets" }.configureEach { mustRunAfter(syncProviderRelease) }
 
 // 干净检出兜底：assets 内的 *.apk 被 .gitignore 忽略，全新 clone 上 merge*Assets 会因
-// verifyProviderAssets 报「缺少 provider.apk」直接失败。只在文件确实缺失时补挂同步任务，
+// verifyProviderAssets<变体> 报「缺少 provider.apk」直接失败。只在文件确实缺失时补挂同步任务，
 // 正常迭代（APK 已在）不会多出依赖，也不会触发 :provider 重编。
+// 无上传密钥的机器上，release 这条会在 syncProviderRelease 的 requireUploadSigning 处
+// 明确失败（而不是填一个签名不匹配的 debug 包），这是有意的 fail-closed。
 if (!file("src/debug/assets/provider/provider.apk").exists()) {
     tasks.matching { it.name == "mergeDebugAssets" }.configureEach { dependsOn(syncProviderDebug) }
 }
@@ -572,15 +622,13 @@ val syncEnvDebug by tasks.registering(Copy::class) {
 
 val syncEnvRelease by tasks.registering(Copy::class) {
     group = "env"
-    description = "把最新 env-release.apk 同步进主应用 release assets（构建产物，不提交）"
-    if (rootProject.file("app/upload-signing.properties").exists()) {
-        dependsOn(":env:assembleRelease", ":env:writeEnvVersion")
-        from(envBuildDir.file("outputs/apk/release/env-release.apk")) { rename { "env.apk" } }
-    } else {
-        // 未配置上传密钥时回落 debug 包（本地 release 构建同样用 debug 证书）
-        dependsOn(":env:assembleDebug", ":env:writeEnvVersion")
-        from(envBuildDir.file("outputs/apk/debug/env-debug.apk")) { rename { "env.apk" } }
-    }
+    description = "把最新 env-release.apk 同步进主应用 release assets（需上传密钥，构建产物不提交）"
+    // 与 syncProviderRelease 同理：env 组件也是 signature 级权限（BIND_ENV），
+    // 缺上传密钥时拿 debug 包顶上等于发出「环境通道全废」的包，故 fail-closed。
+    dependsOn(requireUploadSigning)
+    mustRunAfter(requireUploadSigning)
+    dependsOn(":env:assembleRelease", ":env:writeEnvVersion")
+    from(envBuildDir.file("outputs/apk/release/env-release.apk")) { rename { "env.apk" } }
     from(envBuildDir.file("env/version.txt"))
     into(file("src/release/assets/env"))
 }
