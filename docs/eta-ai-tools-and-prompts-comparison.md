@@ -1,5 +1,8 @@
 # Eta 与 Phantom：向 AI 开放的工具 / 提示词 对比清单
 
+> **时效声明**：本清单里关于本项目的数字（能力数、风险档分布、通道分布、文件名）取自 **2026-11-03** 的工作区，
+> 之后能力注册表已扩充到 65 项。文中若与本仓库现状不一致，以 `CapabilityRegistry` 与代码为准。
+>
 > 对比对象
 > - Eta：<https://github.com/Mangi-11/Eta>，本地源码 `C:\Users\linch\AppData\Local\Temp\eta-src`
 > - 本项目：`happy_phone agent`（下称“我们”）
