@@ -14,14 +14,16 @@ import kotlinx.coroutines.delay
 
 @Composable
 internal fun rememberTranslated(text: String, vm: MainViewModel): String {
-    var translated by remember(text) { mutableStateOf<String?>(null) }
+    // 首帧就查一次 ViewModel 缓存：命中时连 600ms 防抖都不走，
+    // 滚出视野再滚回来不会先闪一帧原文。未命中才把译文写回本地状态。
+    var translated by remember(text) { mutableStateOf(vm.cachedTranslation(text)) }
     LaunchedEffect(text) {
-        if (text.isBlank() || EngineRules.isMostlyChinese(text)) {
-            translated = null
-        } else {
-            delay(600) // 流式输出时防止频繁触发，等待停顿后翻译
-            translated = vm.translate(text)
-        }
+        if (text.isBlank() || EngineRules.isMostlyChinese(text)) return@LaunchedEffect
+        if (vm.cachedTranslation(text) != null) return@LaunchedEffect
+        delay(600) // 流式输出时防止频繁触发，等待停顿后翻译
+        val result = vm.translate(text)
+        vm.putTranslation(text, result)
+        translated = result
     }
     return when {
         text.isBlank() -> text
