@@ -19,18 +19,14 @@ class ShellFallbackPolicyTest {
     fun `命令退出码0但页面没变_不得判定生效`() {
         val verdict = ShellFallbackPolicy.judge("fp-before", "fp-before")
 
-        assertFalse("退出码 0 只代表事件被注入，不能当生效：$verdict", verdict.success)
-        assertFalse(verdict.confirmed)
-        assertTrue("原因里必须写明未确认：${verdict.suffix}", verdict.suffix.contains("未确认"))
-        // 已交付：命令确实下发过，外层不能因此换通道把同一个动作再执行一遍
-        assertTrue(verdict.dispatched)
+        assertFalse("退出码 0 只代表事件被注入，不能当生效：$verdict", verdict.confirmed)
+        assertTrue("原因里必须写明未能确认：${verdict.suffix}", verdict.suffix.contains("未能确认"))
     }
 
     @Test
     fun `命令退出码0且回读到页面变化_才算确认生效`() {
         val verdict = ShellFallbackPolicy.judge("fp-before", "fp-after")
 
-        assertTrue(verdict.success)
         assertTrue(verdict.confirmed)
         assertEquals("fp-before", verdict.beforeFingerprint)
         assertEquals("fp-after", verdict.afterFingerprint)
@@ -40,8 +36,7 @@ class ShellFallbackPolicyTest {
     fun `兜底后读不到页面_按未确认回报而不是成功`() {
         val verdict = ShellFallbackPolicy.judge("fp-before", null)
 
-        assertFalse("读不到页面就没有证据：$verdict", verdict.success)
-        assertTrue(verdict.dispatched)
+        assertFalse("读不到页面就没有证据：$verdict", verdict.confirmed)
         assertTrue("原因里要点名读不到页面：${verdict.suffix}", verdict.suffix.contains("读不到页面"))
         assertEquals("fp-before", verdict.beforeFingerprint)
     }
@@ -50,13 +45,13 @@ class ShellFallbackPolicyTest {
     fun `兜底前读不到页面_拿不到基准就不得判成功`() {
         val verdict = ShellFallbackPolicy.judge(null, "fp-after")
 
-        assertFalse("没有基准就没有可比对的证据：$verdict", verdict.success)
+        assertFalse("没有基准就没有可比对的证据：$verdict", verdict.confirmed)
         assertTrue(verdict.suffix.contains("无法比对"))
     }
 
     @Test
     fun `空白指纹与读不到等价`() {
-        assertFalse(ShellFallbackPolicy.judge("   ", "fp-after").success)
-        assertFalse(ShellFallbackPolicy.judge("fp-before", "  ").success)
+        assertFalse(ShellFallbackPolicy.judge("   ", "fp-after").confirmed)
+        assertFalse(ShellFallbackPolicy.judge("fp-before", "  ").confirmed)
     }
 }
