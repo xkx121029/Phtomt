@@ -40,8 +40,9 @@ internal object DangerousTargetWords {
     fun hit(targetLabel: String?): String? {
         val label = targetLabel?.trim().orEmpty()
         if (label.isEmpty()) return null
-        IRREVERSIBLE.firstOrNull { label.contains(it) }?.let { return it }
-        val clear = BULK_CLEAR.firstOrNull { label.contains(it) } ?: return null
-        return if (REVERSIBLE_CONTEXT.any { label.contains(it) }) null else clear
+        // 可逆语境只豁免批量抹除那一档：直接命中的危险词没有例外
+        val clear = BULK_CLEAR.firstOrNull { label.contains(it) }
+            ?.takeUnless { REVERSIBLE_CONTEXT.any { ctx -> label.contains(ctx) } }
+        return IRREVERSIBLE.firstOrNull { label.contains(it) } ?: clear
     }
 }
