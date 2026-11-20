@@ -21,6 +21,16 @@ enum class Delivery {
     /** 已交付且确认生效 */
     EFFECTIVE,
 
+    /**
+     * 已交付到设备，但**没能读到页面**，因此既不能确认生效、也没有证据说它没生效。
+     *
+     * 与 [DELIVERED_NO_EFFECT] 的区别是证据的方向：后者看到了"页面照旧"，这里是压根没看见。
+     * 它必须是一个独立状态，不能折叠进任何一侧——
+     * 折叠进 [EFFECTIVE] 会让执行历史记 ✅、进度与检查点照存、失败计数清零，
+     * 于是"连续失败请求用户介入"这条兜底永远不会触发（真机上表现为一整串绿的 ✅ 后面什么都没做成）。
+     */
+    DELIVERED_UNCONFIRMED,
+
     /** 已交付到设备，但没有观察到预期效果 */
     DELIVERED_NO_EFFECT,
 
@@ -76,13 +86,22 @@ data class VerifyResult(
     /** 本次动作从下发到得出验证结论的墙钟耗时（ms）。原先恒为 0，执行流里看不出哪一步慢 */
     val elapsedMs: Long = 0,
     val sensitiveInput: Boolean = false,
+    /**
+     * 动作已下发，但**没能读到页面**，变化既没被确认也没被否定。
+     *
+     * 与 [success] 互斥（为 true 时 [success] 必为 false）：它不是"动作没成功"，
+     * 而是"这件事我们没资格下结论"。单独立一个字段的理由见 [Delivery.DELIVERED_UNCONFIRMED]：
+     * 过去这个状态只写在 [reason] 的文案里，结构化字段里全被折叠成了成功。
+     */
+    val unconfirmed: Boolean = false,
 ) {
     /**
-     * 结构化交付结论（由 [success] / [notDelivered] 推导）：
-     * 成功 / 已交付未生效 / 未交付。重试与回注提示都按它分流，不读文案。
+     * 结构化交付结论（由 [success] / [unconfirmed] / [notDelivered] 推导）：
+     * 成功 / 已交付未确认 / 已交付未生效 / 未交付。重试与回注提示都按它分流，不读文案。
      */
     val delivery: Delivery
         get() = when {
+            unconfirmed -> Delivery.DELIVERED_UNCONFIRMED
             success -> Delivery.EFFECTIVE
             notDelivered -> Delivery.NOT_DELIVERED
             else -> Delivery.DELIVERED_NO_EFFECT
@@ -129,7 +148,16 @@ internal fun controlStateOf(element: UiElement): String =
  * 读不到页面时按"已执行但未确认"算成功：此时报失败会误触发"连续失败请求用户介入"，
  * 而下一步的观察本来就会给出真实结果。与 [ClickRunner] 同一口径。
  */
-class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolver()) {
+class VerifiedClickExecutor(
+    private val resolver: IntentResolver = IntentResolver(),
+    /**
+     * 取一份当前快照；读不到（无障碍断开、Provider 取树超时）返回 null。
+     *
+     * 抽成参数是为了能单测"读不到页面"这条分支：走 `AgentAccessibilityService.instance`
+     * 这个全局静态时，这条分支在 JVM 单测里根本进不去，于是它错了也无人发现。
+     */
+    private val capture: () -> ScreenSnapshot? = { AgentAccessibilityService.instance?.captureScreen() },
+) {
 
     /**
      * 执行动作并验证页面是否发生变化。
@@ -152,7 +180,7 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
             delay(delayMs)
             // 对齐 ClickRunner.captureQuietly：过滤掉无障碍断开时的缺失态快照，
             // 避免拿"空壳快照"比对指纹误判成"页面未变化"
-            val afterSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+            val afterSnapshot = runCatching { capture() }
                 .getOrNull()?.takeUnless { it.missingAccessibility } ?: break
             captured = true
             after = PageFingerprint.computeMeaningful(afterSnapshot)
@@ -170,7 +198,7 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
         // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
         // 早判"未生效"会让 AI 重放动作（重复提交/重复滑动），副作用不可撤销
         delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
-        val lateSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+        val lateSnapshot = runCatching { capture() }
             .getOrNull()?.takeUnless { it.missingAccessibility }
         if (lateSnapshot != null) {
             val late = PageFingerprint.computeMeaningful(lateSnapshot)
