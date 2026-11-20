@@ -39,8 +39,8 @@ internal class TaskLifecycle(
     private val scope: CoroutineScope,
     private val store: EngineStore,
     private val ui: UiBridge,
-    /** 执行体：引擎的 run(task, plan)（内含 runInner 主循环与 finally 兜底） */
-    private val runTask: suspend (task: String, plan: TaskPlan?) -> Unit,
+    /** 执行体：引擎的 run(task, plan, startStep)（内含 runInner 主循环与 finally 兜底） */
+    private val runTask: suspend (task: String, plan: TaskPlan?, startStep: Int) -> Unit,
     /** 异常/收尾复位：引擎的 safeResetRuntime(taskId, message) */
     private val safeReset: (taskId: Long?, message: String?) -> Unit,
     /**
@@ -123,18 +123,29 @@ internal class TaskLifecycle(
     }
 
     /**
-     * 启动一个直接执行单次任务的协程（如用户批准计划后立即执行）。
+     * 启动一个直接执行单次任务的协程（如用户批准计划后立即执行、或从检查点续传）。
      * 与队列 worker 共用同一个 job 槽位：同一时刻只允许一个任务在跑。
      * 已有任务在跑时不再静默丢弃：把任务入队交给队列 worker 排队执行
-     * （队列只带任务文本，计划不随队带入，排队任务由 AI 现场决策）。
+     * （队列只带任务文本，计划与步数偏移都不随队带入，排队任务由 AI 现场决策）。
+     *
+     * @param startStep 从第几步之后继续（检查点续传用）：主循环的步数从这里起算，
+     *   已完成的步骤不会被重放。0 = 全新任务
      */
-    fun launchSingleTask(task: String, plan: TaskPlan? = null) {
+    fun launchSingleTask(task: String, plan: TaskPlan? = null, startStep: Int = 0) {
         synchronized(queueLock) {
             if (job?.isActive == true) {
                 // 入队 + 补启动 worker：若当前任务正好在收尾，没有这次补启动任务就漏跑了
                 pendingTasks.enqueue(task, chatOnly = false)
                 ensureQueueWorker()
                 ui.log(AgentLog.Level.INFO, "已有任务在执行，已加入任务队列：$task")
+                if (startStep > 0) {
+                    // 队列里只带任务文本：偏移和计划都丢了，续传在这里退化成"从头重新决策"。
+                    // 说清楚，免得用户以为已完成的那几步还在续
+                    ui.log(
+                        AgentLog.Level.WARN,
+                        "排队执行时检查点偏移（已完成 $startStep 步）无法带入：该任务将作为全新任务重新决策",
+                    )
+                }
                 // 任务改为排队执行，规划面板不能停留在「已批准」
                 store.planPhase.value = PlanPhase.Idle
                 return
@@ -142,7 +153,7 @@ internal class TaskLifecycle(
             job = scope.launch {
                 val self = coroutineContext[Job]
                 try {
-                    dispatch(task, plan)
+                    dispatch(task, plan, chatOnly = false, startStep = startStep)
                 } finally {
                     // 兜底：单任务协程结束时补启动队列 worker，执行期间入队的任务不能没人消费。
                     // 被取消（用户停止）时不续跑：stop() 的语义是残留队列留给下次提交一并处理
@@ -161,10 +172,10 @@ internal class TaskLifecycle(
      * 不占用 runTask 的 ReAct 主循环，但同样维持 worker 单任务语义（后续任务排队等待）；
      * Agent 决策走原 runTask 链路，行为不变。
      */
-    private suspend fun dispatch(task: String, plan: TaskPlan?, chatOnly: Boolean = false) {
+    private suspend fun dispatch(task: String, plan: TaskPlan?, chatOnly: Boolean = false, startStep: Int = 0) {
         when (val decision = router(task, chatOnly)) {
             is RouteDecision.Chat -> decision.run()
-            RouteDecision.Agent -> runTask(task, plan)
+            RouteDecision.Agent -> runTask(task, plan, startStep)
         }
     }
 
