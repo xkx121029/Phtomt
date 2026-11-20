@@ -36,9 +36,13 @@ class PhoneAgentApp : Application() {
         ioScope.launch {
             StartupTrace.span("设置首读预热") {
                 runCatching {
-                    org.koin.core.context.GlobalContext.get()
+                    val settings = org.koin.core.context.GlobalContext.get()
                         .get<com.phoneagent.data.prefs.AppSettings>()
-                        .settings.first()
+                    val first = settings.settings.first()
+                    // 镜像只做门控加速：权威值一读到就对齐，不一致时以 DataStore 为准修镜像
+                    if (settings.syncOnboardingMirror(first.onboardingDone)) {
+                        StartupTrace.mark("引导门控镜像已按 DataStore 修复")
+                    }
                 }
             }
         }
