@@ -9,7 +9,6 @@ import com.phoneagent.provider.ActionResult
 import com.phoneagent.provider.IDeviceProvider
 import com.phoneagent.overlay.CursorOverlayService
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 
 /**
  * 活节点定位线索。
@@ -139,8 +138,10 @@ class ActionExecutor(
      * 供上层在手势点击前取最新落点——AI 思考的数秒里页面可能已滚动/被顶动，
      * 快照坐标早已偏离；活节点位置才是"现在它到底在哪"。
      */
-    fun liveCenter(selector: NodeSelector): Pair<Int, Int>? {
-        val center = blocking(LIVE_QUERY_TIMEOUT_MS) { it.liveCenter(selector.toRemote()) } ?: return null
+    suspend fun liveCenter(selector: NodeSelector): Pair<Int, Int>? {
+        val center = ProviderManager.call(service.applicationContext, LIVE_QUERY_TIMEOUT_MS) {
+            it.liveCenter(selector.toRemote())
+        } ?: return null
         if (center.size < 2 || center[0] < 0 || center[1] < 0) return null
         return center[0] to center[1]
     }
@@ -150,8 +151,10 @@ class ActionExecutor(
      *
      * 只读探测，不派发任何动作；读不到节点树时返回 null（调用方按"无法审计"处理）。
      */
-    fun hitTest(x: Int, y: Int): NodeHit? =
-        SnapshotJsonCodec.decodeNodeHit(blocking(LIVE_QUERY_TIMEOUT_MS) { it.hitTest(x, y) })
+    suspend fun hitTest(x: Int, y: Int): NodeHit? =
+        SnapshotJsonCodec.decodeNodeHit(
+            ProviderManager.call(service.applicationContext, LIVE_QUERY_TIMEOUT_MS) { it.hitTest(x, y) },
+        )
 
     /** 滑动（时长同样夹进预算：太短被当 fling 忽略，太长会变成缓慢拖动） */
     suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result {
@@ -208,18 +211,19 @@ class ActionExecutor(
     }
 
     /** 全局按键 */
-    fun globalAction(action: Int): Result {
-        val ok = blocking(GLOBAL_TIMEOUT_MS) { it.globalAction(action) } ?: return unavailable("全局按键")
+    suspend fun globalAction(action: Int): Result {
+        val ok = ProviderManager.call(service.applicationContext, GLOBAL_TIMEOUT_MS) { it.globalAction(action) }
+            ?: return unavailable("全局按键")
         return if (ok) Result.Success("已执行全局按键") else Result.Failure("全局按键执行失败")
     }
 
-    fun back() = globalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-    fun home() = globalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-    fun recents() = globalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+    suspend fun back() = globalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+    suspend fun home() = globalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+    suspend fun recents() = globalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
 
     /** 启动应用（Provider 内按 LAUNCHER activity 精确拉起，失败原因中文回传） */
-    fun launchApp(packageName: String): Result {
-        val result = blocking(APP_TIMEOUT_MS) { it.launchApp(packageName) } ?: return unavailable("启动应用")
+    suspend fun launchApp(packageName: String): Result {
+        val result = remote(APP_TIMEOUT_MS) { it.launchApp(packageName) } ?: return unavailable("启动应用")
         return result.toResult("已启动应用 $packageName", "启动应用")
     }
 
@@ -263,17 +267,18 @@ class ActionExecutor(
      *
      * @param pkg 指定用哪个应用打开（已解析的包名）；为空时**优先系统自带应用**
      */
-    fun openUri(uri: String, pkg: String? = null): Result {
+    suspend fun openUri(uri: String, pkg: String? = null): Result {
         val raw = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("打开目标为空")
-        val result = blocking(APP_TIMEOUT_MS) {
+        val result = remote(APP_TIMEOUT_MS) {
             it.openUri(raw, pkg?.trim()?.takeIf { target -> target.isNotBlank() })
         } ?: return unavailable("打开 $raw")
         return result.toResult("已打开 $raw", "打开 $raw")
     }
 
     /** 用系统 Intent Action 直达指定设置页（如 Wi-Fi/蓝牙/显示） */
-    fun openSettingsAction(action: String): Result {
-        val result = blocking(APP_TIMEOUT_MS) { it.openSettingsAction(action) } ?: return unavailable("打开设置页")
+    suspend fun openSettingsAction(action: String): Result {
+        val result = remote(APP_TIMEOUT_MS) { it.openSettingsAction(action) }
+            ?: return unavailable("打开设置页")
         return result.toResult("已直达系统设置页", "打开设置页")
     }
 
@@ -302,10 +307,6 @@ class ActionExecutor(
         timeoutMs: Long = ACTION_TIMEOUT_MS,
         block: (IDeviceProvider) -> ActionResult,
     ): ActionResult? = ProviderManager.call(service.applicationContext, timeoutMs) { block(it) }
-
-    /** 同步方法（globalAction / launchApp / openUri / liveCenter / hitTest）的阻塞兜底 */
-    private fun <T> blocking(timeoutMs: Long, block: (IDeviceProvider) -> T): T? =
-        runBlocking { ProviderManager.call(service.applicationContext, timeoutMs) { block(it) } }
 
     /** provider.ActionResult → 本地 Result（成功描述统一用中文文案，失败原因直接沿用 Provider 的中文 reason） */
     private fun ActionResult.toResult(description: String, action: String): Result =

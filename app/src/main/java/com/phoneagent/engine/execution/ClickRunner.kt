@@ -296,8 +296,8 @@ class ClickRunner(
     }
 
     /** 取一份当前快照；读不到（无障碍断开等）返回 null，不抛异常打断任务 */
-    private fun captureQuietly(): ScreenSnapshot? =
-        runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
+    private suspend fun captureQuietly(): ScreenSnapshot? =
+        runCatching { service.captureScreenAsync() }.getOrNull()?.takeUnless { it.missingAccessibility }
 
     /**
      * 屏幕**安全区**（而非整块物理屏）。

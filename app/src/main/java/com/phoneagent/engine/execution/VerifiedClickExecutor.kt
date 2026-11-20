@@ -152,7 +152,7 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
             delay(delayMs)
             // 对齐 ClickRunner.captureQuietly：过滤掉无障碍断开时的缺失态快照，
             // 避免拿"空壳快照"比对指纹误判成"页面未变化"
-            val afterSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+            val afterSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreenAsync() }
                 .getOrNull()?.takeUnless { it.missingAccessibility } ?: break
             captured = true
             after = PageFingerprint.computeMeaningful(afterSnapshot)
@@ -170,7 +170,7 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
         // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
         // 早判"未生效"会让 AI 重放动作（重复提交/重复滑动），副作用不可撤销
         delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
-        val lateSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+        val lateSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreenAsync() }
             .getOrNull()?.takeUnless { it.missingAccessibility }
         if (lateSnapshot != null) {
             val late = PageFingerprint.computeMeaningful(lateSnapshot)
