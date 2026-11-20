@@ -119,4 +119,19 @@ class TaskRunnerTest {
         assertEquals(5, calls.size)
         assertEquals(0, h.maxStepsHit)
     }
+
+    @Test
+    fun `续传从已完成的步之后继续_不重放前面的步`() = runTest {
+        val h = Harness(maxSteps = 10)
+        val calls = mutableListOf<Int>()
+        h.lastStep = h.runner.run(h.maxSteps, startStep = 6) { step ->
+            calls += step
+            if (step < 8) StepOutcome.Continue else StepOutcome.Return
+        }
+        // 起点是第 7 步：已完成的 1~6 步一个都不能重放
+        assertEquals(listOf(7, 8), calls)
+        assertEquals(listOf(7, 8), h.startedSteps)
+        assertEquals(8, h.lastStep)
+        assertEquals(0, h.maxStepsHit)
+    }
 }
