@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  debug-only 轨迹采集无障碍服务配置（release 变体不合并本文件）。
+  - canRetrieveWindowContent：读节点树
+  - canPerformGestures：由采集器自己派发点击/滑动，保证「截图+树」与动作同一时刻
+  - canTakeScreenshot：API 30+ 的无障碍截图
+  - flagIncludeNotImportantViews：保留容器节点，层级（level）才有意义
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
+    android:description="@string/traj_capture_service_desc"
+    android:notificationTimeout="50"
+    android:settingsActivity="com.phoneagent.ui.MainActivity" />
