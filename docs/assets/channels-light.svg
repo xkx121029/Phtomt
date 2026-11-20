@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 316" width="1200" height="316" role="img" aria-label="Execution channels">
+  <title>Execution channels · AUTO cascade</title>
+  <rect width="1200" height="316" rx="18" fill="#F7F6F3"/>
+  <rect x="0.5" y="0.5" width="1199" height="315" rx="18" fill="none" stroke="#E2DFD7"/>
+
+  <!-- 降级阶梯 -->
+  <g stroke="#D6D2C6" stroke-width="2" stroke-dasharray="4 6">
+    <line x1="72" y1="86" x2="72" y2="174"/>
+    <line x1="72" y1="174" x2="72" y2="262"/>
+  </g>
+  <g fill="none" stroke="#0E7C66" stroke-width="2">
+    <path d="M66 168 l6 8 6 -8"/>
+    <path d="M66 256 l6 8 6 -8"/>
+  </g>
+
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <!-- Shizuku -->
+    <circle cx="72" cy="58" r="15" fill="#063A2E"/>
+    <text x="72" y="63" font-size="14" font-weight="700" fill="#5FD9B4" text-anchor="middle">1</text>
+    <rect x="104" y="30" width="1040" height="64" rx="12" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="104" y="30" width="6" height="64" rx="3" fill="#063A2E"/>
+    <text x="132" y="60" font-size="16" font-weight="700" fill="#063A2E">Shizuku (embedded)</text>
+    <rect x="132" y="68" width="112" height="18" rx="9" fill="#E4F4ED"/>
+    <text x="188" y="81" font-size="11" font-weight="600" fill="#0E7C66" text-anchor="middle">shell · adb</text>
+    <text x="316" y="66" font-size="13" fill="#6D766F">am · pm · settings · input</text>
+    <text x="1116" y="66" font-size="12" fill="#9AA39C" text-anchor="end">full system commands</text>
+
+    <!-- ADB -->
+    <circle cx="72" cy="146" r="15" fill="#FFFFFF" stroke="#BDBAAE"/>
+    <text x="72" y="151" font-size="14" font-weight="700" fill="#6D766F" text-anchor="middle">2</text>
+    <rect x="104" y="114" width="1040" height="64" rx="12" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="104" y="114" width="6" height="64" rx="3" fill="#9FB0A8"/>
+    <text x="132" y="144" font-size="16" font-weight="700" fill="#063A2E">ADB bootstrap session</text>
+    <rect x="132" y="152" width="112" height="18" rx="9" fill="#EFEDE6"/>
+    <text x="188" y="165" font-size="11" font-weight="600" fill="#7A827C" text-anchor="middle">shell · adb</text>
+    <text x="316" y="144" font-size="13" fill="#6D766F">same commands, transitional</text>
+    <text x="1116" y="144" font-size="12" fill="#9AA39C" text-anchor="end">shown to users as Shizuku</text>
+    <text x="316" y="166" font-size="12" fill="#9AA39C">used while the server starts</text>
+
+    <!-- Termux -->
+    <circle cx="72" cy="234" r="15" fill="#FFFFFF" stroke="#BDBAAE"/>
+    <text x="72" y="239" font-size="14" font-weight="700" fill="#6D766F" text-anchor="middle">3</text>
+    <rect x="104" y="202" width="1040" height="64" rx="12" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="104" y="202" width="6" height="64" rx="3" fill="#C6B183"/>
+    <text x="132" y="232" font-size="16" font-weight="700" fill="#063A2E">Termux</text>
+    <rect x="132" y="240" width="112" height="18" rx="9" fill="#F5EEE1"/>
+    <text x="188" y="253" font-size="11" font-weight="600" fill="#8A7642" text-anchor="middle">app privileges</text>
+    <text x="316" y="238" font-size="13" fill="#6D766F">curl · python · jq · text</text>
+    <text x="1116" y="238" font-size="12" fill="#9AA39C" text-anchor="end">no system commands</text>
+
+    <!-- 尾注 -->
+    <text x="104" y="296" font-size="12" fill="#9AA39C">AUTO falls through 1 → 2 → 3 → NONE. An explicit SHIZUKU or TERMUX setting never falls back.</text>
+  </g>
+</svg>
