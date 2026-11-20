@@ -8,6 +8,8 @@ import android.content.res.Configuration
 import android.media.projection.MediaProjectionManager
 import android.os.Bundle
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -333,8 +335,6 @@ private fun ActivityContent(
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
 
-    // 监听 Agent 状态和设置，控制跑马光效
-    val agentState by vm.agentState.collectAsState()
     val settings by vm.settingsFlow.collectAsState()
     val overlayGranted by vm.overlayGranted.collectAsState()
 
@@ -376,23 +376,15 @@ private fun ActivityContent(
         onDispose { OverlayDisplaySettings.unregisterListener(activity, listener) }
     }
 
-    LaunchedEffect(agentState.isRunning, edgeLightingOn, overlayGranted) {
-        val shouldShow = agentState.isRunning && edgeLightingOn && overlayGranted
-        if (shouldShow) {
-            EdgeLightingService.start(
-                context = activity,
-                top = settings.edgeInsetTop,
-                bottom = settings.edgeInsetBottom,
-                left = settings.edgeInsetLeft,
-                right = settings.edgeInsetRight,
-                radius = settings.cornerRadius,
-                width = settings.edgeLightingWidth,
-                speed = 0.3f,
-            )
-        } else {
-            EdgeLightingService.stop(activity)
-        }
-    }
+    // 跑马光效的开关与参数下发：单独成 composable，只订阅 Agent 状态里的运行位。
+    // 状态对象本身不进本函数的组合作用域（原因见 EdgeLightingController 的注释）。
+    EdgeLightingController(
+        vm = vm,
+        activity = activity,
+        settings = settings,
+        edgeLightingOn = edgeLightingOn,
+        overlayGranted = overlayGranted,
+    )
 
     // Tab 切换的转场：新页自下而上小幅升起 + 淡入，旧页原地淡出。
     //
@@ -905,6 +897,50 @@ private fun ActivityContent(
                     },
                 )
             }
+        }
+    }
+}
+
+/**
+ * 跑马光效控制器：把 AgentState 的订阅收在本函数内部，只取「是否在跑」这一位。
+ *
+ * 之前是在 [ActivityContent] 顶部整份解构 AgentState，代价是全局的：
+ * AgentState 带 `lastAction: AgentIntent?` 这类接口字段，Compose 判定为 unstable；
+ * 且 `message` / `stepCount` 每走一步都换新值。于是 agent 每走一步，导航外壳和
+ * 所有页面的回调 lambda 都会跟着重组、重新分配，整棵树失去可跳过性。
+ * 收窄到 `map { isRunning }.distinctUntilChanged()` 之后，一个 5 分钟的任务只会
+ * 在这里产生 2 次信号（起、停），与 [com.phoneagent.ui.agent.AgentScreen] 里
+ * 150ms 的流式节流互补——那边压的是正文重绘频率，这边压的是信号数量本身。
+ */
+@Composable
+private fun EdgeLightingController(
+    vm: MainViewModel,
+    activity: ComponentActivity,
+    settings: com.phoneagent.data.prefs.AppSettings.Settings,
+    edgeLightingOn: Boolean,
+    overlayGranted: Boolean,
+) {
+    // 派生流只在 vm 变化时重建；初始值直接取当前快照，避免起帧时多闪一次 false
+    val running by remember(vm) {
+        vm.agentState.map { it.isRunning }.distinctUntilChanged()
+    }.collectAsState(initial = vm.agentState.value.isRunning)
+    val shouldShow = running && edgeLightingOn && overlayGranted
+    // 三个输入都是布尔，且以「与」合成一个结果：shouldShow 不变时就没有要下发的变化，
+    // 因此这里只把合成结果当 key，等价于原来三键写法，不会因中途变 false 而漏停。
+    LaunchedEffect(shouldShow) {
+        if (shouldShow) {
+            EdgeLightingService.start(
+                context = activity,
+                top = settings.edgeInsetTop,
+                bottom = settings.edgeInsetBottom,
+                left = settings.edgeInsetLeft,
+                right = settings.edgeInsetRight,
+                radius = settings.cornerRadius,
+                width = settings.edgeLightingWidth,
+                speed = 0.3f,
+            )
+        } else {
+            EdgeLightingService.stop(activity)
         }
     }
 }
