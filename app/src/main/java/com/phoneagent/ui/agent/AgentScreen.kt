@@ -56,6 +56,7 @@ import com.phoneagent.engine.PlanPhase
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.GlassSurface
+import com.phoneagent.ui.components.GlassSurfaceStyle
 import com.phoneagent.ui.components.LocalIsLandscape
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalHeaderContentPad
@@ -321,13 +322,19 @@ fun AgentScreen(
     } else {
         items
     }
+    // LazyColumn 里排在任务流之前/之后固定条目的数量：滚动定位要把它算进去，
+    // 否则壳层历史提示条会整体错位一行（跟随滚不到最新项、确认卡定位到上一项）
+    val leadingItems = (if (chrome == AgentChrome.SHELL && viewingTaskId != null) 1 else 0) +
+        (if (showEmpty) 1 else 0)
     LaunchedEffect(visibleItems.size, planText.length, decisionText.length, follow) {
-        if (follow && visibleItems.isNotEmpty()) listState.animateScrollToItem(visibleItems.lastIndex)
+        if (follow && visibleItems.isNotEmpty()) {
+            listState.animateScrollToItem(leadingItems + visibleItems.lastIndex)
+        }
     }
     // 确认卡出现时滚到卡片本身：这是引擎的阻塞态，不能让用户误以为 AI 没了动静
     LaunchedEffect(pendingConfirm != null) {
         if (pendingConfirm != null) {
-            listState.animateScrollToItem((if (showEmpty) 1 else 0) + visibleItems.size)
+            listState.animateScrollToItem(leadingItems + visibleItems.size)
         }
     }
 
@@ -634,7 +641,8 @@ fun AgentScreen(
             } else {
                 GlassSurface(
                     hazeState = glass,
-                    shape = RoundedCornerShape(AppRadii.Hero),
+                    // 输入浮层圆角由皮肤下发：经典 28dp、石墨 20dp
+                    style = GlassSurfaceStyle(shape = RoundedCornerShape(AppTheme.metrics.heroRadius)),
                     modifier = dockModifier,
                 ) { dockBody() }
             }

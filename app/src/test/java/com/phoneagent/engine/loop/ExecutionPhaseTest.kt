@@ -12,9 +12,11 @@ import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
+import com.phoneagent.domain.model.UiElement
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.IntentTranslator
+import com.phoneagent.engine.execution.PendingInput
 import com.phoneagent.engine.execution.VerifyResult
 import com.phoneagent.engine.perception.AnnotatedPage
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
@@ -79,12 +81,17 @@ class ExecutionPhaseTest {
         val idempotentDone: Boolean = false,
         val browser: Set<String> = emptySet(),
         val guided: AgentIntent? = null,
+        /** 完成前复核时再观察到的页面（默认空页面 = 没有持久状态） */
+        val reobserved: ScreenSnapshot = ScreenSnapshot(),
     ) {
         val f = fake
         var earlyDone = 0
         var sayStreak = 0
         var failures = 0
         var invalidCommands = 0
+        var pendingInput: PendingInput? = null
+        var inputCommitRejections = 0
+        var completionRecheckRejections = 0
 
         val phase = ExecutionPhase(
             loopGuard = LoopGuard(),
@@ -128,7 +135,7 @@ class ExecutionPhaseTest {
                     f.executes++
                     verify
                 },
-                reobserve = { ScreenSnapshot() },
+                reobserve = { reobserved },
                 ensureShellApproval = { shellApproved },
                 awaitActionConfirmation = { confirmation },
                 handleRemember = { _, _, _ -> f.remembered++ },
@@ -162,6 +169,12 @@ class ExecutionPhaseTest {
                 setConsecutiveFailures = { failures = it },
                 invalidCommandStreak = { invalidCommands },
                 setInvalidCommandStreak = { invalidCommands = it },
+                pendingInput = { pendingInput },
+                setPendingInput = { pendingInput = it },
+                inputCommitRejections = { inputCommitRejections },
+                setInputCommitRejections = { inputCommitRejections = it },
+                completionRecheckRejections = { completionRecheckRejections },
+                setCompletionRecheckRejections = { completionRecheckRejections = it },
             ),
         )
     }
@@ -171,8 +184,12 @@ class ExecutionPhaseTest {
         step: Int = 1,
         plan: TaskPlan? = null,
         messages: MutableList<ChatMessageDto> = mutableListOf(),
+        snapshot: ScreenSnapshot = ScreenSnapshot(
+            packageName = "com.example",
+            screenWidth = 1080,
+            screenHeight = 1920,
+        ),
     ): StepSession {
-        val snapshot = ScreenSnapshot(packageName = "com.example", screenWidth = 1080, screenHeight = 1920)
         return StepSession(
             task = "测试任务",
             plan = plan,
@@ -232,6 +249,77 @@ class ExecutionPhaseTest {
         assertEquals("全部完成", fixture.f.completedWith)
         assertEquals(AgentState.Phase.DONE, fixture.f.state.phase)
         assertTrue(fixture.f.finished.any { it.first == TaskMemoryEntry.STATUS_SUCCESS })
+    }
+
+    @Test
+    fun `输入未提交时拒绝完成`() = runTest {
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(type = ActionType.TASK_DONE, summary = "答完了"),
+            ),
+        )
+        fixture.pendingInput = PendingInput(label = "答题框", preview = "42", step = 2)
+        val s = session(AgentIntent(intent = IntentType.FINISH), step = 3)
+        val outcome = fixture.phase.run(s)
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals(1, fixture.inputCommitRejections)
+        assertEquals(0, fixture.f.finished.size)
+        assertTrue(s.messages.any { m -> m.content.any { it.text.orEmpty().contains("并没有提交") } })
+    }
+
+    @Test
+    fun `依据瞬时提示报完成时要求重新核对`() = runTest {
+        val toastPage = ScreenSnapshot(
+            packageName = "com.example",
+            screenWidth = 1080,
+            screenHeight = 1920,
+            elements = listOf(
+                UiElement(
+                    index = 0,
+                    className = "android.widget.TextView",
+                    type = "Text",
+                    text = "已加入播放队列",
+                    x = 540,
+                    y = 1800,
+                    left = 0,
+                    top = 1760,
+                    right = 1080,
+                    bottom = 1840,
+                ),
+            ),
+        )
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(type = ActionType.TASK_DONE, summary = "已加入播放队列"),
+            ),
+            reobserved = ScreenSnapshot(packageName = "com.example"),
+        )
+        val s = session(AgentIntent(intent = IntentType.FINISH), step = 3, snapshot = toastPage)
+        val outcome = fixture.phase.run(s)
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals(1, fixture.completionRecheckRejections)
+        assertEquals(0, fixture.f.finished.size)
+        assertTrue(s.messages.any { m -> m.content.any { it.text.orEmpty().contains("瞬时提示") } })
+    }
+
+    @Test
+    fun `未提交输入拒绝耗尽后放行并在任务记忆里标注`() = runTest {
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(type = ActionType.TASK_DONE, summary = "答完了"),
+            ),
+        )
+        fixture.pendingInput = PendingInput(label = "答题框", preview = "42", step = 2)
+        fixture.inputCommitRejections = 2
+        val s = session(AgentIntent(intent = IntentType.FINISH), step = 3)
+        val outcome = fixture.phase.run(s)
+        assertEquals(StepOutcome.Return, outcome)
+        assertTrue(
+            fixture.f.finished.any {
+                it.first == TaskMemoryEntry.STATUS_SUCCESS && it.second.orEmpty().contains("未确认提交")
+            },
+        )
+        assertEquals(null, fixture.pendingInput)
     }
 
     @Test
@@ -322,7 +410,9 @@ class ExecutionPhaseTest {
 
     @Test
     fun `结构性错误不重试并升级无效命令计数`() = runTest {
-        val fixture = Fixture(verify = VerifyResult(false, "未知 shell 命令", "", ""))
+        val fixture = Fixture(
+            verify = VerifyResult(false, "未知 shell 命令", "", "", notDelivered = true, structural = true),
+        )
         val s = session(AgentIntent(intent = IntentType.SHELL))
         val outcome = fixture.phase.run(s)
         assertEquals(StepOutcome.Continue, outcome)
@@ -330,6 +420,28 @@ class ExecutionPhaseTest {
         // 结构错误只执行一次（不参与外层重试），但历史与截图照常落档
         assertEquals(1, fixture.f.executes)
         assertEquals(1, fixture.f.histories)
+    }
+
+    @Test
+    fun `已送达但未生效时回注换入口提示而不是重放`() = runTest {
+        // 交付状态由结构化字段决定，不解析文案：这条理由里没有任何关键词
+        val fixture = Fixture(
+            verify = VerifyResult(false, "页面与控件状态均无变化", "", ""),
+        )
+        val s = session(AgentIntent(intent = IntentType.TAP))
+        fixture.phase.run(s)
+        assertTrue(s.messages.any { m -> m.content.any { it.text.orEmpty().contains("已经送达") } })
+        assertTrue(s.messages.any { m -> m.content.any { it.text.orEmpty().contains("不要原地重复") } })
+    }
+
+    @Test
+    fun `没送达时回注换通道提示`() = runTest {
+        val fixture = Fixture(
+            verify = VerifyResult(false, "手势被系统拒绝", "", "", notDelivered = true),
+        )
+        val s = session(AgentIntent(intent = IntentType.SWIPE))
+        fixture.phase.run(s)
+        assertTrue(s.messages.any { m -> m.content.any { it.text.orEmpty().contains("没有送达设备") } })
     }
 
     @Test

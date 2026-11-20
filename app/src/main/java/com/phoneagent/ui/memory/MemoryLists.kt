@@ -69,6 +69,7 @@ import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.MemoryAnomaly
 import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
@@ -96,7 +97,7 @@ internal fun EmptyMemoryCard(onRefresh: () -> Unit) {
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(AppSpacing.Xl),
         ) {
             Icon(
                 AppIcons.Memory, contentDescription = null,
@@ -232,7 +233,7 @@ internal fun TaskMemoryList(
                     .padding(vertical = 6.dp)
                     .clip(RoundedCornerShape(AppRadii.Tile))
                     .appBorder(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(AppRadii.Tile))
-                    .padding(12.dp),
+                    .padding(AppSpacing.Md),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

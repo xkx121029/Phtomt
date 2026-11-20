@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +33,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.device.a11y.AgentAccessibilityService
@@ -76,6 +80,16 @@ internal fun SettingsQuickStart(
 
     // 进页刷一次无障碍状态：用户可能刚在系统设置里授权完返回
     LaunchedEffect(Unit) { vm.refreshA11yState(context) }
+    // 「去开启」跳的是系统无障碍设置页，本页组合不会重建，只靠进页刷新会一直显示「尚未授权」；
+    // 回到前台时重读一次，口径和权限页的 ON_RESUME 刷新一致
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshA11yState(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     var testing by remember { mutableStateOf(false) }
     var testHint by remember { mutableStateOf<String?>(null) }

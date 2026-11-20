@@ -33,7 +33,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.phoneagent.feature.browser.BrowserBridge
 import com.phoneagent.feature.browser.createBrowserWebView
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorder
 
@@ -114,7 +114,7 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
 private fun AddressStrip(title: String, url: String) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
@@ -157,16 +157,16 @@ private fun BrowserEmptyHint(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier.padding(AppSpacing.Lg),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
     ) {
         Column(
             modifier = Modifier
                 .appBorder(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(AppRadii.Card),
+                    shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
                 )
-                .clip(RoundedCornerShape(AppRadii.Card))
+                .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(AppSpacing.Lg),
             horizontalAlignment = Alignment.CenterHorizontally,

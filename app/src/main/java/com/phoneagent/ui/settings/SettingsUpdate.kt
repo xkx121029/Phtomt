@@ -42,6 +42,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
@@ -76,7 +77,7 @@ internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Un
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("软件更新", onBack, subtitle = "当前版本与接收渠道")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // ---- 当前版本 + 检查 ----
         SettingsSection(title = "当前版本", tone = SettingsTone.Brand) {

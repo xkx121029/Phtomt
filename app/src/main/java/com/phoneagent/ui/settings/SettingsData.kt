@@ -38,8 +38,8 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
-import com.phoneagent.ui.theme.AppRadii
 
 /**
  * 数据与存储页：导出、清空与重置。
@@ -76,7 +76,7 @@ internal fun SettingsData(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("数据与记忆", onBack, subtitle = "页面记忆、导出、清空与恢复默认；清空后不可撤销")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // ---- 页面记忆（从「任务行为」并入这里：记忆开关与清空动作放在同一页）----
         SettingsSection(
@@ -327,7 +327,7 @@ private fun DataActionRow(
         Box(
             modifier = Modifier
                 .size(36.dp)
-                .clip(RoundedCornerShape(AppRadii.Tile)),
+                .clip(RoundedCornerShape(AppTheme.metrics.tileRadius)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))

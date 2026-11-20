@@ -30,6 +30,7 @@ import com.phoneagent.feature.agentdoc.AgentDocRepository
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 
 /**
@@ -68,7 +69,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         )
         // 与全设置流程同一条骨架节奏：页头后 20 / 分区之间 16 / 结尾 28（不再用 spacedBy，
         // 否则页头与首区之间只有 16，和其他二级页对不上）
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // 动作模式（保守 / 均衡 / 自由）已移到设置首页「常用」面板：它是每次跑任务前最常改的一项，
         // 留在这里等于让用户多点两下；同一设置只保留首页那一处入口。
@@ -82,7 +83,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 save()
             }
             if (st.maxSteps > 0) {
-                Column(Modifier.padding(horizontal = AppSpacing.Page)) {
+                Column(Modifier.padding(horizontal = AppTheme.metrics.pagePad)) {
                     LabeledField("最大步数  ${st.maxSteps}") {
                         Slider(
                             // 拖动只更新本地编辑态（数值即时跟手），松手才落盘，
@@ -148,7 +149,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
                 save()
             }
             if (st.docSyncEnabled) {
-                Column(Modifier.padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Md)) {
+                Column(Modifier.padding(horizontal = AppTheme.metrics.pagePad, vertical = AppSpacing.Md)) {
                     LabeledField("文档服务地址") {
                         OutlinedTextField(
                             value = st.docBaseUrl,
@@ -197,7 +198,7 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
         Spacer(Modifier.height(AppSpacing.Lg))
 
         SettingsSection(title = "提示词", subtitle = "发送给模型的语言与自定义系统提示词", tone = SettingsTone.Cool) {
-            Column(Modifier.padding(horizontal = AppSpacing.Page)) {
+            Column(Modifier.padding(horizontal = AppTheme.metrics.pagePad)) {
                 Text(
                     "提示词语言",
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),

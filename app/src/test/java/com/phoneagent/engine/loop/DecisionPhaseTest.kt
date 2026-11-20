@@ -79,7 +79,8 @@ class DecisionPhaseTest {
 
         val phase: DecisionPhase = run {
             val local = mockk<LocalDecisionEngine>(relaxed = true).also { l ->
-                every { l.decide(any()) } returns localIntent
+                // 决策阶段会把观察段已推断出的 pageType 一并传入（省掉重复推断）
+                every { l.decide(any(), any()) } returns localIntent
             }
             val runner = mockk<SkillRunner>(relaxed = true)
             coEvery { runner.invokeMcpSkill(any(), any(), any()) } answers { mcpCalls++ }

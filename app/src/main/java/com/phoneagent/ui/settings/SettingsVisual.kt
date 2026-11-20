@@ -34,7 +34,7 @@ import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.overlay.StepTextPlacement
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import kotlinx.coroutines.delay
 
@@ -142,7 +142,7 @@ internal fun SettingsVisual(
     ) {
         if (!embedded) {
             SettingsPageHeader("界面效果", onBack, subtitle = "光标、边缘光效与跑马灯的显示和样式")
-            Spacer(Modifier.height(AppSpacing.Page))
+            Spacer(Modifier.height(AppTheme.metrics.pagePad))
         }
 
         // ---- 点击光标 ----
@@ -213,7 +213,7 @@ internal fun SettingsVisual(
                     )
                     Spacer(Modifier.height(AppSpacing.Sm))
                     Surface(
-                        shape = RoundedCornerShape(AppRadii.Item),
+                        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
                         color = AppSurfaceMuted,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -308,7 +308,7 @@ internal fun SettingsVisual(
             if (stepTextHint) {
                 Text(
                     "至少保留一处显示",
-                    modifier = Modifier.padding(start = AppSpacing.Page, end = AppSpacing.Page, top = AppSpacing.Xxs),
+                    modifier = Modifier.padding(start = AppTheme.metrics.pagePad, end = AppTheme.metrics.pagePad, top = AppSpacing.Xxs),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

@@ -39,14 +39,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.AppCardBorder
 import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorderStroke
 
 // ========== 设置页设计语言（Material 3 Expressive） ==========
@@ -57,8 +58,9 @@ import com.phoneagent.ui.theme.appBorderStroke
 // 3. 排版放大：页头用 headline，条目图标进圆形底盘，留白更松。
 // 全项目只此一处定义，各设置页一律引用，杜绝各页各写一套。
 
-/** 设置页统一横向留白，与全站页面栅格一致 */
-internal val SettingsScreenPad = AppSpacing.Page
+/** 设置页统一横向留白，与全站页面栅格一致（经典 20dp / 石墨 24dp，由皮肤令牌下发） */
+internal val SettingsScreenPad: Dp
+    @Composable get() = AppTheme.metrics.pagePad
 
 /**
  * 设置是否处于「左列表 + 右详情」的双栏形态（平板宽屏）。
@@ -84,7 +86,13 @@ internal enum class SettingsTone { Brand, Cool, Warm, Neutral }
 internal fun SettingsTone.accent(): Color = when (this) {
     SettingsTone.Brand -> MaterialTheme.colorScheme.primary
     SettingsTone.Cool -> MaterialTheme.colorScheme.tertiary
-    SettingsTone.Warm -> MaterialTheme.colorScheme.secondary
+    // 暖色在石墨里只保留给"信号"（警告、待办、试运行这类需要拉一下注意力的地方）；
+    // 分区底色与图标底盘是大面积面，仍用暖沙会把石墨读成旧纸感，因此并入品牌靛蓝。
+    SettingsTone.Warm -> if (AppTheme.skin.isGraphite) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.secondary
+    }
     SettingsTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
@@ -104,28 +112,38 @@ internal fun SettingsSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val accent = tone.accent()
+    val metrics = AppTheme.metrics
     Surface(
-        // 分区容器圆角走 Hero 档：比通用卡片（24dp）再大一档，读起来更"整块"
-        shape = RoundedCornerShape(AppRadii.Hero),
-        color = accent.copy(alpha = 0.06f),
-        border = appBorderStroke(AppSize.Hairline, accent.copy(alpha = 0.15f)),
+        // 分区容器圆角由皮肤下发：经典走 Hero 档，石墨收成与卡片同一档的方正容器
+        shape = RoundedCornerShape(metrics.sectionRadius),
+        color = accent.copy(alpha = metrics.sectionAccentAlpha),
+        border = appBorderStroke(metrics.hairline, accent.copy(alpha = 0.15f)),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = AppSpacing.Page, end = AppSpacing.Page, top = AppSpacing.Page, bottom = if (subtitle != null) AppSpacing.Md else AppSpacing.Sm),
+                    .padding(
+                        start = metrics.pagePad,
+                        end = metrics.pagePad,
+                        top = metrics.pagePad,
+                        bottom = if (subtitle != null) AppSpacing.Md else AppSpacing.Sm,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
-                // 眉条：一小段竖条，把分组的色相钉在标题旁边
-                Box(
-                    Modifier
-                        .size(width = 4.dp, height = 20.dp)
-                        .clip(RoundedCornerShape(AppRadii.Chip))
-                        .background(accent),
-                )
+                // 眉条：一小段竖条，把分组的色相钉在标题旁边。
+                // 石墨主题不画眉条（宽度令牌为 0）：它的分区识别靠留白与发丝线，
+                // 标题旁再挂一根彩色短棒会把克制的版面切开
+                if (metrics.sectionBarWidth > 0.dp) {
+                    Box(
+                        Modifier
+                            .size(width = metrics.sectionBarWidth, height = 20.dp)
+                            .clip(RoundedCornerShape(metrics.chipRadius))
+                            .background(accent),
+                    )
+                }
                 Column(Modifier.weight(1f)) {
                     Text(
                         title,
@@ -155,9 +173,9 @@ internal fun SettingsPlainCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
         color = AppCardContainer,
-        border = appBorderStroke(AppSize.Hairline, AppCardBorder),
+        border = appBorderStroke(AppTheme.metrics.hairline, AppCardBorder),
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(Modifier.fillMaxWidth()) { content() }
@@ -170,7 +188,7 @@ internal fun SettingsDivider(inset: Boolean = true) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(start = if (inset) 74.dp else AppSpacing.Lg, end = AppSpacing.Lg)
+            .padding(start = if (inset) 74.dp else AppTheme.metrics.pagePad, end = AppTheme.metrics.pagePad)
             .height(0.5.dp)
             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     )
@@ -193,6 +211,10 @@ internal fun SettingsRow(
 ) {
     val buzz = rememberHapticClick()
     val accent = tone.accent()
+    val metrics = AppTheme.metrics
+    // 经典用正圆（"动作入口"的记号）；石墨把所有图标底盘收成圆角方块，
+    // 与它的整体形状语言一致，避免页面上圆形与方角控件并存
+    val iconShape = if (metrics.roundIconActions) CircleShape else RoundedCornerShape(metrics.tileRadius)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -200,14 +222,14 @@ internal fun SettingsRow(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Lg),
+            .padding(horizontal = metrics.pagePad, vertical = metrics.cardPad),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
     ) {
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(CircleShape)
+                .clip(iconShape)
                 .background(accent.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -257,12 +279,15 @@ internal fun SettingsRow(
 internal fun SettingsPageHeader(title: String, onBack: () -> Unit, subtitle: String? = null) {
     val buzz = rememberHapticClick()
     val twoPane = LocalSettingsTwoPane.current
+    val metrics = AppTheme.metrics
+    // 返回键：经典正圆；石墨圆角方块，和页内其余控件同一套形状
+    val backShape = if (metrics.roundIconActions) CircleShape else RoundedCornerShape(metrics.tileRadius)
     Column(Modifier.fillMaxWidth()) {
         if (!twoPane) {
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(CircleShape)
+                    .clip(backShape)
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                     .clickable {
                         buzz()
@@ -306,7 +331,7 @@ internal fun SettingsCheckRow(
         modifier = Modifier
             .fillMaxWidth()
             .toggleable(value = checked, role = Role.Checkbox, onValueChange = onCheckedChange)
-            .padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Sm),
+            .padding(horizontal = AppTheme.metrics.pagePad, vertical = AppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(checked = checked, onCheckedChange = null)
@@ -385,7 +410,7 @@ internal fun SettingsToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Md),
+            .padding(horizontal = AppTheme.metrics.pagePad, vertical = AppSpacing.Md),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -436,7 +461,7 @@ internal fun SettingsChoiceChip(
 ) {
     val buzz = rememberHapticClick()
     Surface(
-        shape = RoundedCornerShape(AppRadii.Tile),
+        shape = RoundedCornerShape(AppTheme.metrics.tileRadius),
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
         border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
                  else appBorderStroke(AppSize.Hairline, AppCardBorder),

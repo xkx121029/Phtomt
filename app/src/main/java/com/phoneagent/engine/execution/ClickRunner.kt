@@ -146,15 +146,23 @@ class ClickRunner(
         //    （元素只露一半时它的中心可能在屏幕外，派发到屏幕外等于白点；只按时间点定序不按坐标猜）
         val sx = resolved.x
         val sy = resolved.y
-        val candidates = mutableListOf<Pair<String, Pair<Int, Int>>>()
+        val safe = safeArea(snapshot)
+        val screen = ClickGeometry.Rect(0, 0, snapshot.screenWidth, snapshot.screenHeight)
+        // 落点来自元素时按「元素 ∩ 安全区」夹取，避免贴边/半露的控件被夹到控件外面去（点到邻居）
+        val targetRect = element?.let { ClickGeometry.Rect(it.left, it.top, it.right, it.bottom) }
+        val candidates = mutableListOf<Triple<String, Pair<Int, Int>, Boolean>>()
         if (selector != null) {
             // 活节点位置最新——AI 思考的数秒里页面可能已滚动/被顶动，快照坐标早已偏移
-            executor.liveCenter(selector)?.let { candidates += "活节点当前位置" to it }
+            executor.liveCenter(selector)?.let { candidates += Triple("活节点当前位置", it, true) }
         }
-        if (cx != null && cy != null) candidates += "元素最新位置" to Pair(cx, cy)
-        if (sx != null && sy != null) candidates += "快照坐标" to Pair(sx, sy)
+        if (cx != null && cy != null) candidates += Triple("元素最新位置", Pair(cx, cy), true)
+        if (sx != null && sy != null) candidates += Triple("快照坐标", Pair(sx, sy), false)
         val points = candidates
-            .map { (name, p) -> name to clampToScreen(p, snapshot) }
+            .map { (name, p, targeted) ->
+                name to ClickGeometry.clampInto(
+                    p.first, p.second, if (targeted) targetRect else null, safe, screen,
+                )
+            }
             .distinctBy { it.second }
 
         for ((name, point) in points) {
@@ -231,6 +239,19 @@ class ClickRunner(
             reason = verdict.second
         }
         if (!captured) return VerifyResult(true, "已$verb；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")
+        // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
+        // 早判"未生效"会让 AI 重放动作（重复提交/重复收藏），副作用不可撤销
+        delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
+        val late = captureQuietly()
+        if (late != null) {
+            val lateFp = PageFingerprint.computeMeaningful(late)
+            val verdict = judge(before, beforeState, late, beforeFp, lateFp)
+            if (verdict.first) {
+                return VerifyResult(true, "已$verb（延迟生效：${verdict.second}）", beforeFp, lateFp)
+            }
+            afterFp = lateFp
+            reason = verdict.second
+        }
         return VerifyResult(false, reason, beforeFp, afterFp)
     }
 
@@ -279,7 +300,7 @@ class ClickRunner(
         runCatching { service.captureScreen() }.getOrNull()?.takeUnless { it.missingAccessibility }
 
     /**
-     * 把落点夹进屏幕的**安全区**（而非整块物理屏）。
+     * 屏幕**安全区**（而非整块物理屏）。
      *
      * 元素树里的"可见"只保证它露了一部分：列表底部半截可见的行，中心点可能已经在屏幕外，
      * 手势派发到屏幕外的点要么被系统拒绝、要么落在别处，表现出来就是"点了没反应"。
@@ -287,9 +308,9 @@ class ClickRunner(
      * 并且不能退而求其次夹到 y=0（状态栏）或 y=h-1（导航条）：那等于把"点不到目标"变成"误触系统栏"，
      * 失败之外还多一点副作用。故把越界/贴边（<8px）的落点收进四边各留余量的安全区，
      * 取屏幕内最近的有效位置——左右各留 [EDGE_SAFE_MARGIN]，上下避开状态栏/导航条高度，
-     * 这样落点不会再等于 0 或 h-1。
+     * 这样落点不会再等于 0 或 h-1。具体夹取见 [ClickGeometry.clampInto]。
      */
-    private fun clampToScreen(point: Pair<Int, Int>, snapshot: ScreenSnapshot): Pair<Int, Int> {
+    private fun safeArea(snapshot: ScreenSnapshot): ClickGeometry.Rect {
         val w = snapshot.screenWidth.takeIf { it > 0 } ?: DEFAULT_SCREEN_W
         val h = snapshot.screenHeight.takeIf { it > 0 } ?: DEFAULT_SCREEN_H
         val left = EDGE_SAFE_MARGIN
@@ -297,7 +318,7 @@ class ClickRunner(
         // 上下避开系统栏：读到状态栏/导航条高度就用它；读不到时退回最小边距，保证落点不为 0 / h-1
         val top = maxOf(systemBarInsetPx("status_bar_height"), EDGE_SAFE_MARGIN)
         val bottom = (h - 1 - maxOf(systemBarInsetPx("navigation_bar_height"), EDGE_SAFE_MARGIN)).coerceAtLeast(top)
-        return point.first.coerceIn(left, right) to point.second.coerceIn(top, bottom)
+        return ClickGeometry.Rect(left = left, top = top, right = right + 1, bottom = bottom + 1)
     }
 
     /**

@@ -18,6 +18,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.rules.EngineRules
+import com.phoneagent.domain.rules.GestureBudget
 import com.phoneagent.domain.rules.ShellCommands
 import com.phoneagent.domain.rules.ShellCommands.Motion
 import com.phoneagent.engine.VisionConfig
@@ -268,7 +269,7 @@ internal class ExecutionCore(
                     ?: if (horizontal) ctx.screenWidth() else ctx.screenHeight()
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
                 verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey,
-                    action.durationMs ?: 400).isSuccess() }
+                    GestureBudget.swipeMs(action.durationMs)).isSuccess() }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (ctx.screenWidth() / 2)
@@ -406,11 +407,16 @@ internal class ExecutionCore(
                 VerifyRules.NO_A11Y_REFRESH + "：请改用 refresh 意图点击页面刷新按钮，或下滑手势",
                 "",
                 "",
+                notDelivered = true,
+                // 通道能力缺口：重跑同一通道不会变好，交给 AI 换路子
+                structural = true,
             )
-            else -> com.phoneagent.engine.execution.VerifyResult(false, "未知动作", "", "")
+            else -> com.phoneagent.engine.execution.VerifyResult(
+                false, "未知动作", "", "", notDelivered = true, structural = true,
+            )
         }
         // 通道自动切换：只对"没交付"的失败换通道重试；"已交付但未确认"再执行一次就是重复副作用
-        val finalResult = if (!result.success && result.notDelivered && type != ActionType.LAUNCH) {
+        val finalResult = if (!result.success && result.delivery == Delivery.NOT_DELIVERED && type != ActionType.LAUNCH) {
             channelFallback(action, type, snapshot, x, y, result.reason) ?: result
         } else {
             result
@@ -438,7 +444,8 @@ internal class ExecutionCore(
      */
     suspend fun safeExecute(action: AgentAction,
         snapshot: ScreenSnapshot): com.phoneagent.engine.execution.VerifyResult {
-        return try {
+        val t0 = System.nanoTime()
+        val result = try {
             executeWithVerify(action, snapshot)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -448,6 +455,7 @@ internal class ExecutionCore(
                 false, "执行异常：${e.message ?: e.javaClass.simpleName}（无障碍服务可能已断开）", "", "",
             )
         }
+        return result.copy(elapsedMs = (System.nanoTime() - t0) / 1_000_000)
     }
 
     /**
@@ -489,21 +497,24 @@ internal class ExecutionCore(
             ActionType.LONG_CLICK, ActionType.LONG_PRESS -> {
                 if (x == null || y == null) return fail("副屏模式下长按缺少坐标")
                 // 副屏没有长按命令：同点滑动 + 时长即可被判为长按
-                wrap(vd.swipe(x, y, x, y, (action.durationMs ?: 800L).toInt()), "已在副屏长按 ($x,$y)")
+                wrap(vd.swipe(x, y, x, y, GestureBudget.holdMs(action.durationMs).toInt()), "已在副屏长按 ($x,$y)")
             }
             ActionType.SWIPE -> {
                 val px = x ?: (vdW / 2)
                 val py = y ?: verticalSwipeStartY()
                 val dist = action.distancePx ?: if (action.direction in listOf("left", "right")) vdW else vdH
                 val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
-                wrap(vd.swipe(px, py, ex, ey, (action.durationMs ?: 400L).toInt()), "已在副屏滑动 ($px,$py)→($ex,$ey)")
+                wrap(
+                    vd.swipe(px, py, ex, ey, GestureBudget.swipeMs(action.durationMs).toInt()),
+                    "已在副屏滑动 ($px,$py)→($ex,$ey)",
+                )
             }
             ActionType.SWIPE_UP, ActionType.SWIPE_DOWN, ActionType.SWIPE_LEFT, ActionType.SWIPE_RIGHT -> {
                 val direction = type.removePrefix("swipe_")
                 val px = x ?: (vdW / 2)
                 val py = y ?: if (direction == "up" || direction == "down") verticalSwipeStartY() else (vdH / 2)
                 val (ex, ey) = swipeEndpoints(px, py, direction, action.distancePx)
-                wrap(vd.swipe(px, py, ex, ey, (action.durationMs ?: 400L).toInt()), "已在副屏向$direction 滑动")
+                wrap(vd.swipe(px, py, ex, ey, GestureBudget.swipeMs(action.durationMs).toInt()), "已在副屏向$direction 滑动")
             }
             ActionType.SCROLL, ActionType.SCROLL_TO -> {
                 // 副屏读不到滚动容器：用半屏等距滑动近似一次滚动
@@ -652,7 +663,9 @@ internal class ExecutionCore(
      *   保证任务在无 Shizuku/ADB 权限时仍能推进，且绝不真正调用 shell。
      */
     suspend fun executeShellAction(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
-        val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(false, "shell 命令为空", "", "")
+        val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(
+            false, "shell 命令为空", "", "", notDelivered = true, structural = true,
+        )
         // Termux 工具链命令（curl / python / jq 等）：adb shell 里没有这些工具，
         // 按命令名判定直接交给 Termux，不受 executionChannel 偏好影响
         if (ShellRules.isTermuxToolCommand(cmd)) {
@@ -676,7 +689,9 @@ internal class ExecutionCore(
             // 自由模式：命令是 AI 亲自写的，端侧认不出来也必须原样交下去——
             // 友好命令表只是端侧词汇，不是权限边界，在这里把它当白名单会把自由模式变成均衡模式
             ?: if (action.aiAuthored) cmd
-            else return com.phoneagent.engine.execution.VerifyResult(false, "未知 shell 命令: $cmd", "", "")
+            else return com.phoneagent.engine.execution.VerifyResult(
+                false, "未知 shell 命令: $cmd", "", "", notDelivered = true, structural = true,
+            )
         triggerCursorForShell(resolved)
         val real = runRealShell(resolved, action.uri)
         if (real.success) return real
@@ -707,17 +722,28 @@ internal class ExecutionCore(
     ): com.phoneagent.engine.execution.VerifyResult {
         val name = action.endpoint?.trim()?.lowercase().orEmpty()
         if (name.isEmpty()) {
-            return com.phoneagent.engine.execution.VerifyResult(false, "a11y 调用缺少 endpoint", "", "")
+            return com.phoneagent.engine.execution.VerifyResult(
+                false, "a11y 调用缺少 endpoint", "", "", notDelivered = true, structural = true,
+            )
         }
         if (ActionPolicy.endpointOf(name) == null) {
             return com.phoneagent.engine.execution.VerifyResult(
                 false,
                 "未知无障碍端点: $name。可用端点：${ActionPolicy.a11yEndpoints.joinToString("/") { it.name }}",
                 "", "",
+                notDelivered = true,
+                // 端点名写错：重跑多少次都找不到这个端点
+                structural = true,
             )
         }
         val args = action.args.orEmpty()
         val fail = { reason: String -> com.phoneagent.engine.execution.VerifyResult(false, reason, "", "") }
+        // 必填参数缺失属于请求本身不成立：动作没交付，且重跑同一请求也不会变好
+        val badRequest = { reason: String ->
+            com.phoneagent.engine.execution.VerifyResult(
+                false, reason, "", "", notDelivered = true, structural = true,
+            )
+        }
         val ok = { msg: String -> com.phoneagent.engine.execution.VerifyResult(true, msg, "", "") }
         fun intArg(key: String): Int? = args[key]?.trim()?.toIntOrNull()
         fun strArg(key: String): String? = args[key]?.trim()?.takeIf { it.isNotBlank() }
@@ -758,17 +784,17 @@ internal class ExecutionCore(
 
         return when (name) {
             "click" -> wrap(executor.click(
-                intArg("x") ?: return fail("click 缺少参数 x"),
-                intArg("y") ?: return fail("click 缺少参数 y"),
+                intArg("x") ?: return badRequest("click 缺少参数 x"),
+                intArg("y") ?: return badRequest("click 缺少参数 y"),
             ))
             "long_click" -> wrap(executor.longClick(
-                intArg("x") ?: return fail("long_click 缺少参数 x"),
-                intArg("y") ?: return fail("long_click 缺少参数 y"),
+                intArg("x") ?: return badRequest("long_click 缺少参数 x"),
+                intArg("y") ?: return badRequest("long_click 缺少参数 y"),
                 // 端点直调同样透传上层指定的按压时长（无则默认），与 long_press 动作口径一致
                 action.durationMs,
             ))
             "click_node" -> {
-                val raw = strArg("target") ?: return fail("click_node 缺少参数 target")
+                val raw = strArg("target") ?: return badRequest("click_node 缺少参数 target")
                 // 「id:资源名」走 viewId 精确匹配；否则按文字匹配，并把快照中心点作为同字控件并列时的兜底线索
                 val selector = if (raw.startsWith("id:", ignoreCase = true)) {
                     NodeSelector(viewId = raw.substringAfter(':').trim())
@@ -779,35 +805,47 @@ internal class ExecutionCore(
                 wrap(executor.clickNode(selector, longClick = long))
             }
             "swipe" -> wrap(executor.swipe(
-                intArg("x1") ?: return fail("swipe 缺少参数 x1"),
-                intArg("y1") ?: return fail("swipe 缺少参数 y1"),
-                intArg("x2") ?: return fail("swipe 缺少参数 x2"),
-                intArg("y2") ?: return fail("swipe 缺少参数 y2"),
+                intArg("x1") ?: return badRequest("swipe 缺少参数 x1"),
+                intArg("y1") ?: return badRequest("swipe 缺少参数 y1"),
+                intArg("x2") ?: return badRequest("swipe 缺少参数 x2"),
+                intArg("y2") ?: return badRequest("swipe 缺少参数 y2"),
                 (intArg("duration_ms") ?: 400).toLong(),
             ))
             "swipe_direction" -> {
-                val direction = strArg("direction") ?: return fail("swipe_direction 缺少参数 direction")
+                val direction = strArg("direction") ?: return badRequest("swipe_direction 缺少参数 direction")
                 val (ex, ey) = swipeEndpoints(ctx.screenWidth() / 2, ctx.screenHeight() / 2, direction,
                     intArg("distance_px"))
                 wrap(executor.swipe(ctx.screenWidth() / 2, ctx.screenHeight() / 2, ex, ey, 400))
             }
             "scroll" -> {
-                val direction = strArg("direction") ?: return fail("scroll 缺少参数 direction")
+                val direction = strArg("direction") ?: return badRequest("scroll 缺少参数 direction")
                 wrap(executor.scroll(strArg("target")?.let { elementOf(it) }, direction))
             }
-            "scroll_container" -> wrap(executor.scrollContainer(strArg("direction") ?: return fail("scroll_container 缺少参数 direction")))
-            "global_action" -> wrap(executor.globalAction(intArg("action") ?: return fail("global_action 缺少参数 action")))
+            "scroll_container" -> wrap(
+                executor.scrollContainer(
+                    strArg("direction") ?: return badRequest("scroll_container 缺少参数 direction"),
+                ),
+            )
+            "global_action" -> wrap(
+                executor.globalAction(
+                    intArg("action") ?: return badRequest("global_action 缺少参数 action"),
+                ),
+            )
             "back" -> wrap(executor.back())
             "home" -> wrap(executor.home())
             "recents" -> wrap(executor.recents())
-            "launch_app" -> wrap(executor.launchApp(strArg("package") ?: return fail("launch_app 缺少参数 package")))
+            "launch_app" -> wrap(executor.launchApp(strArg("package") ?: return badRequest("launch_app 缺少参数 package")))
             "open_uri" -> wrap(executor.openUri(
-                strArg("uri") ?: return fail("open_uri 缺少参数 uri"),
+                strArg("uri") ?: return badRequest("open_uri 缺少参数 uri"),
                 strArg("package"),
             ))
-            "open_settings_action" -> wrap(executor.openSettingsAction(strArg("action") ?: return fail("open_settings_action 缺少参数 action")))
+            "open_settings_action" -> wrap(
+                executor.openSettingsAction(
+                    strArg("action") ?: return badRequest("open_settings_action 缺少参数 action"),
+                ),
+            )
             "type_text" -> {
-                val text = args["text"]?.takeIf { it.isNotEmpty() } ?: return fail("type_text 缺少参数 text")
+                val text = args["text"]?.takeIf { it.isNotEmpty() } ?: return badRequest("type_text 缺少参数 text")
                 val elem = strArg("target")?.let { elementOf(it) }
                 val r = wrap(executor.typeText(text, elem, elem?.x, elem?.y))
                 // 端点直调同样受密码脱敏约束：留档/回注时正文换成占位符
@@ -1445,7 +1483,7 @@ internal class ExecutionCore(
         ActionType.CLICK, ActionType.TAP -> point(x, y, w, h)?.let { (cx, cy) -> listOf("input tap $cx $cy") }
 
         ActionType.LONG_CLICK, ActionType.LONG_PRESS -> point(x, y, w, h)?.let { (cx, cy) ->
-            listOf("input swipe $cx $cy $cx $cy ${action.durationMs ?: 800L}")
+            listOf("input swipe $cx $cy $cx $cy ${GestureBudget.holdMs(action.durationMs)}")
         }
 
         ActionType.SWIPE -> {
@@ -1454,7 +1492,7 @@ internal class ExecutionCore(
             val py = y ?: if (horizontal) (h / 2) else (h * SWIPE_START_Y_RATIO).toInt()
             val dist = action.distancePx ?: if (horizontal) w else h
             val (ex, ey) = EngineRules.swipeEndpoints(px, py, action.direction, dist, w, h)
-            listOf("input swipe ${clampX(px, w)} ${clampY(py, h)} ${clampX(ex, w)} ${clampY(ey, h)} ${action.durationMs ?: 400L}")
+            listOf("input swipe ${clampX(px, w)} ${clampY(py, h)} ${clampX(ex, w)} ${clampY(ey, h)} ${GestureBudget.swipeMs(action.durationMs)}")
         }
 
         ActionType.SWIPE_UP -> verticalSwipe(x, y, -h, w, h)
@@ -1594,7 +1632,9 @@ internal class ExecutionCore(
                 "",
                 notDelivered = true,
             )
-            else -> com.phoneagent.engine.execution.VerifyResult(false, "未知按键 $keycode", "", "")
+            else -> com.phoneagent.engine.execution.VerifyResult(
+                false, "未知按键 $keycode", "", "", notDelivered = true, structural = true,
+            )
         }
     }
 

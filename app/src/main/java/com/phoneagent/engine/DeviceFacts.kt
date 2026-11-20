@@ -32,17 +32,10 @@ internal class DeviceFacts(private val context: Context) {
      */
     private val inventory = AppInventory(
         fetchApps = {
-            runCatching {
-                val pm = context.packageManager
-                val launcher = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-                pm.queryIntentActivities(launcher, 0)
-                    .mapNotNull { info ->
-                        val label = info.loadLabel(pm).toString().trim()
-                        if (label.isBlank()) null else "$label(${info.activityInfo.packageName})"
-                    }
-                    .distinct()
-                    .sorted()
-            }.getOrDefault(emptyList())
+            // 走系统 API 的 MAIN+LAUNCHER 查询（<queries> 已声明），不依赖 QUERY_ALL_PACKAGES 授权。
+            // LauncherCatalog 已按显示名排序并按包名去重，这里只做展示格式拼接。
+            com.phoneagent.device.apps.LauncherCatalog.query(context)
+                .map { "${it.label}(${it.packageName})" }
         },
         fetchLabel = { pkg ->
             runCatching {

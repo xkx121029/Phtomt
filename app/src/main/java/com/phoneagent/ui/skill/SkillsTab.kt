@@ -67,7 +67,8 @@ import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.StatusPill
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -83,11 +84,13 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
     val snackbar = LocalSnackbar.current
     val skills by vm.skills.collectAsState()
     var batchMode by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf(mutableSetOf<String>()) }
+    // 必须是不可变 Set + 赋值更新：往普通 MutableSet 里 add/remove 不会触发 Compose 重组，
+    // 勾选后「已选 N 项」、勾选框与删除键可用态都会停在旧值
+    var selected by remember { mutableStateOf(emptySet<String>()) }
 
     // 顶部操作条
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AppTheme.metrics.pagePad),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -101,7 +104,7 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
             Spacer(Modifier.width(4.dp))
             Text("新增宏")
         }
-        OutlinedButton(onClick = { batchMode = !batchMode; selected.clear() }) {
+        OutlinedButton(onClick = { batchMode = !batchMode; selected = emptySet() }) {
             Text(if (batchMode) "完成" else "批量管理")
         }
     }
@@ -115,13 +118,13 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = AppTheme.metrics.pagePad, vertical = AppSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("已选 ${selected.size} 项", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = { selected.clear(); deleteArmed = false }) { Text("全不选") }
+            TextButton(onClick = { selected = emptySet(); deleteArmed = false }) { Text("全不选") }
             TextButton(
                 enabled = selected.isNotEmpty(),
                 onClick = {
@@ -129,8 +132,8 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
                         deleteArmed = true
                     } else {
                         deleteArmed = false
-                        val ids = selected.toSet()
-                        selected.clear()
+                        val ids = selected
+                        selected = emptySet()
                         vm.removeSkills(ids) { n ->
                             snackbar?.show("已删除 $n 个技能", SnackbarType.SUCCESS)
                         }
@@ -148,8 +151,8 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = AppTheme.metrics.pagePad),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
         item {
             Row(
@@ -192,7 +195,7 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
                 skill = skill,
                 batchMode = batchMode,
                 checked = skill.id in selected,
-                onCheckedChange = { on -> if (on) selected.add(skill.id) else selected.remove(skill.id) },
+                onCheckedChange = { on -> selected = if (on) selected + skill.id else selected - skill.id },
                 onOpen = { onOpenEditor(skill) },
                 onToggleEnabled = { vm.setSkillEnabled(skill.id, !skill.enabled) },
             )
@@ -215,8 +218,8 @@ internal fun SkillCard(
     AppItemCard(onClick = onOpen) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {
             if (batchMode) {
                 Checkbox(checked = checked, onCheckedChange = onCheckedChange)

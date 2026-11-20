@@ -758,6 +758,18 @@ object AppTheme {
         @Composable
         @ReadOnlyComposable
         get() = LocalAppColors.current
+
+    /** 当前皮肤：经典 / 石墨，见 [ThemeSkin] */
+    val skin: ThemeSkin
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalThemeSkin.current
+
+    /** 当前布局令牌：页边距、分区节奏、圆角档位、玻璃材质与入场节拍 */
+    val metrics: AppMetrics
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAppMetrics.current
 }
 
 // ========== 兼容旧调用点的具名颜色（值已对齐新配色，不再新增引用） ==========

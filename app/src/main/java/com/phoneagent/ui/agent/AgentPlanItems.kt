@@ -30,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationPulse
@@ -75,7 +74,7 @@ internal fun PlanStreamingItem(
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
-                .clip(RoundedCornerShape(AppRadii.Bubble))
+                .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                 .background(colors.messageBubbleAgent)
                 .padding(AppSpacing.Lg),
         ) {
@@ -109,7 +108,7 @@ internal fun PlanApprovedItem(item: AgentTimelineItem.PlanApproved) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.brandContainer)
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
@@ -135,7 +134,7 @@ internal fun PlanFailedItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
             .background(colors.errorContainer)
             .padding(AppSpacing.Lg),
     ) {

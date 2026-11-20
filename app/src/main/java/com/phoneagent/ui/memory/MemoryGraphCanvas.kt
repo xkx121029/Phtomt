@@ -63,6 +63,7 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
@@ -263,13 +264,15 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                     radius = r,
                     center = Offset(px, py),
                 )
-                // 内层高光
+                // 内层高光恒用白色半透明：它是叠在固定分类色上的打光层，不是主题色块
                 drawCircle(
                     color = Color.White.copy(alpha = 0.35f),
                     radius = r * 0.72f,
                     center = Offset(px, py),
                 )
 
+                // 节点标签恒用白色：节点填充是固定分类色（见 Color.kt「记忆图谱配色」），
+                // 两套皮肤下都不随色板变化，白字对它们的对比度始终一致，因此不走主题色板
                 val labelStyle = TextStyle(
                     color = Color.White,
                     fontSize = if (n.id == "root") 15.sp else 11.sp,
@@ -319,7 +322,7 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(AppSpacing.Md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(

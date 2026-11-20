@@ -38,16 +38,25 @@ class LocalDecisionEngine(
 
     /**
      * 返回本地生成的意图 [AgentIntent]；若无法本地处理返回 null（走云端）。
-     * @param snapshot 当前页面快照
      */
-    fun decide(snapshot: ScreenSnapshot): AgentIntent? {
+    fun decide(snapshot: ScreenSnapshot): AgentIntent? = decide(snapshot, null)
+
+    /**
+     * 同上，但复用观察段已推断出的页面类型。
+     *
+     * 观察段每步都会调 [PageTypeRules.inferPageType]，这里再算一次等于把同一份标签全量扫描两遍；
+     * [pageType] 为 null 时保持原行为自行推断，因此老调用点的行为完全不变。
+     */
+    // 两处前置守卫（自家页面 / 空元素树）都是早退，结构比合并成嵌套 if 更清楚
+    @Suppress("ReturnCount")
+    fun decide(snapshot: ScreenSnapshot, pageType: String?): AgentIntent? {
         // 本应用自己的界面不做本地决策：时间线/横幅里的"失败、重试、无法"等文案是 UI 词汇不是页面证据
         if (selfPackage != null && snapshot.packageName == selfPackage) return null
         // 元素树为空时同样不做本地决策：读不到页面 ≠ 页面是异常页，
         // 此时凭空按返回/点关闭只会盲转（真机 BUG 21/22 的帮凶），交还给云端走视觉链路
         if (snapshot.elements.isEmpty()) return null
-        val pageType = PageTypeRules.inferPageType(snapshot)
-        val action: AgentIntent? = when (pageType) {
+        val type = pageType ?: PageTypeRules.inferPageType(snapshot)
+        val action: AgentIntent? = when (type) {
             "dialog_overlay" -> handleDialog(snapshot)
             "ad_with_countdown" -> handleAd(snapshot)
             "loading" -> AgentIntent(intent = IntentType.WAIT, waitMs = 1200, reasoning = "页面加载中")

@@ -34,6 +34,7 @@ import com.phoneagent.ui.MainTabs
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 
 /**
@@ -65,7 +66,7 @@ internal fun SettingsTabs(
     ) {
         if (!embedded) {
             SettingsPageHeader("选项卡", onBack, subtitle = "工作台形态与底部导航的可见性、排序")
-            Spacer(Modifier.height(AppSpacing.Page))
+            Spacer(Modifier.height(AppTheme.metrics.pagePad))
         }
 
         // ===== 工作台形态 =====

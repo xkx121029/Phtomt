@@ -39,11 +39,11 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.ThemePalette
+import com.phoneagent.ui.theme.ThemeSkin
 
 // ========== 设置页导航条目（唯一定义点） ==========
 //
@@ -202,8 +202,20 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
                 subtitle = "配色 / 框线 / 光标与光效标定 / 选项卡",
                 tone = SettingsTone.Brand,
                 summary = { ctx ->
-                    val tabs = com.phoneagent.ui.MainTabs.visibleTabs(ctx.st.tabOrder, ctx.st.tabVisible).size
-                    "${ThemePalette.of(ctx.st.palette).label} · ${tabs} 个选项卡"
+                    // 摘要里的选项卡数量必须按当前工作台形态算：合并形态下对话已并入 Agent 页，
+                    // 不传 agentSurface 会按分开形态多算一个，与实际底部导航对不上
+                    val tabs = com.phoneagent.ui.MainTabs.visibleTabs(
+                        ctx.st.tabOrder,
+                        ctx.st.tabVisible,
+                        ctx.st.agentSurface,
+                    ).size
+                    // 石墨下配色轴不参与，摘要写皮肤名；写旧配色名会让人以为石墨还吃配色设置
+                    val look = if (ThemeSkin.of(ctx.st.skin).isGraphite) {
+                        ThemeSkin.GRAPHITE.label
+                    } else {
+                        ThemePalette.of(ctx.st.palette).label
+                    }
+                    "$look · ${tabs} 个选项卡"
                 },
             ),
         ),
@@ -258,7 +270,8 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
     val permissions by vm.permissions.collectAsState()
     // 权限状态由 ViewModel 聚合，进设置页时刷一次，入口摘要才不会是空的
     LaunchedEffect(Unit) { vm.refreshPermissions(context) }
-    val pending = permissions.count { !it.granted }
+    // 可选权限（如使用情况访问权）默认不开，不计入待办，否则设置首页永远显示「未就绪」
+    val pending = permissions.count { !it.granted && !it.optional }
     val known = permissions.isNotEmpty()
     return SettingsOverviewCtx(
         st = st,
@@ -448,7 +461,7 @@ private fun SettingsRailItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xxs)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(AppRadii.Tile))
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                 else androidx.compose.ui.graphics.Color.Transparent,

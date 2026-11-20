@@ -244,7 +244,15 @@ android {
         vectorDrawables { useSupportLibrary = true }
         // 端侧 3B 视觉引擎的预编译 .so 仅有 arm64-v8a（libllama/libmtmd/libggml*），
         // 统一限定 ABI：debug 与 release 一致，避免模拟器 ABI 装上后 dlopen 失败
-        ndk { abiFilters += listOf("arm64-v8a") }
+        //
+        // 视觉验收专用旁路：显式传 -PincludeX86_64=true 时追加 x86_64，让 APK 能装进 x86_64 模拟器。
+        // 默认（不传该属性）产物仍是纯 arm64-v8a，供日常安装与分发使用，行为与此前一致。
+        // 注意：x86_64 变体不含端侧 .so，端侧视觉引擎在此变体下不可用，仅用于 UI 观感核对。
+        val includeX86_64 = (providers.gradleProperty("includeX86_64").orNull ?: "false").toBoolean()
+        ndk {
+            abiFilters += "arm64-v8a"
+            if (includeX86_64) abiFilters += "x86_64"
+        }
     }
 
     buildTypes {

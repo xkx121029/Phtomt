@@ -238,6 +238,13 @@ internal class EngineStore {
     /** 连续拒绝 AI 提前"任务完成"的次数，防死循环 */
     var earlyDoneRejections = 0
 
+    /** 连续拒绝"输入未提交就完成"的次数，防死循环 */
+    var inputCommitRejections = 0
+    /** 因"完成依据是瞬时提示"拒绝完成的次数，防死循环 */
+    var completionRecheckRejections = 0
+    /** 本任务最后一处已填入但尚未提交的输入（完成前必须真的提交，见 InputCommitRules） */
+    var pendingInput: com.phoneagent.engine.execution.PendingInput? = null
+
     // ---- 长线任务工作记忆（文档 v2.2 5.2）----
     /**
      * 本次任务的任务记忆：目标 / 用户要求 / 已验证做法。
@@ -377,6 +384,70 @@ internal class EngineStore {
     /** decision 阶段对 hint 目标视觉定位得到的像素坐标，供转译层本次使用 */
     @Volatile
     var lastVisualCoordinate: Pair<Int, Int>? = null
+
+    /**
+     * 本步已经抓到的截图与已识别到的控件，仅供调试面板留档复用。
+     *
+     * 留档是纯展示：绝不能为了画一张带框的图再跑一次端侧 3B 全量推理。
+     * 那条路径没有步预算约束（原生看门狗 120s），会把单步耗时直接顶穿。
+     * 每步开始时由主循环清空，决策段把已有产物写进来。
+     */
+    @Volatile
+    var stepShotScreenshot: android.graphics.Bitmap? = null
+
+    @Volatile
+    var stepShotRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
+
+    /**
+     * 把「属于一次任务」的纯数据归零。
+     *
+     * 之所以放在这里而不是 AgentEngine：这些字段就声明在本类里，复位逻辑与声明相邻，
+     * 新增任务级字段时不容易漏（漏掉的表现是上一任务的残留串进下一任务，最难复现）。
+     * 引擎侧的 [AgentEngine.resetTaskScopedState] 只负责它自己持有的协作者
+     * （页面记忆采集器、视觉缓存、护栏、Mailbox 等）。
+     */
+    fun resetTaskScoped() {
+        // 各类连续计数
+        sayStreak = 0
+        invalidCommandStreak = 0
+        skillErrorStreak = 0
+        browseMissingStreak = 0
+        earlyDoneRejections = 0
+        inputCommitRejections = 0
+        completionRecheckRejections = 0
+        pendingInput = null
+        modeDenyStreak = 0
+        consecutiveFailures = 0
+        sensitiveTakeoverStreak = 0
+        decisionFailureStreak = 0
+        // 确认状态与暂存输出
+        shellApprovedForTask = null
+        lastShellOutput = ""
+        pendingShellOutput = ""
+        lastSkillOutput = ""
+        // 宏接力：上个任务没跑完的宏步骤绝不串到本任务
+        macroQueue = emptyList()
+        macroArgs = emptyMap()
+        macroResults = emptyList()
+        macroName = ""
+        macroDispatched = 0
+        // 各类按页面/任务缓存的素材
+        pageMemoryHintFingerprint = ""
+        pageMemoryHintText = ""
+        anomalyHintFingerprint = ""
+        currentAnomalyEntry = null
+        lastSnapshot = ScreenSnapshot()
+        lastVisualCoordinate = null
+        lastDistilledTaskId = -1L
+        memoryRawCache = null
+        sessionContextCache = null
+        foregroundPkgCounts.clear()
+        touchedRuleIds.clear()
+        // 调试留档槽：上一步的截图/控件绝不能当成这一步的证据
+        stepShotScreenshot = null
+        stepShotRegions = null
+        _decisionStream.value = ""
+    }
 }
 
 /**

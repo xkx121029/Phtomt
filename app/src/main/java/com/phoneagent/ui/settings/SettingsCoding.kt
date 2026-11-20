@@ -72,7 +72,7 @@ internal fun SettingsCoding(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("编码", onBack, subtitle = "Node 运行时 · 构建环境 · 审批档位 · 工作区")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         CodingEnvEntrySection(onOpen = { buzz(); onOpenEnv() })
         Spacer(Modifier.height(AppSpacing.Lg))

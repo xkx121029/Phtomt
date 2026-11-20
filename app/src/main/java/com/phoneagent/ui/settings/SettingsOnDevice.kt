@@ -33,6 +33,7 @@ import com.phoneagent.device.vision.VisionModelDownloader
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 
 /**
@@ -77,7 +78,7 @@ internal fun SettingsOnDevice(st: SettingsState, save: () -> Unit, onBack: () ->
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("端侧视觉", onBack, subtitle = "本地 3B 模型，识别在本机完成，截图不出设备")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // ========== A 模型状态 ==========
         SettingsSection(

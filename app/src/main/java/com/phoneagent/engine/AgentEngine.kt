@@ -88,6 +88,7 @@ import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION_CHATS
 import com.phoneagent.engine.docs.retrieveSafely
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DEVICE_QUERY_OUTPUT
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DECISION_TIMEOUT_STREAK
+import com.phoneagent.engine.runtime.EngineLimits.MAX_DIALOG_MESSAGES
 import com.phoneagent.engine.runtime.EngineLimits.MAX_DIALOG_TURNS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_PARAM_REFILL
@@ -240,6 +241,9 @@ class AgentEngine(
         treeStats = { AgentAccessibilityService.instance?.lastTreeStats },
         mainSeesImage = { s -> decisionConfig.mainSeesImage(s) },
     )
+    /** 「动作即观察」统计：观察段与执行段共用同一份，指标才对得上（原先是全局单例） */
+    private val afterObservationStats = com.phoneagent.engine.loop.AfterObservationStats()
+
     /**
      * 观察阶段执行器（阶段 B2）：读屏 → 掉线检测 → 广告过滤 → 标注截图 → 敏感页 → 页面记忆。
      * 带 continue/return 的控制流统一返回 StepOutcome，主循环不再内联这些分支。
@@ -270,6 +274,7 @@ class AgentEngine(
             emitHintRequest = { reason -> _userHintRequest.tryEmit(reason) },
             awaitUserHint = { userGate.awaitUserHint() },
         ),
+        afterStats = afterObservationStats,
     )
     /**
      * 决策阶段执行器（阶段 B3）：宏注入 → 端侧/云端决策 → 技能归一化 → 动作模式门控。
@@ -476,7 +481,14 @@ class AgentEngine(
             setConsecutiveFailures = { consecutiveFailures = it },
             invalidCommandStreak = { invalidCommandStreak },
             setInvalidCommandStreak = { invalidCommandStreak = it },
+            pendingInput = { pendingInput },
+            setPendingInput = { pendingInput = it },
+            inputCommitRejections = { inputCommitRejections },
+            setInputCommitRejections = { inputCommitRejections = it },
+            completionRecheckRejections = { completionRecheckRejections },
+            setCompletionRecheckRejections = { completionRecheckRejections = it },
         ),
+        afterStats = afterObservationStats,
     )
     /** 本次任务起跑时的设置快照（执行阶段做记忆提炼时用，保证与决策同源） */
     private var taskSettingsVal: AppSettings.Settings? = null
@@ -666,6 +678,9 @@ class AgentEngine(
         set(value) { store.reviewOverride = value }
     private var currentTaskName by store::currentTaskName
     private var earlyDoneRejections by store::earlyDoneRejections
+    private var inputCommitRejections by store::inputCommitRejections
+    private var completionRecheckRejections by store::completionRecheckRejections
+    private var pendingInput by store::pendingInput
 
     private var currentTaskMemory: com.phoneagent.data.store.TaskMemoryEntry?
         get() = store.currentTaskMemory
@@ -1230,28 +1245,14 @@ class AgentEngine(
      * 注意：依赖入参的状态（计划本身、步数上限）不在此处，留在 [runInner] 里按 plan 赋值。
      */
     private fun resetTaskScopedState() {
-        // AI 上下文与各类连续计数
+        // 纯数据字段（各类连续计数 / 宏接力 / 页面缓存 / 留档槽）的归零收在 EngineStore 内：
+        // 复位逻辑与字段声明相邻，新增任务级字段时不容易漏
+        store.resetTaskScoped()
+        // 以下为引擎自己持有的 Flow、协作者与信箱
         _conversation.value = emptyList()
-        consecutiveFailures = 0
-        earlyDoneRejections = 0
-        invalidCommandStreak = 0
-        skillErrorStreak = 0
-        browseMissingStreak = 0
-        decisionFailureStreak = 0
         decisionTimeoutStreak = 0
-        lastShellOutput = ""
-        lastSkillOutput = ""
-        // 宏接力状态随任务复位：上个任务没跑完的宏步骤绝不串到本任务
-        macroQueue = emptyList()
-        macroArgs = emptyMap()
-        macroResults = emptyList()
-        macroName = ""
-        macroDispatched = 0
-        lastSnapshot = ScreenSnapshot()
         // 页面记忆：清上一任务的内存快照与提示缓存（DataStore 里的历史记忆保留，供本任务命中参考）
         pageMemoryRecorder.reset()
-        pageMemoryHintFingerprint = ""
-        pageMemoryHintText = ""
         // 视觉缓存随任务复位：上一个任务的视觉产物（含任务目的性提问的描述）不带入本任务
         visionCache.invalidate()
         // 主循环护栏（广告点击 / 同签名熔断 / 无进展看门狗 / 端侧决策节流）按任务归零
@@ -1259,31 +1260,17 @@ class AgentEngine(
         // 端侧决策引擎的连续本地计数也按任务复位：不清的话上一任务结尾的高计数
         // 会让新任务开头被强制走一次云端（防死循环计数跨任务残留）
         localDecision.reset()
-        sensitiveTakeoverStreak = 0
         // 清空上一任务的记忆事件流（本任务产生的记忆卡片只发生在本次执行期间）
         _memoryEvents.value = emptyList()
         // 同样清掉上一任务里 AI 说过的话，避免新任务开头飘着上一条气泡
         _sayEvents.value = emptyList()
-        sayStreak = 0
-        // 动作模式与本任务的确认状态一并复位：
-        // 上一任务的「已批准自写命令」绝不能带到下一个任务（那等于永久授权）
-        shellApprovedForTask = null
+        // 待确认交互一并收掉，并排空信箱里可能残留的答复
         _pendingShellCommand.value = null
-        modeDenyStreak = 0
         while (shellApprovalMailbox.tryReceive().isSuccess) { /* drain */ }
-        // 不可逆动作确认门同样按任务复位：上一任务的待确认动作与残留答复不能带进本任务
         _pendingActionConfirmation.value = null
         while (actionConfirmationMailbox.tryReceive().isSuccess) { /* drain */ }
-        // 视觉坐标跨任务作废：上一任务留下的定位坐标对本次页面没有意义
-        lastVisualCoordinate = null
-        lastDistilledTaskId = -1L
-        memoryRawCache = null
-        // 前台应用计数与规则命中计数同样按任务归零：它们描述的是"这一次任务"，跨任务累计会算错作用域
-        foregroundPkgCounts.clear()
-        touchedRuleIds.clear()
-        // 环境与会话上下文按任务重算：应用数量可能变了，上一轮任务清单也变了
+        // 环境与应用清单按任务重算：应用数量可能变了，上一轮任务清单也变了
         deviceFacts.resetAppCache()
-        sessionContextCache = null
     }
 
     private suspend fun runInner(
@@ -1489,6 +1476,9 @@ class AgentEngine(
             execute = executionPhase,
         )
         taskRunner.run(maxSteps) { s ->
+            // 留档槽按步清空：上一步的截图/控件绝不能当成这一步的证据展示
+            store.stepShotScreenshot = null
+            store.stepShotRegions = null
             val session = com.phoneagent.engine.loop.StepSession(
                 task = task,
                 plan = plan,
@@ -1497,9 +1487,61 @@ class AgentEngine(
                 lang = lang,
                 messages = messages,
             ).also { it.a11ySeenAlive = a11ySeenAlive }
-            stepRunner.run(session)
+            val stepT0 = System.nanoTime()
+            val outcome = stepRunner.run(session)
+            val elapsedMs = (System.nanoTime() - stepT0) / 1_000_000
+            val overBudget = com.phoneagent.engine.loop.StepBudget.exceeded(elapsedMs)
+            telemetry.recordStepMs(elapsedMs, overBudget)
+            if (overBudget && outcome == com.phoneagent.engine.loop.StepOutcome.Continue) {
+                uiBridge.log(
+                    AgentLog.Level.WARN,
+                    "第 $s 步耗时 ${elapsedMs / 1000}s，超出单步预算" +
+                        "（${com.phoneagent.engine.loop.StepBudget.BUDGET_MS / 1000}s）",
+                )
+                // 注入下一步决策：整步慢到超预算时，原样重复只会把任务时间继续耗光
+                messages.add(
+                    ChatMessageDto(
+                        role = "assistant",
+                        content = listOf(
+                            ContentPart(
+                                type = "text",
+                                text = com.phoneagent.engine.loop.StepBudget.hint(s, elapsedMs),
+                            ),
+                        ),
+                    ),
+                )
+            }
+            // 本体同步收缩：发送端只截一份副本，本体不裁会让长线任务把全部历史留在内存里
+            trimDialogMessages(messages)
+            outcome
         }
 
+    }
+
+    /**
+     * 裁剪决策消息本体（[messages]）的早期对话。
+     *
+     * [chatHistory] 只截断「发给模型的那一份」，本体若一直 append，长线任务会在内存里挂着
+     * 全部历史（每条都含整页页面文本）。这里按与发送端相同的窗口原地收缩，
+     * 系统消息（铁律 / 技能 / 通道说明）全部保留。
+     */
+    private fun trimDialogMessages(messages: MutableList<ChatMessageDto>) {
+        val dialog = messages.count { it.role != "system" }
+        if (dialog <= MAX_DIALOG_MESSAGES) return
+        // 从后往前保留最近 MAX_DIALOG_MESSAGES 条非系统消息，系统消息原样留下
+        val keep = java.util.ArrayDeque<ChatMessageDto>(MAX_DIALOG_MESSAGES + 8)
+        var remaining = MAX_DIALOG_MESSAGES
+        for (i in messages.indices.reversed()) {
+            val m = messages[i]
+            if (m.role == "system") continue
+            if (remaining > 0) {
+                keep.addFirst(m)
+                remaining--
+            }
+        }
+        val trimmed = messages.filter { it.role == "system" } + keep
+        messages.clear()
+        messages.addAll(trimmed)
     }
 
     /**
@@ -1760,6 +1802,9 @@ class AgentEngine(
                 ?.let { AgentPrompts.docsBlock(currentLang, it) }
                 .orEmpty()
         } else ""
+        // 页面语境脱敏只做一次：下面「补检索」与提示词正文用的是同一段文本，
+        // 原先各算一次，长页面下等于多扫一遍全量数字
+        val safeContextHint = DataSanitizer.sanitize(annotated.contextHint)
         // 执行期方法文档：按「任务 + 当前前台应用」在本地检索（离线可用，网络只做后台增量同步）。
         // 前台包名就是当前的页面状态——任务中途切进目标应用时，能换到那个应用的方法文档。
         // 命中才注入紧凑块（预算 450 字符）；第一步没命中时明确说一次"没有方法文档"，
@@ -1772,8 +1817,8 @@ class AgentEngine(
         )
         // 任务描述本身太笼统时（比如「帮我处理一下」），补一次「当前页面语境」检索；
         // 只在首次没命中时补查，避免把页面噪声词混进正常检索把结果带偏。
-        if (stepDocs.isEmpty() && annotated.contextHint.isNotBlank()) {
-            val pageContext = DataSanitizer.sanitize(annotated.contextHint).take(30)
+        if (stepDocs.isEmpty() && safeContextHint.isNotBlank()) {
+            val pageContext = safeContextHint.take(30)
             if (pageContext.isNotBlank()) {
                 stepDocs = methodDocRetriever.retrieveSafely(
                     task = "$task $pageContext",
@@ -1803,7 +1848,7 @@ class AgentEngine(
             currentStep = if (!planSteps.isNullOrBlank()) "按计划执行下一步" else "根据当前页面执行下一步",
             lastStepResult = lastStepResultText(currentLang),
             consecutiveFailures = consecutiveFailures,
-            contextHint = DataSanitizer.sanitize(annotated.contextHint),
+            contextHint = safeContextHint,
             // 记忆注入：让 AI 每一步都能看到已知偏好与既往经验，而不是只在规划阶段看得到
             memory = memoryText,
             // 经验规则注入：只放"与当前应用/任务相关"的那几条（见 RuleScoper），其余留在记忆里
@@ -2029,6 +2074,10 @@ class AgentEngine(
 
         val reviewOn = (reviewOverride ?: settingsVal.enableReview) &&
             intent.intent != IntentType.GIVE_UP && EngineRules.needsReviewIntent(intent, snapshot)
+        // 留档复用槽：本步决策段已经付过成本的截图与控件直接留给调试面板，
+        // 执行段不必再为了「画一张带框的图」重跑一次读屏 + 视觉推理
+        store.stepShotScreenshot = screenshot
+        store.stepShotRegions = localRegions
         return if (reviewOn) {
             // 独立审核者复核：防止执行者脑补现状/点到不存在的控件（仅关键/无元素证据意图进入审核）
             uiBridge.log(AgentLog.Level.INFO, "审核者复核意图…")
@@ -2619,6 +2668,7 @@ class AgentEngine(
         before: String,
         after: String,
         detail: String = "",
+        durationMs: Long = 0,
     ) {
         val rec = StepRecord(
             step = step,
@@ -2630,6 +2680,7 @@ class AgentEngine(
             verificationResult = verification,
             beforeFingerprint = before,
             afterFingerprint = after,
+            durationMs = durationMs,
             isConfirmed = verification == VerifyRules.STATUS_VERIFIED,
             // 消费本步暂存的 shell 输出（非 shell 步为空），并立即清空避免串到下一步
             shellOutput = pendingShellOutput.also { pendingShellOutput = "" },
@@ -2643,25 +2694,30 @@ class AgentEngine(
     }
 
     /**
-     * 每步执行完后留档最新一步：截屏 + 本地视觉模型框选 + 拼装执行说明。
+     * 每步执行完后留档最新一步：截图 + 已识别控件框选 + 拼装执行说明。
      * 保留在 [StepShot] 中，新任务开始时会由 [start] 清空覆盖。
-     * 框选标注独立于视觉模式，始终用本地视觉模型（OCR）执行，便于对照原图/识别图后续开发。
+     *
+     * 截图与控件均取自本步决策段（即「AI 看到的那一帧」），与框选结果严格同源，
+     * 不会出现「框是按上一页算的、图画的是下一页」的错位。
+     *
+     * 硬约束：这里**不再自己跑视觉推理**。原实现每步都 `observe()` + 全屏截图 +
+     * `detectControls()`，而 `detectControls` 的 `timeoutMs` 只是兼容参数（真实超时是原生层
+     * 120s 看门狗），等于给纯展示逻辑留了一条能把单步预算顶穿的路径。
      */
     private suspend fun stepShotCapture(step: Int, action: AgentAction, verified: Boolean) {
-        // 本方法只负责「留档展示」，与任务推进无关：截图或跨进程识别失败时整段放弃即可，
+        // 本方法只负责「留档展示」，与任务推进无关：任何失败都整段放弃，
         // 不能让展示链路的问题把人拖进任务异常终止
         tryOrNull("步骤留档失败") {
-            val snapshot = observe()
-            val shot = tryOrNull("截图失败") { com.phoneagent.device.screen.ScreenCapture.capture() }
-            var annotated: Bitmap? = null
-            if (shot != null) {
-                // 端侧控件识别已进程内化；这里调用引擎并画框（v2.2.1 截图标注）
-                val controls = com.phoneagent.device.vision.OnDeviceVision.detectControls(
-                    context = appContext,
-                    bitmap = shot,
-                    timeoutMs = EXTERNAL_VISION_TIMEOUT,
-                )
-                if (controls.isNotEmpty()) annotated = com.phoneagent.device.vision.ControlFormat.drawBoxes(shot, controls)
+            // 本步没有截图（复用快照路径 / 未开启截图 / 端侧决策）时补抓一帧：
+            // 抓帧只是 IPC + 解码（几十毫秒），比一次视觉推理便宜两个数量级
+            val shot = store.stepShotScreenshot
+                ?: tryOrNull("截图失败") { com.phoneagent.device.screen.ScreenCapture.capture() }
+            // 控件只在决策段真的识别过时才有；没有就只放原图，绝不为了画框补跑一次推理
+            val controls = store.stepShotRegions
+            val annotated = if (shot != null && !controls.isNullOrEmpty()) {
+                com.phoneagent.device.vision.ControlFormat.drawBoxes(shot, controls)
+            } else {
+                null
             }
             _stepShot.value = StepShot(
                 step = step,
@@ -2744,9 +2800,11 @@ class AgentEngine(
         action: AgentAction,
         verify: com.phoneagent.engine.execution.VerifyResult,
     ) {
+        // 失败按交付状态分开计数：没送达 vs 送达未生效，对应"修通道"与"修策略"两种不同的修法
+        telemetry.recordDelivery(verify.delivery)
         recordStep(
             step, action, VerifyRules.historyStatus(verify.success),
-            verify.beforeFingerprint, verify.afterFingerprint, verify.reason,
+            verify.beforeFingerprint, verify.afterFingerprint, verify.reason, verify.elapsedMs,
         )
     }
 

@@ -40,7 +40,6 @@ import com.phoneagent.device.screen.ScreenSharingService
 import com.phoneagent.ui.components.OverlayScrim
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.emptyStateTextColor
@@ -88,7 +87,7 @@ internal fun AgentPreviewPanel(
             modifier = Modifier
                 .padding(AppSpacing.Lg)
                 .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(AppRadii.Overlay))
+                .clip(RoundedCornerShape(AppTheme.metrics.overlayRadius))
                 .background(colors.surfaceRaised)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -101,7 +100,7 @@ internal fun AgentPreviewPanel(
                 Box(
                     modifier = Modifier
                         .size(8.dp)
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .background(runningIndicatorColor()),
                 )
                 Spacer(Modifier.width(AppSpacing.Sm))
@@ -122,7 +121,7 @@ internal fun AgentPreviewPanel(
             }
             Spacer(Modifier.height(AppSpacing.Md))
 
-            val shellShape = RoundedCornerShape(AppRadii.Overlay)
+            val shellShape = RoundedCornerShape(AppTheme.metrics.overlayRadius)
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
@@ -141,7 +140,7 @@ internal fun AgentPreviewPanel(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(7.dp)
-                            .clip(RoundedCornerShape(AppRadii.Bubble)),
+                            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius)),
                     )
                 } else {
                     Column(
@@ -168,7 +167,7 @@ internal fun AgentPreviewPanel(
                         .align(Alignment.TopCenter)
                         .padding(top = AppSpacing.Sm)
                         .size(6.dp)
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .background(phoneCameraHoleColor(active = frame != null)),
                 )
             }

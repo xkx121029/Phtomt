@@ -44,6 +44,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -102,7 +103,7 @@ fun MarkdownPreview(
                     overflow = TextOverflow.Ellipsis,
                 )
                 is MdB.Para -> Text(
-                    rich(b.text),
+                    rich(b.text, MaterialTheme.colorScheme.primary),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = maxLines ?: Int.MAX_VALUE,
@@ -118,7 +119,7 @@ fun MarkdownPreview(
                                 modifier = Modifier.width(24.dp),
                             )
                             Text(
-                                rich(itm),
+                                rich(itm, MaterialTheme.colorScheme.primary),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = maxLines ?: Int.MAX_VALUE,
@@ -132,7 +133,7 @@ fun MarkdownPreview(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(AppRadii.Chip))
-                        .padding(10.dp),
+                        .padding(AppSpacing.Sm),
                 ) {
                     Text(
                         b.code.trimEnd(),
@@ -150,7 +151,7 @@ fun MarkdownPreview(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        rich(b.text),
+                        rich(b.text, MaterialTheme.colorScheme.primary),
                         style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = maxLines ?: Int.MAX_VALUE,
@@ -390,12 +391,16 @@ private fun sampleSize(w: Int, h: Int): Int {
 
 private const val INLINE_CODE_BG = 0x20_78909C.toInt()
 
-/** 行内链接色：与品牌色一致（[rich] 不是 Composable，拿不到 MaterialTheme） */
+/**
+ * 行内链接的兜底色：与经典主题品牌绿一致。
+ * UI 侧会显式传 `MaterialTheme.colorScheme.primary`（见 [MarkdownPreview] 的调用点）；
+ * 这个默认值只兜住非 Composable 环境下调用 [rich] 的情况，石墨皮肤下走不到。
+ */
 private const val INLINE_LINK_COLOR = 0xFF0E7C66.toInt()
 
-/** 行内链接的样式：品牌色 + 下划线 */
-private fun linkStyles() = TextLinkStyles(
-    style = SpanStyle(color = Color(INLINE_LINK_COLOR), textDecoration = TextDecoration.Underline),
+/** 行内链接的样式：主题色 + 下划线 */
+private fun linkStyles(linkColor: Color) = TextLinkStyles(
+    style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
 )
 
 /** 解析出来的行内链接；[end] 是 `)` 之后的下标 */
@@ -434,24 +439,16 @@ private fun parseInlineLink(text: String, start: Int): MdLink? {
  * 判定顺序即优先级：`**` / `~~` 这类双字符标记必须先于单字符判定，否则开头会被吃成斜体。
  * 行内代码里的一切都当字面量。
  */
-internal fun rich(text: String): AnnotatedString = buildAnnotatedString {
+internal fun rich(
+    text: String,
+    linkColor: Color = Color(INLINE_LINK_COLOR),
+): AnnotatedString = buildAnnotatedString {
     var bold = false
     var italic = false
     var strike = false
     var code = false
     val sb = StringBuilder()
-    fun flush() {
-        if (sb.isEmpty()) return
-        val t = sb.toString(); sb.setLength(0)
-        val style = SpanStyle(
-            fontWeight = if (bold) FontWeight.Bold else null,
-            fontStyle = if (italic) FontStyle.Italic else null,
-            textDecoration = if (strike) TextDecoration.LineThrough else null,
-            fontFamily = if (code) FontFamily.Monospace else null,
-            background = if (code) Color(INLINE_CODE_BG) else Color.Unspecified,
-        )
-        if (style == SpanStyle()) append(t) else withStyle(style) { append(t) }
-    }
+    val flush = { flushRun(sb, spanStyleFor(bold, italic, strike, code)) }
     var i = 0
     while (i < text.length) {
         when {
@@ -459,19 +456,40 @@ internal fun rich(text: String): AnnotatedString = buildAnnotatedString {
             code -> { sb.append(text[i]); i += 1 }
             text.startsWith("**", i) -> { flush(); bold = !bold; i += 2 }
             text.startsWith("~~", i) -> { flush(); strike = !strike; i += 2 }
-            text[i] == '[' -> {
-                val link = parseInlineLink(text, i)
-                if (link == null) {
-                    sb.append(text[i]); i += 1
-                } else {
-                    flush()
-                    withLink(LinkAnnotation.Url(url = link.url, styles = linkStyles())) { append(link.label) }
-                    i = link.end
-                }
-            }
+            text[i] == '[' -> { flush(); i = appendInlineLink(text, i, linkColor) }
             text[i] == '*' -> { flush(); italic = !italic; i += 1 }
             else -> { sb.append(text[i]); i += 1 }
         }
     }
     flush()
+}
+
+/** 把累积的普通文本按当前样式落进 builder；样式全空时直接追加，避免无意义的 span */
+private fun AnnotatedString.Builder.flushRun(sb: StringBuilder, style: SpanStyle) {
+    if (sb.isEmpty()) return
+    val t = sb.toString(); sb.setLength(0)
+    if (style == SpanStyle()) append(t) else withStyle(style) { append(t) }
+}
+
+/** 扫描过程中翻转的行内样式 → span 样式 */
+private fun spanStyleFor(bold: Boolean, italic: Boolean, strike: Boolean, code: Boolean) = SpanStyle(
+    fontWeight = if (bold) FontWeight.Bold else null,
+    fontStyle = if (italic) FontStyle.Italic else null,
+    textDecoration = if (strike) TextDecoration.LineThrough else null,
+    fontFamily = if (code) FontFamily.Monospace else null,
+    background = if (code) Color(INLINE_CODE_BG) else Color.Unspecified,
+)
+
+/**
+ * 解析 `[文字](网址)` 并写入链接 span，返回继续扫描的下标。
+ * 落单的 `[` 不算链接，按普通字符追加（流式输出里半截链接是常态）。
+ */
+private fun AnnotatedString.Builder.appendInlineLink(text: String, start: Int, linkColor: Color): Int {
+    val link = parseInlineLink(text, start)
+    if (link == null) {
+        append(text[start])
+        return start + 1
+    }
+    withLink(LinkAnnotation.Url(url = link.url, styles = linkStyles(linkColor))) { append(link.label) }
+    return link.end
 }

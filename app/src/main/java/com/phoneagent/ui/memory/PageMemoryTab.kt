@@ -35,6 +35,7 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SectionCard
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
 import com.phoneagent.ui.icons.AppIcons
@@ -109,7 +110,7 @@ internal fun PageMemoryList(
             // 两列网格：长期累计下密度优先，一屏能看更多页面
             pages.chunked(2).forEach { rowItems ->
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     rowItems.forEach { page ->

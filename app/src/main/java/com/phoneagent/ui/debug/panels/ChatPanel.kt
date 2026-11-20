@@ -67,7 +67,8 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.debug.DebugEmptyHint
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.appBorder
@@ -85,7 +86,7 @@ internal fun ChatPanel(messages: List<ConversationMessage>) {
         DebugEmptyHint("暂无对话：运行智能体后，这里显示与模型的完整往返")
         return
     }
-    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
         // timestamp:role 可能重复（同一毫秒多条），叠加 index 保证 LazyColumn key 唯一，避免滚动时 key 冲突闪退
         itemsIndexed(messages, key = { i, m -> "${m.timestamp}:${m.role}:$i" }) { _, msg ->
             ChatBubble(msg)
@@ -107,23 +108,23 @@ private fun ChatBubble(msg: ConversationMessage) {
                 .background(
                     color = if (isUser) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceContainerLow,
                     shape = RoundedCornerShape(
-                        topStart = AppRadii.Bubble,
-                        topEnd = AppRadii.Bubble,
-                        bottomStart = if (isUser) AppRadii.Bubble else AppRadii.Chip,
-                        bottomEnd = if (isUser) AppRadii.Chip else AppRadii.Bubble,
+                        topStart = AppTheme.metrics.itemRadius,
+                        topEnd = AppTheme.metrics.itemRadius,
+                        bottomStart = if (isUser) AppTheme.metrics.itemRadius else AppTheme.metrics.chipRadius,
+                        bottomEnd = if (isUser) AppTheme.metrics.chipRadius else AppTheme.metrics.itemRadius,
                     ),
                 )
                 .appBorder(
                     width = 1.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                     shape = RoundedCornerShape(
-                        topStart = AppRadii.Bubble,
-                        topEnd = AppRadii.Bubble,
-                        bottomStart = if (isUser) AppRadii.Bubble else AppRadii.Chip,
-                        bottomEnd = if (isUser) AppRadii.Chip else AppRadii.Bubble,
+                        topStart = AppTheme.metrics.itemRadius,
+                        topEnd = AppTheme.metrics.itemRadius,
+                        bottomStart = if (isUser) AppTheme.metrics.itemRadius else AppTheme.metrics.chipRadius,
+                        bottomEnd = if (isUser) AppTheme.metrics.chipRadius else AppTheme.metrics.itemRadius,
                     ),
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
         ) {
             Text(
                 msg.content,

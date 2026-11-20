@@ -307,7 +307,11 @@ private fun SettingsPageContent(
                     pickRole?.let { applyRoleModel(st, it, endpointId, name) }
                     onPickRole(null)
                     onPage(pickReturnPage)
+                    // 挑完直接落库：模型库页没有保存按钮，用户选完通常就直接退出设置了，
+                    // 不在这里存会让「已选模型」看起来生效、重进设置却回退到旧值
+                    saveNonAiSettings()
                 },
+                save = saveNonAiSettings,
             )
             SettingsPage.ONDEVICE -> SettingsOnDevice(st, save = saveNonAiSettings, onBack = backToHome)
 
@@ -426,6 +430,8 @@ class SettingsState(initial: AppSettings.Settings) {
     var glassTintOffset by mutableIntStateOf(initial.glassTintOffset)
     /** 界面风格预设：classic / workbench，见 [com.phoneagent.ui.theme.UiStyle] */
     var uiStyle by mutableStateOf(initial.uiStyle)
+    /** 主题皮肤：legacy / graphite，见 [com.phoneagent.ui.theme.ThemeSkin] */
+    var skin by mutableStateOf(initial.skin)
     // 模型库：端点 + 模型条目（列表用 SnapshotStateList，编辑后 Compose 才能感知）
     val endpoints = mutableStateListOf<Endpoint>().apply { addAll(initial.endpoints) }
     val catalog = mutableStateListOf<CatalogModel>().apply { addAll(initial.catalog) }
@@ -510,6 +516,7 @@ class SettingsState(initial: AppSettings.Settings) {
         palette = s.palette
         glassTintOffset = s.glassTintOffset
         uiStyle = s.uiStyle
+        skin = s.skin
         // 列表不能整体替换，否则 Compose 感知不到元素级变化
         endpoints.clear()
         endpoints.addAll(s.endpoints)
@@ -610,6 +617,7 @@ class SettingsState(initial: AppSettings.Settings) {
         palette = palette,
         glassTintOffset = glassTintOffset,
         uiStyle = uiStyle,
+        skin = skin,
         endpoints = normalizedEndpoints(),
         catalog = normalizedCatalog(),
         skipVisionDescWhenMainSees = skipVisionDescWhenMainSees,

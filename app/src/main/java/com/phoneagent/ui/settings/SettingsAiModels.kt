@@ -125,7 +125,7 @@ private fun AiModelsPage(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // ========== A 端点 ==========
         SettingsSection(

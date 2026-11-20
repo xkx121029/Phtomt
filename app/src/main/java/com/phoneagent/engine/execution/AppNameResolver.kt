@@ -1,7 +1,6 @@
 package com.phoneagent.engine.execution
 
 import android.content.Context
-import android.content.Intent
 import com.phoneagent.core.log.AppLog
 // 候选挑选与助手探测共用同一份实现（provider-api），保证两处"优先系统应用"的规则不会漂移
 import com.phoneagent.provider.a11y.pickPreferredPackage
@@ -124,19 +123,13 @@ class AppNameResolver(
 /** 解析用的最小应用条目（名字、包名、是否系统应用） */
 data class InstalledApp(val appName: String, val packageName: String, val isSystem: Boolean)
 
-/** 查询已安装的桌面启动器应用（PackageManager 实现；失败时返回空清单） */
-private fun queryLauncherApps(context: Context): List<InstalledApp> = runCatching {
-    val pm = context.packageManager
-    val launcher = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
-    pm.queryIntentActivities(launcher, 0)
-        .mapNotNull {
-            val label = it.loadLabel(pm).toString().trim().ifBlank { null } ?: return@mapNotNull null
-            val info = it.activityInfo?.applicationInfo
-            val system = info != null &&
-                info.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0
-            InstalledApp(label, it.activityInfo.packageName, system)
-        }
-        .distinctBy { it.packageName }
-}.getOrDefault(emptyList())
+/**
+ * 查询已安装的桌面启动器应用（PackageManager 实现；失败时返回空清单）。
+ * 枚举口径收口在 [com.phoneagent.device.apps.LauncherCatalog]：走 MAIN+LAUNCHER + `<queries>`，
+ * 不依赖 QUERY_ALL_PACKAGES 授权。
+ */
+private fun queryLauncherApps(context: Context): List<InstalledApp> =
+    com.phoneagent.device.apps.LauncherCatalog.query(context)
+        .map { InstalledApp(it.label, it.packageName, it.isSystem) }
 
 private const val TAG = "AppNameResolver"

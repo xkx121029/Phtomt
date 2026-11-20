@@ -54,7 +54,6 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.formatFileTime
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -163,7 +162,7 @@ private fun TaskPanel(
 ) {
     val colors = AppTheme.colors
     val systemNavInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val shape = RoundedCornerShape(topEnd = AppRadii.Card, bottomEnd = AppRadii.Card)
+    val shape = RoundedCornerShape(topEnd = AppTheme.metrics.cardRadius, bottomEnd = AppTheme.metrics.cardRadius)
     // 主区域看的就是最新那一次执行，所以"实时"与"最新会话"本是同一件事：
     // 只有规划中的新任务例外——它还没有会话，此时不该把上一条历史任务显示成选中。
     val selectedId: Long? = when {
@@ -222,7 +221,7 @@ private fun TaskPanel(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadii.Item))
+                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
                     .background(if (newConversationEnabled) colors.brand else colors.surfaceBase)
                     .padding(vertical = AppSpacing.Md),
                 horizontalArrangement = Arrangement.Center,
@@ -320,7 +319,7 @@ private fun TaskRow(
     onClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val shape = RoundedCornerShape(AppRadii.Item)
+    val shape = RoundedCornerShape(AppTheme.metrics.itemRadius)
     PressableScale(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Column(
             modifier = Modifier

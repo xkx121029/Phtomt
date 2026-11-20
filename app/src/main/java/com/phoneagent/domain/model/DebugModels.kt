@@ -48,9 +48,19 @@ data class AgentMetrics(
     /** 执行环节执行次数与总耗时（无障碍点击/输入/滑动等） */
     val execCount: Int = 0,
     val execTotalMs: Long = 0,
+    /** 单步墙钟（观察+决策+执行）次数与总耗时：与 execTotalMs 分开，用来发现"动作很快但整步很慢" */
+    val stepCount: Int = 0,
+    val stepTotalMs: Long = 0,
+    /** 超出单步预算的步数：长任务里持续出现说明链路（网页/通道/页面加载）有问题 */
+    val overBudgetSteps: Int = 0,
+    /** 交付分类失败计数：二者分开才能判断该修通道（没送达）还是该修策略（送达未生效） */
+    val notDeliveredCount: Int = 0,
+    val noEffectCount: Int = 0,
 ) {
     /** 平均视觉耗时（毫秒） */
     val avgVisionMs: Long get() = if (visionCount > 0) visionTotalMs / visionCount else 0
     /** 平均执行耗时（毫秒） */
     val avgExecMs: Long get() = if (execCount > 0) execTotalMs / execCount else 0
+    /** 平均单步耗时（毫秒） */
+    val avgStepMs: Long get() = if (stepCount > 0) stepTotalMs / stepCount else 0
 }

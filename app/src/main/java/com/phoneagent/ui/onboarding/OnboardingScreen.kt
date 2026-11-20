@@ -336,7 +336,7 @@ internal fun OnboardingPage(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .heightIn(min = minHeight)
-                    .padding(horizontal = 24.dp),
+                    .padding(horizontal = AppSpacing.Xl),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -346,7 +346,7 @@ internal fun OnboardingPage(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = AppSpacing.Xl)
                 .padding(top = AppSpacing.Lg, bottom = AppSpacing.Lg),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -439,7 +439,7 @@ internal fun ReadyBadge(granted: Int, total: Int, allGranted: Boolean) {
         border = appBorderStroke(1.dp, color.copy(alpha = 0.25f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         ) {

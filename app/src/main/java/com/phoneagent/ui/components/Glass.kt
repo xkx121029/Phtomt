@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -108,17 +109,28 @@ fun rememberGlassState(): HazeState = remember { HazeState() }
  * @param tintOverride 覆盖全局色板的 tint（磨砂浓淡**实时预览**用：滑杆拖动时
  *   全局 palette 还没落盘，预览样片拿调节中的值直接画）。null = 用全局色板值
  */
+@Immutable
+data class GlassSurfaceStyle(
+    /** 覆盖默认圆角；null = 皮肤令牌里的卡片圆角 */
+    val shape: Shape? = null,
+    /** 覆盖默认模糊半径；null = 皮肤令牌里的大面模糊 */
+    val blurRadius: Dp? = null,
+    /** 是否画顶部高光。只有贴边的大面 chrome 需要它 */
+    val showSheen: Boolean = true,
+    /** 覆盖全局 tint；磨砂浓淡实时预览用 */
+    val tintOverride: Color? = null,
+)
+
 @Composable
 fun GlassSurface(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(AppRadii.Card),
-    blurRadius: Dp = GlassTokens.Blur,
-    showSheen: Boolean = true,
-    tintOverride: Color? = null,
+    style: GlassSurfaceStyle = GlassSurfaceStyle(),
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
+    val metrics = AppTheme.metrics
+    val shape = style.shape ?: RoundedCornerShape(metrics.cardRadius)
     Box(
         modifier = modifier
             .clip(shape)
@@ -128,9 +140,10 @@ fun GlassSurface(
                     // 不透明底色：节点边界处若取样源没覆盖到，露出的应当就是页面底色
                     backgroundColor = colors.surfaceBase,
                     // 叠在模糊结果之上的一层底色，浓淡由它决定
-                    tint = HazeTint(tintOverride ?: colors.glassTint),
-                    blurRadius = blurRadius,
-                    noiseFactor = GlassTokens.Noise,
+                    tint = HazeTint(style.tintOverride ?: colors.glassTint),
+                    blurRadius = style.blurRadius ?: metrics.glassBlur,
+                    // 石墨主题把噪点归零：它要的是"一块实心浮板"，不是磨砂贴图
+                    noiseFactor = metrics.glassNoise,
                     // 不支持背景模糊时的替身：接近不透明，保证文字仍然读得清
                     fallbackTint = HazeTint(colors.glassFallback),
                 ),
@@ -146,7 +159,7 @@ fun GlassSurface(
             }
             .appBorder(1.dp, colors.glassBorder, shape),
     ) {
-        if (showSheen && colors.glassSheen.alpha > 0f) {
+        if (style.showSheen && metrics.glassSheen && colors.glassSheen.alpha > 0f) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -235,9 +248,13 @@ fun Modifier.headerLift(state: HeaderLiftState): Modifier = nestedScroll(state)
  * 得把这段外边距从内容留白里减掉——骨架用 [LocalHeaderContentPad] 自动做这件事，
  * 各页不必自己算。
  */
+/**
+ * 玻璃页眉板**浮起后**距屏幕左右的外边距。经典主题为 12dp；石墨主题由
+ * [com.phoneagent.ui.theme.AppMetrics.headerInset] 下发 10dp，几何量收在令牌里。
+ */
 val GlassHeaderInset = AppSpacing.Md
 
-/** 玻璃页眉内层内容的左右留白：除本页页眉外，屏幕上仍是各页通用的 20dp */
+/** 经典主题的页眉内容留白基准；石墨主题改由 [AppMetrics.pagePad] 下发 */
 val GlassHeaderDefaultContentPad = 20.dp
 
 /**
@@ -303,6 +320,8 @@ fun GlassHeaderScaffold(
     content: @Composable (PaddingValues) -> Unit,
 ) {
     val colors = AppTheme.colors
+    val metrics = AppTheme.metrics
+    val skin = AppTheme.skin
     val glass = rememberGlassState()
     val density = LocalDensity.current
     val lift = rememberHeaderLiftState()
@@ -325,19 +344,43 @@ fun GlassHeaderScaffold(
     val contentTopPad = if (header == null) {
         0.dp
     } else {
-        with(density) { headerHeight.toDp() } + GlassHeaderInset
+        with(density) { headerHeight.toDp() } + metrics.headerInset
     }
 
     // 胶囊浮板的圆角 = 页眉实测高度的一半，两端才是正圆弧、整条板才是真胶囊；
-    // 首帧还没量到高度时用 AppRadii.Header 兜底（只影响转场动画的端点，量到后立即校正）
-    val capsuleRadius = remember(headerHeight) {
-        maxOf(with(density) { headerHeight.toDp() / 2 }, AppRadii.Header)
+    // 石墨主题不要胶囊：它用与卡片同一档的 20dp 圆角矩形，形状语言才统一
+    val capsuleRadius = remember(headerHeight, skin) {
+        if (skin.isGraphite) {
+            metrics.heroRadius
+        } else {
+            maxOf(with(density) { headerHeight.toDp() / 2 }, AppRadii.Header)
+        }
     }
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(colors.surfaceBase)
+            // 石墨的页面底色不是一块死平色：顶部偏右叠一层极淡的品牌色光晕，
+            // 只在滚动内容下面透出来，给"版面"一点空气感。经典主题不画。
+            .then(
+                if (metrics.backdropWash) {
+                    Modifier.drawBehind {
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    colors.brand.copy(alpha = 0.055f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(size.width * 0.82f, 0f),
+                                radius = size.width * 0.95f,
+                            ),
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
             .headerLift(lift),
     ) {
         // 宽屏下正文列的左右空档：正文收口居中，页眉跟着退到同一条列上
@@ -363,13 +406,13 @@ fun GlassHeaderScaffold(
             }
         }
 
-        // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 GlassHeaderInset
-        val sideInset = GlassHeaderInset * liftProgress
+        // 左右外边距：吸顶 0（通栏到屏幕两沿）→ 浮起 metrics.headerInset
+        val sideInset = metrics.headerInset * liftProgress
         /**
          * 页眉内层内容的左右留白：与 [sideInset] 反向抵消，屏幕上恒为
-         * [GlassHeaderDefaultContentPad]。转场全程面板两沿在动、文字原地不动。
+         * metrics.pagePad。转场全程面板两沿在动、文字原地不动。
          */
-        val contentPad = GlassHeaderDefaultContentPad - sideInset
+        val contentPad = metrics.pagePad - sideInset
         // 四角圆角：吸顶 0（四角全直角）→ 浮起 capsuleRadius（真胶囊）
         // 上缘外边距固定 0：页眉始终贴在内容区上沿，只做形态切换（通栏直角 ↔ 胶囊 + 左右缩进），
         // 不再额外向下飘移一段距离
@@ -380,7 +423,7 @@ fun GlassHeaderScaffold(
                 hazeState = glass,
                 // 吸顶时是通栏直角（半径 0），离开页首收成胶囊浮板。形态由 [liftProgress]
                 // 一根弹簧统一驱动：圆角、左右/上缘外边距四条曲线同步走完，不各走各的
-                shape = RoundedCornerShape(cornerRadius),
+                style = GlassSurfaceStyle(shape = RoundedCornerShape(cornerRadius)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)

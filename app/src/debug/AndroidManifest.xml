@@ -2,12 +2,13 @@
 <!--
   debug 变体专有清单：只在这里注册日志传输的启动 Provider。
   release 变体不合并本文件，因此正式包里既没有这个 Provider，也没有 src/debug 下的任何代码。
--->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
 
-    <application tools:replace="android:usesCleartextTraffic"
-        android:usesCleartextTraffic="true">
+  明文 HTTP 不需要在这里覆盖：主清单已全局放行，实际是否允许由应用层
+  （设置开关 + AiClient 公网拦截）决定，debug 与 release 行为一致。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
         <provider
             android:name=".debug.logtransfer.DebugLogBridgeInitializer"
             android:authorities="${applicationId}.debug.logtransfer"
@@ -21,6 +22,32 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:excludeFromRecents="true"
             android:taskAffinity="" />
+
+        <!--
+          debug-only 轨迹采集：只在本 debug 包内声明无障碍服务与 adb 广播入口。
+          release 变体不合并本文件，正式包里既没有采集代码，也没有无障碍服务/相关权限声明。
+        -->
+        <service
+            android:name="com.phoneagent.debug.traj.TrajCaptureService"
+            android:exported="true"
+            android:label="@string/traj_capture_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/traj_capture_service" />
+        </service>
+
+        <!-- adb 驱动入口：am broadcast -a com.phoneagent.traj.CMD -n com.phoneagent/.debug.traj.TrajCommandReceiver -->
+        <receiver
+            android:name=".debug.traj.TrajCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.phoneagent.traj.CMD" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

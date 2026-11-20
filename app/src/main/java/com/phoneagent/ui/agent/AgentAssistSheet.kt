@@ -27,7 +27,6 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
@@ -72,9 +71,9 @@ internal fun AgentAssistSheet(
             .fillMaxWidth()
             // 高度随文案换行 / 内容增减平滑变化，避免输入时面板"跳一下"
             .animateContentSize()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
             .background(colors.surfaceRaised)
-            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.cardRadius))
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -113,9 +112,9 @@ internal fun AgentAssistSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = AppSpacing.Xs)
-                        .clip(RoundedCornerShape(AppRadii.Tile))
+                        .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                         .background(colors.surfaceSunken)
-                        .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                        .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.tileRadius))
                         .padding(AppSpacing.Md),
                 ) {
                     Column {
@@ -149,9 +148,9 @@ internal fun AgentAssistSheet(
                 cursorBrush = SolidColor(colors.brand),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadii.Tile))
+                    .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                     .background(colors.surfaceSunken)
-                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.tileRadius))
                     .padding(AppSpacing.Md),
                 decorationBox = { inner ->
                     if (draft.isEmpty()) {
@@ -175,8 +174,8 @@ internal fun AgentAssistSheet(
                         onPress = buzz,
                         onClick = onManualHandled,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(AppRadii.Chip))
-                            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Chip))
+                            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
+                            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.chipRadius))
                             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
                     ) {
                         Text(
@@ -192,7 +191,7 @@ internal fun AgentAssistSheet(
                     onPress = buzz,
                     onClick = { if (canSubmit) onSubmitText(draft) },
                     modifier = Modifier
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .background(if (canSubmit) colors.brand else colors.surfaceSunken)
                         .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm),
                 ) {

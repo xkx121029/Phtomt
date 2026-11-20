@@ -200,7 +200,7 @@ private fun LogRow(entry: AgentLog) {
                 color = color.copy(alpha = 0.08f),
                 shape = RoundedCornerShape(AppRadii.Inline),
             )
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -209,13 +209,13 @@ private fun LogRow(entry: AgentLog) {
                 color = color,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(AppSpacing.Sm))
             Text(
                 formatClock(entry.timestamp),
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(AppSpacing.Sm))
             Text(
                 entry.message,
                 style = MaterialTheme.typography.bodyMedium,
@@ -242,7 +242,7 @@ private fun LogRow(entry: AgentLog) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(color.copy(alpha = 0.06f), RoundedCornerShape(AppRadii.Chip))
-                    .padding(10.dp),
+                    .padding(AppSpacing.Sm),
             )
         }
     }

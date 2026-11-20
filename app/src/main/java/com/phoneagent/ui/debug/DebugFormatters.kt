@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 
@@ -30,7 +31,7 @@ internal fun DebugEmptyHint(text: String, modifier: Modifier = Modifier.fillMaxS
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             // 空态文案常带英文与数字，左右留白 + 居中，避免长句贴边折行
-            modifier = Modifier.padding(horizontal = 32.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.Xxl),
         ) {
             Icon(
                 AppIcons.Terminal,

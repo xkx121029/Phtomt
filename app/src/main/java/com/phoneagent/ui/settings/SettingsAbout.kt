@@ -28,6 +28,7 @@ import com.phoneagent.BuildConfig
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 
 /** 开源仓库地址：与推送远端一致（见项目 git remote） */
@@ -145,11 +146,11 @@ internal fun SettingsAbout(
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("关于与帮助", onBack, subtitle = "版本信息、开源仓库与隐私边界")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // 应用标识：不放进带色相的分区，独立成一张中性卡，作为页面的题头
         SettingsPlainCard {
-            Column(Modifier.padding(AppSpacing.Page)) {
+            Column(Modifier.padding(AppTheme.metrics.pagePad)) {
                 Text(
                     "Happy Phone Agent",
                     style = MaterialTheme.typography.titleLarge,
@@ -278,7 +279,7 @@ internal fun SettingsLicenses(onBack: () -> Unit) {
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("开源与致谢", onBack, subtitle = "第三方许可与参考实现")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         SettingsSection(
             title = "开源许可",

@@ -62,13 +62,15 @@ internal class ObservationPhase(
     /** 敏感页接管计数自增并返回新值（计数存于引擎任务级状态，跨步存活） */
     private val bumpSensitiveTakeover: () -> Int,
     private val hooks: ObservationHooks,
+    /** 「动作即观察」统计：与执行阶段共用同一份实例（同一任务的两端指标要能对上） */
+    private val afterStats: AfterObservationStats = AfterObservationStats(),
 ) : StepPhase {
 
     // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
     @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     override suspend fun run(session: StepSession): StepOutcome {
         // 任务切换时把上一任务的「动作即观察」汇总落一条日志再清零
-        AfterObservationStats.beginTask(session.task)?.let { hooks.log(AgentLog.Level.INFO, it) }
+        afterStats.beginTask(session.task)?.let { hooks.log(AgentLog.Level.INFO, it) }
         // 动作即观察：上一步动作交付后已经抓过一次元素树，这里优先复用。
         // 消费一次即清空，避免同一份快照被后续步骤反复复用（页面状态早就变了）。
         val pending = session.pendingAfterObservation
@@ -85,7 +87,7 @@ internal class ObservationPhase(
             pending.snapshot
         } else {
             if (pending != null && reject != null) {
-                AfterObservationStats.onRejected(reject)
+                afterStats.onRejected(reject)
                 hooks.log(
                     AgentLog.Level.INFO,
                     "第 ${session.step} 轮观察：动作后快照不可复用（${reject.label}），走完整观察",
@@ -93,7 +95,7 @@ internal class ObservationPhase(
             }
             val t0 = System.nanoTime()
             readScreen().also {
-                AfterObservationStats.onFullRead((System.nanoTime() - t0) / 1_000_000)
+                afterStats.onFullRead((System.nanoTime() - t0) / 1_000_000)
             }
         }
 
@@ -157,18 +159,18 @@ internal class ObservationPhase(
                 elements = snapshot.elements.map { it.copy(semanticId = page.semanticIds[it.index]) },
             )
             session.screenshot = null
-            AfterObservationStats.onReuseAnnotate((System.nanoTime() - t0) / 1_000_000)
-            AfterObservationStats.onReused()
+            afterStats.onReuseAnnotate((System.nanoTime() - t0) / 1_000_000)
+            afterStats.onReused()
             hooks.log(
                 AgentLog.Level.INFO,
                 "第 ${session.step} 轮观察：复用动作后快照（跳过读屏与截图），元素 ${snapshot.elements.size} 个｜" +
-                    AfterObservationStats.summaryText(),
+                    afterStats.summaryText(),
             )
             annotated = page
         } else {
             val t0 = System.nanoTime()
             val observation = observer.observe(session.step, snapshot, session.settingsVal)
-            AfterObservationStats.onFullAnnotateShot((System.nanoTime() - t0) / 1_000_000)
+            afterStats.onFullAnnotateShot((System.nanoTime() - t0) / 1_000_000)
             session.annotated = observation.annotated
             session.semanticSnapshot = observation.semanticSnapshot
             session.screenshot = observation.screenshot

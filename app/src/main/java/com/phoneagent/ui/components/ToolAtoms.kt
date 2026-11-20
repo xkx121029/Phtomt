@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.coding.agent.CodingToolNames
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
@@ -146,7 +145,7 @@ fun ToolIconBadge(
     Box(
         modifier = modifier
             .size(boxSize)
-            .clip(RoundedCornerShape(AppRadii.Chip))
+            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
             .background(background ?: colors.surfaceSunken),
         contentAlignment = Alignment.Center,
     ) {
@@ -207,7 +206,7 @@ fun ToolIconStrip(
     val colors = AppTheme.colors
     val shown = chips.take(maxChips)
     val extra = chips.size - shown.size
-    val shape = RoundedCornerShape(AppRadii.Chip)
+    val shape = RoundedCornerShape(AppTheme.metrics.chipRadius)
 
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -264,7 +263,7 @@ fun ToolEvidenceBlock(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(colors.surfaceSunken)
             .padding(AppSpacing.Md),
         content = content,

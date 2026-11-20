@@ -67,8 +67,8 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.StatTile
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.appBorderStroke
@@ -83,25 +83,25 @@ internal fun MetricsPanel(m: AgentMetrics) {
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
     ) {
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxWidth()) {
                 StatTile("请求", "${m.requestCount}", MaterialTheme.colorScheme.primary, Modifier.weight(1f), unit = "次")
                 StatTile("总 Tokens", "${m.totalTokens}", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
             }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxWidth()) {
                 StatTile("本轮耗时", "${m.lastLatencyMs}", MaterialTheme.colorScheme.secondary, Modifier.weight(1f), unit = "ms")
                 StatTile("平均耗时", "${m.avgLatencyMs}", Success, Modifier.weight(1f), unit = "ms")
             }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxWidth()) {
                 StatTile("输入 Tokens", "${m.promptTokens}", Warning, Modifier.weight(1f))
                 StatTile("输出 Tokens", "${m.completionTokens}", MaterialTheme.colorScheme.error, Modifier.weight(1f))
             }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxWidth()) {
                 StatTile("视觉识别", "${m.visionCount}次/均${m.avgVisionMs}ms", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
                 StatTile("动作执行", "${m.execCount}次/均${m.avgExecMs}ms", Success, Modifier.weight(1f))
             }
@@ -126,19 +126,19 @@ private fun MethodCard(m: AgentMetrics) {
     val execFrac = (m.avgExecMs.toFloat() / total).coerceAtLeast(0.001f)
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(AppSpacing.Lg), verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
             Text("单步耗时构成（决策/视觉/执行）", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             // 横向占比条
-            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(AppRadii.Chip))) {
+            Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(AppTheme.metrics.chipRadius))) {
                 Box(Modifier.weight(decisionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
                 Box(Modifier.weight(visionFrac).fillMaxHeight().background(MaterialTheme.colorScheme.secondary))
                 Box(Modifier.weight(execFrac).fillMaxHeight().background(Success))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
                 LegendDot(MaterialTheme.colorScheme.primary, "决策 ${m.avgLatencyMs}ms")
                 LegendDot(MaterialTheme.colorScheme.secondary, "视觉 ${m.avgVisionMs}ms")
                 LegendDot(Success, "执行 ${m.avgExecMs}ms")

@@ -97,7 +97,6 @@ import com.phoneagent.ui.components.toolRunState
 import com.phoneagent.ui.components.toolStatusStyle
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.workbench.rememberCodingConversationSummaryText
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
@@ -328,6 +327,24 @@ fun CodingScreen(
                     snackbar?.show(it.message ?: "Coding 运行时未就绪")
                     return@launch
                 }
+            // `/goal <目标>`：进入无人值守循环（跑完一轮由判官决定是否继续），
+            // 与普通一轮对话走同一条连接，只是方法换成 goal_start。
+            // 附件不能进目标循环：判官只认工具证据，附件语境不在会话里。
+            val goalObjective = goalObjectiveOf(text)
+            if (goalObjective != null) {
+                if (goalObjective.isEmpty()) {
+                    snackbar?.show("目标不能为空，写成 /goal 完成 xxx")
+                    return@launch
+                }
+                if (files.isNotEmpty()) {
+                    snackbar?.show("目标模式暂不支持附件，请先发送附件")
+                    return@launch
+                }
+                bridge.uiClient.startGoal(goalObjective, allowExec = false) { ok, error ->
+                    if (!ok) snackbar?.show(error ?: "目标启动失败")
+                }
+                return@launch
+            }
             bridge.uiClient.sendPrompt(withAttachmentHint(text, files))
             SharedFiles.consume()
         }
@@ -611,7 +628,7 @@ private fun WorkspaceCapsule(
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Chip)
+    val shape = RoundedCornerShape(AppTheme.metrics.chipRadius)
     Row(
         modifier = Modifier
             .widthIn(max = 340.dp)
@@ -626,7 +643,7 @@ private fun WorkspaceCapsule(
             onClick = onOpenFolder,
             modifier = Modifier
                 .size(28.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip)),
+                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius)),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
@@ -660,7 +677,7 @@ private fun WorkspaceCapsule(
             onPress = buzz,
             onClick = onSwitch,
             modifier = Modifier
-                .clip(RoundedCornerShape(AppRadii.Chip))
+                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                 .background(colors.brandContainer)
                 .padding(horizontal = AppSpacing.Sm, vertical = 6.dp),
         ) {
@@ -693,7 +710,7 @@ private fun SessionCapsule(
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Chip)
+    val shape = RoundedCornerShape(AppTheme.metrics.chipRadius)
     Row(
         modifier = modifier
             .clip(shape)
@@ -707,7 +724,7 @@ private fun SessionCapsule(
             onClick = onSessions,
             modifier = Modifier
                 .size(28.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip)),
+                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius)),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
@@ -747,7 +764,7 @@ private fun SessionCapsule(
             onClick = onNew,
             modifier = Modifier
                 .size(28.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip))
+                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                 .background(colors.brandContainer),
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -826,7 +843,7 @@ private fun CodingUserBubble(text: String) {
         Box(
             modifier = Modifier
                 .widthIn(max = 300.dp)
-                .clip(RoundedCornerShape(AppRadii.Card))
+                .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
                 .background(MaterialTheme.colorScheme.primaryContainer)
                 .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
         ) {
@@ -849,7 +866,7 @@ private fun CodingAssistantBubble(text: String, onExpand: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
             .background(AppTheme.colors.surfaceRaised)
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {
@@ -1130,6 +1147,8 @@ private fun ComposerInputRow(
                 description = "添加附件",
                 onClick = onAttach,
                 enabled = values.enabled && !values.busy,
+                // 输入框左侧是入口不是主操作：不铺底色，实心圆只留给发送
+                quiet = true,
             )
         },
         field = { fieldModifier ->
@@ -1188,7 +1207,7 @@ private fun AttachmentRow(
         attachments.forEach { item ->
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(AppRadii.Chip))
+                    .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                     .background(AppTheme.colors.surfaceRaised)
                     .padding(start = AppSpacing.Sm, end = 4.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1244,6 +1263,22 @@ private fun withAttachmentHint(text: String, attachments: List<SharedFiles.Impor
         append("\n（若是 PDF / 图片 / 音视频这类二进制文件，读不了就直说，不要编造内容）")
     }
     return hint.trim()
+}
+
+/**
+ * 解析 `/goal <目标>` 前缀。返回 null 表示这是普通一轮对话。
+ *
+ * 只认行首的 `/goal`（允许后面跟空格或空），避免把正文里提到 goal 的句子误判成指令。
+ * 只有前缀没有内容时返回空串，由调用方提示"目标不能为空"——不能静默当普通消息发出去，
+ * 否则用户以为进了无人值守模式，实际只跑了一轮。
+ */
+private fun goalObjectiveOf(text: String): String? {
+    val trimmed = text.trimStart()
+    if (!trimmed.startsWith("/goal")) return null
+    val rest = trimmed.removePrefix("/goal")
+    // `/goalkeeper` 这种不是指令
+    if (rest.isNotEmpty() && !rest.first().isWhitespace()) return null
+    return rest.trim()
 }
 
 /** 应用自有目录（私有目录 / Android/data 下）无需「所有文件访问」就能被 node 读写 */

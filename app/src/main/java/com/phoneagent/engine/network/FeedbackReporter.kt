@@ -149,6 +149,12 @@ internal class FeedbackReporter(private val context: Context) {
                 put("visionTotalMs", clampMs(metrics.visionTotalMs))
                 put("execCount", metrics.execCount.coerceIn(0, MAX_COUNT))
                 put("execTotalMs", clampMs(metrics.execTotalMs))
+                // 单步墙钟与交付分类：真机上"动作快但整步慢""没送达 vs 送达未生效"都能从上报里分开看
+                put("stepCount", metrics.stepCount.coerceIn(0, MAX_COUNT))
+                put("stepTotalMs", clampMs(metrics.stepTotalMs))
+                put("overBudgetSteps", metrics.overBudgetSteps.coerceIn(0, MAX_COUNT))
+                put("notDelivered", metrics.notDeliveredCount.coerceIn(0, MAX_COUNT))
+                put("noEffect", metrics.noEffectCount.coerceIn(0, MAX_COUNT))
             }
         }
     }

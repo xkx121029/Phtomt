@@ -136,10 +136,22 @@ export class AgentRouter {
       }
 
       case 'cancel': {
+        // 目标循环也要能停：它内部只在每轮边界检查 abort，这里必须同时把目标
+        // 置成 paused，否则用户点了停止、下一轮又开始了。
+        let goalStopped = false;
+        try {
+          const goalCtl = this.runtime?.goal;
+          if (goalCtl && params.sessionId && goalCtl.running.has(params.sessionId)) {
+            goalCtl.pause(params.sessionId, '用户停止了目标');
+            goalStopped = true;
+          }
+        } catch {
+          /* 目标已经自然收束：没有 active goal 可暂停，不是错误 */
+        }
         const ac = this.abortControllers.get(params.sessionId);
-        if (!ac) return { cancelled: false, reason: 'no active run' };
+        if (!ac) return { cancelled: goalStopped, reason: goalStopped ? 'goal paused' : 'no active run' };
         ac.abort();
-        return { cancelled: true };
+        return { cancelled: true, goalStopped };
       }
 
       case 'set_approval_mode': {
@@ -255,6 +267,20 @@ export class AgentRouter {
         // 给 UI 的直通口：应用侧调试/设置页可以主动调一次宿主能力，不必绕 agent。
         return this.#rt('bridge').call(params.method, params.params || {}, { timeoutMs: params.timeoutMs });
 
+      // —— 无人值守目标循环 ——
+      // 与 prompt 的区别：prompt 跑完一轮就结束；goal 在一轮结束后由判官决定
+      // 要不要继续，直到目标达成、被判停滞、或用户暂停。
+      case 'goal_get':
+        return this.#rt('goal').status(params.sessionId);
+      case 'goal_start':
+        return this.#goalStart(params);
+      case 'goal_pause':
+        return this.#rt('goal').pause(params.sessionId, params.reason || '用户暂停了目标');
+      case 'goal_resume':
+        return this.#rt('goal').resume(params.sessionId);
+      case 'goal_clear':
+        return { cleared: this.#rt('goal').clear(params.sessionId) };
+
       default:
         throw new Error(`unknown method: ${method}`);
     }
@@ -272,6 +298,7 @@ export class AgentRouter {
       tools: this.agent.registry.list().length,
       runs: this.runTracker ? this.runTracker.snapshot() : [],
       subagents: runtime?.subagents?.snapshot?.() ?? { active: [], completed: 0, failed: 0 },
+      goal: runtime?.goal ? runtime.goal.snapshot() : null,
       scheduler: this.agent.scheduler?.stats?.() ?? null,
       events: this.events ? this.events.stats() : null,
       pendingApprovals: this.pendingApprovals.size,
@@ -289,7 +316,8 @@ export class AgentRouter {
     if (!this.events) return [];
     const allow = new Set(
       types || (type ? [type] : ['run_start', 'tool_start', 'tool_end', 'tool_approval', 'iteration', 'done', 'cancelled',
-        'subagent_start', 'subagent_end', 'subagents_done']),
+        'subagent_start', 'subagent_end', 'subagents_done',
+        'goal_start', 'goal_round', 'goal_verdict', 'goal_done']),
     );
     return this.events
       .recent({ limit: Math.min(500, Math.max(1, limit)), since })
@@ -319,6 +347,47 @@ export class AgentRouter {
     const part = this.runtime?.[key];
     if (!part) throw new Error(`method needs runtime.${key}; boot the host with createRuntime()`);
     return part;
+  }
+
+  /**
+   * 启动无人值守目标。
+   *
+   * 不阻塞请求线程：目标循环可能跑很多轮、几分钟到几十分钟。这里立刻回
+   * `{ started: true, goalId }`，进度全部走事件流（goal_start / goal_round /
+   * goal_verdict / goal_done），期间 UI 仍可用 goal_pause / goal_get 交互。
+   * 若阻塞返回，手机端一个长目标就会把这条连接上的其它请求全堵住。
+   */
+  #goalStart(params) {
+    const goalCtl = this.#rt('goal');
+    if (!params.objective) throw new Error('goal_start requires objective');
+    // 会话解析与 prompt 一致：界面给的 sessionId 若 host 重启后不存在，就地建出来。
+    const session = params.sessionId
+      ? (this.store.get(params.sessionId) || this.store.create({ id: params.sessionId, systemPrompt: this.agent.systemPrompt }))
+      : this.store.create({ systemPrompt: this.agent.systemPrompt });
+    const goalId = `${session.id}`;
+    // 目标循环的取消要复用 prompt 那条通道：登记同一个 AbortController，
+    // 用户点停止时 cancel 才能立刻打断「正在跑的这一轮」而不只是等轮次边界。
+    const ac = new AbortController();
+    this.abortControllers.set(session.id, ac);
+    goalCtl
+      .start(session, params.objective, { signal: ac.signal, allowExec: Boolean(params.allowExec) })
+      .then((out) => this.store.touch(session))
+      .catch((err) => {
+        // 启动失败必须落成事件，否则界面只能看到「已开始」然后永远没动静。
+        this.#sendEvent({
+          type: 'goal_done',
+          sessionId: session.id,
+          goalId,
+          status: 'paused',
+          reason: `目标启动失败：${err.message}`,
+          round: 0,
+        });
+      })
+      .finally(() => {
+        // 只清理「自己这一份」：并行发起的普通 prompt 不能被误删。
+        if (this.abortControllers.get(session.id) === ac) this.abortControllers.delete(session.id);
+      });
+    return { started: true, sessionId: session.id, goalId };
   }
 
   #runtimeInfo() {

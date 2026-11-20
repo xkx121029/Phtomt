@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -72,7 +73,6 @@ import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.pressScaleSpec
-import com.phoneagent.ui.theme.staggerDelayMs
 import kotlinx.coroutines.delay
 import com.phoneagent.ui.icons.AppIcons
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -203,11 +203,15 @@ fun PressableScale(
 val ComposerActionSize = 40.dp
 
 /**
- * 输入面内的主操作：40dp 方块图标按钮。
+ * 输入面内的主操作：40dp 圆形图标按钮，长在输入框胶囊内部。
  *
  * 对话、编码、操控三个输入面共用这一颗，样式与状态语义只在这里定义一次：
- * 可用 = 品牌色底 + 品牌前景；禁用 = 下沉底 + 弱化的图标色（不用降透明度，
- * 纸白底上半透明的主色会发浑）。尺寸与 40dp 的行高对齐，多行输入时按钮贴行底。
+ * 可用 = 品牌色实心圆 + 品牌前景；禁用 = 下沉底 + 弱化的图标色（不用降透明度，
+ * 纸白底上半透明的主色会发浑）。圆形而不是圆角方块：胶囊状的输入框里，
+ * 只有同样"无角"的形状才不会在右侧切出一个突兀的直角。
+ *
+ * [quiet] 是给附件这类次要入口的：不铺底色、只留图标。一排里只有一颗实心圆，
+ * 视线才会稳定落在"发送"上。
  */
 @Composable
 fun ComposerActionButton(
@@ -218,16 +222,20 @@ fun ComposerActionButton(
     enabled: Boolean = true,
     /** 停止这类破坏性动作：换成错误色，与发送键同尺寸但不抢主色 */
     danger: Boolean = false,
+    /** 次要入口（附件等）：不铺底色，只留图标 */
+    quiet: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Tile)
     val background = when {
+        quiet -> Color.Transparent
         !enabled -> colors.surfaceSunken
         danger -> colors.errorContainer
         else -> colors.brand
     }
     val tint = when {
+        quiet && !enabled -> colors.outlineSoft
+        quiet -> colors.onSurfaceRaised
         !enabled -> colors.outlineStrong
         danger -> colors.error
         else -> colors.onBrand
@@ -238,7 +246,7 @@ fun ComposerActionButton(
         enabled = enabled,
         modifier = modifier
             .size(ComposerActionSize)
-            .clip(shape)
+            .clip(CircleShape)
             .background(background),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -246,7 +254,7 @@ fun ComposerActionButton(
                 imageVector = icon,
                 contentDescription = description,
                 tint = tint,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(if (quiet) 20.dp else 18.dp),
             )
         }
     }
@@ -274,8 +282,11 @@ fun Modifier.animateListItem(
 
     val settings = motionSettings()
     var entered by remember { mutableStateOf(false) }
+    // 入场节拍由皮肤令牌给：经典 45ms 逐项错峰，石墨 24ms——新主题信息密度更高，
+    // 级联拖太久会让"刷新"读起来变慢。减少动画时不排队，直接同时出现
+    val staggerMs = AppTheme.metrics.staggerMs
     LaunchedEffect(Unit) {
-        val delayMs = staggerDelayMs(index)
+        val delayMs = if (settings.reduceMotion) 0 else index * staggerMs
         if (delayMs > 0) delay(delayMs.toLong())
         entered = true
     }
@@ -335,8 +346,9 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 // - 条目/状态卡 (AppItemCard)            → AppRadii.Item (20dp)
 // - 小芯片 / 小容器                      → AppRadii.Tile (14dp)
 
-/** 卡片容器默认圆角（分组大卡） */
-val AppCardRadius = AppRadii.Card
+/** 卡片容器默认圆角（分组大卡）：由皮肤令牌下发，经典 24dp / 石墨 16dp */
+val AppCardRadius: Dp
+    @Composable get() = AppTheme.metrics.cardRadius
 
 /**
  * 卡片底色：全项目唯一的"微抬起的面"。
@@ -376,7 +388,7 @@ fun AppCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(cornerRadius),
         colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-        border = appBorderStroke(1.dp, borderColor),
+        border = appBorderStroke(AppTheme.metrics.hairline, borderColor),
     ) {
         androidx.compose.foundation.layout.Column(content = content)
     }
@@ -390,21 +402,21 @@ fun AppItemCard(
     onClick: (() -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(AppRadii.Item)
+    val shape = RoundedCornerShape(AppTheme.metrics.itemRadius)
     if (onClick != null) {
         androidx.compose.material3.Card(
             onClick = onClick,
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = appBorderStroke(1.dp, AppCardBorder),
+            border = appBorderStroke(AppTheme.metrics.hairline, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     } else {
         androidx.compose.material3.Card(
             modifier = modifier.fillMaxWidth(),
             shape = shape,
             colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
-            border = appBorderStroke(1.dp, AppCardBorder),
+            border = appBorderStroke(AppTheme.metrics.hairline, AppCardBorder),
         ) { androidx.compose.foundation.layout.Row(content = content) }
     }
 }
@@ -420,12 +432,15 @@ fun AppIconTile(
     iconSize: Dp = 22.dp,
     cornerRadius: Dp = AppRadii.Tile,
 ) {
+    // 默认值保持 AppRadii.Tile（老主题取值不变，也不改函数签名基线）；
+    // 调用方没显式指定圆角时，换成当前皮肤的瓦片圆角，新主题才能整体收紧形状
+    val effectiveRadius = if (cornerRadius == AppRadii.Tile) AppTheme.metrics.tileRadius else cornerRadius
     Box(
         modifier = modifier.size(tileSize),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = RoundedCornerShape(cornerRadius),
+            shape = RoundedCornerShape(effectiveRadius),
             color = background,
             modifier = Modifier.matchParentSize(),
         ) {}
@@ -450,7 +465,7 @@ fun StatusPill(
             text,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
             color = color,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Xs),
         )
     }
 }
@@ -500,7 +515,7 @@ fun AppTopBar(
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(AppRadii.Tile))
+                    .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center,
             ) {
@@ -560,7 +575,7 @@ fun Modifier.skeleton(
         ),
     )
     return this
-        .clip(RoundedCornerShape(AppRadii.Inline))
+        .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
         .background(color.copy(alpha = alpha))
 }
 
@@ -570,7 +585,7 @@ fun SkeletonCard(
     modifier: Modifier = Modifier,
     lines: Int = 3,
 ) {
-    Column(modifier = modifier.padding(16.dp)) {
+    Column(modifier = modifier.padding(AppTheme.metrics.cardPad)) {
         Box(
             modifier = Modifier
                 .height(18.dp)
@@ -658,17 +673,17 @@ fun AppSnackbar(
             }
 
             Surface(
-                shape = RoundedCornerShape(AppRadii.Card),
+                shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
                 color = bgColor,
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = AppTheme.metrics.pagePad),
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(AppSpacing.Lg),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
                 ) {
                     Text(
                         text = snack.message,
@@ -747,7 +762,7 @@ fun InlineOverlay(
             contentAlignment = Alignment.Center,
         ) {
             Surface(
-                shape = RoundedCornerShape(AppRadii.Overlay),
+                shape = RoundedCornerShape(AppTheme.metrics.overlayRadius),
                 color = AppTheme.colors.surfaceBase,
                 // 面板自身吃掉点击，避免点内容穿透到遮罩上被当成"点了外面"
                 modifier = Modifier
@@ -762,7 +777,7 @@ fun InlineOverlay(
                     ),
             ) {
                 Column(
-                    modifier = Modifier.padding(AppSpacing.Lg),
+                    modifier = Modifier.padding(AppTheme.metrics.cardPad),
                     verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
                     content = content,
                 )
@@ -783,7 +798,10 @@ fun EmptyHint(icon: ImageVector, title: String, desc: String) {
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(AppRadii.Tile)),
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    RoundedCornerShape(AppTheme.metrics.tileRadius),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -815,12 +833,12 @@ fun StatTile(
     unit: String = "",
 ) {
     Surface(
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(AppTheme.metrics.hairline, AppCardBorder),
         modifier = modifier,
     ) {
-        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
+        Column(modifier = Modifier.padding(AppTheme.metrics.cardPad)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
@@ -860,12 +878,12 @@ fun SectionCard(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
         color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
+        border = appBorderStroke(AppTheme.metrics.hairline, AppCardBorder),
         modifier = modifier.fillMaxWidth().padding(vertical = AppSpacing.Sm),
     ) {
-        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
+        Column(modifier = Modifier.padding(AppTheme.metrics.cardPad)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Spacer(Modifier.width(AppSpacing.Sm))
@@ -912,10 +930,10 @@ fun HomeBackButton(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         ),
-        shape = RoundedCornerShape(AppRadii.Hero),
+        shape = RoundedCornerShape(AppTheme.metrics.heroRadius),
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .padding(horizontal = AppTheme.metrics.pagePad, vertical = 10.dp)
             .height(56.dp),
     ) {
         Icon(icon, contentDescription = null)

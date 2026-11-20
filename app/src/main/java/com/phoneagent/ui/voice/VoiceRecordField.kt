@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationNormal
@@ -78,6 +78,9 @@ private val ZONE_OFFSET_DP = 112.dp         // 左右分区中心相对气泡中
 private const val SILENCE_LEVEL = 0.08f     // 静音电平阈值（监听态判定）
 private const val SILENCE_MS = 300L         // 静音持续时长（纳秒比较用，单位 ms）
 
+// 录音浮层的状态色与文字色刻意不接主题色板：这是一层全屏 HUD（类似相机取景遮罩），
+// 只存在几百毫秒、叠在任意页面与任意壁纸之上，语义固定为「蓝=录音 / 绿=预览 / 红=取消」，
+// 白字与白点只压在这团深色光晕上。若跟随主题，深色主题的浅色主色会让白字失去对比度。
 private val GlowCoreBlue = Color(0xFF5B8DEF)    // 光晕核心蓝（参考图取色）
 private val GlowPreviewGreen = Color(0xFF3FBB8F) // 预览态光晕
 private val CancelRed = Color(0xFFE65C53)        // 取消态光晕
@@ -333,7 +336,7 @@ fun VoiceRecordField(
             decorationBox = { inner ->
                 Box(
                     Modifier
-                        .clip(RoundedCornerShape(AppRadii.Inline))
+                        .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 ) {
                     Box(Modifier.padding(AppSpacing.Md)) {
