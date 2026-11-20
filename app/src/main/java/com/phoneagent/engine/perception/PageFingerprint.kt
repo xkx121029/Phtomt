@@ -5,10 +5,16 @@ import com.phoneagent.domain.rules.effectiveLabel
 import java.security.MessageDigest
 
 /**
- * 页面指纹：基于可交互控件的 id + type + label + 边界生成哈希。
+ * 页面指纹：基于可交互控件的 id + type + label + 控件状态 + 边界生成哈希。
  * 页面不变 → 指纹不变；页面变化 → 指纹必变。
  * 用于执行前后验证（确认动作是否真的改变了页面）。
  * 对应文档“第 3 层 页面指纹”。
+ *
+ * **口径约定（改这里前先读）**：[compute] 是页面级止损（[com.phoneagent.engine.runtime.LoopGuard.onPageOutcome]）
+ * 的输入，[computeMeaningful] 与 `controlStateOf` 是"动作是否生效"的输入。止损的判据必须
+ * **不弱于**成功判据：凡成功判据看得到的变化，指纹也必须看得到。否则会出现"每一步都被判成 ✅，
+ * 却因为指纹一直没变被判成路径已死"——真机上表现为连点 12 个开关后任务以 STATUS_FAILED 收尾。
+ * 因此控件状态（`isSelected` / `currentValue`）必须进 [compute]：它们正是 `controlStateOf` 的主体。
  */
 object PageFingerprint {
 
@@ -48,13 +54,24 @@ object PageFingerprint {
             sb.append(e.viewId ?: "").append(':')
             sb.append(e.type).append(':')
             sb.append(e.effectiveLabel() ?: "").append(':')
+            // 控件状态必须进指纹：开关/勾选/滑块/输入值的变化不会改动任何文字或坐标，
+            // 却恰恰是 success 判据（controlStateOf）判定"生效"的唯一依据。
+            // 少了这两项，连开 12 个开关会算出同一个指纹，被止损判成"同一页面连续无推进"。
+            sb.append(e.isSelected ?: "").append(':')
+            sb.append(e.currentValue ?: "").append(':')
             sb.append(e.left).append(',').append(e.top).append(',').append(e.right).append(',').append(e.bottom)
             sb.append(';')
         }
         return sha256(sb.toString()).take(16)
     }
 
-    /** 计算有意义的指纹：忽略状态栏时间等动态变化（仅标签与坐标，不含 viewId 中可能变化的序号） */
+    /**
+     * 计算有意义的指纹：忽略状态栏时间等动态变化（仅标签与坐标，不含 viewId 中可能变化的序号）。
+     *
+     * 这里**不**并控件状态：它已由调用方的 `controlStateOf` 兜底判定（见 `ClickVerifier.judge`
+     * 第二层），而它同时是页面记忆与"动作前页面"的代表，口径一动会波及记忆图谱的行边判定。
+     * 止损用的 [compute] 才是必须与成功判据对齐的那一个。
+     */
     private fun computeMeaningfulUncached(snapshot: ScreenSnapshot): String {
         val sb = StringBuilder()
         val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.domain.model.UiElement> { it.left }.thenBy { it.top })

@@ -132,6 +132,9 @@ class ClickRunner(
                 is ActionExecutor.Result.Success -> {
                     val v = verifier.confirm(baseline, baselineState, verb)
                     if (v.success) return v
+                    // 读不到页面时 confirm 已经给出"未确认"结论，不能再改写成"均无变化"——
+                    // 我们并没有看见页面，没资格说它没变
+                    if (v.unconfirmed) return v
                     // 点击已交付到控件本身，再补一次手势就是把它按第二遍。这里就此打住，
                     // 把"未确认"如实回报：AI 下一步重新观察页面后，自会决定是重试还是换路子
                     return VerifyResult(
@@ -207,6 +210,8 @@ class ClickRunner(
                 }
                 return v
             }
+            // 读不到页面：不是"派发了但没变化"，而是压根没看见，措辞不能混
+            if (v.unconfirmed) return v
             return VerifyResult(
                 false,
                 missReason(pkg, targetName, verb, point, hit, element, selector),
@@ -384,7 +389,16 @@ internal class ClickVerifier(
             reason = verdict.second
         }
         if (!captured) {
-            return VerifyResult(true, "已$verb；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")
+            // 读不到页面 = 未确认，不是成功：判成成功会让执行历史记 ✅、进度与检查点照存、
+            // 失败计数每步清零，「连续 3 次失败请求用户介入」永远不会触发。
+            // 也不是失败：动作确实已经下发，原样重放就是重复副作用（所以 shouldRetry 不重试它）。
+            return VerifyResult(
+                false,
+                "已$verb；此刻读不到页面，变化未能确认，以下一步观察为准",
+                "",
+                "",
+                unconfirmed = true,
+            )
         }
         // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
         // 早判"未生效"会让 AI 重放动作（重复提交/重复收藏），副作用不可撤销
