@@ -233,6 +233,14 @@ class ScreenSharingService : Service() {
         if (f.isRecycled) null else f.copy(Bitmap.Config.ARGB_8888, false)
     }
 
+    /**
+     * 最新一帧的序号快照：捕获线程每产出一帧就自增。
+     *
+     * 给预览界面用：先比序号、没变就不必再 [previewFrame] 拷一份整屏 Bitmap。
+     * 500ms 轮询一次、任务跑几分钟就是几百份全屏位图，其中大多数与上一帧内容相同。
+     */
+    fun previewFrameSeq(): Long = synchronized(frameLock) { frameSeq }
+
     /** 等待悬浮窗隐藏后的新一帧画面（frameSeq 增长），超时返回，读取当前帧兜底 */
     private fun waitForCleanFrame(before: Long, timeoutMs: Long) {
         val deadline = System.currentTimeMillis() + timeoutMs
