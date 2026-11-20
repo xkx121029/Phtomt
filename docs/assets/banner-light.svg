@@ -40,7 +40,7 @@
     <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" fill="#063A2E">
       <text x="292" y="132" font-size="60" font-weight="700" letter-spacing="1.5">Happy Phone Agent</text>
       <text x="294" y="176" font-size="23" font-weight="400" fill="#4A544F" letter-spacing="0.6">One sentence in. The phone does the rest.</text>
-      <g fill="#7A827C" font-size="16" letter-spacing="3">
+      <g fill="#656D66" font-size="16" letter-spacing="3">
         <text x="294" y="216">ANDROID AGENT · KOTLIN · COMPOSE</text>
       </g>
     </g>
