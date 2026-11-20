@@ -2,6 +2,7 @@ package com.phoneagent.engine.execution
 
 import com.phoneagent.engine.decision.DecisionPolicy
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,11 +32,45 @@ class DegradationPolicyTest {
             DegradationTrigger.CHANNEL_UNAVAILABLE,
             detail = "无障碍",
             channel = "内置 Shizuku",
+            confirmed = true,
         )
         assertTrue(text.contains("无障碍"))
         assertTrue(text.contains("内置 Shizuku"))
         assertTrue(text.contains("改用"))
-        assertTrue("不能只说失败", text.contains("继续执行"))
+        assertTrue("有证据时可以说确认生效", text.contains("确认生效"))
+    }
+
+    /**
+     * 「已交付」与「已确认生效」在结构上分开之后，文案也必须跟着分两档——
+     * 否则结构差异对用户不可见，等于白做。而且「未确认」必须明写，不能让用户去推断。
+     */
+    @Test
+    fun 通道切换文案_未确认生效时必须明写() {
+        val unconfirmed = DegradationPolicy.notice(
+            DegradationTrigger.CHANNEL_UNAVAILABLE,
+            detail = "无障碍",
+            channel = "系统命令兜底",
+            confirmed = false,
+        )
+        assertTrue("必须明写未确认：$unconfirmed", unconfirmed.contains("未确认生效"))
+        assertFalse("不许在这种文案里声称已确认：$unconfirmed", unconfirmed.contains("并确认生效"))
+
+        // 调用方没有证据可言（null）时同样按未确认说：宁可不宣称，也不让用户推断
+        val unknown = DegradationPolicy.notice(
+            DegradationTrigger.CHANNEL_UNAVAILABLE,
+            detail = "无障碍",
+            channel = "系统命令兜底",
+        )
+        assertTrue("没有证据时不得暗示已生效：$unknown", unknown.contains("未确认生效"))
+
+        val confirmed = DegradationPolicy.notice(
+            DegradationTrigger.CHANNEL_UNAVAILABLE,
+            detail = "无障碍",
+            channel = "系统命令兜底",
+            confirmed = true,
+        )
+        assertTrue(confirmed.contains("并确认生效"))
+        assertFalse(confirmed.contains("未确认生效"))
     }
 
     @Test
