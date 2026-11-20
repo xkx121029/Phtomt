@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -24,6 +25,20 @@ object LocalDetector {
         listOf("取消", "关闭", "退出", "删除", "清空", "停止"),
         listOf("返回", "菜单", "更多", "设置", "首页", "我的", "分享", "刷新"),
     )
+
+    /**
+     * ML Kit 中文识别器：**进程内单例，复用**。
+     *
+     * `getClient(...)` 会建立 native 侧识别管线，是重量级初始化；原来每次 OCR 兜底都新建一个、
+     * 且从不 `close()`，于是 3B 不可用时每走一次兜底都付一遍初始化，旧实例还要等 GC 回收 native 资源。
+     * `TextRecognizer.process()` 支持并发提交，实例按进程生命周期常驻即可：
+     * 仓库里目前没有"进程内拆卸端侧视觉"的路径（[NativeVisionEngine] 也没有 release），
+     * 识别器的生命周期与 OCR 能力本身一致，所以这里不额外提供关闭入口。
+     * `by lazy` 默认是同步实现，多线程首次访问也只会构造一次。
+     */
+    private val recognizer: TextRecognizer by lazy {
+        TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+    }
 
     suspend fun detect(bitmap: Bitmap): List<DetectedControl> = withContext(Dispatchers.Default) {
         val text = runOnExecutor(bitmap)
@@ -52,9 +67,6 @@ object LocalDetector {
 
     private suspend fun runOnExecutor(bitmap: Bitmap): Text? =
         suspendCancellableCoroutine { cont ->
-            val recognizer = TextRecognition.getClient(
-                ChineseTextRecognizerOptions.Builder().build()
-            )
             recognizer.process(InputImage.fromBitmap(bitmap, 0))
                 .addOnSuccessListener { if (cont.isActive) cont.resume(it) }
                 .addOnFailureListener { e -> if (cont.isActive) cont.resumeWithException(e) }
