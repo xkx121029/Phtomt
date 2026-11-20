@@ -66,7 +66,6 @@ import androidx.compose.ui.window.PopupProperties
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.settings.approvalModeLabel
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -127,7 +126,7 @@ fun ConfigDialCard(
     enabled: Boolean = true,
 ) {
     val colors = AppTheme.colors
-    val shape = RoundedCornerShape(AppRadii.Item)
+    val shape = RoundedCornerShape(AppTheme.metrics.itemRadius)
     val buzz = rememberHapticClick()
     val density = LocalDensity.current
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
@@ -147,7 +146,7 @@ fun ConfigDialCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(AppRadii.Inline))
+                .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                 .clickable(enabled = expandable && enabled) {
                     buzz()
                     expanded = !expanded
@@ -320,7 +319,7 @@ private fun WheelPicker(
         modifier = modifier
             .fillMaxWidth()
             .height(WheelItemHeight * WHEEL_ROWS)
-            .clip(RoundedCornerShape(AppRadii.Inline))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .pointerInput(options, enabled) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
@@ -374,7 +373,7 @@ private fun WheelPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(WheelItemHeight)
-                .clip(RoundedCornerShape(AppRadii.Inline))
+                .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                 .background(colors.brandContainer.copy(alpha = 0.45f)),
         )
 

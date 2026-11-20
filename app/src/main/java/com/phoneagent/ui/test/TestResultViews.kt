@@ -87,8 +87,8 @@ internal fun ResultSummary(summary: com.phoneagent.feature.test.TestRunSummary, 
         colors = CardDefaults.cardColors(containerColor = bgColor.value),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 Text("方案：${summary.presetName}", style = MaterialTheme.typography.titleMedium)
                 // 语言标签：与全站标签同一枚 StatusPill，不再自造一个 4dp 圆角的小方块
                 StatusPill(
@@ -100,7 +100,7 @@ internal fun ResultSummary(summary: com.phoneagent.feature.test.TestRunSummary, 
             if (err) {
                 Text("运行出错：${summary.error}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
             } else {
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
                     Text(
                         "${summary.passed} / ${summary.total}",
                         style = MaterialTheme.typography.headlineSmall,
@@ -129,15 +129,15 @@ internal fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifie
         label = "border",
     )
     Card(
-        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = AppSpacing.Xs),
         shape = RoundedCornerShape(AppRadii.Tile),
         colors = CardDefaults.cardColors(
             containerColor = if (result.passed) passedColor.copy(alpha = 0.08f) else failedColor.copy(alpha = 0.08f),
         ),
         border = appBorderStroke(1.dp, borderColor.value),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(AppSpacing.Md)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 Icon(
                     if (result.passed) AppIcons.CheckCircle else AppIcons.Cancel,
                     contentDescription = null,
@@ -163,7 +163,7 @@ internal fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifie
                     "校验：${result.case.checkHint}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+                    modifier = Modifier.padding(top = AppSpacing.Xs),
                 )
             }
             if (result.intentType != null) {
@@ -172,13 +172,13 @@ internal fun TestResultCard(result: TestResult, onUseAsTask: () -> Unit, modifie
                         "意图：${result.intentType}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = AppSpacing.Xs),
                     )
                     Text(
                         "目标：${result.rawOutput.substringBefore("}").take(60)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = AppSpacing.Xs),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

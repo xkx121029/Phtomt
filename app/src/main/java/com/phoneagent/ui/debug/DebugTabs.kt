@@ -115,7 +115,7 @@ internal fun SegmentedTabs(
                 modifier = Modifier.widthIn(min = 56.dp),
             ) {
                 Box(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Sm),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(

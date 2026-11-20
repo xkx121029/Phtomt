@@ -24,6 +24,12 @@ internal enum class DegradationTrigger(val key: String, val label: String) {
 
     /** 页面卡死：同签名动作重复或长时间无进展 */
     PAGE_STUCK("page_stuck", "页面卡死"),
+
+    /** 输入未提交：把内容填进输入框后直接宣称完成，页面/后端从未收到提交 */
+    UNCOMMITTED_INPUT("uncommitted_input", "输入未提交"),
+
+    /** 依据瞬时提示：把 toast/绿勾这类过渡态当成完成状态，没有核对持久页面状态 */
+    TRANSIENT_EVIDENCE("transient_evidence", "依据瞬时提示"),
 }
 
 internal data class DegradationRule(
@@ -63,6 +69,18 @@ internal object DegradationPolicy {
             fallback = "第 4 次注入换做法提示，第 6 次升级为请求用户指导",
             failureCriterion = "纠偏后仍重复，或达到无进展上限",
         ),
+        DegradationRule(
+            trigger = DegradationTrigger.UNCOMMITTED_INPUT,
+            condition = "输入框已填入内容，但没有执行提交/发送/保存就宣称完成",
+            fallback = "拒绝完成并注入提交纠偏提示；达到拒绝上限后按完成处理，同时在任务记忆里标注未提交",
+            failureCriterion = "连续拒绝后仍未提交（记为未确认成功，不当作干净完成）",
+        ),
+        DegradationRule(
+            trigger = DegradationTrigger.TRANSIENT_EVIDENCE,
+            condition = "完成依据是 toast/绿勾这类瞬时提示，再观察一次已消失，或页面上根本没有这段文字",
+            fallback = "拒绝完成一次并注入证据纠偏，要求以持久页面状态（列表条目/播放控制/记录）确认",
+            failureCriterion = "纠偏后仍只凭提示语宣称完成",
+        ),
     )
 
     fun ruleOf(trigger: DegradationTrigger): DegradationRule =
@@ -99,6 +117,12 @@ internal object DegradationPolicy {
 
             DegradationTrigger.PAGE_STUCK -> "页面连续（$why）没有变化，已改用${now ?: "换一种做法"}" +
                 "继续；仍无进展时会停下来征求你的意见。"
+
+            DegradationTrigger.UNCOMMITTED_INPUT -> "「$why」的内容还没有提交，已${now ?: "要求先提交"}" +
+                "；在此之前页面读到的仍是未提交状态。"
+
+            DegradationTrigger.TRANSIENT_EVIDENCE -> "完成依据「$why」是瞬时提示，已${now ?: "要求重新核对持久状态"}" +
+                "；提示语消失后的页面状态才是判据。"
         }
     }
 }

@@ -3,6 +3,7 @@ package com.phoneagent.device.a11y
 import android.accessibilityservice.AccessibilityService
 import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.domain.rules.GestureBudget
 import com.phoneagent.provider.A11ySelector
 import com.phoneagent.provider.ActionResult
 import com.phoneagent.provider.IDeviceProvider
@@ -97,9 +98,9 @@ class ActionExecutor(
      *   传 null 时沿用默认 [LONG_PRESS_MS]，保证既有调用点的稳定性不变。
      */
     suspend fun longClick(x: Int, y: Int, durationMs: Long? = null): Result {
-        // 上层指定了时长就用它（让 AI 的 durationMs 生效）；未指定则沿用默认按压时长 [LONG_PRESS_MS]，
-        // 保证既有调用点的稳定性不变（800ms 足够长，必然触发长按）
-        val hold = durationMs ?: LONG_PRESS_MS
+        // 上层指定了时长就用它（让 AI 的 durationMs 生效，但夹进可用区间，见 GestureBudget）；
+        // 未指定则沿用默认按压时长 [LONG_PRESS_MS]，保证既有调用点的稳定性不变
+        val hold = GestureBudget.holdMs(durationMs)
         // 光标形态为"按住不放 + 呼吸光环"，保持时长取真实按压时长，两者才对得上
         CursorOverlayService.longPress(x, y, hold)
         // durationMs <= 0 交给 Provider 用其默认按压时长
@@ -115,7 +116,7 @@ class ActionExecutor(
      * 主应用据此补光标——节点直点没有坐标手势，不补光标的话用户只看到页面自己变了。
      */
     suspend fun clickNode(selector: NodeSelector, longClick: Boolean = false, durationMs: Long? = null): Result {
-        val hold = durationMs ?: LONG_PRESS_MS
+        val hold = GestureBudget.holdMs(durationMs)
         val result = remote {
             it.clickNode(selector.toRemote(), longClick, if (longClick) hold.toInt() else 0)
         } ?: return unavailable("节点${if (longClick) "长按" else "点击"}")
@@ -152,11 +153,12 @@ class ActionExecutor(
     fun hitTest(x: Int, y: Int): NodeHit? =
         SnapshotJsonCodec.decodeNodeHit(blocking(LIVE_QUERY_TIMEOUT_MS) { it.hitTest(x, y) })
 
-    /** 滑动 */
+    /** 滑动（时长同样夹进预算：太短被当 fling 忽略，太长会变成缓慢拖动） */
     suspend fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 400): Result {
         // 光标沿轨迹推进，时长与手势一致，轨迹才和手指同步
-        CursorOverlayService.swipe(x1, y1, x2, y2, durationMs)
-        val result = remote { it.swipe(x1, y1, x2, y2, durationMs.toInt()) } ?: return unavailable("滑动")
+        val ms = GestureBudget.swipeMs(durationMs)
+        CursorOverlayService.swipe(x1, y1, x2, y2, ms)
+        val result = remote { it.swipe(x1, y1, x2, y2, ms.toInt()) } ?: return unavailable("滑动")
         return result.toResult("已滑动", "滑动")
     }
 

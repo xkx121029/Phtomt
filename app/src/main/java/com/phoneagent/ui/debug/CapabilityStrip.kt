@@ -174,7 +174,7 @@ private fun CapabilityRow(item: PermissionItem, onFix: (PermissionKind) -> Unit)
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
                 )
             }
         }

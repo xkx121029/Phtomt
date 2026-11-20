@@ -43,6 +43,7 @@ import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.components.toolStatusStyle
 import com.phoneagent.ui.components.toolTimingText
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -138,7 +139,8 @@ internal fun ToolStepRow(
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 40.dp),
+                        // 与上方图标瓦片同宽：正文缩进到图标右侧，读者一眼看出这是同一条步骤的补充信息
+                        modifier = Modifier.padding(start = AppSize.IconTile),
                     )
                 }
             }
@@ -151,7 +153,7 @@ internal fun ToolStepRow(
             exit = fadeOut(tween(DurationFast, easing = EaseOut)) +
                 shrinkVertically(tween(DurationFast, easing = EaseOut), shrinkTowards = Alignment.Bottom),
         ) {
-            Column(modifier = Modifier.padding(start = 40.dp)) {
+            Column(modifier = Modifier.padding(start = AppSize.IconTile)) {
                 // 目的（AI 输出的 reasoning 就是这个动作要干什么；弱化，不与动作抢注意力）
                 if (!step.thinking.isNullOrBlank()) {
                     Spacer(Modifier.height(AppSpacing.Sm))

@@ -61,7 +61,6 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.settings.SettingsPage
 import com.phoneagent.ui.theme.AppElevation
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSize
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppStyle
@@ -338,7 +337,7 @@ private fun TopBarAction(
     Box(
         modifier = Modifier
             .size(AppSize.TouchTarget)
-            .clip(RoundedCornerShape(AppRadii.Chip))
+            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -369,7 +368,7 @@ private fun WorkbenchConfigPanel(
     onOpenSettingsPage: (SettingsPage) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val panelShape = RoundedCornerShape(topStart = AppRadii.Card, topEnd = AppRadii.Card)
+    val panelShape = RoundedCornerShape(topStart = AppTheme.metrics.cardRadius, topEnd = AppTheme.metrics.cardRadius)
     Surface(
         shape = panelShape,
         color = colors.surfaceBase,
@@ -411,7 +410,7 @@ private fun WorkbenchConfigPanel(
                 Box(
                     modifier = Modifier
                         .size(AppSize.TouchTarget)
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .clickable(onClick = onClose),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -527,7 +526,7 @@ private fun ChoiceRow(
                 val active = id == selected
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .background(if (active) colors.brandContainer else colors.surfaceSunken)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },

@@ -74,8 +74,13 @@ private val WorkbenchShapes = Shapes(
     extraLarge = RoundedCornerShape(AppRadii.Card),
 )
 
-/** 风格对应的 M3 Shapes；[PhoneAgentTheme] 只认这一份映射 */
-internal fun shapesFor(style: UiStyle): Shapes = when (style) {
-    UiStyle.CLASSIC -> AppShapes
-    UiStyle.WORKBENCH -> WorkbenchShapes
-}
+/**
+ * 风格 + 皮肤对应的 M3 Shapes；[PhoneAgentTheme] 只认这一份映射。
+ * 皮肤优先于风格：石墨自带一套从零定义的圆角档位，不与经典/工作台的档位混算。
+ */
+internal fun shapesFor(style: UiStyle, skin: ThemeSkin = ThemeSkin.LEGACY): Shapes =
+    when {
+        skin.isGraphite -> GraphiteShapes
+        style == UiStyle.WORKBENCH -> WorkbenchShapes
+        else -> AppShapes
+    }

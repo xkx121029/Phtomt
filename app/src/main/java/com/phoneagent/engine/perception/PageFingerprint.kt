@@ -12,8 +12,34 @@ import java.security.MessageDigest
  */
 object PageFingerprint {
 
-    /** 计算页面指纹（轻量版，只取关键控件特征） */
+    /**
+     * 同一步内多处以同一份快照求指纹时的复用槽。
+     *
+     * 一次观察后，观察段、视觉缓存、异常经验、页面记忆、执行段、页面记忆采集会各算一次
+     * （每算一次都要全量排序 + SHA256）。它们在同一个快照实例上问的其实是同一个问题。
+     *
+     * 用「快照实例 + 结果」的单槽原子引用：`===` 判定命中才复用，未命中照常重算，
+     * 因此**不存在把旧快照的指纹当成新快照返回**的可能；两个线程同时换页最多多算一次。
+     */
+    @Volatile
+    private var memoMeaningful: Pair<ScreenSnapshot, String>? = null
+
+    @Volatile
+    private var memoStrict: Pair<ScreenSnapshot, String>? = null
+
+    /** 计算页面指纹（轻量版，只取关键控件特征）；同一快照实例只算一次 */
     fun compute(snapshot: ScreenSnapshot): String {
+        memoStrict?.let { if (it.first === snapshot) return it.second }
+        return computeStrict(snapshot).also { memoStrict = snapshot to it }
+    }
+
+    /** 计算有意义的指纹；同一快照实例只算一次（口径见 [computeMeaningful]） */
+    fun computeMeaningful(snapshot: ScreenSnapshot): String {
+        memoMeaningful?.let { if (it.first === snapshot) return it.second }
+        return computeMeaningfulUncached(snapshot).also { memoMeaningful = snapshot to it }
+    }
+
+    private fun computeStrict(snapshot: ScreenSnapshot): String {
         val sb = StringBuilder()
         sb.append(snapshot.packageName ?: "").append('|')
         // 按坐标排序，保证稳定
@@ -29,7 +55,7 @@ object PageFingerprint {
     }
 
     /** 计算有意义的指纹：忽略状态栏时间等动态变化（仅标签与坐标，不含 viewId 中可能变化的序号） */
-    fun computeMeaningful(snapshot: ScreenSnapshot): String {
+    private fun computeMeaningfulUncached(snapshot: ScreenSnapshot): String {
         val sb = StringBuilder()
         val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.domain.model.UiElement> { it.left }.thenBy { it.top })
         for (e in sorted) {

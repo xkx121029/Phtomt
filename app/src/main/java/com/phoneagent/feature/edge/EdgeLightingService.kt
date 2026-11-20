@@ -26,6 +26,20 @@ class EdgeLightingService : Service() {
     private var previewing = false
     /** 用户设置：绿色主题边缘光效是否开启；关闭时不建窗口、不跑帧动画 */
     private var lightingEnabled = true
+    /**
+     * 最近一次收到的标定参数。
+     *
+     * 开关「关掉再打开」时窗口会被真正移除、之后由 [showOverlay] 重建，
+     * 重建路径不会再收到一次 start() 的 intent，若不留存标定值，光带就会退回默认几何
+     * （内边距 0、粗细 20），与用户设置里调好的位置/粗细对不上。
+     */
+    private var calibTop = 0
+    private var calibBottom = 0
+    private var calibLeft = 0
+    private var calibRight = 0
+    private var calibRadius = 0
+    private var calibWidth = 20
+    private var calibSpeed = 0.3f
 
     private val settingsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -139,6 +153,8 @@ class EdgeLightingService : Service() {
                 ?.setInterpolator(OverlayMotion.EaseOut)
                 ?.start()
             lightingView?.start()
+            // 重建窗口（开关关掉又打开）走不到 intent 分支，这里补应用上一次的标定
+            applyStoredCalibration()
         } catch (_: WindowManager.BadTokenException) {
             // 没有权限时静默失败
         } catch (_: Exception) {
@@ -154,9 +170,22 @@ class EdgeLightingService : Service() {
         width: Int = 20,
         speed: Float = 0.3f,
     ) {
+        // 先留存再应用：窗口此刻可能不存在（光效被开关关掉），重建时要用这份值
+        calibTop = top
+        calibBottom = bottom
+        calibLeft = left
+        calibRight = right
+        calibRadius = radius
+        calibWidth = width
+        calibSpeed = speed
+        applyStoredCalibration()
+    }
+
+    /** 把留存的标定参数应用到当前窗口（窗口不存在时是空操作） */
+    private fun applyStoredCalibration() {
         lightingView?.apply {
-            setCalibration(top, bottom, left, right, radius, width)
-            setSpeed(speed)
+            setCalibration(calibTop, calibBottom, calibLeft, calibRight, calibRadius, calibWidth)
+            setSpeed(calibSpeed)
         }
     }
 

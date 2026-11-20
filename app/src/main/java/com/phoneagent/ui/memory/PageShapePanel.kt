@@ -44,6 +44,7 @@ import com.phoneagent.ui.components.OverlayScrim
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationInstant
 import com.phoneagent.ui.theme.DurationNormal
@@ -133,8 +134,8 @@ internal fun PageShapePanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp)
-                        .padding(bottom = 24.dp),
+                        .padding(horizontal = AppTheme.metrics.pagePad)
+                        .padding(bottom = AppSpacing.Xl),
                 ) {
                     // 拖拽指示条
                     Spacer(Modifier.height(10.dp))
@@ -267,7 +268,7 @@ private fun ShapeLegend() {
         "胶囊" to "开关",
     )
     Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
         modifier = Modifier.fillMaxWidth(),
     ) {
         items.forEach { (shape, meaning) ->

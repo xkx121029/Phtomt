@@ -25,6 +25,22 @@ internal class LoopGuard(
 
         /** 连续端侧决策达到该次数：判定疑似死循环，本步强制走一次云端复核 + 提醒一次 */
         internal const val LOCAL_DECISION_REVIEW_STREAK = 5
+
+        /** 同一页面连续无推进达到该步数：注入"换入口/换策略"的纠偏提示 */
+        internal const val PAGE_STUCK_SWITCH_STREAK = 4
+
+        /** 同一页面连续无推进达到该步数：提示已被无视，升级为请求用户指导 */
+        internal const val PAGE_STUCK_ASK_STREAK = 7
+
+        /**
+         * 同一页面连续无推进达到该步数：判定这条路径已死，直接以可归因原因收尾。
+         *
+         * 存在这个上限的原因：同签名熔断（[onVerifiedAction]）只按"动作签名完全一致"计数，
+         * AI 换个措辞点同一个控件（收藏/点赞/心形）签名就变，计数器永远凑不齐，
+         * 实测出现过连点 20+ 次直到步数耗尽。页面级无推进计数不看措辞，只问"页面到底变没变"，
+         * 因此能在同一页连点无数次时兜住。
+         */
+        internal const val PAGE_STUCK_STOP_STREAK = 12
     }
 
     /** 同签名动作的纠偏升级级别 */
@@ -38,6 +54,25 @@ internal class LoopGuard(
         /** 第 6 次：升级为请求用户指导 */
         ASK_USER,
     }
+
+    /** 页面级无推进的处置级别 */
+    internal enum class PageStuckEscalation {
+        /** 未到阈值，不干预 */
+        NONE,
+
+        /** 第 4 步：注入换入口/换策略提示 */
+        SWITCH_APPROACH,
+
+        /** 第 7 步：升级为请求用户指导（只提示，不阻塞等待） */
+        ASK_USER,
+
+        /** 第 12 步：判定路径已死，调用方应以可归因原因收尾 */
+        STOP,
+    }
+
+    // ---- 页面级无推进止损 ----
+    private var lastPageSig: String? = null
+    private var pageStuckStreak = 0
 
     // ---- 广告自动点击护栏 ----
     private var lastAdClickTargetKey: String? = null
@@ -64,6 +99,9 @@ internal class LoopGuard(
     /** 当前连续端侧决策次数（供日志/提示文案引用） */
     internal val localDecisionStreakValue: Int get() = localDecisionStreak
 
+    /** 同一页面已连续无推进的步数（供日志/提示文案引用） */
+    internal val pageStuckStreakValue: Int get() = pageStuckStreak
+
     /** 任务开始 / 重新计时：刷新进展时间并允许下一次无进展提醒 */
     internal fun start() {
         lastProgressAt = clock()
@@ -76,6 +114,8 @@ internal class LoopGuard(
         adClickStreak = 0
         lastVerifiedActionSig = null
         sameSigStreak = 0
+        lastPageSig = null
+        pageStuckStreak = 0
         localDecisionStreak = 0
         localLoopNotified = false
         start()
@@ -143,6 +183,31 @@ internal class LoopGuard(
             REPEAT_HINT_STREAK -> RepeatEscalation.SWITCH_APPROACH
             REPEAT_ESCALATE_STREAK -> RepeatEscalation.ASK_USER
             else -> RepeatEscalation.NONE
+        }
+    }
+
+    /**
+     * 页面级无推进止损：只问"页面到底变没变"，不看 AI 用什么措辞描述同一个控件。
+     *
+     * 与 [onVerifiedAction] 的分工：后者按动作签名计数，AI 换个叫法（收藏/点赞/心形）
+     * 签名就变，同签名熔断永远凑不齐；本函数用页面指纹兜住这类"改措辞、原地打转"的失败模式。
+     * 只在动作交付后、下一步观察到的页面仍与上一步相同时累计。
+     *
+     * @param fingerprint 本步观察到的页面指纹（与上一步比较）
+     * @param skip true = 本步动作本就不期待页面变化（wait/say/shell 等），不计数也不复位
+     */
+    internal fun onPageOutcome(fingerprint: String?, skip: Boolean): PageStuckEscalation {
+        if (skip || fingerprint.isNullOrBlank()) return PageStuckEscalation.NONE
+        if (fingerprint == lastPageSig) pageStuckStreak++ else {
+            lastPageSig = fingerprint
+            pageStuckStreak = 1
+        }
+        // 只在恰好到达阈值的那一步出手：否则 7~11 步会每步重复注入同一段提示与降级通知
+        return when (pageStuckStreak) {
+            PAGE_STUCK_STOP_STREAK -> PageStuckEscalation.STOP
+            PAGE_STUCK_ASK_STREAK -> PageStuckEscalation.ASK_USER
+            PAGE_STUCK_SWITCH_STREAK -> PageStuckEscalation.SWITCH_APPROACH
+            else -> PageStuckEscalation.NONE
         }
     }
 

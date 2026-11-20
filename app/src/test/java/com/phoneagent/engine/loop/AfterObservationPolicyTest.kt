@@ -20,6 +20,9 @@ import org.junit.Test
  */
 class AfterObservationPolicyTest {
 
+    /** 每个用例一份统计实例（引擎内同样按实例持有，避免并行用例互相污染） */
+    private val stats = AfterObservationStats()
+
     private fun element(
         index: Int,
         label: String? = null,
@@ -198,15 +201,15 @@ class AfterObservationPolicyTest {
 
     @Test
     fun `统计口径给出复用比例`() {
-        AfterObservationStats.reset()
-        AfterObservationStats.onReused()
-        AfterObservationStats.onReused()
-        AfterObservationStats.onRejected(AfterRejectReason.SPARSE)
-        val summary = AfterObservationStats.summaryText()
+        stats.reset()
+        stats.onReused()
+        stats.onReused()
+        stats.onRejected(AfterRejectReason.SPARSE)
+        val summary = stats.summaryText()
         assertTrue("应报告 2/3：$summary", summary.contains("复用 2/3"))
         assertTrue("应报告 67%：$summary", summary.contains("67%"))
         assertTrue("应报告不可复用原因：$summary", summary.contains("元素稀疏"))
-        assertEquals(2, AfterObservationStats.counts().first)
+        assertEquals(2, stats.counts().first)
         assertNotNull(summary)
     }
 }

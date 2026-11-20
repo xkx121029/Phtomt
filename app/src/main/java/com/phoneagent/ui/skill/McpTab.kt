@@ -64,7 +64,8 @@ import com.phoneagent.ui.components.AppCard
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.StatusPill
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -94,12 +95,15 @@ internal fun McpTab(vm: MainViewModel) {
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = AppTheme.metrics.pagePad),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
     ) {
         // ---- 内置 MCP 市场（需求 6） ----
         AppCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(AppSpacing.Lg), verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(AppIcons.Store, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(6.dp))
@@ -150,7 +154,7 @@ internal fun McpTab(vm: MainViewModel) {
 
         // ---- 新增服务器（需求 5：展示请求信息 JSON） ----
         AppCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(AppSpacing.Lg), verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                 Text("新增 MCP 服务器", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     value = serverName, onValueChange = { serverName = it },
@@ -204,7 +208,9 @@ internal fun McpTab(vm: MainViewModel) {
                 val isExpanded = expanded == cfg.name
                 AppItemCard {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
@@ -317,8 +323,8 @@ private fun McpToolDetail(tool: McpTool) {
 private fun JsonPreviewBox(json: String) {
     Box(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppRadii.Chip))
-            .padding(10.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppTheme.metrics.chipRadius))
+            .padding(AppSpacing.Sm),
     ) {
         Text(
             json,

@@ -36,7 +36,6 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.motionSettings
@@ -226,7 +225,7 @@ internal fun AlertCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.errorContainer)
             .padding(AppSpacing.Lg),
     ) {
@@ -264,7 +263,7 @@ internal fun DoneItem(item: AgentTimelineItem.Done) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.successContainer)
             .padding(AppSpacing.Lg),
     ) {
@@ -342,7 +341,7 @@ internal fun FailedItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.errorContainer)
             .padding(AppSpacing.Lg),
     ) {
@@ -398,7 +397,7 @@ internal fun NoticeItem(item: AgentTimelineItem.Notice) {
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.warningContainer)
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {

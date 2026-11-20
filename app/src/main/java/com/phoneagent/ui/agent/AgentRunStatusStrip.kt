@@ -37,7 +37,6 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationPulse
@@ -149,7 +148,7 @@ internal fun AgentRunStatusStrip(
             // 这里补上那段距离，状态条在屏幕上仍在原来的位置。
             // 只留上缘：下缘让给输入区自己的上留白，否则两段留白叠成 20dp 的断层
             .padding(start = AgentGlassInnerPad, end = AgentGlassInnerPad, top = AppSpacing.Sm)
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(container)
             // 中性态靠一圈发丝线定边界；切到 errorContainer 后底色自己就划出了边界，
             // 再套一圈灰绿描边只会让这块警示面显得脏
@@ -157,7 +156,7 @@ internal fun AgentRunStatusStrip(
                 if (needsUser) {
                     Modifier
                 } else {
-                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
                 },
             )
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),

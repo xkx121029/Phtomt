@@ -23,6 +23,9 @@ import org.junit.Test
  */
 class AfterObservationReuseTest {
 
+    /** 每个用例一份统计实例（与引擎内一致：实例而非全局单例，避免用例间互相污染） */
+    private val stats = AfterObservationStats()
+
     private class Counters {
         var reads = 0
         var shots = 0
@@ -108,6 +111,7 @@ class AfterObservationReuseTest {
             updatePageMarks = { _ -> },
             bumpSensitiveTakeover = { 1 },
             hooks = hooks,
+            afterStats = stats,
         )
     }
 
@@ -122,7 +126,7 @@ class AfterObservationReuseTest {
 
     @Test
     fun `有动作后快照时跳过读屏与截图`() = runTest {
-        AfterObservationStats.reset()
+        stats.reset()
         val counters = Counters()
         val page = snapshot(40, "页面")
         val phase = phase(counters, readSnapshot = { page })
@@ -137,12 +141,12 @@ class AfterObservationReuseTest {
         assertEquals("快照应原样成为本轮观察结果", page, session.snapshot)
         assertTrue("应记录复用日志：${counters.logs}", counters.logs.any { it.contains("复用动作后快照") })
         assertEquals("消费一次即清空", null, session.pendingAfterObservation)
-        assertTrue(AfterObservationStats.summaryText().contains("复用 1/1"))
+        assertTrue(stats.summaryText().contains("复用 1/1"))
     }
 
     @Test
     fun `稀疏页快照不复用，仍走完整观察与截图兜底`() = runTest {
-        AfterObservationStats.reset()
+        stats.reset()
         val counters = Counters()
         val sparse = snapshot(2, "稀疏")
         // 重读后仍是稀疏页：视觉是唯一信息来源，必须截图兜底
@@ -154,12 +158,12 @@ class AfterObservationReuseTest {
         assertEquals("稀疏页必须重新读屏", 1, counters.reads)
         assertEquals("稀疏页必须保留截图兜底", 1, counters.shots)
         assertTrue("应记录不可复用原因：${counters.logs}", counters.logs.any { it.contains("元素稀疏") })
-        assertTrue(AfterObservationStats.summaryText().contains("不可复用 1 步"))
+        assertTrue(stats.summaryText().contains("不可复用 1 步"))
     }
 
     @Test
     fun `过期快照不复用`() = runTest {
-        AfterObservationStats.reset()
+        stats.reset()
         val counters = Counters()
         val page = snapshot(40, "页面")
         val phase = phase(counters, readSnapshot = { page })
@@ -206,7 +210,7 @@ class AfterObservationReuseTest {
      */
     @Test
     fun `复用快照比完整观察快`() = runBlocking {
-        AfterObservationStats.reset()
+        stats.reset()
         val readDelayMs = 35L
         val shotDelayMs = 90L
         val counters = Counters()
@@ -246,6 +250,6 @@ class AfterObservationReuseTest {
                 "单步节省 ${savedRatio}%；读屏 ${counters.reads} 次 / 截图 ${counters.shots} 次",
         )
         assertTrue("复用应显著快于完整观察（复用 ${reuseMs}ms / 完整 ${fullMs}ms）", reuseMs < fullMs)
-        assertTrue("跳过观察比例应为 6/6", AfterObservationStats.summaryText().contains("复用 6/6"))
+        assertTrue("跳过观察比例应为 6/6", stats.summaryText().contains("复用 6/6"))
     }
 }

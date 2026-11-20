@@ -16,25 +16,23 @@ import org.junit.Test
  */
 class VerifyRulesTest {
 
-    // ---- 结构性错误 ----
+    // ---- 交付状态 ----
 
     @Test
-    fun isStructuralError_端侧校验类错误_全部判为不可重试() {
-        // 这六条文案分别来自 shell 命令表与自由模式的端点白名单，都是"重跑一遍结果不会变"的错误
-        assertTrue(VerifyRules.isStructuralError("未知 shell 命令: xxx"))
-        assertTrue(VerifyRules.isStructuralError("shell 命令为空"))
-        assertTrue(VerifyRules.isStructuralError("参数无效"))
-        assertTrue(VerifyRules.isStructuralError("未知无障碍端点: click_node"))
-        assertTrue(VerifyRules.isStructuralError("缺少参数: target"))
-        assertTrue(VerifyRules.isStructuralError("缺少 endpoint"))
-    }
-
-    @Test
-    fun isStructuralError_语义类失败_判为可重试() {
-        // 页面未变化属于"这次没成，可能页面卡了一下"，重试有意义，不能归到结构性错误
-        assertFalse(VerifyRules.isStructuralError("页面未变化，动作可能未生效"))
-        assertFalse(VerifyRules.isStructuralError("动作执行返回失败"))
-        assertFalse(VerifyRules.isStructuralError(""))
+    fun delivery_由结构化字段推导_与文案无关() {
+        // 文案改成什么都不会影响交付判定：只看 success / notDelivered
+        assertEquals(
+            Delivery.EFFECTIVE,
+            VerifyResult(true, "随便写的成功理由", "", "").delivery,
+        )
+        assertEquals(
+            Delivery.NOT_DELIVERED,
+            VerifyResult(false, "随便写的失败理由", "", "", notDelivered = true).delivery,
+        )
+        assertEquals(
+            Delivery.DELIVERED_NO_EFFECT,
+            VerifyResult(false, "随便写的失败理由", "", "").delivery,
+        )
     }
 
     // ---- 点击类 ----
@@ -60,8 +58,8 @@ class VerifyRulesTest {
     fun shouldRetry_首次失败且可重试_语义类动作值得重试() {
         assertTrue(
             VerifyRules.shouldRetry(
-                ActionType.SCROLL, "页面未变化，动作可能未生效",
-                attempt = 1, active = true, notDelivered = true,
+                ActionType.SCROLL, Delivery.NOT_DELIVERED, structural = false,
+                attempt = 1, active = true,
             ),
         )
     }
@@ -71,7 +69,8 @@ class VerifyRulesTest {
         // 闹钟降级链整条重跑两次 = 闹钟列表里两条一样的条目，属于重复副作用
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.SCROLL, "页面未变化", attempt = 1, active = true, notDelivered = false,
+                ActionType.SCROLL, Delivery.DELIVERED_NO_EFFECT, structural = false,
+                attempt = 1, active = true,
             ),
         )
     }
@@ -82,13 +81,14 @@ class VerifyRulesTest {
         val last = VerifyRules.MAX_ATTEMPTS - 1
         assertTrue(
             VerifyRules.shouldRetry(
-                ActionType.SCROLL, "页面未变化", attempt = last, active = true, notDelivered = true,
+                ActionType.SCROLL, Delivery.NOT_DELIVERED, structural = false,
+                attempt = last, active = true,
             ),
         )
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.SCROLL, "页面未变化", attempt = VerifyRules.MAX_ATTEMPTS,
-                active = true, notDelivered = true,
+                ActionType.SCROLL, Delivery.NOT_DELIVERED, structural = false,
+                attempt = VerifyRules.MAX_ATTEMPTS, active = true,
             ),
         )
     }
@@ -97,12 +97,14 @@ class VerifyRulesTest {
     fun shouldRetry_结构性错误_即使未达上限也不重试() {
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.SHELL, "未知 shell 命令: xxx", attempt = 1, active = true, notDelivered = true,
+                ActionType.SHELL, Delivery.NOT_DELIVERED, structural = true,
+                attempt = 1, active = true,
             ),
         )
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.A11Y_CALL, "缺少参数: target", attempt = 1, active = true, notDelivered = true,
+                ActionType.A11Y_CALL, Delivery.NOT_DELIVERED, structural = true,
+                attempt = 1, active = true,
             ),
         )
     }
@@ -112,12 +114,14 @@ class VerifyRulesTest {
         // ClickRunner 内部已逐级穷尽定位方式，外层重跑只会重复同一串动作（还可能重复副作用）
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.CLICK, "页面未变化", attempt = 1, active = true, notDelivered = true,
+                ActionType.CLICK, Delivery.NOT_DELIVERED, structural = false,
+                attempt = 1, active = true,
             ),
         )
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.LONG_PRESS, "页面未变化", attempt = 1, active = true, notDelivered = true,
+                ActionType.LONG_PRESS, Delivery.NOT_DELIVERED, structural = false,
+                attempt = 1, active = true,
             ),
         )
     }
@@ -126,9 +130,35 @@ class VerifyRulesTest {
     fun shouldRetry_任务已取消_不再重试() {
         assertFalse(
             VerifyRules.shouldRetry(
-                ActionType.SCROLL, "页面未变化", attempt = 1, active = false, notDelivered = true,
+                ActionType.SCROLL, Delivery.NOT_DELIVERED, structural = false,
+                attempt = 1, active = false,
             ),
         )
+    }
+
+    // ---- 失败回注 ----
+
+    @Test
+    fun failureHint_未送达_允许换通道或落点再试() {
+        val hint = VerifyRules.failureHint(Delivery.NOT_DELIVERED, "手势被系统拒绝", structural = false)
+
+        assertTrue(hint.contains("没有送达设备"))
+        assertTrue(hint.contains("换一条执行通道"))
+    }
+
+    @Test
+    fun failureHint_已送达未生效_要求换入口而不是重放() {
+        val hint = VerifyRules.failureHint(Delivery.DELIVERED_NO_EFFECT, "页面与控件状态均无变化", structural = false)
+
+        assertTrue(hint.contains("已经送达"))
+        assertTrue(hint.contains("不要原地重复"))
+    }
+
+    @Test
+    fun failureHint_结构性错误_不再叠加提示() {
+        // 结构性错误已有 ExecutionFeedback 的纠正文案，这里再叠一层只会稀释重点
+        assertEquals("", VerifyRules.failureHint(Delivery.NOT_DELIVERED, "未知 shell 命令", structural = true))
+        assertEquals("", VerifyRules.failureHint(Delivery.EFFECTIVE, "页面已变化", structural = false))
     }
 
     // ---- 步后等待 ----

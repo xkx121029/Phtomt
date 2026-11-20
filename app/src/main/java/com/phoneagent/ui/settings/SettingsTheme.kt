@@ -1,9 +1,6 @@
 ﻿package com.phoneagent.ui.settings
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,47 +10,40 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.phoneagent.ui.components.AppCardBorder
-import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.GlassSurface
-import com.phoneagent.ui.components.GlassTokens
+import com.phoneagent.ui.components.GlassSurfaceStyle
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberGlassState
-import com.phoneagent.ui.components.rememberHapticClick
-import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.ThemePalette
+import com.phoneagent.ui.theme.ThemeSkin
 import com.phoneagent.ui.theme.UiStyle
-import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.theme.glassTintPreview
 import dev.chrisbanes.haze.hazeSource
 
 /**
  * 主题页：选择整体视觉风格。
  *
- * 目前有三条轴——**配色**、**框线**与**磨砂浓淡**：配色决定整套品牌主色与底色（深浅跟随系统）；
- * 标准保留卡片 / 面板 / 输入面的发丝描边，无框线则把这些装饰性描边全部去掉，层次只靠底色差拉开；
- * 磨砂浓淡控制玻璃页眉/悬浮面板的透光度，负更透、正更实。
- * 选中即时落盘并即时生效：配色与框线走 `PhoneAgentTheme(paletteId / bordersEnabled = ...)`，
- * 保存后整棵树重组，不需要重启。
+ * 四条轴：**主题皮肤**、界面风格、配色与框线、磨砂浓淡。
+ * 皮肤是最高优先级的一层——经典 = 现有主题（配色 / 框线 / 工作台风格全部照旧），
+ * 石墨 = 新主题（自带色板、字体、形状、间距与材质），此时配色与框线选项不参与，
+ * 页面里会明确说明，而不是让用户点了没反应。
+ * 选中即时落盘并即时生效：保存后整棵树重组，不需要重启。
  */
 @Composable
 internal fun SettingsTheme(
@@ -63,6 +53,7 @@ internal fun SettingsTheme(
     /** 由「外观与导航」内嵌渲染时为 true：标题已由外层给，这里不再重复画一遍 */
     embedded: Boolean = false,
 ) {
+    val activeSkin = ThemeSkin.of(st.skin)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -72,373 +63,273 @@ internal fun SettingsTheme(
             .padding(LocalNavClearance.current),
     ) {
         if (!embedded) {
-            SettingsPageHeader("主题", onBack, subtitle = "界面风格、配色、框线与磨砂浓淡，改完立即生效")
-            Spacer(Modifier.height(AppSpacing.Page))
+            SettingsPageHeader("主题", onBack, subtitle = "主题皮肤、界面风格、配色与磨砂浓淡，改完立即生效")
+            Spacer(Modifier.height(AppTheme.metrics.pagePad))
         }
 
-        // 界面风格：只换令牌取值口径（圆角档位 / 容器色调），不新开一套样式系统。
-        // 选中即落盘，PhoneAgentTheme 重组后全站立即生效；默认经典，工作台作为可选预设
-        SettingsSection(
-            title = "界面风格",
-            subtitle = "经典是默认主题；工作台把页面收成平铺分区，首屏直接进入工作区",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-            ) {
-                UiStyle.values().forEach { style ->
-                    SelectableOption(
-                        title = style.label,
-                        subtitle = style.summary,
-                        selected = st.uiStyle == style.id,
-                        onClick = {
-                            if (st.uiStyle != style.id) {
-                                st.uiStyle = style.id
-                                save()
-                            }
-                        },
-                    ) { StyleSwatch(style) }
-                }
-            }
+        SkinSection(st, activeSkin, save)
+
+        Spacer(Modifier.height(AppSpacing.Lg))
+
+        StyleSection(st, activeSkin, save)
+
+        if (activeSkin.isGraphite) {
+            GraphiteSkinNote()
+        } else {
+            Spacer(Modifier.height(AppSpacing.Lg))
+            BorderSection(st, save)
+            Spacer(Modifier.height(AppSpacing.Lg))
+            PaletteSection(st, save)
         }
 
         Spacer(Modifier.height(AppSpacing.Lg))
 
-        SettingsSection(
-            title = "主题风格",
-            subtitle = "卡片、面板与输入面的描边方式",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-            ) {
-                ThemeOption(
-                    title = "标准",
-                    subtitle = "卡片、面板与输入面保留发丝描边，层次最清晰",
-                    selected = !st.borderless,
-                    showBorder = true,
-                    onClick = {
-                        if (st.borderless) {
-                            st.borderless = false
-                            save()
-                        }
-                    },
-                )
-                ThemeOption(
-                    title = "无框线",
-                    subtitle = "去掉所有装饰性框线，界面更干净，层次由底色差表达",
-                    selected = st.borderless,
-                    showBorder = false,
-                    onClick = {
-                        if (!st.borderless) {
-                            st.borderless = true
-                            save()
-                        }
-                    },
-                )
-            }
-        }
-
-        Spacer(Modifier.height(AppSpacing.Lg))
-
-        // 配色：整套品牌主色 + 底色（深浅跟随系统）。存 ThemePalette.id 字符串，
-        // 落盘后 settingsFlow 驱动 PhoneAgentTheme 重组，整棵树立即换色，不用重启
-        SettingsSection(
-            title = "配色",
-            subtitle = "品牌主色与底色，深浅跟随系统",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = AppSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-            ) {
-                ThemePalette.entries.forEach { palette ->
-                    PaletteOption(
-                        palette = palette,
-                        selected = st.palette == palette.id,
-                        onClick = {
-                            if (st.palette != palette.id) {
-                                st.palette = palette.id
-                                save()
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(AppSpacing.Lg))
-
-        // 磨砂浓淡：微调玻璃 tint 的透明度（相对色板默认 ±25 个百分点点），
-        // 拖动只更新本地编辑态（数值跟手），松手才落盘——落盘后 settingsFlow 驱动
-        // PhoneAgentTheme 重组，整棵树的玻璃面立即跟着变，避免拖一次写几十次 DataStore
-        SettingsSection(
-            title = "磨砂玻璃",
-            subtitle = "玻璃面板的透光度：向左更透，向右更实",
-            tone = SettingsTone.Brand,
-        ) {
-            Column(Modifier.padding(horizontal = AppSpacing.Lg)) {
-                // 实时预览样片：上面是"滚过玻璃下的内容"（彩色渐变 + 文字），
-                // 下面浮一块小玻璃板模拟页眉——tint 直接取滑杆的调节值，拖动跟手，
-                // 不用等落盘。真正落盘后全局玻璃面走的是同一个 alpha 位移实现点，
-                // 预览所见 = 全局所得
-                val previewTint = glassTintPreview(st.glassTintOffset)
-                val previewGlass = rememberGlassState()
-                // 说明文字放在玻璃框**外面**：放进去会被玻璃板糊成一条亮带，
-                // 使"玻璃上的字 vs 玻璃内最亮处"退到 1.3:1。框内只留渐变与玻璃板。
-                Text(
-                    "滚过玻璃下方的内容",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    "Frosted sample · 0123456789",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(AppSpacing.Sm))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(96.dp)
-                        .clip(RoundedCornerShape(AppRadii.Tile)),
-                ) {
-                    // 取样源：用容器色三段渐变做「滚过玻璃下方的内容」。
-                    // 早先用硬编码的高饱和蓝→绿→黄，深色主题下玻璃板上的浅字与最亮处
-                    // 只有 1.9:1（不到 AA）；容器色本身按「其上放 on*Container 文字」设计，
-                    // 既透得出色相变化，又不把最坏情况推到不可读。
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .hazeSource(previewGlass)
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.primaryContainer,
-                                        MaterialTheme.colorScheme.secondaryContainer,
-                                        MaterialTheme.colorScheme.tertiaryContainer,
-                                    ),
-                                ),
-                            ),
-                    )
-                    // 玻璃浮板：与真实页眉同款材质（同模糊半径档位 + 高光 + 描边），
-                    // 只铺样片下半部、四边留白，模拟"内容滚到玻璃下"的观感
-                    GlassSurface(
-                        hazeState = previewGlass,
-                        tintOverride = previewTint,
-                        shape = RoundedCornerShape(AppRadii.Tile),
-                        blurRadius = GlassTokens.BlurCompact,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md)
-                            .height(44.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = AppSpacing.Lg),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "玻璃页眉预览",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                // 用 onPrimaryContainer：与样片渐变的起始色是官方配对，
-                                // 深色主题下是浅青白，压在玻璃中部暗区上过 AA
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(AppSpacing.Md))
-                LabeledField(
-                    when {
-                        st.glassTintOffset == 0 -> "浓淡  默认"
-                        st.glassTintOffset < 0 -> "浓淡  更透 ${-st.glassTintOffset}"
-                        else -> "浓淡  更实 ${st.glassTintOffset}"
-                    },
-                ) {
-                    Slider(
-                        value = st.glassTintOffset.toFloat(),
-                        onValueChange = { st.glassTintOffset = it.toInt() },
-                        onValueChangeFinished = { save() },
-                        valueRange = -25f..25f,
-                        steps = 9,
-                    )
-                }
-                Spacer(Modifier.height(AppSpacing.Xs))
-            }
-        }
+        GlassTintSection(st, save)
 
         Spacer(Modifier.height(AppSpacing.Xl))
     }
 }
 
-/** 预览小块：经典 = 一张浮起的小圆角卡；工作台 = 平铺的三条发丝线 */
+/** 主题皮肤：整套视觉语言一起换，选中即落盘 */
 @Composable
-private fun StyleSwatch(style: UiStyle) {
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Inline),
-        color = AppCardContainer,
-        border = appBorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier.size(44.dp),
+private fun SkinSection(st: SettingsState, activeSkin: ThemeSkin, save: () -> Unit) {
+    SettingsSection(
+        title = "主题皮肤",
+        subtitle = "整套视觉语言。经典保留现有主题；石墨是全新设计，自带色板与材质",
+        tone = SettingsTone.Brand,
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(7.dp),
-            verticalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
-            when (style) {
-                UiStyle.CLASSIC -> {
-                    Surface(
-                        shape = RoundedCornerShape(AppRadii.Chip),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    ) {}
-                }
+            ThemeSkin.entries.forEach { skin ->
+                SelectableOption(
+                    title = skin.label,
+                    subtitle = skin.summary,
+                    selected = activeSkin == skin,
+                    onClick = {
+                        if (activeSkin != skin) {
+                            st.skin = skin.id
+                            save()
+                        }
+                    },
+                ) { SkinSwatch(skin) }
+            }
+        }
+    }
+}
 
-                UiStyle.WORKBENCH -> {
-                    repeat(3) {
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)),
-                        )
+/** 界面风格：经典 / 工作台，只改页面结构与圆角口径 */
+@Composable
+private fun StyleSection(st: SettingsState, activeSkin: ThemeSkin, save: () -> Unit) {
+    SettingsSection(
+        title = "界面风格",
+        subtitle = if (activeSkin.isGraphite) {
+            "石墨主题下仍可切换页面结构：经典是常规页面，工作台把内容收成平铺分区"
+        } else {
+            "经典是默认主题；工作台把页面收成平铺分区，首屏直接进入工作区"
+        },
+        tone = SettingsTone.Brand,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+        ) {
+            UiStyle.entries.forEach { style ->
+                SelectableOption(
+                    title = style.label,
+                    subtitle = style.summary,
+                    selected = st.uiStyle == style.id,
+                    onClick = {
+                        if (st.uiStyle != style.id) {
+                            st.uiStyle = style.id
+                            save()
+                        }
+                    },
+                ) { StyleSwatch(style) }
+            }
+        }
+    }
+}
+
+/** 石墨下配色与框线不参与：给一句明确说明，而不是留两组点了没反应的选项 */
+@Composable
+private fun GraphiteSkinNote() {
+    Spacer(Modifier.height(AppSpacing.Lg))
+    Text(
+        "石墨主题使用独立的配色与发丝描边，配色与框线两组选项仅在经典主题生效；" +
+            "切回经典即可继续使用现有配色方案与框线开关。",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = AppSpacing.Xs),
+    )
+}
+
+/** 描边方式：只属于经典皮肤 */
+@Composable
+private fun BorderSection(st: SettingsState, save: () -> Unit) {
+    SettingsSection(
+        title = "主题风格",
+        subtitle = "卡片、面板与输入面的描边方式",
+        tone = SettingsTone.Brand,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+        ) {
+            ThemeOption(
+                title = "标准",
+                subtitle = "卡片、面板与输入面保留发丝描边，层次最清晰",
+                selected = !st.borderless,
+                showBorder = true,
+                onClick = {
+                    if (st.borderless) {
+                        st.borderless = false
+                        save()
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * 主题选项行。左侧一个小预览块直接演示"有框线 / 无框线"的差别，
- * 比只写文字更好判断；选中态用主色描边 + 主色文字，沿用设置页既有的选择语言。
- */
-@Composable
-private fun ThemeOption(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    showBorder: Boolean,
-    onClick: () -> Unit,
-) = SelectableOption(title, subtitle, selected, onClick) { ThemeSwatch(showBorder = showBorder) }
-
-/**
- * 可选项行（主题 / 配色共用）：左侧自定义预览块，右侧标题与说明，选中时主色描边 + 勾选。
- * 两份选项原本各写一份同构布局，只有预览块不同；差异通过 [swatch] 传入。
- */
-@Suppress("FunctionNaming") // Compose 约定：可组合函数首字母大写
-@Composable
-private fun SelectableOption(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    swatch: @Composable () -> Unit,
-) {
-    val buzz = rememberHapticClick()
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Tile),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f) else AppCardContainer,
-        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-        else BorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { buzz(); onClick() },
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
-        ) {
-            swatch()
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(AppSpacing.Xxs))
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (selected) {
-                Icon(
-                    AppIcons.CheckCircle,
-                    contentDescription = "已选中",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        }
-    }
-}
-
-/** 预览小块：内容块恒定，只有描边跟着"标准 / 无框线"变 */
-@Composable
-private fun ThemeSwatch(showBorder: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Inline),
-        color = AppCardContainer,
-        border = if (showBorder) BorderStroke(1.dp, AppCardBorder) else null,
-        modifier = Modifier.size(44.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .fillMaxWidth(0.5f)
-                    .height(2.dp)
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)),
+                },
+            )
+            ThemeOption(
+                title = "无框线",
+                subtitle = "去掉所有装饰性框线，界面更干净，层次由底色差表达",
+                selected = st.borderless,
+                showBorder = false,
+                onClick = {
+                    if (!st.borderless) {
+                        st.borderless = true
+                        save()
+                    }
+                },
             )
         }
     }
 }
 
+/** 配色：整套品牌主色 + 底色，只属于经典皮肤 */
+@Composable
+private fun PaletteSection(st: SettingsState, save: () -> Unit) {
+    SettingsSection(
+        title = "配色",
+        subtitle = "品牌主色与底色，深浅跟随系统",
+        tone = SettingsTone.Brand,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = AppSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+        ) {
+            ThemePalette.entries.forEach { palette ->
+                PaletteOption(
+                    palette = palette,
+                    selected = st.palette == palette.id,
+                    onClick = {
+                        if (st.palette != palette.id) {
+                            st.palette = palette.id
+                            save()
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
 /**
- * 配色选项行：左侧色板预览（底色 / 抬升面 / 主色 / 冷辅色四点），右侧名称与说明。
- * 预览色取配色自身按当前深浅模式的那一份——所见即所选，不借当前主题的颜色。
+ * 磨砂浓淡：拖动只更新本地编辑态（数值跟手），松手才落盘，避免拖一次写几十次 DataStore。
+ * 预览样片取滑杆当前值直接画，所见即所得。
  */
 @Composable
-private fun PaletteOption(
-    palette: ThemePalette,
-    selected: Boolean,
-    onClick: () -> Unit,
-) = SelectableOption(palette.label, palette.subtitle, selected, onClick) { PaletteSwatch(palette) }
-
-/** 色板预览：一枚小卡上并排四色圆点（抬升面 / 底色 / 主色 / 冷辅色），深浅跟当前系统模式走 */
-@Composable
-private fun PaletteSwatch(palette: ThemePalette) {
-    val c = if (isSystemInDarkTheme()) palette.dark else palette.light
-    Surface(
-        shape = RoundedCornerShape(AppRadii.Inline),
-        color = AppCardContainer,
-        border = BorderStroke(1.dp, AppCardBorder),
-        modifier = Modifier.size(44.dp),
+private fun GlassTintSection(st: SettingsState, save: () -> Unit) {
+    SettingsSection(
+        title = "磨砂玻璃",
+        subtitle = "玻璃面板的透光度：向左更透，向右更实",
+        tone = SettingsTone.Brand,
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
+        Column(Modifier.padding(horizontal = AppSpacing.Lg)) {
+            Text(
+                "滚过玻璃下方的内容",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "Frosted sample · 0123456789",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(AppSpacing.Sm))
+            GlassSamplePreview(glassTintPreview(st.glassTintOffset))
+            Spacer(Modifier.height(AppSpacing.Md))
+            LabeledField(
+                when {
+                    st.glassTintOffset == 0 -> "浓淡  默认"
+                    st.glassTintOffset < 0 -> "浓淡  更透 ${-st.glassTintOffset}"
+                    else -> "浓淡  更实 ${st.glassTintOffset}"
+                },
+            ) {
+                Slider(
+                    value = st.glassTintOffset.toFloat(),
+                    onValueChange = { st.glassTintOffset = it.toInt() },
+                    onValueChangeFinished = { save() },
+                    valueRange = -25f..25f,
+                    steps = 9,
+                )
+            }
+            Spacer(Modifier.height(AppSpacing.Xs))
+        }
+    }
+}
+
+/** 玻璃样片：上方是"滚过玻璃下的内容"，下方浮一块同材质玻璃板 */
+@Composable
+private fun GlassSamplePreview(tint: Color) {
+    val glass = rememberGlassState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius)),
+    ) {
+        // 用容器色三段渐变做取样源：容器色本为承载 on*Container 文字而设计，
+        // 既透得出色相变化，又把"玻璃上浅字 vs 最亮处"的最坏对比度钉在 AA 以上
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .hazeSource(glass)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            MaterialTheme.colorScheme.tertiaryContainer,
+                        ),
+                    ),
+                ),
+        )
+        GlassSurface(
+            hazeState = glass,
+            style = GlassSurfaceStyle(
+                shape = RoundedCornerShape(AppTheme.metrics.tileRadius),
+                blurRadius = AppTheme.metrics.glassBlurCompact,
+                tintOverride = tint,
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md)
+                .height(44.dp),
         ) {
-            listOf(c.surfaceRaised, c.surfaceBase, c.brand, c.accentCool).forEach { color ->
-                Box(
-                    Modifier
-                        .padding(horizontal = AppSpacing.Xxs)
-                        .size(12.dp)
-                        .background(color, CircleShape),
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = AppSpacing.Lg),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "玻璃页眉预览",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    // onPrimaryContainer 与样片渐变起始色是官方配对，深色下过 AA
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
         }

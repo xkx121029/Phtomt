@@ -20,6 +20,7 @@ import com.composables.icons.lucide.ArrowUpDown
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.ChevronRight
 import com.composables.icons.lucide.ChevronUp
+import com.composables.icons.lucide.Check
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.CircleCheckBig
@@ -117,6 +118,8 @@ object AppIcons {
     val Close: ImageVector get() = Lucide.X
     val Cancel: ImageVector get() = Lucide.CircleX
     val CheckCircle: ImageVector get() = Lucide.CircleCheck
+    /** 选中勾：开关型胶囊的"已开启"标记 */
+    val Check: ImageVector get() = Lucide.Check
     /** 任务完成（原 Icons.Rounded.TaskAlt） */
     val TaskAlt: ImageVector get() = Lucide.CircleCheckBig
     val Delete: ImageVector get() = Lucide.Trash2

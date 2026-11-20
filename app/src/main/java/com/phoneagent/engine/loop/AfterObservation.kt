@@ -215,6 +215,10 @@ internal object AfterObservationPolicy {
  * 这里不复用 StageTiming，是因为阶段计时按真实 taskId 分桶，而观察段拿不到 taskId；
  * 混用两种键会互相触发「任务切换清零」，把两边的汇总都搅乱。
  *
+ * 生命周期：**每个引擎持有一份实例**（不是全局单例）。原先做成 object 时，
+ * 两个引擎实例（或并行的单测）会共享同一组计数器，一方的 beginTask 会把另一方的样本清掉。
+ * 本类自身仍按 [beginTask] 的任务切换自行分桶，因此单实例内跨任务也不会串数。
+ *
  * 耗时口径：
  * - 完整观察 = 读屏 + 标注截图
  * - 复用观察 = 仅标注（无读屏、无截图）
@@ -223,7 +227,7 @@ internal object AfterObservationPolicy {
  */
 // 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
 @Suppress("TooManyFunctions")
-internal object AfterObservationStats {
+internal class AfterObservationStats {
     private val lock = Any()
     private var activeTask: String? = null
     private var captured = 0

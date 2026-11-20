@@ -37,6 +37,7 @@ import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppRadii
 import kotlinx.coroutines.launch
@@ -59,6 +60,8 @@ internal fun SettingsModelCatalog(
     pickRole: String?,
     onBack: () -> Unit,
     onPicked: (endpointId: String?, name: String) -> Unit,
+    /** 探测结果落库：本页没有独立的保存入口，探测完必须立刻持久化，否则离开即丢 */
+    save: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val buzz = rememberHapticClick()
@@ -104,7 +107,7 @@ internal fun SettingsModelCatalog(
                         "点一行即为该职责选定模型；库里没有的也可以手填"
                     },
                 )
-                Spacer(Modifier.height(AppSpacing.Page))
+                Spacer(Modifier.height(AppTheme.metrics.pagePad))
             }
         }
 
@@ -226,6 +229,9 @@ internal fun SettingsModelCatalog(
                                                         probedAt = System.currentTimeMillis(),
                                                     )
                                                 }
+                                                // 探测结果只改在本地 st 上不够，这里补一次保存；
+                                                // 不保存的话，切走再回来徽章又变回旧值（probedAt 也丢）
+                                                save()
                                                 // 这里不再顺手改写"视觉理解"档位：三态下的「自动」本就看探测结果，
                                                 // 再写一手会在用户明确选了「强制关」时把设置偷偷翻回去
                                                 ability.note.ifBlank { "探测完成" }

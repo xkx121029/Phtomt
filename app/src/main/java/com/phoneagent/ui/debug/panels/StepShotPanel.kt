@@ -66,7 +66,8 @@ import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import com.phoneagent.ui.theme.appBorderStroke
@@ -79,11 +80,11 @@ internal fun StepShotPanel(shot: com.phoneagent.device.vision.StepShot) {
     if (shot.step == 0 && shot.screenshot == null) return
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(AppSpacing.Lg)) {
             Text(
                 "最新一步 · 步骤 ${shot.step}${if (shot.verified) " · 已确认" else " · 待确认"}",
                 style = MaterialTheme.typography.titleSmall,
@@ -106,7 +107,7 @@ internal fun StepShotPanel(shot: com.phoneagent.device.vision.StepShot) {
                     modifier = Modifier
                         .width(160.dp)
                         .heightIn(max = 240.dp)
-                        .clip(RoundedCornerShape(AppRadii.Chip)),
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius)),
                 )
             }
             Spacer(Modifier.height(6.dp))
@@ -143,7 +144,7 @@ internal fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.B
                 .height(CompareHeight)
                 // 宽度由高度乘以原图比例反推：比例必须严格等于原图，否则拖动对比时两侧会横向拉伸变形
                 .aspectRatio(aspect)
-                .clip(RoundedCornerShape(AppRadii.Item))
+                .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures { change, dragAmount ->
@@ -175,6 +176,8 @@ internal fun DragCompare(bmpA: android.graphics.Bitmap, bmpB: android.graphics.B
                     dstSize = IntSize((w - cutW).coerceAtLeast(1), h),
                 )
                 val cut = frac * size.width
+                // 分割线与中点恒用白色：这是叠在用户截图上的标尺，截图内容与主题无关，
+                // 必须在任意底图上都看得见，因此不走主题色板
                 drawLine(Color.White, Offset(cut, 0f), Offset(cut, size.height), strokeWidth = 3f)
                 drawCircle(Color.White, radius = 10f, center = Offset(cut, size.height / 2f))
             }
@@ -187,6 +190,8 @@ internal fun drawBoxes(src: android.graphics.Bitmap, controls: List<com.phoneage
     val out = src.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
     val canvas = android.graphics.Canvas(out)
     val strokeW = (out.width / 220f).coerceIn(2f, 5f)
+    // 控件框的青色是直接烧进位图的标注层（android.graphics，拿不到 MaterialTheme），
+    // 且要压在任意截图内容上保持醒目，属于固定标注色，不接主题色板
     val paint = android.graphics.Paint().apply {
         style = android.graphics.Paint.Style.STROKE
         strokeWidth = strokeW

@@ -189,12 +189,15 @@ class DeviceOpsChannel(
             "通知 ${vol(AudioManager.STREAM_NOTIFICATION)}，闹钟 ${vol(AudioManager.STREAM_ALARM)}"
     }
 
+    /**
+     * 已安装可启动应用清单：走系统 API 的 MAIN+LAUNCHER 查询（见 [LauncherCatalog]），
+     * 不依赖 QUERY_ALL_PACKAGES 授权——个别 ROM 上该权限声明了也拿不到清单。
+     */
     private fun appsText(): String {
-        val pm = context.packageManager
-        val apps = pm.getInstalledApplications(0)
-        val userApps = apps.filter { !it.systemFlag() }
-        val shown = userApps.take(40).joinToString("\n") { "${pm.getApplicationLabel(it)}（${it.packageName}）" }
-        return "已安装应用 ${apps.size} 个（第三方 ${userApps.size} 个）：\n$shown" +
+        val apps = com.phoneagent.device.apps.LauncherCatalog.query(context)
+        val userApps = apps.filter { !it.isSystem }
+        val shown = userApps.take(40).joinToString("\n") { "${it.label}（${it.packageName}）" }
+        return "已安装可启动应用 ${apps.size} 个（第三方 ${userApps.size} 个）：\n$shown" +
             if (userApps.size > 40) "\n…（仅列出前 40 个）" else ""
     }
 
@@ -1171,10 +1174,8 @@ class DeviceOpsChannel(
         if (raw.contains('.')) {
             runCatching { pm.getPackageInfo(raw, 0) }.onSuccess { return raw }
         }
-        val apps = runCatching { pm.getInstalledApplications(0) }.getOrDefault(emptyList())
-        return apps.firstOrNull {
-            runCatching { pm.getApplicationLabel(it).toString() }.getOrDefault("").equals(raw, ignoreCase = true)
-        }?.packageName
+        // 兜底按显示名查：走系统 API 的启动器清单（不依赖 QUERY_ALL_PACKAGES 授权）
+        return com.phoneagent.device.apps.LauncherCatalog.resolveByName(context, raw)
     }
 
     private fun intArg(args: Map<String, String>, key: String): Int? = OpsArgs.int(args, key)

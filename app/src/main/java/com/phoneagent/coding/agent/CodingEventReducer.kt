@@ -88,6 +88,12 @@ internal object CodingEventReducer {
         promptPreview: String = "",
         iteration: Int = 0,
         errorDetail: String = "",
+        /** goal_verdict 的结论（done / continue / blocked / paused）；goal_done 用同一字段读 status（complete / paused）。 */
+        goalStatus: String = "",
+        /** goal_done 的原因文案（判官给出的理由或系统收敛原因）。 */
+        goalReason: String = "",
+        /** goal_round 是否处于「判官评审中」：界面据此显示「判分中」而不是普通轮次。 */
+        goalJudging: Boolean = false,
     ): Result = when (type) {
         "text" -> {
             val key = assistantKey ?: "a_${nextId()}"
@@ -231,6 +237,52 @@ internal object CodingEventReducer {
         //「心跳不改状态」——否则以后有人顺手把阶段清掉，长工具执行时就再也看不到「执行 xxx」。
         "heartbeat" -> Result(messages = messages, assistantKey = assistantKey)
 
+        // —— 无人值守目标循环 ——
+        // 目标从「一轮」升级成「多轮推进」后，界面必须能看出：目标还活着吗、
+        // 跑到第几轮、判官是根据什么让它停的。否则长任务在 UI 上等于黑盒。
+        "goal_start" -> Result(
+            messages = messages,
+            assistantKey = assistantKey,
+            busy = true,
+            phase = "目标已启动",
+            iteration = 0,
+        )
+
+        "goal_round" -> Result(
+            messages = messages,
+            assistantKey = assistantKey,
+            busy = true,
+            iteration = iteration,
+            phase = when {
+                goalJudging -> if (iteration > 0) "目标第 $iteration 轮 · 判分中" else "判分中"
+                iteration > 0 -> "目标第 $iteration 轮"
+                else -> "目标推进中"
+            },
+        )
+
+        "goal_verdict" -> Result(
+            messages = messages,
+            assistantKey = assistantKey,
+            phase = "判官：${verdictLabel(goalStatus)}",
+            // 每轮 prompt 结束时 host 会发一条 done。目标循环里 done 只代表「这一轮完了」，
+            // 循环还在继续——必须把 busy 重新拉起来，否则界面显示空闲、输入框解锁，
+            // 用户发消息会与正在跑的循环抢同一个会话。
+            busy = true,
+        )
+
+        // 收尾一帧落一条正文：目标为什么停下（达成 / 停滞 / 需要人介入）必须留在
+        // 会话流里，不能只闪一下阶段行就被下一轮覆盖。
+        "goal_done" -> Result(
+            messages = messages + ChatMessage(
+                key = "g_${nextId()}",
+                role = "assistant",
+                text = goalSummary(goalStatus, goalReason),
+            ),
+            assistantKey = null,
+            busy = false,
+            phase = "",
+        )
+
         "done", "cancelled" -> Result(
             messages = messages,
             assistantKey = null,
@@ -264,6 +316,26 @@ internal object CodingEventReducer {
 
     private fun subagentIndex(messages: List<ChatMessage>, subagentId: String): Int =
         if (subagentId.isEmpty()) -1 else messages.indexOfLast { it.role == "subagent" && it.subagentId == subagentId }
+
+    /** 判官结论 → 阶段行上的中文短语。未知值原样显示，不吞掉信息。 */
+    private fun verdictLabel(verdict: String): String = when (verdict) {
+        "done" -> "目标已达成"
+        "continue" -> "需要继续"
+        "blocked" -> "需要你介入"
+        "paused" -> "已暂停"
+        else -> verdict.ifEmpty { "评审中" }
+    }
+
+    /** 目标收尾卡：状态 + 原因，原因缺失时给一句兜底，避免出现只有标题的空卡。 */
+    private fun goalSummary(status: String, reason: String): String {
+        val head = when (status) {
+            "complete" -> "✅ 目标已达成"
+            "paused" -> "⏸ 目标已暂停"
+            else -> "目标结束"
+        }
+        val why = reason.ifBlank { "未提供原因" }
+        return "$head\n$why"
+    }
 
     private fun formatDuration(ms: Long): String = when {
         ms <= 0 -> "—"

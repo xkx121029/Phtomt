@@ -403,6 +403,9 @@ class CloudAsrEngine(
     }
 
     override fun stop(): VoiceCapture? {
+        // 必须置停止位再等待：录音线程的循环条件只看 stopRequested，
+        // 漏置会让 join 白等 1s（录音仍在继续），随后上传的是还没回填 WAV 头的半成品
+        stopRequested = true
         recordThread?.join(1000)
         recordThread = null
         _level.value = 0f

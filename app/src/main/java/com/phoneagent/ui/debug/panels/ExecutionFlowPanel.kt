@@ -57,8 +57,8 @@ import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.debug.ConfidenceBar
 import com.phoneagent.ui.debug.DebugEmptyHint
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.Success
@@ -189,7 +189,7 @@ private fun ExecutionCard(
     }
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = appBorderStroke(
             1.dp,
@@ -369,7 +369,7 @@ private fun StepNode(step: FlowStep, annotated: Bitmap?, first: Boolean, last: B
                         modifier = Modifier
                             .width(46.dp)
                             .heightIn(max = 84.dp)
-                            .clip(RoundedCornerShape(AppRadii.Chip))
+                            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                             .clickable(enabled = annotated != null || trace?.screenshot != null) { shotOpen = !shotOpen },
                     )
                     Spacer(Modifier.width(AppSpacing.Md))
@@ -401,7 +401,7 @@ private fun StepNode(step: FlowStep, annotated: Bitmap?, first: Boolean, last: B
                                 contentDescription = "步骤 ${step.step} 截图",
                                 modifier = Modifier
                                     .height(CompareHeight)
-                                    .clip(RoundedCornerShape(AppRadii.Item)),
+                                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius)),
                             )
                         }
                     }
@@ -470,7 +470,7 @@ private fun StepResultPill(record: StepRecord) {
 @Composable
 private fun RawBlock(trace: StepTrace?) {
     Surface(
-        shape = RoundedCornerShape(AppRadii.Tile),
+        shape = RoundedCornerShape(AppTheme.metrics.tileRadius),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
     ) {
         Column(

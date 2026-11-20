@@ -49,19 +49,20 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.appBorder
 
-/** 气泡圆角：朝向说话者一侧的底角收窄，形成克制的对话尾，而不是四角一样的通用气泡 */
+/** 气泡圆角：朝向说话者一侧的底角收窄，形成克制的对话尾，而不是四角一样的通用气泡。
+ *  圆角读取皮肤令牌（经典 14dp / 石墨 10dp），因此需要 @Composable 上下文。 */
+@Composable
 internal fun agentBubbleShape(isUser: Boolean) = RoundedCornerShape(
-    topStart = AppRadii.Bubble,
-    topEnd = AppRadii.Bubble,
-    bottomStart = if (isUser) AppRadii.Bubble else 6.dp,
-    bottomEnd = if (isUser) 6.dp else AppRadii.Bubble,
+    topStart = AppTheme.metrics.tileRadius,
+    topEnd = AppTheme.metrics.tileRadius,
+    bottomStart = if (isUser) AppTheme.metrics.tileRadius else 6.dp,
+    bottomEnd = if (isUser) 6.dp else AppTheme.metrics.tileRadius,
 )
 
 /**
@@ -84,7 +85,7 @@ internal fun AgentSpeakerHeader(
         Box(
             modifier = Modifier
                 .size(18.dp)
-                .clip(RoundedCornerShape(AppRadii.Chip))
+                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                 .background(tint.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
@@ -377,9 +378,9 @@ internal fun DocPreviewItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(colors.surfaceRaised)
-            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item)),
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius)),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -469,7 +470,7 @@ internal enum class AgentButtonTone { PRIMARY, NEUTRAL, DANGER }
 
 /**
  * Agent 页统一操作按钮：按下即回弹缩放 + 即时振感（emilkowalski 规范的按钮反馈），
- * 圆角走 [AppRadii.Tile] 令牌，避免 M3 默认全圆胶囊带来的通用观感。
+ * 圆角走 [AppTheme.metrics.tileRadius] 令牌，避免 M3 默认全圆胶囊带来的通用观感。
  */
 @Composable
 internal fun AgentActionButton(
@@ -495,11 +496,11 @@ internal fun AgentActionButton(
     PressableScale(
         modifier = modifier
             .alpha(if (enabled) 1f else 0.45f)
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(container)
             .then(
                 if (tone == AgentButtonTone.NEUTRAL) {
-                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+                    Modifier.appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.tileRadius))
                 } else {
                     Modifier
                 }

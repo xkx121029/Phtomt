@@ -183,6 +183,12 @@ class AppSettings(private val context: Context) {
          * workbench = 工作台。存字符串避免脏数据反序列化失败，读取时由主题层归一。
          */
         val uiStyle: String = "classic",
+        /**
+         * 主题皮肤（[com.phoneagent.ui.theme.ThemeSkin.id]）：legacy = 现有主题，
+         * graphite = 全新「石墨」主题。与 [palette]、[uiStyle] 独立：切到石墨后配色不参与，
+         * 切回 legacy 时原有配色 / 框线 / 工作台风格原样恢复。存字符串，读取时由主题层归一。
+         */
+        val skin: String = "legacy",
         /** 工作台风格下的工作视图（agent / coding，见 [WorkbenchView]），切换即落盘 */
         val workbenchView: String = WorkbenchView.AGENT,
         /**
@@ -342,6 +348,8 @@ class AppSettings(private val context: Context) {
         val GLASS_TINT_OFFSET = intPreferencesKey("theme_glass_tint_offset")
         /** 主题：界面风格预设，见 [Settings.uiStyle] */
         val UI_STYLE = stringPreferencesKey("theme_ui_style")
+        /** 主题皮肤（legacy / graphite），见 [Settings.skin] */
+        val THEME_SKIN = stringPreferencesKey("theme_skin")
         /** 工作台工作视图（agent / coding），见 [Settings.workbenchView] */
         val WORKBENCH_VIEW = stringPreferencesKey("workbench_view")
         /** 启动默认页（Tab id），见 [Settings.defaultTab] */
@@ -474,6 +482,7 @@ class AppSettings(private val context: Context) {
             palette = prefs[Keys.PALETTE] ?: "ink_green",
             glassTintOffset = prefs[Keys.GLASS_TINT_OFFSET] ?: 0,
             uiStyle = prefs[Keys.UI_STYLE] ?: "classic",
+            skin = prefs[Keys.THEME_SKIN] ?: "legacy",
             workbenchView = WorkbenchView.normalize(prefs[Keys.WORKBENCH_VIEW]),
             defaultTab = prefs[Keys.DEFAULT_TAB] ?: "home",
             endpoints = endpoints,
@@ -578,6 +587,7 @@ class AppSettings(private val context: Context) {
             prefs[Keys.PALETTE] = settings.palette
             prefs[Keys.GLASS_TINT_OFFSET] = settings.glassTintOffset.coerceIn(-25, 25)
             prefs[Keys.UI_STYLE] = settings.uiStyle
+            prefs[Keys.THEME_SKIN] = settings.skin
             prefs[Keys.WORKBENCH_VIEW] = WorkbenchView.normalize(settings.workbenchView)
             prefs[Keys.DEFAULT_TAB] = settings.defaultTab.ifBlank { "home" }
             // 端点表整体落盘，但每条 Key 先单独加密（地址/模型名保持可读）

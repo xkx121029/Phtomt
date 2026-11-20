@@ -69,6 +69,8 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.MemoryAnomaly
 import com.phoneagent.ui.theme.MemoryAnomalySoft
 import com.phoneagent.ui.theme.MemoryProfile
@@ -135,7 +137,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             ) {
                 if (loading) {
                     // 骨架屏加载：标题 + 图谱占位 + 统计占位
-                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(AppSpacing.Lg)) {
                         Box(
                             modifier = Modifier
                                 .height(24.dp)
@@ -153,7 +155,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         Spacer(Modifier.height(16.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
                         ) {
                             Box(
                                 modifier = Modifier
@@ -180,7 +182,7 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = AppTheme.metrics.cardPad, vertical = AppSpacing.Sm),
                 ) {
                     tabs.forEachIndexed { i, label ->
                         SegmentedButton(

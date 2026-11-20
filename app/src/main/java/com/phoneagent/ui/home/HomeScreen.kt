@@ -42,6 +42,7 @@ import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.model.PermissionKind
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
 
@@ -169,7 +170,7 @@ fun HomeScreen(
             // 常用入口只留两个：其余能力都收在底部导航（Coding / 记忆 / 设置）与「设置」里
             SectionHeader("常用")
             val pressHaptic = com.phoneagent.ui.components.rememberHapticPress()
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md), modifier = Modifier.fillMaxWidth()) {
                 QuickEntry(
                     modifier = Modifier.weight(1f).animateListItem(3),
                     icon = AppIcons.Memory,
@@ -198,7 +199,7 @@ fun HomeScreen(
             PermissionTodoLine(permissions, onOpen = onOpenPermissions)
 
             // 版本号
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(AppTheme.metrics.pagePad))
             Text(
                 text = "v${com.phoneagent.BuildConfig.VERSION_NAME} (${com.phoneagent.BuildConfig.VERSION_CODE})",
                 style = MaterialTheme.typography.labelSmall,
@@ -219,7 +220,7 @@ fun HomeScreen(
                 // 玻璃会退化成一条灰带，正文也不会从它下面穿过。
                 // 再多让出 8dp 呼吸，与 Agent 页正文的上缘留白对齐
                 .padding(top = contentPad.calculateTopPadding() + AppSpacing.Sm)
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = AppTheme.metrics.pagePad)
                 // 悬浮导航栏浮在内容之上：滚动内容要能滚到它上面去，只在最后让出净空
                 .padding(LocalNavClearance.current),
         ) {
@@ -228,7 +229,7 @@ fun HomeScreen(
             if (LocalIsExpanded.current) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(AppTheme.metrics.pagePad),
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(modifier = Modifier.weight(1f), content = primarySections)

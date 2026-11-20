@@ -7,9 +7,10 @@ import com.phoneagent.domain.model.AgentAction
  * 执行结果的后处理判据与呈现（Verifier 角色的纯逻辑部分，无 Android 依赖，可直接单测）。
  *
  * 拆分目的：[AgentEngine] 原先在 600 行主循环里内联判断"这次失败要不要重试""这条错误还算不算
- * 结构性错误""这一步在历史里记成什么状态"。这些判据全部依赖 `verify.reason` 这种**文案**，
+ * 结构性错误""这一步在历史里记成什么状态"。这些判据原先全部依赖 `verify.reason` 这种**文案**，
  * 一旦哪条提示词改了字，重试行为会跟着悄悄变——夹在主循环里既看不见也没法验证。
- * 抽出来之后，"改文案是否影响重试"成为一条可断言的规则。
+ * 现在重试只看结构化字段（[VerifyResult.delivery] / [VerifyResult.structural]），
+ * "改文案是否影响重试"成为一条可断言的规则。
  *
  * 只做判定与拼装：真正的执行、重试循环、状态写入仍留在引擎。
  */
@@ -26,35 +27,11 @@ internal object VerifyRules {
     /**
      * 「无障碍通道不支持直接刷新」的统一文案。
      *
-     * 判定方（[isStructuralError]）与产出方（ExecutionCore 的 REFRESH 分支）共用同一常量：
-     * 原先两侧各写一份字面量，产出方一旦改字，这里的 contains 判定就会失效，
-     * 本不该重试的结构性错误会被外层重试最多 [MAX_ATTEMPTS] 次。
+     * 产出方（ExecutionCore 的 REFRESH 分支）与提示语共用同一常量：
+     * 原先判定方按文案匹配识别这类失败，现在改由 [VerifyResult.structural] 显式标注，
+     * 文案只负责告诉 AI 下一步怎么做。
      */
     const val NO_A11Y_REFRESH = "无障碍通道暂不支持直接刷新"
-
-    /**
-     * 结构性错误的文案特征：重跑同一串动作**不会自己变好**，继续重试只是白等两轮。
-     *
-     * 这类错误全部来自端侧自己的校验（命令表里没有这条命令、必填参数没给、端点名写错），
-     * 与页面状态无关，唯一出路是让 AI 重新决策。语义类失败（"页面未变化"）才值得重试。
-     */
-    private val STRUCTURAL_ERROR_MARKERS = listOf(
-        // shell 通道：命令不在端侧命令表 / 命令体为空 / 参数值不合法
-        "未知 shell 命令",
-        "命令为空",
-        "参数无效",
-        // 按键：不在端侧支持的键值集合内
-        "未知按键",
-        // 自由模式无障碍端点直调：端点名不在白名单 / 必填参数没给
-        "未知无障碍端点",
-        "缺少参数",
-        "缺少 endpoint",
-        // 无障碍通道能力缺口：ENTER/REFRESH 这类通道本身不支持的直接操作，重试也不会变好
-        NO_A11Y_REFRESH,
-    )
-
-    /** 该失败是否属于"重试也不会变好"的结构性错误 */
-    fun isStructuralError(reason: String): Boolean = STRUCTURAL_ERROR_MARKERS.any { reason.contains(it) }
 
     /**
      * 是否属于点击类动作。
@@ -72,19 +49,40 @@ internal object VerifyRules {
      *
      * @param attempt 当前已尝试次数（首次执行后为 1）
      * @param active 协程是否仍在运行：任务被取消/暂停时不再重试
-     * @param notDelivered 动作是否**根本没交付到设备**。只有未交付才允许重试；
-     *   「已交付但没确认」再跑一遍就是重复副作用——闹钟降级链整条重跑两次，
+     * @param delivery 结构化交付结论。只有「没送达」才允许重试；
+     *   「已送达但没生效」再跑一遍就是重复副作用——闹钟降级链整条重跑两次，
      *   结果就是闹钟列表里出现两条一样的条目。
+     * @param structural 请求本身不成立（未知命令/参数非法）：换执行次数也不会变好，交给 AI 重新决策
      */
     fun shouldRetry(
         type: String,
-        reason: String,
+        delivery: Delivery,
+        structural: Boolean,
         attempt: Int,
         active: Boolean,
-        notDelivered: Boolean,
     ): Boolean =
-        active && attempt < MAX_ATTEMPTS && notDelivered &&
-            !isStructuralError(reason) && !isClickLike(type)
+        active && attempt < MAX_ATTEMPTS &&
+            delivery == Delivery.NOT_DELIVERED && !structural && !isClickLike(type)
+
+    /**
+     * 失败回注给 AI 的「下一步怎么做」，按交付状态分开。
+     *
+     * 同为失败，两种情况的正确应对完全不同：
+     * - 没送达：动作根本没碰到设备，换通道 / 换落点值得再试一次；
+     * - 已送达未生效：动作已经落到页面上，原样重放就是重复副作用，该换入口 / 换控件 / 换策略。
+     *
+     * 只回一句笼统的失败，AI 只会把同一下再点一遍——这正是"心形按钮点二十多次"的病根之一。
+     * 请求本身不成立（structural）时返回空串：此时 [com.phoneagent.engine.runtime.ExecutionFeedback]
+     * 的结构性错误提示已经给出更准确的纠正方向，不再叠一层。
+     */
+    fun failureHint(delivery: Delivery, reason: String, structural: Boolean): String = when {
+        structural || delivery == Delivery.EFFECTIVE -> ""
+        delivery == Delivery.NOT_DELIVERED ->
+            "\n\n注意：这一步的动作没有送达设备（$reason）。可以换一条执行通道或换一个落点再试，或改用别的意图；不要反复下发同一条无效动作。"
+        else ->
+            "\n\n注意：这一步的动作已经送达并落到页面上，但页面没有出现预期变化（$reason）。" +
+                "不要原地重复同一下——先观察当前页面；若目标仍未达成，换入口、换控件或换意图。"
+    }
 
     /**
      * 动作执行后的界面稳定等待（毫秒）。
@@ -105,6 +103,23 @@ internal object VerifyRules {
 
     /** 不触碰 UI 的动作类型：执行它们不会让页面发生任何变化 */
     private val NO_SETTLE_TYPES = setOf(ActionType.SAY, ActionType.REMEMBER, ActionType.DEVICE_QUERY)
+
+    /**
+     * 本就不期待页面变化的动作类型（比 [NO_SETTLE_TYPES] 更宽）。
+     *
+     * 页面级止损按"上一步之后页面变没变"计数。这些动作执行完页面必然不变，
+     * 若也参与计数，一次等待加载、一次 say 说明就会被误判成"原地打转"。
+     * 注意只跳过、不复位：wait 之后再点同一个没用的按钮仍是同一条死路。
+     */
+    private val NON_PAGE_CHANGE_TYPES = setOf(
+        ActionType.SAY, ActionType.REMEMBER, ActionType.DEVICE_QUERY, ActionType.DEVICE_OPS,
+        ActionType.SHELL, ActionType.SHOW_AGENT, ActionType.MCP_CALL, ActionType.READ_NOTIFS,
+        ActionType.CLEAR_NOTIFS, ActionType.WRITE_DOC, ActionType.TASK_DONE,
+    )
+
+    /** 该动作是否期待页面（元素树）发生变化 */
+    fun expectsPageChange(type: String): Boolean = type !in NON_PAGE_CHANGE_TYPES
+
 
     // ---- 呈现 ----
 

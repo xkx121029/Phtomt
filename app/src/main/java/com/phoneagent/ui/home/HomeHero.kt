@@ -27,7 +27,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.BrandMark
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.BrandAnchor
 import com.phoneagent.ui.theme.BrandMarkTint
 import com.phoneagent.ui.theme.DurationPulse
@@ -45,7 +46,7 @@ internal fun BrandTile(size: Dp = 40.dp) {
     Box(
         modifier = Modifier
             .size(size)
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(BrandAnchor),
         contentAlignment = Alignment.Center,
     ) {
@@ -74,7 +75,7 @@ internal fun RunningBanner(message: String) {
         animated
     }
     Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
         border = appBorderStroke(
             1.dp,
@@ -83,9 +84,9 @@ internal fun RunningBanner(message: String) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(AppSpacing.Lg),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
         ) {
             // 呼吸灯
             Box(

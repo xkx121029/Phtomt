@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { truncate } from '../providers/base.js';
+import { findOccurrences, matchView, missHint } from './edit-match.js';
 
 export function resolveWithin(root, p) {
   const rootAbs = path.resolve(root);
@@ -87,7 +88,10 @@ export function createFsTools({ workspaceRoot }) {
   const edit_file = {
     name: 'edit_file',
     description:
-      'Replace an exact string in a file. old_string must be unique unless replace_all is set. Read the file first.',
+      'Replace an exact string in a file. old_string must be unique unless replace_all is set. Read the file first. ' +
+      'When copying text from read_file output, omit the line-number prefix and keep the original indentation; ' +
+      'write line breaks as \\n — CRLF/LF differences, typographic quotes/dashes and trailing whitespace are matched ' +
+      'automatically and the file keeps its own line endings.',
     risk: 'write',
     parameters: {
       type: 'object',
@@ -101,17 +105,32 @@ export function createFsTools({ workspaceRoot }) {
     },
     async execute({ path: p, old_string, new_string, replace_all }, ctx) {
       if (!old_string) throw new Error('old_string must not be empty');
+      if (old_string === new_string) throw new Error('no changes to apply: old_string and new_string are identical');
       const abs = resolveWithin(root, p);
       const raw = fs.readFileSync(abs, 'utf8');
-      const count = raw.split(old_string).length - 1;
-      if (count === 0) throw new Error(`old_string not found in ${p}`);
+      // 只在两侧都归一到 LF 后完全相等时，才认为模型想改的是行尾本身。
+      const endingsOnly = old_string.replaceAll('\r', '') === new_string.replaceAll('\r', '');
+      const { matches, replace } = endingsOnly
+        ? { matches: findOccurrences(raw, old_string), replace: () => new_string }
+        : matchView(raw, old_string, new_string);
+      const count = matches.length;
+      if (count === 0) {
+        // 提示里带文件内容，只在调用方本来就能读这个文件时才给。
+        const hint = ctx?.allowReadHint === false ? undefined : missHint(raw, old_string, new_string);
+        throw new Error(`old_string not found in ${p}${hint ? `\n\n${hint}` : ''}`);
+      }
       if (count > 1 && !replace_all) {
         throw new Error(`old_string appears ${count} times in ${p}; add more context or set replace_all=true`);
       }
       await ctx?.onBeforeWrite?.(abs);
-      const next = replace_all ? raw.split(old_string).join(new_string) : raw.replace(old_string, new_string);
+      // 倒序替换：前面的偏移不受后面改动影响。
+      const next = (replace_all ? [...matches] : [matches[0]])
+        .reverse()
+        .reduce((content, match) => `${content.slice(0, match.start)}${replace(match)}${content.slice(match.end)}`, raw);
+      if (next === raw) throw new Error(`no changes to apply: the edit leaves ${p} unchanged`);
       fs.writeFileSync(abs, next, 'utf8');
-      return `edited ${p} (${count} replacement${count > 1 ? 's' : ''})`;
+      const applied = replace_all ? count : 1;
+      return `edited ${p} (${applied} replacement${applied > 1 ? 's' : ''})`;
     },
   };
 

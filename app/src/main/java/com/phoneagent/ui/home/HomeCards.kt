@@ -34,7 +34,8 @@ import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorderStroke
 
 @Composable
@@ -85,13 +86,16 @@ internal fun PrimaryActionCard(
     val buzz = com.phoneagent.ui.components.rememberHapticClick()
     PressableScale(onClick = { buzz(); onClick() }) {
         Surface(
-            shape = RoundedCornerShape(AppRadii.Card),
+            shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
             border = appBorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier.padding(
+                    horizontal = AppTheme.metrics.cardPad,
+                    vertical = AppTheme.metrics.cardPad,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -156,7 +160,7 @@ internal fun HomeStatusStrip(
     onChannel: () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(AppRadii.Card),
+        shape = RoundedCornerShape(AppTheme.metrics.cardRadius),
         color = AppCardContainer,
         border = appBorderStroke(1.dp, AppCardBorder),
         modifier = Modifier.fillMaxWidth(),
@@ -216,7 +220,7 @@ private fun HomeStatusCell(
                 buzz()
                 onClick()
             }
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Md),
     ) {
         Text(
             label,

@@ -56,6 +56,7 @@ import { ToolScheduler, ResourceLocks, Semaphore } from './tool-scheduler.js';
 import { EventLog, RunTracker } from './observability.js';
 import { SubagentRunner, createSubagentTools } from './subagents.js';
 import { PERSONAS, PERSONA_IDS, DEFAULT_PERSONA, resolvePersona, effectiveRisks } from './personas.js';
+import { GoalController, GoalStore, parseVerdict, buildTranscript } from './goal.js';
 
 /** 基础工具集：文件 / 搜索 / 设备 / shell / git / 联网。永远是 agent 的底座。 */
 export function createDefaultTools({ workspaceRoot }) {
@@ -105,6 +106,9 @@ export function createRuntime({
   subagentTimeoutMs = 8 * 60_000,
   heartbeatMs = 15_000,
   eventsCapacity = 500,
+  maxGoalRounds = 20,
+  maxGoalStalls = 3,
+  unattendedAllowExec = false,
 }) {
   const root = path.resolve(workspaceRoot);
   const state = stateDir ? path.resolve(stateDir) : null;
@@ -289,6 +293,21 @@ export function createRuntime({
 
   const store = new SessionStore({ persistPath: file('sessions.jsonl') });
 
+  // —— 无人值守目标循环 ——
+  // 「一轮」由 Agent.prompt 负责，「要不要再来一轮」由这里决定，两者解耦：
+  // 编码页的单轮交互不受影响，只有显式发起 goal 时才进入多轮推进。
+  const goals = new GoalStore({ persistPath: file('goals.json') });
+  const goal = new GoalController({
+    agent,
+    goalStore: goals,
+    maxRounds: maxGoalRounds,
+    maxStalls: maxGoalStalls,
+    unattended: { allowExec: unattendedAllowExec },
+  });
+  // 上次进程留下的 active 目标没有任何东西在驱动它：必须落成 paused，
+  // 否则界面/巡检会看到一个永远不前进的「进行中」。
+  goals.pauseOrphans();
+
   return {
     agent,
     registry,
@@ -317,6 +336,8 @@ export function createRuntime({
     runTracker,
     scheduler,
     subagents,
+    goals,
+    goal,
   };
 }
 
@@ -358,6 +379,10 @@ export {
   EmbeddingService,
   EventLog,
   GitIgnoreFilter,
+  GoalController,
+  GoalStore,
+  parseVerdict,
+  buildTranscript,
   createGitTools,
   createTodoTools,
   createWebTools,

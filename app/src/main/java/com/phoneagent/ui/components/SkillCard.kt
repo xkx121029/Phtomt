@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
@@ -63,7 +62,7 @@ fun SkillCard(
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Item)
+    val shape = RoundedCornerShape(AppTheme.metrics.itemRadius)
 
     Column(
         modifier = modifier

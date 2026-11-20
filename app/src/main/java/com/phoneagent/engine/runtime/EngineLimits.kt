@@ -22,6 +22,23 @@ internal object EngineLimits {
      *  让长线任务上下文长度保持恒定，避免历史无限累积拖慢/带偏 AI */
     internal const val MAX_DIALOG_TURNS = 6
 
+    /**
+     * 决策消息本体（`messages`）里保留的非系统消息条数上限。
+     *
+     * [MAX_DIALOG_TURNS] 只约束「发给模型的那一份」，若本体不裁，100 步的任务会在内存里
+     * 一直挂着全部历史（每条都含整页文本）。这里与发送口径取同一个数量：
+     * 早于这个窗口的历史本来就不会被发出去，留着只是占内存。
+     */
+    internal const val MAX_DIALOG_MESSAGES = MAX_DIALOG_TURNS * 2
+
+    /**
+     * 单条调试轨迹（StepTrace）里正文的最大字符数。
+     *
+     * 轨迹最多保留 [MAX_TRACES] 条，截图已经缩到 360px，文本若不设限，
+     * 长线任务里「每步整页 prompt + 模型原文」会在内存与调试落盘里各占一份。
+     */
+    internal const val MAX_TRACE_TEXT = 4_000
+
     /** 单步云端决策看门狗（文档 v2.2 5.5）：超过则视为云端卡住，本步改为等待、下一轮重试，避免长线任务卡死 */
     internal const val WATCHDOG_DECIDE_MS = 45_000L
 

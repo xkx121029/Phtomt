@@ -34,6 +34,7 @@ import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
 import java.util.Locale
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 
 /** 长线任务设置页：执行策略热切换 + 断点续传 + 任务模板库 */
@@ -69,7 +70,7 @@ internal fun SettingsLongRun(vm: MainViewModel, onBack: () -> Unit) {
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("长线任务", onBack, subtitle = "执行策略、断点续传与任务模板库")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // ===== 执行策略热切换 =====
         SettingsSection(

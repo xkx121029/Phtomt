@@ -39,10 +39,14 @@ class CodingEventReducerTest {
         promptPreview: String = "",
         iteration: Int = 0,
         errorDetail: String = "",
+        goalStatus: String = "",
+        goalReason: String = "",
+        goalJudging: Boolean = false,
     ): CodingEventReducer.Result = CodingEventReducer.apply(
         type, messages, assistantKey, ::nextId,
         delta, name, ok, approved, why, callId, tool, code, argsPreview,
         outputPreview, durationMs, subagentId, subagentLabel, subagentPersona, promptPreview, iteration, errorDetail,
+        goalStatus, goalReason, goalJudging,
     )
 
     private fun toolCard(name: String, text: String = "", toolOk: Boolean? = null) =
@@ -350,6 +354,78 @@ class CodingEventReducerTest {
         assertEquals(2, r.messages.size)
         assertEquals(true, r.messages[0].toolOk)
         assertNull("b 还没结束", r.messages[1].toolOk)
+    }
+
+    // ==================== 无人值守目标循环 ====================
+
+    @Test
+    fun `goal_start置忙并给出阶段`() {
+        val r = apply("goal_start", assistantKey = "a_1")
+        assertEquals(true, r.busy)
+        assertEquals("目标已启动", r.phase)
+        assertEquals(0, r.iteration)
+    }
+
+    @Test
+    fun `goal_round推进轮次并显示第几轮`() {
+        var r = apply("goal_start")
+        r = apply("goal_round", messages = r.messages, iteration = 1)
+        assertEquals(1, r.iteration)
+        assertEquals("目标第 1 轮", r.phase)
+        assertEquals(true, r.busy)
+    }
+
+    @Test
+    fun `goal_round判分中显示判分并保持忙`() {
+        val r = apply("goal_round", iteration = 2, goalJudging = true)
+        assertEquals(true, r.busy)
+        assertEquals("目标第 2 轮 · 判分中", r.phase)
+    }
+
+    @Test
+    fun `目标循环中途的done不能把busy放下`() {
+        // 每轮 prompt 结束都会发 done；但目标循环还没结束。
+        // 若 done 把 busy 置 false，界面会显示空闲并解锁输入框，
+        // 用户此时发消息会与正在跑的循环抢同一个会话。
+        var r = apply("goal_start")
+        r = apply("done", messages = r.messages, assistantKey = "a_1")
+        assertEquals("done 本身仍然置闲（单轮交互依赖这个语义）", false, r.busy)
+        r = apply("goal_verdict", messages = r.messages, goalStatus = "continue")
+        assertEquals("判官说继续时必须重新拉起 busy", true, r.busy)
+    }
+
+    @Test
+    fun `goal_verdict把判官结论写进阶段行`() {
+        assertEquals("判官：需要继续", apply("goal_verdict", goalStatus = "continue").phase)
+        assertEquals("判官：目标已达成", apply("goal_verdict", goalStatus = "done").phase)
+        assertEquals("判官：需要你介入", apply("goal_verdict", goalStatus = "blocked").phase)
+        // 未知结论不能显示成空白：直接原样展示，信息不丢
+        assertEquals("判官：weird", apply("goal_verdict", goalStatus = "weird").phase)
+    }
+
+    @Test
+    fun `goal_done落一条收尾正文并置闲`() {
+        val r = apply("goal_done", assistantKey = "a_1", goalStatus = "complete", goalReason = "文件已生成")
+        val card = r.messages.single()
+        assertEquals("assistant", card.role)
+        assertTrue(card.text.contains("目标已达成"))
+        assertTrue(card.text.contains("文件已生成"))
+        assertEquals(false, r.busy)
+        assertNull("收尾后不该再往旧的 assistant 气泡里追加", r.assistantKey)
+        assertEquals("", r.phase)
+    }
+
+    @Test
+    fun `goal_done暂停时写明原因`() {
+        val r = apply("goal_done", goalStatus = "paused", goalReason = "连续 3 轮没有进展")
+        assertTrue(r.messages.single().text.contains("已暂停"))
+        assertTrue(r.messages.single().text.contains("没有进展"))
+    }
+
+    @Test
+    fun `goal_done无原因时给兜底文案`() {
+        val r = apply("goal_done", goalStatus = "paused", goalReason = "")
+        assertTrue(r.messages.single().text.contains("未提供原因"))
     }
 
     // ==================== 组合回合 ====================

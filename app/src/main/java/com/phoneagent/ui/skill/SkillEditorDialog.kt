@@ -68,7 +68,7 @@ import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.StatusPill
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
@@ -304,8 +304,8 @@ private fun MacroStepEditor(
     var expanded by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppRadii.Chip))
-            .padding(12.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppTheme.metrics.chipRadius))
+            .padding(AppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -368,8 +368,8 @@ private fun MacroStepEditor(
 private fun SkillParamEditor(draft: ParamDraft, onChange: (ParamDraft) -> Unit, onDelete: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppRadii.Chip))
-            .padding(12.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(AppTheme.metrics.chipRadius))
+            .padding(AppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

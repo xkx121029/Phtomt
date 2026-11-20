@@ -146,6 +146,79 @@ class LoopGuardTest {
         assertEquals(1, g.sameSignatureStreak)
     }
 
+    // ---- 页面级无推进止损 ----
+
+    @Test
+    fun 页面连续无推进达到阈值换入口() {
+        val g = guard(FakeClock())
+        val p = "page-a"
+        repeat(LoopGuard.PAGE_STUCK_SWITCH_STREAK - 1) {
+            assertEquals(LoopGuard.PageStuckEscalation.NONE, g.onPageOutcome(p, skip = false))
+        }
+        assertEquals(
+            LoopGuard.PageStuckEscalation.SWITCH_APPROACH,
+            g.onPageOutcome(p, skip = false),
+        )
+        assertEquals(LoopGuard.PAGE_STUCK_SWITCH_STREAK, g.pageStuckStreakValue)
+        // 阈值之间不重复刷提示，下一步才升级
+        assertEquals(LoopGuard.PageStuckEscalation.NONE, g.onPageOutcome(p, skip = false))
+    }
+
+    @Test
+    fun 页面持续无推进升级到求助与止损() {
+        val g = guard(FakeClock())
+        val p = "page-a"
+        val got = (1..LoopGuard.PAGE_STUCK_STOP_STREAK).map { g.onPageOutcome(p, skip = false) }
+        // 每一级只在恰好到达阈值的那一步触发一次，中间不刷屏
+        assertEquals(1, got.count { it == LoopGuard.PageStuckEscalation.SWITCH_APPROACH })
+        assertEquals(1, got.count { it == LoopGuard.PageStuckEscalation.ASK_USER })
+        assertEquals(1, got.count { it == LoopGuard.PageStuckEscalation.STOP })
+        assertEquals(
+            LoopGuard.PageStuckEscalation.SWITCH_APPROACH,
+            got[LoopGuard.PAGE_STUCK_SWITCH_STREAK - 1],
+        )
+        assertEquals(
+            LoopGuard.PageStuckEscalation.ASK_USER,
+            got[LoopGuard.PAGE_STUCK_ASK_STREAK - 1],
+        )
+        assertEquals(
+            LoopGuard.PageStuckEscalation.STOP,
+            got[LoopGuard.PAGE_STUCK_STOP_STREAK - 1],
+        )
+    }
+
+    @Test
+    fun 页面变化后无推进计数复位() {
+        val g = guard(FakeClock())
+        repeat(3) { g.onPageOutcome("page-a", skip = false) }
+        assertEquals(3, g.pageStuckStreakValue)
+        assertEquals(LoopGuard.PageStuckEscalation.NONE, g.onPageOutcome("page-b", skip = false))
+        assertEquals(1, g.pageStuckStreakValue)
+    }
+
+    @Test
+    fun 不改页面的动作不参与计数也不复位() {
+        val g = guard(FakeClock())
+        repeat(3) { g.onPageOutcome("page-a", skip = false) }
+        // wait/say 传 skip=true：既不累加，也不把已有的死路计数清零
+        repeat(5) { g.onPageOutcome("page-a", skip = true) }
+        assertEquals(3, g.pageStuckStreakValue)
+        assertEquals(
+            LoopGuard.PageStuckEscalation.SWITCH_APPROACH,
+            g.onPageOutcome("page-a", skip = false),
+        )
+    }
+
+    @Test
+    fun 页面级止损随任务复位() {
+        val g = guard(FakeClock())
+        repeat(LoopGuard.PAGE_STUCK_ASK_STREAK) { g.onPageOutcome("page-a", skip = false) }
+        g.reset()
+        assertEquals(0, g.pageStuckStreakValue)
+        assertEquals(LoopGuard.PageStuckEscalation.NONE, g.onPageOutcome("page-a", skip = false))
+        assertEquals(1, g.pageStuckStreakValue)
+    }
+
     // ---- 长时间无进展看门狗 ----
 
     @Test

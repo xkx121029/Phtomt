@@ -232,10 +232,19 @@ internal fun glassTintWithOffset(base: Color, offset: Int): Color {
 @Composable
 internal fun glassTintPreview(offset: Int): Color {
     val highContrast = rememberHighContrast()
-    val base = when {
-        highContrast -> if (isSystemDark()) DarkContrastAppColors else LightContrastAppColors
-        isSystemDark() -> DarkAppColors
-        else -> LightAppColors
+    val skin = AppTheme.skin
+    val base = if (skin.isGraphite) {
+        when {
+            highContrast -> if (isSystemDark()) GraphiteDarkContrastAppColors else GraphiteLightContrastAppColors
+            isSystemDark() -> GraphiteDarkAppColors
+            else -> GraphiteLightAppColors
+        }
+    } else {
+        when {
+            highContrast -> if (isSystemDark()) DarkContrastAppColors else LightContrastAppColors
+            isSystemDark() -> DarkAppColors
+            else -> LightAppColors
+        }
     }.glassTint
     return if (offset != 0 && !highContrast) glassTintWithOffset(base, offset) else base
 }
@@ -333,6 +342,37 @@ private fun darkSchemeOf(c: AppColors, toneBoost: Float = 1f): ColorScheme {
     )
 }
 
+/** 按皮肤 / 配色 / 系统深浅 + 高对比度挑基础色板；石墨不看用户配色 */
+private fun resolveBasePalette(
+    skin: ThemeSkin,
+    palette: ThemePalette,
+    dark: Boolean,
+    highContrast: Boolean,
+): AppColors = when {
+    skin.isGraphite && dark && highContrast -> GraphiteDarkContrastAppColors
+    skin.isGraphite && dark -> GraphiteDarkAppColors
+    skin.isGraphite && highContrast -> GraphiteLightContrastAppColors
+    skin.isGraphite -> GraphiteLightAppColors
+    dark && highContrast -> palette.darkContrast
+    dark -> palette.dark
+    highContrast -> palette.lightContrast
+    else -> palette.light
+}
+
+/** 按皮肤选 M3 色板构建器：石墨的明度关系与旧主题相反，走独立构建器 */
+private fun schemeFor(
+    palette: AppColors,
+    skin: ThemeSkin,
+    dark: Boolean,
+    highContrast: Boolean,
+    toneBoost: Float,
+): ColorScheme = when {
+    skin.isGraphite && dark -> graphiteDarkScheme(palette, highContrast)
+    skin.isGraphite -> graphiteLightScheme(palette, highContrast)
+    dark -> darkSchemeOf(palette, toneBoost)
+    else -> lightSchemeOf(palette, toneBoost)
+}
+
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
 @Suppress("LongParameterList")
@@ -346,17 +386,16 @@ fun PhoneAgentTheme(
     glassTintOffset: Int = 0,
     /** 主题设置里的界面风格预设（[UiStyle.id]），未知值回落经典 */
     styleId: String = UiStyle.DEFAULT.id,
+    /** 主题皮肤（[ThemeSkin.id]）：legacy = 现有主题，graphite = 全新主题；未知值回落经典 */
+    skinId: String = ThemeSkin.DEFAULT.id,
     content: @Composable () -> Unit,
 ) {
     val highContrast = rememberHighContrast()
-    val paletteKind = ThemePalette.of(paletteId)
-    // 磨砂微调只作用于标准浅/深色板；高对比度色板刻意近乎不透明（无障碍可读性兜底），不参与
-    val basePalette = when {
-        darkTheme && highContrast -> paletteKind.darkContrast
-        darkTheme -> paletteKind.dark
-        highContrast -> paletteKind.lightContrast
-        else -> paletteKind.light
-    }
+    val skin = ThemeSkin.of(skinId)
+    val style = UiStyle.of(styleId)
+    // 皮肤优先于配色：石墨是"整套视觉语言"，切到它以后配色选项不参与，
+    // 避免出现"新几何 + 旧色板"的拼接感；切回经典后配色立即恢复生效。
+    val basePalette = resolveBasePalette(skin, ThemePalette.of(paletteId), darkTheme, highContrast)
     val palette = if (glassTintOffset != 0 && !highContrast) {
         shiftGlassTint(basePalette, glassTintOffset)
     } else {
@@ -364,10 +403,9 @@ fun PhoneAgentTheme(
     }
     // 界面风格只调"面与面之间"的底色距离：工作台要平铺（0.8），
     // 无框线档没有描边帮忙划边界，再乘上补偿系数把层次拉回来
-    val style = UiStyle.of(styleId)
     val toneBoost = if (bordersEnabled) style.toneScale else BorderlessToneBoost * style.toneScale
-    val colorScheme = remember(palette, darkTheme, toneBoost) {
-        if (darkTheme) darkSchemeOf(palette, toneBoost) else lightSchemeOf(palette, toneBoost)
+    val colorScheme = remember(palette, darkTheme, skin, highContrast, toneBoost) {
+        schemeFor(palette, skin, darkTheme, highContrast, toneBoost)
     }
 
     val view = LocalView.current
@@ -385,12 +423,15 @@ fun PhoneAgentTheme(
         LocalAppColors provides palette,
         LocalAppBorders provides bordersEnabled,
         LocalUiStyle provides style,
+        LocalThemeSkin provides skin,
+        LocalAppMetrics provides metricsFor(skin),
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = AppTypography,
-            // 风格只换 Shapes 的取值口径（全部取自 AppRadii，不新增圆角数值）
-            shapes = shapesFor(style),
+            typography = if (skin.isGraphite) GraphiteTypography else AppTypography,
+            // 风格只换 Shapes 的取值口径（全部取自 AppRadii，不新增圆角数值）；
+            // 皮肤可以整体替换形状档位，石墨因此不继承经典/工作台的圆角
+            shapes = shapesFor(style, skin),
         ) {
             ProvideMotionSettings {
                 content()

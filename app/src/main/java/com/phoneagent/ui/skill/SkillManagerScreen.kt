@@ -66,7 +66,7 @@ import com.phoneagent.ui.components.AppItemCard
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.StatusPill
-import com.phoneagent.ui.theme.AppRadii
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.Success
 import com.phoneagent.ui.theme.Warning
 import kotlinx.coroutines.launch
@@ -120,7 +120,9 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 // 净空按玻璃页眉实测高度垫出：页签栏落在页眉下沿之外，不会被压住
                 .padding(top = pad.calculateTopPadding()),
         ) {
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            SingleChoiceSegmentedButtonRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AppTheme.metrics.pagePad),
+    ) {
                 SkillTab.entries.forEachIndexed { index, t ->
                     SegmentedButton(
                         selected = tab == t,

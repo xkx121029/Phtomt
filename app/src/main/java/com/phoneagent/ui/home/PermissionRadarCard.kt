@@ -45,7 +45,7 @@ internal fun PermissionTodoLine(
     permissions: List<PermissionItem>,
     onOpen: () -> Unit,
 ) {
-    val pending = permissions.count { !it.granted }
+    val pending = permissions.count { !it.granted && !it.optional }
     if (pending <= 0) return
     val buzz = rememberHapticClick()
     Row(
@@ -124,7 +124,11 @@ internal fun PermissionRadar(
                         )
                     }
                     StatusPill(
-                        text = if (p.granted) "完成" else "去授权",
+                        text = when {
+                            p.granted -> "完成"
+                            p.optional -> "可选"
+                            else -> "去授权"
+                        },
                         color = itemColor,
                         modifier = Modifier.padding(end = 14.dp),
                     )
@@ -139,6 +143,10 @@ private fun rawPermissionIcon(kind: PermissionKind): ImageVector = when (kind) {
     PermissionKind.OVERLAY -> AppIcons.Camera
     PermissionKind.WRITE_SETTINGS -> AppIcons.Tune
     PermissionKind.AUTOSTART -> AppIcons.Bolt
-    PermissionKind.QUERY_ALL_PACKAGES -> AppIcons.Memory
     PermissionKind.NOTIFICATIONS -> AppIcons.Notifications
+    PermissionKind.USAGE_ACCESS -> AppIcons.Insights
+    PermissionKind.INSTALL_PACKAGES -> AppIcons.FileDownload
+    PermissionKind.ALL_FILES -> AppIcons.Folder
+    PermissionKind.DND_ACCESS -> AppIcons.NotifOff
+    PermissionKind.MICROPHONE -> AppIcons.Mic
 }

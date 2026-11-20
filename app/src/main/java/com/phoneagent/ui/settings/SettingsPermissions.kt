@@ -52,6 +52,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.home.PermissionRadar
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
@@ -100,7 +101,7 @@ internal fun SettingsPermissions(
             onBack = onBack,
             subtitle = "授予系统权限，配置 shell 执行通路",
         )
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         // 分段控件与「外观与导航」同一套：两段各一屏，不靠长滚动切换上下文
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -132,6 +133,10 @@ internal fun SettingsPermissions(
             var bundledVersion by remember { mutableStateOf(ProviderManager.bundledVersion(context)) }
             var needsInstall by remember { mutableStateOf(ProviderManager.needsInstall(context)) }
             var a11yEnabled by remember { mutableStateOf(AgentAccessibilityService.isServiceEnabled(context)) }
+            // 服务组件的通知权限：Android 13+ 未授权时，配对码通知与看门狗常驻通知都不出现，
+            // 且 Provider 无 UI 自己弹不了授权框，只能在这里给入口
+            var notifGranted by remember { mutableStateOf(ProviderManager.providerNotificationGranted(context)) }
+            var notifBusy by remember { mutableStateOf(false) }
             // 真实的通道状态：只显示「已安装」会让用户误以为能用（安装 ≠ 绑定 ≠ 无障碍已开启）
             val channelConnected by ProviderManager.connected.collectAsState()
             val channelError by ProviderManager.lastError.collectAsState()
@@ -155,6 +160,7 @@ internal fun SettingsPermissions(
                         bundledVersion = ProviderManager.bundledVersion(context)
                         needsInstall = ProviderManager.needsInstall(context)
                         a11yEnabled = AgentAccessibilityService.isServiceEnabled(context)
+                        notifGranted = ProviderManager.providerNotificationGranted(context)
                         if (installedVersion != null) scope.launch { watchdog = readWatchdog() ?: watchdog }
                     }
                 }
@@ -287,6 +293,46 @@ internal fun SettingsPermissions(
                                 )
                             }
                         }
+                    }
+
+                    // ---- 服务组件通知权限：Android 13+ 必须单独授权，否则配对码/看门狗通知全静默 ----
+                    if (!notifGranted) {
+                        Spacer(Modifier.height(AppSpacing.Md))
+                        OutlinedButton(
+                            onClick = {
+                                if (notifBusy) return@OutlinedButton
+                                notifBusy = true
+                                scope.launch {
+                                    // 优先借内置 Shizuku 静默授予（无 UI 组件自己弹不出授权框）；
+                                    // 通道不可用再跳系统通知设置页，让用户手动开
+                                    val granted = runCatching {
+                                        ProviderManager.grantNotificationViaShizuku(context)
+                                    }.getOrDefault(false)
+                                    notifGranted = granted ||
+                                        ProviderManager.providerNotificationGranted(context)
+                                    if (!notifGranted) {
+                                        ProviderManager.openNotificationSettings(context)
+                                        snackbar?.show(
+                                            "请在系统页里允许服务组件的通知，返回后会自动刷新",
+                                            SnackbarType.INFO,
+                                        )
+                                    }
+                                    notifBusy = false
+                                }
+                            },
+                            enabled = !notifBusy,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(if (notifBusy) "正在授权…" else "开启服务组件通知权限") }
+                        Spacer(Modifier.height(AppSpacing.Sm))
+                        Text(
+                            "未授予时：无线调试的配对码输入通知、后台保活通知都不会出现",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        SettingsWhyFold(
+                            "服务组件是无界面应用，自身弹不出 Android 13+ 的通知授权框；" +
+                                "配对码靠通知栏内联输入完成，缺这条权限会表现为「点了开始引导但没有任何提示」。",
+                        )
                     }
 
                     // ---- 执行通道自检：五步实测，每步给出真实数值，不用对着「已安装」猜 ----
@@ -595,7 +641,7 @@ internal fun SettingsPermissions(
                     }
                 }
                 val notifEnabled = com.phoneagent.feature.notify.notificationListenerEnabled(context)
-                Column(Modifier.padding(horizontal = AppSpacing.Page, vertical = AppSpacing.Xs)) {
+                Column(Modifier.padding(horizontal = AppTheme.metrics.pagePad, vertical = AppSpacing.Xs)) {
                     // 长解释收进折叠：结论与按钮在上面，原理只在出问题时才看
                     SettingsWhyFold(rolePlan.explanation, label = "为什么需要它")
                     Spacer(Modifier.height(AppSpacing.Sm))
@@ -711,7 +757,7 @@ internal fun SettingsPermissions(
                     save()
                 }
                 if (st.externalControlEnabled) {
-                    Column(Modifier.padding(horizontal = AppSpacing.Page)) {
+                    Column(Modifier.padding(horizontal = AppTheme.metrics.pagePad)) {
                         androidx.compose.material3.OutlinedTextField(
                             value = st.externalControlToken,
                             onValueChange = { st.externalControlToken = it; save() },

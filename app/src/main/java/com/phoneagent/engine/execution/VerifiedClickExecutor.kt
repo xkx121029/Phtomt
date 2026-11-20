@@ -7,6 +7,28 @@ import com.phoneagent.engine.perception.PageFingerprint
 import kotlinx.coroutines.delay
 
 /**
+ * 动作的交付状态：是否送到设备、送到之后有没有效果。
+ *
+ * 区分「没送达」与「送达了但没生效」是重试策略的前提：
+ * - 没送达：动作根本没碰到设备，换通道 / 换落点再试是安全的；
+ * - 已送达未生效：动作已经落到页面上，原样再执行一遍就是重复副作用（重复提交/重复收藏），
+ *   应当换入口 / 换控件 / 换策略，而不是重放。
+ *
+ * 判定只读结构化字段（[VerifyResult.success] / [VerifyResult.notDelivered]），
+ * 不解析 [VerifyResult.reason] 的文案——提示词改一个字不该改变重试行为。
+ */
+enum class Delivery {
+    /** 已交付且确认生效 */
+    EFFECTIVE,
+
+    /** 已交付到设备，但没有观察到预期效果 */
+    DELIVERED_NO_EFFECT,
+
+    /** 根本没交付到设备（通道不可用 / 手势被系统拒绝 / 请求本身不成立） */
+    NOT_DELIVERED,
+}
+
+/**
  * 执行验证结果：动作是否真正改变了页面。
  */
 data class VerifyResult(
@@ -29,6 +51,13 @@ data class VerifyResult(
      */
     val notDelivered: Boolean = false,
     /**
+     * 端侧判定"重跑同一串动作不会变好"：未知命令、参数非法、通道能力缺口、转译失败等。
+     *
+     * 由产出方在构造结果时显式标注，**不再**从 [reason] 里匹配关键词——
+     * 文案是给人读的，重试行为不该随措辞变化。
+     */
+    val structural: Boolean = false,
+    /**
      * 实际交付动作的通道 id（`a11y` / `shizuku` / `adb` / `termux` / `local`）。
      * 空串表示该动作没有经过通道选择（纯端侧动作或首通道直接成功且未走统一阶梯）。
      * 仅用于日志、遥测与排障，**不进提示词**——执行通道对 AI 保持透明是本项目的既有契约。
@@ -44,8 +73,21 @@ data class VerifyResult(
      * 本步是否向**密码框**输入了内容。为 true 时执行层会把动作里的正文换成占位符再留档/回注：
      * 密码只用于这一次执行，不落本地轨迹、不进下一轮提示词。
      */
+    /** 本次动作从下发到得出验证结论的墙钟耗时（ms）。原先恒为 0，执行流里看不出哪一步慢 */
+    val elapsedMs: Long = 0,
     val sensitiveInput: Boolean = false,
-)
+) {
+    /**
+     * 结构化交付结论（由 [success] / [notDelivered] 推导）：
+     * 成功 / 已交付未生效 / 未交付。重试与回注提示都按它分流，不读文案。
+     */
+    val delivery: Delivery
+        get() = when {
+            success -> Delivery.EFFECTIVE
+            notDelivered -> Delivery.NOT_DELIVERED
+            else -> Delivery.DELIVERED_NO_EFFECT
+        }
+}
 
 /**
  * 动作执行后的取样节奏：**唯一定义点**。
@@ -57,6 +99,15 @@ data class VerifyResult(
 internal object VerifyTiming {
     /** 累计等待时刻（毫秒）：首次取样就能确认的页面不必等满，两次取样都没变化才判失败 */
     val SAMPLE_DELAYS_MS = longArrayOf(200L, 500L)
+
+    /**
+     * 判失败前的**延迟复核**等待（毫秒）。
+     *
+     * 网络/加载类页面常在首轮观察窗（约 0.7s）之后才定型。早判失败不只是"显示不准"：
+     * AI 收到"未生效"会重放动作，点提交/收藏/加购这类操作就被执行了两遍，副作用不可撤销。
+     * 只在**失败路径**多等这一拍：成功路径一旦取样到变化就立即返回，不受影响。
+     */
+    const val LATE_CONFIRM_DELAY_MS = 900L
 }
 
 /**
@@ -109,17 +160,32 @@ class VerifiedClickExecutor(private val resolver: IntentResolver = IntentResolve
             // 指纹未变时的兜底：目标控件自身关键状态变化也算已生效。
             // 勾选/滑块/纯动画页不会改变整页指纹，只看指纹会把成功误判成失败——
             // 这里与 ClickRunner.judge 的控件态口径保持一致（共用 controlStateOf）。
-            if (target != null) {
-                resolver.matchInFresh(target, afterSnapshot)?.let { now ->
-                    if (controlStateOf(target) != controlStateOf(now)) {
-                        return VerifyResult(true, "目标控件状态已变化", before, after)
-                    }
-                }
+            if (target != null && targetStateChanged(target, afterSnapshot)) {
+                return VerifyResult(true, "目标控件状态已变化", before, after)
             }
         }
         if (!captured) {
             return VerifyResult(true, "已执行；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")
         }
+        // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
+        // 早判"未生效"会让 AI 重放动作（重复提交/重复滑动），副作用不可撤销
+        delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
+        val lateSnapshot = runCatching { AgentAccessibilityService.instance?.captureScreen() }
+            .getOrNull()?.takeUnless { it.missingAccessibility }
+        if (lateSnapshot != null) {
+            val late = PageFingerprint.computeMeaningful(lateSnapshot)
+            after = late
+            if (before != late) return VerifyResult(true, "页面已变化（延迟生效）", before, late)
+            if (target != null && targetStateChanged(target, lateSnapshot)) {
+                return VerifyResult(true, "目标控件状态已变化（延迟生效）", before, late)
+            }
+        }
         return VerifyResult(false, "页面未变化，动作可能未生效", before, after)
+    }
+
+    /** 目标控件自身的关键状态（选中/值/文字/描述）在新快照里是否已经变化 */
+    private fun targetStateChanged(target: UiElement, snapshot: ScreenSnapshot): Boolean {
+        val now = resolver.matchInFresh(target, snapshot) ?: return false
+        return controlStateOf(target) != controlStateOf(now)
     }
 }

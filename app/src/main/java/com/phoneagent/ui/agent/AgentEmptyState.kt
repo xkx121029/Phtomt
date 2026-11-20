@@ -29,7 +29,6 @@ import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
@@ -84,7 +83,7 @@ internal fun AgentEmptyState(
             background = colors.surfaceSunken,
             tileSize = 64.dp,
             iconSize = 30.dp,
-            cornerRadius = AppRadii.Card,
+            cornerRadius = AppTheme.metrics.cardRadius,
         )
         Spacer(Modifier.height(AppSpacing.Md))
         Text(
@@ -98,9 +97,9 @@ internal fun AgentEmptyState(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadii.Item))
+                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
                     .background(colors.warningContainer)
-                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
                     .padding(AppSpacing.Lg),
             ) {
                 Text(
@@ -159,9 +158,9 @@ private fun SuggestionRow(text: String, onClick: () -> Unit) {
         onClick = { buzz(); onClick() },
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(colors.surfaceRaised)
-            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.tileRadius))
             .padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -238,9 +237,9 @@ private fun GridEmptyState(
                 color = colors.onWarningContainer,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadii.Item))
+                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
                     .background(colors.warningContainer)
-                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Item))
+                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
                     .padding(AppSpacing.Lg),
             )
         }
@@ -261,9 +260,9 @@ private fun SuggestionCard(
         onClick = { buzz(); onClick() },
         modifier = modifier
             .heightIn(min = 88.dp)
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(colors.surfaceRaised)
-            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.tileRadius))
             .padding(AppSpacing.Md),
     ) {
         Column {

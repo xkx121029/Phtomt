@@ -15,6 +15,7 @@ import com.phoneagent.engine.runtime.EngineLimits.MAX_CONVERSATION
 import com.phoneagent.engine.runtime.EngineLimits.MAX_EXECUTION_HISTORY
 import com.phoneagent.engine.runtime.EngineLimits.MAX_LOGS
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TASK_SESSIONS
+import com.phoneagent.engine.runtime.EngineLimits.MAX_TRACE_TEXT
 import com.phoneagent.engine.runtime.EngineLimits.MAX_TRACES
 import kotlinx.coroutines.flow.update
 import com.phoneagent.device.vision.StepTrace
@@ -92,6 +93,39 @@ internal class TelemetryRecorder(
         )
     }
 
+    /**
+     * 观测性埋点：单步墙钟（观察 + 决策 + 执行）。
+     *
+     * 与 [recordExecMs] 分开：动作执行本身往往只有几百毫秒，慢的是整步（决策往返、页面加载、等待）。
+     * 两条平均耗时放在一起，才能区分"动作慢"和"这一步整体慢"。
+     */
+    fun recordStepMs(elapsedMs: Long, overBudget: Boolean) {
+        val prev = store.metrics.value
+        store.metrics.value = prev.copy(
+            stepCount = prev.stepCount + 1,
+            stepTotalMs = prev.stepTotalMs + elapsedMs,
+            overBudgetSteps = prev.overBudgetSteps + if (overBudget) 1 else 0,
+        )
+    }
+
+    /**
+     * 观测性埋点：失败按交付状态分开计数。
+     *
+     * 「没送达」与「送达了但没生效」对应两种完全不同的修法（换通道 / 换策略），
+     * 合成一个"失败数"就再也分不出来。成功步已有 totalSteps/execCount 覆盖，不重复记。
+     */
+    fun recordDelivery(delivery: com.phoneagent.engine.execution.Delivery) {
+        val prev = store.metrics.value
+        val next = when (delivery) {
+            com.phoneagent.engine.execution.Delivery.NOT_DELIVERED ->
+                prev.copy(notDeliveredCount = prev.notDeliveredCount + 1)
+            com.phoneagent.engine.execution.Delivery.DELIVERED_NO_EFFECT ->
+                prev.copy(noEffectCount = prev.noEffectCount + 1)
+            com.phoneagent.engine.execution.Delivery.EFFECTIVE -> prev
+        }
+        store.metrics.value = next
+    }
+
     fun recordStepTrace(
         step: Int,
         sent: String,
@@ -109,8 +143,8 @@ internal class TelemetryRecorder(
                 taskId = store.currentTaskId,
                 taskName = store.currentTaskName,
                 step = step,
-                sentText = sent,
-                receivedText = receivedTextOverride ?: decision.rawContent,
+                sentText = clampTraceText(sent),
+                receivedText = clampTraceText(receivedTextOverride ?: decision.rawContent),
                 promptTokens = decision.promptTokens,
                 completionTokens = decision.completionTokens,
                 totalTokens = decision.totalTokens,
@@ -124,6 +158,13 @@ internal class TelemetryRecorder(
             )
         )
     }
+
+    /**
+     * 轨迹正文限长：超长时保留头部并显式标注截断，避免长线任务里每步整页 prompt
+     * 在内存与调试落盘里各存一份。
+     */
+    private fun clampTraceText(text: String): String =
+        if (text.length <= MAX_TRACE_TEXT) text else text.take(MAX_TRACE_TEXT) + "…（已截断）"
 
     /**
      * 端侧（本地）决策的步骤留档。

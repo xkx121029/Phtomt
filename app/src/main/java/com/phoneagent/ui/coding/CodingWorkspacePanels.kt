@@ -53,7 +53,6 @@ import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import java.util.Locale
@@ -107,7 +106,7 @@ internal fun WorkspacePanel(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(AppRadii.Chip))
+                        .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                         .background(if (isActive) colors.surfaceRaised else Color.Transparent)
                         .clickable { buzz(); onSelect(entry) }
                         .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Sm),
@@ -252,7 +251,7 @@ internal fun SessionPanel(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(AppRadii.Chip))
+                            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                             .background(if (isActive) AppTheme.colors.surfaceRaised else Color.Transparent)
                             .clickable { buzz(); onSelect(s) }
                             .padding(horizontal = AppSpacing.Sm, vertical = AppSpacing.Sm),
@@ -331,7 +330,7 @@ private fun SessionGraph(
     }
     Canvas(
         modifier = modifier
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
             .background(colors.surfaceRaised.copy(alpha = 0.5f))
             .pointerInput(sessions) {
                 detectTapGestures { tap ->

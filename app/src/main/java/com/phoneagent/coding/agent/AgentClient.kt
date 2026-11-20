@@ -464,8 +464,15 @@ class AgentClient(
                 subagentLabel = ev.optString("label"),
                 subagentPersona = ev.optString("personaName"),
                 promptPreview = ev.optString("promptPreview"),
-                iteration = ev.optInt("index"),
+                // iteration 事件用 index，goal_round 用 round：两者都是「第几轮」，
+                // 只是来源不同。不合并的话目标轮次永远显示 0。
+                iteration = ev.optInt("index").takeIf { it > 0 } ?: ev.optInt("round"),
                 errorDetail = ev.optString("error"),
+                // goal_verdict 带 verdict，goal_done 带 status；两者都是「目标结论」，
+                // reducer 按事件类型决定怎么显示，这里只要原样传进去。
+                goalStatus = ev.optString("status").ifEmpty { ev.optString("verdict") },
+                goalReason = ev.optString("reason"),
+                goalJudging = ev.optBoolean("judging"),
             )
             assistantKey = r.assistantKey
             reconnect = r.hostExited
@@ -617,6 +624,57 @@ class AgentClient(
             pendingTimeouts.remove(id)?.let { main.removeCallbacks(it) }
             pending.remove(id)
             update { it.copy(busy = false, error = "停止请求未能送达：编码 Agent 连接已断开") }
+        }
+    }
+
+    /**
+     * 启动无人值守目标：一串「跑完一轮 → 判官判 → 决定是否继续」的自治循环。
+     * host 立刻回 started，进度全部走事件流（goal_start / goal_round / goal_verdict / goal_done）。
+     * [allowExec] 默认 false：没人看着的时候不放开 shell，只放行读写文件。
+     */
+    fun startGoal(objective: String, allowExec: Boolean = false, onResult: ((Boolean, String?) -> Unit)? = null) {
+        val text = objective.trim()
+        if (text.isEmpty()) {
+            onResult?.invoke(false, "目标不能为空")
+            return
+        }
+        // 目标循环的进度全靠事件流，会话里不会有对应的 user 消息：
+        // 这里补一条用户气泡，回看历史时才知道当时提的是什么目标。
+        assistantKey = null
+        update {
+            it.copy(
+                messages = it.messages + ChatMessage(key = "u_${nextId()}", role = "user", text = "/goal $text"),
+                busy = true,
+                error = null,
+                phase = "目标已启动",
+                iteration = 0,
+                runStartedAt = System.currentTimeMillis(),
+            )
+        }
+        call(
+            "goal_start",
+            JSONObject()
+                .put("objective", text)
+                .put("sessionId", sessionId ?: "")
+                .put("allowExec", allowExec),
+        ) { result, error ->
+            // 启动失败没有后续事件能收尾，必须在这里把 busy 放下，否则输入框一直锁着。
+            if (error != null || result == null) {
+                update { it.copy(busy = false, phase = "", runStartedAt = null) }
+            }
+            onResult?.invoke(error == null && result != null, error)
+        }
+    }
+
+    fun pauseGoal(reason: String = "用户暂停了目标", onResult: ((Boolean, String?) -> Unit)? = null) {
+        call("goal_pause", JSONObject().put("sessionId", sessionId ?: "").put("reason", reason)) { result, error ->
+            onResult?.invoke(error == null && result != null, error)
+        }
+    }
+
+    fun resumeGoal(onResult: ((Boolean, String?) -> Unit)? = null) {
+        call("goal_resume", JSONObject().put("sessionId", sessionId ?: "")) { result, error ->
+            onResult?.invoke(error == null && result != null, error)
         }
     }
 

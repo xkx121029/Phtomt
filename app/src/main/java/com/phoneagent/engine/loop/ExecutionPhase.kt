@@ -16,11 +16,15 @@ import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
+import com.phoneagent.engine.execution.CompletionEvidence
 import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.IntentTranslator
+import com.phoneagent.engine.execution.InputCommitRules
+import com.phoneagent.engine.execution.PendingInput
 import com.phoneagent.engine.execution.SensitiveInput
 import com.phoneagent.engine.execution.VerifyResult
 import com.phoneagent.engine.execution.VerifyRules
+import com.phoneagent.engine.perception.PageFingerprint
 import com.phoneagent.engine.runtime.EngineLimits.MAX_SAY_STREAK
 import com.phoneagent.engine.runtime.ExecutionFeedback
 import com.phoneagent.engine.runtime.LoopGuard
@@ -28,6 +32,9 @@ import com.phoneagent.engine.runtime.TaskNoticeCenter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.isActive
 import kotlin.math.ceil
+
+/** 完成前复核的等待时长：够 toast/snackbar 淡出，又不至于让收尾明显变慢 */
+private const val FINISH_RECHECK_SETTLE_MS = 700L
 
 /** 执行阶段的界面出口：日志 / 悬浮窗 / 状态 / 协作面板 / 对话气泡 / 结束提示 */
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
@@ -124,6 +131,15 @@ internal class ExecutionCounters(
     val setConsecutiveFailures: (Int) -> Unit,
     val invalidCommandStreak: () -> Int,
     val setInvalidCommandStreak: (Int) -> Unit,
+    /** 本任务最后一处已填入但尚未提交的输入（null = 没有待提交内容） */
+    val pendingInput: () -> PendingInput?,
+    val setPendingInput: (PendingInput?) -> Unit,
+    /** 连续拒绝"输入未提交就完成"的次数，防死循环 */
+    val inputCommitRejections: () -> Int,
+    val setInputCommitRejections: (Int) -> Unit,
+    /** 因"依据是瞬时提示"拒绝完成的次数，防死循环 */
+    val completionRecheckRejections: () -> Int,
+    val setCompletionRecheckRejections: (Int) -> Unit,
 )
 
 /**
@@ -153,6 +169,8 @@ internal class ExecutionPhase(
     private val device: ExecutionDeviceHooks,
     private val finish: ExecutionFinishHooks,
     private val counters: ExecutionCounters,
+    /** 「动作即观察」统计：与观察阶段共享同一实例，两端的复用/抓取才落在同一份口径上 */
+    private val afterStats: AfterObservationStats = AfterObservationStats(),
 ) : StepPhase {
 
     // 与 DecisionPhase 同一口径：块内可能调用 suspend 的补参逻辑，必须 inline
@@ -204,8 +222,9 @@ internal class ExecutionPhase(
 
         var action: AgentAction = AgentAction(type = "")
         var verify = VerifyResult(false, "", "", "")
-        var isStructuralError = false
         var verified = false
+        // 收尾时仍有未提交输入（拒绝耗尽后放行）→ 带上可归因结论写进任务记忆，别让"看起来成功"掩盖真因
+        var uncommittedInputCaveat: String? = null
         // 密码类输入：本步之后的对话留档、执行记录与回注一律用占位符，正文只用于这次执行
         val sensitiveIntent = SensitiveInput.isPasswordInput(intent, session.semanticSnapshot)
         when (translation) {
@@ -242,6 +261,47 @@ internal class ExecutionPhase(
                 // 即便提前宣称完成也直接放行，不再为凑步数空跑；无证据时才沿用上面的步数门槛照旧拦截。
                 // 放弃（GIVE_UP）不属"完成"，不适用证据放行，仍按原门槛拦截。
                 val hasDoneEvidence = intent.intent != IntentType.GIVE_UP && device.idempotencyDone(snapshot)
+                // 输入闭环：填进输入框 ≠ 提交。凡是有提交语义的操作，完成前必须真的落到提交动作，
+                // 否则判分读到的是空答案（真机失败：正文已输入答题框，直接 finish，页面从未提交）。
+                val pendingInput = counters.pendingInput()
+                if (act.type == ActionType.TASK_DONE && intent.intent != IntentType.GIVE_UP &&
+                    pendingInput != null && step - pendingInput.step <= InputCommitRules.PENDING_INPUT_TTL_STEPS
+                ) {
+                    if (counters.inputCommitRejections() < InputCommitRules.MAX_FINISH_REJECTIONS) {
+                        counters.setInputCommitRejections(counters.inputCommitRejections() + 1)
+                        ui.log(
+                            AgentLog.Level.WARN,
+                            "完成前仍有未提交输入「${pendingInput.label}」，要求先提交再完成",
+                        )
+                        messages.add(
+                            ChatMessageDto(
+                                role = "user",
+                                content = listOf(
+                                    ContentPart(
+                                        type = "text",
+                                        text = "⚠️ 你只把内容填进了「${pendingInput.label}」，并没有提交，" +
+                                            "当前页面读到的仍是未提交状态。请先执行真正的提交动作" +
+                                            "（点提交/发送/保存按钮，或用 send/confirm 意图），" +
+                                            "并确认页面出现提交后的结果（如答案已显示、列表里出现这条记录），" +
+                                            "再输出 finish。若这个输入确实无需提交，用 say 说明理由后再完成。",
+                                    ),
+                                ),
+                            ),
+                        )
+                        return StepOutcome.Continue
+                    }
+                    // 拒绝上限已到：放行完成，但不能当作干净成功——留下可归因的未提交结论
+                    uncommittedInputCaveat =
+                        "结束前输入「${pendingInput.label}」未确认提交（已连续拒绝 2 次后放行）"
+                    ui.log(AgentLog.Level.ERROR, uncommittedInputCaveat.orEmpty())
+                    TaskNoticeCenter.publishDegradation(
+                        DegradationTrigger.UNCOMMITTED_INPUT,
+                        detail = uncommittedInputCaveat.orEmpty(),
+                        method = "按完成处理（未提交）",
+                        source = "execution",
+                    )
+                    counters.setPendingInput(null)
+                }
                 if (act.type == ActionType.TASK_DONE && step < minDoneThreshold && !hasDoneEvidence) {
                     // 要求 AI 重新决策，并注入纠偏提示
                     counters.setEarlyDoneRejections(counters.earlyDoneRejections() + 1)
@@ -263,6 +323,49 @@ internal class ExecutionPhase(
                                         text = "⚠️ 你当前仅执行了 $step 步（任务通常至少需要 $minDoneThreshold 步）。" +
                                             "请确认目标是否真的达成：只有亲眼在当前页面看到任务结果的明确证据才能输出 finish；" +
                                             "否则继续执行真正需要的关键步骤，不要凑数，也不要提前结束。",
+                                    ),
+                                ),
+                            ),
+                        )
+                        return StepOutcome.Continue
+                    }
+                }
+                // 完成证据分层：提示语是过渡态，不能当完成依据（真机失败：看到 toast「已加入播放队列」
+                // 和绿勾就收尾，实际状态从未核对）。把依据再观察一次：消失的提示不算证据；
+                // 页面上根本不存在的"提示语措辞"同样不算。每任务最多拒绝一次，避免死循环。
+                if (act.type == ActionType.TASK_DONE && intent.intent != IntentType.GIVE_UP &&
+                    counters.completionRecheckRejections() < CompletionEvidence.MAX_RECHECK_REJECTIONS
+                ) {
+                    val claim = act.summary.orEmpty()
+                    // 等一拍再读：toast/snackbar 通常 2 秒内消失，立刻重读会把提示当成持久状态
+                    kotlinx.coroutines.delay(FINISH_RECHECK_SETTLE_MS)
+                    val fresh = device.reobserve()
+                    val transient = (
+                        CompletionEvidence.vanishedCitedEvidence(claim, snapshot, fresh) +
+                            CompletionEvidence.vanishedHints(snapshot, fresh) +
+                            CompletionEvidence.unverifiableHintCitations(claim, snapshot)
+                        ).distinct()
+                    if (transient.isNotEmpty()) {
+                        counters.setCompletionRecheckRejections(counters.completionRecheckRejections() + 1)
+                        val cited = transient.joinToString("、")
+                        ui.log(AgentLog.Level.WARN, "完成依据是瞬时提示「$cited」，要求核对持久状态")
+                        TaskNoticeCenter.publishDegradation(
+                            DegradationTrigger.TRANSIENT_EVIDENCE,
+                            detail = cited,
+                            method = "要求重新核对持久状态",
+                            source = "execution",
+                        )
+                        messages.add(
+                            ChatMessageDto(
+                                role = "user",
+                                content = listOf(
+                                    ContentPart(
+                                        type = "text",
+                                        text = "⚠️ 你用来判定完成的「$cited」是瞬时提示（提示语/绿勾），" +
+                                            "再观察一次已经不在页面上了，它不能作为完成依据。" +
+                                            "请看持久状态：列表里是否真的出现了这条记录、播放/收藏/提交后的控件是否变成新状态、" +
+                                            "页面是否停在该任务的结果页。确认后在 finish 的 summary 里写清你看到的具体状态；" +
+                                            "如果状态并没有达成，继续执行真正需要的动作。",
                                     ),
                                 ),
                             ),
@@ -308,8 +411,10 @@ internal class ExecutionPhase(
                     runCatching { finish.clearCheckpoint() }
                     runCatching { finish.onTaskCompleted(doneSummary) }
                     // 任务记忆先收尾（目标已达成）：提炼再慢也不影响记忆页立刻变成「已完成」
-                    // 完成说明一并落库，作为会话承接时"上一轮任务"的结论
-                    finish.finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, doneSummary)
+                    // 完成说明一并落库，作为会话承接时"上一轮任务"的结论。
+                    // 若收尾时仍有未提交输入（拒绝耗尽后放行），把结论追加到记忆里：别让"成功"掩盖真因
+                    val doneNote = uncommittedInputCaveat?.let { "$doneSummary（注意：$it）" } ?: doneSummary
+                    finish.finishTaskMemory(TaskMemoryEntry.STATUS_SUCCESS, doneNote)
                     // 记忆提炼放最后：完成提示先给到用户，提炼再慢也不影响「已完成」的观感
                     // （独立调用一次模型，不写 conversation，因此不污染主决策上下文）
                     runCatching { finish.distillMemories(doneSummary) }
@@ -419,17 +524,15 @@ internal class ExecutionPhase(
                 // 真的动手了：把连续说话计数清掉
                 counters.setSayStreak(0)
                 verify = device.execute(act, snapshot)
-                // 对确定性错误（未知命令/命令为空/参数无效）不重试，立即失败促使 AI 重新决策。
-                // 判据（哪些错误算结构性、哪些动作不参与外层重试）下沉 VerifyRules，可单测
-                isStructuralError = VerifyRules.isStructuralError(verify.reason)
+                // 结构性错误由执行层在构造结果时显式标注（[VerifyResult.structural]），
+                // 不再从 reason 文案里匹配关键词：改一句提示语不该改变是否重试
                 verified = verify.success
                 var times = 1
                 // 点击类动作不再交给外层重跑：ClickRunner 内部已把"活节点直点 → 手势点击 → 快照坐标 →
                 // 滚动查找"逐级穷尽过一遍，外层再重跑只是把同一串动作重复执行（还可能造成重复副作用）
                 while (!verified &&
                     VerifyRules.shouldRetry(
-                        act.type, verify.reason, times, coroutineContextIsActive(),
-                        notDelivered = verify.notDelivered,
+                        act.type, verify.delivery, verify.structural, times, coroutineContextIsActive(),
                     )
                 ) {
                     times++
@@ -461,8 +564,7 @@ internal class ExecutionPhase(
                     target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by,
                         value = it.value) },
                 )
-                verify = VerifyResult(false, reason, "", "")
-                isStructuralError = true
+                verify = VerifyResult(false, reason, "", "", notDelivered = true, structural = true)
                 verified = false
             }
             is IntentTranslator.TranslationResult.MissingParam -> {
@@ -487,8 +589,7 @@ internal class ExecutionPhase(
                     target = intent.target?.let { com.phoneagent.domain.model.ActionTarget(method = it.by,
                         value = it.value) },
                 )
-                verify = VerifyResult(false, reason, "", "")
-                isStructuralError = true
+                verify = VerifyResult(false, reason, "", "", notDelivered = true, structural = true)
                 verified = false
             }
         }
@@ -500,6 +601,17 @@ internal class ExecutionPhase(
         }
 
         counters.setConsecutiveFailures(if (verified) 0 else counters.consecutiveFailures() + 1)
+        // 输入闭环：记录/清除"待提交输入"。填入时挂账，提交或离开当前页后销账；
+        // 下一次宣称完成时据此判断"填了"到底有没有变成"交了"
+        counters.setPendingInput(
+            InputCommitRules.nextPending(
+                current = counters.pendingInput(),
+                action = action,
+                intentType = intent.intent,
+                verified = verified,
+                step = step,
+            ),
+        )
         // 命令成功执行后清零「无效命令」计数：成功说明链路已恢复正常，旧账不该累计
         if (verified) counters.setInvalidCommandStreak(0)
         // 决策循环熔断（真机 BUG 24 次因）：动作"成功"但同签名连续重复时，AI 会在同一位置打转
@@ -541,6 +653,86 @@ internal class ExecutionPhase(
             }
         } else if (verified) {
             loopGuard.onVerifiedAction(null)
+        }
+        // 页面级止损：同签名熔断按"动作签名完全一致"计数，AI 换个措辞点同一个无效控件就绕过去了
+        // （实测：心形按钮被连点 20+ 次直到步数耗尽）。这里改看页面指纹：只要页面连续多步没变，
+        // 不论 AI 怎么描述目标，都按同一条死路处理。
+        val pageStuck = loopGuard.onPageOutcome(
+            fingerprint = if (VerifyRules.expectsPageChange(action.type)) {
+                PageFingerprint.compute(session.snapshot)
+            } else {
+                null
+            },
+            skip = !VerifyRules.expectsPageChange(action.type),
+        )
+        when (pageStuck) {
+            LoopGuard.PageStuckEscalation.SWITCH_APPROACH -> {
+                val streak = loopGuard.pageStuckStreakValue
+                ui.log(AgentLog.Level.WARN, "页面连续 $streak 步无变化，注入换入口提示")
+                // 可归因：写清"卡在哪一页、卡了多少步、端侧是怎么处置的"
+                TaskNoticeCenter.publishDegradation(
+                    DegradationTrigger.PAGE_STUCK,
+                    detail = "同一页面连续 $streak 步无推进（当前动作：${action.type}）",
+                    method = "换入口/换策略",
+                    source = "execution",
+                )
+                messages.add(
+                    ChatMessageDto(
+                        role = "user",
+                        content = listOf(
+                            ContentPart(
+                                type = "text",
+                                text = "⚠️ 当前页面已经连续 $streak 步没有任何变化，说明你走的这条路径无效。" +
+                                    "换入口，不要再点同一个控件：改用 scroll_to 找别的可点控件、" +
+                                    "by_hint 视觉定位、语义意图（send/confirm/search），或返回上一级重新进入；" +
+                                    "确实找不到就 say 说明卡点。",
+                            ),
+                        ),
+                    ),
+                )
+            }
+            LoopGuard.PageStuckEscalation.ASK_USER -> {
+                val streak = loopGuard.pageStuckStreakValue
+                ui.log(AgentLog.Level.ERROR, "页面连续 $streak 步无变化，请求用户指导")
+                TaskNoticeCenter.publishDegradation(
+                    DegradationTrigger.PAGE_STUCK,
+                    detail = "同一页面连续 $streak 步无推进（当前动作：${action.type}）",
+                    method = "请求用户指导",
+                    source = "execution",
+                )
+                messages.add(
+                    ChatMessageDto(
+                        role = "user",
+                        content = listOf(
+                            ContentPart(
+                                type = "text",
+                                text = "⚠️ 同一页面已连续 $streak 步没有变化，换入口的提示也没奏效。" +
+                                    "请立刻改用与之前完全不同的方案；如果受限（无权限/控件不可点/需要登录），" +
+                                    "用 say 向用户说明卡点并请求指导。",
+                            ),
+                        ),
+                    ),
+                )
+            }
+            LoopGuard.PageStuckEscalation.STOP -> {
+                val streak = loopGuard.pageStuckStreakValue
+                val stuckReason = "同一页面连续 $streak 步无推进，已判定此路径不通（当前动作：${action.type}）"
+                ui.log(AgentLog.Level.ERROR, stuckReason)
+                TaskNoticeCenter.publishDegradation(
+                    DegradationTrigger.PAGE_STUCK,
+                    detail = stuckReason,
+                    method = "停止任务",
+                    source = "execution",
+                )
+                record.recordStep(
+                    step, action, "failed", verify.beforeFingerprint, verify.afterFingerprint,
+                    "$stuckReason：${verify.reason}",
+                )
+                finish.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, stuckReason)
+                finish.stopEngine()
+                return StepOutcome.Return
+            }
+            LoopGuard.PageStuckEscalation.NONE -> Unit
         }
         // 异常经验命中后回写使用效果（成功/失败计数），供后续按命中率判断是否还值得复用
         record.recordAnomalyUse(verified)
@@ -723,7 +915,7 @@ internal class ExecutionPhase(
         )
         // 结构错误（未知命令等）：明确告知 AI 命令无效及可用命令清单，促使下一轮纠正；
         // 连续 ≥2 次无效命令时升级：强制改用无障碍动作（id/label 定位），禁止继续 shell，避免 AI 一直编造不存在的命令
-        if (!verified && isStructuralError) {
+        if (!verified && verify.structural) {
             counters.setInvalidCommandStreak(counters.invalidCommandStreak() + 1)
             val fix = ExecutionFeedback.structuralErrorHint(
                 action.type,
@@ -733,6 +925,20 @@ internal class ExecutionPhase(
             messages.add(
                 ChatMessageDto(role = "assistant", content = listOf(ContentPart(type = "text", text = fix))),
             )
+        }
+        // 非结构性失败按交付状态分成两类回注（不解析文案）：
+        // 「没送达」→ 换通道/换落点值得再试；「已送达但没生效」→ 再点同一下就是重复副作用，该换入口/换策略。
+        // 只回一句"执行了 X"，AI 分不清这两种，最常见的反应就是把同一下再点一遍。
+        if (!verified) {
+            val deliveryHint = VerifyRules.failureHint(verify.delivery, verify.reason, verify.structural)
+            if (deliveryHint.isNotBlank()) {
+                messages.add(
+                    ChatMessageDto(
+                        role = "assistant",
+                        content = listOf(ContentPart(type = "text", text = deliveryHint)),
+                    ),
+                )
+            }
         }
         // shell 查询命令的输出注入 AI 上下文（info/dump/clip 等）
         if (action.type == ActionType.SHELL) {
@@ -815,7 +1021,7 @@ internal class ExecutionPhase(
         if (!AfterObservationPolicy.shouldCapture(action.type, verified)) return null
         val t0 = System.nanoTime()
         val afterSnapshot = tryOrNull("动作后快照失败") { device.reobserve() } ?: return null
-        AfterObservationStats.onCapture((System.nanoTime() - t0) / 1_000_000)
+        afterStats.onCapture((System.nanoTime() - t0) / 1_000_000)
         // 元素树为空说明读屏没成功（无障碍掉线/副屏模式），这份快照不具备复用价值
         if (afterSnapshot.elements.isEmpty()) return null
         val after = AfterObservationPolicy.capture(
@@ -825,10 +1031,10 @@ internal class ExecutionPhase(
             step = session.step,
         )
         session.afterObservation = after
-        AfterObservationStats.onCaptured()
+        afterStats.onCaptured()
         ui.log(
             AgentLog.Level.INFO,
-            "动作后快照：元素 ${after.snapshot.elements.size} 个，差异已回注｜${AfterObservationStats.summaryText()}",
+            "动作后快照：元素 ${after.snapshot.elements.size} 个，差异已回注｜${afterStats.summaryText()}",
         )
         return after
     }

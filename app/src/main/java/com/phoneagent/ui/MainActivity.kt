@@ -100,7 +100,7 @@ import com.phoneagent.ui.chat.ChatScreen
 import com.phoneagent.ui.coding.CodingScreen
 import com.phoneagent.ui.components.AppSnackbar
 import com.phoneagent.ui.components.GlassSurface
-import com.phoneagent.ui.components.GlassTokens
+import com.phoneagent.ui.components.GlassSurfaceStyle
 import com.phoneagent.ui.components.HomeBackButton
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.LocalIsExpanded
@@ -120,8 +120,8 @@ import com.phoneagent.ui.memory.MemoryGraphScreen
 import com.phoneagent.ui.onboarding.OnboardingFlow
 import com.phoneagent.ui.settings.SettingsPage
 import com.phoneagent.ui.settings.SettingsScreen
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.DurationSlow
 import com.phoneagent.ui.theme.EaseOut
@@ -208,6 +208,8 @@ class MainActivity : ComponentActivity() {
                 glassTintOffset = settings.glassTintOffset,
                 // 界面风格预设：经典（默认）/ 工作台，切换即重组、无需重启
                 styleId = settings.uiStyle,
+                // 主题皮肤：经典（默认）/ 石墨，切换即重组、无需重启；旧主题完整保留
+                skinId = settings.skin,
             ) {
                 ActivityContent(vm, pageSignal, entrySignal)
             }
@@ -521,6 +523,9 @@ private fun ActivityContent(
             }
         }
         intent.data = null
+        // clipData 不在 replaceExtras 的清理范围里：分享进来的文件靠它传递，
+        // 不清掉的话 Activity 重建（旋转/进程恢复）时同一份文件会被再导入一次
+        intent.clipData = null
         intent.replaceExtras(null)
         if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) {
             selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
@@ -1072,16 +1077,20 @@ private fun FloatingNavBar(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(AppRadii.Hero)
+    val metrics = AppTheme.metrics
+    val shape = RoundedCornerShape(metrics.heroRadius)
     GlassSurface(
         hazeState = hazeState,
-        shape = shape,
-        blurRadius = GlassTokens.Blur,
         // 不画顶部受光高光：这条浮在内容之上，左右 16dp、下方让开系统手势区，
         // 四边都不贴屏幕边，高光没有光源可言，只会变成一道说不清来历的脏边。
         // 贴边的大面 chrome（顶栏、输入区）才需要它，见 Glass.kt。
-        showSheen = false,
-        modifier = modifier.shadow(elevation = 12.dp, shape = shape, clip = false),
+        style = GlassSurfaceStyle(
+            shape = shape,
+            blurRadius = metrics.glassBlur,
+            showSheen = false,
+        ),
+        // 石墨主题的浮板不投影：零阴影 + 发丝描边，靠"板本身的边"浮起
+        modifier = modifier.shadow(elevation = metrics.navShadow, shape = shape, clip = false),
     ) {
         Row(
             modifier = Modifier
@@ -1169,13 +1178,19 @@ private fun FloatingNavItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        val indicatorShape = if (AppTheme.metrics.roundIconActions) {
+            RoundedCornerShape(percent = 50)
+        } else {
+            // 石墨：56×30 的圆角方块，和卡片、气泡同一档小圆角
+            RoundedCornerShape(AppTheme.metrics.chipRadius)
+        }
         Box(
             modifier = Modifier
                 // 56×30 的横胶囊：宽度够包住 22dp 图标并留出主色面积，
                 // 高度压在 30dp 让上下留白归给文字行，整条 64dp 才不显挤。
                 // 形状用 percent=50 表达"胶囊"，不写死 15dp 半高，改尺寸时不会脱形。
                 .size(width = 56.dp, height = 30.dp)
-                .background(color = indicatorColor, shape = RoundedCornerShape(percent = 50)),
+                .background(color = indicatorColor, shape = indicatorShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

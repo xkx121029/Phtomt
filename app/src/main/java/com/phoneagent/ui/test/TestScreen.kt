@@ -2,6 +2,8 @@ package com.phoneagent.ui.test
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import com.phoneagent.ui.theme.AppSpacing
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
@@ -107,12 +109,12 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = AppTheme.metrics.pagePad),
     ) {
         // ===== 标题 + 语言切换 =====
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(AppIcons.Science, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(AppSpacing.Md))
             Text("AI 测试工作台", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             // 语言切换
             SingleChoiceSegmentedButtonRow(modifier = Modifier.width(180.dp)) {
@@ -139,10 +141,10 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
 
         // ===== 分类筛选 + 操作按钮 =====
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
             Icon(AppIcons.FilterList, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             // 分类筛选
             val categories = listOf(null to "全部", "standard" to "标准测试", "real" to "真实场景")
@@ -172,7 +174,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 contentPadding = ButtonDefaults.TextButtonContentPadding,
             ) {
                 Icon(AppIcons.Code, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(AppSpacing.Xs))
                 Text("提示词", style = MaterialTheme.typography.labelSmall)
             }
             // 配置
@@ -182,21 +184,21 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 contentPadding = ButtonDefaults.TextButtonContentPadding,
             ) {
                 Icon(AppIcons.Report, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(AppSpacing.Xs))
                 Text("配置", style = MaterialTheme.typography.labelSmall)
             }
         }
 
         // ===== 提示词预览 =====
         if (showPromptPreview) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
             Card(
                 shape = RoundedCornerShape(AppRadii.Tile),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = appBorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(AppSpacing.Md)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("当前系统提示词（${vm.getLanguageLabel(testLang)}）", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.weight(1f))
@@ -217,13 +219,16 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
         // ===== 模型配置 =====
         if (showConfig) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(AppSpacing.Sm))
             Card(
                 shape = RoundedCornerShape(AppRadii.Item),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.padding(AppSpacing.Md),
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Md),
+                ) {
                     OutlinedTextField(
                         value = baseUrl, onValueChange = { baseUrl = it },
                         label = { Text("Base URL") }, singleLine = true, enabled = !running,
@@ -247,7 +252,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(AppSpacing.Md))
 
         // ===== 预设方案列表 =====
         Text("测试方案", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -256,7 +261,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(AppSpacing.Sm))
 
         // 筛选预设
         val presets = com.phoneagent.feature.test.TestPresets.all.filter { preset ->
@@ -286,7 +291,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
         // ===== 实时流式输出 =====
         if (running && streamText.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             SectionHeader("实时流式输出")
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -294,8 +299,8 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = appBorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.padding(AppSpacing.Md)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                         Text("模型正在输出…", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
@@ -303,7 +308,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         streamText,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(top = 8.dp).heightIn(max = 200.dp),
+                        modifier = Modifier.padding(top = AppSpacing.Sm).heightIn(max = 200.dp),
                     )
                 }
             }
@@ -311,7 +316,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
 
         // ===== 测试结果 =====
         if (summary.status != TestStatus.IDLE) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             SectionHeader("测试结果")
             ResultSummary(summary, vm, testLang)
             summary.results.forEachIndexed { i, result ->
@@ -323,7 +328,7 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
             }
 
             // 重置按钮
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(AppSpacing.Md))
             OutlinedButton(
                 onClick = { vm.resetTest() },
                 modifier = Modifier.fillMaxWidth(),

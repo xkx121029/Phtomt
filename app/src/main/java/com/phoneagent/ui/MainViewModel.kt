@@ -67,6 +67,9 @@ private const val ACA_SKILLS_TTL_MS = 60_000L
 /** 通知权限的运行时请求码（Android 13+） */
 private const val REQUEST_NOTIFICATIONS = 4401
 
+/** 麦克风权限的运行时请求码（权限雷达与输入框录音按钮各自独立，互不干扰） */
+private const val REQUEST_RECORD_AUDIO = 4402
+
 /**
  * 全局共享 ViewModel：设置、Agent 运行状态、无障碍/截图权限。
  */
@@ -328,12 +331,16 @@ class MainViewModel(
             PermissionItem(
                 kind = PermissionKind.ACCESSIBILITY,
                 title = "无障碍服务",
-                description = if (providerReady) {
-                    "AI 接管手机执行操作的必需能力"
-                } else {
-                    "需先安装「服务组件」（系统会要求允许安装未知应用），装完再回来开启"
+                description = when {
+                    !providerReady -> "需先安装「服务组件」（系统会要求允许安装未知应用），装完再回来开启"
+                    !AgentAccessibilityService.isServiceEnabled(context) -> "AI 接管手机执行操作的必需能力"
+                    // 开关开着但服务实例不在线（被 ROM 杀掉/崩溃重置）：只显示「完成」会让人
+                    // 对着绿灯排查任务为什么不动，这里如实说出下一步
+                    !a11yUsable(context) -> "开关已开但服务未连接：下拉通知栏或重进本应用后重试"
+                    else -> "AI 接管手机执行操作的必需能力"
                 },
-                granted = providerReady && AgentAccessibilityService.isServiceEnabled(context),
+                // 与引擎同一口径（开关已开 + 实例已连接），否则「雷达显示完成、任务跑不动」
+                granted = providerReady && a11yUsable(context),
             ),
             PermissionItem(
                 kind = PermissionKind.OVERLAY,
@@ -354,17 +361,60 @@ class MainViewModel(
                 granted = isIgnoringBatteryOptimizations(context),
             ),
             PermissionItem(
-                kind = PermissionKind.QUERY_ALL_PACKAGES,
-                title = "获取已安装程序",
-                description = "用于识别并启动目标应用",
-                granted = hasQueryAllPackages(context),
-            ),
-            PermissionItem(
                 kind = PermissionKind.NOTIFICATIONS,
                 title = "通知",
                 description = "任务进度与完成提醒（Android 13 起需单独授权）",
                 granted = hasNotificationPermission(context),
             ),
+            // 使用情况访问权是 AppOps 特殊权限（不能运行时弹窗），只能跳系统页开启；
+            // 用途是前台应用交叉验证，未开启时引擎静默跳过，不影响主流程，因此排在最后
+            PermissionItem(
+                kind = PermissionKind.USAGE_ACCESS,
+                title = "使用情况访问权",
+                description = "校验当前前台应用，元素树读不到时兜底感知",
+                granted = com.phoneagent.device.perception.ForegroundProbe(context).hasUsageAccess(),
+                optional = true,
+            ),
+            // 安装未知应用：自更新静默安装不可用时的回退路径，以及首次安装服务组件。
+            // 未授权时系统安装器会静默拒绝，用户只看到「安装已被阻止」
+            PermissionItem(
+                kind = PermissionKind.INSTALL_PACKAGES,
+                title = "安装未知应用",
+                description = "用于安装服务组件与应用内更新",
+                granted = ProviderManager.canInstallPackages(context),
+            ),
+            // 所有文件访问（MANAGE_EXTERNAL_STORAGE）：编码工作区要按真实路径读写用户选的目录。
+            // Android 11 起属特殊权限，只能在系统设置页手动开启
+            PermissionItem(
+                kind = PermissionKind.ALL_FILES,
+                title = "所有文件访问",
+                description = "编码工作区读写你选择的任意目录",
+                granted = hasAllFilesAccess(),
+                optional = true,
+            ),
+            // 勿扰访问权限：没有 Shizuku 通道时，device_control 的 dnd 只能走系统 API。
+            // 未声明该权限时 isNotificationPolicyAccessGranted 恒 false，那条路径永远走不到
+            PermissionItem(
+                kind = PermissionKind.DND_ACCESS,
+                title = "勿扰访问权限",
+                description = "无 shell 通道时也能切换勿扰模式",
+                granted = runCatching {
+                    (context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager)
+                        ?.isNotificationPolicyAccessGranted == true
+                }.getOrDefault(false),
+                optional = true,
+            ),
+            // 麦克风：语音输入（运行时会弹系统授权框，与输入框里的录音按钮共用同一份状态）
+            PermissionItem(
+                kind = PermissionKind.MICROPHONE,
+                title = "麦克风",
+                description = "语音输入，长按说话转成文字",
+                granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED,
+                optional = true,
+            ),
+            // QUERY_ALL_PACKAGES 已整体移除：应用清单改走 MAIN+LAUNCHER 的 intent 查询
+            // （见 LauncherCatalog），不需要任何授权，也不再是雷达条目
             // Shizuku 不再进权限雷达：设置页下方的「内置 Shizuku」通道卡已覆盖其状态与授权
         )
     }
@@ -381,19 +431,10 @@ class MainViewModel(
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
-    private fun hasQueryAllPackages(context: Context): Boolean {
-        // Android 11+ QUERY_ALL_PACKAGES 为 normal 权限，声明即授予
-        // 实际检测：尝试查询大量包，若数量远超可见限制则已授权
-        return try {
-            val pm = context.packageManager
-            // 声明了 QUERY_ALL_PACKAGES 后 checkSelfPermission 返回 GRANTED
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.QUERY_ALL_PACKAGES
-            ) == PackageManager.PERMISSION_GRANTED
-        } catch (e: Exception) {
-            false
-        }
-    }
+    /** 「所有文件访问」：Android 11 起才存在该特殊权限，更早的版本靠存储运行时权限即可 */
+    private fun hasAllFilesAccess(): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R ||
+            runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
 
     /** 一键跳转到对应权限授权页 */
     fun openPermissionSettings(context: Context, kind: PermissionKind) {
@@ -439,6 +480,57 @@ class MainViewModel(
             }
             return
         }
+        // 使用情况访问权没有运行时授权框，只有系统设置页（部分 ROM 支持带 package 直达本应用条目）
+        if (kind == PermissionKind.USAGE_ACCESS) {
+            val direct = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))
+                .addFlags(flags)
+            val global = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(flags)
+            runCatching { context.startActivity(direct) }
+                .recoverCatching { context.startActivity(global) }
+            return
+        }
+        // 安装未知应用：按来源应用单独授权，带 package 直达本应用条目
+        if (kind == PermissionKind.INSTALL_PACKAGES) {
+            ProviderManager.openInstallPermissionSettings(context)
+            return
+        }
+        // 所有文件访问：Android 11+ 的系统特殊权限页，ROM 精简时回落到权限总表
+        if (kind == PermissionKind.ALL_FILES) {
+            val direct = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
+                .addFlags(flags)
+            val global = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).addFlags(flags)
+            runCatching { context.startActivity(direct) }
+                .recoverCatching { context.startActivity(global) }
+            return
+        }
+        // 勿扰访问权限：系统只提供这个专用页面，没有更细的直达入口
+        if (kind == PermissionKind.DND_ACCESS) {
+            val direct = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(flags)
+            // 部分 ROM 精简了勿扰访问页：回落到本应用的通知设置页，至少能往上翻一级
+            val fallback = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(flags)
+            runCatching { context.startActivity(direct) }
+                .recoverCatching { context.startActivity(fallback) }
+            return
+        }
+        // 麦克风：Activity 上下文能直接弹系统授权框；被永久拒绝后回落到应用详情页
+        if (kind == PermissionKind.MICROPHONE) {
+            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!granted && context is Activity) {
+                androidx.core.app.ActivityCompat.requestPermissions(
+                    context, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO,
+                )
+            } else {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:${context.packageName}"),
+                ).addFlags(flags)
+                runCatching { context.startActivity(intent) }
+            }
+            return
+        }
         val intent = when (kind) {
             PermissionKind.ACCESSIBILITY ->
                 Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -446,8 +538,6 @@ class MainViewModel(
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
             PermissionKind.WRITE_SETTINGS ->
                 Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}"))
-            PermissionKind.QUERY_ALL_PACKAGES ->
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
             else -> return
         }.addFlags(flags)
         runCatching { context.startActivity(intent) }

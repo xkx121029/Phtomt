@@ -22,7 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.appBorder
@@ -52,9 +51,9 @@ internal fun MemoryCardItem(item: AgentTimelineItem.MemoryAdded, onUndo: (Long) 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(AppRadii.Item))
+                .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
                 .background(colors.surfaceRaised)
-                .appBorder(1.dp, colors.outlineSoft.copy(alpha = 0.6f), RoundedCornerShape(AppRadii.Item))
+                .appBorder(1.dp, colors.outlineSoft.copy(alpha = 0.6f), RoundedCornerShape(AppTheme.metrics.itemRadius))
                 .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -92,7 +91,7 @@ internal fun MemoryCardItem(item: AgentTimelineItem.MemoryAdded, onUndo: (Long) 
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(AppRadii.Inline))
+                    .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
                     .clickable {
                         buzz()
                         onUndo(item.id)

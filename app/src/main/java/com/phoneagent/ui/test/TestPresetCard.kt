@@ -2,6 +2,7 @@ package com.phoneagent.ui.test
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.DurationFast
 import com.phoneagent.ui.theme.EaseOut
@@ -92,12 +93,12 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
             border = appBorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
         ) {
             Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(AppSpacing.Lg),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Md),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
                         // 分组色标
                         Box(
                             Modifier
@@ -115,7 +116,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
                         preset.description,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = AppSpacing.Xs),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -132,7 +133,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
                                 contentPadding = ButtonDefaults.TextButtonContentPadding,
                             ) {
                                 Icon(AppIcons.SendToMobile, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
+                                Spacer(Modifier.width(AppSpacing.Xs))
                                 Text("任务", style = MaterialTheme.typography.labelMedium)
                             }
                         }
@@ -143,7 +144,7 @@ internal fun PresetCard(preset: TestPreset, running: Boolean, lang: PromptLang, 
                             contentPadding = ButtonDefaults.TextButtonContentPadding,
                         ) {
                             Icon(AppIcons.Play, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(AppSpacing.Xs))
                             Text("测试", style = MaterialTheme.typography.labelMedium)
                         }
                     }

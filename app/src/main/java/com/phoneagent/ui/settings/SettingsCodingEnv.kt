@@ -32,6 +32,7 @@ import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.rememberHapticClick
+import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import org.koin.compose.koinInject
@@ -76,7 +77,7 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
             .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK 17 · Gradle · Android SDK")
-        Spacer(Modifier.height(AppSpacing.Page))
+        Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         EnvComponentSection(
             ui = ui,

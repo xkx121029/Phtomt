@@ -141,7 +141,10 @@ internal class DecisionPhase(
         // 死循环强制复核：连续端侧决策达到阈值时跳过本轮端侧判定，强制走一次云端
         val forceCloudReview = loopGuard.shouldForceCloudReview()
         val localIntent = if (macroIntent == null && !forceCloudReview) {
-            tryOrNull("端侧决策失败") { localDecision.decide(session.semanticSnapshot) } as? AgentIntent
+            // pageType 直接取观察段的结论：本步再推断一次等于把同一份标签全量扫描两遍
+            tryOrNull("端侧决策失败") {
+                localDecision.decide(session.semanticSnapshot, annotated.pageType)
+            } as? AgentIntent
         } else {
             if (forceCloudReview) hooks.log(AgentLog.Level.WARN,
                 "连续 ${loopGuard.localDecisionStreakValue} 次端侧决策，本步强制云端复核")

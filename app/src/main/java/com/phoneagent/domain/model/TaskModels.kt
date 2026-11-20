@@ -74,6 +74,11 @@ data class StepRecord(
     val verificationResult: String = "unverified",
     val beforeFingerprint: String = "",
     val afterFingerprint: String = "",
+    /**
+     * 这一步动作从下发到得出验证结论的耗时（ms）。
+     * 由 [com.phoneagent.engine.execution.VerifyResult.elapsedMs] 填回：原先恒为 0，
+     * 慢动作在执行流与反馈上报里都看不出来。
+     */
     val durationMs: Long = 0,
     val isConfirmed: Boolean = false,
     /** 该步 shell 命令的执行输出（成功为 stdout/stderr，失败为可读原因）；供 Agent 页向用户回显 */

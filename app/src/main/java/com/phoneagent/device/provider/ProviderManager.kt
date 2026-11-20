@@ -149,12 +149,30 @@ object ProviderManager {
         data class Failed(val reason: String) : InstallLaunch()
     }
 
+    /** 是否已获得「安装未知应用」权限（Android 8.0 起按来源应用单独授权，minSdk 26 起恒定可用） */
+    fun canInstallPackages(context: Context): Boolean =
+        runCatching { context.packageManager.canRequestPackageInstalls() }.getOrDefault(false)
+
+    /** 跳「安装未知应用」授权页（按本应用单独授权） */
+    fun openInstallPermissionSettings(context: Context) {
+        val intent = Intent(
+            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:${context.packageName}"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+    }
+
     /**
      * 引导安装内置 Provider：解出 assets 里的 APK 到 cache，经 FileProvider 授权给系统安装器。
      * 返回 Started 后用户仍需在系统安装界面确认；安装完成回到前台时调用方应 refresh 重新检测。
      */
     fun install(context: Context): InstallLaunch = runCatching {
         if (!needsInstall(context)) return InstallLaunch.UpToDate
+        // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜
+        if (!canInstallPackages(context)) {
+            openInstallPermissionSettings(context)
+            return InstallLaunch.Failed("需要先允许本应用安装未知应用，已为你打开设置页，授权后回来再点一次")
+        }
 
         val apkDir = File(context.cacheDir, "provider").apply { mkdirs() }
         val apkFile = File(apkDir, "provider.apk")
@@ -180,6 +198,49 @@ object ProviderManager {
     }.getOrElse { e ->
         Log.e(TAG, "拉起 Provider 安装失败", e)
         InstallLaunch.Failed(e.message ?: "无法拉起安装器")
+    }
+
+    // ==================== 通知权限 ====================
+
+    /**
+     * 服务组件是否已获得通知权限。
+     *
+     * Provider 是无 UI 应用，自身弹不出 Android 13+ 的运行时授权框，而它的两条通知
+     * （无线调试配对码输入、看门狗常驻）都依赖该权限；未授权时 Provider 侧静默跳过，
+     * 表现为「配对流程没有任何提示」。授权入口只能由主应用提供。
+     */
+    fun providerNotificationGranted(context: Context): Boolean =
+        android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
+            runCatching {
+                context.packageManager.checkPermission(
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    PACKAGE,
+                ) == PackageManager.PERMISSION_GRANTED
+            }.getOrDefault(false)
+
+    /** 跳服务组件的应用通知设置页（没有该页的 ROM 回退到应用信息页） */
+    fun openNotificationSettings(context: Context) {
+        val direct = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, PACKAGE)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val fallback = Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$PACKAGE"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(direct) }
+            .recoverCatching { context.startActivity(fallback) }
+    }
+
+    /**
+     * 借内置 Shizuku 的 shell uid 静默授予 Provider 通知权限（等价 `pm grant`）。
+     * 通道不可用或命令失败返回 false，调用方应回落到 [openNotificationSettings] 让用户手动开。
+     */
+    suspend fun grantNotificationViaShizuku(context: Context): Boolean {
+        val executed = call(context, timeoutMs = 8_000L) { remote ->
+            remote.execShizuku("pm grant $PACKAGE android.permission.POST_NOTIFICATIONS")
+        }?.success == true
+        // 命令成功不等于权限生效：回读一次真实状态作为唯一凭据
+        return executed && providerNotificationGranted(context)
     }
 
     // ==================== 绑定 / 调用 ====================

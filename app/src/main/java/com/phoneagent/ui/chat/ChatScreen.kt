@@ -43,13 +43,14 @@ import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.ComposerActionButton
+import com.phoneagent.ui.components.ComposerField
+import com.phoneagent.ui.components.ComposerPanel
 import com.phoneagent.ui.components.GlassHeaderScaffold
 import com.phoneagent.ui.components.LocalIsExpanded
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.rememberHapticClick
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 
@@ -186,53 +187,27 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 }
             }
 
-            // 底部输入框：与 Agent 页输入面同一套材质语言（surfaceRaised 底 + 软描边）
-            val colors = AppTheme.colors
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadii.Card))
-                    .background(colors.surfaceRaised)
-                    .border(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Card))
-                    .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Xs),
-                // 与操控页同一套几何：单行文字在 40dp 高里竖直居中，多行时发送键贴行底
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 40.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    BasicTextField(
+            // 底部输入框：与 Agent / Coding 页同一个面板组件，容器、胶囊、描边、行高只定义一次
+            ComposerPanel(
+                field = { fieldModifier ->
+                    ComposerField(
                         value = draft,
                         onValueChange = { draft = it },
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
+                        placeholder = "说点什么…",
+                        enabled = true,
+                        modifier = fieldModifier,
                         maxLines = 4,
-                        modifier = Modifier.fillMaxWidth(),
-                        decorationBox = { inner ->
-                            Box {
-                                if (draft.isEmpty()) {
-                                    Text(
-                                        "说点什么…",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                inner()
-                            }
-                        },
                     )
-                }
-                ComposerActionButton(
-                    icon = AppIcons.Send,
-                    description = "发送",
-                    onClick = { submit() },
-                    enabled = draft.isNotBlank(),
-                )
-            }
+                },
+                actions = {
+                    ComposerActionButton(
+                        icon = AppIcons.Send,
+                        description = "发送",
+                        onClick = { submit() },
+                        enabled = draft.isNotBlank(),
+                    )
+                },
+            )
             Spacer(Modifier.height(AppSpacing.Sm))
         }
     }
@@ -250,7 +225,7 @@ private fun UserBubble(text: String) {
                 // 窄屏沿用 300dp（占满可用宽度的手感），宽屏放宽到固定上限，
                 // 否则平板上一句话会拉成横贯整屏的一条色带
                 .widthIn(max = if (LocalIsExpanded.current) ChatBubbleMaxWidth else 300.dp)
-                .clip(RoundedCornerShape(AppRadii.Card))
+                .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
                 .background(MaterialTheme.colorScheme.primaryContainer)
                 .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
         ) {
@@ -272,7 +247,7 @@ private fun AssistantBubble(text: String) {
             // 顺序必须是先 widthIn 再 fillMaxWidth——反过来 min 宽已被撑满，收不回来
             .widthIn(max = if (LocalIsExpanded.current) 720.dp else Dp.Infinity)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Card))
+            .clip(RoundedCornerShape(AppTheme.metrics.cardRadius))
             .background(AppTheme.colors.surfaceRaised)
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {

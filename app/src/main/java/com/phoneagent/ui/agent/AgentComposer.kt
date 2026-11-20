@@ -3,30 +3,23 @@ package com.phoneagent.ui.agent
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,8 +39,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -73,11 +66,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
-import com.phoneagent.ui.theme.DurationFast
-import com.phoneagent.ui.theme.EaseOut
 import com.phoneagent.ui.theme.appBorder
 
 /**
@@ -92,44 +82,8 @@ import com.phoneagent.ui.theme.appBorder
  */
 internal enum class ComposerMode { NEW_TASK, QUEUE_FOLLOW_UP, GUIDE_AGENT, ANSWER_CLARIFY, LOCKED, PLAN_APPROVAL }
 
-/** 细行开关：比 M3 默认 Switch 紧凑，匹配 28dp 行高；语义上仍是标准开关 */
-@Composable
-private fun MiniSwitch(checked: Boolean, onToggle: (Boolean) -> Unit) {
-    val colors = AppTheme.colors
-    val buzz = rememberHapticClick()
-    val trackShape = RoundedCornerShape(AppRadii.Chip)
-    val knobOffset by animateDpAsState(
-        targetValue = if (checked) 19.dp else 3.dp,
-        animationSpec = tween(DurationFast, easing = EaseOut),
-        label = "mini-switch-knob",
-    )
-    Box(
-        modifier = Modifier
-            .size(width = 40.dp, height = 22.dp)
-            .clip(trackShape)
-            .background(if (checked) colors.brand else colors.surfaceSunken)
-            // toggleable 而非 clickable：读屏能念出「开关 / 已开启」，且带 Role.Switch，
-            // 双击即可切换，不再靠视觉去理解这一颗小圆点是什么。
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                buzz()
-                onToggle(it)
-            }
-            .border(1.dp, if (checked) colors.brand else colors.outlineSoft, trackShape),
-    ) {
-        Box(
-            modifier = Modifier
-                .offset(x = knobOffset, y = 3.dp)
-                .size(16.dp)
-                .clip(CircleShape)
-                .background(if (checked) colors.onBrand else colors.outlineStrong),
-        )
-    }
-}
+/** 细行开关已退役：两枚同级选项改用同高度的文字胶囊（见 [ComposerOptionChip]），
+ *  一个"开关 + 标签"的行高比输入框矮太多，读起来像设置项而不像输入区的一部分。*/
 
 /** 等待执行队列入口：只在有排队任务时出现，点开查看明细 */
 @Composable
@@ -142,7 +96,7 @@ private fun QueueStrip(count: Int, onOpen: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = AppSpacing.Sm)
-            .clip(RoundedCornerShape(AppRadii.Tile))
+            .clip(RoundedCornerShape(AppTheme.metrics.tileRadius))
             .background(colors.brandContainer)
             .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
     ) {
@@ -181,7 +135,7 @@ private fun ClarifyOptionList(
 ) {
     val colors = AppTheme.colors
     val buzz = rememberHapticClick()
-    val shape = RoundedCornerShape(AppRadii.Tile)
+    val shape = RoundedCornerShape(AppTheme.metrics.tileRadius)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -239,7 +193,7 @@ private fun PlanApprovalPanel(
     onCancel: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val shape = RoundedCornerShape(AppRadii.Card)
+    val shape = RoundedCornerShape(AppTheme.metrics.cardRadius)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -379,7 +333,6 @@ internal fun AgentComposer(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
-    val colors = AppTheme.colors
     val locked = mode == ComposerMode.LOCKED
     var focused by remember { mutableStateOf(false) }
 
@@ -425,9 +378,9 @@ internal fun AgentComposer(
         ComposerMode.LOCKED -> lockHint.ifBlank { "请稍候…" }
         ComposerMode.PLAN_APPROVAL -> "请先批准或取消计划"
         ComposerMode.ANSWER_CLARIFY -> "或者自己说一个答案"
-        ComposerMode.QUEUE_FOLLOW_UP -> "追加下一条任务（当前任务结束后执行）"
+        ComposerMode.QUEUE_FOLLOW_UP -> "追加下一条，当前任务结束后执行"
         ComposerMode.GUIDE_AGENT -> "直接告诉我该怎么做"
-        ComposerMode.NEW_TASK -> "描述任务，AI 将逐步接管手机"
+        ComposerMode.NEW_TASK -> "想让 AI 做什么？"
     }
 
     // 自身不铺底：这一层被 AgentScreen 的底部毛玻璃板包着，
@@ -520,52 +473,35 @@ internal fun AgentComposer(
                 )
             }
             },
-            // 以下为输入行右侧动作：停止 / 已手动处理是"运行中才会出现"的旁路出口，
-            // 不值得单独占掉一整行的高度
+            // 输入框右侧只留动作本身：旁路出口（停止 / 取消规划 / 已手动处理）
+            // 一律让位到下方的胶囊行，不再跟打字抢输入框的宽度
             actions = {
             when (mode) {
-                ComposerMode.GUIDE_AGENT -> AgentActionButton(
-                    text = "已手动处理",
-                    tone = AgentButtonTone.NEUTRAL,
-                    onClick = onDismissUser,
-                )
-
-                ComposerMode.QUEUE_FOLLOW_UP -> AgentActionButton(
-                    text = "停止",
-                    icon = AppIcons.Stop,
-                    tone = AgentButtonTone.DANGER,
-                    onClick = onStop,
-                )
-
-                else -> Unit
-            }
-
-            when (mode) {
-                ComposerMode.LOCKED -> {
-                    // 规划期的旁路出口：规划可能迟迟不归，在禁用的发送键旁补一个小的
-                    //「取消规划」文字按钮，让用户有出口而不必干等（与状态条上的取消同一动作）
-                    val cancelBuzz = rememberHapticClick()
-                    PressableScale(
-                        onPress = cancelBuzz,
-                        onClick = onCancelPlan,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(AppRadii.Tile))
-                            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppRadii.Tile))
-                            .padding(horizontal = AppSpacing.Md, vertical = 10.dp),
-                    ) {
-                        Text(
-                            text = "取消规划",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = colors.onSurfaceRaised,
-                        )
-                    }
+                // 运行中：停止与「追加下一条」并排。停止是红色实心圆、排队是品牌实心圆，
+                // 两枚同尺寸，位置固定，不随文字长度跳动
+                ComposerMode.QUEUE_FOLLOW_UP -> {
                     ComposerActionButton(
-                        icon = AppIcons.Send,
-                        description = lockHint.ifBlank { "请稍候…" },
-                        enabled = false,
-                        onClick = {},
+                        icon = AppIcons.Stop,
+                        description = "停止",
+                        danger = true,
+                        onClick = onStop,
+                    )
+                    // 排队用「加号」：它的含义是"把这条追加到队列末尾"，不是"发出去"
+                    ComposerActionButton(
+                        icon = AppIcons.Add,
+                        description = "排队执行下一条",
+                        enabled = draft.isNotBlank(),
+                        onClick = { onSend(draft) },
                     )
                 }
+
+                // 规划期：发送键置灰，出口在下方那颗「取消规划」胶囊上
+                ComposerMode.LOCKED -> ComposerActionButton(
+                    icon = AppIcons.Send,
+                    description = lockHint.ifBlank { "请稍候…" },
+                    enabled = false,
+                    onClick = {},
+                )
 
                 ComposerMode.NEW_TASK -> ComposerActionButton(
                     icon = AppIcons.Send,
@@ -588,41 +524,45 @@ internal fun AgentComposer(
                     onClick = { onSend(draft) },
                 )
 
-                // 排队用「加号」：它的含义是"把这条追加到队列末尾"，不是"发出去"
-                ComposerMode.QUEUE_FOLLOW_UP -> ComposerActionButton(
-                    icon = AppIcons.Add,
-                    description = "排队执行下一条",
-                    enabled = draft.isNotBlank(),
-                    onClick = { onSend(draft) },
-                )
-
                 // 计划面板不走这一行（上面已经整块替换掉了），这里只为穷尽分支
                 ComposerMode.PLAN_APPROVAL -> Unit
             }
             },
-            // 输入面下方的两枚同级开关：审核 AI / 先规划执行计划。
-            // 两者位置、字号、开关尺寸完全一致，各占一半宽度；不再跟一段解释文字并排，
-            // 开关本身就是完整语义（用户明确要求去掉「审核 AI」后的描述）。
+            // 输入框下方：两枚同级选项胶囊，或规划期 / 指导期的旁路出口。
+            // 「审核 AI / 先出计划」各自带勾选态，读的是"开着没有"，而不是"开关朝哪边"
             below = {
-            if (mode == ComposerMode.NEW_TASK) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(AppSpacing.Lg),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                ComposerToggleLabel(
-                    label = "审核 AI",
-                    checked = reviewEnabled,
-                    onToggle = onToggleReview,
-                    modifier = Modifier.weight(1f),
+            when (mode) {
+                ComposerMode.NEW_TASK -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ComposerOptionChip(
+                        label = "审核 AI",
+                        checked = reviewEnabled,
+                        onToggle = onToggleReview,
+                    )
+                    ComposerOptionChip(
+                        label = "先出计划",
+                        checked = planBeforeAct,
+                        onToggle = onTogglePlanBeforeAct,
+                    )
+                }
+
+                // 规划可能迟迟不归：出口摆在输入框下方，用户不必干等（与状态条上的取消同一动作）
+                ComposerMode.LOCKED -> ComposerExitChip(
+                    label = "取消规划",
+                    icon = AppIcons.Close,
+                    onClick = onCancelPlan,
                 )
-                ComposerToggleLabel(
-                    label = "先规划执行计划",
-                    checked = planBeforeAct,
-                    onToggle = onTogglePlanBeforeAct,
-                    modifier = Modifier.weight(1f),
+
+                ComposerMode.GUIDE_AGENT -> ComposerExitChip(
+                    label = "已手动处理",
+                    icon = AppIcons.TaskAlt,
+                    onClick = onDismissUser,
                 )
-            }
+
+                else -> Unit
             }
             },
         )
@@ -630,30 +570,103 @@ internal fun AgentComposer(
 }
 
 /**
- * 输入面下方的一枚同级开关：左侧标签、右侧开关，整体占一半宽度。
+ * 输入框下方的一枚选项胶囊：点一下切换，选中时铺品牌淡底、显示勾。
  *
- * 两枚开关（审核 AI / 先规划执行计划）共用这一个，保证字号、行高、开关尺寸与间距完全一致，
- * 改一处不会只改到其中一枚。
+ * 取代原来的"标签 + 细行开关"：开关读的是"这颗小圆点现在朝哪边"，
+ * 胶囊读的是"这一项开着没有"，后者才是用户此刻要判断的事；两枚胶囊同高同宽，
+ * 视觉重量也压得住上面的输入框。语义仍是 [Role.Checkbox]——读屏念"已选中 / 未选中"，
+ * 双击即切换。
  */
 @Composable
-private fun ComposerToggleLabel(
+private fun ComposerOptionChip(
     label: String,
     checked: Boolean,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppTheme.metrics.chipRadius)
     Row(
-        modifier = modifier,
+        modifier = modifier
+            .clip(shape)
+            .background(if (checked) colors.brandContainer else colors.surfaceSunken)
+            .appBorder(
+                width = 1.dp,
+                color = if (checked) colors.brand.copy(alpha = 0.45f) else colors.outlineSoft,
+                shape = shape,
+            )
+            .toggleable(
+                value = checked,
+                role = Role.Checkbox,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                buzz()
+                onToggle(it)
+            }
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (checked) {
+            Icon(
+                imageVector = AppIcons.Check,
+                contentDescription = null,
+                tint = colors.brand,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Xxs))
+        }
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-            color = AppTheme.colors.onSurfaceRaised,
-            modifier = Modifier.weight(1f, fill = false),
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+            color = if (checked) colors.onBrandContainer else colors.onSurfaceRaised,
         )
-        Spacer(Modifier.width(AppSpacing.Xs))
-        MiniSwitch(checked = checked, onToggle = onToggle)
+    }
+}
+
+/**
+ * 输入框下方的旁路出口（取消规划 / 已手动处理）。
+ *
+ * 与选项胶囊同形同高，但不带选中态——它是"我要离开这个状态"的动作，
+ * 不再挤进输入框里跟打字抢宽度。
+ */
+@Composable
+private fun ComposerExitChip(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    val buzz = rememberHapticClick()
+    val shape = RoundedCornerShape(AppTheme.metrics.chipRadius)
+    PressableScale(
+        onPress = buzz,
+        onClick = onClick,
+        modifier = modifier
+            .clip(shape)
+            .appBorder(1.dp, colors.outlineSoft, shape),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.onSurfaceRaised,
+                modifier = Modifier.size(13.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Xs))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                color = colors.onSurfaceRaised,
+            )
+        }
     }
 }
 

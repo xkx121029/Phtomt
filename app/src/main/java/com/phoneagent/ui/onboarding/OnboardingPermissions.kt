@@ -67,8 +67,10 @@ internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val grantedCount = permissions.count { it.granted }
-    val allGranted = permissions.isNotEmpty() && grantedCount == permissions.size
+    // 可选权限（如使用情况访问权）默认不开启，不计入「全部就绪」的判定与进度分子分母，
+    // 否则引导页永远停在未完成态
+    val required = permissions.filter { !it.optional }
+    val allGranted = required.isNotEmpty() && required.all { it.granted }
     // 无障碍没开且系统是 Android 13+：很可能撞上「受限制的设置」拦路
     val a11yBlocked = Build.VERSION.SDK_INT >= 33 &&
         permissions.any { it.kind == PermissionKind.ACCESSIBILITY && !it.granted }
@@ -82,8 +84,8 @@ internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
             )
             Spacer(Modifier.height(AppSpacing.Lg))
             // 首帧权限列表还没读出来时不显示「0 / 0」，避免闪一下空进度再跳成真实值
-            if (permissions.isNotEmpty()) {
-                ReadyBadge(grantedCount, permissions.size, allGranted)
+            if (required.isNotEmpty()) {
+                ReadyBadge(required.count { it.granted }, required.size, allGranted)
                 Spacer(Modifier.height(AppSpacing.Lg))
             }
             PermissionGroups.forEach { group ->
@@ -122,7 +124,7 @@ private fun PermissionGroupBlock(
     if (items.isEmpty()) return
     GroupHeader(group.title, group.hint, group.required)
     Spacer(Modifier.height(AppSpacing.Sm))
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
         items.forEach { p ->
             OnboardingPermissionRow(
                 title = p.title,
@@ -130,6 +132,7 @@ private fun PermissionGroupBlock(
                 icon = permissionIcon(p.kind),
                 granted = p.granted,
                 onClick = { onOpen(p.kind) },
+                optional = p.optional,
             )
         }
     }
@@ -155,13 +158,24 @@ private val PermissionGroups = listOf(
         title = "推荐",
         hint = "影响任务能不能找到并启动目标应用",
         required = false,
-        kinds = listOf(PermissionKind.QUERY_ALL_PACKAGES, PermissionKind.NOTIFICATIONS),
+        kinds = listOf(
+            PermissionKind.NOTIFICATIONS,
+            PermissionKind.USAGE_ACCESS,
+            PermissionKind.INSTALL_PACKAGES,
+        ),
     ),
     PermissionGroup(
         title = "可选",
         hint = "体验增强：进度浮窗、设备设置调整、后台更稳",
         required = false,
-        kinds = listOf(PermissionKind.OVERLAY, PermissionKind.WRITE_SETTINGS, PermissionKind.AUTOSTART),
+        kinds = listOf(
+            PermissionKind.OVERLAY,
+            PermissionKind.WRITE_SETTINGS,
+            PermissionKind.AUTOSTART,
+            PermissionKind.ALL_FILES,
+            PermissionKind.DND_ACCESS,
+            PermissionKind.MICROPHONE,
+        ),
     ),
 )
 
@@ -228,6 +242,7 @@ internal fun OnboardingPermissionRow(
     icon: ImageVector,
     granted: Boolean,
     onClick: () -> Unit,
+    optional: Boolean = false,
 ) {
     val color = if (granted) Success else MaterialTheme.colorScheme.primary
     PressableScale(onClick = onClick) {
@@ -244,13 +259,13 @@ internal fun OnboardingPermissionRow(
                 background = color.copy(alpha = 0.16f),
                 tileSize = 44.dp,
                 iconSize = 22.dp,
-                modifier = Modifier.padding(start = 14.dp, top = 12.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = AppSpacing.Md, top = AppSpacing.Md, bottom = AppSpacing.Md),
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(AppSpacing.Md))
             Column(
                 Modifier
                     .weight(1f)
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = AppSpacing.Md),
             ) {
                 Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(
@@ -260,9 +275,13 @@ internal fun OnboardingPermissionRow(
                 )
             }
             StatusPill(
-                text = if (granted) "完成" else "去授权",
+                text = when {
+                    granted -> "完成"
+                    optional -> "可选"
+                    else -> "去授权"
+                },
                 color = color,
-                modifier = Modifier.padding(end = 14.dp),
+                modifier = Modifier.padding(end = AppSpacing.Md),
             )
         }
     }
@@ -274,6 +293,10 @@ private fun permissionIcon(kind: PermissionKind): ImageVector = when (kind) {
     PermissionKind.OVERLAY -> AppIcons.Camera
     PermissionKind.WRITE_SETTINGS -> AppIcons.Tune
     PermissionKind.AUTOSTART -> AppIcons.Bolt
-    PermissionKind.QUERY_ALL_PACKAGES -> AppIcons.Memory
     PermissionKind.NOTIFICATIONS -> AppIcons.Notifications
+    PermissionKind.USAGE_ACCESS -> AppIcons.Insights
+    PermissionKind.INSTALL_PACKAGES -> AppIcons.FileDownload
+    PermissionKind.ALL_FILES -> AppIcons.Folder
+    PermissionKind.DND_ACCESS -> AppIcons.NotifOff
+    PermissionKind.MICROPHONE -> AppIcons.Mic
 }

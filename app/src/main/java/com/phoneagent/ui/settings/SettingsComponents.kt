@@ -73,7 +73,6 @@ import com.phoneagent.ui.components.AppCardContainer
 import com.phoneagent.ui.components.AppSurfaceMuted
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick
-import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
@@ -236,7 +235,7 @@ internal fun ExpandableCard(
     val isExpanded = expanded ?: internalExpanded
 
     Surface(
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         color = if (enabled) AppSurfaceMuted
                 else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         modifier = Modifier.fillMaxWidth(),
@@ -419,9 +418,9 @@ private fun MarqueeCapsuleMock(background: Brush, padV: Int) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Item))
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
             .background(AppSurfaceMuted)
-            .padding(top = AppSpacing.Page, bottom = AppSpacing.Md),
+            .padding(top = AppTheme.metrics.pagePad, bottom = AppSpacing.Md),
         contentAlignment = Alignment.BottomCenter,
     ) {
         Box(
@@ -492,6 +491,8 @@ internal fun MarqueePhasePreview(padV: Int) {
 @Composable
 internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List<Long>) -> Unit) {
     val buzz = rememberHapticClick()
+    // 跑马灯色板是「用户挑选的内容色」（等同画笔颜料），本身就是被选的颜色，
+    // 不是界面语义色，所以直写 ARGB、不随主题色板变
     val presets = listOf(
         0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt(), 0xFF00C2A8.toInt(),
         0xFFFF8A3D.toInt(), 0xFF6BD968.toInt(), 0xFFFFD600.toInt(), 0xFFE74C5C.toInt(),
@@ -526,13 +527,22 @@ internal fun MarqueeColorPicker(selected: List<Long>, padV: Int, onSelect: (List
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
-                                .clip(RoundedCornerShape(AppRadii.Chip))
+                                .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                                 .background(Color(c))
                                 .then(
                                     if (isSel) {
-                                        Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(AppRadii.Chip))
+                                        Modifier.border(
+                                            3.dp,
+                                            MaterialTheme.colorScheme.primary,
+                                            RoundedCornerShape(AppTheme.metrics.chipRadius),
+                                        )
                                     } else {
-                                        Modifier.border(1.dp, Color.Black.copy(alpha = 0.08f), RoundedCornerShape(AppRadii.Chip))
+                                        // 未选中的色块描边走主题分隔线色：深色主题下黑色描边等于没画，浅色下又偏重
+                                        Modifier.border(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outlineVariant,
+                                            RoundedCornerShape(AppTheme.metrics.chipRadius),
+                                        )
                                     }
                                 )
                                 .clickable {
@@ -605,7 +615,7 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadii.Chip))
+            .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
             .background(AppTheme.colors.surfaceRaised)
             .padding(AppSpacing.Xs),
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Xs),
@@ -615,7 +625,7 @@ internal fun ApprovalModeSegment(current: String, onSelect: (String) -> Unit) {
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(AppRadii.Chip))
+                    .clip(RoundedCornerShape(AppTheme.metrics.chipRadius))
                     .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
                     .clickable { onSelect(id) }
                     .padding(vertical = AppSpacing.Sm),
@@ -669,7 +679,7 @@ private fun CapChip(text: String, state: Boolean?) {
         null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     }
     Surface(
-        shape = RoundedCornerShape(AppRadii.Chip),
+        shape = RoundedCornerShape(AppTheme.metrics.chipRadius),
         color = bg,
         border = if (state == null) appBorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
     ) {
@@ -712,7 +722,7 @@ internal fun EndpointCard(
         }
     }
     Surface(
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -826,7 +836,7 @@ internal fun RoleRow(
 ) {
     val buzz = rememberHapticClick()
     Surface(
-        shape = RoundedCornerShape(AppRadii.Item),
+        shape = RoundedCornerShape(AppTheme.metrics.itemRadius),
         // 与端点卡/模型行同一块「下沉面」：职责行也是设置页的列表行，底色统一走 AppSurfaceMuted
         color = AppSurfaceMuted,
         modifier = Modifier.fillMaxWidth(),
