@@ -5,47 +5,77 @@ import com.phoneagent.domain.model.ScreenSnapshot
 /**
  * 敏感页面检测：银行 / 支付密码 / 金融确认页 → 只读模式，拒绝执行任何动作。
  * 对应文档“第 12 层 安全与边界 / 敏感页面检测”。
+ *
+ * 判定是「白名单 ∪ 关键词黑名单」，三条独立入口：
+ * 1. 关键词黑名单（不看包名）：任何应用出现「确认支付 / 收银台 / 支付密码…」都进只读——
+ *    第三方收银台、WebView、小程序里的支付页包名五花八门，靠包名表永远列不全。
+ * 2. 金融类包名（白名单）：进宽表判定，进密码页即只读。
+ * 3. 密码输入框（`editable && isPassword`）：金融类应用里的强信号，出现即只读。
  */
 object SensitivePageDetector {
 
-    /** 敏感应用包名特征 */
+    /**
+     * 敏感应用包名特征。
+     * 支付宝本体是 com.eg.android.AlipayGphone，而列表里原先写的 "com.alipay" 是开放平台
+     * SDK 的包名——`contains("com.alipay")` 在支付宝正式包名里命中不了（串里是
+     * android.alipaygphone，没有 com.alipay 子串），支付页因此从未进过只读。
+     */
     private val sensitivePackages = listOf(
-        "com.unionpay", "com.alipay", "com.icbc", "com.ccb",
-        "com.cmbchina", "com.bankcomm", "com.android.bank", "cn.com.spdb",
+        "com.eg.android.alipaygphone", "com.unionpay", "com.icbc", "com.ccb",
+        "com.cmbchina", "com.bankcomm", "com.android.bankabc", "cn.com.spdb",
         // 中行/建行系：子应用与插件统一挂在 com.chinamworld.* 前缀下
         "com.chinamworld",
         // 邮储银行手机银行
         "com.yitong.mbank.psbc",
         // 中信银行手机银行
         "com.ecitic.bank.mobile",
-    )
-
-    /** 敏感页面关键词（银行/金融类应用：宽匹配，进密码页即只读） */
-    private val sensitiveLabels = listOf(
-        "支付密码", "付款密码", "验证码", "交易密码", "银行卡", "确认支付", "指纹支付",
-        "转账", "余额", "安全键盘", "输入密码",
+        // 京东金融
+        "com.jd.jrapp",
     )
 
     /**
-     * 微信（com.tencent.mm）专用关键词表：微信是通用应用，聊天正文里也常出现
-     * 「银行卡 / 余额 / 转账」这类词，套用宽表会把普通聊天误判成支付页、整页锁死。
-     * 微信只认明确的支付场景词。
+     * 支付页关键词（不看包名）：只收「只可能出现在支付/密码环节」的词，
+     * 不含「余额 / 银行卡 / 转账」这类在正文里也常见的词——那些留给金融类应用的宽表。
      */
-    private val weChatPayLabels = listOf(
+    private val payFlowLabels = listOf(
+        "支付密码", "输入密码", "安全键盘", "确认支付", "收银台", "付款密码",
+    )
+
+    /** 金融类应用的宽表：银行/支付类应用里出现这些词即只读 */
+    private val sensitiveLabels = listOf(
+        "支付密码", "付款密码", "验证码", "交易密码", "银行卡", "确认支付", "指纹支付",
+        "转账", "余额", "安全键盘", "输入密码", "收银台", "付款",
+    )
+
+    /**
+     * 聊天类应用（微信/QQ）专用词表：它们是通用应用，聊天正文里天然出现
+     * 「付款 / 转账 / 银行卡」这类词，套宽表或支付页关键词表会把普通聊天误判成支付页、整页锁死。
+     * 聊天类只认明确的支付场景词。
+     */
+    private val chatAppPackages = listOf("com.tencent.mm", "com.tencent.mobileqq")
+    private val chatPayLabels = listOf(
         "确认支付", "付款", "收银台", "支付密码", "转账确认", "零钱明细",
     )
 
     fun isSensitive(snapshot: ScreenSnapshot): Boolean {
-        val pkg = snapshot.packageName ?: return false
-        val isWeChat = pkg.contains("com.tencent.mm", ignoreCase = true)
-        val hitPackage = isWeChat || sensitivePackages.any { pkg.contains(it, ignoreCase = true) }
-        if (!hitPackage) return false
-        val labels = snapshot.elements.mapNotNull {
-            it.text?.takeIf { t -> t.isNotBlank() } ?: it.contentDescription?.takeIf { t -> t.isNotBlank() }
+        val labels = snapshot.elements.mapNotNull { e ->
+            e.text?.takeIf { t -> t.isNotBlank() } ?: e.contentDescription?.takeIf { t -> t.isNotBlank() }
         }
-        // 微信走专用窄表，其余敏感应用走通用宽表
-        val keywords = if (isWeChat) weChatPayLabels else sensitiveLabels
-        return labels.any { label -> keywords.any { k -> label.contains(k) } }
+        val hasPasswordField = snapshot.elements.any { it.editable && it.isPassword }
+        val pkg = snapshot.packageName?.lowercase().orEmpty()
+        val isChatApp = chatAppPackages.any { pkg.contains(it) }
+
+        // 1) 支付流程关键词：与包名无关（聊天类除外，见 chatPayLabels 注释）
+        if (!isChatApp && labels.any { label -> payFlowLabels.any { label.contains(it) } }) return true
+
+        // 2) 聊天类应用走专用窄表
+        if (isChatApp) return labels.any { label -> chatPayLabels.any { label.contains(it) } }
+
+        // 3) 金融类应用：密码框是强信号，没有关键词也算敏感页
+        val isFinanceApp = sensitivePackages.any { pkg.contains(it) }
+        if (!isFinanceApp) return false
+        if (hasPasswordField) return true
+        return labels.any { label -> sensitiveLabels.any { label.contains(it) } }
     }
 }
 
