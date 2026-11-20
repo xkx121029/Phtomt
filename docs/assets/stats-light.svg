@@ -14,32 +14,32 @@
     <!-- 14 -->
     <g>
       <text x="56" y="112" font-size="52" font-weight="700" fill="#063A2E">14</text>
-      <text x="56" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">MODULES</text>
+      <text x="56" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">MODULES</text>
     </g>
     <!-- 356 -->
     <g transform="translate(196 0)">
       <text x="40" y="112" font-size="52" font-weight="700" fill="#063A2E">356</text>
-      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">KOTLIN FILES</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">KOTLIN FILES</text>
     </g>
     <!-- 91,003 -->
     <g transform="translate(392 0)">
       <text x="40" y="112" font-size="52" font-weight="700" fill="#063A2E">91,003</text>
-      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">LINES OF CODE</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">LINES OF CODE</text>
     </g>
     <!-- 1,287 -->
     <g transform="translate(628 0)">
       <text x="40" y="112" font-size="52" font-weight="700" fill="#0E7C66">1,287</text>
-      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">UNIT TESTS</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">UNIT TESTS</text>
     </g>
     <!-- 65 -->
     <g transform="translate(856 0)">
       <text x="40" y="112" font-size="52" font-weight="700" fill="#063A2E">65</text>
-      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">INTENTS</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">INTENTS</text>
     </g>
     <!-- 3 -->
     <g transform="translate(1044 0)">
       <text x="40" y="112" font-size="52" font-weight="700" fill="#063A2E">3</text>
-      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#7A827C">CHANNELS</text>
+      <text x="40" y="146" font-size="14" font-weight="600" letter-spacing="2.4" fill="#656D66">CHANNELS</text>
     </g>
   </g>
 

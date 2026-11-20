@@ -12,19 +12,19 @@
 
     <!-- CONSERVATIVE -->
     <text x="56" y="72" font-size="17" font-weight="700" fill="#063A2E" letter-spacing="1">CONSERVATIVE</text>
-    <text x="56" y="94" font-size="12" fill="#7A827C">read-only · navigation · local</text>
+    <text x="56" y="94" font-size="12" fill="#656D66">read-only · navigation · local</text>
     <rect x="320" y="52" width="284" height="40" rx="10" fill="#DCD8CC"/>
-    <text x="620" y="78" font-size="14" font-weight="600" fill="#6D766F">35 intents</text>
+    <text x="620" y="78" font-size="14" font-weight="600" fill="#656D66">35 intents</text>
 
     <!-- BALANCED -->
     <text x="56" y="148" font-size="17" font-weight="700" fill="#063A2E" letter-spacing="1">BALANCED</text>
-    <text x="56" y="170" font-size="12" fill="#7A827C">default tier</text>
+    <text x="56" y="170" font-size="12" fill="#656D66">default tier</text>
     <rect x="320" y="128" width="495" height="40" rx="10" fill="#0E7C66"/>
     <text x="831" y="154" font-size="14" font-weight="600" fill="#0E7C66">61 intents</text>
 
     <!-- FREE -->
     <text x="56" y="224" font-size="17" font-weight="700" fill="#063A2E" letter-spacing="1">FREE</text>
-    <text x="56" y="246" font-size="12" fill="#7A827C">+ shell · a11y · virtual display</text>
+    <text x="56" y="246" font-size="12" fill="#656D66">+ shell · a11y · virtual display</text>
     <rect x="320" y="204" width="560" height="40" rx="10" fill="#063A2E"/>
     <text x="896" y="230" font-size="14" font-weight="600" fill="#063A2E">65 + 4 extended</text>
 
