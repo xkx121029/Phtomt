@@ -411,7 +411,11 @@ In free mode the AI writes its own commands, and it doesn't have to memorize ADB
 
 ### Vision pipeline
 
-[VisionRouting](app/src/main/java/com/phoneagent/core/ai/VisionRouting.kt) turns "which vision path" into a pure function that unit tests can cover:
+<p align="center">
+  <img src="docs/assets/vision-light.svg#gh-light-mode-only" width="900" alt="Vision routing: cloud / on-device 3B / ML Kit OCR">
+  <img src="docs/assets/vision-dark.svg#gh-dark-mode-only" width="900" alt="Vision routing: cloud / on-device 3B / ML Kit OCR">
+</p>
+
 
 | Source | Trigger | Output |
 |---|---|---|
@@ -444,6 +448,11 @@ Two implementation constraints: element features are precomputed once (the origi
 - Joining with `body + sep` must reproduce the original newlines exactly — `PromptSnapshotTest` locks it with golden samples, so changing `sep` is changing the prompt.
 
 ### Memory
+
+<p align="center">
+  <img src="docs/assets/memory-light.svg#gh-light-mode-only" width="900" alt="Six kinds of memory">
+  <img src="docs/assets/memory-dark.svg#gh-dark-mode-only" width="900" alt="Six kinds of memory">
+</p>
 
 | Type | Storage | Purpose |
 |---|---|---|
@@ -487,6 +496,11 @@ The nine `browse_*` intents are carried out by the built-in WebView's DOM script
 - **Automatic argument inference**: when a call is rejected for missing required parameters, the end side infers them from successful historical arguments, the previous step's result, the original request, and page text — saving a round-trip to the AI.
 
 ### Safety
+
+<p align="center">
+  <img src="docs/assets/safety-light.svg#gh-light-mode-only" width="900" alt="Five gates an action passes">
+  <img src="docs/assets/safety-dark.svg#gh-dark-mode-only" width="900" alt="Five gates an action passes">
+</p>
 
 | Mechanism | Implementation |
 |---|---|

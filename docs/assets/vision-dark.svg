@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 316" width="1200" height="316" role="img" aria-label="Vision routing">
+  <title>VisionRouting · 三源分流</title>
+  <rect width="1200" height="316" rx="18" fill="#0C1412"/>
+  <rect x="0.5" y="0.5" width="1199" height="315" rx="18" fill="none" stroke="#1E2A25"/>
+
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <rect x="40" y="118" width="180" height="80" rx="14" fill="#0F3D31"/>
+    <rect x="40.5" y="118.5" width="179" height="79" rx="13.5" fill="none" stroke="#1E4C40"/>
+    <text x="130" y="152" font-size="15" font-weight="700" fill="#F1F4F1" text-anchor="middle" letter-spacing="1">SNAPSHOT</text>
+    <text x="130" y="174" font-size="12" fill="#8FA79C" text-anchor="middle">elements.size</text>
+
+    <path d="M232 158 H 258" stroke="#31403A" stroke-width="2" fill="none"/>
+    <path d="M252 152 l10 6 -10 6 z" fill="#5FD9B4"/>
+    <rect x="262" y="118" width="132" height="80" rx="40" fill="#101A17" stroke="#2E3B35"/>
+    <text x="328" y="152" font-size="16" font-weight="700" fill="#F1F4F1" text-anchor="middle">≤ 3 ?</text>
+    <text x="328" y="174" font-size="11" fill="#7E8C85" text-anchor="middle">sparsity</text>
+
+    <g fill="none" stroke="#31403A" stroke-width="2" stroke-linecap="round">
+      <path d="M394 158 C 420 158, 420 84, 446 84"/>
+      <path d="M394 158 C 420 158, 420 232, 446 232"/>
+    </g>
+    <g fill="#5FD9B4">
+      <path d="M440 78 l10 6 -10 6 z"/>
+      <path d="M440 226 l10 6 -10 6 z"/>
+    </g>
+
+    <rect x="446" y="44" width="330" height="80" rx="14" fill="#101A17" stroke="#1E2A25"/>
+    <rect x="446" y="44" width="6" height="80" rx="3" fill="#5FD9B4"/>
+    <text x="472" y="76" font-size="15" font-weight="700" fill="#F1F4F1" letter-spacing="1">CLOUD VISION</text>
+    <text x="472" y="98" font-size="12" fill="#8B9A93">complex page · textual description</text>
+    <text x="472" y="114" font-size="11" fill="#7E8D86">sparse tree, semantics needed</text>
+
+    <rect x="446" y="192" width="330" height="80" rx="14" fill="#101A17" stroke="#1E2A25"/>
+    <rect x="446" y="192" width="6" height="80" rx="3" fill="#5FD9B4"/>
+    <text x="472" y="224" font-size="15" font-weight="700" fill="#F1F4F1" letter-spacing="1">ON-DEVICE 3B</text>
+    <text x="472" y="246" font-size="12" fill="#8B9A93">GGUF + JNI · boxes + coords</text>
+    <text x="472" y="262" font-size="11" fill="#7E8D86">120 s watchdog inside native</text>
+
+    <g fill="none" stroke="#31403A" stroke-width="2" stroke-linecap="round">
+      <path d="M776 84 C 812 84, 812 158, 834 158"/>
+      <path d="M776 232 C 812 232, 812 158, 834 158"/>
+    </g>
+    <path d="M828 152 l10 6 -10 6 z" fill="#5FD9B4"/>
+    <rect x="838" y="112" width="322" height="92" rx="14" fill="#101A17" stroke="#1E2A25"/>
+    <rect x="838" y="112" width="6" height="92" rx="3" fill="#C6B183"/>
+    <text x="864" y="144" font-size="15" font-weight="700" fill="#F1F4F1" letter-spacing="1">ML KIT OCR</text>
+    <text x="864" y="166" font-size="12" fill="#8B9A93">fallback when both yield nothing</text>
+    <text x="864" y="184" font-size="11" fill="#7E8D86">text regions clustered into controls</text>
+
+    <text x="40" y="296" font-size="12" fill="#7E8D86">A page fingerprint + screenshot size + task id hit reuses the previous result and skips all three paths.</text>
+  </g>
+</svg>

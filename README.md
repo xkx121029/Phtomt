@@ -410,7 +410,11 @@ Termux 的 `RUN_COMMAND` 权限、结果 PendingIntent 回传、`allow-external-
 
 ### 视觉链路
 
-[VisionRouting](app/src/main/java/com/phoneagent/core/ai/VisionRouting.kt) 把"用哪一路视觉"做成纯函数，可单测：
+<p align="center">
+  <img src="docs/assets/vision-light.svg#gh-light-mode-only" width="900" alt="视觉三源分流：云端 / 端侧 3B / ML Kit OCR">
+  <img src="docs/assets/vision-dark.svg#gh-dark-mode-only" width="900" alt="视觉三源分流：云端 / 端侧 3B / ML Kit OCR">
+</p>
+
 
 | 来源 | 触发条件 | 产物 |
 |---|---|---|
@@ -443,6 +447,11 @@ settings_btn / sort_btn / clear_input
 - 数组拼接时 `body + sep` 必须精确复现原文换行——`PromptSnapshotTest` 用金样本锁定，改 `sep` 就等于改提示词。
 
 ### 记忆体系
+
+<p align="center">
+  <img src="docs/assets/memory-light.svg#gh-light-mode-only" width="900" alt="六类记忆">
+  <img src="docs/assets/memory-dark.svg#gh-dark-mode-only" width="900" alt="六类记忆">
+</p>
 
 | 类型 | 存储 | 用途 |
 |---|---|---|
@@ -486,6 +495,11 @@ settings_btn / sort_btn / clear_input
 - **缺参自动推断**：因缺必填参数被拒时，端侧先从历史成功参数 / 上一步结果 / 任务原文 / 页面文本推断补全，免去一轮追问。
 
 ### 安全防护
+
+<p align="center">
+  <img src="docs/assets/safety-light.svg#gh-light-mode-only" width="900" alt="动作通过的五道闸">
+  <img src="docs/assets/safety-dark.svg#gh-dark-mode-only" width="900" alt="动作通过的五道闸">
+</p>
 
 | 机制 | 实现 |
 |---|---|
