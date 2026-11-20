@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- debug-only 资源：release 不合并 -->
+<resources>
+    <string name="traj_capture_service_desc">HAPPY 轨迹采集（仅 debug 包）：记录截图与无障碍元素树，供端侧视觉语言模型蒸馏使用。不参与决策与执行。</string>
+    <string name="traj_capture_service_label">HAPPY Traj Capture (debug)</string>
+</resources>
