@@ -1417,8 +1417,10 @@ internal class ExecutionCore(
                         // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
                         // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
                         val verdict = confirmFallbackDelivery(snapshot)
+                        // 已确认 = 这步生效；未确认仍是「已交付」（notDelivered=false 见下），
+                        // 两个概念在结构化结果里分开表达，不再由退出码顶替
                         delivered = VerifyResult(
-                            verdict.success,
+                            verdict.confirmed,
                             "$originalReason；已自动切换 shell 通道执行: " +
                                 commands.orEmpty().joinToString(" && ") + verdict.suffix,
                             verdict.beforeFingerprint,
@@ -1437,8 +1439,16 @@ internal class ExecutionCore(
                 ChannelKind.LOCAL_ACTIVITY -> {
                     val local = fallbackLocally(action, type, originalReason)
                     if (local != null) {
-                        delivered = local
-                        ChannelStepResult.Delivered(confirmed = true)
+                        // 本应用直启同样没有页面级证据：startActivity 返回成功只说明 Intent 被本应用发出，
+                        // 不代表目标应用真的到了前台。与 shell 兜底同一口径——回读确认，拿不到证据就只说「已执行」。
+                        val verdict = confirmFallbackDelivery(snapshot)
+                        delivered = local.copy(
+                            success = verdict.confirmed,
+                            reason = local.reason + verdict.suffix,
+                            beforeFingerprint = verdict.beforeFingerprint,
+                            afterFingerprint = verdict.afterFingerprint,
+                        )
+                        ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
                         ChannelStepResult.Skipped("本应用无法直接拉起")
                     }
@@ -1623,7 +1633,10 @@ internal class ExecutionCore(
     }
 
     private fun openLocally(uri: String, pkg: String?): Boolean = runCatching {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // 不把 addFlags 的返回值当 Intent 用：它是平台类型，链式写法在 JVM 单测的 Android 桩上
+        // 返回 null 会直接 NPE，让这条兜底在测试里永远走不通；语句式写法两边语义完全一致。
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         pkg?.takeIf { PACKAGE_RE.matches(it) }?.let { intent.setPackage(it) }
         appContext.startActivity(intent)
         true
