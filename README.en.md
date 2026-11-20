@@ -259,7 +259,7 @@ Dependencies point one way; `core` / `domain` sit at the bottom:
 | Main code across modules (`app` + `provider` + `provider-api`) | **390** | **96,301** |
 | Every `.kt` in the repo (`env` / `third_party` included) | **595** | **124,057** |
 
-> The numbers come from [tool/count-code.sh](tool/count-code.sh): it counts `.kt` files returned by `git ls-files` and sums their lines, excluding `cpp`. Re-run the script after changing code to reproduce them.
+> The numbers come from `tool/count-code.sh`: it counts `.kt` files returned by `git ls-files` and sums their lines, excluding `cpp`. They grow with the code, so treat them as the state of the commit that generated them; re-run the script to reproduce them.
 
 `app/src/debug` ships a debug-only log forwarding path (`LogServerCore` / `LogTransferSession` / `UsbDebugWatcher`) that streams logcat and in-app logs to [tool/hpa_log_receiver.py](tool/hpa_log_receiver.py) over a local port. None of it exists in release builds.
 
