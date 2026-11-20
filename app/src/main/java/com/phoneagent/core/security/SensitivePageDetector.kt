@@ -96,10 +96,10 @@ object DataSanitizer {
      * 只认一种叫法等于对另外几种叫法完全不设防。
      * 英文 code 要求前后不接字母，否则 barcode / decode / codec 都会被当成引导词。
      */
-    private val codeWord = "验证码|校验码|动态码|动态密码|校验密码|(?<![A-Za-z])[Cc]ode(?![A-Za-z])"
+    private const val CODE_WORD = "验证码|校验码|动态码|动态密码|校验密码|(?<![A-Za-z])[Cc]ode(?![A-Za-z])"
 
     /** 验证码：引导词后 8 字符内跟 4~8 位数字（避免误伤普通金额/时间） */
-    private val smsCodeRegex = Regex("($codeWord)(\\D{0,8})(\\d{4,8})")
+    private val smsCodeRegex = Regex("($CODE_WORD)(\\D{0,8})(\\d{4,8})")
 
     /** 页面上出现这些字样 → 整页按「有验证码/密码输入」处理 */
     private val secretContextRegex = Regex("验证码|校验码|动态码|动态密码|支付密码|安全键盘")
