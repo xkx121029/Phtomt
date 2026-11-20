@@ -258,7 +258,7 @@ flowchart TB
 | 跨模块主代码（`app` + `provider` + `provider-api`） | **390** | **96,301** |
 | 全仓 `.kt`（含 `env` / `third_party`） | **595** | **124,057** |
 
-> 上表由 [tool/count-code.sh](tool/count-code.sh) 生成：口径是 `git ls-files` 列出的 `.kt` 文件、逐文件累计行数，不含 `cpp`。改了代码后重跑脚本即可复现。
+> 上表由 `tool/count-code.sh` 生成：口径是 `git ls-files` 列出的 `.kt` 文件、逐文件累计行数，不含 `cpp`。数字随代码增长，以生成时的提交为准；改了代码重跑脚本即可复现。
 
 `app/src/debug` 另有一套仅 debug 变体的日志转发通道（`LogServerCore` / `LogTransferSession` / `UsbDebugWatcher`），把 logcat 与应用内日志经本机端口推给 [tool/hpa_log_receiver.py](tool/hpa_log_receiver.py)，release 包里不存在这段代码。
 
