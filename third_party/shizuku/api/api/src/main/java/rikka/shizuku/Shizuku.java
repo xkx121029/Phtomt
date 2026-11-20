@@ -918,6 +918,15 @@ public class Shizuku {
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static boolean isPermissionRequestPending(int uid, int pid, int requestCode) {
+        try {
+            return requireService().isPermissionRequestPending(uid, pid, requestCode);
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static int getFlagsForUid(int uid, int mask) {
         try {
             return requireService().getFlagsForUid(uid, mask);

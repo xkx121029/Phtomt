@@ -30,6 +30,7 @@ import android.os.Looper;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -88,6 +89,12 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     private final ShizukuClientManager clientManager;
     private final ShizukuConfigManager configManager;
     private final int managerAppId;
+    /**
+     * 在途的权限确认请求登记表：只有 server 亲自发起（showPermissionConfirmation）的
+     * (uid, pid, requestCode) 才算数，确认页展示与结果回传都要命中它。
+     * server 以 shell uid 独立 app_process 运行，与 Provider 进程不共享内存，故登记表只能在 server 侧。
+     */
+    private final PendingPermissionRequests pendingPermissionRequests = new PendingPermissionRequests();
 
     public ShizukuService() {
         super();
@@ -275,9 +282,21 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
                 .putExtra("uid", callingUid)
                 .putExtra("pid", callingPid)
-                .putExtra("requestCode", requestCode)
-                .putExtra("applicationInfo", ai);
+                .putExtra("requestCode", requestCode);
+        // 登记在拉起确认页之前：确认页 onCreate 会回查这张表，缺登记即拒绝展示。
+        // 不把 applicationInfo 放进 Intent——确认页按 uid 反查真实包名，对话框里的应用名
+        // 不再由调用方决定。
+        pendingPermissionRequests.record(callingUid, callingPid, requestCode, SystemClock.elapsedRealtime());
         ActivityManagerApis.startActivityNoThrow(intent, null, isWorkProfileUser ? 0 : userId);
+    }
+
+    @Override
+    public boolean isPermissionRequestPending(int uid, int pid, int requestCode) {
+        if (UserHandleCompat.getAppId(Binder.getCallingUid()) != managerAppId) {
+            LOGGER.w("isPermissionRequestPending called not from the manager package");
+            return false;
+        }
+        return pendingPermissionRequests.isPending(uid, pid, requestCode, SystemClock.elapsedRealtime());
     }
 
     @Override
@@ -288,6 +307,15 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
 
         if (data == null) {
+            return;
+        }
+
+        // 只认 server 亲自发起、且尚未被消费的请求：uid/pid/requestCode 是确认页从 Intent 里
+        // 读出来的，单凭它们无法证明这次确认真的在途——第三方应用伪造一组参数拉起确认页，
+        // 用户点「允许」后原本会直接落永久白名单。命中即消费，同一组参数无法重放。
+        if (!pendingPermissionRequests.consume(requestUid, requestPid, requestCode, SystemClock.elapsedRealtime())) {
+            LOGGER.w("dispatchPermissionConfirmationResult: no pending request for uid=%d, pid=%d, requestCode=%d",
+                    requestUid, requestPid, requestCode);
             return;
         }
 
