@@ -45,4 +45,6 @@ interface IShizukuService {
     int getFlagsForUid(int uid, int mask) = 105;
 
     void updateFlagsForUid(int uid, int mask, int value) = 106;
+
+    boolean isPermissionRequestPending(int uid, int pid, int requestCode) = 107;
  }

@@ -1,12 +1,10 @@
 package com.phoneagent.provider.shell
 
 import android.app.Activity
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,8 +26,14 @@ import java.util.concurrent.TimeUnit
  * 内嵌 server（rikka.shizuku.server.ShizukuService）在收到 requestPermission 时，
  * 以 action「com.phoneagent.intent.action.REQUEST_PERMISSION」拉起本页
  * （原 Shizuku 官方管理器的 RequestPermissionActivity 同款流程，逻辑参照其实现）：
- * 等 server binder（最多 5s）→ 校验 shell 的 GRANT_RUNTIME_PERMISSIONS →
- * 弹出确认（允许=永久 / 拒绝=一次性）→ 把结果回传 server。
+ * 等 server binder（最多 5s）→ 校验本次请求确实在 server 侧在途 → 校验 shell 的
+ * GRANT_RUNTIME_PERMISSIONS → 弹出确认（允许=永久 / 拒绝=一次性）→ 把结果回传 server。
+ *
+ * 安全约定：本页决定是否把某个 uid 写进 Shizuku 永久白名单，因此 intent 里的
+ * uid/pid/requestCode 一律只当作「查表键」，不作为身份凭据。server 发起确认时
+ * 会先登记三元组（PendingPermissionRequests），本页回查不到登记就直接结束不弹框，
+ * 回传结果时 server 还会再消费一次登记。应用名也不再取自 intent 的 applicationInfo，
+ * 而是按 uid 反查真实包名，避免调用方伪造「允许「Happy Agent」通过」这种卡片。
  *
  * UI 采用应用内嵌入式卡片（非系统弹窗）。主应用原版为 Compose 实现；Provider 模块
  * 无 Compose 依赖，故改用纯 View 代码布局（无任何 res 资源），观感保持一致：
@@ -56,8 +60,8 @@ class ShizukuPermissionActivity : Activity() {
 
     private data class Ui(val uid: Int, val pid: Int, val requestCode: Int, val label: String)
 
-    /** server intent 携带的请求参数；缺任一项视为无效请求 */
-    private data class RequestArgs(val uid: Int, val pid: Int, val requestCode: Int, val ai: ApplicationInfo)
+    /** server intent 携带的请求参数：仅作为在途请求登记表的查表键，本身不构成身份凭据 */
+    private data class RequestArgs(val uid: Int, val pid: Int, val requestCode: Int)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,30 +70,36 @@ class ShizukuPermissionActivity : Activity() {
         Thread { prepare() }.start()
     }
 
-    /** 等 binder → 解析请求参数 → 校验授权能力 → 进入确认 UI（或直接拒绝/结束） */
+    /** 等 binder → 校验请求在途 → 解析请求参数 → 校验授权能力 → 进入确认 UI（或直接拒绝/结束） */
     private fun prepare() {
-        if (waitForBinder()) {
-            when (val args = readRequestArgs()) {
-                null -> finishOnUiThread()
-                else -> showConfirmOrDeny(args)
-            }
-        } else {
+        if (!waitForBinder()) {
             finishOnUiThread()
+            return
         }
+        val args = readRequestArgs()
+        if (args == null || !isRequestPending(args)) {
+            // 没有 server 侧的登记记录：要么是伪造启动，要么早已过期/被消费，一律不弹框
+            finishOnUiThread()
+            return
+        }
+        showConfirmOrDeny(args)
     }
 
-    /** 从 intent 解析请求参数；缺任一项返回 null */
+    /** 从 intent 解析请求参数；缺任一项返回 null（此时直接结束，不展示卡片） */
     private fun readRequestArgs(): RequestArgs? {
         val uid = intent.getIntExtra("uid", -1)
         val pid = intent.getIntExtra("pid", -1)
         val requestCode = intent.getIntExtra("requestCode", -1)
-        val extrasOk = uid != -1 && pid != -1 && requestCode != -1
-        val ai = readApplicationInfoExtra()
-        if (!extrasOk || ai == null) {
+        if (uid == -1 || pid == -1 || requestCode == -1) {
             return null
         }
-        return RequestArgs(uid, pid, requestCode, ai)
+        return RequestArgs(uid, pid, requestCode)
     }
+
+    /** 回查 server：本次确认是否真由它发起且尚未消费 */
+    private fun isRequestPending(args: RequestArgs): Boolean = runCatching {
+        Shizuku.isPermissionRequestPending(args.uid, args.pid, args.requestCode)
+    }.getOrDefault(false)
 
     /** shell 权限受限（无线调试权限被收窄）时无法代为授权：按一次性拒绝收场 */
     private fun showConfirmOrDeny(args: RequestArgs) {
@@ -103,10 +113,26 @@ class ShizukuPermissionActivity : Activity() {
             return
         }
 
-        val label = runCatching { args.ai.loadLabel(packageManager).toString() }
-            .getOrDefault(args.ai.packageName)
-        uiState = Ui(args.uid, args.pid, args.requestCode, label)
+        uiState = Ui(args.uid, args.pid, args.requestCode, resolveLabel(args.uid))
         mainHandler.post { renderUiState() }
+    }
+
+    /**
+     * 按 uid 反查真实应用名：uid 来自 server 的登记记录，Intent 无法指定展示名。
+     * 取不到信息时退回系统给出的 uid 名称（包名或 u0_aXXX），绝不回落到可被伪造的来源。
+     */
+    private fun resolveLabel(uid: Int): String {
+        val fromPackages = runCatching {
+            packageManager.getPackagesForUid(uid)
+                ?.firstNotNullOfOrNull { pkg ->
+                    runCatching {
+                        packageManager.getApplicationInfo(pkg, 0).loadLabel(packageManager).toString()
+                    }.getOrNull()?.takeIf { it.isNotBlank() }
+                }
+        }.getOrNull()
+        return fromPackages
+            ?: runCatching { packageManager.getNameForUid(uid) }.getOrNull()
+            ?: "未知应用"
     }
 
     /** 粘性监听器：binder 已缓存时立即回调；否则最多等 5s（对齐官方管理器超时） */
@@ -128,14 +154,6 @@ class ShizukuPermissionActivity : Activity() {
         Shizuku.removeBinderReceivedListener(listener)
         return received
     }
-
-    private fun readApplicationInfoExtra(): ApplicationInfo? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra("applicationInfo", ApplicationInfo::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra("applicationInfo")
-        }
 
     /** 把确认结果回传内嵌 server（永久允许会写入其权限持久化配置） */
     private fun sendResult(uid: Int, pid: Int, requestCode: Int, allowed: Boolean, onetime: Boolean) {
