@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Happy Phone Agent">
+  <title>Happy Phone Agent · 亮格</title>
+  <defs>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0v24" fill="none" stroke="#18221E" stroke-width="1"/>
+    </pattern>
+    <clipPath id="frame"><rect width="1200" height="300" rx="20"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1200" height="300" fill="#0C1412"/>
+    <rect width="1200" height="300" fill="url(#grid)"/>
+    <rect y="272" width="1200" height="28" fill="#101A17"/>
+
+    <!-- 步骤轨道：萤点代表「正在执行」 -->
+    <g transform="translate(120 286)">
+      <line x1="0" y1="0" x2="960" y2="0" stroke="#26332D" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 10"/>
+      <circle cx="0" cy="0" r="5" fill="#5FD9B4"/>
+      <circle cx="240" cy="0" r="5" fill="#5FD9B4"/>
+      <circle cx="480" cy="0" r="5" fill="#5FD9B4"/>
+      <circle cx="720" cy="0" r="7" fill="#5FD9B4"/>
+      <circle cx="720" cy="0" r="13" fill="none" stroke="#5FD9B4" stroke-width="1.5" opacity="0.55"/>
+      <circle cx="960" cy="0" r="5" fill="none" stroke="#31403A" stroke-width="2"/>
+    </g>
+
+    <!-- 亮格标记 -->
+    <g transform="translate(96 72)">
+      <rect width="152" height="152" rx="34" fill="#0F3D31"/>
+      <rect x="0.75" y="0.75" width="150.5" height="150.5" rx="33.25" fill="none" stroke="#1E4C40" stroke-width="1.5"/>
+      <g transform="translate(76 76) scale(6) translate(-12 -12)" fill="none" stroke="#5FD9B4" stroke-width="1.55" stroke-linejoin="round">
+        <g transform="scale(0.94) translate(1.06 1.06)">
+          <rect x="5.125" y="5.125" width="4.75" height="4.75" rx="1.225"/>
+          <rect x="5.125" y="14.125" width="4.75" height="4.75" rx="1.225"/>
+          <rect x="14.125" y="14.125" width="4.75" height="4.75" rx="1.225"/>
+        </g>
+      </g>
+      <rect x="88" y="34" width="38" height="38" rx="12" fill="#5FD9B4"/>
+    </g>
+
+    <!-- 字标 -->
+    <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+      <text x="292" y="132" font-size="60" font-weight="700" letter-spacing="1.5" fill="#F1F4F1">Happy Phone Agent</text>
+      <text x="294" y="176" font-size="23" font-weight="400" letter-spacing="0.6" fill="#9FB0A8">One sentence in. The phone does the rest.</text>
+      <g fill="#6E7C75" font-size="16" letter-spacing="3">
+        <text x="294" y="216">ANDROID AGENT · KOTLIN · COMPOSE</text>
+      </g>
+    </g>
+
+    <!-- 右侧三格装饰 -->
+    <g transform="translate(1012 96)" fill="none" stroke="#2E3B35" stroke-width="2">
+      <rect x="0" y="0" width="44" height="44" rx="12"/>
+      <rect x="56" y="0" width="44" height="44" rx="12"/>
+      <rect x="0" y="56" width="44" height="44" rx="12"/>
+      <rect x="56" y="56" width="44" height="44" rx="12" fill="#123328" stroke="#5FD9B4"/>
+    </g>
+  </g>
+</svg>
