@@ -42,6 +42,10 @@ dependencies {
     implementation project(':shizuku-server-shared')
     implementation libs.hidden.compat
     compileOnly libs.hidden.stub
+
+    // 权限确认请求登记表（PendingPermissionRequests）是纯 Java 逻辑，
+    // 过期/消费/重放三条行为用 JVM 单测覆盖，不需要真机
+    testImplementation libs.junit
 }
 
 ext {
