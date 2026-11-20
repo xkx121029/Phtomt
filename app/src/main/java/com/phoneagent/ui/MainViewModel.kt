@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.phoneagent.core.ai.ApiProtocol
+import com.phoneagent.core.perf.StartupTrace
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
@@ -77,7 +78,7 @@ private const val REQUEST_RECORD_AUDIO = 4402
  */
 class MainViewModel(
     private val settings: AppSettings,
-    private val engine: AgentEngine,
+    engineProvider: () -> AgentEngine,
     private val testEngine: TestEngine,
     private val shizukuManager: ShizukuManager,
     private val termuxBridge: TermuxBridge,
@@ -90,6 +91,19 @@ class MainViewModel(
     private val adbPairingFlow: WirelessAdbPairingFlow,
     private val updateManager: com.phoneagent.feature.update.UpdateManager,
 ) : ViewModel() {
+
+    /**
+     * 引擎对象图：约 30 个协作者 + 4 个 OkHttpClient，**用到时才构建**。
+     *
+     * 它原本是构造参数，于是 `koinViewModel()` 在首帧的组合期就把整张图在主线程上建出来，
+     * 首帧被这一整段串住。改成惰性之后，构造 MainViewModel 只碰 [settings]；
+     * 界面在首帧先画骨架屏（见 [ActivityContent] 的 engineReady 门控），
+     * 首个读引擎的访问发生在首帧之后。注入方式仍是「构造参数 + 惰性求值」，
+     * 没有全局可变状态、没有服务定位器：测试直接传 `{ fakeEngine }` 即可。
+     */
+    private val engine: AgentEngine by lazy {
+        StartupTrace.span("引擎单例构建（首帧后）") { engineProvider() }
+    }
 
     val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings.Settings())
@@ -112,26 +126,27 @@ class MainViewModel(
         viewModelScope.launch { settings.markOnboardingDone() }
     }
 
-    val agentState: StateFlow<AgentState> = engine.state
+    // 引擎派生的状态一律惰性取：这些属性一旦在构造期求值，就会立刻拉起整张引擎对象图
+    val agentState: StateFlow<AgentState> by lazy { engine.state }
 
-    val logs: StateFlow<List<AgentLog>> = engine.logs
-    val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
-    val metrics: StateFlow<AgentMetrics> = engine.metrics
-    val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
-    val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> = engine.stepShot
-    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> = engine.traces
+    val logs: StateFlow<List<AgentLog>> by lazy { engine.logs }
+    val conversation: StateFlow<List<ConversationMessage>> by lazy { engine.conversation }
+    val metrics: StateFlow<AgentMetrics> by lazy { engine.metrics }
+    val executionHistory: StateFlow<List<StepRecord>> by lazy { engine.executionHistory }
+    val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> by lazy { engine.stepShot }
+    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> by lazy { engine.traces }
     /** 任务会话归档（Agent 页侧边栏）：最新一次任务在最前 */
-    val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> = engine.taskSessions
+    val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> by lazy { engine.taskSessions }
     /** 当前对话的起点：实时视图只铺开这之后的任务，承接块也只取这之后的往来 */
-    val conversationStart: StateFlow<Long> = engine.conversationStart
-    val taskQueue: StateFlow<List<String>> = engine.taskQueue
-    val needsUser: StateFlow<Boolean> = engine.needsUser
-    val userHintRequest = engine.userHintRequest
-    val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> = engine.planPhase
-    val planStream: StateFlow<String> = engine.planStream
+    val conversationStart: StateFlow<Long> by lazy { engine.conversationStart }
+    val taskQueue: StateFlow<List<String>> by lazy { engine.taskQueue }
+    val needsUser: StateFlow<Boolean> by lazy { engine.needsUser }
+    val userHintRequest by lazy { engine.userHintRequest }
+    val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> by lazy { engine.planPhase }
+    val planStream: StateFlow<String> by lazy { engine.planStream }
 
     /** AI 正在生成的决策内容（流式回显到 Agent 页，空串表示当前无输出） */
-    val decisionStream: StateFlow<String> = engine.decisionStream
+    val decisionStream: StateFlow<String> by lazy { engine.decisionStream }
 
     /** 将显示给用户的文本自动翻译成简体中文（AI 翻译，带缓存） */
     suspend fun translate(text: String): String = engine.translateText(text)
@@ -198,13 +213,14 @@ class MainViewModel(
     fun dismissUser() = engine.dismissUser()
 
     /** 正在等待用户确认的 AI 自写命令（null = 没有待确认项）；驱动 App 内协助面板的「批准执行 / 拒绝」 */
-    val pendingShellCommand: StateFlow<String?> = engine.pendingShellCommand
+    val pendingShellCommand: StateFlow<String?> by lazy { engine.pendingShellCommand }
     fun resolveShellApproval(approve: Boolean) = engine.resolveShellApproval(approve)
 
     // ---- 不可逆动作确认门：App 内任务流的确认卡与悬浮窗共用引擎的同一信箱 ----
     /** 引擎正在等待用户确认的不可逆动作（null = 无待确认项）；驱动任务流里的确认卡片 */
-    val pendingActionConfirmation: StateFlow<AgentEngine.PendingActionConfirmation?> =
+    val pendingActionConfirmation: StateFlow<AgentEngine.PendingActionConfirmation?> by lazy {
         engine.pendingActionConfirmation
+    }
     /** 确认执行该动作 */
     fun confirmPendingAction() = engine.respondActionConfirmation(true)
     /** 拒绝该动作（AI 会换做法或中止该步） */
@@ -673,7 +689,7 @@ class MainViewModel(
     fun stopAgent() = engine.stop()
 
     /** 当前任务是否被用户暂停；驱动状态条在「暂停 / 继续」之间切换 */
-    val paused: StateFlow<Boolean> = engine.paused
+    val paused: StateFlow<Boolean> by lazy { engine.paused }
 
     /** 暂停当前任务（主循环在下一轮开头挂起，不消耗步数） */
     fun pauseAgent() = engine.pauseTask()

@@ -181,6 +181,15 @@ class MainActivity : ComponentActivity() {
     /** 外部入口（深链/分享/文本选择/快捷方式）的信号：onCreate 与 onNewIntent 各自增一次 */
     private val entrySignal = MutableStateFlow(0)
 
+    /**
+     * 首帧是否已经画完：画完才允许界面去要引擎。
+     *
+     * 引擎整张对象图（约 30 个协作者 + 4 个 OkHttpClient）是在主线程上一次性构建的，
+     * 放在首帧之前就会把首帧整体推迟。现在骨架屏（[StartupSkeleton]）先出，
+     * 引擎的构建落在首帧之后（见 [onCreate] 的 OnDrawListener 与本字段的置位点）。
+     */
+    private val engineReady = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         StartupTrace.mark("MainActivity.onCreate 开始")
         enableEdgeToEdge()
@@ -195,11 +204,14 @@ class MainActivity : ComponentActivity() {
                 StartupTrace.mark("首帧绘制完成")
                 window.decorView.post {
                     runCatching { window.decorView.viewTreeObserver.removeOnDrawListener(this) }
+                    // 首帧已经画出来了：此时才放行界面去取引擎（见 engineReady 的注释）
+                    engineReady.value = true
                 }
             }
         })
         setContent {
-            val vm: MainViewModel = StartupTrace.span("MainViewModel/引擎单例构建") { koinViewModel() }
+            // 只构造 ViewModel 本身（碰一次 AppSettings + 门控镜像）；引擎与其余重对象由首个访问惰性拉起
+            val vm: MainViewModel = StartupTrace.span("MainViewModel 构建") { koinViewModel() }
             // 主题设置：配色 / 无框线 / 磨砂浓淡实时驱动 PhoneAgentTheme，改完立即生效
             val settings by vm.settingsFlow.collectAsState()
             PhoneAgentTheme(
@@ -212,7 +224,7 @@ class MainActivity : ComponentActivity() {
                 // 主题皮肤：经典（默认）/ 石墨，切换即重组、无需重启；旧主题完整保留
                 skinId = settings.skin,
             ) {
-                ActivityContent(vm, pageSignal, entrySignal)
+                ActivityContent(vm, pageSignal, entrySignal, engineReady.value)
             }
         }
     }
@@ -279,6 +291,7 @@ private fun ActivityContent(
     vm: MainViewModel,
     pageSignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
     entrySignal: kotlinx.coroutines.flow.MutableStateFlow<Int>,
+    engineReady: Boolean,
 ) {
     // 新手引导门控：完成标记还没读到（镜像没写过、DataStore 也还没回）时铺**骨架屏**而不是纯色。
     // 纯色的观感与 windowBackground 白底完全相同，用户看到的就是「点了图标先白一下」；
@@ -291,7 +304,9 @@ private fun ActivityContent(
     // 声明提前到引导门控之前：引导最后一页点「试试」要直接把落点改成 Agent 页。
     var selected by rememberSaveable { mutableStateOf(-1) }
     when {
-        onboardingDone == null -> {
+        // 引擎还没就绪（首帧之后才开始构建）与引导标记未定走同一个骨架屏：
+        // 用户看到的是「界面已经在、内容待填」，而不是一块白屏
+        !engineReady || onboardingDone == null -> {
             StartupSkeleton()
             return
         }
