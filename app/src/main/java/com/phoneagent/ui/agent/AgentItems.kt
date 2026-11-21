@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.ui.components.AppIconTile
 import com.phoneagent.ui.components.MarkdownPreview
 import com.phoneagent.ui.components.PressableScale
@@ -134,6 +135,18 @@ internal fun UserTaskItem(item: AgentTimelineItem.UserTask) {
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.onSurfaceRaised,
             )
+        }
+        // 已结束的任务在标题下补一条状态：只有标题的话，这条 chip 与终态卡同屏时
+        // 会被读成「另一个任务」，用户也就判断不出刚才那次是成功还是失败
+        item.status?.takeIf { !item.queued }?.let { status ->
+            Spacer(Modifier.height(AppSpacing.Xs))
+            val (label, color) = when (status) {
+                TaskStatus.SUCCESS -> "已完成" to colors.success
+                TaskStatus.ABORTED -> "已停止" to colors.onSurfaceRaised
+                TaskStatus.NOT_ACHIEVED -> "未达成" to colors.warning
+                TaskStatus.FAILED -> "失败" to colors.error
+            }
+            StatusPill(text = label, color = color)
         }
     }
 }
