@@ -39,6 +39,8 @@ internal object LaunchWatch {
      * @param before 启动前的页面，用作"页面有没有变化"的基准
      * @return true=已确认前台；false=观察窗内读得到页面但没见到目标；null=一次都没读到页面
      */
+    // 两个 continue 的语义不同（这次没读到 / 读到了但只有空壳），合并会把三态的分界抹掉
+    @Suppress("LoopWithTooManyJumpStatements")
     suspend fun watch(
         capture: suspend () -> ScreenSnapshot?,
         targetPkg: String,
