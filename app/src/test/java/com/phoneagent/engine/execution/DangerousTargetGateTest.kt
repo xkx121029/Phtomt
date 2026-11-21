@@ -43,7 +43,8 @@ class DangerousTargetGateTest {
         clickable = true,
     )
 
-    private fun hit(label: String) = NodeHit(label = label, viewId = null, className = "android.widget.Button", clickable = true)
+    private fun hit(label: String) =
+        NodeHit(label = label, viewId = null, className = "android.widget.Button", clickable = true)
 
     // ---- 坐标点击：唯一能看见真实控件的就是落点探针 ----
 

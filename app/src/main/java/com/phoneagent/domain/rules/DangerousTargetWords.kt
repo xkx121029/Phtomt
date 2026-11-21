@@ -55,6 +55,8 @@ internal object DangerousTargetWords {
     /**
      * @return 命中的危险词（供日志与确认框说明用）；标签安全或为空时返回 null
      */
+    // 中文直接命中 / 中文批量抹除（含可逆豁免）/ 英文批量抹除 / 英文不可逆，四档各自早退最清楚
+    @Suppress("ReturnCount")
     fun hit(targetLabel: String?): String? {
         val label = targetLabel?.trim().orEmpty()
         if (label.isEmpty()) return null
