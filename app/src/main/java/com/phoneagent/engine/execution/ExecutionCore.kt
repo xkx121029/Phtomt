@@ -1247,21 +1247,17 @@ internal class ExecutionCore(
                     val a11y = runCatchingLogged(TAG, "无障碍启动应用 $pkg") { ActionExecutor(service).launchApp(pkg) }
                         .getOrNull()
                     when (a11y) {
-                        is ActionExecutor.Result.Success -> when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(true, "已启动应用: $pkg", snapshot.packageName ?: "", pkg)
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已启动应用: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("无障碍启动指令已发出但目标应用未到前台")
+                        is ActionExecutor.Result.Success -> {
+                            val v = LaunchLadderPolicy.verdict(
+                                observed = awaitLaunched(service, pkg, snapshot),
+                                beforeFingerprint = snapshot.packageName ?: "",
+                                afterFingerprint = pkg,
+                                confirmedReason = "已启动应用: $pkg",
+                                unconfirmedReason = "已启动应用: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                                notDeliveredReason = "无障碍启动指令已发出但目标应用未到前台",
+                            )
+                            v.result?.let { delivered = it }
+                            v.step
                         }
                         is ActionExecutor.Result.Failure -> ChannelStepResult.NotDelivered("无障碍启动失败：${a11y.reason}")
                         null -> ChannelStepResult.NotDelivered("无障碍启动异常")
@@ -1272,27 +1268,16 @@ internal class ExecutionCore(
                     val r = runCatchingLogged(TAG, "shell 启动应用 $pkg") { execShellViaChannel("monkey -p $pkg 1") }
                         .getOrNull()
                     if (r is ShizukuManager.ShellResult.Success) {
-                        when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已自动切换 shell 通道启动应用: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("shell 启动指令已被接受但目标应用未到前台")
-                        }
+                        val v = LaunchLadderPolicy.verdict(
+                            observed = awaitLaunched(service, pkg, snapshot),
+                            beforeFingerprint = snapshot.packageName ?: "",
+                            afterFingerprint = pkg,
+                            confirmedReason = "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg",
+                            unconfirmedReason = "已自动切换 shell 通道启动应用: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                            notDeliveredReason = "shell 启动指令已被接受但目标应用未到前台",
+                        )
+                        v.result?.let { delivered = it }
+                        v.step
                     } else {
                         val reason = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "通道无响应"
                         ChannelStepResult.NotDelivered("shell 启动失败：$reason")
@@ -1303,27 +1288,16 @@ internal class ExecutionCore(
                     if (!launchLocally(pkg)) {
                         ChannelStepResult.Skipped("未找到可启动入口")
                     } else {
-                        when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已自动切换本应用直启打开: $pkg",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已切换本应用直启打开: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("本应用直启请求已发出但目标应用未到前台")
-                        }
+                        val v = LaunchLadderPolicy.verdict(
+                            observed = awaitLaunched(service, pkg, snapshot),
+                            beforeFingerprint = snapshot.packageName ?: "",
+                            afterFingerprint = pkg,
+                            confirmedReason = "已自动切换本应用直启打开: $pkg",
+                            unconfirmedReason = "已切换本应用直启打开: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                            notDeliveredReason = "本应用直启请求已发出但目标应用未到前台",
+                        )
+                        v.result?.let { delivered = it }
+                        v.step
                     }
                 }
 
