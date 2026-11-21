@@ -61,6 +61,7 @@ import com.phoneagent.ui.vm.DocumentDelegate
 import com.phoneagent.ui.vm.McpDelegate
 import com.phoneagent.ui.vm.MemoryDelegate
 import com.phoneagent.ui.vm.SettingsDelegate
+import com.phoneagent.ui.vm.ShizukuBootstrapDelegate
 import com.phoneagent.ui.vm.SkillDelegate
 import com.phoneagent.ui.vm.TestDelegate
 import com.phoneagent.ui.vm.UpdateDelegate
@@ -894,45 +895,24 @@ class MainViewModel(
     fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceByCategory(category)
     fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceSearch(keyword)
 
-    // ---- 内置 Shizuku 启动状态（引导会话复用无线 ADB，仅作启动机制，不再作为独立通道暴露） ----
-    val adbStatus: StateFlow<AdbStatus> = shizukuBootstrap.status
+    // ---- 内置 Shizuku 启动域：实现在 [ShizukuBootstrapDelegate] ----
+    private val shizukuBootstrapDomain = ShizukuBootstrapDelegate(shizukuBootstrap, adbPairingFlow, viewModelScope)
+
+    val adbStatus: StateFlow<AdbStatus> get() = shizukuBootstrapDomain.adbStatus
 
     /** 一键启动/检测内置 Shizuku 通路：binder 可用直接就绪，否则经引导会话拉起内置 server */
-    fun ensureShizukuReady(onResult: (String) -> Unit) {
-        viewModelScope.launch {
-            onResult(
-                when (val r = shizukuBootstrap.ensureReady()) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "内置 Shizuku 已就绪，可执行 shell"
-                    is ShizukuBootstrap.ReadyResult.Error -> r.message
-                }
-            )
-        }
-    }
+    fun ensureShizukuReady(onResult: (String) -> Unit) = shizukuBootstrapDomain.ensureShizukuReady(onResult)
 
     /** 用界面输入的 6 位配对码完成首次启动引导，并就绪内置 Shizuku 通路 */
-    fun pairShizuku(code: String, onResult: (String) -> Unit) {
-        viewModelScope.launch {
-            if (code.length != 6 || !code.all { it.isDigit() }) {
-                onResult("配对码须为 6 位数字")
-                return@launch
-            }
-            onResult(
-                when (val r = shizukuBootstrap.pairAndEnsureReady(code)) {
-                    is ShizukuBootstrap.ReadyResult.Ready -> "启动成功，内置 Shizuku 已就绪"
-                    is ShizukuBootstrap.ReadyResult.Error -> r.message
-                }
-            )
-        }
-    }
+    fun pairShizuku(code: String, onResult: (String) -> Unit) = shizukuBootstrapDomain.pairShizuku(code, onResult)
 
     // ---- 首次启动引导的通知栏向导（沿用无线 ADB 配对流程，仅作为内置 Shizuku 的引导机制） ----
-    val adbPairingMessage: String
-        get() = adbPairingFlow.message
+    val adbPairingMessage: String get() = shizukuBootstrapDomain.adbPairingMessage
 
-    val adbPairingMessageFlow: StateFlow<String> get() = adbPairingFlow.messageFlow
+    val adbPairingMessageFlow: StateFlow<String> get() = shizukuBootstrapDomain.adbPairingMessageFlow
 
     /** 点击「开始引导」：后台搜索系统无线调试服务，搜到后通过通知栏请求配对码 */
-    fun startAdbDiscovery() = adbPairingFlow.startDiscovery(viewModelScope)
+    fun startAdbDiscovery() = shizukuBootstrapDomain.startAdbDiscovery()
 
-    fun cancelAdbPairing() = adbPairingFlow.cancel()
+    fun cancelAdbPairing() = shizukuBootstrapDomain.cancelAdbPairing()
 }
