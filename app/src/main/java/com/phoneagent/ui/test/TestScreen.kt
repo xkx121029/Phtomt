@@ -2,6 +2,7 @@ package com.phoneagent.ui.test
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppRadii
@@ -38,7 +39,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,15 +78,15 @@ import com.phoneagent.ui.icons.AppIcons
  */
 @Composable
 fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    val config by vm.testConfig.collectAsState()
-    val running by vm.testRunning.collectAsState()
-    val summary by vm.testSummary.collectAsState()
-    val streamText by vm.testStreamText.collectAsState()
-    val testLang by vm.testLanguage.collectAsState()
-    val testCategory by vm.testCategory.collectAsState()
+    val config by vm.testConfig.collectAsStateWithLifecycle()
+    val running by vm.testRunning.collectAsStateWithLifecycle()
+    val summary by vm.testSummary.collectAsStateWithLifecycle()
+    val streamText by vm.testStreamText.collectAsStateWithLifecycle()
+    val testLang by vm.testLanguage.collectAsStateWithLifecycle()
+    val testCategory by vm.testCategory.collectAsStateWithLifecycle()
     // Agent 任务的占用状态：测试页的「任务 / 执行」按钮在任务运行期间不允许再发起
-    val agentState by vm.agentState.collectAsState()
-    val planPhase by vm.planPhase.collectAsState()
+    val agentState by vm.agentState.collectAsStateWithLifecycle()
+    val planPhase by vm.planPhase.collectAsStateWithLifecycle()
     val snackbar = LocalSnackbar.current
     // 引擎不受理并发任务：任务运行/规划中再点「任务 / 执行」只会进入无人受理的死态。
     // 不用 enabled=false 一禁了之——禁用态点了没反应，用户不知道原因；守卫 + 浮条给理由
