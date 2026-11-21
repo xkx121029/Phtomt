@@ -31,8 +31,8 @@ class CapabilityManager(
      * 当前授权模式。每次调用实时检测（Shizuku 可能动态掉线/恢复）。
      *
      * [adbConnectedProvider] 的语义是"ADB 引导通路是否已经给出可执行的 shell"（即 Shizuku server
-     * 已就绪），而不是"无线调试会话是否连上"——后者本身执行不了任何命令，把它当权限会让转译层
-     * 以为有 shell 能力。
+     * 已就绪），而不是"无线调试会话是否连上"——主应用没有走会话的执行入口（AIDL 只有 execShizuku /
+     * execTermux），把"连上"当权限会让转译层以为有 shell 能力。
      */
     fun currentMode(): Mode = when {
         shizukuManager?.isAvailable() == true || adbConnectedProvider() -> Mode.SHIZUKU

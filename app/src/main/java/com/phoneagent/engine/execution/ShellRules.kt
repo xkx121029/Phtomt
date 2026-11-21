@@ -49,8 +49,8 @@ internal object ShellRules {
     /**
      * 真实可执行命令的 shell 通道。NONE = 当前偏好下没有任何可用通道。
      *
-     * 没有"ADB"这一档：无线调试会话只用来把内置 Shizuku server 拉起来，自身不实现命令执行
-     * （Provider 的 execShizuku 只经 Shizuku binder 下发）。以前列过这一档，于是在
+     * 没有"ADB"这一档：无线调试会话只用来把内置 Shizuku server 拉起来，主应用没有走它的
+     * 执行入口（AIDL 只有 execShizuku / execTermux）。以前列过这一档，于是在
      * "会话连着、server 没起来"时把命令派进去，必然失败还占掉一次降级。
      */
     enum class Channel(val label: String) {

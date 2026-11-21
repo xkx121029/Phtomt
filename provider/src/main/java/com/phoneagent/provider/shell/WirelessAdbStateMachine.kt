@@ -33,9 +33,10 @@ class WirelessAdbStateMachine {
     /**
      * 无线调试会话已连上。
      *
-     * 刻意**不**升到 [AdbPhase.READY]：READY 的语义是"shell 真能执行"，而本项目的 shell
-     * 只经内置 Shizuku server 的 binder 下发（见 [com.phoneagent.provider.ShellBridge.execShizuku]），
-     * 无线 ADB 会话的唯一用途是把那个 server 拉起来。会话连上 ≠ 能执行命令。
+     * 刻意**不**升到 [AdbPhase.READY]：READY 的语义是"主应用真能拿到可执行的 shell"。
+     * 会话本身在 Provider 内确实能执行命令（`AdbWirelessTransport.executeShell`，目前只用于把
+     * 内置 Shizuku server 拉起来），但 AIDL 只暴露 `execShizuku` / `execTermux`——主应用没有
+     * 走这条会话的入口。所以会话连上 ≠ 主应用能执行命令。
      */
     fun onAdbConnected() {
         status = AdbStatus(AdbPhase.PAIRED, "引导会话已连接，正在尝试拉起内置 Shizuku")

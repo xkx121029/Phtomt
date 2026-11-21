@@ -47,8 +47,8 @@ class ShizukuBootstrap(private val context: Context) {
          * 视为"shell 真能执行"的状态机阶段：**只有 READY**。
          *
          * READY 由 Provider 在「内置 Shizuku server 已就绪」时给出。PAIRED / BOOTING 只是无线调试
-         * 会话在手、正在拉起 server——会话本身不能执行命令（shell 只经 Shizuku binder 下发，
-         * 见 Provider 的 ShellBridge.execShizuku）。此前把这两档也算进来，于是"刚配对成功、
+         * 会话在手、正在拉起 server——主应用拿不到走这条会话的执行入口（AIDL 只有 execShizuku /
+         * execTermux，会话在 Provider 内只用于拉起 server）。此前把这两档也算进来，于是"刚配对成功、
          * Shizuku 根本没起来"也被报成已连接：能力快照给 SHELL_ADB=AVAILABLE、授权模式升到 SHIZUKU、
          * 命令派进 execShizuku 后再失败，用户看到的是"已就绪"和一串执行失败。
          */
