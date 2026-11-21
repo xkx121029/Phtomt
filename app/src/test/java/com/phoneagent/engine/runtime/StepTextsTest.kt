@@ -37,7 +37,19 @@ class StepTextsTest {
     fun `中文三态`() {
         assertTrue(StepTexts.lastStepResult(listOf(record(confirmed = true)), PromptLang.CN).startsWith("✅ 已确认成功"))
         assertTrue(StepTexts.lastStepResult(listOf(record(verification = "failed")), PromptLang.CN).startsWith("❌ 未生效"))
-        assertTrue(StepTexts.lastStepResult(listOf(record()), PromptLang.CN).startsWith("⚠️ 已发送但未确认"))
+        assertTrue(StepTexts.lastStepResult(listOf(record()), PromptLang.CN).startsWith("⚠️ 已交付但未确认"))
+    }
+
+    @Test
+    fun `未确认与未见生效是两句不同的话`() {
+        // 「读不到页面」与「看到了没变化」对模型意味着完全不同的下一步：
+        // 一个该等页面可读、一个该换入口。文案若是同一句，模型只能自己猜。
+        val unconfirmed = StepTexts.lastStepResult(listOf(record(verification = "unverified")), PromptLang.CN)
+        val noEffect = StepTexts.lastStepResult(listOf(record(verification = "no_effect")), PromptLang.CN)
+        assertTrue("未确认必须点名「读不到页面」：$unconfirmed", unconfirmed.contains("读不到页面"))
+        assertTrue("未见生效必须点名「页面已读到」：$noEffect", noEffect.contains("页面已读到"))
+        assertTrue("未确认不应被写成未生效：$unconfirmed", !unconfirmed.contains("未见生效"))
+        assertTrue("未见生效不应被写成未确认：$noEffect", !noEffect.contains("未确认"))
     }
 
     @Test
@@ -47,7 +59,7 @@ class StepTextsTest {
             StepTexts.lastStepResult(listOf(record(verification = "failed")), PromptLang.EN)
                 .startsWith("❌ failed"),
         )
-        assertTrue(StepTexts.lastStepResult(listOf(record()), PromptLang.EN).startsWith("⚠️ sent but unverified"))
+        assertTrue(StepTexts.lastStepResult(listOf(record()), PromptLang.EN).startsWith("⚠️ delivered but unconfirmed"))
     }
 
     @Test
