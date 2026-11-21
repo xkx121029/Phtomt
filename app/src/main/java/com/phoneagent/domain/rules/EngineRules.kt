@@ -169,7 +169,24 @@ object EngineRules {
     /** 疑似完成态：确认句 + 状态标签。状态标签只能触发"问用户"，不能触发"跳过动作" */
     private val DONE_STATE_WORDS = CONFIRMATION_WORDS + listOf("已完成", "已提交", "操作成功")
 
-    /** 计算滑动终点（屏幕越界钳制），屏幕尺寸由调用方传入（来源：真实分辨率/快照） */
+    /**
+     * 滑动方向归一化：接受大小写与中文写法（up/UP/向上/上滑…）。
+     * 认不出来返回 null —— 调用方必须当失败处理，绝不能把"没方向"当成"原地不动"。
+     */
+    fun normalizeSwipeDirection(raw: String?): String? = when (raw?.trim()?.lowercase()) {
+        "up", "上", "向上", "上滑" -> "up"
+        "down", "下", "向下", "下滑" -> "down"
+        "left", "左", "向左", "左滑" -> "left"
+        "right", "右", "向右", "右滑" -> "right"
+        else -> null
+    }
+
+    /**
+     * 计算滑动终点（屏幕越界钳制），屏幕尺寸由调用方传入（来源：真实分辨率/快照）。
+     *
+     * 方向认不出时返回 null，**不再退回「起终点相同」**：一次零长手势在系统侧就是定点按压，
+     * 在长按菜单类界面上是纯副作用动作（旧实现 `else -> sx to sy` 正是这条路径）。
+     */
     fun swipeEndpoints(
         x: Int,
         y: Int,
@@ -177,18 +194,18 @@ object EngineRules {
         distanceArg: Int?,
         screenW: Int,
         screenH: Int,
-    ): Pair<Int, Int> {
+    ): Pair<Int, Int>? {
         val vDist = distanceArg?.takeIf { it > 0 } ?: screenH
         val hDist = distanceArg?.takeIf { it > 0 } ?: screenW
         // 起点与终点统一收敛到屏幕内（有效像素 0..size-1），避免越界 1px 或负坐标
         val sx = x.coerceIn(0, screenW - 1)
         val sy = y.coerceIn(0, screenH - 1)
-        return when (direction) {
+        return when (normalizeSwipeDirection(direction)) {
             "up" -> sx to (sy - vDist).coerceIn(0, screenH - 1)
             "down" -> sx to (sy + vDist).coerceIn(0, screenH - 1)
             "left" -> (sx - hDist).coerceIn(0, screenW - 1) to sy
             "right" -> (sx + hDist).coerceIn(0, screenW - 1) to sy
-            else -> sx to sy
+            else -> null
         }
     }
 
