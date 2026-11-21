@@ -37,7 +37,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -76,7 +76,7 @@ import com.phoneagent.ui.icons.AppIcons
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun McpTab(vm: MainViewModel) {
-    val servers by vm.mcpServers.collectAsState()
+    val servers by vm.mcpServers.collectAsStateWithLifecycle()
     var serverName by remember { mutableStateOf("") }
     var serverUrl by remember { mutableStateOf("") }
     var serverToken by remember { mutableStateOf("") }
