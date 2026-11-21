@@ -1249,20 +1249,11 @@ internal class ExecutionCore(
         service: AgentAccessibilityService,
         targetPkg: String,
         before: ScreenSnapshot,
-    ): Boolean? {
-        val beforeFp = PageFingerprint.computeMeaningful(before)
-        var observed = false
-        var waited = 0L
-        while (waited < LAUNCH_SETTLE_MS) {
-            delay(LAUNCH_POLL_MS)
-            waited += LAUNCH_POLL_MS
-            val now = runCatchingLogged(TAG, "启动后轮询截图") { service.captureScreenAsync() }.getOrNull() ?: continue
-            if (now.missingAccessibility) continue
-            observed = true
-            if (now.packageName == targetPkg || PageFingerprint.computeMeaningful(now) != beforeFp) return true
-        }
-        return if (observed) false else null
-    }
+    ): Boolean? = LaunchWatch.watch(
+        capture = { runCatchingLogged(TAG, "启动后轮询截图") { service.captureScreenAsync() }.getOrNull() },
+        targetPkg = targetPkg,
+        before = before,
+    )
 
     /**
      * 启动应用的多通道阶梯（见 [awaitLaunched] 对"静默拦截"的说明）。
@@ -1780,14 +1771,9 @@ internal class ExecutionCore(
         const val DOUBLE_TAP_INTERVAL_MS = 120L
 
         /**
-         * launch 后等待目标页面出现的最长时间（毫秒）。
-         * 从 800ms 提到 1200ms：冷启动普遍超过 800ms，观察窗太短会把"启动成功但还没画出来"
-         * 误判成失败，进而触发不必要的通道切换。轮询一旦确认会立即返回，正常启动不受影响。
+         * launch 后等待目标页面出现的最长时间（毫秒），口径见 [LaunchWatch.SETTLE_MS]。
          */
-        const val LAUNCH_SETTLE_MS = 1200L
-
-        /** launch 后轮询页面是否变化的间隔（毫秒） */
-        const val LAUNCH_POLL_MS = 100L
+        const val LAUNCH_SETTLE_MS = LaunchWatch.SETTLE_MS
 
         /** 合法的包名形态：通道切换拼 shell 命令前必须校验，避免把 AI/解析结果里的任意串拼进命令 */
         val PACKAGE_RE = Regex("^[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)*$")
