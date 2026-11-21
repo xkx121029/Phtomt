@@ -32,7 +32,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,13 +54,30 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 
 /** 对话页本地气泡：role = user | assistant */
-private data class ChatBubble(val role: String, val text: String)
+internal data class ChatBubble(val role: String, val text: String)
 
-/** 气泡列表的进程级保存：拍平成 role/text 对，恢复时再组装 */
-private val ChatBubblesSaver = listSaver<List<ChatBubble>, List<String>>(
-    save = { list -> list.map { listOf(it.role, it.text) } },
-    restore = { flat -> flat.map { ChatBubble(it[0], it[1]) } },
-)
+/**
+ * 对话页的会话状态（气泡 + 同步游标），由 [com.phoneagent.ui.MainViewModel] 持有。
+ *
+ * 气泡数量随会话线性增长，之前整份序列化进 rememberSaveable，等于把整段对话塞进
+ * Bundle；长会话会顶到 Bundle 的 1MB 上限（TransactionTooLargeException）。
+ * 放到 ViewModel 后：跨 Activity 重建（旋转、深浅色切换）存活，且不占 Bundle 一个字节。
+ * 代价是进程被系统回收后页面本地气泡从头开始——引擎对话区里的回答是落盘的，
+ * 由新回答按基线重新起算，与「进程重建后不重复补显历史」的既有策略一致。
+ */
+internal class ChatSessionState {
+    /** 已渲染的气泡（用户提问 + 引擎回答） */
+    var bubbles by mutableStateOf<List<ChatBubble>>(emptyList())
+
+    /** 已消费的回答数（Int.MIN_VALUE = 尚未定基线）；-1 之类真实值不会撞上 */
+    var consumed by mutableIntStateOf(Int.MIN_VALUE)
+
+    /** 上一帧的对话起点，用于识别「新建对话」 */
+    var lastConvStart by mutableLongStateOf(Long.MIN_VALUE)
+
+    /** 等回答中：chat 直答不进引擎 isRunning 态（那是感知/执行链路的旗标），这里用本地旗标 */
+    var awaitingAnswer by mutableStateOf(false)
+}
 
 /**
  * 普通对话页（Superagent 融合 Phase 5）：三形态之一的「纯对话」。
@@ -72,29 +88,26 @@ private val ChatBubblesSaver = listSaver<List<ChatBubble>, List<String>>(
  * 对话页里发一句话不会开启任务执行模式（不设 isRunning、不开悬浮窗 / 跑马灯、
  * 不亮边缘光效）。需要实操手机的请求由直答如实说明，用户到 Agent 页下达。
  *
- * 用户气泡留在页面本地（带进程级保存）：引擎对话区的 user 角色存的是发给模型的
- * 决策 prompt，不适合直接展示，与 Agent 页的理由相同。
+ * 用户气泡不来自引擎，由 [ChatSessionState] 单独记账（ViewModel 持有，不进 Bundle）：
+ * 引擎对话区的 user 角色存的是发给模型的决策 prompt，不适合直接展示，与 Agent 页的理由相同。
  */
 @Composable
 fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val conversation by vm.conversation.collectAsState()
     val conversationStart by vm.conversationStart.collectAsState()
 
-    // 本地气泡：用户提交的提问 + 从引擎对话区消费到的回答
-    var bubbles by rememberSaveable(stateSaver = ChatBubblesSaver) { mutableStateOf(listOf<ChatBubble>()) }
-    // 已消费的回答数（Int.MIN_VALUE = 尚未定基线）；-1 之类真实值不会撞上
-    var consumed by rememberSaveable { mutableIntStateOf(Int.MIN_VALUE) }
-    var lastConvStart by rememberSaveable { mutableLongStateOf(Long.MIN_VALUE) }
-    // 等回答中：chat 直答不进引擎 isRunning 态（那是感知/执行链路的旗标），这里用本地旗标
-    var awaitingAnswer by rememberSaveable { mutableStateOf(false) }
+    // 本地气泡：用户提交的提问 + 从引擎对话区消费到的回答。
+    // 寄存在 ViewModel 里而不是 rememberSaveable：见 ChatSessionState 的注释。
+    val session = vm.chatSession
+    val bubbles = session.bubbles
 
     // 新建对话（对话区起点变化）→ 本地气泡清空重新计
     LaunchedEffect(conversationStart) {
-        if (lastConvStart != Long.MIN_VALUE && lastConvStart != conversationStart) {
-            bubbles = emptyList()
-            consumed = Int.MIN_VALUE
+        if (session.lastConvStart != Long.MIN_VALUE && session.lastConvStart != conversationStart) {
+            session.bubbles = emptyList()
+            session.consumed = Int.MIN_VALUE
         }
-        lastConvStart = conversationStart
+        session.lastConvStart = conversationStart
     }
 
     // 引擎对话区新增的 assistant 回答（chat 直答写入的那份）追加为本页气泡。
@@ -103,22 +116,25 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val answers = conversation.filter { it.role == "assistant" && it.timestamp >= conversationStart }
     LaunchedEffect(answers.size) {
         when {
-            consumed == Int.MIN_VALUE || answers.size < consumed -> consumed = answers.size
-            answers.size > consumed -> {
-                bubbles = bubbles + answers.subList(consumed, answers.size)
+            session.consumed == Int.MIN_VALUE || answers.size < session.consumed ->
+                session.consumed = answers.size
+
+            answers.size > session.consumed -> {
+                session.bubbles = session.bubbles + answers.subList(session.consumed, answers.size)
                     .map { ChatBubble(role = "assistant", text = it.content) }
-                consumed = answers.size
-                awaitingAnswer = false
+                session.consumed = answers.size
+                session.awaitingAnswer = false
             }
         }
     }
 
     var draft by rememberSaveable { mutableStateOf("") }
+    // 滚动位置由 rememberLazyListState 自带的 saver 走 Bundle（只有两个 Int，和气泡数量无关）
     val listState = rememberLazyListState()
     val buzz = rememberHapticClick()
 
     // 新气泡或等待回答中 → 贴底
-    LaunchedEffect(bubbles.size, awaitingAnswer) {
+    LaunchedEffect(bubbles.size, session.awaitingAnswer) {
         if (bubbles.isNotEmpty()) listState.animateScrollToItem(bubbles.size - 1)
     }
 
@@ -126,9 +142,9 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
         val text = draft.trim()
         if (text.isEmpty()) return
         buzz()
-        bubbles = bubbles + ChatBubble(role = "user", text = text)
+        session.bubbles = session.bubbles + ChatBubble(role = "user", text = text)
         draft = ""
-        awaitingAnswer = true
+        session.awaitingAnswer = true
         vm.submitChatTurn(text)
     }
 
@@ -166,7 +182,7 @@ fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                         }
                     }
                     // 回答生成中：chat 直答一次性落库，先给一条呼吸占位
-                    if (awaitingAnswer) {
+                    if (session.awaitingAnswer) {
                         item(key = "thinking") {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(

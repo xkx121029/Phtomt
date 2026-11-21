@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,8 @@ import kotlinx.coroutines.delay
  *
  * 必须挂在与 LazyColumn **同层**的 Box 里，不能放进列表项：
  * 内部是 500ms 轮询取帧，列表回收/重排会反复重启轮询并泄漏帧。
+ * 位图所有权：每帧都是调用方独占的拷贝，因此只保留「当前 + 上一帧」两张，
+ * 上一帧在下一帧到达时回收；面板收起时两张一起回收。
  */
 @Composable
 internal fun AgentPreviewPanel(
@@ -62,11 +65,50 @@ internal fun AgentPreviewPanel(
 ) {
     val colors = AppTheme.colors
     var frame by remember { mutableStateOf<Bitmap?>(null) }
+    // 刚被换下的上一帧。回收推迟一个轮询周期，理由见轮询里的注释。
+    var staleFrame by remember { mutableStateOf<Bitmap?>(null) }
+
+    // 500ms 轮询，但只在捕获线程真的产出新帧时才取图、才写 state：
+    // 屏幕没动的时候，连那一次整屏 ARGB 拷贝都不做（previewFrame 每次都拷一整屏）。
     LaunchedEffect(Unit) {
+        var lastSeq = Long.MIN_VALUE
+        var lastService: ScreenSharingService? = null
         while (true) {
-            runCatching { ScreenSharingService.instance?.previewFrame() }
-                .getOrNull()?.let { frame = it }
+            val service = ScreenSharingService.instance
+            if (service == null) {
+                // 服务断开：重连后 frameSeq 会从 0 重来，旧序号必须丢掉，否则会一直等一个更大的序号
+                lastSeq = Long.MIN_VALUE
+                lastService = null
+            } else {
+                if (service !== lastService) {
+                    lastSeq = Long.MIN_VALUE
+                    lastService = service
+                }
+                val seq = service.previewFrameSeq()
+                if (seq != lastSeq) {
+                    val next = runCatching { service.previewFrame() }.getOrNull()
+                    if (next != null) {
+                        lastSeq = seq
+                        // previewFrame 返回的是调用方独占的拷贝（服务自己那份留在锁里），
+                        // 本面板拿到的每一帧都没有第二个持有者，可以放心回收。
+                        // 但仍推迟一个周期才 recycle：上一帧可能还挂在刚提交的绘制指令上，
+                        // 立刻回收会撞 use-after-recycle。代价是常驻最多两帧整屏位图。
+                        staleFrame?.recycle()
+                        staleFrame = frame
+                        frame = next
+                    }
+                }
+            }
             delay(500)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            // 面板收起时把手上这两帧一起还掉，不留一份悬空的全屏位图
+            frame?.recycle()
+            staleFrame?.recycle()
+            frame = null
+            staleFrame = null
         }
     }
 
