@@ -1,13 +1,17 @@
-package com.phoneagent.engine.execution
+package com.phoneagent.domain.rules
 
 /**
  * 点击目标的危险词判定：标签落在不可逆语义里时，执行前必须过用户确认门。
  *
- * 为什么需要这一层：确认门本身是硬的（ExecutionPhase 里 awaitActionConfirmation + 120s 超时），
+ * 为什么需要这一层：确认门本身是硬的（UserGate.awaitActionConfirmation + 120s 超时），
  * 但置位它的只有语义意图——`intent=delete/send/confirm` 与能力注册表的 needsConfirmation。
  * 模型完全可以用最通用的 `tap`（按文字/控件 id 定位）绕开这些意图去点「删除」：那条路上
  * needsUserConfirmation 是 false，门根本不会被问。所以这里按标签再做一次兜底判定，
  * 与意图无关——不管模型从哪条路走到这一下点击，只要标签是危险的就必须问用户。
+ *
+ * 放在 `domain/rules` 而不是执行层：词表是纯领域知识、零依赖，幂等判据（[EngineRules]）
+ * 与派发层闸门（`engine.execution.DangerousTargetGate`）都要用同一份，谁也不能各写一张。
+ * 浏览器护栏（`feature.browser.BrowserGuard`）也从这里取浏览器档（[browserCn] / [browserEn]）。
  *
  * 词表取舍（可维护：只改下面几个常量）：
  * - 只收「点下去就可能丢数据 / 花钱 / 发出去收不回」的词，不收可逆或纯导航的词
@@ -16,16 +20,21 @@ package com.phoneagent.engine.execution
  *   「确认下单」「立即下单」同理被「下单」覆盖。
  * - 「付款」覆盖「立即付款 / 去付款」；但**不收**笼统的「支付」，
  *   否则设置页的「支付方式」这类纯导航入口也会被确认。
- * - 分档的依据是「豁免语境不同」，所以是三张表而不是一张：
+ * - 分档的依据是「豁免语境不同」，所以中文是三张表而不是一张：
  *   - [IRREVERSIBLE]：点下去就回不来，没有语境例外。
  *   - [BULK_CLEAR]：绝大多数是批量抹数据，少数是界面复位（清空输入框）→ 由 [BULK_CLEAR_CONTEXT] 豁免。
  *     这张语境表里**没有**「记录/历史」：「清空聊天记录」「清除历史记录」必须继续被问。
  *   - [SUBMIT]：发出去、提交成功就产生真实后果（消息进对话、订单成立），但它们也大量出现在
  *     纯导航标签里（「发送记录」「结算中心」「购买明细」）→ 由 [SUBMIT_NAV_CONTEXT] 豁免。
  *     「发送草稿箱」**不在**豁免之列：草稿一发出去和朋友手滑发出去一样收不回。
- * - 英文词单独一档，按**词边界**匹配：`by=id` 的控件名常常是英文（`send` / `checkout`），
- *   纯中文表完全看不见它们；用词边界而不是子串，才不会把 `sender` / `postcode` / `payment`
- *   当成 `send` / `post` / `pay`。英文的导航豁免同口径（"Post settings" / "Send history"）。
+ * - **英文半边与中文半边一一对应**，走 [WordMatch] 的**左词边界**：`by=id` 的控件名常常是英文
+ *   （`send` / `checkout`），纯中文表完全看不见它们；用词边界而不是子串，才不会把
+ *   `sender` / `postcode` / `resend` 当成 `send` / `post`。英文的导航豁免与中文同口径
+ *   （"Post settings" / "Send history"）。
+ *   **刻意不收右边界**：`#deleteComment`、`DeleteAccountButton` 这类驼峰命名要保留从宽拦截，
+ *   所以 `confirmed` 也会命中 `confirm`——安全方向上宁可多问一句，不可漏放一次。
+ * - 浏览器严格档（[BROWSER_ONLY_CN] / [BROWSER_ONLY_EN]）单独一档：网页里点下去就生效、
+ *   但在 App 里属于纯导航的词（「支付方式」是设置页入口）只进浏览器表，不进 [IRREVERSIBLE]。
  */
 internal object DangerousTargetWords {
 
@@ -49,21 +58,29 @@ internal object DangerousTargetWords {
         "记录", "明细", "设置", "中心", "状态", "历史", "详情", "说明", "规则", "列表", "管理",
     )
 
-    /** 英文不可逆词：`by=id` 的英文控件名不会命中上面的中文表 */
-    private val IRREVERSIBLE_EN = listOf(
-        "send", "post", "publish", "pay", "checkout", "confirm", "delete", "purchase",
+    /**
+     * 英文不可逆词：逐条对应中文的 [IRREVERSIBLE]，再加上 [SUBMIT] 里"发出去就收不回"的那几个。
+     *
+     * 刻意包含 `payment`：英文没有中文那种"不收笼统的支付以避开「支付方式」"的收窄手段
+     * （`Payment method` 确实以 payment 打头），所以宁可多问一句。
+     */
+    val IRREVERSIBLE_EN = listOf(
+        "delete", "remove", "uninstall", "format", "factory reset", "transfer",
+        "pay", "payment", "place order", "submit order", "buy", "purchase",
+        "send", "post", "publish", "checkout", "confirm",
     )
 
-    /** 英文导航语境：与中文侧同口径的豁免 */
+    /** 英文导航语境：与中文 [SUBMIT_NAV_CONTEXT] 同口径的豁免 */
     private val SUBMIT_NAV_EN = listOf(
         "setting", "settings", "record", "records", "history", "status", "detail", "details",
         "info", "preference", "preferences", "list",
     )
 
-    /** 词边界匹配（大小写不敏感）：`sender` / `postcode` / `payment` 不算 `send` / `post` / `pay` */
-    private val EN_WORDS = Regex("\\b(" + IRREVERSIBLE_EN.joinToString("|") + ")\\b", RegexOption.IGNORE_CASE)
+    /** 英文批量抹除词：同 [BULK_CLEAR] */
+    val BULK_CLEAR_EN = listOf("clear", "erase")
 
-    private val EN_NAV_WORDS = Regex("\\b(" + SUBMIT_NAV_EN.joinToString("|") + ")\\b", RegexOption.IGNORE_CASE)
+    /** 英文可逆语境：同 [BULK_CLEAR_CONTEXT]，让 "Clear filter" 不被拦 */
+    private val BULK_CLEAR_CONTEXT_EN = listOf("input", "filter", "draft", "keyword")
 
     // ---- 浏览器通道（BrowserGuard）的词表：唯一定义点 ----
     /**
@@ -86,13 +103,15 @@ internal object DangerousTargetWords {
     val browserCn: List<String> = (BROWSER_ONLY_CN + IRREVERSIBLE + BULK_CLEAR + SUBMIT).distinct()
 
     /** 浏览器通道的英文词表全集（同上：严格档在前，再并上引擎侧英文词） */
-    val browserEn: List<String> = (BROWSER_ONLY_EN + IRREVERSIBLE_EN).distinct()
+    val browserEn: List<String> = (BROWSER_ONLY_EN + IRREVERSIBLE_EN + BULK_CLEAR_EN).distinct()
 
     private fun containsAny(label: String, words: List<String>): Boolean = words.any { label.contains(it) }
 
     /**
      * @return 命中的危险词（供日志与确认框说明用）；标签安全或为空时返回 null
      */
+    // 五档（中文不可逆 / 批量抹除 / 提交 / 英文批量抹除 / 英文不可逆）各自早退最贴近判据表
+    @Suppress("ReturnCount")
     fun hit(targetLabel: String?): String? {
         val label = targetLabel?.trim().orEmpty()
         if (label.isEmpty()) return null
@@ -104,7 +123,11 @@ internal object DangerousTargetWords {
         SUBMIT.firstOrNull { label.contains(it) }
             ?.takeUnless { containsAny(label, SUBMIT_NAV_CONTEXT) }
             ?.let { return it }
-        if (EN_NAV_WORDS.containsMatchIn(label)) return null
-        return EN_WORDS.find(label)?.groupValues?.get(1)?.lowercase()
+        WordMatch.hit(label, BULK_CLEAR_EN)
+            ?.takeUnless { WordMatch.hit(label, BULK_CLEAR_CONTEXT_EN) != null }
+            ?.let { return it }
+        // 英文导航豁免与中文提交档同口径：「Send history」「Checkout detail」只是查看入口
+        if (WordMatch.hit(label, SUBMIT_NAV_EN) != null) return null
+        return WordMatch.hit(label, IRREVERSIBLE_EN)
     }
 }

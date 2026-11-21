@@ -193,6 +193,87 @@ class EngineRulesTest {
         )
     }
 
+    // ---- 真实控件标签：坐标点击与英文界面都必须被判为有副作用（HAPP-35 P1-4）----
+
+    @Test
+    fun `英文发送按钮_判为有副作用`() {
+        assertTrue(EngineRules.isFinalSubmit(action("tap", "Send"), "tap"))
+        assertTrue(EngineRules.isFinalSubmit(action("tap", "Delete"), "tap"))
+        assertTrue(EngineRules.isFinalSubmit(action("tap", "Place order"), "tap"))
+        assertTrue(EngineRules.isIrreversible(action("tap", "Delete"), "tap"))
+    }
+
+    @Test
+    fun `英文词按左词边界匹配_不误伤border与resend`() {
+        // 子串匹配会把这两个普通控件当成不可逆操作，那等于给每次普通点击加确认
+        assertFalse(EngineRules.isFinalSubmit(action("tap", "Border color"), "tap"))
+        assertFalse(EngineRules.isIrreversible(action("tap", "Resend code"), "tap"))
+    }
+
+    @Test
+    fun `payment开头也算命中_宁可多问一句`() {
+        // 英文没有中文表那种「不收笼统的支付」的收窄手段（"Payment method" 确实以 payment 开头）。
+        // 这里接受"多问一句"：漏放一次删除/支付的代价远高于多确认一次设置页入口。
+        assertTrue(EngineRules.isFinalSubmit(action("tap", "Payment method"), "tap"))
+    }
+
+    @Test
+    fun `坐标点击_用真实控件文字判为有副作用`() {
+        // 坐标点击的动作里没有 target（转译层拿不到元素就不填），旧判据只看到 null
+        val tap = AgentAction(type = ActionType.TAP, x = 500, y = 760)
+        assertNull("前提：坐标点击没有 target", tap.target)
+        assertFalse("没有真实标签时确实判不出来（这就是旧行为的缺口）", EngineRules.isFinalSubmit(tap, "tap"))
+        val snap = snapshotOf(
+            UiElement(
+                index = 7, className = "android.widget.Button", type = "Button", text = "Delete",
+                x = 500, y = 760, left = 400, top = 700, right = 600, bottom = 820, clickable = true,
+            ),
+        )
+        val label = EngineRules.targetLabelOf(tap, snap)
+        assertEquals("Delete", label)
+        assertTrue("坐标点击拿到真实标签后必须判为有副作用", EngineRules.isFinalSubmit(tap, "tap", label))
+        assertTrue(EngineRules.isIrreversible(tap, "tap", label))
+    }
+
+    @Test
+    fun `元素索引优先_snapshot里的真实文字压过模型自报`() {
+        // by=hint 时 AI 的说法未必等于屏幕上的字
+        val tap = AgentAction(
+            type = ActionType.TAP,
+            elementIndex = 3,
+            target = ActionTarget(method = "label", value = "那个按钮"),
+        )
+        val snap = snapshotOf(
+            UiElement(
+                index = 3, className = "android.widget.Button", type = "Button", text = "Delete",
+                x = 10, y = 20, left = 0, top = 0, right = 20, bottom = 40, clickable = true,
+            ),
+        )
+        assertEquals("Delete", EngineRules.targetLabelOf(tap, snap))
+    }
+
+    @Test
+    fun `坐标点击_取包含该点的最小控件`() {
+        // 整页容器也包含这个点，取最小才不会拿到整页标题
+        val snap = snapshotOf(
+            UiElement(
+                index = 0, className = "android.widget.FrameLayout", type = "Container", text = "设置",
+                x = 540, y = 1200, left = 0, top = 0, right = 1080, bottom = 2400,
+            ),
+            UiElement(
+                index = 1, className = "android.widget.Button", type = "Button", text = "Delete",
+                x = 500, y = 760, left = 400, top = 700, right = 600, bottom = 820, clickable = true,
+            ),
+        )
+        assertEquals("Delete", EngineRules.targetLabelOf(AgentAction(type = ActionType.TAP, x = 500, y = 760), snap))
+    }
+
+    private fun snapshotOf(vararg elements: UiElement) = ScreenSnapshot(
+        elements = elements.toList(),
+        screenWidth = 1080,
+        screenHeight = 2400,
+    )
+
     // ---- swipeEndpoints ----
 
     @Test

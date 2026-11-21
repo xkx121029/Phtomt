@@ -1,5 +1,6 @@
 package com.phoneagent.feature.browser
 
+import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.IntentType
@@ -25,10 +26,14 @@ class BrowserChannelTest {
         val calls = mutableListOf<String>()
         var result: BrowseResult = BrowseResult(true, "ok")
 
+        /** 脚本侧探针（guard=true）单独可配：用来模拟"元素真实文字命中词表"的那条分支 */
+        var probeResult: BrowseResult? = null
+
         override suspend fun open(url: String): BrowseResult { calls += "open:$url"; return result }
         override suspend fun read(): BrowseResult { calls += "read"; return result }
         override suspend fun click(by: String, value: String, guard: Boolean): BrowseResult {
-            calls += "click:$by=$value,guard=$guard"; return result
+            calls += "click:$by=$value,guard=$guard"
+            return if (guard) probeResult ?: result else result
         }
         override suspend fun input(by: String, value: String, text: String): BrowseResult {
             calls += "input:$by=$value=$text"; return result
@@ -42,8 +47,18 @@ class BrowserChannelTest {
         }
     }
 
-    private fun channel(readOnly: Boolean, executor: FakeExecutor) =
-        BrowserChannel(readOnly = { readOnly }, executor = executor)
+    private fun channel(
+        readOnly: Boolean,
+        executor: FakeExecutor,
+        onConfirm: (AgentAction) -> Boolean = { true },
+    ) = BrowserChannel(
+        readOnly = { readOnly },
+        confirm = { action -> confirms += action; onConfirm(action) },
+        executor = executor,
+    )
+
+    /** 每次落到确认门上的动作（断言"问了没问""问的是不是那个目标"） */
+    private val confirms = mutableListOf<AgentAction>()
 
     private fun click(value: String, by: String = "text", needsConfirmation: Boolean = false) = AgentIntent(
         intent = IntentType.BROWSE_CLICK,
@@ -180,6 +195,64 @@ class BrowserChannelTest {
         assertEquals(listOf("wait:text=加载完成,5000"), ex.calls)
     }
 
+    // ---- 均衡档（默认）：命中不可逆词走确认，不直接执行、也不直接拒绝 ----
+
+    @Test
+    fun 均衡档_命中不可逆词_先确认再执行() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex, onConfirm = { true }).execute(click("确认支付 23.00"))
+        assertTrue("用户允许后才算成功：$out", out is BrowserChannel.Outcome.Ok)
+        assertEquals("确认门必须被问到：$confirms", 1, confirms.size)
+        assertTrue(
+            "确认框里要能看出点的是哪个目标：${confirms.single().target}",
+            confirms.single().target?.value == "确认支付 23.00",
+        )
+        assertTrue("确认通过后必须真的点下去：${ex.calls}", ex.calls.any { it.startsWith("click:text=确认支付 23.00") })
+    }
+
+    @Test
+    fun 均衡档_用户拒绝_一步不落地并回报已取消() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(false, ex, onConfirm = { false }).execute(click("确认支付 23.00"))
+        assertTrue("用户拒绝不能算成功，也不能算端侧拒绝：$out", out is BrowserChannel.Outcome.Cancelled)
+        assertTrue((out as BrowserChannel.Outcome.Cancelled).reason.contains("确认支付 23.00"))
+        assertTrue("用户拒绝后必须一步都不派发：${ex.calls}", ex.calls.isEmpty())
+    }
+
+    @Test
+    fun 均衡档_脚本探针命中元素真实文字_确认后才派发且不再带探针() = runTest {
+        val ex = FakeExecutor()
+        // AI 给的文字不含危险词（真实场景：按序号/泛词定位到「确认支付」），端侧那层看不见，
+        // 只有脚本对元素真实文字探测才能发现
+        ex.probeResult = BrowseResult(false, "命中不可逆词表", refused = true)
+        val out = channel(false, ex, onConfirm = { true }).execute(click("第二条"))
+        assertTrue("确认后应真正点下去：$out", out is BrowserChannel.Outcome.Ok)
+        assertEquals(1, confirms.size)
+        assertEquals(
+            "探针只判定不派发，确认后必须换成不注入探针的那次真正派发",
+            listOf("click:text=第二条,guard=true", "click:text=第二条,guard=false"),
+            ex.calls,
+        )
+    }
+
+    @Test
+    fun 均衡档_脚本探针命中且用户拒绝_不派发() = runTest {
+        val ex = FakeExecutor()
+        ex.probeResult = BrowseResult(false, "命中不可逆词表", refused = true)
+        val out = channel(false, ex, onConfirm = { false }).execute(click("第二条"))
+        assertTrue(out is BrowserChannel.Outcome.Cancelled)
+        assertEquals(listOf("click:text=第二条,guard=true"), ex.calls)
+    }
+
+    @Test
+    fun 只读模式_命中不可逆词_直接拒绝且不询问() = runTest {
+        val ex = FakeExecutor()
+        val out = channel(true, ex, onConfirm = { true }).execute(click("确认支付 23.00"))
+        assertTrue(out is BrowserChannel.Outcome.Refused)
+        assertTrue("只读档是拒绝语义，不该降级成问一句：$confirms", confirms.isEmpty())
+        assertTrue(ex.calls.isEmpty())
+    }
+
     // ---- 只读护栏：该放行的放行 ----
 
     @Test
@@ -201,12 +274,13 @@ class BrowserChannelTest {
     }
 
     @Test
-    fun 非只读模式_不可逆目标也放行且不开启脚本探针() = runTest {
+    fun 非只读模式_普通目标_不询问且探针照常注入() = runTest {
         val ex = FakeExecutor()
-        val out = channel(false, ex).execute(click("确认支付"))
+        val out = channel(false, ex).execute(click("下一页"))
         assertTrue(out is BrowserChannel.Outcome.Ok)
-        // guard=false：非只读模式下无需注入词表探针
-        assertEquals(listOf("click:text=确认支付,guard=false"), ex.calls)
+        // 探针在所有档位都注入：它只在内存里判定，命中才上报，不命中不影响派发
+        assertEquals(listOf("click:text=下一页,guard=true"), ex.calls)
+        assertTrue("普通目标不该打扰用户：$confirms", confirms.isEmpty())
     }
 
     @Test

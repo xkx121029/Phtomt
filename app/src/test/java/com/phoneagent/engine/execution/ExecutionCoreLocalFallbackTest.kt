@@ -64,6 +64,8 @@ class ExecutionCoreLocalFallbackTest {
         ctx = mockk<ContextInjector>(relaxed = true),
         recordExecMs = {},
         observe = { page() },
+        // 本测试只关心通道回退，不涉及不可逆目标；显式拒绝会让相关动作直接被拦，等于掩盖被测行为
+        confirmIrreversible = { true },
     )
 
     @Test

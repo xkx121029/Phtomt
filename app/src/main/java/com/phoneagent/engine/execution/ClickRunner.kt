@@ -40,10 +40,15 @@ import kotlinx.coroutines.delay
  * 确认用**短轮询**（见 [VERIFY_DELAYS_MS]，与 [VerifyTiming] 同源）：响应快的页面一取样就能确认，
  * 不必无论快慢都干等；慢页面（动画/网络）也仍有观察窗。
  */
-class ClickRunner(
+internal class ClickRunner(
     private val service: AgentAccessibilityService,
     private val executor: ActionExecutor,
     private val resolver: IntentResolver,
+    /**
+     * 派发前的危险目标闸门（[DangerousTargetGate]）：本流水线是"这一下到底落到谁身上"的唯一知情者，
+     * 判据必须挂在这里才读得到真实控件。必填——不给默认值，避免出现"哪条调用漏了闸门"的静默旁路。
+     */
+    private val gate: DangerousTargetGate,
     /** 执行日志出口：接到引擎的 AgentLog 上，出现"点错位置"时靠它分清是选错控件还是坐标算错 */
     private val logger: (String) -> Unit = {},
 ) {
@@ -109,6 +114,16 @@ class ClickRunner(
                 "当前页面($pkg)没有控件($targetName)：目标应用若未打开，先 launch 到该应用再操作，禁止点击不存在的控件",
                 "", "",
             )
+        }
+
+        // 派发前第一道闸门：已经定位到目标控件时，先问"这个控件是不是不可逆的"。
+        // 这里传 hit=null（手势还没派发，探针没跑过）。正因为"没跑过"与"跑了但读不到"
+        // 在入参上无法区分，只有真的拿到了 element/selector 时才能过这道——
+        // 纯坐标动作一律留给下面第 ② 步的落点探针，否则所有坐标点击都会被问一次。
+        if (element != null || selector != null) {
+            gate.check(action, element, selector, null)?.let {
+                return VerifyResult(false, it, "", "")
+            }
         }
 
         // 记下"命中了哪个控件、bounds 是多少"，出现"点错位置"时靠这一行就能分清是选错控件还是坐标算错
@@ -184,6 +199,11 @@ class ClickRunner(
                 "$verb (${point.first}, ${point.second})：$name" +
                     (hit?.let { "；落点命中 ${it.describe()}" } ?: "；该点下读不到控件（按坐标盲点）"),
             )
+            // 派发前第二道闸门：落点探针已经问清"这一下会落到谁身上"，这才是最强证据——
+            // AI 给的文字（甚至 AI 给的坐标）都不如它；坐标点击只有这一道能看见真实控件
+            gate.check(action, element, selector, hit)?.let {
+                return VerifyResult(false, it, "", "")
+            }
             val dispatched = if (longClick) {
                 executor.longClick(point.first, point.second, holdMs)
             } else {

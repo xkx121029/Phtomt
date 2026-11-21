@@ -1,7 +1,7 @@
 package com.phoneagent.feature.browser
 
 import com.phoneagent.core.text.HtmlToMarkdown
-import com.phoneagent.engine.execution.DangerousTargetWords
+import com.phoneagent.domain.rules.DangerousTargetWords
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

@@ -78,7 +78,18 @@ internal class ExecutionCore(
      * 返回 null（引擎尚未读到）时回退到实时读取，行为与改造前一致。
      */
     private val settingsSnapshot: () -> AppSettings.Settings? = { null },
+    /**
+     * 不可逆动作确认门（生产即 [com.phoneagent.engine.runtime.UserGate.awaitActionConfirmation]）。
+     * 危险目标判据下沉到派发层后由 [DangerousTargetGate] 调用它，与执行阶段那道门是同一个。
+     * 必填：不给默认值——默认值无论是"总是允许"还是"总是拒绝"都在偷偷改变安全语义。
+     */
+    private val confirmIrreversible: suspend (AgentAction) -> Boolean,
 ) {
+
+    /** 派发前的危险目标闸门：点击/长按在 [ClickRunner] 里过，滑动在本类里过，判据只有这一份 */
+    private val dangerGate = DangerousTargetGate(confirmIrreversible) { msg ->
+        ui.log(AgentLog.Level.INFO, msg)
+    }
     /** 当前执行通道偏好：优先用任务级快照，读不到再回退 DataStore */
     private suspend fun channelPreference(): String =
         settingsSnapshot()?.executionChannel ?: settings.settings.first().executionChannel
@@ -259,10 +270,10 @@ internal class ExecutionCore(
             ActionType.CLICK, ActionType.TAP ->
                 // 点击走专门的流水线：活节点直点 → 手势点最新位置 → 快照坐标 → 滚动查找，
                 // 每步分层确认（控件自身状态 → 整页指纹），失败原因里带前台应用与缺失控件
-                ClickRunner(service, executor, intentResolver) { msg -> ui.log(AgentLog.Level.INFO, msg) }
+                ClickRunner(service, executor, intentResolver, dangerGate) { msg -> ui.log(AgentLog.Level.INFO, msg) }
                     .run(action, snapshot, longClick = false)
             ActionType.LONG_CLICK, ActionType.LONG_PRESS ->
-                ClickRunner(service, executor, intentResolver) { msg -> ui.log(AgentLog.Level.INFO, msg) }
+                ClickRunner(service, executor, intentResolver, dangerGate) { msg -> ui.log(AgentLog.Level.INFO, msg) }
                     .run(action, snapshot, longClick = true)
             ActionType.SWIPE -> {
                 // swipe 常为纯手势（无 target），缺少坐标时按方向给起点：
@@ -282,8 +293,17 @@ internal class ExecutionCore(
                     VerifyResult(false, "swipe 缺少有效方向：direction 只能是 up/down/left/right（当前：${action.direction}）", "", "")
                 } else {
                     val (ex, ey) = endpoints
-                    verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey,
-                        GestureBudget.swipeMs(action.durationMs)).isSuccess() }
+                    // 派发前过危险目标闸门：判据看的是**手指落点下的那个控件**，不是"滑动"这个手势本身
+                    // （滑动多数时候只是滚动页面，把"滑动"当危险信号会让每次翻页都弹确认）。
+                    val denied = dangerGate.check(action, target, null, executor.hitTest(px, py))
+                    if (denied != null) {
+                        VerifyResult(false, denied, "", "")
+                    } else {
+                        verifier.executeAndVerify(baseline) {
+                            executor.swipe(px, py, ex, ey,
+                                GestureBudget.swipeMs(action.durationMs)).isSuccess()
+                        }
+                    }
                 }
             }
             ActionType.SWIPE_UP -> {
