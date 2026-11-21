@@ -54,4 +54,36 @@ class ShellFallbackPolicyTest {
         assertFalse(ShellFallbackPolicy.judge("   ", "fp-after").confirmed)
         assertFalse(ShellFallbackPolicy.judge("fp-before", "  ").confirmed)
     }
+
+    @Test
+    fun `兜底后读不到页面_结构上标为未确认`() {
+        val verdict = ShellFallbackPolicy.judge("fp-before", null)
+
+        assertFalse(verdict.confirmed)
+        assertTrue("「没看见」必须与「看见了没变化」在结构上分开：$verdict", verdict.unconfirmed)
+    }
+
+    @Test
+    fun `兜底前读不到页面_同样按未确认处理`() {
+        val verdict = ShellFallbackPolicy.judge(null, "fp-after")
+
+        assertTrue("没有基准不等于没生效，只是没资格下结论：$verdict", verdict.unconfirmed)
+    }
+
+    @Test
+    fun `页面没变化_是看到了没生效而不是未确认`() {
+        val verdict = ShellFallbackPolicy.judge("fp-before", "fp-before")
+
+        assertFalse(verdict.confirmed)
+        assertFalse("读到了页面就有证据，不能标成未确认：$verdict", verdict.unconfirmed)
+    }
+
+    @Test
+    fun `确认生效时_既不是未确认也不带未确认后缀`() {
+        val verdict = ShellFallbackPolicy.judge("fp-before", "fp-after")
+
+        assertTrue(verdict.confirmed)
+        assertFalse(verdict.unconfirmed)
+        assertFalse(verdict.suffix.contains("未能确认"))
+    }
 }

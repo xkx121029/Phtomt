@@ -306,8 +306,26 @@ internal object ClockVerification {
 
 /** 一次时钟降级的执行结果 */
 internal sealed interface ClockOutcome {
-    /** 已交付（[verified] 表示是否拿到回执/回查证据） */
-    data class Done(val kind: ClockFallbackKind, val message: String, val verified: Boolean) : ClockOutcome
+    /**
+     * 已交付。[verified] 表示是否拿到回执/回查证据；[unconfirmed] 表示**派发了但读不到时钟数据**。
+     *
+     * 二者过去折叠成一个布尔，于是「没看见」和「看见了没设成」在结构化结果里是同一个值——
+     * 回注给 AI 的下一步提示只有「页面没有预期变化」这一种，对已派发的闹钟就是引导重复设置。
+     */
+    data class Done(
+        val kind: ClockFallbackKind,
+        val message: String,
+        val verified: Boolean,
+        val unconfirmed: Boolean = false,
+    ) : ClockOutcome {
+        /** 结构化交付结论：拿到回执 / 读不到回执 / 读到了但没设成，三者不折叠 */
+        val delivery: Delivery
+            get() = when {
+                verified -> Delivery.EFFECTIVE
+                unconfirmed -> Delivery.DELIVERED_UNCONFIRMED
+                else -> Delivery.DELIVERED_NO_EFFECT
+            }
+    }
 
     /** 只把用户带到时钟页，需要用户手动完成 */
     data class Manual(val message: String) : ClockOutcome
@@ -432,6 +450,7 @@ internal class ClockFallbackRunner(
                                     verified = false,
                                 ),
                                 verified = false,
+                                unconfirmed = true,
                             )
                         }
                     }
