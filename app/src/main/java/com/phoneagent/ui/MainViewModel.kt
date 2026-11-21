@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.vm.DocumentDelegate
+import com.phoneagent.ui.vm.McpDelegate
 import com.phoneagent.ui.vm.SettingsDelegate
 import com.phoneagent.ui.vm.SkillDelegate
 import com.phoneagent.ui.vm.TestDelegate
@@ -207,15 +208,6 @@ class MainViewModel(
     // ---- 悬浮窗交互桥接：气泡窗按钮动作转发到引擎 ----
     // 注册动作在 AgentEngine.init 里（引擎是单例，注册生命周期必须跟引擎走）：
     // 旧实现挂在这里，界面一销毁回调就被清空，后台任务在悬浮窗上点「停止 / 批准」会没反应。
-    init {
-        // 启动时加载持久化的 MCP 服务器配置
-        viewModelScope.launch {
-            val saved = mcpStore.load()
-            if (saved.isNotEmpty() || mcpManager.servers.isNotEmpty()) {
-                mcpManager.replaceAll(saved)
-            }
-        }
-    }
 
     override fun onCleared() {
         // 只做解绑，不停任务：引擎是 Koin 单例，任务生命周期不归界面管。
@@ -924,53 +916,33 @@ class MainViewModel(
 
     fun exportSkills(): String = skillDomain.exportSkills()
 
-    // ---- MCP 服务器（观察可变管理器，配置变更后持久化） ----
-    val mcpServers: StateFlow<List<McpServerConfig>> = mcpManager.serversFlow
+    // ---- MCP 服务器域：实现在 [McpDelegate] ----
+    private val mcpDomain = McpDelegate(mcpManager, mcpStore, skillRegistry, viewModelScope) { skillDomain.refreshSkills() }
 
-    /** 变更后把服务器列表持久化到本地 */
-    private fun persistMcpServers() {
-        viewModelScope.launch { mcpStore.save(mcpManager.servers) }
-    }
+    val mcpServers: StateFlow<List<McpServerConfig>> get() = mcpDomain.mcpServers
 
     /** 新增 MCP 服务器；返回空串=成功，否则返回校验失败原因 */
-    fun addMcpServer(name: String, url: String, token: String = ""): String {
-        val v = mcpManager.addServer(McpServerConfig(name = name.trim(), url = url.trim(), token = token.trim()))
-        if (!v.ok) return v.reason
-        persistMcpServers()
-        return ""
-    }
+    fun addMcpServer(name: String, url: String, token: String = ""): String = mcpDomain.addMcpServer(name, url, token)
 
-    fun removeMcpServer(name: String) {
-        if (mcpManager.removeServer(name)) persistMcpServers()
-    }
+    fun removeMcpServer(name: String) = mcpDomain.removeMcpServer(name)
 
-    fun setMcpEnabled(name: String, enabled: Boolean) {
-        if (mcpManager.setServerEnabled(name, enabled)) persistMcpServers()
-    }
+    fun setMcpEnabled(name: String, enabled: Boolean) = mcpDomain.setMcpEnabled(name, enabled)
 
-    suspend fun checkMcpServer(server: String): String {
-        val r = mcpManager.check(server)
-        return if (r.ok) "连接正常，枚举到 ${r.tools.size} 个工具" else "连接失败：${r.message}"
-    }
+    suspend fun checkMcpServer(server: String): String = mcpDomain.checkMcpServer(server)
 
     /** 握手 + 枚举，返回结构化服务器信息（能力/协议/工具/参数，供 UI 展示） */
-    suspend fun describeMcpServer(server: String): McpServerInfo? = mcpManager.describe(server)
+    suspend fun describeMcpServer(server: String): McpServerInfo? = mcpDomain.describeMcpServer(server)
 
     /** 服务器最近一次请求/响应原文（需求 5：展示请求 JSON） */
-    fun mcpLastRequest(server: String): String = mcpManager.lastRequestJson(server)
-    fun mcpLastResponse(server: String): String = mcpManager.lastResponseJson(server)
+    fun mcpLastRequest(server: String): String = mcpDomain.mcpLastRequest(server)
+    fun mcpLastResponse(server: String): String = mcpDomain.mcpLastResponse(server)
 
-    suspend fun bindMcpServerSkills(server: String): Int {
-        val prefix = "mcp_${server.lowercase()}_"
-        val added = mcpManager.bindToolsToSkills(server, prefix, skillRegistry)
-        skillDomain.refreshSkills()
-        return added
-    }
+    suspend fun bindMcpServerSkills(server: String): Int = mcpDomain.bindMcpServerSkills(server)
 
     /** 内置 MCP 市场条目（分类/搜索） */
-    val mcpMarketplace: List<McpMarketplaceEntry> get() = McpMarketplace.all()
-    fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = McpMarketplace.byCategory(category)
-    fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = McpMarketplace.search(keyword)
+    val mcpMarketplace: List<McpMarketplaceEntry> get() = mcpDomain.mcpMarketplace
+    fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceByCategory(category)
+    fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceSearch(keyword)
 
     // ---- 内置 Shizuku 启动状态（引导会话复用无线 ADB，仅作启动机制，不再作为独立通道暴露） ----
     val adbStatus: StateFlow<AdbStatus> = shizukuBootstrap.status
