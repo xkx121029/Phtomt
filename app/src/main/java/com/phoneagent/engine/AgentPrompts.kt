@@ -107,7 +107,7 @@ object AgentPrompts {
     /**
      * 能力可用性投影（对齐 Eta 的 availability 投影）：把「本轮实测能用的能力」压成两行注入系统提示。
      *
-     * 只投影两个会影响整族能力的硬条件：本轮是否带截图、注入通道（Shizuku/无线 ADB）是否可用；
+     * 只投影两个会影响整族能力的硬条件：本轮是否带截图、注入通道（内置 Shizuku）是否可用；
      * 缺失时直接写"别调用 + 怎么换路线"，比让 AI 逐个试错、每步撞一次必然失败的墙便宜得多。
      */
     // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
@@ -127,7 +127,7 @@ object AgentPrompts {
                 if (hasVision) "- 视觉：本轮带截图，可以看图（see 会拿到图像）"
                 else "- 视觉：本轮没有截图 → 不要靠「看图」判断页面，改用 read 文本 / a11y 元素树 / device_info",
                 if (shizukuAvailable) "- 系统直连：注入通道可用 → shell、terminal_op、app_manage、personal_read、a11y 端点均可调用"
-                else "- 系统直连：注入通道不可用（未开 Shizuku、也未连无线 ADB）→ 不要调用 terminal_op、app_manage、personal_read、intent=shell；需要这些能力时用 say 让用户先开 Shizuku",
+                else "- 系统直连：注入通道不可用（内置 Shizuku 未就绪）→ 不要调用 terminal_op、app_manage、personal_read、intent=shell；需要这些能力时用 say 让用户先开 Shizuku（无线调试会话只用于把内置 Shizuku 拉起来，它自己不能执行命令）",
             ).joinToString("\n")
         } else {
             listOf(

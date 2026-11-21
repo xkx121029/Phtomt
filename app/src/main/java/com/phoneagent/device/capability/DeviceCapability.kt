@@ -28,8 +28,14 @@ enum class DeviceCapability(val code: String, val label: String) {
     /** 内置 Shizuku（binder 可用） */
     SHELL_SHIZUKU("SHIZUKU_UNAVAILABLE", "内置 Shizuku"),
 
-    /** 无线调试引导会话（内置 Shizuku 的启动机制） */
-    SHELL_ADB("ADB_UNAVAILABLE", "无线调试会话"),
+    /**
+     * 无线调试引导会话：内置 Shizuku 的**启动机制**，对主应用不是可执行通道。
+     *
+     * 会话在 Provider 内确实能执行命令（`AdbWirelessTransport.executeShell`），但 AIDL 只暴露
+     * `execShizuku` / `execTermux`，主应用没有走会话的入口。所以这里最多算
+     * [CapabilityState.DEGRADED]（能力的一部分：把 server 拉起来），永远不会是 AVAILABLE。
+     */
+    SHELL_ADB("ADB_UNAVAILABLE", "无线调试会话（仅拉起 Shizuku）"),
 
     /** Termux（普通应用权限的 Linux 环境，只能跑工具链命令） */
     SHELL_TERMUX("TERMUX_UNAVAILABLE", "Termux 命令环境"),
@@ -117,7 +123,8 @@ data class DeviceCapabilitySnapshot(
                 }
             DeviceCapability.SHELL -> "无可用命令行通道（内置 Shizuku 未就绪，Termux 也不可用）"
             DeviceCapability.SHELL_SHIZUKU -> "内置 Shizuku 未就绪"
-            DeviceCapability.SHELL_ADB -> "无线调试会话未连接"
+            DeviceCapability.SHELL_ADB ->
+                "无线调试会话未连接（它只用于拉起内置 Shizuku，本身不能执行 shell）"
             DeviceCapability.SHELL_TERMUX -> "Termux 不可用（未安装或未授予 RUN_COMMAND 权限）"
             DeviceCapability.NOTIFICATION_ACCESS -> "通知使用权未开启"
             DeviceCapability.USAGE_ACCESS -> "使用情况访问权未开启"
@@ -188,7 +195,9 @@ object CapabilityProbe {
             else -> CapabilityState.AVAILABLE
         }
         val shell = when {
-            shizukuReady || adbConnected -> CapabilityState.AVAILABLE
+            // 主应用能执行的命令只有内置 Shizuku binder 这一条：无线 ADB 会话是拉起 server 的引导机制，
+            // AIDL 没有暴露走会话的入口（Provider 侧 execShizuku 只经 Shizuku binder 下发）
+            shizukuReady -> CapabilityState.AVAILABLE
             termuxAvailable -> CapabilityState.DEGRADED
             else -> CapabilityState.UNAVAILABLE
         }
@@ -198,7 +207,10 @@ object CapabilityProbe {
                 DeviceCapability.SCREEN_CAPTURE to screenCapture,
                 DeviceCapability.SHELL to shell,
                 DeviceCapability.SHELL_SHIZUKU to bool(shizukuReady),
-                DeviceCapability.SHELL_ADB to bool(adbConnected),
+                // 无线调试会话是**引导机制**，不是执行通道：连上只说明"可以试着拉起 Shizuku"，
+                // 因此最多报 DEGRADED（能力的一部分：拉起 server），绝不报 AVAILABLE（可执行命令）
+                DeviceCapability.SHELL_ADB to
+                    if (adbConnected) CapabilityState.DEGRADED else CapabilityState.UNAVAILABLE,
                 DeviceCapability.SHELL_TERMUX to bool(termuxAvailable),
                 DeviceCapability.NOTIFICATION_ACCESS to bool(notificationAccess),
                 DeviceCapability.USAGE_ACCESS to bool(usageAccess),

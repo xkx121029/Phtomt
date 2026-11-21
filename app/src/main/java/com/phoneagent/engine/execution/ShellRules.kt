@@ -7,7 +7,7 @@ import com.phoneagent.core.text.HtmlToMarkdown
  * shell 执行链的纯逻辑判据（Executor 角色）。
  *
  * 从 [com.phoneagent.engine.AgentEngine] 下沉而来，只保留"看得见的判定"：
- * 命令分类、通道选择、输出整理与预算截断。真正的副作用（Shizuku / 无线 ADB / Termux /
+ * 命令分类、通道选择、输出整理与预算截断。真正的副作用（Shizuku / Termux /
  * 无障碍的真实调用、`lastShellOutput` 状态写入）仍留在引擎里，这里不碰任何设备或状态。
  *
  * 抽出来的理由：通道选择原先在 [com.phoneagent.engine.AgentEngine.runRealShell] 与
@@ -46,10 +46,14 @@ internal object ShellRules {
         "base64", "openssl", "git", "node", "npm", "npx", "ffmpeg",
     )
 
-    /** 真实 shell 通道。NONE = 当前偏好下没有任何可用通道。
-     *  ADB 是内置 Shizuku server 的引导会话（server 拉起前后都能执行 shell），对用户统一呈现为 Shizuku。 */
+    /**
+     * 真实可执行命令的 shell 通道。NONE = 当前偏好下没有任何可用通道。
+     *
+     * 没有"ADB"这一档：无线调试会话只用来把内置 Shizuku server 拉起来，主应用没有走它的
+     * 执行入口（AIDL 只有 execShizuku / execTermux）。以前列过这一档，于是在
+     * "会话连着、server 没起来"时把命令派进去，必然失败还占掉一次降级。
+     */
     enum class Channel(val label: String) {
-        ADB("Shizuku（引导）"),
         SHIZUKU("Shizuku"),
         TERMUX("Termux"),
         NONE("无"),
@@ -72,22 +76,22 @@ internal object ShellRules {
     }
 
     /**
-     * 按执行通道偏好与三条通道的实时可用性，选出真正要用的那条。
-     * AUTO（偏好为其他值，含旧 "ADB"）：Shizuku binder → ADB 引导会话 → Termux；
+     * 按执行通道偏好与各通道的实时可用性，选出真正要用的那条。
+     * AUTO（偏好为其他值，含旧 "ADB"）：Shizuku binder → Termux；
      * 显式偏好只认自己那条，不可用即 [Channel.NONE]。
+     *
+     * 无线 ADB 不参与这条选择：它不是可执行通道（见 [Channel]）。
      */
     fun pickChannel(
         preference: String,
-        adbReady: Boolean,
         shizukuReady: Boolean,
         termuxReady: Boolean,
     ): Channel = when (preference) {
         CHANNEL_SHIZUKU -> if (shizukuReady) Channel.SHIZUKU else Channel.NONE
         CHANNEL_TERMUX -> if (termuxReady) Channel.TERMUX else Channel.NONE
-        // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，其次 ADB 引导会话（普通应用权限的 Termux 作第三顺位兜底）
+        // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，普通应用权限的 Termux 作兜底
         else -> when {
             shizukuReady -> Channel.SHIZUKU
-            adbReady -> Channel.ADB
             termuxReady -> Channel.TERMUX
             else -> Channel.NONE
         }
@@ -97,7 +101,8 @@ internal object ShellRules {
     fun noChannelReason(preference: String): String = when (preference) {
         CHANNEL_SHIZUKU -> "内置 Shizuku 未就绪，无真实 shell 通道"
         CHANNEL_TERMUX -> "Termux 不可用（未安装或未授予 RUN_COMMAND 权限）"
-        else -> "无可用 shell 通道（内置 Shizuku 未启动）"
+        // 说清"为什么配对过也不能执行"：无线调试会话只负责拉起 Shizuku，本身跑不了命令
+        else -> "无可用 shell 通道（内置 Shizuku 未启动；无线调试会话只用于拉起它，不能直接执行命令）"
     }
 
     /** [com.phoneagent.engine.AgentEngine.execShellViaChannel] 的失败原因（端侧自发命令，不进 AI 上下文，简短即可） */

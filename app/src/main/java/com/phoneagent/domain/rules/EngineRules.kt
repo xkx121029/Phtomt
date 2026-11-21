@@ -142,9 +142,16 @@ object EngineRules {
             type == ActionType.TYPE_TEXT || type == ActionType.SHELL ||
             type == ActionType.A11Y_CALL
 
-    /** 动作的目标文字：target.value 优先，逐级回退到 reason/reasoning/text/command */
+    /**
+     * 动作的目标文字：作用对象标签优先（[AgentAction.operatedLabel] 覆盖语义目标与
+     * a11y 端点写在 args 里的落点），再逐级回退到 reason/reasoning/text/command。
+     *
+     * 回退链只服务于"AI 把目标写在话里"这种兜底；端点直调的落点若不走
+     * [AgentAction.operatedLabel]，`click_node{target:"删除"}` 的幂等键会退化成模型自述的
+     * reasoning，同一颗删除按钮每换一句理由就绕开一次幂等保护。
+     */
     private fun targetText(action: AgentAction): String =
-        action.target?.value ?: action.reason ?: action.reasoning
+        action.operatedLabel ?: action.reason ?: action.reasoning
             ?: action.text ?: action.command ?: ""
 
     private fun matchWords(snapshot: ScreenSnapshot, words: List<String>): String? {

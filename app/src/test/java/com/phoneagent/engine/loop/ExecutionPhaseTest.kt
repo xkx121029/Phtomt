@@ -436,6 +436,47 @@ class ExecutionPhaseTest {
     }
 
     @Test
+    fun `端点直调点危险控件也要过确认门`() = runTest {
+        // 第二条绕过路径（比 tap 更隐蔽）：自由模式既不走 intent=delete，也不留 tap 的标签，
+        // 而是 a11y + click_node，把落点写在 args["target"] 里。此时 action.target 是空的，
+        // 门若只读 target.value，删除会一路点下去、用户什么都看不到。
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(
+                    type = ActionType.A11Y_CALL,
+                    endpoint = "click_node",
+                    args = mapOf("target" to "删除"),
+                ),
+            ),
+            confirmation = false,
+        )
+        val s = session(AgentIntent(intent = IntentType.A11Y))
+        val outcome = fixture.phase.run(s)
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals("端点直调的危险点击必须问用户", 1, fixture.f.confirmations)
+        // 用户拒绝 → 不许执行，且要留档跳过
+        assertEquals(0, fixture.f.executes)
+        assertEquals(1, fixture.f.histories)
+    }
+
+    @Test
+    fun `端点直调普通控件不被危险词误伤`() = runTest {
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(
+                    type = ActionType.A11Y_CALL,
+                    endpoint = "click_node",
+                    args = mapOf("target" to "设置"),
+                ),
+            ),
+        )
+        val s = session(AgentIntent(intent = IntentType.A11Y))
+        fixture.phase.run(s)
+        assertEquals(0, fixture.f.confirmations)
+        assertEquals(1, fixture.f.executes)
+    }
+
+    @Test
     fun `普通点击不被危险词误伤`() = runTest {
         val fixture = Fixture(
             translation = IntentTranslator.TranslationResult.Command(

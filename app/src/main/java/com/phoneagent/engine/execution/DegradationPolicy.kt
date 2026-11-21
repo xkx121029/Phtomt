@@ -48,7 +48,7 @@ internal object DegradationPolicy {
         DegradationRule(
             trigger = DegradationTrigger.PERMISSION_MISSING,
             condition = "动作被权限门控拒绝，或无障碍/悬浮窗/通知开关处于关闭状态",
-            fallback = "按通道阶梯改用 Shizuku/无线 ADB；启动类再退到本应用直启",
+            fallback = "按通道阶梯改用内置 Shizuku；启动类再退到本应用直启",
             failureCriterion = "所有候选通道都不可用，或该能力本身就要求被拒的权限",
         ),
         DegradationRule(

@@ -1,12 +1,9 @@
 package com.phoneagent.device.capability
 
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.content.ContextCompat
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.device.perception.ForegroundProbe
-import com.phoneagent.device.shell.TermuxBridge
 import com.phoneagent.feature.notify.NotificationFeed
 
 /**
@@ -26,6 +23,17 @@ class DeviceCapabilityReader(
     private val shizukuReady: () -> Boolean,
     /** 无线调试引导会话是否已连接 */
     private val adbConnected: () -> Boolean,
+    /**
+     * Termux 是否"已安装且已授予 RUN_COMMAND"。
+     *
+     * 必须由**持有 Termux 权限的那个主体**回答：`com.termux.permission.RUN_COMMAND` 由服务组件
+     * （`com.phoneagent.provider`）声明并申请，主应用自己的清单里没有这条权限，
+     * 所以主应用 `checkSelfPermission(RUN_COMMAND)` 恒为 DENIED——此前这里正是这么查的，
+     * 结果是本机装了 Termux 也永远判"不可用"，把一条能跑的命令通道报成不存在。
+     * 运行期真正决定"能不能走 Termux"的是同一个来源（`TermuxBridge.isAvailable()`，读 Provider 同步来的状态），
+     * 快照与执行因此不会各说一套。
+     */
+    private val termuxAvailable: () -> Boolean,
 ) {
 
     companion object {
@@ -65,22 +73,5 @@ class DeviceCapabilityReader(
     /** 清空缓存（通道状态刚变化时由调用方主动调用） */
     fun invalidate() {
         cached = null
-    }
-
-    /**
-     * Termux 是否"已安装且已授予 RUN_COMMAND"。
-     *
-     * 这里直接查包管理器与自身权限，而不是读 Provider 的缓存：快照应反映本机事实，
-     * 不能依赖另一条 IPC 是否恰好刷新过。
-     */
-    private fun termuxAvailable(): Boolean {
-        val installed = runCatching {
-            context.packageManager.getPackageInfo(TermuxBridge.TERMUX_PACKAGE, 0)
-        }.isSuccess
-        if (!installed) return false
-        return ContextCompat.checkSelfPermission(
-            context,
-            TermuxBridge.RUN_COMMAND_PERMISSION,
-        ) == PackageManager.PERMISSION_GRANTED
     }
 }

@@ -68,4 +68,43 @@ internal object ShellFallbackPolicy {
         }
         return Verdict(false, "（已交付，但页面没有变化，未能确认生效）", before, after)
     }
+
+    /**
+     * 多命令兜底序列（目前唯一来源：TYPE_TEXT 的 `input tap` + `input text`）执行到中途的定性。
+     *
+     * 为什么单靠"有命令失败"不够：序列里第一条已经真的落到设备上了。旧实现把这种情况一律判成
+     * 未交付，外层于是"换通道再试一次 / 原样重跑一次"，每次都把已经成功的那一半再下发一遍——
+     * 表现就是输入框被反复点击、光标被移到别处，最坏情况第一条本身就是有副作用的点击。
+     *
+     * 三种结论对应三种安全动作：
+     * - [Issued]：全部下发，交给页面回读判生效；
+     * - [NothingIssued]：一条都没出去，换通道/换落点重试是安全的；
+     * - [Partial]：**部分交付**，已成功的部分绝不能再执行，也不能算成功——直接停手并说清交付到哪。
+     *
+     * @param commands 本次序列的完整命令表
+     * @param issued 真正下发成功（退出码 0）的命令，按执行顺序
+     * @param failure 第一条失败命令的原因；成功后为 null
+     */
+    internal sealed interface SequenceOutcome {
+        data object Issued : SequenceOutcome
+        data class NothingIssued(val reason: String) : SequenceOutcome
+        data class Partial(val issued: List<String>, val failed: String, val reason: String) : SequenceOutcome
+    }
+
+    fun sequenceOutcome(
+        commands: List<String>,
+        issued: List<String>,
+        failure: String?,
+    ): SequenceOutcome {
+        if (failure == null) return SequenceOutcome.Issued
+        if (issued.isEmpty()) return SequenceOutcome.NothingIssued(failure)
+        val pending = commands.drop(issued.size)
+        return SequenceOutcome.Partial(
+            issued = issued,
+            failed = failure,
+            reason = "多命令序列只交付了一部分：已执行「${issued.joinToString(" && ")}」，" +
+                "「${pending.joinToString(" && ")}」失败（$failure）。" +
+                "已成功的部分不再重复执行，也不再重试整条序列。",
+        )
+    }
 }
