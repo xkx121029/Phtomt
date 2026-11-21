@@ -490,6 +490,8 @@ object ProviderManager {
      * 逐项检查绑定前置条件。返回的诊断可直接渲染在设置页，
      * [problems] 为空才说明「绑定该成功」，否则就是绑定失败的确切原因。
      */
+    // 逐个前置条件串成一条诊断链；拆成多个函数会把「同一份问题清单」撕成多段，留待绑定流程统一重构
+    @Suppress("CyclomaticComplexMethod")
     fun diagnose(context: Context): BindDiagnosis {
         val pm = context.packageManager
         val problems = mutableListOf<String>()

@@ -374,6 +374,8 @@ internal class ClickVerifier(
      * @param before 动作执行前的快照（判定基准）
      * @param beforeState 本次动作的目标控件；指纹未变时用它兜底（勾选/滑块不改变整页指纹）
      */
+    // 采样窗内「一旦回读到变化就立即成功」是核心语义，压成单出口会丢掉这条最短路
+    @Suppress("ReturnCount")
     suspend fun confirm(before: ScreenSnapshot, beforeState: UiElement?, verb: String): VerifyResult {
         val beforeFp = PageFingerprint.computeMeaningful(before)
         var afterFp = beforeFp
@@ -417,6 +419,8 @@ internal class ClickVerifier(
     }
 
     /** 分层判定：前台应用 → 控件自身状态 → 整页指纹 */
+    // 三层判据按优先级依次早退，正是「分层」本身；改成单出口只会把优先级藏进条件表达式
+    @Suppress("ReturnCount")
     private fun judge(
         before: ScreenSnapshot,
         beforeState: UiElement?,

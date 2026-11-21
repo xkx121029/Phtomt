@@ -92,8 +92,9 @@ internal object DegradationPolicy {
      * @param detail 触发细节（原通道名、超时秒数、重复次数等）
      * @param channel 现在实际使用的方式（为空表示没有可用方式）
      */
-    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
-    @Suppress("LongParameterList")
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免；
+    // 分档本身是一条 trigger→文案 的映射链，拆成多个函数会让「哪档说什么」更难对照
+    @Suppress("LongParameterList", "CyclomaticComplexMethod")
     fun notice(
         trigger: DegradationTrigger,
         detail: String? = null,

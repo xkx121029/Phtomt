@@ -1286,6 +1286,8 @@ class AgentEngine(
         deviceFacts.resetAppCache()
     }
 
+    // 主循环本身：编排十余个阶段，拆分会把跨阶段共享的局部状态提成字段，风险大于收益
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private suspend fun runInner(
         task: String,
         plan: TaskPlan? = null,

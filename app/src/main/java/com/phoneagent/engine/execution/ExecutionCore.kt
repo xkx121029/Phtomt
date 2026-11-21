@@ -1485,6 +1485,8 @@ internal class ExecutionCore(
      * 取样节奏与点击链路同一套 [VerifyTiming]：一旦回读到页面变化立即返回，不必等满观察窗；
      * 读不到页面（无障碍断开 / Provider 超时）按「未确认」处理，不拿命令退出码冒充生效。
      */
+    // 单次采样窗：`continue` 跳过读不到页面的样本、`break` 命中变化即停，两个跳转各表达一件不同的事
+    @Suppress("LoopWithTooManyJumpStatements")
     private suspend fun confirmFallbackDelivery(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
         val beforeFp = runCatching { PageFingerprint.computeMeaningful(before) }.getOrNull()
         if (beforeFp.isNullOrBlank()) return ShellFallbackPolicy.judge(null, null)
@@ -1511,6 +1513,9 @@ internal class ExecutionCore(
             // 取消是控制流：必须原样抛出，否则用户停止后这一步还会继续等取样
             throw e
         } catch (e: Throwable) {
+            // 读页面失败按「未取到」处理，但异常本身不能吞掉：否则任务卡在这里时
+            // 日志里只剩「读不到页面」，分不清是超时、取树失败还是 Provider 崩了。
+            ui.log(AgentLog.Level.WARN, "读取页面失败，按未取到处理：${e.message ?: e.javaClass.simpleName}")
             null
         }
 

@@ -626,18 +626,21 @@ class ExecutionPhaseTest {
         screenWidth = 1080,
         screenHeight = 1920,
         elements = listOf(
-            todoElement(0, "买牛奶", 40, 40, 900, 160),
-            todoElement(1, status, 40, 220, 300, 320),
-            todoElement(2, "返回", 40, 80, 160, 180),
-            todoElement(3, "编辑", 40, 1600, 300, 1700),
-            todoElement(4, "删除", 780, 1600, 1040, 1700),
+            todoElement(0, "买牛奶", Bounds(40, 40, 900, 160)),
+            todoElement(1, status, Bounds(40, 220, 300, 320)),
+            todoElement(2, "返回", Bounds(40, 80, 160, 180)),
+            todoElement(3, "编辑", Bounds(40, 1600, 300, 1700)),
+            todoElement(4, "删除", Bounds(780, 1600, 1040, 1700)),
         ),
     )
 
-    private fun todoElement(index: Int, text: String, left: Int, top: Int, right: Int, bottom: Int) = UiElement(
+    /** 元素矩形（左上右下）；单独成类是为了让 [todoElement] 不必堆 6 个位置参数 */
+    private data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+    private fun todoElement(index: Int, text: String, bounds: Bounds) = UiElement(
         index = index, className = "android.widget.Button", type = "Button", text = text,
-        x = (left + right) / 2, y = (top + bottom) / 2,
-        left = left, top = top, right = right, bottom = bottom,
+        x = (bounds.left + bounds.right) / 2, y = (bounds.top + bounds.bottom) / 2,
+        left = bounds.left, top = bounds.top, right = bounds.right, bottom = bounds.bottom,
     )
 
     private fun deleteIntent() = AgentIntent(

@@ -42,6 +42,8 @@ internal object ShellFallbackPolicy {
      * @param beforeFingerprint 兜底**之前**的页面指纹；空/空白 = 那一刻读不到页面
      * @param afterFingerprint 兜底**之后**回读到的页面指纹；空/空白 = 回读失败
      */
+    // 四种组合（读不到前 / 读不到后 / 未变 / 已变）各返一种 Verdict，早退最贴近判据表
+    @Suppress("ReturnCount")
     fun judge(beforeFingerprint: String?, afterFingerprint: String?): Verdict {
         val before = if (beforeFingerprint.isNullOrBlank()) null else beforeFingerprint
         val after = if (afterFingerprint.isNullOrBlank()) null else afterFingerprint
