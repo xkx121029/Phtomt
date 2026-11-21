@@ -1,9 +1,11 @@
 package com.phoneagent.feature.browser
 
 import com.phoneagent.core.text.HtmlToMarkdown
+import com.phoneagent.engine.execution.DangerousTargetWords
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -103,6 +105,24 @@ class BrowserGuardTest {
         assertTrue(js.endsWith("]"))
         (BrowserGuard.WORDS_CN + BrowserGuard.WORDS_EN).forEach {
             assertTrue("JS 词表缺少「$it」：$js", js.contains(HtmlToMarkdown.jsStr(it)))
+        }
+    }
+
+    /**
+     * 词表只能有一份定义（HAPP-31 把浏览器这份并进引擎侧的唯一来源）。
+     *
+     * `assertSame` 钉的是同一个 List 实例——不是"内容碰巧一样"，而是结构上不可能各改一半。
+     * 下面再用引擎侧新增的词做一次可见性检查：同源的实际意义就是"新增一处，两处都看见"。
+     */
+    @Test
+    fun 词表与引擎侧同一份_结构上不可能各写一半() {
+        assertSame(BrowserGuard.WORDS_CN, DangerousTargetWords.browserCn)
+        assertSame(BrowserGuard.WORDS_EN, DangerousTargetWords.browserEn)
+        listOf("发送", "发布", "结算", "下单", "购买").forEach {
+            assertTrue("浏览器中文词表缺少引擎侧的「$it」", BrowserGuard.WORDS_CN.contains(it))
+        }
+        listOf("post", "confirm", "purchase", "pay").forEach {
+            assertTrue("浏览器英文词表缺少引擎侧的「$it」", BrowserGuard.WORDS_EN.contains(it))
         }
     }
 }
