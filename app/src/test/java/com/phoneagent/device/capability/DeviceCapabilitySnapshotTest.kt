@@ -76,8 +76,19 @@ class DeviceCapabilitySnapshotTest {
         assertEquals(CapabilityState.UNAVAILABLE, snap().stateOf(DeviceCapability.SHELL))
         assertEquals(CapabilityState.DEGRADED, snap(termux = true).stateOf(DeviceCapability.SHELL))
         assertEquals(CapabilityState.AVAILABLE, snap(shizuku = true).stateOf(DeviceCapability.SHELL))
-        assertEquals(CapabilityState.AVAILABLE, snap(adb = true).stateOf(DeviceCapability.SHELL))
         assertTrue(snap(termux = true).reasonOf(DeviceCapability.SHELL).contains("Shizuku"))
+    }
+
+    @Test
+    fun 无线调试会话撑不起shell能力() {
+        // 回归目标：会话连上曾被报成 SHELL=AVAILABLE / SHELL_ADB=AVAILABLE，
+        // 主应用据此把授权模式升到 SHIZUKU、把命令派给 execShizuku 再失败。
+        // 事实是 shell 只经 Shizuku binder 下发，会话只用于把 server 拉起来。
+        val s = snap(adb = true, shizuku = false)
+        assertEquals(CapabilityState.UNAVAILABLE, s.stateOf(DeviceCapability.SHELL))
+        assertEquals(CapabilityState.DEGRADED, s.stateOf(DeviceCapability.SHELL_ADB))
+        assertFalse("会话不能顶成 AVAILABLE", s.isFullyAvailable(DeviceCapability.SHELL_ADB))
+        assertTrue(s.reasonOf(DeviceCapability.SHELL_ADB).contains("不能执行"))
     }
 
     @Test

@@ -57,15 +57,16 @@ class ShizukuBootstrap(
                     guidePairing()
                 }
             }
-            else -> { // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，其次 ADB 会话（连接即具备 shell 能力）
-                if (shizukuOk) {
-                    machine.onShizukuDirectReady(); emit()
-                    ReadyResult.Ready
-                } else if (adbOk) {
-                    adbReadyThenOptionalEnhance()
-                    ReadyResult.Ready
-                } else {
-                    guidePairing()
+            else -> { // AUTO（含旧 "ADB" 值归一）：Shizuku binder 优先，其次用 ADB 会话把 server 拉起来
+                when {
+                    shizukuOk -> {
+                        machine.onShizukuDirectReady(); emit()
+                        ReadyResult.Ready
+                    }
+                    // 会话连着 ≠ 能执行命令：shell 只经 Shizuku binder 下发，
+                    // 所以这里只有把 server 拉起来才算 Ready，拉不起来就如实报错
+                    adbOk -> bootViaAdb()
+                    else -> guidePairing()
                 }
             }
         }
@@ -85,22 +86,11 @@ class ShizukuBootstrap(
             is AdbPairOutcome.Success -> {
                 machine.onPairingSuccess(); emit()
                 machine.onAdbConnected(); emit()
-                if (channelProvider() == "SHIZUKU") {
-                    return bootViaAdb()
-                }
-                machine.onAdbReady(); emit()
-                // 可选增强：拉起内置 Shizuku server（失败不阻塞 Ready）
-                bootViaAdbEnhancement()
-                return ReadyResult.Ready
+                // 配对成功只说明会话连上了。shell 要经内置 Shizuku server 下发，
+                // 所以无论执行通道偏好是什么，都必须把它拉起来才算就绪
+                return bootViaAdb()
             }
         }
-    }
-
-    /** 无线 ADB 连接即就绪，随后可选尝试拉起 Shizuku 作增强（不阻塞 Ready）。 */
-    private suspend fun adbReadyThenOptionalEnhance() {
-        machine.onAdbConnected(); emit()
-        machine.onAdbReady(); emit()
-        bootViaAdbEnhancement()
     }
 
     /** SHIZUKU 模式下，经无线 ADB 拉起 Shizuku 并等待就绪；失败/超时返回错误（Shizuku 是唯一 shell 通路）。 */
@@ -125,30 +115,6 @@ class ShizukuBootstrap(
                 }
                 machine.onBootFailed("Shizuku 已下发启动，但等待就绪超时"); emit()
                 return ReadyResult.Error(AdbFailure.message(AdbError.SHIZUKU_START_FAILED), AdbError.SHIZUKU_START_FAILED)
-            }
-        }
-    }
-
-    /** 可选增强：ADB 已连接时尝试拉起 Shizuku。无论成败都不影响已就绪的 ADB 通道，始终不抛错。 */
-    private suspend fun bootViaAdbEnhancement() {
-        machine.onBootStart(); emit()
-        val started = runCatching { transport.startShizukuService() }.getOrElse {
-            AdbStartOutcome.Failure(it.message ?: "异常")
-        }
-        when (started) {
-            is AdbStartOutcome.Failure -> {
-                machine.onBootFailed(started.detail); emit()
-            }
-            is AdbStartOutcome.Success -> {
-                val deadline = System.currentTimeMillis() + shizukuReadyTimeoutMs
-                while (System.currentTimeMillis() < deadline) {
-                    if (shizukuManager.isAvailable()) {
-                        machine.onBootSuccess(); emit()
-                        return
-                    }
-                    delay(waitShizukuDelayMs)
-                }
-                machine.onBootFailed("Shizuku 已下发启动，但等待就绪超时"); emit()
             }
         }
     }

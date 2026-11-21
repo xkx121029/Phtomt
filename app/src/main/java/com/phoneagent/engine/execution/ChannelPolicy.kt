@@ -135,13 +135,16 @@ internal object ChannelPolicy {
         }
     }
 
-    /** 系统命令可用的 shell 通道（Termux 不在此列：跑不了 am/input/settings） */
+    /**
+     * 系统命令可用的 shell 通道（Termux 不在此列：跑不了 am/input/settings）。
+     *
+     * 只有内置 Shizuku 一条：无线调试会话是拉起 Shizuku 的**引导机制**，自身没有命令执行实现
+     * （Provider 的 execShizuku 只经 Shizuku binder 下发），把它列成候选等于把命令派进一条
+     * 必然失败的通道——而这正是"无线 ADB 连上就算有 shell"那句宣称的实际后果。
+     */
     private fun systemShellCandidates(snapshot: DeviceCapabilitySnapshot): List<ChannelCandidate> = buildList {
         if (snapshot.isUsable(DeviceCapability.SHELL_SHIZUKU)) {
             add(ChannelCandidate(ChannelKind.SHELL_SHIZUKU, "内置 Shizuku 已就绪"))
-        }
-        if (snapshot.isUsable(DeviceCapability.SHELL_ADB)) {
-            add(ChannelCandidate(ChannelKind.SHELL_ADB, "无线调试会话已连接"))
         }
     }
 

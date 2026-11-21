@@ -17,9 +17,9 @@ enum class AdbPhase {
     UNPAIRED,        // 未配对（需引导用户在设置开启无线调试并输入配对码）
     WAITING_CODE,    // 已发现设备，等待用户输入 6 位配对码
     PAIRING,         // 正在配对中
-    PAIRED,          // 配对成功（ADB 可连接）
+    PAIRED,          // 配对成功、会话已连上（仅能用来拉起 Shizuku，不能执行 shell）
     BOOTING,         // 正在用 ADB 拉起 Shizuku 服务
-    READY,           // 无线 ADB 通路就绪（可执行 shell / Shizuku 可用）
+    READY,           // 内置 Shizuku 已就绪（唯一能执行 shell 的阶段；无线 ADB 会话本身不能执行命令）
     DISCONNECTED,    // ADB 断开
     FAILED,          // 失败，携带错误消息
 }

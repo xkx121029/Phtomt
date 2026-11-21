@@ -49,7 +49,7 @@ internal class ExecutionCore(
     private val appContext: android.content.Context,
     private val settings: AppSettings,
     private val shizukuManager: ShizukuManager?,
-    /** 执行通路启动器（原 AdbBootstrapTransport 位置）：无线 ADB 会话判定与引导 shell 均经 AIDL 转 Provider */
+    /** 执行通路启动器（原 AdbBootstrapTransport 位置）：无线调试会话的配对/拉起都经 AIDL 转 Provider */
     private val adbTransport: ShizukuBootstrap?,
     private val termuxBridge: TermuxBridge?,
     private val documentEngine: com.phoneagent.feature.document.DocumentEngine?,
@@ -654,10 +654,11 @@ internal class ExecutionCore(
 
     /**
      * 执行 shell 动作。
-     * - 真实 shell 通道可用（Shizuku 或无线 ADB 已连接）：直接执行原 Shizuku 命令集
+     * - 真实 shell 通道可用（内置 Shizuku binder 就绪）：直接执行原 Shizuku 命令集
      *   （ShellCommands 解析），查询类命令输出回传 AI。
      * - 无真实 shell 通道：禁止执行 shell，把 AI 输出的友好命令翻译为等价的无障碍动作执行，
-     *   保证任务在无 Shizuku/ADB 权限时仍能推进，且绝不真正调用 shell。
+     *   保证任务在没有 Shizuku 授权时仍能推进，且绝不真正调用 shell。
+     *   无线调试会话不在"真实通道"之列：它只用于拉起 Shizuku，本身不能执行命令。
      */
     suspend fun executeShellAction(action: AgentAction): com.phoneagent.engine.execution.VerifyResult {
         val cmd = action.command ?: return com.phoneagent.engine.execution.VerifyResult(
@@ -873,26 +874,18 @@ internal class ExecutionCore(
         }
     }
 
-    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=Shizuku→ADB引导会话→Termux | SHIZUKU=仅Shizuku | TERMUX=仅Termux；旧"ADB"偏好归一 AUTO） */
+    /** 是否具备真实 shell 通道：按执行通道偏好判定（AUTO=Shizuku→Termux | SHIZUKU=仅Shizuku | TERMUX=仅Termux；旧"ADB"偏好归一 AUTO） */
     suspend fun shellChannelAvailable(): Boolean =
         // 通道判据与真实执行共用同一份（ShellRules.pickChannel），避免"这里说可用、那里走不通"
         ShellRules.pickChannel(
             channelPreference(),
-            adbTransport?.isConnected() == true,
             shizukuManager?.isAvailable() == true,
             termuxBridge?.isAvailable() == true,
         ) != ShellRules.Channel.NONE
 
-    /** 经 ADB 引导会话执行 shell（内置 Shizuku server 拉起前后均可执行）：把字符串结果桥接成 Shizuku 的结果类型，供两条执行链共用 */
-    private suspend fun runAdbShell(cmd: String): ShizukuManager.ShellResult {
-        val out = adbTransport?.executeShell(cmd)
-        return if (out == null) ShizukuManager.ShellResult.Failure("Shizuku 引导会话执行 shell 失败")
-        else ShizukuManager.ShellResult.Success(output = out)
-    }
-
     /**
      * 按执行通道偏好选择真实 shell 通道执行命令并回传输出。
-     * AUTO 顺序：Shizuku binder → ADB 引导会话（内置 Shizuku 的启动机制）→ Termux。
+     * AUTO 顺序：Shizuku binder → Termux。
      * 注意 Termux 是**普通应用权限**的 Linux 环境，只适合 curl/python/文本处理等工具链命令，
      * 系统命令（am/pm/settings）会失败——该边界在提示词里对 AI 显式声明。
      */
@@ -903,12 +896,10 @@ internal class ExecutionCore(
         val preference = channelPreference()
         val channel = ShellRules.pickChannel(
             preference,
-            adbTransport?.isConnected() == true,
             shizukuManager?.isAvailable() == true,
             termuxBridge?.isAvailable() == true,
         )
         val result: ShizukuManager.ShellResult = when (channel) {
-            ShellRules.Channel.ADB -> runAdbShell(resolved)
             // 通道状态与实际调用之间可能发生 binder death / 桥断开，用安全调用兜住竞态窗口，
             // 避免 !! 在同一窗口内抛 NPE 穿透主循环（NONE 已另有分支，但状态可能在两次读取间变化）
             ShellRules.Channel.SHIZUKU -> shizukuManager?.executeShell(resolved)
@@ -928,18 +919,16 @@ internal class ExecutionCore(
      * 与 runRealShell 共用同一套通道选择，但产物不进「上一步 shell 输出」，
      * 因此适合任务开始/结束时由端侧自己发起的系统命令（如隐藏状态栏）——
      * 这类命令的返回值对 AI 没有意义，不该占用决策上下文。
-     * AUTO 顺序：Shizuku binder → ADB 引导会话 → Termux。
+     * AUTO 顺序：Shizuku binder → Termux（无线 ADB 只用于拉起 Shizuku，不是可执行通道）。
      */
     suspend fun execShellViaChannel(cmd: String): ShizukuManager.ShellResult {
         val preference = channelPreference()
         val channel = ShellRules.pickChannel(
             preference,
-            adbTransport?.isConnected() == true,
             shizukuManager?.isAvailable() == true,
             termuxBridge?.isAvailable() == true,
         )
         return when (channel) {
-            ShellRules.Channel.ADB -> runAdbShell(cmd)
             // 同 runRealShell：通道可能在 pickChannel 与实际调用之间失效，安全调用兜住竞态
             ShellRules.Channel.SHIZUKU -> shizukuManager?.executeShell(cmd)
                 ?: ShizukuManager.ShellResult.Failure("Shizuku 通道当前不可用")
