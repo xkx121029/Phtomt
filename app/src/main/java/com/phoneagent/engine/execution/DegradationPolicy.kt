@@ -92,10 +92,21 @@ internal object DegradationPolicy {
      * @param detail 触发细节（原通道名、超时秒数、重复次数等）
      * @param channel 现在实际使用的方式（为空表示没有可用方式）
      */
+    // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
+    @Suppress("LongParameterList")
     fun notice(
         trigger: DegradationTrigger,
         detail: String? = null,
         channel: String? = null,
+        /**
+         * 换到新方式之后**有没有拿到页面级证据**。
+         *
+         * true / false / null 三态都要能表达：null 表示调用方没有证据可言，
+         * 此时按「未确认」说——宁可不宣称，也不让用户自己去推断。
+         * 结构性区分（[com.phoneagent.engine.execution.VerifyResult.delivery]）如果不在文案里体现，
+         * 对用户就等于没有做。
+         */
+        confirmed: Boolean? = null,
     ): String {
         val why = detail?.takeIf { it.isNotBlank() } ?: ruleOf(trigger).condition
         val now = channel?.takeIf { it.isNotBlank() }
@@ -107,7 +118,11 @@ internal object DegradationPolicy {
             }
 
             DegradationTrigger.CHANNEL_UNAVAILABLE -> if (now != null) {
-                "通道切换：$why 未交付，已改用${now}继续执行。"
+                if (confirmed == true) {
+                    "通道切换：$why 未交付，已改用${now}执行并确认生效。"
+                } else {
+                    "通道切换：$why 未交付，已改用${now}执行，未确认生效（没有拿到页面级证据）。"
+                }
             } else {
                 "通道切换：$why 未交付，所有候选通道都不可用；已保留现场并按中文原因停止。"
             }

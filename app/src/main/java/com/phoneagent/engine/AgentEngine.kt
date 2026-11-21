@@ -208,7 +208,7 @@ class AgentEngine(
     /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]）；router 按云端意图分流 */
     private val lifecycle = TaskLifecycle(
         appContext, settings, scope, store, uiBridge,
-        runTask = { task, plan -> run(task, plan) },
+        runTask = { task, plan, startStep -> run(task, plan, startStep) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
         router = { task, chatOnly -> routeTask(task, chatOnly) },
         // 配置预检要同步拿到当前设置（start 是同步入口）；极早期读不到时返回 null，预检放行
@@ -1078,8 +1078,11 @@ class AgentEngine(
         runCatching { com.phoneagent.data.store.TaskStore.loadCheckpoint(appContext) }.getOrNull()
 
     /**
-     * 断点续传（v2.2 5.3）：用最近一次检查点保存的任务与计划，重新启动该任务。
-     * 由于计划步骤为原子动作且具备幂等保护，重复执行副作用操作会被跳过，安全可复用。
+     * 断点续传（v2.2 5.3）：用最近一次检查点保存的任务与计划，**从已完成的步之后**继续。
+     *
+     * 必须把 `completedSteps` 带进主循环（见 [com.phoneagent.engine.runtime.CheckpointResume]）：
+     * 从第 1 步重放整条计划，等于把已经做过的不可逆动作（发送/删除/下单）再做一遍。
+     * 幂等保护在这里指望不上——它要求页面元素 ≤6 且含确认语，真实发生过副作用之后基本不成立。
      */
     fun resumeFromCheckpoint() {
         scope.launch {
@@ -1089,14 +1092,18 @@ class AgentEngine(
                 ?.let { runCatching { json.decodeFromString(com.phoneagent.domain.model.TaskPlan.serializer(), it) }.getOrNull() }
                 ?: return@launch
             if (plan.steps.isEmpty()) return@launch
+            val startStep = com.phoneagent.engine.runtime.CheckpointResume.startStep(ck.completedSteps, plan.steps.size)
             pendingTask = ck.task
             activePlan = plan
-            uiBridge.log(AgentLog.Level.INFO, "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步）")
+            uiBridge.log(
+                AgentLog.Level.INFO,
+                "从检查点续传任务：${ck.task}（已完成 ${ck.completedSteps} 步，从第 ${startStep + 1} 步继续）",
+            )
             com.phoneagent.core.notify.ActiveNotifier.notify(
                 appContext, com.phoneagent.core.notify.ActiveNotifier.ID_CHECKPOINT,
-                "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步。",
+                "已从断点恢复", "正在继续上次任务「${ck.task}」，已完成 ${ck.completedSteps} 步，接下来不再重复这些步骤。",
             )
-            lifecycle.launchSingleTask(ck.task, plan)
+            lifecycle.launchSingleTask(ck.task, plan, startStep)
         }
     }
 
@@ -1188,15 +1195,18 @@ class AgentEngine(
      * 兜底必须按 taskId 收尾：stop() 取消协程后 finally 是异步执行的，用户若立刻发起新任务，
      * 旧任务的 finally 会在新任务已经开始之后才跑到，此时 currentTaskMemory 已换成新任务的记忆，
      * 不加 taskId 判断就会把新任务误标为「未完成」（且新任务随后成功时会被终态守卫挡住写不进去）。
+     *
+     * @param startStep 已完成的步数（检查点续传）：主循环从这里之后继续，不重放已完成步骤。
+     *   0 = 全新任务
      */
-    private suspend fun run(task: String, plan: TaskPlan? = null) {
+    private suspend fun run(task: String, plan: TaskPlan? = null, startStep: Int = 0) {
         // 由 runInner 在创建任务记忆时把引用带出来，作为「本次任务的记忆」的唯一凭据
         var owned: TaskMemoryEntry? = null
         var cancelled = false
         try {
             // 新任务一律从「未搁置」开始：上一个任务的搁置标志不能带过来，否则任务起来就挂住
             store.setPaused(false)
-            runInner(task, plan) { owned = it }
+            runInner(task, plan, startStep) { owned = it }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // 用户停止 / 协程取消属于正常控制流，必须原样抛出：
             // 吞掉它会让 stop() 再也打不断任务，还会把「已停止」误报成「执行异常」
@@ -1279,6 +1289,8 @@ class AgentEngine(
     private suspend fun runInner(
         task: String,
         plan: TaskPlan? = null,
+        /** 检查点续传：已完成的步数（主循环从这里之后继续，不重放已完成步骤） */
+        startStep: Int = 0,
         onMemoryCreated: (TaskMemoryEntry) -> Unit = {},
     ) {
         // 每次任务开始生成独立任务 ID，用于分任务日志查看与导出
@@ -1290,8 +1302,9 @@ class AgentEngine(
         // 上一页截图快照与上一任务计划，避免上一个任务的指令/决策/命令串扰本任务（防止 AI 沿用不存在/失效的命令）
         resetTaskScopedState()
         activePlan = plan
-        // 新任务重置长线工作记忆
-        completedSteps = 0
+        // 新任务重置长线工作记忆；检查点续传时从已完成的步数起算（否则这一步会退化成"从第 1 步重放"：
+        // 步数预算与 AI 的任务记忆进度都会归零，已做过的不可逆动作会再执行一遍）
+        completedSteps = startStep
         totalPlannedSteps = plan?.steps?.size ?: 0
         // 任务记忆：任务原文既是既定目标，也是第一条用户要求。
         // 先落库再执行，任务跑到一半（甚至中断）时记忆页也能看到它到底要做什么
@@ -1389,7 +1402,7 @@ class AgentEngine(
         }
 
         val maxSteps = settingsVal.maxSteps
-        var step = 0
+        // 无局部步数变量：步数起点与推进全部由 TaskRunner 持有（续传时从 startStep 起算）
         // 无障碍服务在本任务中是否观测到过在线：用于识别"任务中途掉线"（vivo 安全守护清除授权等）。
         // 服务一旦中途掉线，读屏与操作通道全断，继续跑只会变成"读不到→反复重启应用"的盲循环（真机 BUG 22）
         var a11ySeenAlive = false
@@ -1478,7 +1491,7 @@ class AgentEngine(
             decide = decisionPhase,
             execute = executionPhase,
         )
-        taskRunner.run(maxSteps) { s ->
+        taskRunner.run(maxSteps, startStep = startStep) { s ->
             // 留档槽按步清空：上一步的截图/控件绝不能当成这一步的证据展示
             store.stepShotScreenshot = null
             store.stepShotRegions = null

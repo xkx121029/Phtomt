@@ -67,6 +67,8 @@ internal data class LadderResult(
             DegradationTrigger.CHANNEL_UNAVAILABLE,
             detail ?: from.label,
             now,
+            // 换到新方式之后到底有没有拿到证据：文案必须自明，不能让用户从"继续执行"里猜
+            confirmed = delivered && confirmed,
         )
     }
 }
