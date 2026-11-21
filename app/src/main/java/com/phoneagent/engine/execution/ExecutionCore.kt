@@ -639,7 +639,10 @@ internal class ExecutionCore(
             // notDelivered=false 是因为动作确实已经交付过，禁止通道重试造成重复设置。
             is ClockOutcome.Done -> com.phoneagent.engine.execution.VerifyResult(
                 outcome.verified, outcome.message, "", "",
-                notDelivered = false, channel = outcome.kind.id, trace = trace,
+                notDelivered = false,
+                unconfirmed = outcome.delivery == Delivery.DELIVERED_UNCONFIRMED,
+                channel = outcome.kind.id,
+                trace = trace,
             )
             // 只把用户带到时钟页：不算成功，但动作没有再交付一次的风险，禁止通道重试造成重复设置
             is ClockOutcome.Manual -> com.phoneagent.engine.execution.VerifyResult(
@@ -1387,9 +1390,9 @@ internal class ExecutionCore(
                         delay(300)
                         // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
                         // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
-                        val verdict = confirmFallbackDelivery(snapshot)
+                        val verdict = confirmPageEffect(snapshot)
                         // 已确认 = 这步生效；未确认仍是「已交付」（notDelivered=false 见下），
-                        // 两个概念在结构化结果里分开表达，不再由退出码顶替
+                        // 「读不到页面」与「页面没变化」也在结构上分开，不再由退出码顶替
                         delivered = VerifyResult(
                             verdict.confirmed,
                             "$originalReason；已自动切换 shell 通道执行: " +
@@ -1399,6 +1402,7 @@ internal class ExecutionCore(
                             // 命令已经下发到系统 = 已交付：绝不能标 notDelivered，
                             // 否则外层会换一条通道把同一下再执行一遍（发送/删除就是重复副作用）
                             notDelivered = false,
+                            unconfirmed = verdict.unconfirmed,
                         )
                         ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
@@ -1412,12 +1416,13 @@ internal class ExecutionCore(
                     if (local != null) {
                         // 本应用直启同样没有页面级证据：startActivity 返回成功只说明 Intent 被本应用发出，
                         // 不代表目标应用真的到了前台。与 shell 兜底同一口径——回读确认，拿不到证据就只说「已执行」。
-                        val verdict = confirmFallbackDelivery(snapshot)
+                        val verdict = confirmPageEffect(snapshot)
                         delivered = local.copy(
                             success = verdict.confirmed,
                             reason = local.reason + verdict.suffix,
                             beforeFingerprint = verdict.beforeFingerprint,
                             afterFingerprint = verdict.afterFingerprint,
+                            unconfirmed = verdict.unconfirmed,
                         )
                         ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
@@ -1454,14 +1459,17 @@ internal class ExecutionCore(
     }
 
     /**
-     * shell 兜底之后的页面级确认（[ShellFallbackPolicy] 的采样实现）。
+     * 动作之后的页面级确认（[ShellFallbackPolicy] 的采样实现）。
      *
      * 取样节奏与点击链路同一套 [VerifyTiming]：一旦回读到页面变化立即返回，不必等满观察窗；
      * 读不到页面（无障碍断开 / Provider 超时）按「未确认」处理，不拿命令退出码冒充生效。
+     *
+     * 通道兜底、本应用直启、语音助手传话三条「没有回执」的路径共用它，
+     * 「已确认 / 未确认 / 看到了没变化」只有一个判据来源。
      */
     // 单次采样窗：`continue` 跳过读不到页面的样本、`break` 命中变化即停，两个跳转各表达一件不同的事
     @Suppress("LoopWithTooManyJumpStatements")
-    private suspend fun confirmFallbackDelivery(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
+    private suspend fun confirmPageEffect(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
         val beforeFp = runCatching { PageFingerprint.computeMeaningful(before) }.getOrNull()
         if (beforeFp.isNullOrBlank()) return ShellFallbackPolicy.judge(null, null)
         // 最后一次成功回读到的指纹：两次取样都没变化时用它区分「页面没变」与「读不到页面」，
