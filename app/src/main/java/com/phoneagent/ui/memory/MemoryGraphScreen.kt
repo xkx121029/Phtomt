@@ -34,7 +34,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,6 +59,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
@@ -88,12 +88,12 @@ import com.phoneagent.ui.icons.AppIcons
  */
 @Composable
 fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    val anomalies by vm.memoryAnomalies.collectAsState()
-    val profiles by vm.memoryProfile.collectAsState()
-    val taskMemories by vm.memoryTaskMemories.collectAsState()
-    val pageMemories by vm.pageMemories.collectAsState()
-    val pagePathEdges by vm.pagePathEdges.collectAsState()
-    val loading by vm.memoryLoading.collectAsState()
+    val anomalies by vm.memoryAnomalies.collectAsStateWithLifecycle()
+    val profiles by vm.memoryProfile.collectAsStateWithLifecycle()
+    val taskMemories by vm.memoryTaskMemories.collectAsStateWithLifecycle()
+    val pageMemories by vm.pageMemories.collectAsStateWithLifecycle()
+    val pagePathEdges by vm.pagePathEdges.collectAsStateWithLifecycle()
+    val loading by vm.memoryLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
 
