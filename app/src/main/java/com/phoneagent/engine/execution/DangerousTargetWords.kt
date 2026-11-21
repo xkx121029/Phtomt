@@ -65,6 +65,29 @@ internal object DangerousTargetWords {
 
     private val EN_NAV_WORDS = Regex("\\b(" + SUBMIT_NAV_EN.joinToString("|") + ")\\b", RegexOption.IGNORE_CASE)
 
+    // ---- 浏览器通道（BrowserGuard）的词表：唯一定义点 ----
+    /**
+     * 浏览器严格档独有的词：网页里点下去就生效，但在 App 里属于纯导航
+     * （「支付方式」是设置页入口），所以**不进** [IRREVERSIBLE]——浏览器侧不做语境豁免（宁可误拦），
+     * 这几个词必须留在浏览器表里。
+     */
+    private val BROWSER_ONLY_CN = listOf("支付", "买单", "去支付", "充值", "提现", "移除", "解绑")
+
+    private val BROWSER_ONLY_EN = listOf(
+        "payment", "withdraw", "transfer", "remove", "unsubscribe", "place order", "submit order",
+        "buy now", "pay now",
+    )
+
+    /**
+     * 浏览器通道的中文词表全集：严格档在前（`BrowserGuard.match` 回报"命中哪个词"依赖顺序，
+     * 既有用例按「支付」断言），再并上三档引擎词——引擎侧新增一个词，浏览器侧自动看见，
+     * 不会再出现"两份表各改一半"。
+     */
+    val browserCn: List<String> = (BROWSER_ONLY_CN + IRREVERSIBLE + BULK_CLEAR + SUBMIT).distinct()
+
+    /** 浏览器通道的英文词表全集（同上：严格档在前，再并上引擎侧英文词） */
+    val browserEn: List<String> = (BROWSER_ONLY_EN + IRREVERSIBLE_EN).distinct()
+
     private fun containsAny(label: String, words: List<String>): Boolean = words.any { label.contains(it) }
 
     /**
