@@ -3,7 +3,6 @@ package com.phoneagent.feature.entry
 import android.content.Intent
 import com.phoneagent.feature.entry.TaskEntry
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,30 +42,8 @@ class TaskEntryTest {
         assertNull(TaskEntry.parseDeepLink(null, null, null))
     }
 
-    // ---- 外部深链判定（决定要不要先过用户确认） ----
-
-    @Test
-    fun `外部深链 task 与 resume 需要确认`() {
-        assertTrue(TaskEntry.isExternalDeepLink(Intent.ACTION_VIEW, "hpa", "task"))
-        assertTrue(TaskEntry.isExternalDeepLink(Intent.ACTION_VIEW, "hpa", "resume"))
-    }
-
-    @Test
-    fun `用户亲手触发的入口不算外部深链`() {
-        // 分享 / 选中文字：都必须由用户在系统界面里点过
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_SEND, null, null))
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_SEND_MULTIPLE, null, null))
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_PROCESS_TEXT, null, null))
-        // 桌面快捷方式：用户自己摆的图标，走 extras 不是 VIEW
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_MAIN, null, null))
-        assertFalse(TaskEntry.isExternalDeepLink(null, null, null))
-    }
-
-    @Test
-    fun `非 hpa 的 VIEW 不算外部深链`() {
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_VIEW, "https", "task"))
-        assertFalse(TaskEntry.isExternalDeepLink(Intent.ACTION_VIEW, "hpa", "unknown"))
-    }
+    // 「要不要先过用户确认」不在本文件：判据已改成「来源可证」（见 EntryTrustTest），
+    // 不再按 Intent 形状判定——深链、extras、分享文字都可能是第三方应用发起的。
 
     // ---- Google App Actions（VIEW hpa://task + text extra） ----
 

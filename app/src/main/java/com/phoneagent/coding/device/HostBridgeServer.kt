@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import com.phoneagent.coding.env.CodingEnvBootstrap
 import com.phoneagent.coding.env.CodingEnvClient
+import com.phoneagent.core.log.AppLog
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -45,6 +46,8 @@ class HostBridgeServer(
 
         /** 鉴权失败的错误码：与 Node 侧 host-bridge.js 的 HOST_UNAUTHORIZED 对齐 */
         const val UNAUTHORIZED_CODE = "HOST_UNAUTHORIZED"
+
+        const val TAG = "HostBridgeServer"
     }
 
     /** 环境编排器；首次用到时才创建，避免每个进程启动都多一个对象 */
@@ -63,8 +66,10 @@ class HostBridgeServer(
      *
      * 鉴权（2026-10-21 修）：以前对已连上的 host 零校验——任何一个能往管道里写
      * type:request 的一方都能驱动设备侧能力（工作区读写、编辑器）。现在每个反向
-     * 请求都必须带 params.token 且与配置里的密钥一致；没配密钥时（本地模式默认空）
-     * 保持放行，不破坏既有部署。
+     * 请求都必须带 params.token 且与配置里的密钥一致。
+     *
+     * 空密钥（[CodingAgentConfig.token] 没配）按「无鉴权」处理：一律拒绝，
+     * 绝不因为"没配密钥"就放行整条管道。
      */
     fun handle(request: JSONObject, respond: (JSONObject) -> Unit) {
         val id = request.optString("id")
@@ -72,7 +77,13 @@ class HostBridgeServer(
         if (id.isEmpty()) return
         val params = request.optJSONObject("params") ?: JSONObject()
         val expected = expectedToken()
-        if (expected.isNotEmpty() && params.optString("token") != expected) {
+        // 空密钥不是"本地模式免鉴权"，而是**没有任何鉴权**：任何能往这条管道写
+        // type:request 的一方都能驱动设备侧能力（工作区读写、编辑器、编码环境）。
+        // 所以没配密钥时一律拒绝，而不是跳过校验。
+        if (expected.isEmpty()) {
+            AppLog.w(TAG, "宿主桥未配置共享密钥（CodingAgentConfig.token 为空），入站请求一律拒绝")
+        }
+        if (!HostBridgeAuth.allows(expected, params.optString("token"))) {
             // 早期版本在这里静默丢弃，代价是 Node 侧要死等满 30s 才降级成
             // 「host did not answer」——排查时看到的是"宿主没响应"而不是"鉴权失败"。
             // 这里改成回一个不含细节的错误包：对端只知道这次调用被拒，

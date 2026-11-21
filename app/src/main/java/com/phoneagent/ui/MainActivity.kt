@@ -491,9 +491,9 @@ private fun ActivityContent(
     // 消费完即清掉 data 与 extra，避免 onNewIntent 复用同一 Intent 时重复起任务。
     val entryTick by entrySignal.collectAsState()
     val entryScope = rememberCoroutineScope()
-    // 外部深链（hpa://task / hpa://resume）先挂在这里等用户点一次确认，不直接开跑：
-    // 自定义 scheme 谁都能构造，隐式 VIEW 又拿不到调用方身份，直接执行等于
-    // 让任意应用或网页替用户下命令（分享/选中文字/快捷方式都必须由用户在系统界面亲手触发，不在此列）。
+    // 外部来源的任务先挂在这里等用户点一次确认，不直接开跑。判据是「来源能不能证明是本应用自己」
+    // （见 EntryTrust），不是「走的深链还是 extras」——自定义 scheme 谁都能构造，
+    // extras 更是任何应用一行 startActivity 就能塞进来，按形状判等于留一条不经确认的通道。
     var pendingEntry by remember { mutableStateOf<com.phoneagent.feature.entry.TaskEntry.Target?>(null) }
 
     fun dispatchEntry(target: com.phoneagent.feature.entry.TaskEntry.Target) {
@@ -540,10 +540,15 @@ private fun ActivityContent(
             ?: com.phoneagent.feature.entry.TaskEntry.fromExtras(intent)
             ?: return@LaunchedEffect
         // 来源判定要在清理之前做：cleanup 会把 data 摘掉
-        val external = com.phoneagent.feature.entry.TaskEntry.isExternalDeepLink(
-            action = intent.action,
-            scheme = intent.data?.scheme,
-            host = intent.data?.host,
+        val provenInternal = com.phoneagent.feature.entry.EntryTrust.isProvenInternal(
+            sdkInt = android.os.Build.VERSION.SDK_INT,
+            // 调用方身份只有 API 34+ 拿得到，且只在对方共享身份或与本应用同 uid 时有值
+            callerUid = if (android.os.Build.VERSION.SDK_INT >= 34) {
+                activity.launchedFromUid
+            } else {
+                com.phoneagent.feature.entry.EntryTrust.INVALID_UID
+            },
+            selfUid = android.os.Process.myUid(),
         )
         intent.data = null
         // clipData 不在 replaceExtras 的清理范围里：分享进来的文件靠它传递，
@@ -551,7 +556,7 @@ private fun ActivityContent(
         intent.clipData = null
         intent.replaceExtras(null)
         // 先清 Intent 再等确认：用户迟迟不点也不会有第二份同样的请求被 onNewIntent 重放
-        if (external) {
+        if (com.phoneagent.feature.entry.EntryTrust.needsUserConfirmation(target, provenInternal)) {
             pendingEntry = target
             return@LaunchedEffect
         }
@@ -947,7 +952,7 @@ private fun ActivityContent(
                     },
                     onDismiss = {
                         pendingEntry = null
-                        snackbarState.show("已取消外部链接请求的任务", SnackbarType.INFO)
+                        snackbarState.show("已取消外部请求的任务", SnackbarType.INFO)
                     },
                 )
             }
@@ -1394,7 +1399,8 @@ private fun ProviderInstallPrompt(onInstall: () -> Unit, onDismiss: () -> Unit) 
 }
 
 /**
- * 外部深链确认面板：`hpa://task` / `hpa://resume` 来自任意应用或网页，拉起任务前必须由用户点一次。
+ * 外部入口确认面板：深链 / 分享文字 / 快捷方式 extras 都可能来自任意应用，
+ * 拉起任务或恢复执行前必须由用户点一次。
  * 面板只做一件事——把「是谁在要求执行、要执行什么」摆到用户面前，让那一下点击成为唯一放行凭据。
  */
 @Composable
@@ -1406,13 +1412,13 @@ private fun ExternalEntryConfirm(
 ) {
     InlineOverlay(onDismiss = onDismiss) {
         Text(
-            "外部链接请求执行任务",
+            "外部请求执行任务",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "这个请求来自其他应用或网页（hpa:// 链接）。开始后 AI 会直接操作这台手机，" +
-                "请确认内容确实是你想做的。",
+            "这个请求来自其他应用或网页（hpa:// 链接、分享的文字或快捷方式）。" +
+                "开始后 AI 会直接操作这台手机，请确认内容确实是你想做的。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
