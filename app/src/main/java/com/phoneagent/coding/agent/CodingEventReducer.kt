@@ -52,6 +52,9 @@ internal object CodingEventReducer {
      * @param ok            tool_end / subagent_end 的成败（org.json optBoolean 的缺省 false 原样传入）
      * @param approved      tool_approval 的审批结论（缺省 true，与 optBoolean("approved", true) 一致）
      * @param why           tool_approval 被拒时的原因
+     * @param danger        DangerGuard 命中的规则 id（approval_request 随 args 一起下发）
+     * @param risk          工具风险档（read / write / exec），审批卡按它说人话
+     * @param approvalArgs  审批卡要展示的操作原文：命令全文，或其它工具的参数摘要
      * @param callId        approval_request / tool_* 的调用 id
      * @param tool          approval_request 的工具名（作为卡片正文）
      * @param code          host_exited 的退出码
@@ -76,6 +79,9 @@ internal object CodingEventReducer {
         ok: Boolean = false,
         approved: Boolean = true,
         why: String = "",
+        danger: String = "",
+        risk: String = "",
+        approvalArgs: String = "",
         callId: String = "",
         tool: String = "",
         code: Int = 0,
@@ -142,7 +148,8 @@ internal object CodingEventReducer {
         // 否则用户点了「允许」只看到卡片变灰，不知道到底发生了什么。
         "tool_approval" -> {
             if (!approved) {
-                val why2 = why.ifEmpty { "被拒绝" }
+                // danger 命中时 why 是宿主的英文描述，这里换成人话；未知 id 仍回落到 why。
+                val why2 = CodingToolNames.dangerLabel(danger, why) ?: "被拒绝"
                 val idx = toolCardIndex(messages, name, callId)
                 val msgs = if (idx >= 0) {
                     messages.toMutableList().also { it[idx] = it[idx].copy(text = "⛔ $why2", toolOk = false) }
@@ -176,6 +183,11 @@ internal object CodingEventReducer {
             messages = messages + ChatMessage(
                 key = "p_$callId", role = "approval", approvalCallId = callId,
                 text = CodingToolNames.label(tool),
+                toolName = tool.ifEmpty { null },
+                // 卡片正文放操作原文：只说「执行命令」等于让用户盲签。
+                approvalCommand = approvalArgs.takeIf { it.isNotBlank() },
+                approvalRisk = CodingToolNames.riskLabel(risk),
+                approvalDanger = CodingToolNames.dangerLabel(danger, why),
             ),
             assistantKey = assistantKey,
         )

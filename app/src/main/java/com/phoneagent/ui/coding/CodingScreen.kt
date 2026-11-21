@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -1014,6 +1015,10 @@ private fun RunStatusLine(
     }
 }
 
+/** 审批卡折叠前显示的行数 / 字符数：超过任一条就出「展开全部」。 */
+private const val APPROVAL_COLLAPSED_LINES = 4
+private const val APPROVAL_COLLAPSED_CHARS = 160
+
 /** 审批技能卡（铁律）：Coding agent 请求执行敏感工具时的内嵌审批——允许 / 拒绝就在卡片上，
  * 决议后置灰落定，绝不弹系统对话框。
  *
@@ -1043,10 +1048,47 @@ private fun ApprovalCard(msg: ChatMessage) {
     ) {
         Column(modifier = Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Md)) {
             Text(
-                text = "Coding Agent 请求执行「$toolLabel」，确认后才会真正执行。",
+                text = "Coding Agent 请求执行「$toolLabel」，风险：${msg.approvalRisk ?: "未知"}。" +
+                    "确认后才会真正执行。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            // 危险命中必须写在「允许」旁边：这是用户做决定最主要的依据。
+            msg.approvalDanger?.let { danger ->
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Text(
+                    text = "⚠ 危险操作：$danger",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            // 操作原文常显：卡片以前只说「执行命令」，用户是在盲签。
+            msg.approvalCommand?.let { command ->
+                var expanded by remember(msg.key) { mutableStateOf(false) }
+                val clipped = command.length > APPROVAL_COLLAPSED_CHARS ||
+                    command.count { it == '\n' } >= APPROVAL_COLLAPSED_LINES
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                        .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+                ) {
+                    Text(
+                        text = command,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = if (expanded || !clipped) Int.MAX_VALUE else APPROVAL_COLLAPSED_LINES,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (clipped) {
+                    TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+                        Text(if (expanded) "收起" else "展开全部")
+                    }
+                }
+            }
             Spacer(Modifier.height(AppSpacing.Md))
             if (resolved == null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
