@@ -57,8 +57,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.vm.DocumentDelegate
 import com.phoneagent.ui.vm.SettingsDelegate
 import com.phoneagent.ui.vm.TestDelegate
+import com.phoneagent.ui.vm.UpdateDelegate
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
 
@@ -649,23 +651,23 @@ class MainViewModel(
      */
     suspend fun saveSettingsNow(value: AppSettings.Settings) = settingsDomain.saveSettingsNow(value)
 
-    // ---- 自动更新：查询新版本、下载安装 ----
-    val updateState: StateFlow<com.phoneagent.feature.update.UpdateState> = updateManager.state
+    // ---- 自动更新：查询新版本、下载安装（实现在 [UpdateDelegate]） ----
+    private val updateDomain = UpdateDelegate(updateManager)
+
+    val updateState: StateFlow<com.phoneagent.feature.update.UpdateState> get() = updateDomain.updateState
 
     /**
      * 查询更新。返回是否发现新版本——启动时的静默检查据此决定要不要打扰用户。
      * @param baseUrl 官网地址，留空由更新模块回落到官方站点
      */
     suspend fun checkUpdate(baseUrl: String, channel: com.phoneagent.feature.update.UpdateChannel): Boolean =
-        updateManager.check(baseUrl, channel)
+        updateDomain.checkUpdate(baseUrl, channel)
 
     /** 下载并安装。下载跑在更新模块自己的作用域里，退出设置页也不会中断 */
     fun downloadAndInstallUpdate(
         release: com.phoneagent.feature.update.ReleaseInfo,
         download: com.phoneagent.feature.update.DownloadInfo,
-    ) {
-        updateManager.downloadAndInstall(release, download)
-    }
+    ) = updateDomain.downloadAndInstallUpdate(release, download)
 
     /** 由 UI 在页面可见时调用，与 [refreshStatus] 走同一个口径（开关已开 + 实例已连接） */
     fun refreshA11yState(context: Context) {
@@ -747,10 +749,12 @@ class MainViewModel(
 
     fun resetTest() = testDomain.resetTest()
 
-    // ---- 文档结果：AI 生成的文档直接在 Agent 页任务流里预览 ----
-    val docResult: StateFlow<DocResult?> = documentEngine.result
+    // ---- 文档结果：AI 生成的文档直接在 Agent 页任务流里预览（实现在 [DocumentDelegate]） ----
+    private val documentDomain = DocumentDelegate(documentEngine)
 
-    fun dismissDoc() = documentEngine.dismiss()
+    val docResult: StateFlow<DocResult?> get() = documentDomain.docResult
+
+    fun dismissDoc() = documentDomain.dismissDoc()
 
     // ---- AI 记忆图谱 ----
     /** 本次任务内 AI 写入的记忆事件（引擎内存态），Agent 页据此实时插卡 */
