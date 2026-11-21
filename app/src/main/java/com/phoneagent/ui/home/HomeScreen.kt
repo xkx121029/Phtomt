@@ -163,8 +163,13 @@ fun HomeScreen(
                 model = settings.model,
                 onClick = {
                     when (trust.state) {
-                        com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> onNavigate(0)
+                        com.phoneagent.core.ai.ModelTrust.State.VERIFIED,
+                        // 未验证不拦：允许用户离线配好后直接开跑，风险在副标题里说清；
+                        // 想先验一次就走状态条的模型格（那里直达云端模型页）
+                        com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED,
+                        -> onNavigate(0)
                         com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> onNavigate(2)
+                        // 验证失败不放行：点了去修，不让人拿着已知失效的 Key 起任务
                         else -> onOpenModelSettings()
                     }
                 },

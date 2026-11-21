@@ -97,6 +97,17 @@ internal fun SettingsQuickStart(
 
     // 就绪口径与开屏引导共用同一个函数：一边只看 Key、一边还要求模型名会给出两种结论
     val modelReady = st.modelReady()
+    // 起跑门的另一半：「填齐了」不等于「验过」。按当前表单算（toSettings 会带上已保存的验证记录），
+    // 用户改完 Key 立刻能看到结论，不用先保存
+    val trust = st.toSettings().modelTrust
+    // 验证失败必须拦——放它起跑等于让用户等 45 秒换回一句「决策链路异常」（UX-01 原始复现路径）。
+    // 未验证不拦（允许先离线配好），只在按钮下面说清风险
+    val startBlocked = if (trust.state == com.phoneagent.core.ai.ModelTrust.State.FAILED) {
+        "上次连接测试失败：${trust.error}。先在下面点「测试连接」修好再开始。"
+    } else {
+        null
+    }
+    val canStart = modelReady && startBlocked == null
 
     /** 落库前把端点与模型库对齐，避免"模型能跑但模型库里找不到"的割裂状态 */
     fun commit() {
@@ -361,7 +372,7 @@ internal fun SettingsQuickStart(
                                 modifier = Modifier.weight(1f),
                             )
                             TextButton(
-                                enabled = modelReady,
+                                enabled = canStart,
                                 onClick = {
                                     buzz()
                                     commit()
@@ -379,7 +390,7 @@ internal fun SettingsQuickStart(
         Spacer(Modifier.height(AppSpacing.Xl))
 
         Button(
-            enabled = modelReady,
+            enabled = canStart,
             onClick = {
                 buzz()
                 commit()
@@ -388,6 +399,19 @@ internal fun SettingsQuickStart(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("保存并开始第一个任务")
+        }
+        // 起跑门下的一句话：失败说原因（并拦住），未验证说风险（但不拦）
+        val gateHint = startBlocked
+            ?: "还没测试过连接，可能会失败".takeIf {
+                modelReady && trust.state == com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED
+            }
+        gateHint?.let {
+            Spacer(Modifier.height(AppSpacing.Sm))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (startBlocked != null) MaterialTheme.colorScheme.error else AppTheme.colors.warning,
+            )
         }
 
         Spacer(Modifier.height(AppSpacing.Xxl))

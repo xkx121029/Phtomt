@@ -88,6 +88,24 @@ internal class PlanningFlow(
             ui.pushFloating("配置未完成", "ERROR")
             return
         }
+        // 配置填齐但没验过：不拦（允许先离线配好），但第一次起跑前说一句。
+        // 同一份配置只提醒一次——换 Key / 模型 / 地址后指纹变了才会再提一次
+        runCatching {
+            val snapshot = settingsSnapshot()
+            if (snapshot.modelTrust.state == com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED) {
+                val fingerprint = com.phoneagent.core.ai.ModelTrust.fingerprint(
+                    snapshot.apiBaseUrl,
+                    snapshot.model,
+                    snapshot.apiKey,
+                )
+                if (snapshot.modelUnverifiedWarned != fingerprint) {
+                    val tip = "模型还没测试过连接，任务可能会失败。可在「设置 → 云端模型」里点一次「测试所有 API」。"
+                    ui.log(com.phoneagent.domain.model.AgentLog.Level.WARN, "模型未验证：$tip")
+                    ui.pushFloating("模型未验证", "WARN")
+                    scope.launch { settings.markModelUnverifiedWarned(snapshot.apiBaseUrl, snapshot.apiKey, snapshot.model) }
+                }
+            }
+        }
         store.pendingTask = task
         store.planStream.value = ""
         // 上一轮任务里 AI 说过的话先清掉：纯对话不会进 run()，靠它清就太晚了，

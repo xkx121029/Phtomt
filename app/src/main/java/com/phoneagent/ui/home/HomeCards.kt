@@ -148,7 +148,7 @@ internal fun PrimaryActionCard(
                             com.phoneagent.core.ai.ModelTrust.State.VERIFIED ->
                                 "已接入 $model · 说一句话就开始"
                             com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED ->
-                                "模型已保存，尚未验证 · 点这里测试连接"
+                                "模型已保存，尚未验证 · 建议先测一次连接（状态条·模型）"
                             com.phoneagent.core.ai.ModelTrust.State.FAILED ->
                                 "「${trust.error}」· 点这里去修复"
                             com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED ->
