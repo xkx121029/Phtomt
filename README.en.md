@@ -83,7 +83,7 @@ Two hard boundaries separate it from the usual "remote-controlled AI" approach:
 | 🔐 **Three authorization tiers** | Action mode governs "may the AI ask for this", channel mode governs "can the device do it" — orthogonal |
 | ⚡ **On-device-first decisions** | Dialogs, loading screens, and ads are handled locally instead of burning cloud quota |
 | 👁 **Multi-source vision** | On-device 3B (GGUF + JNI), a cloud vision model, and ML Kit Chinese OCR are picked by page complexity |
-| ✅ **Verified execution** | Page fingerprints are compared before and after, separating "delivered" from "actually took effect" |
+| ✅ **Verified execution** | Page fingerprints are compared before and after, giving three outcomes — verified, delivered but unconfirmed, delivered but no visible change — and an unconfirmed step is folded into neither success nor failure |
 | 💻 **Coding inside the phone** | PRoot + Alpine + JDK + Gradle + SDK set up in one flow, then `assembleDebug` on the device |
 | 🧠 **Long tasks stay on track** | Task memory, checkpoints, circuit breakers, template reuse, plus mid-run disconnect detection and read-only sensitive pages |
 
@@ -254,10 +254,10 @@ Dependencies point one way; `core` / `domain` sit at the bottom:
 
 | Scope | Source files | Lines |
 |---|---|---|
-| `app/src/main` production code | **356** | **91,042** |
-| Unit tests (`src/test` + `src/testDebug`) | **121** | **18,205**, with 1,260 `@Test` cases |
-| Main code across modules (`app` + `provider` + `provider-api`) | **390** | **96,301** |
-| Every `.kt` in the repo (`env` / `third_party` included) | **595** | **124,057** |
+| `app/src/main` production code | **370** | **93,959** |
+| Unit tests (`app/src/test`) | **148** | **21,695**, with 1,461 `@Test` cases |
+| Main code across modules (`app` + `provider` + `provider-api`) | **404** | **99,221** |
+| Every `.kt` in the repo (`env` / `third_party` included) | **638** | **130,633** |
 
 > The numbers come from `tool/count-code.sh`: it counts `.kt` files returned by `git ls-files` and sums their lines, excluding `cpp`. They grow with the code, so treat them as the state of the commit that generated them; re-run the script to reproduce them.
 
@@ -311,7 +311,7 @@ The nine `browse_*` intents, plus `see` and `web_search`, are not in the action 
 |---|---|
 | 🛡 CONSERVATIVE | 35 executable actions (read-only / navigation / scrolling / local read-write / read-only browsing) |
 | ⚖️ BALANCED (default) | 61 executable actions (35 low risk + 21 medium + 5 high) |
-| 🔓 FREE | all 65 executable, plus `terminal_op`, `shell` (AI-authored commands), `virtual_display`, and `a11y` — 4 free-tier-only actions (17 accessibility endpoints called directly, each confirmed once before first use) |
+| 🔓 FREE | all 65 executable, plus `terminal_op`, `shell` (AI-authored commands), `virtual_display`, and `a11y` — 4 free-tier-only actions (18 accessibility endpoints called directly, coordinates in 0..1 ratio, each confirmed once before first use) |
 
 There is exactly one gate: in the main loop, after skill normalization and before browser dispatch. The position is deliberate — `browse_*` never passes through the translator, so this is the only spot that can cover it. Three consecutive denials end the task and suggest relaxing the tier.
 
@@ -380,7 +380,7 @@ Channel selection has a single decision point, [ShellRules.pickChannel](app/src/
 | Channel | Privilege | Can do |
 |---|---|---|
 | Embedded Shizuku | shell (adb) | system commands such as `am` / `pm` / `settings` / `input` |
-| ADB bootstrap session | shell (adb) | same; a transitional state while the server starts, presented to users as Shizuku |
+| ADB bootstrap session | shell (adb) | **cannot** run commands: it only starts the embedded Shizuku server, and the capability snapshot rates it degraded at best; presented to users as Shizuku |
 | Termux | **ordinary app privileges** | curl / python / jq / text processing — **cannot** run system commands |
 
 Termux's `RUN_COMMAND` permission, result PendingIntent delivery, and the `allow-external-apps` check all happen inside the Provider; on the app side [TermuxBridge](app/src/main/java/com/phoneagent/device/shell/TermuxBridge.kt) only forwards AIDL and exposes cached state.
@@ -507,9 +507,10 @@ The nine `browse_*` intents are carried out by the built-in WebView's DOM script
 |---|---|
 | Sensitive pages are read-only | `SensitivePageDetector` recognizes payment / password / verification-code keywords; five consecutive takeovers on a still-sensitive page end the task |
 | Data redaction | 18-digit ID → 16–19-digit bank card → 11-digit phone number, masked longest-first; anything under 11 digits takes a fast path and returns immediately |
-| Irreversible-action confirmation | actions flagged `needsUserConfirmation` always ask first; a 120-second timeout counts as cancel |
-| Free-mode command confirmation | an AI-authored command is confirmed once before its first run this task; refusal is fed back as "don't retry this" |
-| Idempotency guard | when the page already shows completion evidence, repeated side effects (submit / send / order / pay / delete) are skipped |
+| Irreversible-action confirmation | actions flagged `needsUserConfirmation`, actions whose target control hits the dangerous-word list (including web clicks judged by the real element text, and coordinate clicks whose landing control cannot be resolved), and actions the idempotency verdict wants re-confirmed all ask first; a 120-second timeout counts as cancel. The same action on the same page is not asked twice within 60 seconds, but changing page always asks again |
+| Free-mode command confirmation | an AI-authored command (including `terminal_op op=exec`) is confirmed once before its first run this task; refusal is fed back as "don't retry this" |
+| External-entry confirmation | a task arriving from extras / a deep link / shared text is confirmed first; only an entry provably started by this app skips it (`EntryTrust`, and a missing caller uid is always treated as external) |
+| Idempotency guard | only this task's own history counts: a repeated side effect (submit / send / order / pay / delete) is skipped when the same action was already dispatched and the page still shows a completion sentence; page text alone, without a dispatch this task, turns into one confirmation |
 | Secret storage | `SecretCodec` encrypts before anything reaches DataStore |
 
 ## 🖼 Screens
@@ -595,7 +596,7 @@ Neither. The Provider embeds the Shizuku server and starts it via `app_process` 
 <details>
 <summary><b>Will it tap the wrong thing, or pay for something?</b></summary>
 
-Three gates: action mode restricts what the AI may ask for (balanced by default; payment and deletion are free-mode only), actions flagged `needsUserConfirmation` always ask first, and sensitive pages (payment / password / verification code) are read-only — five consecutive takeovers on a still-sensitive page end the task. Repeated side effects are also skipped when the page already shows completion evidence.
+Four gates: action mode restricts what the AI may ask for (balanced by default; payment and deletion are free-mode only); irreversible actions always ask first — actions flagged `needsUserConfirmation`, actions whose target control text hits the dangerous-word list, and actions the idempotency verdict cannot settle all go through one confirmation card, and web clicks are judged by the real element text (the read-only tier refuses outright, every other tier turns them into a confirmation); the same action on the same page is not asked twice within 60 seconds, but a page change (tap checkout, then tap confirm payment) asks both times; sensitive pages (payment / password / verification code) are read-only — five consecutive takeovers on a still-sensitive page end the task. A repeated side effect is skipped only when the same action was already dispatched in this task and the page still shows a completion sentence.
 
 </details>
 
