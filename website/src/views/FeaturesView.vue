@@ -41,17 +41,18 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
+      no="01 / 能力"
       eyebrow="能力清单"
       :title="heroTitle"
-      lead="每一条都对应真实代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。"
+      lead="每一条都对应代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。点开任意一条看做法。"
     >
-      <div class="chips">
+      <div class="chips" role="group" aria-label="按分组筛选">
         <button
           v-for="tag in tags"
           :key="tag"
           type="button"
           :class="['chip', { 'chip--on': active === tag }]"
-          @click="active = tag"
+          @click="active = tag; open = ''"
         >
           {{ tag }}
         </button>
@@ -65,27 +66,32 @@ onMounted(async () => {
         <div v-for="group in groups" :key="group.tag" class="group">
           <h2 v-reveal class="group__title">
             {{ group.tag }}
-            <span class="muted mono group__count">{{ group.items.length }}</span>
+            <span class="mono group__count">{{ String(group.items.length).padStart(2, '0') }}</span>
           </h2>
 
-          <div class="grid">
+          <div class="list">
             <article
               v-for="(item, index) in group.items"
               :key="item.id"
-              v-reveal="index * 40"
-              :class="['card', 'item', { 'item--open': open === item.id }]"
+              v-reveal="index * 30"
+              :class="['row', { 'row--open': open === item.id }]"
             >
-              <button class="item__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
-                <span class="item__text">
-                  <span class="item__title">{{ item.title }}</span>
-                  <span class="item__summary">{{ item.summary }}</span>
+              <button class="row__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
+                <span class="row__no mono">{{ String(index + 1).padStart(2, '0') }}</span>
+                <span class="row__text">
+                  <span class="row__title">{{ item.title }}</span>
+                  <span class="row__summary">{{ item.summary }}</span>
                 </span>
-                <svg class="item__caret" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M4 6.5 8 10.5l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <span class="row__caret" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 6.5 8 10.5l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
               </button>
-              <div class="item__body">
-                <p class="item__detail">{{ item.detail }}</p>
+              <div class="row__body">
+                <div class="row__inner">
+                  <p class="row__detail">{{ item.detail }}</p>
+                </div>
               </div>
             </article>
           </div>
@@ -99,162 +105,166 @@ onMounted(async () => {
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .chip {
-  padding: 6px 14px;
-  border: 1px solid var(--line);
+  padding: 5px 12px;
+  border: 1px solid var(--line-2);
   border-radius: var(--r-pill);
-  background: var(--paper-raised);
+  background: transparent;
+  font-size: var(--t-sm);
   color: var(--ink-2);
-  font-size: var(--t-xs);
   cursor: pointer;
   transition:
-    transform var(--dur-press) var(--ease-out),
     background-color var(--dur-ui) ease,
     border-color var(--dur-ui) ease,
     color var(--dur-ui) ease;
 }
 
-.chip:active {
-  transform: scale(0.96);
-}
-
 .chip--on {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
 }
 
 [data-theme="dark"] .chip--on {
+  background: var(--brand);
+  border-color: var(--brand);
   color: var(--brand-ink);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:hover {
-    border-color: var(--line-2);
+  .chip:not(.chip--on):hover {
+    border-color: var(--ink);
     color: var(--ink);
-  }
-
-  .chip--on:hover {
-    color: #fff;
-  }
-
-  [data-theme="dark"] .chip--on:hover {
-    color: var(--brand-ink);
   }
 }
 
 .group + .group {
-  margin-top: clamp(40px, 5vw, 64px);
+  margin-top: clamp(32px, 4vw, 52px);
 }
 
 .group__title {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 18px;
-  font-size: var(--t-h3);
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ink);
+  font-size: var(--t-h2);
 }
 
 .group__count {
-  font-size: var(--t-xs);
-  font-weight: 400;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
 }
 
-.grid {
+.list {
+  border-bottom: 1px solid var(--line);
+}
+
+.row {
+  border-top: 1px solid var(--line);
+}
+
+.row__head {
   display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 20px;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-}
-
-.item {
-  padding: 0;
-  overflow: hidden;
-}
-
-.item__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   width: 100%;
-  padding: 20px 22px;
+  padding: 14px 2px;
   border: none;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-/* 桌面端悬停即展开，省掉一次点击；移动端没有 hover，仍走按钮的点击切换（aria-expanded 照旧）。
-   不再给头部叠悬停底色：卡片已经是亚克力，再加一层 --paper-sunken 会把材质糊掉，
-   展开本身就是足够的反馈。 */
-@media (hover: hover) and (pointer: fine) {
-  .item:hover .item__body {
-    grid-template-rows: 1fr;
-  }
-
-  .item:hover .item__caret {
-    transform: rotate(180deg);
-  }
+.row__no {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  padding-top: 3px;
 }
 
-.item__text {
+.row__text {
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
-.item__title {
-  font-size: 1.05rem;
+.row__title {
+  font-size: 0.98rem;
   font-weight: 600;
-  letter-spacing: -0.018em;
+  color: var(--ink);
 }
 
-.item__summary {
+.row__summary {
   font-size: var(--t-sm);
+  line-height: 1.75;
   color: var(--ink-2);
-  line-height: 1.72;
 }
 
-.item__caret {
-  flex: none;
-  margin-top: 4px;
+.row__caret {
+  display: flex;
+  justify-content: center;
+  padding-top: 5px;
   color: var(--ink-3);
   transition: transform var(--dur-ui) var(--ease-out);
 }
 
-.item--open .item__caret {
+.row--open .row__caret {
   transform: rotate(180deg);
 }
 
-/* 展开用 grid-template-rows 过渡：高度未知时也能平滑，且可被打断 */
-.item__body {
+/* 折叠用 grid-template-rows 0fr → 1fr：高度自动、可过渡，不用测高 */
+.row__body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-enter) var(--ease-out);
+  transition: grid-template-rows var(--dur-ui) var(--ease-out);
 }
 
-.item--open .item__body {
+.row--open .row__body {
   grid-template-rows: 1fr;
 }
 
-/* overflow: hidden 同时把 grid 项的自动最小尺寸压成 0，否则 0fr 收不拢 */
-.item__detail {
+.row__inner {
   overflow: hidden;
-  padding: 0 22px 22px;
-  font-size: var(--t-sm);
-  color: var(--ink-2);
-  line-height: 1.8;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .item__body {
-    transition: none;
+.row__detail {
+  padding: 2px 32px 18px 40px;
+  font-size: var(--t-sm);
+  line-height: 1.9;
+  color: var(--ink-2);
+  max-width: 78ch;
+  border-left: 2px solid var(--brand-wash);
+  margin-left: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row__head:hover .row__title {
+    color: var(--brand);
+  }
+}
+
+@media (min-width: 720px) {
+  .row__head {
+    grid-template-columns: 36px minmax(0, 11.2rem) minmax(0, 1fr) 22px;
+    align-items: baseline;
+    gap: 18px;
+    padding: 15px 2px;
   }
 
-  .item__caret {
-    transition: none;
+  .row__text {
+    display: contents;
+  }
+
+  .row__title {
+    font-size: 0.95rem;
+  }
+
+  .row__detail {
+    padding-left: 56px;
+    margin-left: 18px;
   }
 }
 </style>
