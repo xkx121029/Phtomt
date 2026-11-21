@@ -43,15 +43,30 @@ plugins {
 // ---------------------------------------------------------------------------
 val versionPropsFile = rootProject.file("version.properties")
 
+// 已废弃的「渠道偏移号段」下界 = 1,000,000。
+//
+// cdd967a8（2026-11-05 07:35）曾用 versionCode 段位编码渠道：dev = 1000000 + run、
+// beta = 2000000 + run。同一天 474c6262（19:57）改回单序列计数器（0.2.9193 → 0.2.9194），
+// 但已发布的那段号永远留在 tag 里：v0.2.1000084-dev、v0.2.2000083-beta … v0.2.2000093-beta。
+//
+// 为什么这个常量必须存在：把废弃号段当成「水位」会让 versionCode 永远卡在 200 万号段，
+// 与 tag / Release / APK 名的 0.2.9xxx 序列彻底脱节（用户看到的就是两套版本号）。
+// 所以凡是 >= 1,000,000 的号，既不算 tag 水位、也不算有效计数器——它们是历史垃圾，不是占用。
+val LEGACY_CHANNEL_SEGMENT_FLOOR = 1_000_000
+
 fun readStoredBuildNumber(): Int {
     if (!versionPropsFile.exists()) return 0
     val props = Properties().apply {
         runCatching { versionPropsFile.inputStream().use { load(it) } }
     }
-    return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+    val raw = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+    // 落在已废弃号段的计数器是被污染的（本地构建曾把 2000093 写进来），按「没有记录」处理，
+    // 基准改由当前号段的 tag 水位决定。不这样归零，脏计数器会一直把水位往上拖。
+    return if (raw >= LEGACY_CHANNEL_SEGMENT_FLOOR) 0 else raw
 }
 
-// 已发布 tag 里的最大 versionCode（`v0.2.<N>` / `v0.2.<N>-beta` / `v0.2.<N>-dev`）。
+// 已发布 tag 里的最大 versionCode（`v0.2.<N>` / `v0.2.<N>-beta` / `v0.2.<N>-dev`），
+// 只统计当前号段（< LEGACY_CHANNEL_SEGMENT_FLOOR）。
 //
 // 这里原本用的是 git 提交数（`git rev-list --count HEAD`）当基线，那个语义已经彻底失效：
 // 仓库只有 ~490 个提交，而 versionCode 早跑到 92xx，两个量级差了 20 倍——一旦
@@ -64,6 +79,7 @@ fun gitTagMaxVersionCode(): Int = runCatching {
         .standardOutput.asText.get()
         .lineSequence()
         .mapNotNull { Regex("^v0\\.2\\.(\\d+)").find(it.trim())?.groupValues?.get(1)?.toIntOrNull() }
+        .filter { it < LEGACY_CHANNEL_SEGMENT_FLOOR }
         .maxOrNull()
 }.getOrNull() ?: 0
 
@@ -244,6 +260,9 @@ subprojects.forEach { p ->
         val localUser = user
         val localNumber = number
         val localInjected = injected
+        // 已废弃渠道号段下界。任务动作不能调用脚本函数，所以在这里抓成局部值再传进去，
+        // 和 localNumber / localStaleMs 同一套写法。
+        val localLegacyFloor = LEGACY_CHANNEL_SEGMENT_FLOOR
         val localVersionFile = versionFile.absolutePath
         // 「这个版本号是我自己刚写的」凭据。不能只看 version.properties 的值：
         // assemble 会先后跑 packageDebug 和 packageRelease，第二个任务必须能认出第一个的写回。
@@ -467,7 +486,10 @@ subprojects.forEach { p ->
                     val f = File(localVersionFile)
                     if (f.exists()) f.inputStream().use { props.load(it) }
                 }
-                val stored = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                val storedRaw = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                // 已废弃号段的计数器不算「占用」——它比本次的号大得多，当成冲突会让本地构建
+                // 永远打不出包（唯一出路是手工改文件）。按 0 处理，见 LEGACY_CHANNEL_SEGMENT_FLOOR。
+                val stored = if (storedRaw >= localLegacyFloor) 0 else storedRaw
                 val markerText = runCatching { File(localVersionMarker).readText() }.getOrDefault("")
                 fun markerField(key: String): String? = markerText.lineSequence()
                     .firstOrNull { it.startsWith("$key=") }?.substringAfter('=')?.trim()
@@ -533,7 +555,10 @@ subprojects.forEach { p ->
                 val f = File(localVersionFile)
                 val props = Properties()
                 runCatching { if (f.exists()) f.inputStream().use { props.load(it) } }
-                val stored = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                val storedRaw = props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
+                // 已废弃号段的脏计数器按 0 处理，否则 `localNumber > stored` 永远不成立，
+                // 2000093 会一直赖在文件里、每次构建都拿它当选不出的水位。
+                val stored = if (storedRaw >= localLegacyFloor) 0 else storedRaw
                 if (localNumber > stored) {
                     f.writeText(
                         "#Auto-incremented by Gradle\n" +

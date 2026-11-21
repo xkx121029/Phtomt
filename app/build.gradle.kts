@@ -199,6 +199,17 @@ val checkPureLogicCoverage by tasks.registering {
  */
 val buildNumber: Int = rootProject.extra["buildNumber"] as Int
 
+// 渠道后缀：CI 用 `-Pchannel=$CHANNEL` 传入（beta / dev），本地构建不带该参数。
+//
+// 为什么放进 versionName：tag、Release 名、APK 文件名一直叫 `v0.2.9195-beta`，而包内
+// versionName 只有 `0.2.9195`——同一个包两个名字，用户在「关于」里看到的号在 GitHub 上搜不到。
+// 现在三处统一成同一个字符串。
+//
+// 本地默认 dev：本地构建从不发布，dev 是最诚实的标注，也避免 versionName 又变回「无后缀」的第三种形态。
+// 注意：服务端升级检查会拿 versionName 做比较（website/server/lib/helpers.js 的 compareVersion），
+// 那边的解析必须先剥掉 `-后缀` 再按 `.` 分段，否则 `9195-beta` 会被 Number() 变成 0。
+val channel: String = (providers.gradleProperty("channel").orNull ?: "").trim().ifEmpty { "dev" }
+
 android {
     namespace = "com.phoneagent"
     compileSdk = 36
@@ -238,7 +249,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = buildNumber
-        versionName = "0.2.$buildNumber"
+        versionName = "0.2.$buildNumber-$channel"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
