@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution
+package com.phoneagent.domain.rules
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -103,13 +103,29 @@ class DangerousTargetWordsTest {
 
     @Test
     fun `英文词边界与导航语境不误伤`() {
+        // 左词边界：词首不是独立成词的都不算
         assertNull(DangerousTargetWords.hit("sender"))
         assertNull(DangerousTargetWords.hit("resend"))
         assertNull(DangerousTargetWords.hit("postcode"))
-        assertNull(DangerousTargetWords.hit("payment"))
-        assertNull(DangerousTargetWords.hit("confirmed"))
+        // 导航语境：与中文提交档同口径的豁免
         assertNull(DangerousTargetWords.hit("Post settings"))
         assertNull(DangerousTargetWords.hit("Send history"))
         assertNull(DangerousTargetWords.hit("Checkout detail"))
+    }
+
+    /**
+     * 英文**只收左词边界、刻意不收右边界**（`#deleteComment`、`DeleteAccountButton` 必须继续拦），
+     * 于是 `confirmed` 会命中 `confirm`、`payment` 会命中 `payment`。
+     *
+     * `payment` 是刻意收进 [DangerousTargetWords.IRREVERSIBLE_EN] 的：英文没有中文那种
+     * 「不收笼统的支付以避开『支付方式』」的收窄手段（`Payment method` 确实以 payment 打头），
+     * 安全方向上宁可多问一句。这条断言由「不该拦」改成「会拦」，是语义变更而不是回归。
+     */
+    @Test
+    fun `英文右边界从宽_驼峰与payment开头照拦`() {
+        assertEquals("payment", DangerousTargetWords.hit("payment"))
+        assertEquals("payment", DangerousTargetWords.hit("Payment method"))
+        assertEquals("confirm", DangerousTargetWords.hit("confirmed"))
+        assertEquals("delete", DangerousTargetWords.hit("deleteComment"))
     }
 }

@@ -165,8 +165,11 @@ class ExecutionPhaseTest {
                 actionMode = { mode },
                 idempotencyDone = { idempotentDone },
                 committedEffects = { committed.toList() },
-                recordEffect = { action, step ->
-                    committed += EngineRules.CommittedEffect(EngineRules.idempotencyKey(action, action.type), step)
+                recordEffect = { action, step, realLabel ->
+                    committed += EngineRules.CommittedEffect(
+                        EngineRules.idempotencyKey(action, action.type, realLabel),
+                        step,
+                    )
                 },
                 a11yDisconnectedNote = { "" },
             ),
@@ -413,10 +416,13 @@ class ExecutionPhaseTest {
     }
 
     @Test
-    fun `危险词点击即使没有语义标记也要过确认门`() = runTest {
-        // 绕过路径：模型不用 intent=delete，改用最通用的 tap + 目标文字「删除」。
-        // 这条路上没有任何意图标记（needsUserConfirmation 默认 false），
-        // 若确认门只信意图，删除会直接点下去。
+    fun `危险词判定不在执行阶段做_已下沉到派发层`() = runTest {
+        // 旧实现在这里读 target.value 过一道确认门。病灶正是这个读数：by=coordinate 时转译层
+        // 拿不到元素 → target 为 null → 判据整条静默；by=hint（默认值）时读到的也只是模型的说法。
+        // 现在分工：执行阶段只判两条**确定信号**（语义标记 needsUserConfirmation + 幂等），
+        // 目标标签的危险词判定下沉到派发层（engine/execution/DangerousTargetGate），
+        // 那里拿得到活节点与落点探针。同一个问题只能有一个地方判，否则两边各判一遍就会弹两次。
+        // 判据本身的行为由 DangerousTargetGateTest 钉住；这条钉的是"执行阶段不再重复弹"。
         val fixture = Fixture(
             translation = IntentTranslator.TranslationResult.Command(
                 AgentAction(
@@ -429,10 +435,8 @@ class ExecutionPhaseTest {
         val s = session(AgentIntent(intent = IntentType.TAP))
         val outcome = fixture.phase.run(s)
         assertEquals(StepOutcome.Continue, outcome)
-        assertEquals(1, fixture.f.confirmations)
-        // 用户拒绝 → 不许执行，且要留档跳过
-        assertEquals(0, fixture.f.executes)
-        assertEquals(1, fixture.f.histories)
+        assertEquals("执行阶段不按标签问，问的是派发层", 0, fixture.f.confirmations)
+        assertEquals(1, fixture.f.executes)
     }
 
     @Test

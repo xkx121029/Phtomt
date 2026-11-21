@@ -14,11 +14,11 @@ import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStatus
+import com.phoneagent.domain.rules.DangerousTargetWords
 import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.ActionPolicy
 import com.phoneagent.engine.execution.CompletionEvidence
-import com.phoneagent.engine.execution.DangerousTargetWords
 import com.phoneagent.engine.execution.DegradationTrigger
 import com.phoneagent.engine.execution.IntentTranslator
 import com.phoneagent.engine.execution.InputCommitRules
@@ -107,8 +107,8 @@ internal class ExecutionDeviceHooks(
     val idempotencyDone: (ScreenSnapshot) -> Boolean,
     /** 本任务内已确认下发的副作用动作（幂等判据的唯一来源，见 [EngineRules.idempotencyVerdict]） */
     val committedEffects: () -> List<EngineRules.CommittedEffect>,
-    /** 动作真的下发且验证成功后记账：后面的步骤据此才能判"这次是重复副作用" */
-    val recordEffect: (AgentAction, Int) -> Unit,
+    /** 动作真的下发且验证成功后记账：后面的步骤据此才能判"这次是重复副作用"（[realLabel] 与判据同源） */
+    val recordEffect: (AgentAction, Int, String?) -> Unit,
     /** 协助文案里的无障碍断线提示（原 `AgentAccessibilityService.instance == null` 判定） */
     val a11yDisconnectedNote: () -> String,
 )
@@ -497,7 +497,11 @@ internal class ExecutionPhase(
                 // 动作压根没下发却记成 ✅。现在的取向：
                 // - 本任务内确实下发并确认过同一动作 → 跳过，不重复副作用；
                 // - 不可逆动作（删除/支付/下单）证据不足 → 交用户确认，既不静默成功、也不静默重放。
-                val idempotency = EngineRules.idempotencyVerdict(device.committedEffects(), act, act.type, snapshot)
+                // 判据的标签取**端侧真实控件文字**（[EngineRules.targetLabelOf]），不再只信模型自报的
+                // target.value：坐标点击时 target 根本不填，英文界面时词表又只有中文，两者都会让判据静默失效。
+                val realLabel = EngineRules.targetLabelOf(act, snapshot)
+                val idempotency =
+                    EngineRules.idempotencyVerdict(device.committedEffects(), act, act.type, snapshot, realLabel)
                 if (idempotency is EngineRules.IdempotencyVerdict.Skip) {
                     val skipReason = "本任务第 ${idempotency.step} 步已下发并确认过同一动作「" +
                         (act.target?.value ?: act.type) + "」，本次不重复执行"
@@ -531,16 +535,20 @@ internal class ExecutionPhase(
                 }
                 // 不可逆动作确认门：AI/转译层标记 needsUserConfirmation 的动作，执行前先问用户。
                 // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行。
-                // 点击另按标签过一遍危险词：模型可以用最通用的 tap 按文字去点「删除」，
-                // 也可以走自由模式的 a11y + click_node，两条路上都没有意图标记，
-                // 只信 needsUserConfirmation 等于把门挂在模型自觉上。
-                // 幂等保护也会走这道门（[EngineRules.IdempotencyVerdict.NeedsConfirm]）：
+                // 按**目标标签**的危险词兜底不在这一层做了：判据已下沉到派发层
+                // （[com.phoneagent.engine.execution.DangerousTargetGate]），那里拿得到活节点与落点探针；
+                // 这一层只能读到模型自报的 target.value，坐标/提示词路径整条绕过（HAPP-35 P0-2）。
+                // 唯一例外是 a11y 端点直调（`click_node`）：派发层闸门按 [ActionType] 收敛到
+                // TAP/CLICK/长按/滑动，不含 A11Y_CALL，那条路上也没有"落点控件"可取——落点写在
+                // `args["target"]` 里，只有这一层看得见（取数见 [AgentAction.operatedLabel]）。
+                // 每个路径只有一处判据，不会弹两次。
+                // 幂等保护也走这道门（[EngineRules.IdempotencyVerdict.NeedsConfirm]）：
                 // 不可逆动作在"没做过但页面像做完了"或"做过但页面不再是完成态"时，必须先问用户。
                 val hazard = hazardWordOf(act)
                 if (hazard != null && !act.needsUserConfirmation) {
                     ui.log(
                         AgentLog.Level.WARN,
-                        "点击目标「${act.operatedLabel}」命中危险词「$hazard」，转用户确认",
+                        "端点直调目标「${act.operatedLabel}」命中危险词「$hazard」，转用户确认",
                     )
                 }
                 val confirmAction =
@@ -588,7 +596,9 @@ internal class ExecutionPhase(
                 }
                 // 幂等历史：只有这次真的下发且验证成功才记账。这是"跳过重复副作用"的唯一依据——
                 // 页面文字不是（页面说「已完成」不代表我们做过），所以记在引擎自己这边。
-                if (verified && EngineRules.isFinalSubmit(act, act.type)) device.recordEffect(act, step)
+                if (verified && EngineRules.isFinalSubmit(act, act.type, realLabel)) {
+                    device.recordEffect(act, step, realLabel)
+                }
             }
             is IntentTranslator.TranslationResult.Failed -> {
                 val reason = translation.reason
@@ -869,10 +879,9 @@ internal class ExecutionPhase(
                             // 不可逆动作确认门与常规路径同口径：引导回来的动作若带 needsUserConfirmation，
                             // 执行前必须先问用户。原先这里直接执行，等于用户给一次指导就能越过确认门
                             // 执行删除/发送等不可逆操作（转译层会给 DELETE 等语义控件自动打上该标志）。
-                            // 危险词兜底在这里同样不能省：否则改走引导路径就能绕过常规路径的新增判定。
-                            val gHazard = hazardWordOf(guidedAction)
-                            val needsGate = guidedAction.needsUserConfirmation || gHazard != null
-                            if (needsGate && !device.awaitActionConfirmation(guidedAction)) {
+                            // 危险词那一层不在这里判：它已经下沉到派发层（[com.phoneagent.engine.execution.DangerousTargetGate]），
+                            // 那里才有真实控件，引导路径走同一条派发流水线，天然也被覆盖。
+                            if (guidedAction.needsUserConfirmation && !device.awaitActionConfirmation(guidedAction)) {
                                 ui.log(
                                     AgentLog.Level.WARN,
                                     "用户取消引导后的不可逆操作，已跳过执行：${guidedAction.type}",
@@ -1098,23 +1107,19 @@ internal class ExecutionPhase(
     private suspend fun coroutineContextIsActive(): Boolean = kotlin.coroutines.coroutineContext.isActive
 
     /**
-     * 点击目标的危险词兜底（转译层的语义标记之外的第三条路，见 [DangerousTargetWords]）。
+     * a11y 端点直调的危险词兜底——**只覆盖 `click_node`**，其余路径由派发层的
+     * [com.phoneagent.engine.execution.DangerousTargetGate] 判（那里有活节点与落点探针）。
      *
-     * 覆盖范围 = **"这一下会把哪颗控件按下去"的所有写法**：
-     * - TAP：按文字定位时 [AgentAction.target] 的 value 就是屏幕标签；
-     * - A11Y_CALL（自由模式端点直调）：落点在 `args["target"]` 里（`click_node` 的控件文字或
-     *   `id:资源名`）。这条路上连 [AgentAction.target] 都是空的——自由模式因此可以既不走
-     *   `intent=delete`、也不留 `tap` 的标签，用 `a11y` + `click_node` 把删除直接按下去，
-     *   确认门若不看 args 就等于没有。取数口径统一由 [AgentAction.operatedLabel] 提供。
+     * 为什么这一条走不掉：自由模式既不走 `intent=delete`、也不留 `tap` 的标签，而是
+     * `a11y` + `click_node`，把落点写在 `args["target"]` 里。这条路上连 [AgentAction.target]
+     * 都是空的，派发层也拿不到"手指落点下的控件"（它是端点直调，不经 ClickRunner），
+     * 于是唯一看得见目标的只有这里——取数口径统一由 [AgentAction.operatedLabel] 提供。
      *
-     * 长按/滑动不在此列——它们本身不产生不可逆副作用，后续菜单里的那一下仍会走上面两条路被拦。
+     * 刻意不含 TAP：那一层已由 [com.phoneagent.engine.execution.DangerousTargetGate] 按真实控件判过，
+     * 两处都判会让用户对同一下点按看到两次确认。
      *
      * @return 命中的危险词；不需要额外确认时返回 null
      */
     private fun hazardWordOf(action: AgentAction): String? =
-        when (ActionType.ALIAS[action.type] ?: action.type) {
-            // ALIAS 把 tap 归一成 click，两个常量都要认（点按在两条通道上同一个语义）
-            ActionType.CLICK, ActionType.TAP, ActionType.A11Y_CALL -> DangerousTargetWords.hit(action.operatedLabel)
-            else -> null
-        }
+        if (action.type == ActionType.A11Y_CALL) DangerousTargetWords.hit(action.operatedLabel) else null
 }

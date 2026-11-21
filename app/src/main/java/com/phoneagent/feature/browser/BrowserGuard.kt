@@ -1,14 +1,14 @@
 package com.phoneagent.feature.browser
 
 import com.phoneagent.core.text.HtmlToMarkdown
-import com.phoneagent.engine.execution.DangerousTargetWords
+import com.phoneagent.domain.rules.DangerousTargetWords
 
 /**
  * 浏览器不可逆操作护栏。
  *
  * 为什么单独一颗：[BrowserChannel] 在只读模式下要判"这一步点下去会不会造成真实后果"，
  * 提示词也要把同一张词表告诉 AI，单测还要逐词断言"该拦的拦、不该拦的别拦"。
- * 词表**不在这个文件里**：唯一定义点是 [com.phoneagent.engine.execution.DangerousTargetWords]
+ * 词表**不在这个文件里**：唯一定义点是 [com.phoneagent.domain.rules.DangerousTargetWords]
  * （browserCn / browserEn）。此前这里是第二份表，与引擎侧的 tap 兜底表各写一半、必然漂移。
  * 这里只保留浏览器独有的**判定方式**：contains 从宽、不做语境豁免（宁可误拦）。
  *
