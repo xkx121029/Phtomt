@@ -174,7 +174,12 @@ class IntentResolver {
             label = label,
             centerHint = element?.let { it.centerX to it.centerY },
         )
-        return selector.takeUnless { it.isEmpty }
+        // 只有位置、没有 viewId / 文字的控件不得产出定位线索：Provider 会拿这个位置去
+        // NodesAtPoint 找"此刻压在这个点上的可点控件"并上溯祖先点下去，而这条直点路径
+        // 不做落点审计。AI 用 elementIndex 选中一个无字图标、页面又滚动过之后，
+        // 点中的是邻居、还判成功。这类目标交给手势路径：那边落点会被夹进控件 bounds，
+        // 并且派发前有 hitTest。
+        return selector.takeUnless { it.isEmpty || !it.hasIdentity }
     }
 
     private fun elementTarget(elem: UiElement, w: Int, h: Int): ResolvedTarget {

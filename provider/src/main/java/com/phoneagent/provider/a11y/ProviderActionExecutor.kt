@@ -112,7 +112,15 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
         return fail("控件(${selector.describe()})不可点击（已上溯 $MAX_CLICKABLE_ANCESTOR_HOPS 层祖先）")
     }
 
-    /** 在活节点树上按线索找目标控件：viewId → 文字精确 → 文字包含 → 位置兜底，逐级降级 */
+    /**
+     * 在活节点树上按线索找目标控件：viewId → 文字精确 → 文字包含，逐级降级。
+     *
+     * **没有"位置兜底"这一级**：位置不是标识。按位置取的节点是"此刻压在这个点上的控件"，
+     * 页面一滚动/重排它就是另一个控件了；拿它去 performAction，等于点邻居还判成功
+     * （AI 用 elementIndex 选中无字图标、页面滚过一屏的现场）。位置只在本函数内做
+     * 候选排序（[pickBy] 用它选离快照位置最近的那个），不单独授权一次点击。
+     * 因此找不到标识时返回 null，由上层降级为带落点审计的手势点击。
+     */
     private fun findNode(root: AccessibilityNodeInfo, selector: A11ySelector): AccessibilityNodeInfo? {
         val all = collectVisibleNodes(root) ?: return null
 
@@ -124,9 +132,6 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
             pickBy(labelCandidates(all, label, exact = true), selector)?.let { return it }
             // 容器自身没有文字、标签由后代拼出来的情况，只能按"包含"兜底
             pickBy(labelCandidates(all, label, exact = false), selector)?.let { return it }
-        }
-        if (selector.hasHint) {
-            pickBy(NodesAtPoint.of(all, selector.hintX, selector.hintY), selector)?.let { return it }
         }
         return null
     }

@@ -27,6 +27,16 @@ data class NodeSelector(
     val isEmpty: Boolean
         get() = viewId.isNullOrBlank() && label.isNullOrBlank() && centerHint == null
 
+    /**
+     * 有没有**自身标识**（viewId 或文字）。
+     *
+     * [centerHint] 只是"观察那一刻它大概在哪"，不是"它是谁"：页面滚动/重排之后，
+     * 压在同一个点上的多半已经是另一个控件。所以位置只能用来在两个已知控件之间取舍，
+     * 不能单独授权一次"直接点这个节点"。
+     */
+    val hasIdentity: Boolean
+        get() = !viewId.isNullOrBlank() || !label.isNullOrBlank()
+
     /** 供日志与失败原因使用的中文描述 */
     fun describe(): String {
         val parts = mutableListOf<String>()
