@@ -531,14 +531,15 @@ internal class ExecutionPhase(
                 // 不可逆动作确认门：AI/转译层标记 needsUserConfirmation 的动作，执行前先问用户。
                 // 取消/超时则该步记跳过，并把用户的决定回注给 AI 换路子，而不是硬执行。
                 // 点击另按标签过一遍危险词：模型可以用最通用的 tap 按文字去点「删除」，
-                // 那条路上没有任何意图标记，只信 needsUserConfirmation 等于把门挂在模型自觉上。
+                // 也可以走自由模式的 a11y + click_node，两条路上都没有意图标记，
+                // 只信 needsUserConfirmation 等于把门挂在模型自觉上。
                 // 幂等保护也会走这道门（[EngineRules.IdempotencyVerdict.NeedsConfirm]）：
                 // 不可逆动作在"没做过但页面像做完了"或"做过但页面不再是完成态"时，必须先问用户。
                 val hazard = hazardWordOf(act)
                 if (hazard != null && !act.needsUserConfirmation) {
                     ui.log(
                         AgentLog.Level.WARN,
-                        "点击目标「${act.target?.value}」命中危险词「$hazard」，转用户确认",
+                        "点击目标「${act.operatedLabel}」命中危险词「$hazard」，转用户确认",
                     )
                 }
                 val confirmAction =
@@ -1097,12 +1098,21 @@ internal class ExecutionPhase(
     /**
      * 点击目标的危险词兜底（转译层的语义标记之外的第三条路，见 [DangerousTargetWords]）。
      *
-     * 只对 TAP 生效：模型要绕过「删除/支付」这类语义意图，唯一更省事的写法就是 tap + 目标文字，
-     * 而那一下的 target.value 就是屏幕上的标签。长按/滑动不在此列——它们本身不产生不可逆副作用，
-     * 后续菜单里的那一下删除仍会走 TAP 再被拦一次。
+     * 覆盖范围 = **"这一下会把哪颗控件按下去"的所有写法**：
+     * - TAP：按文字定位时 [AgentAction.target] 的 value 就是屏幕标签；
+     * - A11Y_CALL（自由模式端点直调）：落点在 `args["target"]` 里（`click_node` 的控件文字或
+     *   `id:资源名`）。这条路上连 [AgentAction.target] 都是空的——自由模式因此可以既不走
+     *   `intent=delete`、也不留 `tap` 的标签，用 `a11y` + `click_node` 把删除直接按下去，
+     *   确认门若不看 args 就等于没有。取数口径统一由 [AgentAction.operatedLabel] 提供。
+     *
+     * 长按/滑动不在此列——它们本身不产生不可逆副作用，后续菜单里的那一下仍会走上面两条路被拦。
      *
      * @return 命中的危险词；不需要额外确认时返回 null
      */
     private fun hazardWordOf(action: AgentAction): String? =
-        if (action.type == ActionType.TAP) DangerousTargetWords.hit(action.target?.value) else null
+        when (ActionType.ALIAS[action.type] ?: action.type) {
+            // ALIAS 把 tap 归一成 click，两个常量都要认（点按在两条通道上同一个语义）
+            ActionType.CLICK, ActionType.TAP, ActionType.A11Y_CALL -> DangerousTargetWords.hit(action.operatedLabel)
+            else -> null
+        }
 }
