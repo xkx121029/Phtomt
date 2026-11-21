@@ -54,4 +54,36 @@ class ShellFallbackPolicyTest {
         assertFalse(ShellFallbackPolicy.judge("   ", "fp-after").confirmed)
         assertFalse(ShellFallbackPolicy.judge("fp-before", "  ").confirmed)
     }
+
+    // ---- 多命令序列（TYPE_TEXT = input tap + input text）的交付定性 ----
+
+    private val tapAndType = listOf("input tap 540 1200", "input text hello")
+
+    @Test
+    fun `序列全部下发_交给页面回读判生效`() {
+        val outcome = ShellFallbackPolicy.sequenceOutcome(tapAndType, tapAndType, null)
+        assertEquals(ShellFallbackPolicy.SequenceOutcome.Issued, outcome)
+    }
+
+    @Test
+    fun `序列第一条就失败_判未交付可以换通道`() {
+        val outcome = ShellFallbackPolicy.sequenceOutcome(tapAndType, emptyList(), "shell 通道无响应")
+        assertTrue("一条都没出去才允许重试：$outcome", outcome is ShellFallbackPolicy.SequenceOutcome.NothingIssued)
+    }
+
+    @Test
+    fun `序列中途失败_判部分交付而不是未交付`() {
+        // 回归目标（真机可复现）：`input tap` 成功、`input text` 失败时，旧实现报 notDelivered=true，
+        // 外层于是原样重跑整条序列——已经点下去的那一次被反复执行，输入框焦点被打乱。
+        val outcome = ShellFallbackPolicy.sequenceOutcome(
+            tapAndType, listOf("input tap 540 1200"), "input: command not found",
+        )
+        val partial = outcome as? ShellFallbackPolicy.SequenceOutcome.Partial
+            ?: return org.junit.Assert.fail("中途失败必须判为部分交付：$outcome")
+        assertEquals("已下发的那一条要如实记下来（重试时不得再执行）", listOf("input tap 540 1200"), partial.issued)
+        assertTrue("原因里要点名已执行的部分：${partial.reason}", partial.reason.contains("input tap 540 1200"))
+        assertTrue("原因里要点名失败的部分：${partial.reason}", partial.reason.contains("input text hello"))
+        assertTrue("原因里要点名失败原因：${partial.reason}", partial.reason.contains("command not found"))
+        assertTrue("不得再重试整条序列：${partial.reason}", partial.reason.contains("不再重试"))
+    }
 }
