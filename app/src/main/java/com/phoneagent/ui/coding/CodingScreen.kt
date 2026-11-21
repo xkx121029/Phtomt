@@ -46,7 +46,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +61,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.SharedFiles
 import com.phoneagent.coding.agent.ChatMessage
@@ -127,10 +127,10 @@ fun CodingScreen(
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
     val appSettings = koinInject<AppSettings>()
-    val runtimeState by runtime.state.collectAsState()
-    val clientState by bridge.uiClient.state.collectAsState()
+    val runtimeState by runtime.state.collectAsStateWithLifecycle()
+    val clientState by bridge.uiClient.state.collectAsStateWithLifecycle()
     // 模型与审批档位是全局设置：Coding页的选择器直接读写它，和设置页保持同一份真值
-    val settings by vm.settingsFlow.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val snackbar = LocalSnackbar.current
@@ -308,7 +308,7 @@ fun CodingScreen(
     }
 
     // 系统分享进来的文件：附件区唯一真值源（见 SharedFiles）
-    val sharedAttachments by SharedFiles.pending.collectAsState()
+    val sharedAttachments by SharedFiles.pending.collectAsStateWithLifecycle()
     val pickAttachment = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
