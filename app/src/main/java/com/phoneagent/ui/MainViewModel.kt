@@ -59,13 +59,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.vm.DocumentDelegate
 import com.phoneagent.ui.vm.SettingsDelegate
+import com.phoneagent.ui.vm.SkillDelegate
 import com.phoneagent.ui.vm.TestDelegate
 import com.phoneagent.ui.vm.UpdateDelegate
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
-
-/** ACA 技能目录扫描结果的有效期：切 Tab 回来的重复触发走缓存，不重复扫盘 */
-private const val ACA_SKILLS_TTL_MS = 60_000L
 
 /** 通知权限的运行时请求码（Android 13+） */
 private const val REQUEST_NOTIFICATIONS = 4401
@@ -882,118 +880,49 @@ class MainViewModel(
 
     // ==================== HPA 迭代 A7：Skill / MCP / 提示词 / 无线 ADB UI ====================
 
-    // ---- Skill 列表快照（UI 观察；每次变更后刷新） ----
-    private val _skills = MutableStateFlow<List<Skill>>(skillRegistry.all())
-    val skills: StateFlow<List<Skill>> = _skills.asStateFlow()
+    // ---- 技能域（内置技能库 + ACA 技能目录）：实现在 [SkillDelegate] ----
+    private val skillDomain = SkillDelegate(skillRegistry, viewModelScope)
 
-    fun skillAll(): List<Skill> = skillRegistry.all()
+    val skills: StateFlow<List<Skill>> get() = skillDomain.skills
 
-    private fun refreshSkills() { _skills.value = skillRegistry.all() }
+    fun skillAll(): List<Skill> = skillDomain.skillAll()
 
-    // ---- ACA（编码 agent）可用技能：流式扫描 filesDir/skills，逐条刷入列表 ----
-    private val _acaSkills = MutableStateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>>(emptyList())
-    val acaSkills: StateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>> = _acaSkills.asStateFlow()
+    val acaSkills: StateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>> get() = skillDomain.acaSkills
 
     /** 扫描进行中（true 时主页显示"正在扫描"占位） */
-    private val _acaScanning = MutableStateFlow(false)
-    val acaScanning: StateFlow<Boolean> = _acaScanning.asStateFlow()
+    val acaScanning: StateFlow<Boolean> get() = skillDomain.acaScanning
 
     /** 损坏包的「目录名：原因」列表，主页以弱化文本提示 */
-    private val _acaSkillErrors = MutableStateFlow<List<String>>(emptyList())
-    val acaSkillErrors: StateFlow<List<String>> = _acaSkillErrors.asStateFlow()
+    val acaSkillErrors: StateFlow<List<String>> get() = skillDomain.acaSkillErrors
 
-    private var acaScanJob: kotlinx.coroutines.Job? = null
-
-    /** 上次扫描完成的时间；0 表示从未扫过 */
-    private var acaScannedAt = 0L
-
-    /**
-     * 重新扫描 ACA 技能目录。流式：每发现一个有效包就立刻追加进 [_acaSkills]，
-     * 配合主页的级联入场动画形成逐条流出的效果；扫描期间重入直接忽略。
-     *
-     * 60 秒内已经扫过且没有强制刷新时直接复用上次结果：主页的 LaunchedEffect
-     * 每次切回 Tab 都会调用一次，而扫盘是真 IO，没必要为同一份目录反复跑。
-     *
-     * @param force 目录刚被改动（装上/删掉技能包）时传 true，跳过缓存
-     */
-    fun refreshAcaSkills(context: Context, force: Boolean = false) {
-        if (_acaScanning.value) return
-        val fresh = System.currentTimeMillis() - acaScannedAt < ACA_SKILLS_TTL_MS
-        if (!force && acaScannedAt != 0L && fresh) return
-        acaScanJob?.cancel()
-        acaScanJob = viewModelScope.launch {
-            _acaScanning.value = true
-            try {
-                _acaSkills.value = emptyList()
-                _acaSkillErrors.value = emptyList()
-                // 扫盘在 Default 线程，回调里只做状态追加（StateFlow 写是线程安全的）
-                val errors = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    com.phoneagent.coding.skill.AcaSkillCatalog.streamScan(context.applicationContext) { info ->
-                        _acaSkills.value = _acaSkills.value + info
-                    }
-                }
-                _acaSkillErrors.value = errors.map { (dir, err) -> "$dir：$err" }
-                acaScannedAt = System.currentTimeMillis()
-            } finally {
-                // 无论成功、失败还是被取消，都必须复位；否则标志永久为 true，后续扫描会被永久跳过
-                _acaScanning.value = false
-            }
-        }
-    }
-
+    /** 重新扫描 ACA 技能目录（流式追加、60 秒 TTL、重入与取消语义见 [SkillDelegate.refreshAcaSkills]） */
+    fun refreshAcaSkills(context: Context, force: Boolean = false) =
+        skillDomain.refreshAcaSkills(context, force)
 
     /** 在新增时自动分配一个未占用的 id */
-    fun nextSkillId(prefix: String = "skill_user"): String {
-        var i = 1
-        while (skillRegistry.byId("${prefix}_$i") != null) i++
-        return "${prefix}_$i"
-    }
+    fun nextSkillId(prefix: String = "skill_user"): String = skillDomain.nextSkillId(prefix)
 
-    fun addSkill(skill: Skill) {
-        viewModelScope.launch { skillRegistry.add(skill); refreshSkills() }
-    }
+    fun addSkill(skill: Skill) = skillDomain.addSkill(skill)
 
-    fun updateSkill(skill: Skill) {
-        viewModelScope.launch { skillRegistry.edit(skill); refreshSkills() }
-    }
+    fun updateSkill(skill: Skill) = skillDomain.updateSkill(skill)
 
-    fun removeSkill(id: String) {
-        viewModelScope.launch { skillRegistry.remove(id); refreshSkills() }
-    }
+    fun removeSkill(id: String) = skillDomain.removeSkill(id)
 
     /**
      * 批量删除：解析与删除在 Default 线程执行（含持久化 IO），结果回主线程后再刷新快照。
      * @param onResult 主线程回调，参数为成功删除的数量
      */
-    fun removeSkills(ids: Set<String>, onResult: (Int) -> Unit = {}) {
-        viewModelScope.launch {
-            val n = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                skillRegistry.removeAll(ids)
-            }
-            refreshSkills()
-            onResult(n)
-        }
-    }
+    fun removeSkills(ids: Set<String>, onResult: (Int) -> Unit = {}) = skillDomain.removeSkills(ids, onResult)
 
-    fun setSkillEnabled(id: String, enabled: Boolean) {
-        viewModelScope.launch { skillRegistry.setEnabled(id, enabled); refreshSkills() }
-    }
+    fun setSkillEnabled(id: String, enabled: Boolean) = skillDomain.setSkillEnabled(id, enabled)
 
     /**
      * 导入技能清单（JSON 文本）：JSON 解析在 Default 线程执行，结果回主线程刷新快照。
      * @param onResult 主线程回调，参数为导入数量（解析失败按 0 处理，不抛到主线程）
      */
-    fun importSkills(text: String, onResult: (Int) -> Unit = {}) {
-        viewModelScope.launch {
-            val imported = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                runCatching { skillRegistry.importJson(text).imported }.getOrDefault(0)
-            }
-            refreshSkills()
-            onResult(imported)
-        }
-    }
+    fun importSkills(text: String, onResult: (Int) -> Unit = {}) = skillDomain.importSkills(text, onResult)
 
-    fun exportSkills(): String = skillRegistry.exportJson()
+    fun exportSkills(): String = skillDomain.exportSkills()
 
     // ---- MCP 服务器（观察可变管理器，配置变更后持久化） ----
     val mcpServers: StateFlow<List<McpServerConfig>> = mcpManager.serversFlow
@@ -1034,7 +963,7 @@ class MainViewModel(
     suspend fun bindMcpServerSkills(server: String): Int {
         val prefix = "mcp_${server.lowercase()}_"
         val added = mcpManager.bindToolsToSkills(server, prefix, skillRegistry)
-        refreshSkills()
+        skillDomain.refreshSkills()
         return added
     }
 
