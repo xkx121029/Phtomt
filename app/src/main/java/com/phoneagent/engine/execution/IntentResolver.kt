@@ -47,7 +47,7 @@ class IntentResolver {
         val w = if (screenW > 0) screenW else 1080
         val h = if (screenH > 0) screenH else 2400
 
-        // 独占规则保留能力：by=coordinate 直接给出比例/像素坐标（值形如"0.5,0.2"或"500,800"）
+        // 独占规则保留能力：by=coordinate 直接给出比例坐标（值形如"0.5,0.2"，只认 0~1）
         if (target.by == "coordinate") {
             val c = parseCoordinate(target.value, w, h)
             if (c != null) return ResolvedTarget(x = c.first, y = c.second)
@@ -111,7 +111,7 @@ class IntentResolver {
         // 没有命中元素：动作里带坐标就用坐标（视觉定位结果也走这条路）
         action.x?.let { ax -> action.y?.let { ay -> return ResolvedTarget(x = ax, y = ay) } }
         if (t?.method == "coordinate") {
-            // 统一走 parseCoordinate 的比例 / 像素口径：这里曾经一律当比例相乘，
+            // 统一走 parseCoordinate 的比例口径：这里曾经一律当比例相乘，
             // AI 一给像素坐标就会被放大数倍再夹到屏幕边缘，表现出来就是"点哪儿都不对"
             parseCoordinate(t.value, w, h)?.let { return ResolvedTarget(x = it.first, y = it.second) }
         }
@@ -227,12 +227,13 @@ internal fun pickBestByLabel(elements: List<UiElement>, value: String): UiElemen
 }
 
 /**
- * 解析 "x,y" 坐标（比例 0~1 或像素），返回像素坐标。
+ * 解析 "x,y" 坐标（**只认 0~1 比例**），返回像素坐标。
  *
- * 这是「比例 / 像素」两种口径的**唯一定义点**：所有需要把坐标字符串变成像素的地方都必须调这里。
+ * 这是「坐标字符串 → 像素」的**唯一定义点**：所有需要把坐标字符串变成像素的地方都必须调这里。
  * 各自写一份的后果很实际——某一处把像素当比例再乘一次屏幕尺寸，点出来就是屏幕角落。
  */
 internal fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
+    if (w <= 0 || h <= 0) return null
     val parts = raw.split(",")
     if (parts.size < 2) return null
     val x = coordinateToPixel(parts[0], w) ?: return null
@@ -240,8 +241,21 @@ internal fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
     return x to y
 }
 
-/** 单个坐标值 → 像素：比例(<1)视为 0~1 乘尺寸；否则视为像素原样使用 */
+/**
+ * 单个坐标值 → 像素：**只接受比例（0..1）**，"像素原样使用"语义已移除。
+ *
+ * 为什么不能保留两套口径：比例 1.0（屏幕最右/最下）正好压在 `f < 1.0` 这条边界上，被当成"1 像素"，
+ * 于是 "0.5,1.0"（底部中央）点了屏幕顶端——真机可复现的错位。而 AI 契约本来就是 0~1 比例
+ * （提示词按比例教，自测引擎的 `isRatioCoordinate` 也只放行 0~1），绝对像素没有任何调用方需要。
+ *
+ * 越界（<0 或 >1）一律返回 null，由上层报"坐标非法"：把 500 这类像素值静默夹到屏幕边缘，
+ * 点出来的结果看着"成功"，正是这个函数要消灭的假成功。
+ *
+ * 上界取 `dim - 1`：像素索引最后一个是 dim-1，dim 本身已经在屏幕外（旧实现在这里产出屏外 1px 的点）。
+ */
 internal fun coordinateToPixel(raw: String, dim: Int): Int? {
+    if (dim <= 0) return null
     val f = raw.trim().toFloatOrNull() ?: return null
-    return if (f < 1.0f) (f * dim).toInt().coerceIn(0, dim) else f.toInt().coerceIn(0, dim)
+    if (f.isNaN() || f < 0f || f > 1f) return null
+    return (f * dim).toInt().coerceIn(0, dim - 1)
 }
