@@ -113,6 +113,8 @@ class IntentParamGateTest {
             ctx = mockk<ContextInjector>(relaxed = true),
             recordExecMs = {},
             observe = { snap },
+            // 本用例只钉"空文本不下发"：危险目标闸门在这条路上不会被问到，直接放行
+            confirmIrreversible = { true },
         )
         val result = core.executeWithVerify(
             AgentAction(type = ActionType.TYPE_TEXT, text = "", x = 540, y = 300),
