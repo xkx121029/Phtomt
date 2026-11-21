@@ -451,18 +451,18 @@ class VirtualDisplayAgent(private val shizuku: ShizukuManager) {
         val target = pkg.trim().trim('"')
         if (target.isBlank()) return Outcome.Fail("应用包名为空")
         val started = if (target.contains('/')) {
-            run("am start --display $id -n $target")
+            run(VirtualDisplayCommands.startOnDisplay(id, target))
         } else {
-            val resolved = when (val r = shizuku.executeShell("cmd package resolve-activity --brief $target")) {
+            val resolved = when (val r = shizuku.executeShell(VirtualDisplayCommands.resolveComponent(target))) {
                 is ShizukuManager.ShellResult.Success ->
                     r.output.lineSequence().map { it.trim() }.lastOrNull { it.contains('/') }
                 is ShizukuManager.ShellResult.Failure -> null
             }
             if (resolved != null) {
-                run("am start --display $id -n $resolved")
+                run(VirtualDisplayCommands.startOnDisplay(id, resolved))
             } else {
                 // 解析不到入口（少数 ROM 的 resolve-activity 行为差异）：monkey 同样支持指定 display
-                run("monkey -p $target --display $id -c android.intent.category.LAUNCHER 1")
+                run(VirtualDisplayCommands.monkeyLaunch(id, target))
             }
         }
         if (started is Outcome.Fail) return started

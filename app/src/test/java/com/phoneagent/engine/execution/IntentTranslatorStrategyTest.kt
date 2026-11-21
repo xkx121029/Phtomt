@@ -340,6 +340,14 @@ class IntentTranslatorStrategyTest {
     }
 
     @Test
+    fun shell_未声明来源的动作按AI自写处理() {
+        // 默认值方向必须 fail-closed：新加的壳命令产线忘了声明来源时，落到「要一次审批」这一侧，
+        // 而不是静默跳过审批（这条一旦红，说明默认值被改回了 false）
+        val action = AgentAction(type = ActionType.SHELL, command = "pm list packages")
+        assertTrue("漏标 aiAuthored 的动作必须被当成 AI 自写", action.aiAuthored)
+    }
+
+    @Test
     fun shell_非自由模式_被转译层拒绝() {
         mode(Mode.SHIZUKU)
         val result = translator.translate(
