@@ -93,7 +93,8 @@ internal class UserGate(
      * 只在「本任务第一次真要执行 AI 亲自写的命令」时问一次：批准 → 本任务内后续自写命令直接放行；
      * 拒绝 → 本任务内不再问，也不再执行任何自写命令（由调用方把拒绝结果回注给 AI 换路子）。
      *
-     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）不带 AgentAction.aiAuthored，不走这里。
+     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）显式标 [AgentAction.aiAuthored] = false，不走这里；
+     * 其它 shell 一律按 AI 自写处理——漏标只多问一次，不会静默跳过审批。
      *
      * @return true = 可以执行；false = 用户拒绝，调用方**不得**执行
      */
