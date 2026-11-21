@@ -1,9 +1,9 @@
 /* ===========================================================================
-   基础层 v2：重置 + 版心 + 通用原件
+   基础层 · 「读屏台」
    ---------------------------------------------------------------------------
-   结构靠细线，强调靠深块。卡片只在需要「一块被抬起来的内容」时出现，
-   不再是默认容器——一页里堆十几个玻璃卡片，层级就全平了。
-   所有可点元素都有 :active 反馈：按下去没有回应，用户会怀疑点空了。
+   结构靠 1px 线切分，不靠卡片堆叠。一块内容要么是一条读数、一行规格、
+   一张图版，要么是一段大字——没有「三张一样的卡片」。
+   中文排印按中文的规矩：正文 17px / 行高 1.85 / 避头尾 / 禁合成字重斜体。
    =========================================================================== */
 
 *,
@@ -15,6 +15,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  font-size: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -25,18 +26,20 @@ html {
 
 body {
   margin: 0;
+  background: var(--ground);
+  color: var(--ink);
   font-family: var(--font);
   font-size: var(--t-body);
   line-height: var(--lh-body);
   letter-spacing: var(--track-body);
-  color: var(--ink);
-  background: var(--paper);
+  /* 中文断行底线：句号逗号不落行首，开引号不落行尾 */
+  line-break: strict;
+  overflow-wrap: break-word;
+  /* 中文没有斜体传统，浏览器合成的斜体与加粗会把笔画弄脏——直接禁掉 */
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
-  /* 中文标点挤压：PingFang / 思源支持 palt，让「，」「。」这类全角标点不再吃掉半格空白。
-     不支持 palt 的字体忽略这一行，不影响排版。 */
-  font-feature-settings: "palt" 1;
 }
 
 h1,
@@ -77,12 +80,12 @@ textarea {
 }
 
 ::selection {
-  background: var(--brand-wash);
-  color: var(--brand-ink);
+  background: var(--signal);
+  color: var(--signal-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--signal);
   outline-offset: 2px;
   border-radius: var(--r-xs);
 }
@@ -95,23 +98,21 @@ textarea {
 }
 
 .section {
-  padding-block: clamp(56px, 7vw, 104px);
+  padding-block: clamp(52px, 6.2vw, 92px);
 }
 
 .section--tight {
-  padding-block: clamp(40px, 4.6vw, 64px);
+  padding-block: clamp(34px, 4vw, 56px);
 }
 
-/* 上下用细线切开的段落：说明书里最常用的分隔方式 */
+/* 用线切段，不用色块切段 */
 .band {
-  background: var(--paper-tint);
-  border-block: 1px solid var(--line);
+  border-block: 1px solid var(--line-soft);
 }
 
-.band--ink {
-  background: var(--brand-deep);
-  border-color: transparent;
-  color: #eef4f0;
+.band--panel {
+  background: var(--panel);
+  border-block: 1px solid var(--line-soft);
 }
 
 /* ---------- 排版 ---------- */
@@ -119,8 +120,8 @@ textarea {
 .display {
   font-size: var(--t-display);
   font-weight: 650;
-  letter-spacing: -0.012em;
   line-height: 1.14;
+  letter-spacing: -0.012em;
 }
 
 .h1 {
@@ -129,10 +130,11 @@ textarea {
 
 .h2 {
   font-size: var(--t-h2);
+  font-weight: 620;
 }
 
 .lead {
-  font-size: clamp(1rem, 0.96rem + 0.28vw, 1.14rem);
+  font-size: clamp(1rem, 0.97rem + 0.24vw, 1.125rem);
   line-height: var(--lh-lead);
   color: var(--ink-2);
 }
@@ -145,39 +147,53 @@ textarea {
   font-size: var(--t-sm);
 }
 
+/* 等宽只给机器的东西：意图名、命令、版本号、坐标、校验值 */
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.92em;
-  letter-spacing: var(--track-num);
+  /* 等宽字不再缩字号：0.9em 会把 13px 的标签压到 11.7px，低于 12px 下限 */
+  font-size: 1em;
+  letter-spacing: var(--track-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* 小标签：宽字距的小字，用来分区，不用来做正文 */
+/* 小标签：不再全大写、不再加半格字距——中文没有大小写，
+   靠字号与灰度区分层级就够了。 */
 .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  display: block;
   font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: var(--track-cap);
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--ink-3);
+  letter-spacing: 0.02em;
 }
 
-.eyebrow::before {
-  content: "";
-  width: 20px;
-  height: 1px;
-  background: var(--line-2);
+/* 机器读数行：左标签右值，中间一条虚线导到右边 */
+.readout {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-sm);
+  line-height: 1.65;
 }
 
-/* 编号：说明书式的小序号，等宽、偏琥珀，不用来抢标题 */
-.no {
+.readout:last-child {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.readout dt,
+.readout > span:first-child {
   font-family: var(--font-mono);
   font-size: var(--t-xs);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  color: var(--amber);
+  color: var(--ink-3);
+  letter-spacing: var(--track-mono);
+  padding-top: 2px;
+}
+
+.readout dd,
+.readout > span:last-child {
+  margin: 0;
+  color: var(--ink-2);
 }
 
 /* ---------- 按钮 ---------- */
@@ -185,14 +201,15 @@ textarea {
 .btn {
   --btn-bg: transparent;
   --btn-fg: var(--ink);
-  --btn-line: var(--line-2);
+  --btn-line: var(--line-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 44px;
   padding: 10px 18px;
   border: 1px solid var(--btn-line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-sm);
   background: var(--btn-bg);
   color: var(--btn-fg);
   font-size: var(--t-sm);
@@ -200,15 +217,13 @@ textarea {
   cursor: pointer;
   white-space: nowrap;
   transition:
-    transform var(--dur-press) var(--ease-out),
     background-color var(--dur-ui) ease,
     border-color var(--dur-ui) ease,
-    color var(--dur-ui) ease,
-    box-shadow var(--dur-ui) ease;
+    color var(--dur-ui) ease;
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: translateY(1px);
 }
 
 .btn:disabled {
@@ -216,72 +231,48 @@ textarea {
   cursor: not-allowed;
 }
 
-.btn:disabled:active {
-  transform: none;
-}
-
 .btn--primary {
-  --btn-bg: var(--ink);
-  --btn-fg: var(--paper);
-  --btn-line: var(--ink);
-}
-
-[data-theme="dark"] .btn--primary {
-  --btn-bg: var(--brand);
-  --btn-fg: var(--brand-ink);
-  --btn-line: var(--brand);
-}
-
-.btn--brand {
-  --btn-bg: var(--brand);
-  --btn-fg: #fff;
-  --btn-line: var(--brand);
-}
-
-[data-theme="dark"] .btn--brand {
-  --btn-fg: var(--brand-ink);
+  --btn-bg: var(--signal);
+  --btn-line: var(--signal);
+  --btn-fg: var(--signal-ink);
+  font-weight: 600;
 }
 
 .btn--ghost {
   --btn-line: transparent;
-  color: var(--ink-2);
   padding-inline: 10px;
+  color: var(--ink-2);
 }
 
 .btn--lg {
-  padding: 13px 24px;
+  min-height: 50px;
+  padding: 0 24px;
   font-size: var(--t-body);
 }
 
 .btn--sm {
+  min-height: 34px;
   padding: 6px 13px;
   font-size: var(--t-xs);
 }
 
 .btn--danger {
-  --btn-line: var(--line);
   color: var(--danger);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn:hover {
-    border-color: var(--ink);
+    border-color: var(--ink-2);
   }
 
   .btn--primary:hover {
-    --btn-bg: var(--brand-strong);
-    --btn-line: var(--brand-strong);
-  }
-
-  [data-theme="dark"] .btn--primary:hover {
-    --btn-bg: var(--brand-strong);
-    --btn-line: var(--brand-strong);
+    --btn-bg: color-mix(in srgb, var(--signal) 88%, var(--ink));
+    --btn-line: color-mix(in srgb, var(--signal) 88%, var(--ink));
   }
 
   .btn--ghost:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
     color: var(--ink);
-    border-color: transparent;
   }
 
   .btn--danger:hover {
@@ -290,79 +281,44 @@ textarea {
   }
 }
 
-/* 文字箭头链接：比按钮更轻的一档，用于「去别处读」 */
+/* 文字链接：下划线是「可以点」的唯一信号，不加箭头装饰 */
 .link-arrow {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   font-size: var(--t-sm);
-  font-weight: 500;
-  color: var(--brand);
-  border-bottom: 1px solid var(--brand-veil);
-  padding-bottom: 2px;
+  color: var(--signal);
+  border-bottom: 1px solid var(--signal-line);
+  padding-bottom: 1px;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .link-arrow:hover {
-    border-color: var(--brand);
+    border-bottom-color: var(--signal);
   }
 }
 
-/* ---------- 卡片 ---------- */
+/* ---------- 卡片（仅后台与确需隔离的块使用） ---------- */
 
 .card {
   position: relative;
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 20px;
 }
 
 .card--flat {
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
 }
 
 .card--sunken {
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   border-color: transparent;
 }
 
-/* 深色锚点卡：一屏里只放一张，用来定住视觉重心 */
 .card--ink {
-  background: var(--brand-deep);
-  border-color: transparent;
-  color: #eef4f0;
-}
-
-.card--ink h3,
-.card--ink .h2 {
-  color: #ffffff;
-}
-
-.card--ink p {
-  color: rgba(238, 244, 240, 0.78);
-}
-
-.card--ink .tag {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: transparent;
-  color: #b8ecd9;
-}
-
-/* 无边框裸卡：不要砖块，只要留白 */
-.card--bare {
-  background: transparent;
-  border-color: transparent;
-  padding: 0;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  a.card:hover,
-  button.card:hover,
-  .card--lift:hover {
-    border-color: var(--line-2);
-    box-shadow: var(--shadow-2);
-  }
+  background: var(--panel-2);
+  border-color: var(--line);
 }
 
 /* ---------- 徽标 ---------- */
@@ -371,36 +327,31 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 9px;
+  padding: 2px 8px;
   border-radius: var(--r-xs);
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
   font-size: var(--t-xs);
-  font-weight: 500;
   color: var(--ink-2);
   white-space: nowrap;
 }
 
 .tag--brand {
-  background: var(--brand-wash);
-  border-color: transparent;
-  color: var(--brand-strong);
-}
-
-[data-theme="dark"] .tag--brand {
-  color: var(--brand);
+  background: var(--signal-wash);
+  border-color: var(--signal-line);
+  color: var(--signal);
 }
 
 .tag--amber {
-  background: var(--amber-wash);
+  background: var(--warn-wash);
   border-color: transparent;
-  color: var(--amber);
+  color: var(--warn);
 }
 
 .tag--mist {
-  background: var(--mist-wash);
+  background: var(--panel-2);
   border-color: transparent;
-  color: var(--mist);
+  color: var(--ink-2);
 }
 
 .tag--ok {
@@ -425,7 +376,7 @@ textarea {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ok);
+  background: var(--signal);
   flex: none;
 }
 
@@ -433,27 +384,27 @@ textarea {
 
 .code {
   position: relative;
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 16px 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  line-height: 1.72;
+  font-size: 0.9rem;
+  line-height: 1.75;
   color: var(--ink);
   tab-size: 2;
 }
 
 .code--dark {
-  background: #0d100e;
-  border-color: #23281f;
+  background: #050807;
+  border-color: var(--line);
   color: #d9e2d4;
 }
 
-[data-theme="dark"] .code--dark {
-  background: #080b09;
-  border-color: var(--line);
+:root[data-theme="light"] .code--dark {
+  background: #0d1411;
+  border-color: transparent;
 }
 
 code:not([class]) {
@@ -461,12 +412,11 @@ code:not([class]) {
   font-size: 0.88em;
   padding: 1px 5px;
   border-radius: var(--r-xs);
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
   white-space: nowrap;
 }
 
-/* pre 里的 code 只是语义外壳，不该再套一层行内代码的底 */
 pre code,
 pre code:not([class]) {
   padding: 0;
@@ -481,31 +431,31 @@ pre code:not([class]) {
 
 .table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--paper-raised);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--panel);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 th,
 td {
-  padding: 11px 16px;
+  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
 }
 
 th {
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
-  letter-spacing: var(--track-body);
 }
 
 tr:last-child td {
@@ -529,21 +479,20 @@ tr:last-child td {
 .textarea,
 .select {
   width: 100%;
-  padding: 10px 13px;
-  border: 1px solid var(--line-2);
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink);
   font-size: var(--t-sm);
-  transition:
-    border-color var(--dur-ui) ease,
-    box-shadow var(--dur-ui) ease;
+  transition: border-color var(--dur-ui) ease;
 }
 
 .textarea {
   min-height: 120px;
   resize: vertical;
-  line-height: 1.7;
+  line-height: 1.75;
   font-family: var(--font-mono);
   font-size: 0.85rem;
 }
@@ -552,24 +501,21 @@ tr:last-child td {
 .textarea:focus,
 .select:focus {
   outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-veil);
+  border-color: var(--signal);
 }
 
 .hint {
-  font-size: var(--t-xs);
+  font-size: 0.875rem;
   color: var(--ink-3);
   line-height: 1.7;
 }
 
-/* ---------- 材质 ---------- */
+/* ---------- 材质：吸顶导航用一层薄玻璃 ---------- */
 
-/* 玻璃只给浮在内容之上的固定 chrome：吸顶导航、移动端抽屉、压在蒙层上的卡片。
-   平铺内容背后没有可模糊的对象，上玻璃只会退化成一层灰蒙蒙的半透明。 */
 .glass {
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  background: color-mix(in srgb, var(--ground) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
 }
 
 .glass--sheen::after {
@@ -578,76 +524,62 @@ tr:last-child td {
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
-  transition: opacity var(--dur-ui) ease;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 60%);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
-    background: var(--glass-fallback);
+    background: var(--ground);
   }
 }
 
-/* 极细噪点：铺在深色块上能去掉「塑料感」 */
+/* 极细噪点：只在深色大块上开，去掉塑料感 */
 .grain::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  opacity: 0.2;
-  mix-blend-mode: multiply;
+  opacity: 0.14;
+  mix-blend-mode: screen;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-[data-theme="dark"] .grain::after {
-  mix-blend-mode: screen;
-  opacity: 0.1;
-}
-
-/* 径向光晕：默认落在左上，可用 --glow-x / --glow-y / --glow-size 覆盖 */
+/* 光晕：给信号色一小片存在感，只在深色块里用 */
 .glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background: radial-gradient(
-    var(--glow-size, 62% 58%) at var(--glow-x, 18%) var(--glow-y, 6%),
-    var(--brand-glow) 0%,
-    transparent 68%
+    var(--glow-size, 48% 42%) at var(--glow-x, 82%) var(--glow-y, 8%),
+    var(--signal-wash) 0%,
+    transparent 70%
   );
 }
 
-/* 环境色：整页垫一层极淡色斑。卡片不透明之后它不再是「玻璃的背景物」，
-   只负责让大片纸底不死平。三处色斑刻意不对称——居中对称的径向光晕是最典型的 AI 味。 */
+/* 兼容旧类名：新系统不再用整页色雾，留一个空规则避免历史页面报错 */
 .ambient {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(54% 44% at 8% -8%, var(--brand-veil) 0%, transparent 66%),
-    radial-gradient(40% 36% at 96% 22%, var(--amber-wash) 0%, transparent 70%),
-    radial-gradient(52% 40% at 26% 104%, var(--mist-wash) 0%, transparent 74%);
+  display: none;
 }
 
-[data-theme="dark"] .ambient {
-  opacity: 0.55;
-}
-
-/* 编辑感粗分隔线：比 1px 的 --line 更有态度，用来切分大段落 */
 .rule {
-  height: 2px;
+  height: 1px;
   border: none;
   margin: 0;
+  background: var(--line);
+}
+
+/* 编辑感分隔：3px 实线，用来切大段落 */
+.rule--bold {
+  height: 3px;
   background: var(--ink);
-  opacity: 0.88;
 }
 
 .hair {
   height: 1px;
   border: none;
   margin: 0;
-  background: var(--line);
+  background: var(--line-soft);
 }
 
 /* ---------- 栅格 ---------- */
@@ -655,14 +587,7 @@ tr:last-child td {
 .cols {
   display: grid;
   gap: clamp(16px, 2vw, 28px);
-}
-
-.cols--2 {
-  grid-template-columns: 1fr;
-}
-
-.cols--3 {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 720px) {
@@ -680,8 +605,6 @@ tr:last-child td {
 
 /* ---------- 入场动画 ---------- */
 
-/* 统一「自下而上淡入」。用 CSS transition 而非 keyframes：
-   列表项会被反复重排，keyframes 每次从头播放，transition 可以被打断重定向。 */
 .reveal {
   opacity: 1;
   transform: none;
@@ -692,7 +615,7 @@ tr:last-child td {
 
 .reveal[data-shown="false"] {
   opacity: 0;
-  transform: translateY(12px);
+  transform: translateY(10px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -700,7 +623,7 @@ tr:last-child td {
   .reveal[data-shown="false"] {
     opacity: 1;
     transform: none;
-    transition: opacity 200ms ease;
+    transition: none;
   }
 
   .btn:active {
@@ -747,7 +670,7 @@ tr:last-child td {
 
 .divider {
   height: 1px;
-  background: var(--line);
+  background: var(--line-soft);
   border: none;
   margin: 0;
 }

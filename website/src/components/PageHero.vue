@@ -1,70 +1,52 @@
 <script setup>
 /**
- * PageHero —— 内页刊头。
- *
- * 五个内页共用它：编号 + 小标签 + 标题 + 导语 + 动作区。下方一条 2px 粗线收口，
- * 把「刊头」和「正文」明确切开，读者一眼知道从哪里开始读。
+ * 内页刊头：一行小字 + 标题 + 导语 + 动作区，下方一条粗线收口。
+ * 不高喊、不加编号——页名本身已经是导航状态。
  */
 defineProps({
-  no: { type: String, default: '' },
-  eyebrow: { type: String, default: '' },
+  label: { type: String, default: '' },
   title: { type: String, required: true },
   lead: { type: String, default: '' }
 })
 </script>
 
 <template>
-  <header class="pherom">
+  <header class="ph">
     <div class="page">
-      <div class="pherom__meta">
-        <span v-if="no" class="no">{{ no }}</span>
-        <span v-if="eyebrow" class="eyebrow">{{ eyebrow }}</span>
-      </div>
-
-      <h1 v-reveal="30" class="h1 pherom__title">{{ title }}</h1>
-      <p v-if="lead" v-reveal="60" class="lead pherom__lead">{{ lead }}</p>
-
-      <div v-if="$slots.default" v-reveal="90" class="pherom__extra">
+      <p v-if="label" v-reveal class="eyebrow">{{ label }}</p>
+      <h1 v-reveal="20" class="h1 ph__title">{{ title }}</h1>
+      <p v-if="lead" v-reveal="50" class="lead ph__lead">{{ lead }}</p>
+      <div v-if="$slots.default" v-reveal="80" class="ph__extra">
         <slot />
       </div>
     </div>
-    <div class="page">
-      <hr class="pherom__rule" />
-    </div>
+    <div class="page"><hr class="ph__rule" /></div>
   </header>
 </template>
 
 <style scoped>
-.pherom {
-  padding-top: clamp(32px, 5vw, 60px);
+.ph {
+  padding-top: clamp(30px, 4.4vw, 56px);
 }
 
-.pherom__meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-height: 18px;
+.ph__title {
+  margin-top: 10px;
+  max-width: 20em;
 }
 
-.pherom__title {
+.ph__lead {
   margin-top: 14px;
-  max-width: 22ch;
+  max-width: 34em;
 }
 
-.pherom__lead {
-  margin-top: 16px;
-  max-width: 56ch;
+.ph__extra {
+  margin-top: 24px;
 }
 
-.pherom__extra {
-  margin-top: 26px;
-}
-
-.pherom__rule {
-  height: 2px;
+.ph__rule {
+  height: 3px;
   border: none;
-  margin: 34px 0 0;
+  margin: 30px 0 0;
   background: var(--ink);
-  opacity: 0.86;
 }
 </style>

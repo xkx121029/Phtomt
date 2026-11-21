@@ -63,7 +63,7 @@ watch(() => route.params.version, (v) => v && load(v))
           <p class="eyebrow head__label">版本</p>
           <h1 class="h1 head__ver mono">{{ entry.version }}</h1>
           <div class="head__meta">
-            <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }} · {{ relativeTime(entry.date) }}</span>
+            <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }}，{{ relativeTime(entry.date) }}</span>
             <span v-for="c in counts" :key="c.type" :class="['tag', `tag--${c.tone}`]">{{ c.type }} {{ c.count }}</span>
           </div>
         </template>
@@ -188,8 +188,8 @@ watch(() => route.params.version, (v) => v && load(v))
   background: var(--ok);
 }
 
-.sec__mark--brand {
-  background: var(--brand);
+.sec__mark--signal {
+  background: var(--signal);
 }
 
 .sec__mark--amber {
@@ -223,7 +223,7 @@ watch(() => route.params.version, (v) => v && load(v))
 }
 
 .sec__item::marker {
-  color: var(--line-2);
+  color: var(--line-strong);
 }
 
 .nav {
@@ -241,7 +241,7 @@ watch(() => route.params.version, (v) => v && load(v))
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
   transition: border-color var(--dur-ui) ease;
 }
 
@@ -263,7 +263,7 @@ watch(() => route.params.version, (v) => v && load(v))
 
 @media (hover: hover) and (pointer: fine) {
   .nav__card:hover {
-    border-color: var(--line-2);
+    border-color: var(--line-strong);
   }
 }
 </style>

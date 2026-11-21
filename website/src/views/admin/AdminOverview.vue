@@ -177,7 +177,7 @@ onMounted(async () => {
 
 @media (hover: hover) and (pointer: fine) {
   .stat:hover {
-    border-color: var(--line-2);
+    border-color: var(--line-strong);
   }
 }
 
@@ -225,7 +225,7 @@ onMounted(async () => {
 .block__version {
   font-size: 1.3rem;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .kv {
@@ -244,7 +244,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--paper-raised);
+  background: var(--panel);
   font-size: var(--t-sm);
 }
 
@@ -306,7 +306,7 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--paper-raised);
+  background: var(--panel);
   font-size: var(--t-sm);
 }
 

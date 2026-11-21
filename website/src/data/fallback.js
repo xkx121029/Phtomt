@@ -1,7 +1,7 @@
-/* 由 scripts/snapshot.mjs 生成于 2026-11-21T11:22:45.723Z，请勿手工编辑。
+/* 由 scripts/snapshot.mjs 生成于 2026-11-21T12:58:46.417Z，请勿手工编辑。
    静态导出（GitHub Pages）用这份快照替代后端 API。 */
 export const snapshot = {
-  "builtAt": "2026-11-21T11:22:45.723Z",
+  "builtAt": "2026-11-21T12:58:46.417Z",
   "static": true,
   "site": {
     "name": "Happy Phone Agent",

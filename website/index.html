@@ -8,8 +8,8 @@
       name="description"
       content="Happy Phone Agent（Phtomt）是运行在 Android 上的 AI 智能体：说一句自然语言目标，它读当前页面、拆解步骤、用系统命令真的做完。65 个语义意图由端侧转译，每个动作都带页面指纹验证。"
     />
-    <meta name="theme-color" content="#F7F5EF" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0F1211" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0A0D0C" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F4F6F2" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="./favicon.png" type="image/png" sizes="48x48" />
     <link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32" />
@@ -34,118 +34,86 @@
       } catch (e) {}
     </script>
     <style>
-      /* 首屏骨架。
-         在此之前，body 里只有一个空的 #app，第一帧要等到 index.js + vendor.js + HomeView
-         分块全部下完、Vue 挂载才出像素。这里先画出底色与主张，FCP 对齐 TTFB。
-         几何与 HomeView 的 hero 对齐（同样的顶栏留白、版心宽度、字号与行高），
+      /* 首屏骨架：先画出底色与主张，FCP 对齐 TTFB。
+         几何按 HomeView 的首屏复刻（同样的顶栏留白、版心、字号与行高），
          Vue 挂载替换时几乎看不出位移。挂载后本段随 #app 一起被清掉。 */
       .sk {
         box-sizing: border-box;
         min-height: 100svh;
-        padding: 58px clamp(18px, 4.2vw, 32px) 0;
-        background: #f7f5ef;
-        font-family: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
-          "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        padding: 58px clamp(18px, 4vw, 32px) 0;
+        background: #0a0d0c;
+        color: #e9eee7;
+        font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+          "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
+          system-ui, sans-serif;
+        font-size: 17px;
+        line-height: 1.85;
+        letter-spacing: 0.012em;
       }
-      html[data-theme="dark"] .sk {
-        background: #0f1211;
+      html[data-theme="light"] .sk {
+        background: #f4f6f2;
+        color: #0f1411;
       }
       .sk__page {
-        width: min(1160px, 100%);
+        width: min(1240px, 100%);
         margin-inline: auto;
-        padding-top: clamp(28px, 5vw, 64px);
+        padding-top: clamp(26px, 4vw, 56px);
       }
       .sk__grid {
         display: grid;
-        gap: clamp(28px, 5vw, 56px);
+        gap: clamp(30px, 4vw, 48px);
         align-items: center;
       }
-      /* 右列占位：复刻真机列的盒子（机身 + 说明共 760px），
-         左列文字才会落在与真实 hero 一致的高度上，挂载时没有位移。 */
-      .sk__ph,
-      .sk__actions,
-      .sk__version {
-        display: none;
+      .sk__title {
+        margin: 0;
+        font-size: clamp(2.6rem, 1.3rem + 4.6vw, 4.9rem);
+        font-weight: 650;
+        line-height: 1.14;
+        letter-spacing: -0.012em;
+        max-width: 12em;
+      }
+      .sk__lead {
+        margin: 22px 0 0;
+        max-width: 26em;
+        font-size: 1.0625rem;
+        line-height: 1.9;
+        color: #a9b4ab;
+      }
+      html[data-theme="light"] .sk__lead {
+        color: #454d46;
+      }
+      .sk__acts {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+      }
+      .sk__btn {
+        height: 50px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.07);
+      }
+      html[data-theme="light"] .sk__btn {
+        background: rgba(15, 20, 17, 0.06);
+      }
+      .sk__btn--wide { width: 168px; }
+      .sk__btn--narrow { width: 128px; }
+      .sk__panel {
+        border: 1px solid #253029;
+        border-radius: 10px;
+        background: #121815;
+        min-height: 430px;
+      }
+      html[data-theme="light"] .sk__panel {
+        border-color: #d3dbd1;
+        background: #ffffff;
       }
       @media (min-width: 900px) {
         .sk__grid {
-          grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
-        }
-        .sk__ph {
-          display: block;
-          justify-self: center;
-          width: 322px;
-          height: 760px;
-          border-radius: 34px;
-          background: #15170f;
-          opacity: 0.06;
-        }
-        html[data-theme="dark"] .sk__ph {
-          background: #e8ebe4;
-          opacity: 0.05;
-        }
-        /* 按钮行与版本行的占位：左列总高度对齐真实 hero，标题才会落在同一 y */
-        .sk__actions {
-          display: block;
-          margin: 28px 0 0;
-          width: 268px;
-          height: 48px;
-          border-radius: 999px;
-          background: #15170f;
-          opacity: 0.07;
-        }
-        .sk__version {
-          display: block;
-          margin: 14px 0 0;
-          width: 190px;
-          height: 16px;
-          border-radius: 4px;
-          background: #15170f;
-          opacity: 0.05;
-        }
-        html[data-theme="dark"] .sk__actions,
-        html[data-theme="dark"] .sk__version {
-          background: #e8ebe4;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
         }
       }
-      .sk__eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        margin: 0;
-        font-size: 0.8125rem;
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: #6d7367;
-      }
-      .sk__eyebrow::before {
-        content: "";
-        width: 20px;
-        height: 1px;
-        background: #bcb7a7;
-      }
-      .sk__title {
-        margin: 16px 0 0;
-        font-size: clamp(2.6rem, 1.45rem + 4.9vw, 4.4rem);
-        font-weight: 650;
-        letter-spacing: -0.012em;
-        line-height: 1.14;
-        color: #15170f;
-      }
-      html[data-theme="dark"] .sk__title {
-        color: #e8ebe4;
-      }
-      .sk__lead {
-        margin: 20px 0 0;
-        max-width: 34ch;
-        font-size: 1rem;
-        line-height: 1.9;
-        letter-spacing: 0.01em;
-        color: #454a3e;
-      }
-      html[data-theme="dark"] .sk__lead {
-        color: #b3b9af;
+      @media (max-width: 899px) {
+        .sk__panel { display: none; }
       }
     </style>
   </head>
@@ -155,15 +123,16 @@
         <div class="sk__page">
           <div class="sk__grid">
             <div>
-              <p class="sk__eyebrow">Android · 开源 · MIT</p>
               <h1 class="sk__title">一句话，<br />手机自己把事做完。</h1>
               <p class="sk__lead">
-                你说「把屏幕亮度调到一半」，它读当前页面、拆出四步、用系统命令真的改掉。不是告诉你去哪点，是替你把这件事做完。
+                你说「把屏幕亮度调到一半」，它读当前页面、拆出四步、用系统命令真的改掉，再把每一步的指纹变化记下来。不是告诉你去哪点，是替你做。
               </p>
-              <p class="sk__actions" aria-hidden="true"></p>
-              <p class="sk__version" aria-hidden="true"></p>
+              <div class="sk__acts">
+                <div class="sk__btn sk__btn--wide"></div>
+                <div class="sk__btn sk__btn--narrow"></div>
+              </div>
             </div>
-            <div class="sk__ph" aria-hidden="true"></div>
+            <div class="sk__panel" aria-hidden="true"></div>
           </div>
         </div>
       </div>

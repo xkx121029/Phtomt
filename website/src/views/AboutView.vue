@@ -37,8 +37,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="09 / 关于"
-      eyebrow="关于项目"
+      label="关于项目"
       :title="site.name || 'Happy Phone Agent'"
       :lead="site.tagline || '让手机自己动手。'"
     >
@@ -75,7 +74,7 @@ onMounted(async () => {
     <!-- 链接 -->
     <section class="section section--tight band">
       <div class="page">
-        <SectionHead no="01" eyebrow="入口" title="去哪找它" />
+        <SectionHead label="入口" title="去哪找它" />
         <div class="links">
           <a
             v-for="(link, index) in LINKS"
@@ -102,8 +101,7 @@ onMounted(async () => {
     <section class="section section--tight">
       <div class="page">
         <SectionHead
-          no="02"
-          eyebrow="技术栈"
+          label="技术栈"
           title="选型都是能长期维护的那种"
           lead="纯 Kotlin + Compose，没有跨端框架、没有自研渲染层。依赖少意味着升级 Android 大版本时麻烦少。"
         />
@@ -130,8 +128,7 @@ onMounted(async () => {
     <section class="section section--tight band">
       <div class="page">
         <SectionHead
-          no="03"
-          eyebrow="设计语言"
+          label="设计语言"
           title="玄青 · 流萤"
           lead="以玄青（墨玉绿）为主色，琥珀与雾蓝作辅，底色偏暖纸白与深墨绿黑。官网与 App 共用同一套语义颜色令牌——它不是一个「品牌页」，是同一个东西的另一面。"
         />
@@ -229,7 +226,7 @@ onMounted(async () => {
   display: grid;
   gap: 5px;
   padding: 18px 16px;
-  background: var(--paper-tint);
+  background: var(--panel-2);
   transition: background-color var(--dur-ui) ease;
 }
 
@@ -247,7 +244,7 @@ onMounted(async () => {
 
 @media (hover: hover) and (pointer: fine) {
   .link:hover {
-    background: var(--paper-raised);
+    background: var(--panel);
   }
 }
 
@@ -306,7 +303,7 @@ onMounted(async () => {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .note-card__title {
@@ -339,11 +336,14 @@ onMounted(async () => {
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .about__intro > *,
 .two > *,
-.meta > * {
+.meta > *,
+.links > *,
+.swatches > * {
   min-width: 0;
 }
 </style>

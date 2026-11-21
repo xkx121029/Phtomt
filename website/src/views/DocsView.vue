@@ -37,8 +37,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="07 / 文档"
-      eyebrow="文档中心"
+      label="文档中心"
       :title="total ? `${total} 篇文档，从装好到改源码` : '文档中心'"
       lead="按「入门 → 进阶 → 支持 → 合规」组织。每篇都写清设计动机——为什么这么做，以及不这么做会踩什么坑。"
     >
@@ -94,9 +93,9 @@ onMounted(async () => {
   gap: 10px;
   width: min(460px, 100%);
   padding: 10px 14px;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink-3);
   transition:
     border-color var(--dur-ui) ease,
@@ -104,8 +103,8 @@ onMounted(async () => {
 }
 
 .search:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-veil);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-wash);
 }
 
 .search__input {
@@ -168,7 +167,7 @@ onMounted(async () => {
   gap: 6px;
   align-content: start;
   padding: 18px 16px;
-  background: var(--paper);
+  background: var(--ground);
   transition: background-color var(--dur-ui) ease;
 }
 
@@ -188,12 +187,12 @@ onMounted(async () => {
   gap: 5px;
   margin-top: 4px;
   font-size: var(--t-xs);
-  color: var(--brand);
+  color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .doc:hover {
-    background: var(--paper-raised);
+    background: var(--panel);
   }
 }
 
@@ -207,5 +206,11 @@ onMounted(async () => {
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.cards > * {
+  min-width: 0;
 }
 </style>

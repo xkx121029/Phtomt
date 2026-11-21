@@ -248,14 +248,14 @@ onMounted(reloadStatus)
 }
 
 .msg--info {
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   color: var(--ink-2);
 }
 
 code {
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   font-family: var(--font-mono);
   font-size: 0.82em;
 }

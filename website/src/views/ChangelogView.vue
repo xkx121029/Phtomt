@@ -57,8 +57,7 @@ watch(page, () => {
 <template>
   <div>
     <PageHero
-      no="06 / 更新"
-      eyebrow="更新日志"
+      label="更新日志"
       :title="all.length ? `${all.length} 个版本，逐条记录改了什么` : '更新日志'"
       lead="每一条都写明动机和做法，而不是「优化体验、修复若干问题」。想找某个版本，用右侧索引直接跳。"
     >
@@ -86,7 +85,7 @@ watch(page, () => {
               <RouterLink :to="`/changelog/${entry.version}`" class="mono entry__ver">
                 {{ entry.version }}
               </RouterLink>
-              <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }} · {{ relativeTime(entry.date) }}</span>
+              <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }}，{{ relativeTime(entry.date) }}</span>
               <span v-for="c in counts(entry)" :key="c.type" :class="['tag', `tag--${c.tone}`]">
                 {{ c.type }} {{ c.count }}
               </span>
@@ -162,7 +161,7 @@ watch(page, () => {
 .entry__ver {
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .entry__summary {
@@ -197,8 +196,8 @@ watch(page, () => {
   background: var(--ok);
 }
 
-.sec__mark--brand {
-  background: var(--brand);
+.sec__mark--signal {
+  background: var(--signal);
 }
 
 .sec__mark--amber {
@@ -233,7 +232,7 @@ watch(page, () => {
 }
 
 .sec__item::marker {
-  color: var(--line-2);
+  color: var(--line-strong);
 }
 
 .entry__foot {
@@ -289,7 +288,7 @@ watch(page, () => {
 
 @media (hover: hover) and (pointer: fine) {
   .index__item:hover {
-    color: var(--brand);
+    color: var(--signal);
   }
 }
 
@@ -309,7 +308,8 @@ watch(page, () => {
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .layout > *,
 .index__list > * {

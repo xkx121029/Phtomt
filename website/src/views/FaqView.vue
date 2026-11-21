@@ -40,8 +40,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="04 / 问答"
-      eyebrow="常见问题"
+      label="常见问题"
       title="先看这里，多数问题已有答案"
       lead="按使用、安全、下载、开发分组。这里没有的，去仓库提 Issue 时请附上诊断导出包——比口头描述现象有用得多。"
     >
@@ -124,9 +123,9 @@ onMounted(async () => {
   gap: 10px;
   width: min(460px, 100%);
   padding: 10px 14px;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink-3);
   transition:
     border-color var(--dur-ui) ease,
@@ -134,8 +133,8 @@ onMounted(async () => {
 }
 
 .search:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-veil);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-wash);
 }
 
 .search__input {
@@ -245,7 +244,7 @@ onMounted(async () => {
 
 .row__a {
   padding: 2px 12px 18px 12px;
-  border-left: 2px solid var(--brand-wash);
+  border-left: 2px solid var(--signal-wash);
   font-size: var(--t-sm);
   line-height: 1.9;
   color: var(--ink-2);
@@ -257,7 +256,7 @@ onMounted(async () => {
   gap: 16px;
   margin-top: clamp(28px, 4vw, 44px);
   padding-top: 20px;
-  border-top: 1px solid var(--line-2);
+  border-top: 1px solid var(--line-strong);
 }
 
 .more__title {
@@ -272,7 +271,7 @@ onMounted(async () => {
 
 @media (hover: hover) and (pointer: fine) {
   .row__head:hover .row__q {
-    color: var(--brand);
+    color: var(--signal);
   }
 
   .search__clear:hover {
@@ -287,9 +286,11 @@ onMounted(async () => {
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
-.more > * {
+.more > *,
+.row__head > * {
   min-width: 0;
 }
 </style>

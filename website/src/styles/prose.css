@@ -3,8 +3,8 @@
    =========================================================================== */
 
 .prose {
-  font-size: 1rem;
-  /* 长文行高按中文给：1.9 在 16px 上约 30px 行距，读长段才不挤 */
+  font-size: 1.0625rem;
+  /* 长文行高按中文给：正文 17px、行高 1.9，读长段才不挤 */
   line-height: 1.9;
   letter-spacing: var(--track-body);
   color: var(--ink-2);
@@ -53,17 +53,17 @@
 }
 
 .prose a {
-  color: var(--brand);
+  color: var(--signal);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--signal) 45%, transparent);
   transition: text-decoration-color var(--dur-ui) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .prose a:hover {
-    text-decoration-color: var(--brand);
+    text-decoration-color: var(--signal);
   }
 }
 
@@ -88,7 +88,7 @@
 .prose blockquote {
   margin: 1.4em 0;
   padding: 2px 0 2px 18px;
-  border-left: 2px solid var(--brand);
+  border-left: 2px solid var(--signal);
   color: var(--ink-2);
   font-style: normal;
 }
@@ -144,6 +144,6 @@
 }
 
 .toc a.is-active {
-  color: var(--brand);
-  border-color: var(--brand);
+  color: var(--signal);
+  border-color: var(--signal);
 }

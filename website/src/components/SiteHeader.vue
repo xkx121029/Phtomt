@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import AppLogo from './AppLogo.vue'
 import { theme, toggleTheme } from '../composables/useTheme.js'
 import { content } from '../api/client.js'
 
@@ -10,17 +9,15 @@ const scrolled = ref(false)
 const menuOpen = ref(false)
 const site = ref({})
 
-/** 主导航只放四组：产品怎么跑 / 能做什么 / 场景 / 下载。其余收进抽屉与页脚。 */
 const NAV = [
   { to: '/how-it-works', label: '原理' },
   { to: '/features', label: '能力' },
   { to: '/scenarios', label: '场景' },
-  { to: '/download', label: '下载' }
+  { to: '/docs', label: '文档' }
 ]
 
 const MORE = [
   { to: '/changelog', label: '更新日志' },
-  { to: '/docs', label: '文档中心' },
   { to: '/faq', label: '常见问题' },
   { to: '/roadmap', label: '路线图' },
   { to: '/ask', label: 'AI 问答' },
@@ -30,7 +27,7 @@ const MORE = [
 const isDark = computed(() => theme.value === 'dark')
 
 function onScroll() {
-  scrolled.value = window.scrollY > 6
+  scrolled.value = window.scrollY > 4
 }
 
 onMounted(async () => {
@@ -48,7 +45,6 @@ onBeforeUnmount(() => {
   document.body.style.removeProperty('overflow')
 })
 
-// 抽屉打开时锁住页面滚动，否则背景会跟着手指跑
 watch(menuOpen, (open) => {
   document.body.style.overflow = open ? 'hidden' : ''
 })
@@ -59,11 +55,11 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <header :class="['head', 'glass--sheen', { 'head--solid': scrolled, glass: scrolled }]">
-    <div class="page head__inner">
+  <header :class="['head', 'glass', { 'head--solid': scrolled }]">
+    <div class="page head__in">
       <RouterLink to="/" class="brand" aria-label="回到首页">
-        <AppLogo :size="24" class="brand__mark" />
-        <span class="brand__text">Happy Agent</span>
+        <span class="brand__dot" aria-hidden="true"></span>
+        <span class="brand__name">Happy Agent</span>
       </RouterLink>
 
       <nav class="nav" aria-label="主导航">
@@ -72,9 +68,9 @@ watch(() => route.fullPath, () => {
         </RouterLink>
       </nav>
 
-      <div class="head__actions">
+      <div class="head__acts">
         <button
-          class="icon-btn"
+          class="icon"
           type="button"
           :aria-label="isDark ? '切换到浅色' : '切换到深色'"
           @click="toggleTheme"
@@ -88,26 +84,13 @@ watch(() => route.fullPath, () => {
           </svg>
         </button>
 
-        <a
-          v-if="site.links?.github"
-          class="icon-btn head__gh"
-          :href="site.links.github"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="GitHub 仓库"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-          </svg>
-        </a>
-
         <RouterLink to="/download" class="btn btn--primary btn--sm head__cta">
-          下载 APK
-          <span v-if="site.version" class="mono head__ver">v{{ site.version }}</span>
+          下载
+          <span v-if="site.version" class="mono head__ver">{{ site.version }}</span>
         </RouterLink>
 
         <button
-          class="icon-btn head__burger"
+          class="icon head__burger"
           type="button"
           :aria-expanded="menuOpen"
           aria-label="打开导航"
@@ -124,23 +107,21 @@ watch(() => route.fullPath, () => {
   <Teleport to="body">
     <Transition name="sheet">
       <div v-if="menuOpen" class="sheet" @click.self="menuOpen = false">
-        <div class="sheet__panel glass glass--sheen" role="dialog" aria-label="导航">
+        <div class="sheet__panel glass" role="dialog" aria-label="导航">
           <div class="sheet__head">
-            <span class="eyebrow">全部页面</span>
-            <button class="icon-btn" type="button" aria-label="关闭导航" @click="menuOpen = false">
+            <span class="mono sheet__title">导航</span>
+            <button class="icon" type="button" aria-label="关闭导航" @click="menuOpen = false">
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                 <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
               </svg>
             </button>
           </div>
-          <div class="sheet__grid">
-            <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
-              {{ item.label }}
-            </RouterLink>
-            <RouterLink v-for="item in MORE" :key="item.to" :to="item.to" class="sheet__link sheet__link--sub">
-              {{ item.label }}
-            </RouterLink>
-          </div>
+          <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
+            {{ item.label }}
+          </RouterLink>
+          <RouterLink v-for="item in MORE" :key="item.to" :to="item.to" class="sheet__link sheet__link--sub">
+            {{ item.label }}
+          </RouterLink>
           <RouterLink to="/download" class="btn btn--primary sheet__cta">下载 APK</RouterLink>
         </div>
       </div>
@@ -154,19 +135,17 @@ watch(() => route.fullPath, () => {
   inset: 0 0 auto;
   z-index: 60;
   border-bottom: 1px solid transparent;
-  transition:
-    border-color var(--dur-ui) ease,
-    background-color var(--dur-ui) ease;
+  transition: border-color var(--dur-ui) ease;
 }
 
 .head--solid {
-  border-bottom-color: var(--line);
+  border-bottom-color: var(--line-soft);
 }
 
-.head__inner {
+.head__in {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 26px;
   height: 58px;
 }
 
@@ -177,64 +156,57 @@ watch(() => route.fullPath, () => {
   flex: none;
 }
 
-.brand__mark {
-  flex: none;
+.brand__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--signal);
 }
 
-.brand__text {
+.brand__name {
   font-size: 0.95rem;
   font-weight: 650;
-  letter-spacing: 0.005em;
+  letter-spacing: 0.004em;
   white-space: nowrap;
 }
 
 .nav {
   display: none;
-  align-items: center;
-  gap: 4px;
-  margin-left: 12px;
+  gap: 20px;
+  margin-left: 8px;
 }
 
 .nav__link {
-  position: relative;
-  padding: 6px 10px;
   font-size: var(--t-sm);
   color: var(--ink-2);
-  border-radius: var(--r-xs);
-  transition: color var(--dur-ui) ease;
+  padding: 4px 0;
+  border-bottom: 1px solid transparent;
+  transition:
+    color var(--dur-ui) ease,
+    border-color var(--dur-ui) ease;
 }
 
 .nav__link.router-link-active {
   color: var(--ink);
-  font-weight: 500;
+  border-bottom-color: var(--signal);
 }
 
-.nav__link.router-link-active::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 0;
-  height: 1.5px;
-  background: var(--brand);
-}
-
-.head__actions {
+.head__acts {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-left: auto;
 }
 
-.icon-btn {
+.icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--r-pill);
+  border: none;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
@@ -243,18 +215,14 @@ watch(() => route.fullPath, () => {
     color var(--dur-ui) ease;
 }
 
-.head__cta {
-  margin-left: 4px;
-}
-
 .head__ver {
   font-size: 0.72rem;
-  opacity: 0.66;
+  opacity: 0.7;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .icon-btn:hover {
-    background: var(--paper-sunken);
+  .icon:hover {
+    background: var(--panel-2);
     color: var(--ink);
   }
 
@@ -263,14 +231,13 @@ watch(() => route.fullPath, () => {
   }
 }
 
-@media (max-width: 719px) {
-  .head__gh,
+@media (max-width: 759px) {
   .head__ver {
     display: none;
   }
 }
 
-@media (min-width: 860px) {
+@media (min-width: 880px) {
   .nav {
     display: flex;
   }
@@ -288,17 +255,17 @@ watch(() => route.fullPath, () => {
   z-index: 80;
   display: flex;
   justify-content: flex-end;
-  background: rgba(12, 14, 12, 0.42);
+  background: rgba(5, 8, 7, 0.55);
 }
 
 .sheet__panel {
-  width: min(360px, 100%);
+  width: min(340px, 100%);
   height: 100%;
-  padding: 20px;
+  padding: 16px 18px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  border-left: 1px solid var(--glass-line);
+  gap: 2px;
+  border-left: 1px solid var(--line);
   overflow-y: auto;
 }
 
@@ -306,16 +273,19 @@ watch(() => route.fullPath, () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.sheet__grid {
-  display: grid;
-  gap: 2px;
+.sheet__title {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
 }
 
 .sheet__link {
-  padding: 11px 4px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--line-soft);
   font-size: 1rem;
 }
 
@@ -335,7 +305,7 @@ watch(() => route.fullPath, () => {
 
 .sheet-enter-active .sheet__panel,
 .sheet-leave-active .sheet__panel {
-  transition: transform var(--dur-ui) var(--ease-drawer);
+  transition: transform var(--dur-ui) var(--ease-out);
 }
 
 .sheet-enter-from,
@@ -345,6 +315,6 @@ watch(() => route.fullPath, () => {
 
 .sheet-enter-from .sheet__panel,
 .sheet-leave-to .sheet__panel {
-  transform: translateX(24px);
+  transform: translateX(20px);
 }
 </style>

@@ -26,8 +26,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="08 / 路线"
-      eyebrow="路线图"
+      label="路线图"
       title="打算做什么，以及不打算做什么"
       lead="按主题分档，不承诺具体时间。最后一档是明确不做的事——一份只写「要做」的路线图没有信息量，取舍才说明方向。"
     >
@@ -125,8 +124,8 @@ onMounted(async () => {
   background: var(--ok);
 }
 
-.phase__mark--brand {
-  background: var(--brand);
+.phase__mark--signal {
+  background: var(--signal);
 }
 
 .phase__mark--amber {
@@ -182,7 +181,7 @@ onMounted(async () => {
   gap: 16px;
   margin-top: clamp(28px, 4vw, 44px);
   padding-top: 20px;
-  border-top: 1px solid var(--line-2);
+  border-top: 1px solid var(--line-strong);
 }
 
 .more__title {
@@ -207,7 +206,8 @@ onMounted(async () => {
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .items > *,
 .more > *,

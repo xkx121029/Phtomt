@@ -133,8 +133,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="05 / 下载"
-      eyebrow="下载"
+      label="下载"
       title="拿到 APK，装到自己的手机上"
       lead="当前只有 Debug 构建，面向内测与自用。每个版本都给出 SHA-256，装之前可以自行核对。"
     >
@@ -152,7 +151,7 @@ onMounted(async () => {
         <article v-if="latest" v-reveal class="ticket">
           <div class="ticket__main">
             <div class="ticket__meta">
-              <span class="tag tag--brand">{{ channelLabel(latest.channel) }}</span>
+              <span class="tag tag--signal">{{ channelLabel(latest.channel) }}</span>
               <span v-if="latest.build" class="tag mono">build {{ latest.build }}</span>
               <span class="tag">{{ formatDate(latest.date) }}</span>
             </div>
@@ -249,7 +248,7 @@ onMounted(async () => {
       <div class="page">
         <div class="install">
           <div>
-            <SectionHead no="01" eyebrow="安装" title="四步装好" />
+            <SectionHead label="安装" title="四步装好" />
             <ol class="steps">
               <li v-for="(step, index) in STEPS" :key="step.title" v-reveal="index * 50" class="steps__item">
                 <span class="steps__num mono">{{ String(index + 1).padStart(2, '0') }}</span>
@@ -262,7 +261,7 @@ onMounted(async () => {
           </div>
 
           <div>
-            <SectionHead no="02" eyebrow="环境" title="装之前先确认" />
+            <SectionHead label="环境" title="装之前先确认" />
             <dl v-reveal="40" class="reqs">
               <div v-for="req in REQS" :key="req.label" class="reqs__row">
                 <dt>{{ req.label }}</dt>
@@ -286,7 +285,7 @@ onMounted(async () => {
     <!-- 历史版本 -->
     <section v-if="rest.length" class="section section--tight band">
       <div class="page">
-        <SectionHead no="03" eyebrow="历史版本" :title="`其余 ${rest.length} 个可下载版本`" />
+        <SectionHead label="历史版本" :title="`其余 ${rest.length} 个可下载版本`" />
 
         <div v-reveal class="table-wrap">
           <table>
@@ -340,9 +339,9 @@ onMounted(async () => {
 /* 主下载卡：做成一张「票据」——左侧是版本与按钮，右侧是校验与事实 */
 .ticket {
   display: grid;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
-  background: var(--paper-raised);
+  background: var(--panel);
   overflow: hidden;
 }
 
@@ -393,6 +392,8 @@ onMounted(async () => {
 .ticket__actions {
   display: flex;
   flex-wrap: wrap;
+  max-width: 100%;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 22px;
@@ -405,8 +406,8 @@ onMounted(async () => {
 
 .ticket__sources {
   margin-top: 14px;
-  font-size: var(--t-xs);
-  color: var(--ink-3);
+  font-size: 0.875rem;
+  color: var(--ink-2);
   line-height: 1.8;
 }
 
@@ -414,7 +415,7 @@ onMounted(async () => {
   color: var(--ink-2);
   text-decoration: underline;
   text-underline-offset: 3px;
-  text-decoration-color: var(--line-2);
+  text-decoration-color: var(--line-strong);
 }
 
 .ticket__note {
@@ -426,7 +427,7 @@ onMounted(async () => {
   border: none;
   background: transparent;
   padding: 0;
-  color: var(--brand);
+  color: var(--signal);
   font-size: var(--t-xs);
   cursor: pointer;
   text-decoration: underline;
@@ -449,7 +450,7 @@ onMounted(async () => {
   align-content: start;
   padding: clamp(20px, 3vw, 28px);
   border-top: 1px solid var(--line);
-  background: var(--paper-sunken);
+  background: var(--panel-2);
 }
 
 .facts {
@@ -488,14 +489,14 @@ onMounted(async () => {
 }
 
 .sha__label {
-  font-size: var(--t-xs);
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: var(--track-cap);
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .sha__value {
-  font-size: 0.72rem;
+  font-size: 0.8125rem;
   line-height: 1.7;
   word-break: break-all;
   color: var(--ink-2);
@@ -571,9 +572,9 @@ onMounted(async () => {
   margin-top: 24px;
   padding: 18px;
   border: 1px solid var(--line);
-  border-left: 2px solid var(--brand);
+  border-left: 2px solid var(--signal);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .callout__title {
@@ -592,13 +593,70 @@ onMounted(async () => {
 }
 
 .ver-link {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .ver-link:hover {
     text-decoration: underline;
     text-underline-offset: 3px;
+  }
+}
+
+/* 窄屏的历史版本表：渠道与大小并到第二行，避免横向滚动 */
+@media (max-width: 639px) {
+  .table-wrap table thead {
+    display: none;
+  }
+
+  .table-wrap table,
+  .table-wrap table tbody,
+  .table-wrap table tr,
+  .table-wrap table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-wrap table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .table-wrap table td {
+    padding: 0;
+    border: none;
+    font-size: var(--t-sm);
+  }
+
+  .table-wrap table td:nth-child(2),
+  .table-wrap table td:nth-child(3),
+  .table-wrap table td:nth-child(4) {
+    grid-column: 1;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .table-wrap table td:nth-child(2)::before { content: "渠道 "; }
+  .table-wrap table td:nth-child(4)::before { content: "大小 "; }
+
+  .table-wrap table td:last-child {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+}
+
+@media (max-width: 519px) {
+  .ticket__actions :deep(.btn--lg) {
+    min-height: 46px;
+    padding-inline: 16px;
+    font-size: var(--t-sm);
+    white-space: normal;
+    text-align: left;
+    line-height: 1.4;
   }
 }
 
@@ -618,11 +676,14 @@ onMounted(async () => {
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .ticket > *,
 .install > *,
-.facts > * {
+.facts > *,
+.reqs > *,
+.steps > * {
   min-width: 0;
 }
 </style>

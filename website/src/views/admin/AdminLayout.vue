@@ -121,7 +121,7 @@ onMounted(ensureSession)
 .admin {
   display: flex;
   min-height: 100vh;
-  background: var(--paper);
+  background: var(--ground);
 }
 
 /* ---------- 登录 ---------- */
@@ -164,7 +164,7 @@ onMounted(ensureSession)
 
 @media (hover: hover) and (pointer: fine) {
   .gate__back:hover {
-    color: var(--brand);
+    color: var(--signal);
   }
 }
 
@@ -180,7 +180,7 @@ onMounted(ensureSession)
   height: 100vh;
   padding: 18px 12px;
   border-right: 1px solid var(--line);
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .side__brand {
@@ -188,7 +188,7 @@ onMounted(ensureSession)
   align-items: center;
   gap: 9px;
   padding: 0 8px 18px;
-  color: var(--brand);
+  color: var(--signal);
   font-size: var(--t-sm);
   font-weight: 600;
 }
@@ -222,19 +222,19 @@ onMounted(ensureSession)
 
 @media (hover: hover) and (pointer: fine) {
   .side__link:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
     color: var(--ink);
   }
 }
 
 .side__link--on {
-  background: var(--brand-wash);
-  color: var(--brand-strong);
+  background: var(--signal-wash);
+  color: var(--signal);
   font-weight: 500;
 }
 
 [data-theme="dark"] .side__link--on {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .side__foot {

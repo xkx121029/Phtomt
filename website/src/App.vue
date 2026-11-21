@@ -22,8 +22,6 @@ onMounted(() => {
 
 <template>
   <div class="shell">
-    <!-- 环境色：三层极淡色斑，只为让大片纸底不死平。纯装饰，不进无障碍树。 -->
-    <div class="ambient" aria-hidden="true"></div>
     <SiteHeader v-if="!isAdmin" />
     <main :class="['main', { 'main--admin': isAdmin }]">
       <RouterView v-slot="{ Component, route: current }">

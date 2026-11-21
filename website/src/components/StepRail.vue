@@ -1,9 +1,9 @@
 <script setup>
 /**
- * StepRail —— 编号步骤。
+ * 步骤轨：真序列才编号（观察、标注、决策、执行、验证是有先后的）。
  *
- * 步骤之间用细线连起来，序号在左侧独立成列：手机上扫读时，视线沿左列往下走，
- * 不会被正文的长段落带偏。
+ * 序号用等宽小字挂在左侧，正文右对齐到同一条基线；步骤之间只用一条细线，
+ * 不做卡片、不做连接的圆点。
  */
 defineProps({
   items: { type: Array, required: true },
@@ -13,7 +13,7 @@ defineProps({
 
 <template>
   <ol :class="['rail', { 'rail--dense': dense }]">
-    <li v-for="(item, index) in items" :key="item.title || index" v-reveal="index * 50" class="rail__item">
+    <li v-for="(item, index) in items" :key="item.title || index" v-reveal="index * 40" class="rail__item">
       <span class="rail__no mono">{{ String(index + 1).padStart(2, '0') }}</span>
       <div class="rail__body">
         <h3 class="rail__title">{{ item.title }}</h3>
@@ -31,35 +31,32 @@ defineProps({
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
-  /* 作为 grid 子项时默认 min-width:auto 会让整列按 min-content 撑开，
-     375px 下会把页面顶出横向滚动条。显式归零后由父级的 1fr 决定宽度。 */
   min-width: 0;
 }
 
 .rail__item {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   gap: 16px;
   padding: 20px 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .rail__no {
   font-size: var(--t-xs);
-  color: var(--amber);
+  color: var(--signal);
   padding-top: 3px;
-  letter-spacing: 0.06em;
 }
 
 .rail__title {
   font-size: var(--t-h3);
+  font-weight: 600;
 }
 
 .rail__line {
-  margin-top: 6px;
+  margin-top: 5px;
   font-size: var(--t-sm);
   color: var(--ink);
-  font-weight: 500;
 }
 
 .rail__desc {
@@ -67,7 +64,7 @@ defineProps({
   font-size: var(--t-sm);
   line-height: 1.8;
   color: var(--ink-2);
-  max-width: 68ch;
+  max-width: 40em;
 }
 
 .rail--dense .rail__item {
@@ -79,6 +76,10 @@ defineProps({
     grid-template-columns: 64px minmax(0, 1fr);
     gap: 24px;
     padding: 24px 0;
+  }
+
+  .rail__desc {
+    max-width: 46em;
   }
 }
 </style>

@@ -88,8 +88,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="02 / 原理"
-      eyebrow="工作原理"
+      label="工作原理"
       title="它是怎么跑的"
       lead="一句话描述目标之后，到屏幕上真的出现结果，中间发生了什么。下面这些不是概念图，是代码里真实存在的分层与顺序。"
     >
@@ -104,8 +103,7 @@ onMounted(async () => {
     <section class="section section--tight">
       <div class="page">
         <SectionHead
-          no="01"
-          eyebrow="一轮循环"
+          label="一轮循环"
           title="观察 → 标注 → 决策 → 执行 → 记录"
           lead="每一轮都回到屏幕本身。页面变了，证据就变了，下一步跟着变。"
         />
@@ -117,8 +115,7 @@ onMounted(async () => {
     <section class="section section--tight band">
       <div class="page">
         <SectionHead
-          no="02"
-          eyebrow="执行通道"
+          label="执行通道"
           title="三条通道，能力装在独立的 Provider 里"
           lead="无障碍、内置 Shizuku、Termux 各自封装在签名一致的 Provider APK 中，主应用经 AIDL 远程调用。AUTO 模式下按无线 ADB → Shizuku → Termux 降级，一条失败不阻塞主流程。"
         />
@@ -129,7 +126,7 @@ onMounted(async () => {
               <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
               <h3 class="channel__name">{{ ch.name }}</h3>
               <span class="tag">{{ ch.level }}</span>
-              <span v-if="ch.default" class="tag tag--brand">默认</span>
+              <span v-if="ch.default" class="tag tag--signal">默认</span>
             </div>
             <p class="channel__desc">{{ ch.desc }}</p>
           </article>
@@ -142,8 +139,7 @@ onMounted(async () => {
     <section class="section section--tight">
       <div class="page">
         <SectionHead
-          no="03"
-          eyebrow="代码分层"
+          label="代码分层"
           title="八层，各管一段"
           lead="分层的目的是让「换个模型」或「换条执行通道」不牵动其它部分。每一层的边界都在代码目录上看得见。"
         />
@@ -160,8 +156,7 @@ onMounted(async () => {
     <section class="section section--tight band">
       <div class="page">
         <SectionHead
-          no="04"
-          eyebrow="硬约束"
+          label="硬约束"
           title="四条不许绕过的规矩"
           lead="这些规矩写在提示词与执行层里，不是运营口径。"
         />
@@ -181,7 +176,7 @@ onMounted(async () => {
     <!-- 持久化 -->
     <section class="section section--tight">
       <div class="page">
-        <SectionHead no="05" eyebrow="持久化" title="六处存储，各存各的" />
+        <SectionHead label="持久化" title="六处存储，各存各的" />
 
         <div v-reveal class="table-wrap">
           <table>
@@ -258,7 +253,7 @@ onMounted(async () => {
 }
 
 .layers__name {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .layers__desc {

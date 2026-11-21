@@ -21,8 +21,7 @@ onMounted(() => loadStatus())
 <template>
   <div>
     <PageHero
-      no="10 / 问答"
-      eyebrow="AI 问答"
+      label="AI 问答"
       title="关于这个项目，先问一句"
       lead="助手只依据本站的功能、文档、常见问题与更新日志作答；资料里没有的，它会直说不确定，并把你引到仓库的 Issues。"
     />
@@ -66,7 +65,7 @@ onMounted(() => loadStatus())
   border: 1px solid var(--line);
   border-left: 2px solid var(--amber);
   border-radius: 0 var(--r-md) var(--r-md) 0;
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .note__title {

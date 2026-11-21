@@ -197,7 +197,7 @@ onBeforeUnmount(() => observer?.disconnect())
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
   transition: border-color var(--dur-ui) ease;
 }
 
@@ -216,7 +216,7 @@ onBeforeUnmount(() => observer?.disconnect())
 
 @media (hover: hover) and (pointer: fine) {
   .pager__card:hover {
-    border-color: var(--line-2);
+    border-color: var(--line-strong);
   }
 }
 
@@ -240,7 +240,8 @@ onBeforeUnmount(() => observer?.disconnect())
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .layout > * {
   min-width: 0;

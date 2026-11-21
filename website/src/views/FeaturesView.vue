@@ -4,7 +4,7 @@ import PageHero from '../components/PageHero.vue'
 import { content } from '../api/client.js'
 
 const all = ref([])
-const active = ref('全部')
+const active = ref('')
 const open = ref('')
 
 /** 标题里的条数跟着数据走，别手写死——功能每加一条就漏改一次 */
@@ -12,10 +12,10 @@ const heroTitle = computed(() =>
   all.value.length ? `${all.value.length} 项能力，逐条说明它在解决什么` : '能力清单'
 )
 
-const tags = computed(() => ['全部', ...new Set(all.value.map((f) => f.tag).filter(Boolean))])
+const tags = computed(() => [...new Set(all.value.map((f) => f.tag).filter(Boolean))])
 
 const groups = computed(() => {
-  const list = active.value === '全部' ? all.value : all.value.filter((f) => f.tag === active.value)
+  const list = active.value ? all.value.filter((f) => f.tag === active.value) : all.value
   const map = new Map()
   for (const item of list) {
     const key = item.tag || '其他'
@@ -41,17 +41,19 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      no="01 / 能力"
-      eyebrow="能力清单"
+      label="能力清单"
       :title="heroTitle"
       lead="每一条都对应代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。点开任意一条看做法。"
     >
-      <div class="chips" role="group" aria-label="按分组筛选">
+      <div class="filter">
+        <button type="button" :class="['filter__i', { 'filter__i--on': !active }]" @click="active = ''; open = ''">
+          全部
+        </button>
         <button
           v-for="tag in tags"
           :key="tag"
           type="button"
-          :class="['chip', { 'chip--on': active === tag }]"
+          :class="['filter__i', { 'filter__i--on': active === tag }]"
           @click="active = tag; open = ''"
         >
           {{ tag }}
@@ -64,29 +66,19 @@ onMounted(async () => {
         <p v-if="!all.length" class="muted">正在读取能力清单…</p>
 
         <div v-for="group in groups" :key="group.tag" class="group">
-          <h2 v-reveal class="group__title">
-            {{ group.tag }}
-            <span class="mono group__count">{{ String(group.items.length).padStart(2, '0') }}</span>
-          </h2>
+          <h2 v-reveal class="group__t">{{ group.tag }}</h2>
 
           <div class="list">
             <article
               v-for="(item, index) in group.items"
               :key="item.id"
-              v-reveal="index * 30"
+              v-reveal="index * 25"
               :class="['row', { 'row--open': open === item.id }]"
             >
               <button class="row__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
-                <span class="row__no mono">{{ String(index + 1).padStart(2, '0') }}</span>
-                <span class="row__text">
-                  <span class="row__title">{{ item.title }}</span>
-                  <span class="row__summary">{{ item.summary }}</span>
-                </span>
-                <span class="row__caret" aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M4 6.5 8 10.5l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </span>
+                <span class="row__title">{{ item.title }}</span>
+                <span class="row__sum">{{ item.summary }}</span>
+                <span class="row__mark" aria-hidden="true"></span>
               </button>
               <div class="row__body">
                 <div class="row__inner">
@@ -102,76 +94,62 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.chips {
+.filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px 18px;
 }
 
-.chip {
-  padding: 5px 12px;
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-pill);
+.filter__i {
+  min-height: 44px;
+  padding: 6px 2px;
+  border: none;
+  border-bottom: 1px solid transparent;
   background: transparent;
   font-size: var(--t-sm);
   color: var(--ink-2);
   cursor: pointer;
   transition:
-    background-color var(--dur-ui) ease,
-    border-color var(--dur-ui) ease,
-    color var(--dur-ui) ease;
+    color var(--dur-ui) ease,
+    border-color var(--dur-ui) ease;
 }
 
-.chip--on {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
-}
-
-[data-theme="dark"] .chip--on {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: var(--brand-ink);
+.filter__i--on {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:not(.chip--on):hover {
-    border-color: var(--ink);
+  .filter__i:not(.filter__i--on):hover {
     color: var(--ink);
   }
 }
 
 .group + .group {
-  margin-top: clamp(32px, 4vw, 52px);
+  margin-top: clamp(30px, 3.6vw, 48px);
 }
 
-.group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
-  font-size: var(--t-h2);
-}
-
-.group__count {
+.group__t {
   font-size: var(--t-sm);
+  font-weight: 600;
   color: var(--ink-3);
-  letter-spacing: 0.06em;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: 0.02em;
 }
 
 .list {
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .row {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
 }
 
 .row__head {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 20px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 8px 14px;
   width: 100%;
   padding: 14px 2px;
   border: none;
@@ -180,42 +158,40 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.row__no {
-  font-size: var(--t-xs);
-  color: var(--ink-3);
-  padding-top: 3px;
-}
-
-.row__text {
-  display: grid;
-  gap: 3px;
-}
-
 .row__title {
-  font-size: 0.98rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--ink);
 }
 
-.row__summary {
+.row__sum {
+  grid-column: 1;
   font-size: var(--t-sm);
-  line-height: 1.75;
+  line-height: 1.7;
   color: var(--ink-2);
 }
 
-.row__caret {
-  display: flex;
-  justify-content: center;
-  padding-top: 5px;
-  color: var(--ink-3);
-  transition: transform var(--dur-ui) var(--ease-out);
+/* 展开态只用一个小方块旋转表示，不用加号箭头 */
+.row__mark {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: start;
+  margin-top: 7px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+  transition:
+    transform var(--dur-ui) var(--ease-out),
+    border-color var(--dur-ui) ease;
 }
 
-.row--open .row__caret {
-  transform: rotate(180deg);
+.row--open .row__mark {
+  transform: rotate(225deg);
+  border-color: var(--signal);
 }
 
-/* 折叠用 grid-template-rows 0fr → 1fr：高度自动、可过渡，不用测高 */
 .row__body {
   display: grid;
   grid-template-rows: 0fr;
@@ -231,46 +207,50 @@ onMounted(async () => {
 }
 
 .row__detail {
-  padding: 2px 32px 18px 40px;
+  padding: 2px 0 18px 14px;
+  border-left: 1px solid var(--line);
   font-size: var(--t-sm);
   line-height: 1.9;
   color: var(--ink-2);
-  max-width: 78ch;
-  border-left: 2px solid var(--brand-wash);
-  margin-left: 12px;
+  max-width: 44em;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .row__head:hover .row__title {
-    color: var(--brand);
+    color: var(--signal);
   }
 }
 
-@media (min-width: 720px) {
+@media (min-width: 760px) {
   .row__head {
-    grid-template-columns: 36px minmax(0, 11.2rem) minmax(0, 1fr) 22px;
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr) 22px;
     align-items: baseline;
-    gap: 18px;
-    padding: 15px 2px;
+    gap: 20px;
+    padding: 13px 2px;
   }
 
-  .row__text {
-    display: contents;
+  .row__sum {
+    grid-column: 2;
   }
 
-  .row__title {
-    font-size: 0.95rem;
+  .row__mark {
+    grid-row: 1;
+    grid-column: 3;
+    margin-top: 0;
+    align-self: center;
   }
 
   .row__detail {
-    padding-left: 56px;
-    margin-left: 18px;
+    padding: 2px 6rem 18px 2px;
+    border-left: none;
+    max-width: none;
   }
 }
 
-/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
-.row__text > * {
+.row__head > *,
+.list > * {
   min-width: 0;
 }
 </style>

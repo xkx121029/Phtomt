@@ -1,85 +1,65 @@
 /* ===========================================================================
-   设计令牌 v2 —— 「指令纸」
+   设计令牌 · 「读屏台」
    ---------------------------------------------------------------------------
-   这一版把官网当成一本产品说明书来排：暖纸底、墨色字、1px 细线撑结构，
-   只有吸顶导航用玻璃。卡片不再是默认容器——它是需要被强调时才用的手段。
+   颜色不是选出来的，是从产品里取的：底与强调色直接沿用 App 深色主题的配色
+   （截图里的近黑底 + 流萤青绿按钮），中性色是同一色相的明度序列。
+   青绿只做一件事——表示「正在发生 / 已经生效」的状态，不做装饰。
 
-   颜色仍与 App 端 ui/theme/Color.kt 同源：主色玄青，暖辅琥珀，冷辅雾蓝。
-   不是另一个品牌，是同一个东西的另一面。
+   两种主题是同一台仪器的两面：深色是运行时的样子，浅色是把它摆在白纸上的样子。
+   字重、层级、间距在两套里一致，只换明度。
    =========================================================================== */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* ---- 面 ---- */
-  --paper: #f7f5ef;
-  --paper-raised: #fffdf8;
-  --paper-sunken: #efece3;
-  --paper-tint: #f1f4ee;
-
-  /* 玻璃：只给吸顶导航与移动端抽屉这类「浮在内容之上」的固定 chrome 用。
-     底色带品牌色相、描边带绿，通用白描边是「AI 味」的主要来源。 */
-  --glass-tint: rgba(247, 245, 239, 0.86);
-  --glass-fallback: rgba(247, 245, 239, 0.98);
-  --glass-line: rgba(13, 108, 88, 0.14);
-  --glass-sheen: rgba(255, 255, 255, 0.36);
-  --glass-blur: 16px;
-  --glass-saturate: 1.4;
-
-  /* ---- 墨 ---- */
-  --ink: #15170f;
-  --ink-2: #454a3e;
-  --ink-3: #6d7367;
+  --ground: #0a0d0c;
+  --panel: #121815;
+  --panel-2: #16201a;
+  --panel-3: #1b2620;
 
   /* ---- 线 ---- */
-  --line: #ded9cc;
-  --line-2: #bcb7a7;
-  --line-3: #e8e4d9;
+  --line: #253029;
+  --line-soft: #1b241f;
+  --line-strong: #35443a;
 
-  /* ---- 品牌 ---- */
-  --brand: #0d6c58;
-  --brand-strong: #084f3f;
-  --brand-ink: #04241d;
-  --brand-wash: #d8efe5;
-  --brand-veil: rgba(13, 108, 88, 0.09);
-  --brand-deep: #0a2c24;
-  --brand-deep-2: #103d31;
-  --brand-glow: rgba(13, 108, 88, 0.2);
+  /* ---- 墨 ---- */
+  --ink: #e9eee7;
+  --ink-2: #a9b4ab;
+  --ink-3: #7e8a80;
 
-  /* ---- 辅色 ---- */
-  --amber: #92551a;
-  --amber-wash: #f6e5d2;
-  --mist: #366b88;
-  --mist-wash: #dbe9f1;
+  /* ---- 信号：只表示「正在发生 / 已验证」 ---- */
+  --signal: #74efc3;
+  --signal-ink: #06211a;
+  --signal-wash: rgba(116, 239, 195, 0.09);
+  --signal-line: rgba(116, 239, 195, 0.34);
 
-  --ok: #1c7350;
-  --ok-wash: #d3eddf;
-  --warn: #7f590f;
-  --warn-wash: #f6e7c4;
-  --danger: #a8372e;
-  --danger-wash: #fadad4;
+  /* ---- 状态 ---- */
+  --warn: #e8a55f;
+  --warn-wash: rgba(232, 165, 95, 0.12);
+  --danger: #f2726a;
+  --danger-wash: rgba(242, 114, 106, 0.12);
+  --ok: #74efc3;
+  --ok-wash: rgba(116, 239, 195, 0.12);
 
-  /* ---- 阴影：只表达「浮起」，不参与结构 ---- */
-  --shadow-1: 0 1px 2px rgba(21, 23, 15, 0.05);
-  --shadow-2: 0 10px 30px -16px rgba(21, 23, 15, 0.24);
-  --shadow-3: 0 36px 80px -40px rgba(21, 23, 15, 0.36);
+  /* ---- 阴影：只表达「浮起」 ---- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 18px 48px -28px rgba(0, 0, 0, 0.9);
+  --shadow-3: 0 48px 120px -60px rgba(0, 0, 0, 1);
 
-  /* ---- 动效：曲线取自 emil-design-eng，内置 ease 太软 ---- */
+  /* ---- 动效 ---- */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --dur-press: 120ms;
   --dur-ui: 180ms;
   --dur-enter: 300ms;
 
-  /* ---- 圆角 ---- */
-  --r-xs: 4px;
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 18px;
-  --r-xl: 26px;
-  --r-2xl: 34px;
-  --r-float: 28px;
+  /* ---- 圆角：仪器面板是小圆角，不是药丸 ---- */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --r-xl: 14px;
   --r-pill: 999px;
 
   /* ---- 间距 ---- */
@@ -93,83 +73,73 @@
   --sp-8: 64px;
   --sp-9: 96px;
 
-  /* ---- 字体 ---- */
-  --font: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
-    "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Mono",
+  /* ---- 字体 ----
+     西文与数字排在前面：中文字体自带的拉丁字母和数字都比较呆，
+     逐字符匹配会让拉丁先落到西文面，汉字自然穿透到后面的中文字体。 */
+  --font: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+    "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SFMono-Regular",
     Consolas, "Liberation Mono", monospace;
 
   /* ---- 版心 ---- */
-  --page: 1160px;
-  --gutter: clamp(18px, 4.2vw, 32px);
+  --page: 1240px;
+  --gutter: clamp(18px, 4vw, 32px);
 
-  /* ---- 字号与行高 ----
-     中文的行高比西文更需要留白：汉字没有升降部，字面方整，行距一挤就连成一片。
-     所以正文行高给到 1.9，标题给 1.28（标题行密一点才成块）。 */
-  --t-display: clamp(2.6rem, 1.45rem + 4.9vw, 4.4rem);
-  --t-h1: clamp(1.8rem, 1.32rem + 1.9vw, 2.6rem);
-  --t-h2: clamp(1.4rem, 1.18rem + 0.95vw, 1.9rem);
-  --t-h3: 1.1rem;
-  --t-body: 1rem;
-  --t-sm: 0.875rem;
+  /* ---- 字号：1.25 音阶，正文 17px 起（中文正文基准） ---- */
+  --t-display: clamp(2.6rem, 1.3rem + 4.6vw, 4.9rem);
+  --t-h1: clamp(1.9rem, 1.4rem + 1.9vw, 2.7rem);
+  --t-h2: clamp(1.35rem, 1.15rem + 0.9vw, 1.85rem);
+  --t-h3: 1.16rem;
+  --t-body: 1.0625rem;
+  --t-sm: 0.9375rem;
   --t-xs: 0.8125rem;
 
-  --lh-body: 1.9;
+  --lh-body: 1.85;
   --lh-lead: 1.8;
-  --lh-tight: 1.6;
   --lh-head: 1.28;
 
-  /* 中文不做负字距：汉字是等宽的方块，收紧字距会把笔画压在一起；
-     只有西文与数字才允许收。 */
-  --track-body: 0.01em;
-  --track-head: -0.008em;
-  --track-cap: 0.14em;
-  --track-num: -0.02em;
+  /* 中文不做负字距；只有西文大写标签和巨型数字才允许收紧 */
+  --track-body: 0.012em;
+  --track-head: -0.006em;
+  --track-mono: -0.01em;
+  --track-cap: 0.06em;
 }
 
-[data-theme="dark"] {
+:root[data-theme="dark"] {
   color-scheme: dark;
+}
 
-  --paper: #0f1211;
-  --paper-raised: #171b19;
-  --paper-sunken: #0a0d0c;
-  --paper-tint: #0c1310;
+:root[data-theme="light"] {
+  color-scheme: light;
 
-  --glass-tint: rgba(15, 18, 17, 0.82);
-  --glass-fallback: rgba(15, 18, 17, 0.98);
-  --glass-line: rgba(100, 224, 187, 0.2);
-  --glass-sheen: rgba(255, 255, 255, 0.06);
+  --ground: #f4f6f2;
+  --panel: #ffffff;
+  --panel-2: #edf1ea;
+  --panel-3: #e6ece4;
 
-  --ink: #e8ebe4;
-  --ink-2: #b3b9af;
-  --ink-3: #878e83;
+  --line: #d3dbd1;
+  --line-soft: #e2e8e0;
+  --line-strong: #b6c0b4;
 
-  --line: #262b27;
-  --line-2: #3a403b;
-  --line-3: #1c211e;
+  --ink: #0f1411;
+  --ink-2: #454d46;
+  --ink-3: #6b736b;
 
-  --brand: #64e0bb;
-  --brand-strong: #8bf0cf;
-  --brand-ink: #04231c;
-  --brand-wash: #14332a;
-  --brand-veil: rgba(100, 224, 187, 0.1);
-  --brand-deep: #071e18;
-  --brand-deep-2: #0c2e25;
-  --brand-glow: rgba(100, 224, 187, 0.16);
+  /* 浅色下同一个青绿要压深才够对比：把明度降到 L≈0.42，色相不变 */
+  --signal: #0b6b52;
+  --signal-ink: #ffffff;
+  --signal-wash: rgba(11, 107, 82, 0.07);
+  --signal-line: rgba(11, 107, 82, 0.3);
 
-  --amber: #efab72;
-  --amber-wash: #3d2a16;
-  --mist: #8fb8d3;
-  --mist-wash: #1b313f;
+  --warn: #8a5a12;
+  --warn-wash: rgba(138, 90, 18, 0.09);
+  --danger: #b23a31;
+  --danger-wash: rgba(178, 58, 49, 0.08);
+  --ok: #0b6b52;
+  --ok-wash: rgba(11, 107, 82, 0.08);
 
-  --ok: #6fd3a2;
-  --ok-wash: #17452f;
-  --warn: #e8b75e;
-  --warn-wash: #46340f;
-  --danger: #ff9a90;
-  --danger-wash: #4f1e19;
-
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-2: 0 10px 30px -16px rgba(0, 0, 0, 0.65);
-  --shadow-3: 0 36px 80px -40px rgba(0, 0, 0, 0.8);
+  --shadow-1: 0 1px 2px rgba(15, 20, 17, 0.06);
+  --shadow-2: 0 14px 40px -26px rgba(15, 20, 17, 0.3);
+  --shadow-3: 0 40px 100px -60px rgba(15, 20, 17, 0.4);
 }
