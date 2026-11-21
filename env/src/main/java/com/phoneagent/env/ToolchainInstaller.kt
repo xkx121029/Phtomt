@@ -156,7 +156,7 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private data class Step(val title: String, val block: () -> String?)
 
     private fun installSteps(req: Request): List<Step> = listOf(
-        Step("Linux 根文件系统") { if (ensureLinux()) null else "Linux 环境装配失败（详见日志）" },
+        Step("Linux 根文件系统") { ensureLinux() },
         Step("JDK 17") { installJdk() },
         Step("Gradle ${req.gradleVersion.ifBlank { "（未识别）" }}") { installGradle(req.gradleVersion) },
         Step("Android SDK 工具") { installCmdlineTools() },
@@ -172,11 +172,17 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
 
     // ------------------------------------------------------------ Linux 环境
 
-    private fun ensureLinux(): Boolean = env.ensureReady(
-        onProgress = { log(it) },
-        onLog = { log(it) },
-        isCancelled = { cancelled.invoke() },
-    )
+    private fun ensureLinux(): String? = when (
+        val result = env.ensureReady(
+            onProgress = { log(it) },
+            onLog = { log(it) },
+            isCancelled = { cancelled.invoke() },
+        )
+    ) {
+        LinuxEnv.Prepare.Ready -> null
+        is LinuxEnv.Prepare.Busy -> result.message
+        is LinuxEnv.Prepare.Failed -> "Linux 环境装配失败：${result.message}"
+    }
 
     // ------------------------------------------------------------ JDK
 

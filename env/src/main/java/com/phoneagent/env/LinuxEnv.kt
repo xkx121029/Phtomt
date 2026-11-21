@@ -1,6 +1,8 @@
 package com.phoneagent.env
 
 import android.content.Context
+import android.os.Process
+import android.os.SystemClock
 import android.system.Os
 import java.io.BufferedInputStream
 import java.io.File
@@ -63,6 +65,30 @@ class LinuxEnv(private val ctx: Context) {
 
         private const val MARKER = ".installed"
         private const val LOCK = ".installing"
+
+        /** 锁目录里的持有者记录：pid / 会话 token / 取得时刻 / 心跳 */
+        private const val LOCK_OWNER = "owner"
+
+        /**
+         * 每进程生成一次的会话标识。
+         *
+         * 进程被杀但 `finally` 没执行时，锁会留在磁盘上；而 pid 可能被系统复用。
+         * 只有 token 与本次会话一致，才能认定「这把锁是我自己在持有」。
+         */
+        private val PROCESS_TOKEN: String = java.util.UUID.randomUUID().toString()
+
+        /** 心跳间隔：持有者周期性刷新记录，等待方据此区分「真在跑」与「已被杀」 */
+        private const val HEARTBEAT_INTERVAL_MS = 10_000L
+
+        /** 等待持有者时的轮询间隔 */
+        private const val LOCK_POLL_MS = 300L
+
+        /**
+         * 锁目录先建、持有者记录后写，中间有几毫秒空窗。
+         * 看到「目录在但记录还没落盘」时先等这么久再判，否则会把自己刚建的锁误判成残留。
+         */
+        private const val OWNER_SETTLE_MS = 2_000L
+
         private const val LINK2SYMLINK_MARK = ".link2symlink"
         private const val MINIMAL_BINDS_MARK = ".minimalbinds"
 
@@ -118,6 +144,13 @@ class LinuxEnv(private val ctx: Context) {
     private val binDir: File = File(home, "bin")
     private val marker: File = File(home, MARKER)
     private val lockDir: File = File(home, LOCK)
+    private val lockOwner: File = File(lockDir, LOCK_OWNER)
+
+    /** 本次持锁的取得时刻（`elapsedRealtime`），写进持有者记录用于重启判定 */
+    private var lockAcquiredElapsedMs = 0L
+
+    /** 心跳线程：持锁期间每 [HEARTBEAT_INTERVAL_MS] 刷新一次记录 */
+    private var heartbeat: Thread? = null
     private val link2symlinkMark: File = File(home, LINK2SYMLINK_MARK)
     private val minimalBindsMark: File = File(home, MINIMAL_BINDS_MARK)
     private val archive: File = File(home, "rootfs.tar.gz")
@@ -137,27 +170,23 @@ class LinuxEnv(private val ctx: Context) {
      * 装配环境；已装配且资产版本一致时直接返回。
      *
      * [onProgress] 给人看的阶段说明，[onLog] 是原始输出（下载进度、proot 探测失败原因）。
+     *
+     * 返回 [Prepare] 而不是布尔：**「别的安装正在跑」和「上次安装中断，已自动恢复」
+     * 是两句完全不同的话**，用户看到哪一种决定他下一步该等还是该重试，不能都压缩成 false。
      */
     fun ensureReady(
         onProgress: (String) -> Unit = {},
         onLog: (String) -> Unit = {},
         isCancelled: () -> Boolean = { false },
-    ): Boolean {
-        val wanted = assetVersion() ?: return false
-        if (isReady() && runCatching { marker.readText().trim() }.getOrNull() == wanted) return true
+    ): Prepare {
+        val wanted = assetVersion() ?: return Prepare.Failed("组件内置资产清单缺失（version.txt 读不到）")
+        if (isReady() && runCatching { marker.readText().trim() }.getOrNull() == wanted) return Prepare.Ready
 
         home.mkdirs()
-        if (!lockDir.mkdirs()) {
-            onProgress("Linux 环境正在装配，等待完成…")
-            val deadline = System.currentTimeMillis() + LOCK_TIMEOUT_MS
-            while (lockDir.exists() && System.currentTimeMillis() < deadline) {
-                try {
-                    Thread.sleep(300)
-                } catch (_: InterruptedException) {
-                    break
-                }
-            }
-            return isReady()
+        when (val gate = acquireLock(onProgress, onLog, isCancelled)) {
+            is Gate.Busy -> return Prepare.Busy(gate.message)
+            is Gate.Failed -> return Prepare.Failed(gate.message)
+            Gate.Acquired -> Unit
         }
 
         return try {
@@ -165,7 +194,9 @@ class LinuxEnv(private val ctx: Context) {
             onProgress("释放 Linux 引导程序…")
             releaseBootstrap()
             onProgress("准备 Linux 根文件系统…")
-            if (!ensureArchive(onProgress, onLog, isCancelled)) return false
+            if (!ensureArchive(onProgress, onLog, isCancelled)) {
+                return Prepare.Failed("根文件系统归档不可用（${if (isCancelled()) "已取消" else "全部下载源失败，见日志"}）")
+            }
             onProgress("装配 Linux 环境（首次约需数十秒）…")
             extractRootfs()
             // 分级探测：功能最全的档位先试，起不来就换更保守的组合。
@@ -175,23 +206,150 @@ class LinuxEnv(private val ctx: Context) {
                 LaunchPlan(link2symlink = false, minimalBinds = false),
                 LaunchPlan(link2symlink = false, minimalBinds = true),
             ).firstOrNull { probe(it) }
-            if (plan == null) {
-                onProgress("Linux 环境自检未通过（proot 无法启动）")
-                return false
-            }
+                ?: return Prepare.Failed("proot 无法启动（四种绑定组合都探测失败）")
             link2symlinkMark.writeText(if (plan.link2symlink) "1" else "0")
             minimalBindsMark.writeText(if (plan.minimalBinds) "1" else "0")
             marker.writeText(wanted)
             archive.delete()
             onProgress("Linux 环境就绪")
-            true
+            Prepare.Ready
         } catch (t: Throwable) {
-            onProgress("Linux 环境装配失败：${t.message}")
             onLog("装配异常：${t.javaClass.simpleName} ${t.message}")
-            false
+            Prepare.Failed("${t.javaClass.simpleName}：${t.message ?: "无详情"}")
         } finally {
-            lockDir.delete()
+            releaseLock()
         }
+    }
+
+    // ---------------------------------------------------------------- 装配锁
+
+    /** 取锁的结果：取到 / 有人在用 / 环境不允许 */
+    private sealed class Gate {
+        object Acquired : Gate()
+        data class Busy(val message: String) : Gate()
+        data class Failed(val message: String) : Gate()
+    }
+
+    /**
+     * 取锁；锁是残留就接管。
+     *
+     * 以前这里是「目录存在就死等 180 秒，然后判失败」——进程被杀留下的锁会让环境永远装不上，
+     * 而 App 里没有卸载入口，用户只能清应用数据。现在每一轮都重新判定持有者是否还活着，
+     * 判定为残留就立刻接管并在日志里说明「上次中断已自动恢复」。
+     */
+    private fun acquireLock(
+        onProgress: (String) -> Unit,
+        onLog: (String) -> Unit,
+        isCancelled: () -> Boolean,
+    ): Gate {
+        val deadline = SystemClock.elapsedRealtime() + LOCK_TIMEOUT_MS
+        var announcedWait = false
+        var settleDeadline = 0L
+        var settleArmed = false
+        while (true) {
+            if (lockDir.mkdirs()) {
+                takeOwnership()
+                return Gate.Acquired
+            }
+            if (!lockDir.exists()) {
+                return Gate.Failed("无法创建装配锁目录（${lockDir.absolutePath}），请检查存储空间")
+            }
+
+            val now = SystemClock.elapsedRealtime()
+            val holder = readHolder()
+            // 目录在、记录还没落盘：可能是别人刚建锁正在写记录，先给一个空窗再判残留
+            if (holder == null) {
+                if (!settleArmed) {
+                    settleArmed = true
+                    settleDeadline = now + OWNER_SETTLE_MS
+                }
+                if (now < settleDeadline) {
+                    if (isCancelled()) return Gate.Busy("已取消")
+                    Thread.sleep(LOCK_POLL_MS)
+                    continue
+                }
+            }
+
+            when (val verdict = InstallLock.judge(holder, now, Process.myPid(), PROCESS_TOKEN, ::probePeer)) {
+                is InstallLock.Verdict.Stale -> {
+                    onProgress("上次装配中断（${verdict.reason}），已自动接管继续")
+                    onLog("接管残留锁：${verdict.reason}")
+                    discardLock()
+                }
+
+                is InstallLock.Verdict.Live -> {
+                    if (!announcedWait) {
+                        val age = verdict.heartbeatAgeMs / 1000
+                        onProgress("另一个装配任务正在进行（pid=${verdict.pid}，最近心跳 ${age} 秒前），等待它结束…")
+                        announcedWait = true
+                    }
+                    if (isCancelled()) return Gate.Busy("已取消")
+                    if (SystemClock.elapsedRealtime() > deadline) {
+                        return Gate.Busy(
+                            "另一个装配任务仍在执行（pid=${verdict.pid}），" +
+                                "已等待 ${LOCK_TIMEOUT_MS / 1000} 秒。请等它结束；" +
+                                "若确认没有任务在跑，可在设置页「编码环境 → 重置编码环境」后重试",
+                        )
+                    }
+                    Thread.sleep(LOCK_POLL_MS)
+                }
+            }
+        }
+    }
+
+    /** 拿到锁目录后写下持有者记录，并起心跳线程 */
+    private fun takeOwnership() {
+        lockAcquiredElapsedMs = SystemClock.elapsedRealtime()
+        writeHolder()
+        heartbeat = Thread {
+            while (!Thread.currentThread().isInterrupted) {
+                try {
+                    Thread.sleep(HEARTBEAT_INTERVAL_MS)
+                } catch (_: InterruptedException) {
+                    return@Thread
+                }
+                runCatching { writeHolder() }
+            }
+        }.apply {
+            isDaemon = true
+            name = "env-lock-heartbeat"
+            start()
+        }
+    }
+
+    /** 退出时释放：只删自己那把锁，别把接管者的锁误删 */
+    private fun releaseLock() {
+        heartbeat?.let { thread ->
+            thread.interrupt()
+            runCatching { thread.join(1_000) }
+        }
+        heartbeat = null
+        val holder = readHolder()
+        if (holder == null || holder.token == PROCESS_TOKEN) discardLock()
+    }
+
+    private fun discardLock() {
+        runCatching { deleteRecursive(lockDir) }
+    }
+
+    private fun writeHolder() {
+        val holder = InstallLock.Holder(
+            pid = Process.myPid(),
+            token = PROCESS_TOKEN,
+            acquiredElapsedMs = lockAcquiredElapsedMs,
+            heartbeatElapsedMs = SystemClock.elapsedRealtime(),
+            acquiredWallMs = System.currentTimeMillis(),
+        )
+        runCatching { lockOwner.writeText(InstallLock.encode(holder)) }
+    }
+
+    private fun readHolder(): InstallLock.Holder? =
+        runCatching { InstallLock.decode(lockOwner.takeIf { it.isFile }?.readText()) }.getOrNull()
+
+    private fun probePeer(pid: Int): InstallLock.Peer {
+        val dir = File("/proc/$pid")
+        val cmdline = runCatching { File(dir, "cmdline").readText() }.getOrNull()
+        return InstallLock.classifyPeer(dir.exists(), cmdline, ctx.applicationInfo.processName)
     }
 
     /** 容器内执行一条命令，逐行回调输出；调用方负责放到后台线程。 */
@@ -226,6 +384,18 @@ class LinuxEnv(private val ctx: Context) {
         ShellResult(finished && code == 0, code, sink.toString())
     } catch (t: Throwable) {
         ShellResult(false, -1, t.message ?: "执行失败")
+    }
+
+    /**
+     * 一次装配的结果。
+     *
+     * [Busy] 与 [Failed] 的差别就是给用户那句话的差别：前者是「别人在装，等一等」，
+     * 后者是「装失败了，原因如此」。压成一个布尔就分不出这两件事了。
+     */
+    sealed class Prepare {
+        object Ready : Prepare()
+        data class Busy(val message: String) : Prepare()
+        data class Failed(val message: String) : Prepare()
     }
 
     /** 一次容器内命令的执行结果。 */
