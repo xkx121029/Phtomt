@@ -4,9 +4,11 @@
 
 .prose {
   font-size: 1rem;
-  line-height: 1.82;
+  /* 长文行高按中文给：1.9 在 16px 上约 30px 行距，读长段才不挤 */
+  line-height: 1.9;
+  letter-spacing: var(--track-body);
   color: var(--ink-2);
-  max-width: 72ch;
+  max-width: 68ch;
 }
 
 .prose > * + * {
@@ -22,9 +24,11 @@
 }
 
 .prose h2 {
-  margin-top: 2.2em;
-  font-size: 1.32rem;
-  letter-spacing: -0.02em;
+  margin-top: 2.4em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--line);
+  font-size: 1.3rem;
+  letter-spacing: var(--track-head);
 }
 
 .prose h3 {
@@ -53,7 +57,7 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent);
   transition: text-decoration-color var(--dur-ui) ease;
 }
 

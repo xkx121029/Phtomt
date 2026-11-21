@@ -1,6 +1,9 @@
 /* ===========================================================================
-   基础层：重置 + 版心 + 通用原件（按钮 / 卡片 / 徽标 / 表格 / 代码）
-   所有可点元素都有 :active 缩放反馈——按下去没有回应的界面，用户会怀疑自己点空了。
+   基础层 v2：重置 + 版心 + 通用原件
+   ---------------------------------------------------------------------------
+   结构靠细线，强调靠深块。卡片只在需要「一块被抬起来的内容」时出现，
+   不再是默认容器——一页里堆十几个玻璃卡片，层级就全平了。
+   所有可点元素都有 :active 反馈：按下去没有回应，用户会怀疑点空了。
    =========================================================================== */
 
 *,
@@ -24,12 +27,16 @@ body {
   margin: 0;
   font-family: var(--font);
   font-size: var(--t-body);
-  line-height: 1.72;
+  line-height: var(--lh-body);
+  letter-spacing: var(--track-body);
   color: var(--ink);
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
+  /* 中文标点挤压：PingFang / 思源支持 palt，让「，」「。」这类全角标点不再吃掉半格空白。
+     不支持 palt 的字体忽略这一行，不影响排版。 */
+  font-feature-settings: "palt" 1;
 }
 
 h1,
@@ -38,13 +45,14 @@ h3,
 h4 {
   margin: 0;
   font-weight: 600;
-  line-height: 1.24;
-  letter-spacing: -0.022em;
+  line-height: var(--lh-head);
+  letter-spacing: var(--track-head);
   text-wrap: balance;
 }
 
 p {
   margin: 0;
+  text-wrap: pretty;
 }
 
 a {
@@ -54,7 +62,8 @@ a {
 
 img,
 svg,
-canvas {
+canvas,
+video {
   display: block;
   max-width: 100%;
 }
@@ -86,20 +95,32 @@ textarea {
 }
 
 .section {
-  padding-block: clamp(64px, 8vw, 112px);
+  padding-block: clamp(56px, 7vw, 104px);
 }
 
 .section--tight {
-  padding-block: clamp(40px, 5vw, 64px);
+  padding-block: clamp(40px, 4.6vw, 64px);
+}
+
+/* 上下用细线切开的段落：说明书里最常用的分隔方式 */
+.band {
+  background: var(--paper-tint);
+  border-block: 1px solid var(--line);
+}
+
+.band--ink {
+  background: var(--brand-deep);
+  border-color: transparent;
+  color: #eef4f0;
 }
 
 /* ---------- 排版 ---------- */
 
 .display {
   font-size: var(--t-display);
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  line-height: 1.14;
 }
 
 .h1 {
@@ -111,10 +132,9 @@ textarea {
 }
 
 .lead {
-  font-size: clamp(1.02rem, 0.96rem + 0.3vw, 1.18rem);
-  line-height: 1.78;
+  font-size: clamp(1rem, 0.96rem + 0.28vw, 1.14rem);
+  line-height: var(--lh-lead);
   color: var(--ink-2);
-  text-wrap: pretty;
 }
 
 .muted {
@@ -127,40 +147,50 @@ textarea {
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.9em;
-  letter-spacing: -0.01em;
+  font-size: 0.92em;
+  letter-spacing: var(--track-num);
+  font-variant-numeric: tabular-nums;
 }
 
-/* 小标签：全大写 + 宽字距，用来分区，不用来做正文 */
+/* 小标签：宽字距的小字，用来分区，不用来做正文 */
 .eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: var(--t-xs);
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-cap);
   text-transform: uppercase;
   color: var(--ink-3);
 }
 
 .eyebrow::before {
   content: "";
-  width: 18px;
+  width: 20px;
   height: 1px;
   background: var(--line-2);
+}
+
+/* 编号：说明书式的小序号，等宽、偏琥珀，不用来抢标题 */
+.no {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: var(--amber);
 }
 
 /* ---------- 按钮 ---------- */
 
 .btn {
-  --btn-bg: var(--paper-raised);
+  --btn-bg: transparent;
   --btn-fg: var(--ink);
-  --btn-line: var(--line);
+  --btn-line: var(--line-2);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 11px 20px;
+  padding: 10px 18px;
   border: 1px solid var(--btn-line);
   border-radius: var(--r-pill);
   background: var(--btn-bg);
@@ -182,7 +212,7 @@ textarea {
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -191,29 +221,40 @@ textarea {
 }
 
 .btn--primary {
-  --btn-bg: var(--brand);
-  --btn-fg: #fff;
-  --btn-line: var(--brand);
-  box-shadow: var(--shadow-2);
+  --btn-bg: var(--ink);
+  --btn-fg: var(--paper);
+  --btn-line: var(--ink);
 }
 
 [data-theme="dark"] .btn--primary {
+  --btn-bg: var(--brand);
+  --btn-fg: var(--brand-ink);
+  --btn-line: var(--brand);
+}
+
+.btn--brand {
+  --btn-bg: var(--brand);
+  --btn-fg: #fff;
+  --btn-line: var(--brand);
+}
+
+[data-theme="dark"] .btn--brand {
   --btn-fg: var(--brand-ink);
 }
 
 .btn--ghost {
-  --btn-bg: transparent;
   --btn-line: transparent;
   color: var(--ink-2);
+  padding-inline: 10px;
 }
 
 .btn--lg {
-  padding: 14px 26px;
+  padding: 13px 24px;
   font-size: var(--t-body);
 }
 
 .btn--sm {
-  padding: 7px 14px;
+  padding: 6px 13px;
   font-size: var(--t-xs);
 }
 
@@ -224,7 +265,7 @@ textarea {
 
 @media (hover: hover) and (pointer: fine) {
   .btn:hover {
-    border-color: var(--line-2);
+    border-color: var(--ink);
   }
 
   .btn--primary:hover {
@@ -232,9 +273,15 @@ textarea {
     --btn-line: var(--brand-strong);
   }
 
+  [data-theme="dark"] .btn--primary:hover {
+    --btn-bg: var(--brand-strong);
+    --btn-line: var(--brand-strong);
+  }
+
   .btn--ghost:hover {
     background: var(--paper-sunken);
     color: var(--ink);
+    border-color: transparent;
   }
 
   .btn--danger:hover {
@@ -243,37 +290,32 @@ textarea {
   }
 }
 
-/* ---------- 卡片 ---------- */
-
-/* 卡片一律亚克力：半透明底色 + 背景模糊，再加一道内顶高光暗示「有厚度」。
-   页面底色是平铺的，模糊本身贡献有限；真正把材质读出来的是那层高光加半透明底色。
-   底色用 --card-tint（--paper-raised 那一档），不是 --glass-tint，理由见 tokens.css。 */
-.card {
-  position: relative;
-  background: var(--card-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 22px;
-  box-shadow:
-    inset 0 1px 0 var(--glass-sheen),
-    var(--shadow-1);
+/* 文字箭头链接：比按钮更轻的一档，用于「去别处读」 */
+.link-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  color: var(--brand);
+  border-bottom: 1px solid var(--brand-veil);
+  padding-bottom: 2px;
 }
 
-/* 不支持背景模糊：退回接近不透明的底色，留着半透明会让滚动内容糊在字后面。
-   这块必须紧跟 .card 且在几个修饰类之前，否则会把 --sunken / --ink / --bare 的底色一起盖掉。 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .card {
-    background: var(--card-fallback);
+@media (hover: hover) and (pointer: fine) {
+  .link-arrow:hover {
+    border-color: var(--brand);
   }
 }
 
-/* 悬停跟随鼠标的微倾斜：角度由 useCardTilt 写进行内 transform，这里只管过渡。
-   用 .card.tilt 抬一级权重——卡片上的 .reveal 也声明了 transform 过渡，那是入场用的长时长，
-   不压过它的话倾斜会变成慢动作。 */
-.card.tilt {
-  transition: transform 180ms var(--ease-out);
+/* ---------- 卡片 ---------- */
+
+.card {
+  position: relative;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 22px;
 }
 
 .card--flat {
@@ -283,16 +325,13 @@ textarea {
 .card--sunken {
   background: var(--paper-sunken);
   border-color: transparent;
-  box-shadow: none;
 }
 
-/* 深色锚点卡：一屏里只放一张，用来定住视觉重心。
-   深底上的字色不能沿用 --ink（那是给浅底的），单独指定。 */
+/* 深色锚点卡：一屏里只放一张，用来定住视觉重心 */
 .card--ink {
   background: var(--brand-deep);
   border-color: transparent;
   color: #eef4f0;
-  box-shadow: var(--shadow-2);
 }
 
 .card--ink h3,
@@ -301,7 +340,7 @@ textarea {
 }
 
 .card--ink p {
-  color: rgba(238, 244, 240, 0.76);
+  color: rgba(238, 244, 240, 0.78);
 }
 
 .card--ink .tag {
@@ -310,32 +349,20 @@ textarea {
   color: #b8ecd9;
 }
 
-/* 无边框裸卡：不要砖块，只要留白。用于不希望被框住的说明块 */
+/* 无边框裸卡：不要砖块，只要留白 */
 .card--bare {
   background: transparent;
   border-color: transparent;
-  box-shadow: none;
   padding: 0;
 }
 
-/* 只有真的能点的卡片才抬起来——静态卡片跟着鼠标浮起是在骗人。
-   抬高时必须连内顶高光一起写上：box-shadow 是整体覆盖的，只写 --shadow-2 会让卡片
-   在悬停瞬间「塌」下去——高光没了，亚克力的厚度就没了。 */
 @media (hover: hover) and (pointer: fine) {
   a.card:hover,
   button.card:hover,
   .card--lift:hover {
-    box-shadow:
-      inset 0 1px 0 var(--glass-sheen),
-      var(--shadow-2);
     border-color: var(--line-2);
+    box-shadow: var(--shadow-2);
   }
-}
-
-.card--ink:hover,
-a.card--ink:hover,
-.card--lift.card--ink:hover {
-  border-color: transparent;
 }
 
 /* ---------- 徽标 ---------- */
@@ -344,8 +371,8 @@ a.card--ink:hover,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
+  padding: 2px 9px;
+  border-radius: var(--r-xs);
   background: var(--paper-sunken);
   border: 1px solid var(--line);
   font-size: var(--t-xs);
@@ -370,6 +397,12 @@ a.card--ink:hover,
   color: var(--amber);
 }
 
+.tag--mist {
+  background: var(--mist-wash);
+  border-color: transparent;
+  color: var(--mist);
+}
+
 .tag--ok {
   background: var(--ok-wash);
   border-color: transparent;
@@ -388,10 +421,9 @@ a.card--ink:hover,
   color: var(--danger);
 }
 
-/* 状态点：小圆点 + 呼吸，用于「运行中」这类活体状态 */
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--ok);
   flex: none;
@@ -408,35 +440,33 @@ a.card--ink:hover,
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--t-sm);
-  line-height: 1.7;
+  line-height: 1.72;
   color: var(--ink);
   tab-size: 2;
 }
 
 .code--dark {
-  background: #10130f;
+  background: #0d100e;
   border-color: #23281f;
   color: #d9e2d4;
 }
 
 [data-theme="dark"] .code--dark {
-  background: #0b0e0c;
+  background: #080b09;
   border-color: var(--line);
 }
 
 code:not([class]) {
   font-family: var(--font-mono);
   font-size: 0.88em;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: var(--r-xs);
   background: var(--paper-sunken);
   border: 1px solid var(--line);
   white-space: nowrap;
 }
 
-/* pre 里的 code 只是语义外壳，不该再套一层行内代码的底。
-   不挡掉的话，深色代码块正中间会被刷出一条浅灰带，而字色继承自
-   .code--dark 的浅色——浅底浅字，对比度接近 1:1，等于看不见。 */
+/* pre 里的 code 只是语义外壳，不该再套一层行内代码的底 */
 pre code,
 pre code:not([class]) {
   padding: 0;
@@ -453,6 +483,7 @@ pre code:not([class]) {
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
+  background: var(--paper-raised);
 }
 
 table {
@@ -474,6 +505,7 @@ th {
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
+  letter-spacing: var(--track-body);
 }
 
 tr:last-child td {
@@ -498,7 +530,7 @@ tr:last-child td {
 .select {
   width: 100%;
   padding: 10px 13px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-2);
   border-radius: var(--r-sm);
   background: var(--paper-raised);
   color: var(--ink);
@@ -527,57 +559,50 @@ tr:last-child td {
 .hint {
   font-size: var(--t-xs);
   color: var(--ink-3);
+  line-height: 1.7;
 }
 
 /* ---------- 材质 ---------- */
 
-/* 玻璃（亚克力 / 磨砂）：全站唯一的配方出处，不要在别处再手写一遍。
-   只给真正浮在内容之上、背后有东西会穿过去的固定 chrome 用——
-   吸顶导航、移动端抽屉、压在模糊蒙层上的卡片。
-   平铺卡片背后没有可模糊的对象，上玻璃只会退化成一层灰蒙蒙的半透明，把层次搅乱。 */
+/* 玻璃只给浮在内容之上的固定 chrome：吸顶导航、移动端抽屉、压在蒙层上的卡片。
+   平铺内容背后没有可模糊的对象，上玻璃只会退化成一层灰蒙蒙的半透明。 */
 .glass {
   background: var(--glass-tint);
   -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
   backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
 }
 
-/* 顶部受光高光：给贴边的横条一点「有厚度」的暗示。
-   单独一层伪元素，才能跟着 --glass-sheen 一起淡入——写进 background 没有可过渡的
-   属性，会「啪」地跳出来。40% 处就收干净，正文落在这一层之下不会被洗白。
-   用它的元素必须是定位元素（fixed / relative / sticky）。 */
 .glass--sheen::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(180deg, var(--glass-sheen), transparent 40%);
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
   transition: opacity var(--dur-ui) ease;
 }
 
-/* 不支持背景模糊：退回接近不透明的底色。留着半透明会让滚动内容糊在字后面 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
     background: var(--glass-fallback);
   }
 }
 
-/* 极细噪点：铺在任何色块上都能去掉「塑料感」。
-   用 SVG feTurbulence 现生成，比引一张图片省一次请求，也不用管倍图。 */
+/* 极细噪点：铺在深色块上能去掉「塑料感」 */
 .grain::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  opacity: 0.22;
+  opacity: 0.2;
   mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 [data-theme="dark"] .grain::after {
   mix-blend-mode: screen;
-  opacity: 0.12;
+  opacity: 0.1;
 }
 
 /* 径向光晕：默认落在左上，可用 --glow-x / --glow-y / --glow-size 覆盖 */
@@ -592,21 +617,21 @@ tr:last-child td {
   );
 }
 
-/* 环境色雾：整页垫一层极淡色斑，落在所有卡片之下。
-   存在的理由只有一个——卡片是半透明的，平底色上 backdrop-filter 无物可糊，
-   玻璃感就永远读不出来。三处色斑刻意不对称（左上一大块品牌绿、右侧偏下暖琥珀、
-   底部偏左一点冷雾蓝），居中对称的径向光晕是最典型的 AI 味。
-   用 fixed 不用 absolute：色斑不跟内容滚，卡片从它上面滑过去时模糊才有连续感。
-   z-index:-1 让它落在正文之下、body 底色（已上提到画布）之上，正好卡在卡片背后。 */
+/* 环境色：整页垫一层极淡色斑。卡片不透明之后它不再是「玻璃的背景物」，
+   只负责让大片纸底不死平。三处色斑刻意不对称——居中对称的径向光晕是最典型的 AI 味。 */
 .ambient {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(56% 46% at 10% -6%, var(--ambient-brand) 0%, transparent 68%),
-    radial-gradient(44% 40% at 92% 30%, var(--ambient-warm) 0%, transparent 70%),
-    radial-gradient(58% 44% at 34% 104%, var(--ambient-cool) 0%, transparent 72%);
+    radial-gradient(54% 44% at 8% -8%, var(--brand-veil) 0%, transparent 66%),
+    radial-gradient(40% 36% at 96% 22%, var(--amber-wash) 0%, transparent 70%),
+    radial-gradient(52% 40% at 26% 104%, var(--mist-wash) 0%, transparent 74%);
+}
+
+[data-theme="dark"] .ambient {
+  opacity: 0.55;
 }
 
 /* 编辑感粗分隔线：比 1px 的 --line 更有态度，用来切分大段落 */
@@ -615,7 +640,42 @@ tr:last-child td {
   border: none;
   margin: 0;
   background: var(--ink);
-  opacity: 0.86;
+  opacity: 0.88;
+}
+
+.hair {
+  height: 1px;
+  border: none;
+  margin: 0;
+  background: var(--line);
+}
+
+/* ---------- 栅格 ---------- */
+
+.cols {
+  display: grid;
+  gap: clamp(16px, 2vw, 28px);
+}
+
+.cols--2 {
+  grid-template-columns: 1fr;
+}
+
+.cols--3 {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .cols--2,
+  .cols--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .cols--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* ---------- 入场动画 ---------- */
@@ -632,7 +692,7 @@ tr:last-child td {
 
 .reveal[data-shown="false"] {
   opacity: 0;
-  transform: translateY(14px);
+  transform: translateY(12px);
 }
 
 @media (prefers-reduced-motion: reduce) {
