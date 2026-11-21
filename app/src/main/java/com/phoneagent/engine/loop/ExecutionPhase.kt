@@ -515,9 +515,10 @@ internal class ExecutionPhase(
                 // 自由模式：AI 自写命令在本任务首次执行前要向用户确认一次。
                 // 拒绝不等于放弃任务——把"用户拒绝了这条命令"回注给 AI，让它换条路子继续干。
                 if (!device.ensureShellApproval(act)) {
-                    val denied = "用户拒绝执行这条命令：${act.command}。" +
+                    val cmd = EngineRules.authoredCommandOf(act).orEmpty()
+                    val denied = "用户拒绝执行这条命令：$cmd。" +
                         "请不要重试同一条命令：改用转译层既有意图完成当前目标，或换一条用户更可能接受的命令。"
-                    ui.log(AgentLog.Level.WARN, "用户拒绝 AI 自写命令，已跳过执行：${act.command}")
+                    ui.log(AgentLog.Level.WARN, "用户拒绝 AI 自写命令，已跳过执行：$cmd")
                     messages.add(
                         ChatMessageDto(
                             role = "user",
@@ -903,7 +904,8 @@ internal class ExecutionPhase(
                                     ui.log(AgentLog.Level.WARN, "引导后动作仍未生效：${guidedAction.type}")
                                 }
                             } else {
-                                val denied = "用户拒绝执行这条命令：${guidedAction.command}。请改用既有意图完成当前目标。"
+                                val cmd = EngineRules.authoredCommandOf(guidedAction).orEmpty()
+                                val denied = "用户拒绝执行这条命令：$cmd。请改用既有意图完成当前目标。"
                                 messages.add(
                                     ChatMessageDto(
                                         role = "user",

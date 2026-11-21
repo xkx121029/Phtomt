@@ -18,6 +18,7 @@ import com.phoneagent.domain.model.CapabilityParam
 import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.rules.EngineRules
 
 private const val TAG = "IntentTranslator"
 
@@ -106,6 +107,21 @@ private fun resolveSemantic(semanticIds: List<String>, snapshot: ScreenSnapshot)
 
 private fun semanticFailReason(semanticId: String): String =
     "当前页面未找到「$semanticId」语义控件，请改用 tap+target 精确定位或换一个可执行的操作"
+
+/**
+ * input 的 text 是能力注册表里的必填参数，转译层此前只校验 target：
+ * 缺 text 会退化成 `TYPE_TEXT + text=null`，执行层 `action.text ?: ""` 再把它变成
+ * `ACTION_SET_TEXT("")`——整段覆写为空，用户已写好的内容被抹掉，回执却报「已向输入框填充文本」。
+ * 缺 text / 只有空白一律按缺参追问补全，不下发任何输入动作；确实要清空输入框走 clear_input 意图。
+ */
+private fun requireInputText(intent: AgentIntent): IntentTranslator.TranslationResult.MissingParam? =
+    if (intent.text.isNullOrBlank()) {
+        IntentTranslator.TranslationResult.MissingParam(
+            field = "text",
+            reason = "AI 输出了 input 但未提供要输入的文字 text（缺 text 会把输入框整段覆写为空）。" +
+                "请补全 text 字段，例如 {\"text\":\"要输入的字\"}；要清空输入框请改用 clear_input。",
+        )
+    } else null
 
 /** press 按键归一化：宽松匹配到 executeWithVerify 支持的字面量 */
 private fun normalizeKey(key: String?): String = when (key?.trim()?.uppercase()) {
@@ -289,6 +305,11 @@ internal class TargetLocationStrategy(
     private val intentResolver: IntentResolver,
     private val type: String,
     private val withDepth: (AgentAction, AgentIntent) -> AgentAction = { a, _ -> a },
+    /**
+     * target 之外的本类型必需参数校验（能力注册表标了 required 的那些）。
+     * 返回非空即按「缺参可追问补全」处理，绝不把缺参的动作下发。
+     */
+    private val requireParam: (AgentIntent) -> IntentTranslator.TranslationResult.MissingParam? = { null },
 ) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
         if (intent.target == null) {
@@ -298,6 +319,7 @@ internal class TargetLocationStrategy(
                 reason = "AI 输出了 $type 但未提供 target（缺少操作目标控件）。请补全 target:{\"by\":\"text\",\"value\":\"控件文字\"}。",
             )
         }
+        requireParam(intent)?.let { return it }
         val r = resolveTarget(intent, ctx, intentResolver)
             ?: return IntentTranslator.TranslationResult.Failed(targetFailReason(intent.target))
         val action = ctx.base.copy(
@@ -309,6 +331,36 @@ internal class TargetLocationStrategy(
             reason = reasonOf(intent),
         )
         return IntentTranslator.TranslationResult.Command(withDepth(action, intent))
+    }
+}
+
+/**
+ * 滑动策略：direction 是能力注册表里的必填参数，转译层此前原样下传。
+ * 缺方向或方向写错时终点计算落到 `else -> sx to sy`（起终点相同），
+ * 400ms 的零长手势在系统侧就是一次定点按压——在长按菜单类界面上是纯副作用。
+ * 方向接受大小写与中文写法；认不出来就明确失败，不产出零长手势。
+ */
+internal class SwipeStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val raw = intent.direction?.trim()
+        if (raw.isNullOrEmpty()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "direction",
+                reason = "AI 输出了 swipe 但未提供 direction（滑动方向）。请补全 direction，取值 up/down/left/right。",
+            )
+        }
+        val direction = EngineRules.normalizeSwipeDirection(raw)
+            ?: return IntentTranslator.TranslationResult.Failed(
+                "swipe 的方向「$raw」无法识别：direction 只能是 up/down/left/right（也接受向上/向下/向左/向右）。",
+            )
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.SWIPE,
+                direction = direction,
+                distancePx = intent.distancePx,
+                reason = reasonOf(intent),
+            ),
+        )
     }
 }
 
@@ -773,13 +825,13 @@ class IntentTranslator(
         // 深链/协议直达
         put(IntentType.OPEN, passthrough(ActionType.OPEN) { i, a -> a.copy(uri = i.uri, app = i.app, page = i.page) })
         // 无需定位的交互
-        put(IntentType.SWIPE, passthrough(ActionType.SWIPE) { i, a -> a.copy(direction = i.direction, distancePx = i.distancePx) })
+        put(IntentType.SWIPE, SwipeStrategy())
         put(IntentType.PRESS, passthrough(ActionType.KEY) { i, a -> a.copy(keycode = normalizeKey(i.key)) })
         put(IntentType.WAIT, passthrough(ActionType.WAIT) { i, a -> a.copy(timeoutMs = i.waitMs ?: i.durationMs) })
         // 目标型交互
         put(IntentType.TAP, TargetLocationStrategy(intentResolver, ActionType.TAP))
-        put(IntentType.LONG_PRESS, TargetLocationStrategy(intentResolver, ActionType.LONG_CLICK) { a, i -> a.copy(durationMs = i.durationMs) })
-        put(IntentType.INPUT, TargetLocationStrategy(intentResolver, ActionType.TYPE_TEXT) { a, i -> a.copy(text = i.text) })
+        put(IntentType.LONG_PRESS, TargetLocationStrategy(intentResolver, ActionType.LONG_CLICK, { a, i -> a.copy(durationMs = i.durationMs) }))
+        put(IntentType.INPUT, TargetLocationStrategy(intentResolver, ActionType.TYPE_TEXT, { a, i -> a.copy(text = i.text) }, ::requireInputText))
         put(IntentType.SCROLL_TO, ScrollToStrategy(intentResolver))
         // 应用启动
         put(IntentType.OPEN_APP, OpenAppStrategy(appNameResolver))

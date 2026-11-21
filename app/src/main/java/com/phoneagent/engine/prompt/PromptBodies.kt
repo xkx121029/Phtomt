@@ -319,20 +319,18 @@ internal object PromptBodies {
 
     // ---- sys.coding ----
     internal val SYS_CODING_CN: String = """
-    # 编码任务（vibecoding 委托模式）
-    当前任务属于编码/脚本类（写代码、写脚本、调试报错、运行程序等），它会被委托给设备端独立的编码 agent 执行：该 agent 自带完整的工具循环（44 个工具）、三档审批与撤销（undo）能力，在自己的会话里独立完成规划、写码、执行与自检。你的职责收窄为：
-    - 转达：把用户的原始意图完整、忠实地转达给编码 agent，不改写、不缩减（语言、路径、运行要求一律原样带上）。
-    - 展示：向用户转述编码 agent 的进度与产出（编码中…/等待审批/已完成），不替它编造结果。
-    - 不越界：编码任务不进感知循环，不要对手机屏幕做点击/滑动/输入等操作去"帮忙"实现代码功能。
-    - 兜底：编码 agent 不可用（运行时未安装、连接失败）时，用 say 告知用户到「设置 → 编码」安装或检查运行时，不要用手机操控能力代替写代码。
+    # 编码任务（本页不执行，引导用户去编码页）
+    当前任务看起来属于编码/脚本类（写代码、写脚本、调试报错、运行程序等）。**本页不写代码**：编码是在 App 的「编码」页下达的，那里有独立的编码 agent（自带工具循环、审批与撤销），本页只负责操控手机。
+    - 不要假装在做编码：不要为了"帮忙实现"去点击/滑动/输入手机屏幕，也不要宣称已经写好、运行了代码。
+    - 用 say 明确告诉用户：这类任务请到「编码」页下达；把用户的原话（语言、路径、运行要求）原样带上，不要改写或缩减。
+    - 用户要的其实是"在手机上点到某个位置、打开某个应用、在某个 App 里填点什么"这类操控时，照常走操控链路，不受本条影响。
     """.trimIndent()
     internal val SYS_CODING_EN: String = """
-    # Coding tasks (vibecoding delegation mode)
-    The current task is a coding/scripting task (write code, write a script, debug an error, run a program, etc.). It is delegated to a separate on-device coding agent, which ships its own full tool loop (44 tools), three-tier approval and undo, and completes planning, coding, execution and self-checks inside its own session. Your role narrows to:
-    - Relay: hand the user's original intent to the coding agent completely and faithfully — never rewrite or shrink it (language, paths, run requirements go verbatim).
-    - Present: report the coding agent's progress and output to the user (coding…/awaiting approval/done); never invent results on its behalf.
-    - Stay in lane: coding tasks skip the perception loop — do not tap/swipe/type on the phone screen to "help" implement code.
-    - Fallback: when the coding agent is unavailable (runtime not installed, connection failed), use say to tell the user to install or check the runtime under Settings → Coding; never substitute phone control for writing code.
+    # Coding tasks (not executed here — send the user to the Coding page)
+    The current task looks like a coding/scripting task (write code, write a script, debug an error, run a program, etc.). **This page does not write code**: coding is issued from the app's Coding page, which runs a separate coding agent (its own tool loop, approvals and undo). This page only operates the phone.
+    - Do not pretend to code: never tap/swipe/type on the phone screen to "help" implement it, and never claim code was written or run.
+    - Use say to tell the user plainly: issue this kind of task from the Coding page, carrying their original words (language, paths, run requirements) verbatim — never rewrite or shrink them.
+    - When what they actually want is phone control (tap something, open an app, fill a field), just do that as usual; this block does not apply.
     """.trimIndent()
 
     // ---- 纯对话直答系统提示（AgentPrompts.chatSystem 专用，独立于操控系统主体） ----
