@@ -40,18 +40,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,6 +91,9 @@ internal data class GraphNode(
     val yRatio: Float,
     val radius: Float,
 )
+
+/** 标签底板圆角：画布坐标像素，随图谱一起缩放 */
+private const val LABEL_PLATE_RADIUS = 6f
 
 /**
  * 构建图谱节点布局：根节点居中，两侧各一个分类节点，条目按数量在纵轴上等距铺开。
@@ -152,6 +160,47 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
     val colors = AppTheme.colors
     // 绘制 lambda 不是 @Composable 作用域，主题色要在这里先取出来
     val itemLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    // 标签底板与文字都走主题色：节点填充是固定分类色，白字压在浅色节点上对比度不足，
+    // 因此标签不再压在圆上，而是画在圆下方的主题色底板上
+    val labelPlateColor = colors.surfaceBase.copy(alpha = 0.9f)
+    val labelColor = MaterialTheme.colorScheme.onSurface
+    // 标签排版只关心几何形状，先摘成不含颜色的投影，避让算法才能脱离画布单测
+    val labelNodes = remember(nodes) {
+        nodes.map { GraphLabelNode(it.id, it.label, it.subLabel, it.xRatio, it.yRatio, it.radius) }
+    }
+    // 量过的文字按「节点 + 主/副」缓存：避让算法量一次尺寸，绘制阶段复用同一份结果，
+    // 「量出来的块」与「画上去的字」才不会错位
+    val labelLayouts = remember { mutableMapOf<String, TextLayoutResult>() }
+
+    // 按当前缩放级别量一段标签：宽度按节点所在槽位限额，超了截断成省略号
+    fun measureLabel(node: GraphLabelNode, isSub: Boolean, canvasWidth: Float): LabelMetrics {
+        val item = isGraphItemNode(node.id)
+        val style = if (isSub) {
+            TextStyle(color = itemLabelColor, fontSize = 9.sp, fontFamily = FontFamily.SansSerif)
+        } else {
+            TextStyle(
+                color = labelColor,
+                fontSize = if (node.id == "root") 15.sp else 11.sp,
+                fontWeight = if (item) FontWeight.Medium else FontWeight.Bold,
+                fontFamily = FontFamily.SansSerif,
+            )
+        }
+        val maxWidth = when {
+            node.id == "root" -> canvasWidth * 0.40f
+            item -> canvasWidth * 0.42f
+            else -> canvasWidth * 0.34f
+        }.toInt().coerceAtLeast(32)
+        val layout = textMeasurer.measure(
+            text = if (isSub) node.subLabel else node.label,
+            style = style,
+            overflow = TextOverflow.Ellipsis,
+            maxLines = 1,
+            constraints = Constraints(maxWidth = maxWidth),
+        )
+        labelLayouts["${node.id}|$isSub"] = layout
+        return LabelMetrics(layout.size.width.toFloat(), layout.size.height.toFloat())
+    }
+
     val animatedScale by animateFloatAsState(
         targetValue = scale,
         animationSpec = tween(DurationFast, easing = EaseOut),
@@ -242,7 +291,6 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                 val py = n.yRatio * h - h / 2
                 val r = n.radius * min(w, h)
                 val isSelected = selectedNode?.id == n.id
-                val isItem = n.id.startsWith("anomaly-") || n.id.startsWith("profile-")
 
                 // 选中光环
                 if (isSelected) {
@@ -270,43 +318,37 @@ internal fun GraphCanvas(nodes: List<GraphNode>) {
                     radius = r * 0.72f,
                     center = Offset(px, py),
                 )
+            }
 
-                // 节点标签恒用白色：节点填充是固定分类色（见 Color.kt「记忆图谱配色」），
-                // 两套皮肤下都不随色板变化，白字对它们的对比度始终一致，因此不走主题色板
-                val labelStyle = TextStyle(
-                    color = Color.White,
-                    fontSize = if (n.id == "root") 15.sp else 11.sp,
-                    fontWeight = if (isItem) FontWeight.Medium else FontWeight.Bold,
-                    fontFamily = FontFamily.SansSerif,
+            // 标签：先按缩放级别定详略，再由避让算法定位置。
+            // 四个候选位置都被占住就不画这一块，而不是压到别的字上面——
+            // 这样任何缩放级别下都不会出现「文字叠在文字上」
+            val placements = planGraphLabels(labelNodes, w, h, labelDetailFor(animatedScale)) { node, isSub ->
+                measureLabel(node, isSub, w)
+            }
+            placements.forEach { p ->
+                drawRoundRect(
+                    color = labelPlateColor,
+                    topLeft = Offset(p.left, p.top),
+                    size = Size(p.width, p.height),
+                    cornerRadius = CornerRadius(LABEL_PLATE_RADIUS, LABEL_PLATE_RADIUS),
                 )
-                val labelText = n.label.take(if (isItem) 7 else 8)
-                val label = textMeasurer.measure(labelText, labelStyle)
-                // 条目节点小、文字放不进圆内，统一画在圆下方；分类/根节点文字居中压在圆上
-                val labelTop = if (isItem) py + r + 3f else py - label.size.height / 2f
-                val labelLeft = (px - label.size.width / 2f)
-                    .coerceIn(2f, (w - label.size.width - 2f).coerceAtLeast(2f))
-                drawText(
-                    textLayoutResult = label,
-                    topLeft = Offset(labelLeft, labelTop),
-                )
-                // 子标签：条目的说明放在名称下一行
-                if (n.subLabel.isNotBlank()) {
-                    val subStyle = TextStyle(
-                        color = if (isItem) itemLabelColor else Color.White.copy(alpha = 0.85f),
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.SansSerif,
-                    )
-                    val subText = n.subLabel.take(if (isItem) 9 else 10)
-                    val sub = textMeasurer.measure(subText, subStyle)
-                    val subTop = if (isItem) labelTop + label.size.height + 1f else py + r + 2f
+                labelLayouts["${p.nodeId}|false"]?.let { label ->
                     drawText(
-                        textLayoutResult = sub,
-                        topLeft = Offset(
-                            (px - sub.size.width / 2f)
-                                .coerceIn(2f, (w - sub.size.width - 2f).coerceAtLeast(2f)),
-                            subTop,
-                        ),
+                        textLayoutResult = label,
+                        topLeft = Offset(p.left + (p.width - label.size.width) / 2f, p.top),
                     )
+                }
+                if (p.showSub) {
+                    labelLayouts["${p.nodeId}|true"]?.let { sub ->
+                        drawText(
+                            textLayoutResult = sub,
+                            topLeft = Offset(
+                                p.left + (p.width - sub.size.width) / 2f,
+                                p.top + p.labelHeight + GRAPH_LABEL_GAP,
+                            ),
+                        )
+                    }
                 }
             }
             drawContext.canvas.restore()
