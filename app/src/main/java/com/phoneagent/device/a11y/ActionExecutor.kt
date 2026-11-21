@@ -1,6 +1,10 @@
 package com.phoneagent.device.a11y
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.graphics.Point
+import android.hardware.display.DisplayManager
+import android.view.Display
 import com.phoneagent.device.provider.ProviderManager
 import com.phoneagent.domain.model.UiElement
 import com.phoneagent.domain.rules.GestureBudget
@@ -180,20 +184,39 @@ class ActionExecutor(
     /** 方向滑动（补齐屏幕中心点） */
     suspend fun swipeDirection(x1: Int, y1: Int, x2: Int, y2: Int): Result = swipe(x1, y1, x2, y2)
 
-    /** 滚动（在元素范围内纵向滑动） */
+    /**
+     * 滚动（在元素范围内纵向滑动）。
+     *
+     * 几何全部交给 [ScrollGesture]：元素坐标是**屏幕坐标**，所以钳制必须用屏幕物理尺寸
+     * （见 [screenSizePx]）；贴边时挪起点而不是把位移缩成 1px（1px 会被系统当成一次点击）。
+     * 放不下有效位移时明确失败，不拿"划了一下"冒充成功。
+     */
     suspend fun scroll(elem: UiElement?, direction: String): Result {
-        val metrics = service.applicationContext.resources.displayMetrics
-        val x1 = elem?.centerX ?: metrics.widthPixels / 2
-        val y1 = elem?.centerY ?: metrics.heightPixels / 2
-        // ±600px 的终点可能越出屏幕边界，越界手势会被系统拒绝：钳制在屏内
-        val clamped = (if (direction == "up") y1 - 600 else y1 + 600)
-            .coerceIn(0, metrics.heightPixels - 1)
-        // 钳制后可能与起点重合（元素贴边），保留至少 1px 位移，避免零长轨迹手势被拒
-        val y2 = if (clamped == y1) {
-            (y1 + if (direction == "up") 1 else -1).coerceIn(0, metrics.heightPixels - 1)
-        } else clamped
-        return swipe(x1, y1, x1, y2, 300)
+        val (w, h) = screenSizePx()
+        val stroke = ScrollGesture.plan(elem?.centerX, elem?.centerY, w, h, direction)
+            ?: return Result.Failure(
+                "屏幕 ${w}x${h}px 放不下一次有效滚动（位移需 ≥ ${ScrollGesture.MIN_TRAVEL_PX}px）" +
+                    "：继续划会变成一次点击，已放弃",
+            )
+        return swipe(stroke.x, stroke.y1, stroke.x, stroke.y2, ScrollGesture.DURATION_MS)
     }
+
+    /**
+     * 屏幕**物理**尺寸（像素）。
+     *
+     * 元素 bounds 来自 `getBoundsInScreen`，属屏幕坐标系，凡"元素坐标 ↔ 屏幕边界"的运算都得用它。
+     * `resources.displayMetrics` 给的是本应用**窗口**的尺寸，分屏/悬浮窗下比屏幕小，
+     * 拿它钳制会把落点拽到窗口刻度上（真机表现：分屏里"往下滚"变成往上滚）。
+     * 读不到物理尺寸时才退回窗口尺寸——至少比不钳制安全。
+     */
+    private fun screenSizePx(): Pair<Int, Int> = runCatching {
+        val dm = service.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val point = Point()
+        @Suppress("DEPRECATION")
+        dm.getDisplay(Display.DEFAULT_DISPLAY)?.getRealSize(point)
+        point.x to point.y
+    }.getOrNull()?.takeIf { it.first > 0 && it.second > 0 }
+        ?: service.applicationContext.resources.displayMetrics.let { it.widthPixels to it.heightPixels }
 
     /**
      * 在页面的**可滚动容器**内滚动一屏（ACTION_SCROLL_FORWARD / BACKWARD）。
