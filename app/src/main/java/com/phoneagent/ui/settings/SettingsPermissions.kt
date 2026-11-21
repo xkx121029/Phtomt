@@ -226,6 +226,50 @@ internal fun SettingsPermissions(
                         style = MaterialTheme.typography.bodySmall,
                         color = if (ready) Success else MaterialTheme.colorScheme.error,
                     )
+                    // 绑定前置诊断：签名/停用/类名解析这类「不抛异常但绑不上」的原因只在这里可见。
+                    // 不满足时逐条列出，并给「重新连接」把残留状态清干净后再试一次
+                    val diagnosis = remember(installedVersion, channelConnected) {
+                        ProviderManager.diagnose(context)
+                    }
+                    if (!diagnosis.ok && !channelConnected) {
+                        Spacer(Modifier.height(AppSpacing.Sm))
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(AppRadii.Chip))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f))
+                                .padding(AppSpacing.Md),
+                        ) {
+                            Text(
+                                "绑定未就绪的原因：",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            diagnosis.problems.forEach { problem ->
+                                Text(
+                                    "· $problem",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(AppSpacing.Sm))
+                    OutlinedButton(
+                        onClick = {
+                            // 先清空全部残留（含 lastError / bindRejectReason）再重绑：
+                            // 用户刚重装或改过签名时，旧错误不清会让「修了也没用」
+                            ProviderManager.resetConnection()
+                            scope.launch {
+                                val ok = ProviderManager.call(context, 6_000) { it.apiVersion() } != null
+                                snackbar?.show(
+                                    if (ok) "已重新连接服务组件" else "仍无法连接：${ProviderManager.lastError.value ?: "无响应"}",
+                                    if (ok) SnackbarType.SUCCESS else SnackbarType.ERROR,
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("重新连接服务组件") }
                 }
                 Spacer(Modifier.height(AppSpacing.Md))
                 Button(
