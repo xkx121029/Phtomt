@@ -290,7 +290,7 @@ class ScreenSharingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("手机智能体")
+            .setContentTitle("Happy Agent")
             .setContentText("屏幕捕获运行中，用于 AI 视觉理解")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(contentIntent)

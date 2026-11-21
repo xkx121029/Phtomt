@@ -143,22 +143,38 @@ internal fun PrimaryActionCard(
                         fontWeight = FontWeight.Bold,
                     )
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        when (trust.state) {
-                            com.phoneagent.core.ai.ModelTrust.State.VERIFIED ->
-                                "已接入 $model · 说一句话就开始"
-                            com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED ->
-                                "模型已保存，尚未验证 · 建议先测一次连接（状态条·模型）"
-                            com.phoneagent.core.ai.ModelTrust.State.FAILED ->
-                                "「${trust.error}」· 点这里去修复"
-                            com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED ->
-                                "下一步：先配置模型，再回来下达任务"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    // 模型名和那句解释分两行写：一条长句在 1.3 倍字体下会在
+                    // 「说一 / 句话」这种词中间断开（UI-02）。语义断行的位置交给我们自己，
+                    // 不要赌自动换行落在哪儿。模型名单独一行，长了就省略。
+                    if (trust.state == com.phoneagent.core.ai.ModelTrust.State.VERIFIED) {
+                        Text(
+                            "已接入 $model",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "说一句话就开始",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(
+                            when (trust.state) {
+                                com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED ->
+                                    "模型已保存，尚未验证 · 建议先测一次连接（状态条·模型）"
+                                com.phoneagent.core.ai.ModelTrust.State.FAILED ->
+                                    "「${trust.error}」· 点这里去修复"
+                                else ->
+                                    "下一步：先配置模型，再回来下达任务"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Icon(
                     AppIcons.ChevronRight,

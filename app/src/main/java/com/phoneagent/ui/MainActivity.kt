@@ -855,6 +855,11 @@ private fun ActivityContent(
                                                 MainTabs.CODING -> CodingScreen(
                                                     vm, contentMod,
                                                     onOpenMarkdownFullscreen = { markdownReader = it },
+                                                    // 运行时不可用时给一条明路：切到「设置 → 编码环境」
+                                                    onOpenEnvSettings = {
+                                                        settingsLanding = SettingsPage.CODING_ENV
+                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
+                                                    },
                                                 )
                                                 MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
                                                 else -> {}

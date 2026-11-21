@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -164,7 +165,10 @@ private fun AiModelsPage(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(LocalNavClearance.current),
+            .padding(LocalNavClearance.current)
+            // 键盘弹起时把内容区压到键盘之上：Key 输入框获得焦点后，
+            // 「保存 AI 配置」不应该被键盘盖住（UX-14）
+            .imePadding(),
     ) {
         SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
         Spacer(Modifier.height(AppTheme.metrics.pagePad))

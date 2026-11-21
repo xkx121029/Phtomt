@@ -22,10 +22,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,8 +73,8 @@ import com.phoneagent.ui.theme.contentSpringSpec
 import com.phoneagent.ui.theme.motionSettings
 import com.phoneagent.ui.theme.staggerDelayMs
 
-/** 介绍页数：三页讲完「是什么 / 看得见 / 会记住」 */
-private const val INTRO_PAGE_COUNT = 3
+/** 介绍页数：两页讲完「我是谁」与「开工前要准备什么」 */
+private const val INTRO_PAGE_COUNT = 2
 
 /** 准备：安装服务组件（无障碍、内置 Shizuku、Termux 的运行载体） */
 internal const val PAGE_PREPARE = INTRO_PAGE_COUNT
@@ -224,7 +226,7 @@ private fun OnboardingScaffold(
     }
 }
 
-/** 一页介绍：品牌瓦片（仅首屏）+ 标题 + 正文 */
+/** 一页介绍：品牌瓦片（仅首屏）+ 标题 + 正文 + 可选的准备清单 */
 @Composable
 private fun IntroPage(index: Int, onNext: () -> Unit) {
     val info = IntroSteps[index]
@@ -253,6 +255,37 @@ private fun IntroPage(index: Int, onNext: () -> Unit) {
                     textAlign = TextAlign.Center,
                 )
             }
+            // 第二页换成清单：这一页的作用是让用户预判「还要点几下」，不是再念一遍产品简介。
+            // 一页一个版式，两页之间读起来就不像同一段话重复了三遍（UI-06）。
+            if (info.checklist.isNotEmpty()) {
+                Spacer(Modifier.height(AppSpacing.Lg))
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    info.checklist.forEachIndexed { i, line ->
+                        StaggerIn(3 + i) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(AppTheme.colors.brand),
+                                )
+                                Spacer(Modifier.width(AppSpacing.Sm))
+                                Text(
+                                    line,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         },
         footer = {
             PrimaryOnboardingButton(
@@ -268,23 +301,26 @@ private data class OnboardingStep(
     val icon: ImageVector,
     val title: String,
     val body: String,
+    /** 需要预判的准备步骤清单；只有第二页用 */
+    val checklist: List<String> = emptyList(),
 )
 
 private val IntroSteps = listOf(
     OnboardingStep(
         AppIcons.AutoAwesome,
         "你好，我是 Happy Agent",
-        "一句话说出需求，我来替你操作手机：自己看屏幕、自己点按输入，一步步把事情做完。",
+        "一句话说出需求，我来替你操作手机：自己看屏幕、自己点按输入，一步步把事情做完。" +
+            "执行时会标出点击位置、进度实时播报；需要确认时先来问你，不乱动你的手机。",
     ),
     OnboardingStep(
         AppIcons.TouchApp,
-        "每个动作都看得见",
-        "执行时屏幕上会标出点击位置，进度实时播报；需要确认时先来问你，不乱动你的手机。",
-    ),
-    OnboardingStep(
-        AppIcons.Remember,
-        "越用越懂你",
-        "自动记住常用页面与操作路径，学会的技能可以复用；网页操作与文档产出直接交付结果。",
+        "开工前只差三步",
+        "都在下面这几步里点几下，做完就能直接下达第一个任务。",
+        checklist = listOf(
+            "安装服务组件：无障碍、Shizuku、Termux 都跑在它里面",
+            "开启权限：必做项很少，其余可以稍后再补",
+            "填一个模型 Key：填好就能跑页面底部的例子",
+        ),
     ),
 )
 
@@ -332,7 +368,10 @@ internal fun OnboardingPage(
     content: @Composable ColumnScope.() -> Unit,
     banner: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
-    Column(Modifier.fillMaxSize()) {
+    // imePadding：底部按钮固定在这一栏里，键盘弹起时它必须跟着浮上来。
+    // 没有这一条时，填模型 Key 的键盘会把「测试连接 / 下一步」整个盖住，
+    // 用户只能先收键盘才能继续（UX-14）。
+    Column(Modifier.fillMaxSize().imePadding()) {
         if (banner != null) {
             Column(
                 modifier = Modifier

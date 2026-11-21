@@ -123,6 +123,11 @@ fun CodingScreen(
     onOpenMarkdownFullscreen: (content: String) -> Unit = {},
     /** 工作台壳层已画顶栏时置 false：本页不再重复一条自己的页眉 */
     showHeader: Boolean = true,
+    /**
+     * 「去准备环境」出口：运行时就绪不了时，页面得有一条可点的路，
+     * 而不是只把输入框变灰。壳层把「设置 → 编码环境」切出来；二级页形态没有这个能力时传 null。
+     */
+    onOpenEnvSettings: (() -> Unit)? = null,
 ) {
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
@@ -324,7 +329,8 @@ fun CodingScreen(
         scope.launch {
             runCatching { bridge.ensureUiConnected() }
                 .onFailure {
-                    snackbar?.show(it.message ?: "Coding 运行时未就绪")
+                    // 具体缺哪个库已经写在页面上的状态卡里，浮条只说用户能处理的结论
+                    snackbar?.show("编码环境还没准备好，先按页面上的步骤准备一下")
                     return@launch
                 }
             // `/goal <目标>`：进入无人值守循环（跑完一轮由判官决定是否继续），
@@ -544,6 +550,17 @@ fun CodingScreen(
                         runStartedAt = clientState.runStartedAt,
                         activeSubagents = clientState.messages.count { it.role == "subagent" && it.toolOk == null },
                     )
+                }
+
+                // 运行时未就绪时不能只把输入区变灰：用户被告知不可用却无处可点。
+                // 一张状态卡 + 两个出口（重新检查 / 去准备环境）替代原来的死胡同
+                if (runtimeState is CodingRuntimeState.NotReady) {
+                    RuntimeNotReadyCard(
+                        detail = (runtimeState as CodingRuntimeState.NotReady).reason,
+                        onRecheck = { runtime.refresh() },
+                        onOpenEnvSettings = onOpenEnvSettings,
+                    )
+                    Spacer(Modifier.height(AppSpacing.Sm))
                 }
 
                 CodingComposer(
@@ -1183,9 +1200,80 @@ private fun ComposerInputRow(
     )
 }
 
+/**
+ * 「编码功能还用不了」状态卡：运行时缺失时页面唯一的出口。
+ *
+ * 以前这里只把输入框置灰、占位文案写「运行时未就绪」，用户被告知不可用却没有任何
+ * 可点的下一步，也读不懂 libnode / APK 打包这类说法。卡片只说三件事：
+ * 不是你的操作问题、修好大概多久、现在点哪儿；技术原因收进「详情」。
+ */
+@Composable
+private fun RuntimeNotReadyCard(
+    detail: String,
+    onRecheck: () -> Unit,
+    onOpenEnvSettings: (() -> Unit)?,
+) {
+    val colors = AppTheme.colors
+    val shape = RoundedCornerShape(AppTheme.metrics.cardRadius)
+    var showDetail by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.surfaceRaised)
+            .appBorder(1.dp, colors.outlineSoft, shape)
+            .padding(AppSpacing.Lg),
+        verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                AppIcons.Guard,
+                contentDescription = null,
+                tint = colors.brand,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Xs))
+            Text(
+                "编码功能还用不了",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            )
+        }
+        Text(
+            "这个安装包没把运行编码任务需要的组件带进来，不是你的操作问题。" +
+                "先到「设置 → 编码环境」看看还缺什么；那边要是也提示重装，换一个完整安装包重装就行。" +
+                "下载安装大概几分钟，全程可以在后台进行，装完回到这一页点「重新检查」。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+            OutlinedButton(onClick = onRecheck, modifier = Modifier.weight(1f)) {
+                Text("重新检查", maxLines = 1)
+            }
+            if (onOpenEnvSettings != null) {
+                Button(onClick = onOpenEnvSettings, modifier = Modifier.weight(1f)) {
+                    Text("去准备环境", maxLines = 1)
+                }
+            }
+        }
+        TextButton(onClick = { showDetail = !showDetail }) {
+            Text(
+                if (showDetail) "收起详情" else "查看详情",
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        if (showDetail) {
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceRaised,
+            )
+        }
+    }
+}
+
 /** 输入区占位文案：禁用 / 运行中 / 空闲三种状态各说一件事 */
 private fun composerHint(values: ComposerValues): String = when {
-    !values.enabled -> "Coding 运行时未就绪，暂时无法使用"
+    !values.enabled -> "环境准备好之后就能开始"
     values.busy -> "正在 Coding，稍候…"
     else -> "描述要写的代码或脚本…"
 }

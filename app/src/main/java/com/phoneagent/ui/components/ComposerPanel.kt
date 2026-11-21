@@ -28,9 +28,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.phoneagent.ui.theme.AppBorders
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
@@ -173,11 +176,23 @@ fun ComposerField(
     onFocusedChange: (Boolean) -> Unit = {},
 ) {
     val colors = AppTheme.colors
+    // 中文没有下伸部：主题行高（22sp，字号 14sp）里那截 descender 留白会被一起算进居中，
+    // 字形墨迹就整体高于几何中心，读作"文字浮在胶囊上半截"。
+    // 行高压到贴近字形、关掉字体自带的行内边距，并让多出来的行距按字形居中分配，
+    // 墨迹才落回行盒正中。
+    val fieldStyle = MaterialTheme.typography.bodyMedium.copy(
+        lineHeight = 20.sp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false),
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.None,
+        ),
+    )
     Box(modifier, contentAlignment = Alignment.CenterStart) {
         if (value.isEmpty()) {
             Text(
                 text = placeholder,
-                style = MaterialTheme.typography.bodyMedium,
+                style = fieldStyle,
                 color = colors.onSurfaceRaised,
                 textAlign = TextAlign.Start,
                 maxLines = 1,
@@ -188,9 +203,7 @@ fun ComposerField(
             value = value,
             onValueChange = onValueChange,
             enabled = enabled,
-            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
+            textStyle = fieldStyle.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(colors.brand),
             maxLines = maxLines,
             modifier = Modifier

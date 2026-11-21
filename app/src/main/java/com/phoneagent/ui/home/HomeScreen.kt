@@ -130,7 +130,7 @@ fun HomeScreen(
         floating = { scrollState.value > 8 },
         header = {
             AppTopBar(
-                title = "手机智能体",
+                title = "Happy Agent",
                 subtitle = "AI 接管手机，替你把任务做完",
                 leadingContent = { BrandTile() },
             )
@@ -213,7 +213,8 @@ fun HomeScreen(
                     icon = AppIcons.Memory,
                     tint = MaterialTheme.colorScheme.tertiary,
                     title = "技能&能力",
-                    subtitle = "Skill/MCP/ADB",
+                    // 副标题只给 6–8 个字：卡片半屏宽，1.3 倍字体下长串英文会在词中间断行（UI-02）
+                    subtitle = "技能、工具与自动化",
                     onPress = { pressHaptic() },
                     onClick = { onOpenExtras(ExtrasPage.Skill) },
                 )
@@ -222,7 +223,7 @@ fun HomeScreen(
                     icon = AppIcons.Globe,
                     tint = MaterialTheme.colorScheme.secondary,
                     title = "浏览器",
-                    subtitle = "AI 上网、操作网页",
+                    subtitle = "AI 上网、看网页",
                     onPress = { pressHaptic() },
                     onClick = { onOpenExtras(ExtrasPage.Browser) },
                 )
