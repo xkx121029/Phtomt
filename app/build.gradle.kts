@@ -125,6 +125,119 @@ val checkDetektBaselineBreakdown by tasks.registering {
 tasks.named("check") { dependsOn(checkDetektBaselineBreakdown) }
 
 // ---------------------------------------------------------------------------
+// 判据索引的锚点校验（docs/judgement-index.md）。
+//
+// 这张表唯一的失效方式不是写错描述，而是**锚点悄悄指向另一行**：函数改名、代码上移下移
+// 之后，`文件:行号` 仍然"存在"，读者点开却是别的代码——比链接直接断开更难发现。
+// 所以这里把可机械验证的部分全部钉住：文件存在、行号在范围内、该行确实是表里写的那个符号。
+//
+// 符号与锚点按「同一表格单元内的出现顺序」逐个配对；数量对不上时退化成
+// 「该行至少包含本格提到的某个符号」——宁可宽一点，也不要因为表格排版调整就误报。
+// 只校验 .kt 锚点的符号；.md 锚点（README / CHANGELOG / 其它 docs）只查存在与行号范围。
+// ---------------------------------------------------------------------------
+val judgementIndexFile = rootProject.file("docs/judgement-index.md")
+
+/** 反引号片段形状：`path:line` / `path:line-end` / 承接上一个文件的 `:line` */
+val anchorSpanRegex = Regex("""^(?:([A-Za-z0-9_./-]+\.(?:kt|md)):)?(\d+)(?:-(\d+))?$""")
+
+/** 反引号片段里的符号形状（路径片段由 anchorSpanRegex 单独处理） */
+val symbolSpanRegex = Regex("""^[A-Za-z_][A-Za-z0-9_.]*$""")
+
+val checkDocAnchors by tasks.registering {
+    group = "verification"
+    description = "校验 docs/judgement-index.md 的 file:line 锚点：文件存在、行号在范围内、该行确含表里写的符号"
+    doLast {
+        if (!judgementIndexFile.exists()) {
+            throw GradleException(
+                "缺少 docs/judgement-index.md：判据索引是本仓库的维护约定（改了判据就要查文档），不能悄悄消失。",
+            )
+        }
+        val problems = mutableListOf<String>()
+        var anchorsChecked = 0
+
+        judgementIndexFile.readLines().forEachIndexed { rowIndex, rawLine ->
+            if (!rawLine.trimStart().startsWith("|")) return@forEachIndexed
+            val row = rawLine.trim().removePrefix("|").removeSuffix("|")
+            val cells = row.split("|")
+            cells.forEachIndexed { cellIndex, cell ->
+                val spans = Regex("`([^`]+)`").findAll(cell).map { it.groupValues[1] }.toList()
+                if (spans.isEmpty()) return@forEachIndexed
+
+                // 一、把本格里的锚点按出现顺序收集起来（裸 `:NNN` 承接本格前面最近的文件）
+                val anchorSpans = mutableListOf<String>()
+                val anchorRefs = mutableListOf<Triple<String, Int, Int>>()
+                var currentFile: String? = null
+                for (span in spans) {
+                    val m = anchorSpanRegex.find(span.trim()) ?: continue
+                    val path = m.groupValues[1].ifBlank { null }
+                    if (path != null) currentFile = path
+                    val file = currentFile ?: continue
+                    val start = m.groupValues[2].toInt()
+                    val end = m.groupValues[3].ifBlank { m.groupValues[2] }.toInt()
+                    anchorSpans += span
+                    anchorRefs += Triple(file, start, end)
+                }
+                if (anchorRefs.isEmpty()) return@forEachIndexed
+
+                // 二、本格里提到的符号（去掉路径片段与文件后缀）
+                val symbols = spans
+                    .filter { symbolSpanRegex.matches(it) && !it.endsWith(".kt") && !it.endsWith(".md") }
+                    .map { it.substringAfterLast('.') }
+                val strictPairing = symbols.isNotEmpty() && symbols.size == anchorRefs.size
+
+                anchorRefs.forEachIndexed { anchorIndex, ref ->
+                    val file = ref.first
+                    val start = ref.second
+                    val end = ref.third
+                    anchorsChecked++
+                    val where = "docs/judgement-index.md:${rowIndex + 1} 第 ${cellIndex + 1} 列的 `${anchorSpans[anchorIndex]}`"
+                    val target = rootProject.file(file)
+                    if (!target.exists()) {
+                        problems += "$where → 文件不存在：$file"
+                        return@forEachIndexed
+                    }
+                    val lines = target.readLines()
+                    if (start < 1 || end > lines.size || start > end) {
+                        problems += "$where → 行号越界：$file 只有 ${lines.size} 行，却引用 $start-$end"
+                        return@forEachIndexed
+                    }
+                    // 文档锚点只查存在与范围：那里没有"函数名"可对
+                    if (!file.endsWith(".kt")) return@forEachIndexed
+
+                    val cited = lines.subList(start - 1, end).joinToString("\n")
+                    val expected = if (strictPairing) symbols[anchorIndex] else null
+                    val hit = when {
+                        expected != null -> cited.contains(expected)
+                        symbols.isNotEmpty() -> symbols.any { cited.contains(it) }
+                        else -> true // 本格只引了行号、没提符号名：无可对
+                    }
+                    if (!hit) {
+                        val what = expected?.let { "符号 `$it`" } ?: "本格提到的任一符号（${symbols.joinToString(" / ")}）"
+                        problems += "$where → $file:$start 里找不到 $what，实际是：${lines[start - 1].trim().take(100)}"
+                    }
+                }
+            }
+        }
+
+        if (problems.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("判据索引的锚点对不上（${problems.size} 处，共校验 $anchorsChecked 个）：")
+                    problems.forEach { appendLine("  - $it") }
+                    appendLine()
+                    append("修法：改了判据函数名或挪动代码后，同步更新 docs/judgement-index.md 的行号；")
+                    append("新增判据则加一行。确实要临时放过时不要改这个脚本，而是把那一行删掉——")
+                    append("表的价值来自每条都对得上。")
+                },
+            )
+        }
+        logger.lifecycle("判据索引锚点校验通过：$anchorsChecked 个锚点全部命中（文件存在、行号在范围内、符号对得上）。")
+    }
+}
+
+tasks.named("check") { dependsOn(checkDocAnchors) }
+
+// ---------------------------------------------------------------------------
 // 覆盖率闸门（只对**纯逻辑包**生效）。
 //
 // 不对全量设阈值：本工程主体是无障碍 / Shizuku / 悬浮窗这类只能在真机上跑的逻辑，
