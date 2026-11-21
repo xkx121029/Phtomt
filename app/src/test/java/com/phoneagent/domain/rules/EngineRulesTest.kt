@@ -165,22 +165,38 @@ class EngineRulesTest {
 
     @Test
     fun swipeEndpoints_向上滑动_钳制到0() {
-        val (ex, ey) = EngineRules.swipeEndpoints(100, 50, "up", null, 1080, 2400)
+        val (ex, ey) = requireNotNull(EngineRules.swipeEndpoints(100, 50, "up", null, 1080, 2400))
         assertEquals(100, ex)
         assertEquals(0, ey)
     }
 
     @Test
     fun swipeEndpoints_向下滑动_钳制到屏高() {
-        val (ex, ey) = EngineRules.swipeEndpoints(100, 2300, "down", 200, 1080, 2400)
+        val (ex, ey) = requireNotNull(EngineRules.swipeEndpoints(100, 2300, "down", 200, 1080, 2400))
         assertEquals(100, ex)
         // 终点钳制到有效像素上界 size-1（2026-09-14 修复：原为 coerceAtMost(size)，会越界 1px）
         assertEquals(2399, ey)
     }
 
+    /**
+     * 方向认不出来时不再退回「起终点相同」：零长手势在系统侧是一次定点按压，
+     * 在长按菜单类界面上就是纯副作用动作。旧实现 `else -> sx to sy` 正是这条路径。
+     */
     @Test
-    fun swipeEndpoints_未知方向_原地() {
-        assertEquals(100 to 100, EngineRules.swipeEndpoints(100, 100, "diag", null, 1080, 2400))
+    fun swipeEndpoints_未知方向_返回null而不是原地零长手势() {
+        assertNull(EngineRules.swipeEndpoints(100, 100, "diag", null, 1080, 2400))
+        assertNull("缺方向同样不许退化成原地", EngineRules.swipeEndpoints(100, 100, null, null, 1080, 2400))
+    }
+
+    @Test
+    fun swipeEndpoints_方向接受大小写与中文写法() {
+        val up = EngineRules.swipeEndpoints(100, 1200, "up", null, 1080, 2400)
+        assertEquals(up, EngineRules.swipeEndpoints(100, 1200, "UP", null, 1080, 2400))
+        assertEquals(up, EngineRules.swipeEndpoints(100, 1200, "向上", null, 1080, 2400))
+        assertEquals(up, EngineRules.swipeEndpoints(100, 1200, " 上滑 ", null, 1080, 2400))
+        assertEquals("up", EngineRules.normalizeSwipeDirection("UP"))
+        assertEquals("right", EngineRules.normalizeSwipeDirection("向右"))
+        assertNull(EngineRules.normalizeSwipeDirection("diag"))
     }
 
     // ---- actionLabel ----

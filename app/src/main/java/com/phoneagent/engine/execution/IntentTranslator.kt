@@ -18,6 +18,7 @@ import com.phoneagent.domain.model.CapabilityParam
 import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
+import com.phoneagent.domain.rules.EngineRules
 
 private const val TAG = "IntentTranslator"
 
@@ -330,6 +331,36 @@ internal class TargetLocationStrategy(
             reason = reasonOf(intent),
         )
         return IntentTranslator.TranslationResult.Command(withDepth(action, intent))
+    }
+}
+
+/**
+ * 滑动策略：direction 是能力注册表里的必填参数，转译层此前原样下传。
+ * 缺方向或方向写错时终点计算落到 `else -> sx to sy`（起终点相同），
+ * 400ms 的零长手势在系统侧就是一次定点按压——在长按菜单类界面上是纯副作用。
+ * 方向接受大小写与中文写法；认不出来就明确失败，不产出零长手势。
+ */
+internal class SwipeStrategy : IntentTranslationStrategy {
+    override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
+        val raw = intent.direction?.trim()
+        if (raw.isNullOrEmpty()) {
+            return IntentTranslator.TranslationResult.MissingParam(
+                field = "direction",
+                reason = "AI 输出了 swipe 但未提供 direction（滑动方向）。请补全 direction，取值 up/down/left/right。",
+            )
+        }
+        val direction = EngineRules.normalizeSwipeDirection(raw)
+            ?: return IntentTranslator.TranslationResult.Failed(
+                "swipe 的方向「$raw」无法识别：direction 只能是 up/down/left/right（也接受向上/向下/向左/向右）。",
+            )
+        return IntentTranslator.TranslationResult.Command(
+            ctx.base.copy(
+                type = ActionType.SWIPE,
+                direction = direction,
+                distancePx = intent.distancePx,
+                reason = reasonOf(intent),
+            ),
+        )
     }
 }
 
@@ -794,7 +825,7 @@ class IntentTranslator(
         // 深链/协议直达
         put(IntentType.OPEN, passthrough(ActionType.OPEN) { i, a -> a.copy(uri = i.uri, app = i.app, page = i.page) })
         // 无需定位的交互
-        put(IntentType.SWIPE, passthrough(ActionType.SWIPE) { i, a -> a.copy(direction = i.direction, distancePx = i.distancePx) })
+        put(IntentType.SWIPE, SwipeStrategy())
         put(IntentType.PRESS, passthrough(ActionType.KEY) { i, a -> a.copy(keycode = normalizeKey(i.key)) })
         put(IntentType.WAIT, passthrough(ActionType.WAIT) { i, a -> a.copy(timeoutMs = i.waitMs ?: i.durationMs) })
         // 目标型交互

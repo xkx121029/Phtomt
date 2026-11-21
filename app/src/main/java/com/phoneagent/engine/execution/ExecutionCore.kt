@@ -267,14 +267,22 @@ internal class ExecutionCore(
                 // 横向仍以屏幕中心为起点；竖向起点下移到屏幕高度的 SWIPE_START_Y_RATIO 倍，
                 // 避开顶部 1/3 的播放器/悬浮按钮热点区，降低误触中心热点控件的风险。
                 // 位移量仍保持「默认整屏」不变（效率优先）。
-                val horizontal = action.direction == "left" || action.direction == "right"
+                // 方向先归一化：认不出来就直接失败——起终点相同的零长手势在系统侧是一次定点按压，
+                // 不是"没滑动"，不能静默下发。
+                val direction = EngineRules.normalizeSwipeDirection(action.direction)
+                val horizontal = direction == "left" || direction == "right"
                 val px = x ?: (ctx.screenWidth() / 2)
                 val py = y ?: if (horizontal) (ctx.screenHeight() / 2) else verticalSwipeStartY()
                 val dist = action.distancePx
                     ?: if (horizontal) ctx.screenWidth() else ctx.screenHeight()
-                val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
-                verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey,
-                    GestureBudget.swipeMs(action.durationMs)).isSuccess() }
+                val endpoints = direction?.let { swipeEndpoints(px, py, it, dist) }
+                if (endpoints == null) {
+                    VerifyResult(false, "swipe 缺少有效方向：direction 只能是 up/down/left/right（当前：${action.direction}）", "", "")
+                } else {
+                    val (ex, ey) = endpoints
+                    verifier.executeAndVerify(baseline) { executor.swipe(px, py, ex, ey,
+                        GestureBudget.swipeMs(action.durationMs)).isSuccess() }
+                }
             }
             ActionType.SWIPE_UP -> {
                 val px = x ?: (ctx.screenWidth() / 2)
@@ -507,8 +515,11 @@ internal class ExecutionCore(
             ActionType.SWIPE -> {
                 val px = x ?: (vdW / 2)
                 val py = y ?: verticalSwipeStartY()
-                val dist = action.distancePx ?: if (action.direction in listOf("left", "right")) vdW else vdH
-                val (ex, ey) = swipeEndpoints(px, py, action.direction, dist)
+                // 副屏同理：方向认不出来就失败，不产出零长手势
+                val direction = EngineRules.normalizeSwipeDirection(action.direction)
+                    ?: return fail("副屏滑动缺少有效方向：direction 只能是 up/down/left/right（当前：${action.direction}）")
+                val dist = action.distancePx ?: if (direction in listOf("left", "right")) vdW else vdH
+                val (ex, ey) = swipeEndpoints(px, py, direction, dist) ?: return fail("副屏滑动方向不可用：$direction")
                 wrap(
                     vd.swipe(px, py, ex, ey, GestureBudget.swipeMs(action.durationMs).toInt()),
                     "已在副屏滑动 ($px,$py)→($ex,$ey)",
@@ -519,6 +530,7 @@ internal class ExecutionCore(
                 val px = x ?: (vdW / 2)
                 val py = y ?: if (direction == "up" || direction == "down") verticalSwipeStartY() else (vdH / 2)
                 val (ex, ey) = swipeEndpoints(px, py, direction, action.distancePx)
+                    ?: return fail("副屏滑动方向不可用：$direction")
                 wrap(vd.swipe(px, py, ex, ey, GestureBudget.swipeMs(action.durationMs).toInt()), "已在副屏向$direction 滑动")
             }
             ActionType.SCROLL, ActionType.SCROLL_TO -> {
@@ -820,6 +832,7 @@ internal class ExecutionCore(
                 val direction = strArg("direction") ?: return badRequest("swipe_direction 缺少参数 direction")
                 val (ex, ey) = swipeEndpoints(ctx.screenWidth() / 2, ctx.screenHeight() / 2, direction,
                     intArg("distance_px"))
+                    ?: return badRequest("swipe_direction 的方向无法识别：只能是 up/down/left/right（当前：$direction）")
                 wrap(executor.swipe(ctx.screenWidth() / 2, ctx.screenHeight() / 2, ex, ey, 400))
             }
             "scroll" -> {
@@ -1174,7 +1187,7 @@ internal class ExecutionCore(
     }
 
     /** 计算滑动终点（纯逻辑，见 EngineRules.swipeEndpoints） */
-    fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int> =
+    fun swipeEndpoints(x: Int, y: Int, direction: String?, distanceArg: Int?): Pair<Int, Int>? =
         EngineRules.swipeEndpoints(x, y, direction, distanceArg, ctx.screenWidth(), ctx.screenHeight())
 
     /**
@@ -1549,11 +1562,12 @@ internal class ExecutionCore(
         }
 
         ActionType.SWIPE -> {
-            val horizontal = action.direction == "left" || action.direction == "right"
+            val direction = EngineRules.normalizeSwipeDirection(action.direction) ?: return null
+            val horizontal = direction == "left" || direction == "right"
             val px = x ?: (w / 2)
             val py = y ?: if (horizontal) (h / 2) else (h * SWIPE_START_Y_RATIO).toInt()
             val dist = action.distancePx ?: if (horizontal) w else h
-            val (ex, ey) = EngineRules.swipeEndpoints(px, py, action.direction, dist, w, h)
+            val (ex, ey) = EngineRules.swipeEndpoints(px, py, direction, dist, w, h) ?: return null
             listOf("input swipe ${clampX(px, w)} ${clampY(py, h)} ${clampX(ex, w)} ${clampY(ey, h)} ${GestureBudget.swipeMs(action.durationMs)}")
         }
 
