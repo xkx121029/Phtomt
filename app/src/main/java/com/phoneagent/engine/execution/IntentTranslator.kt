@@ -408,13 +408,14 @@ internal class ScrollToStrategy(private val intentResolver: IntentResolver) : In
  * AI 只需说"做什么"（refresh/confirm/close/share...），端侧按语义ID优先级定位并落地执行。
  * @param semanticIds 语义ID按优先级列表（端侧 PageAnnotator 标注的 semantic_id）
  * @param actionType 落地动作类型（默认点击语义控件）
- * @param irreversible 不可逆操作（如删除）时自动置 needsUserConfirmation=true
  * @param intentResolver 语义控件未命中但 AI 同时给出 target 时，回退到 target 一次定位（减少 AI 重试）
+ *
+ * 不可逆确认不在这里判：策略只负责「怎么落地这一下」，「这一下要不要问用户」统一由
+ * [IntentTranslator] 出口处的注册表判定叠加（见 CapabilityRegistry.needsConfirmation）。
  */
 internal class SemanticActionStrategy(
     private val semanticIds: List<String>,
     private val actionType: String,
-    private val irreversible: Boolean = false,
     private val intentResolver: IntentResolver? = null,
 ) : IntentTranslationStrategy {
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
@@ -423,7 +424,7 @@ internal class SemanticActionStrategy(
         val r = semantic
             ?: intentResolver?.takeIf { intent.target != null }?.let { resolveTarget(intent, ctx, it) }
             ?: return IntentTranslator.TranslationResult.Failed(semanticFailReason(semanticIds.first()))
-        var action = ctx.base.copy(
+        val action = ctx.base.copy(
             type = actionType,
             elementIndex = r.elementIndex,
             x = r.x,
@@ -431,7 +432,6 @@ internal class SemanticActionStrategy(
             target = r.target,
             reason = reasonOf(intent),
         )
-        if (irreversible) action = action.copy(needsUserConfirmation = true)
         return IntentTranslator.TranslationResult.Command(action)
     }
 }
@@ -649,10 +649,6 @@ internal class DeviceOpsStrategy(private val family: String) : IntentTranslation
                 uri = intent.uri,
                 summary = intent.summary ?: intent.target?.let { it.toString() },
                 reason = reasonOf(intent),
-                // 不可逆确认门与语义意图同口径：能力注册表标了 needsConfirmation 的（file_write/app_manage）
-                // 必须问用户。此前这里只信模型自己填的 needs_confirmation，提示词写着"会被用户确认"，
-                // 实际却直接执行——覆盖用户文件/强停应用没有任何确认。
-                needsUserConfirmation = intent.needsConfirmation || spec?.needsConfirmation == true,
             ),
         )
     }
@@ -916,15 +912,7 @@ class IntentTranslator(
         put(IntentType.ADD, SemanticActionStrategy(listOf("add_btn"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))
-        put(
-            IntentType.DELETE,
-            SemanticActionStrategy(
-                listOf("delete_btn"), ActionType.TAP,
-                // 不可逆动作是否强制确认，取自能力注册表的 needsConfirmation（与技能列表/门控同源）
-                irreversible = CapabilityRegistry.specOf(IntentType.DELETE)?.needsConfirmation == true,
-                intentResolver = intentResolver,
-            ),
-        )
+        put(IntentType.DELETE, SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, intentResolver = intentResolver))
         // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly）----
         put(IntentType.SHELL, ShellCommandStrategy(actionMode))
         put(IntentType.A11Y, A11yEndpointStrategy(actionMode))
@@ -964,7 +952,7 @@ class IntentTranslator(
         } else {
             TranslationResult.Failed("未知意图：${intent.intent}")
         }
-        return applyReadOnly(result, mode)
+        return applyConfirmationGate(applyReadOnly(result, mode), intent.intent)
     }
 
     /** 只读模式横切约束：除等待/文档写入/记忆写入/本机查询/说话/引导回 Agent 页/收尾（TASK_DONE）外，拒绝自动执行（AI 仍在分析，只是手换成用户） */
@@ -985,5 +973,23 @@ class IntentTranslator(
         else -> TranslationResult.Failed(
             "当前为只读模式（无 Shizuku 且无障碍未开启），无法自动执行「${result.action.type}」；请手动操作后告诉 AI 继续。",
         )
+    }
+
+    /**
+     * 确认门统一出口：能力注册表是唯一权威。
+     *
+     * 此前「这一下要不要问用户」由个别策略各自判定（DELETE 从注册表读，FILE_WRITE/APP_MANAGE
+     * 在 DeviceOpsStrategy 里读，SEND/CONFIRM/NOTIF_CLEAR 谁都没读），注册表标了 needsConfirmation
+     * 的动作仍被静默执行。现在收敛到这一个出口：不论走哪颗策略、不论模型自己填了什么，
+     * 只要 CapabilityRegistry 声明该意图 needsConfirmation=true，产物一律置 needsUserConfirmation。
+     * 新增能力只需在 CapabilitySpec 里标一句，常规路径与引导恢复路径同时生效。
+     *
+     * 只对转译成功的命令生效；失败/缺参不涉及执行，原样返回。
+     */
+    private fun applyConfirmationGate(result: TranslationResult, intentType: String): TranslationResult {
+        if (result !is TranslationResult.Command) return result
+        if (result.action.needsUserConfirmation) return result
+        if (CapabilityRegistry.specOf(intentType)?.needsConfirmation != true) return result
+        return TranslationResult.Command(result.action.copy(needsUserConfirmation = true))
     }
 }
