@@ -18,6 +18,7 @@
 | [assistant-role-contract.md](assistant-role-contract.md) | 助理角色边界 |
 | [task-notice-contract.md](task-notice-contract.md) | 任务降级提示的出口与文案规则 |
 | [virtual-display-design.md](virtual-display-design.md) | 虚拟副屏方案与限制 |
+| [judgement-index.md](judgement-index.md) | 判据索引：判据函数 ↔ 它决定的行为 ↔ 文档里描述它的位置（改判据前先查这张表） |
 
 ## UI
 
