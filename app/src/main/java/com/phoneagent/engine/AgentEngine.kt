@@ -2900,7 +2900,8 @@ class AgentEngine(
             )
         }
         val snapshot = tryOrNull("读取无障碍元素树失败") {
-            a11y?.captureScreen()
+            // 挂起版：observe() 本身是 suspend，阻塞版会在 runBlocking 里占死一个 Default 线程
+            a11y?.captureScreenAsync()
         } ?: ScreenSnapshot(
             missingAccessibility = true,
             // 无障碍不可用时也填充真实屏幕尺寸（供 ShellCommands 比例坐标换算）

@@ -15,7 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -138,12 +137,10 @@ class AgentAccessibilityService private constructor(
     /**
      * 抓取当前屏幕元素树，生成 [ScreenSnapshot]（语义与原本地实现一致）。
      *
-     * 保持同步签名以兼容既有调用点：内部用 runBlocking 等 Provider 回包，
-     * 读屏本身是毫秒级操作；协程内调用时优先走 [captureScreenAsync]。
+     * 只保留挂起版本：读屏是一次跨进程往返 + 元素树 JSON 解码（长列表/WebView 页可达数百 KB 到数 MB），
+     * 原来的同步封装内部用 `runBlocking` 等回包，在 suspend 上下文里会占死一个 Dispatchers.Default
+     * 线程（2026-11 的每步开销审计已把它列为每步固定损耗）。所有调用点都已在协程里，故直接删掉同步入口。
      */
-    fun captureScreen(): ScreenSnapshot = runBlocking { captureScreenAsync() }
-
-    /** [captureScreen] 的挂起版本：协程内调用不阻塞所在线程 */
     internal suspend fun captureScreenAsync(): ScreenSnapshot {
         // 元素树同样可能超 Binder 事务上限（长列表 / WebView 页面的 JSON 可达数百 KB 到数 MB），
         // 与截图一样优先走分片拉取；旧版服务组件不支持分片时才回退一次性回包

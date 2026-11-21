@@ -4,7 +4,7 @@ MaxLineLength                                397
 MagicNumber                                  340
 ReturnCount                                  174
 LongMethod                                   95
-LongParameterList                            85
+LongParameterList                            86
 CyclomaticComplexMethod                      74
 TooManyFunctions                             40
 TooGenericExceptionCaught                    22

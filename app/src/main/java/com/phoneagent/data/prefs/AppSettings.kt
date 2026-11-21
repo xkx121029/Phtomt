@@ -57,6 +57,14 @@ object AgentSurface {
  */
 class AppSettings(private val context: Context) {
 
+    /**
+     * 启动门控镜像：只镜像 `onboarding_done`（见 [OnboardingMirror]）。
+     *
+     * lazy 是为了别在 AppSettings 构造时就去碰 SharedPreferences：构造点通常仍在首帧路径上，
+     * 真正需要它的只有门控与 `markOnboardingDone` 两处。
+     */
+    private val onboardingMirror by lazy { OnboardingMirror(context) }
+
     data class Settings(
         val apiBaseUrl: String = GlmDefaults.BASE_URL,
         val apiKey: String = "",
@@ -516,7 +524,24 @@ class AppSettings(private val context: Context) {
      */
     suspend fun markOnboardingDone() {
         context.agentStore.edit { prefs -> prefs[Keys.ONBOARDING_DONE] = true }
+        // 权威源写成功之后再同步镜像：顺序反过来会出现「镜像说做完了、DataStore 说没有」
+        onboardingMirror.write(true)
     }
+
+    /**
+     * 启动门控用的同步读：镜像里的 `onboarding_done`。
+     *
+     * null = 镜像还没写过（首次安装 / 首次升级到带镜像的版本），调用方回落到 DataStore。
+     * 这个值只用于「要不要等 DataStore」，真正生效的配置一律仍从 [settings] 取。
+     */
+    fun onboardingGate(): Boolean? = onboardingMirror.read()
+
+    /**
+     * 以 DataStore 为准修复镜像。
+     *
+     * @return true 表示两边本来不一致、镜像已被改写（启动打点用）
+     */
+    fun syncOnboardingMirror(done: Boolean): Boolean = onboardingMirror.reconcile(done)
 
     /**
      * 只落盘执行文档的同步状态（时间 / 篇数 / 失败原因）。
