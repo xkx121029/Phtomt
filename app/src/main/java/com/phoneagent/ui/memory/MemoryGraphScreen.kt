@@ -65,6 +65,7 @@ import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
+import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.SnackbarType
@@ -137,7 +138,10 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     .verticalScroll(scrollState)
                     // 顶部净空垫在滚动容器内部：图谱与明细滚动时会从玻璃页眉下穿过，
                     // 页眉才有真实内容可模糊；垫在外面就只是把内容整体压低
-                    .padding(top = pad.calculateTopPadding()),
+                    .padding(top = pad.calculateTopPadding())
+                    // 底部净空：导航浮在内容之上，页脚不自己让开就会被压在导航条下。
+                    // 净空由宿主按导航形态提供（竖屏垫底、横屏垫侧），这里不写死高度
+                    .padding(bottom = LocalNavClearance.current.calculateBottomPadding()),
             ) {
                 if (loading) {
                     // 骨架屏加载：标题 + 图谱占位 + 统计占位
