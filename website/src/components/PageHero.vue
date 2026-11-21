@@ -1,5 +1,12 @@
 <script setup>
+/**
+ * PageHero —— 内页刊头。
+ *
+ * 五个内页共用它：编号 + 小标签 + 标题 + 导语 + 动作区。下方一条 2px 粗线收口，
+ * 把「刊头」和「正文」明确切开，读者一眼知道从哪里开始读。
+ */
 defineProps({
+  no: { type: String, default: '' },
   eyebrow: { type: String, default: '' },
   title: { type: String, required: true },
   lead: { type: String, default: '' }
@@ -7,35 +14,57 @@ defineProps({
 </script>
 
 <template>
-  <header class="hero">
+  <header class="pherom">
     <div class="page">
-      <p v-if="eyebrow" v-reveal class="eyebrow">{{ eyebrow }}</p>
-      <h1 v-reveal="40" class="h1 hero__title">{{ title }}</h1>
-      <p v-if="lead" v-reveal="80" class="lead hero__lead">{{ lead }}</p>
-      <div v-if="$slots.default" v-reveal="120" class="hero__extra">
+      <div class="pherom__meta">
+        <span v-if="no" class="no">{{ no }}</span>
+        <span v-if="eyebrow" class="eyebrow">{{ eyebrow }}</span>
+      </div>
+
+      <h1 v-reveal="30" class="h1 pherom__title">{{ title }}</h1>
+      <p v-if="lead" v-reveal="60" class="lead pherom__lead">{{ lead }}</p>
+
+      <div v-if="$slots.default" v-reveal="90" class="pherom__extra">
         <slot />
       </div>
+    </div>
+    <div class="page">
+      <hr class="pherom__rule" />
     </div>
   </header>
 </template>
 
 <style scoped>
-.hero {
-  padding-block: clamp(56px, 7vw, 88px) clamp(28px, 4vw, 40px);
-  border-bottom: 1px solid var(--line);
+.pherom {
+  padding-top: clamp(32px, 5vw, 60px);
 }
 
-.hero__title {
+.pherom__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 18px;
+}
+
+.pherom__title {
   margin-top: 14px;
   max-width: 22ch;
 }
 
-.hero__lead {
-  margin-top: 18px;
-  max-width: 60ch;
+.pherom__lead {
+  margin-top: 16px;
+  max-width: 56ch;
 }
 
-.hero__extra {
+.pherom__extra {
   margin-top: 26px;
+}
+
+.pherom__rule {
+  height: 2px;
+  border: none;
+  margin: 34px 0 0;
+  background: var(--ink);
+  opacity: 0.86;
 }
 </style>

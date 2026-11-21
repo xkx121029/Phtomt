@@ -10,21 +10,27 @@ const scrolled = ref(false)
 const menuOpen = ref(false)
 const site = ref({})
 
+/** 主导航只放四组：产品怎么跑 / 能做什么 / 场景 / 下载。其余收进抽屉与页脚。 */
 const NAV = [
-  { to: '/features', label: '功能' },
   { to: '/how-it-works', label: '原理' },
+  { to: '/features', label: '能力' },
   { to: '/scenarios', label: '场景' },
-  { to: '/download', label: '下载' },
-  { to: '/changelog', label: '更新' },
-  { to: '/docs', label: '文档' },
-  { to: '/faq', label: '问答' },
-  { to: '/ask', label: 'AI 问答' }
+  { to: '/download', label: '下载' }
+]
+
+const MORE = [
+  { to: '/changelog', label: '更新日志' },
+  { to: '/docs', label: '文档中心' },
+  { to: '/faq', label: '常见问题' },
+  { to: '/roadmap', label: '路线图' },
+  { to: '/ask', label: 'AI 问答' },
+  { to: '/about', label: '关于项目' }
 ]
 
 const isDark = computed(() => theme.value === 'dark')
 
 function onScroll() {
-  scrolled.value = window.scrollY > 8
+  scrolled.value = window.scrollY > 6
 }
 
 onMounted(async () => {
@@ -53,14 +59,11 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <header :class="['head', 'glass--sheen', { glass: scrolled }]">
+  <header :class="['head', 'glass--sheen', { 'head--solid': scrolled, glass: scrolled }]">
     <div class="page head__inner">
       <RouterLink to="/" class="brand" aria-label="回到首页">
-        <AppLogo :size="26" class="brand__mark" />
-        <span class="brand__text">
-          <strong>Happy Agent</strong>
-          <em v-if="site.version" class="mono">v{{ site.version }}</em>
-        </span>
+        <AppLogo :size="24" class="brand__mark" />
+        <span class="brand__text">Happy Agent</span>
       </RouterLink>
 
       <nav class="nav" aria-label="主导航">
@@ -76,29 +79,32 @@ watch(() => route.fullPath, () => {
           :aria-label="isDark ? '切换到浅色' : '切换到深色'"
           @click="toggleTheme"
         >
-          <svg v-if="isDark" width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <svg v-if="isDark" width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1.5" />
             <path d="M10 1.6v2M10 16.4v2M1.6 10h2M16.4 10h2M4.1 4.1l1.4 1.4M14.5 14.5l1.4 1.4M15.9 4.1l-1.4 1.4M5.5 14.5l-1.4 1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
           </svg>
-          <svg v-else width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <svg v-else width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M16.5 12.4A7 7 0 0 1 7.6 3.5a7 7 0 1 0 8.9 8.9Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
           </svg>
         </button>
 
         <a
           v-if="site.links?.github"
-          class="icon-btn"
+          class="icon-btn head__gh"
           :href="site.links.github"
           target="_blank"
           rel="noopener noreferrer"
           aria-label="GitHub 仓库"
         >
-          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
           </svg>
         </a>
 
-        <RouterLink to="/download" class="btn btn--primary btn--sm head__cta">下载 APK</RouterLink>
+        <RouterLink to="/download" class="btn btn--primary btn--sm head__cta">
+          下载 APK
+          <span v-if="site.version" class="mono head__ver">v{{ site.version }}</span>
+        </RouterLink>
 
         <button
           class="icon-btn head__burger"
@@ -119,12 +125,22 @@ watch(() => route.fullPath, () => {
     <Transition name="sheet">
       <div v-if="menuOpen" class="sheet" @click.self="menuOpen = false">
         <div class="sheet__panel glass glass--sheen" role="dialog" aria-label="导航">
-          <div class="sheet__grip" aria-hidden="true"></div>
-          <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
-            {{ item.label }}
-          </RouterLink>
-          <RouterLink to="/roadmap" class="sheet__link">路线图</RouterLink>
-          <RouterLink to="/about" class="sheet__link">关于项目</RouterLink>
+          <div class="sheet__head">
+            <span class="eyebrow">全部页面</span>
+            <button class="icon-btn" type="button" aria-label="关闭导航" @click="menuOpen = false">
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div class="sheet__grid">
+            <RouterLink v-for="item in NAV" :key="item.to" :to="item.to" class="sheet__link">
+              {{ item.label }}
+            </RouterLink>
+            <RouterLink v-for="item in MORE" :key="item.to" :to="item.to" class="sheet__link sheet__link--sub">
+              {{ item.label }}
+            </RouterLink>
+          </div>
           <RouterLink to="/download" class="btn btn--primary sheet__cta">下载 APK</RouterLink>
         </div>
       </div>
@@ -133,138 +149,107 @@ watch(() => route.fullPath, () => {
 </template>
 
 <style scoped>
-/* 离屏边缘的距离：滚动离顶后整条导航缩进这么多，从「贴边横杠」变成一块悬空的板 */
 .head {
-  --head-lift: 12px;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  inset: 0 0 auto;
   z-index: 60;
-  height: 66px;
-  border: 1px solid transparent;
-  border-radius: var(--r-float);
+  border-bottom: 1px solid transparent;
   transition:
-    top var(--dur-ui) var(--ease-out),
-    left var(--dur-ui) var(--ease-out),
-    right var(--dur-ui) var(--ease-out),
-    background-color var(--dur-ui) ease,
     border-color var(--dur-ui) ease,
-    box-shadow var(--dur-ui) ease,
-    -webkit-backdrop-filter var(--dur-ui) ease,
-    backdrop-filter var(--dur-ui) ease;
+    background-color var(--dur-ui) ease;
 }
 
-/* 只在滚动后才上玻璃：停在顶部时让点阵背景透上来，画面才连成一片。
-   配方（底色 / 模糊 / 描边）都在 base.css 的 .glass 里，这里只决定「什么时候用」。
-   上玻璃的同时脱离上缘与左右边缘、圆角加到 --r-float，并补一道投影——
-   投影在这套体系里专管「浮起」（见 tokens.css 的层次注释），正好是此刻要说的意思。 */
-.head.glass {
-  top: var(--head-lift);
-  left: var(--head-lift);
-  right: var(--head-lift);
-  border-color: var(--glass-line);
-  box-shadow: var(--shadow-2);
-}
-
-/* 整条缩进之后，内层要少让一圈同等的宽，左右才与正文落在同一条竖线上。
-   （宽屏时版心本来就窄于容器，居中即可对齐，这条只在窄屏生效） */
-.head.glass .head__inner {
-  width: min(var(--page), calc(100% - var(--gutter) * 2 + var(--head-lift) * 2));
-}
-
-/* 停在顶部时不留高光：此时导航是透明的，一条亮带会凭空浮在点阵背景上 */
-.head:not(.glass)::after {
-  opacity: 0;
+.head--solid {
+  border-bottom-color: var(--line);
 }
 
 .head__inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 100%;
   gap: 20px;
+  height: 58px;
 }
 
 .brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
+  flex: none;
+}
+
+.brand__mark {
   flex: none;
 }
 
 .brand__text {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  color: var(--ink);
-}
-
-.brand__text strong {
   font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-.brand__text em {
-  font-style: normal;
-  font-size: 0.7rem;
-  color: var(--ink-3);
+  font-weight: 650;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
 }
 
 .nav {
-  display: flex;
+  display: none;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  margin-left: 12px;
 }
 
 .nav__link {
-  padding: 7px 12px;
-  border-radius: var(--r-pill);
+  position: relative;
+  padding: 6px 10px;
   font-size: var(--t-sm);
   color: var(--ink-2);
-  transition:
-    color var(--dur-ui) ease,
-    background-color var(--dur-ui) ease;
+  border-radius: var(--r-xs);
+  transition: color var(--dur-ui) ease;
 }
 
 .nav__link.router-link-active {
   color: var(--ink);
-  background: var(--paper-sunken);
+  font-weight: 500;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .nav__link:hover {
-    color: var(--ink);
-  }
+.nav__link.router-link-active::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
+  height: 1.5px;
+  background: var(--brand);
 }
 
 .head__actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: none;
+  margin-left: auto;
 }
 
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--r-pill);
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   transition:
-    transform var(--dur-press) var(--ease-out),
     background-color var(--dur-ui) ease,
     color var(--dur-ui) ease;
 }
 
-.icon-btn:active {
-  transform: scale(0.94);
+.head__cta {
+  margin-left: 4px;
+}
+
+.head__ver {
+  font-size: 0.72rem;
+  opacity: 0.66;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -272,62 +257,75 @@ watch(() => route.fullPath, () => {
     background: var(--paper-sunken);
     color: var(--ink);
   }
+
+  .nav__link:hover {
+    color: var(--ink);
+  }
 }
 
-.head__burger {
-  display: none;
+@media (max-width: 719px) {
+  .head__gh,
+  .head__ver {
+    display: none;
+  }
 }
 
-.head__cta {
-  margin-left: 4px;
+@media (min-width: 860px) {
+  .nav {
+    display: flex;
+  }
+
+  .head__burger {
+    display: none;
+  }
 }
 
-/* ---------- 移动端抽屉：自下而上，不做横向滑入 ---------- */
+/* ---------- 抽屉 ---------- */
 
 .sheet {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 80;
   display: flex;
-  align-items: flex-end;
-  background: rgba(10, 12, 10, 0.36);
+  justify-content: flex-end;
+  background: rgba(12, 14, 12, 0.42);
 }
 
-/* 抽屉压在页面之上，背后确实有内容可模糊，是玻璃该出现的地方。
-   玻璃配方来自 base.css 的 .glass，这里只管形状与描边。 */
 .sheet__panel {
-  position: relative;
-  width: 100%;
-  padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--glass-line);
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  width: min(360px, 100%);
+  height: 100%;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid var(--glass-line);
+  overflow-y: auto;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet__grid {
   display: grid;
   gap: 2px;
-  box-shadow: var(--shadow-3);
-}
-
-.sheet__grip {
-  width: 38px;
-  height: 4px;
-  margin: 2px auto 14px;
-  border-radius: var(--r-pill);
-  background: var(--line-2);
 }
 
 .sheet__link {
-  padding: 13px 4px;
-  font-size: 1rem;
-  color: var(--ink);
+  padding: 11px 4px;
   border-bottom: 1px solid var(--line);
+  font-size: 1rem;
 }
 
-.sheet__link:last-of-type {
-  border-bottom: none;
+.sheet__link--sub {
+  font-size: var(--t-sm);
+  color: var(--ink-2);
 }
 
 .sheet__cta {
-  margin-top: 14px;
-  width: 100%;
+  margin-top: auto;
 }
 
 .sheet-enter-active,
@@ -337,7 +335,7 @@ watch(() => route.fullPath, () => {
 
 .sheet-enter-active .sheet__panel,
 .sheet-leave-active .sheet__panel {
-  transition: transform var(--dur-enter) var(--ease-drawer);
+  transition: transform var(--dur-ui) var(--ease-drawer);
 }
 
 .sheet-enter-from,
@@ -347,40 +345,6 @@ watch(() => route.fullPath, () => {
 
 .sheet-enter-from .sheet__panel,
 .sheet-leave-to .sheet__panel {
-  transform: translateY(100%);
-}
-
-@media (max-width: 900px) {
-  .nav {
-    display: none;
-  }
-
-  .head__burger {
-    display: inline-flex;
-  }
-
-  .head__cta {
-    display: none;
-  }
-}
-
-/* 360px 屏上「Happy Agent + 版本号」加上右侧三个图标会顶出视口 38px，
-   版本号本来就在页脚与下载页有，这里窄屏先让位 */
-@media (max-width: 520px) {
-  .brand__text em {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sheet-enter-active .sheet__panel,
-  .sheet-leave-active .sheet__panel {
-    transition: opacity 160ms ease;
-  }
-
-  .sheet-enter-from .sheet__panel,
-  .sheet-leave-to .sheet__panel {
-    transform: none;
-  }
+  transform: translateX(24px);
 }
 </style>

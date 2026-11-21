@@ -5,7 +5,6 @@ import SiteHeader from './components/SiteHeader.vue'
 import SiteFooter from './components/SiteFooter.vue'
 import AssistantDock from './components/assistant/AssistantDock.vue'
 import { useAssistant } from './composables/useAssistant.js'
-import { useCardTilt } from './composables/useCardTilt.js'
 
 const route = useRoute()
 // 管理后台自带一套外壳，不套官网的页头页脚
@@ -19,15 +18,11 @@ onMounted(() => {
   restore()
   loadStatus()
 })
-
-// 卡片悬停微倾斜：文档级代理，路由切换后新渲染的卡片也照样覆盖
-useCardTilt()
 </script>
 
 <template>
   <div class="shell">
-    <!-- 环境色雾：卡片亚克力的「背景物」。没有它，半透明卡片底下是一片死平的纸色，
-         模糊无物可糊，玻璃效果就等于没做。纯装饰，不进无障碍树。 -->
+    <!-- 环境色：三层极淡色斑，只为让大片纸底不死平。纯装饰，不进无障碍树。 -->
     <div class="ambient" aria-hidden="true"></div>
     <SiteHeader v-if="!isAdmin" />
     <main :class="['main', { 'main--admin': isAdmin }]">
@@ -50,7 +45,7 @@ useCardTilt()
 .main {
   flex: 1;
   /* 顶栏是固定的，内容整体下移；后台页不需要 */
-  padding-top: 66px;
+  padding-top: 58px;
 }
 
 .main--admin {

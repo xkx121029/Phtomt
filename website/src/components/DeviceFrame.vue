@@ -1,93 +1,84 @@
 <script setup>
 /**
- * DeviceFrame —— 用 CSS 画的手机外壳。
+ * DeviceFrame —— 承载真实截图的手机外壳。
  *
- * 刻意不用截图：截图会随 App 版本过期，而且一望即知是贴图。
- * 这里只负责「壳」，屏幕里放什么由插槽决定。
+ * 老版本用 CSS 画了一个「示意界面」。示意界面会随 App 版本过期，而且一眼就能看出
+ * 是画出来的，抵掉了「这是我手机上真跑着的东西」这句话的可信度。这一版只做壳：
+ * 屏幕里放真机截图（public/shots/*.webp，取自 docs/ui-shots），壳负责边框与比例。
  *
- * 尺寸约定：整台机器用一个「基准宽」驱动，屏幕内所有字号/圆角都由 cqw 换算而来，
- * 所以窄屏被压窄时内容会等比缩小，不会出现文字被裁掉的情况。
+ * 宽高比按截图本身来（1080×2400 = 9:20），壳的圆角与外框用 em 换算自宽度，
+ * 所以在 375px 的窄屏上整机等比缩小，不会把截图裁掉。
  */
+defineProps({
+  src: { type: String, default: '' },
+  alt: { type: String, default: '' },
+  ratio: { type: String, default: '9 / 20' }
+})
 </script>
 
 <template>
   <div class="device">
     <div class="device__frame">
-      <div class="device__screen">
-        <span class="device__punch" aria-hidden="true"></span>
-        <slot />
+      <div class="device__screen" :style="{ aspectRatio: ratio }">
+        <img v-if="src" class="device__shot" :src="src" :alt="alt" loading="lazy" decoding="async" />
+        <slot v-else />
       </div>
-      <span class="device__btn device__btn--power" aria-hidden="true"></span>
-      <span class="device__btn device__btn--vol" aria-hidden="true"></span>
+      <span class="device__punch" aria-hidden="true"></span>
     </div>
   </div>
 </template>
 
 <style scoped>
 .device {
-  width: min(clamp(248px, 30vw, 288px), 100%);
-  /* 建立尺寸容器：内部用 cqw 换算，宽度被压窄时字号跟着缩 */
-  container-type: inline-size;
+  width: 100%;
+  max-width: 300px;
 }
 
 .device__frame {
   position: relative;
-  aspect-ratio: 9 / 19.5;
-  padding: 3.4%;
-  border-radius: 14.5cqw;
-  /* 边框不是纯黑：真机的金属中框总有方向性的反光 */
-  background: linear-gradient(150deg, #2c322d 0%, #14171500 42%, #0b0e0c 100%),
-    linear-gradient(210deg, #232824, #10130f);
+  padding: 7px;
+  border-radius: 34px;
+  background: linear-gradient(160deg, #2a2f2a, #141813 46%, #232823);
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-    inset 0 0 0 2px rgba(0, 0, 0, 0.5),
-    0 2px 4px rgba(20, 23, 21, 0.16),
-    0 30px 60px -28px rgba(20, 23, 21, 0.45),
-    0 60px 120px -60px rgba(6, 58, 46, 0.5);
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    var(--shadow-3);
+}
+
+[data-theme="dark"] .device__frame {
+  background: linear-gradient(160deg, #34392f, #191d18 46%, #2a2f27);
 }
 
 .device__screen {
   position: relative;
-  height: 100%;
   overflow: hidden;
-  border-radius: 11.5cqw;
-  background: var(--paper-raised);
-  /* 屏幕内所有字号都由这里派生（1/26 机宽），跟着机身等比走 */
-  font-size: 3.85cqw;
-  line-height: 1.5;
-  color: var(--ink);
+  border-radius: 28px;
+  background: #0b0d0b;
 }
 
+.device__shot {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+/* 挖孔：只是给「这是一台真机」一个视觉锚点，不遮挡内容 */
 .device__punch {
   position: absolute;
-  top: 0.85em;
+  top: 14px;
   left: 50%;
-  translate: -50% 0;
-  width: 0.72em;
-  height: 0.72em;
-  border-radius: 50%;
-  background: #0b0e0c;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-  z-index: 3;
+  width: 44px;
+  height: 8px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  background: #0b0d0b;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* 侧键：两枚小竖条，只做轮廓，不抢戏 */
-.device__btn {
-  position: absolute;
-  width: 2px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #3a403b, #1b1f1c);
-}
-
-.device__btn--power {
-  right: -2px;
-  top: 24%;
-  height: 9%;
-}
-
-.device__btn--vol {
-  left: -2px;
-  top: 17%;
-  height: 13%;
+@media (min-width: 1024px) {
+  .device {
+    max-width: 322px;
+  }
 }
 </style>
