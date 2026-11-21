@@ -1389,35 +1389,56 @@ internal class ExecutionCore(
                 ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_ADB -> {
                     // 走到这里时 commands 必非空（候选构造时已判定）
                     var failed: String? = null
+                    // 真正下发成功的命令：多命令序列（TYPE_TEXT = tap + text）中途失败时，
+                    // 这几条已经落到设备上了，绝不能在外层重试时再执行一遍
+                    val issued = mutableListOf<String>()
                     for ((index, cmd) in commands.orEmpty().withIndex()) {
                         val r = runCatchingLogged(TAG, "通道切换兜底 $cmd") { execShellViaChannel(cmd) }.getOrNull()
                         if (r !is ShizukuManager.ShellResult.Success) {
                             failed = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "shell 通道无响应"
                             break
                         }
+                        issued += cmd
                         // 光标回放让用户看到"这一下落到哪"；只对第一条（真正的触摸动作）回放
                         if (index == 0) triggerCursorForShell(cmd)
                     }
-                    if (failed == null) {
-                        delay(300)
-                        // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
-                        // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
-                        val verdict = confirmFallbackDelivery(snapshot)
-                        // 已确认 = 这步生效；未确认仍是「已交付」（notDelivered=false 见下），
-                        // 两个概念在结构化结果里分开表达，不再由退出码顶替
-                        delivered = VerifyResult(
-                            verdict.confirmed,
-                            "$originalReason；已自动切换 shell 通道执行: " +
-                                commands.orEmpty().joinToString(" && ") + verdict.suffix,
-                            verdict.beforeFingerprint,
-                            verdict.afterFingerprint,
-                            // 命令已经下发到系统 = 已交付：绝不能标 notDelivered，
-                            // 否则外层会换一条通道把同一下再执行一遍（发送/删除就是重复副作用）
-                            notDelivered = false,
-                        )
-                        ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
-                    } else {
-                        ChannelStepResult.NotDelivered(failed)
+                    when (val outcome = ShellFallbackPolicy.sequenceOutcome(commands.orEmpty(), issued, failed)) {
+                        ShellFallbackPolicy.SequenceOutcome.Issued -> {
+                            delay(300)
+                            // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
+                            // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
+                            val verdict = confirmFallbackDelivery(snapshot)
+                            // 已确认 = 这步生效；未确认仍是「已交付」（notDelivered=false 见下），
+                            // 两个概念在结构化结果里分开表达，不再由退出码顶替
+                            delivered = VerifyResult(
+                                verdict.confirmed,
+                                "$originalReason；已自动切换 shell 通道执行: " +
+                                    commands.orEmpty().joinToString(" && ") + verdict.suffix,
+                                verdict.beforeFingerprint,
+                                verdict.afterFingerprint,
+                                // 命令已经下发到系统 = 已交付：绝不能标 notDelivered，
+                                // 否则外层会换一条通道把同一下再执行一遍（发送/删除就是重复副作用）
+                                notDelivered = false,
+                            )
+                            ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
+                        }
+                        // 一条都没下发：可以安全地换通道/换落点
+                        is ShellFallbackPolicy.SequenceOutcome.NothingIssued ->
+                            ChannelStepResult.NotDelivered(outcome.reason)
+
+                        // 部分交付：前半段已经落到设备上。既不能算未交付（外层会重跑整条序列，
+                        // 把那次 tap 再打一遍），也不能算成功（后半段没成）。
+                        // 结构化结果里如实标 notDelivered=false，重试判据据此停手（见 VerifyRules.shouldRetry）。
+                        is ShellFallbackPolicy.SequenceOutcome.Partial -> {
+                            delivered = VerifyResult(
+                                success = false,
+                                reason = "$originalReason；${outcome.reason}",
+                                beforeFingerprint = "",
+                                afterFingerprint = "",
+                                notDelivered = false,
+                            )
+                            ChannelStepResult.Delivered(confirmed = false, detail = "部分交付：${outcome.failed}")
+                        }
                     }
                 }
 
