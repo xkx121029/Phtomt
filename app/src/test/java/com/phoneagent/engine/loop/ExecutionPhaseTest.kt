@@ -9,11 +9,13 @@ import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.domain.model.TaskStep
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.engine.PromptLang
 import com.phoneagent.engine.execution.ActionMode
 import com.phoneagent.engine.execution.IntentTranslator
@@ -85,6 +87,8 @@ class ExecutionPhaseTest {
         val shellApproved: Boolean = true,
         val confirmation: Boolean = true,
         val idempotentDone: Boolean = false,
+        /** 本任务内已下发并确认过的副作用动作（幂等判据的唯一来源） */
+        val committedEffects: List<EngineRules.CommittedEffect> = emptyList(),
         val browser: Set<String> = emptySet(),
         val guided: AgentIntent? = null,
         /** 完成前复核时再观察到的页面（默认空页面 = 没有持久状态） */
@@ -98,6 +102,7 @@ class ExecutionPhaseTest {
         var pendingInput: PendingInput? = null
         var inputCommitRejections = 0
         var completionRecheckRejections = 0
+        val committed = committedEffects.toMutableList()
 
         val phase = ExecutionPhase(
             loopGuard = LoopGuard(),
@@ -159,6 +164,10 @@ class ExecutionPhaseTest {
                 decideWithUserHint = { _, _ -> guided },
                 actionMode = { mode },
                 idempotencyDone = { idempotentDone },
+                committedEffects = { committed.toList() },
+                recordEffect = { action, step ->
+                    committed += EngineRules.CommittedEffect(EngineRules.idempotencyKey(action, action.type), step)
+                },
                 a11yDisconnectedNote = { "" },
             ),
             finish = ExecutionFinishHooks(
@@ -608,6 +617,114 @@ class ExecutionPhaseTest {
             )
         },
     )
+
+    // ---- 幂等保护（HAPP-5 P0-1）：判据绑本任务执行历史，页面文字不算"已经做过" ----
+
+    /** 待办详情页：标题 + 状态标签 + 返回/编辑/删除 三个按钮（5 个元素） */
+    private fun todoDetailPage(status: String) = ScreenSnapshot(
+        packageName = "com.example.todo",
+        screenWidth = 1080,
+        screenHeight = 1920,
+        elements = listOf(
+            todoElement(0, "买牛奶", 40, 40, 900, 160),
+            todoElement(1, status, 40, 220, 300, 320),
+            todoElement(2, "返回", 40, 80, 160, 180),
+            todoElement(3, "编辑", 40, 1600, 300, 1700),
+            todoElement(4, "删除", 780, 1600, 1040, 1700),
+        ),
+    )
+
+    private fun todoElement(index: Int, text: String, left: Int, top: Int, right: Int, bottom: Int) = UiElement(
+        index = index, className = "android.widget.Button", type = "Button", text = text,
+        x = (left + right) / 2, y = (top + bottom) / 2,
+        left = left, top = top, right = right, bottom = bottom,
+    )
+
+    private fun deleteIntent() = AgentIntent(
+        intent = IntentType.DELETE,
+        target = AgentIntentTarget(by = "label", value = "删除"),
+    )
+
+    private fun deleteTranslation() = IntentTranslator.TranslationResult.Command(
+        AgentAction(type = ActionType.TAP, target = ActionTarget(method = "label", value = "删除")),
+    )
+
+    @Test
+    fun `待办详情页删除_页面已完成标签不得让动作被跳过`() = runTest {
+        // 旧口径：元素 ≤6 + 页面含「已完成」→ 幂等命中 → ExecutionCore 直接返回 VerifyResult(true)，
+        // 删除动作整条没有下发却记成 ✅。新口径必须真的下发，或走不可逆动作的强制二次确认。
+        val page = todoDetailPage("已完成")
+        val denied = Fixture(translation = deleteTranslation(), confirmation = false)
+        val deniedOutcome = denied.phase.run(session(deleteIntent(), snapshot = page))
+        assertEquals(StepOutcome.Continue, deniedOutcome)
+        assertEquals("不可逆动作必须先问用户", 1, denied.f.confirmations)
+        assertEquals("用户拒绝后不得静默下发", 0, denied.f.executes)
+        assertEquals("拒绝的步骤不得记成幂等成功", 0, denied.committed.size)
+
+        val allowed = Fixture(translation = deleteTranslation(), confirmation = true)
+        val allowedOutcome = allowed.phase.run(session(deleteIntent(), snapshot = page))
+        assertEquals(StepOutcome.Continue, allowedOutcome)
+        assertEquals(1, allowed.f.confirmations)
+        assertEquals("确认后必须真的下发删除动作，而不是跳过", 1, allowed.f.executes)
+    }
+
+    @Test
+    fun `本任务内已下发过同一动作_幂等命中且不重复下发`() = runTest {
+        // 第 3 步已经真的点过「删除」并验证成功：页面仍是完成态时重复的同一动作要跳过，防重复副作用。
+        val key = EngineRules.idempotencyKey(
+            AgentAction(type = ActionType.TAP, target = ActionTarget(method = "label", value = "删除")),
+            ActionType.TAP,
+        )
+        val fixture = Fixture(
+            translation = deleteTranslation(),
+            committedEffects = listOf(EngineRules.CommittedEffect(key, 3)),
+        )
+        val outcome = fixture.phase.run(session(deleteIntent(), snapshot = todoDetailPage("删除成功")))
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals("已下发过，不得重复下发", 0, fixture.f.executes)
+        assertEquals("跳过也要落一条执行历史", 1, fixture.f.histories)
+        assertTrue(fixture.f.logs.any { it.contains("幂等跳过") })
+    }
+
+    @Test
+    fun `本任务内没做过同一动作_页面出现提交成功也不跳过`() = runTest {
+        // 「发送」不在不可逆词表：没有执行记录就直接执行。这是旧实现最危险的一类——
+        // 页面上一句「提交成功」就能把真要发的消息跳过。这里刻意用不可逆词表外的动作。
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(type = ActionType.TAP, target = ActionTarget(method = "label", value = "发送")),
+            ),
+        )
+        val outcome = fixture.phase.run(
+            session(
+                AgentIntent(intent = IntentType.SEND, target = AgentIntentTarget(by = "label", value = "发送")),
+                snapshot = todoDetailPage("提交成功"),
+            ),
+        )
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals("页面文字不构成跳过理由", 1, fixture.f.executes)
+        assertEquals(0, fixture.f.confirmations)
+    }
+
+    @Test
+    fun `下发成功后写入幂等历史`() = runTest {
+        val fixture = Fixture(translation = deleteTranslation(), confirmation = true)
+        fixture.phase.run(session(deleteIntent(), snapshot = todoDetailPage("待办")))
+        assertEquals(1, fixture.f.executes)
+        assertEquals("只有真的下发且验证成功才记账", 1, fixture.committed.size)
+        assertEquals(1, fixture.committed.first().step)
+    }
+
+    @Test
+    fun `下发失败不写幂等历史`() = runTest {
+        val fixture = Fixture(
+            translation = deleteTranslation(),
+            confirmation = true,
+            verify = VerifyResult(false, "没点到", "", ""),
+        )
+        fixture.phase.run(session(deleteIntent(), snapshot = todoDetailPage("待办")))
+        assertEquals(0, fixture.committed.size)
+    }
 
     @Test
     fun `转译失败按结构错误回注原因`() = runTest {

@@ -5,12 +5,14 @@ import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ActionTarget
+import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
 import com.phoneagent.domain.rules.EngineRules
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -71,6 +73,90 @@ class EngineRulesTest {
     @Test
     fun idempotencyDone_页面无完成证据_返回false() {
         assertFalse(EngineRules.idempotencyDone(snapshotWith("填写订单信息")))
+    }
+
+    private fun named(
+        index: Int, className: String, type: String, text: String,
+        left: Int, top: Int, right: Int, bottom: Int,
+    ) = UiElement(
+        index = index, className = className, type = type, text = text,
+        x = (left + right) / 2, y = (top + bottom) / 2,
+        left = left, top = top, right = right, bottom = bottom,
+    )
+
+    /** 待办/工单详情页：标题 + 状态标签 + 3 个按钮（5 个元素，正落在旧实现「≤6 元素」的稀疏守卫内） */
+    private fun todoDetailPage(status: String) = ScreenSnapshot(
+        packageName = "com.test.todo",
+        screenWidth = 1080,
+        screenHeight = 1920,
+        elements = listOf(
+            named(0, "android.widget.TextView", "Text", "买牛奶", 40, 40, 900, 160),
+            named(1, "android.widget.TextView", "Text", status, 40, 220, 300, 320),
+            named(2, "android.widget.Button", "Button", "编辑", 40, 1600, 300, 1700),
+            named(3, "android.widget.Button", "Button", "删除", 780, 1600, 1040, 1700),
+            named(4, "android.widget.Button", "Button", "返回", 40, 80, 160, 180),
+        ),
+    )
+
+    private fun deleteAction() = AgentAction(
+        type = ActionType.TAP,
+        target = ActionTarget(method = "label", value = "删除"),
+    )
+
+    @Test
+    fun `待办详情页的已完成标签不构成完成证据`() {
+        // P0-1（HAPP-5）：旧实现「元素 ≤6 + 含『已完成』」就判"已做过"，待办详情页的状态标签
+        // 让整条删除被跳过、动作根本没下发却记成 ✅。状态标签不是完成证据。
+        assertFalse(EngineRules.idempotencyDone(todoDetailPage("已完成")))
+    }
+
+    @Test
+    fun `操作成功与已提交这类状态提示不构成完成证据`() {
+        assertFalse(EngineRules.idempotencyDone(snapshotWith("操作成功")))
+        assertFalse(EngineRules.idempotencyDone(snapshotWith("已提交")))
+    }
+
+    @Test
+    fun `带宾语的确认句仍算完成证据`() {
+        assertTrue(EngineRules.idempotencyDone(snapshotWith("删除成功")))
+        assertTrue(EngineRules.idempotencyDone(snapshotWith("支付成功")))
+    }
+
+    @Test
+    fun `页面文字加删除意图但本任务没做过_要求用户确认而不是跳过`() {
+        val verdict = EngineRules.idempotencyVerdict(emptyList(), deleteAction(), "tap", todoDetailPage("已完成"))
+        assertTrue("历史为空时不得判跳过，实际：$verdict", verdict is EngineRules.IdempotencyVerdict.NeedsConfirm)
+    }
+
+    @Test
+    fun `本任务内已下发过同一动作且页面仍是完成态_判跳过`() {
+        val key = EngineRules.idempotencyKey(deleteAction(), "tap")
+        val verdict = EngineRules.idempotencyVerdict(
+            listOf(EngineRules.CommittedEffect(key, 3)),
+            deleteAction(), "tap", todoDetailPage("删除成功"),
+        )
+        assertEquals(EngineRules.IdempotencyVerdict.Skip(3), verdict)
+    }
+
+    @Test
+    fun `本任务内没有执行记录时_页面出现提交成功也不跳过`() {
+        // 「发送」不在不可逆词表：没有执行记录就直接执行，绝不拿页面文字当"做过"
+        val verdict = EngineRules.idempotencyVerdict(
+            emptyList(), action("tap", "发送"), "tap", snapshotWith("提交成功"),
+        )
+        assertEquals(EngineRules.IdempotencyVerdict.Proceed, verdict)
+    }
+
+    @Test
+    fun `幂等键按语义目标归一化_不同类型或目标不同键不同`() {
+        assertEquals(
+            EngineRules.idempotencyKey(deleteAction(), "tap"),
+            EngineRules.idempotencyKey(deleteAction(), ActionType.CLICK),
+        )
+        assertNotEquals(
+            EngineRules.idempotencyKey(deleteAction(), "tap"),
+            EngineRules.idempotencyKey(action("tap", "移除"), "tap"),
+        )
     }
 
     // ---- swipeEndpoints ----
