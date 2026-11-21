@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.vm.DocumentDelegate
 import com.phoneagent.ui.vm.McpDelegate
+import com.phoneagent.ui.vm.MemoryDelegate
 import com.phoneagent.ui.vm.SettingsDelegate
 import com.phoneagent.ui.vm.SkillDelegate
 import com.phoneagent.ui.vm.TestDelegate
@@ -746,112 +747,61 @@ class MainViewModel(
 
     fun dismissDoc() = documentDomain.dismissDoc()
 
-    // ---- AI 记忆图谱 ----
+    // ---- 记忆域：实现在 [MemoryDelegate] ----
+    private val memoryDomain = MemoryDelegate(memoryStore, { engine }, viewModelScope)
+
     /** 本次任务内 AI 写入的记忆事件（引擎内存态），Agent 页据此实时插卡 */
-    val memoryEvents: StateFlow<List<com.phoneagent.engine.MemoryEvent>> get() = engine.memoryEvents
+    val memoryEvents: StateFlow<List<com.phoneagent.engine.MemoryEvent>> get() = memoryDomain.memoryEvents
 
     /** 本次任务内 AI "对用户说话"的事件（引擎内存态），Agent 页据此实时出气泡 */
-    val sayEvents: StateFlow<List<com.phoneagent.engine.SayEvent>> get() = engine.sayEvents
+    val sayEvents: StateFlow<List<com.phoneagent.engine.SayEvent>> get() = memoryDomain.sayEvents
 
     /** 本对话内 AI 澄清 → 用户选择 的往来（引擎内存态），Agent 页据此保留 问题 + 选择 */
-    val clarifyEvents: StateFlow<List<com.phoneagent.engine.ClarifyAnswered>> get() = engine.clarifyEvents
+    val clarifyEvents: StateFlow<List<com.phoneagent.engine.ClarifyAnswered>> get() = memoryDomain.clarifyEvents
 
     /**
      * 合并形态下的纯对话问答（引擎内存态）：Agent 页把「对话」Tab 的产出也画在同一条时间线上。
      * 与 [conversation] 不同，这里只存用户看得懂的 问题 + 回答，不含内部决策提示词。
      */
-    val chatTurns: StateFlow<List<com.phoneagent.engine.runtime.ChatTurnEvent>> get() = engine.chatTurns
+    val chatTurns: StateFlow<List<com.phoneagent.engine.runtime.ChatTurnEvent>> get() = memoryDomain.chatTurns
 
     /** 撤销一条刚写入的记忆：删库 + 从任务流移除卡片 */
-    fun undoMemory(id: Long) {
-        viewModelScope.launch {
-            engine.dismissMemoryEvent(id)
-            refreshMemory()
-        }
-    }
+    fun undoMemory(id: Long) = memoryDomain.undoMemory(id)
 
-    private val _memoryAnomalies = MutableStateFlow<List<AnomalyMemoryEntry>>(emptyList())
-    val memoryAnomalies: StateFlow<List<AnomalyMemoryEntry>> get() = _memoryAnomalies.asStateFlow()
+    val memoryAnomalies: StateFlow<List<AnomalyMemoryEntry>> get() = memoryDomain.memoryAnomalies
 
-    private val _memoryProfile = MutableStateFlow<List<ProfileEntry>>(emptyList())
-    val memoryProfile: StateFlow<List<ProfileEntry>> get() = _memoryProfile.asStateFlow()
+    val memoryProfile: StateFlow<List<ProfileEntry>> get() = memoryDomain.memoryProfile
 
-    private val _memoryTaskMemories = MutableStateFlow<List<TaskMemoryEntry>>(emptyList())
-    val memoryTaskMemories: StateFlow<List<TaskMemoryEntry>> get() = _memoryTaskMemories.asStateFlow()
+    val memoryTaskMemories: StateFlow<List<TaskMemoryEntry>> get() = memoryDomain.memoryTaskMemories
 
     /** 页面记忆：任务执行自动沉淀的页面热点 */
-    private val _pageMemories = MutableStateFlow<List<com.phoneagent.data.store.PageMemoryEntry>>(emptyList())
-    val pageMemories: StateFlow<List<com.phoneagent.data.store.PageMemoryEntry>> get() = _pageMemories.asStateFlow()
+    val pageMemories: StateFlow<List<com.phoneagent.data.store.PageMemoryEntry>> get() = memoryDomain.pageMemories
 
     /** 页面路径边：页面间的跳转记录 */
-    private val _pagePathEdges = MutableStateFlow<List<com.phoneagent.data.store.PagePathEdge>>(emptyList())
-    val pagePathEdges: StateFlow<List<com.phoneagent.data.store.PagePathEdge>> get() = _pagePathEdges.asStateFlow()
+    val pagePathEdges: StateFlow<List<com.phoneagent.data.store.PagePathEdge>> get() = memoryDomain.pagePathEdges
 
-    private val _memoryLoading = MutableStateFlow(false)
-    val memoryLoading: StateFlow<Boolean> get() = _memoryLoading.asStateFlow()
+    val memoryLoading: StateFlow<Boolean> get() = memoryDomain.memoryLoading
 
     /** 加载记忆数据（重新编排图谱） */
-    fun refreshMemory() {
-        viewModelScope.launch {
-            _memoryLoading.value = true
-            _memoryAnomalies.value = memoryStore.loadAnomalies()
-            _memoryProfile.value = memoryStore.loadProfile()
-            _memoryTaskMemories.value = memoryStore.loadTaskMemories()
-            _pageMemories.value = memoryStore.loadPageMemories()
-            _pagePathEdges.value = memoryStore.loadPageEdges()
-            _memoryLoading.value = false
-        }
-    }
+    fun refreshMemory() = memoryDomain.refreshMemory()
 
     /** 清空异常记忆 */
-    fun clearAnomalyMemory() {
-        viewModelScope.launch {
-            memoryStore.saveAnomalies(emptyList())
-            refreshMemory()
-        }
-    }
+    fun clearAnomalyMemory() = memoryDomain.clearAnomalyMemory()
 
     /** 清空用户画像 */
-    fun clearProfileMemory() {
-        viewModelScope.launch {
-            memoryStore.saveProfile(emptyList())
-            refreshMemory()
-        }
-    }
+    fun clearProfileMemory() = memoryDomain.clearProfileMemory()
 
-    // ---- 任务记忆（任务执行中的工作记忆）----
     /** 删除单条任务记忆 */
-    fun deleteTaskMemory(id: Long) {
-        viewModelScope.launch {
-            memoryStore.deleteTaskMemory(id)
-            refreshMemory()
-        }
-    }
+    fun deleteTaskMemory(id: Long) = memoryDomain.deleteTaskMemory(id)
 
     /** 清空任务记忆 */
-    fun clearTaskMemories() {
-        viewModelScope.launch {
-            memoryStore.clearTaskMemories()
-            refreshMemory()
-        }
-    }
+    fun clearTaskMemories() = memoryDomain.clearTaskMemories()
 
-    // ---- 页面记忆（任务执行自动沉淀的页面热点与路径）----
     /** 删除单条页面记忆（连带删除引用它的路径边） */
-    fun deletePageMemory(id: Long) {
-        viewModelScope.launch {
-            memoryStore.deletePageMemory(id)
-            refreshMemory()
-        }
-    }
+    fun deletePageMemory(id: Long) = memoryDomain.deletePageMemory(id)
 
     /** 清空页面记忆与路径 */
-    fun clearPageMemories() {
-        viewModelScope.launch {
-            memoryStore.clearPageMemories()
-            refreshMemory()
-        }
-    }
+    fun clearPageMemories() = memoryDomain.clearPageMemories()
 
     // ---- 日志导出（实现已外迁至 data/export/LogExporter.kt，此处保留薄委托给 UI 调用） ----
     /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。
