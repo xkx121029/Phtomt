@@ -99,6 +99,15 @@ object ProviderManager {
     /** 最近一次通道异常的中文说明（UI 直接展示，避免「显示已连接却不能用」） */
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
+    private val _apiVersion = MutableStateFlow<Int?>(null)
+
+    /**
+     * 已绑定组件报告的 AIDL 契约版本（未绑定为 null）。
+     *
+     * 兼容判定只看它，不看 versionName（见 [ProviderContract]）：绑定回调里刷新，断开即作废。
+     */
+    val apiVersion: StateFlow<Int?> = _apiVersion.asStateFlow()
+
     /** 分片拉取的单片大小：远低于 Binder 约 1MB 的事务上限 */
     private const val PAYLOAD_CHUNK = 128 * 1024
 
@@ -115,12 +124,18 @@ object ProviderManager {
             provider = remote
             _connected.value = true
             _lastError.value = null
-            Log.i(TAG, "已绑定 Provider（apiVersion=${runCatching { remote?.apiVersion() }.getOrNull()}）")
+            val api = runCatching { remote?.apiVersion() }.getOrNull()
+            _apiVersion.value = api
+            Log.i(TAG, "已绑定 Provider（apiVersion=$api，本应用需要 ${ProviderContract.REQUIRED_API_VERSION}）")
+            // 契约不匹配在这里就说清楚：缺方法的调用只会被 binder 吞成 null，
+            // 让用户对着"已连接"和一串没有原因的空结果干瞪眼
+            ProviderContract.mismatchReason(api)?.let { _lastError.value = it }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             provider = null
             _connected.value = false
+            _apiVersion.value = null
             _lastError.value = "服务组件进程已断开"
         }
 
@@ -131,6 +146,7 @@ object ProviderManager {
         override fun onNullBinding(name: ComponentName?) {
             provider = null
             _connected.value = false
+            _apiVersion.value = null
             connecting = false
             bindRejectReason = "服务返回空 binder（签名或版本不匹配）"
             _lastError.value = "服务组件拒绝绑定（签名或版本不匹配）"
@@ -153,13 +169,23 @@ object ProviderManager {
     }.getOrNull()
 
     /**
-     * 是否需要（重新）安装：未安装，或已安装版本低于随包版本。
-     * 版本比较按点分段数字比（"0.2.10" &gt; "0.2.9"）；无法解析时保守返回 true。
+     * 是否需要（重新）安装随包组件。
+     *
+     * 判据优先级（详见 [ProviderContract]）：
+     * 1. 未安装 → true；
+     * 2. **接口版本已知**（已绑上）→ 只有组件 apiVersion 低于本应用才需要安装。
+     *    比本应用新时装回去只会被系统拒降级，正确出路是升级主应用，所以这里返回 false；
+     * 3. 接口版本未知（还没绑上）→ 退回 versionName **相等**判定：与随包不一致就提示安装。
+     *
+     * 刻意不再按 versionName 大小排序：号段被回拨过（曾是 200 万段，后回落 9xxx 段），
+     * 排序会把"装着更新的组件"判成"已是最新"，把"装着旧组件"判成"需更新却装不上"。
      */
     fun needsInstall(context: Context): Boolean {
-        val installed = installedVersionName(context) ?: return true
+        if (installedVersionName(context) == null) return true
+        val live = _apiVersion.value
+        if (live != null) return ProviderContract.judge(live) is ProviderContract.Verdict.ProviderOutdated
         val bundled = bundledVersion(context) ?: return false
-        return compareVersion(installed, bundled) < 0
+        return installedVersionName(context) != bundled
     }
 
     /** 安装结果：已是最新 / 已拉起系统安装器 / 失败 */
@@ -188,6 +214,11 @@ object ProviderManager {
      */
     fun install(context: Context): InstallLaunch = runCatching {
         if (!needsInstall(context)) return InstallLaunch.UpToDate
+        // 装着的组件比本应用新：装回随包组件在系统侧就是降级，安装器会静默拒绝。
+        // 与其让用户对着"没反应"点第二次，不如直接说清出路是升级本应用。
+        if (ProviderContract.judge(_apiVersion.value) is ProviderContract.Verdict.AppOutdated) {
+            return InstallLaunch.Failed(ProviderContract.mismatchReason(_apiVersion.value).orEmpty())
+        }
         // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜
         if (!canInstallPackages(context)) {
             openInstallPermissionSettings(context)
@@ -360,6 +391,13 @@ object ProviderManager {
         block: suspend (IDeviceProvider) -> T,
     ): T? {
         val remote = ensureBound(context) ?: return null
+        // 契约版本不匹配时明确拒绝：缺方法的调用在 binder 里只会变成 null，
+        // 那样调用方看到的是"通道在、结果永远空"，无从判断是组件版本问题。
+        ProviderContract.mismatchReason(_apiVersion.value)?.let { reason ->
+            Log.w(TAG, "拒绝调用：$reason")
+            _lastError.value = reason
+            return null
+        }
         return withContext(Dispatchers.IO) {
             withTimeoutOrNull(timeoutMs) {
                 try {
@@ -429,6 +467,7 @@ object ProviderManager {
         val ctx = appContext
         provider = null
         _connected.value = false
+        _apiVersion.value = null
         _lastError.value = reason
         connecting = false
         if (ctx != null) runCatching { ctx.unbindService(connection) }
@@ -440,6 +479,7 @@ object ProviderManager {
         runCatching { ctx.unbindService(connection) }
         provider = null
         _connected.value = false
+        _apiVersion.value = null
     }
 
     /**
@@ -581,11 +621,11 @@ object ProviderManager {
         val bundled = bundledVersion(context)
         steps += SelfTestStep(
             title = "服务组件安装",
-            ok = installed != null && !needsInstall(context),
+            ok = installed != null,
             detail = when {
                 installed == null -> "未安装（随包 v${bundled ?: "未知"}）"
-                needsInstall(context) -> "已安装 v$installed，随包 v${bundled ?: "未知"}，需更新"
-                else -> "已安装 v$installed（随包同版本）"
+                needsInstall(context) -> "已安装 v$installed，随包 v${bundled ?: "未知"}：接口版本不兼容，需更新组件"
+                else -> "已安装 v$installed（随包 v${bundled ?: "未知"}）"
             },
         )
         steps += SelfTestStep(
@@ -625,6 +665,18 @@ object ProviderManager {
             title = "AIDL 绑定",
             ok = api != null && alive,
             detail = "apiVersion=${api ?: "读取失败"} · binderAlive=$alive",
+        )
+        // 契约版本是"能不能调通"的唯一判据（版本号只用于展示）：不相等就是缺接口或多接口
+        val contract = ProviderContract.judge(api)
+        steps += SelfTestStep(
+            title = "接口契约版本",
+            ok = contract is ProviderContract.Verdict.Compatible,
+            detail = if (api == null) {
+                "读取失败：${lastError.value ?: "无响应"}"
+            } else {
+                "组件 apiVersion=$api · 本应用需要 ${ProviderContract.REQUIRED_API_VERSION}" +
+                    (ProviderContract.mismatchReason(api)?.let { "；$it" } ?: "（一致）")
+            },
         )
         val remoteEnabled = runCatching { remote.isA11yEnabled() }.getOrNull()
         val remoteConnected = runCatching { remote.isA11yConnected() }.getOrNull()
@@ -738,16 +790,4 @@ object ProviderManager {
         return steps
     }
 
-    /** 版本比较：按 '.' 分段，缺省段补 0；非数字段按 0 处理 */
-    private fun compareVersion(a: String, b: String): Int {
-        val pa = a.split('.').map { it.toIntOrNull() ?: 0 }
-        val pb = b.split('.').map { it.toIntOrNull() ?: 0 }
-        val size = maxOf(pa.size, pb.size)
-        for (i in 0 until size) {
-            val x = pa.getOrElse(i) { 0 }
-            val y = pb.getOrElse(i) { 0 }
-            if (x != y) return x.compareTo(y)
-        }
-        return 0
-    }
 }
