@@ -115,7 +115,7 @@ fun HomeScreen(
         floating = { scrollState.value > 8 },
         header = {
             AppTopBar(
-                title = "手机智能体",
+                title = "Happy Agent",
                 subtitle = "AI 接管手机，替你把任务做完",
                 leadingContent = { BrandTile() },
             )

@@ -39,8 +39,8 @@ object MainTabs {
     val all = listOf(
         MainTabSpec(HOME, "主页", AppIcons.Home),
         MainTabSpec(CHAT, "对话", AppIcons.Send),
-        // 该工作台的正式名称统一使用 Coding。
-        MainTabSpec(CODING, "Coding", AppIcons.Code),
+        // Tab 标签统一用中文：五个入口并排时中英混排会让「Coding」单独跳出来
+        MainTabSpec(CODING, "编码", AppIcons.Code),
         MainTabSpec(AGENT, "操控", AppIcons.Bolt),
         MainTabSpec(MEMORY, "记忆", AppIcons.Memory),
         MainTabSpec(SETTINGS, "设置", AppIcons.Settings),
@@ -78,7 +78,7 @@ object MainTabs {
                 unified && id in mergedIntoAgent -> null
                 // 可见性兜底：钉住的 Tab 强制在场
                 id !in pinned && id !in visibleSet -> null
-                unified && id == AGENT -> spec.copy(title = "Agent")
+                unified && id == AGENT -> spec.copy(title = "助手")
                 else -> spec
             }
         }
