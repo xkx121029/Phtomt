@@ -158,8 +158,8 @@ object A11yEndpoints {
     // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
     @Suppress("MaxLineLength")
     val all: List<A11yEndpoint> = listOf(
-        A11yEndpoint("click", listOf("x", "y"), emptyList(), "按像素坐标点击", "tap at pixel coordinates"),
-        A11yEndpoint("long_click", listOf("x", "y"), emptyList(), "按像素坐标长按", "long-press at pixel coordinates"),
+        A11yEndpoint("click", listOf("x", "y"), emptyList(), "按 0~1 比例坐标点击（x 横向、y 纵向，与 target 的 coordinate 同口径）", "tap at ratio coordinates (x/y in 0..1, same convention as target coordinate)"),
+        A11yEndpoint("long_click", listOf("x", "y"), emptyList(), "按 0~1 比例坐标长按（x 横向、y 纵向）", "long-press at ratio coordinates (x/y in 0..1)"),
         A11yEndpoint(
             "click_node", listOf("target"), listOf("long_click"),
             "直点活节点控件（免坐标，优先用它）；target 写「id:资源名」或直接写控件文字",

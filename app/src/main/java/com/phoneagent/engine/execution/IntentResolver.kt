@@ -258,6 +258,21 @@ internal fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
  *
  * 上界取 `dim - 1`：像素索引最后一个是 dim-1，dim 本身已经在屏幕外（旧实现在这里产出屏外 1px 的点）。
  */
+/**
+ * `intent=a11y` 端点（`click` / `long_click`）的落点：x、y 是两个**独立参数**，同样只认 0~1 比例。
+ *
+ * 不另写一份实现是有原因的：端点这边原来把 x/y 当像素直接下发，而 `target{method:coordinate}`
+ * 是比例——同一个系统里两套坐标口径，正是「比例 1.0 被当成 1 像素」那个 bug 的成因。
+ * 现在两条入口都走 [coordinateToPixel]，语义只在一处定义。
+ *
+ * @return 落点像素；null = 任一值不是 0~1 比例（参数缺失由调用方先判，好给出更准确的提示）
+ */
+internal fun endpointPoint(x: String, y: String, w: Int, h: Int): Pair<Int, Int>? {
+    val px = coordinateToPixel(x, w) ?: return null
+    val py = coordinateToPixel(y, h) ?: return null
+    return px to py
+}
+
 internal fun coordinateToPixel(raw: String, dim: Int): Int? {
     if (dim <= 0) return null
     val f = raw.trim().toFloatOrNull() ?: return null

@@ -128,6 +128,33 @@ class IntentResolverTest {
         assertNull(r.y)
     }
 
+    // ---- a11y 端点（intent=a11y 的 click / long_click）：与 target 的 coordinate 同一套比例口径 ----
+    // 端点这边原来把 x/y 当像素直接下发，而 target{method:coordinate} 是比例——两套口径并存，
+    // 正是「比例 1.0 被当成 1 像素」那个 bug 的成因。现在两条入口共用 coordinateToPixel。
+
+    @Test
+    fun 端点坐标_比例映射到像素() {
+        assertEquals(540 to 2399, endpointPoint("0.5", "1.0", 1080, 2400))
+        assertEquals(540 to 1200, endpointPoint("0.5", "0.5", 1080, 2400))
+        assertEquals(0 to 0, endpointPoint("0.0", "0.0", 1080, 2400))
+    }
+
+    @Test
+    fun 端点坐标_与target的coordinate同口径() {
+        assertEquals(
+            parseCoordinate("0.5,1.0", 1080, 2400),
+            endpointPoint("0.5", "1.0", 1080, 2400),
+        )
+    }
+
+    @Test
+    fun 端点坐标_像素写法被拒绝() {
+        // 端点上「点屏幕中部」曾经写成 x=540,y=1200；现在必须写 0.5/0.5，像素值一律拒绝
+        assertNull(endpointPoint("540", "1200", 1080, 2400))
+        assertNull(endpointPoint("0.5", "-0.1", 1080, 2400))
+        assertNull(endpointPoint("1.5", "0.5", 1080, 2400))
+    }
+
     @Test
     fun byHint_直接使用视觉坐标() {
         // hint 语义：由调用方决策阶段已用视觉模型算出坐标，元素树内容不作为依据
