@@ -157,6 +157,14 @@ internal class ExecutionCore(
             }
         }
 
+        // 输入框的"空内容"不算一次输入：ACTION_SET_TEXT("") 会把输入框整段覆写为空，
+        // 用户已写好的内容被抹掉，回执却是「已向输入框填充文本」。这条与通道无关，
+        // 所以在任何通道判定之前就拒掉——转译层已拦缺 text，这里兜住引导/回退路径。
+        if (type == ActionType.TYPE_TEXT && action.text.isNullOrBlank()) {
+            return VerifyResult(false, "输入内容为空：未下发输入动作（不会把输入框整段覆写为空）。要清空输入框请用 clear_input", "", "")
+                .also { recordExecMs((System.nanoTime() - execT0) / 1_000_000) }
+        }
+
         // 等待类动作不依赖任何通道：放在无障碍判定之前，避免"服务临时断开"把纯等待也判失败
         if (type == ActionType.WAIT) {
             delay(action.timeoutMs ?: action.durationMs ?: 1000)
