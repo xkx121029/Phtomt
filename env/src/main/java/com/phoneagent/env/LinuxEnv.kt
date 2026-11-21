@@ -507,16 +507,19 @@ class LinuxEnv(private val ctx: Context) {
         return false
     }
 
-    /** 解归档到临时目录再整体就位，中途失败不会破坏上一次可用的环境。 */
+    /**
+     * 解归档到临时目录再整体就位，中途失败不会破坏上一次可用的环境。
+     * 换入语义见 [InstallSwap]：旧 rootfs 先改名让位，失败则原样挪回。
+     */
     fun extractRootfs() {
         val staging = File(home, "rootfs.staging")
         deleteRecursive(staging)
-        staging.mkdirs()
+        if (!staging.mkdirs()) throw IllegalStateException("无法创建临时目录：${staging.absolutePath}")
         openArchive(archive).use { input -> untar(input, staging) }
-        deleteRecursive(rootfs)
-        if (!staging.renameTo(rootfs)) {
+        val failure = InstallSwap.replace(staging, rootfs)
+        if (failure != null) {
             deleteRecursive(staging)
-            throw IllegalStateException("根文件系统无法就位")
+            throw IllegalStateException(failure)
         }
     }
 

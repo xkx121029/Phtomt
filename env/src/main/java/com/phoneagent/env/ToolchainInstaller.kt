@@ -358,9 +358,19 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
                 ),
             ) ?: return "glibc 运行库下载失败（官方源可能已下架 $GLIBC_FILE，见上一条日志）"
             log("解压 x86_64 glibc 运行库…")
-            val failure = runCatching { env.extractArchive(archive, env.guestFile(GLIBC)) }
-                .exceptionOrNull()
-            if (failure != null) return "glibc 解压失败：${failure.message}"
+            val staging = env.guestFile("$GLIBC.staging")
+            env.deleteRecursive(staging)
+            staging.mkdirs()
+            val unpacked = runCatching { env.extractArchive(archive, staging) }.exceptionOrNull()
+            if (unpacked != null) {
+                env.deleteRecursive(staging)
+                return "glibc 解压失败：${unpacked.message}"
+            }
+            val moved = InstallSwap.replace(staging, env.guestFile(GLIBC))
+            if (moved != null) {
+                env.deleteRecursive(staging)
+                return "glibc 无法就位：$moved"
+            }
         }
 
         // 包装脚本：固定指向本次安装的 build-tools 里那份 aapt2
@@ -552,7 +562,12 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         is Expected.Sidecar -> "官方 sidecar ${expected.url}"
     }
 
-    /** 把归档解开并抹掉顶层单目录（JDK / Gradle / cmdline-tools 都是这种布局）。 */
+    /**
+     * 把归档解开并抹掉顶层单目录（JDK / Gradle / cmdline-tools 都是这种布局）。
+     *
+     * 先解到 `*.staging`，再经 [InstallSwap] 换入：以前是先删旧目录再解包，
+     * 解到一半被打断就把**已经装好的**工具链一起带走了。
+     */
     private fun extractFlatten(
         source: File,
         guestDest: String,
@@ -561,31 +576,22 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         val dest = env.guestFile(guestDest)
         val staging = env.guestFile("$guestDest.staging")
         env.deleteRecursive(staging)
-        env.deleteRecursive(dest)
-        staging.mkdirs()
+        if (!staging.mkdirs()) return "无法创建临时目录：${staging.absolutePath}"
+
         val failed = runCatching { extract(source, staging) }.exceptionOrNull()
         if (failed != null) {
             env.deleteRecursive(staging)
             return "解压失败：${failed.message}"
         }
         val children = staging.listFiles()?.sortedBy { it.name }.orEmpty()
-        val onlyDir = children.singleOrNull()?.takeIf { it.isDirectory }
-        if (onlyDir != null) {
-            if (!onlyDir.renameTo(dest)) {
-                env.deleteRecursive(staging)
-                return "目录无法就位"
-            }
-        } else {
-            dest.mkdirs()
-            for (child in children) {
-                if (!child.renameTo(File(dest, child.name))) {
-                    env.deleteRecursive(staging)
-                    return "目录无法就位"
-                }
-            }
+        if (children.isEmpty()) {
+            env.deleteRecursive(staging)
+            return "归档里没有任何文件（下到的可能是错误页）"
         }
+        val content = children.singleOrNull()?.takeIf { it.isDirectory } ?: staging
+        val failure = InstallSwap.replace(content, dest)
         env.deleteRecursive(staging)
-        return null
+        return failure
     }
 
     private fun unzipOrThrow(zip: File, dest: File) {
