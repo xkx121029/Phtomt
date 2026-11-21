@@ -7,6 +7,7 @@ import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.AgentLog
+import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
@@ -62,6 +63,8 @@ class ExecutionPhaseTest {
         var browses = 0
         var translates = 0
         var executes = 0
+        /** 确认门被问了几次：断言「危险点击必须过门」/「普通点击不许过门」都用它 */
+        var confirmations = 0
         var anomalyUses = 0
         var learnedSolutions = 0
         var state = AgentState()
@@ -137,7 +140,10 @@ class ExecutionPhaseTest {
                 },
                 reobserve = { reobserved },
                 ensureShellApproval = { shellApproved },
-                awaitActionConfirmation = { confirmation },
+                awaitActionConfirmation = {
+                    f.confirmations++
+                    confirmation
+                },
                 handleRemember = { _, _, _ -> f.remembered++ },
                 handleDeviceQuery = { _, _, _ -> f.deviceQueried++ },
                 handleSay = { _, _ -> f.said++ },
@@ -392,6 +398,45 @@ class ExecutionPhaseTest {
         assertEquals(StepOutcome.Continue, outcome)
         assertEquals(0, fixture.f.executes)
         assertEquals(1, fixture.f.histories)
+    }
+
+    @Test
+    fun `危险词点击即使没有语义标记也要过确认门`() = runTest {
+        // 绕过路径：模型不用 intent=delete，改用最通用的 tap + 目标文字「删除」。
+        // 这条路上没有任何意图标记（needsUserConfirmation 默认 false），
+        // 若确认门只信意图，删除会直接点下去。
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(
+                    type = ActionType.TAP,
+                    target = ActionTarget(method = "label", value = "删除"),
+                ),
+            ),
+            confirmation = false,
+        )
+        val s = session(AgentIntent(intent = IntentType.TAP))
+        val outcome = fixture.phase.run(s)
+        assertEquals(StepOutcome.Continue, outcome)
+        assertEquals(1, fixture.f.confirmations)
+        // 用户拒绝 → 不许执行，且要留档跳过
+        assertEquals(0, fixture.f.executes)
+        assertEquals(1, fixture.f.histories)
+    }
+
+    @Test
+    fun `普通点击不被危险词误伤`() = runTest {
+        val fixture = Fixture(
+            translation = IntentTranslator.TranslationResult.Command(
+                AgentAction(
+                    type = ActionType.TAP,
+                    target = ActionTarget(method = "label", value = "设置"),
+                ),
+            ),
+        )
+        val s = session(AgentIntent(intent = IntentType.TAP))
+        fixture.phase.run(s)
+        assertEquals(0, fixture.f.confirmations)
+        assertEquals(1, fixture.f.executes)
     }
 
     @Test
