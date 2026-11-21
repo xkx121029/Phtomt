@@ -155,6 +155,8 @@ internal class FeedbackReporter(private val context: Context) {
                 put("overBudgetSteps", metrics.overBudgetSteps.coerceIn(0, MAX_COUNT))
                 put("notDelivered", metrics.notDeliveredCount.coerceIn(0, MAX_COUNT))
                 put("noEffect", metrics.noEffectCount.coerceIn(0, MAX_COUNT))
+                // 「读不到页面」也要能单独看到：否则没法判断验证链路的证据缺失在变好还是变坏
+                put("unconfirmed", metrics.unconfirmedCount.coerceIn(0, MAX_COUNT))
             }
         }
     }

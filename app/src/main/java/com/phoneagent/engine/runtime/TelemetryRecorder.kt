@@ -113,6 +113,10 @@ internal class TelemetryRecorder(
      *
      * 「没送达」与「送达了但没生效」对应两种完全不同的修法（换通道 / 换策略），
      * 合成一个"失败数"就再也分不出来。成功步已有 totalSteps/execCount 覆盖，不重复记。
+     *
+     * 「已交付未确认」也有自己的桶（[EngineMetrics.unconfirmedCount]）：它连页面都没读到，
+     * 折进上面任何一桶都会让那两个数字失去意义；而看不到它，就无法判断
+     * 「读不到页面」这条路径在真机上是在变好还是变坏。
      */
     fun recordDelivery(delivery: com.phoneagent.engine.execution.Delivery) {
         val prev = store.metrics.value
@@ -121,10 +125,8 @@ internal class TelemetryRecorder(
                 prev.copy(notDeliveredCount = prev.notDeliveredCount + 1)
             com.phoneagent.engine.execution.Delivery.DELIVERED_NO_EFFECT ->
                 prev.copy(noEffectCount = prev.noEffectCount + 1)
-            // 「已交付未确认」既不是没送达，也不是已验证的无效果：它连页面都没读到。
-            // 现有埋点里没有它的位置，折进上面任何一桶都会让这两个数字失去意义；
-            // 等有消费方（例如"读不到页面占比"看板）再加独立计数器。
-            com.phoneagent.engine.execution.Delivery.DELIVERED_UNCONFIRMED -> prev
+            com.phoneagent.engine.execution.Delivery.DELIVERED_UNCONFIRMED ->
+                prev.copy(unconfirmedCount = prev.unconfirmedCount + 1)
             com.phoneagent.engine.execution.Delivery.EFFECTIVE -> prev
         }
         store.metrics.value = next
