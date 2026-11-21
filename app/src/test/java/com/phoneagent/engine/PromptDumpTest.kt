@@ -2,6 +2,8 @@ package com.phoneagent.engine
 
 import com.phoneagent.engine.execution.ActionMode
 import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -15,8 +17,10 @@ import org.junit.Test
  * - `<id>.txt`：提示词正文
  * - `manifest.json`：id / group / lang / role / withSystem / chars / note
  *
- * 本类只做导出，不做断言：与提示词文案解耦，改文案不会让它失败
- * （文案正确性由 PromptSnapshotTest 的金样本负责）。
+ * 本类**不**断言提示词文案（那是 `PromptSnapshotTest` 金样本的职责，改文案不该让它红），
+ * 但断言**审计语料本身是完整的**（[assertCorpusComplete]）：分组齐全、CN/EN 成对、
+ * 每种动作模式都在、决策条目带页面段、场景附加指导不空。少导出任何一块，外部审计都会
+ * 静默少审一大片，而这是之前真实发生过的事（EN 侧场景词表缺项 → 导出空串 → 三条被跳过）。
  */
 class PromptDumpTest {
 
@@ -34,6 +38,7 @@ class PromptDumpTest {
     @Test
     fun `导出全部入口点提示词供真实模型审计`() {
         val dumps = buildList { collect(this) }
+        assertCorpusComplete(dumps)
         val dir = File("build/prompt_dump")
         dir.deleteRecursively()
         dir.mkdirs()
@@ -51,6 +56,72 @@ class PromptDumpTest {
         }
         File(dir, "manifest.json").writeText(manifest, Charsets.UTF_8)
         println("已导出 ${dumps.size} 份提示词到 ${dir.absolutePath}")
+    }
+
+    // ==================== 语料完整性断言 ====================
+
+    /**
+     * 审计语料的完整性：本类唯一被允许失败的形态。
+     *
+     * 这些断言不碰文案一个字，只钉"送去审计的样本齐不齐"：
+     * 漏一门语言、漏一种动作模式、决策条目没带页面段、场景附加指导是空串——
+     * 每一条都等于让外部模型审计少审一块，且**不会报错**，只会让审计结论看起来一片大好。
+     */
+    private fun assertCorpusComplete(dumps: List<Dump>) {
+        assertTrue("没有导出任何提示词，审计脚本会审空气", dumps.isNotEmpty())
+
+        val ids = dumps.map { it.id }
+        assertEquals(
+            "导出 id 必须唯一，否则同名文件互相覆盖、审计少一条：${ids.groupBy { it }.filterValues { it.size > 1 }.keys}",
+            ids.size,
+            ids.toSet().size,
+        )
+
+        // 11 个分组都在场：任一组漏掉就是一整块提示词没被审过
+        val expectedGroups = setOf(
+            "SYSTEM", "ACTION_MODE", "CAPABILITIES", "SKILLS", "PLANNING", "DECISION",
+            "REVIEW", "DISTILL", "ENVIRONMENT", "SESSION", "SITUATIONAL",
+        )
+        assertEquals("有分组没有导出", expectedGroups, dumps.map { it.group }.toSet())
+
+        // CN / EN 成对（SKILLS 组刻意不对称：cn.none 用来导空串边界样本）
+        val idSet = ids.toSet()
+        dumps.filter { it.id.split('.').getOrNull(1) == "cn" && !it.id.startsWith("skills.") }
+            .forEach { cn ->
+                val en = cn.id.replaceFirst(".cn.", ".en.")
+                assertTrue("中文条目 ${cn.id} 没有对应的英文条目 $en，审计只覆盖半边", en in idSet)
+            }
+
+        // 每种动作模式 × 每种语言都有条目：ActionMode 新增一档而忘了导出，审计就看不到它的授权范围
+        val modeIds = ids.toSet()
+        listOf(PromptLang.CN, PromptLang.EN).forEach { lang ->
+            ActionMode.entries.forEach { mode ->
+                val id = "mode.${lang.name.lowercase()}.${mode.key}"
+                assertTrue("动作模式 ${mode.key}（${lang.name}）没有导出", id in modeIds)
+            }
+        }
+
+        // 决策条目必须带页面段：缺了页面，模型会把「步骤说在搜索框输入、页面却是详情页」报成真缺陷
+        dumps.filter { it.group == "DECISION" }.forEach { d ->
+            assertTrue("决策样本 ${d.id} 缺当前页面段，会引出一串假缺陷", d.text.contains("当前页面"))
+        }
+
+        // 场景附加指导必须非空：EN 侧词表缺项时这里曾静默导出空串，三条样本被审计跳过
+        dumps.filter { it.group == "SITUATIONAL" }.forEach { d ->
+            assertTrue("场景附加指导 ${d.id} 是空串，词表在该语言下没有命中", d.text.isNotBlank())
+        }
+
+        // 任务文本未知时必须保留最大体量（两块都保留）：比"有任务文本"的样本更长
+        listOf(PromptLang.CN, PromptLang.EN).forEach { lang ->
+            val tag = lang.name.lowercase()
+            val unknown = dumps.first { it.id == "sys.$tag.unknown_task" }
+            val generic = dumps.first { it.id == "sys.$tag.balanced.generic" }
+            assertTrue(
+                "任务文本未知时没保留最大体量（${unknown.id}=${unknown.text.length} 字符，" +
+                    "对比 ${generic.id}=${generic.text.length} 字符）",
+                unknown.text.length > generic.text.length,
+            )
+        }
     }
 
     // ==================== 素材 ====================
