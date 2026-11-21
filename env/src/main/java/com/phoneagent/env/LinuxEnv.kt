@@ -9,8 +9,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.TimeUnit
 import java.util.zip.GZIPInputStream
 
@@ -54,13 +52,17 @@ class LinuxEnv(private val ctx: Context) {
          * Alpine minirootfs（aarch64）下载源。
          *
          * 两个镜像轮流试：官方 CDN 在国内常被限速，阿里云镜像缺文件时再回落官方。
-         * 版本与 [version.txt] 里记录的 alpine-3.24 对齐。
+         * 两个源**发布的是同一份文件**（实测两边 .sha256 一致），所以钉一个摘要就能同时校验它们。
          */
+        private const val ROOTFS_FILE = "alpine-minirootfs-3.24.2-aarch64.tar.gz"
+
+        /** 来自 Alpine 官方发布的 .sha256（阿里云镜像给出同一值） */
+        private const val ROOTFS_SHA256 =
+            "9bf70a7f18ea44094cbb5f70c58f9af129c8214745743db0e68e5502cc2ce773"
+
         private val ROOTFS_URLS = listOf(
-            "https://mirrors.aliyun.com/alpine/v3.24/releases/aarch64/" +
-                "alpine-minirootfs-3.24.2-aarch64.tar.gz",
-            "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/" +
-                "alpine-minirootfs-3.24.2-aarch64.tar.gz",
+            "https://mirrors.aliyun.com/alpine/v3.24/releases/aarch64/$ROOTFS_FILE",
+            "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/aarch64/$ROOTFS_FILE",
         )
 
         private const val MARKER = ".installed"
@@ -436,7 +438,8 @@ class LinuxEnv(private val ctx: Context) {
 
     /**
      * 准备根文件系统归档：优先用随包资产，否则从镜像下载。
-     * 已有可用归档（上次下载完成但装配失败）时直接复用，不重复下载。
+     * 已有可用归档（上次下载完成但装配失败）时直接复用，**但必须重新校验摘要**：
+     * 坏归档留在这里会被「复用」跳过下载，环境就再也装不上了。
      */
     private fun ensureArchive(
         onProgress: (String) -> Unit,
@@ -444,8 +447,11 @@ class LinuxEnv(private val ctx: Context) {
         isCancelled: () -> Boolean,
     ): Boolean {
         if (archive.isFile && archive.length() >= MIN_ROOTFS_BYTES) {
-            onLog("复用已下载的根文件系统归档（${archive.length() / 1024 / 1024} MB）")
-            return true
+            if (verifyOrDiscard(archive, SHA256, ROOTFS_SHA256)) {
+                onLog("复用已下载的根文件系统归档（${archive.length() / 1024 / 1024} MB，摘要校验通过）")
+                return true
+            }
+            onLog("根文件系统归档摘要不符，已删除并重新下载")
         }
         for (asset in ROOTFS_ASSETS) {
             val available = runCatching { ctx.assets.open(asset).close() }.isSuccess
@@ -463,49 +469,41 @@ class LinuxEnv(private val ctx: Context) {
         for (url in ROOTFS_URLS) {
             if (isCancelled()) return false
             onLog("下载 Alpine 根文件系统：$url")
-            val temp = File(home, "rootfs.tar.gz.part")
-            temp.delete()
-            try {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20_000
-                    readTimeout = 60_000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "happy-phone-env/1.0")
-                }
-                val total = conn.contentLengthLong
-                conn.inputStream.use { input ->
-                    FileOutputStream(temp).use { out ->
-                        val buffer = ByteArray(COPY_BUFFER)
-                        var copied = 0L
-                        var lastReport = 0L
-                        while (true) {
-                            if (isCancelled()) {
-                                temp.delete()
-                                return false
-                            }
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            out.write(buffer, 0, read)
-                            copied += read
-                            if (copied - lastReport >= 1 shl 20) {
-                                lastReport = copied
-                                val mb = copied / 1024 / 1024
-                                val text = if (total > 0) "$mb / ${total / 1024 / 1024} MB" else "$mb MB"
-                                onLog("根文件系统已下载 $text")
-                            }
-                        }
+            val failure = Fetch.toFile(
+                url = url,
+                target = archive,
+                onProgress = { copied, total ->
+                    val text = if (total > 0) {
+                        "${copied / 1024 / 1024} / ${total / 1024 / 1024} MB"
+                    } else {
+                        "${copied / 1024 / 1024} MB"
                     }
-                }
-                conn.disconnect()
-                if (temp.length() < MIN_ROOTFS_BYTES) throw IllegalStateException("下载内容不完整")
-                archive.delete()
-                if (!temp.renameTo(archive)) throw IllegalStateException("归档无法就位")
-                return true
-            } catch (t: Throwable) {
-                onLog("镜像不可用（${t.javaClass.simpleName}）：${t.message}")
-                temp.delete()
+                    onLog("根文件系统已下载 $text")
+                },
+                isCancelled = isCancelled,
+            )
+            if (failure != null) {
+                onLog("镜像不可用（$failure）：$url")
+                continue
             }
+            if (archive.length() < MIN_ROOTFS_BYTES) {
+                onLog("下载内容不完整（${archive.length() / 1024} KB），丢弃后换下一个源")
+                archive.delete()
+                continue
+            }
+            val actual = runCatching { Digest.hexOf(archive, SHA256) }.getOrNull()
+            if (actual == null || !Digest.matches(ROOTFS_SHA256, actual)) {
+                onLog(
+                    "根文件系统摘要与官方值不符" +
+                        "（期望 ${ROOTFS_SHA256.take(12)}…，实际 ${actual?.take(12) ?: "计算失败"}…），已删除该文件",
+                )
+                archive.delete()
+                continue
+            }
+            onLog("根文件系统 $SHA256 校验通过")
+            return true
         }
+        onLog("Alpine 源全部失败：官方可能已下架 $ROOTFS_FILE，请更新代码里的 URL 或换镜像")
         return false
     }
 

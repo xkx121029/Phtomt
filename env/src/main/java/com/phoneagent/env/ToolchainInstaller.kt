@@ -5,13 +5,12 @@ import android.util.Log
 import com.phoneagent.env.EnvApi.STEP_FAIL
 import com.phoneagent.env.EnvApi.STEP_OK
 import com.phoneagent.env.EnvApi.STEP_START
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
@@ -48,17 +47,33 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         private const val DOWNLOAD_CHUNK = 256 * 1024
         private const val LOG_LIMIT = 200_000
 
-        /** Adoptium 官方 JDK 17（aarch64），返回 tar.gz */
-        private val JDK_URLS = listOf(
-            "https://api.adoptium.net/v3/binary/latest/17/ga/linux/aarch64/jdk/" +
-                "hotspot/normal/eclipse",
-        )
+        /**
+         * Adoptium 发布接口（aarch64 JDK 17）。
+         *
+         * 它在同一份 JSON 里给出真实下载链接与官方 sha256。JDK 的构建号每个月都在变，
+         * 把文件名钉死再去猜 sidecar 并不可靠；而 `binary/latest/...` 那种重定向本身不带摘要，
+         * 没法验证下到的到底是不是 Adoptium 发的那一份。
+         */
+        private const val ADOPTIUM_ASSETS =
+            "https://api.adoptium.net/v3/assets/latest/17/hotspot" +
+                "?architecture=aarch64&os=linux&image_type=jdk&vendor=eclipse"
 
         /** Gradle 发行版（版本号占位替换） */
         private fun gradleUrl(version: String) =
             "https://services.gradle.org/distributions/gradle-$version-bin.zip"
 
-        /** Android cmdline-tools（sdkmanager 是 Java 程序，跨架构可用） */
+        /**
+         * Android cmdline-tools（sdkmanager 是 Java 程序，跨架构可用）。
+         *
+         * Google 不为单个 zip 提供 sidecar，官方摘要写在 repository2-3.xml 的
+         * `<archive><complete><checksum type="sha1">` 里，下面钉的就是那个值。
+         *
+         * **只能是 SHA-1**：这份清单本身就只有 SHA-1。它弱于 SHA-256 的地方是碰撞成本——
+         * SHA-1 的实用碰撞攻击已有公开实例，能防传输损坏与镜像替换，防不住有算力的攻击者
+         * 构造一份同摘要的恶意包。要升级得等 Google 在清单里给出 SHA-256。
+         */
+        private const val CMDLINE_TOOLS_SHA1 = "d313adb7aedccf6cf0cfca51ec180f0059f5f8f8"
+
         private val CMDLINE_TOOLS_URLS = listOf(
             "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip",
             "https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip",
@@ -199,9 +214,39 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("JDK 17 已安装，跳过")
             return null
         }
-        val archive = download(JDK_URLS, "jdk17-aarch64.tar.gz", "JDK 17") ?: return "下载失败（网络不可达？）"
+        val artifact = jdkArtifact()
+            ?: return "拿不到 Adoptium 的官方下载信息（api.adoptium.net 不可达或格式变了），拒绝安装未校验的 JDK"
+        val archive = download(artifact) ?: return "JDK 17 下载失败（见上一条日志）"
         log("解压 JDK 17…")
         return extractFlatten(archive, JDK) { source, dest -> env.extractArchive(source, dest) }
+    }
+
+    /** 从 Adoptium 发布 JSON 里取「真实链接 + 官方 sha256」；缺任何一项就返回 null */
+    private fun jdkArtifact(): Artifact? {
+        val raw = Fetch.text(ADOPTIUM_ASSETS) ?: run {
+            log("JDK 17：api.adoptium.net 取不到发布信息")
+            return null
+        }
+        val pkg = runCatching {
+            JSONArray(raw).getJSONObject(0).getJSONObject("binary").getJSONObject("package")
+        }.getOrNull() ?: run {
+            log("JDK 17：Adoptium 返回的 JSON 里没有 binary.package")
+            return null
+        }
+        val link = pkg.optString("link")
+        val checksum = pkg.optString("checksum")
+        if (link.isEmpty() || checksum.isEmpty()) {
+            log("JDK 17：Adoptium 发布信息缺少下载链接或摘要")
+            return null
+        }
+        return Artifact(
+            label = "JDK 17",
+            fileName = "jdk17-aarch64.tar.gz",
+            urls = listOf(link),
+            expected = Expected.Fixed(SHA256, checksum),
+            // 真实产物约 190 MB，低于 50 MB 必然不是 JDK
+            minBytes = 50L * 1024 * 1024,
+        )
     }
 
     // ------------------------------------------------------------ Gradle
@@ -212,8 +257,16 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("Gradle $wanted 已安装，跳过")
             return null
         }
-        val archive = download(listOf(gradleUrl(wanted)), "gradle-$wanted-bin.zip", "Gradle $wanted")
-            ?: return "下载失败（版本号 $wanted 是否正确？）"
+        val url = gradleUrl(wanted)
+        val archive = download(
+            Artifact(
+                label = "Gradle $wanted",
+                fileName = "gradle-$wanted-bin.zip",
+                urls = listOf(url),
+                // Gradle 版本是运行时从工程读的，无法预钉摘要，只能读官方 sidecar
+                expected = Expected.Sidecar(SHA256, "$url.sha256"),
+            ),
+        ) ?: return "Gradle $wanted 下载失败（版本号 $wanted 是否正确？见上一条日志）"
         log("解压 Gradle $wanted…")
         val failure = extractFlatten(archive, GRADLE) { source, dest -> unzipOrThrow(source, dest) }
         if (failure == null) env.writeGuestFile("$OPT/.gradle-version", wanted, LinuxEnv.MODE_FILE)
@@ -232,8 +285,15 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("cmdline-tools 已安装，跳过")
             return null
         }
-        val archive = download(CMDLINE_TOOLS_URLS, "commandlinetools-linux.zip", "Android cmdline-tools")
-            ?: return "下载失败（dl.google.com 不可达？）"
+        val archive = download(
+            Artifact(
+                label = "Android cmdline-tools",
+                fileName = "commandlinetools-linux.zip",
+                urls = CMDLINE_TOOLS_URLS,
+                expected = Expected.Fixed(SHA1, CMDLINE_TOOLS_SHA1),
+                minBytes = 100L * 1024 * 1024,
+            ),
+        ) ?: return "cmdline-tools 下载失败（dl.google.com 不可达，或包已被 Google 替换，见日志）"
         log("解压 cmdline-tools…")
         return extractFlatten(archive, "$SDK/cmdline-tools/latest") { source, dest ->
             unzipOrThrow(source, dest)
@@ -261,7 +321,16 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             extraEnv = javaEnv(),
             onLine = { if (it.isNotBlank()) log(it) },
         )
-        return if (result.ok) null else "sdkmanager 退出码 ${result.code}（日志末行见上）"
+        if (!result.ok) return "sdkmanager 退出码 ${result.code}（日志末行见上）"
+
+        // sdkmanager 由它自己按 repository2-3.xml 里的 checksum 校验归档，我们拿不到独立摘要，
+        // 所以这里补一道结构断言：报成功但关键文件不在，等同于装了个坏包。
+        val missing = buildList {
+            if (!env.guestExists("$platform/android.jar")) add("platforms/android-${req.compileSdk}/android.jar")
+            if (!env.guestExists("$buildTools/aapt2")) add("build-tools/${req.buildTools}/aapt2")
+            if (!env.guestExists("$buildTools/d8")) add("build-tools/${req.buildTools}/d8")
+        }
+        return if (missing.isEmpty()) null else "sdkmanager 报成功但产物缺失：${missing.joinToString("、")}"
     }
 
     // ------------------------------------------------------------ aapt2
@@ -481,67 +550,6 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private fun describe(expected: Expected): String = when (expected) {
         is Expected.Fixed -> "代码里钉住的 ${expected.algorithm}"
         is Expected.Sidecar -> "官方 sidecar ${expected.url}"
-    }
-    /**
-     * 依次尝试 [urls]，成功返回落盘文件；全部失败返回 null。
-     * 已有同名缓存（体积可信）时直接复用，避免重复下 100 MB 级归档。
-     */
-    private fun download(urls: List<String>, fileName: String, label: String): File? {
-        val dir = File(ctx.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
-        val target = File(dir, fileName)
-        if (target.isFile && target.length() >= MIN_ARCHIVE_BYTES) {
-            log("$label：复用本地缓存（${target.length() / 1024 / 1024} MB）")
-            return target
-        }
-        for (url in urls) {
-            if (cancelled.invoke()) return null
-            log("$label：下载 $url")
-            val temp = File(dir, "$fileName.part").apply { delete() }
-            try {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20_000
-                    readTimeout = 60_000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "happy-phone-env/1.0")
-                }
-                val total = conn.contentLengthLong
-                conn.inputStream.use { input ->
-                    FileOutputStream(temp).use { out ->
-                        val buffer = ByteArray(DOWNLOAD_CHUNK)
-                        var copied = 0L
-                        var lastReport = 0L
-                        while (true) {
-                            if (cancelled.invoke()) {
-                                temp.delete()
-                                return null
-                            }
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            out.write(buffer, 0, read)
-                            copied += read
-                            if (copied - lastReport >= (1 shl 20)) {
-                                lastReport = copied
-                                val text = if (total > 0) {
-                                    "${copied / 1024 / 1024} / ${total / 1024 / 1024} MB"
-                                } else {
-                                    "${copied / 1024 / 1024} MB"
-                                }
-                                log("$label 已下载 $text")
-                            }
-                        }
-                    }
-                }
-                conn.disconnect()
-                if (temp.length() < MIN_ARCHIVE_BYTES) throw IOException("下载内容不完整")
-                target.delete()
-                if (!temp.renameTo(target)) throw IOException("归档无法就位")
-                return target
-            } catch (t: Throwable) {
-                log("$label 下载失败（${t.javaClass.simpleName}）：${t.message}")
-                temp.delete()
-            }
-        }
-        return null
     }
 
     /** 把归档解开并抹掉顶层单目录（JDK / Gradle / cmdline-tools 都是这种布局）。 */
