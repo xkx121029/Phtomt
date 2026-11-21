@@ -145,8 +145,8 @@ internal fun controlStateOf(element: UiElement): String =
  * 执行前记录指纹 → 执行 → 短轮询取样 → 对比指纹。
  * 指纹变化 → 成功（一旦发现变化立即返回，不必等满整个观察窗）；不变 → 失败。
  *
- * 读不到页面时按"已执行但未确认"算成功：此时报失败会误触发"连续失败请求用户介入"，
- * 而下一步的观察本来就会给出真实结果。与 [ClickRunner] 同一口径。
+ * 读不到页面时按"已执行但未确认"回报（`success=false` + `unconfirmed=true`）：
+ * 报成功会让执行历史记 ✅、进度与检查点照存、失败计数清零；报失败又会诱导重放。与 [ClickRunner] 同一口径。
  */
 class VerifiedClickExecutor(
     private val resolver: IntentResolver = IntentResolver(),
@@ -171,7 +171,7 @@ class VerifiedClickExecutor(
         target: UiElement? = null,
         perform: suspend () -> Boolean,
     ): VerifyResult {
-        val before = PageFingerprint.computeMeaningful(snapshot)
+        val before = PageFingerprint.computeEffect(snapshot)
         val executed = perform()
         // 执行调用本身返回失败 = 动作没交付出去，允许上层换通道重试
         if (!executed) return VerifyResult(false, "动作执行返回失败", before, before, notDelivered = true)
@@ -185,7 +185,7 @@ class VerifiedClickExecutor(
             val afterSnapshot = runCatching { capture() }
                 .getOrNull()?.takeUnless { it.missingAccessibility } ?: break
             captured = true
-            after = PageFingerprint.computeMeaningful(afterSnapshot)
+            after = PageFingerprint.computeEffect(afterSnapshot)
             if (before != after) return VerifyResult(true, "页面已变化", before, after)
             // 指纹未变时的兜底：目标控件自身关键状态变化也算已生效。
             // 勾选/滑块/纯动画页不会改变整页指纹，只看指纹会把成功误判成失败——
@@ -210,7 +210,7 @@ class VerifiedClickExecutor(
         val lateSnapshot = runCatching { capture() }
             .getOrNull()?.takeUnless { it.missingAccessibility }
         if (lateSnapshot != null) {
-            val late = PageFingerprint.computeMeaningful(lateSnapshot)
+            val late = PageFingerprint.computeEffect(lateSnapshot)
             after = late
             if (before != late) return VerifyResult(true, "页面已变化（延迟生效）", before, late)
             if (target != null && targetStateChanged(target, lateSnapshot)) {
@@ -222,7 +222,8 @@ class VerifiedClickExecutor(
 
     /** 目标控件自身的关键状态（选中/值/文字/描述）在新快照里是否已经变化 */
     private fun targetStateChanged(target: UiElement, snapshot: ScreenSnapshot): Boolean {
-        val now = resolver.matchInFresh(target, snapshot) ?: return false
+        // 目标在新页面里找不到 = 它已经不在那一页上，这同样是变化；静默当成"没变"会把真实变化说成失败
+        val now = resolver.matchInFresh(target, snapshot) ?: return true
         return controlStateOf(target) != controlStateOf(now)
     }
 }
