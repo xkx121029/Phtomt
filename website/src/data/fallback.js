@@ -1,7 +1,7 @@
-/* 由 scripts/snapshot.mjs 生成于 2026-11-21T12:58:46.417Z，请勿手工编辑。
+/* 由 scripts/snapshot.mjs 生成于 2026-11-21T15:35:25.021Z，请勿手工编辑。
    静态导出（GitHub Pages）用这份快照替代后端 API。 */
 export const snapshot = {
-  "builtAt": "2026-11-21T12:58:46.417Z",
+  "builtAt": "2026-11-21T15:35:25.021Z",
   "static": true,
   "site": {
     "name": "Happy Phone Agent",
@@ -9,8 +9,8 @@ export const snapshot = {
     "slug": "phtomt",
     "tagline": "让手机自己动手",
     "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-    "version": "0.2.2000096",
-    "buildNumber": 2000096,
+    "version": "0.2.9197-beta",
+    "buildNumber": 9197,
     "updatedAt": "2026-11-21T02:51:15.129Z",
     "links": {
       "github": "https://github.com/xkx121029/Phtomt",
@@ -93,23 +93,24 @@ export const snapshot = {
       }
     ],
     "latest": {
-      "version": "v0.2.2000096",
-      "build": 2000096,
-      "channel": "dev",
+      "version": "v0.2.9197-beta",
+      "build": 9197,
+      "channel": "beta",
+      "channelResolved": true,
       "date": "2026-11-21",
+      "publishedAt": "2026-11-21T08:16:22Z",
       "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9197-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.2000096.apk",
-        "size": 71574637,
+        "file": "HappyAgent-0.2.9197-beta.apk",
+        "size": 71598145,
         "sizeText": "68 MB",
-        "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
-        "updatedAt": "2026-11-21T02:51:15.116Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9197-beta/HappyAgent-0.2.9197-beta.apk",
+        "updatedAt": "2026-11-21T08:16:21Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     "stats": {
@@ -323,150 +324,285 @@ export const snapshot = {
   ],
   "releases": [
     {
-      "version": "v0.2.2000096",
-      "build": 2000096,
-      "channel": "dev",
+      "version": "v0.2.9197-beta",
+      "build": 9197,
+      "channel": "beta",
+      "channelResolved": true,
       "date": "2026-11-21",
+      "publishedAt": "2026-11-21T08:16:22Z",
       "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9197-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.2000096.apk",
-        "size": 71574637,
+        "file": "HappyAgent-0.2.9197-beta.apk",
+        "size": 71598145,
         "sizeText": "68 MB",
-        "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
-        "updatedAt": "2026-11-21T02:51:15.116Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9197-beta/HappyAgent-0.2.9197-beta.apk",
+        "updatedAt": "2026-11-21T08:16:21Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.9214",
-      "build": 9214,
+      "version": "v0.2.9195-beta",
+      "build": 9195,
       "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-21",
+      "publishedAt": "2026-11-21T03:17:34Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9195-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9195-beta.apk",
+        "size": 71566741,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9195-beta/HappyAgent-0.2.9195-beta.apk",
+        "updatedAt": "2026-11-21T03:17:33Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000095-beta",
+      "build": 2000095,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-21",
+      "publishedAt": "2026-11-21T02:22:04Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000095-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000095-beta.apk",
+        "size": 71566757,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000095-beta/HappyAgent-0.2.2000095-beta.apk",
+        "updatedAt": "2026-11-21T02:22:03Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000093-beta",
+      "build": 2000093,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-21",
+      "publishedAt": "2026-11-21T02:09:33Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000093-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000093-beta.apk",
+        "size": 71566609,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000093-beta/HappyAgent-0.2.2000093-beta.apk",
+        "updatedAt": "2026-11-21T02:09:33Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9194-beta",
+      "build": 9194,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-21",
+      "publishedAt": "2026-11-21T00:08:23Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9194-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9194-beta.apk",
+        "size": 71392541,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9194-beta/HappyAgent-0.2.9194-beta.apk",
+        "updatedAt": "2026-11-21T00:08:22Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9193-beta",
+      "build": 9193,
+      "channel": "beta",
+      "channelResolved": true,
       "date": "2026-11-20",
+      "publishedAt": "2026-11-20T13:22:27Z",
       "published": true,
-      "title": "测试版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9193-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.9214.apk",
-        "size": 71521749,
+        "file": "HappyAgent-0.2.9193-beta.apk",
+        "size": 71392557,
         "sizeText": "68 MB",
-        "sha256": "24acfe808fb5a278cfd1c5625ec78105b5e105658280fabde0666791ac4b55a0\r",
-        "updatedAt": "2026-11-20T13:19:18.546Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9193-beta/HappyAgent-0.2.9193-beta.apk",
+        "updatedAt": "2026-11-20T13:22:26Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.9201",
-      "build": 9201,
+      "version": "v0.2.9192-beta",
+      "build": 9192,
       "channel": "beta",
-      "date": "2026-11-14",
+      "channelResolved": true,
+      "date": "2026-11-20",
+      "publishedAt": "2026-11-20T00:49:01Z",
       "published": true,
-      "title": "测试版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9192-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.9201.apk",
-        "size": 71451033,
+        "file": "HappyAgent-0.2.9192-beta.apk",
+        "size": 71392553,
         "sizeText": "68 MB",
-        "sha256": "672dab4124c74f1b3d409f12055287fc67f5cee92fdab73b3527fbfc311cf0c0\r",
-        "updatedAt": "2026-11-14T11:36:18.956Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9192-beta/HappyAgent-0.2.9192-beta.apk",
+        "updatedAt": "2026-11-20T00:49:00Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.9188",
+      "version": "v0.2.9191-beta",
+      "build": 9191,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-19",
+      "publishedAt": "2026-11-19T00:41:22Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9191-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9191-beta.apk",
+        "size": 71392537,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9191-beta/HappyAgent-0.2.9191-beta.apk",
+        "updatedAt": "2026-11-19T00:41:22Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9190-beta",
+      "build": 9190,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-18",
+      "publishedAt": "2026-11-18T14:09:44Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9190-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9190-beta.apk",
+        "size": 71392541,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9190-beta/HappyAgent-0.2.9190-beta.apk",
+        "updatedAt": "2026-11-18T14:09:43Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9189-beta",
+      "build": 9189,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-18",
+      "publishedAt": "2026-11-18T13:31:19Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9189-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9189-beta.apk",
+        "size": 71392553,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9189-beta/HappyAgent-0.2.9189-beta.apk",
+        "updatedAt": "2026-11-18T13:31:19Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9188-beta",
       "build": 9188,
       "channel": "beta",
+      "channelResolved": true,
       "date": "2026-11-14",
+      "publishedAt": "2026-11-14T03:38:55Z",
       "published": true,
-      "title": "测试版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9188-beta (beta)",
+      "summary": "channel: beta",
       "apk": {
-        "file": "HappyAgent-0.2.9188.apk",
+        "file": "HappyAgent-0.2.9188-beta.apk",
         "size": 71423229,
         "sizeText": "68 MB",
-        "sha256": "3664737c604cf5af71710eec337b68bdddd37bcd37255c824ab38f654e4df5e6\r",
-        "updatedAt": "2026-11-14T03:38:03.718Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9188-beta/HappyAgent-0.2.9188-beta.apk",
+        "updatedAt": "2026-11-14T03:41:32Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.9186",
+      "version": "v0.2.9186-beta",
       "build": 9186,
-      "channel": "dev",
+      "channel": "beta",
+      "channelResolved": true,
       "date": "2026-11-13",
+      "publishedAt": "2026-11-13T15:45:04Z",
       "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9186-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.9186.apk",
-        "size": 71400013,
+        "file": "HappyAgent-0.2.9186-beta.apk",
+        "size": 71392325,
         "sizeText": "68 MB",
-        "sha256": "b90a4421e8458756b104dcfb1221a5b0b8778f76112517ce5f53443b1f30314b\r",
-        "updatedAt": "2026-11-13T13:20:39.048Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9186-beta/HappyAgent-0.2.9186-beta.apk",
+        "updatedAt": "2026-11-13T15:45:02Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.9179",
-      "build": 9179,
-      "channel": "dev",
-      "date": "2026-11-09",
-      "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-      "apk": {
-        "file": "HappyAgent-0.2.9179.apk",
-        "size": 71342189,
-        "sizeText": "68 MB",
-        "sha256": "57268e9ff7d1d1e902099c5971ebbe3ca764fd4f606cd9bbde0d9851d76da54e\r",
-        "updatedAt": "2026-11-09T14:07:45.674Z"
-      },
-      "notes": [
-        "DEV 构建"
-      ],
-      "downloads": 0
-    },
-    {
-      "version": "v0.2.9160",
+      "version": "v0.2.9160-dev",
       "build": 9160,
-      "channel": "nightly",
+      "channel": "dev",
+      "channelResolved": true,
       "date": "2026-11-07",
+      "publishedAt": "2026-11-07T03:26:32Z",
       "published": true,
-      "title": "每日构建",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9160-dev (dev)",
+      "summary": "渠道：dev",
       "apk": {
-        "file": "HappyAgent-0.2.9160.apk",
-        "size": 71287352,
+        "file": "HappyAgent-0.2.9160-dev.apk",
+        "size": 71312630,
         "sizeText": "68 MB",
-        "sha256": "c77b9ac366c435a8a900d5291059e73701b0365300406c9a8e0b57c9ad723588\r",
-        "updatedAt": "2026-11-07T03:02:16.206Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9160-dev/HappyAgent-0.2.9160-dev.apk",
+        "updatedAt": "2026-11-07T03:26:31Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
       "version": "v0.2.9140",
       "build": 9140,
       "channel": "dev",
+      "channelResolved": true,
       "date": "2026-11-06",
+      "publishedAt": "2026-11-06T13:39:20Z",
       "published": true,
       "title": "开发版",
       "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
@@ -474,153 +610,350 @@ export const snapshot = {
         "file": "HappyAgent-0.2.9140.apk",
         "size": 72104856,
         "sizeText": "69 MB",
-        "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
-        "updatedAt": "2026-11-06T13:39:06.661Z"
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9140/HappyAgent-0.2.9140.apk",
+        "updatedAt": "2026-11-06T13:39:32Z",
+        "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f"
       },
       "notes": [
         "DEV 构建"
       ],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.1278",
-      "build": 1278,
-      "channel": "dev",
-      "date": "2026-11-04",
-      "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-      "apk": {
-        "file": "HappyAgent-0.2.1278.apk",
-        "size": 71202078,
-        "sizeText": "68 MB",
-        "sha256": "4448afdc9615f7d83d746e4f6b967c3b562d4acf5bb379e1c43ca6b3fd43b7e3",
-        "updatedAt": "2026-11-04T12:04:19.745Z"
-      },
-      "notes": [
-        "DEV 构建"
-      ],
-      "downloads": 0
-    },
-    {
-      "version": "v0.2.1264",
-      "build": 1264,
-      "channel": "dev",
-      "date": "2026-11-02",
-      "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-      "apk": {
-        "file": "HappyAgent-0.2.1264.apk",
-        "size": 70876730,
-        "sizeText": "68 MB",
-        "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370",
-        "updatedAt": "2026-11-02T16:23:00.954Z"
-      },
-      "notes": [
-        "DEV 构建"
-      ],
-      "downloads": 0
-    },
-    {
-      "version": "v0.2.1252",
-      "build": 1252,
-      "channel": "dev",
-      "date": "2026-11-01",
-      "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-      "apk": {
-        "file": "HappyAgent-0.2.1252.apk",
-        "size": 70767522,
-        "sizeText": "67 MB",
-        "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee",
-        "updatedAt": "2026-11-01T11:48:05.172Z"
-      },
-      "notes": [
-        "DEV 构建"
-      ],
-      "downloads": 0
-    },
-    {
-      "version": "v0.2.1248",
-      "build": 1248,
+      "version": "v0.2.9121-beta",
+      "build": 9121,
       "channel": "beta",
-      "date": "2026-10-31",
+      "channelResolved": true,
+      "date": "2026-11-06",
+      "publishedAt": "2026-11-06T10:39:31Z",
       "published": true,
-      "title": "测试版",
-      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "title": "Happy Phone Agent 0.2.9121-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.2.1248.apk",
-        "size": 69587050,
-        "sizeText": "66 MB",
-        "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb",
-        "updatedAt": "2026-10-31T13:50:46.566Z"
+        "file": "HappyAgent-0.2.9121-beta.apk",
+        "size": 71356466,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9121-beta/HappyAgent-0.2.9121-beta.apk",
+        "updatedAt": "2026-11-06T10:39:30Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.1231",
-      "build": 1231,
+      "version": "v0.2.9120-beta",
+      "build": 9120,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T20:36:28Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9120-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9120-beta.apk",
+        "size": 71356462,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9120-beta/HappyAgent-0.2.9120-beta.apk",
+        "updatedAt": "2026-11-05T20:36:27Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9119-beta",
+      "build": 9119,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T19:30:28Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9119-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9119-beta.apk",
+        "size": 71348294,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9119-beta/HappyAgent-0.2.9119-beta.apk",
+        "updatedAt": "2026-11-05T19:30:27Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9118-beta",
+      "build": 9118,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T18:55:16Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9118-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9118-beta.apk",
+        "size": 71336290,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9118-beta/HappyAgent-0.2.9118-beta.apk",
+        "updatedAt": "2026-11-05T18:55:15Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9117-dev",
+      "build": 9117,
       "channel": "dev",
-      "date": "2026-10-29",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T18:26:57Z",
       "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
+      "title": "Happy Phone Agent 0.2.9117-dev (dev)",
+      "summary": "渠道：dev",
       "apk": {
-        "file": "HappyAgent-0.2.1231.apk",
-        "size": 69430446,
-        "sizeText": "66 MB",
-        "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150",
-        "updatedAt": "2026-10-29T12:38:53.649Z"
+        "file": "HappyAgent-0.2.9117-dev.apk",
+        "size": 71312638,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9117-dev/HappyAgent-0.2.9117-dev.apk",
+        "updatedAt": "2026-11-05T18:26:56Z"
       },
-      "notes": [
-        "DEV 构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.2.1128",
-      "build": 1128,
+      "version": "v0.2.9116-beta",
+      "build": 9116,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T18:21:43Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9116-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9116-beta.apk",
+        "size": 34089049,
+        "sizeText": "33 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9116-beta/HappyAgent-0.2.9116-beta.apk",
+        "updatedAt": "2026-11-05T18:21:42Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9115-dev",
+      "build": 9115,
       "channel": "dev",
-      "date": "2026-10-26",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T17:48:09Z",
       "published": true,
-      "title": "开发版",
-      "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
+      "title": "Happy Phone Agent 0.2.9115-dev (dev)",
+      "summary": "渠道：dev",
       "apk": {
-        "file": "HappyAgent-0.2.1128.apk",
-        "size": 69400718,
-        "sizeText": "66 MB",
-        "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031",
-        "updatedAt": "2026-10-26T13:49:09.315Z"
+        "file": "HappyAgent-0.2.9115-dev.apk",
+        "size": 71312630,
+        "sizeText": "68 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9115-dev/HappyAgent-0.2.9115-dev.apk",
+        "updatedAt": "2026-11-05T17:48:08Z"
       },
-      "notes": [
-        "开发版构建"
-      ],
+      "notes": [],
+      "source": "github",
       "downloads": 0
     },
     {
-      "version": "v0.1.384",
-      "build": 384,
-      "channel": "stable",
-      "date": "2026-09-20",
+      "version": "v0.2.9114-beta",
+      "build": 9114,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T17:42:17Z",
       "published": true,
-      "title": "当前开发版",
-      "summary": "AI 此前是在\"真空\"里做决策的：它看不到今天几号、当前在哪个应用、有没有网、电量还剩多少，也记不住 上一轮让它做过什么。同一句话「再发一遍」被当成全新任务，「帮我看看装了哪些应用」则只能一步步翻设置页。 本次给它补上三类上下文：**环境事实**（每步自动注入）、**按需取数**（新增 device_query 技能）、 **会话承接**（上一轮任务的目标与结论）。",
+      "title": "Happy Phone Agent 0.2.9114-beta (beta)",
+      "summary": "渠道：beta",
       "apk": {
-        "file": "HappyAgent-0.1.384.apk",
-        "size": 14959209,
-        "sizeText": "14 MB",
-        "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23",
-        "updatedAt": "2026-09-20T13:39:57.479Z"
+        "file": "HappyAgent-0.2.9114-beta.apk",
+        "size": 34089041,
+        "sizeText": "33 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9114-beta/HappyAgent-0.2.9114-beta.apk",
+        "updatedAt": "2026-11-05T17:42:16Z"
       },
-      "notes": [
-        "Debug 构建，用于内测与自用",
-        "首次安装需手动授予无障碍、悬浮窗与通知权限"
-      ],
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9113-beta",
+      "build": 9113,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T17:07:52Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.9113-beta (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.9113-beta.apk",
+        "size": 34089045,
+        "sizeText": "33 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9113-beta/HappyAgent-0.2.9113-beta.apk",
+        "updatedAt": "2026-11-05T17:07:51Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000092-beta",
+      "build": 2000092,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T13:48:28Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000092 (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000092-beta.apk",
+        "size": 34065237,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000092-beta/HappyAgent-0.2.2000092-beta.apk",
+        "updatedAt": "2026-11-05T13:48:27Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000091-beta",
+      "build": 2000091,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T13:46:00Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000091 (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000091-beta.apk",
+        "size": 34065237,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000091-beta/HappyAgent-0.2.2000091-beta.apk",
+        "updatedAt": "2026-11-05T13:45:59Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000090-beta",
+      "build": 2000090,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T13:04:15Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000090 (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000090-beta.apk",
+        "size": 34065229,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000090-beta/HappyAgent-0.2.2000090-beta.apk",
+        "updatedAt": "2026-11-05T13:04:15Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000088-beta",
+      "build": 2000088,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T12:36:45Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000088 (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000088-beta.apk",
+        "size": 34065233,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000088-beta/HappyAgent-0.2.2000088-beta.apk",
+        "updatedAt": "2026-11-05T12:36:44Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1000085-dev",
+      "build": 1000085,
+      "channel": "dev",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T11:42:18Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.1000085 (dev)",
+      "summary": "渠道：dev",
+      "apk": {
+        "file": "HappyAgent-0.2.1000085-dev.apk",
+        "size": 34065241,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.1000085-dev/HappyAgent-0.2.1000085-dev.apk",
+        "updatedAt": "2026-11-05T11:42:17Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.2000083-beta",
+      "build": 2000083,
+      "channel": "beta",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T11:29:07Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.2000083 (beta)",
+      "summary": "渠道：beta",
+      "apk": {
+        "file": "HappyAgent-0.2.2000083-beta.apk",
+        "size": 34065237,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000083-beta/HappyAgent-0.2.2000083-beta.apk",
+        "updatedAt": "2026-11-05T11:29:06Z"
+      },
+      "notes": [],
+      "source": "github",
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.1000084-dev",
+      "build": 1000084,
+      "channel": "dev",
+      "channelResolved": true,
+      "date": "2026-11-05",
+      "publishedAt": "2026-11-05T11:28:59Z",
+      "published": true,
+      "title": "Happy Phone Agent 0.2.1000084 (dev)",
+      "summary": "渠道：dev",
+      "apk": {
+        "file": "HappyAgent-0.2.1000084-dev.apk",
+        "size": 34065237,
+        "sizeText": "32 MB",
+        "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.1000084-dev/HappyAgent-0.2.1000084-dev.apk",
+        "updatedAt": "2026-11-05T11:28:58Z"
+      },
+      "notes": [],
+      "source": "github",
       "downloads": 0
     }
   ],
@@ -2822,8 +3155,8 @@ export const snapshot = {
       "slug": "phtomt",
       "tagline": "让手机自己动手",
       "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-      "version": "0.2.2000096",
-      "buildNumber": 2000096,
+      "version": "0.2.9197-beta",
+      "buildNumber": 9197,
       "updatedAt": "2026-11-21T02:51:15.129Z",
       "links": {
         "github": "https://github.com/xkx121029/Phtomt",
@@ -2906,23 +3239,24 @@ export const snapshot = {
         }
       ],
       "latest": {
-        "version": "v0.2.2000096",
-        "build": 2000096,
-        "channel": "dev",
+        "version": "v0.2.9197-beta",
+        "build": 9197,
+        "channel": "beta",
+        "channelResolved": true,
         "date": "2026-11-21",
+        "publishedAt": "2026-11-21T08:16:22Z",
         "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9197-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.2000096.apk",
-          "size": 71574637,
+          "file": "HappyAgent-0.2.9197-beta.apk",
+          "size": 71598145,
           "sizeText": "68 MB",
-          "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
-          "updatedAt": "2026-11-21T02:51:15.116Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9197-beta/HappyAgent-0.2.9197-beta.apk",
+          "updatedAt": "2026-11-21T08:16:21Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       "stats": {
@@ -3136,203 +3470,213 @@ export const snapshot = {
     ],
     "releases": [
       {
-        "version": "v0.2.2000096",
-        "build": 2000096,
-        "channel": "dev",
+        "version": "v0.2.9197-beta",
+        "build": 9197,
+        "channel": "beta",
+        "channelResolved": true,
         "date": "2026-11-21",
+        "publishedAt": "2026-11-21T08:16:22Z",
         "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9197-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.2000096.apk",
-          "size": 71574637,
+          "file": "HappyAgent-0.2.9197-beta.apk",
+          "size": 71598145,
           "sizeText": "68 MB",
-          "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
-          "updatedAt": "2026-11-21T02:51:15.116Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9197-beta/HappyAgent-0.2.9197-beta.apk",
+          "updatedAt": "2026-11-21T08:16:21Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       {
-        "version": "v0.2.9214",
-        "build": 9214,
+        "version": "v0.2.9195-beta",
+        "build": 9195,
         "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-21",
+        "publishedAt": "2026-11-21T03:17:34Z",
+        "published": true,
+        "title": "Happy Phone Agent 0.2.9195-beta (beta)",
+        "summary": "渠道：beta",
+        "apk": {
+          "file": "HappyAgent-0.2.9195-beta.apk",
+          "size": 71566741,
+          "sizeText": "68 MB",
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9195-beta/HappyAgent-0.2.9195-beta.apk",
+          "updatedAt": "2026-11-21T03:17:33Z"
+        },
+        "notes": [],
+        "source": "github",
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.2000095-beta",
+        "build": 2000095,
+        "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-21",
+        "publishedAt": "2026-11-21T02:22:04Z",
+        "published": true,
+        "title": "Happy Phone Agent 0.2.2000095-beta (beta)",
+        "summary": "渠道：beta",
+        "apk": {
+          "file": "HappyAgent-0.2.2000095-beta.apk",
+          "size": 71566757,
+          "sizeText": "68 MB",
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000095-beta/HappyAgent-0.2.2000095-beta.apk",
+          "updatedAt": "2026-11-21T02:22:03Z"
+        },
+        "notes": [],
+        "source": "github",
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.2000093-beta",
+        "build": 2000093,
+        "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-21",
+        "publishedAt": "2026-11-21T02:09:33Z",
+        "published": true,
+        "title": "Happy Phone Agent 0.2.2000093-beta (beta)",
+        "summary": "渠道：beta",
+        "apk": {
+          "file": "HappyAgent-0.2.2000093-beta.apk",
+          "size": 71566609,
+          "sizeText": "68 MB",
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.2000093-beta/HappyAgent-0.2.2000093-beta.apk",
+          "updatedAt": "2026-11-21T02:09:33Z"
+        },
+        "notes": [],
+        "source": "github",
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9194-beta",
+        "build": 9194,
+        "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-21",
+        "publishedAt": "2026-11-21T00:08:23Z",
+        "published": true,
+        "title": "Happy Phone Agent 0.2.9194-beta (beta)",
+        "summary": "渠道：beta",
+        "apk": {
+          "file": "HappyAgent-0.2.9194-beta.apk",
+          "size": 71392541,
+          "sizeText": "68 MB",
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9194-beta/HappyAgent-0.2.9194-beta.apk",
+          "updatedAt": "2026-11-21T00:08:22Z"
+        },
+        "notes": [],
+        "source": "github",
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9193-beta",
+        "build": 9193,
+        "channel": "beta",
+        "channelResolved": true,
         "date": "2026-11-20",
+        "publishedAt": "2026-11-20T13:22:27Z",
         "published": true,
-        "title": "测试版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9193-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.9214.apk",
-          "size": 71521749,
+          "file": "HappyAgent-0.2.9193-beta.apk",
+          "size": 71392557,
           "sizeText": "68 MB",
-          "sha256": "24acfe808fb5a278cfd1c5625ec78105b5e105658280fabde0666791ac4b55a0\r",
-          "updatedAt": "2026-11-20T13:19:18.546Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9193-beta/HappyAgent-0.2.9193-beta.apk",
+          "updatedAt": "2026-11-20T13:22:26Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       {
-        "version": "v0.2.9201",
-        "build": 9201,
+        "version": "v0.2.9192-beta",
+        "build": 9192,
         "channel": "beta",
-        "date": "2026-11-14",
+        "channelResolved": true,
+        "date": "2026-11-20",
+        "publishedAt": "2026-11-20T00:49:01Z",
         "published": true,
-        "title": "测试版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9192-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.9201.apk",
-          "size": 71451033,
+          "file": "HappyAgent-0.2.9192-beta.apk",
+          "size": 71392553,
           "sizeText": "68 MB",
-          "sha256": "672dab4124c74f1b3d409f12055287fc67f5cee92fdab73b3527fbfc311cf0c0\r",
-          "updatedAt": "2026-11-14T11:36:18.956Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9192-beta/HappyAgent-0.2.9192-beta.apk",
+          "updatedAt": "2026-11-20T00:49:00Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       {
-        "version": "v0.2.9188",
-        "build": 9188,
+        "version": "v0.2.9191-beta",
+        "build": 9191,
         "channel": "beta",
-        "date": "2026-11-14",
+        "channelResolved": true,
+        "date": "2026-11-19",
+        "publishedAt": "2026-11-19T00:41:22Z",
         "published": true,
-        "title": "测试版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9191-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.9188.apk",
-          "size": 71423229,
+          "file": "HappyAgent-0.2.9191-beta.apk",
+          "size": 71392537,
           "sizeText": "68 MB",
-          "sha256": "3664737c604cf5af71710eec337b68bdddd37bcd37255c824ab38f654e4df5e6\r",
-          "updatedAt": "2026-11-14T03:38:03.718Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9191-beta/HappyAgent-0.2.9191-beta.apk",
+          "updatedAt": "2026-11-19T00:41:22Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       {
-        "version": "v0.2.9186",
-        "build": 9186,
-        "channel": "dev",
-        "date": "2026-11-13",
+        "version": "v0.2.9190-beta",
+        "build": 9190,
+        "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-18",
+        "publishedAt": "2026-11-18T14:09:44Z",
         "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9190-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.9186.apk",
-          "size": 71400013,
+          "file": "HappyAgent-0.2.9190-beta.apk",
+          "size": 71392541,
           "sizeText": "68 MB",
-          "sha256": "b90a4421e8458756b104dcfb1221a5b0b8778f76112517ce5f53443b1f30314b\r",
-          "updatedAt": "2026-11-13T13:20:39.048Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9190-beta/HappyAgent-0.2.9190-beta.apk",
+          "updatedAt": "2026-11-18T14:09:43Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       },
       {
-        "version": "v0.2.9179",
-        "build": 9179,
-        "channel": "dev",
-        "date": "2026-11-09",
+        "version": "v0.2.9189-beta",
+        "build": 9189,
+        "channel": "beta",
+        "channelResolved": true,
+        "date": "2026-11-18",
+        "publishedAt": "2026-11-18T13:31:19Z",
         "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "title": "Happy Phone Agent 0.2.9189-beta (beta)",
+        "summary": "渠道：beta",
         "apk": {
-          "file": "HappyAgent-0.2.9179.apk",
-          "size": 71342189,
+          "file": "HappyAgent-0.2.9189-beta.apk",
+          "size": 71392553,
           "sizeText": "68 MB",
-          "sha256": "57268e9ff7d1d1e902099c5971ebbe3ca764fd4f606cd9bbde0d9851d76da54e\r",
-          "updatedAt": "2026-11-09T14:07:45.674Z"
+          "url": "https://github.com/xkx121029/Phtomt/releases/download/v0.2.9189-beta/HappyAgent-0.2.9189-beta.apk",
+          "updatedAt": "2026-11-18T13:31:19Z"
         },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.9160",
-        "build": 9160,
-        "channel": "nightly",
-        "date": "2026-11-07",
-        "published": true,
-        "title": "每日构建",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.9160.apk",
-          "size": 71287352,
-          "sizeText": "68 MB",
-          "sha256": "c77b9ac366c435a8a900d5291059e73701b0365300406c9a8e0b57c9ad723588\r",
-          "updatedAt": "2026-11-07T03:02:16.206Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.9140",
-        "build": 9140,
-        "channel": "dev",
-        "date": "2026-11-06",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.9140.apk",
-          "size": 72104856,
-          "sizeText": "69 MB",
-          "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
-          "updatedAt": "2026-11-06T13:39:06.661Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.1278",
-        "build": 1278,
-        "channel": "dev",
-        "date": "2026-11-04",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.1278.apk",
-          "size": 71202078,
-          "sizeText": "68 MB",
-          "sha256": "4448afdc9615f7d83d746e4f6b967c3b562d4acf5bb379e1c43ca6b3fd43b7e3",
-          "updatedAt": "2026-11-04T12:04:19.745Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.1264",
-        "build": 1264,
-        "channel": "dev",
-        "date": "2026-11-02",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.1264.apk",
-          "size": 70876730,
-          "sizeText": "68 MB",
-          "sha256": "61a5e07749eddaaf7a2b2e9a93fa16bcb678bbac9ac33a631a65c39f6f602370",
-          "updatedAt": "2026-11-02T16:23:00.954Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
+        "notes": [],
+        "source": "github",
         "downloads": 0
       }
     ],
