@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -89,23 +91,34 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
     var selected by remember { mutableStateOf(emptySet<String>()) }
 
     // 顶部操作条
+    //
+    // 五个按钮挤一行时「新增技能」在 1080 宽下会折成「新增技 / 能」：
+    // 图标 + 间距已经吃掉四成宽度。这里只保留两个主操作并去掉图标，
+    // 导出 / 导入收进下方清单的首行——它们不是每次进来都要点的动作。
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = AppTheme.metrics.pagePad),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Button(onClick = { onOpenEditor(null) }, modifier = Modifier.weight(1f)) {
-            Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("新增技能")
+        Button(
+            onClick = { onOpenEditor(null) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = AppSpacing.Md),
+        ) {
+            Text("新增技能", maxLines = 1, softWrap = false)
         }
-        OutlinedButton(onClick = { onOpenMacroEditor(null) }, modifier = Modifier.weight(1f)) {
-            Icon(AppIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("新增宏")
+        OutlinedButton(
+            onClick = { onOpenMacroEditor(null) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = AppSpacing.Md),
+        ) {
+            Text("新增宏", maxLines = 1, softWrap = false)
         }
-        OutlinedButton(onClick = { batchMode = !batchMode; selected = emptySet() }) {
-            Text(if (batchMode) "完成" else "批量管理")
+        OutlinedButton(
+            onClick = { batchMode = !batchMode; selected = emptySet() },
+            contentPadding = PaddingValues(horizontal = AppSpacing.Md),
+        ) {
+            Text(if (batchMode) "完成" else "批量管理", maxLines = 1, softWrap = false)
         }
     }
     if (batchMode) {
@@ -154,6 +167,24 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
         modifier = Modifier.fillMaxSize().padding(horizontal = AppTheme.metrics.pagePad),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
+        item {
+            // 首次出现的术语都在这里用一句人话解释一次，卡片上就可以只写名字与用途。
+            // 这是本页唯一的术语表：页内其他位置不再重复解释。
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Xxs)) {
+                Text(
+                    "什么是技能",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "技能 = 一句话就能交给我的事，比如「设个明早 7 点的闹钟」。\n" +
+                        "宏 = 把几个技能串成一条流水线，一句话跑完一整套。\n" +
+                        "MCP = 接入外部工具的通用接口；带 MCP 标记的是从外部接进来的工具，不是内置的。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         item {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -249,14 +280,22 @@ internal fun SkillCard(
                     }
                 }
                 Text(
-                    skill.description.ifBlank { skill.id },
+                    skill.description.ifBlank { "还没有说明" },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StatusPill(skill.legacyIntent ?: skill.category, MaterialTheme.colorScheme.tertiary)
+                    // 这一格原先直接印 legacyIntent（set_alarm、open_app 这类下划线标识符），
+                    // 对普通用户等于没写。认识的走人话翻译器，不认识的退回分类名。
+                    StatusPill(
+                        skill.legacyIntent
+                            ?.takeIf { HumanTranslator.knowsAction(it) }
+                            ?.let { HumanTranslator.actionVerb(it) }
+                            ?: skill.category,
+                        MaterialTheme.colorScheme.tertiary,
+                    )
                     if (skill.source == SkillSource.MACRO && skill.steps.isNotEmpty()) {
                         StatusPill("步骤×${skill.steps.size}", MaterialTheme.colorScheme.secondary)
                     }
