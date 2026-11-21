@@ -1,5 +1,11 @@
 package com.phoneagent.core.ai
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
 /**
  * 主模型四态的判定契约。
  *
