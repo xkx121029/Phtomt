@@ -6,6 +6,7 @@ import com.phoneagent.domain.model.ActionTarget
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.domain.rules.DangerousTargetWords
 import com.phoneagent.domain.rules.effectiveLabel
 
 /**

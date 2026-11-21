@@ -396,8 +396,8 @@ internal class EngineStore {
     val committedEffects = mutableListOf<EngineRules.CommittedEffect>()
 
     /** 记账一次已下发的副作用动作（同键只留最早一步：幂等跳过要报"第几步做过的"） */
-    fun recordCommittedEffect(action: AgentAction, step: Int) {
-        val key = EngineRules.idempotencyKey(action, action.type)
+    fun recordCommittedEffect(action: AgentAction, step: Int, realLabel: String? = null) {
+        val key = EngineRules.idempotencyKey(action, action.type, realLabel)
         if (committedEffects.none { it.key == key }) {
             committedEffects += EngineRules.CommittedEffect(key = key, step = step)
         }

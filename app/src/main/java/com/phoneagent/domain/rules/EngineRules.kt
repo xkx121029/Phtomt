@@ -35,17 +35,21 @@ object EngineRules {
     }
 
     /** 生效判定：动作是否属于"有副作用、需幂等保护"的操作（提交/发送/下单/支付/删除/发布等） */
-    fun isFinalSubmit(action: AgentAction, type: String): Boolean {
+    fun isFinalSubmit(action: AgentAction, type: String, realLabel: String? = null): Boolean {
         // 自由模式的无障碍端点直调（a11y_call）同样可能触发提交/发送/删除等副作用，必须纳入幂等保护；
         // 否则同一副作用会在「页面已出现完成证据」时被重复执行（原先白名单漏了它，形成绕过口）
         if (!isSideEffectType(type)) return false
-        return SIDE_EFFECT_WORDS.any { targetText(action).contains(it, ignoreCase = true) }
+        val text = targetText(action, realLabel)
+        return SIDE_EFFECT_WORDS.any { text.contains(it, ignoreCase = true) } ||
+            WordMatch.hit(text, SIDE_EFFECT_WORDS_EN) != null
     }
 
     /** 不可逆动作：删除/支付/下单这类做错了没法撤销，任何"跳过"或"重放"都必须先问用户 */
-    fun isIrreversible(action: AgentAction, type: String): Boolean {
+    fun isIrreversible(action: AgentAction, type: String, realLabel: String? = null): Boolean {
         if (!isSideEffectType(type)) return false
-        return IRREVERSIBLE_WORDS.any { targetText(action).contains(it, ignoreCase = true) }
+        val text = targetText(action, realLabel)
+        return IRREVERSIBLE_WORDS.any { text.contains(it, ignoreCase = true) } ||
+            WordMatch.hit(text, IRREVERSIBLE_WORDS_EN) != null
     }
 
     /**
@@ -53,9 +57,11 @@ object EngineRules {
      *
      * 用语义目标而不是坐标：AI 换个坐标点同一个「提交」还是同一件事；反过来，同一个应用里
      * 两条都叫「删除」的记录会被算成同一动作——所以跳过时还要求页面仍显示完成确认语（见 [idempotencyVerdict]）。
+     *
+     * @param realLabel 端侧真实控件文字（[targetLabelOf]），比模型自报的 target.value 更可信
      */
-    fun idempotencyKey(action: AgentAction, type: String): String =
-        "${ActionType.ALIAS[type] ?: type}|${targetText(action).trim().lowercase()}"
+    fun idempotencyKey(action: AgentAction, type: String, realLabel: String? = null): String =
+        "${ActionType.ALIAS[type] ?: type}|${targetText(action, realLabel).trim().lowercase()}"
 
     /** 本任务内一次已确认下发的副作用动作（幂等判据的唯一来源） */
     data class CommittedEffect(val key: String, val step: Int)
@@ -95,12 +101,13 @@ object EngineRules {
         action: AgentAction,
         type: String,
         snapshot: ScreenSnapshot,
+        realLabel: String? = null,
     ): IdempotencyVerdict {
-        if (!isFinalSubmit(action, type)) return IdempotencyVerdict.Proceed
-        val committed = history.lastOrNull { it.key == idempotencyKey(action, type) }
+        if (!isFinalSubmit(action, type, realLabel)) return IdempotencyVerdict.Proceed
+        val committed = history.lastOrNull { it.key == idempotencyKey(action, type, realLabel) }
         val confirmed = confirmationEvidence(snapshot)
         if (committed != null && confirmed != null) return IdempotencyVerdict.Skip(committed.step)
-        if (!isIrreversible(action, type)) return IdempotencyVerdict.Proceed
+        if (!isIrreversible(action, type, realLabel)) return IdempotencyVerdict.Proceed
         if (committed == null) {
             val suspected = doneStateEvidence(snapshot) ?: return IdempotencyVerdict.Proceed
             return IdempotencyVerdict.NeedsConfirm(
@@ -142,9 +149,47 @@ object EngineRules {
             type == ActionType.TYPE_TEXT || type == ActionType.SHELL ||
             type == ActionType.A11Y_CALL
 
-    /** 动作的目标文字：target.value 优先，逐级回退到 reason/reasoning/text/command */
-    private fun targetText(action: AgentAction): String =
-        action.target?.value ?: action.reason ?: action.reasoning
+    /**
+     * 端侧真实的"这一下会碰到哪个控件"的文字——幂等/不可逆判据的唯一标签来源。
+     *
+     * 旧实现只读 `action.target?.value`（模型自报）。两个致命缺口：
+     * - `by=coordinate` 时转译层拿不到元素，`target` 根本不填 → 判据看到 null，
+     *   坐标点击的删除/支付全部被判成"无副作用"，幂等跳过、[IdempotencyVerdict.NeedsConfirm] 与记账一起静默失效；
+     * - 就算有 target，那也只是模型的说法，未必等于屏幕上的字。
+     *
+     * 这里按证据强度取：元素索引（AI 直接引用的编号，最准）→ 落点回查元素树
+     * （坐标点击唯一能看见控件的路）→ null（交给调用方回退到 target.value）。
+     */
+    fun targetLabelOf(action: AgentAction, snapshot: ScreenSnapshot): String? {
+        val elements = snapshot.elements
+        action.elementIndex?.let { idx ->
+            elements.firstOrNull { it.index == idx }?.let { el ->
+                labelOf(el)?.let { return it }
+            }
+        }
+        val x = action.x
+        val y = action.y
+        if (x == null || y == null) return null
+        // 坐标点击：取"包含该点且带文字的最小控件"——容器/整页也包含该点，取最小才不会拿到整页标题
+        return elements
+            .filter { x in it.left..it.right && y in it.top..it.bottom }
+            .mapNotNull { el -> labelOf(el)?.let { el to it } }
+            .minByOrNull { (el, _) -> (el.right - el.left).toLong() * (el.bottom - el.top) }
+            ?.second
+    }
+
+    private fun labelOf(el: com.phoneagent.domain.model.UiElement): String? =
+        el.text?.takeIf { it.isNotBlank() }
+            ?: el.contentDescription?.takeIf { it.isNotBlank() }
+            ?: el.viewId?.takeIf { it.isNotBlank() }
+
+    /**
+     * 动作的目标文字：端侧真实标签优先，逐级回退到模型自报的 target.value / reason / reasoning / text / command。
+     * 回退链保持原样——它本来就是"没有真实证据时的最后手段"。
+     */
+    private fun targetText(action: AgentAction, realLabel: String? = null): String =
+        realLabel?.takeIf { it.isNotBlank() }
+            ?: action.target?.value ?: action.reason ?: action.reasoning
             ?: action.text ?: action.command ?: ""
 
     private fun matchWords(snapshot: ScreenSnapshot, words: List<String>): String? {
@@ -160,6 +205,20 @@ object EngineRules {
 
     /** 不可逆动作词：做错了没法撤销 */
     private val IRREVERSIBLE_WORDS = listOf("删除", "移除", "支付", "付款", "下单", "退款", "购买")
+
+    /**
+     * 上面两张表的英文半边（左词边界，见 [WordMatch]）。
+     * 旧表纯中文，英文界面（Send / Delete / Pay / Place order）会被判成"无副作用"：
+     * 幂等跳过、NeedsConfirm 与记账一起静默失效（HAPP-35 P1-4）。
+     */
+    private val SIDE_EFFECT_WORDS_EN = listOf(
+        "send", "submit", "order", "pay", "payment", "publish", "delete", "remove", "confirm",
+        "checkout", "buy",
+    )
+
+    private val IRREVERSIBLE_WORDS_EN = listOf(
+        "delete", "remove", "pay", "payment", "order", "refund", "buy", "purchase", "checkout", "transfer",
+    )
 
     /** 真正的完成确认句（带宾语）：页面只在动作真的提交成功后才出现 */
     private val CONFIRMATION_WORDS = listOf(

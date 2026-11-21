@@ -106,8 +106,8 @@ internal class ExecutionDeviceHooks(
     val idempotencyDone: (ScreenSnapshot) -> Boolean,
     /** 本任务内已确认下发的副作用动作（幂等判据的唯一来源，见 [EngineRules.idempotencyVerdict]） */
     val committedEffects: () -> List<EngineRules.CommittedEffect>,
-    /** 动作真的下发且验证成功后记账：后面的步骤据此才能判"这次是重复副作用" */
-    val recordEffect: (AgentAction, Int) -> Unit,
+    /** 动作真的下发且验证成功后记账：后面的步骤据此才能判"这次是重复副作用"（[realLabel] 与判据同源） */
+    val recordEffect: (AgentAction, Int, String?) -> Unit,
     /** 协助文案里的无障碍断线提示（原 `AgentAccessibilityService.instance == null` 判定） */
     val a11yDisconnectedNote: () -> String,
 )
@@ -496,7 +496,11 @@ internal class ExecutionPhase(
                 // 动作压根没下发却记成 ✅。现在的取向：
                 // - 本任务内确实下发并确认过同一动作 → 跳过，不重复副作用；
                 // - 不可逆动作（删除/支付/下单）证据不足 → 交用户确认，既不静默成功、也不静默重放。
-                val idempotency = EngineRules.idempotencyVerdict(device.committedEffects(), act, act.type, snapshot)
+                // 判据的标签取**端侧真实控件文字**（[EngineRules.targetLabelOf]），不再只信模型自报的
+                // target.value：坐标点击时 target 根本不填，英文界面时词表又只有中文，两者都会让判据静默失效。
+                val realLabel = EngineRules.targetLabelOf(act, snapshot)
+                val idempotency =
+                    EngineRules.idempotencyVerdict(device.committedEffects(), act, act.type, snapshot, realLabel)
                 if (idempotency is EngineRules.IdempotencyVerdict.Skip) {
                     val skipReason = "本任务第 ${idempotency.step} 步已下发并确认过同一动作「" +
                         (act.target?.value ?: act.type) + "」，本次不重复执行"
@@ -579,7 +583,9 @@ internal class ExecutionPhase(
                 }
                 // 幂等历史：只有这次真的下发且验证成功才记账。这是"跳过重复副作用"的唯一依据——
                 // 页面文字不是（页面说「已完成」不代表我们做过），所以记在引擎自己这边。
-                if (verified && EngineRules.isFinalSubmit(act, act.type)) device.recordEffect(act, step)
+                if (verified && EngineRules.isFinalSubmit(act, act.type, realLabel)) {
+                    device.recordEffect(act, step, realLabel)
+                }
             }
             is IntentTranslator.TranslationResult.Failed -> {
                 val reason = translation.reason

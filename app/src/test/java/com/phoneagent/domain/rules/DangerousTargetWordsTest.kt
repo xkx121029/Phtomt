@@ -1,4 +1,4 @@
-package com.phoneagent.engine.execution
+package com.phoneagent.domain.rules
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
