@@ -39,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +51,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.home.BrandTile
 import com.phoneagent.ui.icons.AppIcons
@@ -115,7 +115,7 @@ fun OnboardingFlow(
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     // 模型表单：与设置页 / 快速开始共用同一个编辑态与落库路径，不另造一套存储
-    val settings by vm.settingsFlow.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
     val st = remember { SettingsState(settings) }
     LaunchedEffect(settings) { st.applyFrom(settings) }
 

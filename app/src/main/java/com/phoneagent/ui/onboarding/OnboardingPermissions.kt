@@ -17,11 +17,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,7 +56,7 @@ import com.phoneagent.ui.theme.Success
 internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val permissions by vm.permissions.collectAsState()
+    val permissions by vm.permissions.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshPermissions(context) }
     DisposableEffect(lifecycleOwner) {
