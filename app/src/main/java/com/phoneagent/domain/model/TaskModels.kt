@@ -70,7 +70,7 @@ data class StepRecord(
     val action: AgentAction? = null,
     /** 发送结果：sent / send_failed */
     val sendResult: String = "sent",
-    /** 验证结果：verified_success / unverified / failed */
+    /** 验证结果：verified_success / unverified（读不到页面）/ no_effect（读到了没变化）/ failed */
     val verificationResult: String = "unverified",
     val beforeFingerprint: String = "",
     val afterFingerprint: String = "",

@@ -2821,7 +2821,7 @@ class AgentEngine(
         // 失败按交付状态分开计数：没送达 vs 送达未生效，对应"修通道"与"修策略"两种不同的修法
         telemetry.recordDelivery(verify.delivery)
         recordStep(
-            step, action, VerifyRules.historyStatus(verify.success),
+            step, action, VerifyRules.historyStatus(verify.delivery),
             verify.beforeFingerprint, verify.afterFingerprint, verify.reason, verify.elapsedMs,
         )
     }

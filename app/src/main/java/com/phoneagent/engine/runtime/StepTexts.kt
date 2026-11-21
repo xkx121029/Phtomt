@@ -3,6 +3,7 @@ package com.phoneagent.engine.runtime
 import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.engine.PromptLang
+import com.phoneagent.engine.execution.VerifyRules
 
 /**
  * 每轮决策上下文里的「文本拼装」纯函数（无 Android / 无协程依赖，可单测）。
@@ -14,8 +15,15 @@ internal object StepTexts {
 
     /**
      * 上一步执行结果文本（✅/⚠️/❌），供决策 Prompt 使用。
-     * 必须跟随提示词语言：英文提示词的三态段写作 verified / sent but unverified / failed，
-     * 若这里仍回中文，模型得自己做一次中英映射，等于人为制造歧义。
+     *
+     * 三种结论各有自己的句子，**不共用一句「未生效」**：
+     * - ✅ 已确认成功：拿到了页面级证据；
+     * - ⚠️ 已交付但未确认（读不到页面）：动作发出去了，我们没看见页面，不能下结论；
+     * - ❌ 已交付但未见生效：页面读得到，就是没有预期变化；
+     * - ❌ 未生效：压根没交付（通道不可用 / 路径已判定不通）。
+     *
+     * 必须跟随提示词语言：英文提示词的三态段写作 verified / delivered but unconfirmed /
+     * delivered but no visible change，若这里仍回中文，模型得自己做一次中英映射，等于人为制造歧义。
      */
     fun lastStepResult(history: List<StepRecord>, lang: PromptLang): String {
         val last = history.lastOrNull() ?: return ""
@@ -27,8 +35,13 @@ internal object StepTexts {
         val cn = lang == PromptLang.CN
         return when {
             last.isConfirmed -> if (cn) "✅ 已确认成功: $fact" else "✅ verified: $fact"
-            last.verificationResult == "failed" -> if (cn) "❌ 未生效: $fact" else "❌ failed: $fact"
-            else -> if (cn) "⚠️ 已发送但未确认: $fact" else "⚠️ sent but unverified: $fact"
+            last.verificationResult == VerifyRules.STATUS_NO_EFFECT ->
+                if (cn) "❌ 已交付但未见生效（页面已读到，没有出现预期变化）: $fact"
+                else "❌ delivered but no visible change: $fact"
+            last.verificationResult == VerifyRules.STATUS_FAILED ->
+                if (cn) "❌ 未生效: $fact" else "❌ failed: $fact"
+            else -> if (cn) "⚠️ 已交付但未确认（读不到页面，既没确认也没否定）: $fact"
+            else "⚠️ delivered but unconfirmed (page unreadable): $fact"
         }
     }
 
