@@ -78,13 +78,13 @@ internal object PromptCatalog {
             requires = setOf(PromptFlag.ASSISTANT_TASK),
             origin = "AgentPrompts.systemCN/EN「# 语音助手直达」（需 ASSISTANT_TASK）",
         ),
-        // 引导块（Superagent 融合 Phase 4）：任务命中编码类（写代码/脚本/调试等）时注入，
-        // 说明 vibecoding 委托模式——编码 agent 独立执行，主引擎只转达意图与展示进度。
+        // 引导块：任务命中编码类（写代码/脚本/调试等）时注入，如实说明「本页不写代码、编码在编码页下达」——
+        // 委托链路（CodingAgentBridge）在本仓库没有调用方，提示词不能再声称任务会被转交出去。
         PromptBlock(
             id = "sys.coding", group = PromptGroup.SYSTEM, order = 9, sep = "\n\n",
             bodyCN = PromptBodies.SYS_CODING_CN, bodyEN = PromptBodies.SYS_CODING_EN,
             requires = setOf(PromptFlag.CODE_TASK),
-            origin = "Superagent 融合 Phase 4「# 编码任务（vibecoding 委托模式）」（需 CODE_TASK）",
+            origin = "「# 编码任务」如实版：本页不执行编码，引导用户到编码页（需 CODE_TASK）",
         ),
         // 引导块（Superagent 融合 Phase 4）：任务是纯对话（无任何操作类命中）时注入，
         // 说明直答模式——不操作手机、不需要规划步骤。
@@ -186,6 +186,7 @@ internal object PromptCatalog {
             - 当前档位可用上面两张意图表的每一项，并额外开放两类兜底能力：自写命令（intent=shell）与直调无障碍端点（intent=a11y）。
             - 这两类是兜底手段：能用意图表说清楚的事，就用意图表；只有意图表确实表达不了时才动用它们。
             - 自写命令在本任务首次执行前会弹给用户确认一次（批准后本次任务内不再问；被拒后就别再发同一条命令，换个做法继续）。
+            - 命令行族（terminal_op op=exec）也是你亲写的命令，走同一道确认：批准之前不会执行。
 
             ## 自写命令（intent=shell）
             command 字段填命令原文。下面这张友好命令表和裸 shell 命令都能用：
@@ -208,6 +209,7 @@ internal object PromptCatalog {
             - This mode allows every entry of the two intent tables above, plus two fallback capabilities: self-written commands (intent=shell) and direct accessibility-endpoint calls (intent=a11y).
             - Both are fallbacks: if the intent tables can express it, use them; reach for these only when the tables genuinely cannot.
             - Your first self-written command in a task is confirmed with the user once (approved = never asked again within that task; if denied, do not resend the same command — take another route).
+            - The command family (terminal_op op=exec) counts as a self-written command too and goes through the same confirmation: nothing runs before it is approved.
 
             ## Self-written command (intent=shell)
             Put the raw command in `command`. Both the friendly command table below and raw shell commands work:

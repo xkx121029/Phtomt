@@ -4,6 +4,7 @@ import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ActionType
+import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.engine.runtime.EngineLimits.ACTION_CONFIRM_TIMEOUT_MS
 import com.phoneagent.engine.runtime.EngineLimits.SELF_DISMISS_HINT
 import kotlinx.coroutines.delay
@@ -93,15 +94,17 @@ internal class UserGate(
      * 只在「本任务第一次真要执行 AI 亲自写的命令」时问一次：批准 → 本任务内后续自写命令直接放行；
      * 拒绝 → 本任务内不再问，也不再执行任何自写命令（由调用方把拒绝结果回注给 AI 换路子）。
      *
-     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）不带 AgentAction.aiAuthored，不走这里。
+     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）不带 AgentAction.aiAuthored，不走这里；
+     * terminal_op op=exec 是 AI 亲写的任意命令，同样走这里（判据见 [EngineRules.authoredCommandOf]）。
      *
      * @return true = 可以执行；false = 用户拒绝，调用方**不得**执行
      */
     suspend fun ensureShellApproval(action: AgentAction): Boolean {
-        if (action.type != ActionType.SHELL || !action.aiAuthored) return true
+        // 判据见 [EngineRules.authoredCommandOf]：shell（AI 自写）与 terminal_op op=exec 同属
+        // 「AI 亲写命令、端侧原样执行」这一类。后者此前完全不经过这道闸——换一个意图名就能
+        // 在注入通道上执行任意命令而不被问一次；而 aiAuthored 是转译层自报标记，不能当唯一判据。
+        val cmd = EngineRules.authoredCommandOf(action) ?: return true
         store.shellApprovedForTask?.let { return it }
-
-        val cmd = action.command.orEmpty()
         store.pendingShellCommand.value = cmd
         ui.log(AgentLog.Level.WARN, "自由模式：等待用户确认 AI 自写命令：$cmd")
         ui.pushFloating("等待确认命令", "THINKING")

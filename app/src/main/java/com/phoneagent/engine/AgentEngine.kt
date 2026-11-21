@@ -1613,6 +1613,12 @@ class AgentEngine(
                 ).getOrNull()?.action
             }
             if (refilled == null) break
+            // 补全轮只许补参数、不许换意图：AI 在补全时改主意，端侧就会执行一条和用户要求、
+            // 和时间线记录都不同的动作（时间线记的始终是原意图）。
+            paramRefillRejection(intent, refilled)?.let {
+                missingReason = it
+                break
+            }
             cur = refilled
             result = tryOrNull("补全后转译失败") { intentTranslator.translate(refilled, snapshot, null) }
                 ?: IntentTranslator.TranslationResult.Failed("AI 补全参数后仍无法转译")
@@ -3195,6 +3201,24 @@ internal class PendingTaskQueue {
 }
 
 internal fun ActionExecutor.Result.isSuccess(): Boolean = this is ActionExecutor.Result.Success
+
+/**
+ * 参数补全轮的可采纳判据：只允许补参数，不允许换意图。
+ *
+ * 补全请求只是"你漏了字段，补上再发一遍"，不是重新决策的许可。AI 若在这一轮改主意，
+ * 端侧就会执行一条与用户要求不同的动作，而时间线记录的仍是原意图——执行的东西和
+ * 记录的东西不是一件事，用户看到的过程也就不是真实过程。换意图一律丢弃并按失败处理，
+ * 让主循环重新决策（那里有时间线和用户要求的完整上下文）。
+ *
+ * @return null = 可以采纳这次补全；非 null = 拒绝原因
+ */
+internal fun paramRefillRejection(original: AgentIntent, refilled: AgentIntent): String? =
+    if (refilled.intent == original.intent) {
+        null
+    } else {
+        "AI 补全参数时把意图从「${original.intent}」换成了「${refilled.intent}」：" +
+            "补全轮只能补参数，已丢弃这次改写，不执行与用户要求不同的动作。"
+    }
 
 /** 纯对话直答的采样温度（Superagent 融合 Phase 4）：略低于决策温度，稳定输出自然语言回答 */
 private const val CHAT_TEMPERATURE = 0.3
