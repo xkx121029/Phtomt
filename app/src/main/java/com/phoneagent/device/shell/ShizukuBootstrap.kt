@@ -43,8 +43,16 @@ class ShizukuBootstrap(private val context: Context) {
         const val PAIR_TIMEOUT_MS = 90_000L
         /** shell 执行：Provider 内 30s 强杀，这里留 binder 余量 */
         const val SHELL_TIMEOUT_MS = 35_000L
-        /** 视为"链路已建立"的状态机阶段：已配对、拉起中、就绪 */
-        val connectedPhases = setOf(AdbPhase.PAIRED, AdbPhase.BOOTING, AdbPhase.READY)
+        /**
+         * 视为"shell 真能执行"的状态机阶段：**只有 READY**。
+         *
+         * READY 由 Provider 在「内置 Shizuku server 已就绪」时给出。PAIRED / BOOTING 只是无线调试
+         * 会话在手、正在拉起 server——会话本身不能执行命令（shell 只经 Shizuku binder 下发，
+         * 见 Provider 的 ShellBridge.execShizuku）。此前把这两档也算进来，于是"刚配对成功、
+         * Shizuku 根本没起来"也被报成已连接：能力快照给 SHELL_ADB=AVAILABLE、授权模式升到 SHIZUKU、
+         * 命令派进 execShizuku 后再失败，用户看到的是"已就绪"和一串执行失败。
+         */
+        val connectedPhases = setOf(AdbPhase.READY)
     }
 
     private val appContext = context.applicationContext
@@ -98,12 +106,19 @@ class ShizukuBootstrap(private val context: Context) {
         return isConnectedNow()
     }
 
-    /** 同步判定无线 ADB 是否已连接（返回缓存状态，供无协程的同步调用方使用） */
+    /**
+     * 同步判定"ADB 引导通路是否**已经给出可执行的 shell**"（返回缓存状态，供无协程的同步调用方使用）。
+     *
+     * 语义就是 [connectedPhases]：只有 READY（内置 Shizuku server 已就绪）为 true。
+     * 会话连上但 server 没起来时返回 false —— 这条通路上没有 shell 可执行。
+     */
     fun isConnectedNow(): Boolean = _status.value.phase in connectedPhases
 
     /**
-     * 经 Provider 的 shell 通路执行命令并回读输出（复用 Shizuku 命令通道）。
-     * 未连接或执行失败返回 null；成功返回输出文本——与旧 ADB 传输的返回约定一致。
+     * 经 Provider 执行一条命令并回读输出。
+     *
+     * 注意它走的是**内置 Shizuku 的 binder 通路**（AIDL `execShizuku`），不是无线 ADB 会话：
+     * 会话本身没有实现命令执行。名字保留是为了兼容旧调用点，不要据此认为"ADB 会话能执行 shell"。
      */
     suspend fun executeShell(command: String): String? {
         val parcel = ProviderManager.call(appContext, timeoutMs = SHELL_TIMEOUT_MS) { it.execShizuku(command) }

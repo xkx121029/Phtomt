@@ -40,8 +40,8 @@ enum class CapabilityChannel(val key: String, val fallback: String) {
     /** 纯端侧：不触碰屏幕/外部，无通道依赖 */
     LOCAL("local", "无通道依赖；失败直接回中文原因，不静默"),
 
-    /** 屏幕操作：无障碍 / Shizuku / 无线 ADB 按 ChannelLadder 择优 */
-    SCREEN("screen", "无障碍 → Shizuku → 无线 ADB，按 ChannelLadder 择优；全不可用回中文原因"),
+    /** 屏幕操作：无障碍 / 内置 Shizuku 按 ChannelLadder 择优 */
+    SCREEN("screen", "无障碍 → 内置 Shizuku，按 ChannelLadder 择优；全不可用回中文原因"),
 
     /** 系统时钟应用直达（AlarmClock 意图：定闹钟 / 倒计时，不经语音助手、不模拟点击） */
     CLOCK("clock", "静默直达 → 注入通道写库 → 时钟页直达+无障碍确认 → 打开时钟页手动设置（ClockFallbackPolicy）"),
@@ -49,8 +49,8 @@ enum class CapabilityChannel(val key: String, val fallback: String) {
     /** 内置浏览器（WebView 可见页，独立通道） */
     BROWSER("browser", "内置浏览器独立通道；失败回页面状态与中文原因，不切到系统浏览器"),
 
-    /** 命令行（Shizuku / 无线 ADB / Termux） */
-    SHELL("shell", "Shizuku → 无线 ADB → Termux，按可用性择优；全不可用回中文原因"),
+    /** 命令行（内置 Shizuku / Termux；无线 ADB 只用于拉起 Shizuku，不是可执行通道） */
+    SHELL("shell", "内置 Shizuku → Termux，按可用性择优；全不可用回中文原因"),
 
     /** 无障碍端点直调 */
     A11Y("a11y", "无障碍端点直调；服务离线回中文原因并提示改用高层意图"),
@@ -72,7 +72,7 @@ enum class CapabilityPermission(val key: String) {
     /** 无障碍服务在线 */
     ACCESSIBILITY("accessibility"),
 
-    /** shell 通道（Shizuku / 无线 ADB） */
+    /** shell 通道（内置 Shizuku / Termux） */
     SHELL("shell"),
 
     /** 通知使用权 */
@@ -344,7 +344,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.APP_MANAGE, name = "管控应用", category = "应用",
-            summary = "对本机应用做强制操作（不点界面，需 Shizuku/无线 ADB）：op=force_stop 强制停止 / background 清理后台。app 给包名或应用名。",
+            summary = "对本机应用做强制操作（不点界面，需内置 Shizuku）：op=force_stop 强制停止 / background 清理后台。app 给包名或应用名。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, defaultValue = "force_stop",
                     options = listOf("force_stop", "background")),
@@ -355,7 +355,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.TERMINAL_OP, name = "命令行", category = "命令行",
-            summary = "在本机注入通道执行命令（仅自由模式；需 Shizuku/无线 ADB）：op=exec 执行 command（输出截断到 4000 字符）/ check_root 看当前通道是否 Root。AI 自己写命令属于高风险能力。",
+            summary = "在本机注入通道执行命令（仅自由模式；需内置 Shizuku）：op=exec 执行 command（输出截断到 4000 字符）/ check_root 看当前通道是否 Root。AI 自己写命令属于高风险能力。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, defaultValue = "exec",
                     options = listOf("exec", "check_root")),
@@ -365,7 +365,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.PERSONAL_READ, name = "个人数据", category = "取数",
-            summary = "只读个人数据（需 Shizuku/无线 ADB，系统以 shell 身份查 ContentProvider）：op=contacts 通讯录 / calls 通话记录 / sms 短信 / calendar 日历事件 / media 媒体文件 / logs 最近错误日志。query 用于按文字过滤，limit 控制条数。",
+            summary = "只读个人数据（需内置 Shizuku，系统以 shell 身份查 ContentProvider）：op=contacts 通讯录 / calls 通话记录 / sms 短信 / calendar 日历事件 / media 媒体文件 / logs 最近错误日志。query 用于按文字过滤，limit 控制条数。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, defaultValue = "contacts",
                     options = listOf("contacts", "calls", "sms", "calendar", "media", "logs")),
@@ -671,7 +671,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.SYSTEM_SETTINGS, name = "系统设置读写", category = "设备",
-            summary = "读写系统设置项：op=get 读（namespace/key），op=set 写（namespace/key/value）。namespace=system/secure/global。写 secure/global 通常需要 shell（Shizuku/无线 ADB）；写 system 需「修改系统设置」授权。",
+            summary = "读写系统设置项：op=get 读（namespace/key），op=set 写（namespace/key/value）。namespace=system/secure/global。写 secure/global 通常需要 shell（内置 Shizuku）；写 system 需「修改系统设置」授权。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, options = listOf("get", "set")),
                 CapabilityParam("namespace", "命名空间", "select", required = true, defaultValue = "system",
@@ -693,7 +693,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.CALENDAR_OP, name = "日历读写", category = "设备",
-            summary = "读写系统日历事件（不经过日历 App 的 GUI）：op=list 列出（query 过滤、days 时间窗、limit 条数），op=create 新建（title/start，可选 end 或 duration_min、all_day、calendar_id），op=update 改（event_id + 要改的字段），op=delete 删（event_id）。start/end 可写「2026-11-05 09:00」或毫秒时间戳。查询/写入以 shell 身份进行，需要 Shizuku 或无线 ADB；没有时回中文原因并建议改走 GUI。",
+            summary = "读写系统日历事件（不经过日历 App 的 GUI）：op=list 列出（query 过滤、days 时间窗、limit 条数），op=create 新建（title/start，可选 end 或 duration_min、all_day、calendar_id），op=update 改（event_id + 要改的字段），op=delete 删（event_id）。start/end 可写「2026-11-05 09:00」或毫秒时间戳。查询/写入以 shell 身份进行，需要内置 Shizuku；没有时回中文原因并建议改走 GUI。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true, options = listOf("list", "create", "update",
                     "delete")),
@@ -755,7 +755,7 @@ object CapabilityRegistry {
 
         // ---- 自由模式专属（保守/均衡拒绝） ----
             intent = IntentType.SHELL, name = "执行命令", category = "自由模式",
-            summary = "执行 AI 自写的命令（仅自由模式；本任务首次执行前用户确认一次）。command 填命令原文，shizuku / 无线 ADB / Termux 通道由端侧按可用性自动选，终端输出会作为「上一步结果」回给你。",
+            summary = "执行 AI 自写的命令（仅自由模式；本任务首次执行前用户确认一次）。command 填命令原文，内置 Shizuku / Termux 通道由端侧按可用性自动选，终端输出会作为「上一步结果」回给你。",
             params = listOf(CapabilityParam("command", "命令原文", "text", required = true,
                 description = "如 pm list packages | grep 相机；也可写友好命令")),
             risk = RiskTier.EXTENDED, channel = CapabilityChannel.SHELL, permission = CapabilityPermission.SHELL,
@@ -763,7 +763,7 @@ object CapabilityRegistry {
         ),
         CapabilitySpec(
             intent = IntentType.VIRTUAL_DISPLAY, name = "副屏操作", category = "自由模式",
-            summary = "操作端侧虚拟副屏（仅自由模式；需要 Shizuku/无线 ADB）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图，present 把副屏里操作的应用投到主屏前台给用户看（app 省略时用刚刚 launch 的那个）。副屏上的动作不占用用户当前屏幕。",
+            summary = "操作端侧虚拟副屏（仅自由模式；需要内置 Shizuku）：op=status 查状态，create 创建，destroy 销毁，launch 启动应用（app），tap 点击（x/y），swipe 滑动（x1/y1/x2/y2），type 输入（text），key 按键（key），screenshot 截图，present 把副屏里操作的应用投到主屏前台给用户看（app 省略时用刚刚 launch 的那个）。副屏上的动作不占用用户当前屏幕。",
             params = listOf(
                 CapabilityParam("op", "操作", "select", required = true,
                     options = listOf("status", "create", "destroy", "launch", "tap", "swipe", "type", "key",
