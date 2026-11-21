@@ -34,7 +34,7 @@ plugins {
 // 之前 app 用 git 提交数当 versionCode，导致「不提交新 commit 就永远不递增」，
 // 每次构建出来的 APK 版本号都一样。现在改为：
 //   1. `-PbuildNumber=NN` 优先（CI 注入，可用于覆盖/回退）；
-//   2. 否则取 version.properties 里记录的上次值（首次以 git 提交数为基线），
+//   2. 否则取 version.properties 里记录的上次值（文件缺失/损坏时以「已发布 tag 的最大 versionCode」为基线），
 //      只要本次调用会产出 APK（assemble / bundle / build），就 +1；
 //      **回写发生在 package 任务成功之后**（见下方 packaging 任务的 doLast），失败构建不消费版本号。
 //
@@ -51,10 +51,21 @@ fun readStoredBuildNumber(): Int {
     return props.getProperty("BUILD_NUMBER")?.toIntOrNull() ?: 0
 }
 
-fun gitCommitCount(): Int = runCatching {
-    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
-        .standardOutput.asText.get().trim().toInt()
-}.getOrDefault(0)
+// 已发布 tag 里的最大 versionCode（`v0.2.<N>` / `v0.2.<N>-beta` / `v0.2.<N>-dev`）。
+//
+// 这里原本用的是 git 提交数（`git rev-list --count HEAD`）当基线，那个语义已经彻底失效：
+// 仓库只有 ~490 个提交，而 versionCode 早跑到 92xx，两个量级差了 20 倍——一旦
+// version.properties 缺失或损坏退回提交数，算出来的号会直接落进已发布版本区间
+// （v0.2.896、v0.2.1278 就躺在那儿），撞号覆盖安装直接失败。
+// tag 才是 versionCode 的真实占用水位，也是 CI 用的同一个基准（见 .github/workflows/android-ci.yml
+// 的 Compute version + tag），本地与 CI 由此口径一致。
+fun gitTagMaxVersionCode(): Int = runCatching {
+    providers.exec { commandLine("git", "tag", "--list", "v0.2.*") }
+        .standardOutput.asText.get()
+        .lineSequence()
+        .mapNotNull { Regex("^v0\\.2\\.(\\d+)").find(it.trim())?.groupValues?.get(1)?.toIntOrNull() }
+        .maxOrNull()
+}.getOrNull() ?: 0
 
 // 只有真正产出 APK 的调用才自增：跑 detekt / test / syncProviderAssets 时
 // 不该平白吃掉一个版本号。androidPackage 是可选模块里的"构建 + 归档"任务，
@@ -70,9 +81,9 @@ val injectedBuildNumber = (findProperty("buildNumber") as? String)?.toIntOrNull(
 
 val buildNumber: Int = run {
     val stored = readStoredBuildNumber()
-    // 基线取「已记录值」与「git 提交数」的较大者：即使期间新增了 commit，
-    // 版本号也只增不减（versionCode 回退会导致覆盖安装失败）。
-    val base = maxOf(stored, gitCommitCount(), 0)
+    // 基线取「已记录值」与「已发布 tag 最大值」的较大者：versionCode 只增不减，
+    // 也绝不能落回已发布过的号（回退会让覆盖安装失败，并撞上已有的 Release）。
+    val base = maxOf(stored, gitTagMaxVersionCode(), 0)
     val value = injectedBuildNumber ?: (if (apkBuilding) base + 1 else maxOf(base, 1))
     maxOf(value, 1)
 }

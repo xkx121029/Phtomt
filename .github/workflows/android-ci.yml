@@ -138,6 +138,14 @@ jobs:
           # 版本号只有一条递增序列：仓库根 version.properties 的 BUILD_NUMBER，
           # 本机构建（root build.gradle.kts）也是读写同一个文件。
           # 权威副本固定在 nightly 分支——beta 也读它的值，避免两条分支各长一个计数器。
+          #
+          # 但计数器**不是**权威，它只是「已发布 tag 的最大 versionCode」的一个副本：
+          # 它只在发布成功后由 Persist 步骤推进，Persist 一旦失败（或被手工改动）就永久落后。
+          # 事故（2026-11）：nightly 计数器停在 9188，tag 已发到 v0.2.9193-beta，
+          # 这一跑按旧逻辑算出 9189 → 撞上 6 个版本前就存在的 tag → 发布步骤静默 --clobber，
+          # 把新包覆盖到 v0.2.9189-beta 那个已发布的 Release 上，全绿，没人发现。
+          # 所以基准取两者较大值，tag 领先时以 tag 为准：
+          #   BASE = max(COUNTER, 已发布 tag 的最大 versionCode)，CODE = BASE + 1
           COUNTER=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
             -H "Accept: application/vnd.github.raw" | grep -E '^BUILD_NUMBER=' | cut -d= -f2 | tr -d '[:space:]')
           SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha)
@@ -145,14 +153,66 @@ jobs:
             echo "读不到 version.properties 的 BUILD_NUMBER（值：$COUNTER）" >&2
             exit 1
           fi
-          CODE=$((COUNTER + 1))
+
+          # 已发布 tag 的 versionCode 全集（-dev/-beta 与无后缀 tag 都算，跨渠道共用一条序列）。
+          # 走 tags API 而不是 `git tag`：actions/checkout 默认 fetch-depth=1、根本不带 tag。
+          TAGS=$(gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
+            | sed -n 's/^v0\.2\.\([0-9][0-9]*\)\(-.*\)\?$/\1/p' | sort -n -u)
+          if [ -z "$TAGS" ]; then
+            echo "::error title=读不到已发布 tag::tags API 没有返回任何 v0.2.* tag，无法确定 versionCode 水位；拒绝出包（否则可能撞号覆盖旧 Release）"
+            exit 1
+          fi
+          TAG_MAX=$(printf '%s\n' "$TAGS" | tail -1)
+
+          if [ "$TAG_MAX" -gt "$COUNTER" ]; then
+            echo "计数器落后于已发布 tag（$COUNTER < $TAG_MAX），以 tag 为基准：计数器漏了一次推进"
+            BASE=$TAG_MAX
+          else
+            BASE=$COUNTER
+          fi
+          CODE=$((BASE + 1))
+          # 撞号兜底：按上面的算法 CODE 一定大于所有 tag 的号，这里只是防止
+          # tags API 与实际 Release 列表不一致（分页、缓存、并发推送）时静默撞车。
+          while printf '%s\n' "$TAGS" | grep -qx "$CODE"; do
+            echo "versionCode $CODE 已被发布占用，跳到 $((CODE + 1))"
+            CODE=$((CODE + 1))
+          done
           echo "counter=$COUNTER" >> "$GITHUB_OUTPUT"
           echo "counter_sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag_max=$TAG_MAX" >> "$GITHUB_OUTPUT"
           echo "version_code=$CODE" >> "$GITHUB_OUTPUT"
           echo "version_name=0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "tag=v0.2.$CODE-$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "apk=HappyAgent-0.2.$CODE-$CHANNEL.apk" >> "$GITHUB_OUTPUT"
-          echo "本次版本：0.2.$CODE-$CHANNEL（计数器 $COUNTER -> $CODE）"
+          echo "本次版本：0.2.$CODE-$CHANNEL（计数器 $COUNTER，已发布 tag 最大 $TAG_MAX，基准 $BASE -> $CODE）"
+          {
+            echo "## 版本号计算"
+            echo
+            echo "| 项 | 值 |"
+            echo "| --- | --- |"
+            echo "| nightly 计数器 | \`$COUNTER\` |"
+            echo "| 已发布 tag 最大 versionCode | \`$TAG_MAX\` |"
+            echo "| 本次 versionCode | \`$CODE\` |"
+            echo "| 本次 tag | \`v0.2.$CODE-$CHANNEL\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert tag is not already published
+        # 硬断言，第二道闸：算出来的 tag 一旦已经是一个已发布 Release，直接红。
+        # 旧实现在发布步骤用 `gh release upload --clobber` 兜底这情况，代价是把新包
+        # 静默覆盖到老 Release 上（P0 事故正是如此：v0.2.9189-beta 被 9193 之后的新包覆盖）。
+        # 宁可红一次让人看见，也不要静默覆盖已发布的版本。
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          CODE: ${{ steps.ver.outputs.version_code }}
+          TAG_MAX: ${{ steps.ver.outputs.tag_max }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error title=版本号撞车::算出的 tag $TAG（versionCode $CODE）已经是一个已发布的 Release。拒绝覆盖。已发布 tag 的最大 versionCode 是 $TAG_MAX，按 max(计数器, tag 最大值)+1 不该算出这个号——tags 列表与 Release 列表不一致，请人工核查。"
+            exit 1
+          fi
+          echo "tag $TAG 未被占用，可以发布"
 
       - name: Sync assets + assemble Debug APK
         # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
@@ -308,19 +368,21 @@ jobs:
           **签名**：debug 签名（Android 调试证书）。可直接安装运行；
           已装过 release 签名版本（应用市场包）的机器无法覆盖安装，需先卸载。
           EOF
-          # 幂等：tag 已存在时不再 create（会 400 并让整个 run 红），而是直接补齐 APK 资产。
-          # 这解开了一个自锁：Release 成功但 Persist 失败 → 下一次 run 重算出同一个
-          # versionCode、tag 撞车 → 发布步骤永远失败、Persist 永远轮不到，只能人工改
-          # nightly 的计数器。改成幂等后，下一次 run 能自己走完并推进计数器。
+          # fail-closed：撞号就红，绝不覆盖已发布的版本。
+          # 旧实现这里是 `if gh release view "$TAG"; then gh release upload "$TAG" "$APK" --clobber`，
+          # 初衷是解开「Release 成功但 Persist 失败 → 下一跑重算出同一个 versionCode」的自锁，
+          # 代价却是把新构建的包静默覆盖到几版之前的 Release 上，构建全绿、无人发现
+          # （2026-11 的 P0：tag 已到 9193、计数器停在 9188，下一跑算出 9189 就去覆盖 v0.2.9189-beta）。
+          # 自锁的正确解法在别处，已经实现：Compute 步骤按「tag 最大值 + 1」算号，
+          # Persist 步骤以「tag 最大值 + 1」为下限推进计数器，下一次跑会自动跳到不冲突的号。
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG 已存在，补传/覆盖 APK 资产（沿用原 release notes）"
-            gh release upload "$TAG" "$APK" --clobber
-          else
-            gh release create "$TAG" "$APK" \
-              --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
-              --notes-file release-notes.md \
-              --prerelease
+            echo "::error title=拒绝覆盖已发布版本::tag $TAG 已经存在。不会用 --clobber 覆盖它——请检查 Compute 与 Assert 步骤为何没拦住。"
+            exit 1
           fi
+          gh release create "$TAG" "$APK" \
+            --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+            --notes-file release-notes.md \
+            --prerelease
 
       - name: Persist version counter
         # 出包成功才把计数器推进一步（失败不烧号）。
@@ -333,6 +395,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODE: ${{ steps.ver.outputs.version_code }}
+          TAG_MAX: ${{ steps.ver.outputs.tag_max }}
           TAG: ${{ steps.ver.outputs.tag }}
         run: |
           # fail-closed：3 次都写不进去就让这一次跑红。但失败必须留痕——
@@ -341,6 +404,11 @@ jobs:
           # 所以这里先 set +e，把三类失败（读不到、PUT 被拒、重试耗尽）统一收口到最后那段。
           set +e
           FAIL_REASON=""
+          # 已发布 tag 的最大 versionCode：Compute 步骤透传的值 + 这里重读一次，取较大者。
+          # 重读是为了盖住「Compute 之后又有新 tag 落地」的窗口；读失败就沿用透传值。
+          TAG_MAX_NOW=$(gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' 2>/dev/null \
+            | sed -n 's/^v0\.2\.\([0-9][0-9]*\)\(-.*\)\?$/\1/p' | sort -n | tail -1)
+          if [ "${TAG_MAX_NOW:-0}" -gt "${TAG_MAX:-0}" ] 2>/dev/null; then TAG_MAX=$TAG_MAX_NOW; fi
           for attempt in 1 2 3; do
             SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha 2>/dev/null)
             CUR=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" \
@@ -351,29 +419,33 @@ jobs:
               sleep 3
               continue
             fi
-            # 若本地构建抢先推进过，就跳到它之后，绝不回退
+            # 目标值 = max(本次 CODE, 当前值 + 1, 已发布 tag 最大值 + 1)，绝不回退。
+            # 后两项是自愈：本地构建抢先推进过就跳到它之后；计数器本身已经落后于 tag
+            # （历史事故：nightly 停在 9188、tag 已到 9193）就以 tag 为基准推进，
+            # 而不是从落后的计数器 +1 继续掉队。
             TARGET=$CODE
-            if [ "$CUR" -ge "$CODE" ]; then TARGET=$((CUR + 1)); fi
+            if [ "$CUR" -ge "$TARGET" ]; then TARGET=$((CUR + 1)); fi
+            if [ "${TAG_MAX:-0}" -ge "$TARGET" ]; then TARGET=$((TAG_MAX + 1)); fi
             CONTENT=$(printf '#Auto-incremented by Gradle\n#%s\nBUILD_NUMBER=%s\n' \
               "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET" | base64 -w0)
             if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
                  -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
                  -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
-              echo "version.properties: $CUR -> $TARGET"
+              echo "version.properties: $CUR -> $TARGET（本次发布 $CODE，已发布 tag 最大 $TAG_MAX）"
               exit 0
             fi
             FAIL_REASON="PUT 被拒（sha 冲突或权限不足），nightly 仍是 $CUR"
             echo "回写冲突，重试 $attempt" >&2
             sleep 3
           done
-          echo "::error title=版本计数器未推进::上一次已发布但计数器未推进 —— $TAG 的 GitHub Release 已发布（versionCode $CODE），nightly 的 version.properties 仍停在 ${CUR:-未知}：$FAIL_REASON。下一次运行会重复使用 versionCode $CODE，并因同名 tag $TAG 已存在而失败；请手动把 nightly 的 BUILD_NUMBER 改到 $((CODE + 1)) 或更大。"
+          echo "::error title=版本计数器未推进::上一次已发布但计数器未推进 —— $TAG 的 GitHub Release 已发布（versionCode $CODE），nightly 的 version.properties 仍停在 ${CUR:-未知}：$FAIL_REASON。计数器只是 tag 的副本，下一次运行会把 ${TAG_MAX} 与计数器取较大值再 +1，因此不会撞号覆盖；但仍应人工确认 nightly 的 BUILD_NUMBER 不小于 $((CODE + 1))。"
           {
             echo "## ❌ 版本计数器未推进"
             echo
             echo "- 上一次已发布但计数器未推进：**$TAG 已发布**（versionCode \`$CODE\`），nightly 的 \`version.properties\` 仍停在 \`${CUR:-未知}\`。"
             echo "- 失败原因：$FAIL_REASON"
-            echo "- 后果：下一次运行会**重复使用 versionCode \`$CODE\`**，并因同名 tag \`$TAG\` 已存在而在发布步骤失败。"
-            echo "- 处置：手动把 nightly 的 \`BUILD_NUMBER\` 改到 \`$((CODE + 1))\` 或更大，再重跑。"
+            echo "- 影响：版本号以「已发布 tag 的最大 versionCode」为权威，下一次运行会自动算出不冲突的号，**不会撞号、不会覆盖已发布 Release**；但计数器本身仍未推进，建议人工确认。"
+            echo "- 处置：确认 nightly 的 \`BUILD_NUMBER\` 不小于 \`$((CODE + 1))\`。"
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
