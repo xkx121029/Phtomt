@@ -54,12 +54,21 @@ object ProviderManager {
     /** AIDL 服务 action（与 Provider Manifest 中 ProviderService 的 intent-filter 一致） */
     const val ACTION = "com.phoneagent.provider.IDeviceProvider"
 
+    /** Provider 服务的完整类名（与 :provider 清单里的 `.ProviderService` 一致） */
+    private const val SERVICE_CLASS = "com.phoneagent.provider.ProviderService"
+
     /** 内置 APK 与版本文件在 assets 里的位置（经 :app:syncProviderAssets 同步进仓库） */
     private const val APK_ASSET = "provider/provider.apk"
     private const val VERSION_ASSET = "provider/version.txt"
 
     /** 默认绑定超时：3 秒足够系统拉起 Provider 进程，超时视为不可用而不是无限等 */
     private const val BIND_TIMEOUT_MS = 3_000L
+
+    /**
+     * 单种绑定方式的等待时长。多种方式串行尝试，因此每次不能等满全局超时，
+     * 否则总耗时会随方式数翻倍，把调用方（引擎每步取能力快照）拖住。
+     */
+    private const val ATTEMPT_TIMEOUT_MS = 1_200L
 
     private val bindMutex = Mutex()
 
@@ -68,6 +77,15 @@ object ProviderManager {
 
     @Volatile
     private var connecting = false
+
+    /**
+     * 最近一次绑定的拒绝原因（[ServiceConnection.onNullBinding] 写入）。
+     * 主要覆盖「签名级权限不匹配」这类**不抛异常、只是不回调**的失败：
+     * 此时 bindService 返回 true，但 onServiceConnected 永远不来，
+     * 光看返回值会误判成"正在连接中"。
+     */
+    @Volatile
+    private var bindRejectReason: String? = null
 
     private var appContext: Context? = null
 
@@ -113,6 +131,8 @@ object ProviderManager {
         override fun onNullBinding(name: ComponentName?) {
             provider = null
             _connected.value = false
+            connecting = false
+            bindRejectReason = "服务返回空 binder（签名或版本不匹配）"
             _lastError.value = "服务组件拒绝绑定（签名或版本不匹配）"
         }
     }
@@ -269,37 +289,62 @@ object ProviderManager {
     /** 绑定并挂起等待回调；超时由 [ensureBound] 的 withTimeoutOrNull 兜底 */
     private suspend fun bindAwait(ctx: Context): IDeviceProvider? = suspendCancellableCoroutine { cont ->
         appContext = ctx
-        connecting = true
-        // 清掉可能残留的旧绑定：Android 的 bindService 是引用计数，
-        // 同一 connection 重复绑定不会重新回调 onServiceConnected
-        runCatching { ctx.unbindService(connection) }
-        val intent = Intent(ACTION).setPackage(PACKAGE)
-        val ok = runCatching {
-            ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-        }.getOrDefault(false)
+        val attempts = listOf(
+            BindAttempt("隐式action", Intent(ACTION).setPackage(PACKAGE), Context.BIND_AUTO_CREATE),
+            BindAttempt(
+                "显式组件",
+                Intent().setComponent(ComponentName(PACKAGE, SERVICE_CLASS)),
+                Context.BIND_AUTO_CREATE,
+            ),
+            BindAttempt(
+                "显式组件+IMPORTANT",
+                Intent().setComponent(ComponentName(PACKAGE, SERVICE_CLASS)),
+                Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT,
+            ),
+        )
+        val failures = mutableListOf<String>()
+        for (attempt in attempts) {
+            // 清掉可能残留的旧绑定：bindService 是引用计数，同一 connection 重复绑定
+            // 不会再回调 onServiceConnected
+            runCatching { ctx.unbindService(connection) }
+            provider = null
+            bindRejectReason = null
+            connecting = true
 
-        if (!ok) {
-            connecting = false
-            cont.resume(null)
-            return@suspendCancellableCoroutine
-        }
-
-        // 轮询等待 onServiceConnected 写入代理（ServiceConnection 回调在 binder 线程，
-        // 这里用轻量轮询而非再挂一个回调列表，避免连接状态多份来源）
-        val startedAt = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startedAt < BIND_TIMEOUT_MS) {
-            val p = provider
-            if (p != null) {
-                connecting = false
-                cont.resume(p)
-                return@suspendCancellableCoroutine
+            val error = runCatching {
+                ctx.bindService(attempt.intent, connection, attempt.flags)
+            }.exceptionOrNull()
+            if (error != null) {
+                failures += "${attempt.label} 抛异常（${error.javaClass.simpleName}）：${error.message}"
+                continue
             }
-            if (!connecting) break // onNullBinding 等异常路径
-            Thread.sleep(50)
+
+            // 轮询等待 onServiceConnected 写入代理（回调在 binder 线程，
+            // 这里用轻量轮询而非再挂一个回调列表，避免连接状态多份来源）
+            val startedAt = System.currentTimeMillis()
+            while (System.currentTimeMillis() - startedAt < ATTEMPT_TIMEOUT_MS) {
+                val p = provider
+                if (p != null) {
+                    connecting = false
+                    cont.resume(p)
+                    return@suspendCancellableCoroutine
+                }
+                // onNullBinding 会写 bindRejectReason 并把 connecting 置 false
+                if (!connecting) break
+                Thread.sleep(50)
+            }
+            failures += "${attempt.label} 未回调${bindRejectReason?.let { "（$it）" }.orEmpty()}"
         }
+
         connecting = false
+        // 全部失败：逐条原因写进 lastError，设置页自检可直接展示，
+        // 不再只有一句「绑定超时」而无从定位
+        _lastError.value = "无法绑定服务组件：" + failures.joinToString("；")
         cont.resume(null)
     }
+
+    /** 一种绑定方式（标签用于失败原因，便于在设置页定位是哪条路径不通） */
+    private data class BindAttempt(val label: String, val intent: Intent, val flags: Int)
 
     /**
      * 带超时与断连兜底的远程调用：Provider 不可用、超时、DeadObject 一律返回 null。
@@ -397,6 +442,121 @@ object ProviderManager {
         _connected.value = false
     }
 
+    /**
+     * 彻底重置连接状态，供设置页「重新连接」按钮调用。
+     *
+     * 与 [invalidate] 的区别：这里连 [lastError] 与 [bindRejectReason] 一起清空，
+     * 把所有残留状态归零。用户在「改了签名 / 重装服务组件 / 从系统设置里重新启用」之后
+     * 需要一个干净起点，否则旧的错误信息会一直挂在那里，看起来像"修了也没用"。
+     *
+     * 不重建 [connection] 对象：Android 的 unbindService 会把旧连接彻底摘掉，
+     * 复用同一个 connection 实例重新 bindService 是合法且更省事的做法。
+     */
+    fun resetConnection() {
+        val ctx = appContext
+        provider = null
+        connecting = false
+        bindRejectReason = null
+        _connected.value = false
+        _lastError.value = null
+        if (ctx != null) runCatching { ctx.unbindService(connection) }
+    }
+
+    // ==================== 绑定诊断 ====================
+
+    /**
+     * 绑定前的环境诊断：把「为什么绑不上」拆成可判定的事实。
+     *
+     * 覆盖实测中最常见的四类失败，且都不依赖 logcat：
+     * 1. 组件根本没装 / 装了但不是我们的包（山寨同名应用）；
+     * 2. 签名不一致 —— signature 级 BIND_PROVIDER 会直接拒绝，且**不抛异常**，
+     *    bindService 返回 true 却永远收不到 onServiceConnected，最容易被误判为"卡住"；
+     * 3. 服务组件被系统停用（disable）、或用户手动停用；
+     * 4. 服务类名解析不到（Provider 换了包名/类名，主应用还在用旧常量）。
+     */
+    data class BindDiagnosis(
+        val installed: Boolean,
+        val installedVersion: String?,
+        val bundledVersion: String?,
+        val sameSignature: Boolean,
+        val componentEnabled: Boolean,
+        val serviceResolvable: Boolean,
+        val problems: List<String>,
+    ) {
+        val ok: Boolean get() = problems.isEmpty()
+    }
+
+    /**
+     * 逐项检查绑定前置条件。返回的诊断可直接渲染在设置页，
+     * [problems] 为空才说明「绑定该成功」，否则就是绑定失败的确切原因。
+     */
+    fun diagnose(context: Context): BindDiagnosis {
+        val pm = context.packageManager
+        val problems = mutableListOf<String>()
+
+        val pkgInfo = runCatching { pm.getPackageInfo(PACKAGE, 0) }.getOrNull()
+        val installed = pkgInfo != null
+        if (!installed) {
+            problems += "服务组件未安装（随包 v${bundledVersion(context) ?: "未知"}）"
+        }
+
+        // 签名比对：API 28+ 用 GET_SIGNING_CERTIFICATES（GET_SIGNATURES 已废弃），
+        // API 26/27 只能用旧的 GET_SIGNATURES —— 直接用新常量会在 26/27 上抛 NoSuchFieldError
+        val sameSignature = installed && runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                val self = pm.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES,
+                ).signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+                val other = pm.getPackageInfo(
+                    PACKAGE,
+                    PackageManager.GET_SIGNING_CERTIFICATES,
+                ).signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
+                self != null && other != null && self.contentEquals(other)
+            } else {
+                @Suppress("DEPRECATION")
+                val self = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES)
+                    .signatures?.firstOrNull()?.toByteArray()
+                @Suppress("DEPRECATION")
+                val other = pm.getPackageInfo(PACKAGE, PackageManager.GET_SIGNATURES)
+                    .signatures?.firstOrNull()?.toByteArray()
+                self != null && other != null && self.contentEquals(other)
+            }
+        }.getOrDefault(false)
+        if (installed && !sameSignature) {
+            problems += "签名不一致：服务组件与主应用不是同一个证书签的，" +
+                "signature 级绑定权限会直接拒绝（用同一次构建产物安装，或先用同证书重装服务组件）"
+        }
+
+        // 组件是否被停用（含用户在设置里手动停用）
+        val component = ComponentName(PACKAGE, SERVICE_CLASS)
+        val componentEnabled = runCatching {
+            val info = pm.getServiceInfo(component, 0)
+            info.enabled && info.applicationInfo?.enabled == true
+        }.getOrDefault(false)
+        if (installed && !componentEnabled) {
+            problems += "服务组件被停用（应用或服务在系统设置里处于禁用状态）"
+        }
+
+        // 服务类名能否解析：Provider 换了类名/包名时这里是 false
+        val serviceResolvable = runCatching {
+            pm.queryIntentServices(Intent(ACTION).setPackage(PACKAGE), 0).isNotEmpty()
+        }.getOrDefault(false)
+        if (installed && !serviceResolvable) {
+            problems += "服务组件里找不到 $ACTION（版本过旧或安装包损坏，请更新服务组件）"
+        }
+
+        return BindDiagnosis(
+            installed = installed,
+            installedVersion = pkgInfo?.versionName,
+            bundledVersion = bundledVersion(context),
+            sameSignature = sameSignature,
+            componentEnabled = componentEnabled,
+            serviceResolvable = serviceResolvable,
+            problems = problems,
+        )
+    }
+
     // ==================== 自检 ====================
 
     /** 自检单步结果：UI 逐行展示，[ok]=false 时 [detail] 就是原因本身 */
@@ -430,6 +590,18 @@ object ProviderManager {
             title = "无障碍服务开关",
             ok = a11yEnabled,
             detail = if (a11yEnabled) "系统设置中已开启" else "未开启：读不到元素树，只能靠截图",
+        )
+
+        // 绑定前置诊断：签名/停用/类名解析这些「不抛异常但绑不上」的原因都在这里
+        val diagnosis = diagnose(context)
+        steps += SelfTestStep(
+            title = "绑定前置条件",
+            ok = diagnosis.ok,
+            detail = if (diagnosis.ok) {
+                "签名一致 · 组件启用 · 服务可解析"
+            } else {
+                diagnosis.problems.joinToString("；")
+            },
         )
 
         val remote = ensureBound(context)
