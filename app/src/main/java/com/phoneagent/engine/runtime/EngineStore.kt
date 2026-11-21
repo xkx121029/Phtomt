@@ -5,12 +5,14 @@ import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.EvolvedRule
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.TaskMemoryEntry
+import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentLog
 import com.phoneagent.domain.model.AgentMetrics
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.domain.rules.EngineRules
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.domain.model.TaskPlan
@@ -386,6 +388,22 @@ internal class EngineStore {
     var lastVisualCoordinate: Pair<Int, Int>? = null
 
     /**
+     * 本任务内已确认下发过的副作用动作（幂等判据的唯一来源，见 [EngineRules.idempotencyVerdict]）。
+     *
+     * 只由「动作真的下发且验证成功」写入，任务级清空：拿页面文字当依据会误跳过（HAPP-5 P0-1），
+     * 而跨任务残留则会让新任务的同类动作被上一任务的记录挡掉。
+     */
+    val committedEffects = mutableListOf<EngineRules.CommittedEffect>()
+
+    /** 记账一次已下发的副作用动作（同键只留最早一步：幂等跳过要报"第几步做过的"） */
+    fun recordCommittedEffect(action: AgentAction, step: Int) {
+        val key = EngineRules.idempotencyKey(action, action.type)
+        if (committedEffects.none { it.key == key }) {
+            committedEffects += EngineRules.CommittedEffect(key = key, step = step)
+        }
+    }
+
+    /**
      * 本步已经抓到的截图与已识别到的控件，仅供调试面板留档复用。
      *
      * 留档是纯展示：绝不能为了画一张带框的图再跑一次端侧 3B 全量推理。
@@ -443,6 +461,8 @@ internal class EngineStore {
         sessionContextCache = null
         foregroundPkgCounts.clear()
         touchedRuleIds.clear()
+        // 副作用执行历史：跨任务残留会让新任务的同一动作被上一任务的记录跳过（幂等判据的唯一来源）
+        committedEffects.clear()
         // 调试留档槽：上一步的截图/控件绝不能当成这一步的证据
         stepShotScreenshot = null
         stepShotRegions = null
