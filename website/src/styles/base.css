@@ -1,6 +1,9 @@
 /* ===========================================================================
-   基础层：重置 + 版心 + 通用原件（按钮 / 卡片 / 徽标 / 表格 / 代码）
-   所有可点元素都有 :active 缩放反馈——按下去没有回应的界面，用户会怀疑自己点空了。
+   基础层 · 「读屏台」
+   ---------------------------------------------------------------------------
+   结构靠 1px 线切分，不靠卡片堆叠。一块内容要么是一条读数、一行规格、
+   一张图版，要么是一段大字——没有「三张一样的卡片」。
+   中文排印按中文的规矩：正文 17px / 行高 1.85 / 避头尾 / 禁合成字重斜体。
    =========================================================================== */
 
 *,
@@ -12,6 +15,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  font-size: 100%;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -22,11 +26,17 @@ html {
 
 body {
   margin: 0;
+  background: var(--ground);
+  color: var(--ink);
   font-family: var(--font);
   font-size: var(--t-body);
-  line-height: 1.72;
-  color: var(--ink);
-  background: var(--paper);
+  line-height: var(--lh-body);
+  letter-spacing: var(--track-body);
+  /* 中文断行底线：句号逗号不落行首，开引号不落行尾 */
+  line-break: strict;
+  overflow-wrap: break-word;
+  /* 中文没有斜体传统，浏览器合成的斜体与加粗会把笔画弄脏——直接禁掉 */
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
@@ -38,13 +48,14 @@ h3,
 h4 {
   margin: 0;
   font-weight: 600;
-  line-height: 1.24;
-  letter-spacing: -0.022em;
+  line-height: var(--lh-head);
+  letter-spacing: var(--track-head);
   text-wrap: balance;
 }
 
 p {
   margin: 0;
+  text-wrap: pretty;
 }
 
 a {
@@ -54,7 +65,8 @@ a {
 
 img,
 svg,
-canvas {
+canvas,
+video {
   display: block;
   max-width: 100%;
 }
@@ -68,12 +80,12 @@ textarea {
 }
 
 ::selection {
-  background: var(--brand-wash);
-  color: var(--brand-ink);
+  background: var(--signal);
+  color: var(--signal-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 2px solid var(--signal);
   outline-offset: 2px;
   border-radius: var(--r-xs);
 }
@@ -86,20 +98,30 @@ textarea {
 }
 
 .section {
-  padding-block: clamp(64px, 8vw, 112px);
+  padding-block: clamp(52px, 6.2vw, 92px);
 }
 
 .section--tight {
-  padding-block: clamp(40px, 5vw, 64px);
+  padding-block: clamp(34px, 4vw, 56px);
+}
+
+/* 用线切段，不用色块切段 */
+.band {
+  border-block: 1px solid var(--line-soft);
+}
+
+.band--panel {
+  background: var(--panel);
+  border-block: 1px solid var(--line-soft);
 }
 
 /* ---------- 排版 ---------- */
 
 .display {
   font-size: var(--t-display);
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  font-weight: 650;
+  line-height: 1.14;
+  letter-spacing: -0.012em;
 }
 
 .h1 {
@@ -108,13 +130,13 @@ textarea {
 
 .h2 {
   font-size: var(--t-h2);
+  font-weight: 620;
 }
 
 .lead {
-  font-size: clamp(1.02rem, 0.96rem + 0.3vw, 1.18rem);
-  line-height: 1.78;
+  font-size: clamp(1rem, 0.97rem + 0.24vw, 1.125rem);
+  line-height: var(--lh-lead);
   color: var(--ink-2);
-  text-wrap: pretty;
 }
 
 .muted {
@@ -125,44 +147,69 @@ textarea {
   font-size: var(--t-sm);
 }
 
+/* 等宽只给机器的东西：意图名、命令、版本号、坐标、校验值 */
 .mono {
   font-family: var(--font-mono);
-  font-size: 0.9em;
-  letter-spacing: -0.01em;
+  /* 等宽字不再缩字号：0.9em 会把 13px 的标签压到 11.7px，低于 12px 下限 */
+  font-size: 1em;
+  letter-spacing: var(--track-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* 小标签：全大写 + 宽字距，用来分区，不用来做正文 */
+/* 小标签：不再全大写、不再加半格字距——中文没有大小写，
+   靠字号与灰度区分层级就够了。 */
 .eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--ink-3);
+  letter-spacing: 0.02em;
 }
 
-.eyebrow::before {
-  content: "";
-  width: 18px;
-  height: 1px;
-  background: var(--line-2);
+/* 机器读数行：左标签右值，中间一条虚线导到右边 */
+.readout {
+  display: grid;
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-soft);
+  font-size: var(--t-sm);
+  line-height: 1.65;
+}
+
+.readout:last-child {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.readout dt,
+.readout > span:first-child {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  letter-spacing: var(--track-mono);
+  padding-top: 2px;
+}
+
+.readout dd,
+.readout > span:last-child {
+  margin: 0;
+  color: var(--ink-2);
 }
 
 /* ---------- 按钮 ---------- */
 
 .btn {
-  --btn-bg: var(--paper-raised);
+  --btn-bg: transparent;
   --btn-fg: var(--ink);
-  --btn-line: var(--line);
+  --btn-line: var(--line-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 11px 20px;
+  min-height: 44px;
+  padding: 10px 18px;
   border: 1px solid var(--btn-line);
-  border-radius: var(--r-pill);
+  border-radius: var(--r-sm);
   background: var(--btn-bg);
   color: var(--btn-fg);
   font-size: var(--t-sm);
@@ -170,70 +217,61 @@ textarea {
   cursor: pointer;
   white-space: nowrap;
   transition:
-    transform var(--dur-press) var(--ease-out),
     background-color var(--dur-ui) ease,
     border-color var(--dur-ui) ease,
-    color var(--dur-ui) ease,
-    box-shadow var(--dur-ui) ease;
+    color var(--dur-ui) ease;
 }
 
 .btn:active {
-  transform: scale(0.97);
+  transform: translateY(1px);
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.btn:disabled:active {
-  transform: none;
-}
-
 .btn--primary {
-  --btn-bg: var(--brand);
-  --btn-fg: #fff;
-  --btn-line: var(--brand);
-  box-shadow: var(--shadow-2);
-}
-
-[data-theme="dark"] .btn--primary {
-  --btn-fg: var(--brand-ink);
+  --btn-bg: var(--signal);
+  --btn-line: var(--signal);
+  --btn-fg: var(--signal-ink);
+  font-weight: 600;
 }
 
 .btn--ghost {
-  --btn-bg: transparent;
   --btn-line: transparent;
+  padding-inline: 10px;
   color: var(--ink-2);
 }
 
 .btn--lg {
-  padding: 14px 26px;
+  min-height: 50px;
+  padding: 0 24px;
   font-size: var(--t-body);
 }
 
 .btn--sm {
-  padding: 7px 14px;
+  min-height: 34px;
+  padding: 6px 13px;
   font-size: var(--t-xs);
 }
 
 .btn--danger {
-  --btn-line: var(--line);
   color: var(--danger);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .btn:hover {
-    border-color: var(--line-2);
+    border-color: var(--ink-2);
   }
 
   .btn--primary:hover {
-    --btn-bg: var(--brand-strong);
-    --btn-line: var(--brand-strong);
+    --btn-bg: color-mix(in srgb, var(--signal) 88%, var(--ink));
+    --btn-line: color-mix(in srgb, var(--signal) 88%, var(--ink));
   }
 
   .btn--ghost:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
     color: var(--ink);
   }
 
@@ -243,99 +281,44 @@ textarea {
   }
 }
 
-/* ---------- 卡片 ---------- */
-
-/* 卡片一律亚克力：半透明底色 + 背景模糊，再加一道内顶高光暗示「有厚度」。
-   页面底色是平铺的，模糊本身贡献有限；真正把材质读出来的是那层高光加半透明底色。
-   底色用 --card-tint（--paper-raised 那一档），不是 --glass-tint，理由见 tokens.css。 */
-.card {
-  position: relative;
-  background: var(--card-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 22px;
-  box-shadow:
-    inset 0 1px 0 var(--glass-sheen),
-    var(--shadow-1);
+/* 文字链接：下划线是「可以点」的唯一信号，不加箭头装饰 */
+.link-arrow {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--t-sm);
+  color: var(--signal);
+  border-bottom: 1px solid var(--signal-line);
+  padding-bottom: 1px;
 }
 
-/* 不支持背景模糊：退回接近不透明的底色，留着半透明会让滚动内容糊在字后面。
-   这块必须紧跟 .card 且在几个修饰类之前，否则会把 --sunken / --ink / --bare 的底色一起盖掉。 */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .card {
-    background: var(--card-fallback);
+@media (hover: hover) and (pointer: fine) {
+  .link-arrow:hover {
+    border-bottom-color: var(--signal);
   }
 }
 
-/* 悬停跟随鼠标的微倾斜：角度由 useCardTilt 写进行内 transform，这里只管过渡。
-   用 .card.tilt 抬一级权重——卡片上的 .reveal 也声明了 transform 过渡，那是入场用的长时长，
-   不压过它的话倾斜会变成慢动作。 */
-.card.tilt {
-  transition: transform 180ms var(--ease-out);
+/* ---------- 卡片（仅后台与确需隔离的块使用） ---------- */
+
+.card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 20px;
 }
 
 .card--flat {
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
 }
 
 .card--sunken {
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   border-color: transparent;
-  box-shadow: none;
 }
 
-/* 深色锚点卡：一屏里只放一张，用来定住视觉重心。
-   深底上的字色不能沿用 --ink（那是给浅底的），单独指定。 */
 .card--ink {
-  background: var(--brand-deep);
-  border-color: transparent;
-  color: #eef4f0;
-  box-shadow: var(--shadow-2);
-}
-
-.card--ink h3,
-.card--ink .h2 {
-  color: #ffffff;
-}
-
-.card--ink p {
-  color: rgba(238, 244, 240, 0.76);
-}
-
-.card--ink .tag {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: transparent;
-  color: #b8ecd9;
-}
-
-/* 无边框裸卡：不要砖块，只要留白。用于不希望被框住的说明块 */
-.card--bare {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-  padding: 0;
-}
-
-/* 只有真的能点的卡片才抬起来——静态卡片跟着鼠标浮起是在骗人。
-   抬高时必须连内顶高光一起写上：box-shadow 是整体覆盖的，只写 --shadow-2 会让卡片
-   在悬停瞬间「塌」下去——高光没了，亚克力的厚度就没了。 */
-@media (hover: hover) and (pointer: fine) {
-  a.card:hover,
-  button.card:hover,
-  .card--lift:hover {
-    box-shadow:
-      inset 0 1px 0 var(--glass-sheen),
-      var(--shadow-2);
-    border-color: var(--line-2);
-  }
-}
-
-.card--ink:hover,
-a.card--ink:hover,
-.card--lift.card--ink:hover {
-  border-color: transparent;
+  background: var(--panel-2);
+  border-color: var(--line);
 }
 
 /* ---------- 徽标 ---------- */
@@ -344,30 +327,31 @@ a.card--ink:hover,
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
   font-size: var(--t-xs);
-  font-weight: 500;
   color: var(--ink-2);
   white-space: nowrap;
 }
 
 .tag--brand {
-  background: var(--brand-wash);
-  border-color: transparent;
-  color: var(--brand-strong);
-}
-
-[data-theme="dark"] .tag--brand {
-  color: var(--brand);
+  background: var(--signal-wash);
+  border-color: var(--signal-line);
+  color: var(--signal);
 }
 
 .tag--amber {
-  background: var(--amber-wash);
+  background: var(--warn-wash);
   border-color: transparent;
-  color: var(--amber);
+  color: var(--warn);
+}
+
+.tag--mist {
+  background: var(--panel-2);
+  border-color: transparent;
+  color: var(--ink-2);
 }
 
 .tag--ok {
@@ -388,12 +372,11 @@ a.card--ink:hover,
   color: var(--danger);
 }
 
-/* 状态点：小圆点 + 呼吸，用于「运行中」这类活体状态 */
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--ok);
+  background: var(--signal);
   flex: none;
 }
 
@@ -401,42 +384,39 @@ a.card--ink:hover,
 
 .code {
   position: relative;
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  padding: 16px 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
   overflow-x: auto;
   font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  line-height: 1.7;
+  font-size: 0.9rem;
+  line-height: 1.75;
   color: var(--ink);
   tab-size: 2;
 }
 
 .code--dark {
-  background: #10130f;
-  border-color: #23281f;
+  background: #050807;
+  border-color: var(--line);
   color: #d9e2d4;
 }
 
-[data-theme="dark"] .code--dark {
-  background: #0b0e0c;
-  border-color: var(--line);
+:root[data-theme="light"] .code--dark {
+  background: #0d1411;
+  border-color: transparent;
 }
 
 code:not([class]) {
   font-family: var(--font-mono);
   font-size: 0.88em;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: var(--r-xs);
-  background: var(--paper-sunken);
-  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
   white-space: nowrap;
 }
 
-/* pre 里的 code 只是语义外壳，不该再套一层行内代码的底。
-   不挡掉的话，深色代码块正中间会被刷出一条浅灰带，而字色继承自
-   .code--dark 的浅色——浅底浅字，对比度接近 1:1，等于看不见。 */
 pre code,
 pre code:not([class]) {
   padding: 0;
@@ -451,26 +431,28 @@ pre code:not([class]) {
 
 .table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  background: var(--panel);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 th,
 td {
-  padding: 11px 16px;
+  padding: 10px 14px;
   text-align: left;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   vertical-align: top;
 }
 
 th {
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
@@ -497,21 +479,20 @@ tr:last-child td {
 .textarea,
 .select {
   width: 100%;
-  padding: 10px 13px;
+  min-height: 44px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink);
   font-size: var(--t-sm);
-  transition:
-    border-color var(--dur-ui) ease,
-    box-shadow var(--dur-ui) ease;
+  transition: border-color var(--dur-ui) ease;
 }
 
 .textarea {
   min-height: 120px;
   resize: vertical;
-  line-height: 1.7;
+  line-height: 1.75;
   font-family: var(--font-mono);
   font-size: 0.85rem;
 }
@@ -520,108 +501,110 @@ tr:last-child td {
 .textarea:focus,
 .select:focus {
   outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-veil);
+  border-color: var(--signal);
 }
 
 .hint {
-  font-size: var(--t-xs);
+  font-size: 0.875rem;
   color: var(--ink-3);
+  line-height: 1.7;
 }
 
-/* ---------- 材质 ---------- */
+/* ---------- 材质：吸顶导航用一层薄玻璃 ---------- */
 
-/* 玻璃（亚克力 / 磨砂）：全站唯一的配方出处，不要在别处再手写一遍。
-   只给真正浮在内容之上、背后有东西会穿过去的固定 chrome 用——
-   吸顶导航、移动端抽屉、压在模糊蒙层上的卡片。
-   平铺卡片背后没有可模糊的对象，上玻璃只会退化成一层灰蒙蒙的半透明，把层次搅乱。 */
 .glass {
-  background: var(--glass-tint);
-  -webkit-backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
-  backdrop-filter: saturate(var(--glass-saturate)) blur(var(--glass-blur));
+  background: color-mix(in srgb, var(--ground) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
 }
 
-/* 顶部受光高光：给贴边的横条一点「有厚度」的暗示。
-   单独一层伪元素，才能跟着 --glass-sheen 一起淡入——写进 background 没有可过渡的
-   属性，会「啪」地跳出来。40% 处就收干净，正文落在这一层之下不会被洗白。
-   用它的元素必须是定位元素（fixed / relative / sticky）。 */
 .glass--sheen::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  background: linear-gradient(180deg, var(--glass-sheen), transparent 40%);
-  transition: opacity var(--dur-ui) ease;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 60%);
 }
 
-/* 不支持背景模糊：退回接近不透明的底色。留着半透明会让滚动内容糊在字后面 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass {
-    background: var(--glass-fallback);
+    background: var(--ground);
   }
 }
 
-/* 极细噪点：铺在任何色块上都能去掉「塑料感」。
-   用 SVG feTurbulence 现生成，比引一张图片省一次请求，也不用管倍图。 */
+/* 极细噪点：只在深色大块上开，去掉塑料感 */
 .grain::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  opacity: 0.22;
-  mix-blend-mode: multiply;
+  opacity: 0.14;
+  mix-blend-mode: screen;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-[data-theme="dark"] .grain::after {
-  mix-blend-mode: screen;
-  opacity: 0.12;
-}
-
-/* 径向光晕：默认落在左上，可用 --glow-x / --glow-y / --glow-size 覆盖 */
+/* 光晕：给信号色一小片存在感，只在深色块里用 */
 .glow {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background: radial-gradient(
-    var(--glow-size, 62% 58%) at var(--glow-x, 18%) var(--glow-y, 6%),
-    var(--brand-glow) 0%,
-    transparent 68%
+    var(--glow-size, 48% 42%) at var(--glow-x, 82%) var(--glow-y, 8%),
+    var(--signal-wash) 0%,
+    transparent 70%
   );
 }
 
-/* 环境色雾：整页垫一层极淡色斑，落在所有卡片之下。
-   存在的理由只有一个——卡片是半透明的，平底色上 backdrop-filter 无物可糊，
-   玻璃感就永远读不出来。三处色斑刻意不对称（左上一大块品牌绿、右侧偏下暖琥珀、
-   底部偏左一点冷雾蓝），居中对称的径向光晕是最典型的 AI 味。
-   用 fixed 不用 absolute：色斑不跟内容滚，卡片从它上面滑过去时模糊才有连续感。
-   z-index:-1 让它落在正文之下、body 底色（已上提到画布）之上，正好卡在卡片背后。 */
+/* 兼容旧类名：新系统不再用整页色雾，留一个空规则避免历史页面报错 */
 .ambient {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(56% 46% at 10% -6%, var(--ambient-brand) 0%, transparent 68%),
-    radial-gradient(44% 40% at 92% 30%, var(--ambient-warm) 0%, transparent 70%),
-    radial-gradient(58% 44% at 34% 104%, var(--ambient-cool) 0%, transparent 72%);
+  display: none;
 }
 
-/* 编辑感粗分隔线：比 1px 的 --line 更有态度，用来切分大段落 */
 .rule {
-  height: 2px;
+  height: 1px;
   border: none;
   margin: 0;
+  background: var(--line);
+}
+
+/* 编辑感分隔：3px 实线，用来切大段落 */
+.rule--bold {
+  height: 3px;
   background: var(--ink);
-  opacity: 0.86;
+}
+
+.hair {
+  height: 1px;
+  border: none;
+  margin: 0;
+  background: var(--line-soft);
+}
+
+/* ---------- 栅格 ---------- */
+
+.cols {
+  display: grid;
+  gap: clamp(16px, 2vw, 28px);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 720px) {
+  .cols--2,
+  .cols--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .cols--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* ---------- 入场动画 ---------- */
 
-/* 统一「自下而上淡入」。用 CSS transition 而非 keyframes：
-   列表项会被反复重排，keyframes 每次从头播放，transition 可以被打断重定向。 */
 .reveal {
   opacity: 1;
   transform: none;
@@ -632,7 +615,7 @@ tr:last-child td {
 
 .reveal[data-shown="false"] {
   opacity: 0;
-  transform: translateY(14px);
+  transform: translateY(10px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -640,7 +623,7 @@ tr:last-child td {
   .reveal[data-shown="false"] {
     opacity: 1;
     transform: none;
-    transition: opacity 200ms ease;
+    transition: none;
   }
 
   .btn:active {
@@ -687,7 +670,7 @@ tr:last-child td {
 
 .divider {
   height: 1px;
-  background: var(--line);
+  background: var(--line-soft);
   border: none;
   margin: 0;
 }

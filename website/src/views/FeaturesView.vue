@@ -4,7 +4,7 @@ import PageHero from '../components/PageHero.vue'
 import { content } from '../api/client.js'
 
 const all = ref([])
-const active = ref('全部')
+const active = ref('')
 const open = ref('')
 
 /** 标题里的条数跟着数据走，别手写死——功能每加一条就漏改一次 */
@@ -12,10 +12,10 @@ const heroTitle = computed(() =>
   all.value.length ? `${all.value.length} 项能力，逐条说明它在解决什么` : '能力清单'
 )
 
-const tags = computed(() => ['全部', ...new Set(all.value.map((f) => f.tag).filter(Boolean))])
+const tags = computed(() => [...new Set(all.value.map((f) => f.tag).filter(Boolean))])
 
 const groups = computed(() => {
-  const list = active.value === '全部' ? all.value : all.value.filter((f) => f.tag === active.value)
+  const list = active.value ? all.value.filter((f) => f.tag === active.value) : all.value
   const map = new Map()
   for (const item of list) {
     const key = item.tag || '其他'
@@ -41,17 +41,20 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      eyebrow="能力清单"
+      label="能力清单"
       :title="heroTitle"
-      lead="每一条都对应真实代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。"
+      lead="每一条都对应代码里的一个模块。写得具体，是为了让你在装之前就知道它能做什么、不能做什么。点开任意一条看做法。"
     >
-      <div class="chips">
+      <div class="filter">
+        <button type="button" :class="['filter__i', { 'filter__i--on': !active }]" @click="active = ''; open = ''">
+          全部
+        </button>
         <button
           v-for="tag in tags"
           :key="tag"
           type="button"
-          :class="['chip', { 'chip--on': active === tag }]"
-          @click="active = tag"
+          :class="['filter__i', { 'filter__i--on': active === tag }]"
+          @click="active = tag; open = ''"
         >
           {{ tag }}
         </button>
@@ -63,29 +66,24 @@ onMounted(async () => {
         <p v-if="!all.length" class="muted">正在读取能力清单…</p>
 
         <div v-for="group in groups" :key="group.tag" class="group">
-          <h2 v-reveal class="group__title">
-            {{ group.tag }}
-            <span class="muted mono group__count">{{ group.items.length }}</span>
-          </h2>
+          <h2 v-reveal class="group__t">{{ group.tag }}</h2>
 
-          <div class="grid">
+          <div class="list">
             <article
               v-for="(item, index) in group.items"
               :key="item.id"
-              v-reveal="index * 40"
-              :class="['card', 'item', { 'item--open': open === item.id }]"
+              v-reveal="index * 25"
+              :class="['row', { 'row--open': open === item.id }]"
             >
-              <button class="item__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
-                <span class="item__text">
-                  <span class="item__title">{{ item.title }}</span>
-                  <span class="item__summary">{{ item.summary }}</span>
-                </span>
-                <svg class="item__caret" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M4 6.5 8 10.5l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+              <button class="row__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
+                <span class="row__title">{{ item.title }}</span>
+                <span class="row__sum">{{ item.summary }}</span>
+                <span class="row__mark" aria-hidden="true"></span>
               </button>
-              <div class="item__body">
-                <p class="item__detail">{{ item.detail }}</p>
+              <div class="row__body">
+                <div class="row__inner">
+                  <p class="row__detail">{{ item.detail }}</p>
+                </div>
               </div>
             </article>
           </div>
@@ -96,165 +94,163 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.chips {
+.filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 18px;
 }
 
-.chip {
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--paper-raised);
+.filter__i {
+  min-height: 44px;
+  padding: 6px 2px;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font-size: var(--t-sm);
   color: var(--ink-2);
-  font-size: var(--t-xs);
   cursor: pointer;
   transition:
-    transform var(--dur-press) var(--ease-out),
-    background-color var(--dur-ui) ease,
-    border-color var(--dur-ui) ease,
-    color var(--dur-ui) ease;
+    color var(--dur-ui) ease,
+    border-color var(--dur-ui) ease;
 }
 
-.chip:active {
-  transform: scale(0.96);
-}
-
-.chip--on {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
-}
-
-[data-theme="dark"] .chip--on {
-  color: var(--brand-ink);
+.filter__i--on {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:hover {
-    border-color: var(--line-2);
+  .filter__i:not(.filter__i--on):hover {
     color: var(--ink);
-  }
-
-  .chip--on:hover {
-    color: #fff;
-  }
-
-  [data-theme="dark"] .chip--on:hover {
-    color: var(--brand-ink);
   }
 }
 
 .group + .group {
-  margin-top: clamp(40px, 5vw, 64px);
+  margin-top: clamp(30px, 3.6vw, 48px);
 }
 
-.group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 18px;
-  font-size: var(--t-h3);
+.group__t {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-3);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: 0.02em;
 }
 
-.group__count {
-  font-size: var(--t-xs);
-  font-weight: 400;
+.list {
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.grid {
+.row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.row__head {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-}
-
-.item {
-  padding: 0;
-  overflow: hidden;
-}
-
-.item__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 8px 14px;
   width: 100%;
-  padding: 20px 22px;
+  padding: 14px 2px;
   border: none;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-/* 桌面端悬停即展开，省掉一次点击；移动端没有 hover，仍走按钮的点击切换（aria-expanded 照旧）。
-   不再给头部叠悬停底色：卡片已经是亚克力，再加一层 --paper-sunken 会把材质糊掉，
-   展开本身就是足够的反馈。 */
-@media (hover: hover) and (pointer: fine) {
-  .item:hover .item__body {
-    grid-template-rows: 1fr;
-  }
-
-  .item:hover .item__caret {
-    transform: rotate(180deg);
-  }
-}
-
-.item__text {
-  display: grid;
-  gap: 6px;
-}
-
-.item__title {
-  font-size: 1.05rem;
+.row__title {
+  font-size: 1rem;
   font-weight: 600;
-  letter-spacing: -0.018em;
+  color: var(--ink);
 }
 
-.item__summary {
+.row__sum {
+  grid-column: 1;
   font-size: var(--t-sm);
+  line-height: 1.7;
   color: var(--ink-2);
-  line-height: 1.72;
 }
 
-.item__caret {
-  flex: none;
-  margin-top: 4px;
-  color: var(--ink-3);
-  transition: transform var(--dur-ui) var(--ease-out);
+/* 展开态只用一个小方块旋转表示，不用加号箭头 */
+.row__mark {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: start;
+  margin-top: 7px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+  transition:
+    transform var(--dur-ui) var(--ease-out),
+    border-color var(--dur-ui) ease;
 }
 
-.item--open .item__caret {
-  transform: rotate(180deg);
+.row--open .row__mark {
+  transform: rotate(225deg);
+  border-color: var(--signal);
 }
 
-/* 展开用 grid-template-rows 过渡：高度未知时也能平滑，且可被打断 */
-.item__body {
+.row__body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-enter) var(--ease-out);
+  transition: grid-template-rows var(--dur-ui) var(--ease-out);
 }
 
-.item--open .item__body {
+.row--open .row__body {
   grid-template-rows: 1fr;
 }
 
-/* overflow: hidden 同时把 grid 项的自动最小尺寸压成 0，否则 0fr 收不拢 */
-.item__detail {
+.row__inner {
   overflow: hidden;
-  padding: 0 22px 22px;
-  font-size: var(--t-sm);
-  color: var(--ink-2);
-  line-height: 1.8;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .item__body {
-    transition: none;
+.row__detail {
+  padding: 2px 0 18px 14px;
+  border-left: 1px solid var(--line);
+  font-size: var(--t-sm);
+  line-height: 1.9;
+  color: var(--ink-2);
+  max-width: 44em;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row__head:hover .row__title {
+    color: var(--signal);
+  }
+}
+
+@media (min-width: 760px) {
+  .row__head {
+    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr) 22px;
+    align-items: baseline;
+    gap: 20px;
+    padding: 13px 2px;
   }
 
-  .item__caret {
-    transition: none;
+  .row__sum {
+    grid-column: 2;
   }
+
+  .row__mark {
+    grid-row: 1;
+    grid-column: 3;
+    margin-top: 0;
+    align-self: center;
+  }
+
+  .row__detail {
+    padding: 2px 6rem 18px 2px;
+    border-left: none;
+    max-width: none;
+  }
+}
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.row__head > *,
+.list > * {
+  min-width: 0;
 }
 </style>

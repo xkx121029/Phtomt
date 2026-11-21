@@ -187,7 +187,7 @@ function onKeydown(event) {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink-2);
   font-size: var(--t-sm);
   text-align: left;
@@ -204,7 +204,7 @@ function onKeydown(event) {
 
 @media (hover: hover) and (pointer: fine) {
   .chip:hover {
-    border-color: var(--brand);
+    border-color: var(--signal);
     color: var(--ink);
   }
 }
@@ -232,16 +232,16 @@ function onKeydown(event) {
 }
 
 .turn--assistant .turn__who {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 /* 用户的话不放进彩色气泡，改用下沉底色 + 左侧品牌竖线：
    与站内「引用块」的观感一致，也避免整屏出现两套高饱和色块 */
 .turn__say {
   padding: 12px 14px;
-  border-left: 2px solid var(--brand);
+  border-left: 2px solid var(--signal);
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   font-size: var(--t-sm);
   line-height: 1.7;
   color: var(--ink);
@@ -298,20 +298,20 @@ function onKeydown(event) {
   margin-top: 10px;
   padding: 7px 12px;
   border-radius: var(--r-pill);
-  background: var(--brand-wash);
+  background: var(--signal-wash);
   font-size: var(--t-xs);
   color: var(--ink-2);
 }
 
 .turn__go-mark {
   flex: none;
-  color: var(--brand-strong);
+  color: var(--signal);
   font-size: 0.9rem;
   line-height: 1;
 }
 
 [data-theme="dark"] .turn__go-mark {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .turn__go-text {
@@ -325,14 +325,14 @@ function onKeydown(event) {
   padding: 0;
   border: none;
   background: none;
-  color: var(--brand-strong);
+  color: var(--signal);
   font-size: var(--t-xs);
   cursor: pointer;
   transition: color var(--dur-ui) ease;
 }
 
 [data-theme="dark"] .turn__go-back {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -352,7 +352,7 @@ function onKeydown(event) {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--brand);
+  background: var(--signal);
   opacity: 0.35;
   animation: pulse 1.1s var(--ease-in-out) infinite;
 }
@@ -387,12 +387,12 @@ function onKeydown(event) {
   padding: 8px 8px 8px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--paper-raised);
+  background: var(--panel);
   transition: border-color var(--dur-ui) ease;
 }
 
 .composer:focus-within {
-  border-color: var(--brand);
+  border-color: var(--signal);
 }
 
 .composer__box {
@@ -422,9 +422,9 @@ function onKeydown(event) {
   height: 34px;
   min-width: 34px;
   padding: 0 12px;
-  border: 1px solid var(--brand);
+  border: 1px solid var(--signal);
   border-radius: var(--r-pill);
-  background: var(--brand);
+  background: var(--signal);
   color: #fff;
   font-size: var(--t-xs);
   font-weight: 500;
@@ -435,7 +435,7 @@ function onKeydown(event) {
 }
 
 [data-theme="dark"] .composer__send {
-  color: var(--brand-ink);
+  color: var(--signal-ink);
 }
 
 .composer__send:active {
@@ -444,7 +444,7 @@ function onKeydown(event) {
 
 .composer__send:disabled {
   border-color: var(--line);
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   color: var(--ink-3);
   cursor: not-allowed;
 }
@@ -455,7 +455,7 @@ function onKeydown(event) {
 
 .composer__send--stop {
   border-color: var(--line);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--danger);
 }
 
@@ -481,7 +481,7 @@ function onKeydown(event) {
 
 @media (hover: hover) and (pointer: fine) {
   .foot__reset:hover {
-    color: var(--brand);
+    color: var(--signal);
   }
 }
 
@@ -510,13 +510,13 @@ function onKeydown(event) {
 /* 对话不再限高之后，输入框会被长回答顶到屏幕外，追问前得先滚半天。
    把「输入区 + 脚注」整块吸在视口底部。
    只吸输入区是不够的：脚注留在文档流里会被吸住的输入区压在下面看不见。
-   底色必须是页面底色（--paper）而非透明——吸住时下方内容会从它背后穿过。 */
+   底色必须是页面底色（--ground）而非透明——吸住时下方内容会从它背后穿过。 */
 .thread--page .trailer {
   position: sticky;
   bottom: 0;
   z-index: 1;
   padding-bottom: 16px;
-  background: var(--paper);
+  background: var(--ground);
 }
 
 @media (prefers-reduced-motion: reduce) {

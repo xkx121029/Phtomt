@@ -290,7 +290,7 @@ defineExpose({ reload: load })
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .list__head {
@@ -333,12 +333,12 @@ defineExpose({ reload: load })
 
 @media (hover: hover) and (pointer: fine) {
   .list__item:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
   }
 }
 
 .list__item--on {
-  background: var(--brand-wash);
+  background: var(--signal-wash);
 }
 
 .list__title {
@@ -369,7 +369,7 @@ defineExpose({ reload: load })
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--paper-raised);
+  background: var(--panel);
   min-width: 0;
 }
 
@@ -421,7 +421,7 @@ defineExpose({ reload: load })
 .switch input {
   width: 16px;
   height: 16px;
-  accent-color: var(--brand);
+  accent-color: var(--signal);
 }
 
 .msg {

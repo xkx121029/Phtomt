@@ -54,7 +54,7 @@ onBeforeUnmount(() => clearTimeout(timer))
   padding: 5px 11px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink-2);
   font-size: var(--t-xs);
   cursor: pointer;
@@ -71,7 +71,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 @media (hover: hover) and (pointer: fine) {
   .copy:hover {
     color: var(--ink);
-    border-color: var(--line-2);
+    border-color: var(--line-strong);
   }
 }
 </style>

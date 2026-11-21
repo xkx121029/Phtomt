@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHero from '../components/PageHero.vue'
+import SectionHead from '../components/SectionHead.vue'
 import { content } from '../api/client.js'
 import { formatDate } from '../lib/format.js'
 
@@ -18,10 +19,10 @@ const LINKS = computed(() => {
 })
 
 const PALETTE = [
-  { name: '玄青', role: '品牌主色', light: '#0E7C66', dark: '#5FD9B4' },
-  { name: '琥珀', role: '暖色辅色', light: '#B4632A', dark: '#F0A868' },
-  { name: '雾蓝', role: '冷色辅色', light: '#4A7C9B', dark: '#84B6D4' },
-  { name: '纸白', role: '浅色底', light: '#F7F6F3', dark: '#121513' }
+  { name: '玄青', role: '品牌主色', light: '#0D6C58', dark: '#64E0BB' },
+  { name: '琥珀', role: '暖色辅色', light: '#92551A', dark: '#EFAB72' },
+  { name: '雾蓝', role: '冷色辅色', light: '#366B88', dark: '#8FB8D3' },
+  { name: '纸白', role: '浅色底', light: '#F7F5EF', dark: '#0F1211' }
 ]
 
 onMounted(async () => {
@@ -36,70 +37,75 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      eyebrow="关于"
+      label="关于项目"
       :title="site.name || 'Happy Phone Agent'"
-      :lead="site.description || '运行在 Android 上的 AI 智能体。'"
+      :lead="site.tagline || '让手机自己动手。'"
     >
-      <div class="row row--wrap">
-        <RouterLink to="/download" class="btn btn--primary btn--sm">下载 APK</RouterLink>
-      </div>
+      <RouterLink to="/download" class="btn btn--primary btn--sm">下载 APK</RouterLink>
     </PageHero>
 
-    <!-- 链接 -->
+    <!-- 是什么 -->
     <section class="section section--tight">
+      <div class="page about__intro">
+        <p class="about__lede">
+          {{ site.description || '运行在 Android 上的 AI 智能体：一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行。' }}
+        </p>
+        <dl class="meta">
+          <div class="meta__row">
+            <dt>包名</dt>
+            <dd class="mono">{{ site.requirements?.packageName || 'com.phoneagent' }}</dd>
+          </div>
+          <div class="meta__row">
+            <dt>当前版本</dt>
+            <dd class="mono">{{ site.version ? `v${site.version}` : '—' }}</dd>
+          </div>
+          <div class="meta__row">
+            <dt>构建号</dt>
+            <dd class="mono">{{ site.buildNumber || '—' }}</dd>
+          </div>
+          <div class="meta__row">
+            <dt>内容更新</dt>
+            <dd>{{ formatDate(site.updatedAt) }}</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- 链接 -->
+    <section class="section section--tight band">
       <div class="page">
-        <div class="grid grid--links">
+        <SectionHead label="入口" title="去哪找它" />
+        <div class="links">
           <a
             v-for="(link, index) in LINKS"
             :key="link.label"
-            v-reveal="index * 50"
-            class="card link-card"
+            v-reveal="index * 40"
+            class="link"
             :href="link.href"
             target="_blank"
             rel="noopener noreferrer"
           >
-            <span class="link-card__label">
+            <span class="link__label">
               {{ link.label }}
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M5.5 3.5h7v7M12.5 3.5 4 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </span>
-            <span class="link-card__hint">{{ link.hint }}</span>
+            <span class="link__hint">{{ link.hint }}</span>
           </a>
         </div>
       </div>
     </section>
 
     <!-- 技术栈 -->
-    <section class="section section--tight band">
-      <div class="page two">
-        <div>
-          <p v-reveal class="eyebrow">技术栈</p>
-          <h2 v-reveal="40" class="h2">选型都是能长期维护的那种</h2>
-          <p v-reveal="80" class="lead">
-            纯 Kotlin + Compose，没有跨端框架、没有自研渲染层。依赖少意味着升级 Android 大版本时麻烦少。
-          </p>
-          <dl v-reveal="120" class="meta">
-            <div class="meta__row">
-              <dt>包名</dt>
-              <dd class="mono">{{ site.requirements?.packageName || 'com.phoneagent' }}</dd>
-            </div>
-            <div class="meta__row">
-              <dt>当前版本</dt>
-              <dd class="mono">{{ site.version ? `v${site.version}` : '—' }}</dd>
-            </div>
-            <div class="meta__row">
-              <dt>构建号</dt>
-              <dd class="mono">{{ site.buildNumber || '—' }}</dd>
-            </div>
-            <div class="meta__row">
-              <dt>内容更新</dt>
-              <dd>{{ formatDate(site.updatedAt) }}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <div v-reveal="60" class="table-wrap">
+    <section class="section section--tight">
+      <div class="page">
+        <SectionHead
+          label="技术栈"
+          title="选型都是能长期维护的那种"
+          lead="纯 Kotlin + Compose，没有跨端框架、没有自研渲染层。依赖少意味着升级 Android 大版本时麻烦少。"
+        />
+        <div v-reveal class="table-wrap">
           <table>
             <thead>
               <tr><th>依赖</th><th>版本</th></tr>
@@ -119,17 +125,16 @@ onMounted(async () => {
     </section>
 
     <!-- 设计语言 -->
-    <section class="section section--tight">
+    <section class="section section--tight band">
       <div class="page">
-        <p v-reveal class="eyebrow">设计语言</p>
-        <h2 v-reveal="40" class="h2">玄青 · 流萤</h2>
-        <p v-reveal="80" class="lead design__lead">
-          以玄青（墨玉绿）为主色，琥珀与雾蓝作辅，底色偏暖纸白与深墨绿黑。官网与 App 共用同一套语义颜色令牌——
-          它不是一个「品牌页」，是同一个东西的另一面。
-        </p>
+        <SectionHead
+          label="设计语言"
+          title="玄青 · 流萤"
+          lead="以玄青（墨玉绿）为主色，琥珀与雾蓝作辅，底色偏暖纸白与深墨绿黑。官网与 App 共用同一套语义颜色令牌——它不是一个「品牌页」，是同一个东西的另一面。"
+        />
 
         <div class="swatches">
-          <div v-for="(color, index) in PALETTE" :key="color.name" v-reveal="index * 50" class="swatch">
+          <div v-for="(color, index) in PALETTE" :key="color.name" v-reveal="index * 40" class="swatch">
             <div class="swatch__chips">
               <span class="swatch__chip" :style="{ background: color.light }" :title="`浅色 ${color.light}`" />
               <span class="swatch__chip" :style="{ background: color.dark }" :title="`深色 ${color.dark}`" />
@@ -142,9 +147,8 @@ onMounted(async () => {
 
         <div v-reveal class="notes">
           <p>
-            动效上刻意避开「到处都在弹」的做法：入场统一为自下而上淡入位移，时长控制在 300ms 以内，
-            按下有 0.97 的缩放反馈，所有过渡都用 transition 而不是 keyframes——列表项会被反复重排，
-            keyframes 每次从头播放，transition 可以被打断并重定向。
+            动效刻意克制：只做进入视口淡入与 hover / 按下反馈，时长都在 300ms 以内，没有滚动劫持，也没有视差。
+            所有过渡都用 transition 而不是 keyframes——列表项会被反复重排，keyframes 每次从头播放。
           </p>
           <p>
             系统开启「减弱动态效果」时，全部动画降级为不位移的淡入或直接呈现。
@@ -154,18 +158,18 @@ onMounted(async () => {
     </section>
 
     <!-- 许可 -->
-    <section class="section section--tight band">
-      <div class="page two two--narrow">
-        <div v-reveal class="card">
-          <h3 class="card-title">开源许可</h3>
-          <p class="card-body">
+    <section class="section section--tight">
+      <div class="page two">
+        <div v-reveal class="note-card">
+          <h3 class="note-card__title">开源许可</h3>
+          <p class="note-card__body">
             项目基于 MIT 协议开源，可自由使用、修改与分发。应用本身不收费，
             你只需要为自己使用的模型服务付费（如果用云端 API）。
           </p>
         </div>
-        <div v-reveal="60" class="card">
-          <h3 class="card-title">能力边界</h3>
-          <p class="card-body">
+        <div v-reveal="50" class="note-card">
+          <h3 class="note-card__title">能力边界</h3>
+          <p class="note-card__body">
             它依赖无障碍服务读取屏幕，因此对完全自绘的界面（游戏、部分视频播放器）识别能力有限；
             验证码、支付确认这类环节会停下来等你操作，不会自行提交。
           </p>
@@ -176,76 +180,29 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.grid {
+.about__intro {
   display: grid;
-  gap: 12px;
+  gap: 28px;
 }
 
-.grid--links {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-
-.link-card {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  transition:
-    transform var(--dur-press) var(--ease-out),
-    border-color var(--dur-ui) ease;
-}
-
-.link-card:active {
-  transform: scale(0.985);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .link-card:hover {
-    border-color: var(--line-2);
-  }
-}
-
-.link-card__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.link-card__hint {
-  font-size: var(--t-sm);
-  color: var(--ink-2);
-  line-height: 1.7;
-}
-
-.two {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(28px, 4vw, 56px);
-  align-items: start;
-}
-
-.two--narrow {
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+.about__lede {
+  font-size: clamp(1.05rem, 0.98rem + 0.5vw, 1.32rem);
+  line-height: 1.85;
+  color: var(--ink);
+  max-width: 48ch;
 }
 
 .meta {
-  display: grid;
-  gap: 1px;
-  margin: 26px 0 0;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  overflow: hidden;
+  margin: 0;
+  border-top: 1px solid var(--line);
 }
 
 .meta__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 12px 18px;
-  background: var(--paper);
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
   font-size: var(--t-sm);
 }
 
@@ -257,82 +214,136 @@ onMounted(async () => {
   margin: 0;
 }
 
-.design__lead {
-  margin-top: 16px;
-  max-width: 68ch;
+.links {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.link {
+  display: grid;
+  gap: 5px;
+  padding: 18px 16px;
+  background: var(--panel-2);
+  transition: background-color var(--dur-ui) ease;
+}
+
+.link__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.link__hint {
+  font-size: var(--t-sm);
+  color: var(--ink-2);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .link:hover {
+    background: var(--panel);
+  }
 }
 
 .swatches {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-top: 32px;
-}
-
-.swatch {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--paper-raised);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
 }
 
 .swatch__chips {
   display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
+  height: 56px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  border: 1px solid var(--line);
 }
 
 .swatch__chip {
   flex: 1;
-  height: 34px;
-  border-radius: var(--r-xs);
-  border: 1px solid var(--line);
 }
 
 .swatch__name {
+  margin-top: 10px;
   font-weight: 600;
+  font-size: var(--t-sm);
 }
 
 .swatch__role {
-  margin-top: 2px;
+  font-size: var(--t-xs);
 }
 
 .swatch__hex {
-  margin-top: 8px;
-  font-size: 0.72rem;
+  margin-top: 4px;
+  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
 .notes {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin-top: 28px;
-  padding-left: 18px;
-  border-left: 2px solid var(--line-2);
-  max-width: 78ch;
-}
-
-.notes p {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
   font-size: var(--t-sm);
+  line-height: 1.9;
   color: var(--ink-2);
-  line-height: 1.85;
+  max-width: 72ch;
 }
 
-.card-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 10px;
+.two {
+  display: grid;
+  gap: 16px;
 }
 
-.card-body {
+.note-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+
+.note-card__title {
+  font-size: var(--t-h3);
+}
+
+.note-card__body {
+  margin-top: 8px;
   font-size: var(--t-sm);
+  line-height: 1.9;
   color: var(--ink-2);
-  line-height: 1.82;
 }
 
-@media (max-width: 880px) {
-  .two {
-    grid-template-columns: 1fr;
+@media (min-width: 720px) {
+  .about__intro {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: start;
   }
+
+  .links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .swatches {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.about__intro > *,
+.two > *,
+.meta > *,
+.links > *,
+.swatches > * {
+  min-width: 0;
 }
 </style>

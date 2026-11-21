@@ -128,7 +128,7 @@ onMounted(async () => {
   padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
-  background: var(--paper-raised);
+  background: var(--panel);
   color: var(--ink-2);
   font-size: var(--t-xs);
   cursor: pointer;
@@ -140,18 +140,18 @@ onMounted(async () => {
 
 @media (hover: hover) and (pointer: fine) {
   .chip:hover {
-    border-color: var(--line-2);
+    border-color: var(--line-strong);
   }
 }
 
 .chip--on {
-  background: var(--brand-wash);
-  border-color: var(--brand);
-  color: var(--brand-strong);
+  background: var(--signal-wash);
+  border-color: var(--signal);
+  color: var(--signal);
 }
 
 [data-theme="dark"] .chip--on {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .log {
@@ -170,7 +170,7 @@ onMounted(async () => {
   display: grid;
   gap: 6px;
   padding: 12px 16px;
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .log__top {

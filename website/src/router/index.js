@@ -132,7 +132,7 @@ const router = createRouter({
 
 router.afterEach((to) => {
   const title = to.meta?.title
-  document.title = title && to.name !== 'home' ? `${title} · Happy Phone Agent` : 'Happy Phone Agent — 让手机自己动手'
+  document.title = title && to.name !== 'home' ? `${title} · Happy Phone Agent` : 'Happy Phone Agent — 一句话，手机自己把事做完'
 })
 
 export default router

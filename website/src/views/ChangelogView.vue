@@ -20,7 +20,7 @@ const page = computed({
 const totalPages = computed(() => Math.max(1, Math.ceil(all.value.length / PAGE_SIZE)))
 const items = computed(() => all.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE))
 
-/** 每条版本里各类变更的条数，用来在卡片头部给出概览 */
+/** 每条版本里各类变更的条数，用来在条目头部给出概览 */
 function counts(entry) {
   return (entry.sections || []).map((sec) => ({
     type: sec.type,
@@ -57,35 +57,18 @@ watch(page, () => {
 <template>
   <div>
     <PageHero
-      eyebrow="更新日志"
+      label="更新日志"
       :title="all.length ? `${all.length} 个版本，逐条记录改了什么` : '更新日志'"
-      lead="每一条都写明动机和做法，而不是「优化体验、修复若干问题」。想快速找某个版本，用左侧索引。"
+      lead="每一条都写明动机和做法，而不是「优化体验、修复若干问题」。想找某个版本，用右侧索引直接跳。"
     >
       <div class="row row--wrap">
         <RouterLink to="/download" class="btn btn--sm">下载最新版</RouterLink>
-        <a
-          v-if="route.query.page"
-          class="btn btn--sm"
-          href="#"
-          @click.prevent="page = 1"
-        >回到最新</a>
+        <a v-if="route.query.page" class="btn btn--sm" href="#" @click.prevent="page = 1">回到最新</a>
       </div>
     </PageHero>
 
     <section class="section section--tight">
       <div class="page layout">
-        <!-- 版本索引 -->
-        <aside class="index glass">
-          <p class="index__label">版本索引</p>
-          <ol class="index__list">
-            <li v-for="entry in all" :key="entry.version">
-              <button type="button" class="index__item mono" @click="go(entry.version)">
-                {{ entry.version }}
-              </button>
-            </li>
-          </ol>
-        </aside>
-
         <!-- 正文 -->
         <div class="entries">
           <p v-if="loading" class="muted">正在读取更新日志…</p>
@@ -95,23 +78,17 @@ watch(page, () => {
             v-for="(entry, index) in items"
             :id="`v-${entry.version}`"
             :key="entry.version"
-            v-reveal="index * 50"
-            class="card entry"
+            v-reveal="index * 40"
+            class="entry"
           >
             <header class="entry__head">
-              <div class="entry__title">
-                <RouterLink :to="`/changelog/${entry.version}`" class="mono entry__ver">
-                  {{ entry.version }}
-                </RouterLink>
-                <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }} · {{ relativeTime(entry.date) }}</span>
-              </div>
-              <div class="entry__tags">
-                <span
-                  v-for="c in counts(entry)"
-                  :key="c.type"
-                  :class="['tag', `tag--${c.tone}`]"
-                >{{ c.type }} {{ c.count }}</span>
-              </div>
+              <RouterLink :to="`/changelog/${entry.version}`" class="mono entry__ver">
+                {{ entry.version }}
+              </RouterLink>
+              <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }}，{{ relativeTime(entry.date) }}</span>
+              <span v-for="c in counts(entry)" :key="c.type" :class="['tag', `tag--${c.tone}`]">
+                {{ c.type }} {{ c.count }}
+              </span>
             </header>
 
             <p v-if="entry.summary" class="entry__summary">{{ entry.summary }}</p>
@@ -132,23 +109,24 @@ watch(page, () => {
             </footer>
           </article>
 
-          <!-- 分页 -->
           <nav v-if="totalPages > 1" class="pager" aria-label="分页">
-            <button
-              class="btn btn--sm"
-              type="button"
-              :disabled="page <= 1"
-              @click="page = page - 1"
-            >上一页</button>
+            <button class="btn btn--sm" type="button" :disabled="page <= 1" @click="page = page - 1">上一页</button>
             <span class="pager__info mono">{{ page }} / {{ totalPages }}</span>
-            <button
-              class="btn btn--sm"
-              type="button"
-              :disabled="page >= totalPages"
-              @click="page = page + 1"
-            >下一页</button>
+            <button class="btn btn--sm" type="button" :disabled="page >= totalPages" @click="page = page + 1">下一页</button>
           </nav>
         </div>
+
+        <!-- 版本索引 -->
+        <aside class="index">
+          <p class="index__label eyebrow">版本索引</p>
+          <ol class="index__list">
+            <li v-for="entry in all" :key="entry.version">
+              <button type="button" class="index__item mono" @click="go(entry.version)">
+                {{ entry.version }}
+              </button>
+            </li>
+          </ol>
+        </aside>
       </div>
     </section>
   </div>
@@ -157,107 +135,45 @@ watch(page, () => {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  gap: clamp(24px, 4vw, 52px);
-  align-items: start;
-}
-
-/* 桌面端索引在左栏里，背后是纯色版心，.glass 的底色与模糊在这里自然不显形；
-   窄屏它会收成一条吸顶胶囊，正文从背后滚过去，玻璃才真正成立。 */
-.index {
-  position: sticky;
-  top: 88px;
-}
-
-.index__label {
-  font-size: var(--t-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  margin-bottom: 10px;
-}
-
-.index__list {
-  list-style: none;
-  margin: 0;
-  padding: 0 4px 0 0;
-  display: grid;
-  gap: 1px;
-  max-height: calc(100vh - 160px);
-  overflow-y: auto;
-}
-
-.index__item {
-  width: 100%;
-  padding: 5px 8px;
-  border: none;
-  border-radius: var(--r-xs);
-  background: transparent;
-  color: var(--ink-3);
-  font-size: 0.74rem;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color var(--dur-ui) ease,
-    color var(--dur-ui) ease;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .index__item:hover {
-    background: var(--paper-sunken);
-    color: var(--brand);
-  }
+  gap: clamp(28px, 4vw, 48px);
 }
 
 .entries {
-  display: grid;
-  gap: 16px;
   min-width: 0;
 }
 
 .entry {
-  display: grid;
-  gap: 16px;
-  scroll-margin-top: 88px;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+}
+
+.entries > .entry:first-of-type {
+  border-top: 2px solid var(--ink);
 }
 
 .entry__head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
   flex-wrap: wrap;
-}
-
-.entry__title {
-  display: grid;
-  gap: 4px;
+  align-items: center;
+  gap: 10px;
 }
 
 .entry__ver {
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--brand);
-  letter-spacing: -0.01em;
-}
-
-.entry__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  color: var(--signal);
 }
 
 .entry__summary {
+  margin-top: 10px;
   font-size: var(--t-sm);
+  line-height: 1.9;
   color: var(--ink-2);
-  line-height: 1.82;
-  padding-left: 14px;
-  border-left: 2px solid var(--line-2);
+  max-width: 70ch;
 }
 
 .sec {
-  display: grid;
-  gap: 8px;
+  margin-top: 18px;
 }
 
 .sec__title {
@@ -266,21 +182,22 @@ watch(page, () => {
   gap: 8px;
   font-size: var(--t-sm);
   font-weight: 600;
+  color: var(--ink);
 }
 
 .sec__mark {
-  width: 3px;
-  height: 14px;
-  border-radius: var(--r-pill);
-  background: var(--line-2);
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--ink-3);
 }
 
 .sec__mark--ok {
   background: var(--ok);
 }
 
-.sec__mark--brand {
-  background: var(--brand);
+.sec__mark--signal {
+  background: var(--signal);
 }
 
 .sec__mark--amber {
@@ -297,121 +214,105 @@ watch(page, () => {
 
 .sec__count {
   font-size: var(--t-xs);
-  font-weight: 400;
+  color: var(--ink-3);
 }
 
 .sec__list {
-  margin: 0;
-  padding-left: 0;
-  list-style: none;
+  margin: 8px 0 0;
+  padding-left: 20px;
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .sec__item {
-  position: relative;
-  padding-left: 16px;
   font-size: var(--t-sm);
+  line-height: 1.85;
   color: var(--ink-2);
-  line-height: 1.8;
+  max-width: 78ch;
 }
 
-.sec__item::before {
-  content: "";
-  position: absolute;
-  left: 2px;
-  top: 0.72em;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--line-2);
+.sec__item::marker {
+  color: var(--line-strong);
 }
 
 .entry__foot {
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
+  margin-top: 16px;
 }
 
-.link-arrow {
-  position: relative;
-  padding-right: 16px;
-  font-size: var(--t-sm);
-  color: var(--brand);
-}
-
-.link-arrow::after {
-  content: "→";
-  position: absolute;
-  right: 0;
-  transition: transform var(--dur-ui) var(--ease-out);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .link-arrow:hover::after {
-    transform: translateX(3px);
-  }
+.entry__foot .link-arrow {
+  font-size: var(--t-xs);
 }
 
 .pager {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding-top: 12px;
+  gap: 14px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
 }
 
 .pager__info {
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
-@media (max-width: 900px) {
-  /* 单列后改回普通流：sticky 的包含块变成整个 .layout（够高），索引才粘得住；
-     留在 grid 里它只会在自己那一行内失效 */
+.index {
+  padding-top: 6px;
+}
+
+.index__label {
+  margin-bottom: 10px;
+}
+
+.index__list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 1px;
+}
+
+.index__item {
+  border: none;
+  background: transparent;
+  padding: 3px 0;
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--dur-ui) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .index__item:hover {
+    color: var(--signal);
+  }
+}
+
+@media (min-width: 960px) {
   .layout {
-    display: block;
+    grid-template-columns: minmax(0, 1fr) 168px;
+    align-items: start;
   }
 
-  /* 索引收成一条吸顶胶囊。底色与模糊由 .glass 提供，这里只管形状与位置 */
   .index {
-    top: 74px;
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 22px;
-    padding: 7px 12px;
-    border: 1px solid var(--glass-line);
-    border-radius: var(--r-pill);
+    position: sticky;
+    top: 84px;
+    order: 2;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    padding-right: 4px;
   }
+}
 
-  .index__label {
-    margin-bottom: 0;
-    flex: none;
-  }
 
-  .index__list {
-    display: flex;
-    flex-wrap: nowrap;
-    min-width: 0;
-    max-height: none;
-    gap: 6px;
-    padding: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .index__list::-webkit-scrollbar {
-    display: none;
-  }
-
-  .index__item {
-    width: auto;
-    white-space: nowrap;
-    border: 1px solid var(--line);
-    border-radius: var(--r-pill);
-    padding: 4px 10px;
-  }
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.layout > *,
+.index__list > * {
+  min-width: 0;
 }
 </style>

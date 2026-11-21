@@ -3,23 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Happy Phone Agent — 让手机自己动手</title>
+    <title>Happy Phone Agent — 一句话，手机自己把事做完</title>
     <meta
       name="description"
-      content="Happy Phone Agent（Phtomt）是一款运行在 Android 上的 AI 智能体：用自然语言描述目标，它自己观察屏幕、规划步骤、动手执行。"
+      content="Happy Phone Agent（Phtomt）是运行在 Android 上的 AI 智能体：说一句自然语言目标，它读当前页面、拆解步骤、用系统命令真的做完。65 个语义意图由端侧转译，每个动作都带页面指纹验证。"
     />
-    <meta name="theme-color" content="#F7F6F3" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#121513" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0A0D0C" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#F4F6F2" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="./favicon.png" type="image/png" sizes="48x48" />
     <link rel="icon" href="./favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Happy Phone Agent" />
-    <meta property="og:title" content="Happy Phone Agent — 让手机自己动手" />
+    <meta property="og:title" content="Happy Phone Agent — 一句话，手机自己把事做完" />
     <meta
       property="og:description"
-      content="用自然语言描述目标，它自己观察屏幕、规划步骤、动手执行。"
+      content="说一句自然语言目标，它读当前页面、拆解步骤、动手执行——动作前后比对页面指纹，未确认单独成状态。"
     />
     <meta property="og:image" content="https://hpa.linshuxu.us.kg/og-cover.png" />
     <meta property="og:image:width" content="1200" />
@@ -34,64 +34,86 @@
       } catch (e) {}
     </script>
     <style>
-      /* 首屏骨架。
-         在此之前，body 里只有一个空的 #app，第一帧要等到 index.js + vendor.js + HomeView
-         分块全部下完、Vue 挂载才出像素，FCP 因此拖到 2s。这里先画出底色与主张，
-         FCP 降到接近 TTFB。几何与 HomeView 的 hero 对齐（同样的顶栏留白、版心与字号），
+      /* 首屏骨架：先画出底色与主张，FCP 对齐 TTFB。
+         几何按 HomeView 的首屏复刻（同样的顶栏留白、版心、字号与行高），
          Vue 挂载替换时几乎看不出位移。挂载后本段随 #app 一起被清掉。 */
       .sk {
         box-sizing: border-box;
         min-height: 100svh;
-        padding: 66px 24px 0;
-        background: #f7f6f3;
-        font-family: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
-          "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+        padding: 58px clamp(18px, 4vw, 32px) 0;
+        background: #0a0d0c;
+        color: #e9eee7;
+        font-family: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+          "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
+          system-ui, sans-serif;
+        font-size: 17px;
+        line-height: 1.85;
+        letter-spacing: 0.012em;
       }
-      html[data-theme="dark"] .sk {
-        background: #121513;
+      html[data-theme="light"] .sk {
+        background: #f4f6f2;
+        color: #0f1411;
       }
       .sk__page {
-        width: min(1180px, 100%);
+        width: min(1240px, 100%);
         margin-inline: auto;
-        padding-top: clamp(56px, 8vw, 104px);
+        padding-top: clamp(26px, 4vw, 56px);
       }
-      .sk__eyebrow {
-        display: inline-flex;
+      .sk__grid {
+        display: grid;
+        gap: clamp(30px, 4vw, 48px);
         align-items: center;
-        gap: 8px;
-        margin: 0;
-        font-size: 0.78rem;
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-        color: #7b827b;
-      }
-      .sk__eyebrow::before {
-        content: "";
-        width: 18px;
-        height: 1px;
-        background: #b7bdb4;
       }
       .sk__title {
-        margin: 18px 0 0;
-        font-size: clamp(2.8rem, 1.4rem + 5vw, 5.2rem);
-        font-weight: 600;
-        letter-spacing: -0.04em;
-        line-height: 1.02;
-        color: #141715;
-      }
-      html[data-theme="dark"] .sk__title {
-        color: #eef4f0;
+        margin: 0;
+        font-size: clamp(2.6rem, 1.3rem + 4.6vw, 4.9rem);
+        font-weight: 650;
+        line-height: 1.14;
+        letter-spacing: -0.012em;
+        max-width: 12em;
       }
       .sk__lead {
-        margin: 24px 0 0;
-        max-width: 46ch;
-        font-size: 1rem;
-        line-height: 1.7;
-        color: #4b514c;
+        margin: 22px 0 0;
+        max-width: 26em;
+        font-size: 1.0625rem;
+        line-height: 1.9;
+        color: #a9b4ab;
       }
-      html[data-theme="dark"] .sk__lead {
-        color: #a9b2ac;
+      html[data-theme="light"] .sk__lead {
+        color: #454d46;
+      }
+      .sk__acts {
+        display: flex;
+        gap: 10px;
+        margin-top: 30px;
+      }
+      .sk__btn {
+        height: 50px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.07);
+      }
+      html[data-theme="light"] .sk__btn {
+        background: rgba(15, 20, 17, 0.06);
+      }
+      .sk__btn--wide { width: 168px; }
+      .sk__btn--narrow { width: 128px; }
+      .sk__panel {
+        border: 1px solid #253029;
+        border-radius: 10px;
+        background: #121815;
+        min-height: 430px;
+      }
+      html[data-theme="light"] .sk__panel {
+        border-color: #d3dbd1;
+        background: #ffffff;
+      }
+      @media (min-width: 900px) {
+        .sk__grid {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
+        }
+      }
+      @media (max-width: 899px) {
+        .sk__panel { display: none; }
       }
     </style>
   </head>
@@ -99,11 +121,19 @@
     <div id="app">
       <div class="sk">
         <div class="sk__page">
-          <p class="sk__eyebrow">Happy Phone Agent</p>
-          <h1 class="sk__title">让手机<br />自己动手</h1>
-          <p class="sk__lead">
-            一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。
-          </p>
+          <div class="sk__grid">
+            <div>
+              <h1 class="sk__title">一句话，<br />手机自己把事做完。</h1>
+              <p class="sk__lead">
+                你说「把屏幕亮度调到一半」，它读当前页面、拆出四步、用系统命令真的改掉，再把每一步的指纹变化记下来。不是告诉你去哪点，是替你做。
+              </p>
+              <div class="sk__acts">
+                <div class="sk__btn sk__btn--wide"></div>
+                <div class="sk__btn sk__btn--narrow"></div>
+              </div>
+            </div>
+            <div class="sk__panel" aria-hidden="true"></div>
+          </div>
         </div>
       </div>
     </div>

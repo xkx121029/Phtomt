@@ -21,16 +21,16 @@ onMounted(() => loadStatus())
 <template>
   <div>
     <PageHero
-      eyebrow="问答"
+      label="AI 问答"
       title="关于这个项目，先问一句"
       lead="助手只依据本站的功能、文档、常见问题与更新日志作答；资料里没有的，它会直说不确定，并把你引到仓库的 Issues。"
     />
 
     <section class="section section--tight">
       <div class="page">
-        <div v-if="staticOnly || (probed && !available)" class="card notice">
-          <h2 class="notice__title">问答尚未开启</h2>
-          <p class="notice__body">
+        <div v-if="staticOnly || (probed && !available)" class="note">
+          <h2 class="note__title">问答尚未开启</h2>
+          <p class="note__body">
             {{
               staticOnly
                 ? '当前是静态站点构建，没有可用的问答后端。请在部署了 Node 服务的站点上使用。'
@@ -45,7 +45,7 @@ onMounted(() => loadStatus())
           </div>
         </div>
 
-        <div v-else-if="!probed" class="card notice">
+        <div v-else-if="!probed" class="note">
           <p class="muted small">正在检查问答服务…</p>
         </div>
 
@@ -58,6 +58,27 @@ onMounted(() => loadStatus())
 </template>
 
 <style scoped>
+.note {
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  background: var(--panel);
+}
+
+.note__title {
+  font-size: var(--t-h3);
+}
+
+.note__body {
+  font-size: var(--t-sm);
+  line-height: 1.9;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+
 .notice {
   display: grid;
   gap: 14px;
@@ -81,5 +102,11 @@ onMounted(() => loadStatus())
    宽度沿用站内长文的 64ch 阅读栏（与 DocDetailView 同一条尺），左侧与上方 hero 对齐。 */
 .board {
   max-width: 64ch;
+}
+
+/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.note > * {
+  min-width: 0;
 }
 </style>

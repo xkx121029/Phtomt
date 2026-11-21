@@ -5,13 +5,13 @@ import PageHero from '../components/PageHero.vue'
 import { content } from '../api/client.js'
 
 const all = ref([])
-const active = ref('全部')
+const active = ref('')
 const open = ref('')
 
-const categories = computed(() => ['全部', ...new Set(all.value.map((s) => s.category).filter(Boolean))])
+const categories = computed(() => [...new Set(all.value.map((s) => s.category).filter(Boolean))])
 
 const groups = computed(() => {
-  const list = active.value === '全部' ? all.value : all.value.filter((s) => s.category === active.value)
+  const list = active.value ? all.value.filter((s) => s.category === active.value) : all.value
   const map = new Map()
   for (const item of list) {
     const key = item.category || '其他'
@@ -37,17 +37,20 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      eyebrow="场景示例"
+      label="场景示例"
       title="这些事，说一句话就够了"
-      lead="下面每一条都是可以直接粘进输入框的原话，以及它实际会怎么走。写出来是为了让你在装之前就知道边界在哪：哪一步靠无障碍、哪一步要 shell、哪一步会停下来问你。"
+      lead="每一条都能直接粘进输入框，后面写着它实际会怎么走。写出来是为了让你在装之前就知道边界：哪一步靠无障碍、哪一步要 shell、哪一步会停下来问你。"
     >
-      <div class="chips">
+      <div class="filter">
+        <button type="button" :class="['filter__i', { 'filter__i--on': !active }]" @click="active = ''; open = ''">
+          全部
+        </button>
         <button
           v-for="cat in categories"
           :key="cat"
           type="button"
-          :class="['chip', { 'chip--on': active === cat }]"
-          @click="active = cat"
+          :class="['filter__i', { 'filter__i--on': active === cat }]"
+          @click="active = cat; open = ''"
         >
           {{ cat }}
         </button>
@@ -59,41 +62,32 @@ onMounted(async () => {
         <p v-if="!all.length" class="muted">正在读取场景…</p>
 
         <div v-for="group in groups" :key="group.category" class="group">
-          <h2 v-reveal class="group__title">
-            {{ group.category }}
-            <span class="muted mono group__count">{{ group.items.length }}</span>
-          </h2>
+          <h2 v-reveal class="group__t">{{ group.category }}</h2>
 
-          <div class="grid">
+          <div class="list">
             <article
               v-for="(item, index) in group.items"
               :key="item.id"
-              v-reveal="index * 40"
-              :class="['card', 'item', { 'item--open': open === item.id }]"
+              v-reveal="index * 25"
+              :class="['row', { 'row--open': open === item.id }]"
             >
-              <button class="item__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
-                <span class="item__text">
-                  <span class="item__title">
-                    {{ item.title }}
-                    <span v-if="item.channel" class="tag item__channel">{{ item.channel }}</span>
-                  </span>
-                  <span class="item__goal">{{ item.goal }}</span>
+              <button class="row__head" type="button" :aria-expanded="open === item.id" @click="toggle(item.id)">
+                <span class="row__title">
+                  {{ item.title }}
+                  <span v-if="item.channel" class="tag row__ch">{{ item.channel }}</span>
                 </span>
-                <svg class="item__caret" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M4 6.5 8 10.5l4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
+                <span class="row__goal">{{ item.goal }}</span>
+                <span class="row__mark" aria-hidden="true"></span>
               </button>
 
-              <div class="item__body">
-                <!-- 折叠靠 .item__body 的单行 0fr，这一层必须独占那一行：
-                     把步骤和备注一起塞进来，备注会落到隐式行上、收起时照样露在外面 -->
-                <div class="item__inner">
+              <div class="row__body">
+                <div class="row__inner">
                   <ol class="steps">
-                    <li v-for="(step, i) in item.steps || []" :key="i" class="steps__item">
-                      <span class="steps__index mono">{{ String(i + 1).padStart(2, '0') }}</span>
-                      <span class="steps__text">
-                        <strong class="steps__name">{{ step.title }}</strong>
-                        <span class="steps__detail">{{ step.detail }}</span>
+                    <li v-for="(step, i) in item.steps || []" :key="i" class="steps__i">
+                      <span class="mono steps__n">{{ String(i + 1).padStart(2, '0') }}</span>
+                      <span class="steps__t">
+                        <strong>{{ step.title }}</strong>
+                        <span>{{ step.detail }}</span>
                       </span>
                     </li>
                   </ol>
@@ -104,12 +98,12 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-reveal class="more">
+        <div class="more">
           <div>
-            <p class="more__title">没找到你要的那件事？</p>
-            <p class="muted small">把目标写成一句人话就行，不必迁就固定句式。执行通道怎么选、模型怎么配，见文档中心。</p>
+            <p class="more__t">没找到你要的那件事？</p>
+            <p class="muted small">把目标写成一句人话就行，不必迁就固定句式。</p>
           </div>
-          <div class="more__actions">
+          <div class="more__a">
             <RouterLink to="/docs/getting-started" class="btn btn--sm">快速开始</RouterLink>
             <RouterLink to="/docs/execution-channels" class="btn btn--sm">执行通道</RouterLink>
           </div>
@@ -120,244 +114,208 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.chips {
+.filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px 18px;
 }
 
-.chip {
-  padding: 6px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--paper-raised);
+.filter__i {
+  min-height: 44px;
+  padding: 6px 2px;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font-size: var(--t-sm);
   color: var(--ink-2);
-  font-size: var(--t-xs);
   cursor: pointer;
   transition:
-    transform var(--dur-press) var(--ease-out),
-    background-color var(--dur-ui) ease,
-    border-color var(--dur-ui) ease,
-    color var(--dur-ui) ease;
+    color var(--dur-ui) ease,
+    border-color var(--dur-ui) ease;
 }
 
-.chip:active {
-  transform: scale(0.96);
-}
-
-.chip--on {
-  background: var(--brand);
-  border-color: var(--brand);
-  color: #fff;
-}
-
-[data-theme="dark"] .chip--on {
-  color: var(--brand-ink);
+.filter__i--on {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .chip:hover {
-    border-color: var(--line-2);
+  .filter__i:not(.filter__i--on):hover {
     color: var(--ink);
-  }
-
-  .chip--on:hover {
-    color: #fff;
-  }
-
-  [data-theme="dark"] .chip--on:hover {
-    color: var(--brand-ink);
   }
 }
 
 .group + .group {
-  margin-top: clamp(40px, 5vw, 64px);
+  margin-top: clamp(30px, 3.6vw, 48px);
 }
 
-.group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 18px;
-  font-size: var(--t-h3);
+.group__t {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--ink-3);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  letter-spacing: 0.02em;
 }
 
-.group__count {
-  font-size: var(--t-xs);
-  font-weight: 400;
+.list {
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.grid {
+.row {
+  border-top: 1px solid var(--line-soft);
+}
+
+.row__head {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  align-items: start;
-}
-
-.item {
-  padding: 0;
-  overflow: hidden;
-}
-
-.item__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) 22px;
+  gap: 6px 14px;
   width: 100%;
-  padding: 20px 22px;
+  padding: 15px 2px;
   border: none;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-/* 与能力清单、问答同一套交互：桌面端悬停即展开，移动端没有 hover、仍走点击。
-   不再叠悬停底色——卡片已经是亚克力，再压一层 --paper-sunken 会把材质糊掉。 */
-@media (hover: hover) and (pointer: fine) {
-  .item:hover .item__body {
-    grid-template-rows: 1fr;
-  }
-
-  .item:hover .item__caret {
-    transform: rotate(180deg);
-  }
-}
-
-.item__text {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-}
-
-.item__title {
+.row__title {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  font-size: 1.05rem;
+  align-items: center;
+  gap: 9px;
+  font-size: 1rem;
   font-weight: 600;
-  letter-spacing: -0.018em;
+  color: var(--ink);
 }
 
-/* 通道标签不抢视线：它标的是「这条靠什么跑」，不是卖点 */
-.item__channel {
-  font-size: var(--t-xs);
+.row__ch {
   font-weight: 500;
-  letter-spacing: 0;
 }
 
-/* 指令用等宽字并带一道左侧竖线：一眼能和说明文字区分开，
-   也方便用户直接照着抄进输入框 */
-.item__goal {
-  padding-left: 10px;
-  border-left: 2px solid var(--line-2);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+.row__goal {
+  grid-column: 1;
+  font-size: var(--t-sm);
   line-height: 1.7;
   color: var(--ink-2);
 }
 
-.item__caret {
-  flex: none;
-  margin-top: 3px;
-  color: var(--ink-3);
-  transition: transform var(--dur-enter) var(--ease-out);
+.row__mark {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: start;
+  margin-top: 8px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-3);
+  border-bottom: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+  transition:
+    transform var(--dur-ui) var(--ease-out),
+    border-color var(--dur-ui) ease;
 }
 
-.item--open .item__caret {
-  transform: rotate(180deg);
+.row--open .row__mark {
+  transform: rotate(225deg);
+  border-color: var(--signal);
 }
 
-.item__body {
+.row__body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-enter) var(--ease-out);
+  transition: grid-template-rows var(--dur-ui) var(--ease-out);
 }
 
-.item--open .item__body {
+.row--open .row__body {
   grid-template-rows: 1fr;
 }
 
-/* overflow: hidden 同时把 grid 项的自动最小尺寸压成 0，否则 0fr 收不拢 */
-.item__inner {
+.row__inner {
   overflow: hidden;
-  padding: 0 22px 22px;
 }
 
 .steps {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding: 0;
   list-style: none;
-}
-
-.steps__item {
-  display: flex;
-  gap: 12px;
-}
-
-.steps__index {
-  flex: none;
-  padding-top: 1px;
-  font-size: var(--t-xs);
-  color: var(--ink-3);
-}
-
-.steps__text {
+  margin: 0;
+  padding: 4px 0 14px;
   display: grid;
-  gap: 3px;
-  font-size: var(--t-sm);
-  line-height: 1.72;
+  gap: 0;
+  max-width: 46em;
 }
 
-.steps__name {
-  font-weight: 600;
-  letter-spacing: -0.01em;
+.steps__i {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line-soft);
 }
 
-.steps__detail {
-  color: var(--ink-2);
-}
-
-.note {
-  margin: 18px 0 0;
-  padding: 10px 14px;
-  border-radius: var(--r-sm);
-  background: var(--paper-sunken);
+.steps__n {
   font-size: var(--t-xs);
+  color: var(--signal);
+  padding-top: 3px;
+}
+
+.steps__t {
+  display: grid;
+  gap: 2px;
+  font-size: var(--t-sm);
   line-height: 1.75;
   color: var(--ink-2);
 }
 
+.steps__t strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.note {
+  margin-bottom: 18px;
+  padding: 10px 13px;
+  border-left: 2px solid var(--warn);
+  background: var(--warn-wash);
+  font-size: var(--t-sm);
+  line-height: 1.8;
+  color: var(--ink-2);
+  max-width: 46em;
+}
+
 .more {
+  display: grid;
+  gap: 16px;
+  margin-top: clamp(28px, 3.6vw, 44px);
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.more__t {
+  font-weight: 600;
+}
+
+.more__a {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: clamp(36px, 5vw, 56px);
-  padding: 22px 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--paper-sunken);
-}
-
-.more__title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.more__actions {
-  display: flex;
   gap: 8px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .item__body,
-  .item__caret {
-    transition: none;
+@media (hover: hover) and (pointer: fine) {
+  .row__head:hover .row__title {
+    color: var(--signal);
   }
+}
+
+@media (min-width: 720px) {
+  .more {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.row__head > *,
+.more > *,
+.steps > * {
+  min-width: 0;
 }
 </style>

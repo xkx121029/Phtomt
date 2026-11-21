@@ -1,41 +1,52 @@
 <script setup>
+/**
+ * 内页刊头：一行小字 + 标题 + 导语 + 动作区，下方一条粗线收口。
+ * 不高喊、不加编号——页名本身已经是导航状态。
+ */
 defineProps({
-  eyebrow: { type: String, default: '' },
+  label: { type: String, default: '' },
   title: { type: String, required: true },
   lead: { type: String, default: '' }
 })
 </script>
 
 <template>
-  <header class="hero">
+  <header class="ph">
     <div class="page">
-      <p v-if="eyebrow" v-reveal class="eyebrow">{{ eyebrow }}</p>
-      <h1 v-reveal="40" class="h1 hero__title">{{ title }}</h1>
-      <p v-if="lead" v-reveal="80" class="lead hero__lead">{{ lead }}</p>
-      <div v-if="$slots.default" v-reveal="120" class="hero__extra">
+      <p v-if="label" v-reveal class="eyebrow">{{ label }}</p>
+      <h1 v-reveal="20" class="h1 ph__title">{{ title }}</h1>
+      <p v-if="lead" v-reveal="50" class="lead ph__lead">{{ lead }}</p>
+      <div v-if="$slots.default" v-reveal="80" class="ph__extra">
         <slot />
       </div>
     </div>
+    <div class="page"><hr class="ph__rule" /></div>
   </header>
 </template>
 
 <style scoped>
-.hero {
-  padding-block: clamp(56px, 7vw, 88px) clamp(28px, 4vw, 40px);
-  border-bottom: 1px solid var(--line);
+.ph {
+  padding-top: clamp(30px, 4.4vw, 56px);
 }
 
-.hero__title {
+.ph__title {
+  margin-top: 10px;
+  max-width: 20em;
+}
+
+.ph__lead {
   margin-top: 14px;
-  max-width: 22ch;
+  max-width: 34em;
 }
 
-.hero__lead {
-  margin-top: 18px;
-  max-width: 60ch;
+.ph__extra {
+  margin-top: 24px;
 }
 
-.hero__extra {
-  margin-top: 26px;
+.ph__rule {
+  height: 3px;
+  border: none;
+  margin: 30px 0 0;
+  background: var(--ink);
 }
 </style>

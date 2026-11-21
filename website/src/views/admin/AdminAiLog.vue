@@ -133,7 +133,7 @@ onMounted(() => load(1))
       <ol class="log">
         <li v-for="(row, i) in rows" :key="row.id || `${row.at}-${i}`" v-reveal="Math.min(i, 8) * 24" class="log__item">
           <div class="log__top">
-            <span v-if="row.nav" class="tag tag--brand">带路 {{ row.navLabel || row.nav }}</span>
+            <span v-if="row.nav" class="tag tag--signal">带路 {{ row.navLabel || row.nav }}</span>
             <span v-else class="tag">纯答疑</span>
             <span v-if="row.error" class="tag tag--danger">生成失败</span>
             <span class="muted small log__time" :title="formatDate(row.at)">{{ relativeTime(row.at) }}</span>
@@ -212,7 +212,7 @@ onMounted(() => load(1))
   display: grid;
   gap: 8px;
   padding: 14px 16px;
-  background: var(--paper-raised);
+  background: var(--panel);
 }
 
 .log__top {
@@ -242,14 +242,14 @@ onMounted(() => load(1))
 }
 
 .log__more summary:hover {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .log__answer {
   margin-top: 8px;
   padding: 12px 14px;
   border-radius: var(--r-sm);
-  background: var(--paper-sunken);
+  background: var(--panel-2);
   font-size: var(--t-xs);
   line-height: 1.8;
   color: var(--ink-2);
@@ -291,11 +291,11 @@ onMounted(() => load(1))
 }
 
 .msg--ok {
-  background: var(--brand-wash);
-  color: var(--brand-strong);
+  background: var(--signal-wash);
+  color: var(--signal);
 }
 
 [data-theme="dark"] .msg--ok {
-  color: var(--brand);
+  color: var(--signal);
 }
 </style>

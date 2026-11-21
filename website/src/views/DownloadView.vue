@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import PageHero from '../components/PageHero.vue'
+import SectionHead from '../components/SectionHead.vue'
 import CopyButton from '../components/CopyButton.vue'
 import { content, apiBaseUrl } from '../api/client.js'
 import { channelLabel, downloadUrl, formatDate, isExternalDownload, relativeTime } from '../lib/format.js'
@@ -132,31 +133,38 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      eyebrow="下载"
+      label="下载"
       title="拿到 APK，装到自己的手机上"
       lead="当前只有 Debug 构建，面向内测与自用。每个版本都给出 SHA-256，装之前可以自行核对。"
-    />
+    >
+      <div class="hero-reqs">
+        <span v-for="req in REQS" :key="req.label" class="hero-req">
+          <span class="muted">{{ req.label }}</span>
+          <span class="mono">{{ req.value }}</span>
+        </span>
+      </div>
+    </PageHero>
 
     <section class="section section--tight">
       <div class="page">
         <!-- 主下载卡 -->
-        <article v-if="latest" v-reveal class="card hero-card">
-          <div class="hero-card__main">
-            <div class="hero-card__meta">
-              <span class="tag tag--brand">{{ channelLabel(latest.channel) }}</span>
+        <article v-if="latest" v-reveal class="ticket">
+          <div class="ticket__main">
+            <div class="ticket__meta">
+              <span class="tag tag--signal">{{ channelLabel(latest.channel) }}</span>
               <span v-if="latest.build" class="tag mono">build {{ latest.build }}</span>
               <span class="tag">{{ formatDate(latest.date) }}</span>
             </div>
 
-            <h2 class="hero-card__version mono">v{{ String(latest.version).replace(/^v/i, '') }}</h2>
-            <p v-if="latest.title" class="hero-card__title">{{ latest.title }}</p>
-            <p v-if="latest.summary" class="hero-card__summary">{{ latest.summary }}</p>
+            <h2 class="ticket__version mono">v{{ String(latest.version).replace(/^v/i, '') }}</h2>
+            <p v-if="latest.title" class="ticket__title">{{ latest.title }}</p>
+            <p v-if="latest.summary" class="ticket__summary">{{ latest.summary }}</p>
 
             <ul v-if="latest.notes?.length" class="notes">
               <li v-for="note in latest.notes" :key="note">{{ note }}</li>
             </ul>
 
-            <div class="hero-card__actions">
+            <div class="ticket__actions">
               <a
                 class="btn btn--primary btn--lg"
                 :href="primaryUrl"
@@ -164,7 +172,7 @@ onMounted(async () => {
                 :rel="isExternalDownload(latest) ? 'noopener noreferrer' : undefined"
                 @click="onPrimaryClick"
               >
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
                 <template v-if="latest.apk">
@@ -173,44 +181,33 @@ onMounted(async () => {
                 <template v-else>前往 GitHub Releases</template>
               </a>
               <RouterLink to="/docs/getting-started" class="btn btn--lg">安装说明</RouterLink>
-              <span v-if="probing" class="hero-card__probing">正在检测线路…</span>
+              <span v-if="probing" class="ticket__probing">正在检测线路…</span>
             </div>
 
-            <p class="hero-card__sources">
-              <span v-if="probeNote" class="hero-card__note">{{ probeNote }}</span>
+            <p class="ticket__sources">
+              <span v-if="probeNote" class="ticket__note">{{ probeNote }}</span>
               其他下载源：
-              <a
-                :href="site.links?.releases || site.links?.github || '#'"
-                target="_blank"
-                rel="noopener noreferrer"
-              >GitHub Release 页</a>
+              <a :href="site.links?.releases || site.links?.github || '#'" target="_blank" rel="noopener noreferrer">GitHub Release 页</a>
               <template v-if="giteePage">
                 ·
                 <a :href="giteePage" target="_blank" rel="noopener noreferrer">Gitee Release 页</a>
               </template>
               <span v-if="latest.apk">·</span>
-              <button
-                v-if="latest.apk"
-                type="button"
-                class="hero-card__redetect"
-                :disabled="probing"
-                @click="detect(true)"
-              >重新检测</button>
+              <button v-if="latest.apk" type="button" class="ticket__redetect" :disabled="probing" @click="detect(true)">
+                重新检测
+              </button>
             </p>
 
-
-            <p class="hint hero-card__hint">
+            <p class="hint ticket__hint">
               安装包托管在 GitHub / Gitee 的 Release 里，本站不保存文件；按钮已自动选择响应更快的下载源——按首字节时间判断，不代表实际下载速度，如速度不理想，可用上方「其他下载源」手动切换。
             </p>
-            <p v-if="noStable" class="hint hero-card__hint">
-              暂无稳定版，以下为最新测试版。稳定版发布后这里会自动切过去。
-            </p>
-            <p v-if="feedDegraded" class="hint hero-card__hint">
+            <p v-if="noStable" class="hint ticket__hint">暂无稳定版，以上为最新测试版。稳定版发布后这里会自动切过去。</p>
+            <p v-if="feedDegraded" class="hint ticket__hint">
               当前展示的是本地兜底的版本数据{{ feedUpdated ? `（更新于 ${feedUpdated}）` : '' }}，可能不是最新；GitHub 恢复后会自动刷新。
             </p>
           </div>
 
-          <aside class="hero-card__side">
+          <aside class="ticket__side">
             <dl class="facts">
               <div class="facts__row">
                 <dt>文件大小</dt>
@@ -246,13 +243,51 @@ onMounted(async () => {
       </div>
     </section>
 
+    <!-- 安装步骤 + 环境要求 -->
+    <section class="section section--tight">
+      <div class="page">
+        <div class="install">
+          <div>
+            <SectionHead label="安装" title="四步装好" />
+            <ol class="steps">
+              <li v-for="(step, index) in STEPS" :key="step.title" v-reveal="index * 50" class="steps__item">
+                <span class="steps__num mono">{{ String(index + 1).padStart(2, '0') }}</span>
+                <div>
+                  <h3 class="steps__title">{{ step.title }}</h3>
+                  <p class="steps__body">{{ step.body }}</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div>
+            <SectionHead label="环境" title="装之前先确认" />
+            <dl v-reveal="40" class="reqs">
+              <div v-for="req in REQS" :key="req.label" class="reqs__row">
+                <dt>{{ req.label }}</dt>
+                <dd>{{ req.value }}</dd>
+              </div>
+            </dl>
+
+            <div v-reveal="80" class="callout">
+              <p class="callout__title">不需要 Root</p>
+              <p class="callout__body">
+                基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，用 Android 11+ 自带的无线调试配对，
+                或安装内置的 Shizuku——两者都不需要 Root。
+              </p>
+              <RouterLink to="/docs/execution-channels" class="link-arrow">通道怎么选</RouterLink>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 历史版本 -->
     <section v-if="rest.length" class="section section--tight band">
       <div class="page">
-        <p v-reveal class="eyebrow">历史版本</p>
-        <h2 v-reveal="40" class="h2">其余 {{ rest.length }} 个可下载版本</h2>
+        <SectionHead label="历史版本" :title="`其余 ${rest.length} 个可下载版本`" />
 
-        <div v-reveal class="table-wrap table-gap">
+        <div v-reveal class="table-wrap">
           <table>
             <thead>
               <tr>
@@ -266,9 +301,7 @@ onMounted(async () => {
             <tbody>
               <tr v-for="item in rest" :key="item.version">
                 <td class="mono">
-                  <RouterLink :to="`/changelog/${item.version}`" class="ver-link">
-                    {{ item.version }}
-                  </RouterLink>
+                  <RouterLink :to="`/changelog/${item.version}`" class="ver-link">{{ item.version }}</RouterLink>
                 </td>
                 <td>{{ channelLabel(item.channel) }}</td>
                 <td>{{ formatDate(item.date) }}</td>
@@ -287,167 +320,143 @@ onMounted(async () => {
         </div>
       </div>
     </section>
-
-    <!-- 安装步骤 + 环境要求 -->
-    <section class="section section--tight">
-      <div class="page two-col">
-        <div>
-          <p v-reveal class="eyebrow">安装</p>
-          <h2 v-reveal="40" class="h2">四步装好</h2>
-          <ol class="steps">
-            <li v-for="(step, index) in STEPS" :key="step.title" v-reveal="index * 60" class="steps__item">
-              <span class="steps__num mono">{{ String(index + 1).padStart(2, '0') }}</span>
-              <div>
-                <h3 class="steps__title">{{ step.title }}</h3>
-                <p class="steps__body">{{ step.body }}</p>
-              </div>
-            </li>
-          </ol>
-        </div>
-
-        <div>
-          <p v-reveal class="eyebrow">环境要求</p>
-          <h2 v-reveal="40" class="h2">装之前先确认</h2>
-          <dl v-reveal="60" class="reqs">
-            <div v-for="req in REQS" :key="req.label" class="reqs__row">
-              <dt>{{ req.label }}</dt>
-              <dd>{{ req.value }}</dd>
-            </div>
-          </dl>
-
-          <div v-reveal="100" class="callout">
-            <p class="callout__title">不需要 Root</p>
-            <p class="callout__body">
-              基础能力靠无障碍服务即可运行。想要系统级命令（am / pm / settings）时，用 Android 11+ 自带的无线调试配对，
-              或安装 Shizuku——两者都不需要 Root。
-            </p>
-            <RouterLink to="/docs/execution-channels" class="link-arrow">通道怎么选</RouterLink>
-          </div>
-        </div>
-      </div>
-    </section>
   </div>
 </template>
 
 <style scoped>
-.hero-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
-  gap: clamp(24px, 3vw, 44px);
-  padding: clamp(24px, 3vw, 34px);
-}
-
-.hero-card__meta {
+.hero-reqs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 8px 20px;
+  font-size: var(--t-xs);
 }
 
-.hero-card__version {
-  margin-top: 18px;
+.hero-req {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* 主下载卡：做成一张「票据」——左侧是版本与按钮，右侧是校验与事实 */
+.ticket {
+  display: grid;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.ticket__main {
+  padding: clamp(20px, 3vw, 32px);
+}
+
+.ticket__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ticket__version {
+  margin-top: 14px;
   font-size: clamp(1.8rem, 1.3rem + 2vw, 2.6rem);
   font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  /* v0.2.2000092-beta 这种 17 字符的版本号在 360px 屏上会顶出卡片，
-     断行只在真的放不下时触发，正常版本号仍是一行 */
-  overflow-wrap: anywhere;
+  letter-spacing: var(--track-num);
 }
 
-.hero-card__title {
-  margin-top: 8px;
-  font-size: 1.05rem;
+.ticket__title {
+  margin-top: 6px;
   font-weight: 600;
 }
 
-.hero-card__summary {
-  margin-top: 12px;
+.ticket__summary {
+  margin-top: 8px;
   font-size: var(--t-sm);
+  line-height: 1.85;
   color: var(--ink-2);
-  line-height: 1.8;
-  max-width: 68ch;
-  display: -webkit-box;
-  -webkit-line-clamp: 5;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  max-width: 58ch;
 }
 
 .notes {
-  margin: 16px 0 0;
+  margin: 14px 0 0;
   padding-left: 18px;
+  display: grid;
+  gap: 5px;
   font-size: var(--t-sm);
-  color: var(--ink-3);
-  line-height: 1.9;
+  line-height: 1.75;
+  color: var(--ink-2);
 }
 
-.hero-card__actions {
+.notes li::marker {
+  color: var(--ink-3);
+}
+
+.ticket__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 26px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
 }
 
-.hero-card__hint {
-  margin-top: 12px;
-}
-
-/* 测速状态常驻在按钮同一行，不占额外高度；测完即消失，不做进度条也不做动画 */
-.hero-card__probing {
-  align-self: center;
+.ticket__probing {
   font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
-.hero-card__sources {
+.ticket__sources {
   margin-top: 14px;
-  font-size: var(--t-xs);
-  color: var(--ink-3);
-  line-height: 1.9;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  line-height: 1.8;
 }
 
-.hero-card__sources a {
+.ticket__sources a {
   color: var(--ink-2);
   text-decoration: underline;
   text-underline-offset: 3px;
+  text-decoration-color: var(--line-strong);
 }
 
-.hero-card__note {
-  margin-right: 8px;
-  color: var(--ink-3);
+.ticket__note {
+  display: block;
+  color: var(--amber);
 }
 
-.hero-card__redetect {
-  padding: 0;
+.ticket__redetect {
   border: none;
-  background: none;
-  font: inherit;
-  color: var(--ink-3);
+  background: transparent;
+  padding: 0;
+  color: var(--signal);
+  font-size: var(--t-xs);
+  cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
-  cursor: pointer;
 }
 
-.hero-card__redetect:disabled {
-  opacity: 0.55;
+.ticket__redetect:disabled {
+  color: var(--ink-3);
   cursor: default;
 }
 
-.hero-card__side {
+.ticket__hint {
+  margin-top: 10px;
+  max-width: 66ch;
+}
+
+.ticket__side {
   display: grid;
-  gap: 18px;
+  gap: 20px;
   align-content: start;
-  padding-left: clamp(0px, 2vw, 28px);
-  border-left: 1px solid var(--line);
+  padding: clamp(20px, 3vw, 28px);
+  border-top: 1px solid var(--line);
+  background: var(--panel-2);
 }
 
 .facts {
-  display: grid;
-  gap: 1px;
   margin: 0;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  overflow: hidden;
+  display: grid;
+  gap: 0;
 }
 
 .facts__row {
@@ -455,118 +464,99 @@ onMounted(async () => {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 11px 14px;
-  background: var(--paper);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+
+.facts__row:last-child {
+  border-bottom: none;
 }
 
 .facts__row dt {
-  font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
 .facts__row dd {
   margin: 0;
-  font-size: var(--t-sm);
   font-weight: 500;
 }
 
 .sha {
   display: grid;
-  gap: 8px;
-  justify-items: start;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--paper-sunken);
+  gap: 6px;
+  padding-top: 4px;
 }
 
 .sha__label {
-  font-size: var(--t-xs);
-  color: var(--ink-3);
-  letter-spacing: 0.1em;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: var(--track-cap);
+  color: var(--ink-2);
 }
 
 .sha__value {
-  font-size: 0.72rem;
-  line-height: 1.6;
+  font-size: 0.8125rem;
+  line-height: 1.7;
   word-break: break-all;
   color: var(--ink-2);
 }
 
 .empty {
-  /* 空态里是「一句话 + 一个行内链接」，用 grid 会把三段文字拆成三行带间隙，看着像渲染坏了 */
   display: block;
+  font-size: var(--t-sm);
   color: var(--ink-2);
-  line-height: 1.9;
 }
 
-.table-gap {
-  margin-top: 32px;
-}
-
-.ver-link {
-  color: var(--brand);
-}
-
-.two-col {
+.install {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: clamp(32px, 5vw, 64px);
-  align-items: start;
+  gap: clamp(28px, 4vw, 56px);
 }
 
 .steps {
   list-style: none;
-  margin: 28px 0 0;
+  margin: 0;
   padding: 0;
-  display: grid;
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  overflow: hidden;
+  border-top: 1px solid var(--line);
 }
 
 .steps__item {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  padding: 18px 20px;
-  background: var(--paper-raised);
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .steps__num {
   font-size: var(--t-xs);
-  color: var(--brand);
+  color: var(--amber);
+  padding-top: 4px;
 }
 
 .steps__title {
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: var(--t-h3);
 }
 
 .steps__body {
   margin-top: 6px;
   font-size: var(--t-sm);
+  line-height: 1.85;
   color: var(--ink-2);
-  line-height: 1.78;
+  max-width: 52ch;
 }
 
 .reqs {
-  display: grid;
-  gap: 1px;
-  margin: 28px 0 0;
-  background: var(--line);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  overflow: hidden;
+  margin: 0;
+  border-top: 1px solid var(--line);
 }
 
 .reqs__row {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 14px;
-  padding: 13px 18px;
-  background: var(--paper-raised);
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
   font-size: var(--t-sm);
 }
 
@@ -579,84 +569,121 @@ onMounted(async () => {
 }
 
 .callout {
-  display: grid;
-  gap: 8px;
-  margin-top: 22px;
-  padding: 20px;
+  margin-top: 24px;
+  padding: 18px;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--brand-wash);
+  border-left: 2px solid var(--signal);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--panel);
 }
 
 .callout__title {
   font-weight: 600;
-  color: var(--brand-strong);
-}
-
-[data-theme="dark"] .callout__title {
-  color: var(--brand);
 }
 
 .callout__body {
-  font-size: var(--t-sm);
-  color: var(--ink-2);
-  line-height: 1.8;
-}
-
-.link-arrow {
-  position: relative;
-  justify-self: start;
   margin-top: 6px;
-  padding-right: 16px;
   font-size: var(--t-sm);
-  color: var(--brand);
+  line-height: 1.85;
+  color: var(--ink-2);
 }
 
-.link-arrow::after {
-  content: "→";
-  position: absolute;
-  right: 0;
-  transition: transform var(--dur-ui) var(--ease-out);
+.callout .link-arrow {
+  margin-top: 12px;
+}
+
+.ver-link {
+  color: var(--signal);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .link-arrow:hover::after {
-    transform: translateX(3px);
+  .ver-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 }
 
-@media (max-width: 880px) {
-  .hero-card {
-    /* 用 minmax(0, 1fr) 而不是 1fr：按钮里的包名不换行，1fr 的 auto 最小宽度会被它撑到 424px，
-       360px 屏上整张卡片就横向溢出了 */
-    grid-template-columns: minmax(0, 1fr);
+/* 窄屏的历史版本表：渠道与大小并到第二行，避免横向滚动 */
+@media (max-width: 639px) {
+  .table-wrap table thead {
+    display: none;
   }
 
-  .hero-card__side {
-    padding-left: 0;
-    border-left: none;
-    border-top: 1px solid var(--line);
-    padding-top: 20px;
+  .table-wrap table,
+  .table-wrap table tbody,
+  .table-wrap table tr,
+  .table-wrap table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table-wrap table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .table-wrap table td {
+    padding: 0;
+    border: none;
+    font-size: var(--t-sm);
+  }
+
+  .table-wrap table td:nth-child(2),
+  .table-wrap table td:nth-child(3),
+  .table-wrap table td:nth-child(4) {
+    grid-column: 1;
+    color: var(--ink-3);
+    font-size: var(--t-xs);
+  }
+
+  .table-wrap table td:nth-child(2)::before { content: "渠道 "; }
+  .table-wrap table td:nth-child(4)::before { content: "大小 "; }
+
+  .table-wrap table td:last-child {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 }
 
-/* 窄屏放下「下载 HappyAgent-0.2.9160-stable.apk（68 MB）」这一整串要 424px，
-   不够宽就让按钮里的文字折行，而不是把卡片顶宽 */
-@media (max-width: 520px) {
-  .hero-card__actions .btn {
-    max-width: 100%;
+@media (max-width: 519px) {
+  .ticket__actions :deep(.btn--lg) {
+    min-height: 46px;
+    padding-inline: 16px;
+    font-size: var(--t-sm);
     white-space: normal;
-    text-align: start;
+    text-align: left;
+    line-height: 1.4;
+  }
+}
+
+@media (min-width: 860px) {
+  .ticket {
+    grid-template-columns: minmax(0, 1.62fr) minmax(0, 0.72fr);
   }
 
-  /* 窄屏下 td 默认折行会把「开发版」「2026-11-06」拆成两行；给表格一个下限宽度，
-     折行交给 .table-wrap 的横向滚动，列内容保持单行可读 */
-  .table-wrap table {
-    min-width: 460px;
+  .ticket__side {
+    border-top: none;
+    border-left: 1px solid var(--line);
   }
 
-  .table-wrap td {
-    white-space: nowrap;
+  .install {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: start;
   }
+}
+
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.ticket > *,
+.install > *,
+.facts > *,
+.reqs > *,
+.steps > * {
+  min-width: 0;
 }
 </style>

@@ -86,9 +86,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   align-items: center;
   gap: 8px;
   padding: 11px 18px;
-  border: 1px solid var(--brand);
+  border: 1px solid var(--signal);
   border-radius: var(--r-pill);
-  background: var(--brand);
+  background: var(--signal);
   color: #fff;
   font-size: var(--t-sm);
   font-weight: 500;
@@ -100,7 +100,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 }
 
 [data-theme="dark"] .launcher {
-  color: var(--brand-ink);
+  color: var(--signal-ink);
 }
 
 .launcher:active {
@@ -109,8 +109,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 @media (hover: hover) and (pointer: fine) {
   .launcher:hover {
-    background: var(--brand-strong);
-    border-color: var(--brand-strong);
+    background: var(--signal);
+    border-color: var(--signal);
   }
 }
 
@@ -125,7 +125,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   height: min(560px, calc(100vh - 140px));
   padding: 14px 16px 14px;
   border: 1px solid var(--glass-line);
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-3);
 }
 
@@ -146,12 +146,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   height: 26px;
   flex: none;
   border-radius: var(--r-pill);
-  background: var(--brand-wash);
-  color: var(--brand-strong);
+  background: var(--signal-wash);
+  color: var(--signal);
 }
 
 [data-theme="dark"] .panel__mark {
-  color: var(--brand);
+  color: var(--signal);
 }
 
 .panel__name {
@@ -194,11 +194,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 @media (hover: hover) and (pointer: fine) {
   .panel__link:hover {
-    color: var(--brand);
+    color: var(--signal);
   }
 
   .panel__close:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
   }
 }
 

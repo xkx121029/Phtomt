@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import SignalField from '../components/SignalField.vue'
-import DeviceFrame from '../components/DeviceFrame.vue'
-import AnnotatedScreen from '../components/AnnotatedScreen.vue'
+import SectionHead from '../components/SectionHead.vue'
+import ReadoutPanel from '../components/ReadoutPanel.vue'
+import ShotFrame from '../components/ShotFrame.vue'
+import StepRail from '../components/StepRail.vue'
 import CopyButton from '../components/CopyButton.vue'
 import { content } from '../api/client.js'
 import { downloadUrl, formatDate, relativeTime, sectionTone, channelLabel } from '../lib/format.js'
@@ -16,13 +17,12 @@ const failed = ref(false)
 const site = computed(() => data.value?.site || {})
 // 与下载页同一判据：服务端 downloadTarget 优先稳定版，没有稳定版再退最新测试包
 const latest = computed(() => latestRelease(data.value))
-const features = computed(() => (data.value?.features || []).slice(0, 6))
+const featureCount = computed(() => (data.value?.features || []).length)
 const releases = computed(() => data.value?.releases || [])
-const entries = computed(() => data.value?.changelog || [])
+const entries = computed(() => (data.value?.changelog || []).slice(0, 2))
 
 /**
  * 首页主按钮：优先复用下载页测好的择优结果（只读 sessionStorage，不发任何请求、不阻塞首屏）。
- * 没有缓存、版本对不上或已过期，就与改动前完全一致——走默认直链。
  */
 const primaryUrl = computed(() => {
   const cached = cachedDownloadSource(latest.value?.version)
@@ -30,21 +30,105 @@ const primaryUrl = computed(() => {
   return latest.value ? downloadUrl(latest.value, site.value) : '/download'
 })
 
-const QUICK_START = `# 1. 装好 APK 后，先授予无障碍与悬浮窗权限
+/** 首屏读数：值来自应用代码（AgentIntent / ActionPolicy / site.json），不随文案变 */
+const SPECS = [
+  { value: '65', unit: '个', label: '语义意图，模型只描述做什么' },
+  { value: '3', unit: '条', label: '执行通道，能力装在独立 Provider' },
+  { value: '3B', unit: '端侧', label: '视觉模型，高频页面不出设备' },
+  { value: '0', unit: 'Root', label: '无障碍起步，系统命令用无线调试' }
+]
+
+/** 首屏读数面板：引擎里真实存在的五个阶段 */
+const READOUT = [
+  { key: 'observe', text: '无障碍取回 37 个可交互元素' },
+  { key: 'annotate', text: '命中 search_box / send_btn / ad_skip' },
+  { key: 'intent', text: 'settings_op · brightness = 128' },
+  { key: 'translate', text: 'settings put system screen_brightness' },
+  { key: 'verify', text: '页面指纹已变化，记为已生效' }
+]
+
+const MECHANISMS = [
+  {
+    key: 'intent',
+    title: '模型只说做什么',
+    how: '模型输出的是 65 个语义意图之一（tap / input / scroll_to / settings_op…），选通道、算坐标、拼命令全部在端侧完成。',
+    then: '换模型、换分辨率、换语言都不用重写口令；模型也没有能力递给你一条命令。'
+  },
+  {
+    key: 'provider',
+    title: '高权限能力不在主应用里',
+    how: '无障碍、内置 Shizuku、Termux 各自封装在签名一致的 Provider APK 中，主应用经 AIDL 调用。',
+    then: '一条通道失败会降级到另一条；卸载主应用不会在系统里留下一个常驻的高权限服务。'
+  },
+  {
+    key: 'verify',
+    title: '每个动作都带验证',
+    how: '动作前后各取一次页面指纹，不一致才算生效。「已送达但未确认」是独立状态。',
+    then: '长任务不靠「我以为点到了」往前推，没确认的步骤会被看见、被重试。'
+  },
+  {
+    key: 'vision',
+    title: '看图也分本地和云端',
+    how: '元素树可读（控件数 > 3）时优先端侧 3B 框选；稀疏页面切云端视觉描述，两条都不通时由 ML Kit 中文 OCR 兜底。',
+    then: '高频页面不烧云端额度，游戏和 WebView 这类自绘界面也不至于看不见。'
+  },
+  {
+    key: 'safety',
+    title: '三档动作模式与安全闸',
+    how: '保守 / 均衡 / 自由三档决定可用意图（35 + 21 + 5 条分档）。敏感页切只读，手机号、身份证号、卡号先脱敏，不可逆动作必弹确认。',
+    then: '越权动作根本不在可选集里，而不是弹个提示希望你自觉。'
+  },
+  {
+    key: 'coding',
+    title: '手机上就能编译',
+    how: 'PRoot + Alpine + JDK + Gradle + Android SDK 装在应用私有目录，编码 Agent 直接在设备上跑 assembleDebug。',
+    then: '没有电脑也能改自己的 App，改完立刻装回去验证。'
+  }
+]
+
+const LOOP = [
+  { title: '观察', line: '无障碍取回当前屏幕的全部可交互元素', desc: '元素树带着 id、文本、类名、可点击性和坐标，是后续所有判断的唯一事实来源。' },
+  { title: '标注', line: '给常见控件分配语义 ID', desc: '模型拿到的是「搜索框 / 发送按钮 / 跳过广告」这样的结构表，不是一张要它自己猜的图。' },
+  { title: '决策', line: '端侧先处理高频场景，其余交给你的模型', desc: '弹窗、加载、广告这类重复场景本地决断，省掉一次往返。' },
+  { title: '执行', line: '通道按能力降级，动作前后比对页面指纹', desc: '能点就点，点不到先滚动查找，仍找不到就中止并说明原因。' },
+  { title: '验证', line: '指纹变了才算生效，没变就记一笔未确认', desc: '每一步的结论都带着证据进任务记忆，中断后可以从检查点续跑。' }
+]
+
+const INSTALL = [
+  { title: '放行未知来源', desc: '当前提供 Debug 构建，系统会拦截。在「设置 → 应用 → 特殊权限」里为浏览器或文件管理器放行。' },
+  { title: '核对 SHA-256', desc: '下载页每个版本都给出校验值，装之前自己比一遍：sha256sum 或 Get-FileHash。' },
+  { title: '授予无障碍权限', desc: '它是 Agent 的手和眼，必须给。悬浮窗与通知可选，不给也能跑，只是看不到实时进度。' },
+  { title: '填一个模型端点', desc: '任意 OpenAI 兼容端点都行：自建 Ollama、LM Studio、one-api。测试连接通过后才允许保存。' }
+]
+
+const SCREENS = [
+  {
+    src: './shots/home-agent.webp',
+    alt: 'Happy Agent 应用首页：顶部是任务输入框，下方是最近的任务',
+    meta: '首页／v0.2／1080×2400',
+    caption: '一句人话进输入框，下面是它跑过的任务。没有表单，也没有步骤向导。'
+  },
+  {
+    src: './shots/task-card.webp',
+    alt: '任务执行中的任务卡：当前阶段、已完成步骤与可展开的单步详情',
+    meta: '执行中／1080×2400',
+    caption: '每一步都写着它看到了什么、做了什么、下一步准备做什么，随时可以插话改方向。'
+  },
+  {
+    src: './shots/workbench.webp',
+    alt: '深色主题下的 Agent 页：任务进度与对话并列',
+    meta: '深色／1080×2400',
+    caption: '同一套语义色令牌的另一面：宽屏上进度与对话并排，窄屏收成单列。'
+  }
+]
+
+const QUICK_START = `# 1. 装好后授予无障碍与悬浮窗权限
 # 2. 设置 → 模型配置，填任意 OpenAI 兼容端点
 API 地址   http://192.168.1.5:8000/v1
 模型名     qwen2.5-vl-7b
 
 # 3. 回首页，用一句人话说出目标
 打开设置，把屏幕亮度调到一半`
-
-const LOOP = [
-  { step: '观察', desc: '无障碍服务取回当前屏幕的全部可交互元素' },
-  { step: '标注', desc: '为 26 类常见控件分配语义 ID，直接注入模型上下文' },
-  { step: '决策', desc: '端侧先处理高频场景，其余交给你的模型' },
-  { step: '执行', desc: '通道降级执行，动作前后做页面指纹比对' },
-  { step: '记录', desc: '落盘供多轮对话与诊断导出使用' }
-]
 
 onMounted(async () => {
   try {
@@ -57,233 +141,234 @@ onMounted(async () => {
 
 <template>
   <div class="home">
-    <!-- 首屏：点阵信号场 + 主张 + 实机演示 -->
+    <!-- 首屏 -->
     <section class="hero">
-      <SignalField />
-      <div class="page hero__inner">
-        <div class="hero__grid">
-          <div class="hero__text">
-            <p v-reveal class="eyebrow">{{ site.name || 'Happy Phone Agent' }}</p>
-            <h1 v-reveal="40" class="display hero__title">
-              让手机<br />自己动手
-            </h1>
-            <p v-reveal="90" class="lead hero__lead">
-              {{
-                site.description ||
-                '一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管。'
-              }}
-            </p>
-
-            <div v-reveal="140" class="hero__actions">
-              <a
-                class="btn btn--primary btn--lg"
-                :href="primaryUrl"
-                :target="latest && !latest.apk ? '_blank' : undefined"
-                :rel="latest && !latest.apk ? 'noopener noreferrer' : undefined"
-              >
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <path d="M10 3v9m0 0 3.5-3.5M10 12 6.5 8.5M4 15.5h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                下载 APK
-                <span v-if="latest?.apk" class="mono hero__size">{{ latest.apk.sizeText }}</span>
-              </a>
-              <RouterLink to="/docs/getting-started" class="btn btn--lg">快速开始</RouterLink>
-              <RouterLink to="/how-it-works" class="btn btn--ghost btn--lg">它是怎么跑的</RouterLink>
-            </div>
+      <div class="page hero__in">
+        <div class="hero__text">
+          <h1 v-reveal class="display hero__claim">一句话，<br />手机自己把事做完。</h1>
+          <p v-reveal="40" class="hero__sub">
+            你说「把屏幕亮度调到一半」，它<b>读当前页面</b>、拆出四步、用系统命令真的改掉，
+            再把每一步的指纹变化记下来。<b>不是告诉你去哪点，是替你做。</b>
+          </p>
+          <div v-reveal="70" class="hero__acts">
+            <a
+              class="btn btn--primary btn--lg"
+              :href="primaryUrl"
+              :target="latest && !latest.apk ? '_blank' : undefined"
+              :rel="latest && !latest.apk ? 'noopener noreferrer' : undefined"
+            >
+              下载 APK
+              <span v-if="latest?.apk" class="mono hero__size">{{ latest.apk.sizeText }}</span>
+            </a>
+            <RouterLink to="/how-it-works" class="btn btn--lg">看它怎么跑</RouterLink>
           </div>
-
-          <div v-reveal="110" class="hero__device">
-            <!-- 纯示意画面，对读屏用户没有信息量；含义由下方说明文字承担 -->
-            <DeviceFrame aria-hidden="true">
-              <AnnotatedScreen />
-            </DeviceFrame>
-            <p class="hero__caption">
-              屏幕上的控件被逐个识别并赋予语义 ID，
-              <span class="muted">模型拿到的是一张结构表，不是一张图。</span>
-            </p>
-          </div>
+          <p v-if="latest" v-reveal="90" class="mono hero__ver">
+            v{{ String(latest.version).replace(/^v/i, '') }}，{{ channelLabel(latest.channel) }}，
+            {{ formatDate(latest.date) }}<template v-if="latest.channel !== 'stable'">，暂无稳定版</template>
+          </p>
         </div>
 
-        <dl v-reveal="190" class="specs">
-          <div class="specs__item">
-            <dt>当前版本</dt>
-            <dd class="mono">
-              {{ latest?.version ? `v${String(latest.version).replace(/^v/i, '')}` : '—' }}
-              <span v-if="latest && latest.channel !== 'stable'" class="muted small">· {{ channelLabel(latest.channel) }}</span>
-            </dd>
-          </div>
-          <div class="specs__item">
-            <dt>系统要求</dt>
-            <dd>Android {{ site.requirements?.minAndroid || '8.0' }}+</dd>
-          </div>
-          <div class="specs__item">
-            <dt>架构</dt>
-            <dd class="mono">{{ site.requirements?.arch || 'arm64-v8a' }}</dd>
-          </div>
-          <div class="specs__item">
-            <dt>执行通道</dt>
-            <dd>{{ site.channels?.length || 4 }} 条可选</dd>
+        <div v-reveal="60" class="hero__panel">
+          <ReadoutPanel
+            src="./shots/home-agent.webp"
+            alt="Happy Agent 首页截图：一个自然语言输入框，下面是最近的任务"
+            :steps="READOUT"
+            :foot="{ left: '4 步，0 步未确认', right: 'verified' }"
+            screen="1080 × 2400"
+          />
+        </div>
+      </div>
+
+      <div class="page">
+        <dl v-reveal="120" class="specs">
+          <div v-for="spec in SPECS" :key="spec.label" class="specs__item">
+            <dt class="specs__v">
+              <span class="specs__n">{{ spec.value }}</span>
+              <span class="specs__u">{{ spec.unit }}</span>
+            </dt>
+            <dd class="specs__l">{{ spec.label }}</dd>
           </div>
         </dl>
       </div>
     </section>
 
-    <!-- 通栏粗线：首屏到此为止，下面开始读内容 -->
-    <hr class="rule" />
-
     <p v-if="failed" class="page notice">
       内容接口暂不可用，页面显示的是构建期快照。若为本地开发，请确认 <code>npm run dev:api</code> 已启动。
     </p>
 
-    <!-- 功能矩阵 -->
-    <section class="section">
-      <div class="page">
-        <header class="sec-head">
-          <p v-reveal class="eyebrow">能力</p>
-          <h2 v-reveal="40" class="h2">不是把点击录下来重放</h2>
-          <p v-reveal="80" class="lead sec-head__lead">
-            录制回放在页面改版的那一刻就失效了。这里的每一步都以「当前屏幕上真实存在什么」为唯一依据。
+    <!-- 大字声明 -->
+    <section class="say">
+      <div class="page say__in">
+        <h2 v-reveal class="say__title">它不是把点击<br />录下来重放。</h2>
+        <div class="say__body">
+          <p v-reveal="40">
+            录制回放在页面改版的那一刻就失效了。这里每一步都以「当前屏幕上真实存在什么」为唯一依据：
+            目标控件不在当前页面就不允许点击，找不到先滚动，仍找不到就中止并说明卡在哪。
           </p>
-        </header>
-
-        <div class="grid grid--3">
-          <article
-            v-for="(item, index) in features"
-            :key="item.id"
-            v-reveal="index * 50"
-            :class="['card', 'feature', index === 0 ? 'card--ink grain' : '']"
-          >
-            <div class="feature__top">
-              <span class="feature__no mono">{{ String(index + 1).padStart(2, '0') }}</span>
-              <span class="tag tag--brand">{{ item.tag }}</span>
-            </div>
-            <h3 class="feature__title">{{ item.title }}</h3>
-            <p class="feature__summary">{{ item.summary }}</p>
-          </article>
-        </div>
-
-        <div v-reveal class="sec-more">
-          <RouterLink to="/features" class="btn">查看全部 {{ data?.features?.length || 25 }} 项能力</RouterLink>
+          <p v-reveal="80" class="muted">
+            所以它没有「训练过的界面」，只有读一次屏幕、做一次判断的能力。
+          </p>
         </div>
       </div>
     </section>
 
-    <!-- 执行通道 -->
-    <section class="section section--tight band">
+    <!-- 六条机制 -->
+    <section class="section">
       <div class="page">
-        <header class="sec-head">
-          <p v-reveal class="eyebrow">执行通道</p>
-          <h2 v-reveal="40" class="h2">四条通道，能力边界写清楚</h2>
-        </header>
+        <SectionHead
+          label="机制"
+          title="凭什么它能自己把事做完"
+          lead="六件事决定了它和「录一遍点击再重放」的区别。每条都写清机制，以及这个机制换来了什么。"
+        >
+          <RouterLink to="/features" class="btn btn--sm">全部 {{ featureCount || '' }} 项能力</RouterLink>
+          <RouterLink to="/how-it-works" class="btn btn--sm">架构与循环</RouterLink>
+        </SectionHead>
 
-        <div class="grid grid--2">
-          <article
-            v-for="(ch, index) in site.channels || []"
-            :key="ch.id"
-            v-reveal="index * 60"
-            class="card channel"
-          >
-            <div class="channel__head">
-              <h3 class="channel__name">{{ ch.name }}</h3>
-              <span :class="['tag', ch.level.includes('shell') ? 'tag--amber' : '']">{{ ch.level }}</span>
+        <div class="mech">
+          <article v-for="(item, index) in MECHANISMS" :key="item.key" v-reveal="index * 30" class="mech__item">
+            <p class="mono mech__key">{{ item.key }}</p>
+            <div class="mech__body">
+              <h3 class="mech__title">{{ item.title }}</h3>
+              <p class="mech__how">{{ item.how }}</p>
+              <p class="mech__then">{{ item.then }}</p>
             </div>
-            <p class="channel__desc">{{ ch.desc }}</p>
-            <p v-if="ch.default" class="channel__badge">
-              <span class="dot" aria-hidden="true"></span>默认通道
-            </p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- 执行循环 -->
-    <section class="section">
+    <!-- 图版 -->
+    <section class="section band">
       <div class="page">
-        <header class="sec-head">
-          <p v-reveal class="eyebrow">主循环</p>
-          <h2 v-reveal="40" class="h2">五步一轮，每轮都回到屏幕本身</h2>
-        </header>
-
-        <ol class="loop">
-          <li v-for="(item, index) in LOOP" :key="item.step" v-reveal="index * 60" class="loop__item">
-            <span class="loop__index mono">{{ String(index + 1).padStart(2, '0') }}</span>
-            <h3 class="loop__step">{{ item.step }}</h3>
-            <p class="loop__desc">{{ item.desc }}</p>
-          </li>
-        </ol>
-
-        <div v-reveal class="sec-more">
-          <RouterLink to="/how-it-works" class="btn">看完整架构</RouterLink>
+        <SectionHead
+          label="实机"
+          title="长这样"
+          lead="三张都取自当前版本的应用，不是设计稿。控制台式的明细没有藏起来——它想让你看清每一步在做什么。"
+        />
+        <div class="plates">
+          <ShotFrame v-reveal class="plates__lead" v-bind="SCREENS[0]" />
+          <ShotFrame v-reveal="60" v-bind="SCREENS[1]" />
+          <ShotFrame v-reveal="90" v-bind="SCREENS[2]" />
         </div>
       </div>
     </section>
 
-    <!-- 快速开始 -->
-    <section class="section section--tight">
-      <div class="page start">
-        <div class="start__text">
-          <p v-reveal class="eyebrow">上手</p>
-          <h2 v-reveal="40" class="h2">三步跑通第一个任务</h2>
-          <p v-reveal="80" class="lead">
-            模型可以是自建的 Ollama、LM Studio 或 one-api。地址不写协议会自动补全，内网 http 服务直接可用。
-          </p>
-          <div v-reveal="120" class="start__links">
-            <RouterLink to="/docs/model-config" class="link-arrow">模型配置怎么填</RouterLink>
-            <RouterLink to="/docs/execution-channels" class="link-arrow">通道怎么选</RouterLink>
+    <!-- 主循环 -->
+    <section class="section">
+      <div class="page">
+        <SectionHead
+          label="主循环"
+          title="一轮五步，每轮都回到屏幕本身"
+          lead="没有「先把全部规划好再执行」这一步：每一步都以当前屏幕上真实存在什么为依据，页面变了它也跟得上。"
+        />
+        <StepRail :items="LOOP" dense />
+        <p class="after-rail">
+          <RouterLink to="/how-it-works" class="link-arrow">看八层代码结构与设计原则</RouterLink>
+        </p>
+      </div>
+    </section>
+
+    <!-- 安全 -->
+    <section class="section safe">
+      <div class="page">
+        <SectionHead
+          label="安全"
+          title="把手机交出去之前，先看清闸门在哪"
+          lead="一个能替你点屏幕的程序，安全不能只是「我们会小心的」。下面三条硬编码在动作下发之前。"
+        />
+        <div class="gates">
+          <div v-reveal class="gate">
+            <p class="mono gate__k">只读</p>
+            <div>
+              <h3 class="gate__t">敏感页面切只读</h3>
+              <p class="gate__d">识别到支付、个人信息这类页面时整体只读：能看，不能点、不能提交。验证码与支付确认一律停下来等人。</p>
+            </div>
+          </div>
+          <div v-reveal="40" class="gate">
+            <p class="mono gate__k">脱敏</p>
+            <div>
+              <h3 class="gate__t">进模型前先脱敏</h3>
+              <p class="gate__d">11 位手机号、18 位身份证号、银行卡号在写入上下文之前替换掉，模型看到的是掩码。</p>
+            </div>
+          </div>
+          <div v-reveal="80" class="gate">
+            <p class="mono gate__k">确认</p>
+            <div>
+              <h3 class="gate__t">不可逆动作二次确认</h3>
+              <p class="gate__d">删除、清通知这类回不去的操作自动带确认，弹卡由人决定；自由模式下 AI 自写命令才放行。</p>
+            </div>
           </div>
         </div>
-        <div v-reveal="60" class="start__code">
-          <div class="code-block">
-            <div class="code-block__bar">
-              <span class="code-block__dot" aria-hidden="true"></span>
-              <span class="mono code-block__name">快速开始</span>
-              <CopyButton :text="QUICK_START" />
+        <p class="safe__foot">
+          <RouterLink to="/docs/safety" class="link-arrow">安全与隐私的完整说明</RouterLink>
+        </p>
+      </div>
+    </section>
+
+    <!-- 安装 -->
+    <section class="section">
+      <div class="page">
+        <SectionHead
+          label="上手"
+          title="四步装好，五分钟跑通第一个任务"
+          lead="模型可以完全跑在你自己的机器上。地址不写协议会自动补全，内网 http 服务直接可用。"
+        >
+          <RouterLink to="/download" class="btn btn--sm">下载页：版本与校验值</RouterLink>
+        </SectionHead>
+
+        <div class="install">
+          <StepRail :items="INSTALL" />
+          <div class="install__side">
+            <div class="codeblock">
+              <div class="codeblock__bar">
+                <span class="mono">快速开始</span>
+                <CopyButton :text="QUICK_START" />
+              </div>
+              <pre class="code code--dark"><code>{{ QUICK_START }}</code></pre>
             </div>
-            <pre class="code code--dark"><code>{{ QUICK_START }}</code></pre>
+            <p class="hint">
+              更细的填法见
+              <RouterLink to="/docs/getting-started" class="link-arrow">快速开始</RouterLink>
+              与
+              <RouterLink to="/docs/execution-channels" class="link-arrow">执行通道</RouterLink>。
+            </p>
           </div>
         </div>
       </div>
     </section>
 
     <!-- 更新 -->
-    <section class="section section--tight band">
+    <section v-if="entries.length" class="section band">
       <div class="page">
-        <header class="sec-head sec-head--row">
-          <div>
-            <p v-reveal class="eyebrow">更新</p>
-            <h2 v-reveal="40" class="h2">最近改了什么</h2>
-          </div>
-          <RouterLink v-reveal to="/changelog" class="btn btn--sm">全部记录</RouterLink>
-        </header>
+        <SectionHead label="更新" title="最近改了什么">
+          <RouterLink to="/changelog" class="btn btn--sm">全部记录</RouterLink>
+        </SectionHead>
 
-        <div class="stack stack--lg">
-          <article v-for="(entry, index) in entries" :key="entry.version" v-reveal="index * 60" class="card entry">
-            <div class="entry__head">
-              <RouterLink :to="`/changelog/${entry.version}`" class="mono entry__ver">
-                {{ entry.version }}
-              </RouterLink>
-              <span class="muted small">{{ formatDate(entry.date) }}</span>
+        <div class="entries">
+          <article v-for="(entry, index) in entries" :key="entry.version" v-reveal="index * 40" class="entry">
+            <div class="entry__line">
+              <RouterLink :to="`/changelog/${entry.version}`" class="mono entry__ver">{{ entry.version }}</RouterLink>
+              <span class="mono entry__date">{{ formatDate(entry.date) }}</span>
               <span v-for="sec in entry.sections || []" :key="sec.type" :class="['tag', `tag--${sectionTone(sec.type)}`]">
                 {{ sec.type }} {{ sec.items?.length || 0 }}
               </span>
             </div>
-            <p v-if="entry.summary" class="entry__summary">{{ entry.summary }}</p>
+            <p v-if="entry.summary" class="entry__sum">{{ entry.summary }}</p>
           </article>
         </div>
       </div>
     </section>
 
-    <!-- 收尾 CTA -->
+    <!-- 收尾 -->
     <section class="section cta">
-      <span class="glow" aria-hidden="true"></span>
-      <div class="page cta__inner">
-        <h2 v-reveal class="h2">把它装到自己的手机上试试</h2>
-        <p v-reveal="40" class="lead cta__lead">
+      <div class="page cta__in">
+        <h2 v-reveal class="h2 cta__t">装到自己的手机上试试</h2>
+        <p v-reveal="40" class="lead cta__l">
           当前提供 Debug 构建，用于内测与自用。每个版本的 SHA-256 都写在下载页上，装之前可以自行核对。
         </p>
-        <div v-reveal="80" class="cta__actions">
+        <div v-reveal="60" class="cta__acts">
           <RouterLink to="/download" class="btn btn--primary btn--lg">
-            <template v-if="latest?.apk">下载 v{{ latest.version.replace(/^v/i, '') }}</template>
+            <template v-if="latest?.apk">下载 v{{ String(latest.version).replace(/^v/i, '') }}</template>
             <template v-else>前往下载页</template>
           </RouterLink>
           <a
@@ -294,12 +379,11 @@ onMounted(async () => {
             rel="noopener noreferrer"
           >GitHub 仓库</a>
         </div>
-        <p v-if="latest" v-reveal="120" class="muted small cta__meta">
-          {{ channelLabel(latest.channel) }} · 发布于 {{ formatDate(latest.date) }}（{{ relativeTime(latest.date) }}）
-          <template v-if="releases.length > 1"> · 共 {{ releases.length }} 个可下载版本</template>
-          <template v-if="latest && latest.channel !== 'stable'"> · 暂无稳定版，以上为最新测试版</template>
+        <p v-if="latest" v-reveal="80" class="mono cta__meta">
+          {{ channelLabel(latest.channel) }}，{{ formatDate(latest.date) }}（{{ relativeTime(latest.date) }}）
+          <template v-if="releases.length > 1">，共 {{ releases.length }} 个可下载版本</template>
         </p>
-        <p v-if="site.releaseSource?.degraded" v-reveal="120" class="muted small cta__meta">
+        <p v-if="site.releaseSource?.degraded" class="hint">
           版本数据为本地兜底，可能不是最新；GitHub 恢复后会自动刷新。
         </p>
       </div>
@@ -311,436 +395,397 @@ onMounted(async () => {
 /* ---------- 首屏 ---------- */
 
 .hero {
-  position: relative;
-  overflow: hidden;
-  padding-block: clamp(56px, 8vw, 104px) clamp(40px, 5vw, 64px);
+  padding-block: clamp(26px, 4vw, 56px) 0;
 }
 
-.hero__inner {
-  position: relative;
-  z-index: 1;
-}
-
-/* 左文右机：文字窄一点，机器宽一点，视线自然落到屏幕上 */
-.hero__grid {
+.hero__in {
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-  gap: clamp(32px, 5vw, 72px);
+  gap: clamp(30px, 4vw, 48px);
   align-items: center;
 }
 
-.hero__title {
-  margin-top: 18px;
+.hero__claim {
+  max-width: 12em;
 }
 
-.hero__lead {
-  margin-top: 24px;
-  max-width: 46ch;
+.hero__sub {
+  margin-top: 22px;
+  max-width: 26em;
+  font-size: var(--t-body);
+  line-height: 1.9;
+  color: var(--ink-2);
 }
 
-.hero__actions {
+.hero__sub b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hero__acts {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 34px;
+  margin-top: 30px;
 }
 
 .hero__size {
-  font-size: 0.72em;
-  opacity: 0.72;
-  margin-left: 2px;
+  font-size: 0.78em;
+  opacity: 0.7;
 }
 
-.hero__device {
-  display: grid;
-  justify-items: center;
-  gap: 26px;
-}
-
-.hero__caption {
-  max-width: 34ch;
-  text-align: center;
-  font-size: var(--t-sm);
-  line-height: 1.7;
+.hero__ver {
+  margin-top: 14px;
+  font-size: 0.875rem;
   color: var(--ink-2);
 }
 
-/* 规格条：不要格子了，改用一条横线压住，列间用竖线分——像刊物的页脚 */
+.hero__panel {
+  min-width: 0;
+}
+
+/* 硬指标：一行读数列，用线分开，不做卡片 */
 .specs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: clamp(44px, 5vw, 72px) 0 0;
-  padding: 20px 0 0;
-  border-top: 1px solid var(--line-2);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  margin: clamp(28px, 3.6vw, 44px) 0 0;
+  border-top: 1px solid var(--line);
 }
 
 .specs__item {
-  padding-inline: clamp(14px, 1.8vw, 26px);
-  border-left: 1px solid var(--line);
+  padding: 16px 16px 16px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.specs__item:first-child {
-  padding-left: 0;
-  border-left: none;
+.specs__v {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0;
 }
 
-.specs__item dt {
+.specs__n {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.specs__u {
   font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
-.specs__item dd {
-  margin: 5px 0 0;
-  font-size: var(--t-sm);
-  font-weight: 500;
-}
-
-/* ---------- 通用节标题 ---------- */
-
-.sec-head {
-  margin-bottom: clamp(32px, 4vw, 48px);
-}
-
-.sec-head__lead {
-  margin-top: 16px;
-  max-width: 62ch;
-}
-
-.sec-head--row {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.sec-more {
-  margin-top: 32px;
-}
-
-/* 交替区块：底色带绿调，比 --paper 更有归属感。
-   这里必须留出透明度——色雾铺在整页之下，不透明底色会把卡片背后的色斑整块挡死，
-   落在这个区块里的卡片就退回死平的玻璃。第一行是不支持 color-mix 时的替身。 */
-.band {
-  background: var(--paper-tint);
-  background: color-mix(in srgb, var(--paper-tint) 70%, transparent);
-  border-block: 1px solid var(--line);
+.specs__l {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--ink-2);
 }
 
 .notice {
-  margin-block: 24px;
-  padding: 14px 18px;
+  margin-top: 20px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--amber);
+  border-left: 2px solid var(--warn);
   border-radius: var(--r-sm);
-  background: var(--amber-wash);
-  color: var(--ink);
+  background: var(--panel);
   font-size: var(--t-sm);
-}
-
-/* ---------- 栅格 ---------- */
-
-.grid {
-  display: grid;
-  gap: 16px;
-}
-
-.grid--3 {
-  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
-}
-
-.grid--2 {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-}
-
-.feature {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.feature__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.feature__no {
-  font-size: var(--t-xs);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--line-2);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 深色锚点卡里的编号要用浅色，否则整块黑上什么都看不见 */
-.card--ink .feature__no {
-  color: rgba(255, 255, 255, 0.42);
-}
-
-.feature__title {
-  font-size: var(--t-h3);
-}
-
-.feature__summary {
   color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: 1.75;
 }
 
-/* 深色卡上的正文必须重新指定颜色：scoped 选择器权重比 base 里的
-   `.card--ink p` 高，不覆盖的话会留下深灰字压在墨绿底上 */
-.card--ink .feature__summary {
-  color: rgba(238, 244, 240, 0.78);
+/* ---------- 大字声明 ---------- */
+
+.say {
+  padding-block: clamp(48px, 6vw, 84px);
+  border-top: 1px solid var(--line);
 }
 
-/* ---------- 通道 ---------- */
-
-.channel {
+.say__in {
   display: grid;
-  gap: 10px;
-  align-content: start;
+  gap: clamp(20px, 3vw, 48px);
 }
 
-.channel__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.say__title {
+  font-size: clamp(1.9rem, 1.3rem + 2.4vw, 3.1rem);
+  font-weight: 650;
+  line-height: 1.24;
+  letter-spacing: -0.012em;
 }
 
-.channel__name {
-  font-size: var(--t-h3);
-}
-
-.channel__desc {
+.say__body {
+  max-width: 34em;
+  font-size: var(--t-body);
+  line-height: 1.9;
   color: var(--ink-2);
-  font-size: var(--t-sm);
-  line-height: 1.75;
 }
 
-.channel__badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: var(--t-xs);
-  color: var(--ok);
-}
-
-/* ---------- 主循环 ---------- */
-
-/* 横向编号轨道：不要格子，每条轨道只有一根顶线和一枚大号编号，
-   五步并排看下来像一条流水线，而不是五块砖。 */
-.loop {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
-  gap: clamp(22px, 2.8vw, 40px);
-}
-
-.loop__item {
-  padding-top: 16px;
-  border-top: 1px solid var(--line-2);
-}
-
-.loop__index {
-  display: block;
-  font-size: clamp(1.9rem, 1.2rem + 2vw, 2.7rem);
-  font-weight: 500;
-  line-height: 1;
-  letter-spacing: -0.05em;
-  color: var(--brand);
-  font-variant-numeric: tabular-nums;
-}
-
-.loop__step {
+.say__body p + p {
   margin-top: 14px;
+}
+
+/* ---------- 六条机制 ---------- */
+
+.mech {
+  border-top: 1px solid var(--line);
+}
+
+.mech__item {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mech__key {
+  font-size: var(--t-xs);
+  color: var(--signal);
+  padding-top: 3px;
+}
+
+.mech__title {
   font-size: var(--t-h3);
 }
 
-.loop__desc {
-  margin-top: 8px;
+.mech__how {
+  margin-top: 7px;
   font-size: var(--t-sm);
+  line-height: 1.85;
   color: var(--ink-2);
-  line-height: 1.72;
+  max-width: 46em;
 }
 
-/* ---------- 快速开始 ---------- */
-
-.start {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  gap: clamp(28px, 4vw, 56px);
-  align-items: center;
-}
-
-.start__text .lead {
-  margin-top: 16px;
-}
-
-.start__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin-top: 24px;
-}
-
-.link-arrow {
-  position: relative;
+/* 后果单独一行，左侧一道信号色细线：读的人一眼分清「怎么做的」和「所以怎样」 */
+.mech__then {
+  margin-top: 9px;
+  padding-left: 11px;
+  border-left: 2px solid var(--signal-line);
   font-size: var(--t-sm);
-  color: var(--brand);
-  padding-right: 16px;
+  line-height: 1.85;
+  color: var(--ink);
+  max-width: 46em;
 }
 
-.link-arrow::after {
-  content: "→";
-  position: absolute;
-  right: 0;
-  transition: transform var(--dur-ui) var(--ease-out);
+/* ---------- 图版 ---------- */
+
+.plates {
+  display: grid;
+  gap: clamp(18px, 2.6vw, 30px);
+  grid-template-columns: minmax(0, 1fr);
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .link-arrow:hover::after {
-    transform: translateX(3px);
-  }
+/* ---------- 循环 ---------- */
+
+.after-rail {
+  margin-top: 20px;
 }
 
-.code-block {
-  border-radius: var(--r-md);
-  overflow: hidden;
+/* ---------- 安全 ---------- */
+
+.safe {
+  background: var(--panel);
+  border-block: 1px solid var(--line);
+}
+
+.gates {
+  border-top: 1px solid var(--line-soft);
+}
+
+.gate {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.gate__k {
+  font-size: var(--t-xs);
+  color: var(--signal);
+  padding-top: 3px;
+}
+
+.gate__t {
+  font-size: var(--t-h3);
+}
+
+.gate__d {
+  margin-top: 6px;
+  font-size: var(--t-sm);
+  line-height: 1.85;
+  color: var(--ink-2);
+  max-width: 46em;
+}
+
+.safe__foot {
+  margin-top: 22px;
+}
+
+/* ---------- 安装 ---------- */
+
+.install {
+  display: grid;
+  gap: clamp(24px, 3.6vw, 44px);
+}
+
+.codeblock {
   border: 1px solid var(--line);
-  background: var(--paper-raised);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--panel);
 }
 
-.code-block__bar {
+.codeblock__bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-sunken);
-}
-
-.code-block__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--brand);
-  flex: none;
-}
-
-.code-block__name {
-  flex: 1;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel-2);
   font-size: var(--t-xs);
   color: var(--ink-3);
 }
 
-.code-block .code {
+.codeblock .code {
   border: none;
   border-radius: 0;
   margin: 0;
+  font-size: 0.85rem;
 }
 
-/* ---------- 更新条目 ---------- */
+.install__side .hint {
+  margin-top: 12px;
+}
+
+.install__side :deep(.link-arrow) {
+  font-size: var(--t-xs);
+}
+
+/* ---------- 更新 ---------- */
+
+.entries {
+  border-top: 1px solid var(--line);
+}
 
 .entry {
-  display: grid;
-  gap: 10px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.entry__head {
+.entry__line {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
 }
 
 .entry__ver {
   font-size: var(--t-sm);
-  font-weight: 600;
-  color: var(--brand);
+  color: var(--signal);
 }
 
-.entry__summary {
+.entry__date {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
+}
+
+.entry__sum {
+  margin-top: 7px;
   font-size: var(--t-sm);
+  line-height: 1.8;
   color: var(--ink-2);
-  line-height: 1.78;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  max-width: 48em;
 }
 
 /* ---------- 收尾 ---------- */
 
 .cta {
-  position: relative;
-  overflow: hidden;
-  text-align: center;
+  border-top: 1px solid var(--line);
 }
 
-.cta .glow {
-  --glow-x: 50%;
-  --glow-y: 100%;
-  --glow-size: 78% 82%;
+.cta__t {
+  max-width: 16em;
 }
 
-.cta__inner {
-  position: relative;
-  display: grid;
-  justify-items: center;
+.cta__l {
+  margin-top: 12px;
+  max-width: 32em;
 }
 
-.cta__lead {
-  margin-top: 16px;
-  max-width: 56ch;
-}
-
-.cta__actions {
+.cta__acts {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
   gap: 10px;
-  margin-top: 30px;
+  margin-top: 22px;
 }
 
 .cta__meta {
-  margin-top: 20px;
+  margin-top: 12px;
+  font-size: 0.875rem;
+  color: var(--ink-2);
 }
 
-@media (max-width: 900px) {
-  .hero__grid {
-    grid-template-columns: 1fr;
-  }
+/* ---------- 断点 ---------- */
 
-  /* 窄屏上机器排到文字下方，并且不用居中得太高，免得首屏全是空白 */
-  .hero__device {
-    margin-top: 12px;
-  }
-
-  .hero__lead {
-    max-width: none;
-  }
-
-  .start {
-    grid-template-columns: 1fr;
-  }
-
+@media (min-width: 720px) {
   .specs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 22px 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .specs__item:nth-child(odd) {
+  .specs__item {
+    padding: 16px 16px 16px 20px;
+    border-left: 1px solid var(--line-soft);
+  }
+
+  .specs__item:first-child {
     padding-left: 0;
     border-left: none;
   }
 
-  .sec-head--row {
-    align-items: flex-start;
-    flex-direction: column;
+  .plates {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .say__in {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+  }
+}
+
+@media (min-width: 900px) {
+  .hero__in {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
+  }
+
+  .mech {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: clamp(28px, 4vw, 56px);
+  }
+
+  .install {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    align-items: start;
+  }
+
+  .install__side {
+    position: sticky;
+    top: 84px;
+  }
+}
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.hero__in > *,
+.mech > *,
+.install > *,
+.gates > *,
+.specs > *,
+.plates > *,
+.entries > *,
+.say__in > * {
+  min-width: 0;
 }
 </style>

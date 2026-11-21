@@ -1,179 +1,145 @@
 /* ===========================================================================
-   设计令牌：玄青 · 流萤
-   与 App 端 ui/theme/Color.kt 同源——官网不是另一个品牌，是同一个东西的另一面。
-   主色玄青（墨玉绿），暖辅琥珀，冷辅雾蓝；底色暖纸白 / 深墨绿黑。
-   刻意避开蓝紫渐变的「科技感」套路。
+   设计令牌 · 「读屏台」
+   ---------------------------------------------------------------------------
+   颜色不是选出来的，是从产品里取的：底与强调色直接沿用 App 深色主题的配色
+   （截图里的近黑底 + 流萤青绿按钮），中性色是同一色相的明度序列。
+   青绿只做一件事——表示「正在发生 / 已经生效」的状态，不做装饰。
+
+   两种主题是同一台仪器的两面：深色是运行时的样子，浅色是把它摆在白纸上的样子。
+   字重、层级、间距在两套里一致，只换明度。
    =========================================================================== */
 
 :root {
-  color-scheme: light;
-
-  /* 面 */
-  --paper: #f7f6f3;
-  --paper-raised: #ffffff;
-  --paper-sunken: #eceee8;
-  /* 带绿调的浅面：交替区块用它，比 --paper-sunken 的灰更有归属感 */
-  --paper-tint: #f0f4ef;
-
-  /* 玻璃（亚克力 / 磨砂）：与 App 端 ui/components/Glass.kt 同一套配方，两地同源。
-     底色不是纯白而是暖纸白、描边带品牌色相：通用白描边是「AI 味」的主要来源。
-     按「背后有什么」分两档：
-       --glass-*  浮在内容之上、背后有东西穿过去的固定 chrome——吸顶导航、移动端抽屉；
-       --card-*   平铺卡片。卡片本身要浮在页面底色之上，底色必须取 --paper-raised 那一档，
-                  用 --glass-tint（页面底色）会和背景糊成一片，层级直接消失。 */
-  --glass-tint: rgba(247, 246, 243, 0.78);
-  /* 浏览器不支持 backdrop-filter 时的替身，必须接近不透明，否则文字后面会糊着未处理的页面 */
-  --glass-fallback: rgba(247, 246, 243, 0.97);
-  --glass-line: rgba(14, 124, 102, 0.16);
-  /* 顶部受光高光：给亚克力一点「有厚度」的暗示 */
-  --glass-sheen: rgba(255, 255, 255, 0.32);
-  --glass-blur: 18px;
-  --glass-saturate: 1.5;
-
-  /* 卡片的亚克力底色：模糊配方与上面共用，只把底色换成「抬起来」的那一档 */
-  --card-tint: rgba(255, 255, 255, 0.72);
-  --card-fallback: rgba(255, 255, 255, 0.94);
-
-  /* 墨 */
-  --ink: #141715;
-  --ink-2: #4b514c;
-  --ink-3: #7b827b;
-
-  /* 线 */
-  --line: #d7dbd3;
-  --line-2: #b7bdb4;
-
-  /* 品牌 */
-  --brand: #0e7c66;
-  --brand-strong: #0a5a4a;
-  --brand-ink: #033a2f;
-  /* 与端侧 AppColors.brandContainer 对齐（VI v1.0），此前站点用的是偏灰的 #dcefe8 */
-  --brand-wash: #cfede3;
-  --brand-veil: rgba(14, 124, 102, 0.08);
-  /* 深墨绿：浅色主题里做深色锚点块的地，比纯黑有温度 */
-  --brand-deep: #063a2e;
-  --brand-deep-2: #0a4c3c;
-  /* 光晕：径向渐变里的品牌色，浓度要低，只在暗处显形 */
-  --brand-glow: rgba(14, 124, 102, 0.22);
-
-  /* 环境色雾：铺在整页内容之下的极淡色斑。
-     卡片是半透明的，它「透出什么」取决于背后有什么——平底色上 backdrop-filter 什么也糊不出来，
-     玻璃就等于白做。这层色斑是玻璃成立的前提，顺带治掉页面死平。
-     浓度要低到单看几乎察觉不到，只在卡片底下才显形；太高就变成彩色渐变背景了。 */
-  --ambient-brand: rgba(14, 124, 102, 0.18);
-  --ambient-warm: rgba(168, 90, 36, 0.13);
-  --ambient-cool: rgba(63, 114, 146, 0.12);
-
-  --amber: #a85a24;
-  --amber-wash: #f7e3d2;
-  --mist: #3f7292;
-  --mist-wash: #dceaf3;
-
-  --ok: #1f7a55;
-  --ok-wash: #d2eddf;
-  --warn: #8a5f10;
-  --warn-wash: #f6e6c4;
-  --danger: #b23c33;
-  --danger-wash: #fbdad5;
-
-  /* 层次：靠描边撑结构，投影只用来表达「浮起」 */
-  --shadow-1: 0 1px 2px rgba(20, 23, 21, 0.05);
-  --shadow-2: 0 8px 24px -12px rgba(20, 23, 21, 0.22);
-  --shadow-3: 0 32px 72px -32px rgba(20, 23, 21, 0.34);
-
-  /* 动效：曲线取自 emil-design-eng，内置 ease 太软，撑不住交互的「脆」 */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  --dur-press: 140ms;
-  --dur-ui: 180ms;
-  --dur-enter: 280ms;
-
-  /* 圆角 */
-  --r-xs: 6px;
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
-  --r-xl: 28px;
-  --r-2xl: 36px;
-  /* 浮动 chrome：吸顶导航「离顶浮起」后用的圆角。比 --r-xl 再圆一档，
-     一块悬空的板才不像一条被掰圆的横杠。与 App 端 AppRadii.Header 同一个值。 */
-  --r-float: 32px;
-  --r-pill: 999px;
-
-  /* 字体：全站无衬线，等宽只留给代码 */
-  --font: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC",
-    "Noto Sans SC", -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", "Cascadia Mono",
-    Consolas, "Liberation Mono", monospace;
-
-  /* 版心 */
-  --page: 1180px;
-  --gutter: 24px;
-
-  /* 字号：标题收紧字距，正文留足行高 */
-  --t-display: clamp(2.8rem, 1.4rem + 5vw, 5.2rem);
-  --t-h1: clamp(2rem, 1.4rem + 2.2vw, 3rem);
-  --t-h2: clamp(1.5rem, 1.2rem + 1.1vw, 2.05rem);
-  --t-h3: 1.2rem;
-  --t-body: 1rem;
-  --t-sm: 0.875rem;
-  --t-xs: 0.78rem;
-}
-
-[data-theme="dark"] {
   color-scheme: dark;
 
-  --paper: #121513;
-  --paper-raised: #1a1e1b;
-  --paper-sunken: #0b0e0c;
-  /* 深色下「带绿调的浅面」是相对更深的一层，靠色相区分而非明度 */
-  --paper-tint: #0e1411;
+  /* ---- 面 ---- */
+  --ground: #0a0d0c;
+  --panel: #121815;
+  --panel-2: #16201a;
+  --panel-3: #1b2620;
 
-  /* 深色下玻璃不靠透明度而是靠色相区分：底是深墨绿黑，描边换成流萤青 */
-  --glass-tint: rgba(18, 21, 19, 0.74);
-  --glass-fallback: rgba(18, 21, 19, 0.97);
-  --glass-line: rgba(95, 217, 180, 0.22);
-  --glass-sheen: rgba(255, 255, 255, 0.07);
+  /* ---- 线 ---- */
+  --line: #253029;
+  --line-soft: #1b241f;
+  --line-strong: #35443a;
 
-  --card-tint: rgba(26, 30, 27, 0.72);
-  --card-fallback: rgba(26, 30, 27, 0.94);
+  /* ---- 墨 ---- */
+  --ink: #e9eee7;
+  --ink-2: #a9b4ab;
+  --ink-3: #7e8a80;
 
-  --ink: #e9ebe6;
-  --ink-2: #b4bab3;
-  --ink-3: #80877f;
+  /* ---- 信号：只表示「正在发生 / 已验证」 ---- */
+  --signal: #74efc3;
+  --signal-ink: #06211a;
+  --signal-wash: rgba(116, 239, 195, 0.09);
+  --signal-line: rgba(116, 239, 195, 0.34);
 
-  --line: #2b302b;
-  --line-2: #3f453f;
+  /* ---- 状态 ---- */
+  --warn: #e8a55f;
+  --warn-wash: rgba(232, 165, 95, 0.12);
+  --danger: #f2726a;
+  --danger-wash: rgba(242, 114, 106, 0.12);
+  --ok: #74efc3;
+  --ok-wash: rgba(116, 239, 195, 0.12);
 
-  --brand: #5fd9b4;
-  --brand-strong: #7fefcb;
-  --brand-ink: #04302a;
-  --brand-wash: #16382f;
-  --brand-veil: rgba(95, 217, 180, 0.1);
-  /* 深色主题下深色锚点块要更暗，才能从 --paper 上「沉」下去 */
-  --brand-deep: #06231c;
-  --brand-deep-2: #0b3529;
-  --brand-glow: rgba(95, 217, 180, 0.18);
-
-  /* 深色下色雾要更淡：暗底上同样浓度会显出一整片发光，像蒙了层脏玻璃 */
-  --ambient-brand: rgba(95, 217, 180, 0.13);
-  --ambient-warm: rgba(240, 168, 104, 0.09);
-  --ambient-cool: rgba(132, 182, 212, 0.1);
-
-  --amber: #f0a868;
-  --amber-wash: #3f2a15;
-  --mist: #84b6d4;
-  --mist-wash: #1e3543;
-
-  --ok: #6fd3a2;
-  --ok-wash: #17452f;
-  --warn: #e8b75e;
-  --warn-wash: #4a370f;
-  --danger: #ff9a90;
-  --danger-wash: #55201a;
-
+  /* ---- 阴影：只表达「浮起」 ---- */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
-  --shadow-3: 0 32px 72px -32px rgba(0, 0, 0, 0.8);
+  --shadow-2: 0 18px 48px -28px rgba(0, 0, 0, 0.9);
+  --shadow-3: 0 48px 120px -60px rgba(0, 0, 0, 1);
+
+  /* ---- 动效 ---- */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 120ms;
+  --dur-ui: 180ms;
+  --dur-enter: 300ms;
+
+  /* ---- 圆角：仪器面板是小圆角，不是药丸 ---- */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  /* ---- 间距 ---- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+  --sp-9: 96px;
+
+  /* ---- 字体 ----
+     西文与数字排在前面：中文字体自带的拉丁字母和数字都比较呆，
+     逐字符匹配会让拉丁先落到西文面，汉字自然穿透到后面的中文字体。 */
+  --font: "Segoe UI Variable Text", "Segoe UI", -apple-system,
+    "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei",
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", "SFMono-Regular",
+    Consolas, "Liberation Mono", monospace;
+
+  /* ---- 版心 ---- */
+  --page: 1240px;
+  --gutter: clamp(18px, 4vw, 32px);
+
+  /* ---- 字号：1.25 音阶，正文 17px 起（中文正文基准） ---- */
+  --t-display: clamp(2.6rem, 1.3rem + 4.6vw, 4.9rem);
+  --t-h1: clamp(1.9rem, 1.4rem + 1.9vw, 2.7rem);
+  --t-h2: clamp(1.35rem, 1.15rem + 0.9vw, 1.85rem);
+  --t-h3: 1.16rem;
+  --t-body: 1.0625rem;
+  --t-sm: 0.9375rem;
+  --t-xs: 0.8125rem;
+
+  --lh-body: 1.85;
+  --lh-lead: 1.8;
+  --lh-head: 1.28;
+
+  /* 中文不做负字距；只有西文大写标签和巨型数字才允许收紧 */
+  --track-body: 0.012em;
+  --track-head: -0.006em;
+  --track-mono: -0.01em;
+  --track-cap: 0.06em;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --ground: #f4f6f2;
+  --panel: #ffffff;
+  --panel-2: #edf1ea;
+  --panel-3: #e6ece4;
+
+  --line: #d3dbd1;
+  --line-soft: #e2e8e0;
+  --line-strong: #b6c0b4;
+
+  --ink: #0f1411;
+  --ink-2: #454d46;
+  --ink-3: #6b736b;
+
+  /* 浅色下同一个青绿要压深才够对比：把明度降到 L≈0.42，色相不变 */
+  --signal: #0b6b52;
+  --signal-ink: #ffffff;
+  --signal-wash: rgba(11, 107, 82, 0.07);
+  --signal-line: rgba(11, 107, 82, 0.3);
+
+  --warn: #8a5a12;
+  --warn-wash: rgba(138, 90, 18, 0.09);
+  --danger: #b23a31;
+  --danger-wash: rgba(178, 58, 49, 0.08);
+  --ok: #0b6b52;
+  --ok-wash: rgba(11, 107, 82, 0.08);
+
+  --shadow-1: 0 1px 2px rgba(15, 20, 17, 0.06);
+  --shadow-2: 0 14px 40px -26px rgba(15, 20, 17, 0.3);
+  --shadow-3: 0 40px 100px -60px rgba(15, 20, 17, 0.4);
 }

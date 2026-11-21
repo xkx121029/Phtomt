@@ -3,10 +3,12 @@
    =========================================================================== */
 
 .prose {
-  font-size: 1rem;
-  line-height: 1.82;
+  font-size: 1.0625rem;
+  /* 长文行高按中文给：正文 17px、行高 1.9，读长段才不挤 */
+  line-height: 1.9;
+  letter-spacing: var(--track-body);
   color: var(--ink-2);
-  max-width: 72ch;
+  max-width: 68ch;
 }
 
 .prose > * + * {
@@ -22,9 +24,11 @@
 }
 
 .prose h2 {
-  margin-top: 2.2em;
-  font-size: 1.32rem;
-  letter-spacing: -0.02em;
+  margin-top: 2.4em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--line);
+  font-size: 1.3rem;
+  letter-spacing: var(--track-head);
 }
 
 .prose h3 {
@@ -49,17 +53,17 @@
 }
 
 .prose a {
-  color: var(--brand);
+  color: var(--signal);
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--brand) 40%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--signal) 45%, transparent);
   transition: text-decoration-color var(--dur-ui) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .prose a:hover {
-    text-decoration-color: var(--brand);
+    text-decoration-color: var(--signal);
   }
 }
 
@@ -84,7 +88,7 @@
 .prose blockquote {
   margin: 1.4em 0;
   padding: 2px 0 2px 18px;
-  border-left: 2px solid var(--brand);
+  border-left: 2px solid var(--signal);
   color: var(--ink-2);
   font-style: normal;
 }
@@ -140,6 +144,6 @@
 }
 
 .toc a.is-active {
-  color: var(--brand);
-  border-color: var(--brand);
+  color: var(--signal);
+  border-color: var(--signal);
 }

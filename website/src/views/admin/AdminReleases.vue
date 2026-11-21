@@ -326,12 +326,12 @@ onMounted(async () => {
 
 @media (hover: hover) and (pointer: fine) {
   .list__item:hover {
-    background: var(--paper-sunken);
+    background: var(--panel-2);
   }
 }
 
 .list__item--on {
-  background: var(--brand-wash);
+  background: var(--signal-wash);
 }
 
 .list__ver {
@@ -397,7 +397,7 @@ onMounted(async () => {
 .switch input {
   width: 16px;
   height: 16px;
-  accent-color: var(--brand);
+  accent-color: var(--signal);
 }
 
 .upload {
@@ -434,7 +434,7 @@ onMounted(async () => {
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: var(--paper-sunken);
+  background: var(--panel-2);
 }
 
 .files__info {

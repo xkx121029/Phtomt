@@ -1,7 +1,7 @@
-/* 由 scripts/snapshot.mjs 生成于 2026-11-06T14:12:34.335Z，请勿手工编辑。
+/* 由 scripts/snapshot.mjs 生成于 2026-11-21T12:58:46.417Z，请勿手工编辑。
    静态导出（GitHub Pages）用这份快照替代后端 API。 */
 export const snapshot = {
-  "builtAt": "2026-11-06T14:12:34.335Z",
+  "builtAt": "2026-11-21T12:58:46.417Z",
   "static": true,
   "site": {
     "name": "Happy Phone Agent",
@@ -9,9 +9,9 @@ export const snapshot = {
     "slug": "phtomt",
     "tagline": "让手机自己动手",
     "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-    "version": "0.2.9140",
-    "buildNumber": 9140,
-    "updatedAt": "2026-11-06T13:39:06.665Z",
+    "version": "0.2.2000096",
+    "buildNumber": 2000096,
+    "updatedAt": "2026-11-21T02:51:15.129Z",
     "links": {
       "github": "https://github.com/xkx121029/Phtomt",
       "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -93,46 +93,30 @@ export const snapshot = {
       }
     ],
     "latest": {
-      "version": "v0.2.9140",
-      "build": 9140,
+      "version": "v0.2.2000096",
+      "build": 2000096,
       "channel": "dev",
-      "date": "2026-11-06",
+      "date": "2026-11-21",
       "published": true,
       "title": "开发版",
       "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
       "apk": {
-        "file": "HappyAgent-0.2.9140.apk",
-        "size": 72104856,
-        "sizeText": "69 MB",
-        "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
-        "updatedAt": "2026-11-06T13:39:06.661Z"
+        "file": "HappyAgent-0.2.2000096.apk",
+        "size": 71574637,
+        "sizeText": "68 MB",
+        "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
+        "updatedAt": "2026-11-21T02:51:15.116Z"
       },
       "notes": [
         "DEV 构建"
       ],
-      "downloads": 1
+      "downloads": 0
     },
     "stats": {
-      "totalDownloads": 5,
-      "lastDownloadAt": "2026-11-06T13:50:14.841Z",
-      "byVersion": {
-        "v0.1.384": 4,
-        "v0.2.9140": 1
-      },
-      "recent": [
-        {
-          "day": "2026-09-20",
-          "count": 2
-        },
-        {
-          "day": "2026-10-12",
-          "count": 2
-        },
-        {
-          "day": "2026-11-06",
-          "count": 1
-        }
-      ]
+      "totalDownloads": 0,
+      "lastDownloadAt": null,
+      "byVersion": {},
+      "recent": []
     }
   },
   "features": [
@@ -180,9 +164,9 @@ export const snapshot = {
       "id": "intent",
       "order": 6,
       "tag": "执行",
-      "title": "46 个语义意图",
+      "title": "65 个语义意图",
       "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
-      "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 46 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 6 个内置浏览器动作。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
+      "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 65 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 9 个内置浏览器动作与内置网页搜索。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
     },
     {
       "id": "channel",
@@ -339,6 +323,146 @@ export const snapshot = {
   ],
   "releases": [
     {
+      "version": "v0.2.2000096",
+      "build": 2000096,
+      "channel": "dev",
+      "date": "2026-11-21",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.2000096.apk",
+        "size": 71574637,
+        "sizeText": "68 MB",
+        "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
+        "updatedAt": "2026-11-21T02:51:15.116Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9214",
+      "build": 9214,
+      "channel": "beta",
+      "date": "2026-11-20",
+      "published": true,
+      "title": "测试版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9214.apk",
+        "size": 71521749,
+        "sizeText": "68 MB",
+        "sha256": "24acfe808fb5a278cfd1c5625ec78105b5e105658280fabde0666791ac4b55a0\r",
+        "updatedAt": "2026-11-20T13:19:18.546Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9201",
+      "build": 9201,
+      "channel": "beta",
+      "date": "2026-11-14",
+      "published": true,
+      "title": "测试版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9201.apk",
+        "size": 71451033,
+        "sizeText": "68 MB",
+        "sha256": "672dab4124c74f1b3d409f12055287fc67f5cee92fdab73b3527fbfc311cf0c0\r",
+        "updatedAt": "2026-11-14T11:36:18.956Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9188",
+      "build": 9188,
+      "channel": "beta",
+      "date": "2026-11-14",
+      "published": true,
+      "title": "测试版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9188.apk",
+        "size": 71423229,
+        "sizeText": "68 MB",
+        "sha256": "3664737c604cf5af71710eec337b68bdddd37bcd37255c824ab38f654e4df5e6\r",
+        "updatedAt": "2026-11-14T03:38:03.718Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9186",
+      "build": 9186,
+      "channel": "dev",
+      "date": "2026-11-13",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9186.apk",
+        "size": 71400013,
+        "sizeText": "68 MB",
+        "sha256": "b90a4421e8458756b104dcfb1221a5b0b8778f76112517ce5f53443b1f30314b\r",
+        "updatedAt": "2026-11-13T13:20:39.048Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9179",
+      "build": 9179,
+      "channel": "dev",
+      "date": "2026-11-09",
+      "published": true,
+      "title": "开发版",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9179.apk",
+        "size": 71342189,
+        "sizeText": "68 MB",
+        "sha256": "57268e9ff7d1d1e902099c5971ebbe3ca764fd4f606cd9bbde0d9851d76da54e\r",
+        "updatedAt": "2026-11-09T14:07:45.674Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
+      "version": "v0.2.9160",
+      "build": 9160,
+      "channel": "nightly",
+      "date": "2026-11-07",
+      "published": true,
+      "title": "每日构建",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "apk": {
+        "file": "HappyAgent-0.2.9160.apk",
+        "size": 71287352,
+        "sizeText": "68 MB",
+        "sha256": "c77b9ac366c435a8a900d5291059e73701b0365300406c9a8e0b57c9ad723588\r",
+        "updatedAt": "2026-11-07T03:02:16.206Z"
+      },
+      "notes": [
+        "DEV 构建"
+      ],
+      "downloads": 0
+    },
+    {
       "version": "v0.2.9140",
       "build": 9140,
       "channel": "dev",
@@ -356,7 +480,7 @@ export const snapshot = {
       "notes": [
         "DEV 构建"
       ],
-      "downloads": 1
+      "downloads": 0
     },
     {
       "version": "v0.2.1278",
@@ -497,10 +621,52 @@ export const snapshot = {
         "Debug 构建，用于内测与自用",
         "首次安装需手动授予无障碍、悬浮窗与通知权限"
       ],
-      "downloads": 4
+      "downloads": 0
     }
   ],
   "changelog": [
+    {
+      "version": "v0.2.2000096",
+      "date": "2026-11-21",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9214",
+      "date": "2026-11-20",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9201",
+      "date": "2026-11-14",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9188",
+      "date": "2026-11-14",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9186",
+      "date": "2026-11-13",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9179",
+      "date": "2026-11-09",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
+    {
+      "version": "v0.2.9160",
+      "date": "2026-11-07",
+      "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+      "sections": []
+    },
     {
       "version": "v0.2.9140",
       "date": "2026-11-06",
@@ -2434,6 +2600,11 @@ export const snapshot = {
       },
       {
         "method": "POST",
+        "path": "/api/feedback",
+        "desc": "客户端执行数据反馈（用户主动开启后上报）：只接收动作类型 / 成败 / 耗时 / token 用量等脱敏字段，不接收任务文本、输入内容、截图、包名与设备标识；返回 202 与记录 id"
+      },
+      {
+        "method": "POST",
         "path": "/api/admin/login",
         "desc": "口令换取管理令牌"
       },
@@ -2631,6 +2802,16 @@ export const snapshot = {
         "method": "DELETE",
         "path": "/api/admin/ai/logs",
         "desc": "清空问答留痕"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/feedback",
+        "desc": "客户端反馈记录（最近两个月，默认 100 条）与统计：?limit="
+      },
+      {
+        "method": "DELETE",
+        "path": "/api/admin/feedback",
+        "desc": "清除反馈记录，可指定 ?month=YYYY-MM，缺省清空最近 12 个月"
       }
     ]
   },
@@ -2641,9 +2822,9 @@ export const snapshot = {
       "slug": "phtomt",
       "tagline": "让手机自己动手",
       "description": "Happy Phone Agent 是一款运行在 Android 上的 AI 智能体。你用一句自然语言描述目标，它自己观察屏幕、拆解步骤、动手执行——点按、滑动、输入、跳转，全程可见可接管，致力于用更便宜的ai实现更好的效果。",
-      "version": "0.2.9140",
-      "buildNumber": 9140,
-      "updatedAt": "2026-11-06T13:39:06.665Z",
+      "version": "0.2.2000096",
+      "buildNumber": 2000096,
+      "updatedAt": "2026-11-21T02:51:15.129Z",
       "links": {
         "github": "https://github.com/xkx121029/Phtomt",
         "gitee": "https://gitee.com/xkx1029/Phtomt",
@@ -2725,46 +2906,30 @@ export const snapshot = {
         }
       ],
       "latest": {
-        "version": "v0.2.9140",
-        "build": 9140,
+        "version": "v0.2.2000096",
+        "build": 2000096,
         "channel": "dev",
-        "date": "2026-11-06",
+        "date": "2026-11-21",
         "published": true,
         "title": "开发版",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "apk": {
-          "file": "HappyAgent-0.2.9140.apk",
-          "size": 72104856,
-          "sizeText": "69 MB",
-          "sha256": "8cc8b046f306de5519e2b231c2db13759768ed565853c8a73ad4d81773351e9f",
-          "updatedAt": "2026-11-06T13:39:06.661Z"
+          "file": "HappyAgent-0.2.2000096.apk",
+          "size": 71574637,
+          "sizeText": "68 MB",
+          "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
+          "updatedAt": "2026-11-21T02:51:15.116Z"
         },
         "notes": [
           "DEV 构建"
         ],
-        "downloads": 1
+        "downloads": 0
       },
       "stats": {
-        "totalDownloads": 5,
-        "lastDownloadAt": "2026-11-06T13:50:14.841Z",
-        "byVersion": {
-          "v0.1.384": 4,
-          "v0.2.9140": 1
-        },
-        "recent": [
-          {
-            "day": "2026-09-20",
-            "count": 2
-          },
-          {
-            "day": "2026-10-12",
-            "count": 2
-          },
-          {
-            "day": "2026-11-06",
-            "count": 1
-          }
-        ]
+        "totalDownloads": 0,
+        "lastDownloadAt": null,
+        "byVersion": {},
+        "recent": []
       }
     },
     "features": [
@@ -2812,9 +2977,9 @@ export const snapshot = {
         "id": "intent",
         "order": 6,
         "tag": "执行",
-        "title": "46 个语义意图",
+        "title": "65 个语义意图",
         "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
-        "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 46 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 6 个内置浏览器动作。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
+        "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 65 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 9 个内置浏览器动作与内置网页搜索。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
       },
       {
         "id": "channel",
@@ -2971,6 +3136,146 @@ export const snapshot = {
     ],
     "releases": [
       {
+        "version": "v0.2.2000096",
+        "build": 2000096,
+        "channel": "dev",
+        "date": "2026-11-21",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.2000096.apk",
+          "size": 71574637,
+          "sizeText": "68 MB",
+          "sha256": "d41b9da21e2e554cc98f04ae4054a87a42d7be65ba99072f2dd8486d0d4b571c\r",
+          "updatedAt": "2026-11-21T02:51:15.116Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9214",
+        "build": 9214,
+        "channel": "beta",
+        "date": "2026-11-20",
+        "published": true,
+        "title": "测试版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9214.apk",
+          "size": 71521749,
+          "sizeText": "68 MB",
+          "sha256": "24acfe808fb5a278cfd1c5625ec78105b5e105658280fabde0666791ac4b55a0\r",
+          "updatedAt": "2026-11-20T13:19:18.546Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9201",
+        "build": 9201,
+        "channel": "beta",
+        "date": "2026-11-14",
+        "published": true,
+        "title": "测试版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9201.apk",
+          "size": 71451033,
+          "sizeText": "68 MB",
+          "sha256": "672dab4124c74f1b3d409f12055287fc67f5cee92fdab73b3527fbfc311cf0c0\r",
+          "updatedAt": "2026-11-14T11:36:18.956Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9188",
+        "build": 9188,
+        "channel": "beta",
+        "date": "2026-11-14",
+        "published": true,
+        "title": "测试版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9188.apk",
+          "size": 71423229,
+          "sizeText": "68 MB",
+          "sha256": "3664737c604cf5af71710eec337b68bdddd37bcd37255c824ab38f654e4df5e6\r",
+          "updatedAt": "2026-11-14T03:38:03.718Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9186",
+        "build": 9186,
+        "channel": "dev",
+        "date": "2026-11-13",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9186.apk",
+          "size": 71400013,
+          "sizeText": "68 MB",
+          "sha256": "b90a4421e8458756b104dcfb1221a5b0b8778f76112517ce5f53443b1f30314b\r",
+          "updatedAt": "2026-11-13T13:20:39.048Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9179",
+        "build": 9179,
+        "channel": "dev",
+        "date": "2026-11-09",
+        "published": true,
+        "title": "开发版",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9179.apk",
+          "size": 71342189,
+          "sizeText": "68 MB",
+          "sha256": "57268e9ff7d1d1e902099c5971ebbe3ca764fd4f606cd9bbde0d9851d76da54e\r",
+          "updatedAt": "2026-11-09T14:07:45.674Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
+        "version": "v0.2.9160",
+        "build": 9160,
+        "channel": "nightly",
+        "date": "2026-11-07",
+        "published": true,
+        "title": "每日构建",
+        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
+        "apk": {
+          "file": "HappyAgent-0.2.9160.apk",
+          "size": 71287352,
+          "sizeText": "68 MB",
+          "sha256": "c77b9ac366c435a8a900d5291059e73701b0365300406c9a8e0b57c9ad723588\r",
+          "updatedAt": "2026-11-07T03:02:16.206Z"
+        },
+        "notes": [
+          "DEV 构建"
+        ],
+        "downloads": 0
+      },
+      {
         "version": "v0.2.9140",
         "build": 9140,
         "channel": "dev",
@@ -2988,7 +3293,7 @@ export const snapshot = {
         "notes": [
           "DEV 构建"
         ],
-        "downloads": 1
+        "downloads": 0
       },
       {
         "version": "v0.2.1278",
@@ -3029,137 +3334,36 @@ export const snapshot = {
           "DEV 构建"
         ],
         "downloads": 0
-      },
-      {
-        "version": "v0.2.1252",
-        "build": 1252,
-        "channel": "dev",
-        "date": "2026-11-01",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.1252.apk",
-          "size": 70767522,
-          "sizeText": "67 MB",
-          "sha256": "cd4e8bfef52d0ec2ca98d646dddd47fb3ec19db60f196eb1b06e8d692e2330ee",
-          "updatedAt": "2026-11-01T11:48:05.172Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.1248",
-        "build": 1248,
-        "channel": "beta",
-        "date": "2026-10-31",
-        "published": true,
-        "title": "测试版",
-        "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
-        "apk": {
-          "file": "HappyAgent-0.2.1248.apk",
-          "size": 69587050,
-          "sizeText": "66 MB",
-          "sha256": "97192fb973f341fd2bbd6f8546e8f4acce646236c70aefbb45484ebe792b86cb",
-          "updatedAt": "2026-10-31T13:50:46.566Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.1231",
-        "build": 1231,
-        "channel": "dev",
-        "date": "2026-10-29",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区 × 多会话；三页输入框 48dp 统一；Provider 通道分片传输与自动重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限申请修正；执行通道自检五步实测",
-        "apk": {
-          "file": "HappyAgent-0.2.1231.apk",
-          "size": 69430446,
-          "sizeText": "66 MB",
-          "sha256": "6590ca7d70a1a9382a1e46546e45184485fec9c835f4d9afa675771a5fdcc150",
-          "updatedAt": "2026-10-29T12:38:53.649Z"
-        },
-        "notes": [
-          "DEV 构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.2.1128",
-        "build": 1128,
-        "channel": "dev",
-        "date": "2026-10-26",
-        "published": true,
-        "title": "开发版",
-        "summary": "编码页工作区 × 多会话；三页输入框高度统一；执行通道迁入独立 Provider APK；删除无线 ADB 通道；对话页与任务执行彻底分离；任务运行时触摸恢复；边缘光效所见即所得；编码请求失败不再卡在\"编码中\"；Termux 通道修复；Provider 通道分片传输与自动重绑。",
-        "apk": {
-          "file": "HappyAgent-0.2.1128.apk",
-          "size": 69400718,
-          "sizeText": "66 MB",
-          "sha256": "702f4b37317daff3b3db150b173a006672ee0fdb2ab075da99743e1b3f379031",
-          "updatedAt": "2026-10-26T13:49:09.315Z"
-        },
-        "notes": [
-          "开发版构建"
-        ],
-        "downloads": 0
-      },
-      {
-        "version": "v0.1.384",
-        "build": 384,
-        "channel": "stable",
-        "date": "2026-09-20",
-        "published": true,
-        "title": "当前开发版",
-        "summary": "AI 此前是在\"真空\"里做决策的：它看不到今天几号、当前在哪个应用、有没有网、电量还剩多少，也记不住 上一轮让它做过什么。同一句话「再发一遍」被当成全新任务，「帮我看看装了哪些应用」则只能一步步翻设置页。 本次给它补上三类上下文：**环境事实**（每步自动注入）、**按需取数**（新增 device_query 技能）、 **会话承接**（上一轮任务的目标与结论）。",
-        "apk": {
-          "file": "HappyAgent-0.1.384.apk",
-          "size": 14959209,
-          "sizeText": "14 MB",
-          "sha256": "b486f578d860219bd11a9ff969360f55446524dbd584bf7fb83bd376a96ffb23",
-          "updatedAt": "2026-09-20T13:39:57.479Z"
-        },
-        "notes": [
-          "Debug 构建，用于内测与自用",
-          "首次安装需手动授予无障碍、悬浮窗与通知权限"
-        ],
-        "downloads": 4
       }
     ],
     "changelog": [
       {
-        "version": "v0.2.9140",
-        "date": "2026-11-06",
+        "version": "v0.2.2000096",
+        "date": "2026-11-21",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "sections": []
       },
       {
-        "version": "v0.2.1278",
-        "date": "2026-11-04",
+        "version": "v0.2.9214",
+        "date": "2026-11-20",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "sections": []
       },
       {
-        "version": "v0.2.1264",
-        "date": "2026-11-02",
+        "version": "v0.2.9201",
+        "date": "2026-11-14",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "sections": []
       },
       {
-        "version": "v0.2.1252",
-        "date": "2026-11-01",
+        "version": "v0.2.9188",
+        "date": "2026-11-14",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "sections": []
       },
       {
-        "version": "v0.2.1248",
-        "date": "2026-10-31",
+        "version": "v0.2.9186",
+        "date": "2026-11-13",
         "summary": "编码页工作区多会话与图谱视图；三页输入框 48dp 统一；Provider 通道分片传输 + 自动解绑重绑；对话页纯直答专用系统提示；新手教程反复弹出根因修复；Termux 权限与自检",
         "sections": []
       }

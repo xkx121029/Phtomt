@@ -12,6 +12,7 @@ const phases = computed(() => roadmap.value.phases || [])
 /** 状态到徽标配色的映射。没有的取值退回中性徽标，不硬编一个错的颜色 */
 const TONES = { done: 'ok', doing: 'brand', next: 'amber', later: 'plain' }
 const toneOf = (state) => TONES[state] || 'plain'
+const LABELS = { done: '已落地', doing: '进行中', next: '接下来', later: '暂不做' }
 
 onMounted(async () => {
   try {
@@ -25,7 +26,7 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
-      eyebrow="路线图"
+      label="路线图"
       title="打算做什么，以及不打算做什么"
       lead="按主题分档，不承诺具体时间。最后一档是明确不做的事——一份只写「要做」的路线图没有信息量，取舍才说明方向。"
     >
@@ -43,15 +44,17 @@ onMounted(async () => {
             <section
               v-for="(phase, pi) in phases"
               :key="phase.id"
-              v-reveal="pi * 60"
-              :class="['card', 'phase', `phase--${phase.state}`]"
+              v-reveal="pi * 50"
+              :class="['phase', `phase--${phase.state}`]"
             >
               <header class="phase__head">
                 <div class="phase__row">
+                  <span :class="['phase__mark', `phase__mark--${toneOf(phase.state)}`]" aria-hidden="true"></span>
                   <h2 class="phase__title">{{ phase.title }}</h2>
                   <span :class="['tag', toneOf(phase.state) !== 'plain' ? `tag--${toneOf(phase.state)}` : '']">
-                    {{ (phase.items || []).length }} 项
+                    {{ LABELS[phase.state] || phase.state }}
                   </span>
+                  <span class="muted mono phase__count">{{ (phase.items || []).length }} 项</span>
                 </div>
                 <p v-if="phase.summary" class="phase__summary">{{ phase.summary }}</p>
               </header>
@@ -83,125 +86,132 @@ onMounted(async () => {
 
 <style scoped>
 .stamp {
-  margin-bottom: 22px;
   font-size: var(--t-xs);
   color: var(--ink-3);
+  letter-spacing: 0.04em;
 }
 
 .phases {
-  display: grid;
-  gap: 12px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
-/* 档位之间靠左侧一道竖线串起来：它是「顺序」的暗示，
-   比给每档配一种背景色克制得多——四块不同颜色的卡片是典型的 AI 味。 */
 .phase {
-  position: relative;
-  padding: 24px 26px;
-  border-left-width: 3px;
-}
-
-.phase--done {
-  border-left-color: var(--ok);
-}
-
-.phase--doing {
-  border-left-color: var(--brand);
-}
-
-.phase--next {
-  border-left-color: var(--amber);
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .phase--later {
-  border-left-color: var(--line-2);
-}
-
-.phase__head {
-  margin-bottom: 18px;
+  opacity: 0.82;
 }
 
 .phase__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+}
+
+.phase__mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--ink-3);
+  flex: none;
+}
+
+.phase__mark--ok {
+  background: var(--ok);
+}
+
+.phase__mark--signal {
+  background: var(--signal);
+}
+
+.phase__mark--amber {
+  background: var(--amber);
 }
 
 .phase__title {
-  font-size: var(--t-h3);
+  font-size: var(--t-h2);
+}
+
+.phase__count {
+  font-size: var(--t-xs);
+  color: var(--ink-3);
 }
 
 .phase__summary {
   margin-top: 8px;
-  max-width: 68ch;
   font-size: var(--t-sm);
+  line-height: 1.85;
   color: var(--ink-2);
-  line-height: 1.78;
+  max-width: 70ch;
 }
 
 .items {
-  display: grid;
-  gap: 14px;
-  margin: 0;
-  padding: 0;
   list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
 }
 
-/* 条目之间用极淡的分隔线而不是各自套卡片：一屏几十个方框会把眼睛累死 */
-.item + .item {
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+.item {
+  display: grid;
+  gap: 3px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
 }
 
 .item__title {
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  letter-spacing: -0.014em;
 }
 
 .item__detail {
-  margin-top: 4px;
-  max-width: 72ch;
   font-size: var(--t-sm);
+  line-height: 1.8;
   color: var(--ink-2);
-  line-height: 1.78;
-}
-
-/* 「暂不计划」整档压暗：它要能被读到，但不该和「正在做」抢注意力 */
-.phase--later .item__title {
-  color: var(--ink-2);
-}
-
-.phase--later .item__detail {
-  color: var(--ink-3);
+  max-width: 72ch;
 }
 
 .more {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 16px;
-  margin-top: clamp(36px, 5vw, 56px);
-  padding: 22px 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--paper-sunken);
+  margin-top: clamp(28px, 4vw, 44px);
+  padding-top: 20px;
+  border-top: 1px solid var(--line-strong);
 }
 
 .more__title {
   font-weight: 600;
-  margin-bottom: 4px;
 }
 
 .more__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-@media (max-width: 640px) {
-  .phase {
-    padding: 20px;
+@media (min-width: 720px) {
+  .items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 28px;
   }
+
+  .more {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+
+/* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.items > *,
+.more > *,
+.phase > * {
+  min-width: 0;
 }
 </style>
