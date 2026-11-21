@@ -86,6 +86,11 @@ internal fun permissionPillText(granted: Boolean, required: Boolean): String = w
 private val TrustedInstallers = setOf("com.android.vending")
 
 /**
+ * Android 13 起系统才提供「受限制的设置」授权入口；更早的版本没有这道门，不需要提示。
+ */
+private const val MIN_SDK_FOR_RESTRICTED_SETTINGS = 33
+
+/**
  * 无障碍开关是否可能被系统灰置。
  *
  * Android 13 起，从浏览器/文件管理器等来源侧载安装的应用，其无障碍开关默认灰置，
@@ -102,7 +107,7 @@ internal fun a11yMayBeRestricted(
     installingPackage: String?,
     providerInstalled: Boolean,
     accessibilityGranted: Boolean,
-): Boolean = sdkInt >= 33 &&
+): Boolean = sdkInt >= MIN_SDK_FOR_RESTRICTED_SETTINGS &&
     providerInstalled &&
     !accessibilityGranted &&
     installingPackage !in TrustedInstallers

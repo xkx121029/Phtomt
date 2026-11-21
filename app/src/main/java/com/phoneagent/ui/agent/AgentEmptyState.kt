@@ -187,7 +187,7 @@ private fun A11yCapabilityCard(
         )
         Spacer(Modifier.height(AppSpacing.Sm))
         Text(
-            text = ScreenShotModeBoundary,
+            text = SCREEN_SHOT_MODE_BOUNDARY,
             style = MaterialTheme.typography.labelSmall,
             color = colors.onWarningContainer.copy(alpha = 0.85f),
         )
@@ -225,7 +225,7 @@ private fun A11yCapabilityCard(
  * 截图模式的能力边界。写在用户做选择之前，而不是失败之后：
  * 他们要的是一个有依据的选择，不是一句「你自己非要试的」。
  */
-private const val ScreenShotModeBoundary =
+private const val SCREEN_SHOT_MODE_BOUNDARY =
     "截图模式：读不到控件树，只能按画面猜位置——步骤更慢、更容易失败；" +
         "支付、密码这类页面读不到内容，AI 会停下来等你。"
 

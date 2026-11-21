@@ -1,14 +1,14 @@
 # detekt 基线的规则分布（自动生成，check 会校验合计 = baseline-count.txt）
 # 规则名                                        条数
-MaxLineLength                                397
-MagicNumber                                  340
-ReturnCount                                  174
-LongMethod                                   95
-LongParameterList                            86
-CyclomaticComplexMethod                      74
-TooManyFunctions                             40
-TooGenericExceptionCaught                    22
-ComplexCondition                             20
+MaxLineLength                                392
+MagicNumber                                  337
+ReturnCount                                  170
+LongMethod                                   101
+LongParameterList                            91
+CyclomaticComplexMethod                      75
+TooManyFunctions                             42
+TooGenericExceptionCaught                    23
+ComplexCondition                             19
 LoopWithTooManyJumpStatements                15
 TopLevelPropertyNaming                       13
 UnusedParameter                              13
@@ -16,12 +16,12 @@ ConstructorParameterNaming                   10
 MatchingDeclarationName                      10
 NestedBlockDepth                             10
 UseRequire                                   8
-LargeClass                                   7
+LargeClass                                   6
 VariableNaming                               5
 SwallowedException                           3
 UnusedPrivateMember                          3
-UnusedPrivateProperty                        3
 EmptyFunctionBlock                           2
+UnusedPrivateProperty                        2
 ExplicitItLambdaParameter                    1
 InstanceOfCheckForException                  1
 MayBeConst                                   1

@@ -276,7 +276,7 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
     val pending = permissions.count { !it.granted && !it.optional }
     val known = permissions.isNotEmpty()
     // 验证结论取自已保存的配置（不是表单）：模型格说「已验证」必须真的验过
-    val saved by vm.settingsFlow.collectAsState()
+    val saved by vm.settingsFlow.collectAsStateWithLifecycle()
     return SettingsOverviewCtx(
         st = st,
         pendingPermissions = pending,

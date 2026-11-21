@@ -82,7 +82,7 @@ internal object AgentTerminal {
      * 顺序固定为「生效 → 未确认 → 未生效」，读起来就是一次任务的实际进展。
      */
     fun stepLine(okSteps: Int, unconfirmedSteps: Int, failedSteps: Int): String {
-        val parts = ArrayList<String>(3)
+        val parts = ArrayList<String>()
         if (okSteps > 0) parts += "已确认生效 $okSteps 步"
         if (unconfirmedSteps > 0) parts += "已交付未确认 $unconfirmedSteps 步"
         if (failedSteps > 0) parts += "未生效 $failedSteps 步"

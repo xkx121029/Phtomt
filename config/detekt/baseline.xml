@@ -6,7 +6,6 @@
     <ID>ComplexCondition:ClickRunner.kt$ClickRunner$element == null &amp;&amp; selector == null &amp;&amp; (cx == null || cy == null)</ID>
     <ID>ComplexCondition:ClickRunner.kt$ClickRunner$hitLabel.isNotEmpty() &amp;&amp; labels.any { it.equals(hitLabel, true) || it.contains(hitLabel, true) || hitLabel.contains(it, true) }</ID>
     <ID>ComplexCondition:DetectedControl.kt$ControlFormat$c.bounds[0] == 0f &amp;&amp; c.bounds[1] == 0f &amp;&amp; c.bounds[2] == 0f &amp;&amp; c.bounds[3] == 0f</ID>
-    <ID>ComplexCondition:EngineRules.kt$EngineRules$type != ActionType.TAP &amp;&amp; type != ActionType.CLICK &amp;&amp; type != ActionType.LONG_PRESS &amp;&amp; type != ActionType.LONG_CLICK &amp;&amp; type != ActionType.TYPE_TEXT &amp;&amp; type != ActionType.SHELL &amp;&amp; type != ActionType.A11Y_CALL</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$head.startsWith("&lt;!doctype html") || head.startsWith("&lt;html") || head.startsWith("&lt;head") || head.startsWith("&lt;body")</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; !src[i].isWhitespace() &amp;&amp; src[i] != '=' &amp;&amp; src[i] != '&gt;' &amp;&amp; src[i] != '/'</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; (src[i].isLetterOrDigit() || src[i] == '-' || src[i] == ':' || src[i] == '_')</ID>
@@ -38,11 +37,11 @@
     <ID>CyclomaticComplexMethod:AgentComposer.kt$@Composable internal fun AgentComposer( vm: MainViewModel, draft: String, onDraftChange: (String) -&gt; Unit, mode: ComposerMode, lockHint: String, queueCount: Int, onOpenQueue: () -&gt; Unit, reviewEnabled: Boolean, onToggleReview: (Boolean) -&gt; Unit, /** 先规划再执行：与「审核 AI」同级，默认关闭；关闭时直接进入执行 */ planBeforeAct: Boolean, onTogglePlanBeforeAct: (Boolean) -&gt; Unit, /** * 发送：回传待发文本，而不是让宿主读自己的 draft。 * * 语音"松手即发"这条路径上，识别结果是在 composer 内部拿到的，宿主的 draft 还停在 * 上一帧的值；若宿主自己读 draft，就会把空串（或上一次的旧草稿）发出去。 * 由调用方接收文本，谁先算出文本谁传参，就不存在读到旧状态的问题。 */ onSend: (String) -&gt; Unit, onStop: () -&gt; Unit, onDismissUser: () -&gt; Unit, /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */ options: List&lt;ClarificationOption&gt; = emptyList(), onPickOption: (ClarificationOption) -&gt; Unit = {}, /** 待批准的计划：非空且 mode 为 [ComposerMode.PLAN_APPROVAL] 时，整块输入面换成计划面板 */ plan: TaskPlan? = null, onApprovePlan: () -&gt; Unit = {}, onCancelPlan: () -&gt; Unit = {}, /** 模型 / 执行与授权两枚转盘：放在面板内部第一行，与 Coding 页节奏一致；横屏矮屏传 null */ dialRow: (@Composable () -&gt; Unit)? = null, focusRequester: FocusRequester, modifier: Modifier = Modifier, )</ID>
     <ID>CyclomaticComplexMethod:AgentEngine.kt$AgentEngine$private suspend fun handleBrowseIntent( step: Int, intent: AgentIntent, messages: MutableList&lt;ChatMessageDto&gt;, ): Pair&lt;AgentAction, com.phoneagent.engine.execution.VerifyResult&gt;</ID>
     <ID>CyclomaticComplexMethod:AgentEngine.kt$AgentEngine$private suspend fun invokeVisionAsk( step: Int, vision: com.phoneagent.feature.skill.SkillCompat.Normalized.Vision, messages: MutableList&lt;ChatMessageDto&gt;, screenshot: Bitmap?, settingsVal: AppSettings.Settings, )</ID>
-    <ID>CyclomaticComplexMethod:AgentEngine.kt$AgentEngine$private suspend fun runInner( task: String, plan: TaskPlan? = null, onMemoryCreated: (TaskMemoryEntry) -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:AgentLiveItems.kt$@Composable internal fun TerminalItem( item: AgentTimelineItem.Terminal, vm: MainViewModel, onOpenSettings: () -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, )</ID>
     <ID>CyclomaticComplexMethod:AgentPrompts.kt$AgentPrompts$fun methodDocStepBlock( lang: PromptLang, docs: List&lt;com.phoneagent.engine.docs.MethodDoc&gt;, maxChars: Int = com.phoneagent.engine.docs.METHOD_DOC_STEP_BUDGET, ): String</ID>
     <ID>CyclomaticComplexMethod:AgentPrompts.kt$AgentPrompts$fun methodDocsBlock( lang: PromptLang, docs: List&lt;com.phoneagent.engine.docs.MethodDoc&gt;, maxChars: Int = com.phoneagent.engine.docs.METHOD_DOC_PLAN_BUDGET, ): String</ID>
     <ID>CyclomaticComplexMethod:AgentRunStatusStrip.kt$@Composable internal fun AgentRunStatusStrip( state: AgentState, plannedSteps: Int, confidence: Double?, needsUser: Boolean, previewVisible: Boolean, onTogglePreview: () -&gt; Unit, /** 暂停 / 继续（运行中才有意义）：引擎在下一轮开头挂起，不消耗步数 */ paused: Boolean = false, onTogglePause: () -&gt; Unit = {}, /** 规划期：状态条照常出现，只说明"正在规划" */ planning: Boolean = false, modifier: Modifier = Modifier, )</ID>
-    <ID>CyclomaticComplexMethod:AgentScreen.kt$@Composable private fun AgentTimelineItemView( item: AgentTimelineItem, vm: MainViewModel, onOpenDocFullscreen: () -&gt; Unit, onOpenSettings: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:AgentScreen.kt$@Composable private fun AgentTimelineItemView( item: AgentTimelineItem, vm: MainViewModel, onOpenDocFullscreen: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onOpenPermissions: () -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:AgentStepItem.kt$@Composable internal fun ToolStepRow( step: StepCall, vm: MainViewModel, modifier: Modifier = Modifier, )</ID>
     <ID>CyclomaticComplexMethod:AgentStepRail.kt$@Composable internal fun AgentStepRail( totalSteps: Int, completed: Int, current: Int, modifier: Modifier = Modifier, onSeek: ((Int) -&gt; Unit)? = null, )</ID>
     <ID>CyclomaticComplexMethod:AiClient.kt$AiClient$private suspend fun executeWithRetry(request: Request, extractText: ((String) -&gt; String?)? = null): String</ID>
@@ -63,7 +62,7 @@
     <ID>CyclomaticComplexMethod:ExecutionFlowPanel.kt$@Composable private fun StepNode(step: FlowStep, annotated: Bitmap?, first: Boolean, last: Boolean)</ID>
     <ID>CyclomaticComplexMethod:FloatingWindowService.kt$FloatingWindowService$private fun applyDoneContent(outcome: TaskOutcome)</ID>
     <ID>CyclomaticComplexMethod:FloatingWindowService.kt$FloatingWindowService$private fun buildPanel(): LinearLayout</ID>
-    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable fun HomeScreen( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, /** 模型「云端模型」页：看上次验证结论、重新测试连接 */ onOpenModelSettings: () -&gt; Unit = {}, )</ID>
     <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$fun isHtml(raw: String): Boolean</ID>
     <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
     <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun skipSubtree(html: String, tag: Tag): Int</ID>
@@ -75,16 +74,17 @@
     <ID>CyclomaticComplexMethod:IntentResolver.kt$IntentResolver$fun resolveAction(action: AgentAction, snapshot: ScreenSnapshot): ResolvedTarget</ID>
     <ID>CyclomaticComplexMethod:LocalDetector.kt$LocalDetector$private fun annotate(c: DetectedControl): DetectedControl</ID>
     <ID>CyclomaticComplexMethod:LogExporter.kt$LogExporter$fun exportDiagnosticReport( context: Context, traces: List&lt;StepTrace&gt;, logs: List&lt;AgentLog&gt;, conversation: List&lt;ConversationMessage&gt;, ): String</ID>
-    <ID>CyclomaticComplexMethod:MainViewModel.kt$MainViewModel$fun openPermissionSettings(context: Context, kind: PermissionKind)</ID>
     <ID>CyclomaticComplexMethod:Markdown.kt$@Composable fun MarkdownPreview( content: String, modifier: Modifier = Modifier, baseDir: String? = null, maxLines: Int? = null, keepLineBreaks: Boolean = false, )</ID>
     <ID>CyclomaticComplexMethod:Markdown.kt$private fun parseBlocks(text: String, keepLineBreaks: Boolean = false): List&lt;MdB&gt;</ID>
     <ID>CyclomaticComplexMethod:McpTab.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun McpTab(vm: MainViewModel)</ID>
     <ID>CyclomaticComplexMethod:MemoryGraphCanvas.kt$@Composable internal fun GraphCanvas(nodes: List&lt;GraphNode&gt;)</ID>
+    <ID>CyclomaticComplexMethod:MemoryGraphLabelLayout.kt$internal fun planGraphLabels( nodes: List&lt;GraphLabelNode&gt;, canvasWidth: Float, canvasHeight: Float, detail: GraphLabelDetail, measure: (node: GraphLabelNode, isSub: Boolean) -&gt; LabelMetrics, ): List&lt;PlacedGraphLabel&gt;</ID>
     <ID>CyclomaticComplexMethod:PageAnnotator.kt$PageAnnotator$private fun assignSemanticIds(snapshot: ScreenSnapshot): Map&lt;Int, String&gt;</ID>
     <ID>CyclomaticComplexMethod:PageShapePanel.kt$@Composable internal fun PageShapePanel( entry: PageMemoryEntry, /** 该应用的全部出边（下钻与兜底列表都从这里筛） */ edges: List&lt;PagePathEdge&gt;, /** 指纹 → 页面条目（下钻目标查找；查不到的出边不可跳，仅展示） */ entryOf: (String) -&gt; PageMemoryEntry?, onDismiss: () -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:PageTypeRules.kt$PageTypeRules$fun inferPageType(snapshot: ScreenSnapshot): String</ID>
     <ID>CyclomaticComplexMethod:PromptDumpTest.kt$PromptDumpTest$private fun collect(out: MutableList&lt;Dump&gt;)</ID>
     <ID>CyclomaticComplexMethod:ProviderManager.kt$ProviderManager$suspend fun selfTest(context: Context, a11yEnabled: Boolean): List&lt;SelfTestStep&gt;</ID>
+    <ID>CyclomaticComplexMethod:SettingsHome.kt$@Composable // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免 @Suppress("LongMethod", "MaxLineLength") internal fun ReadinessRow( ctx: SettingsOverviewCtx, onModel: () -&gt; Unit, onPermission: () -&gt; Unit, onQuickStart: () -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:SettingsHome.kt$@Suppress("LongMethod") internal fun settingsGroups(): List&lt;SettingsGroup&gt;</ID>
     <ID>CyclomaticComplexMethod:SettingsOnDevice.kt$@Composable internal fun SettingsOnDevice(st: SettingsState, save: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
     <ID>CyclomaticComplexMethod:SettingsPermissions.kt$@Composable internal fun SettingsPermissions( vm: MainViewModel, st: SettingsState, save: () -&gt; Unit, onBack: () -&gt; Unit, /** true = 直接落在「执行通道」段（首页执行通道格进来时用） */ startOnChannel: Boolean = false, )</ID>
@@ -115,17 +115,16 @@
     <ID>LargeClass:ExecutionCore.kt$ExecutionCore</ID>
     <ID>LargeClass:ExecutionPhase.kt$ExecutionPhase : StepPhase</ID>
     <ID>LargeClass:FloatingWindowService.kt$FloatingWindowService : Service</ID>
-    <ID>LargeClass:MainViewModel.kt$MainViewModel : ViewModel</ID>
     <ID>LargeClass:PromptBodies.kt$PromptBodies</ID>
     <ID>LongMethod:AgentAssistSheet.kt$@Composable internal fun AgentAssistSheet( vm: MainViewModel, title: String, message: String, options: List&lt;ClarificationOption&gt;, allowManualHandle: Boolean, /** 是否给自由输入框：自写命令确认只有「批准 / 拒绝」两个出口，打字无处可去，故隐藏输入与提交 */ allowFreeText: Boolean = true, draft: String, onDraftChange: (String) -&gt; Unit, onPickOption: (ClarificationOption) -&gt; Unit, onSubmitText: (String) -&gt; Unit, onManualHandled: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:AgentComposer.kt$@Composable internal fun AgentComposer( vm: MainViewModel, draft: String, onDraftChange: (String) -&gt; Unit, mode: ComposerMode, lockHint: String, queueCount: Int, onOpenQueue: () -&gt; Unit, reviewEnabled: Boolean, onToggleReview: (Boolean) -&gt; Unit, /** 先规划再执行：与「审核 AI」同级，默认关闭；关闭时直接进入执行 */ planBeforeAct: Boolean, onTogglePlanBeforeAct: (Boolean) -&gt; Unit, /** * 发送：回传待发文本，而不是让宿主读自己的 draft。 * * 语音"松手即发"这条路径上，识别结果是在 composer 内部拿到的，宿主的 draft 还停在 * 上一帧的值；若宿主自己读 draft，就会把空串（或上一次的旧草稿）发出去。 * 由调用方接收文本，谁先算出文本谁传参，就不存在读到旧状态的问题。 */ onSend: (String) -&gt; Unit, onStop: () -&gt; Unit, onDismissUser: () -&gt; Unit, /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */ options: List&lt;ClarificationOption&gt; = emptyList(), onPickOption: (ClarificationOption) -&gt; Unit = {}, /** 待批准的计划：非空且 mode 为 [ComposerMode.PLAN_APPROVAL] 时，整块输入面换成计划面板 */ plan: TaskPlan? = null, onApprovePlan: () -&gt; Unit = {}, onCancelPlan: () -&gt; Unit = {}, /** 模型 / 执行与授权两枚转盘：放在面板内部第一行，与 Coding 页节奏一致；横屏矮屏传 null */ dialRow: (@Composable () -&gt; Unit)? = null, focusRequester: FocusRequester, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:AgentComposer.kt$@Composable private fun PlanApprovalPanel( plan: TaskPlan, vm: MainViewModel, onApprove: () -&gt; Unit, onCancel: () -&gt; Unit, )</ID>
+    <ID>LongMethod:AgentEmptyState.kt$@Composable private fun A11yCapabilityCard( screenshotModeChosen: Boolean, onOpenPermissions: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onChooseScreenshotMode: () -&gt; Unit, )</ID>
     <ID>LongMethod:AgentEngine.kt$AgentEngine$private suspend fun handleBrowseIntent( step: Int, intent: AgentIntent, messages: MutableList&lt;ChatMessageDto&gt;, ): Pair&lt;AgentAction, com.phoneagent.engine.execution.VerifyResult&gt;</ID>
     <ID>LongMethod:AgentEngine.kt$AgentEngine$private suspend fun invokeVisionAsk( step: Int, vision: com.phoneagent.feature.skill.SkillCompat.Normalized.Vision, messages: MutableList&lt;ChatMessageDto&gt;, screenshot: Bitmap?, settingsVal: AppSettings.Settings, )</ID>
-    <ID>LongMethod:AgentEngine.kt$AgentEngine$private suspend fun runInner( task: String, plan: TaskPlan? = null, onMemoryCreated: (TaskMemoryEntry) -&gt; Unit = {}, )</ID>
     <ID>LongMethod:AgentItems.kt$@Composable internal fun AssistantNoteItem( item: AgentTimelineItem.AssistantNote, vm: MainViewModel, )</ID>
     <ID>LongMethod:AgentItems.kt$@Composable internal fun DocPreviewItem( item: AgentTimelineItem.DocPreview, onDismiss: () -&gt; Unit, onExpandFullscreen: () -&gt; Unit, )</ID>
-    <ID>LongMethod:AgentLiveItems.kt$@Composable internal fun FailedItem( item: AgentTimelineItem.Failed, vm: MainViewModel, onOpenSettings: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:AgentLiveItems.kt$@Composable internal fun TerminalItem( item: AgentTimelineItem.Terminal, vm: MainViewModel, onOpenSettings: () -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, )</ID>
     <ID>LongMethod:AgentMemoryItems.kt$@Composable internal fun MemoryCardItem(item: AgentTimelineItem.MemoryAdded, onUndo: (Long) -&gt; Unit)</ID>
     <ID>LongMethod:AgentPreviewPanel.kt$@Composable internal fun AgentPreviewPanel( onDismiss: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:AgentPrompts.kt$AgentPrompts$fun situationalExtras( lang: PromptLang, task: String, termuxAvailable: Boolean = false, ): String</ID>
@@ -137,6 +136,8 @@
     <ID>LongMethod:AiClient.kt$AiClient$suspend fun probeAbility( baseUrl: String, apiKey: String, model: String, protocol: ApiProtocol = ApiProtocol.OPENAI, ): Result&lt;ModelAbility&gt;</ID>
     <ID>LongMethod:AppSettings.kt$AppSettings$suspend fun update(settings: Settings)</ID>
     <ID>LongMethod:BrowserBridge.kt$BrowserBridge$suspend fun open(url: String): BrowseResult</ID>
+    <ID>LongMethod:BrowserScreen.kt$@Composable fun BrowserScreen(modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:BrowserScreen.kt$@Composable private fun AddressStrip( address: String, title: String, url: String, hasPage: Boolean, canGoBack: Boolean, onAddressChange: (String) -&gt; Unit, onGo: () -&gt; Unit, onBack: () -&gt; Unit, )</ID>
     <ID>LongMethod:ChatScreen.kt$@Composable fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier)</ID>
     <ID>LongMethod:ClickRunner.kt$ClickRunner$suspend fun run(action: AgentAction, snapshot: ScreenSnapshot, longClick: Boolean = false): VerifyResult</ID>
     <ID>LongMethod:ClockFallback.kt$ClockFallbackRunner$@Suppress("ReturnCount", "CyclomaticComplexMethod") suspend fun run(request: ClockRequest): ClockOutcome</ID>
@@ -160,27 +161,31 @@
     <ID>LongMethod:FloatingWindowService.kt$FloatingWindowService$private fun ensureNoticeWindow(): LinearLayout?</ID>
     <ID>LongMethod:FloatingWindowService.kt$FloatingWindowService$private fun showSheetWindow()</ID>
     <ID>LongMethod:FloatingWindowService.kt$FloatingWindowService.Companion$@Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition") fun setVisible(visible: Boolean): Boolean</ID>
-    <ID>LongMethod:HomeScreen.kt$@Composable fun HomeScreen( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:HomeCards.kt$@Composable internal fun PrimaryActionCard( trust: com.phoneagent.core.ai.ModelTrust.Snapshot, model: String, onClick: () -&gt; Unit, )</ID>
+    <ID>LongMethod:HomeScreen.kt$@Composable fun HomeScreen( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, /** 模型「云端模型」页：看上次验证结论、重新测试连接 */ onOpenModelSettings: () -&gt; Unit = {}, )</ID>
     <ID>LongMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
     <ID>LongMethod:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun start(t: Tag)</ID>
     <ID>LongMethod:HumanTranslator.kt$HumanTranslator$fun humanStream(raw: String): String</ID>
     <ID>LongMethod:InteractScripts.kt$InteractScripts$fun click(by: String, value: String, guard: Boolean): String</ID>
     <ID>LongMethod:InteractScripts.kt$InteractScripts$fun input(by: String, value: String, text: String): String</ID>
     <ID>LongMethod:LogPanel.kt$@Composable internal fun LogPanel(logs: List&lt;AgentLog&gt;)</ID>
-    <ID>LongMethod:MainViewModel.kt$MainViewModel$fun openPermissionSettings(context: Context, kind: PermissionKind)</ID>
-    <ID>LongMethod:MainViewModel.kt$MainViewModel$fun refreshPermissions(context: Context)</ID>
     <ID>LongMethod:Markdown.kt$@Composable fun MarkdownPreview( content: String, modifier: Modifier = Modifier, baseDir: String? = null, maxLines: Int? = null, keepLineBreaks: Boolean = false, )</ID>
     <ID>LongMethod:McpTab.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun McpTab(vm: MainViewModel)</ID>
     <ID>LongMethod:MemoryGraphCanvas.kt$@Composable internal fun GraphCanvas(nodes: List&lt;GraphNode&gt;)</ID>
     <ID>LongMethod:MemoryGraphScreen.kt$@Composable fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier)</ID>
     <ID>LongMethod:MemoryLists.kt$@Composable internal fun TaskMemoryList( items: List&lt;TaskMemoryEntry&gt;, onDelete: (Long) -&gt; Unit, onClear: () -&gt; Unit, )</ID>
+    <ID>LongMethod:OnboardingPermissions.kt$@Composable internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -&gt; Unit)</ID>
+    <ID>LongMethod:OnboardingPrepare.kt$@Composable internal fun OnboardingPreparePage(onNext: () -&gt; Unit)</ID>
+    <ID>LongMethod:OnboardingScreen.kt$@Composable private fun IntroPage(index: Int, onNext: () -&gt; Unit)</ID>
     <ID>LongMethod:PageAnnotator.kt$PageAnnotator$private fun assignSemanticIds(snapshot: ScreenSnapshot): Map&lt;Int, String&gt;</ID>
     <ID>LongMethod:PageMemoryTab.kt$@Composable internal fun PageMemoryList( entries: List&lt;PageMemoryEntry&gt;, edges: List&lt;PagePathEdge&gt;, onDelete: (Long) -&gt; Unit, onClear: () -&gt; Unit, onOpenPage: (PageMemoryEntry) -&gt; Unit, )</ID>
     <ID>LongMethod:PageShapePanel.kt$@Composable internal fun PageShapePanel( entry: PageMemoryEntry, /** 该应用的全部出边（下钻与兜底列表都从这里筛） */ edges: List&lt;PagePathEdge&gt;, /** 指纹 → 页面条目（下钻目标查找；查不到的出边不可跳，仅展示） */ entryOf: (String) -&gt; PageMemoryEntry?, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:PlanningFlow.kt$PlanningFlow$fun startPlanning(task: String)</ID>
     <ID>LongMethod:PromptDumpTest.kt$PromptDumpTest$private fun collect(out: MutableList&lt;Dump&gt;)</ID>
     <ID>LongMethod:PromptSnapshotTest.kt$PromptSnapshot$private fun collect(map: MutableMap&lt;String, String&gt;)</ID>
     <ID>LongMethod:ProviderManager.kt$ProviderManager$suspend fun selfTest(context: Context, a11yEnabled: Boolean): List&lt;SelfTestStep&gt;</ID>
     <ID>LongMethod:SettingsAbout.kt$@Composable internal fun SettingsAbout( onBack: () -&gt; Unit, /** 打开调试页（日志 / 指标 / 轨迹） */ onOpenDebug: () -&gt; Unit = {}, /** 打开模型回归测试页 */ onOpenTest: () -&gt; Unit = {}, /** 打开「开源与致谢」二级页：许可与致谢合在一处，主页只留一行入口 */ onOpenLicenses: () -&gt; Unit = {}, /** 打开更新页：版本号在线，检查更新不在同一页 */ onOpenUpdate: () -&gt; Unit = {}, /** 打开快速开始：使用说明只留结论，步骤交给快速开始那一页 */ onOpenQuickStart: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:SettingsCodingEnv.kt$@Composable internal fun SettingsCodingEnv(onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:SettingsComponents.kt$@Composable internal fun EndpointCard( baseUrl: String, apiKey: String, modelCount: Int, fetching: Boolean, hint: String?, protocol: String = "openai", onProtocol: ((String) -&gt; Unit)? = null, guidedDecoding: String = "OFF", onGuidedDecoding: ((String) -&gt; Unit)? = null, onBaseUrl: (String) -&gt; Unit, onApiKey: (String) -&gt; Unit, onFetch: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
     <ID>LongMethod:SettingsComponents.kt$@Composable internal fun MarqueeColorPicker(selected: List&lt;Long&gt;, padV: Int, onSelect: (List&lt;Long&gt;) -&gt; Unit)</ID>
     <ID>LongMethod:SettingsLongRun.kt$@Composable internal fun SettingsLongRun(vm: MainViewModel, onBack: () -&gt; Unit)</ID>
@@ -214,6 +219,8 @@
     <ID>LongMethod:VoiceRecordField.kt$@Composable private fun RecordingOverlay( level: Float, silent: Boolean, frameNanos: Long, slideActive: Boolean, hoverZone: Zone, )</ID>
     <ID>LongParameterList:AgentAssistSheet.kt$( vm: MainViewModel, title: String, message: String, options: List&lt;ClarificationOption&gt;, allowManualHandle: Boolean, /** 是否给自由输入框：自写命令确认只有「批准 / 拒绝」两个出口，打字无处可去，故隐藏输入与提交 */ allowFreeText: Boolean = true, draft: String, onDraftChange: (String) -&gt; Unit, onPickOption: (ClarificationOption) -&gt; Unit, onSubmitText: (String) -&gt; Unit, onManualHandled: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>LongParameterList:AgentComposer.kt$( vm: MainViewModel, draft: String, onDraftChange: (String) -&gt; Unit, mode: ComposerMode, lockHint: String, queueCount: Int, onOpenQueue: () -&gt; Unit, reviewEnabled: Boolean, onToggleReview: (Boolean) -&gt; Unit, /** 先规划再执行：与「审核 AI」同级，默认关闭；关闭时直接进入执行 */ planBeforeAct: Boolean, onTogglePlanBeforeAct: (Boolean) -&gt; Unit, /** * 发送：回传待发文本，而不是让宿主读自己的 draft。 * * 语音"松手即发"这条路径上，识别结果是在 composer 内部拿到的，宿主的 draft 还停在 * 上一帧的值；若宿主自己读 draft，就会把空串（或上一次的旧草稿）发出去。 * 由调用方接收文本，谁先算出文本谁传参，就不存在读到旧状态的问题。 */ onSend: (String) -&gt; Unit, onStop: () -&gt; Unit, onDismissUser: () -&gt; Unit, /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */ options: List&lt;ClarificationOption&gt; = emptyList(), onPickOption: (ClarificationOption) -&gt; Unit = {}, /** 待批准的计划：非空且 mode 为 [ComposerMode.PLAN_APPROVAL] 时，整块输入面换成计划面板 */ plan: TaskPlan? = null, onApprovePlan: () -&gt; Unit = {}, onCancelPlan: () -&gt; Unit = {}, /** 模型 / 执行与授权两枚转盘：放在面板内部第一行，与 Coding 页节奏一致；横屏矮屏传 null */ dialRow: (@Composable () -&gt; Unit)? = null, focusRequester: FocusRequester, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:AgentEmptyState.kt$( a11yEnabled: Boolean, onPickSuggestion: (String) -&gt; Unit, modifier: Modifier = Modifier, /** 工作台壳层：改用 Eta 那样的「一句提问 + 2×2 建议卡网格」，不再竖排示例行 */ grid: Boolean = false, /** 用户本轮已经明确选过「仍然尝试（截图模式）」 */ screenshotModeChosen: Boolean = false, /** 去系统无障碍设置 */ onOpenPermissions: () -&gt; Unit = {}, /** 去应用内的「权限与执行通道」（服务组件没装时，系统无障碍列表里没有可开的条目） */ onOpenSettings: () -&gt; Unit = {}, /** 明确选择用截图模式继续 */ onChooseScreenshotMode: () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:AgentEmptyState.kt$( a11yEnabled: Boolean, onPickSuggestion: (String) -&gt; Unit, modifier: Modifier = Modifier, screenshotModeChosen: Boolean, onOpenPermissions: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onChooseScreenshotMode: () -&gt; Unit, )</ID>
     <ID>LongParameterList:AgentItems.kt$( text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, enabled: Boolean = true, tone: AgentButtonTone = AgentButtonTone.PRIMARY, )</ID>
     <ID>LongParameterList:AgentPrompts.kt$AgentPrompts$( lang: PromptLang, custom: String, hasVision: Boolean, shizukuAvailable: Boolean, skills: String = "", actionMode: ActionMode = ActionMode.DEFAULT, task: String = "", )</ID>
     <ID>LongParameterList:AgentPrompts.kt$AgentPrompts$( lang: PromptLang, mcpLines: List&lt;String&gt;, disabledNames: List&lt;String&gt;, hasMcpServer: Boolean, historyHint: String = "", macroLines: List&lt;String&gt; = emptyList(), )</ID>
@@ -222,7 +229,8 @@
     <ID>LongParameterList:AgentTaskDrawer.kt$( open: Boolean, sessions: List&lt;TaskSession&gt;, /** 正在规划、尚未产生会话的新任务标题（规划期它不在 sessions 里，单独置顶展示） */ pendingTitle: String?, /** 正在回看的历史任务；null = 跟随实时 */ viewingTaskId: Long?, onSelect: (Long?) -&gt; Unit, onNewTask: () -&gt; Unit, /** 是否允许新建对话：任务运行中为 false（引擎拒绝另起对话，入口置灰并说明原因） */ newConversationEnabled: Boolean = true, onDismiss: () -&gt; Unit, )</ID>
     <ID>LongParameterList:AgentTaskDrawer.kt$( title: String, pillText: String, pillColor: Color, meta: String, timeText: String, selected: Boolean, onClick: () -&gt; Unit, )</ID>
     <ID>LongParameterList:AgentTaskDrawer.kt$( width: Dp, sessions: List&lt;TaskSession&gt;, pendingTitle: String?, viewingTaskId: Long?, onSelect: (Long?) -&gt; Unit, onNewTask: () -&gt; Unit, newConversationEnabled: Boolean, onDismiss: () -&gt; Unit, )</ID>
-    <ID>LongParameterList:AgentTimelineMapperTest.kt$AgentTimelineMapperTest$( submittedTask: String = "", state: AgentState = AgentState(), planPhase: PlanPhase = PlanPhase.Idle, planText: String = "", traces: List&lt;StepTrace&gt; = emptyList(), history: List&lt;StepRecord&gt; = emptyList(), queue: List&lt;String&gt; = emptyList(), needsUser: Boolean = false, needsUserReason: String = "", a11yEnabled: Boolean = true, fold: LiveStatusFold = LiveStatusFold(), memoryEvents: List&lt;MemoryEvent&gt; = emptyList(), sayEvents: List&lt;SayEvent&gt; = emptyList(), clarifyEvents: List&lt;ClarifyAnswered&gt; = emptyList(), focusTaskId: Long? = null, archived: TaskSession? = null, conversationStart: Long = 0L, )</ID>
+    <ID>LongParameterList:AgentTimelineMap.kt$AgentTimelineMapper$( status: TaskStatus, kind: AgentState.FailureKind, reason: String, steps: List&lt;MergedStep&gt;, elapsedMs: Long, a11yEnabled: Boolean, configProblem: String? = null, actions: List&lt;TerminalAction&gt;? = null, )</ID>
+    <ID>LongParameterList:AgentTimelineMapperTest.kt$AgentTimelineMapperTest$( submittedTask: String = "", state: AgentState = AgentState(), planPhase: PlanPhase = PlanPhase.Idle, planText: String = "", traces: List&lt;StepTrace&gt; = emptyList(), history: List&lt;StepRecord&gt; = emptyList(), queue: List&lt;String&gt; = emptyList(), needsUser: Boolean = false, needsUserReason: String = "", a11yEnabled: Boolean = true, fold: LiveStatusFold = LiveStatusFold(), memoryEvents: List&lt;MemoryEvent&gt; = emptyList(), sayEvents: List&lt;SayEvent&gt; = emptyList(), clarifyEvents: List&lt;ClarifyAnswered&gt; = emptyList(), focusTaskId: Long? = null, archived: TaskSession? = null, conversationStart: Long = 0L, lastOutcome: TaskOutcome? = null, configProblem: String? = null, )</ID>
     <ID>LongParameterList:AgentTimelineMapperTest.kt$AgentTimelineMapperTest$( taskId: Long, step: Int, taskName: String = "任务$taskId", received: String = """{"type":"tap","confidence":0.9}""", tokens: Int = 10, latencyMs: Long = 120, )</ID>
     <ID>LongParameterList:AiClient.kt$AiClient$( adapter: ChatProtocolAdapter, baseUrl: String, apiKey: String, model: String, messages: List&lt;ChatMessageDto&gt;, temperature: Double, )</ID>
     <ID>LongParameterList:AiClient.kt$AiClient$( adapter: ChatProtocolAdapter, baseUrl: String, apiKey: String, model: String, messages: List&lt;ChatMessageDto&gt;, temperature: Double, maxTokens: Int, stream: Boolean, )</ID>
@@ -233,6 +241,7 @@
     <ID>LongParameterList:AiClient.kt$AiClient$( baseUrl: String, apiKey: String, model: String, messages: List&lt;ChatMessageDto&gt;, tools: List&lt;ToolSpec&gt;?, adapter: ChatProtocolAdapter?, responseFormat: ResponseFormat? = null, )</ID>
     <ID>LongParameterList:AiClient.kt$AiClient$( baseUrl: String, apiKey: String, model: String, screenshot: Bitmap, purpose: String, target: String? = null, jsonMode: Boolean = false, protocol: ApiProtocol = ApiProtocol.OPENAI, )</ID>
     <ID>LongParameterList:AiClient.kt$AiClient$( messages: List&lt;ChatMessageDto&gt;, model: String, temperature: Double, thinking: Boolean = false, streamOptions: StreamOptions? = null, extras: ActionBodyExtras? = null, )</ID>
+    <ID>LongParameterList:BrowserScreen.kt$( address: String, title: String, url: String, hasPage: Boolean, canGoBack: Boolean, onAddressChange: (String) -&gt; Unit, onGo: () -&gt; Unit, onBack: () -&gt; Unit, )</ID>
     <ID>LongParameterList:ClickRunner.kt$ClickRunner$( pkg: String, targetName: String, verb: String, point: Pair&lt;Int, Int&gt;, hit: NodeHit?, element: UiElement?, selector: NodeSelector?, )</ID>
     <ID>LongParameterList:CloudAgent.kt$CloudAgent$( baseUrl: String, apiKey: String, model: String, messages: List&lt;ChatMessageDto&gt;, userHint: String, onDelta: (String) -&gt; Unit = {}, protocol: ApiProtocol = ApiProtocol.OPENAI, )</ID>
     <ID>LongParameterList:CodingScreen.kt$( values: ComposerValues, canSend: Boolean, onDraftChange: (String) -&gt; Unit, onAttach: () -&gt; Unit, onSend: () -&gt; Unit, onStop: () -&gt; Unit, dialRow: @Composable () -&gt; Unit, )</ID>
@@ -258,15 +267,15 @@
     <ID>LongParameterList:EngineRules.kt$EngineRules$( x: Int, y: Int, direction: String?, distanceArg: Int?, screenW: Int, screenH: Int, )</ID>
     <ID>LongParameterList:FloatingWindowService.kt$FloatingWindowService$( status: String, task: String, reasoning: String, step: Int, total: Int, phase: String, )</ID>
     <ID>LongParameterList:FloatingWindowService.kt$FloatingWindowService.Companion$( status: String, task: String, reasoning: String, step: Int, total: Int, phase: String, )</ID>
+    <ID>LongParameterList:HomeCards.kt$( label: String, value: String, tone: StatusTone, onClick: () -&gt; Unit, modifier: Modifier = Modifier, /** 值下面的补一行信息：执行通道格用它放通道类型（Shizuku / Termux / 无障碍） */ hint: String? = null, )</ID>
     <ID>LongParameterList:HomeCards.kt$( modifier: Modifier = Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, title: String, subtitle: String, onClick: () -&gt; Unit, onPress: () -&gt; Unit = {}, )</ID>
-    <ID>LongParameterList:HomeScreen.kt$( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:HomeScreen.kt$( vm: MainViewModel, modifier: Modifier = Modifier, onRequestScreenshot: () -&gt; Unit, onNavigate: (Int) -&gt; Unit = {}, onOpenExtras: (ExtrasPage) -&gt; Unit = {}, onOpenPermissions: () -&gt; Unit = {}, /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */ onOpenChannel: () -&gt; Unit = {}, /** 模型「云端模型」页：看上次验证结论、重新测试连接 */ onOpenModelSettings: () -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:HumanTranslator.kt$HumanTranslator$( parts: MutableList&lt;String&gt;, key: String?, parent: String?, value: String, intent: String, /** 该字段还没闭合（模型正在逐字吐） */ partial: Boolean = false, )</ID>
     <ID>LongParameterList:IntentResolverTest.kt$IntentResolverTest$( index: Int, left: Int = 0, top: Int = 0, right: Int = 100, bottom: Int = 60, text: String? = null, viewId: String? = null, semanticId: String? = null, )</ID>
     <ID>LongParameterList:IntentTranslator.kt$IntentTranslator$( private val capabilityManager: CapabilityManager, private val appNameResolver: AppNameResolver, private val intentResolver: IntentResolver, /** 当前是否具备 Termux 命令行通道（普通应用权限）；由调用方注入，转译层据此决定 fetch 能否落地 */ private val termuxAvailable: () -&gt; Boolean = { false }, /** 本机语音助手探测结果；由调用方注入，assistant 意图据此决定能否拉起 */ private val assistantProbe: () -&gt; VoiceAssistantDetector.Target? = { null }, /** 无障碍服务是否在线；assistant 意图据此选择"拉起+传话"还是"仅拉起"通道 */ private val a11yReady: () -&gt; Boolean = { false }, /** 当前动作模式（自由模式专属意图的纵深防御自检；主门控在 AgentEngine） */ private val actionMode: () -&gt; ActionMode = { ActionMode.DEFAULT }, )</ID>
     <ID>LongParameterList:IntentTranslatorStrategyTest.kt$IntentTranslatorStrategyTest$( index: Int, text: String, left: Int = 0, top: Int = 0, right: Int = 100, bottom: Int = 60, semanticId: String? = null, )</ID>
     <ID>LongParameterList:IntentTranslatorTest.kt$IntentTranslatorTest$( index: Int, text: String, left: Int = 0, top: Int = 0, right: Int = 100, bottom: Int = 60, )</ID>
     <ID>LongParameterList:LocalDecisionEngineTest.kt$LocalDecisionEngineTest$( index: Int, left: Int = 0, top: Int = 0, right: Int = 100, bottom: Int = 60, text: String? = null, type: String = "Button", )</ID>
-    <ID>LongParameterList:MainActivity.kt$( page: ExtrasPage, vm: MainViewModel, modifier: Modifier, backLabel: String, backIcon: ImageVector, onBack: () -&gt; Unit, )</ID>
     <ID>LongParameterList:MainViewModel.kt$MainViewModel$( private val settings: AppSettings, engineProvider: () -&gt; AgentEngine, private val testEngine: TestEngine, private val shizukuManager: ShizukuManager, private val termuxBridge: TermuxBridge, private val documentEngine: DocumentEngine, private val memoryStore: MemoryStore, private val skillRegistry: SkillRegistry, private val mcpManager: McpManager, private val mcpStore: McpStore, private val shizukuBootstrap: ShizukuBootstrap, private val adbPairingFlow: WirelessAdbPairingFlow, private val updateManager: com.phoneagent.feature.update.UpdateManager, )</ID>
     <ID>LongParameterList:MemoryStore.kt$MemoryStore$( content: String, kind: String, scopeKind: String, scopeValue: String, sourceTask: String, confidence: Double = 0.7, )</ID>
     <ID>LongParameterList:MemoryStore.kt$PageMemoryOps$( list: List&lt;PageMemoryEntry&gt;, appPackage: String, fingerprint: String, pageType: String, title: String, hotspots: List&lt;PageMemoryHotspot&gt;, shapes: List&lt;PageShapeNode&gt;, now: Long, shapeSig: String = "", )</ID>
@@ -274,9 +283,9 @@
     <ID>LongParameterList:MemoryStore.kt$PageMemoryStore$( appPackage: String, fingerprint: String, pageType: String, title: String, hotspots: List&lt;PageMemoryHotspot&gt;, shapes: List&lt;PageShapeNode&gt; = emptyList(), shapeSig: String = "", )</ID>
     <ID>LongParameterList:MemoryStore.kt$ProfileLearner$( fingerprint: String, labels: List&lt;String&gt;, anomalyType: String, description: String, solution: String, resolvedAction: String, appPackage: String, )</ID>
     <ID>LongParameterList:ModelCatalog.kt$ModelCatalogCodec$( apiBaseUrl: String, apiKey: String, model: String, visionBaseUrl: String, visionApiKey: String, visionModel: String, reasonBaseUrl: String, reasonApiKey: String, reasonModel: String, )</ID>
+    <ID>LongParameterList:ModelTrust.kt$ModelTrust$( baseUrl: String, apiKey: String, model: String, verifiedTarget: String, verifiedAt: Long, verifiedOk: Boolean, verifyError: String, )</ID>
     <ID>LongParameterList:NativeVisionEngine.kt$NativeVisionEngine$( handle: Long, rgb: ByteArray, width: Int, height: Int, userPrompt: String, maxTokens: Int, temperature: Float, )</ID>
-    <ID>LongParameterList:OnboardingPermissions.kt$( title: String, description: String, icon: ImageVector, granted: Boolean, onClick: () -&gt; Unit, optional: Boolean = false, )</ID>
-    <ID>LongParameterList:PageFingerprintTest.kt$PageFingerprintTest$( index: Int, left: Int, top: Int, right: Int, bottom: Int, text: String? = null, viewId: String? = null, type: String = "Button", )</ID>
+    <ID>LongParameterList:OnboardingPermissions.kt$( title: String, description: String, icon: ImageVector, granted: Boolean, onClick: () -&gt; Unit, required: Boolean = false, )</ID>
     <ID>LongParameterList:PageMemoryRecorderTest.kt$PageMemoryRecorderTest$( label: String, x: Int, y: Int, type: String = "Button", clickable: Boolean = true, semanticId: String? = null, editable: Boolean = false, )</ID>
     <ID>LongParameterList:PageMemoryTab.kt$( page: PageMemoryEntry, outEdgeCount: Int, armed: Boolean, onArmedChange: (Boolean) -&gt; Unit, onDelete: () -&gt; Unit, onOpen: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
     <ID>LongParameterList:PromptRuleTest.kt$PromptRuleTest$( id: Long, content: String, kind: String = EvolvedRule.SCOPE_GLOBAL, value: String = "", confidence: Double = 0.8, hitCount: Int = 0, )</ID>
@@ -287,7 +296,7 @@
     <ID>LongParameterList:SettingsComponents.kt$( title: String, enabled: Boolean = true, initiallyExpanded: Boolean = false, expanded: Boolean? = null, onExpandedChange: ((Boolean) -&gt; Unit)? = null, content: @Composable () -&gt; Unit, )</ID>
     <ID>LongParameterList:SettingsData.kt$( icon: ImageVector, iconTint: Color, title: String, subtitle: String, actionLabel: String, danger: Boolean = false, onAction: () -&gt; Unit, )</ID>
     <ID>LongParameterList:SettingsDesign.kt$( icon: ImageVector, title: String, subtitle: String, tone: SettingsTone, summary: String? = null, onClick: () -&gt; Unit, )</ID>
-    <ID>LongParameterList:SettingsHome.kt$( title: String, value: String, ready: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier, /** 值下面的补一行信息（当前只有模型格用：线路名） */ hint: String? = null, )</ID>
+    <ID>LongParameterList:SettingsHome.kt$( title: String, value: String, ready: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier, /** 值下面的补一行信息（模型格用：验证时间 / 失败原因） */ hint: String? = null, /** 圆点档位；不传时按 [ready] 二档（兼容旧调用） */ tone: ReadinessTone = if (ready) ReadinessTone.OK else ReadinessTone.DOWN, )</ID>
     <ID>LongParameterList:SettingsModelCatalog.kt$( vm: MainViewModel, st: SettingsState, pickRole: String?, onBack: () -&gt; Unit, onPicked: (endpointId: String?, name: String) -&gt; Unit, /** 探测结果落库：本页没有独立的保存入口，探测完必须立刻持久化，否则离开即丢 */ save: () -&gt; Unit, )</ID>
     <ID>LongParameterList:SettingsTabs.kt$( spec: MainTabSpec, canHide: Boolean, visible: Boolean, canMoveUp: Boolean, canMoveDown: Boolean, onVisibleChange: (Boolean) -&gt; Unit, onMoveUp: () -&gt; Unit, onMoveDown: () -&gt; Unit, )</ID>
     <ID>LongParameterList:SkillEditorDialog.kt$( draft: MacroStepDraft, candidates: List&lt;Skill&gt;, canMoveUp: Boolean, onChange: (MacroStepDraft) -&gt; Unit, onMoveUp: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
@@ -296,6 +305,7 @@
     <ID>LongParameterList:TaskStore.kt$TaskStore$( context: Context, task: String, plan: TaskPlan?, completedSteps: Int, totalPlannedSteps: Int, currentTaskId: Long, )</ID>
     <ID>LongParameterList:TelemetryRecorder.kt$TelemetryRecorder$( step: Int, sent: String, decision: com.phoneagent.core.ai.AiDecision, visionSource: String, visionModel: String, visionDescription: String, screenshot: android.graphics.Bitmap?, /** 需要脱敏时由调用方给出的替代正文；null = 用模型原文 */ receivedTextOverride: String? = null, )</ID>
     <ID>LongParameterList:TestPresetCard.kt$(preset: TestPreset, running: Boolean, lang: PromptLang, enabled: Boolean, onRunTest: () -&gt; Unit, onUseAsTask: () -&gt; Unit)</ID>
+    <ID>LongParameterList:ToolchainReadinessTest.kt$ToolchainReadinessTest$( linux: String = "就绪", jdk: String = "JDK 17.0.16", gradle: String = "8.13", sdk: String = "android-35", buildTools: String = "35.0.0", aapt2: String = "已配置", problems: String = "", )</ID>
     <ID>LongParameterList:VoiceRecordField.kt$( engine: VoiceRecordEngine, value: String, onValueChange: (String) -&gt; Unit, onSend: (String) -&gt; Unit, onFinishRecord: (filePath: String?, durationMs: Long, mode: VoiceFinishMode) -&gt; Unit, modifier: Modifier = Modifier, placeholder: String = "按住说话", onStartRecord: () -&gt; Unit = {}, onCancelRecord: () -&gt; Unit = {}, onRecordTooShort: () -&gt; Unit = {}, onStartFailed: () -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:VoiceRecordField.kt$( engine: VoiceRecordEngine, voiceEnabled: Boolean, /** 短按（未达长按阈值抬起）回调：通常用于唤出键盘 */ onTap: () -&gt; Unit, onFinishRecord: (filePath: String?, durationMs: Long, mode: VoiceFinishMode) -&gt; Unit, modifier: Modifier = Modifier, onStartRecord: () -&gt; Unit = {}, onCancelRecord: () -&gt; Unit = {}, onRecordTooShort: () -&gt; Unit = {}, onStartFailed: () -&gt; Unit = {}, content: @Composable () -&gt; Unit, )</ID>
     <ID>LoopWithTooManyJumpStatements:AgentStepRail.kt$while</ID>
@@ -305,16 +315,14 @@
     <ID>LoopWithTooManyJumpStatements:CodingWorkspaces.kt$CodingWorkspaces$for</ID>
     <ID>LoopWithTooManyJumpStatements:DetectedControl.kt$ControlFormat$for</ID>
     <ID>LoopWithTooManyJumpStatements:EngineRules.kt$EngineRules$for</ID>
-    <ID>LoopWithTooManyJumpStatements:ExecutionCore.kt$ExecutionCore$while</ID>
     <ID>LoopWithTooManyJumpStatements:HtmlToMarkdown.kt$HtmlToMarkdown$while</ID>
     <ID>LoopWithTooManyJumpStatements:Markdown.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:MemoryGraphLabelLayout.kt$for</ID>
     <ID>LoopWithTooManyJumpStatements:MemoryStore.kt$PageMemoryOps$for</ID>
     <ID>LoopWithTooManyJumpStatements:ModelCatalog.kt$ModelCatalogCodec$for</ID>
     <ID>LoopWithTooManyJumpStatements:RuleScoper.kt$RuleScoper$for</ID>
     <ID>LoopWithTooManyJumpStatements:VisionModelDownloader.kt$VisionModelDownloader$while</ID>
     <ID>LoopWithTooManyJumpStatements:VoiceRecordField.kt$while</ID>
-    <ID>MagicNumber:ActionExecutor.kt$ActionExecutor$300</ID>
-    <ID>MagicNumber:ActionExecutor.kt$ActionExecutor$600</ID>
     <ID>MagicNumber:ActiveNotifier.kt$ActiveNotifier$26</ID>
     <ID>MagicNumber:ActiveNotifier.kt$ActiveNotifier$33</ID>
     <ID>MagicNumber:AdContentFilter.kt$AdContentFilter$0.12</ID>
@@ -403,7 +411,6 @@
     <ID>MagicNumber:EngineRules.kt$EngineRules$0x4E00</ID>
     <ID>MagicNumber:EngineRules.kt$EngineRules$0x9FFF</ID>
     <ID>MagicNumber:EngineRules.kt$EngineRules$3</ID>
-    <ID>MagicNumber:EngineRules.kt$EngineRules$6</ID>
     <ID>MagicNumber:ExecutionFlowPanel.kt$0.6</ID>
     <ID>MagicNumber:FloatingUi.kt$FloatingUi$0.44f</ID>
     <ID>MagicNumber:FloatingUi.kt$FloatingUi$0.52f</ID>
@@ -459,7 +466,6 @@
     <ID>MagicNumber:LogExporter.kt$LogExporter$12</ID>
     <ID>MagicNumber:LogExporter.kt$LogExporter$48</ID>
     <ID>MagicNumber:LogExporter.kt$LogExporter$500</ID>
-    <ID>MagicNumber:MainViewModel.kt$MainViewModel$6</ID>
     <ID>MagicNumber:Markdown.kt$1600</ID>
     <ID>MagicNumber:Markdown.kt$6</ID>
     <ID>MagicNumber:McpClient.kt$HttpMcpTransport$32000</ID>
@@ -476,6 +482,9 @@
     <ID>MagicNumber:MemoryGraphCanvas.kt$0.70f</ID>
     <ID>MagicNumber:MemoryGraphCanvas.kt$0.80f</ID>
     <ID>MagicNumber:MemoryGraphCanvas.kt$0.89f</ID>
+    <ID>MagicNumber:MemoryGraphLabelLayout.kt$0.85f</ID>
+    <ID>MagicNumber:MemoryGraphLabelLayout.kt$1.15f</ID>
+    <ID>MagicNumber:MemoryGraphLabelLayout.kt$3</ID>
     <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$0.6f</ID>
     <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$10</ID>
     <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$16</ID>
@@ -522,8 +531,6 @@
     <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$3</ID>
     <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$4</ID>
     <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$6</ID>
-    <ID>MagicNumber:SettingsAbout.kt$1_000_000</ID>
-    <ID>MagicNumber:SettingsAbout.kt$2_000_000</ID>
     <ID>MagicNumber:SettingsAgent.kt$20</ID>
     <ID>MagicNumber:SettingsAppearance.kt$16</ID>
     <ID>MagicNumber:SettingsCodingEnvParts.kt$8</ID>
@@ -800,21 +807,17 @@
     <ID>MaxLineLength:FloatingWindowService.kt$FloatingWindowService$val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }</ID>
     <ID>MaxLineLength:HtmlToMarkdownTest.kt$HtmlToMarkdownTest$assertEquals("看图 ![图](https://e.com/a.png)", HtmlToMarkdown.convert("&lt;p&gt;看图 &lt;img src=\"https://e.com/a.png\" alt=\"图\"&gt;&lt;/p&gt;").markdown)</ID>
     <ID>MaxLineLength:HumanTranslator.kt$HumanTranslator$if (confidence != null) sb.append(" · ").append(confidenceWord(confidence)).append(" ${(confidence * 100).toInt()}%")</ID>
-    <ID>MaxLineLength:IntentTranslator.kt$AssistantStrategy$ctx.base.copy(type = ActionType.SHELL, command = command, packageName = target.packageName, reason = reason)</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.CLOSE, SemanticActionStrategy(listOf("close_btn", "dlg_dismiss", "ad_skip"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.COLLECT, SemanticActionStrategy(listOf("collect_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.CONFIRM, SemanticActionStrategy(listOf("dlg_allow", "confirm_btn", "checkout_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.COPY, SemanticActionStrategy(listOf("copy_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.DOWNLOAD, SemanticActionStrategy(listOf("download_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
-    <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.INPUT, TargetLocationStrategy(intentResolver, ActionType.TYPE_TEXT) { a, i -&gt; a.copy(text = i.text) })</ID>
-    <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.LONG_PRESS, TargetLocationStrategy(intentResolver, ActionType.LONG_CLICK) { a, i -&gt; a.copy(durationMs = i.durationMs) })</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.REFRESH, SemanticActionStrategy(listOf("refresh_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SEARCH, SemanticActionStrategy(listOf("search_box", "search_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SEND, SemanticActionStrategy(listOf("send_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SHARE, SemanticActionStrategy(listOf("share_btn"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SHOW_AGENT, passthrough(ActionType.SHOW_AGENT) { i, a -&gt; a.copy(text = i.text, summary = i.summary) })</ID>
-    <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SWIPE, passthrough(ActionType.SWIPE) { i, a -&gt; a.copy(direction = i.direction, distancePx = i.distancePx) })</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))</ID>
     <ID>MaxLineLength:IntentTranslator.kt$IntentTranslator$put(IntentType.WRITE_DOC, passthrough(ActionType.WRITE_DOC) { i, a -&gt; a.copy(text = i.text, summary = i.summary) })</ID>
     <ID>MaxLineLength:IntentTranslator.kt$OpenAppStrategy$reason = "AI 输出了 open_app 但未提供 app（应用名或包名）。请补全 app 字段，例如 {\"app\":\"美团\"} 或 {\"app\":\"com.sankuai.meituan\"}。"</ID>
@@ -837,9 +840,7 @@
     <ID>MaxLineLength:LongRunModelTest.kt$LongRunModelTest$val snapshot = ScreenSnapshot(packageName = "com.meituan", screenWidth = 1080, screenHeight = 2400, elements = stage.elements)</ID>
     <ID>MaxLineLength:MacroStepExpander.kt$MacroStepExpander$fun</ID>
     <ID>MaxLineLength:MainViewModel.kt$MainViewModel$fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption)</ID>
-    <ID>MaxLineLength:MainViewModel.kt$MainViewModel$if</ID>
     <ID>MaxLineLength:MainViewModel.kt$MainViewModel$suspend</ID>
-    <ID>MaxLineLength:MainViewModel.kt$MainViewModel$val</ID>
     <ID>MaxLineLength:Markdown.kt$.</ID>
     <ID>MaxLineLength:Markdown.kt$if (heading != null) { flushPara(); flushBullets(); out += MdB.Heading(heading.first, stripInline(heading.second)); i++; continue }</ID>
     <ID>MaxLineLength:Markdown.kt$if (line.startsWith("```")) { inCode = false; out += MdB.Code(code.toString()); code.setLength(0); i++; continue }</ID>
@@ -910,6 +911,7 @@
     <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$is PlanPhase.Clarifying -&gt; ui.log(com.phoneagent.domain.model.AgentLog.Level.AI, "需要澄清：${phase.clarification.question}")</ID>
     <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$is PlanPhase.Reply -&gt; ui.log(com.phoneagent.domain.model.AgentLog.Level.AI, "纯对话回复：${phase.text.take(60)}")</ID>
     <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$runCatching { AgentPrompts.pageMemoryPlanningBlock(lang, ctx.pageMemoryPlanningLines(task, lang)) }.getOrDefault("")</ID>
+    <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$scope.launch { settings.markModelUnverifiedWarned(snapshot.apiBaseUrl, snapshot.apiKey, snapshot.model) }</ID>
     <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$store.planPhase.value = planWithRepair(task, question, option.label) { delta -&gt; store.planStream.value += delta }</ID>
     <ID>MaxLineLength:PlanningFlow.kt$PlanningFlow$val profile = memory.loadProfile().takeIf { it.isNotEmpty() }?.joinToString(", ") { "${it.key}:${it.value}" } ?: ""</ID>
     <ID>MaxLineLength:PromptAssembler.kt$PromptAssembler$(if (block.excludes.any { it in ctx.flags }) "；命中排除 ${block.excludes.filter { it in ctx.flags }.joinToString("+")}" else "")</ID>
@@ -1072,8 +1074,6 @@
     <ID>NestedBlockDepth:TestEngine.kt$TestEngine$private fun evaluate(case: TestCase, raw: String, latencyMs: Long): TestResult</ID>
     <ID>NestedBlockDepth:VisionModelDownloader.kt$VisionModelDownloader$private fun downloadFile( dir: File, fileName: String, urlStr: String, expectedSize: Long, onPartial: (Long, Long) -&gt; Unit, ): Long</ID>
     <ID>ReturnCount:AcaSkillCatalog.kt$AcaSkillCatalog$private fun parseManifest(dir: File): AcaSkillInfo?</ID>
-    <ID>ReturnCount:ActionExecutor.kt$ActionExecutor$fun liveCenter(selector: NodeSelector): Pair&lt;Int, Int&gt;?</ID>
-    <ID>ReturnCount:ActionExecutor.kt$ActionExecutor$fun openUri(uri: String, pkg: String? = null): Result</ID>
     <ID>ReturnCount:ActionExecutor.kt$ActionExecutor$suspend fun assistantVisible(pkg: String?, timeoutMs: Long = ASSISTANT_WAKE_TIMEOUT_MS): Boolean</ID>
     <ID>ReturnCount:AdContentFilter.kt$AdContentFilter$fun filter(snapshot: ScreenSnapshot): AdFilterResult</ID>
     <ID>ReturnCount:AdContentFilter.kt$AdContentFilter$private fun findCloseButton( all: List&lt;UiElement&gt;, region: RectRegion, adElements: List&lt;UiElement&gt;, margin: Int, ): UiElement?</ID>
@@ -1099,15 +1099,13 @@
     <ID>ReturnCount:AppPageIndex.kt$AppPageIndex$fun resolve(appQuery: String?, page: Int?): Entry?</ID>
     <ID>ReturnCount:AssistContextStore.kt$AssistContextStore$fun freshText(): String</ID>
     <ID>ReturnCount:BrowserBridge.kt$BrowserBridge$private fun silent(): WebView?</ID>
-    <ID>ReturnCount:BrowserChannel.kt$BrowserChannel$private fun guard(by: String, value: String, intent: AgentIntent): Outcome?</ID>
     <ID>ReturnCount:BrowserGuard.kt$BrowserGuard$fun match(text: String?): String?</ID>
     <ID>ReturnCount:BrowserGuard.kt$BrowserGuard$fun selectorSuspicious(selector: String?): Boolean</ID>
+    <ID>ReturnCount:BrowserScreen.kt$internal fun navigableUrl(raw: String): String?</ID>
     <ID>ReturnCount:CapabilityVisuals.kt$CapabilityVisuals$fun nameOf(type: String?): String</ID>
     <ID>ReturnCount:ChatProtocols.kt$ChatProtocols$internal fun imageOf(content: List&lt;ContentPart&gt;): Pair&lt;String, String&gt;?</ID>
     <ID>ReturnCount:ClickRunner.kt$ClickRunner$private fun isMismatch(hit: NodeHit, element: UiElement?, selector: NodeSelector?): Boolean</ID>
-    <ID>ReturnCount:ClickRunner.kt$ClickRunner$private fun judge( before: ScreenSnapshot, beforeState: UiElement?, after: ScreenSnapshot, beforeFp: String, afterFp: String, ): Pair&lt;Boolean, String&gt;</ID>
     <ID>ReturnCount:ClickRunner.kt$ClickRunner$private fun switchedApp(after: ScreenSnapshot, before: ScreenSnapshot): Boolean</ID>
-    <ID>ReturnCount:ClickRunner.kt$ClickRunner$private suspend fun confirm(before: ScreenSnapshot, beforeState: UiElement?, verb: String): VerifyResult</ID>
     <ID>ReturnCount:ClickRunner.kt$ClickRunner$suspend fun run(action: AgentAction, snapshot: ScreenSnapshot, longClick: Boolean = false): VerifyResult</ID>
     <ID>ReturnCount:ClockFallback.kt$ClockFallbackRunner$private suspend fun clockPageText(request: ClockRequest, matches: (String) -&gt; Boolean): String?</ID>
     <ID>ReturnCount:ClockFallback.kt$ClockFallbackRunner$private suspend fun providerHasAlarm(request: ClockRequest): Boolean?</ID>
@@ -1139,7 +1137,6 @@
     <ID>ReturnCount:EdgeLightingService.kt$EdgeLightingService$override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int</ID>
     <ID>ReturnCount:EngineRules.kt$EngineRules$fun extractJsonBackward(text: String): String?</ID>
     <ID>ReturnCount:EngineRules.kt$EngineRules$fun extractJsonObject(content: String): String</ID>
-    <ID>ReturnCount:EngineRules.kt$EngineRules$fun idempotencyDone(snapshot: ScreenSnapshot): Boolean</ID>
     <ID>ReturnCount:ExecutionCore.kt$ExecutionCore$private suspend fun executeOnVirtualDisplay( vd: com.phoneagent.device.screen.VirtualDisplayAgent, action: AgentAction, type: String, snapshot: ScreenSnapshot, ): com.phoneagent.engine.execution.VerifyResult</ID>
     <ID>ReturnCount:ExecutionCore.kt$ExecutionCore$private suspend fun executeShellViaAccessibility(cmd: String): com.phoneagent.engine.execution.VerifyResult</ID>
     <ID>ReturnCount:ExecutionCore.kt$ExecutionCore$private suspend fun executeWriteDoc(action: AgentAction): com.phoneagent.engine.execution.VerifyResult</ID>
@@ -1154,6 +1151,7 @@
     <ID>ReturnCount:FloatingWindowService.kt$FloatingWindowService$private fun statusBarHeight(): Int</ID>
     <ID>ReturnCount:HeadlessWebHost.kt$HeadlessWebHost$fun ensure(context: Context): WebView?</ID>
     <ID>ReturnCount:HeadlessWebHost.kt$HeadlessWebHost$private fun relayoutIfNeeded()</ID>
+    <ID>ReturnCount:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$suspend fun ensure(): Resolved</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun isHtml(raw: String): Boolean</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun takeBlocks(markdown: String, budget: Int): String</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun codePoint(digits: String, radix: Int): String?</ID>
@@ -1184,7 +1182,6 @@
     <ID>ReturnCount:LocalDetector.kt$LocalDetector$private fun close(a: DetectedControl, b: DetectedControl): Boolean</ID>
     <ID>ReturnCount:LogExporter.kt$LogExporter$private fun writeToDownloads(context: Context, values: ContentValues, payload: ByteArray): Boolean</ID>
     <ID>ReturnCount:MainActivity.kt$internal fun shouldShowProviderInstallPrompt(context: android.content.Context): Boolean</ID>
-    <ID>ReturnCount:MainViewModel.kt$MainViewModel$fun openPermissionSettings(context: Context, kind: PermissionKind)</ID>
     <ID>ReturnCount:Markdown.kt$fun looksLikeMarkdown(text: String): Boolean</ID>
     <ID>ReturnCount:Markdown.kt$private fun bulletOf(line: String): Pair&lt;String, Boolean&gt;?</ID>
     <ID>ReturnCount:Markdown.kt$private fun headingOf(line: String): Pair&lt;Int, String&gt;?</ID>
@@ -1200,6 +1197,7 @@
     <ID>ReturnCount:McpRules.kt$McpRules$fun validateProtocol(protocolVersion: String): McpValidation</ID>
     <ID>ReturnCount:McpRules.kt$McpRules$fun validateUrl(url: String): McpValidation</ID>
     <ID>ReturnCount:MemoryStore.kt$PageMemoryOps$fun upsertEdge( list: List&lt;PagePathEdge&gt;, appPackage: String, fromFp: String, toFp: String, actionLabel: String, fromControl: String, now: Long, ): Pair&lt;List&lt;PagePathEdge&gt;, PagePathEdge&gt;?</ID>
+    <ID>ReturnCount:ModelTrust.kt$ModelTrust$fun resolve( baseUrl: String, apiKey: String, model: String, verifiedTarget: String, verifiedAt: Long, verifiedOk: Boolean, verifyError: String, ): Snapshot</ID>
     <ID>ReturnCount:NativeVisionEngine.kt$NativeVisionEngine$fun init(context: Context): Boolean</ID>
     <ID>ReturnCount:OfflineMethodDocRetriever.kt$OfflineMethodDocRetriever$override suspend fun retrieve(task: String, foregroundPackage: String?, limit: Int): List&lt;MethodDoc&gt;</ID>
     <ID>ReturnCount:PageMemoryRecorder.kt$PageMemoryRecorder$private fun extractShapes(annotated: AnnotatedPage): List&lt;PageShapeNode&gt;</ID>
@@ -1260,6 +1258,7 @@
     <ID>TooGenericExceptionCaught:ExecutionCore.kt$ExecutionCore$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:HeadlessWebHost.kt$HeadlessWebHost$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:HostBridgeServer.kt$HostBridgeServer$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$e: Exception</ID>
     <ID>TooGenericExceptionCaught:LocalAgent.kt$LocalAgent$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Markdown.kt$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:McpClient.kt$HttpMcpTransport$e: Exception</ID>
@@ -1296,10 +1295,12 @@
     <ID>TooManyFunctions:Markdown.kt$com.phoneagent.ui.components.Markdown.kt</ID>
     <ID>TooManyFunctions:MarqueeView.kt$MarqueeView : View</ID>
     <ID>TooManyFunctions:McpManager.kt$McpManager</ID>
+    <ID>TooManyFunctions:MemoryDelegate.kt$MemoryDelegate</ID>
     <ID>TooManyFunctions:MemoryStore.kt$MemoryStore : PageMemoryStore</ID>
     <ID>TooManyFunctions:NativeVisionEngine.kt$NativeVisionEngine</ID>
     <ID>TooManyFunctions:PageMemoryRecorder.kt$PageMemoryRecorder</ID>
     <ID>TooManyFunctions:PlanningFlow.kt$PlanningFlow</ID>
+    <ID>TooManyFunctions:ProjectToolchainProbe.kt$ProjectToolchainProbe</ID>
     <ID>TooManyFunctions:ProviderManager.kt$ProviderManager</ID>
     <ID>TooManyFunctions:ScreenSharingService.kt$ScreenSharingService : Service</ID>
     <ID>TooManyFunctions:SettingsComponents.kt$.SettingsComponents.kt</ID>
@@ -1342,7 +1343,6 @@
     <ID>UnusedPrivateMember:NativeVisionEngine.kt$NativeVisionEngine$private external fun nativeLoadLibs(): String?</ID>
     <ID>UnusedPrivateMember:NativeVisionEngine.kt$NativeVisionEngine$private external fun nativeVersion(): String</ID>
     <ID>UnusedPrivateProperty:FloatingWindowService.kt$FloatingWindowService$private var miniParams: WindowManager.LayoutParams? = null</ID>
-    <ID>UnusedPrivateProperty:MainViewModel.kt$MainViewModel$val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager</ID>
     <ID>UnusedPrivateProperty:McpClientTest.kt$McpClientTest$private val json = Json</ID>
     <ID>UseCheckOrError:AiClient.kt$AiClient$throw IllegalStateException("请求未送达：${e.message ?: e.javaClass.simpleName}")</ID>
     <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 已存在")</ID>
