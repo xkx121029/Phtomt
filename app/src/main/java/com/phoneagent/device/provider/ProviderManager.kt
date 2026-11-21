@@ -219,10 +219,11 @@ object ProviderManager {
         if (ProviderContract.judge(_apiVersion.value) is ProviderContract.Verdict.AppOutdated) {
             return InstallLaunch.Failed(ProviderContract.mismatchReason(_apiVersion.value).orEmpty())
         }
-        // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜
+        // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜。
+        // 文案不写「再点一次」：引导页会在返回时自动续装，其余入口各有自己的续装逻辑
         if (!canInstallPackages(context)) {
             openInstallPermissionSettings(context)
-            return InstallLaunch.Failed("需要先允许本应用安装未知应用，已为你打开设置页，授权后回来再点一次")
+            return InstallLaunch.Failed("需要先允许本应用安装未知应用，已为你打开系统设置页")
         }
 
         val apkDir = File(context.cacheDir, "provider").apply { mkdirs() }
