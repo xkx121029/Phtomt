@@ -156,6 +156,47 @@ class IntentResolverTest {
         assertEquals(90, r.y)
     }
 
+    // ---- 节点直点的定位线索：位置不是标识 ----
+    // 无字图标（elementIndex 选中、没有 viewId 也没有文字）曾经能产出"只有 centerHint"的线索，
+    // Provider 拿它去 NodesAtPoint 找"此刻压在这个点上的控件"并上溯祖先点下去，而这条直点路径
+    // 不做落点审计：AI 选中图标、页面滚过一屏之后，点中的是邻居还判成功。
+
+    @Test
+    fun 无viewId无文字的元素不产出节点线索() {
+        val icon = elem(3, left = 960, top = 200, right = 1040, bottom = 280)
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 3,
+        )
+        assertNull(resolver.nodeSelectorOf(action, icon))
+    }
+
+    @Test
+    fun 有viewId的元素产出节点线索() {
+        val btn = elem(4, viewId = "com.app:id/btn_more")
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 4,
+        )
+        val selector = resolver.nodeSelectorOf(action, btn)
+        assertNotNull(selector)
+        assertEquals("com.app:id/btn_more", selector?.viewId)
+    }
+
+    @Test
+    fun 有文字的元素产出节点线索并保留位置线索() {
+        val btn = elem(5, text = "更多", left = 900, top = 200, right = 1000, bottom = 260)
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 5,
+        )
+        val selector = resolver.nodeSelectorOf(action, btn)
+        assertNotNull(selector)
+        assertEquals("更多", selector?.label)
+        // 位置仍然保留：同 viewId / 同文字的控件常出现在列表每一行，Provider 靠它选最近的那个
+        assertEquals(950 to 230, selector?.centerHint)
+    }
+
     @Test
     fun 无目标_返回空结果() {
         val s = snapshot(elem(0, text = "首页"))
