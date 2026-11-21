@@ -38,9 +38,11 @@ const normalizeVersion = (input) => {
   return /^v/i.test(v) ? v : `v${v}`
 }
 
+// 剥掉 `-beta` / `-dev` 预发布后缀再逐段比较，理由同 helpers.js 的 compareVersion。
 const compareVersion = (a, b) => {
-  const pa = String(a).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
-  const pb = String(b).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
+  const segments = (v) => String(v).replace(/^v/i, '').split('-')[0].split('.').map((n) => Number(n) || 0)
+  const pa = segments(a)
+  const pb = segments(b)
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const diff = (pa[i] || 0) - (pb[i] || 0)
     if (diff) return diff

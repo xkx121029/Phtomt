@@ -16,10 +16,17 @@ export function humanSize(bytes) {
   return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
 }
 
-/** 版本号排序：0.1.371 > 0.1.9（逐段数值比较，不做字符串比较） */
+/**
+ * 版本号排序：0.1.371 > 0.1.9（逐段数值比较，不做字符串比较）。
+ *
+ * 必须先剥掉预发布后缀 `-beta` / `-dev`：Release 的 version 直接取自 tag（`v0.2.9195-beta`），
+ * 而包内 versionName 现在也带同一个后缀。不剥的话最后一段 `9195-beta` 会被 Number() 变成 NaN，
+ * 整段比较退化成「0.2.0 恒等于 0.2.0」，升级检查只能靠构建号兜底。
+ */
 export function compareVersion(a, b) {
-  const pa = String(a).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
-  const pb = String(b).replace(/^v/i, '').split('.').map((n) => Number(n) || 0)
+  const segments = (v) => String(v).replace(/^v/i, '').split('-')[0].split('.').map((n) => Number(n) || 0)
+  const pa = segments(a)
+  const pb = segments(b)
   const len = Math.max(pa.length, pb.length)
   for (let i = 0; i < len; i += 1) {
     const diff = (pa[i] || 0) - (pb[i] || 0)

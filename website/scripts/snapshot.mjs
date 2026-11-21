@@ -28,9 +28,11 @@ const readJSON = (name, fallback) => {
   }
 }
 
+// 剥掉 `-beta` / `-dev` 预发布后缀再逐段比较，理由同 server/lib/helpers.js 的 compareVersion。
 const compareVersion = (a, b) => {
-  const pa = String(a).replace(/^v/i, '').split('.').map(Number)
-  const pb = String(b).replace(/^v/i, '').split('.').map(Number)
+  const segments = (v) => String(v).replace(/^v/i, '').split('-')[0].split('.').map(Number)
+  const pa = segments(a)
+  const pb = segments(b)
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const d = (pa[i] || 0) - (pb[i] || 0)
     if (d) return d
