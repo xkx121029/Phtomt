@@ -55,6 +55,15 @@ jobs:
     env:
       # 渠道判定：手动触发用输入值，否则 nightly 分支 = dev，其余 = beta
       CHANNEL: ${{ github.event.inputs.channel || (github.ref_name == 'nightly' && 'dev' || 'beta') }}
+      # 已废弃的「渠道偏移号段」下界 = 1,000,000，与 root build.gradle.kts 的
+      # LEGACY_CHANNEL_SEGMENT_FLOOR 同值、同含义（两个文件各自独立执行，没法共享常量，改要一起改）。
+      #
+      # cdd967a8（2026-11-05 07:35）曾用 versionCode 段位编码渠道：dev = 1000000 + run，
+      # beta = 2000000 + run。同一天 474c6262 就改回单序列计数器，但那段号已经发布成 tag
+      # （v0.2.1000084-dev、v0.2.2000083-beta … v0.2.2000093-beta）留在仓库里。
+      # 它们不是「水位」：算进来的话 versionCode 会永远卡在 200 万号段，和 tag / Release 的
+      # 0.2.9xxx 命名彻底脱节——这正是「CI 构件流的版本号和我们使用的版本号系统不相符」的根因。
+      LEGACY_VERSION_SEGMENT_FLOOR: '1000000'
 
     steps:
       - name: Checkout
@@ -190,7 +199,19 @@ jobs:
             echo "::error title=读不到已发布 tag::tags API 没有返回任何 v0.2.* tag，无法确定 versionCode 水位；拒绝出包（否则可能撞号覆盖旧 Release）"
             exit 1
           fi
-          TAG_MAX=$(printf '%s\n' "$TAGS" | tail -1)
+
+          # 水位只认**当前号段**：>= LEGACY_VERSION_SEGMENT_FLOOR 的号属于已废弃的渠道偏移号段
+          # （dev = 1000000+run、beta = 2000000+run，见文件顶部 env 的说明），它们不是占用。
+          # 没有当前号段的 tag 时 TAG_MAX 记 0，交给计数器决定基准——首次启用不崩。
+          TAG_MAX=$(printf '%s\n' "$TAGS" | awk -v floor="$LEGACY_VERSION_SEGMENT_FLOOR" '$1 + 0 < floor + 0' | tail -1)
+          TAG_MAX=${TAG_MAX:-0}
+
+          # 计数器同样要设上界：被污染的 BUILD_NUMBER=2000093 既不是当前号段的水位，
+          # 也不该参与 max() —— 否则 tag 修好了，脏计数器照样把号拖回 200 万。
+          if [ "$COUNTER" -ge "$LEGACY_VERSION_SEGMENT_FLOOR" ] 2>/dev/null; then
+            echo "::warning title=计数器落在已废弃号段::nightly 的 BUILD_NUMBER=$COUNTER（>= $LEGACY_VERSION_SEGMENT_FLOOR），按 0 处理；基准改由当前号段 tag 水位决定"
+            COUNTER=0
+          fi
 
           if [ "$TAG_MAX" -gt "$COUNTER" ]; then
             echo "计数器落后于已发布 tag（$COUNTER < $TAG_MAX），以 tag 为基准：计数器漏了一次推进"
@@ -268,12 +289,14 @@ jobs:
 
       - name: Assert APK version matches tag
         # tag / Release 名 / APK 文件名都来自上一步注入的 version_code（见 Compute version + tag）。
-        # 这里对**最终产物**硬断言：包内 versionCode 必须等于 tag 里的号，versionName 必须是 0.2.<号>。
+        # 这里对**最终产物**硬断言：包内 versionCode 必须等于 tag 里的号，
+        # versionName 必须是 0.2.<号>-<渠道>，与 tag / Release 名完全同一个字符串。
         # 目的：一旦以后有人改回「构建后自增」或绕开 -PbuildNumber，tag 会指向上一版的包；
         # 这一步在发布前直接红，避免发出「tag 与包内版本永久错一位」的 Release。
         env:
           APK: ${{ steps.ver.outputs.apk }}
           EXPECT_CODE: ${{ steps.ver.outputs.version_code }}
+          EXPECT_NAME: ${{ steps.ver.outputs.version_name }}
         run: |
           AAPT="$(command -v aapt || true)"
           if [ -z "$AAPT" ]; then
@@ -294,13 +317,13 @@ jobs:
             CODE=$(jq -r '.elements[0].versionCode' "$META")
             NAME=$(jq -r '.elements[0].versionName' "$META")
           fi
-          echo "包内：versionCode=$CODE versionName=$NAME；tag 预期：v0.2.$EXPECT_CODE"
+          echo "包内：versionCode=$CODE versionName=$NAME；tag 预期：v$EXPECT_NAME"
           if [ "$CODE" != "$EXPECT_CODE" ]; then
             echo "::error title=版本号与 tag 不一致::tag 将使用 $EXPECT_CODE，但 APK 实际是 $CODE（相差 $((CODE - EXPECT_CODE))）"
             exit 1
           fi
-          if [ "$NAME" != "0.2.$EXPECT_CODE" ]; then
-            echo "::error title=versionName 与 tag 不一致::期望 0.2.$EXPECT_CODE，实际 $NAME"
+          if [ "$NAME" != "$EXPECT_NAME" ]; then
+            echo "::error title=versionName 与 tag 不一致::期望 $EXPECT_NAME，实际 $NAME"
             exit 1
           fi
           echo "- ✅ 包内版本与 tag 一致：versionCode=$CODE，versionName=$NAME" >> "$GITHUB_STEP_SUMMARY"
@@ -439,8 +462,10 @@ jobs:
           FAIL_REASON=""
           # 已发布 tag 的最大 versionCode：Compute 步骤透传的值 + 这里重读一次，取较大者。
           # 重读是为了盖住「Compute 之后又有新 tag 落地」的窗口；读失败就沿用透传值。
+          # 同样只认当前号段（< LEGACY_VERSION_SEGMENT_FLOOR）：废弃的渠道偏移号段不是水位。
           TAG_MAX_NOW=$(gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' 2>/dev/null \
-            | sed -n 's/^v0\.2\.\([0-9][0-9]*\)\(-.*\)\?$/\1/p' | sort -n | tail -1)
+            | sed -n 's/^v0\.2\.\([0-9][0-9]*\)\(-.*\)\?$/\1/p' \
+            | awk -v floor="$LEGACY_VERSION_SEGMENT_FLOOR" '$1 + 0 < floor + 0' | sort -n | tail -1)
           if [ "${TAG_MAX_NOW:-0}" -gt "${TAG_MAX:-0}" ] 2>/dev/null; then TAG_MAX=$TAG_MAX_NOW; fi
           for attempt in 1 2 3; do
             SHA=$(gh api "repos/$GITHUB_REPOSITORY/contents/version.properties?ref=nightly" --jq .sha 2>/dev/null)
@@ -451,6 +476,13 @@ jobs:
               echo "读取失败：$FAIL_REASON，重试 $attempt" >&2
               sleep 3
               continue
+            fi
+            # 计数器也要设上界：读到 2000093 这种「已废弃号段」的脏值时必须按 0 处理，
+            # 否则 TARGET 会变成 2000094，把刚修好的 9xxx 水位又拖回 200 万。
+            CUR_RAW=$CUR
+            if [ "$CUR" -ge "$LEGACY_VERSION_SEGMENT_FLOOR" ] 2>/dev/null; then
+              echo "nightly 计数器 $CUR 落在已废弃号段，按 0 处理（不会把水位拖回 200 万）"
+              CUR=0
             fi
             # 目标值 = max(本次 CODE, 当前值 + 1, 已发布 tag 最大值 + 1)，绝不回退。
             # 后两项是自愈：本地构建抢先推进过就跳到它之后；计数器本身已经落后于 tag
@@ -464,18 +496,18 @@ jobs:
             if gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/version.properties" \
                  -f message="ci: 版本计数器推进到 $TARGET（$CHANNEL）" \
                  -f content="$CONTENT" -f sha="$SHA" -f branch=nightly --silent; then
-              echo "version.properties: $CUR -> $TARGET（本次发布 $CODE，已发布 tag 最大 $TAG_MAX）"
+              echo "version.properties: $CUR_RAW -> $TARGET（本次发布 $CODE，已发布 tag 最大 $TAG_MAX）"
               exit 0
             fi
-            FAIL_REASON="PUT 被拒（sha 冲突或权限不足），nightly 仍是 $CUR"
+            FAIL_REASON="PUT 被拒（sha 冲突或权限不足），nightly 仍是 $CUR_RAW"
             echo "回写冲突，重试 $attempt" >&2
             sleep 3
           done
-          echo "::error title=版本计数器未推进::上一次已发布但计数器未推进 —— $TAG 的 GitHub Release 已发布（versionCode $CODE），nightly 的 version.properties 仍停在 ${CUR:-未知}：$FAIL_REASON。计数器只是 tag 的副本，下一次运行会把 ${TAG_MAX} 与计数器取较大值再 +1，因此不会撞号覆盖；但仍应人工确认 nightly 的 BUILD_NUMBER 不小于 $((CODE + 1))。"
+          echo "::error title=版本计数器未推进::上一次已发布但计数器未推进 —— $TAG 的 GitHub Release 已发布（versionCode $CODE），nightly 的 version.properties 仍停在 ${CUR_RAW:-未知}：$FAIL_REASON。计数器只是 tag 的副本，下一次运行会把 ${TAG_MAX} 与计数器取较大值再 +1，因此不会撞号覆盖；但仍应人工确认 nightly 的 BUILD_NUMBER 不小于 $((CODE + 1))。"
           {
             echo "## ❌ 版本计数器未推进"
             echo
-            echo "- 上一次已发布但计数器未推进：**$TAG 已发布**（versionCode \`$CODE\`），nightly 的 \`version.properties\` 仍停在 \`${CUR:-未知}\`。"
+            echo "- 上一次已发布但计数器未推进：**$TAG 已发布**（versionCode \`$CODE\`），nightly 的 \`version.properties\` 仍停在 \`${CUR_RAW:-未知}\`。"
             echo "- 失败原因：$FAIL_REASON"
             echo "- 影响：版本号以「已发布 tag 的最大 versionCode」为权威，下一次运行会自动算出不冲突的号，**不会撞号、不会覆盖已发布 Release**；但计数器本身仍未推进，建议人工确认。"
             echo "- 处置：确认 nightly 的 \`BUILD_NUMBER\` 不小于 \`$((CODE + 1))\`。"
