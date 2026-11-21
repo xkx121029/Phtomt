@@ -30,6 +30,9 @@ private const val REQUEST_NOTIFICATIONS = 4401
 /** 麦克风权限的运行时请求码（权限雷达与输入框录音按钮各自独立，互不干扰） */
 private const val REQUEST_RECORD_AUDIO = 4402
 
+/** 从非 Activity 上下文启动系统设置页时必须带上，否则会抛 ActivityNotFoundException */
+private const val NEW_TASK_FLAG = Intent.FLAG_ACTIVITY_NEW_TASK
+
 /**
  * 权限域：无障碍 / 悬浮窗 / 截图 / Termux / Shizuku 状态，以及权限雷达的聚合与跳转。
  *
@@ -275,116 +278,126 @@ class PermissionsDelegate(
             runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
 
     /** 一键跳转到对应权限授权页 */
-    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     fun openPermissionSettings(context: Context, kind: PermissionKind) {
-        val flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        // 自启动与后台：优先拉起「允许应用忽略电池优化」的系统确认弹窗
-        //（清单已声明 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS，允许直接弹窗）；
-        // 被机型拦截/无弹窗时回退厂商自启动管理页，最后回退电池优化白名单列表页
-        if (kind == PermissionKind.AUTOSTART) {
-            // 关键：从 Activity 上下文启动时不加 NEW_TASK——该弹窗的 taskAffinity 归系统设置，
-            // 加了 NEW_TASK 会把设置任务切到前台、弹窗盖在设置上而不是本应用上
-            val fromActivity = context is Activity
-            val fallbacks = listOfNotNull(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:${context.packageName}")),
-                getAutostartIntent(context),
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        when (kind) {
+            PermissionKind.AUTOSTART -> openAutostartSettings(context)
+            PermissionKind.ACCESSIBILITY -> openAccessibilitySettings(context)
+            PermissionKind.NOTIFICATIONS -> openNotificationSettings(context)
+            PermissionKind.USAGE_ACCESS -> openUsageAccessSettings(context)
+            PermissionKind.INSTALL_PACKAGES -> ProviderManager.openInstallPermissionSettings(context)
+            PermissionKind.ALL_FILES -> openAllFilesSettings(context)
+            PermissionKind.DND_ACCESS -> openDndAccessSettings(context)
+            PermissionKind.MICROPHONE -> openMicrophonePermission(context)
+            PermissionKind.OVERLAY -> startActivityWithFlag(
+                context,
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")),
             )
-            fallbacks.any {
-                if (!fromActivity) it.addFlags(flags)
-                runCatching { context.startActivity(it) }.isSuccess
-            }
-            return
+            PermissionKind.WRITE_SETTINGS -> startActivityWithFlag(
+                context,
+                Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}")),
+            )
         }
-        // 服务组件没装时无障碍列表里没有可开启条目：先去装组件，装完回来再开无障碍
-        if (kind == PermissionKind.ACCESSIBILITY &&
-            runCatching { ProviderManager.isInstalled(context) }.getOrDefault(false).not()
-        ) {
+    }
+
+    /**
+     * 自启动与后台：优先拉起「允许应用忽略电池优化」的系统确认弹窗
+     *（清单已声明 REQUEST_IGNORE_BATTERY_OPTIMIZATIONS，允许直接弹窗）；
+     * 被机型拦截/无弹窗时回退厂商自启动管理页，最后回退电池优化白名单列表页。
+     */
+    private fun openAutostartSettings(context: Context) {
+        // 关键：从 Activity 上下文启动时不加 NEW_TASK——该弹窗的 taskAffinity 归系统设置，
+        // 加了 NEW_TASK 会把设置任务切到前台、弹窗盖在设置上而不是本应用上
+        val fromActivity = context is Activity
+        val fallbacks = listOfNotNull(
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+            getAutostartIntent(context),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        )
+        fallbacks.any {
+            if (!fromActivity) it.addFlags(NEW_TASK_FLAG)
+            runCatching { context.startActivity(it) }.isSuccess
+        }
+    }
+
+    /** 服务组件没装时无障碍列表里没有可开启条目：先去装组件，装完回来再开无障碍 */
+    private fun openAccessibilitySettings(context: Context) {
+        if (runCatching { ProviderManager.isInstalled(context) }.getOrDefault(false).not()) {
             ProviderManager.install(context)
             return
         }
-        if (kind == PermissionKind.NOTIFICATIONS) {
-            val granted = hasNotificationPermission(context)
-            val asksAtRuntime = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                context is Activity
-            if (!granted && asksAtRuntime) {
-                // 13+ 首次直接弹系统授权框；被永久拒绝后系统不再弹，回退到应用通知设置页
-                androidx.core.app.ActivityCompat.requestPermissions(
-                    context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS,
-                )
-            } else {
-                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                    .addFlags(flags)
-                runCatching { context.startActivity(intent) }
-            }
-            return
-        }
-        // 使用情况访问权没有运行时授权框，只有系统设置页（部分 ROM 支持带 package 直达本应用条目）
-        if (kind == PermissionKind.USAGE_ACCESS) {
-            val direct = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))
-                .addFlags(flags)
-            val global = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(flags)
-            runCatching { context.startActivity(direct) }
-                .recoverCatching { context.startActivity(global) }
-            return
-        }
-        // 安装未知应用：按来源应用单独授权，带 package 直达本应用条目
-        if (kind == PermissionKind.INSTALL_PACKAGES) {
-            ProviderManager.openInstallPermissionSettings(context)
-            return
-        }
-        // 所有文件访问：Android 11+ 的系统特殊权限页，ROM 精简时回落到权限总表
-        if (kind == PermissionKind.ALL_FILES) {
-            val direct = Intent(
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                Uri.parse("package:${context.packageName}"),
+        startActivityWithFlag(context, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    /** 通知：13+ 首次直接弹系统授权框；被永久拒绝后系统不再弹，回退到应用通知设置页 */
+    private fun openNotificationSettings(context: Context) {
+        val granted = hasNotificationPermission(context)
+        val asksAtRuntime = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            context is Activity
+        if (!granted && asksAtRuntime) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS,
             )
-                .addFlags(flags)
-            val global = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).addFlags(flags)
-            runCatching { context.startActivity(direct) }
-                .recoverCatching { context.startActivity(global) }
-            return
+        } else {
+            startActivityWithFlag(
+                context,
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+            )
         }
-        // 勿扰访问权限：系统只提供这个专用页面，没有更细的直达入口
-        if (kind == PermissionKind.DND_ACCESS) {
-            val direct = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).addFlags(flags)
-            // 部分 ROM 精简了勿扰访问页：回落到本应用的通知设置页，至少能往上翻一级
-            val fallback = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                .addFlags(flags)
-            runCatching { context.startActivity(direct) }
-                .recoverCatching { context.startActivity(fallback) }
-            return
+    }
+
+    /** 使用情况访问权没有运行时授权框，只有系统设置页（部分 ROM 支持带 package 直达本应用条目） */
+    private fun openUsageAccessSettings(context: Context) {
+        val direct = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}"))
+        val global = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+        startDirectThenFallback(context, direct, global)
+    }
+
+    /** 所有文件访问：Android 11+ 的系统特殊权限页，ROM 精简时回落到权限总表 */
+    private fun openAllFilesSettings(context: Context) {
+        val direct = Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:${context.packageName}"),
+        )
+        val global = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+        startDirectThenFallback(context, direct, global)
+    }
+
+    /** 勿扰访问权限：系统只提供这个专用页面；部分 ROM 精简后回落到本应用通知设置页 */
+    private fun openDndAccessSettings(context: Context) {
+        val direct = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+        val fallback = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        startDirectThenFallback(context, direct, fallback)
+    }
+
+    /** 麦克风：Activity 上下文能直接弹系统授权框；被永久拒绝后回落到应用详情页 */
+    private fun openMicrophonePermission(context: Context) {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted && context is Activity) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                context, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO,
+            )
+        } else {
+            startActivityWithFlag(
+                context,
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
+            )
         }
-        // 麦克风：Activity 上下文能直接弹系统授权框；被永久拒绝后回落到应用详情页
-        if (kind == PermissionKind.MICROPHONE) {
-            val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-            if (!granted && context is Activity) {
-                androidx.core.app.ActivityCompat.requestPermissions(
-                    context, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO,
-                )
-            } else {
-                val intent = Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:${context.packageName}"),
-                ).addFlags(flags)
-                runCatching { context.startActivity(intent) }
-            }
-            return
-        }
-        val intent = when (kind) {
-            PermissionKind.ACCESSIBILITY ->
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            PermissionKind.OVERLAY ->
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-            PermissionKind.WRITE_SETTINGS ->
-                Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}"))
-            else -> return
-        }.addFlags(flags)
-        runCatching { context.startActivity(intent) }
+    }
+
+    /** 一次直达：带上 NEW_TASK 后尝试打开，失败静默（无可回退目标） */
+    private fun startActivityWithFlag(context: Context, intent: Intent) {
+        runCatching { context.startActivity(intent.addFlags(NEW_TASK_FLAG)) }
+    }
+
+    /** 先尝试带 package 的直达页，ROM 不支持时回落到全局页 */
+    private fun startDirectThenFallback(context: Context, direct: Intent, fallback: Intent) {
+        direct.addFlags(NEW_TASK_FLAG)
+        fallback.addFlags(NEW_TASK_FLAG)
+        runCatching { context.startActivity(direct) }
+            .recoverCatching { context.startActivity(fallback) }
     }
 
     /** 厂商自启动管理页 Intent，无法打开返回 null */

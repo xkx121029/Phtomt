@@ -16,6 +16,20 @@ import kotlinx.coroutines.withContext
 private const val ACA_SKILLS_TTL_MS = 60_000L
 
 /**
+ * 本次扫描是否应当跳过：正在扫描（重入），或 TTL 内刚扫过且未强制刷新。
+ *
+ * 抽成纯函数只为能在 JVM 单测里钉住 TTL / 重入两条判定——它不碰 Context、不扫盘。
+ * [scannedAtMs] 为 0 表示从未扫过，永远不命中缓存；[force] 为 true 时无视 TTL。
+ */
+internal fun acaScanSkipped(
+    scanning: Boolean,
+    nowMs: Long,
+    scannedAtMs: Long,
+    force: Boolean,
+    ttlMs: Long = ACA_SKILLS_TTL_MS,
+): Boolean = scanning || (!force && scannedAtMs != 0L && nowMs - scannedAtMs < ttlMs)
+
+/**
  * 技能域：内置技能库与 ACA（编码 agent）技能目录。
  *
  * 协程全部跑在传进来的 [scope]（即 `viewModelScope`），扫描任务的可取消性沿用原实现：
@@ -62,9 +76,7 @@ class SkillDelegate(
      * @param force 目录刚被改动（装上/删掉技能包）时传 true，跳过缓存
      */
     fun refreshAcaSkills(context: Context, force: Boolean = false) {
-        if (_acaScanning.value) return
-        val fresh = System.currentTimeMillis() - acaScannedAt < ACA_SKILLS_TTL_MS
-        if (!force && acaScannedAt != 0L && fresh) return
+        if (acaScanSkipped(_acaScanning.value, System.currentTimeMillis(), acaScannedAt, force)) return
         acaScanJob?.cancel()
         acaScanJob = scope.launch {
             _acaScanning.value = true
