@@ -485,14 +485,12 @@ private fun ActivityContent(
     // 消费完即清掉 data 与 extra，避免 onNewIntent 复用同一 Intent 时重复起任务。
     val entryTick by entrySignal.collectAsState()
     val entryScope = rememberCoroutineScope()
-    LaunchedEffect(entryTick) {
-        val intent = activity.intent ?: return@LaunchedEffect
-        val target = com.phoneagent.feature.entry.TaskEntry.fromDeepLink(intent.data)
-            ?: com.phoneagent.feature.entry.TaskEntry.fromGoogleAction(intent)
-            // 分享（带文件优先于配文）在 TaskEntry 内部已成一条判定
-            ?: com.phoneagent.feature.entry.TaskEntry.fromShareIntent(intent)
-            ?: com.phoneagent.feature.entry.TaskEntry.fromExtras(intent)
-            ?: return@LaunchedEffect
+    // 外部深链（hpa://task / hpa://resume）先挂在这里等用户点一次确认，不直接开跑：
+    // 自定义 scheme 谁都能构造，隐式 VIEW 又拿不到调用方身份，直接执行等于
+    // 让任意应用或网页替用户下命令（分享/选中文字/快捷方式都必须由用户在系统界面亲手触发，不在此列）。
+    var pendingEntry by remember { mutableStateOf<com.phoneagent.feature.entry.TaskEntry.Target?>(null) }
+
+    fun dispatchEntry(target: com.phoneagent.feature.entry.TaskEntry.Target) {
         when (target) {
             is com.phoneagent.feature.entry.TaskEntry.Target.Task -> {
                 if (vm.agentState.value.isRunning) vm.startAgent(target.text) else vm.startPlanning(target.text)
@@ -522,14 +520,36 @@ private fun ActivityContent(
                 }
             }
         }
+        if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) {
+            selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
+        }
+    }
+
+    LaunchedEffect(entryTick) {
+        val intent = activity.intent ?: return@LaunchedEffect
+        val target = com.phoneagent.feature.entry.TaskEntry.fromDeepLink(intent.data)
+            ?: com.phoneagent.feature.entry.TaskEntry.fromGoogleAction(intent)
+            // 分享（带文件优先于配文）在 TaskEntry 内部已成一条判定
+            ?: com.phoneagent.feature.entry.TaskEntry.fromShareIntent(intent)
+            ?: com.phoneagent.feature.entry.TaskEntry.fromExtras(intent)
+            ?: return@LaunchedEffect
+        // 来源判定要在清理之前做：cleanup 会把 data 摘掉
+        val external = com.phoneagent.feature.entry.TaskEntry.isExternalDeepLink(
+            action = intent.action,
+            scheme = intent.data?.scheme,
+            host = intent.data?.host,
+        )
         intent.data = null
         // clipData 不在 replaceExtras 的清理范围里：分享进来的文件靠它传递，
         // 不清掉的话 Activity 重建（旋转/进程恢复）时同一份文件会被再导入一次
         intent.clipData = null
         intent.replaceExtras(null)
-        if (target is com.phoneagent.feature.entry.TaskEntry.Target.Navigate && !target.memory) {
-            selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
+        // 先清 Intent 再等确认：用户迟迟不点也不会有第二份同样的请求被 onNewIntent 重放
+        if (external) {
+            pendingEntry = target
+            return@LaunchedEffect
         }
+        dispatchEntry(target)
     }
 
     // 全局返回手势返回上一层：
@@ -902,6 +922,26 @@ private fun ActivityContent(
                         // 「稍后」记住当前随包版本：同一版本不再提示，Provider 版本变化后会再提示
                         markProviderInstallPromptDismissed(activity)
                         providerPromptVisible = false
+                    },
+                )
+            }
+
+            // 外部深链确认：hpa://task / hpa://resume 来自任意应用或网页，必须由用户点一次才执行。
+            // 与引擎的不可逆动作确认门同一原则——有副作用的执行不认陌生调用方的一句话，
+            // 只认 App 里这一次明确的点击（点遮罩、点取消都算拒绝）。
+            pendingEntry?.let { entry ->
+                val taskText = (entry as? com.phoneagent.feature.entry.TaskEntry.Target.Task)?.text
+                val resume = (entry as? com.phoneagent.feature.entry.TaskEntry.Target.Navigate)?.resume == true
+                ExternalEntryConfirm(
+                    taskText = taskText,
+                    resume = resume,
+                    onConfirm = {
+                        pendingEntry = null
+                        dispatchEntry(entry)
+                    },
+                    onDismiss = {
+                        pendingEntry = null
+                        snackbarState.show("已取消外部链接请求的任务", SnackbarType.INFO)
                     },
                 )
             }
@@ -1299,6 +1339,45 @@ private fun ProviderInstallPrompt(onInstall: () -> Unit, onDismiss: () -> Unit) 
         ) {
             Button(onClick = onInstall, modifier = Modifier.weight(1f)) { Text("立即安装") }
             OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("稍后") }
+        }
+    }
+}
+
+/**
+ * 外部深链确认面板：`hpa://task` / `hpa://resume` 来自任意应用或网页，拉起任务前必须由用户点一次。
+ * 面板只做一件事——把「是谁在要求执行、要执行什么」摆到用户面前，让那一下点击成为唯一放行凭据。
+ */
+@Composable
+private fun ExternalEntryConfirm(
+    taskText: String?,
+    resume: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    InlineOverlay(onDismiss = onDismiss) {
+        Text(
+            "外部链接请求执行任务",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "这个请求来自其他应用或网页（hpa:// 链接）。开始后 AI 会直接操作这台手机，" +
+                "请确认内容确实是你想做的。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (resume) {
+            Text("将从中断处继续上一个任务。", style = MaterialTheme.typography.bodyLarge)
+        }
+        taskText?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            Text(it.take(300), style = MaterialTheme.typography.bodyLarge)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        ) {
+            Button(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text("开始执行") }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
         }
     }
 }

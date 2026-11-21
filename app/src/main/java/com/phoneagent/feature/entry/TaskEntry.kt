@@ -52,6 +52,18 @@ object TaskEntry {
         queryText = runCatching { uri?.getQueryParameter("text") }.getOrNull(),
     )
 
+    /**
+     * 是否来自**外部深链**（VIEW + `hpa://task` / `hpa://resume`）。
+     *
+     * 这条入口不可信：自定义 scheme 谁都能构造，而隐式 VIEW 拿不到调用方身份
+     * （callingPackage 对隐式 intent 是 null），没法像对外控制广播那样用口令校验。
+     * 所以它只「排队等用户确认」，不直接开跑（见 MainActivity）。
+     * 分享 / 选中文字 / 快捷方式不在此列：那三种必须由用户在系统界面里亲手触发。
+     */
+    fun isExternalDeepLink(action: String?, scheme: String?, host: String?): Boolean =
+        action == Intent.ACTION_VIEW && scheme == DEEP_LINK_SCHEME &&
+            (host == DEEP_LINK_HOST_TASK || host == DEEP_LINK_HOST_RESUME)
+
     /** 纯函数核心（JVM 可测）：深链三要素 → 目标 */
     internal fun parseDeepLink(scheme: String?, host: String?, queryText: String?): Target? = when {
         scheme != DEEP_LINK_SCHEME -> null
