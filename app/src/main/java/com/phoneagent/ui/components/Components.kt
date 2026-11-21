@@ -897,10 +897,35 @@ fun SectionCard(
                 )
                 Spacer(Modifier.weight(1f))
                 if (count > 0) {
-                    TextButton(onClick = onClear) {
-                        Icon(AppIcons.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                    // 破坏性操作的两步确认：点一次变红并写明「删多少条、不可恢复」，再点才执行。
+                    // 与本产品其它破坏性入口（数据页的「恢复默认设置」、调试页的清空）保持同一套手势，
+                    // 不引入系统弹窗；4 秒不点自动复位，避免误触后长时间停在「随时会删」的状态
+                    var armed by remember(count) { mutableStateOf(false) }
+                    LaunchedEffect(armed) {
+                        if (armed) {
+                            delay(4000)
+                            armed = false
+                        }
+                    }
+                    TextButton(onClick = {
+                        if (armed) {
+                            armed = false
+                            onClear()
+                        } else {
+                            armed = true
+                        }
+                    }) {
+                        Icon(
+                            AppIcons.DeleteOutline,
+                            contentDescription = null,
+                            tint = if (armed) MaterialTheme.colorScheme.error else Color.Unspecified,
+                            modifier = Modifier.size(16.dp),
+                        )
                         Spacer(Modifier.width(AppSpacing.Xs))
-                        Text("清空")
+                        Text(
+                            if (armed) "删除 $count 条，不可恢复" else "清空",
+                            color = if (armed) MaterialTheme.colorScheme.error else Color.Unspecified,
+                        )
                     }
                 }
             }

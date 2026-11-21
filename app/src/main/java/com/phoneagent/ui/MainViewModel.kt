@@ -28,6 +28,8 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.data.store.PageMemoryEntry
+import com.phoneagent.data.store.PagePathEdge
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.device.provider.ProviderManager
@@ -875,6 +877,42 @@ class MainViewModel(
     fun clearPageMemories() {
         viewModelScope.launch {
             memoryStore.clearPageMemories()
+            refreshMemory()
+        }
+    }
+
+    // ---- 撤销删除 / 撤销清空（记忆页的撤销窗口用）----
+    // 记忆条目都是完整可序列化对象，删除前整份快照由调用方持有；撤销即把快照写回。
+    // 这不是「假装有撤销」：真的重新落盘，界面随即刷新出原来的条目。
+
+    /** 撤销异常记忆的删除/清空：把整份快照写回 */
+    fun restoreAnomalies(entries: List<AnomalyMemoryEntry>) {
+        viewModelScope.launch {
+            memoryStore.saveAnomalies(entries)
+            refreshMemory()
+        }
+    }
+
+    /** 撤销用户画像的删除/清空：把整份快照写回 */
+    fun restoreProfile(entries: List<ProfileEntry>) {
+        viewModelScope.launch {
+            memoryStore.saveProfile(entries)
+            refreshMemory()
+        }
+    }
+
+    /** 撤销任务记忆的删除/清空：把整份快照写回 */
+    fun restoreTaskMemories(entries: List<TaskMemoryEntry>) {
+        viewModelScope.launch {
+            memoryStore.saveTaskMemories(entries)
+            refreshMemory()
+        }
+    }
+
+    /** 撤销页面记忆的删除/清空：把整份页面列表与路径边写回 */
+    fun restorePageMemories(entries: List<PageMemoryEntry>, edges: List<PagePathEdge>) {
+        viewModelScope.launch {
+            memoryStore.restorePageMemories(entries, edges)
             refreshMemory()
         }
     }

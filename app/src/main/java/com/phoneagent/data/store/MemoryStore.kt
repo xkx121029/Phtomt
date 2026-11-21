@@ -654,6 +654,17 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
         savePageEdges(emptyList())
     }
 
+    /**
+     * 把清空前的整份页面记忆与路径边写回。
+     *
+     * 记忆页的「清空」带撤销窗口，撤销时把调用方手里的快照原样恢复；
+     * 落盘仍走 [savePageMemories] 的容量裁剪，恢复的数据不会超过上限。
+     */
+    suspend fun restorePageMemories(entries: List<PageMemoryEntry>, edges: List<PagePathEdge>) {
+        savePageMemories(entries)
+        savePageEdges(edges)
+    }
+
     override suspend fun loadPageEdges(): List<PagePathEdge> {
         ensureShapeSchema()
         val cached = pageEdgeCache
