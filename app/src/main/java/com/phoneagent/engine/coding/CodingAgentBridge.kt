@@ -6,6 +6,8 @@ import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.agent.AgentClient
 import com.phoneagent.coding.agent.CodingAgentConfig
 import com.phoneagent.coding.agent.ConnState
+import com.phoneagent.coding.device.HostBridgeTokenProvider
+import com.phoneagent.coding.device.HostBridgeTokenStore
 import com.phoneagent.core.notify.TaskProgressNotifier
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.overlay.AgentStatusStore
@@ -19,7 +21,8 @@ import kotlinx.coroutines.flow.first
  *   [AgentClient.connectLocal] 拉起 [com.phoneagent.coding.agent.LocalAgent]（node 子进程，
  *   stdio JSON-lines）→ 等 CONNECTED → [AgentClient.sendPrompt] 委托任务。
  * - 配置注入：provider 固定 "openai"（agent-core 的 OpenAI 兼容通道），baseUrl/apiKey/model 取
- *   HPA 主设置，审批档位取 codingApprovalMode（ask/risky/bypass，默认 risky），token 固定桥接标识。
+ *   HPA 主设置，审批档位取 codingApprovalMode（ask/risky/bypass，默认 risky），token 取每装机随机
+ *   生成的密钥（见 [com.phoneagent.coding.device.HostBridgeToken]）——不再有硬编码常量。
  * - 进度同步：把 busy/最新 assistant 文本/等待审批同步到 [AgentStatusStore]（状态总线，桌面
  *   Widget/磁贴读这份快照）与 [TaskProgressNotifier]（任务进度通知，total<=0 为不确定进度条）。
  *   审批不做系统弹窗，只经 [client].state 暴露给 UI 渲染内嵌审批卡（项目铁律：系统弹窗与 Toast 清零）。
@@ -49,6 +52,20 @@ class CodingAgentBridge(
 
     /** 编码页专用连接：会话由工作区里的会话列表决定，和引擎完全隔离。 */
     val uiClient = AgentClient(appContext, envClientProvider = { envClient })
+
+    /**
+     * 宿主桥共享密钥：每装机随机生成一次、加密落盘（见 [HostBridgeTokenProvider]）。
+     * 两个方向用的是同一个值——写进子进程环境变量给 node，反向请求也按它校验。
+     */
+    private val bridgeToken = HostBridgeTokenProvider(
+        object : HostBridgeTokenStore {
+            override suspend fun read(): String = settings.readHostBridgeToken()
+
+            override suspend fun write(token: String) {
+                settings.writeHostBridgeToken(token)
+            }
+        },
+    )
 
     /**
      * 委托一个编码任务：确保运行时已装 → 连接本地 agent → sendPrompt → 挂起等待会话结束
@@ -125,13 +142,22 @@ class CodingAgentBridge(
 
     private suspend fun currentConfig(): CodingAgentConfig {
         val s = settings.settings.first()
+        val resolved = bridgeToken.ensure()
+        if (resolved.fresh) {
+            // 刚换上的密钥，已经在跑的宿主手里还是旧值：它发来的每条反向请求都会被拒
+            // （fail-closed，但工作区读写/编辑器/编码环境会集体失效）。停掉宿主，
+            // 让紧接着的 connectLocal 用新密钥重新拉起，不留「进程活着但功能全废」的窗口。
+            client.disconnect()
+            uiClient.disconnect()
+            com.phoneagent.coding.agent.LocalAgent.stop()
+        }
         return CodingAgentConfig(
             provider = "openai",
             baseUrl = s.apiBaseUrl,
             apiKey = s.apiKey,
             model = s.model,
             approval = s.codingApprovalMode,
-            token = TOKEN,
+            token = resolved.token,
         )
     }
 
@@ -185,7 +211,6 @@ class CodingAgentBridge(
     private var lastSyncedStatus: String? = null
 
     private companion object {
-        const val TOKEN = "phoneagent-bridge"
         const val POLL_MS = 250L
         const val CONNECT_TIMEOUT_MS = 30_000L
 

@@ -21,6 +21,7 @@ import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.security.SecretCodec
 import com.phoneagent.ui.TabPrefsCodec
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -384,6 +385,11 @@ class AppSettings(private val context: Context) {
         /** 对外控制：开关与口令，见 [Settings.externalControlEnabled] */
         val EXTERNAL_CONTROL_ENABLED = booleanPreferencesKey("external_control_enabled")
         val EXTERNAL_CONTROL_TOKEN = stringPreferencesKey("external_control_token")
+        /**
+         * 宿主桥共享密钥（每装机随机生成，见 [com.phoneagent.coding.device.HostBridgeToken]）。
+         * 加密落盘，读写只走 [readHostBridgeToken] / [writeHostBridgeToken]。
+         */
+        val HOST_BRIDGE_TOKEN = stringPreferencesKey("host_bridge_token")
         /** 新手引导完成标记，见 [Settings.onboardingDone] */
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         /** 编码 agent 审批档位（ask/risky/bypass），见 [Settings.codingApprovalMode] */
@@ -549,6 +555,21 @@ class AppSettings(private val context: Context) {
      * 与 onboardingDone 同理：这些字段由仓库在后台写，设置表单整体回写时不带它们，
      * 走 [update] 会把刚同步到的状态打回默认值，所以单独开一个只写这三个键的入口。
      */
+    /**
+     * 读宿主桥共享密钥（密文落盘，经 [SecretCodec] 解密）。
+     *
+     * 独立于 [Settings] 与 [update]：它不是用户可配项，设置表单整体回写时不带它，
+     * 混进表单快照会被旧值覆盖（与 [markOnboardingDone] 同一个理由）。
+     * 读不到/解不出时返回空串，由 [com.phoneagent.coding.device.HostBridgeTokenProvider]
+     * 决定重新生成——绝不在这里补一个默认常量。
+     */
+    suspend fun readHostBridgeToken(): String =
+        SecretCodec.decrypt(context.agentStore.data.first()[Keys.HOST_BRIDGE_TOKEN] ?: "")
+
+    suspend fun writeHostBridgeToken(token: String) {
+        context.agentStore.edit { prefs -> prefs[Keys.HOST_BRIDGE_TOKEN] = SecretCodec.encrypt(token) }
+    }
+
     suspend fun updateDocStatus(lastSyncAt: Long, count: Int, error: String) {
         context.agentStore.edit { prefs ->
             if (lastSyncAt > 0) prefs[Keys.DOC_LAST_SYNC_AT] = lastSyncAt
