@@ -27,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.phoneagent.coding.env.CodingEnvClient
+import com.phoneagent.env.ToolchainReadiness
 import com.phoneagent.ui.coding.openAllFilesAccessSettings
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
@@ -76,7 +77,7 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
             .padding(horizontal = SettingsScreenPad)
             .padding(LocalNavClearance.current),
     ) {
-        SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK 17 · Gradle · Android SDK")
+        SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK · Gradle · Android SDK（版本按工程推导）")
         Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
         EnvComponentSection(
@@ -207,6 +208,8 @@ private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit)
                 SettingsDivider(inset = false)
                 SettingsStatusRow("AGP", toolchain.agpVersion ?: "未识别")
                 SettingsDivider(inset = false)
+                SettingsStatusRow("JDK", "${toolchain.jdkVersion} · ${jdkSourceLabel(toolchain.jdkSource)}")
+                SettingsDivider(inset = false)
                 SettingsStatusRow("compileSdk", toolchain.compileSdk.toString())
                 SettingsDivider(inset = false)
                 SettingsStatusRow("Build Tools", toolchain.buildTools)
@@ -245,6 +248,14 @@ private fun InstallSection(ui: CodingEnvClient.UiState, onInstall: () -> Unit) {
             if (ui.envState.isNotEmpty()) {
                 Spacer(Modifier.height(AppSpacing.Md))
                 EnvStateRows(ui.envState)
+                Spacer(Modifier.height(AppSpacing.Md))
+                ReadinessRows(
+                    ToolchainReadiness.evaluate(
+                        env = ui.envState,
+                        compileSdk = ui.toolchain?.compileSdk,
+                        buildTools = ui.toolchain?.buildTools,
+                    ),
+                )
             }
         }
     }

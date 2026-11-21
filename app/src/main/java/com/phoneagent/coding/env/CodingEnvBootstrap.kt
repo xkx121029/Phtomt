@@ -1,7 +1,7 @@
 package com.phoneagent.coding.env
 
 import android.content.Context
-import com.phoneagent.env.EnvApi
+import com.phoneagent.env.ToolchainReadiness
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -32,12 +32,6 @@ class CodingEnvBootstrap(
         /** 共享存储前缀：命中这些前缀的工程本身就是组件可见的路径，不需要镜像 */
         val SHARED_PREFIXES = listOf("/storage/", "/sdcard/")
 
-        /** 组件 stateJson 里代表"已完成"的取值（见 env 模块 ToolchainInstaller.state） */
-        const val STATE_READY_LINUX = "就绪"
-        const val STATE_READY_AAPT2 = "已配置"
-        const val STATE_MISSING = "未安装"
-        const val STATE_NEVER = "从未安装"
-
         /** 返回给 Agent 的日志尾巴：全量日志留在设置页，这里只给最近的上下文 */
         const val LOG_TAIL = 25
 
@@ -64,7 +58,7 @@ class CodingEnvBootstrap(
         return JSONObject()
             .put(
                 "ready",
-                runtimeReady() && ui.storageGranted && envInstalled(ui.envState) &&
+                runtimeReady() && ui.storageGranted && envInstalled(ui) &&
                     toolchain?.ready == true && (!staging || ui.sharedWritable),
             )
             .put("runtimeReady", runtimeReady())
@@ -85,9 +79,12 @@ class CodingEnvBootstrap(
                     .put("gradleSource", toolchain?.gradleSource ?: JSONObject.NULL)
                     .put("agp", toolchain?.agpVersion ?: JSONObject.NULL)
                     .put("compileSdk", toolchain?.compileSdk ?: JSONObject.NULL)
-                    .put("buildTools", toolchain?.buildTools ?: JSONObject.NULL),
+                    .put("buildTools", toolchain?.buildTools ?: JSONObject.NULL)
+                    .put("jdk", toolchain?.jdkVersion ?: JSONObject.NULL)
+                    .put("jdkSource", toolchain?.jdkSource ?: JSONObject.NULL),
             )
-            .put("environmentInstalled", envInstalled(ui.envState))
+            .put("environmentInstalled", envInstalled(ui))
+            .put("environmentProblems", JSONArray(readiness(ui).problems))
             .put("environment", JSONObject(ui.envState))
             .put(
                 "task",
@@ -123,7 +120,7 @@ class CodingEnvBootstrap(
         if (blocker != null) return blocker
         return when {
             client.snapshot().running -> awaitRunning(wait)
-            envInstalled(client.snapshot().envState) ->
+            envInstalled(client.snapshot()) ->
                 frame("ready", true, false, "编码环境已就绪，可以直接执行 coding_env build。")
             else -> startInstall(wait)
         }
@@ -242,7 +239,7 @@ class CodingEnvBootstrap(
         return when {
             finished == null ->
                 frame("installing", false, false, "已有任务仍在执行（等待窗口已到），稍后用 coding_env status 查询进度。")
-            envInstalled(client.snapshot().envState) ->
+            envInstalled(client.snapshot()) ->
                 frame("ready", true, false, "上一个任务已结束，编码环境已就绪，可以开始构建。")
             else ->
                 frame(
@@ -286,21 +283,24 @@ class CodingEnvBootstrap(
             staging && !ui.sharedWritable -> "本应用还没有「所有文件访问」，私有工作区无法镜像到共享存储"
             !ui.storageGranted -> "环境组件还没有共享存储权限"
             ui.toolchain?.ready != true -> "当前工作区没有识别到可构建的 Android 工程"
-            !envInstalled(ui.envState) -> "Linux / JDK / Gradle / Android SDK / aapt2 尚未安装完成"
+            !envInstalled(ui) -> "工具链未就绪：${readiness(ui).summary}"
             else -> null
         }
     }
 
-    /** 工具链是否装齐：以组件自报的状态为准，缺任何一项都算未就绪 */
-    private fun envInstalled(env: Map<String, String>): Boolean {
-        val gradle = env[EnvApi.STATE_GRADLE].orEmpty()
-        val sdk = env[EnvApi.STATE_SDK].orEmpty()
-        return env[EnvApi.STATE_LINUX] == STATE_READY_LINUX &&
-            env[EnvApi.STATE_JDK].orEmpty().startsWith("JDK") &&
-            gradle.isNotBlank() && gradle != STATE_MISSING && gradle != STATE_NEVER &&
-            sdk.isNotBlank() && sdk != STATE_MISSING &&
-            env[EnvApi.STATE_AAPT2] == STATE_READY_AAPT2
-    }
+    /**
+     * 工具链是否装齐且与当前工程对齐：判据在 [ToolchainReadiness] 里，
+     * 与容器内构建前自检用的是同一份实现——两边不会各说一套。
+     */
+    private fun envInstalled(ui: CodingEnvClient.UiState): Boolean = readiness(ui).ready
+
+    /** 「工程要 android-36，设备装的是 android-35」这类可操作结论 */
+    private fun readiness(ui: CodingEnvClient.UiState): ToolchainReadiness.Report =
+        ToolchainReadiness.evaluate(
+            env = ui.envState,
+            compileSdk = ui.toolchain?.compileSdk,
+            buildTools = ui.toolchain?.buildTools,
+        )
 
     /** 最近产出的 APK：只看 build/outputs/apk 下的文件，按修改时间取最新 */
     private fun latestApk(rootPath: String): File? = runCatching {

@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.phoneagent.coding.env.CodingEnvClient
 import com.phoneagent.env.EnvApi
+import com.phoneagent.env.ToolchainReadiness
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
@@ -85,12 +86,36 @@ internal fun EnvStateRows(state: Map<String, String>) {
         "JDK" to state[EnvApi.STATE_JDK],
         "Gradle" to state[EnvApi.STATE_GRADLE],
         "SDK" to state[EnvApi.STATE_SDK],
+        "Build Tools" to state[EnvApi.STATE_BUILD_TOOLS],
         "aapt2" to state[EnvApi.STATE_AAPT2],
         "安装时间" to state[EnvApi.STATE_INSTALLED_AT]?.let(::formatInstalledAt),
     )
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
         rows.forEach { (label, value) ->
             if (value != null) SettingsStatusRow(label, value)
+        }
+    }
+}
+
+/**
+ * 就绪判定：组件实测出的每一项与工程要求的对照结果。
+ *
+ * 不就绪时必须逐条说清"哪一项、为什么"，因为用户下一步动作就取决于这句话
+ * （装 android-36 / 重装组件 / 补 aapt2 兼容层，各不相同）。
+ */
+@Composable
+internal fun ReadinessRows(report: ToolchainReadiness.Report) {
+    Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+        if (report.ready) {
+            SettingsStatusRow("工具链", "全部实测通过")
+        } else {
+            report.problems.forEach { problem ->
+                Text(
+                    problem,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
@@ -104,6 +129,12 @@ internal fun installedText(ui: CodingEnvClient.UiState): String = when {
 internal fun gradleSourceLabel(source: String): String = when (source) {
     "wrapper" -> "工程自带 wrapper"
     "agp" -> "按 AGP 配套表"
+    else -> "默认值"
+}
+
+internal fun jdkSourceLabel(source: String): String = when (source) {
+    "compileOptions" -> "按工程 compileOptions"
+    "agp" -> "按 AGP 最低要求"
     else -> "默认值"
 }
 

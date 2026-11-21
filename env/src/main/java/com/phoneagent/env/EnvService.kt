@@ -33,7 +33,7 @@ class EnvService : Service() {
 
         override fun linuxReady(): Boolean = env.isReady()
 
-        override fun stateJson(): String = runCatching { installer.state().toString() }
+        override fun stateJson(): String = runCatching { installer.state(taskRunning = running.get()).toString() }
             .getOrElse { "{\"error\":\"${it.message}\"}" }
 
         override fun run(requestJson: String, callback: IEnvCallback?) {
