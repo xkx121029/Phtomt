@@ -9,8 +9,10 @@ import java.util.concurrent.ConcurrentHashMap
  * `repayment` 含 `payment`——按子串判会把普通控件当成不可逆操作，用户就被天天弹窗。
  * 中文词没有这个问题（没有词边界），仍按子串从宽匹配。
  *
- * 刻意**不收紧右边界**：`#deleteComment`、`DeleteAccountButton` 这类驼峰命名要保留从宽拦截。
- * 安全方向上宁可多问一句，不可漏放一次。
+ * 右边界只认"下一个字符不是小写字母"：`#deleteComment`、`DeleteAccountButton` 这类驼峰命名要保留从宽
+ * 拦截（大写开新词），而 `sender` → `send`、`postcode` → `post`、`confirmed` → `confirm` 这类同词延伸不算命中——
+ * 英文界面上「Sender」「Postcode」是纯导航标签，误拦等于把每次点击都加一道门。
+ * 安全方向上宁可多问一句、不可漏放一次，但"多问"要落在真危险上。
  */
 internal object WordMatch {
 
@@ -25,6 +27,8 @@ internal object WordMatch {
 
     private fun patternsOf(words: List<String>): List<Pair<String, Regex>> =
         compiled.getOrPut(words) {
-            words.map { w -> w to Regex("\\b" + Regex.escape(w), RegexOption.IGNORE_CASE) }
+            // 大小写不敏感只作用于词条本身（(?i:...)），不作用于右边界断言：
+            // 否则 (?![a-z]) 连大写也算小写，驼峰命名就拦不住了
+            words.map { w -> w to Regex("\\b(?i:" + Regex.escape(w) + ")(?![a-z])") }
         }
 }
