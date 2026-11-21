@@ -825,6 +825,15 @@ private fun ActivityContent(
                                                                 MainTabs.SETTINGS,
                                                             )
                                                         },
+                                                        // 模型未验证 / 验证失败：「去修复」落到云端模型页，
+                                                        // 那里有上次的验证结论与「测试所有 API」
+                                                        onOpenModelSettings = {
+                                                            settingsLanding = SettingsPage.AI_MODELS
+                                                            selected = tabIndex(
+                                                                vm.settingsFlow.value,
+                                                                MainTabs.SETTINGS,
+                                                            )
+                                                        },
                                                     )
                                                 }
 
