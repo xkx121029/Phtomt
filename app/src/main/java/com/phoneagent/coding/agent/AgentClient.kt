@@ -30,6 +30,17 @@ data class ChatMessage(
     val subagentLabel: String? = null,
     /** 子 agent 人设名（实现者 / 审查者 / 测试员 …），未指定人设的老事件为 null。 */
     val subagentPersona: String? = null,
+    /**
+     * 审批卡要展示的操作原文：run_command 的命令全文，其余工具的参数摘要。
+     *
+     * 以前卡片只剩「执行命令」四个字（CodingToolNames.label 的结果），用户点「允许」
+     * 时并不知道自己要批准什么——host 一直在 approval_request 里发 args，是这一层把它丢了。
+     */
+    val approvalCommand: String? = null,
+    /** 审批卡的风险档（只读 / 写入 / 执行命令），已本地化；老事件没有 risk 时为「未知」。 */
+    val approvalRisk: String? = null,
+    /** 审批卡的危险原因（DangerGuard 命中项的中文说明）；null = 没命中危险模式。 */
+    val approvalDanger: String? = null,
 )
 
 data class AgentUiState(
@@ -425,6 +436,9 @@ class AgentClient(
         /** 取消请求的等待上限：短于普通 RPC——用户等的是「停」，不是结果 */
         private const val CANCEL_TIMEOUT_MS = 8_000L
 
+        /** 审批卡上命令原文的截断上限：够看清一条长命令行，又不至于把事件撑爆。 */
+        private const val APPROVAL_ARGS_MAX_CHARS = 1200
+
         /** 已处理过的反向请求 id：两条连接共享，保证一次请求只执行一次。 */
         private val handledReverse = java.util.Collections.newSetFromMap(
             java.util.concurrent.ConcurrentHashMap<String, Boolean>(),
@@ -454,6 +468,11 @@ class AgentClient(
                 ok = ev.optBoolean("ok"),
                 approved = ev.optBoolean("approved", true),
                 why = ev.optString("why"),
+                // 审批卡在用户做决定之前就要看清"要跑什么、有多危险"：
+                // danger/why 由宿主在 approval_request 里随 args 一起下发。
+                danger = ev.optString("danger"),
+                risk = ev.optString("risk"),
+                approvalArgs = approvalArgs(ev.optJSONObject("args")),
                 callId = ev.optString("callId"),
                 tool = ev.optString("tool"),
                 code = ev.optInt("code"),
@@ -488,6 +507,17 @@ class AgentClient(
             )
         }
         if (reconnect) scheduleReconnect()
+    }
+
+    /**
+     * 审批卡上的操作原文。run_command 取命令全文（用户要批准的就是这一行），
+     * 其余工具退回参数摘要。截断到 1200 字符：卡片可展开，但事件体积不能无界。
+     */
+    private fun approvalArgs(args: JSONObject?): String {
+        val obj = args ?: return ""
+        val command = obj.optString("command")
+        if (command.isNotEmpty()) return command.take(APPROVAL_ARGS_MAX_CHARS)
+        return argsPreview(obj)
     }
 
     /** 工具参数摘要：给 UI 一行看得懂的东西（"path=src/app.js, content=…"）。 */

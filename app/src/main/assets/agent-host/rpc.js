@@ -17,11 +17,20 @@ const DEFAULT_APPROVAL_TIMEOUT_MS = 120_000;
 export class AgentRouter {
   #senders = new Set();
 
-  constructor({ agent, store = new SessionStore(), runtime = null, token, approvalTimeoutMs } = {}) {
+  constructor({
+    agent,
+    store = new SessionStore(),
+    runtime = null,
+    token,
+    approvalTimeoutMs,
+    allowUnauthenticated = false,
+  } = {}) {
     this.agent = agent;
     this.store = store;
     this.runtime = runtime;
     this.token = token || null;
+    // 只给进程内单测用：默认 false，生产入口（host-stdio / Kotlin 的 LocalAgent）都不传它。
+    this.allowUnauthenticated = Boolean(allowUnauthenticated);
     // 注意：Number(undefined) 是 NaN，而 ?? 不兜底 NaN——直接写
     // `Number(env.X) ?? default` 会把超时设成 1ms 立即触发。
     const fromEnv = Number(process.env.HAPPY_ACA_APPROVAL_TIMEOUT_MS);
@@ -46,6 +55,8 @@ export class AgentRouter {
           tool: req.tool,
           risk: req.risk,
           args: req.args,
+          // DangerGuard 的结论必须在用户答之前送到卡上：等 tool_approval 再带就晚了。
+          ...(ctx?.danger?.dangerous ? { danger: ctx.danger.id, why: ctx.danger.why } : {}),
           sessionId: ctx?.session?.id,
           ...(ctx?.subagentId ? { subagentId: ctx.subagentId, parentRunId: ctx.parentRunId } : {}),
         });
@@ -101,8 +112,13 @@ export class AgentRouter {
 
   async handle(request) {
     const { method, params = {} } = request;
-    if (this.token && method !== 'ping' && params.token !== this.token) {
-      throw new Error('unauthorized: missing or invalid token');
+    // fail-closed：没配置 token 就是「没有可校验的凭据」，此时只留 ping，
+    // 其余方法一律拒绝。旧写法 `if (this.token && ...)` 在没有 token 时直接放行
+    // 所有方法，而 Kotlin 侧是 fail-closed——两侧语义相反比两侧都松更危险：
+    // 一轮 token 生成失败就会让同机应用拿到完整的 agent 控制权。
+    if (method !== 'ping' && !this.allowUnauthenticated) {
+      if (!this.token) throw new Error('unauthorized: no token configured (fail-closed)');
+      if (params.token !== this.token) throw new Error('unauthorized: missing or invalid token');
     }
     switch (method) {
       case 'ping':

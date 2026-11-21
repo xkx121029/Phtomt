@@ -3,15 +3,71 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { truncate } from '../providers/base.js';
+import { atomicWriteFileSync } from '../util/atomic-write.js';
 import { findOccurrences, matchView, missHint } from './edit-match.js';
 
+/**
+ * 把相对路径解析到工作区内，越界抛错。
+ *
+ * 判据是「先解析符号链接，再比真实前缀」，不是只比 path.resolve 的字面结果：
+ * 后者在工作区里放一条 `ln -s /sdcard/DCIM photos` 就失效——模型一句
+ * `read_file photos/x.jpg` 就把外置存储读出来了，而 read_file 的 risk 是 read，
+ * risky 模式下根本不弹审批（不需要恶意模型：clone 一个自带 symlink 的仓库、
+ * 或者 agent 自己建一条链接就够了）。
+ *
+ * 这份判据在 Kotlin 侧有一份等价实现：DeviceWorkspace.resolveWithin 用
+ * canonicalFile 做同一件事。两者语义必须一致（都归一符号链接再比前缀），
+ * 任一侧改动都要同步另一侧；两侧各有一条「必须拒绝」的反面测试，测试里写清了
+ * 对侧的行为（本侧见 packages/agent-core/test/fs-tools.test.js）。
+ */
 export function resolveWithin(root, p) {
   const rootAbs = path.resolve(root);
   const abs = path.resolve(rootAbs, String(p ?? '.'));
-  if (abs !== rootAbs && !abs.startsWith(rootAbs + path.sep)) {
+  const realRoot = realpathOrSelf(rootAbs);
+  const realTarget = realpathShallow(abs);
+  if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
     throw new Error(`path escapes workspace: ${p}`);
   }
   return abs;
+}
+
+/** realpath；路径不存在时原样返回（工作区根理论上总在）。 */
+function realpathOrSelf(p) {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * 解析到真实路径，但允许目标本身还不存在（写入新文件必须能过）：
+ * 把最近的存在祖先解析掉，再把剩下的段拼回去。存在的那一段里若有符号链接，
+ * 它一定会被解析——越界目标因此无处藏身。
+ */
+function realpathShallow(abs) {
+  let cur = abs;
+  const rest = [];
+  for (;;) {
+    try {
+      const real = fs.realpathSync.native(cur);
+      return rest.length ? path.join(real, ...rest.reverse()) : real;
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return abs; // 一路到盘符根都不存在：交给后续读写报错
+      rest.push(path.basename(cur));
+      cur = parent;
+    }
+  }
+}
+
+/** 原子写会替换符号链接本身；指向工作区内的链接要写穿它，保持旧语义。 */
+function writeTarget(abs) {
+  try {
+    return fs.lstatSync(abs).isSymbolicLink() ? fs.realpathSync(abs) : abs;
+  } catch {
+    return abs;
+  }
 }
 
 const MAX_READ_LINES = 2000;
@@ -78,9 +134,10 @@ export function createFsTools({ workspaceRoot }) {
     async execute({ path: p, content }, ctx) {
       const abs = resolveWithin(root, p);
       await ctx?.onBeforeWrite?.(abs);
-      fs.mkdirSync(path.dirname(abs), { recursive: true });
       const text = String(content ?? '');
-      fs.writeFileSync(abs, text, 'utf8');
+      // 工作区写入同样要原子：进程被杀时宁可保留旧文件，也不要半个源码——
+      // 半截源码只会让下一次构建报语法错，用户看不出文件已经坏了。
+      atomicWriteFileSync(writeTarget(abs), text);
       return `wrote ${p} (${text.length} chars)`;
     },
   };
@@ -128,7 +185,7 @@ export function createFsTools({ workspaceRoot }) {
         .reverse()
         .reduce((content, match) => `${content.slice(0, match.start)}${replace(match)}${content.slice(match.end)}`, raw);
       if (next === raw) throw new Error(`no changes to apply: the edit leaves ${p} unchanged`);
-      fs.writeFileSync(abs, next, 'utf8');
+      atomicWriteFileSync(writeTarget(abs), next);
       const applied = replace_all ? count : 1;
       return `edited ${p} (${applied} replacement${applied > 1 ? 's' : ''})`;
     },

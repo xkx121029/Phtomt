@@ -520,7 +520,9 @@ export class Agent {
             `DENIED: blocked by DangerGuard (${danger.id}: ${danger.why}). ` +
             'If this is genuinely required, explain the risk to the user and ask them to run it themselves.';
         } else {
-          const approved = await this.approval.check(tool, call.arguments, ctx);
+          // danger 提前塞进审批上下文：审批卡要在用户点「允许」之前就写明危险原因，
+          // 等到 tool_approval 事件才带就已经错过决策时机了。
+          const approved = await this.approval.check(tool, call.arguments, { ...ctx, danger });
           this.#emit({
             type: 'tool_approval',
             sessionId: session.id,

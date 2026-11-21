@@ -27,6 +27,9 @@ class CodingEventReducerTest {
         ok: Boolean = false,
         approved: Boolean = true,
         why: String = "",
+        danger: String = "",
+        risk: String = "",
+        approvalArgs: String = "",
         callId: String = "",
         tool: String = "",
         code: Int = 0,
@@ -44,7 +47,7 @@ class CodingEventReducerTest {
         goalJudging: Boolean = false,
     ): CodingEventReducer.Result = CodingEventReducer.apply(
         type, messages, assistantKey, ::nextId,
-        delta, name, ok, approved, why, callId, tool, code, argsPreview,
+        delta, name, ok, approved, why, danger, risk, approvalArgs, callId, tool, code, argsPreview,
         outputPreview, durationMs, subagentId, subagentLabel, subagentPersona, promptPreview, iteration, errorDetail,
         goalStatus, goalReason, goalJudging,
     )
@@ -181,6 +184,45 @@ class CodingEventReducerTest {
         assertEquals("写入文件", card.text)
         assertNull("未解决审批卡保持待定（置灰交给 UI 响应动作）", card.approvalResolved)
         assertNull("审批请求不改 busy", r.busy)
+    }
+
+    @Test
+    fun `approval_request带命令原文与危险原因`() {
+        // 这条钉住审计指的「用户点允许时只看到『请求执行执行命令』」：
+        // 卡片必须同时带上操作原文、风险档，以及 DangerGuard 命中项的中文说明。
+        val r = apply(
+            "approval_request",
+            callId = "c9",
+            tool = "run_command",
+            risk = "exec",
+            danger = "git_reset_hard",
+            why = "discards uncommitted work",
+            approvalArgs = "git reset --hard",
+        )
+        val card = r.messages.single()
+        assertEquals("执行命令", card.text)
+        assertEquals("git reset --hard", card.approvalCommand)
+        assertEquals("执行命令", card.approvalRisk)
+        assertEquals("丢弃所有未提交改动", card.approvalDanger)
+    }
+
+    @Test
+    fun `approval_request没命中危险模式时不显示危险原因`() {
+        // 没命中就是没有：别把「无」说成一句话，否则用户会以为每条命令都危险。
+        val r = apply("approval_request", callId = "c10", tool = "write_file", risk = "write", approvalArgs = "path=a.txt")
+        val card = r.messages.single()
+        assertNull(card.approvalDanger)
+        assertEquals("写入", card.approvalRisk)
+        assertNull("没有参数时不出折叠块", apply("approval_request", callId = "c11", tool = "write_file").messages.single().approvalCommand)
+    }
+
+    @Test
+    fun `tool_approval被拒时把危险id翻成中文`() {
+        // 宿主 bypass 模式硬拦危险命令时，事件里带的是 id + 英文 why；
+        // 卡片上说英文等于没说，所以 id 必须映射。
+        val msgs = apply("tool_start", name = "run_command", argsPreview = "command=x").messages
+        val r = apply("tool_approval", messages = msgs, name = "run_command", approved = false, danger = "rm_rf_root", why = "recursive delete of a broad path")
+        assertEquals("⛔ 递归删除大范围路径", r.messages.single().text)
     }
 
     // ==================== 回合收束 ====================
