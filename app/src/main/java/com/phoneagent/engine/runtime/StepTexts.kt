@@ -25,6 +25,8 @@ internal object StepTexts {
      * 必须跟随提示词语言：英文提示词的三态段写作 verified / delivered but unconfirmed /
      * delivered but no visible change，若这里仍回中文，模型得自己做一次中英映射，等于人为制造歧义。
      */
+    // 结论 × 语言两轴分档，逐条直写最贴近文案表；拆成小函数只会让"哪句对哪档"分散到几处
+    @Suppress("CyclomaticComplexMethod")
     fun lastStepResult(history: List<StepRecord>, lang: PromptLang): String {
         val last = history.lastOrNull() ?: return ""
         val action = last.action?.run { "${type}${reason?.let { "($it)" } ?: ""}" } ?: "-"

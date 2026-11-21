@@ -104,9 +104,8 @@ class ShellApprovalGateTest {
         val store = EngineStore()
         val gate = gate(store)
 
-        val approval = async {
-            gate.ensureShellApproval(AgentAction(type = ActionType.SHELL, command = "pm list packages", aiAuthored = true))
-        }
+        val selfWritten = AgentAction(type = ActionType.SHELL, command = "pm list packages", aiAuthored = true)
+        val approval = async { gate.ensureShellApproval(selfWritten) }
         advanceUntilIdle()
 
         assertEquals("pm list packages", store.pendingShellCommand.value)

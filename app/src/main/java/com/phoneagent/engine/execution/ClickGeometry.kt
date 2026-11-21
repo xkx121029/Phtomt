@@ -59,6 +59,9 @@ internal object ClickGeometry {
      *
      * 元素落点按「元素 ∩ 安全区」夹取（[clampInto]），快照坐标没有控件可依，只夹进安全区。
      */
+    // 八项输入各自来自不同的几何来源（活节点/元素/快照/两块屏幕/两条安全区），
+    // 揉成一个参数对象只会把"哪一项从哪来"藏进结构体，调用点反而更难读
+    @Suppress("LongParameterList")
     fun gesturePoints(
         liveCenter: Pair<Int, Int>?,
         elementCenter: Pair<Int, Int>?,
@@ -72,7 +75,7 @@ internal object ClickGeometry {
         val geometry = fresh?.takeIf { it.screenWidth > 0 && it.screenHeight > 0 } ?: observed
         val safe = safeArea(geometry.screenWidth, geometry.screenHeight, statusBarInset, navBarInset)
         val screen = Rect(0, 0, geometry.screenWidth, geometry.screenHeight)
-        val points = ArrayList<Candidate>(3)
+        val points = ArrayList<Candidate>()
         liveCenter?.let { points += Candidate("活节点当前位置", clampInto(it.first, it.second, target, safe, screen)) }
         elementCenter?.let { points += Candidate("元素最新位置", clampInto(it.first, it.second, target, safe, screen)) }
         snapshotPoint?.let { points += Candidate("快照坐标", clampInto(it.first, it.second, null, safe, screen)) }

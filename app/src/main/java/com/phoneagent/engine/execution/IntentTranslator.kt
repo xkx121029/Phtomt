@@ -350,6 +350,8 @@ internal class TargetLocationStrategy(
  * 方向接受大小写与中文写法；认不出来就明确失败，不产出零长手势。
  */
 internal class SwipeStrategy : IntentTranslationStrategy {
+    // 缺方向、方向认不出、转译失败是三种不同的缺参形态，各自早退才能给出各自的提示
+    @Suppress("ReturnCount")
     override fun translate(intent: AgentIntent, ctx: TranslationContext): IntentTranslator.TranslationResult {
         val raw = intent.direction?.trim()
         if (raw.isNullOrEmpty()) {
@@ -845,8 +847,20 @@ class IntentTranslator(
         put(IntentType.WAIT, passthrough(ActionType.WAIT) { i, a -> a.copy(timeoutMs = i.waitMs ?: i.durationMs) })
         // 目标型交互
         put(IntentType.TAP, TargetLocationStrategy(intentResolver, ActionType.TAP))
-        put(IntentType.LONG_PRESS, TargetLocationStrategy(intentResolver, ActionType.LONG_CLICK, { a, i -> a.copy(durationMs = i.durationMs) }))
-        put(IntentType.INPUT, TargetLocationStrategy(intentResolver, ActionType.TYPE_TEXT, { a, i -> a.copy(text = i.text) }, ::requireInputText))
+        put(
+            IntentType.LONG_PRESS,
+            TargetLocationStrategy(
+                intentResolver, ActionType.LONG_CLICK,
+                { a, i -> a.copy(durationMs = i.durationMs) },
+            ),
+        )
+        put(
+            IntentType.INPUT,
+            TargetLocationStrategy(
+                intentResolver, ActionType.TYPE_TEXT,
+                { a, i -> a.copy(text = i.text) }, ::requireInputText,
+            ),
+        )
         put(IntentType.SCROLL_TO, ScrollToStrategy(intentResolver))
         // 应用启动
         put(IntentType.OPEN_APP, OpenAppStrategy(appNameResolver))
@@ -912,7 +926,10 @@ class IntentTranslator(
         put(IntentType.ADD, SemanticActionStrategy(listOf("add_btn"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.SWITCH, SemanticActionStrategy(listOf("switch_toggle"), ActionType.TAP, intentResolver = intentResolver))
         put(IntentType.CLEAR_INPUT, SemanticActionStrategy(listOf("clear_input"), ActionType.TAP, intentResolver = intentResolver))
-        put(IntentType.DELETE, SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, intentResolver = intentResolver))
+        put(
+            IntentType.DELETE,
+            SemanticActionStrategy(listOf("delete_btn"), ActionType.TAP, intentResolver = intentResolver),
+        )
         // ---- 自由模式专属（保守/均衡一律拒绝，见 ActionPolicy.freeOnly）----
         put(IntentType.SHELL, ShellCommandStrategy(actionMode))
         put(IntentType.A11Y, A11yEndpointStrategy(actionMode))
@@ -986,6 +1003,8 @@ class IntentTranslator(
      *
      * 只对转译成功的命令生效；失败/缺参不涉及执行，原样返回。
      */
+    // 三道"不用问"的前置条件与一个置位出口，逐条早退就是这个判据表的原样写法
+    @Suppress("ReturnCount")
     private fun applyConfirmationGate(result: TranslationResult, intentType: String): TranslationResult {
         if (result !is TranslationResult.Command) return result
         if (result.action.needsUserConfirmation) return result

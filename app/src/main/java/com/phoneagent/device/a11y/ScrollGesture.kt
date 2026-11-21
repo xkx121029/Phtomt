@@ -40,6 +40,8 @@ internal object ScrollGesture {
      * @param direction up = 手指自下而上（内容往下翻、看到后面的内容）；其余按 down
      * @return null = 这个屏幕放不下一次有效位移，调用方必须报失败
      */
+    // 三个 null 出口是三种不同的"放不下"（屏太小 / 位移太短 / 方向不认），合并会丢掉区分
+    @Suppress("ReturnCount")
     fun plan(centerX: Int?, centerY: Int?, width: Int, height: Int, direction: String): Stroke? {
         if (width <= 1 || height <= 1) return null
         val travel = minOf(STEP_PX, height - 1)

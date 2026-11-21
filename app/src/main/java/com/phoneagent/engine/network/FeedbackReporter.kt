@@ -126,7 +126,10 @@ internal class FeedbackReporter(private val context: Context) {
                 put("steps", session.steps.coerceIn(0, MAX_COUNT))
                 put("okSteps", session.okSteps.coerceIn(0, MAX_COUNT))
                 put("sendFailed", records.count { it.sendResult == SEND_FAILED }.coerceIn(0, MAX_COUNT))
-                put("verifyFailed", records.count { it.verificationResult == VERIFY_FAILED || it.verificationResult == VERIFY_NO_EFFECT }.coerceIn(0, MAX_COUNT))
+                val verifyFailed = records.count {
+                    it.verificationResult == VERIFY_FAILED || it.verificationResult == VERIFY_NO_EFFECT
+                }
+                put("verifyFailed", verifyFailed.coerceIn(0, MAX_COUNT))
                 put("unverified", records.count { it.verificationResult == VERIFY_UNVERIFIED }.coerceIn(0, MAX_COUNT))
                 putJsonObject("actionCounts") {
                     actionCounts.entries.sortedByDescending { it.value }.take(MAX_ACTION_KINDS).forEach { (k, v) ->

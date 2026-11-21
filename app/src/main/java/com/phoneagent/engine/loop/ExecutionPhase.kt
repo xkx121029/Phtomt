@@ -819,8 +819,10 @@ internal class ExecutionPhase(
             val hint = ui.awaitUserHint()
             if (hint.isBlank()) {
                 // 用户离开：这一步在 return，不会再走到下方统一留档，先补一条失败记录
-                record.recordStep(step, action, VerifyRules.STATUS_FAILED, verify.beforeFingerprint, verify.afterFingerprint,
-                    verify.reason)
+                record.recordStep(
+                    step, action, VerifyRules.STATUS_FAILED,
+                    verify.beforeFingerprint, verify.afterFingerprint, verify.reason,
+                )
                 finish.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, null)
                 finish.stopEngine()
                 return StepOutcome.Return
@@ -946,8 +948,10 @@ internal class ExecutionPhase(
                     AgentLog.Level.WARN,
                     "用户引导后仍未获得有效动作（${guided?.intent ?: "调用失败"}），重新观测页面而非重放旧动作",
                 )
-                record.recordStep(step, action, VerifyRules.STATUS_FAILED, verify.beforeFingerprint, verify.afterFingerprint,
-                    verify.reason)
+                record.recordStep(
+                    step, action, VerifyRules.STATUS_FAILED,
+                    verify.beforeFingerprint, verify.afterFingerprint, verify.reason,
+                )
                 return StepOutcome.Continue
             }
         }
