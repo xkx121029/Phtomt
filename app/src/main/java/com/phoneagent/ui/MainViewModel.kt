@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.phoneagent.ui.vm.SettingsDelegate
+import com.phoneagent.ui.vm.TestDelegate
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
 
@@ -725,26 +726,26 @@ class MainViewModel(
         viewModelScope.launch { runCatching { com.phoneagent.data.store.TaskStore.deleteTemplate(context, id) } }
     }
 
-    // ---- AI 标准化测试 ----
-    val testConfig: StateFlow<TestConfig> = testEngine.config
-    val testRunning: StateFlow<Boolean> = testEngine.running
-    val testSummary: StateFlow<TestRunSummary> = testEngine.summary
-    val testStreamText: StateFlow<String> = testEngine.streamText
-    val testLanguage: StateFlow<PromptLang> = testEngine.testLanguage
-    val testCategory: StateFlow<String?> = testEngine.testCategory
+    // ---- AI 标准化测试（实现在 [TestDelegate]） ----
+    private val testDomain = TestDelegate(testEngine, viewModelScope)
+
+    val testConfig: StateFlow<TestConfig> get() = testDomain.testConfig
+    val testRunning: StateFlow<Boolean> get() = testDomain.testRunning
+    val testSummary: StateFlow<TestRunSummary> get() = testDomain.testSummary
+    val testStreamText: StateFlow<String> get() = testDomain.testStreamText
+    val testLanguage: StateFlow<PromptLang> get() = testDomain.testLanguage
+    val testCategory: StateFlow<String?> get() = testDomain.testCategory
 
     fun updateTestConfig(baseUrl: String, model: String, apiKey: String) =
-        testEngine.updateConfig(baseUrl, model, apiKey)
+        testDomain.updateTestConfig(baseUrl, model, apiKey)
 
-    fun setTestLanguage(lang: PromptLang) = testEngine.setTestLanguage(lang)
-    fun setTestCategory(category: String?) = testEngine.setTestCategory(category)
-    fun getLanguageLabel(lang: PromptLang): String = testEngine.getLanguageLabel(lang)
+    fun setTestLanguage(lang: PromptLang) = testDomain.setTestLanguage(lang)
+    fun setTestCategory(category: String?) = testDomain.setTestCategory(category)
+    fun getLanguageLabel(lang: PromptLang): String = testDomain.getLanguageLabel(lang)
 
-    fun runTest(preset: TestPreset) {
-        viewModelScope.launch { testEngine.runPreset(preset) }
-    }
+    fun runTest(preset: TestPreset) = testDomain.runTest(preset)
 
-    fun resetTest() = testEngine.reset()
+    fun resetTest() = testDomain.resetTest()
 
     // ---- 文档结果：AI 生成的文档直接在 Agent 页任务流里预览 ----
     val docResult: StateFlow<DocResult?> = documentEngine.result
