@@ -151,30 +151,32 @@ class ClickRunner(
             }
         }
 
-        // ② 手势：落点一律取**此刻**的位置，且必须落在屏幕可见区内
+        // ② 手势：落点一律取**此刻**的位置，且必须落在**此刻**的屏幕可见区内
         //    （元素只露一半时它的中心可能在屏幕外，派发到屏幕外等于白点；只按时间点定序不按坐标猜）
+        //
+        //    几何基准用 `current`（执行前新抓的那份）而不是 `snapshot`（AI 观察那一刻的那份）：
+        //    元素坐标是新树上的，屏幕尺寸/安全区若还用旧的，横竖屏切换后同一个 bounds 会被夹平移几百像素。
+        //    `current` 为 null（读不到页面）时才退回 `snapshot`，由 `baseline` 表达这一点。
+        //    注意 `switchedApp` 只比包名，旋转屏幕、分屏尺寸变化都过不了它的检查——这正是必须在这儿换基准的原因。
         val sx = resolved.x
         val sy = resolved.y
-        val safe = safeArea(snapshot)
-        val screen = ClickGeometry.Rect(0, 0, snapshot.screenWidth, snapshot.screenHeight)
-        // 落点来自元素时按「元素 ∩ 安全区」夹取，避免贴边/半露的控件被夹到控件外面去（点到邻居）
-        val targetRect = element?.let { ClickGeometry.Rect(it.left, it.top, it.right, it.bottom) }
-        val candidates = mutableListOf<Triple<String, Pair<Int, Int>, Boolean>>()
-        if (selector != null) {
-            // 活节点位置最新——AI 思考的数秒里页面可能已滚动/被顶动，快照坐标早已偏移
-            executor.liveCenter(selector)?.let { candidates += Triple("活节点当前位置", it, true) }
-        }
-        if (cx != null && cy != null) candidates += Triple("元素最新位置", Pair(cx, cy), true)
-        if (sx != null && sy != null) candidates += Triple("快照坐标", Pair(sx, sy), false)
-        val points = candidates
-            .map { (name, p, targeted) ->
-                name to ClickGeometry.clampInto(
-                    p.first, p.second, if (targeted) targetRect else null, safe, screen,
-                )
-            }
-            .distinctBy { it.second }
+        // 活节点位置最新——AI 思考的数秒里页面可能已滚动/被顶动，快照坐标早已偏移
+        val liveCenter = if (selector != null) executor.liveCenter(selector) else null
+        val points = ClickGeometry.gesturePoints(
+            liveCenter = liveCenter,
+            elementCenter = if (cx != null && cy != null) Pair(cx, cy) else null,
+            // 落点来自元素时按「元素 ∩ 安全区」夹取，避免贴边/半露的控件被夹到控件外面去（点到邻居）
+            target = element?.let { ClickGeometry.Rect(it.left, it.top, it.right, it.bottom) },
+            snapshotPoint = if (sx != null && sy != null) Pair(sx, sy) else null,
+            observed = snapshot,
+            fresh = current,
+            statusBarInset = systemBarInsetPx("status_bar_height"),
+            navBarInset = systemBarInsetPx("navigation_bar_height"),
+        )
 
-        for ((name, point) in points) {
+        for (candidate in points) {
+            val name = candidate.name
+            val point = candidate.point
             // 落点审计：先问清"这一下会落到谁身上"。点错时能立刻分清是定位/坐标偏了
             // （该重新定位）还是控件本身无响应（该换意图），不写清楚 AI 只会把同一下再点一遍
             val hit = executor.hitTest(point.first, point.second)
@@ -249,28 +251,6 @@ class ClickRunner(
         runCatching { service.captureScreenAsync() }.getOrNull()?.takeUnless { it.missingAccessibility }
 
     /**
-     * 屏幕**安全区**（而非整块物理屏）。
-     *
-     * 元素树里的"可见"只保证它露了一部分：列表底部半截可见的行，中心点可能已经在屏幕外，
-     * 手势派发到屏幕外的点要么被系统拒绝、要么落在别处，表现出来就是"点了没反应"。
-     *
-     * 并且不能退而求其次夹到 y=0（状态栏）或 y=h-1（导航条）：那等于把"点不到目标"变成"误触系统栏"，
-     * 失败之外还多一点副作用。故把越界/贴边（<8px）的落点收进四边各留余量的安全区，
-     * 取屏幕内最近的有效位置——左右各留 [EDGE_SAFE_MARGIN]，上下避开状态栏/导航条高度，
-     * 这样落点不会再等于 0 或 h-1。具体夹取见 [ClickGeometry.clampInto]。
-     */
-    private fun safeArea(snapshot: ScreenSnapshot): ClickGeometry.Rect {
-        val w = snapshot.screenWidth.takeIf { it > 0 } ?: DEFAULT_SCREEN_W
-        val h = snapshot.screenHeight.takeIf { it > 0 } ?: DEFAULT_SCREEN_H
-        val left = EDGE_SAFE_MARGIN
-        val right = (w - 1 - EDGE_SAFE_MARGIN).coerceAtLeast(left)
-        // 上下避开系统栏：读到状态栏/导航条高度就用它；读不到时退回最小边距，保证落点不为 0 / h-1
-        val top = maxOf(systemBarInsetPx("status_bar_height"), EDGE_SAFE_MARGIN)
-        val bottom = (h - 1 - maxOf(systemBarInsetPx("navigation_bar_height"), EDGE_SAFE_MARGIN)).coerceAtLeast(top)
-        return ClickGeometry.Rect(left = left, top = top, right = right + 1, bottom = bottom + 1)
-    }
-
-    /**
      * 读取系统栏（状态栏 [status_bar_height] / 导航条 [navigation_bar_height]）高度（像素）。
      * 先按系统资源名取；部分 ROM / 高版本系统取不到（返回 0），此时由调用方退回最小边距，不阻断点击。
      */
@@ -343,12 +323,6 @@ class ClickRunner(
         /** 滚动后的稳定等待：等滚动动画/惯性结束再抓页面 */
         const val SCROLL_SETTLE_MS = 400L
 
-        /** 屏幕尺寸读不到时的兜底尺寸（仅用于把落点夹进屏幕内） */
-        const val DEFAULT_SCREEN_W = 1080
-        const val DEFAULT_SCREEN_H = 2400
-
-        /** 落点安全区的左右最小边距（像素）：避开屏幕左右边缘，防止贴边误触 */
-        const val EDGE_SAFE_MARGIN = 24
     }
 }
 /**
