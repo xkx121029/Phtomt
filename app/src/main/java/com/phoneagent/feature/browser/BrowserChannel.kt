@@ -2,6 +2,8 @@
 @file:Suppress("MagicNumber")
 package com.phoneagent.feature.browser
 
+import com.phoneagent.domain.model.ActionTarget
+import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.rules.EngineRules
@@ -13,9 +15,10 @@ import com.phoneagent.domain.rules.EngineRules
  * 1. **不依赖设备能力**：网页读写走 DOM 脚本（`feature/browser/script/`），
  *    不经过无障碍、Shizuku、Termux，也不进 [com.phoneagent.engine.execution.IntentTranslator]
  *    的策略表——所以"手机没法自动操作"这件事不该影响浏览器能不能用。
- * 2. **只读模式下按不可逆性放行**：只读（既无 Shizuku/无线 ADB 又无无障碍）时，打开网页 / 抓正文 /
- *    滚动 / 后退这类"只看"照常；网页里的普通点击、填表单也放行（这是浏览器相对手机操作的额外权利），
- *    只有命中不可逆词表（[BrowserGuard]）的支付/下单/发送/删除等会被端侧直接拒掉。
+ * 2. **不可逆判据在所有动作档位都生效**，档位只决定命中后的处置方式：只读（既无 Shizuku/无线 ADB
+ *    又无无障碍）时打开网页 / 抓正文 / 滚动 / 后退这类"只看"照常，网页里的普通点击、填表单也放行，
+ *    但命中不可逆词表（[BrowserGuard]）的支付/下单/发送/删除等**直接拒掉**；其余档位（含默认均衡档）
+ *    不下发也不拒绝，而是走 [confirm] 问用户一句——档位语义不变，只是不再有一条"谁都不看"的旁路。
  * 3. **通道只管判定与措辞**：具体怎么碰 WebView 交给 [BrowserExecutor]（生产实现 [BridgeExecutor]
  *    转调 [BrowserBridge]），于是这层判定可以纯 JVM 单测。
  *
@@ -24,6 +27,11 @@ import com.phoneagent.domain.rules.EngineRules
  */
 internal class BrowserChannel(
     private val readOnly: () -> Boolean,
+    /**
+     * 不可逆网页操作的确认门：与应用内手机操作**同一个** [com.phoneagent.engine.runtime.UserGate]，
+     * 这里只注入调用，不新造第二套确认机制。
+     */
+    private val confirm: suspend (AgentAction) -> Boolean,
     private val executor: BrowserExecutor = BridgeExecutor(),
 ) {
 
@@ -35,6 +43,8 @@ internal class BrowserChannel(
         data class Missing(val field: String, val reason: String) : Outcome()
         /** 被护栏拒绝：只读模式下的不可逆操作，理由已是可执行的中文说明 */
         data class Refused(val reason: String) : Outcome()
+        /** 用户取消了不可逆操作：一步没落地，理由已是可执行的中文说明 */
+        data class Cancelled(val reason: String) : Outcome()
         /** 执行失败：中文原因（可直接回注决策上下文） */
         data class Failed(val reason: String) : Outcome()
     }
@@ -121,14 +131,11 @@ internal class BrowserChannel(
                     else -> {
                         val by = target.by.takeIf { it in TARGET_BY } ?: "text"
                         val value = target.value.trim()
-                        guard(by, value, intent) ?: run {
-                            if (op == IntentType.BROWSE_CLICK) {
-                                // 只读下让脚本对"真正被定位到的元素"再探一次词表：
-                                // AI 给的文字未必等于元素真实文字（如 by=id），这一步是兜底
-                                from(executor.click(by, value, readOnly()))
-                            } else {
-                                from(executor.input(by, value, intent.text.orEmpty()))
-                            }
+                        if (op == IntentType.BROWSE_CLICK) {
+                            click(by, value, intent)
+                        } else {
+                            guardInput(by, value, intent)
+                                ?: from(executor.input(by, value, intent.text.orEmpty()))
                         }
                     }
                 }
@@ -138,29 +145,85 @@ internal class BrowserChannel(
     }
 
     /**
-     * 只读护栏：返回非空即"拒绝执行"。
-     * 三重判定取或——AI 自报不可逆、目标文字/选择器命中词表、以及（脚本侧的）元素真实文字命中词表。
+     * 端侧这一层能做的判据（执行前唯一免费信号）：AI 自报不可逆、AI 给的目标文字命中词表、
+     * 以及 `by=id` 时选择器命名可疑。
+     *
+     * 脚本那一层看的是**真正被定位到的元素**上的文字（AI 给的文字未必等于元素文字），两层共用
+     * [BrowserGuard] 这一张词表，只是证据来源不同。
      */
-    private fun guard(by: String, value: String, intent: AgentIntent): Outcome? {
+    private fun screen(by: String, value: String, intent: AgentIntent): Screening = when {
+        intent.needsConfirmation -> Screening.Hit(null)
+        else -> BrowserGuard.match(value)?.let { Screening.Hit(it) }
+            ?: if (by == "id" && BrowserGuard.selectorSuspicious(value)) Screening.Hit(null) else Screening.Clear
+    }
+
+    /**
+     * 网页点击：**所有档位都过判据**，档位只决定命中后的处置。
+     *
+     * - 只读档命中 → 直接拒绝（更严的模式，不降级成"问一下"），一步不落地；
+     * - 其它档位命中 → 走 [confirm]（同一个 UserGate）问用户，允许才真正派发；
+     * - 脚本探针**在所有档位都注入**：它只在内存里判定，命中即"不派发并如实上报"。
+     *   只读档据此拒掉；其它档位据此补问一次——AI 给的文字往往不含危险词（如按 `#btn-2` 定位到
+     *   「确认支付」），此时端侧那层什么都看不见，只有元素真实文字能说话。
+     */
+    private suspend fun click(by: String, value: String, intent: AgentIntent): Outcome {
+        var approved = false
+        when (val s = screen(by, value, intent)) {
+            is Screening.Hit -> {
+                if (readOnly()) return refusal(value, s.word, intent)
+                if (!confirmClick(intent, value, s.word)) return cancelled(value, s.word)
+                approved = true
+            }
+            Screening.Clear -> Unit
+        }
+        val probed = executor.click(by, value, guard = true)
+        if (!probed.refused) return from(probed)
+        if (readOnly()) return from(probed)
+        // 端侧那层已经就同一目标问过，答案不该因为证据来源不同而再问一遍
+        if (approved) return from(executor.click(by, value, guard = false))
+        if (!confirmClick(intent, value, null)) return cancelled(value, null)
+        return from(executor.click(by, value, guard = false))
+    }
+
+    /** 填表单的护栏保持原样：只读档命中即拒，其它档位不额外打扰（填字本身可撤回） */
+    private fun guardInput(by: String, value: String, intent: AgentIntent): Outcome? {
         if (!readOnly()) return null
+        return when (val s = screen(by, value, intent)) {
+            is Screening.Hit -> refusal(value, s.word, intent)
+            Screening.Clear -> null
+        }
+    }
+
+    /** 把"这一刻到底要点什么"摆给用户：目标串取 AI 给的文字，如实说明命中的词 */
+    private suspend fun confirmClick(intent: AgentIntent, shown: String, hit: String?): Boolean =
+        confirm(
+            AgentAction(
+                type = IntentType.BROWSE_CLICK,
+                target = ActionTarget(method = "label", value = shown),
+                reason = if (hit != null) "网页点击命中不可逆词「$hit」：$shown" else "网页点击的目标疑似不可逆：$shown",
+                reasoning = intent.reasoning,
+            ),
+        )
+
+    private fun refusal(shown: String, hit: String?, intent: AgentIntent): Outcome.Refused {
         if (intent.needsConfirmation) {
             return Outcome.Refused(
                 "只读模式下该网页操作被标记为不可逆（needs_confirmation），已拒绝：" +
                     "请先告知用户手动完成，或改用非不可逆路径；不要重试同一动作。",
             )
         }
-        val hit = BrowserGuard.match(value)
-        if (hit != null) return refusal(value, hit)
-        // 选择器定位在执行前看不到元素文字，只能先按选择器命名嗅一道（#pay-btn / .checkout-submit）
-        if (by == "id" && BrowserGuard.selectorSuspicious(value)) return refusal(value, null)
-        return null
-    }
-
-    private fun refusal(shown: String, hit: String?): Outcome.Refused {
         val why = if (hit != null) "（命中「$hit」）" else "（目标命名疑似不可逆）"
         return Outcome.Refused(
             "只读模式下「$shown」属不可逆操作$why，已拒绝。" +
                 "请先告知用户手动完成，或改用非不可逆路径；不要重试同一动作。",
+        )
+    }
+
+    private fun cancelled(shown: String, hit: String?): Outcome.Cancelled {
+        val why = if (hit != null) "（命中「$hit」）" else "（目标疑似不可逆）"
+        return Outcome.Cancelled(
+            "用户拒绝执行网页上的不可逆操作「$shown」$why，本次没有点击。" +
+                "请改用其他方案或询问用户，不要重复请求同一动作。",
         )
     }
 
@@ -174,6 +237,12 @@ internal class BrowserChannel(
     /** 搜索词 → 结果页地址。用 Bing：国内可直连，结果页是静态 HTML，抓正文最稳 */
     private fun searchUrl(query: String): String =
         SEARCH_URL + java.net.URLEncoder.encode(query, "UTF-8")
+
+    /** 端侧判据的结论：命中（带命中词，null = 只是"命名疑似"）或放行 */
+    private sealed class Screening {
+        data class Hit(val word: String?) : Screening()
+        object Clear : Screening()
+    }
 
     companion object {
         /** 本通道持有的意图（复用 [IntentType] 常量，不写字面量） */

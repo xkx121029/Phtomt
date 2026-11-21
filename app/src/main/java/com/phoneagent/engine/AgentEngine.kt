@@ -535,6 +535,8 @@ class AgentEngine(
      */
     private val browserChannel = com.phoneagent.feature.browser.BrowserChannel(
         readOnly = { capabilityManager.currentMode() == CapabilityManager.Mode.READONLY },
+        // 与手机操作共用同一道确认门：网页上的不可逆点击不许另起一套确认机制
+        confirm = { action -> userGate.awaitActionConfirmation(action) },
     )
     /** 上下文注入器：记忆/规则/异常经验/页面记忆/会话承接/环境事实（重构批次 6，见 [com.phoneagent.engine.context.ContextInjector]） */
     private val contextInjector = com.phoneagent.engine.context.ContextInjector(
@@ -2590,6 +2592,7 @@ class AgentEngine(
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Ok -> outcome.text
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Missing -> outcome.reason
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused -> outcome.reason
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Cancelled -> outcome.reason
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed -> outcome.reason
         }.trim().take(com.phoneagent.feature.browser.BrowserBridge.MAX_RESULT_CHARS)
         val injected = when (outcome) {
@@ -2599,6 +2602,8 @@ class AgentEngine(
                 "⚠️ 内置浏览器（$op）缺少必要参数：$text"
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Refused ->
                 "⛔ 内置浏览器（$op）已被端侧拒绝：$text"
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Cancelled ->
+                "⛔ 内置浏览器（$op）已被用户取消：$text"
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed ->
                 "内置浏览器（$op）失败：$text\n请按提示调整：" +
                     "需要打开网页就先用 browse_open；需要知道当前页有什么可以点、可以填什么就先 browse_read" +
@@ -2626,6 +2631,13 @@ class AgentEngine(
                 consecutiveFailures++
                 uiBridge.log(AgentLog.Level.WARN, "只读模式拒绝浏览器操作：$op → ${text.take(120)}")
                 uiBridge.pushFloating("浏览器：$label 已按只读规则拒绝", "THINKING")
+            }
+            is com.phoneagent.feature.browser.BrowserChannel.Outcome.Cancelled -> {
+                // 用户这一下点了取消：同样不算工具坏了，但要说清是"人不同意"，不是"端侧不让"
+                browseMissingStreak = 0
+                consecutiveFailures++
+                uiBridge.log(AgentLog.Level.WARN, "用户取消浏览器不可逆操作：$op → ${text.take(120)}")
+                uiBridge.pushFloating("浏览器：$label 已取消", "THINKING")
             }
             is com.phoneagent.feature.browser.BrowserChannel.Outcome.Failed -> {
                 browseMissingStreak = 0
