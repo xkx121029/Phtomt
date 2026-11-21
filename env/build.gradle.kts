@@ -75,6 +75,9 @@ kotlin {
 dependencies {
     // 跨进程契约与主应用共享同一份 AIDL 定义
     implementation(project(":env-api"))
+
+    // 安装锁判定、摘要校验这些判据是纯 Kotlin，必须能在 JVM 单测里钉死行为
+    testImplementation(libs.junit)
 }
 
 // 版本文件：主应用嵌入 assets 后，用于「已安装版本 vs 内置版本」的更新判断
