@@ -29,10 +29,11 @@ enum class DeviceCapability(val code: String, val label: String) {
     SHELL_SHIZUKU("SHIZUKU_UNAVAILABLE", "内置 Shizuku"),
 
     /**
-     * 无线调试引导会话：内置 Shizuku 的**启动机制**，不是可执行通道。
+     * 无线调试引导会话：内置 Shizuku 的**启动机制**，对主应用不是可执行通道。
      *
-     * 会话在线最多算 [CapabilityState.DEGRADED]（能力的一部分：把 server 拉起来），
-     * 永远不会是 AVAILABLE——命令只能经 Shizuku binder 下发。
+     * 会话在 Provider 内确实能执行命令（`AdbWirelessTransport.executeShell`），但 AIDL 只暴露
+     * `execShizuku` / `execTermux`，主应用没有走会话的入口。所以这里最多算
+     * [CapabilityState.DEGRADED]（能力的一部分：把 server 拉起来），永远不会是 AVAILABLE。
      */
     SHELL_ADB("ADB_UNAVAILABLE", "无线调试会话（仅拉起 Shizuku）"),
 
@@ -194,8 +195,8 @@ object CapabilityProbe {
             else -> CapabilityState.AVAILABLE
         }
         val shell = when {
-            // 只有内置 Shizuku binder 能执行命令：无线 ADB 会话是拉起 server 的引导机制，
-            // 它自己跑不了 am/input/settings（Provider 的 execShizuku 只经 Shizuku binder 下发）
+            // 主应用能执行的命令只有内置 Shizuku binder 这一条：无线 ADB 会话是拉起 server 的引导机制，
+            // AIDL 没有暴露走会话的入口（Provider 侧 execShizuku 只经 Shizuku binder 下发）
             shizukuReady -> CapabilityState.AVAILABLE
             termuxAvailable -> CapabilityState.DEGRADED
             else -> CapabilityState.UNAVAILABLE
