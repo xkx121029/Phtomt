@@ -192,6 +192,26 @@ onMounted(async () => {
       </div>
     </section>
 
+    <!-- 可试用：真机框里是静态截图，交互版本按需下载 -->
+    <section class="section band try">
+      <div class="page try__in">
+        <div v-reveal class="try__text">
+          <p class="eyebrow">试用</p>
+          <h2 class="h2">不用装 App，先把它按一遍</h2>
+          <p class="lead try__lead">
+            右边这台手机里跑的不是截图，也不是录屏：它是按 <code>Color.kt</code> /
+            <code>Type.kt</code> / <code>Motion.kt</code> 逐条复刻的同一套界面，跑在浏览器里。
+            切 tab、翻对话、进设置、换深浅色都会真的响应。
+          </p>
+          <p class="muted small try__note">
+            首页这里只放一张静态截图。那份 282 KB 的交互版本在你点开之后才下载，首屏不为它付任何代价。
+          </p>
+          <RouterLink to="/demo" class="btn btn--primary btn--lg">亲手试一下</RouterLink>
+        </div>
+        <ShotFrame v-reveal="60" class="try__shot" v-bind="SCREENS[1]" />
+      </div>
+    </section>
+
     <p v-if="failed" class="page notice">
       内容接口暂不可用，页面显示的是构建期快照。若为本地开发，请确认 <code>npm run dev:api</code> 已启动。
     </p>
@@ -776,6 +796,44 @@ onMounted(async () => {
   }
 }
 
+/* ---------- 试用 ---------- */
+
+.try__in {
+  display: grid;
+  gap: clamp(24px, 3.4vw, 44px);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+
+.try__lead {
+  margin-top: 12px;
+}
+
+.try__lead code {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.9em;
+  color: var(--ink);
+}
+
+.try__note {
+  margin-top: 10px;
+}
+
+.try__text .btn {
+  margin-top: 22px;
+}
+
+.try__shot {
+  max-width: 320px;
+  margin-inline: auto;
+}
+
+@media (min-width: 860px) {
+  .try__in {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  }
+}
+
 /* 栅格子项默认 min-width:auto，一列长文本会把单列轨道撑到比容器还宽，
    375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
 .hero__in > *,
@@ -784,6 +842,7 @@ onMounted(async () => {
 .gates > *,
 .specs > *,
 .plates > *,
+.try__in > *,
 .entries > *,
 .say__in > * {
   min-width: 0;

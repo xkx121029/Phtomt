@@ -45,6 +45,13 @@ export const routes = [
     meta: { title: '下载', group: '主要' }
   },
   {
+    // 不装 App 先试一遍：整屏交给 public/demo/app.html，所以 no shell
+    path: '/demo',
+    name: 'demo',
+    component: () => import('../views/DemoView.vue'),
+    meta: { title: '界面试用', group: '主要', standalone: true }
+  },
+  {
     path: '/ask',
     name: 'ask',
     component: () => import('../views/AskView.vue'),

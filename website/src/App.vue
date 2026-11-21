@@ -9,8 +9,11 @@ import { useAssistant } from './composables/useAssistant.js'
 const route = useRoute()
 // 管理后台自带一套外壳，不套官网的页头页脚
 const isAdmin = computed(() => route.matched.some((r) => r.meta?.admin))
+// 界面试用页自己就是全屏成品，页头页脚和右下角助手都会压住它
+const isStandalone = computed(() => route.matched.some((r) => r.meta?.standalone))
+const bare = computed(() => isAdmin.value || isStandalone.value)
 // 独立问答页里已经有一整块对话，右下角再挂一个入口就是重复
-const showDock = computed(() => !isAdmin.value && route.name !== 'ask')
+const showDock = computed(() => !bare.value && route.name !== 'ask')
 
 const { loadStatus, restore } = useAssistant()
 onMounted(() => {
@@ -22,13 +25,13 @@ onMounted(() => {
 
 <template>
   <div class="shell">
-    <SiteHeader v-if="!isAdmin" />
-    <main :class="['main', { 'main--admin': isAdmin }]">
+    <SiteHeader v-if="!bare" />
+    <main :class="['main', { 'main--admin': isAdmin, 'main--bare': isStandalone }]">
       <RouterView v-slot="{ Component, route: current }">
         <component :is="Component" :key="current.path" />
       </RouterView>
     </main>
-    <SiteFooter v-if="!isAdmin" />
+    <SiteFooter v-if="!bare" />
     <AssistantDock v-if="showDock" />
   </div>
 </template>
@@ -48,5 +51,11 @@ onMounted(() => {
 
 .main--admin {
   padding-top: 0;
+}
+
+.main--bare {
+  padding-top: 0;
+  display: flex;
+  flex-direction: column;
 }
 </style>
