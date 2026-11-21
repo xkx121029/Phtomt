@@ -23,7 +23,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.BuildConfig
 import com.phoneagent.feature.update.UpdateChannel
 import com.phoneagent.feature.update.UpdateState
@@ -61,7 +61,7 @@ import kotlinx.coroutines.launch
 internal fun SettingsUpdate(vm: MainViewModel, st: SettingsState, save: () -> Unit, onBack: () -> Unit) {
     val snackbar = LocalSnackbar.current
     val scope = rememberCoroutineScope()
-    val state by vm.updateState.collectAsState()
+    val state by vm.updateState.collectAsStateWithLifecycle()
 
     // 进入页面即静默查一次：用户点进「软件更新」就是想确认有没有新版，
     // 不该还要再点一次"检查更新"。这条检查不弹任何提示，避免每次进页都打扰。

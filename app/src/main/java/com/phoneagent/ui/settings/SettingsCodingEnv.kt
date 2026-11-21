@@ -16,7 +16,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.env.CodingEnvClient
 import com.phoneagent.ui.coding.openAllFilesAccessSettings
 import com.phoneagent.ui.components.LocalNavClearance
@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun SettingsCodingEnv(onBack: () -> Unit) {
     val client = koinInject<CodingEnvClient>()
-    val ui by client.state.collectAsState()
+    val ui by client.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
     val context = LocalContext.current

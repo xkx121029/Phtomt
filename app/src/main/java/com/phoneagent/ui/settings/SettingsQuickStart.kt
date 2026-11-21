@@ -24,7 +24,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.font.FontWeight
 import com.phoneagent.core.ai.ProviderPresets
 import com.phoneagent.device.a11y.AgentAccessibilityService
@@ -76,7 +76,7 @@ internal fun SettingsQuickStart(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val buzz = rememberHapticClick()
-    val a11y by vm.a11yEnabled.collectAsState()
+    val a11y by vm.a11yEnabled.collectAsStateWithLifecycle()
 
     // 进页刷一次无障碍状态：用户可能刚在系统设置里授权完返回
     LaunchedEffect(Unit) { vm.refreshA11yState(context) }

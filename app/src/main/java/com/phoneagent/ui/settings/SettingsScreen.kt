@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -30,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.ModelCatalogCodec
@@ -79,7 +79,7 @@ fun SettingsScreen(
      */
     onNavigateAgent: () -> Unit = {},
 ) {
-    val settings by vm.settingsFlow.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
 
     val st = remember { SettingsState(settings) }
     // 宽屏双栏：左侧分类常驻，右侧直接翻页。

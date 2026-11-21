@@ -19,7 +19,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -28,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.agent.ConnState
 import com.phoneagent.coding.agent.Workspace
@@ -55,8 +55,8 @@ internal fun SettingsCoding(
 ) {
     val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
     val bridge = koinInject<CodingAgentBridge>()
-    val runtimeState by runtime.state.collectAsState()
-    val clientState by bridge.client.state.collectAsState()
+    val runtimeState by runtime.state.collectAsStateWithLifecycle()
+    val clientState by bridge.client.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val buzz = rememberHapticClick()
     val snackbar = LocalSnackbar.current

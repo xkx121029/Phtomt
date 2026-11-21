@@ -23,7 +23,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.device.a11y.AgentAccessibilityService
 import com.phoneagent.engine.runtime.AssistantPrimaryAction
 import com.phoneagent.engine.runtime.AssistantRedirect
@@ -79,7 +79,7 @@ internal fun SettingsPermissions(
     startOnChannel: Boolean = false,
 ) {
     val context = LocalContext.current
-    val permissions by vm.permissions.collectAsState()
+    val permissions by vm.permissions.collectAsStateWithLifecycle()
     // 两段各一屏：授权是一次性动作，执行通道是运行期状态，混在一页要滚三屏才能看完
     var tab by remember { mutableStateOf(if (startOnChannel) PermissionTab.CHANNEL else PermissionTab.GRANT) }
 
@@ -141,8 +141,8 @@ internal fun SettingsPermissions(
             var notifGranted by remember { mutableStateOf(ProviderManager.providerNotificationGranted(context)) }
             var notifBusy by remember { mutableStateOf(false) }
             // 真实的通道状态：只显示「已安装」会让用户误以为能用（安装 ≠ 绑定 ≠ 无障碍已开启）
-            val channelConnected by ProviderManager.connected.collectAsState()
-            val channelError by ProviderManager.lastError.collectAsState()
+            val channelConnected by ProviderManager.connected.collectAsStateWithLifecycle()
+            val channelError by ProviderManager.lastError.collectAsStateWithLifecycle()
             // 自检：把「装 / 开 / 绑 / 读树 / 截图」拆成五步实测，结果留在页面上
             var selfTestRunning by remember { mutableStateOf(false) }
             var selfTestSteps by remember { mutableStateOf<List<ProviderManager.SelfTestStep>?>(null) }

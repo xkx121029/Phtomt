@@ -16,7 +16,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.feature.agentdoc.AgentDocRepository
 import com.phoneagent.ui.components.LocalNavClearance
 import kotlinx.coroutines.launch
@@ -51,8 +51,8 @@ internal fun SettingsAgent(st: SettingsState, save: () -> Unit, onBack: () -> Un
     val docsRepo = koinInject<AgentDocRepository>()
     // 副屏状态：Shizuku 通道 + 代理运行时状态，合成设置页要展示的四态
     val shizuku = koinInject<com.phoneagent.device.shell.ShizukuManager>()
-    val shizukuState by shizuku.state.collectAsState()
-    val vdStatus by com.phoneagent.device.screen.VirtualDisplayAgent.status.collectAsState()
+    val shizukuState by shizuku.state.collectAsStateWithLifecycle()
+    val vdStatus by com.phoneagent.device.screen.VirtualDisplayAgent.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var docSyncing by remember { mutableStateOf(false) }
     Column(

@@ -20,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.LocalNavClearance
@@ -60,10 +60,10 @@ internal fun SettingsData(
     // 清空动作的结果（成功是路径/提示，失败以 ERR: 开头）就地回显，不弹系统弹窗
     var message by remember { mutableStateOf<String?>(null) }
 
-    val anomalies by vm.memoryAnomalies.collectAsState()
-    val profile by vm.memoryProfile.collectAsState()
-    val taskMemories by vm.memoryTaskMemories.collectAsState()
-    val logs by vm.logs.collectAsState()
+    val anomalies by vm.memoryAnomalies.collectAsStateWithLifecycle()
+    val profile by vm.memoryProfile.collectAsStateWithLifecycle()
+    val taskMemories by vm.memoryTaskMemories.collectAsStateWithLifecycle()
+    val logs by vm.logs.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
 

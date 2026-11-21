@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.device.shell.AdbPhase
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppCard
@@ -53,8 +53,8 @@ import com.phoneagent.ui.theme.Success
  */
 @Composable
 internal fun ShizukuChannelCard(vm: MainViewModel) {
-    val shizukuState by vm.shizukuState.collectAsState()
-    val adbStatus by vm.adbStatus.collectAsState()
+    val shizukuState by vm.shizukuState.collectAsStateWithLifecycle()
+    val adbStatus by vm.adbStatus.collectAsStateWithLifecycle()
     var code by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf<String?>(null) }
 
@@ -150,7 +150,7 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
             }
 
             // 向导当前说话（搜索结果也回显到这里）
-            val flowMsg by vm.adbPairingMessageFlow.collectAsState()
+            val flowMsg by vm.adbPairingMessageFlow.collectAsStateWithLifecycle()
             if (flowMsg.isNotBlank()) {
                 StatusPill(flowMsg, MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth())
             }
@@ -177,7 +177,7 @@ internal fun ShizukuChannelCard(vm: MainViewModel) {
 @Composable
 internal fun TermuxChannelCard(vm: MainViewModel) {
     val context = LocalContext.current
-    val status by vm.termuxStatus.collectAsState()
+    val status by vm.termuxStatus.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshTermuxStatus() }
 
