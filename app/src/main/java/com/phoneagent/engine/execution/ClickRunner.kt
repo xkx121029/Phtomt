@@ -48,6 +48,12 @@ class ClickRunner(
     private val logger: (String) -> Unit = {},
 ) {
 
+    /**
+     * 执行后确认器：取样节奏与分层判定都在 [ClickVerifier] 里。
+     * 点击与滑动/输入共用同一套判据（见 [controlStateOf] 的注释），只是取快照的方式不同。
+     */
+    private val verifier = ClickVerifier(capture = { captureQuietly() }, resolver = resolver)
+
     suspend fun run(action: AgentAction, snapshot: ScreenSnapshot, longClick: Boolean = false): VerifyResult {
         val verb = if (longClick) "长按" else "点击"
         val pkg = snapshot.packageName ?: "未知应用"
@@ -124,8 +130,11 @@ class ClickRunner(
         if (selector != null) {
             when (val r = executor.clickNode(selector, longClick, holdMs)) {
                 is ActionExecutor.Result.Success -> {
-                    val v = confirm(baseline, baselineState, verb)
+                    val v = verifier.confirm(baseline, baselineState, verb)
                     if (v.success) return v
+                    // 读不到页面时 confirm 已经给出"未确认"结论，不能再改写成"均无变化"——
+                    // 我们并没有看见页面，没资格说它没变
+                    if (v.unconfirmed) return v
                     // 点击已交付到控件本身，再补一次手势就是把它按第二遍。这里就此打住，
                     // 把"未确认"如实回报：AI 下一步重新观察页面后，自会决定是重试还是换路子
                     return VerifyResult(
@@ -184,7 +193,7 @@ class ClickRunner(
                 logger("$name 未派发成功：${dispatched.reason}")
                 continue
             }
-            val v = confirm(baseline, baselineState, verb)
+            val v = verifier.confirm(baseline, baselineState, verb)
             if (v.success) {
                 // 页面变了不等于点对了地方：落点与目标不一致时不动结果（下面 note 那段的理由），
                 // 而"没生效"那条路径会在失败原因里写明落点差异
@@ -201,6 +210,8 @@ class ClickRunner(
                 }
                 return v
             }
+            // 读不到页面：不是"派发了但没变化"，而是压根没看见，措辞不能混
+            if (v.unconfirmed) return v
             return VerifyResult(
                 false,
                 missReason(pkg, targetName, verb, point, hit, element, selector),
@@ -216,68 +227,6 @@ class ClickRunner(
             "", "",
             notDelivered = true,
         )
-    }
-
-    /**
-     * 执行后确认：按 [VERIFY_DELAYS_MS] 取样，一旦发现变化立即返回，全部取样都没变才判失败。
-     *
-     * 读不到页面时按"已执行但未确认"算成功：此时继续升级就等于再点一次（可能重复副作用），
-     * 而下一步的观察本来就会给出真实结果，报失败反而会误触发"连续失败请求用户介入"。
-     */
-    private suspend fun confirm(before: ScreenSnapshot, beforeState: UiElement?, verb: String): VerifyResult {
-        val beforeFp = PageFingerprint.computeMeaningful(before)
-        var afterFp = beforeFp
-        var reason = "页面与控件状态均无变化"
-        var captured = false
-        for (delayMs in VERIFY_DELAYS_MS) {
-            delay(delayMs)
-            val after = captureQuietly() ?: break
-            captured = true
-            afterFp = PageFingerprint.computeMeaningful(after)
-            val verdict = judge(before, beforeState, after, beforeFp, afterFp)
-            if (verdict.first) return VerifyResult(true, "已$verb（${verdict.second}）", beforeFp, afterFp)
-            reason = verdict.second
-        }
-        if (!captured) return VerifyResult(true, "已$verb；此刻读不到页面，变化未能确认，以下一步观察为准", "", "")
-        // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
-        // 早判"未生效"会让 AI 重放动作（重复提交/重复收藏），副作用不可撤销
-        delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
-        val late = captureQuietly()
-        if (late != null) {
-            val lateFp = PageFingerprint.computeMeaningful(late)
-            val verdict = judge(before, beforeState, late, beforeFp, lateFp)
-            if (verdict.first) {
-                return VerifyResult(true, "已$verb（延迟生效：${verdict.second}）", beforeFp, lateFp)
-            }
-            afterFp = lateFp
-            reason = verdict.second
-        }
-        return VerifyResult(false, reason, beforeFp, afterFp)
-    }
-
-    /** 分层判定：前台应用 → 控件自身状态 → 整页指纹 */
-    private fun judge(
-        before: ScreenSnapshot,
-        beforeState: UiElement?,
-        after: ScreenSnapshot,
-        beforeFp: String,
-        afterFp: String,
-    ): Pair<Boolean, String> {
-        // 第一层：前台应用都换了 → 点击必然生效（导航/跳转）
-        val appBefore = before.packageName
-        val appAfter = after.packageName
-        if (appAfter != null && appBefore != null && appAfter != appBefore) {
-            return true to "页面已切换到 $appAfter"
-        }
-        // 第二层：目标控件自身状态变化（勾选、滑块值、文字、无障碍描述）——
-        // 列表内勾选/切换这类操作不会改变整页指纹，只看指纹会误判成"没生效"
-        if (beforeState != null) {
-            val now = resolver.matchInFresh(beforeState, after)
-            if (now != null && controlStateOf(beforeState) != controlStateOf(now)) return true to "目标控件状态已变化"
-        }
-        // 第三层：整页指纹
-        if (beforeFp != afterFp) return true to "页面已变化"
-        return false to "页面与控件状态均无变化"
     }
 
     /**
@@ -391,13 +340,6 @@ class ClickRunner(
     }
 
     private companion object {
-        /**
-         * 点击后取样的累计等待时刻（毫秒）：短轮询让响应快的页面尽早定型（首取样即可确认），
-         * 不必像固定等待那样无论快慢都干等；两次取样都没变化才判失败。
-         * 与 [VerifyTiming] 同源：点击与滑动/输入共用一套取样节奏，不出现两套标准。
-         */
-        val VERIFY_DELAYS_MS = VerifyTiming.SAMPLE_DELAYS_MS
-
         /** 滚动后的稳定等待：等滚动动画/惯性结束再抓页面 */
         const val SCROLL_SETTLE_MS = 400L
 
@@ -407,5 +349,95 @@ class ClickRunner(
 
         /** 落点安全区的左右最小边距（像素）：避开屏幕左右边缘，防止贴边误触 */
         const val EDGE_SAFE_MARGIN = 24
+    }
+}
+/**
+ * 执行后确认：取样 → 分层判定，得出结论。
+ *
+ * 从 [ClickRunner] 里抽出来的原因是**可测性**：原先它直接读 `AgentAccessibilityService.instance`
+ * 这个全局静态，于是"读不到页面"这条分支在 JVM 单测里根本进不去——而 P1-2 的所有后果
+ * （记成 ✅、进度照存、失败计数清零）都长在这条分支上，错了也没有任何测试会红。
+ * 抽出来后 [capture] 可注入，同一条分支就能被断言。
+ *
+ * 点击与滑动/输入两条链路都用它，判据只有一份：整页指纹（[PageFingerprint.computeMeaningful]）
+ * + 目标控件关键状态（[controlStateOf]）。
+ */
+internal class ClickVerifier(
+    /** 取一份当前快照；读不到（无障碍断开、Provider 取树超时）返回 null */
+    private val capture: suspend () -> ScreenSnapshot?,
+    private val resolver: IntentResolver = IntentResolver(),
+) {
+
+    /**
+     * 按 [VerifyTiming.SAMPLE_DELAYS_MS] 取样，一旦发现变化立即返回，全部取样都没变才判失败。
+     *
+     * @param before 动作执行前的快照（判定基准）
+     * @param beforeState 本次动作的目标控件；指纹未变时用它兜底（勾选/滑块不改变整页指纹）
+     */
+    suspend fun confirm(before: ScreenSnapshot, beforeState: UiElement?, verb: String): VerifyResult {
+        val beforeFp = PageFingerprint.computeMeaningful(before)
+        var afterFp = beforeFp
+        var reason = "页面与控件状态均无变化"
+        var captured = false
+        for (delayMs in VerifyTiming.SAMPLE_DELAYS_MS) {
+            delay(delayMs)
+            val after = capture() ?: break
+            captured = true
+            afterFp = PageFingerprint.computeMeaningful(after)
+            val verdict = judge(before, beforeState, after, beforeFp, afterFp)
+            if (verdict.first) return VerifyResult(true, "已$verb（${verdict.second}）", beforeFp, afterFp)
+            reason = verdict.second
+        }
+        if (!captured) {
+            // 读不到页面 = 未确认，不是成功：判成成功会让执行历史记 ✅、进度与检查点照存、
+            // 失败计数每步清零，「连续 3 次失败请求用户介入」永远不会触发。
+            // 也不是失败：动作确实已经下发，原样重放就是重复副作用（所以 shouldRetry 不重试它）。
+            return VerifyResult(
+                false,
+                "已$verb；此刻读不到页面，变化未能确认，以下一步观察为准",
+                "",
+                "",
+                unconfirmed = true,
+            )
+        }
+        // 判失败前再复核一次：网络/加载类页面常在首轮观察窗之后才定型，
+        // 早判"未生效"会让 AI 重放动作（重复提交/重复收藏），副作用不可撤销
+        delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
+        val late = capture()
+        if (late != null) {
+            val lateFp = PageFingerprint.computeMeaningful(late)
+            val verdict = judge(before, beforeState, late, beforeFp, lateFp)
+            if (verdict.first) {
+                return VerifyResult(true, "已$verb（延迟生效：${verdict.second}）", beforeFp, lateFp)
+            }
+            afterFp = lateFp
+            reason = verdict.second
+        }
+        return VerifyResult(false, reason, beforeFp, afterFp)
+    }
+
+    /** 分层判定：前台应用 → 控件自身状态 → 整页指纹 */
+    private fun judge(
+        before: ScreenSnapshot,
+        beforeState: UiElement?,
+        after: ScreenSnapshot,
+        beforeFp: String,
+        afterFp: String,
+    ): Pair<Boolean, String> {
+        // 第一层：前台应用都换了 → 点击必然生效（导航/跳转）
+        val appBefore = before.packageName
+        val appAfter = after.packageName
+        if (appAfter != null && appBefore != null && appAfter != appBefore) {
+            return true to "页面已切换到 $appAfter"
+        }
+        // 第二层：目标控件自身状态变化（勾选、滑块值、文字、无障碍描述）——
+        // 列表内勾选/切换这类操作不会改变整页指纹，只看指纹会误判成"没生效"
+        if (beforeState != null) {
+            val now = resolver.matchInFresh(beforeState, after)
+            if (now != null && controlStateOf(beforeState) != controlStateOf(now)) return true to "目标控件状态已变化"
+        }
+        // 第三层：整页指纹
+        if (beforeFp != afterFp) return true to "页面已变化"
+        return false to "页面与控件状态均无变化"
     }
 }

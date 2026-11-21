@@ -121,6 +121,10 @@ internal class TelemetryRecorder(
                 prev.copy(notDeliveredCount = prev.notDeliveredCount + 1)
             com.phoneagent.engine.execution.Delivery.DELIVERED_NO_EFFECT ->
                 prev.copy(noEffectCount = prev.noEffectCount + 1)
+            // 「已交付未确认」既不是没送达，也不是已验证的无效果：它连页面都没读到。
+            // 现有埋点里没有它的位置，折进上面任何一桶都会让这两个数字失去意义；
+            // 等有消费方（例如"读不到页面占比"看板）再加独立计数器。
+            com.phoneagent.engine.execution.Delivery.DELIVERED_UNCONFIRMED -> prev
             com.phoneagent.engine.execution.Delivery.EFFECTIVE -> prev
         }
         store.metrics.value = next
