@@ -11,10 +11,12 @@ import java.security.MessageDigest
  * 对应文档“第 3 层 页面指纹”。
  *
  * **口径约定（改这里前先读）**：[compute] 是页面级止损（[com.phoneagent.engine.runtime.LoopGuard.onPageOutcome]）
- * 的输入，[computeMeaningful] 与 `controlStateOf` 是"动作是否生效"的输入。止损的判据必须
+ * 的输入，[computeEffect] 与 `controlStateOf` 是"动作是否生效"的输入。止损的判据必须
  * **不弱于**成功判据：凡成功判据看得到的变化，指纹也必须看得到。否则会出现"每一步都被判成 ✅，
  * 却因为指纹一直没变被判成路径已死"——真机上表现为连点 12 个开关后任务以 STATUS_FAILED 收尾。
- * 因此控件状态（`isSelected` / `currentValue`）必须进 [compute]：它们正是 `controlStateOf` 的主体。
+ * 反过来更常见也更隐蔽：止损看见了变化、成功判据没看见，于是 AI 被叫去"换入口"——
+ * 对开关这种控件，"换入口"就是把它点回去。因此控件状态（`isSelected` / `currentValue`）必须进
+ * [compute] **和** [computeEffect]，两者只允许在坐标精度上有差别。
  */
 object PageFingerprint {
 
@@ -33,6 +35,9 @@ object PageFingerprint {
     @Volatile
     private var memoStrict: Pair<ScreenSnapshot, String>? = null
 
+    @Volatile
+    private var memoEffect: Pair<ScreenSnapshot, String>? = null
+
     /** 计算页面指纹（轻量版，只取关键控件特征）；同一快照实例只算一次 */
     fun compute(snapshot: ScreenSnapshot): String {
         memoStrict?.let { if (it.first === snapshot) return it.second }
@@ -43,6 +48,22 @@ object PageFingerprint {
     fun computeMeaningful(snapshot: ScreenSnapshot): String {
         memoMeaningful?.let { if (it.first === snapshot) return it.second }
         return computeMeaningfulUncached(snapshot).also { memoMeaningful = snapshot to it }
+    }
+
+    /**
+     * 计算「动作是否生效」的指纹；同一快照实例只算一次。
+     *
+     * 与 [computeMeaningful] 的区别：包含控件状态（[UiElement.isSelected] / [UiElement.currentValue]）。
+     * 「点的是行容器、状态变化在内部的 Switch 上」这种页面里，文字与坐标一模一样，只有控件状态变了；
+     * 用 [computeMeaningful] 判成功会得出「页面与控件状态均无变化」，而同一个动作在页面级止损那边
+     * 却因为 [compute] 看得见状态而算作有推进——AI 于是被叫去"换入口"，对开关就是把它点回去。
+     *
+     * 与 [compute] 的关系：字段是同源的（类型 + 标签 + 控件状态 + 位置），只有坐标精度不同
+     * （这里按 /10 归一以忽略动画抖动）。不变式：**凡 [computeEffect] 看得到的变化，[compute] 必能看到**。
+     */
+    fun computeEffect(snapshot: ScreenSnapshot): String {
+        memoEffect?.let { if (it.first === snapshot) return it.second }
+        return computeEffectUncached(snapshot).also { memoEffect = snapshot to it }
     }
 
     private fun computeStrict(snapshot: ScreenSnapshot): String {
@@ -68,9 +89,9 @@ object PageFingerprint {
     /**
      * 计算有意义的指纹：忽略状态栏时间等动态变化（仅标签与坐标，不含 viewId 中可能变化的序号）。
      *
-     * 这里**不**并控件状态：它已由调用方的 `controlStateOf` 兜底判定（见 `ClickVerifier.judge`
-     * 第二层），而它同时是页面记忆与"动作前页面"的代表，口径一动会波及记忆图谱的行边判定。
-     * 止损用的 [compute] 才是必须与成功判据对齐的那一个。
+     * 这里**不**并控件状态：它同时是页面记忆与"动作前页面"的代表，口径一动会波及记忆图谱的行边判定——
+     * 开关状态一变就被记成"换了一页"，页面记忆会碎成一堆只差一个开关的节点。
+     * 判定"动作是否生效"用 [computeEffect]，页面级止损用 [compute]。
      */
     private fun computeMeaningfulUncached(snapshot: ScreenSnapshot): String {
         val sb = StringBuilder()
@@ -78,6 +99,26 @@ object PageFingerprint {
         for (e in sorted) {
             sb.append(e.type).append(':')
             sb.append(e.effectiveLabel() ?: "").append(':')
+            sb.append(e.centerX / 10).append(',').append(e.centerY / 10)
+            sb.append(';')
+        }
+        return sha256(sb.toString()).take(16)
+    }
+
+    /**
+     * 「动作是否生效」的指纹（口径见 [computeEffect]）：含控件状态，坐标按 /10 归一。
+     * 与页面级止损的 [compute] 同源，只差坐标精度。
+     */
+    private fun computeEffectUncached(snapshot: ScreenSnapshot): String {
+        val sb = StringBuilder()
+        sb.append(snapshot.packageName ?: "").append('|')
+        val sorted = snapshot.elements.sortedWith(compareBy<com.phoneagent.domain.model.UiElement> { it.left }.thenBy { it.top })
+        for (e in sorted) {
+            sb.append(e.type).append(':')
+            sb.append(e.effectiveLabel() ?: "").append(':')
+            // 控件状态是"生效"的主要证据：开关/勾选/滑块的变化不改文字也不改坐标
+            sb.append(e.isSelected ?: "").append(':')
+            sb.append(e.currentValue ?: "").append(':')
             sb.append(e.centerX / 10).append(',').append(e.centerY / 10)
             sb.append(';')
         }

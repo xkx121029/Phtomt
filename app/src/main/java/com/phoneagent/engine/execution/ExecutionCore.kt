@@ -1470,7 +1470,7 @@ internal class ExecutionCore(
     // 单次采样窗：`continue` 跳过读不到页面的样本、`break` 命中变化即停，两个跳转各表达一件不同的事
     @Suppress("LoopWithTooManyJumpStatements")
     private suspend fun confirmPageEffect(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
-        val beforeFp = runCatching { PageFingerprint.computeMeaningful(before) }.getOrNull()
+        val beforeFp = runCatching { PageFingerprint.computeEffect(before) }.getOrNull()
         if (beforeFp.isNullOrBlank()) return ShellFallbackPolicy.judge(null, null)
         // 最后一次成功回读到的指纹：两次取样都没变化时用它区分「页面没变」与「读不到页面」，
         // 这两种情况给 AI 的下一步提示完全不同（一个该换落点，一个该等页面可读）
@@ -1478,7 +1478,7 @@ internal class ExecutionCore(
         for (delayMs in VerifyTiming.SAMPLE_DELAYS_MS) {
             delay(delayMs)
             val after = readPageQuietly() ?: continue
-            val afterFp = PageFingerprint.computeMeaningful(after)
+            val afterFp = PageFingerprint.computeEffect(after)
             lastAfterFp = afterFp
             if (afterFp != beforeFp) break
         }
