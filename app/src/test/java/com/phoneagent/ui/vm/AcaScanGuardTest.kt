@@ -53,7 +53,11 @@ class AcaScanGuardTest {
 
     @Test
     fun `自定义 TTL 生效`() {
-        assertTrue(acaScanSkipped(scanning = false, nowMs = now, scannedAtMs = now - 999, force = false, ttlMs = 1_000))
-        assertFalse(acaScanSkipped(scanning = false, nowMs = now, scannedAtMs = now - 1_000, force = false, ttlMs = 1_000))
+        assertTrue(
+            acaScanSkipped(scanning = false, nowMs = now, scannedAtMs = now - 999, force = false, ttlMs = 1_000),
+        )
+        assertFalse(
+            acaScanSkipped(scanning = false, nowMs = now, scannedAtMs = now - 1_000, force = false, ttlMs = 1_000),
+        )
     }
 }
