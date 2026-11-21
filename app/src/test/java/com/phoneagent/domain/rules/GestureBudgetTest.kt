@@ -1,6 +1,7 @@
 package com.phoneagent.domain.rules
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -28,6 +29,20 @@ class GestureBudgetTest {
     }
 
     @Test
+    fun 抬到下限后必须跨过系统长按阈值() {
+        // 系统长按阈值 ViewConfiguration.getLongPressTimeout() 默认 500ms。下限要是低于它，
+        // 所有 <500ms 的请求都会被抬到一个仍然触发不了长按的时长，系统判成普通点击——
+        // 表现是「长按了但只是点了一下」。副屏 input swipe x y x y <ms> 走同一条预算。
+        assertTrue(GestureBudget.MIN_LONG_PRESS_MS >= SYSTEM_LONG_PRESS_TIMEOUT_MS)
+        assertTrue(GestureBudget.holdMs(1) >= SYSTEM_LONG_PRESS_TIMEOUT_MS)
+        // 这条在旧实现（下限 400）上必然红：400ms 的请求被"抬"成 400ms，一步没跨过阈值
+        assertTrue(GestureBudget.holdMs(400) >= SYSTEM_LONG_PRESS_TIMEOUT_MS)
+        assertEquals(GestureBudget.MIN_LONG_PRESS_MS, GestureBudget.holdMs(400))
+        // 留余量吸收 ROM 差异与计时抖动
+        assertEquals(600L, GestureBudget.MIN_LONG_PRESS_MS)
+    }
+
+    @Test
     fun 过长的时长压到上限() {
         // 长按 60 秒会让执行链 60 秒不观察页面，期间状态早已过期
         assertEquals(GestureBudget.MAX_LONG_PRESS_MS, GestureBudget.holdMs(60_000))
@@ -39,5 +54,10 @@ class GestureBudgetTest {
         assertEquals(800L, GestureBudget.holdMs(800))
         assertEquals(1500L, GestureBudget.holdMs(1500))
         assertEquals(500L, GestureBudget.swipeMs(500))
+    }
+
+    private companion object {
+        /** 系统长按判定阈值（`ViewConfiguration.getLongPressTimeout()` 默认值） */
+        const val SYSTEM_LONG_PRESS_TIMEOUT_MS = 500L
     }
 }
