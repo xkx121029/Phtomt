@@ -15,6 +15,7 @@ import com.phoneagent.engine.execution.IntentTranslator
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -101,6 +102,56 @@ class IntentTranslatorTest {
         every { appNameResolver.resolve("不存在的应用") } returns null
         val reason = failure(AgentIntent(intent = IntentType.OPEN_APP, app = "不存在的应用"), snapshot())
         assertTrue(reason.contains("无法解析应用"))
+    }
+
+    // ---- AI 自写标记：端侧拼装的 shell 命令必须显式声明「不是 AI 写的」 ----
+    // 默认值已翻成 aiAuthored = true（fail-closed）：漏标的产线会多问用户一次，不会静默跳过审批。
+    // 下面三条是端侧拼装命令的全部产线，命令文字都不是 AI 给的，因此必须显式标 false。
+
+    @Test
+    fun open_app_shizuku_端侧拼装的启动命令不标记AI自写() {
+        mode(Mode.SHIZUKU)
+        every { appNameResolver.resolve("微信") } returns "com.tencent.mm"
+        val action = command(AgentIntent(intent = IntentType.OPEN_APP, app = "微信"), snapshot())
+        assertEquals("launch com.tencent.mm", action.command)
+        assertFalse("端侧拼装的 launch 命令不该走 AI 自写确认", action.aiAuthored)
+    }
+
+    @Test
+    fun fetch_termux可用时_curl命令不标记AI自写() {
+        mode(Mode.SHIZUKU)
+        val termuxTranslator = IntentTranslator(
+            capabilityManager, appNameResolver, IntentResolver(),
+            termuxAvailable = { true },
+        )
+        val result = termuxTranslator.translate(
+            AgentIntent(intent = IntentType.FETCH, uri = "https://example.com/a"),
+            snapshot(),
+        )
+        assertTrue("期望 fetch 转译成功，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        val action = (result as IntentTranslator.TranslationResult.Command).action
+        assertEquals(ActionType.SHELL, action.type)
+        assertTrue("命令应由端侧拼成 curl，实际: ${action.command}", action.command!!.startsWith("raw curl"))
+        assertFalse("端侧拼装的 curl 命令不该走 AI 自写确认", action.aiAuthored)
+    }
+
+    @Test
+    fun assistant_无障碍离线shizuku_仅拉起命令不标记AI自写() {
+        mode(Mode.SHIZUKU)
+        val shellTranslator = assistantTranslator(
+            com.phoneagent.provider.a11y.VoiceAssistantDetector.Target(
+                com.phoneagent.provider.a11y.VoiceAssistantDetector.Via.VOICE_COMMAND, "com.x.assist", null,
+            ),
+            a11y = false,
+        )
+        val result = shellTranslator.translate(
+            AgentIntent(intent = IntentType.ASSISTANT, text = "打电话给妈妈"),
+            snapshot(),
+        )
+        assertTrue("期望 assistant 降级到 shell，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        val action = (result as IntentTranslator.TranslationResult.Command).action
+        assertEquals(ActionType.SHELL, action.type)
+        assertFalse("端侧选的固定拉起命令不该走 AI 自写确认", action.aiAuthored)
     }
 
     // ---- open（深链直达）----

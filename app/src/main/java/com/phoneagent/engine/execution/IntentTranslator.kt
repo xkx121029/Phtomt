@@ -136,6 +136,8 @@ internal class OpenAppStrategy(private val appNameResolver: AppNameResolver) : I
                     type = ActionType.SHELL,
                     command = "launch $pkg",
                     packageName = pkg,
+                    // 命令文字由端侧拼装（包名还是本机解析出来的），不是 AI 写的，不走首次确认
+                    aiAuthored = false,
                     reason = intent.reasoning ?: intent.reason,
                 ),
             )
@@ -189,7 +191,14 @@ internal class AssistantStrategy(
                 -> "launch ${target.packageName}"
             }
             return IntentTranslator.TranslationResult.Command(
-                ctx.base.copy(type = ActionType.SHELL, command = command, packageName = target.packageName, reason = reason),
+                ctx.base.copy(
+                    type = ActionType.SHELL,
+                    command = command,
+                    packageName = target.packageName,
+                    // 命令文字是端侧按探测结果选的固定串，不是 AI 写的
+                    aiAuthored = false,
+                    reason = reason,
+                ),
             )
         }
         return IntentTranslator.TranslationResult.Failed(
@@ -633,6 +642,8 @@ internal class TermuxFetchStrategy(
                 // raw 前缀：跳过 AI 友好命令解析，原样交给通道执行
                 // （执行层按命令名判定 curl 属 Termux 工具链，自动走 Termux 通道）
                 command = "raw curl -sL --max-time 20 -- \"$safe\"",
+                // 命令由端侧按意图拼装（AI 只给 uri），不是 AI 写的，不走首次确认
+                aiAuthored = false,
                 // 带上原始网址：执行层拿 curl 回来的 HTML 转 Markdown 时，要用它把相对链接绝对化
                 // （translate() 构造的 base 不含 uri，这里必须显式补）
                 uri = uri,

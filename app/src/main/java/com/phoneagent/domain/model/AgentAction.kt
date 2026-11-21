@@ -60,9 +60,12 @@ data class AgentAction(
     val command: String? = null,
     /**
      * 该命令是否由 AI 亲自书写（自由模式 shell 意图）→ 本任务首次执行前需用户确认一次。
-     * 端侧自己编排的命令（如 fetch 落到 Termux）不算，不触发确认。
+     *
+     * 默认 true 是刻意的 fail-closed：漏标（新加的 SHELL 产线忘了声明来源）只会让用户
+     * 多确认一次，绝不会静默跳过审批。端侧自己拼装的命令（launch / am / monkey / curl）
+     * 必须显式写 `aiAuthored = false`——那一行就是「这条命令的文字不是 AI 给的」的声明。
      */
-    val aiAuthored: Boolean = false,
+    val aiAuthored: Boolean = true,
     /** a11y_call：要调用的无障碍端点名（见 ActionPolicy.a11yEndpoints） */
     val endpoint: String? = null,
     /** a11y_call：端点参数（参数名 → 值） */
