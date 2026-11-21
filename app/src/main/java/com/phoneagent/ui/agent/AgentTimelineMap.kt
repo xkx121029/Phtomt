@@ -5,6 +5,8 @@ import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.StepRecord
+import com.phoneagent.domain.model.TaskOutcome
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.MemoryEvent
@@ -76,6 +78,15 @@ internal object AgentTimelineMapper {
         conversationStart: Long = 0L,
         /** 合并形态：本对话内的纯对话问答（引擎内存态），问答成组出气泡 */
         chatTurns: List<ChatTurnEvent> = emptyList(),
+        /**
+         * 最近一次任务的终态（见 AgentEngine.lastOutcome）。
+         *
+         * 引擎收尾会把 phase 落回 IDLE，失败/停止因此不会留在实时相位里；
+         * 没有这一份，主界面在任务失败后就只剩一张空态——「任务凭空消失」。
+         */
+        lastOutcome: TaskOutcome? = null,
+        /** 模型配置问题（null = 可执行）：终态卡据此把「去配置」摆出来 */
+        configProblem: String? = null,
     ): List<AgentTimelineItem> {
         // 实时态是否属于本对话：正在跑的任务一定属于（新建对话时引擎拒绝另起），
         // 已结束的任务看它开始时刻是否落在本对话起点之后
@@ -104,6 +115,21 @@ internal object AgentTimelineMapper {
         else runs.firstOrNull { it.taskId == focusTaskId }
         val events = if (isLive) memoryEvents else archived?.memoryEvents.orEmpty()
 
+        // 这次任务结束了没有？两种收尾形态都要算：失败停在 ERROR 相位（起跑前拦截），
+        // 以及收尾把相位复位回 IDLE（跑完失败 / 步数用尽 / 用户停止 —— 见 AgentEngine.stop）。
+        // 「最近任务」chip 与终态卡都靠它判断该不该带状态。
+        val endedStatus: TaskStatus? = if (isLive) {
+            when {
+                state.isRunning -> null
+                state.phase == AgentState.Phase.DONE -> TaskStatus.SUCCESS
+                state.phase == AgentState.Phase.ERROR -> TaskStatus.FAILED
+                lastOutcome != null && lastOutcome.atMillis >= conversationStart -> lastOutcome.status
+                else -> null
+            }
+        } else {
+            archived?.status.toTaskStatus()
+        }
+
         // 1) 无障碍是硬前置：未开启时 AI 读不到控件，必须在任务流顶部说明（历史回看不提示）
         if (isLive && !a11yEnabled) {
             items += AgentTimelineItem.Notice(
@@ -131,6 +157,9 @@ internal object AgentTimelineMapper {
                 text = focusTitle,
                 queued = false,
                 ownerKey = focusRun?.runKey ?: archived?.let { "r${it.taskId}" } ?: "live#task",
+                // 「最近任务」这条 chip 必须自己说得清成没成：只有标题的话，
+                // 用户看到它与终态卡同屏时会以为那是两个不同的任务
+                status = endedStatus,
             )
         }
 
@@ -201,10 +230,28 @@ internal object AgentTimelineMapper {
                 )
 
                 TaskSession.Status.ABORTED ->
-                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { AgentFallbackCopy.ABORTED })
+                    items += terminal(
+                        status = TaskStatus.ABORTED,
+                        kind = AgentState.FailureKind.USER_STOPPED,
+                        reason = archived.summary.ifBlank { AgentFallbackCopy.ABORTED },
+                        steps = liveSteps,
+                        elapsedMs = 0L,
+                        a11yEnabled = a11yEnabled,
+                        // 历史回看只读：这里不给「重试」——它重跑的是引擎记着的「上一次任务」，
+                        // 未必是用户正在看的这一条，点了会跑错任务
+                        actions = emptyList(),
+                    )
 
                 TaskSession.Status.FAILED ->
-                    items += AgentTimelineItem.Failed(archived.summary.ifBlank { AgentFallbackCopy.FAILED })
+                    items += terminal(
+                        status = TaskStatus.FAILED,
+                        kind = AgentState.FailureKind.UNKNOWN,
+                        reason = archived.summary.ifBlank { AgentFallbackCopy.FAILED },
+                        steps = liveSteps,
+                        elapsedMs = 0L,
+                        a11yEnabled = true,
+                        actions = emptyList(),
+                    )
 
                 TaskSession.Status.RUNNING, null -> Unit
             }
@@ -219,7 +266,7 @@ internal object AgentTimelineMapper {
             )
         }
 
-        // 8) 实时中间状态：恒定一条，只展示最新（ERROR 交给 Failed 项）
+        // 8) 实时中间状态：恒定一条，只展示最新（ERROR 交给终态卡）
         if (state.isRunning && state.phase != AgentState.Phase.ERROR) {
             items += AgentTimelineItem.LiveStatus(
                 phase = state.phase,
@@ -247,14 +294,38 @@ internal object AgentTimelineMapper {
                 runLevelNote(focusRun, state.message)?.let { items += it }
             }
 
+            // 起跑前就能拦下的失败（配置缺失）会留在 ERROR 相位：终态卡照样出，出口是「去配置」
             AgentState.Phase.ERROR -> {
-                items += AgentTimelineItem.Failed(
-                    message = state.message.ifBlank { AgentFallbackCopy.ERROR },
+                items += terminal(
+                    status = TaskStatus.FAILED,
                     kind = state.failureKind,
+                    reason = state.message.ifBlank { AgentFallbackCopy.ERROR },
+                    steps = liveSteps,
+                    elapsedMs = 0L,
+                    a11yEnabled = a11yEnabled,
+                    configProblem = configProblem,
                 )
             }
 
             else -> Unit
+        }
+
+        // 9b) 任务已经结束，但收尾把相位复位成了 IDLE（见 AgentEngine.stop）：
+        //     失败 / 步数用尽 / 用户停止都走这条路。没有这一段，主界面在失败后只剩一张空态，
+        //     用户看到的是「任务凭空消失」。终态只能来自引擎显式交出的 lastOutcome，
+        //     不从摘要文案猜（「已完成登录，但支付失败」那种句子会把成功任务判成失败）。
+        val ended = lastOutcome?.takeIf { it.atMillis >= conversationStart && !state.isRunning }
+            ?.takeIf { state.phase != AgentState.Phase.ERROR && state.phase != AgentState.Phase.DONE }
+        if (ended != null) {
+            items += terminal(
+                status = ended.status,
+                kind = ended.failureKind,
+                reason = ended.failureReason.ifBlank { ended.summary },
+                steps = liveSteps,
+                elapsedMs = ended.elapsedMs,
+                a11yEnabled = a11yEnabled,
+                configProblem = configProblem,
+            )
         }
 
         // 10) 待批准的规划（新任务尚未产生 traces）
@@ -424,6 +495,49 @@ internal object AgentTimelineMapper {
             )
         }
         return null
+    }
+
+    /**
+     * 终态卡：把一次任务的结束方式翻成用户能据此动手的一张卡。
+     *
+     * 成败由调用点显式给出（来自 TaskOutcome 或实时 ERROR 相位），不在这里猜；
+     * 三态步数取自同一次任务的执行记录，与步骤卡上的三态是同一份数据。
+     */
+    private fun terminal(
+        status: TaskStatus,
+        kind: AgentState.FailureKind,
+        reason: String,
+        steps: List<MergedStep>,
+        elapsedMs: Long,
+        a11yEnabled: Boolean,
+        configProblem: String? = null,
+        actions: List<TerminalAction>? = null,
+    ): AgentTimelineItem.Terminal {
+        // 配置问题是一份结构化事实（AppSettings.configProblem），比"异常退出"的 UNKNOWN 更准：
+        // 这种情况重试还是同一个结果，必须先把「去配置」摆出来
+        val effectiveKind = if (configProblem != null) AgentState.FailureKind.CONFIG else kind
+        return AgentTimelineItem.Terminal(
+            status = status,
+            headline = AgentTerminal.headline(status, effectiveKind, a11yEnabled),
+            cause = AgentTerminal.cause(status, effectiveKind, a11yEnabled, reason),
+            detail = reason.trim(),
+            actions = actions ?: AgentTerminal.actions(status, effectiveKind, a11yEnabled),
+            okSteps = steps.count { it.verified },
+            unconfirmedSteps = steps.count { it.record?.verificationResult == VerifyRules.STATUS_UNVERIFIED },
+            failedSteps = steps.count {
+                it.record?.verificationResult == VerifyRules.STATUS_FAILED ||
+                    it.record?.verificationResult == VerifyRules.STATUS_NO_EFFECT
+            },
+            elapsedMs = elapsedMs,
+        )
+    }
+
+    /** 归档状态 → 终态；RUNNING / 缺失不硬造终态（超出归档上限的老任务容易被误判成失败） */
+    private fun TaskSession.Status?.toTaskStatus(): TaskStatus? = when (this) {
+        TaskSession.Status.DONE -> TaskStatus.SUCCESS
+        TaskSession.Status.ABORTED -> TaskStatus.ABORTED
+        TaskSession.Status.FAILED -> TaskStatus.FAILED
+        TaskSession.Status.RUNNING, null -> null
     }
 
     /**

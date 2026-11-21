@@ -1,5 +1,6 @@
 package com.phoneagent.ui.agent
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -24,6 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,10 +36,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.domain.model.AgentState
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.formatDuration
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.motionSettings
@@ -313,75 +320,133 @@ private fun summaryLine(item: AgentTimelineItem.Done): String {
 }
 
 /**
- * 任务失败 / 达到步数上限。
+ * 任务终态卡：失败 / 步数用尽 / 用户停止 / 完成都在主界面这里收尾。
  *
- * 标题按 [AgentTimelineItem.Failed.kind] 分类：步数用尽、AI 链路异常、配置缺失、用户取消
- * 这四种的处置完全不同，一律写「任务已停止」等于什么也没告诉用户。
- * 卡片底部按分类给出对应出口：链路类问题给「重试」，配置类问题给「去配置」。
+ * 这张卡的存在本身就是一条反馈：任务**不会**因为结束而凭空消失。三件事必须同时说到——
+ * 为什么停（原因）、做到哪一步（三态步数）、现在能做什么（出口按钮）。
+ *
+ * 配色按结束方式分档，而不是一律红：用户按下的停止不是错误，步数用尽也不是故障。
+ * 「已交付未确认」单独成行，不折进失败数里——把「AI 点了但读不到回执」当成「没做到」，
+ * 用户会去重做一遍已经生效的动作（重复下单、重复发消息）。
  */
 @Composable
-internal fun FailedItem(
-    item: AgentTimelineItem.Failed,
+internal fun TerminalItem(
+    item: AgentTimelineItem.Terminal,
     vm: MainViewModel,
     onOpenSettings: () -> Unit = {},
+    onOpenPermissions: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    val text = rememberTranslated(item.message, vm)
-    val title = when (item.kind) {
-        AgentState.FailureKind.MAX_STEPS -> "步数用完了"
-        AgentState.FailureKind.DECISION -> "AI 链路中断"
-        AgentState.FailureKind.CONFIG -> "还没配置模型"
-        AgentState.FailureKind.USER_STOPPED -> "已停止"
-        AgentState.FailureKind.UNKNOWN -> "任务未完成"
+    val (container, onContainer, accent) = when (item.status) {
+        TaskStatus.SUCCESS -> Triple(colors.successContainer, colors.onSuccessContainer, colors.success)
+        // 停止是用户自己的动作，用中性面：涂成红色等于替用户认领一次「失败」
+        TaskStatus.ABORTED -> Triple(colors.surfaceRaised, colors.onSurfaceRaised, colors.railIdle)
+        TaskStatus.NOT_ACHIEVED -> Triple(colors.warningContainer, colors.onWarningContainer, colors.warning)
+        TaskStatus.FAILED -> Triple(colors.errorContainer, colors.onErrorContainer, colors.error)
     }
-    // 只有「链路/步数/未分类」才值得重试：配置问题重试还是同一个结果，取消则不需要重试
-    val canRetry = item.kind == AgentState.FailureKind.MAX_STEPS ||
-        item.kind == AgentState.FailureKind.DECISION ||
-        item.kind == AgentState.FailureKind.UNKNOWN
+    val icon = when (item.status) {
+        TaskStatus.SUCCESS -> AppIcons.CheckCircle
+        TaskStatus.ABORTED -> AppIcons.Stop
+        TaskStatus.NOT_ACHIEVED, TaskStatus.FAILED -> AppIcons.ErrorOutline
+    }
+    var detailOpen by rememberSaveable(item.key) { mutableStateOf(false) }
+    val stepLine = AgentTerminal.stepLine(item.okSteps, item.unconfirmedSteps, item.failedSteps)
+    val unconfirmedNote = AgentTerminal.unconfirmedNote(item.unconfirmedSteps)
+    val hasDetail = item.detail.isNotBlank() && item.detail != item.cause
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
-            .background(colors.errorContainer)
+            .background(container)
             .padding(AppSpacing.Lg),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = AppIcons.ErrorOutline,
+                imageVector = icon,
                 contentDescription = null,
-                tint = colors.onErrorContainer,
+                tint = accent,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(AppSpacing.Sm))
             Text(
-                text = title,
+                text = item.headline,
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = colors.onErrorContainer,
+                color = onContainer,
+                modifier = Modifier.weight(1f),
             )
+            if (item.elapsedMs > 0) {
+                Text(
+                    text = "用时 ${formatDuration(item.elapsedMs)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = onContainer.copy(alpha = 0.8f),
+                )
+            }
         }
         Spacer(Modifier.height(AppSpacing.Xs))
         Text(
-            text = text.ifBlank { "执行过程中出错，可重新下达任务" },
+            text = item.cause,
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.onErrorContainer,
+            color = onContainer,
         )
-        if (canRetry || item.kind == AgentState.FailureKind.CONFIG) {
+        if (stepLine.isNotBlank()) {
+            Spacer(Modifier.height(AppSpacing.Sm))
+            Text(
+                text = stepLine,
+                style = MaterialTheme.typography.labelMedium,
+                color = onContainer.copy(alpha = 0.85f),
+            )
+        }
+        if (unconfirmedNote.isNotBlank()) {
+            Spacer(Modifier.height(AppSpacing.Xs))
+            Text(
+                text = unconfirmedNote,
+                style = MaterialTheme.typography.labelSmall,
+                color = onContainer.copy(alpha = 0.75f),
+            )
+        }
+        if (hasDetail) {
+            Spacer(Modifier.height(AppSpacing.Sm))
+            PressableScale(onClick = { detailOpen = !detailOpen }) {
+                Text(
+                    text = if (detailOpen) "收起原始消息" else "查看原始消息",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                    color = onContainer.copy(alpha = 0.9f),
+                    modifier = Modifier.padding(vertical = AppSpacing.Xs),
+                )
+            }
+            AnimatedVisibility(visible = detailOpen) {
+                Text(
+                    text = item.detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onContainer.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(AppRadii.Inline))
+                        .background(colors.surfaceSunken.copy(alpha = 0.55f))
+                        .padding(AppSpacing.Md),
+                )
+            }
+        }
+        if (item.actions.isNotEmpty()) {
             Spacer(Modifier.height(AppSpacing.Md))
             Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
-                if (canRetry) {
+                item.actions.forEachIndexed { index, action ->
+                    val (label, actionIcon) = when (action) {
+                        TerminalAction.RETRY -> "重试" to AppIcons.Refresh
+                        TerminalAction.OPEN_SETTINGS -> "去配置" to AppIcons.Settings
+                        TerminalAction.OPEN_PERMISSIONS -> "去开启无障碍" to AppIcons.TouchApp
+                    }
                     AgentActionButton(
-                        text = "重试",
-                        icon = AppIcons.Refresh,
-                        tone = AgentButtonTone.PRIMARY,
-                        onClick = { vm.retryLastTask() },
-                    )
-                }
-                if (item.kind == AgentState.FailureKind.CONFIG) {
-                    AgentActionButton(
-                        text = "去配置",
-                        icon = AppIcons.Settings,
-                        tone = AgentButtonTone.NEUTRAL,
-                        onClick = onOpenSettings,
+                        text = label,
+                        icon = actionIcon,
+                        // 第一个动作是「主要出路」：其余降为次级，避免两颗按钮抢同一份注意力
+                        tone = if (index == 0) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
+                        onClick = when (action) {
+                            TerminalAction.RETRY -> vm::retryLastTask
+                            TerminalAction.OPEN_SETTINGS -> onOpenSettings
+                            TerminalAction.OPEN_PERMISSIONS -> onOpenPermissions
+                        },
                     )
                 }
             }

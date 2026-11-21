@@ -31,6 +31,10 @@ enum class TaskStatus(val label: String) {
  * @param steps 实际执行的步数；0 表示未记录
  * @param channel 最后一次实际交付动作的执行通道中文名（如「无障碍」）；空串表示未记录
  * @param failureReason 非成功态的失败原因；成功态为空
+ * @param failureKind 非成功态的分类（步数用尽 / 链路 / 配置 / 用户停止 / 未分类）。
+ *   展示层据此换标题与出口按钮，不拿摘要文案去猜。
+ * @param atMillis 收尾时刻。任务流按对话起点过滤时用它——「这条终态属不属于本对话」
+ *   只能由时间戳回答，不能由摘要文案回答。
  */
 data class TaskOutcome(
     val status: TaskStatus,
@@ -39,4 +43,6 @@ data class TaskOutcome(
     val steps: Int = 0,
     val channel: String = "",
     val failureReason: String = "",
+    val failureKind: AgentState.FailureKind = AgentState.FailureKind.UNKNOWN,
+    val atMillis: Long = 0L,
 )

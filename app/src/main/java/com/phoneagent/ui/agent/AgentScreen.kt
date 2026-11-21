@@ -24,9 +24,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +66,7 @@ import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.components.contentColumn
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.model.PermissionKind
 import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
@@ -151,6 +154,9 @@ fun AgentScreen(
     val chatTurns by vm.chatTurns.collectAsStateWithLifecycle()
     val sessions by vm.taskSessions.collectAsStateWithLifecycle()
     val conversationStart by vm.conversationStart.collectAsStateWithLifecycle()
+    // 最近一次任务的终态：引擎收尾会把 phase 落回 IDLE，失败/停止因此只从这里取得到
+    val lastOutcome by vm.lastOutcome.collectAsStateWithLifecycle()
+    val screenshotActive by vm.screenshotActive.collectAsStateWithLifecycle()
     // 不可逆动作确认门：引擎挂起等待放行时非空，任务流末尾插一张确认卡
     val pendingConfirm = vm.pendingActionConfirmation.collectAsStateWithLifecycle().value
     // 实时视图只铺开本对话（起点之后）的执行痕迹：新建对话后主区域因此是干净的。
@@ -158,6 +164,10 @@ fun AgentScreen(
     val liveTraces = remember(traces, conversationStart) { traces.filter { it.taskId >= conversationStart } }
 
     var draft by rememberSaveable { mutableStateOf("") }
+    // 用户本轮是否已经明确选了「截图模式」：选了就不再反复追问，但这条选择只在本次会话内有效
+    var screenshotModeChosen by rememberSaveable { mutableStateOf(false) }
+    // 发送前预检拦下的待发任务：用户做完「开启无障碍 / 仍然尝试」的选择后才真正起跑
+    var preflightTask by remember { mutableStateOf<PreflightRequest?>(null) }
     // 协助浮层独立的输入草稿：与主输入框分开，避免两边共用同一份文本互相串扰
     // （在浮层里打一半的字，不该出现在主输入框；提交/关闭也只清自己的那份）
     var assistDraft by rememberSaveable { mutableStateOf("") }
@@ -203,6 +213,7 @@ fun AgentScreen(
         chatTurns,
         selectedTaskId, archivedSession,
         conversationStart,
+        lastOutcome, settings.configProblem,
     ) {
         AgentTimelineMapper.build(
             submittedTask = submittedTask,
@@ -225,6 +236,8 @@ fun AgentScreen(
             focusTaskId = viewingTaskId,
             archived = archivedSession,
             conversationStart = conversationStart,
+            lastOutcome = lastOutcome,
+            configProblem = settings.configProblem,
         )
     }
 
@@ -240,6 +253,27 @@ fun AgentScreen(
     val lockHint = when (planPhase) {
         is PlanPhase.Planning -> "AI 正在规划，请稍候…"
         else -> "请稍候…"
+    }
+
+    // 「起跑」只留一个入口：输入栏发送与预检确认都走这里，
+    // 否则两条路径迟早会在「重置哪些状态」上走岔
+    fun submitTask(text: String, submitMode: ComposerMode) {
+        when (submitMode) {
+            ComposerMode.NEW_TASK -> {
+                submittedTask = text
+                // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
+                selectedTaskId = -1L
+                // 开关决定是否先出计划：关（默认）直接执行，开才进入计划确认
+                if (planBeforeAct) vm.startPlanning(text) else vm.startAgent(text)
+            }
+
+            ComposerMode.QUEUE_FOLLOW_UP -> vm.startAgent(text)
+            ComposerMode.ANSWER_CLARIFY ->
+                vm.answerClarification(ClarificationOption(id = "manual", label = text))
+
+            ComposerMode.GUIDE_AGENT -> vm.provideUserHint(text)
+            ComposerMode.LOCKED, ComposerMode.PLAN_APPROVAL -> Unit
+        }
     }
 
     // 当前是否有待用户处理的交互（协助）：有就让底部浮层顶上来。
@@ -270,9 +304,13 @@ fun AgentScreen(
     var shownAssist by remember { mutableStateOf(assist) }
     LaunchedEffect(assist) { if (assist != null) shownAssist = assist }
 
-    // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态
-    val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && liveTraces.isEmpty() &&
-        queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null && chatTurns.isEmpty()
+    // 任务流为空（无任何执行痕迹）时展示起步空态；回看历史任务时不摆空态。
+    // 终态卡（失败 / 停止 / 完成）本身就是内容：任务结束不等于「什么都没发生过」。
+    // 这也是「旧标题 + 空态」那组自相矛盾画面的修法——只要这次对话有结论卡，就不摆空态。
+    val hasResultCard = items.any { it is AgentTimelineItem.Terminal || it is AgentTimelineItem.Done }
+    val showEmpty = viewingTaskId == null && !agent.isRunning && !needsUser && !hasResultCard &&
+        liveTraces.isEmpty() && queue.isEmpty() && planPhase is PlanPhase.Idle && doc == null &&
+        chatTurns.isEmpty()
     // 规划期的新任务还没有会话记录，单独交给侧边栏置顶展示（纯对话也已产出一句回答，同样算本轮任务）
     val planningTitle = submittedTask.takeIf {
         it.isNotBlank() && (planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying ||
@@ -418,6 +456,12 @@ fun AgentScreen(
                                 a11yEnabled = a11yEnabled,
                                 onPickSuggestion = { draft = it },
                                 grid = chrome == AgentChrome.SHELL,
+                                screenshotModeChosen = screenshotModeChosen,
+                                onOpenPermissions = {
+                                    vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY)
+                                },
+                                onOpenSettings = onOpenSettings,
+                                onChooseScreenshotMode = { screenshotModeChosen = true },
                             )
                         }
                     }
@@ -428,6 +472,9 @@ fun AgentScreen(
                                 vm = vm,
                                 onOpenDocFullscreen = onOpenDocFullscreen,
                                 onOpenSettings = onOpenSettings,
+                                onOpenPermissions = {
+                                    vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY)
+                                },
                             )
                         }
                         Box(modifier = Modifier.padding(bottom = AgentItemSpacing))
@@ -562,21 +609,20 @@ fun AgentScreen(
                                 // 文本由 composer 回传（语音松手即发时宿主 draft 还是旧值）
                                 val text = raw.trim()
                                 if (text.isNotEmpty()) {
-                                    when (mode) {
-                                        ComposerMode.NEW_TASK -> {
-                                            submittedTask = text
-                                            // 新任务一律切回实时视图：主区域打开新任务，旧任务退到侧边栏
-                                            selectedTaskId = -1L
-                                            // 开关决定是否先出计划：关（默认）直接执行，开才进入计划确认
-                                            if (planBeforeAct) vm.startPlanning(text) else vm.startAgent(text)
-                                        }
-
-                                        ComposerMode.QUEUE_FOLLOW_UP -> vm.startAgent(text)
-                                        ComposerMode.ANSWER_CLARIFY ->
-                                            vm.answerClarification(ClarificationOption(id = "manual", label = text))
-
-                                        ComposerMode.GUIDE_AGENT -> vm.provideUserHint(text)
-                                        ComposerMode.LOCKED, ComposerMode.PLAN_APPROVAL -> Unit
+                                    // 能力预检：无障碍没开时先做一次明确选择，
+                                    // 而不是让用户等 40–60 秒才收到一条注定失败的记录
+                                    val needsConsent = (
+                                        mode == ComposerMode.NEW_TASK ||
+                                            mode == ComposerMode.QUEUE_FOLLOW_UP
+                                        ) && AgentPreflight.needsScreenshotConsent(
+                                        a11yEnabled = a11yEnabled,
+                                        configProblem = settings.configProblem,
+                                        screenshotModeChosen = screenshotModeChosen,
+                                    )
+                                    if (needsConsent) {
+                                        preflightTask = PreflightRequest(text, mode)
+                                    } else {
+                                        submitTask(text, mode)
                                     }
                                     draft = ""
                                 }
@@ -648,6 +694,24 @@ fun AgentScreen(
             }
         },
         overlay = {
+            // 发送前预检：无障碍没开时，先让用户做一次明确选择（去开启 / 仍用截图模式），
+            // 而不是让这次请求跑一整轮再失败
+            preflightTask?.let { request ->
+                ScreenshotModeDialog(
+                    screenshotActive = screenshotActive,
+                    onOpenPermissions = {
+                        preflightTask = null
+                        vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY)
+                    },
+                    onContinue = {
+                        preflightTask = null
+                        screenshotModeChosen = true
+                        submitTask(request.text, request.mode)
+                    },
+                    onDismiss = { preflightTask = null },
+                )
+            }
+
             // 运行画面是 500ms 轮询取帧，必须挂在与列表同层的浮层上，不能进列表项
             if (previewVisible) {
                 AgentPreviewPanel(onDismiss = { previewVisible = false })
@@ -732,8 +796,7 @@ private fun HistoryViewBanner(
     }
 }
 
-/** 底部协助浮层的场景规格（当前只有「协助」一种；骨架仍与答疑共用） */
-private data class AssistSpec(
+/** 底部协助浮层的场景规格（当前只有「协助」一种；骨架仍与答疑共用） */private data class AssistSpec(
     val title: String,
     val message: String,
     val options: List<ClarificationOption>,
@@ -796,6 +859,7 @@ private fun AgentTimelineItemView(
     vm: MainViewModel,
     onOpenDocFullscreen: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenPermissions: () -> Unit,
 ) {
     when (item) {
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
@@ -810,7 +874,12 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.LiveStatus -> LiveStatusItem(item, vm)
         is AgentTimelineItem.NeedsUser -> NeedsUserItem(item)
         is AgentTimelineItem.Done -> DoneItem(item)
-        is AgentTimelineItem.Failed -> FailedItem(item, vm, onOpenSettings = onOpenSettings)
+        is AgentTimelineItem.Terminal -> TerminalItem(
+            item,
+            vm,
+            onOpenSettings = onOpenSettings,
+            onOpenPermissions = onOpenPermissions,
+        )
         is AgentTimelineItem.Notice -> NoticeItem(item)
         is AgentTimelineItem.DocPreview -> DocPreviewItem(
             item,
@@ -820,4 +889,56 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.MemoryAdded -> MemoryCardItem(item, onUndo = { vm.undoMemory(it) })
         is AgentTimelineItem.ChatTurn -> ChatTurnItem(item, vm)
     }
+}
+
+/** 预检拦下的待发任务：用户做完选择后按原来的发送模式起跑 */
+private data class PreflightRequest(val text: String, val mode: ComposerMode)
+
+/**
+ * 发送前的一次性说明：无障碍没开时，这一轮只能用截图模式跑。
+ *
+ * 摆出「能力边界 + 两个出口」，而不是先发出去再报错——后者要白等一整轮，
+ * 用户拿到的结论还会是「AI 出问题了」，而真实原因只是没授权。
+ */
+@Composable
+private fun ScreenshotModeDialog(
+    screenshotActive: Boolean,
+    onOpenPermissions: () -> Unit,
+    onContinue: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "无障碍没开，这一轮只能靠截图",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "AI 读不到屏幕上的控件，只能按画面猜位置：步骤更慢、更容易失败；" +
+                        "支付、密码这类页面读不到内容，它会停下来等你接管。",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(AppSpacing.Sm))
+                Text(
+                    text = if (screenshotActive) {
+                        "截屏权限已授权，可以直接试。"
+                    } else {
+                        "截屏权限也还没授权：不补授权的话 AI 连画面都看不到，建议先去开启无障碍。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.onSurfaceRaised,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onContinue) { Text("仍然尝试") }
+        },
+        dismissButton = {
+            TextButton(onClick = onOpenPermissions) { Text("去开启无障碍") }
+        },
+    )
 }

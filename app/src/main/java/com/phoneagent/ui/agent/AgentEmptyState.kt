@@ -63,9 +63,25 @@ internal fun AgentEmptyState(
     modifier: Modifier = Modifier,
     /** 工作台壳层：改用 Eta 那样的「一句提问 + 2×2 建议卡网格」，不再竖排示例行 */
     grid: Boolean = false,
+    /** 用户本轮已经明确选过「仍然尝试（截图模式）」 */
+    screenshotModeChosen: Boolean = false,
+    /** 去系统无障碍设置 */
+    onOpenPermissions: () -> Unit = {},
+    /** 去应用内的「权限与执行通道」（服务组件没装时，系统无障碍列表里没有可开的条目） */
+    onOpenSettings: () -> Unit = {},
+    /** 明确选择用截图模式继续 */
+    onChooseScreenshotMode: () -> Unit = {},
 ) {
     if (grid) {
-        GridEmptyState(a11yEnabled = a11yEnabled, onPickSuggestion = onPickSuggestion, modifier = modifier)
+        GridEmptyState(
+            a11yEnabled = a11yEnabled,
+            onPickSuggestion = onPickSuggestion,
+            modifier = modifier,
+            screenshotModeChosen = screenshotModeChosen,
+            onOpenPermissions = onOpenPermissions,
+            onOpenSettings = onOpenSettings,
+            onChooseScreenshotMode = onChooseScreenshotMode,
+        )
         return
     }
 
@@ -94,20 +110,12 @@ internal fun AgentEmptyState(
 
         if (!a11yEnabled) {
             Spacer(Modifier.height(AppSpacing.Lg))
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
-                    .background(colors.warningContainer)
-                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
-                    .padding(AppSpacing.Lg),
-            ) {
-                Text(
-                    text = a11yMissingHint(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onWarningContainer,
-                )
-            }
+            A11yCapabilityCard(
+                screenshotModeChosen = screenshotModeChosen,
+                onOpenPermissions = onOpenPermissions,
+                onOpenSettings = onOpenSettings,
+                onChooseScreenshotMode = onChooseScreenshotMode,
+            )
         }
 
         Spacer(Modifier.height(AppSpacing.Lg))
@@ -130,22 +138,107 @@ internal fun AgentEmptyState(
 }
 
 /**
+ * 无障碍缺失时的能力卡：既说清缺什么，也把两条路都摆在卡上。
+ *
+ * 原来这里是一段纯文本提示——文字没说错，但用户读完只能自己去找系统设置，
+ * 「我就想先试试」也没有出口，结果往往是发一条注定失败的请求，等 40–60 秒才收到失败。
+ * 现在两个出口都在卡里：主按钮去开授权（服务组件没装时改为去装组件），
+ * 次按钮明确改用截图模式，并当场说清这一模式的能力边界。
+ */
+@Composable
+private fun A11yCapabilityCard(
+    screenshotModeChosen: Boolean,
+    onOpenPermissions: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onChooseScreenshotMode: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val context = LocalContext.current
+    val providerReady = remember {
+        runCatching { com.phoneagent.device.provider.ProviderManager.isInstalled(context) }.getOrDefault(false)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
+            .background(colors.warningContainer)
+            .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
+            .padding(AppSpacing.Lg),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = AppIcons.TouchApp,
+                contentDescription = null,
+                tint = colors.onWarningContainer,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(AppSpacing.Sm))
+            Text(
+                text = if (screenshotModeChosen) "已选用截图模式" else "无障碍没开，AI 看不见屏幕",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.onWarningContainer,
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Xs))
+        Text(
+            text = a11yMissingHint(providerReady),
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onWarningContainer,
+        )
+        Spacer(Modifier.height(AppSpacing.Sm))
+        Text(
+            text = ScreenShotModeBoundary,
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onWarningContainer.copy(alpha = 0.85f),
+        )
+        Spacer(Modifier.height(AppSpacing.Md))
+        if (screenshotModeChosen) {
+            PressableScale(onClick = onOpenPermissions) {
+                Text(
+                    text = "改为开启无障碍",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.onWarningContainer,
+                    modifier = Modifier.padding(vertical = AppSpacing.Xs),
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+                AgentActionButton(
+                    text = if (providerReady) "去开启无障碍" else "去装服务组件",
+                    icon = AppIcons.TouchApp,
+                    tone = AgentButtonTone.PRIMARY,
+                    onClick = if (providerReady) onOpenPermissions else onOpenSettings,
+                    modifier = Modifier.weight(1f),
+                )
+                AgentActionButton(
+                    text = "仍用截图模式",
+                    tone = AgentButtonTone.NEUTRAL,
+                    onClick = onChooseScreenshotMode,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 截图模式的能力边界。写在用户做选择之前，而不是失败之后：
+ * 他们要的是一个有依据的选择，不是一句「你自己非要试的」。
+ */
+private const val ScreenShotModeBoundary =
+    "截图模式：读不到控件树，只能按画面猜位置——步骤更慢、更容易失败；" +
+        "支付、密码这类页面读不到内容，AI 会停下来等你。"
+
+/**
  * 无障碍缺失时的提示文案。
  *
  * 无障碍能力由独立安装的「服务组件」提供：组件没装时，系统无障碍列表里没有可开启的条目，
  * 只提示「去系统设置授权」会把用户带到死路。这里按实际状态给出可执行的下一步。
  */
-@Composable
-private fun a11yMissingHint(): String {
-    val context = LocalContext.current
-    val providerReady = remember {
-        runCatching { com.phoneagent.device.provider.ProviderManager.isInstalled(context) }.getOrDefault(false)
-    }
-    return if (providerReady) {
-        "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权"
-    } else {
-        "无障碍依赖「服务组件」，它还没安装：先到 设置 → 权限与执行通道 安装服务组件，再开启无障碍"
-    }
+private fun a11yMissingHint(providerReady: Boolean): String = if (providerReady) {
+    "无障碍服务未开启，AI 读不到页面控件，需要在系统设置里授权。"
+} else {
+    "无障碍依赖「服务组件」，它还没安装：先到 设置 → 权限与执行通道 安装服务组件，再开启无障碍。"
 }
 
 /** 一句起步示例：点一下带到输入区，样式贴齐输入框（不用全圆胶囊，避免标配观感） */
@@ -192,8 +285,11 @@ private fun GridEmptyState(
     a11yEnabled: Boolean,
     onPickSuggestion: (String) -> Unit,
     modifier: Modifier = Modifier,
+    screenshotModeChosen: Boolean,
+    onOpenPermissions: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onChooseScreenshotMode: () -> Unit,
 ) {
-    val colors = AppTheme.colors
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -231,16 +327,11 @@ private fun GridEmptyState(
 
         if (!a11yEnabled) {
             Spacer(Modifier.height(AppSpacing.Lg))
-            Text(
-                text = a11yMissingHint(),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onWarningContainer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppTheme.metrics.itemRadius))
-                    .background(colors.warningContainer)
-                    .appBorder(1.dp, colors.outlineSoft, RoundedCornerShape(AppTheme.metrics.itemRadius))
-                    .padding(AppSpacing.Lg),
+            A11yCapabilityCard(
+                screenshotModeChosen = screenshotModeChosen,
+                onOpenPermissions = onOpenPermissions,
+                onOpenSettings = onOpenSettings,
+                onChooseScreenshotMode = onChooseScreenshotMode,
             )
         }
     }

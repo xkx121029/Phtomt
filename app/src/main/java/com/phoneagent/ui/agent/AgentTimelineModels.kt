@@ -3,6 +3,7 @@ package com.phoneagent.ui.agent
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.domain.model.TaskStatus
 
 /**
  * Agent 页任务流的列表项模型（纯数据，无 Compose 依赖）。
@@ -22,6 +23,11 @@ internal sealed interface AgentTimelineItem {
         val text: String,
         val queued: Boolean,
         val ownerKey: String = "",
+        /**
+         * 这次任务已经结束时的终态（null = 还在跑 / 还没开始）。
+         * 「最近任务」这条 chip 只有标题时，用户分辨不出它是刚才成功那次还是失败那次。
+         */
+        val status: TaskStatus? = null,
     ) : AgentTimelineItem {
         override val key: String get() = "ut#$ownerKey"
     }
@@ -97,17 +103,27 @@ internal sealed interface AgentTimelineItem {
     }
 
     /**
-     * 任务失败/放弃。
+     * 任务终态卡：除「完成」以外的一切结束方式（失败 / 未达成 / 用户停止）都走这一条。
      *
-     * [kind] 决定卡片标题与可用的出口：步数用尽、AI 链路异常、配置缺失、用户取消，
-     * 这四种的处置完全不同（重跑 / 修网络 / 去配置 / 无需处理），旧实现一律写「任务已停止」，
-     * 用户看不出到底发生了什么。
+     * 引擎收尾会把 [AgentState.phase] 落回 IDLE（见 AgentEngine.stop），因此成败只能来自
+     * 引擎显式交出的 TaskOutcome。[cause] 是给用户看的可行动原因，[detail] 是引擎原始消息，
+     * [actions] 决定卡片底部摆哪几个出口。
      */
-    data class Failed(
-        val message: String,
-        val kind: AgentState.FailureKind = AgentState.FailureKind.UNKNOWN,
+    data class Terminal(
+        val status: TaskStatus,
+        val headline: String,
+        /** 可行动的原因（人话）：优先说「哪里需要你动手」，而不是「AI 出了点问题」 */
+        val cause: String,
+        /** 引擎原始消息：默认折叠，需要时展开看细节 */
+        val detail: String,
+        val actions: List<TerminalAction>,
+        /** 三态步数：已确认生效 / 已交付未确认 / 未生效 —— 「未确认」不是「失败」 */
+        val okSteps: Int = 0,
+        val unconfirmedSteps: Int = 0,
+        val failedSteps: Int = 0,
+        val elapsedMs: Long = 0L,
     ) : AgentTimelineItem {
-        override val key: String get() = "live#failed"
+        override val key: String get() = "live#terminal"
     }
 
     /** 内嵌提示（缺权限等） */
@@ -297,4 +313,15 @@ internal class LiveStatusFold {
         lastMessage = null
         count = 0
     }
+}
+/** 终态卡上的可执行出口 */
+internal enum class TerminalAction {
+    /** 重跑上一次任务 */
+    RETRY,
+
+    /** 去模型配置（Key / 模型 / 接口地址） */
+    OPEN_SETTINGS,
+
+    /** 去开启无障碍（读屏能力） */
+    OPEN_PERMISSIONS,
 }
