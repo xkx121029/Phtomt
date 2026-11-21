@@ -15,8 +15,15 @@ object GestureBudget {
     /** 未指定时长时的默认长按按压时长（800ms 足够触发系统长按判定） */
     const val DEFAULT_LONG_PRESS_MS = 800L
 
-    /** 低于该时长触发不了长按，只会被当成一次普通点击 */
-    const val MIN_LONG_PRESS_MS = 400L
+    /**
+     * 长按下限：必须**跨过系统的长按判定阈值**（`ViewConfiguration.getLongPressTimeout()` 默认 500ms），
+     * 否则抬上来的时长照样触发不了长按，只会被当成一次普通点击——AI 传 300ms 想长按，
+     * 实际点了一下，页面没变化，AI 再点一遍。
+     *
+     * 取 600 而不是正好 500：留 100ms 余量吸收不同 ROM 把阈值调高 / 手势派发与系统计时之间的抖动。
+     * 副屏（`input swipe x y x y <ms>`）与主屏手势都从这里取时长，改这一处两条链路同时生效。
+     */
+    const val MIN_LONG_PRESS_MS = 600L
 
     /** 长按上限：再长就是卡住执行链，没有额外收益 */
     const val MAX_LONG_PRESS_MS = 3000L
