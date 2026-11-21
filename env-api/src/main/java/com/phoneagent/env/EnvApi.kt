@@ -44,16 +44,35 @@ object EnvApi {
     /** Build Tools 版本，如 "36.0.0" */
     const val KEY_BUILD_TOOLS = "buildTools"
 
+    /** 要安装的 JDK 大版本（主应用按工程 compileOptions / jvmTarget 与 AGP 最低要求推导） */
+    const val KEY_JDK = "jdk"
+
     /** 构建任务名，默认 assembleDebug */
     const val KEY_TASK = "task"
 
     // ---- stateJson 键 ----
     const val STATE_LINUX = "linux"
+
+    /** 人可读的 JDK 状态，如 "JDK 17.0.16" / "未安装" */
     const val STATE_JDK = "jdk"
+
+    /** `java -version` 实测出来的版本号，如 "17.0.16" */
+    const val STATE_JDK_VERSION = "jdkVersion"
     const val STATE_GRADLE = "gradle"
+
+    /** `gradle --version` 实测出来的版本号，如 "8.13" */
+    const val STATE_GRADLE_VERSION = "gradleVersion"
+
+    /** `sdkmanager --list_installed` 实测出的平台，如 "android-35、android-36" */
     const val STATE_SDK = "sdk"
+
+    /** `sdkmanager --list_installed` 实测出的 build-tools，如 "36.0.0" */
+    const val STATE_BUILD_TOOLS = "buildTools"
     const val STATE_AAPT2 = "aapt2"
     const val STATE_INSTALLED_AT = "installedAt"
+
+    /** 实测得到的可操作问题清单（用「；」分隔）；全部就绪时为空串 */
+    const val STATE_PROBLEMS = "problems"
 
     /** 步骤状态：[IEnvCallback.onStep] 的 state 取值 */
     const val STEP_START = "start"

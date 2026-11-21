@@ -237,6 +237,7 @@ class CodingEnvClient(private val context: Context) {
             put(EnvApi.KEY_AGP, toolchain.agpVersion.orEmpty())
             put(EnvApi.KEY_COMPILE_SDK, toolchain.compileSdk)
             put(EnvApi.KEY_BUILD_TOOLS, toolchain.buildTools)
+            put(EnvApi.KEY_JDK, toolchain.jdkVersion)
             put(EnvApi.KEY_TASK, task)
         }
         // 先置运行态再发请求：组件是 oneway 调用，忙时可能立刻回 onFinished，
