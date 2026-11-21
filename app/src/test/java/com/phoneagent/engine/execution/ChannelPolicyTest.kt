@@ -60,16 +60,24 @@ class ChannelPolicyTest {
 
     @Test
     fun 启动候选按无障碍到shell到本应用直启() {
+        // 无线调试会话连着（adb = true）也不进候选：它只用于拉起 Shizuku，不能执行 am/input
         val s = snap(shizuku = true, adb = true)
         assertEquals(
             listOf(
                 ChannelKind.ACCESSIBILITY,
                 ChannelKind.SHELL_SHIZUKU,
-                ChannelKind.SHELL_ADB,
                 ChannelKind.LOCAL_ACTIVITY,
             ),
             kinds(ChannelGoal.LAUNCH, s),
         )
+    }
+
+    @Test
+    fun 只有无线调试会话时没有系统命令通道() {
+        // 回归目标：会话连上就给出 SHELL_ADB 候选，命令派进去必然失败，用户看到"已就绪"和一串执行失败
+        val s = snap(a11y = false, adb = true)
+        assertTrue("无线调试会话不是可执行通道：${kinds(ChannelGoal.POINTER, s)}", kinds(ChannelGoal.POINTER, s).isEmpty())
+        assertTrue("shell 目标也不该有候选：${kinds(ChannelGoal.SHELL, s)}", kinds(ChannelGoal.SHELL, s).isEmpty())
     }
 
     @Test
@@ -101,7 +109,7 @@ class ChannelPolicyTest {
     fun shell目标AUTO顺位与ShellRules一致() {
         val s = snap(shizuku = true, adb = true, termux = true)
         assertEquals(
-            listOf(ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_ADB, ChannelKind.SHELL_TERMUX),
+            listOf(ChannelKind.SHELL_SHIZUKU, ChannelKind.SHELL_TERMUX),
             kinds(ChannelGoal.SHELL, s),
         )
     }

@@ -47,7 +47,8 @@ import com.phoneagent.ui.theme.Success
  *
  * 语义收口：本应用内嵌 Shizuku server（随 APK 分发，经无线 ADB 以 shell uid 拉起），
  * 用户看到的是同一个「Shizuku」概念——无线 ADB 只是**启动引导机制**，不再是独立通道。
- * - 就绪判定：Shizuku binder 可用，或引导会话（ADB）已连接（server 拉起前后都能执行 shell）。
+ * - 就绪判定：只看 Shizuku binder 是否可用。无线调试会话连上不算就绪——它只用于拉起 server，
+ *   本身不能执行 shell（旧文案写"server 拉起前后都能执行 shell"，与实现不符）。
  * - 首次启动需要用户在系统「无线调试」页查看 6 位配对码，之后密钥已存，一键启动无需再配。
  */
 @Composable

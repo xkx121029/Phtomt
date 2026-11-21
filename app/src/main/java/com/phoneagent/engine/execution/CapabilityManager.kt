@@ -8,11 +8,12 @@ import com.phoneagent.device.shell.ShizukuManager
  * 当前授权模式检测与缓存（对应 HPA动作执行逻辑优化文档 v2.1 四、转译层 4.2）。
  *
  * 转译层依据该模式把同一意图转译为不同通道的命令：
- * - SHIZUKU：拥有 Shizuku 或无线 ADB 权限，可执行 shell（input tap / monkey 等）
+ * - SHIZUKU：内置 Shizuku binder 可用，可执行 shell（input tap / monkey 等）。
+ *   无线调试会话不算：它只用于把 Shizuku server 拉起来，本身不实现命令执行
  * - ACCESSIBILITY：仅有无障碍服务，使用 performAction / dispatchGesture
  * - READONLY：两者都不可用，仅能分析/给出建议，不能自动执行
  *
- * AI 完全感知不到该模式；模式变化（开关 Shizuku/接入无线 ADB）对 AI 透明。
+ * AI 完全感知不到该模式；模式变化（开关 Shizuku / 无线调试会话拉起 server）对 AI 透明。
  */
 class CapabilityManager(
     private val context: Context,
@@ -26,7 +27,13 @@ class CapabilityManager(
         READONLY,
     }
 
-    /** 当前授权模式。每次调用实时检测（Shizuku/无线 ADB 状态可能动态变化） */
+    /**
+     * 当前授权模式。每次调用实时检测（Shizuku 可能动态掉线/恢复）。
+     *
+     * [adbConnectedProvider] 的语义是"ADB 引导通路是否已经给出可执行的 shell"（即 Shizuku server
+     * 已就绪），而不是"无线调试会话是否连上"——主应用没有走会话的执行入口（AIDL 只有 execShizuku /
+     * execTermux），把"连上"当权限会让转译层以为有 shell 能力。
+     */
     fun currentMode(): Mode = when {
         shizukuManager?.isAvailable() == true || adbConnectedProvider() -> Mode.SHIZUKU
         AgentAccessibilityService.instance != null || AgentAccessibilityService.isServiceEnabled(context) -> Mode.ACCESSIBILITY

@@ -2501,11 +2501,11 @@ class AgentEngine(
                 add("服务组件未连上（${providerError ?: "在设置页重新绑定"}）")
             }
             if (shizukuText != "就绪") add("在设置页一键启动并授权 Shizuku")
-            if (!adbConnected) add("或完成一次无线 ADB 配对")
+            if (!adbConnected) add("或做一次无线 ADB 配对，用会话把内置 Shizuku 拉起来（配对本身不能执行命令）")
         }
         val state = "通道自检：服务组件=${if (providerInstalled) "已安装" else "未安装"}" +
             "/${if (providerBound) "已绑定" else "未绑定"}，" +
-            "Shizuku=$shizukuText，无线ADB=${if (adbConnected) "已连接" else "未连接"}"
+            "Shizuku=$shizukuText，ADB引导通路=${if (adbConnected) "已就绪（Shizuku 经会话拉起）" else "未就绪"}"
         return if (tips.isEmpty()) state else "$state；建议：${tips.joinToString("，")}"
     }
 

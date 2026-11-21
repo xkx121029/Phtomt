@@ -89,7 +89,33 @@ data class AgentAction(
      * AlarmClock 意图本身只能按 HH:mm 排"下一次"，不带日期就会被排到今天。
      */
     val alarmAtMillis: Long? = null,
-)
+) {
+    /**
+     * 动作**作用对象的标签**：危险词确认门与幂等键的唯一取数口径。
+     *
+     * 两条路各把落点放在不同字段：
+     * - 语义意图（tap/long_press/type）→ [target] 的 `value` 就是屏幕上的控件文字；
+     * - 自由模式的无障碍端点直调（[ActionType.A11Y_CALL]）→ 落点在 `args` 里，
+     *   `click_node` 的 `target` 既是控件文字也可以是 `id:资源名`（见 `A11yEndpoints`）。
+     *
+     * 只取**标识操作对象**的参数（`target`/`label`/`name`）：`text`/`uri`/`package` 是载荷，
+     * 不是"点下去会怎样"的那颗控件。把载荷也塞进词表判定，会让"往搜索框里输入『删除』"
+     * 这类纯输入平白弹一次确认，等于把门的可信度耗在误伤上。
+     */
+    val operatedLabel: String?
+        get() {
+            target?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+            if ((ActionType.ALIAS[type] ?: type) != ActionType.A11Y_CALL) return null
+            return A11Y_TARGET_KEYS.firstNotNullOfOrNull { key ->
+                args?.get(key)?.trim()?.takeIf { it.isNotEmpty() }
+            }
+        }
+
+    private companion object {
+        /** a11y 端点里标识"操作对象"的参数名（按优先级取第一个非空） */
+        val A11Y_TARGET_KEYS = listOf("target", "label", "name")
+    }
+}
 
 /** 动作目标 */
 @Serializable

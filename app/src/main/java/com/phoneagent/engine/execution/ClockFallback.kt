@@ -82,7 +82,7 @@ internal object ClockFallbackPolicy {
             add(
                 ClockLevel(
                     kind = ClockFallbackKind.SHELL_WRITE,
-                    condition = "Shizuku/无线 ADB 就绪，且厂商时钟 Provider 可读（一次性闹钟）",
+                    condition = "内置 Shizuku 就绪，且厂商时钟 Provider 可读（一次性闹钟）",
                     failureCriterion = "Provider 不可读、插入失败或回查不到该时间",
                 ),
             )
@@ -109,7 +109,7 @@ internal object ClockFallbackPolicy {
     fun skipReason(kind: ClockFallbackKind, request: ClockRequest, caps: ClockCapabilities): String? =
         when (kind) {
             ClockFallbackKind.SHELL_WRITE -> when {
-                !caps.shell -> "未检测到 Shizuku/无线 ADB，跳过写库（不记为失败）"
+                !caps.shell -> "内置 Shizuku 未就绪，跳过写库（不记为失败）"
                 request.action != AlarmClock.ACTION_SET_ALARM -> "倒计时没有可写的数据库入口，跳过写库"
                 !request.repeatDays.isNullOrEmpty() -> "重复闹钟的星期字段各厂商不一致，跳过写库"
                 else -> null
@@ -138,7 +138,7 @@ internal object ClockFallbackPolicy {
                     "请看一眼时钟应用的列表。没有重复派发，避免出现多条一样的条目"
             }
             ClockFallbackKind.SHELL_WRITE ->
-                "已用注入通道（Shizuku/无线 ADB）写入时钟数据库并回查确认：$what"
+                "已用注入通道（内置 Shizuku）写入时钟数据库并回查确认：$what"
             ClockFallbackKind.UI_CONFIRM ->
                 "静默直达不可用，已改用时钟页直达 + 无障碍点击「${clickedLabel ?: "保存"}」，并回读确认：$what"
             ClockFallbackKind.OPEN_MANUAL ->
