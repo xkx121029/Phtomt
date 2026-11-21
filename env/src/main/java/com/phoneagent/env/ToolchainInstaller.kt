@@ -67,12 +67,20 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         /**
          * x86_64 glibc 运行库：直接用 Ubuntu base 的 amd64 rootfs。
          * 只取 lib 目录当 qemu 的 -L sysroot，比逐个挑 deb 包稳。
+         *
+         * 2026-11-21 实测：原先钉的 24.04.2 与 24.04.1 在官方目录里**已全部 404**
+         * （官方 SHA256SUMS 只剩 24.04.3/4/5），aapt2 兼容层这一步因此必然失败。
+         * 现在钉版本号 + 官方公布的 sha256，并保留两个入口：版本化目录为主，浮动目录兜底。
          */
+        private const val GLIBC_FILE = "ubuntu-base-24.04.5-base-amd64.tar.gz"
+
+        /** 来自 https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/SHA256SUMS */
+        private const val GLIBC_SHA256 =
+            "e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86"
+
         private val GLIBC_URLS = listOf(
-            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/" +
-                "ubuntu-base-24.04.2-base-amd64.tar.gz",
-            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/" +
-                "ubuntu-base-24.04.1-base-amd64.tar.gz",
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04.5/release/$GLIBC_FILE",
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/$GLIBC_FILE",
         )
 
         private const val SDK_TIMEOUT_MS = 30 * 60_000L
@@ -272,8 +280,14 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         if (!add.ok) return "qemu-x86_64 安装失败：${add.output.trim().takeLast(500)}"
 
         if (!env.guestExists("$GLIBC/lib/x86_64-linux-gnu")) {
-            val archive = download(GLIBC_URLS, "ubuntu-base-amd64.tar.gz", "x86_64 glibc 运行库")
-                ?: return "glibc 运行库下载失败"
+            val archive = download(
+                Artifact(
+                    label = "x86_64 glibc 运行库",
+                    fileName = GLIBC_FILE,
+                    urls = GLIBC_URLS,
+                    expected = Expected.Fixed(SHA256, GLIBC_SHA256),
+                ),
+            ) ?: return "glibc 运行库下载失败（官方源可能已下架 $GLIBC_FILE，见上一条日志）"
             log("解压 x86_64 glibc 运行库…")
             val failure = runCatching { env.extractArchive(archive, env.guestFile(GLIBC)) }
                 .exceptionOrNull()
@@ -385,6 +399,89 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
 
     // ------------------------------------------------------------ 下载 / 解包
 
+    /** 一个待下载产物：来源列表 + 官方摘要 + 体积下限 */
+    private data class Artifact(
+        val label: String,
+        val fileName: String,
+        val urls: List<String>,
+        val expected: Expected,
+        val minBytes: Long = MIN_ARCHIVE_BYTES,
+    )
+
+    /**
+     * 带官方摘要校验的下载：拿不到摘要就拒绝安装，摘要不符就删文件换下一个源。
+     *
+     * 缓存同样要重新校验——坏归档留在 `downloads/` 里的话，下一次安装会「复用本地缓存」
+     * 直接跳过下载，坏文件就此永久驻留，只能清应用数据才能重来。
+     */
+    private fun download(artifact: Artifact): File? {
+        val dir = File(ctx.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
+        val target = File(dir, artifact.fileName)
+        val algorithm = algorithmOf(artifact.expected)
+        val expectedHex = resolveExpected(artifact.expected)
+        if (expectedHex == null) {
+            log("${artifact.label}：拿不到官方摘要（${describe(artifact.expected)}），拒绝安装未校验的包")
+            return null
+        }
+
+        if (target.isFile && target.length() >= artifact.minBytes) {
+            if (verifyOrDiscard(target, algorithm, expectedHex)) {
+                log("${artifact.label}：复用本地缓存（${target.length() / 1024 / 1024} MB，摘要校验通过）")
+                return target
+            }
+            log("${artifact.label}：本地缓存摘要不符，已删除并重新下载")
+        }
+
+        for (url in artifact.urls) {
+            if (cancelled.invoke()) return null
+            log("${artifact.label}：下载 $url")
+            val failure = Fetch.toFile(
+                url = url,
+                target = target,
+                onProgress = { copied, total ->
+                    val text = if (total > 0) {
+                        "${copied / 1024 / 1024} / ${total / 1024 / 1024} MB"
+                    } else {
+                        "${copied / 1024 / 1024} MB"
+                    }
+                    log("${artifact.label} 已下载 $text")
+                },
+                isCancelled = { cancelled.invoke() },
+            )
+            if (failure != null) {
+                log("${artifact.label}：$url 不可用（$failure）")
+                continue
+            }
+            if (target.length() < artifact.minBytes) {
+                log("${artifact.label}：$url 只拿到 ${target.length() / 1024} KB，明显不完整，丢弃")
+                target.delete()
+                continue
+            }
+            val actual = runCatching { Digest.hexOf(target, algorithm) }.getOrNull()
+            if (actual == null || !Digest.matches(expectedHex, actual)) {
+                log(
+                    "${artifact.label}：$url 的摘要与官方值不符" +
+                        "（期望 ${expectedHex.take(12)}…，实际 ${actual?.take(12) ?: "计算失败"}…），已删除该文件",
+                )
+                target.delete()
+                continue
+            }
+            log("${artifact.label}：$algorithm 校验通过")
+            return target
+        }
+        log("${artifact.label}：${artifact.urls.size} 个下载源全部失败——官方可能已下架该版本，请更新代码里的 URL 或换镜像")
+        return null
+    }
+
+    private fun algorithmOf(expected: Expected): String = when (expected) {
+        is Expected.Fixed -> expected.algorithm
+        is Expected.Sidecar -> expected.algorithm
+    }
+
+    private fun describe(expected: Expected): String = when (expected) {
+        is Expected.Fixed -> "代码里钉住的 ${expected.algorithm}"
+        is Expected.Sidecar -> "官方 sidecar ${expected.url}"
+    }
     /**
      * 依次尝试 [urls]，成功返回落盘文件；全部失败返回 null。
      * 已有同名缓存（体积可信）时直接复用，避免重复下 100 MB 级归档。
