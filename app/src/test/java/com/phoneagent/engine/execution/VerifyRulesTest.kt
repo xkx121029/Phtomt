@@ -185,9 +185,14 @@ class VerifyRulesTest {
     // ---- 留档 ----
 
     @Test
-    fun historyStatus_按验证结果给出确认状态() {
-        assertEquals(VerifyRules.STATUS_VERIFIED, VerifyRules.historyStatus(true))
-        assertEquals(VerifyRules.STATUS_UNVERIFIED, VerifyRules.historyStatus(false))
+    fun historyStatus_按交付结论给出三态() {
+        assertEquals(VerifyRules.STATUS_VERIFIED, VerifyRules.historyStatus(Delivery.EFFECTIVE))
+        // 读不到页面 = 未确认（⚠️），不能与"看到了没变化"混为一谈
+        assertEquals(VerifyRules.STATUS_UNVERIFIED, VerifyRules.historyStatus(Delivery.DELIVERED_UNCONFIRMED))
+        // 读到了页面、就是没变化 = 未见生效（❌ 已交付但未见生效）
+        assertEquals(VerifyRules.STATUS_NO_EFFECT, VerifyRules.historyStatus(Delivery.DELIVERED_NO_EFFECT))
+        // 压根没交付：说"已交付"才是错话，落回未生效
+        assertEquals(VerifyRules.STATUS_FAILED, VerifyRules.historyStatus(Delivery.NOT_DELIVERED))
     }
 
     @Test
@@ -231,7 +236,7 @@ class VerifyRulesTest {
 
     @Test
     fun deviceOpsStatus_根本没执行为failed() {
-        // StepTexts 用 "failed" 渲染 ❌（通道不可用/参数非法这类用户要改配置的情况）
-        assertEquals("failed", VerifyRules.deviceOpsStatus(ok = false, dispatched = false))
+        // StepTexts 用 STATUS_FAILED 渲染 ❌（通道不可用/参数非法这类用户要改配置的情况）
+        assertEquals(VerifyRules.STATUS_FAILED, VerifyRules.deviceOpsStatus(ok = false, dispatched = false))
     }
 }

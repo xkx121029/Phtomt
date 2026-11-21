@@ -52,6 +52,7 @@ import com.phoneagent.core.text.HumanTranslator
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
+import com.phoneagent.engine.execution.VerifyRules
 import com.phoneagent.ui.components.StatusPill
 import com.phoneagent.ui.components.animateListItem
 import com.phoneagent.ui.debug.ConfidenceBar
@@ -455,13 +456,17 @@ private fun StepRail(first: Boolean, last: Boolean, confirmed: Boolean) {
     }
 }
 
-/** 执行结果徽标：已生效 / 未生效 / 发送失败 */
+/** 执行结果徽标：已生效 / 已交付未确认 / 已交付未见生效 / 发送失败 */
 @Composable
 private fun StepResultPill(record: StepRecord) {
     val (text, color) = when {
         record.isConfirmed -> "已生效" to Success
         record.sendResult == "send_failed" -> "发送失败" to MaterialTheme.colorScheme.error
-        else -> "未生效" to Warning
+        // 读到了页面、只是没预期变化：这与「没读到页面」是两件事，用户看到的词也必须不同
+        record.verificationResult == VerifyRules.STATUS_NO_EFFECT ->
+            "未见生效" to MaterialTheme.colorScheme.error
+        record.verificationResult == VerifyRules.STATUS_FAILED -> "未生效" to MaterialTheme.colorScheme.error
+        else -> "未确认" to Warning
     }
     StatusPill(text, color, containerAlpha = 0.12f)
 }

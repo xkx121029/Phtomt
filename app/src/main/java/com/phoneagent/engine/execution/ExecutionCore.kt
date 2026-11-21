@@ -316,8 +316,10 @@ internal class ExecutionCore(
                 }
             }
             ActionType.LAUNCH_ASSISTANT -> {
-                // 唤起系统语音助手：description 原样透传（AI 能区分"已传话 / 已填入 / 仅拉起"）；
-                // 仅"本机探测不到语音助手"才是 Failure，走既有连续失败介入机制
+                // 唤起系统语音助手。这条路径拿不到「指令真的生效」的回执：Provider 的说明只区分
+                // 「仅拉起 / 填进输入框 / 点了发送键」，而点到了发送键也不等于助手接受了指令。
+                // 因此成功与否只认结构证据（[AssistantHandoffPolicy]）：
+                // 输入框里是否还留着那句话、页面有没有变化。说明文案只负责说清走到了哪一步。
                 val r = executor.launchAssistant(action.text)
                 if (r is com.phoneagent.device.a11y.ActionExecutor.Result.Failure) {
                     // 单目标拉起失败 → shell 兜底：am start 不受后台启动限制，
@@ -337,16 +339,14 @@ internal class ExecutionCore(
                         delay(600)
                         val desc = enterSendIfFillOnly(executor.handoffToAssistant(action.text))
                         delay(800)
-                        com.phoneagent.engine.execution.VerifyResult(
-                            true, "经 shell 兜底唤醒语音助手；$desc", snapshot.packageName ?: "", "",
-                        )
+                        assistantHandoff(snapshot, "经 shell 兜底唤醒语音助手；$desc", action.text)
                     }
                 } else {
                     // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
                     @Suppress("MaxLineLength")
                     val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
-                    com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
+                    assistantHandoff(snapshot, desc, action.text)
                 }
             }
             ActionType.READ_NOTIFS -> {
@@ -639,7 +639,10 @@ internal class ExecutionCore(
             // notDelivered=false 是因为动作确实已经交付过，禁止通道重试造成重复设置。
             is ClockOutcome.Done -> com.phoneagent.engine.execution.VerifyResult(
                 outcome.verified, outcome.message, "", "",
-                notDelivered = false, channel = outcome.kind.id, trace = trace,
+                notDelivered = false,
+                unconfirmed = outcome.delivery == Delivery.DELIVERED_UNCONFIRMED,
+                channel = outcome.kind.id,
+                trace = trace,
             )
             // 只把用户带到时钟页：不算成功，但动作没有再交付一次的风险，禁止通道重试造成重复设置
             is ClockOutcome.Manual -> com.phoneagent.engine.execution.VerifyResult(
@@ -998,6 +1001,21 @@ internal class ExecutionCore(
         return if (accepted) "$desc（已补按回车尝试发送）" else desc
     }
 
+    /**
+     * 传话结束后的定性：先看「发没发出去」的结构证据，再按页面证据分档（见 [AssistantHandoffPolicy]）。
+     *
+     * 多读一次页面是必要的：`confirmPageEffect` 的取样快照不外传，而「输入框里还留着这句话」
+     * 只能从一份当前页面里看出来。读不到页面时不否决（没有证据就没有结论），交给页面证据那一档。
+     */
+    private suspend fun assistantHandoff(
+        before: ScreenSnapshot,
+        handoff: String,
+        text: String?,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val typedNotSent = readPageQuietly()?.let { AssistantHandoffPolicy.stillInInputBox(it, text) } ?: false
+        return AssistantHandoffPolicy.verdict(handoff, typedNotSent, confirmPageEffect(before))
+    }
+
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
     private suspend fun finishShellResult(
         result: ShizukuManager.ShellResult,
@@ -1247,21 +1265,17 @@ internal class ExecutionCore(
                     val a11y = runCatchingLogged(TAG, "无障碍启动应用 $pkg") { ActionExecutor(service).launchApp(pkg) }
                         .getOrNull()
                     when (a11y) {
-                        is ActionExecutor.Result.Success -> when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(true, "已启动应用: $pkg", snapshot.packageName ?: "", pkg)
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已启动应用: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("无障碍启动指令已发出但目标应用未到前台")
+                        is ActionExecutor.Result.Success -> {
+                            val v = LaunchLadderPolicy.verdict(
+                                observed = awaitLaunched(service, pkg, snapshot),
+                                beforeFingerprint = snapshot.packageName ?: "",
+                                afterFingerprint = pkg,
+                                confirmedReason = "已启动应用: $pkg",
+                                unconfirmedReason = "已启动应用: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                                notDeliveredReason = "无障碍启动指令已发出但目标应用未到前台",
+                            )
+                            v.result?.let { delivered = it }
+                            v.step
                         }
                         is ActionExecutor.Result.Failure -> ChannelStepResult.NotDelivered("无障碍启动失败：${a11y.reason}")
                         null -> ChannelStepResult.NotDelivered("无障碍启动异常")
@@ -1272,27 +1286,16 @@ internal class ExecutionCore(
                     val r = runCatchingLogged(TAG, "shell 启动应用 $pkg") { execShellViaChannel("monkey -p $pkg 1") }
                         .getOrNull()
                     if (r is ShizukuManager.ShellResult.Success) {
-                        when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已自动切换 shell 通道启动应用: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("shell 启动指令已被接受但目标应用未到前台")
-                        }
+                        val v = LaunchLadderPolicy.verdict(
+                            observed = awaitLaunched(service, pkg, snapshot),
+                            beforeFingerprint = snapshot.packageName ?: "",
+                            afterFingerprint = pkg,
+                            confirmedReason = "无障碍未确认前台，已自动切换 shell 通道启动应用: $pkg",
+                            unconfirmedReason = "已自动切换 shell 通道启动应用: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                            notDeliveredReason = "shell 启动指令已被接受但目标应用未到前台",
+                        )
+                        v.result?.let { delivered = it }
+                        v.step
                     } else {
                         val reason = (r as? ShizukuManager.ShellResult.Failure)?.reason ?: "通道无响应"
                         ChannelStepResult.NotDelivered("shell 启动失败：$reason")
@@ -1303,27 +1306,16 @@ internal class ExecutionCore(
                     if (!launchLocally(pkg)) {
                         ChannelStepResult.Skipped("未找到可启动入口")
                     } else {
-                        when (awaitLaunched(service, pkg, snapshot)) {
-                            true -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已自动切换本应用直启打开: $pkg",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = true)
-                            }
-                            null -> {
-                                delivered = VerifyResult(
-                                    true,
-                                    "已切换本应用直启打开: $pkg（未能确认前台，以下一步观察为准）",
-                                    snapshot.packageName ?: "",
-                                    pkg,
-                                )
-                                ChannelStepResult.Delivered(confirmed = false)
-                            }
-                            false -> ChannelStepResult.NotDelivered("本应用直启请求已发出但目标应用未到前台")
-                        }
+                        val v = LaunchLadderPolicy.verdict(
+                            observed = awaitLaunched(service, pkg, snapshot),
+                            beforeFingerprint = snapshot.packageName ?: "",
+                            afterFingerprint = pkg,
+                            confirmedReason = "已自动切换本应用直启打开: $pkg",
+                            unconfirmedReason = "已切换本应用直启打开: $pkg（已交付，但读不到页面，未能确认前台；以下一步观察为准）",
+                            notDeliveredReason = "本应用直启请求已发出但目标应用未到前台",
+                        )
+                        v.result?.let { delivered = it }
+                        v.step
                     }
                 }
 
@@ -1413,9 +1405,9 @@ internal class ExecutionCore(
                         delay(300)
                         // 命令退出码 0 只证明事件被注入，不证明 UI 上生效（见 [ShellFallbackPolicy]）：
                         // 必须回读一次页面才敢说「已确认」。判据是纯函数，通道阶梯只按结论分流。
-                        val verdict = confirmFallbackDelivery(snapshot)
+                        val verdict = confirmPageEffect(snapshot)
                         // 已确认 = 这步生效；未确认仍是「已交付」（notDelivered=false 见下），
-                        // 两个概念在结构化结果里分开表达，不再由退出码顶替
+                        // 「读不到页面」与「页面没变化」也在结构上分开，不再由退出码顶替
                         delivered = VerifyResult(
                             verdict.confirmed,
                             "$originalReason；已自动切换 shell 通道执行: " +
@@ -1425,6 +1417,7 @@ internal class ExecutionCore(
                             // 命令已经下发到系统 = 已交付：绝不能标 notDelivered，
                             // 否则外层会换一条通道把同一下再执行一遍（发送/删除就是重复副作用）
                             notDelivered = false,
+                            unconfirmed = verdict.unconfirmed,
                         )
                         ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
@@ -1438,12 +1431,13 @@ internal class ExecutionCore(
                     if (local != null) {
                         // 本应用直启同样没有页面级证据：startActivity 返回成功只说明 Intent 被本应用发出，
                         // 不代表目标应用真的到了前台。与 shell 兜底同一口径——回读确认，拿不到证据就只说「已执行」。
-                        val verdict = confirmFallbackDelivery(snapshot)
+                        val verdict = confirmPageEffect(snapshot)
                         delivered = local.copy(
                             success = verdict.confirmed,
                             reason = local.reason + verdict.suffix,
                             beforeFingerprint = verdict.beforeFingerprint,
                             afterFingerprint = verdict.afterFingerprint,
+                            unconfirmed = verdict.unconfirmed,
                         )
                         ChannelStepResult.Delivered(confirmed = verdict.confirmed, detail = verdict.suffix)
                     } else {
@@ -1480,15 +1474,18 @@ internal class ExecutionCore(
     }
 
     /**
-     * shell 兜底之后的页面级确认（[ShellFallbackPolicy] 的采样实现）。
+     * 动作之后的页面级确认（[ShellFallbackPolicy] 的采样实现）。
      *
      * 取样节奏与点击链路同一套 [VerifyTiming]：一旦回读到页面变化立即返回，不必等满观察窗；
      * 读不到页面（无障碍断开 / Provider 超时）按「未确认」处理，不拿命令退出码冒充生效。
+     *
+     * 通道兜底、本应用直启、语音助手传话三条「没有回执」的路径共用它，
+     * 「已确认 / 未确认 / 看到了没变化」只有一个判据来源。
      */
     // 单次采样窗：`continue` 跳过读不到页面的样本、`break` 命中变化即停，两个跳转各表达一件不同的事
     @Suppress("LoopWithTooManyJumpStatements")
-    private suspend fun confirmFallbackDelivery(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
-        val beforeFp = runCatching { PageFingerprint.computeMeaningful(before) }.getOrNull()
+    private suspend fun confirmPageEffect(before: ScreenSnapshot): ShellFallbackPolicy.Verdict {
+        val beforeFp = runCatching { PageFingerprint.computeEffect(before) }.getOrNull()
         if (beforeFp.isNullOrBlank()) return ShellFallbackPolicy.judge(null, null)
         // 最后一次成功回读到的指纹：两次取样都没变化时用它区分「页面没变」与「读不到页面」，
         // 这两种情况给 AI 的下一步提示完全不同（一个该换落点，一个该等页面可读）
@@ -1496,7 +1493,7 @@ internal class ExecutionCore(
         for (delayMs in VerifyTiming.SAMPLE_DELAYS_MS) {
             delay(delayMs)
             val after = readPageQuietly() ?: continue
-            val afterFp = PageFingerprint.computeMeaningful(after)
+            val afterFp = PageFingerprint.computeEffect(after)
             lastAfterFp = afterFp
             if (afterFp != beforeFp) break
         }

@@ -126,7 +126,7 @@ internal class FeedbackReporter(private val context: Context) {
                 put("steps", session.steps.coerceIn(0, MAX_COUNT))
                 put("okSteps", session.okSteps.coerceIn(0, MAX_COUNT))
                 put("sendFailed", records.count { it.sendResult == SEND_FAILED }.coerceIn(0, MAX_COUNT))
-                put("verifyFailed", records.count { it.verificationResult == VERIFY_FAILED }.coerceIn(0, MAX_COUNT))
+                put("verifyFailed", records.count { it.verificationResult == VERIFY_FAILED || it.verificationResult == VERIFY_NO_EFFECT }.coerceIn(0, MAX_COUNT))
                 put("unverified", records.count { it.verificationResult == VERIFY_UNVERIFIED }.coerceIn(0, MAX_COUNT))
                 putJsonObject("actionCounts") {
                     actionCounts.entries.sortedByDescending { it.value }.take(MAX_ACTION_KINDS).forEach { (k, v) ->
@@ -155,6 +155,8 @@ internal class FeedbackReporter(private val context: Context) {
                 put("overBudgetSteps", metrics.overBudgetSteps.coerceIn(0, MAX_COUNT))
                 put("notDelivered", metrics.notDeliveredCount.coerceIn(0, MAX_COUNT))
                 put("noEffect", metrics.noEffectCount.coerceIn(0, MAX_COUNT))
+                // 「读不到页面」也要能单独看到：否则没法判断验证链路的证据缺失在变好还是变坏
+                put("unconfirmed", metrics.unconfirmedCount.coerceIn(0, MAX_COUNT))
             }
         }
     }
@@ -181,7 +183,7 @@ internal class FeedbackReporter(private val context: Context) {
     }
 
     private fun normalizeVerify(raw: String?): String = when (raw) {
-        VERIFY_SUCCESS, VERIFY_UNVERIFIED, VERIFY_FAILED -> raw
+        VERIFY_SUCCESS, VERIFY_UNVERIFIED, VERIFY_NO_EFFECT, VERIFY_FAILED -> raw
         else -> "unknown"
     }
 
@@ -258,6 +260,8 @@ internal class FeedbackReporter(private val context: Context) {
         const val SEND_FAILED = "send_failed"
         const val VERIFY_SUCCESS = "verified_success"
         const val VERIFY_UNVERIFIED = "unverified"
+        /** 已交付且读到了页面，但没有预期变化（[com.phoneagent.engine.execution.VerifyRules.STATUS_NO_EFFECT]） */
+        const val VERIFY_NO_EFFECT = "no_effect"
         const val VERIFY_FAILED = "failed"
         val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }

@@ -49,7 +49,7 @@ class ClickVerifierUnconfirmedTest {
         assertFalse("读不到页面不该记为成功（既不确认生效，也没有证据说失败）", r.success)
         assertTrue("必须由结构化字段表达为未确认", r.unconfirmed)
         assertEquals(Delivery.DELIVERED_UNCONFIRMED, r.delivery)
-        assertEquals(VerifyRules.STATUS_UNVERIFIED, VerifyRules.historyStatus(r.success))
+        assertEquals(VerifyRules.STATUS_UNVERIFIED, VerifyRules.historyStatus(r.delivery))
         // 未确认不重试：动作已经下发，原样重放就是重复副作用
         assertFalse(VerifyRules.shouldRetry(ActionType.CLICK, r.delivery, r.structural, 1, true))
     }

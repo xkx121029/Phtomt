@@ -12,6 +12,7 @@ import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
 import com.phoneagent.engine.runtime.ChatTurnEvent
+import com.phoneagent.engine.execution.VerifyRules
 import com.phoneagent.feature.document.DocResult
 
 /**
@@ -367,7 +368,9 @@ internal object AgentTimelineMapper {
             human = human,
             confidence = action?.confidence ?: HumanTranslator.extractConfidence(raw),
             verified = step.verified,
-            failed = step.record?.verificationResult == "failed",
+            failed = step.record?.verificationResult == VerifyRules.STATUS_FAILED ||
+                step.record?.verificationResult == VerifyRules.STATUS_NO_EFFECT,
+            unconfirmed = step.record?.verificationResult == VerifyRules.STATUS_UNVERIFIED,
             durationMs = step.durationMs,
             tokens = step.trace?.totalTokens ?: 0,
             thinking = HumanTranslator.extractReasoning(raw),

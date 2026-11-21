@@ -359,8 +359,8 @@ class ClickRunner(
  * （记成 ✅、进度照存、失败计数清零）都长在这条分支上，错了也没有任何测试会红。
  * 抽出来后 [capture] 可注入，同一条分支就能被断言。
  *
- * 点击与滑动/输入两条链路都用它，判据只有一份：整页指纹（[PageFingerprint.computeMeaningful]）
- * + 目标控件关键状态（[controlStateOf]）。
+ * 点击与滑动/输入两条链路都用它，判据只有一份：整页指纹（[PageFingerprint.computeEffect]，
+ * 含控件状态）+ 目标控件关键状态（[controlStateOf]）。
  */
 internal class ClickVerifier(
     /** 取一份当前快照；读不到（无障碍断开、Provider 取树超时）返回 null */
@@ -377,7 +377,7 @@ internal class ClickVerifier(
     // 采样窗内「一旦回读到变化就立即成功」是核心语义，压成单出口会丢掉这条最短路
     @Suppress("ReturnCount")
     suspend fun confirm(before: ScreenSnapshot, beforeState: UiElement?, verb: String): VerifyResult {
-        val beforeFp = PageFingerprint.computeMeaningful(before)
+        val beforeFp = PageFingerprint.computeEffect(before)
         var afterFp = beforeFp
         var reason = "页面与控件状态均无变化"
         var captured = false
@@ -385,7 +385,7 @@ internal class ClickVerifier(
             delay(delayMs)
             val after = capture() ?: break
             captured = true
-            afterFp = PageFingerprint.computeMeaningful(after)
+            afterFp = PageFingerprint.computeEffect(after)
             val verdict = judge(before, beforeState, after, beforeFp, afterFp)
             if (verdict.first) return VerifyResult(true, "已$verb（${verdict.second}）", beforeFp, afterFp)
             reason = verdict.second
@@ -407,7 +407,7 @@ internal class ClickVerifier(
         delay(VerifyTiming.LATE_CONFIRM_DELAY_MS)
         val late = capture()
         if (late != null) {
-            val lateFp = PageFingerprint.computeMeaningful(late)
+            val lateFp = PageFingerprint.computeEffect(late)
             val verdict = judge(before, beforeState, late, beforeFp, lateFp)
             if (verdict.first) {
                 return VerifyResult(true, "已$verb（延迟生效：${verdict.second}）", beforeFp, lateFp)
@@ -435,10 +435,13 @@ internal class ClickVerifier(
             return true to "页面已切换到 $appAfter"
         }
         // 第二层：目标控件自身状态变化（勾选、滑块值、文字、无障碍描述）——
-        // 列表内勾选/切换这类操作不会改变整页指纹，只看指纹会误判成"没生效"
+        // 列表内勾选/切换这类操作不会改变整页指纹，只看指纹会误判成"没生效"。
+        // 匹配不到不再静默跳过：目标在新页面里找不到，说明它已经不在这页上了（跳转/关闭/被替换），
+        // 这本身就是"页面变了"的证据；静默跳过则会把真实变化说成"什么都没变"。
         if (beforeState != null) {
             val now = resolver.matchInFresh(beforeState, after)
-            if (now != null && controlStateOf(beforeState) != controlStateOf(now)) return true to "目标控件状态已变化"
+            if (now == null) return true to "目标控件已从页面消失"
+            if (controlStateOf(beforeState) != controlStateOf(now)) return true to "目标控件状态已变化"
         }
         // 第三层：整页指纹
         if (beforeFp != afterFp) return true to "页面已变化"
