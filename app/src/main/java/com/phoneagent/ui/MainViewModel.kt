@@ -180,9 +180,34 @@ class MainViewModel(
         synchronized(translationCache) { translationCache[text] = translated }
     }
 
-    /** 测试主模型连接是否可用（设置保存前校验用） */
-    suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<String> =
-        engine.testConnection(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
+    /**
+     * 测试连接，并把结果记进「主模型验证记录」。
+     *
+     * @param record 这次测试是不是在验证**主模型**。默认 true：模型页/快速开始/首次引导的
+     *   「测试连接」按的都是主模型；设置页「测试所有 API」逐项测视觉、思考模型时传 false，
+     *   否则测一次视觉模型就把主模型的「已验证」顶掉。
+     */
+    suspend fun testConnection(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        protocol: String = "openai",
+        record: Boolean = true,
+    ): Result<String> {
+        val result = engine.testConnection(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
+        if (record) {
+            // 指纹按被测的那份配置算：测试的是表单里还没保存的新 Key 时，指纹与已保存配置不符，
+            // 首页照样报「未验证」——没落盘的配置不能算已接入
+            settings.recordModelVerification(
+                baseUrl = baseUrl,
+                apiKey = apiKey,
+                model = model,
+                ok = result.isSuccess,
+                error = result.exceptionOrNull()?.message ?: "",
+            )
+        }
+        return result
+    }
 
     /** 拉取端点可用模型列表（设置页"获取模型"） */
     suspend fun listModels(baseUrl: String, apiKey: String, protocol: String = "openai"): Result<List<String>> =
