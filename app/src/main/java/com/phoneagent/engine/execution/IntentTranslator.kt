@@ -649,7 +649,8 @@ internal class TermuxFetchStrategy(
  * 这里则是 AI 亲自写命令原文 —— 因此产物打上 [AgentAction.aiAuthored]，
  * 执行层据此在本任务首次执行前向用户确认一次（用户既然选了自由模式，就由用户把最后一道关）。
  *
- * 本策略不选通道：shizuku / 无线 ADB / Termux 由执行层的既有通道决策负责，AI 无感知。
+ * 本策略不选通道：内置 Shizuku / Termux 由执行层的既有通道决策负责，AI 无感知
+ * （无线调试会话只用于拉起 Shizuku，不是可执行通道）。
  */
 internal class ShellCommandStrategy(
     private val actionMode: () -> ActionMode,
@@ -722,6 +723,13 @@ internal class A11yEndpointStrategy(
                 endpoint = endpoint.name,
                 args = args.ifEmpty { null },
                 reason = reasonOf(intent),
+                // 不可逆确认门与 device_ops / 语义意图同源：能力注册表标了 needsConfirmation 的
+                // 必须问用户，不能只信模型自己填的 needs_confirmation。端点直调是自由模式里
+                // 最容易绕过门的一条路（既不走语义意图，也不必留 tap 的标签），这里与注册表
+                // 保持同一行判据；注册表当前对 A11Y 标的是 false——落点的危险词由运行期
+                // 按 args 兜底（见 ExecutionPhase.hazardWordOf），两者互补而非重复。
+                needsUserConfirmation = intent.needsConfirmation ||
+                    CapabilityRegistry.specOf(IntentType.A11Y)?.needsConfirmation == true,
             ),
         )
     }

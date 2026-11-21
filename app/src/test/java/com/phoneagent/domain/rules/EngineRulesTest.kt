@@ -51,6 +51,38 @@ class EngineRulesTest {
         assertTrue(EngineRules.isFinalSubmit(action("a11y_call", "发送"), "a11y_call"))
     }
 
+    @Test
+    fun `端点把落点写在 args 里时_幂等保护同样认得出来`() {
+        // 真实形态：转译层不填 target，click_node 的落点在 args["target"]。
+        // 旧实现只读 target.value，这条动作的幂等键退化成模型自述的 reason——
+        // 同一颗「删除」每换一句理由就算新动作，幂等保护形同虚设。
+        val clickDelete = AgentAction(
+            type = ActionType.A11Y_CALL,
+            endpoint = "click_node",
+            args = mapOf("target" to "删除"),
+            reason = "打开这条待办",
+        )
+        assertTrue("端点直调点删除必须纳入幂等保护", EngineRules.isFinalSubmit(clickDelete, ActionType.A11Y_CALL))
+        assertTrue("删除属于不可逆动作", EngineRules.isIrreversible(clickDelete, ActionType.A11Y_CALL))
+        assertEquals(
+            "幂等键要按落点归一：同一颗删除不因走哪条通道而变成两个键",
+            EngineRules.idempotencyKey(action("tap", "删除"), "tap").substringAfter("|"),
+            EngineRules.idempotencyKey(clickDelete, ActionType.A11Y_CALL).substringAfter("|"),
+        )
+    }
+
+    @Test
+    fun `端点输入类动作的正文不算危险目标`() {
+        // args["text"] 是打字载荷，不是"点下去会怎样"的那颗控件。
+        // 把它也算成目标，会让"往搜索框里输入『删除』"平白进幂等/确认链路。
+        val typeText = AgentAction(
+            type = ActionType.A11Y_CALL,
+            endpoint = "type_text",
+            args = mapOf("text" to "删除", "target" to "搜索框"),
+        )
+        assertFalse(EngineRules.isFinalSubmit(typeText, ActionType.A11Y_CALL))
+    }
+
     // ---- idempotencyDone ----
 
     private fun snapshotWith(text: String?) = ScreenSnapshot(
