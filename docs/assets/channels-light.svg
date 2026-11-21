@@ -23,7 +23,7 @@
     <rect x="132" y="68" width="112" height="18" rx="9" fill="#E4F4ED"/>
     <text x="188" y="81" font-size="11" font-weight="600" fill="#0E7C66" text-anchor="middle">shell · adb</text>
     <text x="316" y="66" font-size="13" fill="#6D766F">am · pm · settings · input</text>
-    <text x="1116" y="66" font-size="12" fill="#9AA39C" text-anchor="end">full system commands</text>
+    <text x="1116" y="66" font-size="12" fill="#6A726B" text-anchor="end">full system commands</text>
 
     <!-- ADB -->
     <circle cx="72" cy="146" r="15" fill="#FFFFFF" stroke="#BDBAAE"/>
@@ -32,10 +32,10 @@
     <rect x="104" y="114" width="6" height="64" rx="3" fill="#9FB0A8"/>
     <text x="132" y="144" font-size="16" font-weight="700" fill="#063A2E">ADB bootstrap session</text>
     <rect x="132" y="152" width="112" height="18" rx="9" fill="#EFEDE6"/>
-    <text x="188" y="165" font-size="11" font-weight="600" fill="#7A827C" text-anchor="middle">shell · adb</text>
+    <text x="188" y="165" font-size="11" font-weight="600" fill="#656D66" text-anchor="middle">shell · adb</text>
     <text x="316" y="144" font-size="13" fill="#6D766F">same commands, transitional</text>
-    <text x="1116" y="144" font-size="12" fill="#9AA39C" text-anchor="end">shown to users as Shizuku</text>
-    <text x="316" y="166" font-size="12" fill="#9AA39C">used while the server starts</text>
+    <text x="1116" y="144" font-size="12" fill="#6A726B" text-anchor="end">shown to users as Shizuku</text>
+    <text x="316" y="166" font-size="12" fill="#6A726B">used while the server starts</text>
 
     <!-- Termux -->
     <circle cx="72" cy="234" r="15" fill="#FFFFFF" stroke="#BDBAAE"/>
@@ -44,11 +44,11 @@
     <rect x="104" y="202" width="6" height="64" rx="3" fill="#C6B183"/>
     <text x="132" y="232" font-size="16" font-weight="700" fill="#063A2E">Termux</text>
     <rect x="132" y="240" width="112" height="18" rx="9" fill="#F5EEE1"/>
-    <text x="188" y="253" font-size="11" font-weight="600" fill="#8A7642" text-anchor="middle">app privileges</text>
+    <text x="188" y="253" font-size="11" font-weight="600" fill="#6B5A2F" text-anchor="middle">app privileges</text>
     <text x="316" y="238" font-size="13" fill="#6D766F">curl · python · jq · text</text>
-    <text x="1116" y="238" font-size="12" fill="#9AA39C" text-anchor="end">no system commands</text>
+    <text x="1116" y="238" font-size="12" fill="#6A726B" text-anchor="end">no system commands</text>
 
     <!-- 尾注 -->
-    <text x="104" y="296" font-size="12" fill="#9AA39C">AUTO falls through 1 → 2 → 3 → NONE. An explicit SHIZUKU or TERMUX setting never falls back.</text>
+    <text x="104" y="296" font-size="12" fill="#6A726B">AUTO falls through 1 → 2 → 3 → NONE. An explicit SHIZUKU or TERMUX setting never falls back.</text>
   </g>
 </svg>
