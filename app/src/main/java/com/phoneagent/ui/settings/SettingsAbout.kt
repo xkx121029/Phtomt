@@ -41,17 +41,6 @@ private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
 private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
 
 /**
- * 渠道后缀：CI 用 versionCode 段位区分渠道（dev = 1000000+run，beta = 2000000+run），
- * 本地构建仍落在旧号段，后缀为空。不改 versionName 是因为服务端 compareVersion
- * 按 "." 分段做数值比较，带 "-dev" 后缀会让整段被解析成 0，破坏升级判断。
- */
-private fun channelSuffix(): String = when {
-    BuildConfig.VERSION_CODE >= 2_000_000 -> " · beta"
-    BuildConfig.VERSION_CODE >= 1_000_000 -> " · dev"
-    else -> ""
-}
-
-/**
  * 致谢条目：名称（点击跳仓库）+ 许可证 + 一句「它启发了我们什么」。
  *
  * 许可证一律按仓库实际的 LICENSE 写，不写「开源许可」笼统带过：
@@ -163,7 +152,7 @@ internal fun SettingsAbout(
                 )
                 Spacer(Modifier.height(AppSpacing.Md))
                 Text(
-                    "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）" + channelSuffix(),
+                    "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

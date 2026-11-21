@@ -39,7 +39,8 @@ export function isChannelVisible(clientChannel, releaseChannel) {
 /** 发布记录里的构建号：优先用显式 build，其次从版本号末段推断 */
 export function buildOf(release) {
   if (release && Number.isFinite(Number(release.build))) return Number(release.build)
-  const parts = normalizeVersion(release?.version).replace(/^v/i, '').split('.')
+  // 去掉预发布后缀再取最后一段：`v0.2.9195-beta` 的构建号是 9195，不是 NaN。
+  const parts = normalizeVersion(release?.version).replace(/^v/i, '').split('-')[0].split('.')
   const last = Number(parts[parts.length - 1])
   return Number.isFinite(last) ? last : 0
 }
