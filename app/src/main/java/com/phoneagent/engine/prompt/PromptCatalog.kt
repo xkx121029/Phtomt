@@ -78,13 +78,13 @@ internal object PromptCatalog {
             requires = setOf(PromptFlag.ASSISTANT_TASK),
             origin = "AgentPrompts.systemCN/EN「# 语音助手直达」（需 ASSISTANT_TASK）",
         ),
-        // 引导块（Superagent 融合 Phase 4）：任务命中编码类（写代码/脚本/调试等）时注入，
-        // 说明 vibecoding 委托模式——编码 agent 独立执行，主引擎只转达意图与展示进度。
+        // 引导块：任务命中编码类（写代码/脚本/调试等）时注入，如实说明「本页不写代码、编码在编码页下达」——
+        // 委托链路（CodingAgentBridge）在本仓库没有调用方，提示词不能再声称任务会被转交出去。
         PromptBlock(
             id = "sys.coding", group = PromptGroup.SYSTEM, order = 9, sep = "\n\n",
             bodyCN = PromptBodies.SYS_CODING_CN, bodyEN = PromptBodies.SYS_CODING_EN,
             requires = setOf(PromptFlag.CODE_TASK),
-            origin = "Superagent 融合 Phase 4「# 编码任务（vibecoding 委托模式）」（需 CODE_TASK）",
+            origin = "「# 编码任务」如实版：本页不执行编码，引导用户到编码页（需 CODE_TASK）",
         ),
         // 引导块（Superagent 融合 Phase 4）：任务是纯对话（无任何操作类命中）时注入，
         // 说明直答模式——不操作手机、不需要规划步骤。
