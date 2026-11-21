@@ -617,4 +617,12 @@ onMounted(async () => {
     align-items: start;
   }
 }
+
+/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.ticket > *,
+.install > *,
+.facts > * {
+  min-width: 0;
+}
 </style>

@@ -267,4 +267,10 @@ onMounted(async () => {
     margin-left: 18px;
   }
 }
+
+/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.row__text > * {
+  min-width: 0;
+}
 </style>

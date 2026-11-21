@@ -31,6 +31,9 @@ defineProps({
   margin: 0;
   padding: 0;
   border-top: 1px solid var(--line);
+  /* 作为 grid 子项时默认 min-width:auto 会让整列按 min-content 撑开，
+     375px 下会把页面顶出横向滚动条。显式归零后由父级的 1fr 决定宽度。 */
+  min-width: 0;
 }
 
 .rail__item {

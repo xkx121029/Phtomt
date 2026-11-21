@@ -338,4 +338,12 @@ onMounted(async () => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* 栅格子项默认 min-width:auto，一列长文本就会把单列轨道撑到比容器还宽，
+   375px 下直接顶出横向滚动条。显式归零后由父级轨道决定宽度。 */
+.about__intro > *,
+.two > *,
+.meta > * {
+  min-width: 0;
+}
 </style>
