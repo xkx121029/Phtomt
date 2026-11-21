@@ -1,5 +1,9 @@
 # Eta 全量实现拆解与改造对照报告
 
+> **时效声明**：本文对本仓库的对照结论取自 **2026-10/11** 的工作区。此后仓库经过多次重构
+> （`DeviceOpsChannel` 拆分、`PhantomModels.kt` → `TaskModels.kt`、部分 `Agent*ToolCatalog.kt` 合并等），
+> 文中提到的本仓库文件名可能已不存在；Eta 侧描述则固定在下述 commit。凡与本仓库现状冲突处，以代码为准。
+>
 > 研究对象：GitHub `Mangi-11/Eta`，commit `42edf0e4aaeb35ee9518104b8ebca66275ce9b37`（2026-11-03，`refactor(ui): 移除自定义设置包装并统一对齐 Miuix 原生组件规范`）
 > 对照对象：本仓库 `happy_phone agent`（Kotlin + Compose 手机自动化 Agent，`main` 分支当前工作区）
 > 研究方法：`git clone` 到本机临时目录，逐模块静态阅读源码与构建脚本；**未使用浏览器自动化**；未运行 Eta 应用。

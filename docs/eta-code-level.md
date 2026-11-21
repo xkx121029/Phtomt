@@ -1,5 +1,9 @@
 # Eta 系统级工具是怎么跑通的：代码级拆解与本项目差距
 
+> **时效声明**：本文点名的本项目文件与行号取自 **2026-11-03 前后**的工作区。仓库在此之后做过多次重构
+> （例如 `DeviceOpsChannel` 拆分、`PhantomModels.kt` → `TaskModels.kt`、若干 `Agent*ToolCatalog.kt` 合并），
+> 文中部分文件名在当前代码里已不存在。凡与本仓库现状冲突处，以代码为准。
+>
 > 性质：**只读分析**。本次没有修改本项目任何源码，也没有执行 `git add / commit`。
 > Eta 源码根：`C:\Users\linch\AppData\Local\Temp\eta-src\Mangi-11-Eta-16893be`（下文 Eta 路径均相对 `app/src/main/kotlin/io/github/mangi/eta/`）
 > 本项目根：`d:\xkx\xkx_appproj\happy_phone agent`（下文路径均相对 `app/src/main/java/com/phoneagent/`）

@@ -30,7 +30,7 @@ happy_phone agent/
 ├── provider-api/             [源] 主应用 ↔ Provider 的 AIDL + Parcelable 契约
 ├── env/                      [源] 编码环境独立 APK（targetSdk 28，承载 PRoot + Alpine）
 ├── env-api/                  [源] 主应用 ↔ env 组件的 AIDL 契约
-├── third_party/shizuku/      [外] vendor 的 Shizuku 客户端 + server 源码（8 个 Gradle 模块）
+├── third_party/shizuku/      [外] vendor 的 Shizuku 客户端 + server 源码（9 个 Gradle 模块）
 ├── config/                   [源] detekt 基线、可选构建模块开关、Provider 资产指纹
 ├── gradle/                   [源] version catalog（libs.versions.toml）+ wrapper
 ├── tool/                     [源] 维护脚本：agent-host 打包、运行时 so 打包、Gitee 补传等
@@ -75,7 +75,7 @@ happy_phone agent/
 
 ## 二、`app/` 内部结构
 
-`app/src/main/java/com/phoneagent/`（335 个 Kotlin 文件、87,219 行；单测另有 115 个文件 / 1189 个 `@Test`）：
+`app/src/main/java/com/phoneagent/`（356 个 Kotlin 文件、91,042 行；单测另有 120 个文件 / 1,256 个 `@Test`。数字由 `tool/count-code.sh` 生成，别手改）：
 
 | 包 | 职责 | 典型内容 |
 | --- | --- | --- |
@@ -188,10 +188,13 @@ settings.gradle.kts
 
 ### 4.1 版本计数器
 
+下图里的 `9215` 只是取图时 `version.properties` 的当前值（本地每次出包都会自增，CI 回写 nightly），
+**不要拿它当断言或期望值**；要看实时值就直接读文件。
+
 ```
                         ┌──────────────────────────────┐
                         │ 根目录 version.properties     │
-                        │ BUILD_NUMBER=9185             │
+                        │ BUILD_NUMBER=9215             │
                         └──────────────┬───────────────┘
                                        │
         本机构建 ┌─────────────────────┼─────────────────────┐ CI 构建

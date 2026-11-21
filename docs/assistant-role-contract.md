@@ -3,7 +3,7 @@
 引擎侧实现：[AssistantRolePlan.kt](../app/src/main/java/com/phoneagent/engine/runtime/AssistantRolePlan.kt)
 （纯 Kotlin，不返回 Intent/Activity；单测见 `AssistantRolePlanTest`）。
 
-## 1. UI 从系统读事实（4 个字段）
+## 1. UI 从系统读事实（5 个字段）
 
 | 字段 | 来源 |
 |---|---|
