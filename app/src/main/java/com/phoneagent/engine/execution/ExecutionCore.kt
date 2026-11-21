@@ -316,8 +316,10 @@ internal class ExecutionCore(
                 }
             }
             ActionType.LAUNCH_ASSISTANT -> {
-                // 唤起系统语音助手：description 原样透传（AI 能区分"已传话 / 已填入 / 仅拉起"）；
-                // 仅"本机探测不到语音助手"才是 Failure，走既有连续失败介入机制
+                // 唤起系统语音助手。这条路径拿不到「指令真的生效」的回执：Provider 的说明只区分
+                // 「仅拉起 / 填进输入框 / 点了发送键」，而点到了发送键也不等于助手接受了指令。
+                // 因此成功与否只认结构证据（[AssistantHandoffPolicy]）：
+                // 输入框里是否还留着那句话、页面有没有变化。说明文案只负责说清走到了哪一步。
                 val r = executor.launchAssistant(action.text)
                 if (r is com.phoneagent.device.a11y.ActionExecutor.Result.Failure) {
                     // 单目标拉起失败 → shell 兜底：am start 不受后台启动限制，
@@ -337,16 +339,14 @@ internal class ExecutionCore(
                         delay(600)
                         val desc = enterSendIfFillOnly(executor.handoffToAssistant(action.text))
                         delay(800)
-                        com.phoneagent.engine.execution.VerifyResult(
-                            true, "经 shell 兜底唤醒语音助手；$desc", snapshot.packageName ?: "", "",
-                        )
+                        assistantHandoff(snapshot, "经 shell 兜底唤醒语音助手；$desc", action.text)
                     }
                 } else {
                     // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
                     @Suppress("MaxLineLength")
                     val desc = enterSendIfFillOnly((r as com.phoneagent.device.a11y.ActionExecutor.Result.Success).description)
                     delay(800)
-                    com.phoneagent.engine.execution.VerifyResult(true, desc, snapshot.packageName ?: "", "")
+                    assistantHandoff(snapshot, desc, action.text)
                 }
             }
             ActionType.READ_NOTIFS -> {
@@ -999,6 +999,21 @@ internal class ExecutionCore(
         val accepted = runCatchingLogged(TAG, "回车补发") { execShellViaChannel("input keyevent 66") }.getOrNull()
             .let { it is ShizukuManager.ShellResult.Success }
         return if (accepted) "$desc（已补按回车尝试发送）" else desc
+    }
+
+    /**
+     * 传话结束后的定性：先看「发没发出去」的结构证据，再按页面证据分档（见 [AssistantHandoffPolicy]）。
+     *
+     * 多读一次页面是必要的：`confirmPageEffect` 的取样快照不外传，而「输入框里还留着这句话」
+     * 只能从一份当前页面里看出来。读不到页面时不否决（没有证据就没有结论），交给页面证据那一档。
+     */
+    private suspend fun assistantHandoff(
+        before: ScreenSnapshot,
+        handoff: String,
+        text: String?,
+    ): com.phoneagent.engine.execution.VerifyResult {
+        val typedNotSent = readPageQuietly()?.let { AssistantHandoffPolicy.stillInInputBox(it, text) } ?: false
+        return AssistantHandoffPolicy.verdict(handoff, typedNotSent, confirmPageEffect(before))
     }
 
     /** shell 结果收口：捕获输出供 AI 决策复用，并转成执行层可验证结果 */
