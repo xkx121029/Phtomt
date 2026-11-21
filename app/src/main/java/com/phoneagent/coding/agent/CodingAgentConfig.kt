@@ -12,7 +12,13 @@ data class CodingAgentConfig(
     val model: String = "",
     val apiKey: String = "",
     val approval: String = "risky",
-    val token: String = "",
+    /**
+     * 宿主桥的共享密钥：Node 侧发往 Kotlin 的反向请求必须带上它（见 HostBridgeServer）。
+     *
+     * 没有默认值：空密钥等于没有鉴权（HostBridgeServer 会拒绝一切入站请求），
+     * 所以这里强制每个调用方显式传一个非空值，漏传在编译期就暴露。
+     */
+    val token: String,
     /** 可选的离线演示剧本（assets/agent-host/scenarios/<name>.json），无 API key 也能回放真实工具循环。 */
     val mockScript: String = "",
 )
