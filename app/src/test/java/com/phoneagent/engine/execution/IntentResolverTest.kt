@@ -83,19 +83,41 @@ class IntentResolverTest {
     }
 
     @Test
-    fun byCoordinate_像素坐标原样使用() {
+    fun byCoordinate_像素口径已移除_越界值被拒绝() {
+        // 旧实现在这里断言的正是"像素原样使用"（500,800 → 500,800），把两套口径钉成了契约。
+        // 两套口径混在一个边界上就是 bug 本身：判定式是 f < 1.0，比例 1.0 会被当成"1 像素"。
+        // 现在只认 0~1 比例，像素值越界即拒绝，交由上层报"坐标非法"而不是点去屏幕边缘。
         val s = snapshot(elem(0, text = "无关"))
         val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "500,800"), s)
-        assertEquals(500, r.x)
-        assertEquals(800, r.y)
+        assertNull(r.x)
+        assertNull(r.y)
     }
 
     @Test
-    fun byCoordinate_越界坐标被裁剪() {
+    fun byCoordinate_比例上界落在屏幕最后一个像素() {
+        // 旧实现上界写的是 dim 而不是 dim-1：1.0 会产出 (1080, 2400)，那是屏幕外 1px 的点，
+        // 副屏出口不做验证直接回"已在副屏点击"——假成功。
         val s = snapshot(elem(0, text = "无关"))
-        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "2000,-50"), s)
-        assertEquals(1080, r.x)
-        assertEquals(0, r.y)
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "1.0,1.0"), s)
+        assertEquals(1079, r.x)
+        assertEquals(2399, r.y)
+    }
+
+    @Test
+    fun byCoordinate_底部中央不是屏幕顶端() {
+        // "0.5,1.0" 是屏幕底部中央。旧实现把 1.0 当"1 像素"，y 变成 1，点到了屏幕顶端。
+        val s = snapshot(elem(0, text = "无关"))
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "0.5,1.0"), s)
+        assertEquals(540, r.x)
+        assertEquals(2399, r.y)
+    }
+
+    @Test
+    fun byCoordinate_负比例被拒绝() {
+        val s = snapshot(elem(0, text = "无关"))
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "0.5,-0.1"), s)
+        assertNull(r.x)
+        assertNull(r.y)
     }
 
     @Test

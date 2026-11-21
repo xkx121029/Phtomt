@@ -121,10 +121,10 @@ data class AgentIntentTarget(
      * - id（控件 id 精确查找）
      * - text（控件文字）
      * - hint（语义描述，交给端侧视觉定位）
-     * - coordinate（独占规则保留能力：仅当元素树无该控件且视觉定位拿不到时，才可给出比例/像素坐标）
+     * - coordinate（独占规则保留能力：仅当元素树无该控件且视觉定位拿不到时，才可给出 0~1 比例坐标）
      */
     val by: String = "hint",
-    /** 控件 id / 控件文字 / 一句语义描述 /（by=coordinate 时）"x,y" 比例或像素坐标 */
+    /** 控件 id / 控件文字 / 一句语义描述 /（by=coordinate 时）"x,y" 比例坐标（0~1，像素口径已移除） */
     val value: String = "",
 )
 
