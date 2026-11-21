@@ -1,13 +1,16 @@
 package com.phoneagent.feature.browser
 
 import com.phoneagent.core.text.HtmlToMarkdown
+import com.phoneagent.engine.execution.DangerousTargetWords
 
 /**
  * 浏览器不可逆操作护栏。
  *
  * 为什么单独一颗：[BrowserChannel] 在只读模式下要判"这一步点下去会不会造成真实后果"，
  * 提示词也要把同一张词表告诉 AI，单测还要逐词断言"该拦的拦、不该拦的别拦"。
- * 词表放这里 = 一处定义、三处引用，不可能漂移。
+ * 词表**不在这个文件里**：唯一定义点是 [com.phoneagent.engine.execution.DangerousTargetWords]
+ * （browserCn / browserEn）。此前这里是第二份表，与引擎侧的 tap 兜底表各写一半、必然漂移。
+ * 这里只保留浏览器独有的**判定方式**：contains 从宽、不做语境豁免（宁可误拦）。
  *
  * 只收**不可逆**动作：支付、下单、提交订单、删除、发送、发布、注销、解绑、清空、转账这类
  * 一旦生效就无法撤回的操作。**刻意不收**「确认/确定/提交/继续」这类泛词——搜索、翻页、
@@ -16,19 +19,15 @@ import com.phoneagent.core.text.HtmlToMarkdown
 internal object BrowserGuard {
 
     /**
-     * 中文不可逆词：contains 从宽匹配（"付款码"同样会命中「付款」）。
-     * 不可逆操作的判定口径是"宁可误拦、不可漏放"，注释里不再承诺按词切分的细粒度匹配。
+     * 中文不可逆词：取自 [DangerousTargetWords.browserCn]，含浏览器严格档
+     * 「支付/买单/去支付/充值/提现/移除/解绑」（这些词刻意不进引擎侧的 IRREVERSIBLE：
+     * App 里「支付方式」是设置页导航）。contains 从宽匹配（"付款码"也命中「付款」），
+     * 口径是"宁可误拦、不可漏放"。
      */
-    val WORDS_CN = listOf(
-        "支付", "付款", "买单", "结算", "下单", "提交订单", "立即购买", "去支付", "确认支付",
-        "转账", "充值", "提现", "删除", "移除", "发送", "发布", "注销", "解绑", "清空",
-    )
+    val WORDS_CN: List<String> = DangerousTargetWords.browserCn
 
-    /** 英文不可逆词（小写匹配；含短语，故单独维护而不是复用空格分词工具） */
-    val WORDS_EN = listOf(
-        "payment", "checkout", "place order", "submit order", "buy now", "pay now", "withdraw",
-        "transfer", "delete", "remove", "publish", "unsubscribe", "send",
-    )
+    /** 英文不可逆词：取自 [DangerousTargetWords.browserEn]（含短语，故不按空格分词） */
+    val WORDS_EN: List<String> = DangerousTargetWords.browserEn
 
     /** 英文词的左词边界正则（大小写不敏感）：词首必须独立成词，否则 "border" 会被当成 order、"resend" 当成 send */
     private val EN_PATTERNS: List<Pair<String, Regex>> by lazy {

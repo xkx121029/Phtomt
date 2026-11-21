@@ -732,16 +732,17 @@ class ExecutionPhaseTest {
 
     @Test
     fun `本任务内没做过同一动作_页面出现提交成功也不跳过`() = runTest {
-        // 「发送」不在不可逆词表：没有执行记录就直接执行。这是旧实现最危险的一类——
-        // 页面上一句「提交成功」就能把真要发的消息跳过。这里刻意用不可逆词表外的动作。
+        // 「提交」是刻意留在不可逆词表外的泛词（词表只收「提交订单」；详见 DangerousTargetWords 的取舍）：
+        // 没有执行记录就直接执行。这是旧实现最危险的一类——页面上一句「提交成功」就能把真的要发的消息跳过。
+        // 标签必须在危险词表外，这一步才只考幂等判据；危险词那条路由 ConfirmationGateRegistryTest 钉住。
         val fixture = Fixture(
             translation = IntentTranslator.TranslationResult.Command(
-                AgentAction(type = ActionType.TAP, target = ActionTarget(method = "label", value = "发送")),
+                AgentAction(type = ActionType.TAP, target = ActionTarget(method = "label", value = "提交")),
             ),
         )
         val outcome = fixture.phase.run(
             session(
-                AgentIntent(intent = IntentType.SEND, target = AgentIntentTarget(by = "label", value = "发送")),
+                AgentIntent(intent = IntentType.SEND, target = AgentIntentTarget(by = "label", value = "提交")),
                 snapshot = todoDetailPage("提交成功"),
             ),
         )
