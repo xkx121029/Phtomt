@@ -209,6 +209,27 @@ object EngineRules {
         }
     }
 
+    /**
+     * 「AI 亲写的命令」原文——首次执行前需要用户点头的那类动作。
+     *
+     * 判据落在动作结构上，不能只信自报标记：
+     * - shell：AI 亲自写的命令（[AgentAction.aiAuthored] 由转译层的 shell 意图打上）；
+     * - terminal_op op=exec：走同一条注入通道执行任意命令，属于同一类风险。这里按
+     *   endpoint/op 结构判定——只要意图是 terminal_op 且 op=exec 就必须过闸，
+     *   转译层漏打 aiAuthored 也绕不过去（此前它正是靠「换个意图名」绕过确认门的）。
+     *
+     * 端侧自己编排的命令（如 fetch 落到 Termux 的 curl）返回 null，不触发确认。
+     */
+    fun authoredCommandOf(action: AgentAction): String? {
+        val cmd = when {
+            action.type == ActionType.SHELL && action.aiAuthored -> action.command
+            action.type == ActionType.DEVICE_OPS &&
+                action.endpoint == IntentType.TERMINAL_OP && action.op == "exec" -> action.args?.get("command")
+            else -> null
+        }
+        return cmd?.takeIf { it.isNotBlank() }
+    }
+
     /** 动作类型 → 中文人类可读标签（模板化展示用） */
     fun actionLabel(type: String): String = when (type) {
         ActionType.TAP, ActionType.CLICK -> "点按"
