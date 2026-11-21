@@ -15,6 +15,8 @@ import org.junit.Test
  */
 class PageFingerprintTest {
 
+    // 参数一一对应 UiElement 的字段，构造用例时按字段顺序读最直观
+    @Suppress("LongParameterList")
     private fun elem(
         index: Int,
         left: Int, top: Int, right: Int, bottom: Int,

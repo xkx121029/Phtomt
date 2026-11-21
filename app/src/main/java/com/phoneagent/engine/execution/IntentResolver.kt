@@ -267,12 +267,16 @@ internal fun parseCoordinate(raw: String, w: Int, h: Int): Pair<Int, Int>? {
  *
  * @return 落点像素；null = 任一值不是 0~1 比例（参数缺失由调用方先判，好给出更准确的提示）
  */
+// x 或 y 任一项不合法就整点不成立：两个 null 出口分别对应横/纵，合并会掩盖是哪一个坏了
+@Suppress("ReturnCount")
 internal fun endpointPoint(x: String, y: String, w: Int, h: Int): Pair<Int, Int>? {
     val px = coordinateToPixel(x, w) ?: return null
     val py = coordinateToPixel(y, h) ?: return null
     return px to py
 }
 
+// 尺寸无效 / 不是数字 / 越出 0~1 三种不合法，各自给出不同语义的"用不了这个点"
+@Suppress("ReturnCount")
 internal fun coordinateToPixel(raw: String, dim: Int): Int? {
     if (dim <= 0) return null
     val f = raw.trim().toFloatOrNull() ?: return null

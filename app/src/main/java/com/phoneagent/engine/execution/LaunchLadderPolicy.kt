@@ -30,6 +30,9 @@ internal object LaunchLadderPolicy {
      * @param unconfirmedReason 读不到页面时的原因文案（必须自明：已交付、未确认）
      * @param notDeliveredReason 观察窗内没见到目标应用前台的原因
      */
+    // 三态各自的原因文案必须由调用方给（那条通道才知道"为什么没确认"），
+    // 压成一个枚举 + 文案表会把调用点变成查表
+    @Suppress("LongParameterList")
     fun verdict(
         observed: Boolean?,
         confirmedReason: String,

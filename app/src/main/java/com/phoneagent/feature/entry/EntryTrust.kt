@@ -21,6 +21,9 @@ object EntryTrust {
     /** `android.os.Process.INVALID_UID`：调用方身份取不到时的取值 */
     const val INVALID_UID = -1
 
+    /** `Activity.getLaunchedFromUid()` 从 API 34 起才返回真实调用方 uid，更早的版本恒拿不到 */
+    const val SDK_LAUNCHED_FROM_UID = 34
+
     /**
      * 来源是否可证来自本应用。
      *
@@ -29,7 +32,7 @@ object EntryTrust {
      * @param selfUid 本进程 uid（`Process.myUid()`）
      */
     fun isProvenInternal(sdkInt: Int, callerUid: Int, selfUid: Int): Boolean =
-        sdkInt >= 34 && callerUid != INVALID_UID && callerUid == selfUid
+        sdkInt >= SDK_LAUNCHED_FROM_UID && callerUid != INVALID_UID && callerUid == selfUid
 
     /**
      * 该入口是否必须先过用户确认（复用深链那套确认卡）。

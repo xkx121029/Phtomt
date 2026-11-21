@@ -1598,6 +1598,8 @@ class AgentEngine(
         var result: IntentTranslator.TranslationResult = missing
         var missingField = missing.field
         var missingReason = missing.reason
+        // 两个 break 是两种不同的中止：补全请求没拿到结果、补全结果被拒绝（换意图）
+        @Suppress("LoopWithTooManyJumpStatements")
         for (i in 0 until MAX_PARAM_REFILL) {
             val ask = "你上一步输出的意图缺少「$missingField」参数：$missingReason\n" +
                 "请只输出补全后的完整意图 JSON（保留原 intent 及已有字段，仅补上缺失的 target 或 app 字段），不要任何解释。\n" +

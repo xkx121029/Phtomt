@@ -91,6 +91,8 @@ internal object ShellFallbackPolicy {
         data class Partial(val issued: List<String>, val failed: String, val reason: String) : SequenceOutcome
     }
 
+    // 三种结论（全部下发 / 一条没出 / 部分交付）各自一个出口，就是这个判据表本身
+    @Suppress("ReturnCount")
     fun sequenceOutcome(
         commands: List<String>,
         issued: List<String>,

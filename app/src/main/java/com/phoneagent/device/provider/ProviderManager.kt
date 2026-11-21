@@ -385,6 +385,8 @@ object ProviderManager {
      * TransactionTooLargeException）说明 Provider 活得好好的，若也清代理并保留旧绑定，
      * 之后既拿不到回调也发不出请求 —— 这正是「显示已连接但命令全废」的成因。
      */
+    // 绑定不上、契约版本不匹配、调用抛错是三种互不相干的失败，各自早退比串成 else-if 更好读
+    @Suppress("ReturnCount")
     suspend fun <T> call(
         context: Context = requireNotNull(appContext) { "ProviderManager 未初始化" },
         timeoutMs: Long = 5_000L,

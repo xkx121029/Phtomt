@@ -148,6 +148,8 @@ internal class UserGate(
      *
      * @return true = 用户允许执行；false = 用户取消或超时，调用方不得执行该动作
      */
+    // 去重 → 摘要 → 置起等待 → 记账四段各自早退最清楚，压成单出口会把"什么时候不再问"埋进条件式
+    @Suppress("CyclomaticComplexMethod")
     suspend fun awaitActionConfirmation(action: AgentAction): Boolean {
         // 同页同动作去重：60s 内、页面指纹没变、意图类一样，说明用户刚刚对"这一下"点过允许，
         // 再弹一次只是噪音（典型场景：确认后动作验证失败，模型重发同一下）。
