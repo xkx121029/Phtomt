@@ -131,6 +131,14 @@ class LinuxEnv(private val ctx: Context) {
         /** 下载缓冲区：256 KB 兼顾吞吐与取消响应速度 */
         private const val COPY_BUFFER = 256 * 1024
 
+        /**
+         * 下载缓存目录名（宿主侧，不进 rootfs）。
+         *
+         * 放在这里而不是安装器里：「占用多少 / 能清理多少」这两个数字必须把缓存算进去，
+         * 两个类各写一份常量迟早会漂。
+         */
+        const val DOWNLOAD_DIR = "downloads"
+
         /** 根归档最小可信体积：真实 minirootfs 约 3.8 MB，明显低于此值说明下到了错误页 */
         private const val MIN_ROOTFS_BYTES = 1_000_000L
     }
@@ -770,5 +778,62 @@ class LinuxEnv(private val ctx: Context) {
     fun deleteRecursive(file: File) {
         if (file.isDirectory) file.listFiles()?.forEach { deleteRecursive(it) }
         file.delete()
+    }
+
+    // ---------------------------------------------------------------- 占用与维护
+
+    /** 下载缓存目录（与安装器共用同一个位置） */
+    private val downloadsDir: File get() = File(ctx.filesDir, DOWNLOAD_DIR)
+
+    /** 环境占用的字节数：rootfs + 引导集 + 下载缓存 + 临时目录 */
+    fun usedBytes(): Long = sizeOf(home) + sizeOf(tmpDir) + sizeOf(downloadsDir)
+
+    /** 「清理缓存」能释放多少：下载缓存、临时目录，以及上次中断留下的半装目录 */
+    fun reclaimableBytes(): Long =
+        sizeOf(downloadsDir) + sizeOf(tmpDir) + leftovers().sumOf { sizeOf(it) }
+
+    /**
+     * 清掉可以安全重建的中间产物，返回释放的字节数。
+     *
+     * **不碰** rootfs 与 /opt 下已装好的工具链——那些属于 [resetAll]，不是「清理」。
+     */
+    fun cleanTemporary(): Long {
+        val before = usedBytes()
+        deleteRecursive(downloadsDir)
+        deleteRecursive(tmpDir)
+        leftovers().forEach { deleteRecursive(it) }
+        return (before - usedBytes()).coerceAtLeast(0L)
+    }
+
+    /**
+     * 重置：删掉本组件 filesDir 下的全部环境内容，回到「未装配」。
+     *
+     * 删得到的只有环境组件自己的私有目录（rootfs、引导集、工具链、下载缓存、临时目录）。
+     * 用户工程不在这里：私有工作区在主应用的 workdir，构建镜像在共享存储
+     * `/storage/emulated/0/happyac-build`，跨 uid 本组件既看不到也删不到，所以重置不会碰用户代码。
+     * 这也是「重置」能作为自助出口的前提——它是把自己清空，而不是把用户的东西清空。
+     */
+    fun resetAll(): Long {
+        val before = usedBytes()
+        deleteRecursive(home)
+        deleteRecursive(downloadsDir)
+        deleteRecursive(tmpDir)
+        return (before - usedBytes()).coerceAtLeast(0L)
+    }
+
+    /** 上次中断留下的半装目录（`*.staging` / `*.previous`），可以无条件删 */
+    private fun leftovers(): List<File> {
+        val roots = listOf(home, File(rootfs, "opt"))
+        return roots.flatMap { dir ->
+            dir.listFiles()
+                ?.filter { it.name.endsWith(".staging") || it.name.endsWith(".previous") }
+                .orEmpty()
+        }
+    }
+
+    private fun sizeOf(file: File): Long = when {
+        !file.exists() -> 0L
+        file.isFile -> file.length()
+        else -> file.listFiles()?.sumOf { sizeOf(it) } ?: 0L
     }
 }

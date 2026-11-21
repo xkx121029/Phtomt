@@ -1,6 +1,9 @@
 ﻿package com.phoneagent.ui.settings
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,16 +21,22 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.phoneagent.coding.env.CodingEnvClient
+import com.phoneagent.env.EnvApi
 import com.phoneagent.ui.coding.openAllFilesAccessSettings
+import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.LocalNavClearance
 import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.SnackbarType
@@ -53,6 +62,7 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
     val snackbar = LocalSnackbar.current
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var confirmingReset by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { client.refresh() }
     // 从系统安装器/授权页返回时窗口回前台，必须重读安装与权限状态
@@ -69,42 +79,74 @@ internal fun SettingsCodingEnv(onBack: () -> Unit) {
         if (message != null) snackbar?.show(message, SnackbarType.ERROR)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = SettingsScreenPad)
-            .padding(LocalNavClearance.current),
-    ) {
-        SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK 17 · Gradle · Android SDK")
-        Spacer(Modifier.height(AppTheme.metrics.pagePad))
+    /** 维护动作是异步任务：起完等它结束再刷新，否则占用数字还是旧的 */
+    fun runMaintenance(action: suspend () -> String?) {
+        scope.launch {
+            report(action())
+            client.awaitFinished(MAINTENANCE_TIMEOUT_MS)
+            client.refresh()
+        }
+    }
 
-        EnvComponentSection(
-            ui = ui,
-            onInstall = { scope.launch { report(client.installComponent()) } },
-            onGrantStorage = { report(client.openStorageSetup()) },
-            onOpenAllFiles = { openAllFilesAccessSettings(context) },
-        )
-        Spacer(Modifier.height(AppSpacing.Lg))
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SettingsScreenPad)
+                .padding(LocalNavClearance.current),
+        ) {
+            SettingsPageHeader("编码环境", onBack, subtitle = "PRoot Linux · JDK 17 · Gradle · Android SDK")
+            Spacer(Modifier.height(AppTheme.metrics.pagePad))
 
-        ToolchainSection(ui = ui, onRefresh = { scope.launch { client.refresh() } })
-        Spacer(Modifier.height(AppSpacing.Lg))
+            EnvComponentSection(
+                ui = ui,
+                onInstall = { scope.launch { report(client.installComponent()) } },
+                onGrantStorage = { report(client.openStorageSetup()) },
+                onOpenAllFiles = { openAllFilesAccessSettings(context) },
+            )
+            Spacer(Modifier.height(AppSpacing.Lg))
 
-        InstallSection(
-            ui = ui,
-            onInstall = { scope.launch { report(client.installEnvironment()) } },
-        )
-        Spacer(Modifier.height(AppSpacing.Lg))
+            ToolchainSection(ui = ui, onRefresh = { scope.launch { client.refresh() } })
+            Spacer(Modifier.height(AppSpacing.Lg))
 
-        BuildSection(
-            ui = ui,
-            onBuild = { scope.launch { report(client.buildApk("assembleDebug")) } },
-        )
+            InstallSection(
+                ui = ui,
+                onInstall = { scope.launch { report(client.installEnvironment()) } },
+            )
+            Spacer(Modifier.height(AppSpacing.Lg))
 
-        TaskSection(ui = ui, onCancel = { client.cancel() })
-        Spacer(Modifier.height(AppSpacing.Xl))
+            BuildSection(
+                ui = ui,
+                onBuild = { scope.launch { report(client.buildApk("assembleDebug")) } },
+            )
+            Spacer(Modifier.height(AppSpacing.Lg))
+
+            MaintenanceSection(
+                ui = ui,
+                onClean = { runMaintenance { client.cleanCache() } },
+                onResetRequest = { confirmingReset = true },
+            )
+
+            TaskSection(ui = ui, onCancel = { client.cancel() })
+            Spacer(Modifier.height(AppSpacing.Xl))
+        }
+
+        if (confirmingReset) {
+            ResetEnvironmentConfirm(
+                disk = ui.envState[EnvApi.STATE_DISK],
+                onConfirm = {
+                    confirmingReset = false
+                    runMaintenance { client.resetEnvironment() }
+                },
+                onDismiss = { confirmingReset = false },
+            )
+        }
     }
 }
+
+/** 维护任务（清理 / 重置）的最长等待：删几千个文件在低端机上也就几秒，给足余量 */
+private const val MAINTENANCE_TIMEOUT_MS = 120_000L
 
 @Composable
 private fun EnvComponentSection(
@@ -293,8 +335,84 @@ private fun BuildSection(ui: CodingEnvClient.UiState, onBuild: () -> Unit) {
     }
 }
 
-/** 任务进度：安装与构建共用同一套回调，没有内容时整段不渲染 */
+/**
+ * 维护：磁盘占用、清理、重置。
+ *
+ * 「清理」与「重置」必须是两个动作：清理只删能重建的中间产物（下载缓存、临时目录、
+ * 上次中断留下的半装目录），已装好的工具链不动；重置才是把 rootfs 与工具链一起删掉。
+ * 合并成一个动作的话，用户想省空间时就会连带失去已经装好的环境。
+ */
 @Composable
+private fun MaintenanceSection(
+    ui: CodingEnvClient.UiState,
+    onClean: () -> Unit,
+    onResetRequest: () -> Unit,
+) {
+    val buzz = rememberHapticClick()
+    val busy = ui.running || ui.installedVersion == null
+    SettingsSection(
+        title = "维护",
+        subtitle = "磁盘占用、清理临时产物、重置环境",
+        tone = SettingsTone.Neutral,
+    ) {
+        Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
+            SettingsStatusRow("已占用", ui.envState[EnvApi.STATE_DISK] ?: "未统计")
+            SettingsDivider(inset = false)
+            SettingsStatusRow("可清理", ui.envState[EnvApi.STATE_DISK_RECLAIM] ?: "未统计")
+            Spacer(Modifier.height(AppSpacing.Md))
+            OutlinedButton(
+                onClick = { buzz(); onClean() },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("清理下载缓存与临时产物")
+            }
+            Spacer(Modifier.height(AppSpacing.Sm))
+            OutlinedButton(
+                onClick = { buzz(); onResetRequest() },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("重置编码环境")
+            }
+            Spacer(Modifier.height(AppSpacing.Xs))
+            Text(
+                "清理只删下载缓存与解包中间产物，已装好的工具链不动；重置会连 rootfs 和 " +
+                    "JDK、Gradle、Android SDK 一起删掉，下次安装要重新下载。两者都不碰你的工程文件。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 重置前的确认：这是破坏性动作，必须让用户看清删的是什么、不删的是什么 */
+@Composable
+private fun ResetEnvironmentConfirm(
+    disk: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    InlineOverlay(onDismiss = onDismiss) {
+        Text("重置编码环境？", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "会删除 Linux 根文件系统与已装好的 JDK、Gradle、Android SDK" +
+                (if (disk != null) "（当前占用 $disk）" else "") +
+                "，下次安装需要重新下载。工程文件不在这些目录里，不会被删除。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+        ) {
+            Button(onClick = onConfirm, modifier = Modifier.weight(1f)) { Text("确认重置") }
+            OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("取消") }
+        }
+    }
+}
+
+/** 任务进度：安装与构建共用同一套回调，没有内容时整段不渲染 */@Composable
 private fun TaskSection(ui: CodingEnvClient.UiState, onCancel: () -> Unit) {
     if (ui.steps.isEmpty() && ui.logs.isEmpty() && ui.message == null) return
     SettingsSection(

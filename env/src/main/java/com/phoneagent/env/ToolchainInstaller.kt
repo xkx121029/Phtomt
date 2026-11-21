@@ -40,9 +40,6 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         const val GLIBC = "$OPT/glibc"
         const val AAPT2 = "$OPT/aapt2"
 
-        /** 下载归档的本地缓存目录（宿主侧，不进 rootfs） */
-        const val DOWNLOAD_DIR = "downloads"
-
         private const val MIN_ARCHIVE_BYTES = 1_000_000L
         private const val DOWNLOAD_CHUNK = 256 * 1024
         private const val LOG_LIMIT = 200_000
@@ -100,6 +97,9 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
 
         private const val SDK_TIMEOUT_MS = 30 * 60_000L
         private const val BUILD_TIMEOUT_MS = 45 * 60_000L
+
+        /** 占用统计的缓存时长：遍历几万个文件不该跟着页面每次刷新走 */
+        private const val DISK_CACHE_MS = 30_000L
     }
 
     /** 进度与日志出口，由 [EnvService] 转发给 AIDL 回调 */
@@ -142,21 +142,53 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
 
     private var cancelled: () -> Boolean = { false }
 
+    /** (统计时刻, 占用, 可清理)，见 [diskUsage] */
+    private var diskUsageCache: Triple<Long, Long, Long>? = null
+
     /** 工具链现状（stateJson 的内容来源） */
-    fun state(): JSONObject = JSONObject().apply {
-        put(EnvApi.STATE_LINUX, if (env.isReady()) "就绪" else "未装配")
-        put(EnvApi.STATE_JDK, if (env.guestExists("$JDK/bin/java")) "JDK 17" else "未安装")
-        put(EnvApi.STATE_GRADLE, gradleVersionInstalled() ?: "未安装")
-        put(EnvApi.STATE_SDK, platformsInstalled())
-        put(EnvApi.STATE_AAPT2, if (env.guestExists(AAPT2)) "已配置" else "未配置")
-        put(EnvApi.STATE_INSTALLED_AT, installedAt())
+    fun state(): JSONObject {
+        val (used, reclaimable) = diskUsage()
+        return JSONObject().apply {
+            put(EnvApi.STATE_LINUX, if (env.isReady()) "就绪" else "未装配")
+            put(EnvApi.STATE_JDK, if (env.guestExists("$JDK/bin/java")) "JDK 17" else "未安装")
+            put(EnvApi.STATE_GRADLE, gradleVersionInstalled() ?: "未安装")
+            put(EnvApi.STATE_SDK, platformsInstalled())
+            put(EnvApi.STATE_AAPT2, if (env.guestExists(AAPT2)) "已配置" else "未配置")
+            put(EnvApi.STATE_INSTALLED_AT, installedAt())
+            put(EnvApi.STATE_DISK, formatBytes(used))
+            put(EnvApi.STATE_DISK_RECLAIM, formatBytes(reclaimable))
+        }
+    }
+
+    /**
+     * 占用与可清理量。
+     *
+     * 统计要遍历 rootfs 与 /opt 下几万个文件，页面每次刷新都走一遍没有意义，
+     * 30 秒内复用上一次结果；清理/重置之后立刻作废缓存。
+     */
+    private fun diskUsage(): Pair<Long, Long> {
+        val now = System.currentTimeMillis()
+        diskUsageCache?.let { cached ->
+            if (now - cached.first < DISK_CACHE_MS) return cached.second to cached.third
+        }
+        val used = env.usedBytes()
+        val reclaimable = env.reclaimableBytes()
+        diskUsageCache = Triple(now, used, reclaimable)
+        return used to reclaimable
     }
 
     /** 执行一次请求；[isCancelled] 每步之间与下载循环里都会检查。 */
     fun execute(request: Request, listener: Listener, isCancelled: () -> Boolean): Result {
         this.listener = listener
         this.cancelled = isCancelled
-        val steps = if (request.op == EnvApi.OP_BUILD) buildSteps(request) else installSteps(request)
+        val steps = when (request.op) {
+            EnvApi.OP_BUILD -> buildSteps(request)
+            EnvApi.OP_CLEAN -> cleanSteps()
+            EnvApi.OP_RESET -> resetSteps()
+            EnvApi.OP_INSTALL -> installSteps(request)
+            // 不认识的操作必须拒绝：旧组件收到新 op 时若按 install 处理，会静默开装
+            else -> return Result(false, "未知操作：${request.op}")
+        }
         steps.forEachIndexed { index, step ->
             if (cancelled.invoke()) return Result(false, "已取消")
             listener.onStep(index, steps.size, step.title, STEP_START)
@@ -168,10 +200,18 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             }
             listener.onStep(index, steps.size, step.title, STEP_OK)
         }
-        if (request.op != EnvApi.OP_BUILD) {
+        if (request.op == EnvApi.OP_INSTALL) {
             env.writeGuestFile("$OPT/.installed-at", System.currentTimeMillis().toString(), LinuxEnv.MODE_FILE)
         }
-        return Result(true, if (request.op == EnvApi.OP_BUILD) "构建完成" else "环境安装完成")
+        return Result(
+            ok = true,
+            message = when (request.op) {
+                EnvApi.OP_BUILD -> "构建完成"
+                EnvApi.OP_CLEAN -> "已清理临时产物"
+                EnvApi.OP_RESET -> "编码环境已重置"
+                else -> "环境安装完成"
+            },
+        )
     }
 
     // ------------------------------------------------------------ 步骤定义
@@ -191,6 +231,14 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private fun buildSteps(req: Request): List<Step> = listOf(
         Step("环境自检") { checkToolchains() },
         Step("构建 ${req.task}") { runBuild(req) },
+    )
+
+    private fun cleanSteps(): List<Step> = listOf(
+        Step("清理临时产物") { cleanCaches() },
+    )
+
+    private fun resetSteps(): List<Step> = listOf(
+        Step("重置编码环境") { resetEnvironment() },
     )
 
     // ------------------------------------------------------------ Linux 环境
@@ -494,7 +542,7 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
      * 直接跳过下载，坏文件就此永久驻留，只能清应用数据才能重来。
      */
     private fun download(artifact: Artifact): File? {
-        val dir = File(ctx.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
+        val dir = File(ctx.filesDir, LinuxEnv.DOWNLOAD_DIR).apply { mkdirs() }
         val target = File(dir, artifact.fileName)
         val algorithm = algorithmOf(artifact.expected)
         val expectedHex = resolveExpected(artifact.expected)
@@ -630,6 +678,34 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private fun installedAt(): String =
         runCatching { env.guestFile("$OPT/.installed-at").readText().trim() }
             .getOrNull()?.takeIf { it.isNotBlank() } ?: "从未安装"
+
+    // ------------------------------------------------------------ 维护
+
+    /**
+     * 清理：删掉下载缓存、临时目录与上次中断留下的半装目录。
+     * 已装好的 rootfs 与 /opt 工具链原样保留——这是「清理缓存」，不是「重置」。
+     */
+    private fun cleanCaches(): String? {
+        val freed = env.cleanTemporary()
+        diskUsageCache = null
+        log("清理完成：释放 ${formatBytes(freed)}，当前占用 ${formatBytes(env.usedBytes())}")
+        return null
+    }
+
+    /** 重置：把环境组件自己的私有目录清空，回到未装配。用户的工程文件不在这些目录里 */
+    private fun resetEnvironment(): String? {
+        val freed = env.resetAll()
+        diskUsageCache = null
+        log("已重置编码环境：释放 ${formatBytes(freed)}；下次安装会重新下载并装配")
+        return null
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+        bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
+        bytes >= 1L shl 10 -> "%.0f KB".format(bytes / (1L shl 10).toDouble())
+        else -> "$bytes B"
+    }
 
     private fun log(line: String) {
         if (line.length > LOG_LIMIT) return
