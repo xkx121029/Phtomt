@@ -89,6 +89,8 @@ internal class ExecutionCore(
         appContext,
         shizukuReady = { shizukuManager?.isAvailable() == true },
         adbConnected = { adbTransport?.isConnectedNow() == true },
+        // Termux 的 RUN_COMMAND 由 Provider 持有：快照必须问同一个主体，不能查主应用自己的权限
+        termuxAvailable = { termuxBridge?.isAvailable() == true },
     )
     /** 同一任务内按（目标, 通道）记录连续失败：连续失败的通道降权，而不是反复撞同一堵墙 */
     private val channelHealth = ChannelHealth()
