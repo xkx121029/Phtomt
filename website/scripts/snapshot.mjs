@@ -69,6 +69,9 @@ const stats = readJSON('stats', { totalDownloads: 0, byVersion: {}, byDay: {} })
 // 「本地 releases.json 只在拉不到时兜底」）。静态导出以前直接烘本地 JSON，
 // 一旦这份缓存漏同步，官网就把两个月前的包当「最新」发出去——正是这次的事故。
 // 拉不到（离线、GitHub 限额）才回退本地，构建不会因此失败。
+// 注意 server/data/releases.json 是**手工维护**的数据，可能与真实 git tag 不一致
+// （实测含 v0.2.2000096 / v0.2.9214 / v0.2.9201 三条在 git tag 里找不到的记录），
+// 它只用来在拉不到 GitHub 时兜底，不要拿它判断「哪个版本更新」。
 let releasesRaw = null
 let releaseSource = 'local'
 try {

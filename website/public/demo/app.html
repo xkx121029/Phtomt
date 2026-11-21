@@ -288,6 +288,15 @@ input,textarea{outline:none}
 .content::-webkit-scrollbar{width:6px}
 .content::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
 .main:not(.hasdock) .content{padding-bottom:calc(var(--clearance) + 18px)}
+/* 设置页：底部 tab bar 是绝对定位的浮层（高 64、距底 18），
+   滚动区一直伸到屏幕底部，静止时最后两行会被压在导航条后面——
+   这个只有眼睛看得出来（不是横向溢出，断言也抓不到）。
+   这里把滚动区整体收到 tab bar 之上，等于给内容留出 tab bar 的高度 + 留白。
+   只作用于设置页，其它页保持原来的玻璃条压边效果。 */
+.main.tab-settings:not(.hasdock){bottom:calc(var(--nav-h) + 18px + 14px)}
+/* 滚动区既已收到 tab bar 之上，--clearance 那 88px 就成了重复留白，
+   滚到底会多出一大块空白。这里只保留基础的 18px 呼吸位。 */
+.main.tab-settings:not(.hasdock) .content{padding-bottom:18px}
 .page{width:100%;max-width:760px;margin:0 auto}
 /* 主页 / 设置 / 二级页：横向留白 20dp（与 Compose 侧 SettingsScreenPad、HomeScreen 一致） */
 .page.wide{padding-left:4px;padding-right:4px}
@@ -2246,6 +2255,7 @@ function render(){
   const hasDock = S.tab==='agent' && !S.page && !!$('#dock').innerHTML.trim();
   main.classList.toggle('hasdock', hasDock);
   main.classList.toggle('subpage', !!S.page);
+  main.classList.toggle('tab-settings', S.tab==='settings');
   $('#dock').style.display = hasDock ? '' : 'none';
 }
 function renderView(){

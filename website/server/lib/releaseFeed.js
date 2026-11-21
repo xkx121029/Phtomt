@@ -178,6 +178,10 @@ function sortByTime(list) {
   })
 }
 
+/**
+ * 回退用：`server/data/releases.json` 是**手工维护**的数据，可能与真实 git tag 不一致
+ * （实测含几条在 git tag 里找不到的记录），只在这里取展示字段，不拿它判断版本先后。
+ */
 function localList() {
   return sortByTime(
     (store.read('releases') || [])
