@@ -1,10 +1,24 @@
 #!/bin/sh
 # 身份闸门：禁止任何非本仓库所有者身份的提交。
 # trae-solo-agent 曾在部分历史提交里冒充 Committer，这里直接拦截。
-if [ "$GIT_COMMITTER_EMAIL" = "solo-agent@trae.ai" ] || [ "$GIT_COMMITTER_NAME" = "trae-solo-agent" ]; then
-    echo "[identity-guard] 检测到冒充提交身份：${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>" >&2
-    echo "[identity-guard] 请以 xkx121029 <xkx121029@qq.com> 提交，本次提交已被阻止。" >&2
+#
+# 实现说明：git 在 pre-commit 阶段不导出 GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL
+# （实测两者为空，只有 GIT_AUTHOR_EMAIL 有值），原先读这两个环境变量的条件恒为假，
+# 闸门从未生效。改用 `git var GIT_COMMITTER_IDENT` 取本次提交真正会用的 Committer
+# 身份：它读 git config，也尊重外部注入的 GIT_COMMITTER_* 变量和 -c 覆盖。
+ident=$(git var GIT_COMMITTER_IDENT 2>/dev/null)
+if [ -z "$ident" ]; then
+    echo "[identity-guard] 无法解析提交身份（git var GIT_COMMITTER_IDENT 无输出）。" >&2
+    echo "[identity-guard] 请先设置 user.name / user.email 后再提交。" >&2
     exit 1
 fi
+
+case "$ident" in
+    *"<solo-agent@trae.ai>"*|*"trae-solo-agent <"*)
+        echo "[identity-guard] 检测到冒充提交身份：$ident" >&2
+        echo "[identity-guard] 请以 xkx121029 <xkx121029@qq.com> 提交，本次提交已被阻止。" >&2
+        exit 1
+        ;;
+esac
 
 exit 0
