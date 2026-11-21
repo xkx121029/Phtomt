@@ -70,6 +70,22 @@ class AppSettings(private val context: Context) {
         val apiBaseUrl: String = GlmDefaults.BASE_URL,
         val apiKey: String = "",
         val model: String = GlmDefaults.MODEL,
+        // ---- 主模型的验证记录：填了 Key 不等于能用，具体状态见 [modelTrust] ----
+        /** 最近一次连接验证所对应的配置指纹（[com.phoneagent.core.ai.ModelTrust.fingerprint]），空 = 从未验证 */
+        val modelVerifyTarget: String = "",
+        /** 最近一次连接验证（不论成败）的时间，0 = 从未验证；由验证动作写入，设置表单不回写 */
+        val modelVerifyAt: Long = 0L,
+        /** 最近一次连接验证是否通过 */
+        val modelVerifyOk: Boolean = false,
+        /** 最近一次连接验证失败的原因摘要，空 = 没有失败记录 */
+        val modelVerifyError: String = "",
+        /**
+         * 「未验证也照跑」时已提示过的那份配置指纹（空 = 还没提示过）。
+         *
+         * 允许跳过验证是有意的（用户可能先离线配好），所以未验证不硬拦；但第一次起跑前要说一句
+         * 「还没测试过连接」。同一份配置只提醒一次——换 Key / 模型 / 地址后指纹变了，会重新提醒一次。
+         */
+        val modelUnverifiedWarned: String = "",
         /**
          * 主模型「能不能直接读图」的三态：AUTO=按模型库的真实探测结果决定（探测不出即不发图）；
          * ON/OFF=用户强制覆盖，探测不参与。判定收口在 [com.phoneagent.core.ai.VisionRouting]。
@@ -270,6 +286,22 @@ class AppSettings(private val context: Context) {
         val agentSurface: String = AgentSurface.UNIFIED,
     ) {
         /**
+         * 主模型配置的可信度四态（未配置 / 未验证 / 已验证 / 验证失败）。
+         *
+         * 首页、状态条、设置页都从这里取结论，不再各自判断「Key 非空就算配好」。
+         */
+        val modelTrust: com.phoneagent.core.ai.ModelTrust.Snapshot
+            get() = com.phoneagent.core.ai.ModelTrust.resolve(
+                baseUrl = apiBaseUrl,
+                apiKey = apiKey,
+                model = model,
+                verifiedTarget = modelVerifyTarget,
+                verifiedAt = modelVerifyAt,
+                verifiedOk = modelVerifyOk,
+                verifyError = modelVerifyError,
+            )
+
+        /**
          * 模型配置是否可用；返回阻断原因（null = 可以执行）。
          *
          * 执行与规划两条入口共用这一份判定：两处各写一遍迟早会漂移，
@@ -286,6 +318,11 @@ class AppSettings(private val context: Context) {
                         "若确需连接自建/内网服务，请到「设置 → 模型与接入」打开「允许 http 端点」——" +
                         "开启后 API Key 与聊天内容会明文经过网络，只建议用于本机或可信内网。"
                 // 公网 + http 会把 Key 明文发出去：拦下来并说清怎么改，比静默泄露强
+                // 验证过一次且失败：起跑前就拦，别让用户等 45 秒才看到「决策链路异常」，
+                // 那会把「Key 无效」这个可修复的原因藏起来（UX-01 的原始复现路径）
+                modelTrust.state == com.phoneagent.core.ai.ModelTrust.State.FAILED ->
+                    "上次连接测试失败：${modelTrust.error}。" +
+                        "请到「设置 → 云端模型」修好 Key / 地址后重新「测试连接」再下达任务。"
                 else -> com.phoneagent.core.ai.AiClient.cleartextProblem(apiBaseUrl)
             }
     }
@@ -296,6 +333,13 @@ class AppSettings(private val context: Context) {
         val MODEL = stringPreferencesKey("model")
         /** 主模型识图三态（AUTO/ON/OFF），见 [Settings.mainVisionMode] */
         val MAIN_VISION_MODE = stringPreferencesKey("main_vision_mode")
+        /** 主模型验证记录：配置指纹 / 时间 / 是否通过 / 失败原因，见 [Settings.modelVerifyTarget] */
+        val MODEL_VERIFY_TARGET = stringPreferencesKey("model_verify_target")
+        val MODEL_VERIFY_AT = longPreferencesKey("model_verify_at")
+        val MODEL_VERIFY_OK = booleanPreferencesKey("model_verify_ok")
+        val MODEL_VERIFY_ERROR = stringPreferencesKey("model_verify_error")
+        /** 已经提醒过「未验证也照跑」的那份配置指纹，见 [Settings.modelUnverifiedWarned] */
+        val MODEL_UNVERIFIED_WARNED = stringPreferencesKey("model_unverified_warned")
         /** 结构化输出三态（AUTO/ON/OFF），见 [Settings.structuredOutputMode] */
         val STRUCTURED_OUTPUT_MODE = stringPreferencesKey("structured_output_mode")
         /** 旧版手填布尔「启用视觉理解」——**仅用于迁移**（true→ON，false/未写→AUTO），不再写入 */
@@ -441,6 +485,11 @@ class AppSettings(private val context: Context) {
             apiBaseUrl = apiBaseUrl,
             apiKey = apiKey,
             model = model,
+            modelVerifyTarget = prefs[Keys.MODEL_VERIFY_TARGET] ?: "",
+            modelVerifyAt = prefs[Keys.MODEL_VERIFY_AT] ?: 0L,
+            modelVerifyOk = prefs[Keys.MODEL_VERIFY_OK] ?: false,
+            modelVerifyError = prefs[Keys.MODEL_VERIFY_ERROR] ?: "",
+            modelUnverifiedWarned = prefs[Keys.MODEL_UNVERIFIED_WARNED] ?: "",
             // 迁移：老用户勾过「启用视觉理解」的迁到 ON（明确覆盖）；没勾过的落到 AUTO，改由模型库探测结果决定
             mainVisionMode = prefs[Keys.MAIN_VISION_MODE]
                 ?: if (prefs[Keys.HAS_VISION] == true) "ON" else "AUTO",
@@ -578,6 +627,41 @@ class AppSettings(private val context: Context) {
         }
     }
 
+    /**
+     * 记录一次主模型连接验证（成败都记）。
+     *
+     * 与 [updateDocStatus] 同理：验证记录由「测试连接」这一动作写入，设置表单整体回写时不带
+     * 这四个键，走 [update] 会把刚测出来的结论打回「从未验证」。所以单独开一个只写这四个键的入口。
+     *
+     * 指纹按**被测的那份配置**计算：测试的是表单里还没保存的新 Key 时，指纹与已保存配置不符，
+     * 首页照样报「未验证」——这正是我们要的，没落盘的配置不能算已接入。
+     */
+    suspend fun recordModelVerification(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        ok: Boolean,
+        error: String = "",
+    ) {
+        val target = com.phoneagent.core.ai.ModelTrust.fingerprint(baseUrl, model, apiKey)
+        context.agentStore.edit { prefs ->
+            prefs[Keys.MODEL_VERIFY_TARGET] = target
+            prefs[Keys.MODEL_VERIFY_AT] = System.currentTimeMillis()
+            prefs[Keys.MODEL_VERIFY_OK] = ok
+            prefs[Keys.MODEL_VERIFY_ERROR] = if (ok) "" else error.take(160)
+        }
+    }
+
+    /**
+     * 记下「这份配置已经提醒过未验证」：同一份配置只提醒一次，不每次起跑都唠叨。
+     *
+     * 与验证记录分开写：提醒是「说过一次」，不是「验证结果」，混在一起会让首页分不清两者。
+     */
+    suspend fun markModelUnverifiedWarned(baseUrl: String, apiKey: String, model: String) {
+        val target = com.phoneagent.core.ai.ModelTrust.fingerprint(baseUrl, model, apiKey)
+        context.agentStore.edit { prefs -> prefs[Keys.MODEL_UNVERIFIED_WARNED] = target }
+    }
+
     suspend fun update(settings: Settings) {
         context.agentStore.edit { prefs ->
             prefs[Keys.BASE_URL] = settings.apiBaseUrl.trim().trimEnd('/')
@@ -655,6 +739,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.DOC_MAX_CHARS] = settings.docMaxChars.coerceIn(200, 4000)
             // 同步状态（DOC_LAST_SYNC_AT / DOC_LAST_ERROR / DOC_COUNT）不在这里整体回写：
             // 设置页表单没有这三个字段，写了会把仓库刚记下的状态打回默认值
+            // 主模型验证记录（MODEL_VERIFY_*）同理不在这里写：只由 recordModelVerification 落盘，
+            // 否则一次「保存设置」就会把「已验证」打回「从未验证」
             prefs[Keys.FEEDBACK_UPLOAD_ENABLED] = settings.feedbackUploadEnabled
             prefs[Keys.FEEDBACK_BASE_URL] = settings.feedbackBaseUrl.trim().trimEnd('/')
             prefs[Keys.EXTERNAL_CONTROL_ENABLED] = settings.externalControlEnabled

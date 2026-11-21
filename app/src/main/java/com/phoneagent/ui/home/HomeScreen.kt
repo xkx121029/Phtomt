@@ -56,6 +56,8 @@ fun HomeScreen(
     onOpenPermissions: () -> Unit = {},
     /** 执行通道格：直落权限页的「执行通道」段，而不是授权段 */
     onOpenChannel: () -> Unit = {},
+    /** 模型「云端模型」页：看上次验证结论、重新测试连接 */
+    onOpenModelSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val settings by vm.settingsFlow.collectAsStateWithLifecycle()
@@ -68,16 +70,29 @@ fun HomeScreen(
     val termuxStatus by vm.termuxStatus.collectAsStateWithLifecycle()
     val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
     val termuxReady = termuxStatus.ready
-    val channel = when (settings.executionChannel) {
-        "SHIZUKU" -> if (shizukuReady) "Shizuku" else "未就绪"
-        "TERMUX" -> if (termuxReady) "Termux" else "未就绪"
-        else -> when {
-            shizukuReady -> "Shizuku"
-            termuxReady -> "Termux"
-            else -> "无障碍"
-        }
+    // 通道类型（AI 靠什么动手机）与「这一路到底通不通」分成两件事算：
+    // 原来把两者混成一个字符串，AUTO 下两个 shell 都不可用时回退成「无障碍」却不看无障碍开没开，
+    // 于是出现「无障碍」配红点（UX-06）
+    val channelName = when {
+        settings.executionChannel == "SHIZUKU" -> "Shizuku"
+        settings.executionChannel == "TERMUX" -> "Termux"
+        shizukuReady -> "Shizuku"
+        termuxReady -> "Termux"
+        else -> "无障碍"
     }
-    val channelReady = shizukuReady || termuxReady || a11y
+    val channelTone = when (channelName) {
+        "Shizuku" -> if (shizukuReady) StatusTone.OK else StatusTone.DOWN
+        "Termux" -> if (termuxReady) StatusTone.OK else StatusTone.DOWN
+        // 只剩无障碍：开着算降级（能用但没有 shell 通道的完整能力），关掉才算不可用
+        else -> if (a11y) StatusTone.DEGRADED else StatusTone.DOWN
+    }
+    val channelValue = when (channelTone) {
+        StatusTone.OK -> "可用"
+        StatusTone.DEGRADED -> "降级"
+        else -> "不可用"
+    }
+    // 主模型的可信度（未配置 / 未验证 / 已验证 / 验证失败），首页所有「配好了没有」的表述都取它
+    val trust = settings.modelTrust
 
     // 视觉模型入口已收进 设置 → 端侧视觉，主页不再展示
     LaunchedEffect(Unit) {
@@ -142,25 +157,47 @@ fun HomeScreen(
             }
 
             // 首屏第一件事只回答一个问题：我要做什么。一个主入口卡，点它就去 Agent 页下达任务；
-            // 未配置模型时同一张卡直接说"下一步先配置"，不另开一张状态卡
-            val configured = settings.apiKey.isNotBlank()
+            // 没验过的模型不带你去下达任务——未验证的去模型页测一次，失败的先去修复（UX-01）
             PrimaryActionCard(
-                modelReady = configured,
+                trust = trust,
                 model = settings.model,
-                onClick = { onNavigate(if (configured) 0 else 2) },
+                onClick = {
+                    when (trust.state) {
+                        com.phoneagent.core.ai.ModelTrust.State.VERIFIED,
+                        // 未验证不拦：允许用户离线配好后直接开跑，风险在副标题里说清；
+                        // 想先验一次就走状态条的模型格（那里直达云端模型页）
+                        com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED,
+                        -> onNavigate(0)
+                        com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> onNavigate(2)
+                        // 验证失败不放行：点了去修，不让人拿着已知失效的 Key 起任务
+                        else -> onOpenModelSettings()
+                    }
+                },
             )
 
-            // 状态压成一条：三格分别回答"模型 / 无障碍 / 截屏"能不能用，点哪格去哪格
+            // 状态压成一条：四格分别回答"模型 / 无障碍 / 截屏 / 执行通道"能不能用，点哪格去哪格
             SectionHeader("运行状态")
             HomeStatusStrip(
-                modelReady = configured,
-                // 四格并排时模型名常被挤成省略号，这格只回答「配好了没有」；具体模型在「常用」卡里看
-                model = if (configured) "已配置" else "未配置",
+                modelState = when (trust.state) {
+                    com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> "已验证"
+                    com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> "未验证"
+                    com.phoneagent.core.ai.ModelTrust.State.FAILED -> "验证失败"
+                    com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> "未配置"
+                },
+                modelTone = when (trust.state) {
+                    com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> StatusTone.OK
+                    com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> StatusTone.DEGRADED
+                    else -> StatusTone.DOWN
+                },
                 a11yReady = a11y,
                 screenshotReady = screenshotActive,
-                channel = channel,
-                channelReady = channelReady,
-                onModel = { onNavigate(2) },
+                // 关掉「附送屏幕截图」后这一步根本不需要授权，别再报一项待办
+                screenshotNeeded = settings.attachScreenshot,
+                channelName = channelName,
+                channelValue = channelValue,
+                channelTone = channelTone,
+                // 已填配置的落到模型页（能看到上次验证的结论），从零开始才去快速开始
+                onModel = { if (trust.configured) onOpenModelSettings() else onNavigate(2) },
                 // 无障碍由「服务组件」提供：没装组件就先去装，别把用户丢进空的无障碍列表
                 onA11y = { vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY) },
                 onScreenshot = onRequestScreenshot,

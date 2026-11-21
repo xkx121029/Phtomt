@@ -59,6 +59,8 @@ internal data class SettingsOverviewCtx(
     /** 权限列表是否已拿到（false 时摘要显示「检测中」而不是「全部就绪」） */
     val permissionsKnown: Boolean,
     val permissionsReady: Boolean,
+    /** 主模型的可信度四态：设置首屏的「AI 模型」格与待办结论都取它，不另判「Key 非空」 */
+    val modelTrust: com.phoneagent.core.ai.ModelTrust.Snapshot,
 )
 
 /** 一个设置入口：图标 / 标题 / 副标题 / 色相 / 右侧摘要 */
@@ -273,11 +275,14 @@ internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): 
     // 可选权限（如使用情况访问权）默认不开，不计入待办，否则设置首页永远显示「未就绪」
     val pending = permissions.count { !it.granted && !it.optional }
     val known = permissions.isNotEmpty()
+    // 验证结论取自已保存的配置（不是表单）：模型格说「已验证」必须真的验过
+    val saved by vm.settingsFlow.collectAsState()
     return SettingsOverviewCtx(
         st = st,
         pendingPermissions = pending,
         permissionsKnown = known,
         permissionsReady = known && pending == 0,
+        modelTrust = saved.modelTrust,
     )
 }
 
@@ -549,22 +554,34 @@ internal fun ReadinessRow(
     onPermission: () -> Unit,
     onQuickStart: () -> Unit,
 ) {
-    // 有模型名不等于能跑：没填 Key 时引擎发不出请求，这里必须把 Key 也算进"就绪"
-    // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-    @Suppress("MaxLineLength")
-    val modelReady = ctx.st.model.isNotBlank() && ctx.st.apiKey.isNotBlank()
+    // 模型这一格只认四态：填了 Key 不等于能用，没验过就只能说「未验证」（UX-01 / UX-17）
+    val trust = ctx.modelTrust
+    val modelReady = trust.ready
     Column {
         Row(modifier = Modifier.height(IntrinsicSize.Min)) {
             ReadinessCell(
                 title = "AI 模型",
-                value = when {
-                    ctx.st.apiKey.isBlank() -> "未配置"
-                    ctx.st.model.isNotBlank() -> ctx.st.model
-                    else -> "未选模型"
+                value = when (trust.state) {
+                    com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> ctx.st.model
+                    com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> "未验证"
+                    com.phoneagent.core.ai.ModelTrust.State.FAILED -> "验证失败"
+                    com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> "未配置"
                 },
-                // 线路名从「主模型」行并过来：格子里放不下的只有这个词，语义没变
-                hint = if (ctx.st.apiKey.isNotBlank()) "线路：" + endpointHost(ctx.st.baseUrl).ifBlank { "未配置" } else null,
+                // 线路名从「主模型」行并过来：格子里放不下的只有这个词，语义没变。
+                // 验过之后这行改说「什么时候验的」——时间比线路名更能说明这份结论还新不新
+                hint = when (trust.state) {
+                    com.phoneagent.core.ai.ModelTrust.State.VERIFIED ->
+                        "已验证 · " + com.phoneagent.core.ai.ModelTrust.describeAge(System.currentTimeMillis(), trust.verifiedAt)
+                    com.phoneagent.core.ai.ModelTrust.State.FAILED -> trust.error
+                    com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> "还没测过连接"
+                    com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> null
+                },
                 ready = modelReady,
+                tone = when (trust.state) {
+                    com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> ReadinessTone.OK
+                    com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> ReadinessTone.DEGRADED
+                    else -> ReadinessTone.DOWN
+                },
                 onClick = onModel,
                 modifier = Modifier.weight(1f),
             )
@@ -582,12 +599,17 @@ internal fun ReadinessRow(
                     else -> "检测中"
                 },
                 ready = ctx.permissionsReady,
+                tone = when {
+                    ctx.permissionsReady -> ReadinessTone.OK
+                    ctx.pendingPermissions > 0 -> ReadinessTone.DOWN
+                    else -> ReadinessTone.DEGRADED
+                },
                 onClick = onPermission,
                 modifier = Modifier.weight(1f),
             )
         }
-        // 未就绪时只给一行结论，不再铺两步教程：步骤在「快速开始」整页里，
-        // 这一行只负责把人送过去（首屏高度要留给下面的分组入口）
+        // 未就绪时只说「缺什么」：同一张卡上又写「已配置」又写「还没配好」，
+        // 用户没法判断该去动哪一项（UX-17 原样）。两侧都欠时两句并列，缺项说具体。
         if (!modelReady || !ctx.permissionsReady) {
             Box(
                 Modifier
@@ -595,6 +617,20 @@ internal fun ReadinessRow(
                     .height(AppSize.Hairline)
                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
             )
+            val missingModel = when (trust.state) {
+                com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> "模型还没填 Key"
+                com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> "模型还没验证：测一次连接"
+                com.phoneagent.core.ai.ModelTrust.State.FAILED -> "模型验证失败：改完再测一次"
+                com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> null
+            }
+            val missingPermission = if (ctx.permissionsReady) {
+                null
+            } else if (ctx.pendingPermissions > 0) {
+                "运行权限还差 ${ctx.pendingPermissions} 项"
+            } else {
+                "运行权限检测中"
+            }
+            val conclusion = listOfNotNull(missingModel, missingPermission).joinToString("；")
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -602,18 +638,26 @@ internal fun ReadinessRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "还没配好，先走一遍快速开始",
+                    text = conclusion,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 androidx.compose.material3.TextButton(onClick = onQuickStart) {
-                    Text("开始配置")
+                    Text("去补齐")
                 }
             }
         }
     }
 }
+
+/**
+ * 就绪格的三档圆点：可用 / 待验证（不阻断但不算就绪）/ 不可用。
+ *
+ * 「未验证」用中间档而不是红色：它确实还没配好，但也不是错误，
+ * 红色会让人以为要去排查故障。
+ */
+internal enum class ReadinessTone { OK, DEGRADED, DOWN }
 
 @Composable
 private fun ReadinessCell(
@@ -622,11 +666,17 @@ private fun ReadinessCell(
     ready: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    /** 值下面的补一行信息（当前只有模型格用：线路名） */
+    /** 值下面的补一行信息（模型格用：验证时间 / 失败原因） */
     hint: String? = null,
+    /** 圆点档位；不传时按 [ready] 二档（兼容旧调用） */
+    tone: ReadinessTone = if (ready) ReadinessTone.OK else ReadinessTone.DOWN,
 ) {
     val buzz = rememberHapticClick()
-    val dot = if (ready) AppTheme.colors.success else MaterialTheme.colorScheme.error
+    val dot = when (tone) {
+        ReadinessTone.OK -> AppTheme.colors.success
+        ReadinessTone.DEGRADED -> AppTheme.colors.warning
+        ReadinessTone.DOWN -> MaterialTheme.colorScheme.error
+    }
     Column(
         modifier = modifier
             .clickable {

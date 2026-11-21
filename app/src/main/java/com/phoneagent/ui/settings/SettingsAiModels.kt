@@ -1,5 +1,6 @@
 ﻿package com.phoneagent.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,13 +28,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.phoneagent.core.ai.CatalogModel
 import com.phoneagent.core.ai.Endpoint
@@ -97,6 +103,40 @@ internal fun SettingsAiModels(
 /** 一次「拉取模型」的结果：端点 + 服务端返回的模型名，交给根节点浮层勾选入库 */
 private data class FetchedModels(val endpointId: String, val endpointLabel: String, val names: List<String>)
 
+/**
+ * 模型页顶部的验证结论横幅。
+ *
+ * 首页的状态条与主卡片只说「未验证 / 验证失败」，用户点进来必须能在第一屏看到同一句话和失败原因，
+ * 否则「去修复」只是把人送到一堆输入框前。文案与首页共用同一个四态，不另算一遍。
+ */
+@Composable
+private fun ModelVerificationBanner(trust: com.phoneagent.core.ai.ModelTrust.Snapshot) {
+    if (trust.state == com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED) return
+    val tone = when (trust.state) {
+        com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> AppTheme.colors.success
+        com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED -> AppTheme.colors.warning
+        else -> MaterialTheme.colorScheme.error
+    }
+    val age = com.phoneagent.core.ai.ModelTrust.describeAge(System.currentTimeMillis(), trust.verifiedAt)
+        .ifBlank { "" }
+    val text = when (trust.state) {
+        com.phoneagent.core.ai.ModelTrust.State.VERIFIED -> "已验证 · $age 连接正常，可以放心下达任务"
+        com.phoneagent.core.ai.ModelTrust.State.UNVERIFIED ->
+            "尚未验证：这份配置还没有测试过连接。填好地址与 Key 后点「测试所有 API」验证一次"
+        com.phoneagent.core.ai.ModelTrust.State.FAILED ->
+            "上次验证失败${age.takeIf { it.isNotBlank() }?.let { "（$it）" } ?: ""}：${trust.error}"
+        com.phoneagent.core.ai.ModelTrust.State.UNCONFIGURED -> ""
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
+    ) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(tone))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = tone)
+    }
+}
+
 @Composable
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
 @Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
@@ -115,6 +155,8 @@ private fun AiModelsPage(
     var fetchingEndpointId by remember { mutableStateOf<String?>(null) }
     var fetchHintFor by remember { mutableStateOf<String?>(null) }
     var fetchHint by remember { mutableStateOf<String?>(null) }
+    // 验证结论取自**已保存**的配置，不是表单：表单改了还没保存时，首页那份结论仍然有效
+    val savedSettings by vm.settingsFlow.collectAsState()
 
     Column(
         modifier = Modifier
@@ -126,6 +168,10 @@ private fun AiModelsPage(
     ) {
         SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
         Spacer(Modifier.height(AppTheme.metrics.pagePad))
+
+        // 顶部先说清「上一次验证是什么结论」：首页报「未验证 / 验证失败」时，
+        // 用户点进来的第一屏必须能看到同一句话和失败原因，否则「去修复」等于没说（UX-01）
+        ModelVerificationBanner(savedSettings.modelTrust)
 
         // ========== A 端点 ==========
         SettingsSection(
@@ -448,7 +494,14 @@ private fun AiModelsPage(
                         scope.launch {
                             buildApiTestTargets(st).forEach { t ->
                                 val r = try {
-                                    vm.testConnection(t.baseUrl, t.apiKey, t.model, st.protocolOf(t.baseUrl))
+                                    // 只有「主模型」那一次算主模型的验证记录；视觉/思考项失败不该改写首页结论
+                                    vm.testConnection(
+                                        t.baseUrl,
+                                        t.apiKey,
+                                        t.model,
+                                        st.protocolOf(t.baseUrl),
+                                        record = t.label == "主模型",
+                                    )
                                 } catch (e: Exception) {
                                     Result.failure(e)
                                 }
