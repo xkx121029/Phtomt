@@ -55,13 +55,9 @@ import com.phoneagent.feature.document.DocumentEngine
 import com.phoneagent.feature.document.DocResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.vm.SettingsDelegate
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
 
@@ -106,26 +102,16 @@ class MainViewModel(
         StartupTrace.span("引擎单例构建（首帧后）") { engineProvider() }
     }
 
-    val settingsFlow: StateFlow<AppSettings.Settings> = settings.settings
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings.Settings())
+    /** 设置与新手引导域的实现在 [SettingsDelegate]；这里的属性与函数签名保持不变，UI 无感。 */
+    private val settingsDomain = SettingsDelegate(settings, viewModelScope)
 
-    /**
-     * 新手引导状态：null = 既没有门控镜像、也还没从 DataStore 读到真实值。
-     *
-     * 先用 [AppSettings.onboardingGate] 的 SharedPreferences 镜像回答门控（同步读、毫秒级），
-     * 随后仍以 DataStore 的值为准覆盖它——镜像只是加速，不改权威源。
-     * 不能直接用 [settingsFlow] 判定——它的初始值是默认 Settings（onboardingDone=false），
-     * 老用户冷启动会先闪一帧引导页再跳回主界面。
-     */
-    val onboardingState: StateFlow<Boolean?> = flow<Boolean?> {
-        settings.onboardingGate()?.let { emit(it) }
-        emitAll(settings.settings.map { it.onboardingDone as Boolean? })
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    val settingsFlow: StateFlow<AppSettings.Settings> get() = settingsDomain.settingsFlow
+
+    /** 新手引导状态：null = 既没有门控镜像、也还没从 DataStore 读到真实值（详见 [SettingsDelegate]） */
+    val onboardingState: StateFlow<Boolean?> get() = settingsDomain.onboardingState
 
     /** 结束新手引导：把完成标记落盘，下次启动直接进主界面 */
-    fun completeOnboarding() {
-        viewModelScope.launch { settings.markOnboardingDone() }
-    }
+    fun completeOnboarding() = settingsDomain.completeOnboarding()
 
     // 引擎派生的状态一律惰性取：这些属性一旦在构造期求值，就会立刻拉起整张引擎对象图
     val agentState: StateFlow<AgentState> by lazy { engine.state }
@@ -655,19 +641,12 @@ class MainViewModel(
         _screenshotActive.value = false
     }
 
-    fun saveSettings(value: AppSettings.Settings) {
-        viewModelScope.launch { settings.update(value) }
-    }
+    fun saveSettings(value: AppSettings.Settings) = settingsDomain.saveSettings(value)
 
     /**
-     * 保存并等落盘完成。
-     *
-     * 只有"保存完立刻要用新配置"的流程才需要它：快速开始里填完 Key 直接发任务，
-     * 若走 [saveSettings] 的异步写入，引擎可能在写入完成前就按旧配置起跑。
+     * 保存并等落盘完成（用途见 [SettingsDelegate.saveSettingsNow]）。
      */
-    suspend fun saveSettingsNow(value: AppSettings.Settings) {
-        settings.update(value)
-    }
+    suspend fun saveSettingsNow(value: AppSettings.Settings) = settingsDomain.saveSettingsNow(value)
 
     // ---- 自动更新：查询新版本、下载安装 ----
     val updateState: StateFlow<com.phoneagent.feature.update.UpdateState> = updateManager.state
