@@ -85,11 +85,15 @@
 
         <!-- 内嵌 Shizuku server 的权限确认页：server 以 shell uid 拉起（须 exported），
              action 与 vendored ServerConstants.REQUEST_PERMISSION_ACTION 一致。
+             必须带 INTERACT_ACROSS_USERS_FULL（对齐上游 manager 的 RequestPermissionActivity）：
+             该页直接决定是否把 uid 写进 Shizuku 永久白名单，若不设权限则任意第三方应用
+             均可直接拉起并向用户出示伪造应用名的授权框。shell uid 持有该权限，拉起不受影响。
              Provider 无主题资源，用系统半透明主题：确认卡片自绘遮罩 + 圆角浮层（纯 View 实现） -->
         <activity
             android:name=".shell.ShizukuPermissionActivity"
             android:exported="true"
             android:excludeFromRecents="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="com.phoneagent.provider.intent.action.REQUEST_PERMISSION" />
