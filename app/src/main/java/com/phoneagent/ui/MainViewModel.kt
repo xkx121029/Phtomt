@@ -22,6 +22,7 @@ import com.phoneagent.domain.model.AgentState
 import com.phoneagent.domain.model.ConversationMessage
 import com.phoneagent.ui.model.PermissionItem
 import com.phoneagent.ui.model.PermissionKind
+import com.phoneagent.ui.chat.ChatSessionState
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
@@ -112,6 +113,15 @@ class MainViewModel(
 
     val logs: StateFlow<List<AgentLog>> = engine.logs
     val conversation: StateFlow<List<ConversationMessage>> = engine.conversation
+
+    /**
+     * 对话页的会话状态（气泡 + 同步游标）。
+     *
+     * 由 ViewModel 持有而不是页面 `rememberSaveable`：气泡随会话无限增长，
+     * 序列化进 Bundle 会在长会话上顶到 1MB 上限。详见 [ChatSessionState]。
+     */
+    internal val chatSession = ChatSessionState()
+
     val metrics: StateFlow<AgentMetrics> = engine.metrics
     val executionHistory: StateFlow<List<StepRecord>> = engine.executionHistory
     val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> = engine.stepShot
@@ -131,6 +141,25 @@ class MainViewModel(
 
     /** 将显示给用户的文本自动翻译成简体中文（AI 翻译，带缓存） */
     suspend fun translate(text: String): String = engine.translateText(text)
+
+    /**
+     * 界面侧的翻译结果缓存（按原文命中，最多 32 条）。
+     *
+     * 翻译结果的展示状态原先放在气泡自己的 `remember(text)` 里，而气泡随列表回收，
+     * 滚出视野再滚回来就退回原文、再等 600ms 防抖加一次请求——同一句话在同一个会话里
+     * 被反复「闪一下原文」。缓存提到 ViewModel（跨气泡、跨 Activity 重建存活）后，
+     * 回滚时首帧就能拿到译文。上限 32 条是为了不让长会话的原文字符串无限驻留。
+     */
+    private val translationCache = object : LinkedHashMap<String, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 32
+    }
+
+    /** 缓存命中返回译文；未命中返回 null（调用方走 600ms 防抖 + 真实翻译） */
+    fun cachedTranslation(text: String): String? = synchronized(translationCache) { translationCache[text] }
+
+    fun putTranslation(text: String, translated: String) {
+        synchronized(translationCache) { translationCache[text] = translated }
+    }
 
     /** 测试主模型连接是否可用（设置保存前校验用） */
     suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<String> =
