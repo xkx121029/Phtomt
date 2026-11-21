@@ -6,6 +6,21 @@ name: Android CI
 on:
   push:
     branches: [main, nightly]
+    # 只有会影响 APK 的改动才触发构建与发布。
+    # main 上混着大量纯文档/官网数据同步提交（chore(site)/docs），每一个都会跑完整
+    # 构建、消耗一个版本号、切一个 beta Release（workflow 里 Publish GitHub Release 的
+    # 条件是 event_name != pull_request，push 就会发布）。版本计数器本来就紧张（见
+    # Compute version + tag），这些提交不该再烧号。
+    # 注意：paths-ignore 只在「本次提交改动的文件全部命中」时才跳过；同时改了代码和
+    # README 的提交照常触发。需要强制出包时用 workflow_dispatch。
+    paths-ignore:
+      - 'website/**'
+      - 'docs/**'
+      - 'promo/**'
+      - 'promo-video/**'
+      - 'BUGS/**'
+      - '**/*.md'
+      - '.github/workflows/site-pages.yml'
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -130,6 +145,19 @@ jobs:
         # 历史实现是三次独立 ./gradlew，每次都要重新配置整个工程。
         run: ./gradlew :app:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage --stacktrace
 
+      - name: Release variant gates (R8 + lintVital)
+        # release 变体（isMinifyEnabled + isShrinkResources + proguard 规则）在 CI 里
+        # 从来没有被构建过一次：唯一的构建调用只出 debug 包。R8 的 keep 规则缺失、
+        # 资源收缩误删、反射类被裁这类问题只会在「发市场包」那天第一次暴露。
+        #
+        # 只跑不需要签名、也不需要 release 组件资产的目标：
+        #   compileReleaseKotlin / minifyReleaseWithR8 / lintVitalRelease
+        # 故意不用 assembleRelease —— 它会拉起 mergeReleaseAssets → verifyProviderAssetsRelease
+        # → syncProviderRelease，而 release 变体的 Provider/env APK 必须用上传证书签名，
+        # runner 上没有密钥，那条会 fail-closed（见 app/build.gradle.kts 的 requireUploadSigning）。
+        # 实测（无密钥环境）:app:assembleDebug 与这三个目标的任务图都不含 mergeReleaseAssets。
+        run: ./gradlew :app:compileReleaseKotlin :app:minifyReleaseWithR8 :app:lintVitalRelease --stacktrace
+
       - name: Compute version + tag
         id: ver
         env:
@@ -216,14 +244,19 @@ jobs:
 
       - name: Sync assets + assemble Debug APK
         # provider.apk / 编码环境 APK 都是模块构建产物，不进仓库（.gitignore），
-        # 干净检出后 assets 里只剩 version.txt，verifyProviderAssets 会直接拦下。
+        # 干净检出后 assets 里只剩 version.txt，verifyProviderAssetsDebug 会直接拦下。
         # 这里把「同步」和「assemble」放进同一次 Gradle 调用（历史是两次独立调用，
         # 配置阶段要跑两遍）；顺序由 app/build.gradle.kts 里的 mustRunAfter 保证。
+        #
+        # 只同步 debug 变体（syncProviderDebug / syncEnvDebug），不跑 syncProviderAssets：
+        # 后者会把 release 分支也带上，而 release 资产必须用上传证书签名，runner 上没有
+        # app/upload-signing.properties，那条会 fail-closed 直接失败（这是有意的，
+        # 见 app/build.gradle.kts 的 requireUploadSigning）。只出 debug 包时不需要它。
         #
         # HPA_DEBUG_KEYSTORE / HPA_DEBUG_KEYSTORE_PASS 由 keystore 步骤写入 $GITHUB_ENV，
         # :app 的 build.gradle.kts 据此显式配置 signingConfigs.debug。
         run: |
-          ./gradlew :app:syncProviderAssets :app:syncEnvAssets :app:assembleDebug \
+          ./gradlew :app:syncProviderDebug :app:syncEnvDebug :app:assembleDebug \
             -PbuildNumber=${{ steps.ver.outputs.version_code }} \
             -Pchannel=${{ env.CHANNEL }} \
             --stacktrace
