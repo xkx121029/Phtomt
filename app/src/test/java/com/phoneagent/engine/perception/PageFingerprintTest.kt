@@ -24,12 +24,14 @@ class PageFingerprintTest {
         viewId: String? = null,
         type: String = "Button",
         selected: Boolean? = null,
+        currentValue: String? = null,
     ) = UiElement(
         index = index,
         className = "android.widget.Button",
         type = type,
         text = text,
         isSelected = selected,
+        currentValue = currentValue,
         x = (left + right) / 2,
         y = (top + bottom) / 2,
         left = left, top = top, right = right, bottom = bottom,
@@ -164,5 +166,79 @@ class PageFingerprintTest {
         assertEquals(PageFingerprint.computeEffect(a), PageFingerprint.computeEffect(b))
         // 止损宁可敏感（多算一次"有推进"），也不能把推进漏掉
         assertNotEquals(PageFingerprint.compute(a), PageFingerprint.compute(b))
+    }
+
+    // ---- 控件状态进指纹：isSelected 与 currentValue 两项 ----
+    //
+    // 这两项是「同页面、同文字、同坐标，唯一变化在控件自身状态」的全部证据来源：
+    // 开关（isSelected）、滑块/输入框（currentValue）。指纹里少了任何一项，
+    // 连续点开关都会被算成同一页，止损判"路径已死"、成功判据判"没生效"，两条路一起错。
+
+    @Test
+    fun 同页面只差选中态_指纹必须不同() {
+        val off = snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", viewId = "wifi_toggle", selected = false))
+        val on = snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", viewId = "wifi_toggle", selected = true))
+
+        // 成功判据与止损判据都必须看得见这一次状态变化
+        assertNotEquals(
+            "止损看不到选中态，连点开关会被判成同一页面",
+            PageFingerprint.compute(off),
+            PageFingerprint.compute(on),
+        )
+        assertNotEquals(
+            "成功判据看不到选中态，点开关会被判成没生效",
+            PageFingerprint.computeEffect(off),
+            PageFingerprint.computeEffect(on),
+        )
+        // 页面记忆刻意不并状态：否则开关一变就把记忆碎成一堆只差一个开关的节点
+        assertEquals(PageFingerprint.computeMeaningful(off), PageFingerprint.computeMeaningful(on))
+    }
+
+    @Test
+    fun 同页面只差控件值_指纹必须不同() {
+        val before = snapshot(
+            elem(0, 0, 0, 100, 60, text = "亮度", viewId = "seek_brightness", currentValue = "30%"),
+        )
+        val after = snapshot(
+            elem(0, 0, 0, 100, 60, text = "亮度", viewId = "seek_brightness", currentValue = "70%"),
+        )
+
+        assertNotEquals(
+            "止损看不到滑块值，拖动滑块会被判成同一页面",
+            PageFingerprint.compute(before),
+            PageFingerprint.compute(after),
+        )
+        assertNotEquals(
+            "成功判据看不到滑块值，拖动滑块会被判成没生效",
+            PageFingerprint.computeEffect(before),
+            PageFingerprint.computeEffect(after),
+        )
+        assertEquals(PageFingerprint.computeMeaningful(before), PageFingerprint.computeMeaningful(after))
+    }
+
+    @Test
+    fun 选中态与控件值的四种组合两两不同指纹() {
+        // 单项进指纹还不够：两项各占一个字段，混写（例如把 currentValue 拼进 label 的位置）
+        // 会让两组不同的状态算出同一个哈希
+        val combos = listOf(
+            elem(0, 0, 0, 100, 60, text = "推送", selected = false, currentValue = "关"),
+            elem(0, 0, 0, 100, 60, text = "推送", selected = true, currentValue = "关"),
+            elem(0, 0, 0, 100, 60, text = "推送", selected = false, currentValue = "开"),
+            elem(0, 0, 0, 100, 60, text = "推送", selected = true, currentValue = "开"),
+        ).map { PageFingerprint.compute(snapshot(it)) }
+
+        assertEquals("四种状态必须算出四个不同指纹：$combos", 4, combos.toSet().size)
+    }
+
+    @Test
+    fun 控件状态为空与有值也必须区分() {
+        // 旧快照里没有 currentValue（null），新快照读到了值：这同样是一次状态变化
+        val unknown = snapshot(elem(0, 0, 0, 100, 60, text = "音量", viewId = "seek_volume"))
+        val known = snapshot(
+            elem(0, 0, 0, 100, 60, text = "音量", viewId = "seek_volume", currentValue = "50%"),
+        )
+
+        assertNotEquals(PageFingerprint.compute(unknown), PageFingerprint.compute(known))
+        assertNotEquals(PageFingerprint.computeEffect(unknown), PageFingerprint.computeEffect(known))
     }
 }
