@@ -9,6 +9,7 @@ import com.phoneagent.domain.model.CapabilitySpec
 import com.phoneagent.domain.model.IntentType
 import com.phoneagent.domain.model.ScreenSnapshot
 import com.phoneagent.domain.model.UiElement
+import com.phoneagent.domain.rules.DangerousTargetWords
 import com.phoneagent.engine.execution.CapabilityManager.Mode
 import io.mockk.every
 import io.mockk.mockk
