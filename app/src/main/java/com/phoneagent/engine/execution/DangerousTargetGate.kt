@@ -54,6 +54,7 @@ internal class DangerousTargetGate(
      * 优先真实控件文字（落点探针 > 已知目标控件 > 选择器），最后才退到 AI 给的目标串——
      * 它是弱信号，但比什么都没有强。
      */
+    @Suppress("ReturnCount")
     fun hitOf(
         action: AgentAction,
         element: UiElement?,
@@ -82,6 +83,7 @@ internal class DangerousTargetGate(
      * @return null = 放行（没命中，或用户已经批准过同一目标）；非空 = 用户拒绝的原因，
      *   调用方必须**一步不落地中止**并把这段话回注给 AI。
      */
+    @Suppress("ReturnCount")
     suspend fun check(
         action: AgentAction,
         element: UiElement?,

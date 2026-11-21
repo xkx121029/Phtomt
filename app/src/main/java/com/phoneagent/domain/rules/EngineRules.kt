@@ -160,6 +160,8 @@ object EngineRules {
      * 这里按证据强度取：元素索引（AI 直接引用的编号，最准）→ 落点回查元素树
      * （坐标点击唯一能看见控件的路）→ null（交给调用方回退到 target.value）。
      */
+    // 元素索引命中即返回、坐标回查是第二条路，两条互斥的取值路径合成单出口只会更绕
+    @Suppress("ReturnCount")
     fun targetLabelOf(action: AgentAction, snapshot: ScreenSnapshot): String? {
         val elements = snapshot.elements
         action.elementIndex?.let { idx ->

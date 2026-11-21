@@ -134,8 +134,10 @@ internal class BrowserChannel(
                         if (op == IntentType.BROWSE_CLICK) {
                             click(by, value, intent)
                         } else {
-                            guardInput(by, value, intent)
-                                ?: from(executor.input(by, value, intent.text.orEmpty()))
+                            // 填表单保持原样：只读档命中即拒，其它档位不额外打扰（填字本身可撤回）
+                            val blocked = if (!readOnly()) null else (screen(by, value, intent) as? Screening.Hit)
+                                ?.let { refusal(value, it.word, intent) }
+                            blocked ?: from(executor.input(by, value, intent.text.orEmpty()))
                         }
                     }
                 }
@@ -166,6 +168,8 @@ internal class BrowserChannel(
      *   只读档据此拒掉；其它档位据此补问一次——AI 给的文字往往不含危险词（如按 `#btn-2` 定位到
      *   「确认支付」），此时端侧那层什么都看不见，只有元素真实文字能说话。
      */
+    // 每层证据各自早退最清楚（只读拒 / 用户取消 / 探针命中后补问），压成单出口会把优先级藏进条件表达式
+    @Suppress("ReturnCount")
     private suspend fun click(by: String, value: String, intent: AgentIntent): Outcome {
         var approved = false
         when (val s = screen(by, value, intent)) {
@@ -183,15 +187,6 @@ internal class BrowserChannel(
         if (approved) return from(executor.click(by, value, guard = false))
         if (!confirmClick(intent, value, null)) return cancelled(value, null)
         return from(executor.click(by, value, guard = false))
-    }
-
-    /** 填表单的护栏保持原样：只读档命中即拒，其它档位不额外打扰（填字本身可撤回） */
-    private fun guardInput(by: String, value: String, intent: AgentIntent): Outcome? {
-        if (!readOnly()) return null
-        return when (val s = screen(by, value, intent)) {
-            is Screening.Hit -> refusal(value, s.word, intent)
-            Screening.Clear -> null
-        }
     }
 
     /** 把"这一刻到底要点什么"摆给用户：目标串取 AI 给的文字，如实说明命中的词 */
