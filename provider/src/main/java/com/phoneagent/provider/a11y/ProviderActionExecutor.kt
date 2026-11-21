@@ -117,23 +117,21 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
      *
      * **没有"位置兜底"这一级**：位置不是标识。按位置取的节点是"此刻压在这个点上的控件"，
      * 页面一滚动/重排它就是另一个控件了；拿它去 performAction，等于点邻居还判成功
-     * （AI 用 elementIndex 选中无字图标、页面滚过一屏的现场）。位置只在本函数内做
-     * 候选排序（[pickBy] 用它选离快照位置最近的那个），不单独授权一次点击。
+     * （AI 用 elementIndex 选中无字图标、页面滚过一屏的现场）。位置只在 [NodeMatch] 里做
+     * 候选排序（同名列里选离快照位置最近的那个），不单独授权一次点击。
      * 因此找不到标识时返回 null，由上层降级为带落点审计的手势点击。
      */
     private fun findNode(root: AccessibilityNodeInfo, selector: A11ySelector): AccessibilityNodeInfo? {
         val all = collectVisibleNodes(root) ?: return null
-
-        // 逐级降级：只有上一级完全没命中才启用下一级，避免"id 明明在、却被同文字的别的控件抢先"
-        selector.viewId?.takeIf { it.isNotBlank() }?.let { id ->
-            pickBy(all.filter { (it.viewIdResourceName ?: "").endsWith(id, ignoreCase = true) }, selector)?.let { return it }
-        }
-        selector.label?.trim()?.takeIf { it.isNotEmpty() }?.let { label ->
-            pickBy(labelCandidates(all, label, exact = true), selector)?.let { return it }
-            // 容器自身没有文字、标签由后代拼出来的情况，只能按"包含"兜底
-            pickBy(labelCandidates(all, label, exact = false), selector)?.let { return it }
-        }
-        return null
+        // 判据本身在 NodeMatch（纯逻辑、有单测）；这里只负责把节点读成事实
+        val index = NodeMatch.find(
+            nodes = all.map(::factsOf),
+            viewId = selector.viewId,
+            label = selector.label,
+            hintX = selector.hintX,
+            hintY = selector.hintY,
+        ) ?: return null
+        return all[index]
     }
 
     /** 活节点树上的可见节点（遍历一次）；读不到节点树返回 null */
@@ -144,19 +142,25 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
     }
 
     /**
-     * 按标签挑候选：节点的**自身**文字/描述，或**后代文字拼出的派生标签**（[DerivedLabel]）命中即可。
+     * 读出一个节点参与定位判据的全部事实。
      *
-     * 派生标签这一层不能少：可点击容器常常没有自己的文字（微信聊天列表行就是这样，标签挂在
-     * 不可点击的子控件上），元素树里 AI 看到的标签正是拼出来的那串。只比节点自身文字，
-     * 这类目标在活节点树上永远匹配不到，「节点直点」这一级就静默失效，退化成按坐标猜。
+     * 文字一项包含**自身**文字/描述与**后代拼出的派生标签**（[DerivedLabel]）：可点击容器常常
+     * 没有自己的文字（微信聊天列表行就是这样，标签挂在不可点击的子控件上），元素树里 AI 看到的
+     * 标签正是拼出来的那串。只比节点自身文字，这类目标在活节点树上永远匹配不到，
+     * 「节点直点」这一级就静默失效，退化成按坐标猜。
      */
-    private fun labelCandidates(
-        all: List<AccessibilityNodeInfo>,
-        label: String,
-        exact: Boolean,
-    ): List<AccessibilityNodeInfo> = all.filter { node ->
-        val texts = textsOf(node) + listOfNotNull(DerivedLabel.of(node))
-        texts.any { if (exact) it.equals(label, ignoreCase = true) else it.contains(label, ignoreCase = true) }
+    private fun factsOf(node: AccessibilityNodeInfo): NodeMatch.Facts {
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        return NodeMatch.Facts(
+            viewId = node.viewIdResourceName,
+            texts = textsOf(node) + listOfNotNull(DerivedLabel.of(node)),
+            clickable = node.isClickable,
+            width = rect.width(),
+            height = rect.height(),
+            centerX = rect.centerX(),
+            centerY = rect.centerY(),
+        )
     }
 
     private fun textsOf(node: AccessibilityNodeInfo): List<String> =
@@ -209,24 +213,9 @@ class ProviderActionExecutor(val service: ProviderAccessibilityService) {
      */
     private fun pickBy(candidates: List<AccessibilityNodeInfo>, selector: A11ySelector): AccessibilityNodeInfo? {
         if (candidates.isEmpty()) return null
-        val hasHint = selector.hasHint
-        val rect = Rect()
-        return candidates.minWithOrNull(
-            compareBy(
-                { if (it.isClickable) 0 else 1 },
-                { node -> node.getBoundsInScreen(rect); rect.width() * rect.height() },
-                { node ->
-                    if (!hasHint) {
-                        0
-                    } else {
-                        node.getBoundsInScreen(rect)
-                        val dx = rect.centerX() - selector.hintX
-                        val dy = rect.centerY() - selector.hintY
-                        dx * dx + dy * dy
-                    }
-                },
-            ),
-        )
+        val hint = if (selector.hasHint) selector.hintX to selector.hintY else null
+        val index = NodeMatch.best(candidates.map(::factsOf), hint) ?: return null
+        return candidates[index]
     }
 
     /** 滑动；落点取轨迹中点（主应用画光标轨迹的锚点） */
