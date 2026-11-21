@@ -11,6 +11,7 @@ import com.phoneagent.engine.runtime.EngineStore
 import com.phoneagent.engine.runtime.UiBridge
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -81,5 +82,22 @@ class ExecutionCoreLocalFallbackTest {
         )
         // 措辞取自 ShellFallbackPolicy 的未确认后缀（"已交付，但页面没有变化，未能确认生效"）
         assertTrue("必须如实说明未确认：${result.reason}", result.reason.contains("未能确认生效"))
+    }
+
+    @Test
+    fun `本应用直启兜底_读不到页面时按未确认回报`() = runTest {
+        val snap = snapshot()
+
+        // 回读拿到的是「缺少无障碍」的空壳：等价于兜底之后读不到页面
+        val result = core { snap.copy(missingAccessibility = true) }.executeWithVerify(
+            AgentAction(type = ActionType.OPEN, uri = "https://example.com"),
+            snap,
+        )
+
+        assertFalse("读不到页面不能算生效：${result.reason}", result.success)
+        assertTrue("必须由结构化字段表达为未确认：${result.reason}", result.unconfirmed)
+        assertEquals(Delivery.DELIVERED_UNCONFIRMED, result.delivery)
+        assertFalse("动作确实交付过，标成未交付会让外层换通道重复执行", result.notDelivered)
+        assertTrue("原因要点名读不到页面：${result.reason}", result.reason.contains("读不到页面"))
     }
 }

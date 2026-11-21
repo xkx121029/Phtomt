@@ -21,11 +21,13 @@ class PageFingerprintTest {
         text: String? = null,
         viewId: String? = null,
         type: String = "Button",
+        selected: Boolean? = null,
     ) = UiElement(
         index = index,
         className = "android.widget.Button",
         type = type,
         text = text,
+        isSelected = selected,
         x = (left + right) / 2,
         y = (top + bottom) / 2,
         left = left, top = top, right = right, bottom = bottom,
@@ -111,5 +113,54 @@ class PageFingerprintTest {
         val s = snapshot(elem(0, 0, 0, 100, 60, text = "确定"))
         assertEquals(16, PageFingerprint.compute(s).length)
         assertEquals(16, PageFingerprint.computeMeaningful(s).length)
+        assertEquals(16, PageFingerprint.computeEffect(s).length)
+    }
+
+    // ---- 动作判据与止损判据的同源关系 ----
+
+    @Test
+    fun 控件状态变化_成功判据必须看得见() {
+        val off = snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", selected = false))
+        val on = snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", selected = true))
+
+        // meaningful 服务页面记忆：开关状态一变就换节点会把记忆碎成一堆近似页
+        assertEquals(PageFingerprint.computeMeaningful(off), PageFingerprint.computeMeaningful(on))
+        // 止损看得见
+        assertNotEquals(PageFingerprint.compute(off), PageFingerprint.compute(on))
+        // 成功判据也必须看得见，否则「止损看到有推进、成功判据说没变化」，AI 被叫去换入口
+        assertNotEquals(PageFingerprint.computeEffect(off), PageFingerprint.computeEffect(on))
+    }
+
+    @Test
+    fun 止损看到的变化不少于成功判据() {
+        // 不变式：凡 computeEffect 看得到的变化，compute 也必须看得到
+        val cases = listOf(
+            snapshot(elem(0, 0, 0, 100, 60, text = "确定")) to
+                snapshot(elem(0, 0, 0, 100, 60, text = "取消")),
+            snapshot(elem(0, 0, 0, 100, 60, text = "确定")) to
+                snapshot(elem(0, 500, 500, 600, 560, text = "确定")),
+            snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", selected = false)) to
+                snapshot(elem(0, 0, 0, 100, 60, text = "WLAN", selected = true)),
+        )
+        cases.forEach { (before, after) ->
+            if (PageFingerprint.computeEffect(before) != PageFingerprint.computeEffect(after)) {
+                assertNotEquals(
+                    "成功判据看到了变化，止损也必须看到",
+                    PageFingerprint.compute(before),
+                    PageFingerprint.compute(after),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun 动作判据忽略十像素内的抖动_止损仍然敏感() {
+        val a = snapshot(elem(0, 0, 0, 100, 60, text = "确定"))
+        val b = snapshot(elem(0, 3, 3, 103, 63, text = "确定"))
+
+        // 动画/涟漪造成的几像素位移不该被报成「生效了」
+        assertEquals(PageFingerprint.computeEffect(a), PageFingerprint.computeEffect(b))
+        // 止损宁可敏感（多算一次"有推进"），也不能把推进漏掉
+        assertNotEquals(PageFingerprint.compute(a), PageFingerprint.compute(b))
     }
 }

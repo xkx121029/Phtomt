@@ -71,7 +71,7 @@ internal fun ToolStepRow(
     var expanded by rememberSaveable(step.key) { mutableStateOf(false) }
     var rawOpen by rememberSaveable(step.key) { mutableStateOf(false) }
 
-    // 状态色与编码页共用同一份口径；"执行了但未验证"不在三态里，退回中性色
+    // 状态色与编码页共用同一份口径：已生效 / 未确认（读不到页面）/ 未生效三档各自有话说
     val statusColor = when {
         step.failed -> toolStatusStyle(ToolRunState.Failed).tint
         step.verified -> toolStatusStyle(ToolRunState.Succeeded).tint
@@ -117,9 +117,16 @@ internal fun ToolStepRow(
                         StatusPill(text = "端侧", color = colors.onSurfaceRaised)
                         Spacer(Modifier.width(AppSpacing.Xs))
                     }
-                    if (step.failed || step.verified) {
+                    // 三态各给一句话：未确认不等于未生效，让用户不必自己推断
+                    val statusWord = when {
+                        step.failed -> "未生效"
+                        step.verified -> "已生效"
+                        step.unconfirmed -> "未确认"
+                        else -> null
+                    }
+                    if (statusWord != null) {
                         StatusPill(
-                            text = if (step.failed) "未生效" else "已生效",
+                            text = statusWord,
                             color = statusColor,
                         )
                     }

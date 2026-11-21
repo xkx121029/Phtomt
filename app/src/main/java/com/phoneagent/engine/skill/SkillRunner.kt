@@ -115,9 +115,12 @@ internal class SkillRunner(
                 last?.shellOutput?.takeIf { it.isNotBlank() },
             ).joinToString("；").ifBlank { last?.action?.reason ?: "" }
             store.macroResults = store.macroResults + resultText.take(400)
-            // 失败即停：上一步明确失败就不再派发后续步骤（unverified 不算失败——部分动作本就无验证信号）
+            // 失败即停：上一步明确失败就不再派发后续步骤
+            // （unverified = 读不到页面，不算失败——部分动作本就无验证信号；no_effect 是"看到了没变化"，算失败）
             val failed = last != null &&
-                (last.sendResult == "send_failed" || last.verificationResult == "failed")
+                (last.sendResult == "send_failed" ||
+                    last.verificationResult == VerifyRules.STATUS_FAILED ||
+                    last.verificationResult == VerifyRules.STATUS_NO_EFFECT)
             if (failed) {
                 val reason = "宏「${store.macroName}」在第 ${store.macroDispatched}/${store.macroDispatched + store.macroQueue.size} 步失败：${resultText.take(200)}。剩余 ${store.macroQueue.size} 步已停止，请判断是否换方式继续任务。"
                 ui.log(AgentLog.Level.WARN, reason)

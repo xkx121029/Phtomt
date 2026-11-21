@@ -34,6 +34,13 @@ internal object ShellFallbackPolicy {
         /** 页面级证据的指纹（读不到为空串），供执行留档与排障 */
         val beforeFingerprint: String = "",
         val afterFingerprint: String = "",
+        /**
+         * 已交付、但**没读到页面**：既没确认生效，也没有证据说它没生效。
+         *
+         * 与 [confirmed] 互斥。二者过去都折成 `confirmed = false`，于是回注给 AI 的下一步
+         * 把「没看见」说成「页面没有出现预期变化」——对发送/删除这类动作就是引导重放。
+         */
+        val unconfirmed: Boolean = false,
     )
 
     /**
@@ -49,10 +56,12 @@ internal object ShellFallbackPolicy {
         val after = if (afterFingerprint.isNullOrBlank()) null else afterFingerprint
         if (before == null) {
             // 没有基准就没有证据：不能拿退出码冒充生效
-            return Verdict(false, "（已交付，但兜底前的页面读不到，无法比对是否生效）", "", after.orEmpty())
+            return Verdict(false, "（已交付，但动作前的页面读不到，无法比对是否生效）", "", after.orEmpty(),
+                unconfirmed = true)
         }
         if (after == null) {
-            return Verdict(false, "（已交付，但兜底后读不到页面，未能确认生效）", before, "")
+            return Verdict(false, "（已交付，但动作后读不到页面，未能确认生效）", before, "",
+                unconfirmed = true)
         }
         if (before != after) {
             return Verdict(true, "（已确认页面变化）", before, after)

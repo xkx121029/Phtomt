@@ -129,11 +129,33 @@ internal object VerifyRules {
     /** 执行历史里的验证结论（[StepRecord.isConfirmed] 以同一口径判定"是否确认生效"） */
     const val STATUS_VERIFIED = "verified_success"
 
-    /** 执行历史里的未确认结论 */
+    /**
+     * 执行历史里「已交付、但读不到页面」的结论：**未确认**。
+     *
+     * 既不是成功，也没有证据说失败——动作已经下发，我们只是没资格下结论。
+     */
     const val STATUS_UNVERIFIED = "unverified"
 
-    /** 验证结果 → 执行历史状态 */
-    fun historyStatus(verified: Boolean): String = if (verified) STATUS_VERIFIED else STATUS_UNVERIFIED
+    /**
+     * 执行历史里「已交付、页面读到了、但没有预期变化」的结论：**未生效**。
+     *
+     * 与 [STATUS_UNVERIFIED] 分成两个字面量的理由很实际：二者对用户和模型是完全不同的两件事
+     * （一个是"没看见"，一个是"看见了没成"）。折成一个 `unverified` 时，提示词与界面文案
+     * 也就只剩一句话，读者只能自己猜——这正是「结构上分开了、用户看不到」的老问题。
+     */
+    const val STATUS_NO_EFFECT = "no_effect"
+
+    /** 执行历史里的中止/未送达结论：❌ 这一下没有生效（没碰到设备，或路径已被判定不通） */
+    const val STATUS_FAILED = "failed"
+
+    /** 验证结果 → 执行历史状态（三态，由结构化的 [Delivery] 推导，不解析文案） */
+    fun historyStatus(delivery: Delivery): String = when (delivery) {
+        Delivery.EFFECTIVE -> STATUS_VERIFIED
+        Delivery.DELIVERED_UNCONFIRMED -> STATUS_UNVERIFIED
+        Delivery.DELIVERED_NO_EFFECT -> STATUS_NO_EFFECT
+        // 没送达也是"没生效"：动作根本没上设备，说"已交付"才是错话
+        Delivery.NOT_DELIVERED -> STATUS_FAILED
+    }
 
     /**
      * 系统直连（device_ops）的三态结论。
@@ -141,14 +163,12 @@ internal object VerifyRules {
      * 与普通动作不同，直连失败要再分一层：命令是否真的下发到系统了。
      * - 成功 → [STATUS_VERIFIED]（✅）
      * - 已下发但读不到回执/回读不一致 → [STATUS_UNVERIFIED]（⚠️，用户去手机上核对）
-     * - 根本没执行（通道不可用、参数非法、Provider 拒绝）→ `"failed"`（❌，用户去修通道/改参数）
-     *
-     * `"failed"` 是 [com.phoneagent.engine.runtime.StepTexts] 已有的字面量分支，不是新状态。
+     * - 根本没执行（通道不可用、参数非法、Provider 拒绝）→ [STATUS_FAILED]（❌，用户去修通道/改参数）
      */
     fun deviceOpsStatus(ok: Boolean, dispatched: Boolean): String = when {
         ok -> STATUS_VERIFIED
         dispatched -> STATUS_UNVERIFIED
-        else -> "failed"
+        else -> STATUS_FAILED
     }
 
     /**

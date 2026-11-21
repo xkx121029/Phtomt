@@ -226,6 +226,13 @@ internal data class StepCall(
     val confidence: Double?,
     val verified: Boolean,
     val failed: Boolean,
+    /**
+     * 已交付、但读不到页面：既没确认生效，也没有证据说失败。
+     *
+     * 与 [failed]（未生效）分开：二者的下一步完全不同——一个该等页面可读，一个该换入口。
+     * 这个状态过去在界面上没有位置，用户只看到「什么标签都没有」的一步。
+     */
+    val unconfirmed: Boolean = false,
     val durationMs: Long,
     val tokens: Int,
     val thinking: String?,

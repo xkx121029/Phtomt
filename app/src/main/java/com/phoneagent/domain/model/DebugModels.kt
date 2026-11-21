@@ -56,6 +56,14 @@ data class AgentMetrics(
     /** 交付分类失败计数：二者分开才能判断该修通道（没送达）还是该修策略（送达未生效） */
     val notDeliveredCount: Int = 0,
     val noEffectCount: Int = 0,
+    /**
+     * 「已交付但读不到页面」的步数：既不是没送达，也不是确认没生效。
+     *
+     * 单独计数（而不是折进上面两桶）的理由很实际：这条链路正在被重构，
+     * 没有这个数字就看不出「读不到页面」在真机上占多少、是在变好还是变坏——
+     * 折进 [noEffectCount] 会把"没看见"记成"看见了没效果"，两个数字同时失真。
+     */
+    val unconfirmedCount: Int = 0,
 ) {
     /** 平均视觉耗时（毫秒） */
     val avgVisionMs: Long get() = if (visionCount > 0) visionTotalMs / visionCount else 0
