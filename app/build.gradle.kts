@@ -335,6 +335,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    // Baseline Profile 运行时安装器（见 app/src/main/baseline-prof.txt 的说明）。
+    // 必须在 APK 里存在，profile 才会在「装完第一次启动」时被交给 dex2oat；
+    // 少了它，baseline-prof.txt 只会被当成一个没用的资源打进包里。
+    implementation(libs.androidx.profileinstaller)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
