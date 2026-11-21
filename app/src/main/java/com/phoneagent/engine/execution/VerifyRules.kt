@@ -79,6 +79,9 @@ internal object VerifyRules {
         structural || delivery == Delivery.EFFECTIVE -> ""
         delivery == Delivery.NOT_DELIVERED ->
             "\n\n注意：这一步的动作没有送达设备（$reason）。可以换一条执行通道或换一个落点再试，或改用别的意图；不要反复下发同一条无效动作。"
+        delivery == Delivery.DELIVERED_UNCONFIRMED ->
+            "\n\n注意：这一步的动作已下发，但此刻读不到页面（$reason）。这不等于失败，也还没有确认生效：" +
+                "先观察当前页面再决定下一步，不要原地重复同一下——发送/提交/删除这类动作重放就是重复副作用。"
         else ->
             "\n\n注意：这一步的动作已经送达并落到页面上，但页面没有出现预期变化（$reason）。" +
                 "不要原地重复同一下——先观察当前页面；若目标仍未达成，换入口、换控件或换意图。"
