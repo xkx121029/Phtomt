@@ -58,6 +58,9 @@ import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.Success
 import kotlinx.coroutines.launch
 
+/** 「重新连接服务组件」等一次 AIDL 往返的等待上限：够冷启动拉起 server，又不至于让按钮看起来卡死 */
+private const val PROVIDER_CALL_TIMEOUT_MS = 6_000L
+
 /**
  * 权限与执行通道页：把散在主页/技能页的内容收拢到设置里，并接管原「Agent 运行」页里的
  * 执行通道优先级开关——它与本页的配对界面说的是同一件事，放两处只会互相打架。
@@ -261,7 +264,10 @@ internal fun SettingsPermissions(
                             // 用户刚重装或改过签名时，旧错误不清会让「修了也没用」
                             ProviderManager.resetConnection()
                             scope.launch {
-                                val ok = ProviderManager.call(context, 6_000) { it.apiVersion() } != null
+                                val ok = ProviderManager.call(
+                                    context,
+                                    PROVIDER_CALL_TIMEOUT_MS,
+                                ) { it.apiVersion() } != null
                                 snackbar?.show(
                                     if (ok) "已重新连接服务组件" else "仍无法连接：${ProviderManager.lastError.value ?: "无响应"}",
                                     if (ok) SnackbarType.SUCCESS else SnackbarType.ERROR,

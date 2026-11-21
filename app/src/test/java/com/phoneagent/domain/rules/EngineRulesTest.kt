@@ -75,13 +75,15 @@ class EngineRulesTest {
         assertFalse(EngineRules.idempotencyDone(snapshotWith("填写订单信息")))
     }
 
+    /** 元素矩形（左上右下）；单独成类是为了让 [named] 不必堆 8 个位置参数 */
+    private data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
     private fun named(
-        index: Int, className: String, type: String, text: String,
-        left: Int, top: Int, right: Int, bottom: Int,
+        index: Int, className: String, type: String, text: String, bounds: Bounds,
     ) = UiElement(
         index = index, className = className, type = type, text = text,
-        x = (left + right) / 2, y = (top + bottom) / 2,
-        left = left, top = top, right = right, bottom = bottom,
+        x = (bounds.left + bounds.right) / 2, y = (bounds.top + bounds.bottom) / 2,
+        left = bounds.left, top = bounds.top, right = bounds.right, bottom = bounds.bottom,
     )
 
     /** 待办/工单详情页：标题 + 状态标签 + 3 个按钮（5 个元素，正落在旧实现「≤6 元素」的稀疏守卫内） */
@@ -90,11 +92,11 @@ class EngineRulesTest {
         screenWidth = 1080,
         screenHeight = 1920,
         elements = listOf(
-            named(0, "android.widget.TextView", "Text", "买牛奶", 40, 40, 900, 160),
-            named(1, "android.widget.TextView", "Text", status, 40, 220, 300, 320),
-            named(2, "android.widget.Button", "Button", "编辑", 40, 1600, 300, 1700),
-            named(3, "android.widget.Button", "Button", "删除", 780, 1600, 1040, 1700),
-            named(4, "android.widget.Button", "Button", "返回", 40, 80, 160, 180),
+            named(0, "android.widget.TextView", "Text", "买牛奶", Bounds(40, 40, 900, 160)),
+            named(1, "android.widget.TextView", "Text", status, Bounds(40, 220, 300, 320)),
+            named(2, "android.widget.Button", "Button", "编辑", Bounds(40, 1600, 300, 1700)),
+            named(3, "android.widget.Button", "Button", "删除", Bounds(780, 1600, 1040, 1700)),
+            named(4, "android.widget.Button", "Button", "返回", Bounds(40, 80, 160, 180)),
         ),
     )
 

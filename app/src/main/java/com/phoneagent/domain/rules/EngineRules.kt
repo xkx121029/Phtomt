@@ -14,6 +14,8 @@ import com.phoneagent.domain.model.ScreenSnapshot
  * 拆分目的：AgentEngine 同时承担"编排 + 执行 + 展示"，将无状态判定逻辑
  * 下沉到此类，便于单元测试与复用。v2.3 从 AgentEngine 迁移过来。
  */
+// 无状态判定的集中地：按领域再细分类是独立重构，现在拆会打断现有调用方，故先豁免函数数上限
+@Suppress("TooManyFunctions")
 object EngineRules {
 
     /**
@@ -86,6 +88,8 @@ object EngineRules {
      *
      * @param history 本任务内已确认下发过的副作用动作（[CommittedEffect]）
      */
+    // 每种判据各自早退最清楚，合成单出口反而要引入状态变量；留待幂等判据整体重构
+    @Suppress("ReturnCount")
     fun idempotencyVerdict(
         history: List<CommittedEffect>,
         action: AgentAction,

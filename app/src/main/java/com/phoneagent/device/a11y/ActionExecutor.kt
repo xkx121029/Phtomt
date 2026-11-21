@@ -138,6 +138,8 @@ class ActionExecutor(
      * 供上层在手势点击前取最新落点——AI 思考的数秒里页面可能已滚动/被顶动，
      * 快照坐标早已偏离；活节点位置才是"现在它到底在哪"。
      */
+    // 三段早退（无服务 / 远程失败 / 无节点）各对应一种「取不到落点」，合成单出口反而更难读
+    @Suppress("ReturnCount")
     suspend fun liveCenter(selector: NodeSelector): Pair<Int, Int>? {
         val center = ProviderManager.call(service.applicationContext, LIVE_QUERY_TIMEOUT_MS) {
             it.liveCenter(selector.toRemote())
@@ -267,6 +269,8 @@ class ActionExecutor(
      *
      * @param pkg 指定用哪个应用打开（已解析的包名）；为空时**优先系统自带应用**
      */
+    // 入参校验失败与远程打开失败语义不同，各自早退；合并出口要引入可空中间变量
+    @Suppress("ReturnCount")
     suspend fun openUri(uri: String, pkg: String? = null): Result {
         val raw = uri.trim().takeIf { it.isNotBlank() } ?: return Result.Failure("打开目标为空")
         val result = remote(APP_TIMEOUT_MS) {
