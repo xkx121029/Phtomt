@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
@@ -267,7 +267,7 @@ internal fun settingsGroups(): List<SettingsGroup> = listOf(
 @Composable
 internal fun rememberSettingsOverviewCtx(st: SettingsState, vm: MainViewModel): SettingsOverviewCtx {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val permissions by vm.permissions.collectAsState()
+    val permissions by vm.permissions.collectAsStateWithLifecycle()
     // 权限状态由 ViewModel 聚合，进设置页时刷一次，入口摘要才不会是空的
     LaunchedEffect(Unit) { vm.refreshPermissions(context) }
     // 可选权限（如使用情况访问权）默认不开，不计入待办，否则设置首页永远显示「未就绪」

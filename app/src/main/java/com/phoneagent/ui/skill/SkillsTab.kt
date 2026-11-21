@@ -38,7 +38,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.feature.mcp.McpMarketplace
 import com.phoneagent.feature.mcp.McpServerInfo
 import com.phoneagent.feature.mcp.McpTool
@@ -82,7 +82,7 @@ internal fun SkillsTab(vm: MainViewModel, onOpenEditor: (Skill?) -> Unit, onOpen
     val context = androidx.compose.ui.platform.LocalContext.current
     // 宿主注入的全局浮条：轻量反馈统一走它，不用系统 Toast
     val snackbar = LocalSnackbar.current
-    val skills by vm.skills.collectAsState()
+    val skills by vm.skills.collectAsStateWithLifecycle()
     var batchMode by remember { mutableStateOf(false) }
     // 必须是不可变 Set + 赋值更新：往普通 MutableSet 里 add/remove 不会触发 Compose 重组，
     // 勾选后「已选 N 项」、勾选框与删除键可用态都会停在旧值

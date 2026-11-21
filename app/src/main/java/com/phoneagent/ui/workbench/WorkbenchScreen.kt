@@ -36,7 +36,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +48,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.data.prefs.AppSettings
 import org.koin.compose.koinInject
@@ -106,12 +106,12 @@ fun WorkbenchScreen(
     /** 任务抽屉开合：抽屉盖住整页，外层据此让悬浮导航栏让位 */
     onDrawerOpenChange: (Boolean) -> Unit = {},
 ) {
-    val settings by vm.settingsFlow.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
     val conversationSummary = rememberConversationSummary()
-    val summary by conversationSummary.text.collectAsState()
-    val agentState by vm.agentState.collectAsState()
-    val agentTurns by vm.chatTurns.collectAsState()
-    val codingUi by koinInject<CodingAgentBridge>().uiClient.state.collectAsState()
+    val summary by conversationSummary.text.collectAsStateWithLifecycle()
+    val agentState by vm.agentState.collectAsStateWithLifecycle()
+    val agentTurns by vm.chatTurns.collectAsStateWithLifecycle()
+    val codingUi by koinInject<CodingAgentBridge>().uiClient.state.collectAsStateWithLifecycle()
     val view = WorkbenchView.normalize(settings.workbenchView)
     val agentBusy = agentState.isRunning || agentTurns.lastOrNull()?.answer?.isBlank() == true
     val agentTranscript = buildList {

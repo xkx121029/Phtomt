@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +43,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.TaskPlan
 import com.phoneagent.ui.MainViewModel
@@ -340,7 +340,7 @@ internal fun AgentComposer(
     // 配置了语音输入 API（云端模型页）走 CloudAsrEngine，否则回退系统 SpeechRecognizer
     val context = LocalContext.current
     val snackbar = LocalSnackbar.current
-    val asrSettings by vm.settingsFlow.collectAsState()
+    val asrSettings by vm.settingsFlow.collectAsStateWithLifecycle()
     val voiceEngine = remember(
         asrSettings.asrBaseUrl, asrSettings.asrApiKey, asrSettings.asrModel,
     ) {

@@ -23,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -36,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.ComposerActionButton
@@ -90,8 +90,8 @@ internal class ChatSessionState {
  */
 @Composable
 fun ChatScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    val conversation by vm.conversation.collectAsState()
-    val conversationStart by vm.conversationStart.collectAsState()
+    val conversation by vm.conversation.collectAsStateWithLifecycle()
+    val conversationStart by vm.conversationStart.collectAsStateWithLifecycle()
 
     // 本地气泡：用户提交的提问 + 从引擎对话区消费到的回答。
     // 寄存在 ViewModel 里而不是 rememberSaveable：见 ChatSessionState 的注释。

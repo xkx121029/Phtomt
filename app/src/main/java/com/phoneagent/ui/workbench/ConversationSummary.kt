@@ -2,9 +2,9 @@ package com.phoneagent.ui.workbench
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.ui.MainViewModel
@@ -54,8 +54,8 @@ fun rememberConversationSummary(): ConversationSummary {
 @Composable
 fun rememberCodingConversationSummaryText(bridge: CodingAgentBridge): String {
     val summary = rememberConversationSummary()
-    val text by summary.text.collectAsState()
-    val state by bridge.uiClient.state.collectAsState()
+    val text by summary.text.collectAsStateWithLifecycle()
+    val state by bridge.uiClient.state.collectAsStateWithLifecycle()
     LaunchedEffect(state.busy, state.messages.lastOrNull()) {
         if (!state.busy) {
             val transcript = state.messages.map { (if (it.role == "user") "用户：" else "助手：") + it.text }
@@ -70,9 +70,9 @@ fun rememberCodingConversationSummaryText(bridge: CodingAgentBridge): String {
 @Composable
 fun rememberConversationSummaryText(vm: MainViewModel): String {
     val summary = rememberConversationSummary()
-    val text by summary.text.collectAsState()
-    val state by vm.agentState.collectAsState()
-    val turns by vm.chatTurns.collectAsState()
+    val text by summary.text.collectAsStateWithLifecycle()
+    val state by vm.agentState.collectAsStateWithLifecycle()
+    val turns by vm.chatTurns.collectAsStateWithLifecycle()
     val busy = state.isRunning || turns.lastOrNull()?.answer?.isBlank() == true
     LaunchedEffect(busy, turns.lastOrNull()) {
         if (!busy) {

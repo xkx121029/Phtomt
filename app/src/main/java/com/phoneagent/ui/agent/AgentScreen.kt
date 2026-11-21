@@ -30,7 +30,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,6 +48,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.overlay.OverlayDisplaySettings
 import com.phoneagent.domain.model.ClarificationOption
@@ -129,30 +129,30 @@ fun AgentScreen(
     /** 壳层顶栏的抽屉开合状态；null 时由本页自己持有 */
     drawerOpenState: Boolean? = null,
 ) {
-    val agent by vm.agentState.collectAsState()
-    val queue by vm.taskQueue.collectAsState()
-    val needsUser by vm.needsUser.collectAsState()
-    val paused by vm.paused.collectAsState()
-    val pendingShellCommand by vm.pendingShellCommand.collectAsState()
-    val a11yEnabled by vm.a11yEnabled.collectAsState()
-    val planPhase by vm.planPhase.collectAsState()
-    val traces by vm.traces.collectAsState()
-    val history by vm.executionHistory.collectAsState()
-    val settings by vm.settingsFlow.collectAsState()
+    val agent by vm.agentState.collectAsStateWithLifecycle()
+    val queue by vm.taskQueue.collectAsStateWithLifecycle()
+    val needsUser by vm.needsUser.collectAsStateWithLifecycle()
+    val paused by vm.paused.collectAsStateWithLifecycle()
+    val pendingShellCommand by vm.pendingShellCommand.collectAsStateWithLifecycle()
+    val a11yEnabled by vm.a11yEnabled.collectAsStateWithLifecycle()
+    val planPhase by vm.planPhase.collectAsStateWithLifecycle()
+    val traces by vm.traces.collectAsStateWithLifecycle()
+    val history by vm.executionHistory.collectAsStateWithLifecycle()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
     // 「先规划执行计划」与浮层显示同库存放（overlay_display 独立 prefs）：
     // 引擎在任务启动时读同一个键，UI 这里只负责写入与即时反映状态
     val context = LocalContext.current
     var planBeforeAct by remember { mutableStateOf(OverlayDisplaySettings.planBeforeAct(context)) }
-    val doc by vm.docResult.collectAsState()
-    val memoryEvents by vm.memoryEvents.collectAsState()
-    val sayEvents by vm.sayEvents.collectAsState()
-    val clarifyEvents by vm.clarifyEvents.collectAsState()
+    val doc by vm.docResult.collectAsStateWithLifecycle()
+    val memoryEvents by vm.memoryEvents.collectAsStateWithLifecycle()
+    val sayEvents by vm.sayEvents.collectAsStateWithLifecycle()
+    val clarifyEvents by vm.clarifyEvents.collectAsStateWithLifecycle()
     // 合并形态下「对话」的产出也落在同一条时间线上：问答成对气泡
-    val chatTurns by vm.chatTurns.collectAsState()
-    val sessions by vm.taskSessions.collectAsState()
-    val conversationStart by vm.conversationStart.collectAsState()
+    val chatTurns by vm.chatTurns.collectAsStateWithLifecycle()
+    val sessions by vm.taskSessions.collectAsStateWithLifecycle()
+    val conversationStart by vm.conversationStart.collectAsStateWithLifecycle()
     // 不可逆动作确认门：引擎挂起等待放行时非空，任务流末尾插一张确认卡
-    val pendingConfirm = vm.pendingActionConfirmation.collectAsState().value
+    val pendingConfirm = vm.pendingActionConfirmation.collectAsStateWithLifecycle().value
     // 实时视图只铺开本对话（起点之后）的执行痕迹：新建对话后主区域因此是干净的。
     // 回看历史任务时由 AgentTimelineMapper 按 taskId 精确取，不受这里影响。
     val liveTraces = remember(traces, conversationStart) { traces.filter { it.taskId >= conversationStart } }

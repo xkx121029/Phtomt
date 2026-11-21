@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -31,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.ExtrasPage
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
@@ -58,14 +58,14 @@ fun HomeScreen(
     onOpenChannel: () -> Unit = {},
 ) {
     val context = LocalContext.current
-    val settings by vm.settingsFlow.collectAsState()
-    val a11y by vm.a11yEnabled.collectAsState()
-    val agent by vm.agentState.collectAsState()
-    val permissions by vm.permissions.collectAsState()
-    val screenshotActive by vm.screenshotActive.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
+    val a11y by vm.a11yEnabled.collectAsStateWithLifecycle()
+    val agent by vm.agentState.collectAsStateWithLifecycle()
+    val permissions by vm.permissions.collectAsStateWithLifecycle()
+    val screenshotActive by vm.screenshotActive.collectAsStateWithLifecycle()
     // 执行通道：Shizuku / Termux 的真实可用性，决定状态条第四格怎么报
-    val shizukuState by vm.shizukuState.collectAsState()
-    val termuxStatus by vm.termuxStatus.collectAsState()
+    val shizukuState by vm.shizukuState.collectAsStateWithLifecycle()
+    val termuxStatus by vm.termuxStatus.collectAsStateWithLifecycle()
     val shizukuReady = shizukuState == com.phoneagent.device.shell.ShizukuManager.State.READY
     val termuxReady = termuxStatus.ready
     val channel = when (settings.executionChannel) {

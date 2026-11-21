@@ -22,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
@@ -66,14 +66,14 @@ internal enum class DebugTab(val label: String) {
 
 @Composable
 fun DebugScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
-    val metrics by vm.metrics.collectAsState()
-    val conversation by vm.conversation.collectAsState()
-    val logs by vm.logs.collectAsState()
-    val history by vm.executionHistory.collectAsState()
-    val traces by vm.traces.collectAsState()
-    val stepShot by vm.stepShot.collectAsState()
-    val permissions by vm.permissions.collectAsState()
-    val agentState by vm.agentState.collectAsState()
+    val metrics by vm.metrics.collectAsStateWithLifecycle()
+    val conversation by vm.conversation.collectAsStateWithLifecycle()
+    val logs by vm.logs.collectAsStateWithLifecycle()
+    val history by vm.executionHistory.collectAsStateWithLifecycle()
+    val traces by vm.traces.collectAsStateWithLifecycle()
+    val stepShot by vm.stepShot.collectAsStateWithLifecycle()
+    val permissions by vm.permissions.collectAsStateWithLifecycle()
+    val agentState by vm.agentState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(DebugTab.FLOW) }
     var actionsOpen by remember { mutableStateOf(false) }
     var showCapabilities by remember { mutableStateOf(false) }
