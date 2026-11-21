@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Android-8.0%2B%20%C2%B7%20API%2026-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4">
   <img src="https://img.shields.io/badge/Compose-M3%20Expressive-4285F4" alt="Compose Material 3">
-  <img src="https://img.shields.io/badge/tests-1%2C287-5FD9B4" alt="1287 tests">
+  <img src="https://img.shields.io/badge/tests-1%2C260-5FD9B4" alt="1287 tests">
   <img src="https://img.shields.io/badge/PRs-welcome-0E7C66" alt="PRs welcome">
 </p>
 
@@ -69,7 +69,7 @@ Two hard boundaries separate it from the usual "remote-controlled AI" approach:
 | | |
 |---|---|
 | **Shape** | Native Android app (Kotlin + Compose), 14 Gradle modules |
-| **Capability model** | 65 intents across 4 risk tiers → 37 actions, 3 execution channels |
+| **Capability model** | 65 intents across 4 risk tiers → 24 action types actually in use, 3 execution channels |
 | **Model needs** | Any OpenAI-compatible endpoint; defaults to `glm-4.7-flash`, no mandatory cloud |
 | **Requirements** | Android 8.0+ (API 26), no root, no separate Shizuku install |
 | **Docs** | `docs/` is authoritative; the [Wiki](https://github.com/xkx121029/Phtomt/wiki) is the public portal |
@@ -79,7 +79,7 @@ Two hard boundaries separate it from the usual "remote-controlled AI" approach:
 | Capability | In one line |
 |---|---|
 | 🧭 **Three-shape routing** | Every input is classified as phone control / coding delegation / plain chat first, so a "hello" never boots the whole perception loop |
-| 🎯 **The AI only names intents** | 65 intents → 37 internal actions; coordinates, commands, and channels are all decided end-side |
+| 🎯 **The AI only names intents** | 65 intents → 24 action types actually in use; coordinates, commands, and channels are all decided end-side |
 | 🔐 **Three authorization tiers** | Action mode governs "may the AI ask for this", channel mode governs "can the device do it" — orthogonal |
 | ⚡ **On-device-first decisions** | Dialogs, loading screens, and ads are handled locally instead of burning cloud quota |
 | 👁 **Multi-source vision** | On-device 3B (GGUF + JNI), a cloud vision model, and ML Kit Chinese OCR are picked by page complexity |
@@ -252,13 +252,14 @@ Dependencies point one way; `core` / `domain` sit at the bottom:
 
 ### Code size
 
-| Module | Source | Notes |
+| Scope | Source files | Lines |
 |---|---|---|
-| `app/src/main` | **356** Kotlin files / 91,003 lines | all main-app logic |
-| `app/src/test` + `testDebug` | 125 files / 1,287 `@Test` | JVM unit tests |
-| `provider` | 30 source files | permission service |
-| `env` | 4 source files | coding environment component |
-| `third_party/shizuku` | 156 source files | vendored upstream |
+| `app/src/main` production code | **356** | **91,042** |
+| Unit tests (`src/test` + `src/testDebug`) | **121** | **18,205**, with 1,260 `@Test` cases |
+| Main code across modules (`app` + `provider` + `provider-api`) | **390** | **96,301** |
+| Every `.kt` in the repo (`env` / `third_party` included) | **595** | **124,057** |
+
+> The numbers come from `tool/count-code.sh`: it counts `.kt` files returned by `git ls-files` and sums their lines, excluding `cpp`. They grow with the code, so treat them as the state of the commit that generated them; re-run the script to reproduce them.
 
 `app/src/debug` ships a debug-only log forwarding path (`LogServerCore` / `LogTransferSession` / `UsbDebugWatcher`) that streams logcat and in-app logs to [tool/hpa_log_receiver.py](tool/hpa_log_receiver.py) over a local port. None of it exists in release builds.
 
@@ -286,7 +287,7 @@ The same classifier decides how prompts are trimmed (`flagsOf`), so "trim for a 
 
 All 65 intents are declared once, as `CapabilitySpec` entries in `CapabilityRegistry` inside [CapabilitySpec.kt](app/src/main/java/com/phoneagent/domain/model/CapabilitySpec.kt). Each carries a name, category, purpose, risk tier, and target action. The translator, action-mode gate, skill catalog, and prompt consistency checks are **derived** from that table, so adding a capability should touch only two places: one registry entry, plus one target row in the channel ladder if it really produces a device action. `CapabilityRegistryTest` asserts that `IntentType.ALL` equals the registry key set exactly.
 
-[IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) lowers intents into 37 internal actions (`ActionType`), with three outcomes:
+[IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) lowers intents into internal actions (`ActionType` declares 38 constants; the capability registry uses 24 of them), with three outcomes:
 
 | Outcome | Meaning | Engine response |
 |---|---|---|
@@ -308,9 +309,9 @@ The nine `browse_*` intents, plus `see` and `web_search`, are not in the action 
 
 | Tier | Allowed |
 |---|---|
-| 🛡 CONSERVATIVE | the 35 low-risk intents (read-only / navigation / scrolling / local read-write / read-only browsing) |
-| ⚖️ BALANCED (default) | low risk + 21 medium + 5 high, 61 in total |
-| 🔓 FREE | everything, plus `terminal_op`, `shell` (AI-authored commands), `virtual_display`, and `a11y` (17 accessibility endpoints called directly, each confirmed once before first use) |
+| 🛡 CONSERVATIVE | 35 executable actions (read-only / navigation / scrolling / local read-write / read-only browsing) |
+| ⚖️ BALANCED (default) | 61 executable actions (35 low risk + 21 medium + 5 high) |
+| 🔓 FREE | all 65 executable, plus `terminal_op`, `shell` (AI-authored commands), `virtual_display`, and `a11y` — 4 free-tier-only actions (17 accessibility endpoints called directly, each confirmed once before first use) |
 
 There is exactly one gate: in the main loop, after skill normalization and before browser dispatch. The position is deliberate — `browse_*` never passes through the translator, so this is the only spot that can cover it. Three consecutive denials end the task and suggest relaxing the tier.
 
@@ -411,7 +412,11 @@ In free mode the AI writes its own commands, and it doesn't have to memorize ADB
 
 ### Vision pipeline
 
-[VisionRouting](app/src/main/java/com/phoneagent/core/ai/VisionRouting.kt) turns "which vision path" into a pure function that unit tests can cover:
+<p align="center">
+  <img src="docs/assets/vision-light.svg#gh-light-mode-only" width="900" alt="Vision routing: cloud / on-device 3B / ML Kit OCR">
+  <img src="docs/assets/vision-dark.svg#gh-dark-mode-only" width="900" alt="Vision routing: cloud / on-device 3B / ML Kit OCR">
+</p>
+
 
 | Source | Trigger | Output |
 |---|---|---|
@@ -444,6 +449,11 @@ Two implementation constraints: element features are precomputed once (the origi
 - Joining with `body + sep` must reproduce the original newlines exactly — `PromptSnapshotTest` locks it with golden samples, so changing `sep` is changing the prompt.
 
 ### Memory
+
+<p align="center">
+  <img src="docs/assets/memory-light.svg#gh-light-mode-only" width="900" alt="Six kinds of memory">
+  <img src="docs/assets/memory-dark.svg#gh-dark-mode-only" width="900" alt="Six kinds of memory">
+</p>
 
 | Type | Storage | Purpose |
 |---|---|---|
@@ -487,6 +497,11 @@ The nine `browse_*` intents are carried out by the built-in WebView's DOM script
 - **Automatic argument inference**: when a call is rejected for missing required parameters, the end side infers them from successful historical arguments, the previous step's result, the original request, and page text — saving a round-trip to the AI.
 
 ### Safety
+
+<p align="center">
+  <img src="docs/assets/safety-light.svg#gh-light-mode-only" width="900" alt="Five gates an action passes">
+  <img src="docs/assets/safety-dark.svg#gh-dark-mode-only" width="900" alt="Five gates an action passes">
+</p>
 
 | Mechanism | Implementation |
 |---|---|

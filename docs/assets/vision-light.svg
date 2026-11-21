@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 316" width="1200" height="316" role="img" aria-label="Vision routing">
+  <title>VisionRouting · 三源分流</title>
+  <rect width="1200" height="316" rx="18" fill="#F7F6F3"/>
+  <rect x="0.5" y="0.5" width="1199" height="315" rx="18" fill="none" stroke="#E2DFD7"/>
+
+  <g font-family="'Segoe UI',Helvetica,Arial,sans-serif">
+    <!-- 快照 -->
+    <rect x="40" y="118" width="180" height="80" rx="14" fill="#063A2E"/>
+    <text x="130" y="152" font-size="15" font-weight="700" fill="#F1F4F1" text-anchor="middle" letter-spacing="1">SNAPSHOT</text>
+    <text x="130" y="174" font-size="12" fill="#8FA79C" text-anchor="middle">elements.size</text>
+
+    <!-- 判定 -->
+    <path d="M232 158 H 258" stroke="#B9C3BD" stroke-width="2" fill="none"/>
+    <path d="M252 152 l10 6 -10 6 z" fill="#0E7C66"/>
+    <rect x="262" y="118" width="132" height="80" rx="40" fill="#FFFFFF" stroke="#D6D2C6"/>
+    <text x="328" y="152" font-size="16" font-weight="700" fill="#063A2E" text-anchor="middle">≤ 3 ?</text>
+    <text x="328" y="174" font-size="11" fill="#656D66" text-anchor="middle">稀疏度</text>
+
+    <!-- 分支线 -->
+    <g fill="none" stroke="#B9C3BD" stroke-width="2" stroke-linecap="round">
+      <path d="M394 158 C 420 158, 420 84, 446 84"/>
+      <path d="M394 158 C 420 158, 420 232, 446 232"/>
+    </g>
+    <g fill="#0E7C66">
+      <path d="M440 78 l10 6 -10 6 z"/>
+      <path d="M440 226 l10 6 -10 6 z"/>
+    </g>
+
+    <!-- 云端 -->
+    <rect x="446" y="44" width="330" height="80" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="446" y="44" width="6" height="80" rx="3" fill="#0E7C66"/>
+    <text x="472" y="76" font-size="15" font-weight="700" fill="#063A2E" letter-spacing="1">CLOUD VISION</text>
+    <text x="472" y="98" font-size="12" fill="#6D766F">complex page · textual description</text>
+    <text x="472" y="114" font-size="11" fill="#6A726B">sparse tree, semantics needed</text>
+
+    <!-- 端侧 -->
+    <rect x="446" y="192" width="330" height="80" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="446" y="192" width="6" height="80" rx="3" fill="#5FD9B4"/>
+    <text x="472" y="224" font-size="15" font-weight="700" fill="#063A2E" letter-spacing="1">ON-DEVICE 3B</text>
+    <text x="472" y="246" font-size="12" fill="#6D766F">GGUF + JNI · boxes + coords</text>
+    <text x="472" y="262" font-size="11" fill="#6A726B">120 s watchdog inside native</text>
+
+    <!-- OCR 兜底 -->
+    <g fill="none" stroke="#B9C3BD" stroke-width="2" stroke-linecap="round">
+      <path d="M776 84 C 812 84, 812 158, 834 158"/>
+      <path d="M776 232 C 812 232, 812 158, 834 158"/>
+    </g>
+    <path d="M828 152 l10 6 -10 6 z" fill="#0E7C66"/>
+    <rect x="838" y="112" width="322" height="92" rx="14" fill="#FFFFFF" stroke="#E2DFD7"/>
+    <rect x="838" y="112" width="6" height="92" rx="3" fill="#C6B183"/>
+    <text x="864" y="144" font-size="15" font-weight="700" fill="#063A2E" letter-spacing="1">ML KIT OCR</text>
+    <text x="864" y="166" font-size="12" fill="#6D766F">fallback when both yield nothing</text>
+    <text x="864" y="184" font-size="11" fill="#6A726B">text regions clustered into controls</text>
+
+    <text x="40" y="296" font-size="12" fill="#6A726B">A page fingerprint + screenshot size + task id hit reuses the previous result and skips all three paths.</text>
+  </g>
+</svg>

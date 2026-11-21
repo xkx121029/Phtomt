@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Android-8.0%2B%20%C2%B7%20API%2026-3DDC84?logo=android&logoColor=white" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/Kotlin-2.4-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4">
   <img src="https://img.shields.io/badge/Compose-M3%20Expressive-4285F4" alt="Compose Material 3">
-  <img src="https://img.shields.io/badge/tests-1%2C287-5FD9B4" alt="1287 tests">
+  <img src="https://img.shields.io/badge/tests-1%2C260-5FD9B4" alt="1287 tests">
   <img src="https://img.shields.io/badge/PRs-welcome-0E7C66" alt="PRs welcome">
 </p>
 
@@ -69,7 +69,7 @@ Happy Agent 是一个运行在 Android 上的 AI 智能体。你说"帮我把微
 | | |
 |---|---|
 | **形态** | Android 原生应用（Kotlin + Compose），14 个 Gradle 模块 |
-| **能力模型** | 65 个意图（4 档风险）→ 37 种动作，3 条执行通道 |
+| **能力模型** | 65 个意图（4 档风险）→ 24 种实际使用的动作类型，3 条执行通道 |
 | **模型要求** | 任意 OpenAI 兼容端点；默认 `glm-4.7-flash`，无强制云依赖 |
 | **系统要求** | Android 8.0+（API 26），无需 Root、无需单独安装 Shizuku |
 | **文档** | `docs/` 为权威源，[Wiki](https://github.com/xkx121029/Phtomt/wiki) 为对外门户 |
@@ -79,7 +79,7 @@ Happy Agent 是一个运行在 Android 上的 AI 智能体。你说"帮我把微
 | 能力 | 一句话 |
 |---|---|
 | 🧭 **三形态路由** | 每次输入先判定「手机操控 / 编码委托 / 纯对话」，不为一句"你好"启动整条感知循环 |
-| 🎯 **AI 只说意图** | 65 个意图 → 37 种内部动作，坐标、命令、通道都由端侧决定 |
+| 🎯 **AI 只说意图** | 65 个意图 → 24 种实际使用的动作类型，坐标、命令、通道都由端侧决定 |
 | 🔐 **三档授权** | 动作模式管"允不允许提这类请求"，通道模式管"设备有没有权限"，两者正交 |
 | ⚡ **端侧优先决策** | 弹窗、加载、广告等高频页面本地处理，不烧云端额度 |
 | 👁 **多源视觉** | 端侧 3B（GGUF + JNI）、云端视觉模型、ML Kit 中文 OCR 三路按页面复杂度自动分流 |
@@ -251,13 +251,14 @@ flowchart TB
 
 ### 代码规模
 
-| 模块 | 源文件 | 说明 |
+| 范围 | 源文件 | 行数 |
 |---|---|---|
-| `app/src/main` | **356** 个 Kotlin / 91,003 行 | 主应用全部逻辑 |
-| `app/src/test` + `testDebug` | 125 个文件 / 1,287 个 `@Test` | JVM 单测 |
-| `provider` | 30 个源文件 | 权限服务 |
-| `env` | 4 个源文件 | 编码环境组件 |
-| `third_party/shizuku` | 156 个源文件 | vendor 上游 |
+| `app/src/main` 主代码 | **356** | **91,042** |
+| 单元测试（`src/test` + `src/testDebug`） | **121** | **18,205**，含 1,260 个 `@Test` |
+| 跨模块主代码（`app` + `provider` + `provider-api`） | **390** | **96,301** |
+| 全仓 `.kt`（含 `env` / `third_party`） | **595** | **124,057** |
+
+> 上表由 `tool/count-code.sh` 生成：口径是 `git ls-files` 列出的 `.kt` 文件、逐文件累计行数，不含 `cpp`。数字随代码增长，以生成时的提交为准；改了代码重跑脚本即可复现。
 
 `app/src/debug` 另有一套仅 debug 变体的日志转发通道（`LogServerCore` / `LogTransferSession` / `UsbDebugWatcher`），把 logcat 与应用内日志经本机端口推给 [tool/hpa_log_receiver.py](tool/hpa_log_receiver.py)，release 包里不存在这段代码。
 
@@ -285,7 +286,7 @@ flowchart TB
 
 65 个意图由 [CapabilitySpec](app/src/main/java/com/phoneagent/domain/model/CapabilitySpec.kt) 里的 `CapabilityRegistry` 统一声明，每条带名称、分类、用途、风险档和目标动作。转译层、动作模式门控、技能目录、提示词一致性检查全部从这张表**派生**，所以新增一个能力只该动两处：注册表加一条；如果它真的产生设备动作，再在通道阶梯表加一行目标。`CapabilityRegistryTest` 会强制 `IntentType.ALL` 与注册表键集完全相等。
 
-[IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) 把意图落到 37 种内部动作（`ActionType`），三种结果：
+[IntentTranslator](app/src/main/java/com/phoneagent/engine/execution/IntentTranslator.kt) 把意图落到内部动作（`ActionType` 共 38 个常量，能力注册表实际用到其中 24 种），三种结果：
 
 | 结果 | 含义 | 引擎处置 |
 |---|---|---|
@@ -307,9 +308,9 @@ flowchart TB
 
 | 档位 | 放行范围 |
 |---|---|
-| 🛡 保守 CONSERVATIVE | 35 项低风险意图（只读 / 导航 / 滚动 / 本地读写 / 只读浏览） |
-| ⚖️ 均衡 BALANCED（默认） | 低风险 + 21 项中风险 + 5 项高风险，共 61 项 |
-| 🔓 自由 FREE | 全部，另加 `terminal_op` / `shell`（AI 自写命令）/ `virtual_display` / `a11y`（17 个无障碍端点直调，首次执行前需确认） |
+| 🛡 保守 CONSERVATIVE | 35 项可执行动作（只读 / 导航 / 滚动 / 本地读写 / 只读浏览） |
+| ⚖️ 均衡 BALANCED（默认） | 61 项可执行动作（低风险 35 + 中风险 21 + 高风险 5） |
+| 🔓 自由 FREE | 65 项全部可执行，另加 `terminal_op` / `shell`（AI 自写命令）/ `virtual_display` / `a11y` 这 4 项自由档专属（17 个无障碍端点直调，首次执行前需确认） |
 
 门控点只有一处：主循环里技能归一化之后、浏览器分流之前。位置是刻意的——`browse_*` 不走转译层，只有卡在这里才能一并覆盖。连续 3 次被拒即收尾，并提示放宽档位。
 
@@ -410,7 +411,11 @@ Termux 的 `RUN_COMMAND` 权限、结果 PendingIntent 回传、`allow-external-
 
 ### 视觉链路
 
-[VisionRouting](app/src/main/java/com/phoneagent/core/ai/VisionRouting.kt) 把"用哪一路视觉"做成纯函数，可单测：
+<p align="center">
+  <img src="docs/assets/vision-light.svg#gh-light-mode-only" width="900" alt="视觉三源分流：云端 / 端侧 3B / ML Kit OCR">
+  <img src="docs/assets/vision-dark.svg#gh-dark-mode-only" width="900" alt="视觉三源分流：云端 / 端侧 3B / ML Kit OCR">
+</p>
+
 
 | 来源 | 触发条件 | 产物 |
 |---|---|---|
@@ -443,6 +448,11 @@ settings_btn / sort_btn / clear_input
 - 数组拼接时 `body + sep` 必须精确复现原文换行——`PromptSnapshotTest` 用金样本锁定，改 `sep` 就等于改提示词。
 
 ### 记忆体系
+
+<p align="center">
+  <img src="docs/assets/memory-light.svg#gh-light-mode-only" width="900" alt="六类记忆">
+  <img src="docs/assets/memory-dark.svg#gh-dark-mode-only" width="900" alt="六类记忆">
+</p>
 
 | 类型 | 存储 | 用途 |
 |---|---|---|
@@ -486,6 +496,11 @@ settings_btn / sort_btn / clear_input
 - **缺参自动推断**：因缺必填参数被拒时，端侧先从历史成功参数 / 上一步结果 / 任务原文 / 页面文本推断补全，免去一轮追问。
 
 ### 安全防护
+
+<p align="center">
+  <img src="docs/assets/safety-light.svg#gh-light-mode-only" width="900" alt="动作通过的五道闸">
+  <img src="docs/assets/safety-dark.svg#gh-dark-mode-only" width="900" alt="动作通过的五道闸">
+</p>
 
 | 机制 | 实现 |
 |---|---|
