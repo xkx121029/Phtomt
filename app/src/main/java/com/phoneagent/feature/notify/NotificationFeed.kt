@@ -1,11 +1,17 @@
 package com.phoneagent.feature.notify
 
+import com.phoneagent.core.security.DataSanitizer
+
 /**
  * 通知感知缓存：[AgentNotificationListener] 把本机活动通知汇入这里，
  * 引擎决策上下文与 notif_read / notif_clear 技能都读这一份。
  *
  * 纯内存环形结构（最多 [MAX] 条，超过挤掉最旧的），不落盘——通知是易变信息，
  * 持久化只会让 AI 拿到过期的验证码。
+ *
+ * 与 DataSanitizer 的关系：通知正文是全应用最直接的验证码/到账信息来源，
+ * 拼进决策上下文即等于明文上云，所以 [decisionText] 与 [readText] 的每条
+ * 标题/正文都必须过 [DataSanitizer.sanitizeNotificationBody]。
  */
 object NotificationFeed {
 
@@ -76,8 +82,11 @@ object NotificationFeed {
         return buildString {
             appendLine("\n## 最新通知（来自通知监听，可能含验证码/提醒）")
             list.take(DECISION_MAX_LINES).forEach { n ->
-                val head = n.title.ifBlank { n.appName }
-                val body = n.text.replace("\n", " ").take(DECISION_BODY_LIMIT)
+                val head = DataSanitizer.sanitizeNotificationBody(n.packageName, n.title.ifBlank { n.appName })
+                val body = DataSanitizer.sanitizeNotificationBody(
+                    n.packageName,
+                    n.text.replace("\n", " ").take(DECISION_BODY_LIMIT),
+                )
                 appendLine("- [${n.appName}] $head${if (body.isBlank()) "" else "：$body"}")
             }
         }
@@ -95,8 +104,11 @@ object NotificationFeed {
             else -> buildString {
                 appendLine("共 ${list.size} 条通知：")
                 list.forEach { n ->
-                    val head = n.title.ifBlank { n.appName }
-                    val body = n.text.replace("\n", " ").take(READ_BODY_LIMIT)
+                    val head = DataSanitizer.sanitizeNotificationBody(n.packageName, n.title.ifBlank { n.appName })
+                    val body = DataSanitizer.sanitizeNotificationBody(
+                        n.packageName,
+                        n.text.replace("\n", " ").take(READ_BODY_LIMIT),
+                    )
                     appendLine("- [${n.packageName}] $head${if (body.isBlank()) "" else "：$body"}")
                 }
             }

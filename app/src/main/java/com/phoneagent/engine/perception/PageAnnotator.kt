@@ -246,19 +246,29 @@ object PageAnnotator {
     /**
      * 把已标定的已知控件渲染成给 AI 的清单文本。
      * AI 可直接用 target:{by:"id", value:"语义id"} 精确定位选择这些控件（契约字段是 by，见 AgentIntentTarget）。
+     *
+     * 脱敏口径是「整页」而不是「逐控件」：控件文字与 toAiText 同路上云，必须过 DataSanitizer；
+     * 但验证码标签（「请输入验证码」）与验证码数字（「123456」）在页面上通常是两个 TextView，
+     * 逐控件脱敏时数字自身既没有引导词、也没有 11 位数字，两条规则都不会命中——
+     * 所以这里把整页标签一起交给 DataSanitizer 判定上下文，再逐条掩码。
      */
     fun knownControlsText(elements: List<UiElement>): String {
-        val known = elements.filter { !it.semanticId.isNullOrBlank() }
-        if (known.isEmpty()) return ""
-        val lines = known.joinToString("\n") { e ->
-            val raw = (e.text ?: e.contentDescription)?.takeIf { it.isNotBlank() } ?: e.type
-            // 脱敏铁律：控件文字与 toAiText 同路上云，必须过 DataSanitizer——
-            // 页面上的手机号/身份证/卡号若以原文进 prompt，等于绕过端侧脱敏明文外送
-            val label = DataSanitizer.sanitize(raw)
-            "- ${e.semanticId}: $label（#${e.index}, viewId=${e.viewId ?: "-"}）"
+        if (elements.none { !it.semanticId.isNullOrBlank() }) return ""
+        val masked = DataSanitizer.sanitizePageLabels(
+            elements.map { rawLabel(it) },
+            elements.any { it.editable && it.isPassword },
+        )
+        val lines = elements.mapIndexedNotNull { i, e ->
+            val id = e.semanticId?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
+            "- $id: ${masked[i]}（#${e.index}, viewId=${e.viewId ?: "-"}）"
         }
-        return "\n# 端侧已识别控件（可直接用 target:{by:\"id\",value:\"语义id\"} 选择）\n$lines"
+        return "\n# 端侧已识别控件（可直接用 target:{by:\"id\",value:\"语义id\"} 选择）\n" +
+            lines.joinToString("\n")
     }
+
+    /** 控件的原始展示文本（读屏顺序里的可见内容） */
+    private fun rawLabel(e: UiElement): String =
+        (e.text ?: e.contentDescription)?.takeIf { it.isNotBlank() } ?: e.type
 
     // 页面类型推断（inferPageType）已下沉至 domain.rules.PageTypeRules，
     // 端侧决策引擎与感知层共用同一份判定，词表仅此一处定义。

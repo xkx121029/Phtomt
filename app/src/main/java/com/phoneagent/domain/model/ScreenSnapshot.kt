@@ -20,6 +20,13 @@ data class ScreenSnapshot(
     /** 是否附带截图（用于视觉理解） */
     val hasScreenshot: Boolean = false,
 ) {
+    /**
+     * 页面上是否存在密码输入框。
+     * 整页脱敏的强信号：密码框所在页面上的数字（验证码、卡号）都按密文处理。
+     */
+    val hasPasswordField: Boolean
+        get() = elements.any { it.editable && it.isPassword }
+
     /** 生成面向 AI 的文本描述 */
     fun toAiText(): String {
         val sb = StringBuilder()
