@@ -156,7 +156,9 @@ class VerifiedClickExecutor(
      * 抽成参数是为了能单测"读不到页面"这条分支：走 `AgentAccessibilityService.instance`
      * 这个全局静态时，这条分支在 JVM 单测里根本进不去，于是它错了也无人发现。
      */
-    private val capture: () -> ScreenSnapshot? = { AgentAccessibilityService.instance?.captureScreen() },
+    private val capture: suspend () -> ScreenSnapshot? = {
+        AgentAccessibilityService.instance?.captureScreenAsync()
+    },
 ) {
 
     /**

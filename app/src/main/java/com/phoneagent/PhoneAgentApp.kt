@@ -30,6 +30,22 @@ class PhoneAgentApp : Application() {
                 runCatching { com.phoneagent.coding.agent.CodingWorkspaces.ensureInitialized(this@PhoneAgentApp) }
             }
         }
+        // 设置首读预热：界面首帧门控要等 `agent_settings` 读完 —— 首读要解 protobuf，随后整段
+        // Settings 解码（6 次 SecretCodec 解密 + 两次 JSON 解码）。放到 IO 上跑，与 Activity 的
+        // inflate 和首次组合并行，门控只需等这一段里剩下的零头。
+        ioScope.launch {
+            StartupTrace.span("设置首读预热") {
+                runCatching {
+                    val settings = org.koin.core.context.GlobalContext.get()
+                        .get<com.phoneagent.data.prefs.AppSettings>()
+                    val first = settings.settings.first()
+                    // 镜像只做门控加速：权威值一读到就对齐，不一致时以 DataStore 为准修镜像
+                    if (settings.syncOnboardingMirror(first.onboardingDone)) {
+                        StartupTrace.mark("引导门控镜像已按 DataStore 修复")
+                    }
+                }
+            }
+        }
         // 幽灵副屏清理：上个进程被强杀会把 overlay_display_devices 留在系统设置里，
         // 系统因此一直挂着一块没人用的副屏（显示设置里能看到"第二块屏"）。
         // Shizuku 通道由 Provider 异步轮询得到，等它就绪后再清（最多 20 秒），没有通道就跳过。
