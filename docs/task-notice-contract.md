@@ -14,8 +14,7 @@ TaskNoticeCenter.notice: StateFlow<TaskNotice?>
 data class TaskNotice(
     val id: String,              // 稳定键，相同 id + text 视为同一条
     val kind: TaskNoticeKind,    // 目前只有 DEGRADATION
-    val trigger: String,         // channel_unavailable / permission_missing / model_timeout /
-                                 // page_stuck / clock_fallback
+    val trigger: String,         // 触发原因，见下方两份来源
     val source: String,          // clock / launch / action / permission / decision
     val text: String,            // 中文成品，直接展示，界面不要再拼文案
     val method: String?,         // 当前实际方式的中文名；null = 没有自动方式
@@ -23,6 +22,17 @@ data class TaskNotice(
     val atMillis: Long,          // 产生时间，供展示层计时消失
 )
 ```
+
+### 1.1 `trigger` 的取值：两个来源，不是一个枚举
+
+| 来源 | 取值 | 定义点 |
+| --- | --- | --- |
+| `DegradationTrigger` 枚举（6 个） | `permission_missing` / `channel_unavailable` / `model_timeout` / `page_stuck` / `uncommitted_input` / `transient_evidence` | `engine/execution/DegradationPolicy.kt` |
+| 时钟降级的字面量（1 个） | `clock_fallback` | `engine/runtime/TaskNoticeStore.kt` 的 `publishClock`，**不在上面那个枚举里** |
+
+界面若要按 `trigger` 分支，以这张表为准。`uncommitted_input`（把内容填进输入框就宣称完成）与
+`transient_evidence`（把 toast / 绿勾当成完成证据）是「任务假完成」类提示：出现频率低，但优先级高于
+普通降级，不要落到默认样式里。
 
 ## 2. 什么时候会有值
 

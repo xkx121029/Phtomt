@@ -72,27 +72,28 @@ object ActionPolicy {
     }
 
     /**
-     * 低风险意图（23 项）：不改变设备/外部状态，或只做本地读写与只读浏览。
-     * 保守模式只放行这一档。
+     * 低风险意图（35 项，取自注册表的 LOW 档）：不改变设备/外部状态，或只做本地读写与只读浏览。
+     * 保守模式只放行这一档，因此保守档的放行数就是这一档的大小。
      */
     val lowRisk: Set<String> = CapabilityRegistry.ofRisk(RiskTier.LOW)
 
     /**
-     * 中风险意图（16 项）：会改动设备/外部状态，但可见、可撤销，或本就是用户明确要求。
-     * 均衡模式起放行。
+     * 中风险意图（21 项，取自注册表的 MID 档）：会改动设备/外部状态，但可见、可撤销，或本就是用户明确要求。
+     * 均衡模式起放行，因此均衡档放行数 = 低 + 中 + 高 = 61。
      */
     val midRisk: Set<String> = CapabilityRegistry.ofRisk(RiskTier.MID)
 
     /**
-     * 高风险意图（3 项）：真实不可逆（发送/授权结算/删除）。
+     * 高风险意图（5 项，取自注册表的 HIGH 档）：真实不可逆（发送/授权结算/删除）。
      * 保守模式拒绝；均衡/自由放行但沿用既有 needs_confirmation 机制由 AI 自行标注。
      */
     val highRisk: Set<String> = CapabilityRegistry.ofRisk(RiskTier.HIGH)
 
     /**
-     * 自由模式专属意图（2 项）：不属于转译层既有命令，保守/均衡一律拒绝。
+     * 自由模式专属意图（4 项，取自注册表的 EXTENDED 档）：不属于转译层既有命令，保守/均衡一律拒绝。
      * - SHELL：AI 自写 shizuku/adb/termux 命令
      * - A11Y：直接调用无障碍端点
+     * 加上这 4 项才是注册表全集 = 65，也就是自由档的放行数。
      */
     val freeOnly: Set<String> = CapabilityRegistry.ofRisk(RiskTier.EXTENDED)
 
