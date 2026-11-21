@@ -165,8 +165,11 @@ class ExecutionPhaseTest {
                 actionMode = { mode },
                 idempotencyDone = { idempotentDone },
                 committedEffects = { committed.toList() },
-                recordEffect = { action, step ->
-                    committed += EngineRules.CommittedEffect(EngineRules.idempotencyKey(action, action.type), step)
+                recordEffect = { action, step, realLabel ->
+                    committed += EngineRules.CommittedEffect(
+                        EngineRules.idempotencyKey(action, action.type, realLabel),
+                        step,
+                    )
                 },
                 a11yDisconnectedNote = { "" },
             ),

@@ -1,15 +1,18 @@
-package com.phoneagent.engine.execution
+package com.phoneagent.domain.rules
 
 /**
  * 点击目标的危险词判定：标签落在不可逆语义里时，执行前必须过用户确认门。
  *
- * 为什么需要这一层：确认门本身是硬的（ExecutionPhase 里 awaitActionConfirmation + 120s 超时），
+ * 为什么需要这一层：确认门本身是硬的（UserGate.awaitActionConfirmation + 120s 超时），
  * 但置位它的只有语义意图——`intent=delete/send/confirm` 与能力注册表的 needsConfirmation。
  * 模型完全可以用最通用的 `tap`（按文字定位）绕开这些意图去点「删除」：那条路上
  * needsUserConfirmation 是 false，门根本不会被问。所以这里按标签再做一次兜底判定，
  * 与意图无关——不管模型从哪条路走到这一下点击，只要标签是危险的就必须问用户。
  *
- * 词表取舍（可维护：只改下面三个常量）：
+ * 放在 `domain/rules` 而不是执行层：词表是纯领域知识、零依赖，幂等判据（[EngineRules]）
+ * 与派发层闸门（`engine.execution.DangerousTargetGate`）都要用同一份，谁也不能各写一张。
+ *
+ * 词表取舍（可维护：只改下面几个常量）：
  * - 只收「点下去就可能丢数据 / 花钱 / 不可恢复」的词，不收可逆或纯导航的词
  *   （取消 / 关闭 / 返回 / 退出登录都能再来一次，登记它们等于给所有点击加确认）。
  * - 「删除并退出」「永久删除」「确认删除」已被「删除」子串覆盖，不重复登记。
@@ -19,6 +22,9 @@ package com.phoneagent.engine.execution
  *   删掉就是删掉），但少数是可逆的界面复位（清空输入框、清除筛选条件）。
  *   命中后若标签里同时出现 [REVERSIBLE_CONTEXT] 里的语境词则放行，
  *   避免正常的输入流程被卡在确认上，同时「清空搜索历史」这类仍会被问——它不含语境词。
+ * - **英文半边与中文半边一一对应**：旧表纯中文，英文界面的 Delete / Pay / Place order
+ *   一律被判成"无副作用"（HAPP-35 P1-4）。英文匹配走 [WordMatch] 的左词边界，
+ *   避免 `border`→order、`resend`→send 这类假命中。
  */
 internal object DangerousTargetWords {
 
@@ -34,6 +40,18 @@ internal object DangerousTargetWords {
     /** 可逆语境：与批量抹除词同现时说明这一下只是复位界面，不是抹数据 */
     private val REVERSIBLE_CONTEXT = listOf("输入", "筛选", "条件", "草稿", "关键字")
 
+    /** 英文不可逆词：逐条对应 [IRREVERSIBLE]，刻意同样不收 send / publish / submit 这类泛词 */
+    val IRREVERSIBLE_EN = listOf(
+        "delete", "remove", "uninstall", "format", "factory reset", "transfer",
+        "pay", "payment", "place order", "submit order", "buy", "purchase",
+    )
+
+    /** 英文批量抹除词：同 [BULK_CLEAR] */
+    val BULK_CLEAR_EN = listOf("clear", "erase")
+
+    /** 英文可逆语境：同 [REVERSIBLE_CONTEXT]，让 "Clear filter" 不被拦 */
+    private val REVERSIBLE_CONTEXT_EN = listOf("input", "filter", "draft", "keyword")
+
     /**
      * @return 命中的危险词（供日志与确认框说明用）；标签安全或为空时返回 null
      */
@@ -43,6 +61,10 @@ internal object DangerousTargetWords {
         // 可逆语境只豁免批量抹除那一档：直接命中的危险词没有例外
         val clear = BULK_CLEAR.firstOrNull { label.contains(it) }
             ?.takeUnless { REVERSIBLE_CONTEXT.any { ctx -> label.contains(ctx) } }
-        return IRREVERSIBLE.firstOrNull { label.contains(it) } ?: clear
+        IRREVERSIBLE.firstOrNull { label.contains(it) }?.let { return it }
+        if (clear != null) return clear
+        val clearEn = WordMatch.hit(label, BULK_CLEAR_EN)
+            ?.takeUnless { WordMatch.hit(label, REVERSIBLE_CONTEXT_EN) != null }
+        return WordMatch.hit(label, IRREVERSIBLE_EN) ?: clearEn
     }
 }

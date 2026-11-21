@@ -447,7 +447,7 @@ class AgentEngine(
             idempotencyDone = { snapshot -> EngineRules.idempotencyDone(snapshot) },
             // 幂等判据的唯一来源：本任务内真的下发并确认过的副作用动作（不是页面文字）
             committedEffects = { store.committedEffects.toList() },
-            recordEffect = { action, step -> store.recordCommittedEffect(action, step) },
+            recordEffect = { action, step, realLabel -> store.recordCommittedEffect(action, step, realLabel) },
             a11yDisconnectedNote = {
                 if (AgentAccessibilityService.instance == null) "（无障碍服务已断开）" else ""
             },
