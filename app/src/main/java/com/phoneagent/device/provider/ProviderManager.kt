@@ -378,6 +378,29 @@ object ProviderManager {
     private data class BindAttempt(val label: String, val intent: Intent, val flags: Int)
 
     /**
+     * Provider 调用的唯一注入点。
+     *
+     * 存在的理由：启动阶梯「无障碍失败 → 换 shell → 本应用直启」的**接线**，只有在能决定
+     * 「无障碍这一步是成功还是失败」时才跑得起来；真实路径要求设备上装了并绑定了服务组件。
+     * 单测注入假 binder，跑完把 [transport] 换回 [RealProviderTransport] 即可。
+     *
+     * 默认实现就是原来的真实路径，[call] 的签名与默认参数未改，**生产调用点一行没动**。
+     */
+    internal interface Transport {
+        suspend fun <T> call(context: Context, timeoutMs: Long, block: suspend (IDeviceProvider) -> T): T?
+    }
+
+    /** 真实通道：绑定服务组件 → 契约校验 → IO 线程上限制时执行 */
+    internal object RealProviderTransport : Transport {
+        override suspend fun <T> call(context: Context, timeoutMs: Long, block: suspend (IDeviceProvider) -> T): T? =
+            realCall(context, timeoutMs, block)
+    }
+
+    /** 当前使用的通道路径（默认真实路径）；仅供测试替换 */
+    @Volatile
+    internal var transport: Transport = RealProviderTransport
+
+    /**
      * 带超时与断连兜底的远程调用：Provider 不可用、超时、DeadObject 一律返回 null。
      * 调用方按“不可用”处理即可（例如回落为「请先安装/授权服务组件」提示）。
      *
@@ -385,11 +408,17 @@ object ProviderManager {
      * TransactionTooLargeException）说明 Provider 活得好好的，若也清代理并保留旧绑定，
      * 之后既拿不到回调也发不出请求 —— 这正是「显示已连接但命令全废」的成因。
      */
-    // 绑定不上、契约版本不匹配、调用抛错是三种互不相干的失败，各自早退比串成 else-if 更好读
-    @Suppress("ReturnCount")
     suspend fun <T> call(
         context: Context = requireNotNull(appContext) { "ProviderManager 未初始化" },
         timeoutMs: Long = 5_000L,
+        block: suspend (IDeviceProvider) -> T,
+    ): T? = transport.call(context, timeoutMs, block)
+
+    // 绑定不上、契约版本不匹配、调用抛错是三种互不相干的失败，各自早退比串成 else-if 更好读
+    @Suppress("ReturnCount")
+    private suspend fun <T> realCall(
+        context: Context,
+        timeoutMs: Long,
         block: suspend (IDeviceProvider) -> T,
     ): T? {
         val remote = ensureBound(context) ?: return null
