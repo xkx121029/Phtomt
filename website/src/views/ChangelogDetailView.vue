@@ -50,22 +50,24 @@ watch(() => route.params.version, (v) => v && load(v))
     <section class="head">
       <div class="page">
         <RouterLink to="/changelog" class="back">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           全部更新记录
         </RouterLink>
 
-        <p v-if="loading" class="muted head__loading">正在读取…</p>
-        <p v-else-if="!entry" class="muted head__loading">未找到 {{ route.params.version }} 的更新记录。</p>
+        <p v-if="loading" class="muted head__state">正在读取…</p>
+        <p v-else-if="!entry" class="muted head__state">未找到 {{ route.params.version }} 的更新记录。</p>
 
         <template v-else>
+          <p class="eyebrow head__label">版本</p>
           <h1 class="h1 head__ver mono">{{ entry.version }}</h1>
           <div class="head__meta">
             <span v-if="entry.date" class="muted small">{{ formatDate(entry.date) }} · {{ relativeTime(entry.date) }}</span>
             <span v-for="c in counts" :key="c.type" :class="['tag', `tag--${c.tone}`]">{{ c.type }} {{ c.count }}</span>
           </div>
         </template>
+        <hr class="head__rule" />
       </div>
     </section>
 
@@ -80,28 +82,20 @@ watch(() => route.params.version, (v) => v && load(v))
             <span class="muted mono sec__count">{{ sec.items?.length || 0 }}</span>
           </h2>
           <ul class="sec__list">
-            <li v-for="(item, i) in sec.items" :key="i" v-reveal="i * 30" class="sec__item">{{ item }}</li>
+            <li v-for="(item, i) in sec.items" :key="i" v-reveal="i * 25" class="sec__item">{{ item }}</li>
           </ul>
         </div>
 
-        <nav class="nav">
-          <RouterLink
-            v-if="older"
-            :to="`/changelog/${older.version}`"
-            class="card nav__card"
-          >
-            <span class="nav__dir muted small">更早</span>
+        <nav class="nav" aria-label="相邻版本">
+          <RouterLink v-if="older" :to="`/changelog/${older.version}`" class="nav__card">
+            <span class="nav__dir muted small">← 更早</span>
             <span class="mono nav__ver">{{ older.version }}</span>
             <span v-if="older.date" class="muted small">{{ formatDate(older.date) }}</span>
           </RouterLink>
           <span v-else class="nav__spacer" />
 
-          <RouterLink
-            v-if="newer"
-            :to="`/changelog/${newer.version}`"
-            class="card nav__card nav__card--right"
-          >
-            <span class="nav__dir muted small">更新</span>
+          <RouterLink v-if="newer" :to="`/changelog/${newer.version}`" class="nav__card nav__card--right">
+            <span class="nav__dir muted small">更新 →</span>
             <span class="mono nav__ver">{{ newer.version }}</span>
             <span v-if="newer.date" class="muted small">{{ formatDate(newer.date) }}</span>
           </RouterLink>
@@ -113,14 +107,13 @@ watch(() => route.params.version, (v) => v && load(v))
 
 <style scoped>
 .head {
-  padding-block: clamp(40px, 5vw, 64px) clamp(24px, 3vw, 34px);
-  border-bottom: 1px solid var(--line);
+  padding-top: clamp(28px, 4vw, 48px);
 }
 
 .back {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: var(--t-sm);
   color: var(--ink-3);
   transition: color var(--dur-ui) ease;
@@ -128,131 +121,131 @@ watch(() => route.params.version, (v) => v && load(v))
 
 @media (hover: hover) and (pointer: fine) {
   .back:hover {
-    color: var(--brand);
+    color: var(--ink);
   }
 }
 
-.head__loading {
+.head__state {
   margin-top: 20px;
 }
 
+.head__label {
+  margin-top: 26px;
+}
+
 .head__ver {
-  margin-top: 20px;
-  letter-spacing: -0.03em;
+  margin-top: 8px;
+  letter-spacing: var(--track-num);
 }
 
 .head__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 14px;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.head__rule {
+  height: 2px;
+  border: none;
+  margin: 28px 0 0;
+  background: var(--ink);
+  opacity: 0.86;
 }
 
 .body {
-  max-width: 860px;
+  max-width: 78ch;
 }
 
 .summary {
-  padding: 18px 22px;
-  border-left: 3px solid var(--brand);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  background: var(--paper-sunken);
-  font-size: var(--t-body);
-  color: var(--ink-2);
-  line-height: 1.85;
+  font-size: clamp(1rem, 0.96rem + 0.3vw, 1.12rem);
+  line-height: 1.9;
+  color: var(--ink);
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
 }
 
 .sec {
-  margin-top: clamp(32px, 4vw, 48px);
+  margin-top: 26px;
 }
 
 .sec__title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: var(--t-h3);
-  margin-bottom: 14px;
+  gap: 9px;
+  font-size: 1.02rem;
 }
 
 .sec__mark {
-  width: 4px;
-  height: 18px;
-  border-radius: var(--r-pill);
-  background: var(--line-2);
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--ink-3);
 }
 
-.sec__mark--ok { background: var(--ok); }
-.sec__mark--brand { background: var(--brand); }
-.sec__mark--amber { background: var(--amber); }
-.sec__mark--mist { background: var(--mist); }
-.sec__mark--danger { background: var(--danger); }
+.sec__mark--ok {
+  background: var(--ok);
+}
+
+.sec__mark--brand {
+  background: var(--brand);
+}
+
+.sec__mark--amber {
+  background: var(--amber);
+}
+
+.sec__mark--mist {
+  background: var(--mist);
+}
+
+.sec__mark--danger {
+  background: var(--danger);
+}
 
 .sec__count {
   font-size: var(--t-xs);
-  font-weight: 400;
+  color: var(--ink-3);
 }
 
 .sec__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  margin: 10px 0 0;
+  padding-left: 20px;
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .sec__item {
-  position: relative;
-  padding: 12px 16px 12px 30px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--paper-raised);
   font-size: var(--t-sm);
+  line-height: 1.9;
   color: var(--ink-2);
-  line-height: 1.82;
 }
 
-.sec__item::before {
-  content: "";
-  position: absolute;
-  left: 14px;
-  top: 1.32em;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--brand);
-  opacity: 0.55;
+.sec__item::marker {
+  color: var(--line-2);
 }
 
 .nav {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: clamp(40px, 5vw, 64px);
-  padding-top: clamp(24px, 3vw, 34px);
+  gap: 12px;
+  margin-top: clamp(32px, 4vw, 48px);
+  padding-top: 22px;
   border-top: 1px solid var(--line);
 }
 
 .nav__card {
   display: grid;
-  gap: 4px;
-  transition:
-    transform var(--dur-press) var(--ease-out),
-    border-color var(--dur-ui) ease;
-}
-
-.nav__card:active {
-  transform: scale(0.98);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .nav__card:hover {
-    border-color: var(--line-2);
-  }
+  gap: 3px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-raised);
+  transition: border-color var(--dur-ui) ease;
 }
 
 .nav__card--right {
-  justify-items: end;
   text-align: right;
 }
 
@@ -261,7 +254,6 @@ watch(() => route.params.version, (v) => v && load(v))
 }
 
 .nav__ver {
-  color: var(--brand);
   font-weight: 600;
 }
 
@@ -269,9 +261,9 @@ watch(() => route.params.version, (v) => v && load(v))
   display: block;
 }
 
-@media (max-width: 640px) {
-  .nav {
-    grid-template-columns: 1fr;
+@media (hover: hover) and (pointer: fine) {
+  .nav__card:hover {
+    border-color: var(--line-2);
   }
 }
 </style>

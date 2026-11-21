@@ -21,16 +21,17 @@ onMounted(() => loadStatus())
 <template>
   <div>
     <PageHero
-      eyebrow="问答"
+      no="10 / 问答"
+      eyebrow="AI 问答"
       title="关于这个项目，先问一句"
       lead="助手只依据本站的功能、文档、常见问题与更新日志作答；资料里没有的，它会直说不确定，并把你引到仓库的 Issues。"
     />
 
     <section class="section section--tight">
       <div class="page">
-        <div v-if="staticOnly || (probed && !available)" class="card notice">
-          <h2 class="notice__title">问答尚未开启</h2>
-          <p class="notice__body">
+        <div v-if="staticOnly || (probed && !available)" class="note">
+          <h2 class="note__title">问答尚未开启</h2>
+          <p class="note__body">
             {{
               staticOnly
                 ? '当前是静态站点构建，没有可用的问答后端。请在部署了 Node 服务的站点上使用。'
@@ -45,7 +46,7 @@ onMounted(() => loadStatus())
           </div>
         </div>
 
-        <div v-else-if="!probed" class="card notice">
+        <div v-else-if="!probed" class="note">
           <p class="muted small">正在检查问答服务…</p>
         </div>
 
@@ -58,6 +59,27 @@ onMounted(() => loadStatus())
 </template>
 
 <style scoped>
+.note {
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  background: var(--paper-raised);
+}
+
+.note__title {
+  font-size: var(--t-h3);
+}
+
+.note__body {
+  font-size: var(--t-sm);
+  line-height: 1.9;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+
 .notice {
   display: grid;
   gap: 14px;

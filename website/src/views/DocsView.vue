@@ -37,18 +37,19 @@ onMounted(async () => {
 <template>
   <div>
     <PageHero
+      no="07 / 文档"
       eyebrow="文档中心"
       :title="total ? `${total} 篇文档，从装好到改源码` : '文档中心'"
-      lead="按「入门 → 进阶 → 支持 → 合规」组织。每篇都写清了设计动机——为什么这么做，以及不这么做会踩什么坑。"
+      lead="按「入门 → 进阶 → 支持 → 合规」组织。每篇都写清设计动机——为什么这么做，以及不这么做会踩什么坑。"
     >
-      <div class="search">
-        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <label class="search">
+        <svg width="15" height="15" viewBox="0 0 18 18" fill="none" aria-hidden="true">
           <circle cx="8" cy="8" r="5.2" stroke="currentColor" stroke-width="1.6" />
           <path d="m12.2 12.2 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
         </svg>
         <input v-model="query" class="search__input" type="search" placeholder="搜索文档标题或摘要…" aria-label="搜索文档" />
         <button v-if="query" class="search__clear" type="button" aria-label="清空搜索" @click="query = ''">×</button>
-      </div>
+      </label>
     </PageHero>
 
     <section class="section section--tight">
@@ -59,22 +60,22 @@ onMounted(async () => {
         <div v-for="group in groups" :key="group.group" class="group">
           <h2 v-reveal class="group__title">
             {{ group.group }}
-            <span class="muted mono group__count">{{ group.items.length }}</span>
+            <span class="mono group__count">{{ String(group.items.length).padStart(2, '0') }}</span>
           </h2>
 
-          <div class="grid">
+          <div class="cards">
             <RouterLink
               v-for="(doc, index) in group.items"
               :key="doc.slug"
-              v-reveal="index * 50"
+              v-reveal="index * 40"
               :to="`/docs/${doc.slug}`"
-              class="card doc"
+              class="doc"
             >
               <h3 class="doc__title">{{ doc.title }}</h3>
               <p v-if="doc.summary" class="doc__summary">{{ doc.summary }}</p>
               <span class="doc__more">
                 阅读
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                   <path d="M3.5 8h9m0 0L9 4.5M12.5 8 9 11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
               </span>
@@ -91,9 +92,9 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: min(420px, 100%);
-  padding: 9px 14px;
-  border: 1px solid var(--line);
+  width: min(460px, 100%);
+  padding: 10px 14px;
+  border: 1px solid var(--line-2);
   border-radius: var(--r-pill);
   background: var(--paper-raised);
   color: var(--ink-3);
@@ -109,12 +110,16 @@ onMounted(async () => {
 
 .search__input {
   flex: 1;
+  min-width: 0;
+  padding: 0;
   border: none;
   background: transparent;
-  outline: none;
-  font-size: var(--t-sm);
   color: var(--ink);
-  min-width: 0;
+  font-size: var(--t-sm);
+}
+
+.search__input:focus {
+  outline: none;
 }
 
 .search__input::-webkit-search-cancel-button {
@@ -125,67 +130,56 @@ onMounted(async () => {
   border: none;
   background: transparent;
   color: var(--ink-3);
-  font-size: 1.1rem;
+  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
   padding: 0 2px;
 }
 
 .group + .group {
-  margin-top: clamp(36px, 5vw, 56px);
+  margin-top: clamp(32px, 4vw, 52px);
 }
 
 .group__title {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 18px;
-  font-size: var(--t-h3);
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--ink);
+  font-size: var(--t-h2);
 }
 
 .group__count {
-  font-size: var(--t-xs);
-  font-weight: 400;
+  font-size: var(--t-sm);
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
 }
 
-.grid {
+.cards {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: 1fr;
+  gap: 1px;
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
 .doc {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   align-content: start;
-  transition:
-    transform var(--dur-press) var(--ease-out),
-    border-color var(--dur-ui) ease;
-}
-
-.doc:active {
-  transform: scale(0.985);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .doc:hover {
-    border-color: var(--line-2);
-  }
-
-  .doc:hover .doc__more svg {
-    transform: translateX(3px);
-  }
+  padding: 18px 16px;
+  background: var(--paper);
+  transition: background-color var(--dur-ui) ease;
 }
 
 .doc__title {
-  font-size: 1.02rem;
-  font-weight: 600;
+  font-size: 0.98rem;
 }
 
 .doc__summary {
   font-size: var(--t-sm);
+  line-height: 1.8;
   color: var(--ink-2);
-  line-height: 1.75;
 }
 
 .doc__more {
@@ -197,7 +191,21 @@ onMounted(async () => {
   color: var(--brand);
 }
 
-.doc__more svg {
-  transition: transform var(--dur-ui) var(--ease-out);
+@media (hover: hover) and (pointer: fine) {
+  .doc:hover {
+    background: var(--paper-raised);
+  }
+}
+
+@media (min-width: 720px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1080px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 </style>

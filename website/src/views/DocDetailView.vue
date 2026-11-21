@@ -62,7 +62,7 @@ onBeforeUnmount(() => observer?.disconnect())
     <section class="head">
       <div class="page">
         <RouterLink to="/docs" class="back">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M10 3.5 5.5 8l4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           文档中心
@@ -76,6 +76,7 @@ onBeforeUnmount(() => observer?.disconnect())
           <h1 class="h1 head__title">{{ doc.title }}</h1>
           <p v-if="doc.summary" class="lead head__lead">{{ doc.summary }}</p>
         </template>
+        <hr class="head__rule" />
       </div>
     </section>
 
@@ -86,7 +87,7 @@ onBeforeUnmount(() => observer?.disconnect())
         </article>
 
         <aside v-if="headings.length" class="side">
-          <p class="side__label">本页目录</p>
+          <p class="side__label eyebrow">本页目录</p>
           <nav class="toc">
             <a
               v-for="h in headings"
@@ -101,15 +102,15 @@ onBeforeUnmount(() => observer?.disconnect())
       </div>
 
       <div class="page">
-        <nav class="pager">
-          <RouterLink v-if="siblings.prev" :to="`/docs/${siblings.prev.slug}`" class="card pager__card">
-            <span class="muted small">上一篇</span>
+        <nav class="pager" aria-label="相邻文档">
+          <RouterLink v-if="siblings.prev" :to="`/docs/${siblings.prev.slug}`" class="pager__card">
+            <span class="muted small">← 上一篇</span>
             <span class="pager__title">{{ siblings.prev.title }}</span>
           </RouterLink>
           <span v-else class="pager__spacer" />
 
-          <RouterLink v-if="siblings.next" :to="`/docs/${siblings.next.slug}`" class="card pager__card pager__card--right">
-            <span class="muted small">下一篇</span>
+          <RouterLink v-if="siblings.next" :to="`/docs/${siblings.next.slug}`" class="pager__card pager__card--right">
+            <span class="muted small">下一篇 →</span>
             <span class="pager__title">{{ siblings.next.title }}</span>
           </RouterLink>
         </nav>
@@ -120,14 +121,13 @@ onBeforeUnmount(() => observer?.disconnect())
 
 <style scoped>
 .head {
-  padding-block: clamp(40px, 5vw, 64px) clamp(24px, 3vw, 34px);
-  border-bottom: 1px solid var(--line);
+  padding-top: clamp(28px, 4vw, 48px);
 }
 
 .back {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   font-size: var(--t-sm);
   color: var(--ink-3);
   transition: color var(--dur-ui) ease;
@@ -135,7 +135,7 @@ onBeforeUnmount(() => observer?.disconnect())
 
 @media (hover: hover) and (pointer: fine) {
   .back:hover {
-    color: var(--brand);
+    color: var(--ink);
   }
 }
 
@@ -144,56 +144,74 @@ onBeforeUnmount(() => observer?.disconnect())
 }
 
 .head__group {
-  margin-top: 22px;
+  margin-top: 26px;
 }
 
 .head__title {
-  margin-top: 12px;
+  margin-top: 8px;
+  max-width: 28ch;
 }
 
 .head__lead {
   margin-top: 14px;
-  max-width: 64ch;
+  max-width: 56ch;
+}
+
+.head__rule {
+  height: 2px;
+  border: none;
+  margin: 28px 0 0;
+  background: var(--ink);
+  opacity: 0.86;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: clamp(28px, 4vw, 60px);
-  align-items: start;
+  gap: clamp(28px, 4vw, 52px);
 }
 
 .content {
   min-width: 0;
 }
 
+.side {
+  display: none;
+}
+
 .side__label {
-  font-size: var(--t-xs);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-3);
   margin-bottom: 10px;
 }
 
 .pager {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: clamp(40px, 5vw, 64px);
-  padding-top: clamp(24px, 3vw, 34px);
+  gap: 12px;
+  margin-top: clamp(32px, 4vw, 52px);
+  padding-top: 22px;
   border-top: 1px solid var(--line);
 }
 
 .pager__card {
   display: grid;
   gap: 4px;
-  transition:
-    transform var(--dur-press) var(--ease-out),
-    border-color var(--dur-ui) ease;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--paper-raised);
+  transition: border-color var(--dur-ui) ease;
 }
 
-.pager__card:active {
-  transform: scale(0.98);
+.pager__card--right {
+  text-align: right;
+}
+
+.pager__title {
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+
+.pager__spacer {
+  display: block;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -202,33 +220,23 @@ onBeforeUnmount(() => observer?.disconnect())
   }
 }
 
-.pager__card--right {
-  justify-items: end;
-  text-align: right;
+@media (min-width: 720px) {
+  .side {
+    display: block;
+  }
 }
 
-.pager__title {
-  font-weight: 500;
-  font-size: var(--t-sm);
-}
-
-.pager__spacer {
-  display: block;
-}
-
-@media (max-width: 960px) {
+@media (min-width: 1024px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) 196px;
+    align-items: start;
   }
 
   .side {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .pager {
-    grid-template-columns: 1fr;
+    position: sticky;
+    top: 84px;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
   }
 }
 </style>
