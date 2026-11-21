@@ -117,10 +117,13 @@ internal class ClickRunner(
         }
 
         // 派发前第一道闸门：已经定位到目标控件时，先问"这个控件是不是不可逆的"。
-        // 此刻还拿不到落点探针（手势没派发），证据用已知控件与选择器；
-        // 坐标点击时两者皆空，这一道查不到东西，留给下面每次手势前的落点探针。
-        gate.check(action, element, selector, null)?.let {
-            return VerifyResult(false, it, "", "")
+        // 这里传 hit=null（手势还没派发，探针没跑过）。正因为"没跑过"与"跑了但读不到"
+        // 在入参上无法区分，只有真的拿到了 element/selector 时才能过这道——
+        // 纯坐标动作一律留给下面第 ② 步的落点探针，否则所有坐标点击都会被问一次。
+        if (element != null || selector != null) {
+            gate.check(action, element, selector, null)?.let {
+                return VerifyResult(false, it, "", "")
+            }
         }
 
         // 记下"命中了哪个控件、bounds 是多少"，出现"点错位置"时靠这一行就能分清是选错控件还是坐标算错

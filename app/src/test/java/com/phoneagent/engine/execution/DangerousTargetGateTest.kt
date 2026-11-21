@@ -143,6 +143,31 @@ class DangerousTargetGateTest {
         assertTrue("方向滚动不该被当成危险动作：$asked", asked.isEmpty())
     }
 
+    @Test
+    fun 坐标点击_探针失败_改为询问而不是放行() = runTest {
+        // Provider 抖动/超时 → hitTest 返回 null。此时既没有 element/selector，也没有目标串，
+        // 判据手里什么都没有：放行就是本组缺陷的病根，硬拒会让抖动期间所有坐标点击全废。
+        val action = AgentAction(type = ActionType.TAP, x = 320, y = 1180)
+        val reason = gate(allow = false).check(action, element = null, selector = null, hit = null)
+        assertEquals("看不见就必须问一次：$asked", 1, asked.size)
+        val asking = asked.single()
+        assertTrue(
+            "文案要如实说「无法读取」，不能把未知伪造成危险：${asking.reason}",
+            asking.reason.orEmpty().contains("无法读取"),
+        )
+        assertTrue("坐标要摆给用户，否则他不知道点的是哪儿：${asking.target}", asking.target?.value == "320,1180")
+        assertNotNull("用户拒绝时同样一步不落地中止", reason)
+        assertTrue("原因文案也要说清是读不到，不是命中危险词：$reason", reason!!.contains("无法读取"))
+    }
+
+    @Test
+    fun 滑动_探针失败_不询问() = runTest {
+        // 滑动起点读不到控件是常态（滚动页面本来就没有"目标控件"），不该弹窗
+        val action = AgentAction(type = ActionType.SWIPE, direction = "up")
+        assertNull(gate().check(action, element = null, selector = null, hit = null))
+        assertTrue("滚动不能因为探针失败就弹确认：$asked", asked.isEmpty())
+    }
+
     // ---- 不重复打扰 ----
 
     @Test
