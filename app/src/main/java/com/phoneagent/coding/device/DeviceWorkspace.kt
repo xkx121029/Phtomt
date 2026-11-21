@@ -28,13 +28,56 @@ object DeviceWorkspace {
 
     fun root(context: Context): File = Workspace.resolve(context)
 
-    fun resolveWithin(context: Context, rel: String): File {
-        val root = root(context).canonicalFile
+    fun resolveWithin(context: Context, rel: String): File = resolveWithin(root(context), rel)
+
+    /**
+     * 纯判据（不碰 Context）：给单测一个可测的接缝，也是 [resolveWithin] 的唯一实现。
+     *
+     * 语义必须与 Node 侧的 `resolveWithin`（`agent-host/tools/fs-tools.js`）一致：
+     * **先把路径归一到真实路径，再比真实前缀**。
+     *
+     * 注意不能用 `canonicalFile` 做这一步——实测（DeviceWorkspacePathTest）Java 的
+     * `getCanonicalPath` **不解析 Windows junction**，一条 `mklink /J photos D:\DCIM`
+     * 就能让编辑器与 agent 一起读到工作区外，而读文件的 risk 是 read，risky 模式下
+     * 连审批都不弹。这里用 `Path.toRealPath()`（走 GetFinalPathNameByHandle，符号链接
+     * 与 junction 都解析）。两侧各有一条「必须拒绝」的反面测试，改一边就要改另一边。
+     */
+    internal fun resolveWithin(root: File, rel: String): File {
         val clean = rel.trim().replace('\\', '/').trimStart('/')
         if (clean.isEmpty()) throw IllegalArgumentException("路径为空")
-        val f = File(root, clean).canonicalFile
-        if (f != root && !f.path.startsWith(root.path + File.separator)) {
+        // 绝对路径没有任何合法用途：Windows 上拼出 "C:\ws\C:\x" 这种非法路径（报的错
+        // 跟越界毫无关系），POSIX 上会被 File(parent, child) 静默当成相对路径。
+        if (DRIVE_ABSOLUTE.containsMatchIn(clean)) throw IllegalArgumentException("路径越界：$rel")
+
+        val rootReal = realPathOrSelf(root)
+        val f = File(rootReal, clean)
+        val real = shallowRealPath(f)
+        if (real != rootReal && !real.path.startsWith(rootReal.path + File.separator)) {
             throw IllegalArgumentException("路径越界：$rel")
+        }
+        return f
+    }
+
+    /** Windows 盘符绝对路径（`C:/x`、`C:\x`）：Java 的 isAbsolute 在反斜杠形态上不一定认得。 */
+    private val DRIVE_ABSOLUTE = Regex("^[A-Za-z]:")
+
+    private fun realPathOrSelf(f: File): File = runCatching { f.toPath().toRealPath().toFile() }.getOrDefault(f)
+
+    /**
+     * 解析到真实路径，但允许目标本身还不存在（写新文件必须能过）：
+     * 把最近的存在祖先解析掉，再把剩下的段拼回去。存在的部分里若有链接，一定会被解析。
+     */
+    private fun shallowRealPath(f: File): File {
+        val rest = ArrayDeque<String>()
+        var cur: File? = f
+        while (cur != null) {
+            if (cur.exists()) {
+                var real = runCatching { cur.toPath().toRealPath().toFile() }.getOrDefault(cur)
+                rest.forEach { real = File(real, it) }
+                return real
+            }
+            if (cur.name.isNotEmpty()) rest.addFirst(cur.name)
+            cur = cur.parentFile
         }
         return f
     }
