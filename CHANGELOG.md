@@ -34,6 +34,23 @@
 
 ## [未发布]
 
+### 安全（确认门与外部入口）
+
+- **危险目标下沉到派发前判断，按真实落点控件判**：此前能置位确认门的只有语义意图（`intent=delete/send/confirm`）与能力注册表的 `needsConfirmation`。模型用最通用的 `tap`（按文字或控件 id 定位）去点「删除」「发送」「结算」时 `needsUserConfirmation` 是 false，门根本不会被问；转译层这一层又只读得到模型自报的 `target.value`，`by=coordinate` 时连这个都是 null。现在判据移到 `engine/execution/DangerousTargetGate`，按**这一下实际落到哪个控件**的文字判，覆盖点按 / 长按 / 滑动；取不到控件时不当成安全，而是转确认门问一次（旧的静默放行正是「Provider 一抖就放过删除」的病根）。手势类型本身不是危险信号——滑动绝大多数只是滚动，判据看的是落点控件。
+- **危险词表合并到单一来源**：词表迁到 `domain/rules/DangerousTargetWords`，幂等判据、派发层闸门、浏览器护栏共用一份，两侧不会再各改一半；补齐英文半边并按左词边界匹配（`sender` / `postcode` / `resend` 不会误命中 `send` / `post`），刻意不收右边界以保留对 `#deleteComment`、`DeleteAccountButton` 这类驼峰的拦截。
+- **发送 / 结算 / 清空通知三类动作会真的走确认**：`CapabilitySpec` 里这些意图的 `needsConfirmation` 此前没有在每条路径上都落到确认卡上。另外 `a11y` 端点直调把落点写在 `args["target"]` 里的形态此前完全绕过确认门与幂等，现由 `AgentAction.operatedLabel` 统一取数后纳入。
+- **网页上的不可逆点击在所有档位都过判据**：判据不再只挂在某一档上。只读档命中直接拒绝（更严的模式不降级成「问一下」），其它档（含默认均衡）改走同一张确认卡；端侧脚本探针在所有档位都注入，所以「AI 给的文字不含危险词、但 `#btn-2` 实际是『确认支付』」也能拦住。
+- **确认去重**：同一页面（页面指纹相同）上的同一动作 60 秒内不再重复询问——确认之后动作验证失败、模型重发同一下时，第二次弹窗只会让人盲点允许。跨页面**不去重**：结算流程「点结算 → 点确认支付」仍然各问一次，这是有意保留的。页面指纹缺失时不参与去重，宁可多问一次。
+- **外部 Intent 统一走确认**：从本应用外部进入的任务（extras / `hpa://` 深链 / 分享文字）不再按 Intent 形状判定来源，改看调用方 uid 能否证明是本应用自己发起的（`feature/entry/EntryTrust`），证明不了一律按外部处理；API 34 以下拿不到这条信号，同样按外部。代价是 `adb shell am start` 与桌面长按「继续上次」也会多一次确认——无法区分调用方时的必然代价。
+- **`terminal_op op=exec` 纳入自写命令确认**：任意命令执行此前只有 `shell` 意图过确认门，换个意图名就能在注入通道上执行命令而不被问一次。现在 `EngineRules.authoredCommandOf` 把两者当成同一类，且判据不依赖「AI 自报 `aiAuthored`」（该标记默认 fail-closed 为 AI 自写）。
+
+### 操控链路（坐标、通道、验证）
+
+- **`a11y_call` 的 `click` / `long_click` 改认 0~1 比例坐标**：与 `target{method:coordinate}` 同口径，绝对像素会被明确拒绝，而不是静默夹到屏幕边缘。旧的「像素原样使用」语义正是「比例 1.0 被当成 1 像素、点底部中央却落到屏幕顶端」的成因。坐标串到像素只剩一个定义点（`IntentResolver.coordinateToPixel`），端点直调也走它。
+- **无线 ADB 会话不再宣称具备 shell 能力**：`SHELL_ADB` 的可连接状态收窄为 `{READY}`，能力快照里最多 `DEGRADED`，能力原因文案与设置页卡片同步改写。它只是把内置 Shizuku server 拉起来的启动机制——会话在 Provider 内确实能执行命令，但 AIDL 只暴露 `execShizuku` / `execTermux`，主应用没有走这个会话的入口。
+- **Provider 兼容判据改用 AIDL 接口版本（`apiVersion`）**：不再按 versionName 排序比较。版本号段被回拨过（曾是 200 万段，后回落到 9xxx 段），按名字排序会把「装着更新的组件」判成「已是最新」，而它缺的正是本应用要调的方法；反过来装旧组件时又会被判成「需更新」但安装器拒绝降级。现在只有相等才兼容，不相等时按方向分别给「更新组件」与「升级本应用」；不兼容**明确拒绝调用**并写进 `lastError`，不再让 binder 把缺方法的调用吞成 null。
+- **执行结果分三态**：`已确认生效` / `已交付但未确认` / `已交付但未见效`。未确认（读不到页面）不再折成成功或失败，回注给 AI 的文案与执行历史各自独立建档；遥测与主动反馈新增 `unconfirmed` 计数。
+
 ### 构建（可选模块）
 
 - **可选构建模块开关**（`config/build-modules.properties` + 根 `build.gradle.kts`）：Android 平台构建、Vue 开发服务器、Git 工具链、GitHub 关联与同步四类模块按开关注册，默认不进入 `build` / `check` / `assemble` 任务图；禁用模块保留同名占位任务并正常退出（退出码 0）
