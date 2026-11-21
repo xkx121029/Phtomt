@@ -118,6 +118,8 @@ if (env.HAPPY_ACA_NO_HOST_PROBE !== '1') {
 process.stderr.write(
   `[happy-aca] embedded host ready: provider=${providerKind} model=${model} ` +
     `workspace=${workspace} approval=${approvalMode} token=${token ? 'on' : 'off'} ` +
+    (token ? '' : '\n[WARN] HAPPY_ACA_TOKEN 为空：rpc 现在是 fail-closed，只接受 ping，' +
+      '其余方法一律 unauthorized。桌面调试请先设置这个变量。\n') +
     `sessions=${runtime.store.list().length} tools=${runtime.registered.length}` +
     `${stateDir ? ` state=${path.resolve(stateDir)}` : ''}` +
     `${runtime.failed.length ? ` degraded=${runtime.failed.length}` : ''}\n`,

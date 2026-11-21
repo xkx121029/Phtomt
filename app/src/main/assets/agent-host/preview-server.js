@@ -4,9 +4,12 @@
 // 一个几十行的 http server 足够预览静态站点/前端项目，而 WebView 只需要
 // 访问 http://127.0.0.1:<port>。这样预览能力不依赖任何原生代码。
 //
-// 安全：只服务 workspaceRoot 内的文件（防目录穿越），默认只监听 127.0.0.1。
+// 安全三道防线：只监听 127.0.0.1；只服务 workspaceRoot 内的文件（防目录穿越）；
+// 路径必须带本次启动随机生成的 nonce 前缀，且拒绝任何 `.` 开头的路径段——
+// 同机应用即使探到端口，也枚举不出 <工作区>/.happyac 里的会话与密钥。
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { resolveWithin } from './tools/fs-tools.js';
@@ -49,10 +52,13 @@ export class LocalPreviewServer {
    * @param {string} opts.root             要服务的目录（通常 = workspaceRoot）
    * @param {string[]} opts.mounts         [{ prefix: '/app', dir: 'public' }] 把子目录挂到虚拟路径
    * @param {boolean} opts.injectLiveReload 给 HTML 注入热重载脚本（开发用）
+   * @param {string} [opts.nonce] 固定 URL nonce（测试用；默认每次构造随机生成）
    */
-  constructor({ root, mounts = [], injectLiveReload = true, onRequest } = {}) {
+  constructor({ root, mounts = [], injectLiveReload = true, onRequest, nonce } = {}) {
     if (!root) throw new Error('LocalPreviewServer needs a root');
     this.root = path.resolve(root);
+    // URL 前缀 nonce：每次启动换一份，路径因此不可枚举。
+    this.nonce = nonce || crypto.randomBytes(12).toString('hex');
     this.mounts = mounts;
     this.injectLiveReload = injectLiveReload;
     this.onRequest = onRequest || (() => {});
@@ -62,10 +68,42 @@ export class LocalPreviewServer {
     this.port = 0;
   }
 
-  /** 解析 URL 路径 -> 绝对文件路径。越界返回 null。 */
+  /**
+   * 解析 URL 路径 -> 绝对文件路径。被拒或越界一律 null（调用方落 403/404）。
+   *
+   * 两道门缺一不可：
+   *  1. nonce 前缀：URL 形如 `/<nonce>/...`。没有 nonce 的请求当 404 处理，
+   *     同机应用探到端口也无法枚举路径、也无法确认某个文件是否存在。
+   *  2. 隐藏段：任何以 `.` 开头的路径段直接拒绝。`<工作区>/.happyac` 里放着
+   *     编码会话（含用户粘进去的密钥），而工作区不是安全边界——只做「落在工作区内」
+   *     的检查，会把整段对话当静态文件发给任何有 INTERNET 权限的同机应用。
+   */
   resolveFile(urlPath) {
-    let p = decodeURIComponent(urlPath.split('?')[0].split('#')[0]);
+    const rel = this.stripNonce(urlPath.split('?')[0].split('#')[0]);
+    if (rel === null) return null;
+    return this.resolvePath(rel);
+  }
+
+  /** 剥掉 nonce 前缀；不是本服务签发的路径返回 null。 */
+  stripNonce(urlPath) {
+    let p;
+    try {
+      p = decodeURIComponent(urlPath);
+    } catch {
+      return null; // 畸形转义（%zz）：直接当非法，别落到 path.resolve
+    }
+    const prefix = `/${this.nonce}`;
+    if (p === prefix) return '/';
+    if (p.startsWith(`${prefix}/`)) return p.slice(prefix.length);
+    return null;
+  }
+
+  /** 已剥 nonce 的相对路径 -> 绝对文件路径；隐藏段与越界一律 null。 */
+  resolvePath(urlPath) {
+    let p = urlPath;
     if (p === '/' || p === '') p = '/index.html';
+    // `.` 与 `..` 都落在这里：既能挡 .happyac，也顺手挡掉目录穿越。
+    if (p.split(/[\\/]+/).some((seg) => seg.startsWith('.'))) return null;
 
     for (const m of this.mounts) {
       if (m.prefix === '/' || p === m.prefix || p.startsWith(`${m.prefix}/`)) {
@@ -94,7 +132,8 @@ export class LocalPreviewServer {
   }
 
   url(subPath = '/') {
-    return `http://127.0.0.1:${this.port}${subPath.startsWith('/') ? subPath : `/${subPath}`}`;
+    const tail = subPath.startsWith('/') ? subPath : `/${subPath}`;
+    return `http://127.0.0.1:${this.port}/${this.nonce}${tail}`;
   }
 
   /** 请求日志（给 agent 汇报“预览服务已就绪”用）。 */
@@ -105,8 +144,8 @@ export class LocalPreviewServer {
   async #handle(req, res) {
     const urlPath = req.url || '/';
 
-    // 热重载 SSE 通道
-    if (urlPath === '/__haca_live') {
+    // 热重载 SSE 通道（和静态文件同一条 nonce 门槛：无 nonce 的路径不确认存在）
+    if (urlPath === `/${this.nonce}/__haca_live`) {
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
@@ -124,17 +163,26 @@ export class LocalPreviewServer {
       return;
     }
 
-    let file = this.resolveFile(urlPath);
+    // nonce 不对 -> 404：连「这个路径存不存在」都不回答，枚举拿不到任何反馈。
+    const rel = this.stripNonce(urlPath.split('?')[0].split('#')[0]);
+    if (rel === null) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('404 not found');
+      this.#log(urlPath, 404);
+      return;
+    }
+
+    let file = this.resolvePath(rel);
     if (!file) {
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('403 forbidden: path escapes preview root');
+      res.end('403 forbidden: path escapes preview root or points at a hidden entry');
       return;
     }
 
     let stat = statOrNull(file);
     if (stat?.isDirectory()) {
-      file = indexCandidates(urlPath)
-        .map((c) => this.resolveFile(c))
+      file = indexCandidates(rel)
+        .map((c) => this.resolvePath(c))
         .find((c) => c && statOrNull(c)?.isFile());
       stat = file ? statOrNull(file) : null;
     }
@@ -142,7 +190,7 @@ export class LocalPreviewServer {
     if (!file || !stat) {
       // SPA 回退：非 html 请求不兜底，避免把 404 变成奇怪的内容
       if (!urlPath.endsWith('.html') && !path.extname(urlPath)) {
-        file = this.resolveFile('/index.html');
+        file = this.resolvePath('/index.html');
         stat = file ? statOrNull(file) : null;
       }
       if (!file || !stat) {
@@ -170,7 +218,7 @@ export class LocalPreviewServer {
         res.end('500 cannot read');
         return;
       }
-      const injected = injectLiveReloadScript(html);
+      const injected = injectLiveReloadScript(html, this.nonce);
       const buf = Buffer.from(injected, 'utf8');
       res.writeHead(200, { ...headers, 'content-length': buf.length });
       res.end(req.method === 'HEAD' ? undefined : buf);
@@ -322,12 +370,12 @@ export class LocalPreviewServer {
   }
 }
 
-function injectLiveReloadScript(html) {
+function injectLiveReloadScript(html, nonce) {
   if (html.includes('__haca_live')) return html;
   const script = `<script>
 (function () {
   try {
-    var es = new EventSource('/__haca_live');
+    var es = new EventSource('/${nonce}/__haca_live');
     es.onmessage = function () { location.reload(); };
   } catch (e) {}
 })();

@@ -107,11 +107,21 @@ export class WsConnection {
   }
 }
 
+/**
+ * 极简 JSON-over-WebSocket 服务端。
+ *
+ * 注意（未被构造）：全仓库没有任何地方 `new WsJsonServer(...)` —— index.js 只把
+ * 它 re-export 出去（index.js:432），Kotlin 侧也不经过它。它在审计里被点成
+ * 「默认 0.0.0.0 且 upgrade 无鉴权」，那是一个还没引爆的地雷：一旦有人为了
+ * 「手机上也能连」把它接进启动流程，就是把 agent 控制面暴露到局域网。
+ * 所以三件事一次做掉：默认只听回环、必须有 token、没有 token 就拒绝所有 upgrade。
+ */
 export class WsJsonServer {
-  constructor({ port, host = '0.0.0.0', path = '/', onConnection }) {
+  constructor({ port, host = '127.0.0.1', path = '/', token, onConnection }) {
     this.port = port;
     this.host = host;
     this.path = path;
+    this.token = token || null;
     this.server = http.createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' });
       res.end('happy_ACA agent endpoint (WebSocket, one JSON object per message)\n');
@@ -119,7 +129,9 @@ export class WsJsonServer {
     this.server.on('upgrade', (req, socket) => {
       const urlPath = (req.url || '/').split('?')[0];
       const key = req.headers['sec-websocket-key'];
-      if (urlPath !== this.path || !key) {
+      const token = new URL(req.url || '/', 'http://127.0.0.1').searchParams.get('token');
+      // fail-closed：没配 token 就不接受任何连接，别让「以后补鉴权」留在这里。
+      if (urlPath !== this.path || !key || !this.token || token !== this.token) {
         socket.destroy();
         return;
       }
