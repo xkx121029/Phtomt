@@ -115,6 +115,8 @@ internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
                     RestrictedSettingSteps(onOpenAppInfo = { openProviderAppInfo(context) })
                 }
             }
+            // 底部操作条固定在页脚：滚动区末尾留净空，最后一张卡才能完整露出（UI-03）
+            Spacer(Modifier.height(AppSpacing.Xl))
         },
         footer = {
             PrimaryOnboardingButton(
