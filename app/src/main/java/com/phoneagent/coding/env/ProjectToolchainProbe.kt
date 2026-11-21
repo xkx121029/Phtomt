@@ -16,6 +16,13 @@ data class ProjectToolchain(
     val agpVersion: String?,
     val compileSdk: Int,
     val buildTools: String,
+    /**
+     * 设备上要装的 JDK 大版本：工程声明的语言级别（compileOptions / jvmTarget）与 AGP
+     * 最低要求取大者。硬编码这一个数字会在升 AGP 时变成一句看不懂的 Gradle 报错。
+     */
+    val jdkVersion: Int,
+    /** compileOptions / agp / fallback：JDK 版本的来源，UI 用来解释"为什么要装它" */
+    val jdkSource: String,
     val projectDir: File,
 ) {
     val ready: Boolean get() = gradleVersion.isNotBlank() && projectDir.isDirectory
@@ -56,6 +63,12 @@ object ProjectToolchainProbe {
     private const val FALLBACK_GRADLE_8 = "8.13"
     private const val FALLBACK_GRADLE_9 = "9.6.0"
 
+    /** 推导不出工程要求时的保守取值：AGP 8/9 的最低要求就是 17 */
+    const val DEFAULT_JDK = 17
+
+    /** AGP 主版本 → 它要求的最低 JDK（AGP 7 为 11，AGP 8 起为 17） */
+    private val AGP_MIN_JDK = mapOf(7 to 11, 8 to 17, 9 to 17)
+
     /** AGP 从 9 起换成 Gradle 9 线；配套表外的版本按主版本落在这条分界的两侧 */
     private const val AGP_MAJOR_GRADLE_9 = 9
 
@@ -68,6 +81,16 @@ object ProjectToolchainProbe {
     private val COMPILE_SDK_DSL = Regex("""compileSdk\s*=\s*(\d+)""")
     private val COMPILE_SDK_GROOVY = Regex("""compileSdkVersion\s*[=(]?\s*(\d+)""")
     private val BUILD_TOOLS = Regex("""buildToolsVersion\s*[=(]?\s*"(\d+(?:\.\d+){1,2})"""")
+
+    /** `sourceCompatibility = JavaVersion.VERSION_17` */
+    private val JAVA_VERSION_CONST = Regex("""JavaVersion\.VERSION_(\d+)""")
+
+    /** `jvmTarget.set(JvmTarget.JVM_17)` */
+    private val JVM_TARGET_CONST = Regex("""JvmTarget\.JVM_(\d+)""")
+
+    /** groovy 写法：`sourceCompatibility = "17"` / `jvmTarget = "17"` */
+    private val JAVA_VERSION_NUM =
+        Regex("""(?:sourceCompatibility|targetCompatibility|jvmTarget)\s*[=:(]\s*["']?(\d+)""")
 
     /** `distributionUrl=https\://services.gradle.org/distributions/gradle-8.13-bin.zip` */
     fun parseDistributionUrl(text: String?): String? =
@@ -105,6 +128,43 @@ object ProjectToolchainProbe {
         return null
     }
 
+    /**
+     * 工程声明的 Java 语言级别；多种写法取最大者（`sourceCompatibility` 与 `jvmTarget`
+     * 声明不一致时，构建实际要求的是更高那个）。
+     */
+    fun parseJavaVersion(vararg texts: String?): Int? {
+        var found: Int? = null
+        for (text in texts) {
+            if (text == null) continue
+            val hits = JAVA_VERSION_CONST.findAll(text).map { it.groupValues[1] } +
+                JVM_TARGET_CONST.findAll(text).map { it.groupValues[1] } +
+                JAVA_VERSION_NUM.findAll(text).map { it.groupValues[1] }
+            for (hit in hits) {
+                val value = hit.toIntOrNull() ?: continue
+                if (value > (found ?: 0)) found = value
+            }
+        }
+        return found
+    }
+
+    /** AGP 要求的最低 JDK；版本号读不出来时返回 null */
+    fun agpMinJdk(agpVersion: String): Int? =
+        AGP_MIN_JDK[agpVersion.split('.').firstOrNull()?.toIntOrNull()]
+
+    /**
+     * 要装的 JDK：工程声明与 AGP 下限取大者，都推不出来才退回 [DEFAULT_JDK]。
+     * 返回 (版本, 来源)；来源是给用户看的一句话依据。
+     */
+    fun requiredJdk(declared: Int?, agpVersion: String?): Pair<Int, String> {
+        val agp = agpVersion?.let(::agpMinJdk)
+        return when {
+            declared != null && (agp == null || declared >= agp) -> declared to "compileOptions"
+            agp != null -> agp to "agp"
+            declared != null -> declared to "compileOptions"
+            else -> DEFAULT_JDK to "fallback"
+        }
+    }
+
     /** 配置表里查不到时的保守取值：宁可给一个能跑的版本，也不要空着让用户猜 */
     fun gradleForAgp(agpVersion: String): String? {
         val parts = agpVersion.split('.')
@@ -128,6 +188,7 @@ object ProjectToolchainProbe {
         val gradle = wrapperVersion ?: agp?.let { gradleForAgp(it) }
         val compileSdk = parseCompileSdk(moduleBuild, rootBuild) ?: DEFAULT_COMPILE_SDK
         val buildTools = parseBuildTools(moduleBuild) ?: "$compileSdk.0.0"
+        val jdk = requiredJdk(parseJavaVersion(moduleBuild, rootBuild), agp)
 
         return ProjectToolchain(
             gradleVersion = gradle.orEmpty(),
@@ -139,6 +200,8 @@ object ProjectToolchainProbe {
             agpVersion = agp,
             compileSdk = compileSdk,
             buildTools = buildTools,
+            jdkVersion = jdk.first,
+            jdkSource = jdk.second,
             projectDir = projectDir,
         )
     }

@@ -133,6 +133,73 @@ class ProjectToolchainProbeTest {
         assertNull(result.agpVersion)
     }
 
+    @Test
+    fun parseJavaVersion_覆盖三种写法并取最大() {
+        assertEquals(
+            17,
+            ProjectToolchainProbe.parseJavaVersion("sourceCompatibility = JavaVersion.VERSION_17"),
+        )
+        assertEquals(
+            21,
+            ProjectToolchainProbe.parseJavaVersion("jvmTarget.set(JvmTarget.JVM_21)"),
+        )
+        assertEquals(
+            11,
+            ProjectToolchainProbe.parseJavaVersion("""sourceCompatibility = "11""""),
+        )
+        // sourceCompatibility 与 jvmTarget 不一致时，构建实际要求的是更高的那个
+        assertEquals(
+            21,
+            ProjectToolchainProbe.parseJavaVersion(
+                "sourceCompatibility = JavaVersion.VERSION_17\njvmTarget.set(JvmTarget.JVM_21)",
+            ),
+        )
+        assertNull(ProjectToolchainProbe.parseJavaVersion("android { }"))
+        assertNull(ProjectToolchainProbe.parseJavaVersion(null))
+    }
+
+    @Test
+    fun requiredJdk_工程声明与AGP最低要求取大者() {
+        assertEquals(17 to "compileOptions", ProjectToolchainProbe.requiredJdk(17, "8.13.2"))
+        // 工程只声明了 11，AGP 8 要求 17：以下限为准
+        assertEquals(17 to "agp", ProjectToolchainProbe.requiredJdk(11, "8.13.2"))
+        assertEquals(11 to "agp", ProjectToolchainProbe.requiredJdk(null, "7.4.2"))
+        // 都推不出来才退回默认值
+        assertEquals(17 to "fallback", ProjectToolchainProbe.requiredJdk(null, null))
+    }
+
+    @Test
+    fun probe_JDK版本随工程声明变化() {
+        val seventeen = tempProject(
+            "build.gradle.kts" to
+                """plugins { id("com.android.application") version "8.13.2" apply false }""",
+            "app/build.gradle.kts" to """
+                android {
+                    compileSdk = 36
+                    compileOptions {
+                        sourceCompatibility = JavaVersion.VERSION_17
+                        targetCompatibility = JavaVersion.VERSION_17
+                    }
+                }
+            """.trimIndent(),
+        )
+        assertEquals(17, ProjectToolchainProbe.probe(seventeen).jdkVersion)
+        assertEquals("compileOptions", ProjectToolchainProbe.probe(seventeen).jdkSource)
+
+        // 把工程要求提到 21，推导结果必须跟着变——写死 17 的实现在这里会红
+        val twentyOne = tempProject(
+            "build.gradle.kts" to
+                """plugins { id("com.android.application") version "9.1.0" apply false }""",
+            "app/build.gradle.kts" to """
+                android {
+                    compileOptions { sourceCompatibility = JavaVersion.VERSION_21 }
+                }
+                kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }
+            """.trimIndent(),
+        )
+        assertEquals(21, ProjectToolchainProbe.probe(twentyOne).jdkVersion)
+    }
+
     private fun tempProject(vararg files: Pair<String, String>): File {
         val root = Files.createTempDirectory("toolchain-probe").toFile()
         files.forEach { (path, content) ->
