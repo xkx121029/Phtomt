@@ -65,7 +65,10 @@ import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.ui.MainViewModel
 import com.phoneagent.ui.components.AppTopBar
 import com.phoneagent.ui.components.GlassHeaderScaffold
+import com.phoneagent.ui.components.LocalNavClearance
+import com.phoneagent.ui.components.LocalSnackbar
 import com.phoneagent.ui.components.PressableScale
+import com.phoneagent.ui.components.SnackbarType
 import com.phoneagent.ui.components.skeleton
 import com.phoneagent.ui.theme.Accent
 import com.phoneagent.ui.theme.AppRadii
@@ -94,6 +97,8 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     val pageMemories by vm.pageMemories.collectAsStateWithLifecycle()
     val pagePathEdges by vm.pagePathEdges.collectAsStateWithLifecycle()
     val loading by vm.memoryLoading.collectAsStateWithLifecycle()
+    // 顶部宿主统一的轻量反馈：破坏性操作的「撤销」就走它（带 action 时停留 6 秒）
+    val snackbar = LocalSnackbar.current
 
     LaunchedEffect(Unit) { vm.refreshMemory() }
 
@@ -133,7 +138,10 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     .verticalScroll(scrollState)
                     // 顶部净空垫在滚动容器内部：图谱与明细滚动时会从玻璃页眉下穿过，
                     // 页眉才有真实内容可模糊；垫在外面就只是把内容整体压低
-                    .padding(top = pad.calculateTopPadding()),
+                    .padding(top = pad.calculateTopPadding())
+                    // 底部净空：导航浮在内容之上，页脚不自己让开就会被压在导航条下。
+                    // 净空由宿主按导航形态提供（竖屏垫底、横屏垫侧），这里不写死高度
+                    .padding(bottom = LocalNavClearance.current.calculateBottomPadding()),
             ) {
                 if (loading) {
                     // 骨架屏加载：标题 + 图谱占位 + 统计占位
@@ -198,8 +206,27 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                     PageMemoryList(
                         entries = pageMemories,
                         edges = pagePathEdges,
-                        onDelete = { vm.deletePageMemory(it) },
-                        onClear = { vm.clearPageMemories() },
+                        // 删除前留整份快照：撤销就是把快照写回，真的恢复而不是假装
+                        onDelete = { id ->
+                            val beforeEntries = pageMemories
+                            val beforeEdges = pagePathEdges
+                            vm.deletePageMemory(id)
+                            snackbar?.show(
+                                "已删除 1 个页面记忆",
+                                SnackbarType.INFO,
+                                actionLabel = "撤销",
+                            ) { vm.restorePageMemories(beforeEntries, beforeEdges) }
+                        },
+                        onClear = {
+                            val beforeEntries = pageMemories
+                            val beforeEdges = pagePathEdges
+                            vm.clearPageMemories()
+                            snackbar?.show(
+                                "已清空 ${beforeEntries.size} 个页面记忆",
+                                SnackbarType.WARNING,
+                                actionLabel = "撤销",
+                            ) { vm.restorePageMemories(beforeEntries, beforeEdges) }
+                        },
                         onOpenPage = { openPageId = it.id },
                     )
                     Spacer(Modifier.height(28.dp))
@@ -225,11 +252,49 @@ fun MemoryGraphScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
                 // 明细列表：任务记忆最前（与当前任务最相关），随后是异常经验、用户画像
                 TaskMemoryList(
                     items = taskMemories,
-                    onDelete = { vm.deleteTaskMemory(it) },
-                    onClear = { vm.clearTaskMemories() },
+                    onDelete = { id ->
+                        val before = taskMemories
+                        vm.deleteTaskMemory(id)
+                        snackbar?.show(
+                            "已删除 1 条任务记忆",
+                            SnackbarType.INFO,
+                            actionLabel = "撤销",
+                        ) { vm.restoreTaskMemories(before) }
+                    },
+                    onClear = {
+                        val before = taskMemories
+                        vm.clearTaskMemories()
+                        snackbar?.show(
+                            "已清空 ${before.size} 条任务记忆",
+                            SnackbarType.WARNING,
+                            actionLabel = "撤销",
+                        ) { vm.restoreTaskMemories(before) }
+                    },
                 )
-                AnomalyList(anomalies, onClear = { vm.clearAnomalyMemory() })
-                ProfileList(profiles, onClear = { vm.clearProfileMemory() })
+                AnomalyList(
+                    anomalies,
+                    onClear = {
+                        val before = anomalies
+                        vm.clearAnomalyMemory()
+                        snackbar?.show(
+                            "已清空 ${before.size} 条异常经验",
+                            SnackbarType.WARNING,
+                            actionLabel = "撤销",
+                        ) { vm.restoreAnomalies(before) }
+                    },
+                )
+                ProfileList(
+                    profiles,
+                    onClear = {
+                        val before = profiles
+                        vm.clearProfileMemory()
+                        snackbar?.show(
+                            "已清空 ${before.size} 条用户画像",
+                            SnackbarType.WARNING,
+                            actionLabel = "撤销",
+                        ) { vm.restoreProfile(before) }
+                    },
+                )
 
                 Spacer(Modifier.height(28.dp))
             }

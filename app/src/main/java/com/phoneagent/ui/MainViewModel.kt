@@ -20,6 +20,8 @@ import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.data.export.LogExporter
 import com.phoneagent.data.store.AnomalyMemoryEntry
 import com.phoneagent.data.store.MemoryStore
+import com.phoneagent.data.store.PageMemoryEntry
+import com.phoneagent.data.store.PagePathEdge
 import com.phoneagent.data.store.ProfileEntry
 import com.phoneagent.data.store.TaskMemoryEntry
 import com.phoneagent.engine.PromptLang
@@ -444,6 +446,16 @@ class MainViewModel(
 
     /** 清空页面记忆与路径 */
     fun clearPageMemories() = memoryDomain.clearPageMemories()
+
+    // ---- 撤销删除 / 撤销清空（记忆页的撤销窗口用；实现与其余记忆域一起在 [MemoryDelegate]）----
+    fun restoreAnomalies(entries: List<AnomalyMemoryEntry>) = memoryDomain.restoreAnomalies(entries)
+
+    fun restoreProfile(entries: List<ProfileEntry>) = memoryDomain.restoreProfile(entries)
+
+    fun restoreTaskMemories(entries: List<TaskMemoryEntry>) = memoryDomain.restoreTaskMemories(entries)
+
+    fun restorePageMemories(entries: List<PageMemoryEntry>, edges: List<PagePathEdge>) =
+        memoryDomain.restorePageMemories(entries, edges)
 
     // ---- 日志导出（实现见 data/export/LogExporter.kt，由 [AgentTaskDelegate] 转发） ----
     /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。

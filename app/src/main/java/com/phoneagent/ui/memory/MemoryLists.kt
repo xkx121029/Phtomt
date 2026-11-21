@@ -273,12 +273,50 @@ internal fun TaskMemoryList(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TaskMemorySection("目标", listOf(m.goal))
-                if (m.requirements.isNotEmpty()) TaskMemorySection("用户要求", m.requirements)
-                if (m.methods.isNotEmpty()) TaskMemorySection("完成方法", m.methods)
+                taskMemorySections(m.taskName, m.goal, m.requirements, m.methods).forEach { section ->
+                    TaskMemorySection(section.label, section.lines)
+                }
             }
         }
     }
+}
+
+/** 任务记忆卡片正文的一个小节：标签 + 若干行 */
+internal data class TaskMemorySectionModel(val label: String, val lines: List<String>)
+
+/** 去重用的比较键：只留字母数字，忽略空白与标点，避免「同一句差一个逗号」被当成两条 */
+internal fun normalizeMemoryText(text: String): String =
+    text.filter { it.isLetterOrDigit() }.lowercase()
+
+/**
+ * 任务记忆卡片的正文分区：抬头已经写了 [taskName]，正文不再重复它。
+ *
+ * 同一句话只允许出现一次——先出现过的位置赢，后面的分区直接不渲染那一行；
+ * 一条不剩的分区整块不出现（不留「目标」这种空壳标题）。
+ * requirements 的首条就是任务原文（见 TaskMemoryEntry 的注释），所以正常情况下
+ * 「目标 / 用户要求」两处里只有真正新增的内容才会露出来。
+ */
+internal fun taskMemorySections(
+    taskName: String,
+    goal: String,
+    requirements: List<String>,
+    methods: List<String>,
+): List<TaskMemorySectionModel> {
+    val seen = mutableSetOf(normalizeMemoryText(taskName))
+    val sections = mutableListOf<TaskMemorySectionModel>()
+
+    fun addSection(label: String, candidates: List<String>) {
+        val lines = candidates.filter { line ->
+            val key = normalizeMemoryText(line)
+            key.isNotEmpty() && seen.add(key)
+        }
+        if (lines.isNotEmpty()) sections += TaskMemorySectionModel(label, lines)
+    }
+
+    addSection("目标", listOf(goal))
+    addSection("用户要求", requirements)
+    addSection("完成方法", methods)
+    return sections
 }
 
 /** 任务记忆的一个小节：标题 + 逐条内容。每条限 2 行，避免一条长要求把整张卡撑满 */
