@@ -43,9 +43,9 @@
     "id": "intent",
     "order": 6,
     "tag": "执行",
-    "title": "46 个语义意图",
+    "title": "65 个语义意图",
     "summary": "AI 只说「做什么」，端侧转译层负责「怎么做」，模型永远不输出坐标和命令。",
-    "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 46 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 6 个内置浏览器动作。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
+    "detail": "从最初的 15 个界面语义动作（back / home / refresh / search / send / confirm / close / share / collect / copy / delete / download / add / switch / clear_input）扩展到 65 个语义意图，新增打开应用与深链、长按、按键、滚动查找、定闹钟、设倒计时、读通知、清通知、查本机信息、记长期信息、看图追问，以及 9 个内置浏览器动作与内置网页搜索。全部由 IntentTranslator 实时转译为端侧动作：有精确 id/label 就用它，只有图片、图表这类元素树里没有的控件才退到坐标。"
   },
   {
     "id": "channel",
