@@ -567,6 +567,8 @@ class AgentEngine(
         onVirtualDisplayUnusable = { reason -> abandonVirtualDisplay(reason) },
         // 执行通道偏好复用引擎持续缓存的设置快照，避免每条 shell 命令都挂起读 DataStore
         settingsSnapshot = { latestSettings },
+        // 危险词确认与执行阶段那道门是同一个：判据下沉到派发层后，确认也走同一处
+        confirmIrreversible = { action -> userGate.awaitActionConfirmation(action) },
     )
     /** 副屏模式代理（仅 Shizuku 通道可用时才有实例，见 [com.phoneagent.device.screen.VirtualDisplayAgent]） */
     private val virtualDisplay: com.phoneagent.device.screen.VirtualDisplayAgent? by lazy {
