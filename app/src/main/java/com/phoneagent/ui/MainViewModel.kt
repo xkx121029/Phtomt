@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.phoneagent.core.ai.ApiProtocol
 import com.phoneagent.core.perf.StartupTrace
 import com.phoneagent.engine.AgentEngine
 import com.phoneagent.data.prefs.AppSettings
@@ -44,6 +43,7 @@ import com.phoneagent.feature.document.DocumentEngine
 import com.phoneagent.feature.document.DocResult
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.phoneagent.ui.vm.AgentTaskDelegate
 import com.phoneagent.ui.vm.DocumentDelegate
 import com.phoneagent.ui.vm.McpDelegate
 import com.phoneagent.ui.vm.MemoryDelegate
@@ -55,12 +55,6 @@ import com.phoneagent.ui.vm.TestDelegate
 import com.phoneagent.ui.vm.UpdateDelegate
 import com.phoneagent.device.vision.StepShot
 import com.phoneagent.device.vision.StepTrace
-
-/** 通知权限的运行时请求码（Android 13+） */
-private const val REQUEST_NOTIFICATIONS = 4401
-
-/** 麦克风权限的运行时请求码（权限雷达与输入框录音按钮各自独立，互不干扰） */
-private const val REQUEST_RECORD_AUDIO = 4402
 
 /**
  * 全局共享 ViewModel：设置、Agent 运行状态、无障碍/截图权限。
@@ -105,11 +99,14 @@ class MainViewModel(
     /** 结束新手引导：把完成标记落盘，下次启动直接进主界面 */
     fun completeOnboarding() = settingsDomain.completeOnboarding()
 
-    // 引擎派生的状态一律惰性取：这些属性一旦在构造期求值，就会立刻拉起整张引擎对象图
-    val agentState: StateFlow<AgentState> by lazy { engine.state }
+    // ---- Agent 执行域：引擎状态镜像 + 任务生命周期（实现在 [AgentTaskDelegate]） ----
+    private val agentDomain = AgentTaskDelegate({ engine }, viewModelScope)
 
-    val logs: StateFlow<List<AgentLog>> by lazy { engine.logs }
-    val conversation: StateFlow<List<ConversationMessage>> by lazy { engine.conversation }
+    // 引擎派生的状态一律惰性取：这些属性一旦在构造期求值，就会立刻拉起整张引擎对象图
+    val agentState: StateFlow<AgentState> get() = agentDomain.agentState
+
+    val logs: StateFlow<List<AgentLog>> get() = agentDomain.logs
+    val conversation: StateFlow<List<ConversationMessage>> get() = agentDomain.conversation
 
     /**
      * 对话页的会话状态（气泡 + 同步游标）。
@@ -119,79 +116,58 @@ class MainViewModel(
      */
     internal val chatSession = ChatSessionState()
 
-    val metrics: StateFlow<AgentMetrics> by lazy { engine.metrics }
-    val executionHistory: StateFlow<List<StepRecord>> by lazy { engine.executionHistory }
-    val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> by lazy { engine.stepShot }
-    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> by lazy { engine.traces }
+    val metrics: StateFlow<AgentMetrics> get() = agentDomain.metrics
+    val executionHistory: StateFlow<List<StepRecord>> get() = agentDomain.executionHistory
+    val stepShot: StateFlow<com.phoneagent.device.vision.StepShot> get() = agentDomain.stepShot
+    val traces: StateFlow<List<com.phoneagent.device.vision.StepTrace>> get() = agentDomain.traces
     /** 任务会话归档（Agent 页侧边栏）：最新一次任务在最前 */
-    val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> by lazy { engine.taskSessions }
+    val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> get() = agentDomain.taskSessions
     /** 当前对话的起点：实时视图只铺开这之后的任务，承接块也只取这之后的往来 */
-    val conversationStart: StateFlow<Long> by lazy { engine.conversationStart }
-    val taskQueue: StateFlow<List<String>> by lazy { engine.taskQueue }
-    val needsUser: StateFlow<Boolean> by lazy { engine.needsUser }
-    val userHintRequest by lazy { engine.userHintRequest }
-    val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> by lazy { engine.planPhase }
-    val planStream: StateFlow<String> by lazy { engine.planStream }
+    val conversationStart: StateFlow<Long> get() = agentDomain.conversationStart
+    val taskQueue: StateFlow<List<String>> get() = agentDomain.taskQueue
+    val needsUser: StateFlow<Boolean> get() = agentDomain.needsUser
+    val userHintRequest get() = agentDomain.userHintRequest
+    val planPhase: StateFlow<com.phoneagent.engine.PlanPhase> get() = agentDomain.planPhase
+    val planStream: StateFlow<String> get() = agentDomain.planStream
 
     /** AI 正在生成的决策内容（流式回显到 Agent 页，空串表示当前无输出） */
-    val decisionStream: StateFlow<String> by lazy { engine.decisionStream }
+    val decisionStream: StateFlow<String> get() = agentDomain.decisionStream
 
     /** 将显示给用户的文本自动翻译成简体中文（AI 翻译，带缓存） */
-    suspend fun translate(text: String): String = engine.translateText(text)
+    suspend fun translate(text: String): String = agentDomain.translate(text)
 
-    /**
-     * 界面侧的翻译结果缓存（按原文命中，最多 32 条）。
-     *
-     * 翻译结果的展示状态原先放在气泡自己的 `remember(text)` 里，而气泡随列表回收，
-     * 滚出视野再滚回来就退回原文、再等 600ms 防抖加一次请求——同一句话在同一个会话里
-     * 被反复「闪一下原文」。缓存提到 ViewModel（跨气泡、跨 Activity 重建存活）后，
-     * 回滚时首帧就能拿到译文。上限 32 条是为了不让长会话的原文字符串无限驻留。
-     */
-    private val translationCache = object : LinkedHashMap<String, String>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 32
-    }
+    /** 缓存命中返回译文；未命中返回 null（调用方走 600ms 防抖 + 真实翻译），实现见 [AgentTaskDelegate] */
+    fun cachedTranslation(text: String): String? = agentDomain.cachedTranslation(text)
 
-    /** 缓存命中返回译文；未命中返回 null（调用方走 600ms 防抖 + 真实翻译） */
-    fun cachedTranslation(text: String): String? = synchronized(translationCache) { translationCache[text] }
-
-    fun putTranslation(text: String, translated: String) {
-        synchronized(translationCache) { translationCache[text] = translated }
-    }
+    fun putTranslation(text: String, translated: String) = agentDomain.putTranslation(text, translated)
 
     /** 测试主模型连接是否可用（设置保存前校验用） */
     suspend fun testConnection(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<String> =
-        engine.testConnection(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
+        agentDomain.testConnection(baseUrl, apiKey, model, protocol)
 
     /** 拉取端点可用模型列表（设置页"获取模型"） */
     suspend fun listModels(baseUrl: String, apiKey: String, protocol: String = "openai"): Result<List<String>> =
-        engine.listModels(baseUrl, apiKey, ApiProtocol.fromId(protocol))
+        agentDomain.listModels(baseUrl, apiKey, protocol)
 
     /** 探测单个模型的能力（识图 / 工具调用） */
     suspend fun probeModel(baseUrl: String, apiKey: String, model: String, protocol: String = "openai"): Result<com.phoneagent.core.ai.ModelAbility> =
-        engine.probeModel(baseUrl, apiKey, model, ApiProtocol.fromId(protocol))
+        agentDomain.probeModel(baseUrl, apiKey, model, protocol)
 
-    fun startPlanning(task: String) = engine.startPlanning(task)
+    fun startPlanning(task: String) = agentDomain.startPlanning(task)
 
-    /**
-     * 对话页直提（对话模式）：**只作答、不执行**。
-     *
-     * 走引擎的对话入口 [com.phoneagent.engine.AgentEngine.chatTurn]，由路由侧强制纯对话直答：
-     * 在对话页说一句话不该开启任务执行模式（不设 isRunning、不开悬浮窗 / 跑马灯、
-     * 不亮边缘光效、不碰无障碍操控）。需要操控手机的请求由直答如实说明，
-     * 用户到 Agent 页下达即可。回答写入对话区（本页消费）。
-     */
-    fun submitChatTurn(task: String) = engine.chatTurn(task)
+    /** 对话页直提（对话模式，只作答不执行，语义见 [AgentTaskDelegate.submitChatTurn]） */
+    fun submitChatTurn(task: String) = agentDomain.submitChatTurn(task)
 
-    fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = engine.answerClarification(option)
-    fun approvePlan() = engine.approvePlan()
-    fun cancelPlanning() = engine.cancelPlanning()
+    fun answerClarification(option: com.phoneagent.domain.model.ClarificationOption) = agentDomain.answerClarification(option)
+    fun approvePlan() = agentDomain.approvePlan()
+    fun cancelPlanning() = agentDomain.cancelPlanning()
 
     /**
      * 新建对话：引擎划断上下文并复位实时态，文档预览一并撤下。
      * 历史任务仍留在 [taskSessions] 里可回看，只是不再进入新对话的上下文。
      */
     fun newConversation() {
-        engine.newConversation()
+        agentDomain.newConversation()
         documentEngine.dismiss()
     }
 
@@ -206,23 +182,22 @@ class MainViewModel(
         super.onCleared()
     }
 
-    fun clearDebug() = engine.clearDebug()
-    fun provideUserHint(hint: String) = engine.provideUserHint(hint)
-    fun dismissUser() = engine.dismissUser()
+    fun clearDebug() = agentDomain.clearDebug()
+    fun provideUserHint(hint: String) = agentDomain.provideUserHint(hint)
+    fun dismissUser() = agentDomain.dismissUser()
 
     /** 正在等待用户确认的 AI 自写命令（null = 没有待确认项）；驱动 App 内协助面板的「批准执行 / 拒绝」 */
-    val pendingShellCommand: StateFlow<String?> by lazy { engine.pendingShellCommand }
-    fun resolveShellApproval(approve: Boolean) = engine.resolveShellApproval(approve)
+    val pendingShellCommand: StateFlow<String?> get() = agentDomain.pendingShellCommand
+    fun resolveShellApproval(approve: Boolean) = agentDomain.resolveShellApproval(approve)
 
     // ---- 不可逆动作确认门：App 内任务流的确认卡与悬浮窗共用引擎的同一信箱 ----
     /** 引擎正在等待用户确认的不可逆动作（null = 无待确认项）；驱动任务流里的确认卡片 */
-    val pendingActionConfirmation: StateFlow<AgentEngine.PendingActionConfirmation?> by lazy {
-        engine.pendingActionConfirmation
-    }
+    val pendingActionConfirmation: StateFlow<AgentEngine.PendingActionConfirmation?> get() =
+        agentDomain.pendingActionConfirmation
     /** 确认执行该动作 */
-    fun confirmPendingAction() = engine.respondActionConfirmation(true)
+    fun confirmPendingAction() = agentDomain.confirmPendingAction()
     /** 拒绝该动作（AI 会换做法或中止该步） */
-    fun denyPendingAction() = engine.respondActionConfirmation(false)
+    fun denyPendingAction() = agentDomain.denyPendingAction()
 
     // ---- 权限域：实现在 [PermissionsDelegate] ----
     private val permissionsDomain = PermissionsDelegate(shizukuManager, termuxBridge, viewModelScope)
@@ -308,10 +283,7 @@ class MainViewModel(
     /** 由 UI 在页面可见时调用，与 [refreshStatus] 走同一个口径（开关已开 + 实例已连接） */
     fun refreshA11yState(context: Context) = permissionsDomain.refreshA11yState(context)
 
-    fun startAgent(task: String) {
-        if (task.isBlank()) return
-        engine.start(task)
-    }
+    fun startAgent(task: String) = agentDomain.startAgent(task)
 
     /**
      * 保存配置并起跑任务：写入设置后立刻发任务，写入完成之前不启动引擎。
@@ -326,41 +298,35 @@ class MainViewModel(
     fun saveThenStartTask(value: AppSettings.Settings, task: String) {
         if (task.isBlank()) return
         viewModelScope.launch {
-            settings.update(value)
+            settingsDomain.saveSettingsNow(value)
             if (agentState.value.isRunning) startAgent(task) else startPlanning(task)
         }
     }
 
-    fun stopAgent() = engine.stop()
+    fun stopAgent() = agentDomain.stopAgent()
 
     /** 当前任务是否被用户暂停；驱动状态条在「暂停 / 继续」之间切换 */
-    val paused: StateFlow<Boolean> by lazy { engine.paused }
+    val paused: StateFlow<Boolean> get() = agentDomain.paused
 
     /** 暂停当前任务（主循环在下一轮开头挂起，不消耗步数） */
-    fun pauseAgent() = engine.pauseTask()
+    fun pauseAgent() = agentDomain.pauseAgent()
 
     /** 从暂停处继续执行 */
-    fun resumeAgent() = engine.resumeTask()
+    fun resumeAgent() = agentDomain.resumeAgent()
 
     /** 重试最近一次任务（失败卡的「重试」出口） */
-    fun retryLastTask() = engine.retryLastTask()
+    fun retryLastTask() = agentDomain.retryLastTask()
 
     // ---- 长线任务：执行策略 / 断点续传 / 模板库 ----
-    suspend fun currentStrategy(): com.phoneagent.data.store.ExecutionStrategy = engine.currentStrategy()
-    fun setExecutionStrategy(s: com.phoneagent.data.store.ExecutionStrategy) {
-        viewModelScope.launch { engine.setExecutionStrategy(s) }
-    }
-    fun resumeFromCheckpoint() = engine.resumeFromCheckpoint()
-    suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? = engine.lastCheckpoint()
+    suspend fun currentStrategy(): com.phoneagent.data.store.ExecutionStrategy = agentDomain.currentStrategy()
+    fun setExecutionStrategy(s: com.phoneagent.data.store.ExecutionStrategy) = agentDomain.setExecutionStrategy(s)
+    fun resumeFromCheckpoint() = agentDomain.resumeFromCheckpoint()
+    suspend fun lastCheckpoint(): com.phoneagent.data.store.Checkpoint? = agentDomain.lastCheckpoint()
     /** 清除长线任务的续传检查点（不影响任务模板） */
-    fun clearCheckpoint(context: Context) {
-        viewModelScope.launch { runCatching { com.phoneagent.data.store.TaskStore.clearCheckpoint(context) } }
-    }
+    fun clearCheckpoint(context: Context) = agentDomain.clearCheckpoint(context)
     suspend fun loadTemplates(context: Context): List<com.phoneagent.data.store.TaskTemplate> =
-        runCatching { com.phoneagent.data.store.TaskStore.loadTemplates(context) }.getOrDefault(emptyList())
-    fun deleteTemplate(context: Context, id: String) {
-        viewModelScope.launch { runCatching { com.phoneagent.data.store.TaskStore.deleteTemplate(context, id) } }
-    }
+        agentDomain.loadTemplates(context)
+    fun deleteTemplate(context: Context, id: String) = agentDomain.deleteTemplate(context, id)
 
     // ---- AI 标准化测试（实现在 [TestDelegate]） ----
     private val testDomain = TestDelegate(testEngine, viewModelScope)
@@ -446,22 +412,20 @@ class MainViewModel(
     /** 清空页面记忆与路径 */
     fun clearPageMemories() = memoryDomain.clearPageMemories()
 
-    // ---- 日志导出（实现已外迁至 data/export/LogExporter.kt，此处保留薄委托给 UI 调用） ----
+    // ---- 日志导出（实现见 data/export/LogExporter.kt，由 [AgentTaskDelegate] 转发） ----
     /** 把指定任务（或全部）的日志导出为文本文件，保存到「下载」目录（Android 10+ 无需存储权限）。
      *  @return 成功返回保存路径，失败返回错误信息（以 "ERR:" 开头） */
     fun exportLogs(context: Context, taskId: Long, taskName: String?): String =
-        LogExporter.exportLogs(context, logs.value, taskId, taskName)
+        agentDomain.exportLogs(context, taskId, taskName)
 
     /** 分任务批量导出：每个任务导出一个独立 JSON 文件，保存到「下载」目录（Android 10+ 无需存储权限）。
      *  @return 成功返回保存汇总，失败返回错误信息（以 "ERR:" 开头） */
-    fun exportLogsJsonAll(context: Context): String =
-        LogExporter.exportLogsJsonAll(context, logs.value)
+    fun exportLogsJsonAll(context: Context): String = agentDomain.exportLogsJsonAll(context)
 
     // ==================== 八、诊断报告（人话 + 原始 两区，v2.2.1） ====================
     /** 导出诊断报告：人话摘要区 + 原始数据区，导出前自动脱敏。
      *  @return 保存路径或错误信息（以 "ERR:" 开头） */
-    fun exportDiagnosticReport(context: Context): String =
-        LogExporter.exportDiagnosticReport(context, traces.value, logs.value, conversation.value)
+    fun exportDiagnosticReport(context: Context): String = agentDomain.exportDiagnosticReport(context)
 
     // ==================== HPA 迭代 A7：Skill / MCP / 提示词 / 无线 ADB UI ====================
 
@@ -510,7 +474,8 @@ class MainViewModel(
     fun exportSkills(): String = skillDomain.exportSkills()
 
     // ---- MCP 服务器域：实现在 [McpDelegate] ----
-    private val mcpDomain = McpDelegate(mcpManager, mcpStore, skillRegistry, viewModelScope) { skillDomain.refreshSkills() }
+    private val mcpDomain =
+        McpDelegate(mcpManager, mcpStore, skillRegistry, viewModelScope) { skillDomain.refreshSkills() }
 
     val mcpServers: StateFlow<List<McpServerConfig>> get() = mcpDomain.mcpServers
 
@@ -534,8 +499,10 @@ class MainViewModel(
 
     /** 内置 MCP 市场条目（分类/搜索） */
     val mcpMarketplace: List<McpMarketplaceEntry> get() = mcpDomain.mcpMarketplace
-    fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceByCategory(category)
-    fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> = mcpDomain.mcpMarketplaceSearch(keyword)
+    fun mcpMarketplaceByCategory(category: String): List<McpMarketplaceEntry> =
+        mcpDomain.mcpMarketplaceByCategory(category)
+    fun mcpMarketplaceSearch(keyword: String): List<McpMarketplaceEntry> =
+        mcpDomain.mcpMarketplaceSearch(keyword)
 
     // ---- 内置 Shizuku 启动域：实现在 [ShizukuBootstrapDelegate] ----
     private val shizukuBootstrapDomain = ShizukuBootstrapDelegate(shizukuBootstrap, adbPairingFlow, viewModelScope)

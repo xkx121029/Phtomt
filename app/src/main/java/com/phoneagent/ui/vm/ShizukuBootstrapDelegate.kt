@@ -7,6 +7,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/** 无线 ADB 配对码是 6 位数字 */
+private const val PAIRING_CODE_LENGTH = 6
+
 /**
  * 内置 Shizuku 启动域：启动/检测通路、6 位配对码引导，以及通知栏配对向导的消息。
  *
@@ -35,7 +38,7 @@ class ShizukuBootstrapDelegate(
     /** 用界面输入的 6 位配对码完成首次启动引导，并就绪内置 Shizuku 通路 */
     fun pairShizuku(code: String, onResult: (String) -> Unit) {
         scope.launch {
-            if (code.length != 6 || !code.all { it.isDigit() }) {
+            if (code.length != PAIRING_CODE_LENGTH || !code.all { it.isDigit() }) {
                 onResult("配对码须为 6 位数字")
                 return@launch
             }

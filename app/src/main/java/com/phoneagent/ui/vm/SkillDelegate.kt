@@ -21,6 +21,7 @@ private const val ACA_SKILLS_TTL_MS = 60_000L
  * 协程全部跑在传进来的 [scope]（即 `viewModelScope`），扫描任务的可取消性沿用原实现：
  * [acaScanJob] 仍由本类持有，重入仍被 [_acaScanning] 拦下。
  */
+@Suppress("TooManyFunctions")
 class SkillDelegate(
     private val skillRegistry: SkillRegistry,
     private val scope: CoroutineScope,

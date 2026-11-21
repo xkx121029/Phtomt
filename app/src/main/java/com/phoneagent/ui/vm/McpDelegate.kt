@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
  * 绑定工具到技能这一处要刷新技能快照（`skill/mcp_*`），因此由构造参数传入
  * [refreshSkills] 回调，指向技能域自己的刷新入口——两个域之间只有这一个方向的一条边。
  */
+@Suppress("TooManyFunctions")
 class McpDelegate(
     private val mcpManager: McpManager,
     private val mcpStore: McpStore,

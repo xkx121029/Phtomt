@@ -36,6 +36,7 @@ private const val REQUEST_RECORD_AUDIO = 4402
  * 界面只传 [Context] 进来（原有签名就是这样），所以本类不需要持有 Activity；
  * 唯一的协程入口是 Termux 的刷新与授权，跑在传进来的 [scope]（`viewModelScope`）上。
  */
+@Suppress("TooManyFunctions")
 class PermissionsDelegate(
     private val shizukuManager: ShizukuManager,
     private val termuxBridge: TermuxBridge,
@@ -159,6 +160,7 @@ class PermissionsDelegate(
     private val _permissions = MutableStateFlow<List<PermissionItem>>(emptyList())
     val permissions: StateFlow<List<PermissionItem>> get() = _permissions.asStateFlow()
 
+    @Suppress("LongMethod")
     fun refreshPermissions(context: Context) {
         // 无障碍由「服务组件」（独立安装的 Provider）提供：组件没装时，系统无障碍列表里根本没有
         // 可开启的条目，直接跳过去是死路。这里如实标为未授权，并把下一步写进说明。
@@ -273,6 +275,7 @@ class PermissionsDelegate(
             runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
 
     /** 一键跳转到对应权限授权页 */
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
     fun openPermissionSettings(context: Context, kind: PermissionKind) {
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK
         // 自启动与后台：优先拉起「允许应用忽略电池优化」的系统确认弹窗
@@ -303,7 +306,9 @@ class PermissionsDelegate(
         }
         if (kind == PermissionKind.NOTIFICATIONS) {
             val granted = hasNotificationPermission(context)
-            if (!granted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU && context is Activity) {
+            val asksAtRuntime = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                context is Activity
+            if (!granted && asksAtRuntime) {
                 // 13+ 首次直接弹系统授权框；被永久拒绝后系统不再弹，回退到应用通知设置页
                 androidx.core.app.ActivityCompat.requestPermissions(
                     context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS,
@@ -332,7 +337,10 @@ class PermissionsDelegate(
         }
         // 所有文件访问：Android 11+ 的系统特殊权限页，ROM 精简时回落到权限总表
         if (kind == PermissionKind.ALL_FILES) {
-            val direct = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
+            val direct = Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:${context.packageName}"),
+            )
                 .addFlags(flags)
             val global = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).addFlags(flags)
             runCatching { context.startActivity(direct) }
@@ -423,6 +431,7 @@ class PermissionsDelegate(
     }
 
     /** 请求截屏权限（MediaProjection），resultCode/data 由 Activity 回传 */
+    @Suppress("UnusedPrivateProperty")
     fun requestScreenshot(context: Context) {
         val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         // 由 MainActivity 通过 Activity Result API 发起，这里仅标记流程
