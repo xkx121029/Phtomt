@@ -802,6 +802,17 @@ class AgentEngine(
     private val _decisionStream by store::decisionStream
     val decisionStream: StateFlow<String> = _decisionStream.asStateFlow()
 
+    private val _lastOutcome = MutableStateFlow<TaskOutcome?>(null)
+
+    /**
+     * 最近一次任务的终态（成功 / 失败 / 用户停止都在内）。
+     *
+     * 主界面必须看得见「上一次到底怎么结束的」。任务的收尾会把 [AgentState.phase] 落回 IDLE
+     * （见 [stop]），单看 phase 的话失败会在界面上凭空消失，只剩一张空态——用户以为任务从没发生过。
+     * 新任务开始时清空，因此它恒指「最近一次」，不会串到正在跑的任务上。
+     */
+    val lastOutcome: StateFlow<TaskOutcome?> = _lastOutcome.asStateFlow()
+
     /**
      * 启动悬浮窗：仅在「设置里开启悬浮窗」且「已授权悬浮窗权限」时启动。
      * 悬浮窗是可选能力——关闭或未授权时任务照常执行，进度只在 App 内展示。
@@ -820,17 +831,24 @@ class AgentEngine(
         status: TaskStatus,
         summary: String,
         failureReason: String = "",
+        kind: AgentState.FailureKind = AgentState.FailureKind.UNKNOWN,
     ): TaskOutcome {
         val st = _state.value
         val elapsed = if (st.startedAtMillis > 0) System.currentTimeMillis() - st.startedAtMillis else 0L
-        return TaskOutcome(
+        val outcome = TaskOutcome(
             status = status,
             summary = summary,
             elapsedMs = elapsed.coerceAtLeast(0L),
             steps = maxOf(st.stepCount, completedSteps),
             channel = lastChannelLabel,
             failureReason = failureReason,
+            failureKind = kind,
+            atMillis = System.currentTimeMillis(),
         )
+        // 所有终态都在这里汇合（成功 / 失败 / 未达成 / 用户停止）：交一份给主界面，
+        // 界面不必再从 phase 猜「任务是不是刚刚结束、怎么结束的」
+        _lastOutcome.value = outcome
+        return outcome
     }
 
 
@@ -1137,6 +1155,12 @@ class AgentEngine(
         _pendingActionConfirmation.value = null
         // 先把状态落到 IDLE 再走统一复位：safeResetRuntime 带 DONE 终态守卫，
         // 而「停止」的语义就是立刻回到空闲，即使任务刚好完成也要收起面板。
+        // 用户按下的停止也要留下终态：主界面据此显示「已停止」，而不是退回一张空态。
+        // onFatal / onMaxSteps 在调 stop() 之前已经各自交出过终态，这里只在还没有终态时补，
+        // 不会把「链路失败」误写成「用户停止」。
+        if (_lastOutcome.value == null && _state.value.isRunning) {
+            _lastOutcome.value = buildOutcome(TaskStatus.ABORTED, "已按你的要求停止任务")
+        }
         // failureKind 只在 ERROR 相位有意义：这里落 IDLE，顺手清掉上一轮的分类，
         // 否则下一个任务若因别的原因失败，界面可能读到残留分类
         _state.value = _state.value.copy(
@@ -1415,6 +1439,9 @@ class AgentEngine(
         // 新任务的通道记录清零：上一个任务用过的通道不能顶替这一次的事实
         lastChannelLabel = ""
         AgentAccessibilityService.agentRunning = true
+        // 上一轮的终态卡随新任务开始退场：否则它会与正在执行的新任务同屏，
+        // 变成一张「上一次失败了」的卡挂在一次正常运行的旁边
+        _lastOutcome.value = null
         _state.value = AgentState(
             isRunning = true,
             task = task,
@@ -1447,13 +1474,14 @@ class AgentEngine(
                             TaskStatus.FAILED,
                             outcome.taskMemoryNote.ifBlank { outcome.reason },
                             outcome.reason,
+                            // 分类随终态一起交给展示层：失败卡据此决定给「重试」还是「去配置 / 去授权」
+                            outcome.failureKind,
                         ),
                     )
                 }
                 finalizer.finishTaskMemory(TaskMemoryEntry.STATUS_FAILED, outcome.taskMemoryNote)
                 stop()
-            },
-            onMaxSteps = {
+            },            onMaxSteps = {
                 _state.value = _state.value.copy(
                     phase = AgentState.Phase.ERROR,
                     message = "达到最大步数限制",
@@ -1468,6 +1496,7 @@ class AgentEngine(
                             TaskStatus.NOT_ACHIEVED,
                             "达到最大步数限制",
                             "已执行 $maxSteps 步仍未拿到完成证据",
+                            AgentState.FailureKind.MAX_STEPS,
                         ),
                     )
                 }

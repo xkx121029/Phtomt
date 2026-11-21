@@ -149,6 +149,13 @@ class MainViewModel(
     val taskSessions: StateFlow<List<com.phoneagent.engine.TaskSession>> by lazy { engine.taskSessions }
     /** 当前对话的起点：实时视图只铺开这之后的任务，承接块也只取这之后的往来 */
     val conversationStart: StateFlow<Long> by lazy { engine.conversationStart }
+    /**
+     * 最近一次任务的终态（成功 / 失败 / 用户停止）。
+     *
+     * 引擎收尾会把 phase 落回 IDLE，所以「刚才那次到底怎么结束的」只能从这里取；
+     * 主界面据此渲染终态卡，而不是退回一张空态。
+     */
+    val lastOutcome: StateFlow<com.phoneagent.domain.model.TaskOutcome?> by lazy { engine.lastOutcome }
     val taskQueue: StateFlow<List<String>> by lazy { engine.taskQueue }
     val needsUser: StateFlow<Boolean> by lazy { engine.needsUser }
     val userHintRequest by lazy { engine.userHintRequest }

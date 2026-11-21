@@ -9,12 +9,15 @@ import com.phoneagent.domain.model.ClarificationOption
 import com.phoneagent.domain.model.StepRecord
 import com.phoneagent.device.vision.StepTrace
 import com.phoneagent.domain.model.TaskPlan
+import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.domain.model.TaskStep
+import com.phoneagent.domain.model.TaskOutcome
 import com.phoneagent.engine.ClarifyAnswered
 import com.phoneagent.engine.MemoryEvent
 import com.phoneagent.engine.PlanPhase
 import com.phoneagent.engine.SayEvent
 import com.phoneagent.engine.TaskSession
+import com.phoneagent.engine.execution.VerifyRules
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,6 +53,7 @@ class AgentTimelineMapperTest {
         verified: Boolean,
         type: String = ActionType.TAP,
         taskId: Long = -1,
+        result: String = if (verified) VerifyRules.STATUS_VERIFIED else VerifyRules.STATUS_UNVERIFIED,
     ) = StepRecord(
         step = step,
         taskId = taskId,
@@ -58,7 +62,7 @@ class AgentTimelineMapperTest {
             target = ActionTarget(method = "id", value = "search_box"),
             confidence = 0.9,
         ),
-        verificationResult = if (verified) "verified_success" else "unverified",
+        verificationResult = result,
         isConfirmed = verified,
         durationMs = 200,
     )
@@ -81,6 +85,8 @@ class AgentTimelineMapperTest {
         focusTaskId: Long? = null,
         archived: TaskSession? = null,
         conversationStart: Long = 0L,
+        lastOutcome: TaskOutcome? = null,
+        configProblem: String? = null,
     ) = AgentTimelineMapper.build(
         submittedTask = submittedTask,
         state = state,
@@ -99,6 +105,8 @@ class AgentTimelineMapperTest {
         focusTaskId = focusTaskId,
         archived = archived,
         conversationStart = conversationStart,
+        lastOutcome = lastOutcome,
+        configProblem = configProblem,
     )
 
     private fun running(message: String, stepCount: Int = 1) = AgentState(
@@ -399,7 +407,7 @@ class AgentTimelineMapperTest {
         // 回看历史时不回放当时的实时状态，也不混入排队任务
         assertTrue(items.none { it is AgentTimelineItem.LiveStatus })
         // 没有归档就不硬造终态（超出归档上限的老任务容易被误判成失败）
-        assertTrue(items.none { it is AgentTimelineItem.Failed })
+        assertTrue(items.none { it is AgentTimelineItem.Terminal })
     }
 
     @Test
@@ -440,9 +448,165 @@ class AgentTimelineMapperTest {
             summary = "用户手动停止",
         )
         val items = build(focusTaskId = 7L, archived = archived)
-        val failed = items.filterIsInstance<AgentTimelineItem.Failed>().single()
-        assertEquals("用户手动停止", failed.message)
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals("用户手动停止", card.cause)
+        assertEquals("停止不是失败：终态必须是已停止", TaskStatus.ABORTED, card.status)
         assertTrue(items.none { it is AgentTimelineItem.Done })
+    }
+
+    // ---- 终态卡：任务结束必须在主界面留下结论（UX-02）----
+
+    @Test
+    fun `任务失败后终态卡留在主界面而不是退回空态`() {
+        // 失败于决策阶段：一条执行痕迹都没有——正是空态成立的条件，历史上界面就此变成「还没有任务」
+        val items = build(
+            state = AgentState(
+                isRunning = false,
+                task = "打开相册，看看最近拍的照片",
+                phase = AgentState.Phase.IDLE,
+                startedAtMillis = 100L,
+            ),
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "决策链路连续异常",
+                failureReason = "AI 决策链路持续异常，已停止任务",
+                failureKind = AgentState.FailureKind.DECISION,
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals(TaskStatus.FAILED, card.status)
+        assertTrue("失败卡必须给至少一个可执行出口", card.actions.isNotEmpty())
+        assertTrue("原因要透出引擎给的具体说法", card.cause.contains("异常"))
+        // 标题 chip 必须自己带状态，否则它与终态卡同屏时会被读成两个任务
+        assertEquals(
+            TaskStatus.FAILED,
+            items.filterIsInstance<AgentTimelineItem.UserTask>().single().status,
+        )
+    }
+
+    @Test
+    fun `无障碍没开导致的失败，卡片标题与出口都指向权限`() {
+        val items = build(
+            state = AgentState(
+                isRunning = false,
+                task = "打开相册",
+                phase = AgentState.Phase.IDLE,
+                startedAtMillis = 100L,
+            ),
+            a11yEnabled = false,
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "决策链路连续异常",
+                failureKind = AgentState.FailureKind.DECISION,
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals("无障碍没开，AI 看不见屏幕", card.headline)
+        assertTrue("主出口必须能直接去开授权", card.actions.contains(TerminalAction.OPEN_PERMISSIONS))
+    }
+
+    @Test
+    fun `用户停止的终态是已停止且仍可重试`() {
+        val items = build(
+            state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.ABORTED,
+                summary = "已按你的要求停止任务",
+                failureKind = AgentState.FailureKind.USER_STOPPED,
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals(TaskStatus.ABORTED, card.status)
+        assertEquals("已停止", card.headline)
+        assertEquals(listOf(TerminalAction.RETRY), card.actions)
+    }
+
+    @Test
+    fun `终态卡按三态报步数：生效、未确认、未生效分开算`() {
+        val items = build(
+            state = AgentState(isRunning = false, task = "把字体调大", phase = AgentState.Phase.IDLE),
+            traces = (1..3).map { trace(9, it) },
+            history = listOf(
+                record(1, verified = true, taskId = 9),
+                record(2, verified = false, taskId = 9, result = VerifyRules.STATUS_UNVERIFIED),
+                record(3, verified = false, taskId = 9, result = VerifyRules.STATUS_NO_EFFECT),
+            ),
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "动作连续未生效",
+                failureKind = AgentState.FailureKind.UNKNOWN,
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals(1, card.okSteps)
+        assertEquals(1, card.unconfirmedSteps)
+        assertEquals(1, card.failedSteps)
+        val line = AgentTerminal.stepLine(card.okSteps, card.unconfirmedSteps, card.failedSteps)
+        assertEquals("已确认生效 1 步 · 已交付未确认 1 步 · 未生效 1 步", line)
+        assertTrue(
+            "未确认的步骤要提示用户去核对，而不是折进失败数里",
+            AgentTerminal.unconfirmedNote(card.unconfirmedSteps).contains("核对"),
+        )
+    }
+
+    @Test
+    fun `模型没配置时终态卡的出口是去配置`() {
+        val items = build(
+            state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),
+            configProblem = "API Key 未填写",
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "任务异常终止：IllegalStateException",
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals(listOf(TerminalAction.OPEN_SETTINGS), card.actions)
+        assertEquals("还没配置模型", card.headline)
+    }
+
+    @Test
+    fun `上一段对话的失败终态不铺到新对话里`() {
+        val items = build(
+            state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),
+            conversationStart = 600L,
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "决策链路连续异常",
+                atMillis = 500L,
+            ),
+        )
+        assertTrue("上一段对话的失败不该出现在新对话", items.isEmpty())
+    }
+
+    @Test
+    fun `成功时只出完成摘要，不重复出终态卡`() {
+        val items = build(
+            state = AgentState(
+                isRunning = false,
+                task = "把字体调大",
+                phase = AgentState.Phase.DONE,
+                message = "字体已调大",
+                stepCount = 1,
+            ),
+            traces = listOf(trace(9, 1)),
+            history = listOf(record(1, verified = true, taskId = 9)),
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.SUCCESS,
+                summary = "字体已调大",
+                atMillis = 500L,
+            ),
+        )
+        assertEquals(1, items.count { it is AgentTimelineItem.Done })
+        assertTrue(items.none { it is AgentTimelineItem.Terminal })
+        assertEquals(
+            TaskStatus.SUCCESS,
+            items.filterIsInstance<AgentTimelineItem.UserTask>().single().status,
+        )
     }
 
     @Test
