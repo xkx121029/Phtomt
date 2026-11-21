@@ -775,6 +775,9 @@ internal class ExecutionCore(
 
         val service = AgentAccessibilityService.instance ?: return fail("无障碍服务不可用")
         val executor = ActionExecutor(service)
+        // 比例 → 像素要一个屏幕尺寸：与副屏路径同一套取值顺序（快照优先，读不到退回最近一次观察/真实屏幕）
+        val endpointW = if (snapshot.screenWidth > 0) snapshot.screenWidth else ctx.screenWidth()
+        val endpointH = if (snapshot.screenHeight > 0) snapshot.screenHeight else ctx.screenHeight()
         // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
         @Suppress("MaxLineLength")
         fun wrap(r: ActionExecutor.Result): com.phoneagent.engine.execution.VerifyResult = when (r) {
@@ -783,16 +786,23 @@ internal class ExecutionCore(
         }
 
         return when (name) {
-            "click" -> wrap(executor.click(
-                intArg("x") ?: return badRequest("click 缺少参数 x"),
-                intArg("y") ?: return badRequest("click 缺少参数 y"),
-            ))
-            "long_click" -> wrap(executor.longClick(
-                intArg("x") ?: return badRequest("long_click 缺少参数 x"),
-                intArg("y") ?: return badRequest("long_click 缺少参数 y"),
-                // 端点直调同样透传上层指定的按压时长（无则默认），与 long_press 动作口径一致
-                action.durationMs,
-            ))
+            // 落点只认 0~1 比例（x=横向、y=纵向），与 target{method:coordinate} 共用同一个解析函数。
+            // 端点这边曾经直接按像素下发，于是系统里有比例/像素两套口径——只留一套。
+            "click", "long_click" -> {
+                val rx = strArg("x") ?: return badRequest("$name 缺少参数 x（0~1 比例，例如 0.5）")
+                val ry = strArg("y") ?: return badRequest("$name 缺少参数 y（0~1 比例，例如 0.5）")
+                val point = endpointPoint(rx, ry, endpointW, endpointH)
+                    ?: return badRequest(
+                        "$name 的 x/y 必须是 0~1 的比例值（收到 x=$rx, y=$ry）。" +
+                            "绝对像素已不支持：屏幕中央写 x=0.5, y=0.5，右下角写 x=1.0, y=1.0",
+                    )
+                if (name == "click") {
+                    wrap(executor.click(point.first, point.second))
+                } else {
+                    // 端点直调同样透传上层指定的按压时长（无则默认），与 long_press 动作口径一致
+                    wrap(executor.longClick(point.first, point.second, action.durationMs))
+                }
+            }
             "click_node" -> {
                 val raw = strArg("target") ?: return badRequest("click_node 缺少参数 target")
                 // 「id:资源名」走 viewId 精确匹配；否则按文字匹配，并把快照中心点作为同字控件并列时的兜底线索

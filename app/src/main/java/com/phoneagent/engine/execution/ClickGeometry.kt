@@ -1,5 +1,7 @@
 package com.phoneagent.engine.execution
 
+import com.phoneagent.domain.model.ScreenSnapshot
+
 /**
  * 点击落点几何（纯逻辑，可单测）。
  *
@@ -44,6 +46,62 @@ internal object ClickGeometry {
             ?: safe
         return coerce(x, y, area)
     }
+
+    /** 一次手势候选落点：名称（写进执行日志，出现"点错位置"时靠它分清是哪一路算出来的）+ 像素坐标 */
+    data class Candidate(val name: String, val point: Pair<Int, Int>)
+
+    /**
+     * 手势落点候选（按优先级从高到低）：活节点位置 → 元素最新位置 → 快照坐标。
+     *
+     * 几何基准（安全区、屏幕矩形）取**执行前新抓的** [fresh]，不取 AI 观察那一刻的 [observed]：
+     * 元素坐标本身来自新树，若钳制还用观察时刻的屏幕尺寸，横竖屏切换后同一个 bounds 会被平移几百像素
+     * （审计验算：横屏后同一 bounds 被夹平移 845px，点到完全不同的控件）。抓不到新快照时才退回 [observed]。
+     *
+     * 元素落点按「元素 ∩ 安全区」夹取（[clampInto]），快照坐标没有控件可依，只夹进安全区。
+     */
+    fun gesturePoints(
+        liveCenter: Pair<Int, Int>?,
+        elementCenter: Pair<Int, Int>?,
+        target: Rect?,
+        snapshotPoint: Pair<Int, Int>?,
+        observed: ScreenSnapshot,
+        fresh: ScreenSnapshot?,
+        statusBarInset: Int,
+        navBarInset: Int,
+    ): List<Candidate> {
+        val geometry = fresh?.takeIf { it.screenWidth > 0 && it.screenHeight > 0 } ?: observed
+        val safe = safeArea(geometry.screenWidth, geometry.screenHeight, statusBarInset, navBarInset)
+        val screen = Rect(0, 0, geometry.screenWidth, geometry.screenHeight)
+        val points = ArrayList<Candidate>(3)
+        liveCenter?.let { points += Candidate("活节点当前位置", clampInto(it.first, it.second, target, safe, screen)) }
+        elementCenter?.let { points += Candidate("元素最新位置", clampInto(it.first, it.second, target, safe, screen)) }
+        snapshotPoint?.let { points += Candidate("快照坐标", clampInto(it.first, it.second, null, safe, screen)) }
+        return points.distinctBy { it.point }
+    }
+
+    /**
+     * 屏幕**安全区**（而非整块物理屏）：四边各留 [EDGE_SAFE_MARGIN]，上下再避开系统栏。
+     *
+     * 不能退而求其次夹到 y=0（状态栏）或 y=h-1（导航条）：那等于把"点不到目标"变成"误触系统栏"，
+     * 失败之外还多一点副作用。系统栏高度读不到（部分 ROM 返回 0）时用最小边距兜底，
+     * 保证落点不会等于 0 或 h-1。
+     */
+    fun safeArea(width: Int, height: Int, statusBarInset: Int, navBarInset: Int): Rect {
+        val w = width.takeIf { it > 0 } ?: DEFAULT_SCREEN_W
+        val h = height.takeIf { it > 0 } ?: DEFAULT_SCREEN_H
+        val left = EDGE_SAFE_MARGIN
+        val right = (w - 1 - EDGE_SAFE_MARGIN).coerceAtLeast(left)
+        val top = maxOf(statusBarInset, EDGE_SAFE_MARGIN)
+        val bottom = (h - 1 - maxOf(navBarInset, EDGE_SAFE_MARGIN)).coerceAtLeast(top)
+        return Rect(left = left, top = top, right = right + 1, bottom = bottom + 1)
+    }
+
+    /** 屏幕尺寸读不到时的兜底尺寸（仅用于把落点夹进屏幕内） */
+    private const val DEFAULT_SCREEN_W = 1080
+    private const val DEFAULT_SCREEN_H = 2400
+
+    /** 落点安全区的四边最小边距（像素）：避开屏幕边缘，防止贴边误触 */
+    private const val EDGE_SAFE_MARGIN = 24
 
     /** 元素矩形与安全区的可见交集；null 表示元素完全不可见（无从点击） */
     fun visiblePart(target: Rect, safe: Rect): Rect? = target.intersect(safe).takeUnless { it.isEmpty }

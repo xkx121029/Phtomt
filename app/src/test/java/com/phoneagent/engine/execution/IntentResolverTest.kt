@@ -83,19 +83,41 @@ class IntentResolverTest {
     }
 
     @Test
-    fun byCoordinate_像素坐标原样使用() {
+    fun byCoordinate_像素口径已移除_越界值被拒绝() {
+        // 旧实现在这里断言的正是"像素原样使用"（500,800 → 500,800），把两套口径钉成了契约。
+        // 两套口径混在一个边界上就是 bug 本身：判定式是 f < 1.0，比例 1.0 会被当成"1 像素"。
+        // 现在只认 0~1 比例，像素值越界即拒绝，交由上层报"坐标非法"而不是点去屏幕边缘。
         val s = snapshot(elem(0, text = "无关"))
         val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "500,800"), s)
-        assertEquals(500, r.x)
-        assertEquals(800, r.y)
+        assertNull(r.x)
+        assertNull(r.y)
     }
 
     @Test
-    fun byCoordinate_越界坐标被裁剪() {
+    fun byCoordinate_比例上界落在屏幕最后一个像素() {
+        // 旧实现上界写的是 dim 而不是 dim-1：1.0 会产出 (1080, 2400)，那是屏幕外 1px 的点，
+        // 副屏出口不做验证直接回"已在副屏点击"——假成功。
         val s = snapshot(elem(0, text = "无关"))
-        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "2000,-50"), s)
-        assertEquals(1080, r.x)
-        assertEquals(0, r.y)
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "1.0,1.0"), s)
+        assertEquals(1079, r.x)
+        assertEquals(2399, r.y)
+    }
+
+    @Test
+    fun byCoordinate_底部中央不是屏幕顶端() {
+        // "0.5,1.0" 是屏幕底部中央。旧实现把 1.0 当"1 像素"，y 变成 1，点到了屏幕顶端。
+        val s = snapshot(elem(0, text = "无关"))
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "0.5,1.0"), s)
+        assertEquals(540, r.x)
+        assertEquals(2399, r.y)
+    }
+
+    @Test
+    fun byCoordinate_负比例被拒绝() {
+        val s = snapshot(elem(0, text = "无关"))
+        val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "0.5,-0.1"), s)
+        assertNull(r.x)
+        assertNull(r.y)
     }
 
     @Test
@@ -104,6 +126,33 @@ class IntentResolverTest {
         val r = resolver.resolve(AgentIntentTarget(by = "coordinate", value = "abc,def"), s)
         assertNull(r.x)
         assertNull(r.y)
+    }
+
+    // ---- a11y 端点（intent=a11y 的 click / long_click）：与 target 的 coordinate 同一套比例口径 ----
+    // 端点这边原来把 x/y 当像素直接下发，而 target{method:coordinate} 是比例——两套口径并存，
+    // 正是「比例 1.0 被当成 1 像素」那个 bug 的成因。现在两条入口共用 coordinateToPixel。
+
+    @Test
+    fun 端点坐标_比例映射到像素() {
+        assertEquals(540 to 2399, endpointPoint("0.5", "1.0", 1080, 2400))
+        assertEquals(540 to 1200, endpointPoint("0.5", "0.5", 1080, 2400))
+        assertEquals(0 to 0, endpointPoint("0.0", "0.0", 1080, 2400))
+    }
+
+    @Test
+    fun 端点坐标_与target的coordinate同口径() {
+        assertEquals(
+            parseCoordinate("0.5,1.0", 1080, 2400),
+            endpointPoint("0.5", "1.0", 1080, 2400),
+        )
+    }
+
+    @Test
+    fun 端点坐标_像素写法被拒绝() {
+        // 端点上「点屏幕中部」曾经写成 x=540,y=1200；现在必须写 0.5/0.5，像素值一律拒绝
+        assertNull(endpointPoint("540", "1200", 1080, 2400))
+        assertNull(endpointPoint("0.5", "-0.1", 1080, 2400))
+        assertNull(endpointPoint("1.5", "0.5", 1080, 2400))
     }
 
     @Test
@@ -132,6 +181,47 @@ class IntentResolverTest {
         assertNull(r.element)
         assertEquals(90, r.x)
         assertEquals(90, r.y)
+    }
+
+    // ---- 节点直点的定位线索：位置不是标识 ----
+    // 无字图标（elementIndex 选中、没有 viewId 也没有文字）曾经能产出"只有 centerHint"的线索，
+    // Provider 拿它去 NodesAtPoint 找"此刻压在这个点上的控件"并上溯祖先点下去，而这条直点路径
+    // 不做落点审计：AI 选中图标、页面滚过一屏之后，点中的是邻居还判成功。
+
+    @Test
+    fun 无viewId无文字的元素不产出节点线索() {
+        val icon = elem(3, left = 960, top = 200, right = 1040, bottom = 280)
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 3,
+        )
+        assertNull(resolver.nodeSelectorOf(action, icon))
+    }
+
+    @Test
+    fun 有viewId的元素产出节点线索() {
+        val btn = elem(4, viewId = "com.app:id/btn_more")
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 4,
+        )
+        val selector = resolver.nodeSelectorOf(action, btn)
+        assertNotNull(selector)
+        assertEquals("com.app:id/btn_more", selector?.viewId)
+    }
+
+    @Test
+    fun 有文字的元素产出节点线索并保留位置线索() {
+        val btn = elem(5, text = "更多", left = 900, top = 200, right = 1000, bottom = 260)
+        val action = com.phoneagent.domain.model.AgentAction(
+            type = com.phoneagent.domain.model.ActionType.CLICK,
+            elementIndex = 5,
+        )
+        val selector = resolver.nodeSelectorOf(action, btn)
+        assertNotNull(selector)
+        assertEquals("更多", selector?.label)
+        // 位置仍然保留：同 viewId / 同文字的控件常出现在列表每一行，Provider 靠它选最近的那个
+        assertEquals(950 to 230, selector?.centerHint)
     }
 
     @Test
