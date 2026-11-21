@@ -322,13 +322,25 @@ internal fun OnboardingPageHeader(
  *
  * 固定底部（而不是让按钮跟着内容滚走）是为了让每一步的出口始终在同一位置；
  * 内容高度不够时靠 [BoxWithConstraints] 拿到可用高度并作为最小高度，实现垂直居中。
+ *
+ * [banner] 是钉在滚动区之上的阻断条：从系统设置页返回时用户多半停在列表中间，
+ * 只有固定在这里的提示才保证「首屏可见」。
  */
 @Composable
 internal fun OnboardingPage(
     footer: @Composable ColumnScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit,
+    banner: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize()) {
+        if (banner != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = AppSpacing.Xl)
+                    .padding(top = AppSpacing.Sm),
+            ) { banner() }
+        }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val minHeight = maxHeight
             Column(
@@ -429,7 +441,7 @@ private fun StepDots(count: Int, current: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** 就绪统计胶囊：全部点亮时换成成功色 + 对勾 */
+/** 就绪统计胶囊：分母是「必做」项数（见 `OnboardingPermissionPolicy.RequiredKinds`） */
 @Composable
 internal fun ReadyBadge(granted: Int, total: Int, allGranted: Boolean) {
     val color = if (allGranted) Success else MaterialTheme.colorScheme.primary
@@ -450,7 +462,7 @@ internal fun ReadyBadge(granted: Int, total: Int, allGranted: Boolean) {
                 modifier = Modifier.size(16.dp),
             )
             Text(
-                if (allGranted) "全部就绪" else "已就绪 $granted / $total",
+                if (allGranted) "必做已就绪" else "必做已就绪 $granted / $total",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = color,

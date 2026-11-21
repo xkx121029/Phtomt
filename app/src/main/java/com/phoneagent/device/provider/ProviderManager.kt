@@ -209,6 +209,21 @@ object ProviderManager {
     }
 
     /**
+     * 某个包的安装来源包名；读不到（侧载 / 未知来源）返回 null。
+     *
+     * Android 13 起的「受限制的设置」按安装来源判定是否灰置无障碍开关：
+     * Play 装的包不拦，其余来源默认拦。调用方据此决定要不要提前给出解法。
+     */
+    fun installingPackageOf(context: Context, pkg: String): String? = runCatching {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            context.packageManager.getInstallSourceInfo(pkg).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getInstallerPackageName(pkg)
+        }
+    }.getOrNull()
+
+    /**
      * 引导安装内置 Provider：解出 assets 里的 APK 到 cache，经 FileProvider 授权给系统安装器。
      * 返回 Started 后用户仍需在系统安装界面确认；安装完成回到前台时调用方应 refresh 重新检测。
      */
@@ -219,10 +234,11 @@ object ProviderManager {
         if (ProviderContract.judge(_apiVersion.value) is ProviderContract.Verdict.AppOutdated) {
             return InstallLaunch.Failed(ProviderContract.mismatchReason(_apiVersion.value).orEmpty())
         }
-        // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜
+        // 没有「安装未知应用」授权时安装器会静默拒绝，先跳授权页，别让用户对着黑屏猜。
+        // 文案不写「再点一次」：引导页会在返回时自动续装，其余入口各有自己的续装逻辑
         if (!canInstallPackages(context)) {
             openInstallPermissionSettings(context)
-            return InstallLaunch.Failed("需要先允许本应用安装未知应用，已为你打开设置页，授权后回来再点一次")
+            return InstallLaunch.Failed("需要先允许本应用安装未知应用，已为你打开系统设置页")
         }
 
         val apkDir = File(context.cacheDir, "provider").apply { mkdirs() }

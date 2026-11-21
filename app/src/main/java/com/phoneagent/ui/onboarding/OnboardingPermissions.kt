@@ -4,6 +4,7 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -67,25 +69,39 @@ internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 可选权限（如使用情况访问权）默认不开启，不计入「全部就绪」的判定与进度分子分母，
-    // 否则引导页永远停在未完成态
-    val required = permissions.filter { !it.optional }
-    val allGranted = required.isNotEmpty() && required.all { it.granted }
-    // 无障碍没开且系统是 Android 13+：很可能撞上「受限制的设置」拦路
-    val a11yBlocked = Build.VERSION.SDK_INT >= 33 &&
-        permissions.any { it.kind == PermissionKind.ACCESSIBILITY && !it.granted }
+    // 可选权限（如使用情况访问权）默认不开启，不计入进度：
+    // 分母只数「必做」组（[RequiredKinds]），与顶部文案、分组标题同一口径
+    val progress = requiredProgress(permissions)
+    // 无障碍没开且具备受限条件（Android 13+ 侧载安装的组件）：开关多半是灰的，点不动
+    val a11yBlocked = remember(permissions) {
+        permissions.isNotEmpty() && a11yMayBeRestricted(
+            sdkInt = Build.VERSION.SDK_INT,
+            installingPackage = ProviderManager.installingPackageOf(context, ProviderManager.PACKAGE),
+            providerInstalled = ProviderManager.isInstalled(context),
+            accessibilityGranted = permissions.any {
+                it.kind == PermissionKind.ACCESSIBILITY && it.granted
+            },
+        )
+    }
+    // 提示卡钉在页面顶部而不是列表末尾：用户从系统页返回时滚动位置在哪都能一眼看到
+    val blocker: (@Composable ColumnScope.() -> Unit)? = if (a11yBlocked) {
+        { RestrictedSettingBanner(onOpenAppInfo = { openProviderAppInfo(context) }) }
+    } else {
+        null
+    }
 
     OnboardingPage(
+        banner = blocker,
         content = {
             OnboardingPageHeader(
                 icon = AppIcons.Guard,
                 title = "开启所需权限",
-                body = "只有「无障碍」是必须的——它让我能看屏幕、能点按。其余按需开启，随时可以回来补。",
+                body = "必做只有「无障碍」——它让我能看屏幕、能点按。其余按需开启，随时可以回来补。",
             )
             Spacer(Modifier.height(AppSpacing.Lg))
             // 首帧权限列表还没读出来时不显示「0 / 0」，避免闪一下空进度再跳成真实值
-            if (required.isNotEmpty()) {
-                ReadyBadge(required.count { it.granted }, required.size, allGranted)
+            if (progress.total > 0) {
+                ReadyBadge(progress.granted, progress.total, progress.allGranted)
                 Spacer(Modifier.height(AppSpacing.Lg))
             }
             PermissionGroups.forEach { group ->
@@ -94,14 +110,17 @@ internal fun OnboardingPermissionPage(vm: MainViewModel, onNext: () -> Unit) {
                     items = permissions.filter { it.kind in group.kinds },
                     onOpen = { kind -> vm.openPermissionSettings(context, kind) },
                 )
+                // 解法就地展开在「必做」下面：原先放在所有分组之后，用户滚不到也不会滚
+                if (group.required && a11yBlocked) {
+                    RestrictedSettingSteps(onOpenAppInfo = { openProviderAppInfo(context) })
+                }
             }
-            // Android 13+ 侧载应用的无障碍开关会被系统标成「受限制的设置」，
-            // 点开只有一句「App was denied access」和一个 Close。提前把解法写在原地。
-            if (a11yBlocked) RestrictedSettingHint(context)
+            // 底部操作条固定在页脚：滚动区末尾留净空，最后一张卡才能完整露出（UI-03）
+            Spacer(Modifier.height(AppSpacing.Xl))
         },
         footer = {
             PrimaryOnboardingButton(
-                label = if (allGranted) "全部就绪，下一步" else "下一步",
+                label = if (progress.allGranted) "无障碍已就绪，下一步" else "下一步",
                 onClick = onNext,
             )
             Spacer(Modifier.height(AppSpacing.Sm))
@@ -122,7 +141,7 @@ private fun PermissionGroupBlock(
     onOpen: (PermissionKind) -> Unit,
 ) {
     if (items.isEmpty()) return
-    GroupHeader(group.title, group.hint, group.required)
+    GroupHeader(group)
     Spacer(Modifier.height(AppSpacing.Sm))
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Md)) {
         items.forEach { p ->
@@ -132,56 +151,20 @@ private fun PermissionGroupBlock(
                 icon = permissionIcon(p.kind),
                 granted = p.granted,
                 onClick = { onOpen(p.kind) },
-                optional = p.optional,
+                required = group.required,
             )
         }
     }
     Spacer(Modifier.height(AppSpacing.Lg))
 }
 
-/** 权限分组：必做先出现，其余按「影响面由大到小」排列 */
-private data class PermissionGroup(
-    val title: String,
-    val hint: String,
-    val required: Boolean,
-    val kinds: List<PermissionKind>,
-)
-
-private val PermissionGroups = listOf(
-    PermissionGroup(
-        title = "必做",
-        hint = "不开启就只能聊天，不能替你操作手机",
-        required = true,
-        kinds = listOf(PermissionKind.ACCESSIBILITY),
-    ),
-    PermissionGroup(
-        title = "推荐",
-        hint = "影响任务能不能找到并启动目标应用",
-        required = false,
-        kinds = listOf(
-            PermissionKind.NOTIFICATIONS,
-            PermissionKind.USAGE_ACCESS,
-            PermissionKind.INSTALL_PACKAGES,
-        ),
-    ),
-    PermissionGroup(
-        title = "可选",
-        hint = "体验增强：进度浮窗、设备设置调整、后台更稳",
-        required = false,
-        kinds = listOf(
-            PermissionKind.OVERLAY,
-            PermissionKind.WRITE_SETTINGS,
-            PermissionKind.AUTOSTART,
-            PermissionKind.ALL_FILES,
-            PermissionKind.DND_ACCESS,
-            PermissionKind.MICROPHONE,
-        ),
-    ),
-)
-
-/** 分组小标题：必做用主色，其余用次要色，避免三组看起来一样重 */
+/**
+ * 分组小标题：必做用主色，其余用次要色；非必做组右侧标「按需开启」而不是给分母，
+ * 这样「已就绪 1 / 1」这个分母不会和列表里的项数打架。
+ */
 @Composable
-private fun GroupHeader(title: String, hint: String, required: Boolean) {
+private fun GroupHeader(group: PermissionGroup) {
+    val required = group.required
     val color = if (required) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -189,26 +172,74 @@ private fun GroupHeader(title: String, hint: String, required: Boolean) {
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
     ) {
         Text(
-            title,
+            group.title,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
             color = color,
         )
         Text(
-            hint,
+            group.hint,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
         )
+        if (!required) {
+            StatusPill(
+                text = "按需开启",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 打开服务组件的系统「应用信息」页：「允许受限制的设置」就在这一页的右上角菜单里 */
+private fun openProviderAppInfo(context: android.content.Context) {
+    val intent = android.content.Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.parse("package:${ProviderManager.PACKAGE}"),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
+}
+
+/**
+ * 阻断式提示卡：钉在权限页顶部。
+ *
+ * 用户从系统无障碍页返回时往往停在列表中间，原先放在列表末尾的说明等于不存在——
+ * 所以这张卡跟着页面顶部走，只报「为什么会这样 + 去哪儿点」，步骤写在无障碍行下方。
+ */
+@Composable
+private fun RestrictedSettingBanner(onOpenAppInfo: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppRadii.Card))
+            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+            .padding(horizontal = AppSpacing.Md, vertical = AppSpacing.Sm),
+    ) {
+        Text(
+            "无障碍开关是灰的、点不动？",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        Spacer(Modifier.height(AppSpacing.Xxs))
+        Text(
+            "这是 Android 13 起对侧载应用的限制，不是应用坏了。按下方「必做」里的三步解除即可。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+        )
+        TextButton(onClick = onOpenAppInfo, modifier = Modifier.padding(top = AppSpacing.Xs)) {
+            Text("打开服务组件应用信息")
+        }
     }
 }
 
 /**
- * Android 13+ 侧载应用的无障碍开关会被系统标记为「受限制的设置」：
- * 点进去只显示 `App was denied access` 与一个 Close 按钮，开关不可点。
- * 解法在服务组件的应用信息页右上角菜单里，离线用户很难自己找到，这里直接写出来并给跳转。
+ * 「受限制的设置」三步解法：就地展开在「必做」组下方，而不是藏在所有分组之后。
+ * 系统页是英文时用户看到的是 `Allow restricted settings`，两条文案都写上。
  */
 @Composable
-private fun RestrictedSettingHint(context: android.content.Context) {
+private fun RestrictedSettingSteps(onOpenAppInfo: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -217,20 +248,27 @@ private fun RestrictedSettingHint(context: android.content.Context) {
             .padding(AppSpacing.Md),
     ) {
         Text(
-            "开启时如果看到「App was denied access」：这是 Android 13 起对侧载应用的限制。" +
-                "打开服务组件的应用信息，右上角菜单选「允许受限制的设置」，再回来开启即可。",
-            style = MaterialTheme.typography.bodySmall,
+            "开关灰置时的三步解法",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onTertiaryContainer,
         )
-        TextButton(
-            onClick = {
-                val intent = android.content.Intent(
-                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    android.net.Uri.parse("package:${ProviderManager.PACKAGE}"),
-                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                runCatching { context.startActivity(intent) }
-            },
-        ) { Text("打开服务组件应用信息") }
+        Spacer(Modifier.height(AppSpacing.Sm))
+        listOf(
+            "1. 点下面的按钮，打开服务组件的「应用信息」页",
+            "2. 右上角菜单 ⋮ →「允许受限制的设置」（英文为 Allow restricted settings）",
+            "3. 回到本页 → 无障碍 → 开启「Happy Agent 自动操作」；返回本页会自动刷新状态",
+        ).forEach { step ->
+            Text(
+                step,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            Spacer(Modifier.height(AppSpacing.Xs))
+        }
+        TextButton(onClick = onOpenAppInfo, modifier = Modifier.padding(top = AppSpacing.Xs)) {
+            Text("打开服务组件应用信息")
+        }
     }
 }
 
@@ -242,7 +280,7 @@ internal fun OnboardingPermissionRow(
     icon: ImageVector,
     granted: Boolean,
     onClick: () -> Unit,
-    optional: Boolean = false,
+    required: Boolean = false,
 ) {
     val color = if (granted) Success else MaterialTheme.colorScheme.primary
     PressableScale(onClick = onClick) {
@@ -275,11 +313,7 @@ internal fun OnboardingPermissionRow(
                 )
             }
             StatusPill(
-                text = when {
-                    granted -> "完成"
-                    optional -> "可选"
-                    else -> "去授权"
-                },
+                text = permissionPillText(granted = granted, required = required),
                 color = color,
                 modifier = Modifier.padding(end = AppSpacing.Md),
             )
