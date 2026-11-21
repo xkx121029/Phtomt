@@ -3,6 +3,7 @@ package com.phoneagent.engine.execution
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.domain.model.AgentAction
 import com.phoneagent.domain.model.AgentIntent
+import com.phoneagent.domain.model.AgentIntentTarget
 import com.phoneagent.domain.model.CapabilityRegistry
 import com.phoneagent.domain.model.CapabilitySpec
 import com.phoneagent.domain.model.IntentType
@@ -125,7 +126,7 @@ class ConfirmationGateRegistryTest {
     @Test
     fun 注册表未声明的意图_不会被统一规则误置为需要确认() {
         val samples = listOf(
-            AgentIntent(intent = IntentType.TAP, target = com.phoneagent.domain.model.AgentIntentTarget("text", "下一页")),
+            AgentIntent(intent = IntentType.TAP, target = AgentIntentTarget(by = "text", value = "下一页")),
             AgentIntent(intent = IntentType.SWIPE, direction = "up"),
             AgentIntent(intent = IntentType.WAIT, waitMs = 800),
             AgentIntent(intent = IntentType.CLIPBOARD, op = "get"),
@@ -151,12 +152,66 @@ class ConfirmationGateRegistryTest {
         val action = commandOf(
             AgentIntent(
                 intent = IntentType.TAP,
-                target = com.phoneagent.domain.model.AgentIntentTarget("text", "下一页"),
+                target = AgentIntentTarget(by = "text", value = "下一页"),
                 needsConfirmation = true,
             ),
         )
         assertNotNull(action)
         assertTrue("模型标了 needs_confirmation 的动作必须保留确认", action!!.needsUserConfirmation)
         assertEquals(ActionType.TAP, action.type)
+    }
+
+    /**
+     * 与 ExecutionPhase 的确认门判据同口径：动作自带 needsUserConfirmation，或 TAP 的目标标签命中危险词。
+     * 这里刻意复刻那条判据而不是调用私有方法——它就是要钉住的契约。
+     */
+    private fun gateTriggered(action: AgentAction): Boolean =
+        action.needsUserConfirmation ||
+            (action.type == ActionType.TAP && DangerousTargetWords.hit(action.target?.value) != null)
+
+    /** 英文控件名场景：AI 用 by=id 点一个 value 就叫 send 的控件，中文词表完全看不见它 */
+    private fun englishSnapshot() = ScreenSnapshot(
+        packageName = "com.test.app",
+        screenWidth = 1080,
+        screenHeight = 2400,
+        elements = listOf(
+            UiElement(
+                index = 0,
+                className = "android.widget.Button",
+                type = "Button",
+                text = "Send",
+                x = 500,
+                y = 500,
+                left = 0,
+                top = 400,
+                right = 1000,
+                bottom = 600,
+                clickable = true,
+                viewId = "send",
+            ),
+        ),
+    )
+
+    @Test
+    fun 英文控件名的tap_确认门被触发() {
+        val intent = AgentIntent(intent = IntentType.TAP, target = AgentIntentTarget(by = "id", value = "send"))
+        val result = translator.translate(intent, englishSnapshot())
+        assertTrue("期望转译成功，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        val action = (result as IntentTranslator.TranslationResult.Command).action
+        assertEquals(ActionType.TAP, action.type)
+        assertEquals("send", action.target?.value)
+        assertFalse("TAP 本身不在注册表的确认名单里", action.needsUserConfirmation)
+        assertTrue("英文控件名 send 没有命中危险词，确认门不会触发", gateTriggered(action))
+    }
+
+    @Test
+    fun 中文发送标签的tap_确认门被触发() {
+        val intent = AgentIntent(intent = IntentType.TAP, target = AgentIntentTarget(by = "text", value = "发送"))
+        val result = translator.translate(intent, snapshot())
+        assertTrue("期望转译成功，实际: $result", result is IntentTranslator.TranslationResult.Command)
+        val action = (result as IntentTranslator.TranslationResult.Command).action
+        assertEquals(ActionType.TAP, action.type)
+        assertFalse("TAP 本身不在注册表的确认名单里", action.needsUserConfirmation)
+        assertTrue("目标标签「发送」没有命中危险词，确认门不会触发", gateTriggered(action))
     }
 }
