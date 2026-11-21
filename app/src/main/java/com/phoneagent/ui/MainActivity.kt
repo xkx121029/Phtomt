@@ -90,6 +90,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.core.log.AppLog
 import com.phoneagent.core.perf.StartupTrace
 import com.phoneagent.device.provider.ProviderManager
@@ -215,7 +216,7 @@ class MainActivity : ComponentActivity() {
             // 只构造 ViewModel 本身（碰一次 AppSettings + 门控镜像）；引擎与其余重对象由首个访问惰性拉起
             val vm: MainViewModel = StartupTrace.span("MainViewModel 构建") { koinViewModel() }
             // 主题设置：配色 / 无框线 / 磨砂浓淡实时驱动 PhoneAgentTheme，改完立即生效
-            val settings by vm.settingsFlow.collectAsState()
+            val settings by vm.settingsFlow.collectAsStateWithLifecycle()
             PhoneAgentTheme(
                 paletteId = settings.palette,
                 bordersEnabled = !settings.borderless,
@@ -299,7 +300,7 @@ private fun ActivityContent(
     // 纯色的观感与 windowBackground 白底完全相同，用户看到的就是「点了图标先白一下」；
     // 骨架屏至少说明界面已经在、内容待填。同时避免老用户冷启动时默认值（onboardingDone=false）
     // 抢先一帧、闪一下引导页。
-    val onboardingDone by vm.onboardingState.collectAsState()
+    val onboardingDone by vm.onboardingState.collectAsStateWithLifecycle()
     var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
     // -1 = 还没选过 Tab：本轮落点由设置里的「启动默认页」决定；
     // 用户一碰底部导航（或深链写入）selected 就变成真实索引，进程重建后按 rememberSaveable 恢复。
@@ -349,8 +350,8 @@ private fun ActivityContent(
     val motion = motionSettings()
     val transitionDuration = motion.scaledDuration(DurationSlow)
 
-    val settings by vm.settingsFlow.collectAsState()
-    val overlayGranted by vm.overlayGranted.collectAsState()
+    val settings by vm.settingsFlow.collectAsStateWithLifecycle()
+    val overlayGranted by vm.overlayGranted.collectAsStateWithLifecycle()
 
     // 可配置 Tab（Superagent 融合 Phase 5）：顺序与可见性由 AppSettings.tab_order/tab_visible 决定，
     // 设置页改动后 settings 流更新，这里即时重排；selected 是「可见 Tab 列表的索引」。
@@ -461,8 +462,8 @@ private fun ActivityContent(
     // AI 上网：引擎从后台拉起本页并要求切到「浏览器」二级页（BrowserBridge.EXTRA_BROWSE）；
     // AI 引导回 Agent 页同理（MainActivity.EXTRA_AGENT_PAGE，可顺带全屏展示生成的内容）。
     // 首次组合（onCreate）与已在栈上被复用（onNewIntent）都走这里，保证两条路径的落点一致。
-    val browseSignal by pageSignal.collectAsState()
-    val doc by vm.docResult.collectAsState()
+    val browseSignal by pageSignal.collectAsStateWithLifecycle()
+    val doc by vm.docResult.collectAsStateWithLifecycle()
     var docFullscreen by rememberSaveable { mutableStateOf(false) }
     // 工作台配置面板的深链落点：非空时设置页直接翻到该分类，消费后清空
     var settingsLanding by remember { mutableStateOf<SettingsPage?>(null) }
@@ -489,7 +490,7 @@ private fun ActivityContent(
     // 系统级入口统一消费：深链 hpa://task / 分享 / 选中文字处理 / 快捷方式。
     // 任务文本按「运行中 → 追加队列；空闲 → 开新任务」路由，与悬浮窗排队模式同源；
     // 消费完即清掉 data 与 extra，避免 onNewIntent 复用同一 Intent 时重复起任务。
-    val entryTick by entrySignal.collectAsState()
+    val entryTick by entrySignal.collectAsStateWithLifecycle()
     val entryScope = rememberCoroutineScope()
     // 外部来源的任务先挂在这里等用户点一次确认，不直接开跑。判据是「来源能不能证明是本应用自己」
     // （见 EntryTrust），不是「走的深链还是 extras」——自定义 scheme 谁都能构造，
@@ -980,6 +981,11 @@ private fun EdgeLightingController(
     overlayGranted: Boolean,
 ) {
     // 派生流只在 vm 变化时重建；初始值直接取当前快照，避免起帧时多闪一次 false
+    //
+    // 这一处**故意**保留 collectAsState()：光效是 TYPE_APPLICATION_OVERLAY 窗口，用户切到
+    // 别的应用时它还在画。任务在后台跑完必须当场熄灯，而熄灯信号只有这里一条
+    // （EdgeLightingService 自己不订阅引擎状态）。换成 WithLifecycle 后后台停止收集，
+    // running 会冻在 true，灯要等用户回到应用才灭——那是可见的回归，不是优化。
     val running by remember(vm) {
         vm.agentState.map { it.isRunning }.distinctUntilChanged()
     }.collectAsState(initial = vm.agentState.value.isRunning)
