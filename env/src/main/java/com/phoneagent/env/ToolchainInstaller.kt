@@ -5,13 +5,12 @@ import android.util.Log
 import com.phoneagent.env.EnvApi.STEP_FAIL
 import com.phoneagent.env.EnvApi.STEP_OK
 import com.phoneagent.env.EnvApi.STEP_START
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.zip.ZipInputStream
 
 /**
@@ -40,56 +39,48 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         const val GLIBC = "$OPT/glibc"
         const val AAPT2 = "$OPT/aapt2"
 
-        /** 下载归档的本地缓存目录（宿主侧，不进 rootfs） */
-        const val DOWNLOAD_DIR = "downloads"
-
         private const val MIN_ARCHIVE_BYTES = 1_000_000L
         private const val DOWNLOAD_CHUNK = 256 * 1024
         private const val LOG_LIMIT = 200_000
 
+        /**
         /**
          * 默认 JDK 大版本：工程文件推导不出来时的保守取值。
          * AGP 8/9 的最低要求就是 JDK 17，本仓库 app/build.gradle.kts 也显式声明 VERSION_17。
          */
         const val DEFAULT_JDK = 17
 
-        /** Adoptium 官方 JDK（aarch64），版本号按工程要求替换，返回 tar.gz */
-        private fun jdkUrl(version: Int) =
-            "https://api.adoptium.net/v3/binary/latest/$version/ga/linux/aarch64/jdk/" +
-                "hotspot/normal/eclipse"
+        /**
+         * Adoptium 发布接口（aarch64），版本号按工程要求替换。
+         *
+         * 它在同一份 JSON 里给出真实下载链接与官方 sha256。JDK 的构建号每个月都在变，
+         * 把文件名钉死再去猜 sidecar 并不可靠；而 `binary/latest/...` 那种重定向本身不带摘要，
+         * 没法验证下到的到底是不是 Adoptium 发的那一份。
+         */
+        private fun adoptiumAssets(version: Int) =
+            "https://api.adoptium.net/v3/assets/latest/$version/hotspot" +
+                "?architecture=aarch64&os=linux&image_type=jdk&vendor=eclipse"
 
         /** 容器内的 JDK 安装目录 */
         fun jdkDir(version: Int) = "$OPT/jdk$version"
 
-        /** /opt/jdk17 这类目录名 */
-        private val JDK_DIR = Regex("""jdk(\d+)""")
-
-        /** `openjdk version "17.0.16" 2025-xx-xx` */
-        private val JDK_VERSION_LINE = Regex("""version "([^"]+)"""")
-
-        /** `Gradle 8.13` */
-        private val GRADLE_VERSION_LINE = Regex("""(?m)^Gradle (\S+)$""")
-
-        /** `platforms;android-36` */
-        private val PLATFORM_PKG = Regex("""platforms;android-(\d+)""")
-
-        /** `build-tools;36.0.0` */
-        private val BUILD_TOOLS_PKG = Regex("""build-tools;(\d+(?:\.\d+)+)""")
-
-        /** `Android Asset Packaging Tool (aapt) 2.19-...` */
-        private val AAPT2_VERSION_LINE = Regex("""aapt\)?\s+([\d][\w.\-]*)""")
-
-        private const val PROBE_TIMEOUT_MS = 60_000L
-        private const val SDK_PROBE_TIMEOUT_MS = 180_000L
-
-        /** 就绪实测结果的缓存时长：探针要起几个 JVM，不能每次读状态都重跑 */
-        private const val STATE_TTL_MS = 5 * 60_000L
 
         /** Gradle 发行版（版本号占位替换） */
         private fun gradleUrl(version: String) =
             "https://services.gradle.org/distributions/gradle-$version-bin.zip"
 
-        /** Android cmdline-tools（sdkmanager 是 Java 程序，跨架构可用） */
+        /**
+         * Android cmdline-tools（sdkmanager 是 Java 程序，跨架构可用）。
+         *
+         * Google 不为单个 zip 提供 sidecar，官方摘要写在 repository2-3.xml 的
+         * `<archive><complete><checksum type="sha1">` 里，下面钉的就是那个值。
+         *
+         * **只能是 SHA-1**：这份清单本身就只有 SHA-1。它弱于 SHA-256 的地方是碰撞成本——
+         * SHA-1 的实用碰撞攻击已有公开实例，能防传输损坏与镜像替换，防不住有算力的攻击者
+         * 构造一份同摘要的恶意包。要升级得等 Google 在清单里给出 SHA-256。
+         */
+        private const val CMDLINE_TOOLS_SHA1 = "d313adb7aedccf6cf0cfca51ec180f0059f5f8f8"
+
         private val CMDLINE_TOOLS_URLS = listOf(
             "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip",
             "https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip",
@@ -98,16 +89,27 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         /**
          * x86_64 glibc 运行库：直接用 Ubuntu base 的 amd64 rootfs。
          * 只取 lib 目录当 qemu 的 -L sysroot，比逐个挑 deb 包稳。
+         *
+         * 2026-11-21 实测：原先钉的 24.04.2 与 24.04.1 在官方目录里**已全部 404**
+         * （官方 SHA256SUMS 只剩 24.04.3/4/5），aapt2 兼容层这一步因此必然失败。
+         * 现在钉版本号 + 官方公布的 sha256，并保留两个入口：版本化目录为主，浮动目录兜底。
          */
+        private const val GLIBC_FILE = "ubuntu-base-24.04.5-base-amd64.tar.gz"
+
+        /** 来自 https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/SHA256SUMS */
+        private const val GLIBC_SHA256 =
+            "e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86"
+
         private val GLIBC_URLS = listOf(
-            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/" +
-                "ubuntu-base-24.04.2-base-amd64.tar.gz",
-            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/" +
-                "ubuntu-base-24.04.1-base-amd64.tar.gz",
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04.5/release/$GLIBC_FILE",
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/$GLIBC_FILE",
         )
 
         private const val SDK_TIMEOUT_MS = 30 * 60_000L
         private const val BUILD_TIMEOUT_MS = 45 * 60_000L
+
+        /** 占用统计的缓存时长：遍历几万个文件不该跟着页面每次刷新走 */
+        private const val DISK_CACHE_MS = 30_000L
     }
 
     /** 进度与日志出口，由 [EnvService] 转发给 AIDL 回调 */
@@ -159,6 +161,9 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     @Volatile
     private var snapshot: Snapshot? = null
 
+    /** (统计时刻, 占用, 可清理)，见 [diskUsage] */
+    private var diskUsageCache: Triple<Long, Long, Long>? = null
+
     /**
      * 工具链现状（stateJson 的内容来源）。
      *
@@ -184,11 +189,36 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         return fresh
     }
 
+    /**
+     * 占用与可清理量。
+     *
+     * 统计要遍历 rootfs 与 /opt 下几万个文件，页面每次刷新都走一遍没有意义，
+     * 30 秒内复用上一次结果；清理/重置之后立刻作废缓存。
+     */
+    private fun diskUsage(): Pair<Long, Long> {
+        val now = System.currentTimeMillis()
+        diskUsageCache?.let { cached ->
+            if (now - cached.first < DISK_CACHE_MS) return cached.second to cached.third
+        }
+        val used = env.usedBytes()
+        val reclaimable = env.reclaimableBytes()
+        diskUsageCache = Triple(now, used, reclaimable)
+        return used to reclaimable
+
+    }
+
     /** 执行一次请求；[isCancelled] 每步之间与下载循环里都会检查。 */
     fun execute(request: Request, listener: Listener, isCancelled: () -> Boolean): Result {
         this.listener = listener
         this.cancelled = isCancelled
-        val steps = if (request.op == EnvApi.OP_BUILD) buildSteps(request) else installSteps(request)
+        val steps = when (request.op) {
+            EnvApi.OP_BUILD -> buildSteps(request)
+            EnvApi.OP_CLEAN -> cleanSteps()
+            EnvApi.OP_RESET -> resetSteps()
+            EnvApi.OP_INSTALL -> installSteps(request)
+            // 不认识的操作必须拒绝：旧组件收到新 op 时若按 install 处理，会静默开装
+            else -> return Result(false, "未知操作：${request.op}")
+        }
         try {
             steps.forEachIndexed { index, step ->
                 if (cancelled.invoke()) return Result(false, "已取消")
@@ -201,10 +231,19 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
                 }
                 listener.onStep(index, steps.size, step.title, STEP_OK)
             }
-            if (request.op != EnvApi.OP_BUILD) {
+            // 只有 install 会真正改变「装了没装」；清理与重置不刷新安装时间
+            if (request.op == EnvApi.OP_INSTALL) {
                 env.writeGuestFile("$OPT/.installed-at", System.currentTimeMillis().toString(), LinuxEnv.MODE_FILE)
             }
-            return Result(true, if (request.op == EnvApi.OP_BUILD) "构建完成" else "环境安装完成")
+            return Result(
+                ok = true,
+                message = when (request.op) {
+                    EnvApi.OP_BUILD -> "构建完成"
+                    EnvApi.OP_CLEAN -> "已清理临时产物"
+                    EnvApi.OP_RESET -> "编码环境已重置"
+                    else -> "环境安装完成"
+                },
+            )
         } finally {
             // 任务改了工具链现状：下次读状态必须重新实测，不能拿旧快照
             snapshot = null
@@ -216,7 +255,7 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private data class Step(val title: String, val block: () -> String?)
 
     private fun installSteps(req: Request): List<Step> = listOf(
-        Step("Linux 根文件系统") { if (ensureLinux()) null else "Linux 环境装配失败（详见日志）" },
+        Step("Linux 根文件系统") { ensureLinux() },
         Step("JDK ${req.jdkVersion}") { installJdk(req) },
         Step("Gradle ${req.gradleVersion.ifBlank { "（未识别）" }}") { installGradle(req.gradleVersion) },
         Step("Android SDK 工具") { installCmdlineTools() },
@@ -231,13 +270,27 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         Step("构建 ${req.task}") { runBuild(req) },
     )
 
+    private fun cleanSteps(): List<Step> = listOf(
+        Step("清理临时产物") { cleanCaches() },
+    )
+
+    private fun resetSteps(): List<Step> = listOf(
+        Step("重置编码环境") { resetEnvironment() },
+    )
+
     // ------------------------------------------------------------ Linux 环境
 
-    private fun ensureLinux(): Boolean = env.ensureReady(
-        onProgress = { log(it) },
-        onLog = { log(it) },
-        isCancelled = { cancelled.invoke() },
-    )
+    private fun ensureLinux(): String? = when (
+        val result = env.ensureReady(
+            onProgress = { log(it) },
+            onLog = { log(it) },
+            isCancelled = { cancelled.invoke() },
+        )
+    ) {
+        LinuxEnv.Prepare.Ready -> null
+        is LinuxEnv.Prepare.Busy -> result.message
+        is LinuxEnv.Prepare.Failed -> "Linux 环境装配失败：${result.message}"
+    }
 
     // ------------------------------------------------------------ JDK
 
@@ -247,13 +300,39 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("JDK ${req.jdkVersion} 已安装，跳过")
             return null
         }
-        val archive = download(
-            listOf(jdkUrl(req.jdkVersion)),
-            "jdk${req.jdkVersion}-aarch64.tar.gz",
-            "JDK ${req.jdkVersion}",
-        ) ?: return "下载失败（网络不可达？）"
+        val artifact = jdkArtifact(req.jdkVersion)
+            ?: return "拿不到 Adoptium 的官方下载信息（api.adoptium.net 不可达或格式变了），拒绝安装未校验的 JDK"
+        val archive = download(artifact) ?: return "JDK ${req.jdkVersion} 下载失败（见上一条日志）"
         log("解压 JDK ${req.jdkVersion}…")
         return extractFlatten(archive, dir) { source, dest -> env.extractArchive(source, dest) }
+    }
+
+    /** 从 Adoptium 发布 JSON 里取「真实链接 + 官方 sha256」；缺任何一项就返回 null */
+    private fun jdkArtifact(): Artifact? {
+        val raw = Fetch.text(ADOPTIUM_ASSETS) ?: run {
+            log("JDK 17：api.adoptium.net 取不到发布信息")
+            return null
+        }
+        val pkg = runCatching {
+            JSONArray(raw).getJSONObject(0).getJSONObject("binary").getJSONObject("package")
+        }.getOrNull() ?: run {
+            log("JDK 17：Adoptium 返回的 JSON 里没有 binary.package")
+            return null
+        }
+        val link = pkg.optString("link")
+        val checksum = pkg.optString("checksum")
+        if (link.isEmpty() || checksum.isEmpty()) {
+            log("JDK 17：Adoptium 发布信息缺少下载链接或摘要")
+            return null
+        }
+        return Artifact(
+            label = "JDK 17",
+            fileName = "jdk17-aarch64.tar.gz",
+            urls = listOf(link),
+            expected = Expected.Fixed(SHA256, checksum),
+            // 真实产物约 190 MB，低于 50 MB 必然不是 JDK
+            minBytes = 50L * 1024 * 1024,
+        )
     }
 
     // ------------------------------------------------------------ Gradle
@@ -264,8 +343,16 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("Gradle $wanted 已安装，跳过")
             return null
         }
-        val archive = download(listOf(gradleUrl(wanted)), "gradle-$wanted-bin.zip", "Gradle $wanted")
-            ?: return "下载失败（版本号 $wanted 是否正确？）"
+        val url = gradleUrl(wanted)
+        val archive = download(
+            Artifact(
+                label = "Gradle $wanted",
+                fileName = "gradle-$wanted-bin.zip",
+                urls = listOf(url),
+                // Gradle 版本是运行时从工程读的，无法预钉摘要，只能读官方 sidecar
+                expected = Expected.Sidecar(SHA256, "$url.sha256"),
+            ),
+        ) ?: return "Gradle $wanted 下载失败（版本号 $wanted 是否正确？见上一条日志）"
         log("解压 Gradle $wanted…")
         val failure = extractFlatten(archive, GRADLE) { source, dest -> unzipOrThrow(source, dest) }
         if (failure == null) env.writeGuestFile("$OPT/.gradle-version", wanted, LinuxEnv.MODE_FILE)
@@ -284,8 +371,15 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             log("cmdline-tools 已安装，跳过")
             return null
         }
-        val archive = download(CMDLINE_TOOLS_URLS, "commandlinetools-linux.zip", "Android cmdline-tools")
-            ?: return "下载失败（dl.google.com 不可达？）"
+        val archive = download(
+            Artifact(
+                label = "Android cmdline-tools",
+                fileName = "commandlinetools-linux.zip",
+                urls = CMDLINE_TOOLS_URLS,
+                expected = Expected.Fixed(SHA1, CMDLINE_TOOLS_SHA1),
+                minBytes = 100L * 1024 * 1024,
+            ),
+        ) ?: return "cmdline-tools 下载失败（dl.google.com 不可达，或包已被 Google 替换，见日志）"
         log("解压 cmdline-tools…")
         return extractFlatten(archive, "$SDK/cmdline-tools/latest") { source, dest ->
             unzipOrThrow(source, dest)
@@ -313,7 +407,16 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             extraEnv = javaEnv(req.jdkVersion),
             onLine = { if (it.isNotBlank()) log(it) },
         )
-        return if (result.ok) null else "sdkmanager 退出码 ${result.code}（日志末行见上）"
+        if (!result.ok) return "sdkmanager 退出码 ${result.code}（日志末行见上）"
+
+        // sdkmanager 由它自己按 repository2-3.xml 里的 checksum 校验归档，我们拿不到独立摘要，
+        // 所以这里补一道结构断言：报成功但关键文件不在，等同于装了个坏包。
+        val missing = buildList {
+            if (!env.guestExists("$platform/android.jar")) add("platforms/android-${req.compileSdk}/android.jar")
+            if (!env.guestExists("$buildTools/aapt2")) add("build-tools/${req.buildTools}/aapt2")
+            if (!env.guestExists("$buildTools/d8")) add("build-tools/${req.buildTools}/d8")
+        }
+        return if (missing.isEmpty()) null else "sdkmanager 报成功但产物缺失：${missing.joinToString("、")}"
     }
 
     // ------------------------------------------------------------ aapt2
@@ -332,12 +435,28 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         if (!add.ok) return "qemu-x86_64 安装失败：${add.output.trim().takeLast(500)}"
 
         if (!env.guestExists("$GLIBC/lib/x86_64-linux-gnu")) {
-            val archive = download(GLIBC_URLS, "ubuntu-base-amd64.tar.gz", "x86_64 glibc 运行库")
-                ?: return "glibc 运行库下载失败"
+            val archive = download(
+                Artifact(
+                    label = "x86_64 glibc 运行库",
+                    fileName = GLIBC_FILE,
+                    urls = GLIBC_URLS,
+                    expected = Expected.Fixed(SHA256, GLIBC_SHA256),
+                ),
+            ) ?: return "glibc 运行库下载失败（官方源可能已下架 $GLIBC_FILE，见上一条日志）"
             log("解压 x86_64 glibc 运行库…")
-            val failure = runCatching { env.extractArchive(archive, env.guestFile(GLIBC)) }
-                .exceptionOrNull()
-            if (failure != null) return "glibc 解压失败：${failure.message}"
+            val staging = env.guestFile("$GLIBC.staging")
+            env.deleteRecursive(staging)
+            staging.mkdirs()
+            val unpacked = runCatching { env.extractArchive(archive, staging) }.exceptionOrNull()
+            if (unpacked != null) {
+                env.deleteRecursive(staging)
+                return "glibc 解压失败：${unpacked.message}"
+            }
+            val moved = InstallSwap.replace(staging, env.guestFile(GLIBC))
+            if (moved != null) {
+                env.deleteRecursive(staging)
+                return "glibc 无法就位：$moved"
+            }
         }
 
         // 包装脚本：固定指向本次安装的 build-tools 里那份 aapt2
@@ -478,6 +597,9 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
                 put(EnvApi.STATE_AAPT2, "未配置")
                 put(EnvApi.STATE_PROBLEMS, "Linux 根文件系统未装配")
                 put(EnvApi.STATE_INSTALLED_AT, installedAt())
+                val (used, reclaimable) = diskUsage()
+                put(EnvApi.STATE_DISK, formatBytes(used))
+                put(EnvApi.STATE_DISK_RECLAIM, formatBytes(reclaimable))
             }
         }
         val jdk = probeJdk()
@@ -496,6 +618,9 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
             put(EnvApi.STATE_AAPT2, aapt2.label)
             put(EnvApi.STATE_PROBLEMS, problems.joinToString("；"))
             put(EnvApi.STATE_INSTALLED_AT, installedAt())
+            val (used, reclaimable) = diskUsage()
+            put(EnvApi.STATE_DISK, formatBytes(used))
+            put(EnvApi.STATE_DISK_RECLAIM, formatBytes(reclaimable))
         }
     }
 
@@ -626,69 +751,96 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
 
     // ------------------------------------------------------------ 下载 / 解包
 
+    /** 一个待下载产物：来源列表 + 官方摘要 + 体积下限 */
+    private data class Artifact(
+        val label: String,
+        val fileName: String,
+        val urls: List<String>,
+        val expected: Expected,
+        val minBytes: Long = MIN_ARCHIVE_BYTES,
+    )
+
     /**
-     * 依次尝试 [urls]，成功返回落盘文件；全部失败返回 null。
-     * 已有同名缓存（体积可信）时直接复用，避免重复下 100 MB 级归档。
+     * 带官方摘要校验的下载：拿不到摘要就拒绝安装，摘要不符就删文件换下一个源。
+     *
+     * 缓存同样要重新校验——坏归档留在 `downloads/` 里的话，下一次安装会「复用本地缓存」
+     * 直接跳过下载，坏文件就此永久驻留，只能清应用数据才能重来。
      */
-    private fun download(urls: List<String>, fileName: String, label: String): File? {
-        val dir = File(ctx.filesDir, DOWNLOAD_DIR).apply { mkdirs() }
-        val target = File(dir, fileName)
-        if (target.isFile && target.length() >= MIN_ARCHIVE_BYTES) {
-            log("$label：复用本地缓存（${target.length() / 1024 / 1024} MB）")
+    private fun download(artifact: Artifact): File? {
+        val dir = File(ctx.filesDir, LinuxEnv.DOWNLOAD_DIR).apply { mkdirs() }
+        val target = File(dir, artifact.fileName)
+        val algorithm = algorithmOf(artifact.expected)
+        val expectedHex = resolveExpected(artifact.expected)
+        if (expectedHex == null) {
+            log("${artifact.label}：拿不到官方摘要（${describe(artifact.expected)}），拒绝安装未校验的包")
+            return null
+        }
+
+        if (target.isFile && target.length() >= artifact.minBytes) {
+            if (verifyOrDiscard(target, algorithm, expectedHex)) {
+                log("${artifact.label}：复用本地缓存（${target.length() / 1024 / 1024} MB，摘要校验通过）")
+                return target
+            }
+            log("${artifact.label}：本地缓存摘要不符，已删除并重新下载")
+        }
+
+        for (url in artifact.urls) {
+            if (cancelled.invoke()) return null
+            log("${artifact.label}：下载 $url")
+            val failure = Fetch.toFile(
+                url = url,
+                target = target,
+                onProgress = { copied, total ->
+                    val text = if (total > 0) {
+                        "${copied / 1024 / 1024} / ${total / 1024 / 1024} MB"
+                    } else {
+                        "${copied / 1024 / 1024} MB"
+                    }
+                    log("${artifact.label} 已下载 $text")
+                },
+                isCancelled = { cancelled.invoke() },
+            )
+            if (failure != null) {
+                log("${artifact.label}：$url 不可用（$failure）")
+                continue
+            }
+            if (target.length() < artifact.minBytes) {
+                log("${artifact.label}：$url 只拿到 ${target.length() / 1024} KB，明显不完整，丢弃")
+                target.delete()
+                continue
+            }
+            val actual = runCatching { Digest.hexOf(target, algorithm) }.getOrNull()
+            if (actual == null || !Digest.matches(expectedHex, actual)) {
+                log(
+                    "${artifact.label}：$url 的摘要与官方值不符" +
+                        "（期望 ${expectedHex.take(12)}…，实际 ${actual?.take(12) ?: "计算失败"}…），已删除该文件",
+                )
+                target.delete()
+                continue
+            }
+            log("${artifact.label}：$algorithm 校验通过")
             return target
         }
-        for (url in urls) {
-            if (cancelled.invoke()) return null
-            log("$label：下载 $url")
-            val temp = File(dir, "$fileName.part").apply { delete() }
-            try {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 20_000
-                    readTimeout = 60_000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "happy-phone-env/1.0")
-                }
-                val total = conn.contentLengthLong
-                conn.inputStream.use { input ->
-                    FileOutputStream(temp).use { out ->
-                        val buffer = ByteArray(DOWNLOAD_CHUNK)
-                        var copied = 0L
-                        var lastReport = 0L
-                        while (true) {
-                            if (cancelled.invoke()) {
-                                temp.delete()
-                                return null
-                            }
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            out.write(buffer, 0, read)
-                            copied += read
-                            if (copied - lastReport >= (1 shl 20)) {
-                                lastReport = copied
-                                val text = if (total > 0) {
-                                    "${copied / 1024 / 1024} / ${total / 1024 / 1024} MB"
-                                } else {
-                                    "${copied / 1024 / 1024} MB"
-                                }
-                                log("$label 已下载 $text")
-                            }
-                        }
-                    }
-                }
-                conn.disconnect()
-                if (temp.length() < MIN_ARCHIVE_BYTES) throw IOException("下载内容不完整")
-                target.delete()
-                if (!temp.renameTo(target)) throw IOException("归档无法就位")
-                return target
-            } catch (t: Throwable) {
-                log("$label 下载失败（${t.javaClass.simpleName}）：${t.message}")
-                temp.delete()
-            }
-        }
+        log("${artifact.label}：${artifact.urls.size} 个下载源全部失败——官方可能已下架该版本，请更新代码里的 URL 或换镜像")
         return null
     }
 
-    /** 把归档解开并抹掉顶层单目录（JDK / Gradle / cmdline-tools 都是这种布局）。 */
+    private fun algorithmOf(expected: Expected): String = when (expected) {
+        is Expected.Fixed -> expected.algorithm
+        is Expected.Sidecar -> expected.algorithm
+    }
+
+    private fun describe(expected: Expected): String = when (expected) {
+        is Expected.Fixed -> "代码里钉住的 ${expected.algorithm}"
+        is Expected.Sidecar -> "官方 sidecar ${expected.url}"
+    }
+
+    /**
+     * 把归档解开并抹掉顶层单目录（JDK / Gradle / cmdline-tools 都是这种布局）。
+     *
+     * 先解到 `*.staging`，再经 [InstallSwap] 换入：以前是先删旧目录再解包，
+     * 解到一半被打断就把**已经装好的**工具链一起带走了。
+     */
     private fun extractFlatten(
         source: File,
         guestDest: String,
@@ -697,31 +849,22 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         val dest = env.guestFile(guestDest)
         val staging = env.guestFile("$guestDest.staging")
         env.deleteRecursive(staging)
-        env.deleteRecursive(dest)
-        staging.mkdirs()
+        if (!staging.mkdirs()) return "无法创建临时目录：${staging.absolutePath}"
+
         val failed = runCatching { extract(source, staging) }.exceptionOrNull()
         if (failed != null) {
             env.deleteRecursive(staging)
             return "解压失败：${failed.message}"
         }
         val children = staging.listFiles()?.sortedBy { it.name }.orEmpty()
-        val onlyDir = children.singleOrNull()?.takeIf { it.isDirectory }
-        if (onlyDir != null) {
-            if (!onlyDir.renameTo(dest)) {
-                env.deleteRecursive(staging)
-                return "目录无法就位"
-            }
-        } else {
-            dest.mkdirs()
-            for (child in children) {
-                if (!child.renameTo(File(dest, child.name))) {
-                    env.deleteRecursive(staging)
-                    return "目录无法就位"
-                }
-            }
+        if (children.isEmpty()) {
+            env.deleteRecursive(staging)
+            return "归档里没有任何文件（下到的可能是错误页）"
         }
+        val content = children.singleOrNull()?.takeIf { it.isDirectory } ?: staging
+        val failure = InstallSwap.replace(content, dest)
         env.deleteRecursive(staging)
-        return null
+        return failure
     }
 
     private fun unzipOrThrow(zip: File, dest: File) {
@@ -754,6 +897,34 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     private fun installedAt(): String =
         runCatching { env.guestFile("$OPT/.installed-at").readText().trim() }
             .getOrNull()?.takeIf { it.isNotBlank() } ?: "从未安装"
+
+    // ------------------------------------------------------------ 维护
+
+    /**
+     * 清理：删掉下载缓存、临时目录与上次中断留下的半装目录。
+     * 已装好的 rootfs 与 /opt 工具链原样保留——这是「清理缓存」，不是「重置」。
+     */
+    private fun cleanCaches(): String? {
+        val freed = env.cleanTemporary()
+        diskUsageCache = null
+        log("清理完成：释放 ${formatBytes(freed)}，当前占用 ${formatBytes(env.usedBytes())}")
+        return null
+    }
+
+    /** 重置：把环境组件自己的私有目录清空，回到未装配。用户的工程文件不在这些目录里 */
+    private fun resetEnvironment(): String? {
+        val freed = env.resetAll()
+        diskUsageCache = null
+        log("已重置编码环境：释放 ${formatBytes(freed)}；下次安装会重新下载并装配")
+        return null
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+        bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
+        bytes >= 1L shl 10 -> "%.0f KB".format(bytes / (1L shl 10).toDouble())
+        else -> "$bytes B"
+    }
 
     private fun log(line: String) {
         if (line.length > LOG_LIMIT) return

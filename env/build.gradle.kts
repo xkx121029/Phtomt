@@ -76,6 +76,8 @@ dependencies {
     // 跨进程契约与主应用共享同一份 AIDL 定义
     implementation(project(":env-api"))
     // 构建参数拼装是纯函数，用普通 JVM 单测钉住
+
+    // 安装锁判定、摘要校验这些判据是纯 Kotlin，必须能在 JVM 单测里钉死行为
     testImplementation(libs.junit)
 }
 

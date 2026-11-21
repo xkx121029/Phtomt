@@ -208,6 +208,12 @@ class CodingEnvClient(private val context: Context) {
     suspend fun buildApk(task: String = "assembleDebug"): String? =
         launchRequest(EnvApi.OP_BUILD, task)
 
+    /** 清理下载缓存与解包中间产物（已装好的工具链原样保留） */
+    suspend fun cleanCache(): String? = launchMaintenance(EnvApi.OP_CLEAN)
+
+    /** 重置编码环境：删掉 rootfs 与全部工具链，回到未装配；工程文件不受影响 */
+    suspend fun resetEnvironment(): String? = launchMaintenance(EnvApi.OP_RESET)
+
     /** 请求取消当前任务（组件在下一次检查点停下） */
     fun cancel() {
         val proxy = binder.current() ?: return
@@ -222,6 +228,36 @@ class CodingEnvClient(private val context: Context) {
                 "启动失败：${e.message ?: e.javaClass.simpleName}"
             }
         }
+
+    private suspend fun launchMaintenance(op: String): String? =
+        withContext(Dispatchers.IO) {
+            runCatching { startMaintenance(op) }.exceptionOrNull()?.let { e ->
+                Log.w(TAG, "启动维护任务失败", e)
+                "启动失败：${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+
+    /**
+     * 维护动作不需要工程、也不需要镜像：引擎没识别到工程时同样要能清理和重置，
+     * 否则「装不上又没法重置」的死局还在。
+     */
+    private suspend fun startMaintenance(op: String) {
+        val proxy = checkNotNull(binder.ensure()) {
+            "环境组件未安装或绑定失败（需要同签名安装）"
+        }
+        val request = JSONObject().apply { put(EnvApi.KEY_OP, op) }
+        _state.update {
+            it.copy(
+                running = true,
+                steps = emptyList(),
+                logs = emptyList(),
+                finished = false,
+                ok = false,
+                message = null,
+            )
+        }
+        proxy.run(request.toString(), Callback())
+    }
 
     private suspend fun startRequest(op: String, task: String) {
         val toolchain = ProjectToolchainProbe.probe(Workspace.resolve(context))

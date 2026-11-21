@@ -26,6 +26,12 @@ object EnvApi {
     /** 请求操作：在容器内执行一次 Gradle 构建 */
     const val OP_BUILD = "build"
 
+    /** 请求操作：清掉下载缓存与解包中间产物（已装好的工具链原样保留） */
+    const val OP_CLEAN = "clean"
+
+    /** 请求操作：重置编码环境（rootfs + 全部工具链 + 缓存），回到未装配 */
+    const val OP_RESET = "reset"
+
     // ---- 请求体键 ----
     const val KEY_OP = "op"
 
@@ -73,6 +79,11 @@ object EnvApi {
 
     /** 实测得到的可操作问题清单（用「；」分隔）；全部就绪时为空串 */
     const val STATE_PROBLEMS = "problems"
+    /** 环境占用的磁盘（rootfs + 引导集 + 下载缓存 + 临时目录），格式化后的可读字符串 */
+    const val STATE_DISK = "disk"
+
+    /** 「清理缓存」能释放多少（下载缓存 + 临时目录 + 中断留下的半装目录） */
+    const val STATE_DISK_RECLAIM = "reclaimable"
 
     /** 步骤状态：[IEnvCallback.onStep] 的 state 取值 */
     const val STEP_START = "start"
