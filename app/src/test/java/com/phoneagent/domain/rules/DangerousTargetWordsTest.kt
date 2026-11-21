@@ -101,31 +101,42 @@ class DangerousTargetWordsTest {
         assertEquals("purchase", DangerousTargetWords.hit("Purchase"))
     }
 
+    /**
+     * 英文边界：左词边界 + "右邻不是小写字母"。
+     *
+     * 这两条各有出处：左边界挡 `resend`→`send`、`border`→`order`；右下界挡 `sender`→`send`、
+     * `postcode`→`post`、`confirmed`→`confirm`（英文界面上这些是纯导航标签，误拦等于每次点击都弹门）。
+     * 大写开新词不算延伸，所以驼峰命名 `deleteComment` / `DeleteAccountButton` 仍然照拦——
+     * 那是 `by=id` 场景里唯一还能看见危险的证据。
+     */
     @Test
-    fun `英文词边界与导航语境不误伤`() {
-        // 左词边界：词首不是独立成词的都不算
+    fun `英文边界_同词延伸不误伤_驼峰命名照拦`() {
         assertNull(DangerousTargetWords.hit("sender"))
         assertNull(DangerousTargetWords.hit("resend"))
         assertNull(DangerousTargetWords.hit("postcode"))
-        // 导航语境：与中文提交档同口径的豁免
+        assertNull(DangerousTargetWords.hit("confirmed"))
+        assertEquals("delete", DangerousTargetWords.hit("deleteComment"))
+        assertEquals("delete", DangerousTargetWords.hit("DeleteAccountButton"))
+        assertEquals("send", DangerousTargetWords.hit("SendMessage"))
+    }
+
+    @Test
+    fun `英文导航语境与中文提交档同口径豁免`() {
         assertNull(DangerousTargetWords.hit("Post settings"))
         assertNull(DangerousTargetWords.hit("Send history"))
         assertNull(DangerousTargetWords.hit("Checkout detail"))
     }
 
     /**
-     * 英文**只收左词边界、刻意不收右边界**（`#deleteComment`、`DeleteAccountButton` 必须继续拦），
-     * 于是 `confirmed` 会命中 `confirm`、`payment` 会命中 `payment`。
-     *
      * `payment` 是刻意收进 [DangerousTargetWords.IRREVERSIBLE_EN] 的：英文没有中文那种
      * 「不收笼统的支付以避开『支付方式』」的收窄手段（`Payment method` 确实以 payment 打头），
-     * 安全方向上宁可多问一句。这条断言由「不该拦」改成「会拦」，是语义变更而不是回归。
+     * 安全方向上宁可多问一句。回报的词是 `payment` 而不是 `pay`：右下界拦下了「pay + 小写后缀」，
+     * 所以 `pay` 那条规则不会抢在 `payment` 前面命中。
      */
     @Test
-    fun `英文右边界从宽_驼峰与payment开头照拦`() {
+    fun `payment开头照拦_回报更具体的词`() {
         assertEquals("payment", DangerousTargetWords.hit("payment"))
         assertEquals("payment", DangerousTargetWords.hit("Payment method"))
-        assertEquals("confirm", DangerousTargetWords.hit("confirmed"))
-        assertEquals("delete", DangerousTargetWords.hit("deleteComment"))
+        assertEquals("pay", DangerousTargetWords.hit("Pay now"))
     }
 }
