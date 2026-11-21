@@ -310,6 +310,13 @@ internal class EngineStore {
      */
     val actionConfirmationMailbox = Channel<Boolean>(Channel.CONFLATED)
 
+    /**
+     * 上一次「不可逆动作已获用户允许」的记录，用于同一页面上的重复动作去重。
+     * 键 = 意图类@页面指纹，见 [UserGate.confirmationGrantKey]；任务级状态，[resetTaskScoped] 清空。
+     */
+    @Volatile
+    var lastActionConfirmationGrant: ActionConfirmationGrant? = null
+
     /** 连续「被动作模式拒绝」的次数；放行一次即清零 */
     var modeDenyStreak = 0
 
@@ -440,6 +447,7 @@ internal class EngineStore {
         decisionFailureStreak = 0
         // 确认状态与暂存输出
         shellApprovedForTask = null
+        lastActionConfirmationGrant = null
         lastShellOutput = ""
         pendingShellOutput = ""
         lastSkillOutput = ""
