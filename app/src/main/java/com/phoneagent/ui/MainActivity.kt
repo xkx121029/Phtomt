@@ -521,7 +521,7 @@ private fun ActivityContent(
                     extrasPage = ExtrasPage.Coding
                 }
                 entryScope.launch {
-                    com.phoneagent.coding.SharedFiles
+                    com.phoneagent.coding.api.CodingShareIntake
                         .import(activity, target.uris.map { android.net.Uri.parse(it) })
                         .onFailure { snackbarState.show(it.message ?: "文件导入失败", SnackbarType.ERROR) }
                 }
