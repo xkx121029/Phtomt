@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.phoneagent.coding.agent.CodingToolNames
+import com.phoneagent.coding.api.CodingToolLabels
 import com.phoneagent.domain.model.ActionType
 import com.phoneagent.ui.icons.AppIcons
 import com.phoneagent.ui.theme.AppSpacing
@@ -118,7 +118,7 @@ fun codingToolIdentity(name: String?): ToolIdentity = ToolIdentity(
         "git_read", "git_write" -> AppIcons.History
         else -> AppIcons.Terminal
     },
-    label = CodingToolNames.label(name),
+    label = CodingToolLabels.label(name),
     // 命令类工具的参数与输出必须等宽照排（Markdown 会把 * 与 - 当格式吃掉）
     monospace = name in CommandTools,
 )
