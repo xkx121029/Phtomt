@@ -1,5 +1,6 @@
 package com.phoneagent.ui.theme
 
+import android.graphics.drawable.ColorDrawable
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -20,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
@@ -412,9 +415,17 @@ fun PhoneAgentTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as android.app.Activity).window
+            // 窗口底色跟着**解析后的色板**走，不跟 theme 里那个资源走。
+            // 资源只在进程起来之前那一段有效（见 values/colors.xml 的注释），
+            // 一旦组合跑起来就该以真实底色为准：换皮肤、切换系统深浅、Activity 重建时，
+            // 先黑一下或先白一下都不会发生——窗口底色和第一帧内容始终是同一个颜色。
+            window.setBackgroundDrawable(ColorDrawable(palette.surfaceBase.toArgb()))
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
+                // 图标明暗同样按色板亮度判，不按系统深浅判：
+                // 石墨皮肤在**浅色系统**下底色也是 #0A0C0A，按系统判会把深色图标放到深色底上
+                val lightSurface = isLightSurface(palette.surfaceBase)
+                isAppearanceLightStatusBars = lightSurface
+                isAppearanceLightNavigationBars = lightSurface
             }
         }
     }
@@ -443,6 +454,19 @@ fun PhoneAgentTheme(
 @Composable
 private fun isSystemDark(): Boolean =
     androidx.compose.foundation.isSystemInDarkTheme()
+
+/**
+ * 底色是否属于「浅色」——决定状态栏/导航栏图标该用深色还是浅色。
+ *
+ * 判据只看**传入的底色本身**，不看系统深浅：这套主题里皮肤可以盖过系统
+ * （石墨在浅色系统下也是深底），拿系统深浅判会让图标与底色同色。
+ * 阈值取相对亮度（WCAG 口径，0 = 黑、1 = 白）的中点，现有的十二套色板都远离中点
+ * （最亮的 #FFFFFF = 1.0，最暗的 #050705 ≈ 0.027），不存在贴边判断。
+ */
+internal fun isLightSurface(base: Color): Boolean = base.luminance() > LIGHT_SURFACE_LUMINANCE
+
+/** 浅底判据的阈值：相对亮度中点 */
+private const val LIGHT_SURFACE_LUMINANCE = 0.5f
 
 /**
  * 系统「高对比度文字」无障碍开关。

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动窗口底色：深色系统下的默认皮肤底色（= Color.kt 里 DarkAppColors.surfaceBase）。
+         与 values/colors.xml 的同名资源成对维护，改一边必须改另一边。 -->
+    <color name="app_window_background">#121513</color>
+</resources>
