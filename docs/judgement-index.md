@@ -42,6 +42,14 @@
 | `InputCommitRules.isCommitAction` / `nextPending`（`app/src/main/java/com/phoneagent/engine/execution/InputCommitRules.kt:49`、`:68`） | **「填了」不等于「交了」**：输入框里的字在提交前对页面没有意义，所以完成前会拦未提交的输入；导航类动作会让待提交输入作废，最多拒绝 2 次防死循环 | （docs 未描述；见 `app/src/main/java/com/phoneagent/engine/execution/InputCommitRules.kt:3-13` 的注释） |
 | `CompletionEvidence.vanishedCitedEvidence`（`app/src/main/java/com/phoneagent/engine/execution/CompletionEvidence.kt:60`） | 完成说明里引用的那段文字要再观察一次：**瞬时提示消失就不算完成依据**，持久状态才放行（最多拒绝 1 次防死循环） | （docs 未描述；见 `app/src/main/java/com/phoneagent/engine/execution/CompletionEvidence.kt:1-13` 的注释） |
 
+| `ModelTrust.resolve`（`app/src/main/java/com/phoneagent/core/ai/ModelTrust.kt:65`） | 主模型处于四态里的哪一态（未配置 / 未验证 / 已验证 / 验证失败）。判据是「配置指纹 + 验证时刻 + 验证结果」三件事：指纹对不上（改了 Key / URL / 模型名）就退回未验证，**未验证与失败是两种处置**——失败拦在起跑前，未验证只提醒一次 | （docs 未描述；`CHANGELOG.md` 今日 UX 条目） |
+| `AppSettings.Settings.configProblem`（`app/src/main/java/com/phoneagent/data/prefs/AppSettings.kt:310`） | 当前配置能不能拿去发请求：缺 Key / URL 非法 / http 端点未放行 / **主模型上次连接测试失败**，都从这里出一句可直接照做的话；执行侧与规划侧共用同一份口径 | （docs 未描述；`CHANGELOG.md` 今日 UX 条目） |
+| `AgentPreflight.needsScreenshotConsent`（`app/src/main/java/com/phoneagent/ui/agent/AgentPreflight.kt:23`） | 起跑前要不要先问一句「截图模式读不到控件树，确定吗」：只在截图模式下、且用户还没做过这个选择时问一次，问过就不再问 | （docs 未描述；见 `app/src/main/java/com/phoneagent/ui/agent/AgentEmptyState.kt:226` 的能力边界文案） |
+| `AgentTimelineMap.terminal`（`app/src/main/java/com/phoneagent/ui/agent/AgentTimelineMap.kt:506`） | 这次任务到终态时产出哪一张终态卡：成功 / 用户停止 / 失败三种，失败再按原因分档（能力缺失 / 配置问题 / 决策异常），决定用户看到的是「去修配置」还是「去开权限」 | （docs 未描述；`CHANGELOG.md` 今日失败恢复条目） |
+| `DeviceWorkspace.resolveWithin`（`app/src/main/java/com/phoneagent/coding/device/DeviceWorkspace.kt:45`） | 工作区以内的路径与 workspace 之外的文件读写的边界：**先用 `Path.toRealPath()` 归一真实路径、再比真实前缀**（Windows 的 junction 只解析真实路径才拦得住），越界一律拒绝 | （docs 未描述；见该文件 `:38-44` 的注释） |
+| `HostBridgeAuth.allows`（`app/src/main/java/com/phoneagent/coding/device/HostBridgeAuth.kt:22`） | 宿主桥的 RPC 能不能进：只认与本地生成的 token 相等，**密钥为空时一律拒绝**（fail-closed），不做「没配就不校验」的兜底 | （docs 未描述；见 `app/src/main/java/com/phoneagent/coding/device/HostBridgeTokenProvider.kt:23` 的注释） |
+| `AgentClient` 审批字段（`approvalDanger`）（`app/src/main/java/com/phoneagent/coding/agent/AgentClient.kt:43`） | 审批卡在用户点「允许」**之前**就要带上危险原因：`danger` / `why` 随 `approval_request` 一起下发，等 `tool_approval` 再带就晚了；丢了这个字段，卡上只剩一条命令 | （docs 未描述；`CHANGELOG.md` 今日审批卡条目） |
+
 ## 怎么用
 
 - **动了判据层的代码**（`domain/rules`、`engine/execution`、`engine/runtime`、`feature/entry`、`device/provider`）：先在本表搜函数名，看它的行为有没有被文档描述过。

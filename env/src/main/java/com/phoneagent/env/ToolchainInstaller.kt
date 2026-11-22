@@ -44,7 +44,6 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         private const val LOG_LIMIT = 200_000
 
         /**
-        /**
          * 默认 JDK 大版本：工程文件推导不出来时的保守取值。
          * AGP 8/9 的最低要求就是 JDK 17，本仓库 app/build.gradle.kts 也显式声明 VERSION_17。
          */
@@ -64,6 +63,29 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
         /** 容器内的 JDK 安装目录 */
         fun jdkDir(version: Int) = "$OPT/jdk$version"
 
+        /** /opt/jdk17 这类目录名 */
+        private val JDK_DIR = Regex("""jdk(\d+)""")
+
+        /** `openjdk version "17.0.16" 2025-xx-xx` */
+        private val JDK_VERSION_LINE = Regex("""version "([^"]+)"""")
+
+        /** `Gradle 8.13` */
+        private val GRADLE_VERSION_LINE = Regex("""(?m)^Gradle (\S+)$""")
+
+        /** `platforms;android-36` */
+        private val PLATFORM_PKG = Regex("""platforms;android-(\d+)""")
+
+        /** `build-tools;36.0.0` */
+        private val BUILD_TOOLS_PKG = Regex("""build-tools;(\d+(?:\.\d+)+)""")
+
+        /** `Android Asset Packaging Tool (aapt) 2.19-...` */
+        private val AAPT2_VERSION_LINE = Regex("""aapt\)?\s+([\d][\w.\-]*)""")
+
+        private const val PROBE_TIMEOUT_MS = 60_000L
+        private const val SDK_PROBE_TIMEOUT_MS = 180_000L
+
+        /** 就绪实测结果的缓存时长：探针要起几个 JVM，不能每次读状态都重跑 */
+        private const val STATE_TTL_MS = 5 * 60_000L
 
         /** Gradle 发行版（版本号占位替换） */
         private fun gradleUrl(version: String) =
@@ -308,26 +330,26 @@ class ToolchainInstaller(private val ctx: Context, private val env: LinuxEnv) {
     }
 
     /** 从 Adoptium 发布 JSON 里取「真实链接 + 官方 sha256」；缺任何一项就返回 null */
-    private fun jdkArtifact(): Artifact? {
-        val raw = Fetch.text(ADOPTIUM_ASSETS) ?: run {
-            log("JDK 17：api.adoptium.net 取不到发布信息")
+    private fun jdkArtifact(version: Int): Artifact? {
+        val raw = Fetch.text(adoptiumAssets(version)) ?: run {
+            log("JDK $version：api.adoptium.net 取不到发布信息")
             return null
         }
         val pkg = runCatching {
             JSONArray(raw).getJSONObject(0).getJSONObject("binary").getJSONObject("package")
         }.getOrNull() ?: run {
-            log("JDK 17：Adoptium 返回的 JSON 里没有 binary.package")
+            log("JDK $version：Adoptium 返回的 JSON 里没有 binary.package")
             return null
         }
         val link = pkg.optString("link")
         val checksum = pkg.optString("checksum")
         if (link.isEmpty() || checksum.isEmpty()) {
-            log("JDK 17：Adoptium 发布信息缺少下载链接或摘要")
+            log("JDK $version：Adoptium 发布信息缺少下载链接或摘要")
             return null
         }
         return Artifact(
-            label = "JDK 17",
-            fileName = "jdk17-aarch64.tar.gz",
+            label = "JDK $version",
+            fileName = "jdk$version-aarch64.tar.gz",
             urls = listOf(link),
             expected = Expected.Fixed(SHA256, checksum),
             // 真实产物约 190 MB，低于 50 MB 必然不是 JDK
