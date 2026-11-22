@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.background
@@ -130,7 +131,10 @@ fun SettingsScreen(
 
     // 根节点保持满屏 Box：子页的页内浮层（如拉取模型的勾选浮层）各自挂在自身满屏根节点上，
     // 这里作为统一容器，后续要压全屏的内容也挂得住
-    Box(modifier = modifier.fillMaxSize()) {
+    // imePadding 落在**视口**上：各设置子页自己都是 verticalScroll / LazyColumn，
+    // 这里先把容器压到键盘之上，子页的滚动区自然止于键盘顶边；
+    // 子页内再写 imePadding 的会被 windowInsetsPadding 消费掉，不会叠加（UX-14）
+    Box(modifier = modifier.fillMaxSize().imePadding()) {
         CompositionLocalProvider(LocalSettingsTwoPane provides twoPane) {
             if (twoPane) {
                 Row(Modifier.fillMaxSize()) {

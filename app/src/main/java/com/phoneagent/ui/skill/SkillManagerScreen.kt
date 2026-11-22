@@ -2,6 +2,7 @@ package com.phoneagent.ui.skill
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -90,7 +91,9 @@ fun SkillManagerScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     var editorIsMacro by remember { mutableStateOf(false) }
     val availableSkills = vm.skillAll()
     GlassHeaderScaffold(
-        modifier = modifier,
+        // 键盘让位落在骨架上而不是正文列：技能编辑器挂在 `overlay` 槽位，
+        // 只给正文加 imePadding 管不到那 13 个输入框（UX-14）
+        modifier = modifier.imePadding(),
         header = {
             AppTopBar(
                 title = "技能与能力",

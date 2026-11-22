@@ -7,14 +7,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +46,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +57,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +82,7 @@ import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.appBorderStroke
 import com.phoneagent.ui.icons.AppIcons
+import kotlinx.coroutines.delay
 
 // ========== 共享数据模型 ==========
 
@@ -692,6 +698,46 @@ private fun CapChip(text: String, state: Boolean?) {
     }
 }
 
+/** 键盘动画期间视口还在变：稍微等一下再要一次位置，否则按旧视口算出来的滚动仍会被盖住 */
+private const val KeyboardSettleMs = 320L
+
+/**
+ * 设置页里的单行文本输入框：键盘弹起时把自己滚进可见区（UX-14）。
+ *
+ * 页面级 `imePadding()` 只把滚动**视口**压到键盘之上，滚动位置不会自己变——
+ * 停在下半屏的输入框获焦后仍可能落在视口之外，用户打字时看不见自己输的内容
+ * （HAPP-58 在 1080×2340 上实测：IME 顶边 y=1507，获焦的 API Key 框在 y=1728–1888）。
+ * 这里在框上挂 [BringIntoViewRequester]，聚焦时与键盘高度变化时各请一次，
+ * 由外层 `verticalScroll` 的 bring-into-view responder 完成滚动。
+ */
+@Composable
+internal fun ImeSafeField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+) {
+    val requester = remember { BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    // 键盘高度一变就说明视口正在动：监听它，就是为了在动画落定后补要一次位置
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(focused, imeBottom) {
+        if (!focused) return@LaunchedEffect
+        requester.bringIntoView()
+        delay(KeyboardSettleMs)
+        requester.bringIntoView()
+    }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        placeholder = placeholder?.let { { Text(it) } },
+        modifier = modifier
+            .bringIntoViewRequester(requester)
+            .onFocusChanged { focused = it.isFocused },
+    )
+}
+
 /**
  * 端点卡片：一行一个 API 端点。
  * 「拉取模型」拉 /models 后弹勾选浮层，勾中的才进模型库；删除端点会连带清掉它的模型条目（在页面侧级联）。
@@ -728,19 +774,17 @@ internal fun EndpointCard(
     ) {
         Column(modifier = Modifier.padding(AppSpacing.Lg)) {
             LabeledField("API 地址") {
-                OutlinedTextField(
+                ImeSafeField(
                     value = baseUrl,
                     onValueChange = onBaseUrl,
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
             Spacer(Modifier.height(AppSpacing.Sm))
             LabeledField("API Key") {
-                OutlinedTextField(
+                ImeSafeField(
                     value = apiKey,
                     onValueChange = onApiKey,
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
