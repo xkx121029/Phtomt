@@ -103,6 +103,19 @@ object VisionRouting {
         wantVisionDesc = !(input.mainGetsImage && input.skipDescWhenMainSees),
     )
 
+    // ---- 视觉定位：还要不要再跑一次端侧识别 ----
+
+    /**
+     * 视觉定位时是否还值得再跑一次端侧识别。
+     *
+     * 定位本身不推理：[com.phoneagent.device.vision.ControlFormat.locate] 只是在一份已有控件表里
+     * 做字符串匹配；而端侧视觉门面的 `OnDeviceVision.locate` 内部是「重新识别一次 + 匹配」。
+     * 所以当本步的控件表就是用**当前这一帧**识别出来的，重跑只会得到同一份表——零信息，
+     * 却要白付一次端侧 3B 推理（单次 20s 量级）。
+     */
+    fun needsFreshOnDeviceDetect(externalUsed: Boolean, sameFrameAlreadyDetected: Boolean): Boolean =
+        externalUsed && !sameFrameAlreadyDetected
+
     // ---- 决策后处理：本轮视觉结果的来源归属（写进决策轨迹，供调试页回看） ----
 
     /** 本轮决策的视觉来源。用枚举而不是字符串，避免下游靠 `source == "云端"` 这种字面量比对 */

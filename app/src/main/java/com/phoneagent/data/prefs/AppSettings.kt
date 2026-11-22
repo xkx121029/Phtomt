@@ -20,9 +20,11 @@ import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.security.SecretCodec
 import com.phoneagent.ui.TabPrefsCodec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 
 /**
  * 设置存储。
@@ -65,6 +67,18 @@ class AppSettings(private val context: Context) {
      * 真正需要它的只有门控与 `markOnboardingDone` 两处。
      */
     private val onboardingMirror by lazy { OnboardingMirror(context) }
+
+    /**
+     * 解码缓存的持有域：本类是 Koin 单例，生命周期等于进程，无需取消。
+     * 收集点放在这里而不是各个调用方，是因为「一份配置只解码一次」正是本缓存的目的。
+     */
+    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * 全进程共用一份解码结果：读配置从「解密 6 次 + JSON 解析 2 次」退化成「读一个算好的快照」。
+     * 引擎每步有 2~4 处 `settings.first()`，冷 Flow 时每处都要重跑一遍解码（见 [SettingsCache]）。
+     */
+    private val cache = SettingsCache(context.agentStore.data, ::decode, cacheScope)
 
     data class Settings(
         val apiBaseUrl: String = GlmDefaults.BASE_URL,
@@ -445,7 +459,23 @@ class AppSettings(private val context: Context) {
         val AGENT_SURFACE = stringPreferencesKey("agent_surface")
     }
 
-    val settings: Flow<Settings> = context.agentStore.data.map { prefs ->
+    /**
+     * 当前设置（共享缓存的快照流）。
+     *
+     * 这里原来是 `context.agentStore.data.map { ... }` 的**冷 Flow**：每次收集都重跑整段解码
+     * （6 次 [SecretCodec] 解密 + 端点表/模型库两次 JSON 解码）。引擎每步要读 2~4 次配置，
+     * 那份开销就成了「每走一步都要付一次」的固定前置成本。
+     *
+     * 现在由 [SettingsCache] 共享一份算好的快照：`.first()` 命中缓存即返回；
+     * 配置真的变了（DataStore 发射新快照）才重算一次，且写路径会同步刷新缓存。
+     */
+    val settings: Flow<Settings> = cache.settings
+
+    // 逐字段取值 + 解密 + 两处 JSON 解码，字段数决定了它拆不小也不该拆：
+    // 这段是**原样搬迁**自 `agentStore.data.map {}` 的 lambda 体（行为未改，只换了存放位置），
+    // 因此按仓库惯例对「长/复杂」定点豁免，避免为过闸门把 Settings 的一个个字段拆成八个 helper
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    private fun decode(prefs: Preferences): Settings {
         // 旧三槽（主 / 视觉 / 思考）的扁平字段仍是引擎契约，这里先取出来，既构造 Settings 也用于模型库合成。
         // 敏感字段统一过 SecretCodec.decrypt：老版本写下的明文没有前缀，会原样返回，升级不失效
         val apiBaseUrl = prefs[Keys.BASE_URL] ?: GlmDefaults.BASE_URL
@@ -481,7 +511,7 @@ class AppSettings(private val context: Context) {
             } to ModelCatalogCodec.decodeModels(prefs[Keys.CATALOG] ?: "")
         }
 
-        Settings(
+        return Settings(
             apiBaseUrl = apiBaseUrl,
             apiKey = apiKey,
             model = model,
@@ -578,7 +608,7 @@ class AppSettings(private val context: Context) {
      * 若也参与回写就会把 true 覆盖成 false，教程因此反复弹出。
      */
     suspend fun markOnboardingDone() {
-        context.agentStore.edit { prefs -> prefs[Keys.ONBOARDING_DONE] = true }
+        cache.refreshFrom(context.agentStore.edit { prefs -> prefs[Keys.ONBOARDING_DONE] = true })
         // 权威源写成功之后再同步镜像：顺序反过来会出现「镜像说做完了、DataStore 说没有」
         onboardingMirror.write(true)
     }
@@ -616,15 +646,19 @@ class AppSettings(private val context: Context) {
         SecretCodec.decrypt(context.agentStore.data.first()[Keys.HOST_BRIDGE_TOKEN] ?: "")
 
     suspend fun writeHostBridgeToken(token: String) {
-        context.agentStore.edit { prefs -> prefs[Keys.HOST_BRIDGE_TOKEN] = SecretCodec.encrypt(token) }
+        cache.refreshFrom(
+            context.agentStore.edit { prefs -> prefs[Keys.HOST_BRIDGE_TOKEN] = SecretCodec.encrypt(token) },
+        )
     }
 
     suspend fun updateDocStatus(lastSyncAt: Long, count: Int, error: String) {
-        context.agentStore.edit { prefs ->
-            if (lastSyncAt > 0) prefs[Keys.DOC_LAST_SYNC_AT] = lastSyncAt
-            prefs[Keys.DOC_COUNT] = count
-            prefs[Keys.DOC_LAST_ERROR] = error.take(200)
-        }
+        cache.refreshFrom(
+            context.agentStore.edit { prefs ->
+                if (lastSyncAt > 0) prefs[Keys.DOC_LAST_SYNC_AT] = lastSyncAt
+                prefs[Keys.DOC_COUNT] = count
+                prefs[Keys.DOC_LAST_ERROR] = error.take(200)
+            },
+        )
     }
 
     /**
@@ -644,12 +678,14 @@ class AppSettings(private val context: Context) {
         error: String = "",
     ) {
         val target = com.phoneagent.core.ai.ModelTrust.fingerprint(baseUrl, model, apiKey)
-        context.agentStore.edit { prefs ->
-            prefs[Keys.MODEL_VERIFY_TARGET] = target
-            prefs[Keys.MODEL_VERIFY_AT] = System.currentTimeMillis()
-            prefs[Keys.MODEL_VERIFY_OK] = ok
-            prefs[Keys.MODEL_VERIFY_ERROR] = if (ok) "" else error.take(160)
-        }
+        cache.refreshFrom(
+            context.agentStore.edit { prefs ->
+                prefs[Keys.MODEL_VERIFY_TARGET] = target
+                prefs[Keys.MODEL_VERIFY_AT] = System.currentTimeMillis()
+                prefs[Keys.MODEL_VERIFY_OK] = ok
+                prefs[Keys.MODEL_VERIFY_ERROR] = if (ok) "" else error.take(160)
+            },
+        )
     }
 
     /**
@@ -659,11 +695,11 @@ class AppSettings(private val context: Context) {
      */
     suspend fun markModelUnverifiedWarned(baseUrl: String, apiKey: String, model: String) {
         val target = com.phoneagent.core.ai.ModelTrust.fingerprint(baseUrl, model, apiKey)
-        context.agentStore.edit { prefs -> prefs[Keys.MODEL_UNVERIFIED_WARNED] = target }
+        cache.refreshFrom(context.agentStore.edit { prefs -> prefs[Keys.MODEL_UNVERIFIED_WARNED] = target })
     }
 
     suspend fun update(settings: Settings) {
-        context.agentStore.edit { prefs ->
+        val written = context.agentStore.edit { prefs ->
             prefs[Keys.BASE_URL] = settings.apiBaseUrl.trim().trimEnd('/')
             // 凭据类字段落盘前加密（AES-GCM，密钥由系统 Keystore 托管）：
             // 读路径对应 SecretCodec.decrypt，老明文没有前缀会被原样读出，升级不失效
@@ -751,5 +787,8 @@ class AppSettings(private val context: Context) {
             prefs[Keys.TAB_VISIBLE] = TabPrefsCodec.encode(settings.tabVisible)
             prefs[Keys.AGENT_SURFACE] = AgentSurface.normalize(settings.agentSurface)
         }
+        // edit() 的返回值就是写完后的整份快照：同步刷新缓存，
+        // 否则「刚保存设置、紧接着读配置」这段窗口里会读到旧值——缓存化最危险的失效方式
+        cache.refreshFrom(written)
     }
 }

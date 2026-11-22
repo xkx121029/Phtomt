@@ -1,7 +1,5 @@
 package com.phoneagent.engine.runtime
 
-import android.content.Context
-import com.phoneagent.core.log.runCatchingLogged
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.device.vision.StepShot
@@ -15,7 +13,6 @@ import kotlinx.coroutines.Job
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -34,8 +31,6 @@ import kotlinx.coroutines.launch
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
 @Suppress("LongParameterList")
 internal class TaskLifecycle(
-    private val appContext: Context,
-    private val settings: AppSettings,
     private val scope: CoroutineScope,
     private val store: EngineStore,
     private val ui: UiBridge,
@@ -96,13 +91,9 @@ internal class TaskLifecycle(
             }
         }
         if (!chatOnly) {
-            // 预热：若启用端侧视觉，异步预加载 3B 模型，避免首次决策阻塞在模型加载
-            scope.launch {
-                val ext = runCatchingLogged("TaskLifecycle", "读取端侧视觉开关") {
-                    settings.settings.first().enableExternalVision
-                }.getOrDefault(true)
-                if (ext) com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
-            }
+            // 3B 不再在这里无条件预加载：加载要把 GGUF 权重读进常驻内存，而混合路由下
+            // 有些任务根本不会调用端侧视觉，等于白付一次加载。改为「本任务第一次真的要走端侧 3B 时」
+            // 才预热（见 StepObserver 的 warm3b 与 VisionWarmup），预热起点仍在本任务第一步。
             // 新任务开始时清空上一步的执行留档（截图+说明），由本次任务重新覆盖
             store.stepShot.value = StepShot()
         }

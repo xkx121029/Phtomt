@@ -230,5 +230,26 @@ class VisionRoutingTest {
         assertEquals("主模型", VisionRouting.modelOf(VisionRouting.Source.MAIN_DIRECT, "视觉模型", "主模型"))
         assertEquals("", VisionRouting.modelOf(VisionRouting.Source.NONE, "视觉模型", "主模型"))
     }
-}
 
+    // ---- needsFreshOnDeviceDetect：视觉定位要不要再跑一次端侧识别 ----
+
+    /**
+     * 端侧「定位」门面内部是「重新识别 + 匹配」，识别用的是同一张图时重跑必然得到同一份控件表，
+     * 所以这些组合必须是 false——否则每步多烧一次 20s 级推理。
+     */
+    @Test
+    fun needsFreshOnDeviceDetect_同一帧已识别过_不再重跑() {
+        assertFalse(VisionRouting.needsFreshOnDeviceDetect(externalUsed = true, sameFrameAlreadyDetected = true))
+    }
+
+    @Test
+    fun needsFreshOnDeviceDetect_端侧没产出_不需要重跑() {
+        assertFalse(VisionRouting.needsFreshOnDeviceDetect(externalUsed = false, sameFrameAlreadyDetected = false))
+        assertFalse(VisionRouting.needsFreshOnDeviceDetect(externalUsed = false, sameFrameAlreadyDetected = true))
+    }
+
+    @Test
+    fun needsFreshOnDeviceDetect_新的一帧且端侧可用_值得重跑() {
+        assertTrue(VisionRouting.needsFreshOnDeviceDetect(externalUsed = true, sameFrameAlreadyDetected = false))
+    }
+}
