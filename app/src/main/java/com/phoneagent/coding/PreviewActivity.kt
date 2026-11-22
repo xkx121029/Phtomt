@@ -11,16 +11,8 @@ import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.ui.Modifier
+import com.phoneagent.coding.api.CodingPreviewRenderers
 import com.phoneagent.coding.device.DeviceWorkspace
-import com.phoneagent.ui.agent.MarkdownReaderScreen
-import com.phoneagent.ui.icons.AppIcons
-import com.phoneagent.ui.theme.PhoneAgentTheme
 
 /**
  * 代码预览（#30）：把工作区里的页面渲染出来。
@@ -61,39 +53,29 @@ class PreviewActivity : ComponentActivity() {
     }
 
     private fun showMarkdown(target: String) {
+        val renderer = CodingPreviewRenderers.installed
+        if (renderer == null) {
+            // 宿主没装阅读器（装配异常）：退回归宿自带的 WebView，页面照样看得到，不黑屏
+            showWeb(target)
+            return
+        }
         enableEdgeToEdge()
         val loaded = runCatching { DeviceWorkspace.read(this, target) }
         val name = target.trim().replace('\\', '/').substringAfterLast('/')
-        setContent {
-            PhoneAgentTheme {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.safeDrawing),
-                ) {
-                    MarkdownReaderScreen(
-                        title = name,
-                        content = loaded.fold(
-                            onSuccess = { json ->
-                                val text = json.optString("content")
-                                if (json.optBoolean("truncated")) {
-                                    // 截断必须明说：少一段正文却读起来"到头了"，比报错更难排查
-                                    text + "\n\n---\n\n> 文件超过 512 KB，后面的内容没有读出来。"
-                                } else {
-                                    text
-                                }
-                            },
-                            onFailure = { "读取失败：${it.message ?: "未知原因"}" },
-                        ),
-                        headline = "工作区 Markdown",
-                        icon = AppIcons.Description,
-                        backLabel = "返回编辑",
-                        backIcon = AppIcons.ArrowBack,
-                        onClose = { finish() },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+        val markdown = loaded.fold(
+            onSuccess = { json ->
+                val text = json.optString("content")
+                if (json.optBoolean("truncated")) {
+                    // 截断必须明说：少一段正文却读起来"到头了"，比报错更难排查
+                    text + "\n\n---\n\n> 文件超过 512 KB，后面的内容没有读出来。"
+                } else {
+                    text
                 }
-            }
+            },
+            onFailure = { "读取失败：${it.message ?: "未知原因"}" },
+        )
+        setContent {
+            renderer.MarkdownFullscreen(title = name, content = markdown, onClose = { finish() })
         }
     }
 
