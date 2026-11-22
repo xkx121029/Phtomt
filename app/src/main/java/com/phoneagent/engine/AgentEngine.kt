@@ -207,7 +207,7 @@ class AgentEngine(
     private val intentCache = java.util.concurrent.ConcurrentHashMap<String, TaskIntent>()
     /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]）；router 按云端意图分流 */
     private val lifecycle = TaskLifecycle(
-        appContext, scope, store, uiBridge,
+        scope, store, uiBridge,
         runTask = { task, plan, startStep -> run(task, plan, startStep) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
         router = { task, chatOnly -> routeTask(task, chatOnly) },

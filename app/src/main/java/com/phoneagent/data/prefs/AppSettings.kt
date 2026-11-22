@@ -471,6 +471,10 @@ class AppSettings(private val context: Context) {
      */
     val settings: Flow<Settings> = cache.settings
 
+    // 逐字段取值 + 解密 + 两处 JSON 解码，字段数决定了它拆不小也不该拆：
+    // 这段是**原样搬迁**自 `agentStore.data.map {}` 的 lambda 体（行为未改，只换了存放位置），
+    // 因此按仓库惯例对「长/复杂」定点豁免，避免为过闸门把 Settings 的一个个字段拆成八个 helper
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun decode(prefs: Preferences): Settings {
         // 旧三槽（主 / 视觉 / 思考）的扁平字段仍是引擎契约，这里先取出来，既构造 Settings 也用于模型库合成。
         // 敏感字段统一过 SecretCodec.decrypt：老版本写下的明文没有前缀，会原样返回，升级不失效

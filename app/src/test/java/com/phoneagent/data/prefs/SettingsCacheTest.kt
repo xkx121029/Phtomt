@@ -66,7 +66,8 @@ class SettingsCacheTest {
     @Test
     fun `上游发射新配置后缓存跟着更新（失效机制未丢）`() = runTest {
         val source = MutableStateFlow(prefs("旧的"))
-        val cache = SettingsCache(source, CountingDecode().decode, CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = SettingsCache(source, CountingDecode().decode, scope)
         assertEquals("旧的", cache.settings.first().model)
 
         source.value = prefs("新的")
@@ -76,7 +77,8 @@ class SettingsCacheTest {
     @Test
     fun `写入后同步刷新，紧接着读取即拿到新值`() = runTest {
         val source = MutableStateFlow(prefs("旧的"))
-        val cache = SettingsCache(source, CountingDecode().decode, CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = SettingsCache(source, CountingDecode().decode, scope)
         assertEquals("旧的", cache.settings.first().model)
 
         // 模拟 update()：edit() 返回写完后的整份快照，刷新缓存不等上游协程被调度
@@ -87,7 +89,8 @@ class SettingsCacheTest {
     @Test
     fun `第一份配置到达前读取会等待，不会返回默认配置`() = runTest {
         val source = MutableSharedFlow<Preferences>()
-        val cache = SettingsCache(source, CountingDecode().decode, CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val cache = SettingsCache(source, CountingDecode().decode, scope)
 
         var read: Settings? = null
         val job = launch { read = cache.settings.first() }

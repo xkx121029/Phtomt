@@ -72,17 +72,7 @@ class LocalDecisionEngine(
         // 防死等：连等满 [maxEmptyTreeWaits] 拍仍为空，说明这页根本不暴露元素（WebView / 自绘 / 游戏），
         // 交还云端走视觉链（= 旧行为）。计数只在下一次读到非空元素树或 [reset] 时清零，
         // 因此持续空树的页面只会在每串空树的开头多等几拍，不会"每四步才前进一步"。
-        if (snapshot.elements.isEmpty()) {
-            if (emptyTreeWaits < maxEmptyTreeWaits) {
-                emptyTreeWaits++
-                return AgentIntent(
-                    intent = IntentType.WAIT,
-                    waitMs = emptyTreeWaitMs,
-                    reasoning = "页面控件还没出现，先等一拍（第 $emptyTreeWaits 拍）",
-                )
-            }
-            return null
-        }
+        if (snapshot.elements.isEmpty()) return waitOrGiveUpOnEmptyTree()
         emptyTreeWaits = 0
         val type = pageType ?: PageTypeRules.inferPageType(snapshot)
         val action: AgentIntent? = when (type) {
@@ -108,6 +98,28 @@ class LocalDecisionEngine(
             consecutiveLocal = 0
             null
         }
+    }
+
+    /**
+     * 空元素树时的处置：先等一拍，等满预算才交还云端。
+     *
+     * 为什么不立刻弃权：空树最常见的原因是页面还没画完（加载 / 白屏 / 首帧），下一秒控件就出来了，
+     * 而弃权之后这一步要付「截图 + 云端视觉 + 端侧 3B」（视觉看门狗逐层到 25s）。
+     * WAIT 不触任何控件，天然没有「空树上盲点」的风险（BUG 21/22 的教训是不要在空树上动手，不是不能在空树上等）。
+     *
+     * 为什么不一直等：连等满 [maxEmptyTreeWaits] 拍仍为空，说明这页根本不暴露元素
+     * （WebView / 自绘 / 游戏），交还云端走视觉链（= 旧行为）。计数只在下一次读到非空元素树
+     * 或 [reset] 时清零，**等满之后不重置**——所以持续空树的页面只在每串空树开头多等几拍，
+     * 不会变成「每四步才前进一步」。
+     */
+    private fun waitOrGiveUpOnEmptyTree(): AgentIntent? {
+        if (emptyTreeWaits >= maxEmptyTreeWaits) return null
+        emptyTreeWaits++
+        return AgentIntent(
+            intent = IntentType.WAIT,
+            waitMs = emptyTreeWaitMs,
+            reasoning = "页面控件还没出现，先等一拍（第 $emptyTreeWaits 拍）",
+        )
     }
 
     private fun handleDialog(snapshot: ScreenSnapshot): AgentIntent? {

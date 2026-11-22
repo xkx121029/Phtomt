@@ -1,6 +1,5 @@
 package com.phoneagent.engine.runtime
 
-import android.content.Context
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.domain.model.AgentState
 import com.phoneagent.device.vision.StepShot
@@ -32,7 +31,6 @@ import kotlinx.coroutines.launch
 // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
 @Suppress("LongParameterList")
 internal class TaskLifecycle(
-    private val appContext: Context,
     private val scope: CoroutineScope,
     private val store: EngineStore,
     private val ui: UiBridge,
