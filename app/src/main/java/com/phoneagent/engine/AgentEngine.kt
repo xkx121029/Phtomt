@@ -1734,6 +1734,8 @@ class AgentEngine(
         val wantVisionDesc = route.wantVisionDesc
         var localRegions: List<com.phoneagent.device.vision.DetectedControl>? = null
         var externalUsed = false
+        // 本步控件表是哪一帧识别出来的：视觉定位时据此判断「重跑识别」是不是重复劳动（见 needsFreshOnDeviceDetect）
+        var detectedShot: android.graphics.Bitmap? = null
         var pageText = safeText
         var desc: String? = null
         // 视觉缓存（阶段 B2）：页面指纹 + 截图尺寸 + 任务 id 命中时，整段跳过 3B/云端/OCR 视觉调用——
@@ -1773,6 +1775,7 @@ class AgentEngine(
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
                     )
                     telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    detectedShot = shot
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
@@ -1811,6 +1814,7 @@ class AgentEngine(
                         timeoutMs = EXTERNAL_VISION_TIMEOUT,
                     )
                     telemetry.recordVisionMs((System.nanoTime() - t0) / 1_000_000)
+                    detectedShot = shot
                     if (controls.isNotEmpty()) {
                         externalUsed = true
                         localRegions = controls
@@ -2044,10 +2048,17 @@ class AgentEngine(
                     // 1) 免费且即时：在已识别到的控件里做字符串匹配（先全等、再包含），零网络零 IPC。
                     //    能命中就绝不发远端 —— 旧逻辑先发 AIDL 远端、失败才回落本地，白等一次跨进程调用
                     val local = localRegions?.let { com.phoneagent.device.vision.ControlFormat.locate(it, targetText) }
+                    // 同一帧已经识别过就不再重跑端侧识别：`OnDeviceVision.locate` 内部是「重新识别 + 匹配」，
+                    // 识别用的是同一张图，重跑只会得到同一份控件表——零信息，却白付一次 20s 级推理。
+                    // 这种情形直接落到云端那一路（它才真的可能给出新坐标）
+                    val rerunOnDevice = VisionRouting.needsFreshOnDeviceDetect(
+                        externalUsed = externalUsed,
+                        sameFrameAlreadyDetected = detectedShot != null && detectedShot === shot,
+                    )
                     when {
                         local != null -> local
-                        // 2) 本地没匹配上，且端侧视觉这一路确实是活的：发一次精定位
-                        externalUsed -> {
+                        // 2) 本地没匹配上，且端侧视觉这一路是活的、且本帧还没被识别过：发一次精定位
+                        rerunOnDevice -> {
                             uiBridge.log(AgentLog.Level.INFO, "端侧视觉定位目标：$targetText")
                             val t0 = System.nanoTime()
                             val p = com.phoneagent.device.vision.OnDeviceVision.locate(
