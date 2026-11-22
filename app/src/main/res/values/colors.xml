@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#063A2E</color>
+    <!-- 启动窗口底色：必须与 App 自己的页面底色一致（= Color.kt 里 LightAppColors.surfaceBase）。
+         系统在进程起来之前就照 theme 的 windowBackground 画好第一块画面（Android 12+ 的 splash，
+         更早版本的 windowPreview），那时还读不到任何设置；只有这个资源能在那一刻生效，
+         所以它的值要和「默认皮肤 + 浅色系统」实际显示的第一帧完全相等，差一点就是一次可见的跳色。 -->
+    <color name="app_window_background">#F7F6F3</color>
 </resources>
