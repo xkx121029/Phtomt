@@ -682,7 +682,7 @@ settings_btn / sort_btn / clear_input
 
 早期版本（含已发布的历史 Release）在发布时按 MIT 许可分发，那些副本仍适用 MIT；自本许可证变更后的版本适用 AGPL-3.0。如需商业授权或豁免，可联系仓库维护者。
 
-第三方组件（Shizuku、Node.js 运行时、ICU 等）仍适用各自许可证，详见 [`LICENSE`](LICENSE) 末尾的第三方代码声明与 [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)。
+第三方组件（Shizuku、Node.js 运行时、ICU 等）仍适用各自许可证，详见 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) 与 [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)。
 
 ## 🙏 致谢
 

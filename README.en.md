@@ -677,11 +677,11 @@ Released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
 - You may use, modify, and distribute this project, but any modified version you distribute must also be released under AGPL-3.0 with full source.
 - If you run a modified version as a network service (AGPL Section 13), you must offer its complete source to users of that service.
-- Copyright notices, the license text, and the third-party notices at the end of `LICENSE` must be preserved.
+- Copyright notices, the license text, and the third-party notices in `THIRD-PARTY-NOTICES.md` must be preserved.
 
 Releases published before this change were distributed under the MIT License and remain under MIT; versions after the change are AGPL-3.0. For commercial licensing or an exemption, contact the maintainer.
 
-Bundled third-party components (Shizuku, the Node.js runtime, ICU, etc.) keep their own licenses; see the third-party notices at the end of [`LICENSE`](LICENSE) and [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md).
+Bundled third-party components (Shizuku, the Node.js runtime, ICU, etc.) keep their own licenses; see [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md) and [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md).
 
 ## 🙏 Acknowledgements
 
