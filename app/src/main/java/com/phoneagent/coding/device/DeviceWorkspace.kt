@@ -18,6 +18,9 @@ import java.util.Locale
  * 路径一律相对工作区，且必须落在工作区内：绝对路径、`..` 越过工作区一律拒绝。
  * 这不是防君子不防小人的摆设——配错一个路径就能把用户 SD 卡整个删掉。
  */
+// 路径判据、读写、原子写、预览差异都在同一份工作区语义里；拆开会让「先归一再比前缀」
+// 这条主线散到多个文件，评审时反而看不出边界。
+@Suppress("TooManyFunctions")
 object DeviceWorkspace {
 
     /** 编辑器一次最多读这么多字节，超出部分截断并在返回值里标出来。 */
@@ -42,6 +45,8 @@ object DeviceWorkspace {
      * 连审批都不弹。这里用 `Path.toRealPath()`（走 GetFinalPathNameByHandle，符号链接
      * 与 junction 都解析）。两侧各有一条「必须拒绝」的反面测试，改一边就要改另一边。
      */
+    // 三种拒绝理由（空 / 绝对 / 越界）各有各的下一步，合并成一句话会让用户不知道该改哪
+    @Suppress("ThrowsCount")
     internal fun resolveWithin(root: File, rel: String): File {
         val clean = rel.trim().replace('\\', '/').trimStart('/')
         if (clean.isEmpty()) throw IllegalArgumentException("路径为空")

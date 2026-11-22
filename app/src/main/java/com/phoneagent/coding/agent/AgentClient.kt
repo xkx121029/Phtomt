@@ -516,8 +516,7 @@ class AgentClient(
     private fun approvalArgs(args: JSONObject?): String {
         val obj = args ?: return ""
         val command = obj.optString("command")
-        if (command.isNotEmpty()) return command.take(APPROVAL_ARGS_MAX_CHARS)
-        return argsPreview(obj)
+        return if (command.isNotEmpty()) command.take(APPROVAL_ARGS_MAX_CHARS) else argsPreview(obj)
     }
 
     /** 工具参数摘要：给 UI 一行看得懂的东西（"path=src/app.js, content=…"）。 */

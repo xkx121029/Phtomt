@@ -209,11 +209,18 @@ class CodingEventReducerTest {
     @Test
     fun `approval_request没命中危险模式时不显示危险原因`() {
         // 没命中就是没有：别把「无」说成一句话，否则用户会以为每条命令都危险。
-        val r = apply("approval_request", callId = "c10", tool = "write_file", risk = "write", approvalArgs = "path=a.txt")
+        val r = apply(
+            "approval_request",
+            callId = "c10",
+            tool = "write_file",
+            risk = "write",
+            approvalArgs = "path=a.txt",
+        )
         val card = r.messages.single()
         assertNull(card.approvalDanger)
         assertEquals("写入", card.approvalRisk)
-        assertNull("没有参数时不出折叠块", apply("approval_request", callId = "c11", tool = "write_file").messages.single().approvalCommand)
+        val noArgs = apply("approval_request", callId = "c11", tool = "write_file").messages.single()
+        assertNull("没有参数时不出折叠块", noArgs.approvalCommand)
     }
 
     @Test
@@ -221,7 +228,14 @@ class CodingEventReducerTest {
         // 宿主 bypass 模式硬拦危险命令时，事件里带的是 id + 英文 why；
         // 卡片上说英文等于没说，所以 id 必须映射。
         val msgs = apply("tool_start", name = "run_command", argsPreview = "command=x").messages
-        val r = apply("tool_approval", messages = msgs, name = "run_command", approved = false, danger = "rm_rf_root", why = "recursive delete of a broad path")
+        val r = apply(
+            "tool_approval",
+            messages = msgs,
+            name = "run_command",
+            approved = false,
+            danger = "rm_rf_root",
+            why = "recursive delete of a broad path",
+        )
         assertEquals("⛔ 递归删除大范围路径", r.messages.single().text)
     }
 

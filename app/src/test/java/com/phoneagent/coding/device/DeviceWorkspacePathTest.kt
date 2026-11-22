@@ -42,7 +42,8 @@ class DeviceWorkspacePathTest {
         val root = tempDir("haca-kotlin-ws")
         val outside = tempDir("haca-kotlin-outside")
         // 绝对路径必须当场被拒，而不是拼出一条越界路径或非法路径再说。
-        val posix = runCatching { DeviceWorkspace.resolveWithin(root, File(outside, "x.txt").absolutePath) }.exceptionOrNull()
+        val absolute = File(outside, "x.txt").absolutePath
+        val posix = runCatching { DeviceWorkspace.resolveWithin(root, absolute) }.exceptionOrNull()
         assertTrue("绝对路径必须被拒，实际：$posix", posix is IllegalArgumentException)
         val drive = runCatching { DeviceWorkspace.resolveWithin(root, "C:/Users/Public/x.txt") }.exceptionOrNull()
         assertTrue("盘符路径必须被拒，实际：$drive", drive is IllegalArgumentException)

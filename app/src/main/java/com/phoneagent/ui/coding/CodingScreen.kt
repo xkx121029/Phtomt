@@ -1041,6 +1041,9 @@ private const val APPROVAL_COLLAPSED_CHARS = 160
  *
  * 与工具卡共用 [SkillCard] 外壳（不可展开，正文常显），两页所有卡片只长一个样子。
  */
+// 一张卡承载命令原文、风险档、危险原因、参数折叠与两个决议按钮：拆成子函数会把
+// 布局顺序和状态读取拆散，反而更难核对「决定前看到什么」。
+@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 private fun ApprovalCard(msg: ChatMessage) {
     val buzz = rememberHapticClick()

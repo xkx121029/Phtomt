@@ -72,9 +72,10 @@ object CodingToolNames {
     fun dangerLabel(id: String?, why: String? = null): String? {
         val key = id?.trim().orEmpty()
         val reason = why?.trim().orEmpty()
-        if (key.isEmpty() && reason.isEmpty()) return null
-        dangers[key]?.let { return it }
-        return reason.ifEmpty { "命中危险命令模式" }
+        return when {
+            key.isEmpty() && reason.isEmpty() -> null
+            else -> dangers[key] ?: reason.ifEmpty { "命中危险命令模式" }
+        }
     }
 
     /** 风险档的中文口径（与宿主 tool.risk 的取值一一对应）。 */
