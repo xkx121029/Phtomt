@@ -255,7 +255,7 @@ internal object HtmlScanner {
      * 手写标签扫描器（属性小状态机）。
      * 关键点：**引号内的 `>` 不当标签结束**（`<a title="a > b">` 是常见坑）。
      */
-    private fun parseTag(src: String, lt: Int): Tag? {
+    internal fun parseTag(src: String, lt: Int): Tag? {
         val n = src.length
         var i = lt + 1
         var endTag = false
