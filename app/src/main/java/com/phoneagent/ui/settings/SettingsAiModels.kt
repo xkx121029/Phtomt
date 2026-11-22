@@ -21,7 +21,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -162,13 +161,15 @@ private fun AiModelsPage(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // 键盘弹起时先把滚动**视口**压到键盘之上（UX-14）：imePadding 必须落在
+            // verticalScroll 外面。写在滚动内容里（本轮之前的写法）只会给内容末尾加一段
+            // 空白，视口照旧铺到屏幕底，获焦的输入框一动不动地停在键盘背后——
+            // HAPP-58 的 dump 就是这个现场：IME 顶边 y=1507，API Key 框在 1728–1888 未变
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = SettingsScreenPad)
             // 悬浮导航栏浮在内容之上：滚动视口铺到屏幕底，只给末项让出净空
-            .padding(LocalNavClearance.current)
-            // 键盘弹起时把内容区压到键盘之上：Key 输入框获得焦点后，
-            // 「保存 AI 配置」不应该被键盘盖住（UX-14）
-            .imePadding(),
+            .padding(LocalNavClearance.current),
     ) {
         SettingsPageHeader("云端模型", onBack, subtitle = "端点、模型库与职责分配")
         Spacer(Modifier.height(AppTheme.metrics.pagePad))
@@ -609,27 +610,24 @@ private fun AiModelsPage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(AppSpacing.Md))
-                OutlinedTextField(
+                ImeSafeField(
                     value = st.asrBaseUrl,
                     onValueChange = { st.asrBaseUrl = it },
-                    singleLine = true,
-                    placeholder = { Text("API 地址，如 https://api.siliconflow.cn/v1") },
+                    placeholder = "API 地址，如 https://api.siliconflow.cn/v1",
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(AppSpacing.Sm))
-                OutlinedTextField(
+                ImeSafeField(
                     value = st.asrApiKey,
                     onValueChange = { st.asrApiKey = it },
-                    singleLine = true,
-                    placeholder = { Text("API 密钥") },
+                    placeholder = "API 密钥",
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(AppSpacing.Sm))
-                OutlinedTextField(
+                ImeSafeField(
                     value = st.asrModel,
                     onValueChange = { st.asrModel = it },
-                    singleLine = true,
-                    placeholder = { Text("模型名，如 FunAudioLLM/SenseVoiceSmall") },
+                    placeholder = "模型名，如 FunAudioLLM/SenseVoiceSmall",
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(AppSpacing.Md))

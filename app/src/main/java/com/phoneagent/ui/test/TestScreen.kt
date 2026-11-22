@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -108,6 +109,9 @@ fun TestScreen(vm: MainViewModel, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
+            // 键盘让位放在 verticalScroll 外面：写在内容里只会加一段空白，
+            // 视口仍铺到屏幕底，获焦的输入框照旧停在键盘背后（UX-14）
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = AppTheme.metrics.pagePad),
     ) {

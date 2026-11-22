@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,7 +81,8 @@ fun BrowserScreen(modifier: Modifier = Modifier) {
         view?.loadUrl(target)
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // 地址栏在顶部、键盘从底部浮起：让位落在整列上，正文区随键盘收窄（UX-14）
+    Column(modifier = modifier.fillMaxSize().imePadding()) {
         AddressStrip(
             address = address,
             title = title,

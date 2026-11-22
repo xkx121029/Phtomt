@@ -570,6 +570,28 @@ class AgentTimelineMapperTest {
     }
 
     @Test
+    fun `配置也没配好又不便时，终态卡先说是配置，别把无障碍写成主因`() {
+        // HAPP-58 在模拟器上撞到的状态：无障碍没开 + 上次连接测试失败（configProblem 非空）。
+        // 那张卡的标题写「无障碍没开，AI 看不见屏幕」，唯一的出口却是「去配置」——
+        // 一句话指了两个方向。配置缺失是硬前置，标题必须跟着出口走
+        val items = build(
+            state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),
+            a11yEnabled = false,
+            configProblem = "上次连接测试失败：HTTP 401",
+            lastOutcome = TaskOutcome(
+                status = TaskStatus.FAILED,
+                summary = "上次连接测试失败：HTTP 401",
+                failureKind = AgentState.FailureKind.CONFIG,
+                atMillis = 500L,
+            ),
+        )
+        val card = items.filterIsInstance<AgentTimelineItem.Terminal>().single()
+        assertEquals("还没配置模型", card.headline)
+        assertEquals(listOf(TerminalAction.OPEN_SETTINGS), card.actions)
+        assertTrue("原因要指向配置", card.cause.contains("401"))
+    }
+
+    @Test
     fun `上一段对话的失败终态不铺到新对话里`() {
         val items = build(
             state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),

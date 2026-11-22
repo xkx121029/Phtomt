@@ -26,10 +26,15 @@ internal object AgentTerminal {
         TaskStatus.ABORTED -> "已停止"
         TaskStatus.NOT_ACHIEVED -> "步数用完了"
         TaskStatus.FAILED -> when {
+            // 配置缺失是硬前置：这一轮根本没起跑，先说清「去配置」。
+            // 顺序不能反——卡片只有一个标题，而这两档的出口完全不同
+            // （去配置 vs 去开无障碍）。HAPP-58 撞到的就是反过来的写法：
+            // 模型没配好导致的失败，标题却写「无障碍没开」，出口却是「去配置」，
+            // 一句话里指了两个方向
+            kind == AgentState.FailureKind.CONFIG -> "还没配置模型"
             // 无障碍没开时，失败的真实前置原因就是「看不见屏幕」，
             // 比「AI 链路中断」有用得多：后者会让用户去查网络，而问题就在权限里
             !a11yEnabled -> "无障碍没开，AI 看不见屏幕"
-            kind == AgentState.FailureKind.CONFIG -> "还没配置模型"
             kind == AgentState.FailureKind.DECISION -> "AI 链路中断"
             else -> "任务未完成"
         }
@@ -49,14 +54,15 @@ internal object AgentTerminal {
         val raw = engineReason.trim()
         return when {
             status == TaskStatus.SUCCESS -> raw
+            // 与 headline 同一顺序：配置缺失时先说配置，不要把「无障碍没开」当主因
+            kind == AgentState.FailureKind.CONFIG && status == TaskStatus.FAILED ->
+                raw.ifBlank { "模型还没配好：填入可用的 API Key 并选一个模型，再回来重试。" }
             status == TaskStatus.FAILED && !a11yEnabled ->
                 "无障碍服务没开：AI 读不到屏幕上的控件，只能靠截图猜位置，这一轮注定失败。" +
                     "开启后再试一次，它才能看见并点中控件。"
             status == TaskStatus.ABORTED -> raw.ifBlank { "你按了停止，任务在这里中断。" }
             status == TaskStatus.NOT_ACHIEVED ->
                 raw.ifBlank { "AI 执行了允许的最大步数，仍未拿到「目标已达成」的证据。" }
-            kind == AgentState.FailureKind.CONFIG ->
-                raw.ifBlank { "模型还没配好：填入可用的 API Key 并选一个模型，再回来重试。" }
             else -> raw.ifBlank { "执行过程中出错，可以重试；若反复失败，去检查模型配置与网络。" }
         }
     }
