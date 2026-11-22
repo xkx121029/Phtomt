@@ -18,6 +18,8 @@ class PhoneAgentApp : Application() {
         appContext = this
         initKoin(this)
         StartupTrace.mark("Koin 容器注册完成")
+        // 编码预览页的整屏阅读器由宿主提供：编码切片只认接口，不反向依赖 ui 包
+        com.phoneagent.ui.coding.installCodingPreviewRenderer()
         // 远程无障碍会话：注入 appContext，观察 Provider 绑定与无障碍连接状态
         com.phoneagent.device.a11y.AgentAccessibilityService.install(this)
         // 内置浏览器桥：AI 执行 browse_* 时在后台静默宿主里加载网页（不切前台；无悬浮窗权限才回退到可见浏览器页）

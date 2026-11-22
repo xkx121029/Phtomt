@@ -481,7 +481,7 @@ class MainViewModel(
 
     fun skillAll(): List<Skill> = skillDomain.skillAll()
 
-    val acaSkills: StateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>> get() = skillDomain.acaSkills
+    val acaSkills: StateFlow<List<com.phoneagent.coding.api.AcaSkillSummary>> get() = skillDomain.acaSkills
 
     /** 扫描进行中（true 时主页显示"正在扫描"占位） */
     val acaScanning: StateFlow<Boolean> get() = skillDomain.acaScanning

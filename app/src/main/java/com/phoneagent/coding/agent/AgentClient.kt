@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import com.phoneagent.coding.CodingAgentService
+import com.phoneagent.coding.api.CodingConnection
+import com.phoneagent.coding.api.CodingSessionStatus
+import com.phoneagent.coding.api.MappedStateFlow
 import com.phoneagent.coding.device.HostBridgeServer
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -149,6 +152,28 @@ class AgentClient(
 
     private val _state = MutableStateFlow(AgentUiState())
     val state: StateFlow<AgentUiState> = _state.asStateFlow()
+
+    /**
+     * 对外快照：设置页与后台引擎只读这一份，不碰消息明细（那是编码页渲染用的）。
+     *
+     * 投影是纯函数、按需换算，不新开协程——所以它与 [state] 逐条同步，不会滞后。
+     */
+    val status: StateFlow<CodingSessionStatus> = MappedStateFlow(state) { st ->
+        CodingSessionStatus(
+            connection = st.conn.toApi(),
+            busy = st.busy,
+            error = st.error,
+            awaitingApproval = st.messages.any { it.role == "approval" && it.approvalResolved == null },
+            lastAssistantText = st.messages.lastOrNull { it.role == "assistant" }
+                ?.text?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+
+    private fun ConnState.toApi(): CodingConnection = when (this) {
+        ConnState.DISCONNECTED -> CodingConnection.DISCONNECTED
+        ConnState.CONNECTING -> CodingConnection.CONNECTING
+        ConnState.CONNECTED -> CodingConnection.CONNECTED
+    }
 
     private val listener = object : AgentTransport.Listener {
         override fun onOpen() {

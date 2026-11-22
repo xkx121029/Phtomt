@@ -28,9 +28,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.phoneagent.coding.CodingRuntimeState
-import com.phoneagent.coding.agent.ConnState
-import com.phoneagent.coding.agent.Workspace
+import com.phoneagent.coding.api.CodingConnection
+import com.phoneagent.coding.api.CodingRuntime
+import com.phoneagent.coding.api.CodingRuntimeStatus
+import com.phoneagent.coding.api.CodingWorkspace
 import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.ui.coding.openWorkspaceDirectory
 import com.phoneagent.ui.components.LocalNavClearance
@@ -43,8 +44,8 @@ import org.koin.compose.koinInject
 
 /**
  * 编码分页（Superagent 融合 Phase 6）：运行时状态、审批档位、
- * 工作区路径、编码 agent 连接状态。状态一律读 [CodingRuntimeManager] 与
- * [CodingAgentBridge]（Koin 单例，与编码页/引擎路由共享同一实例）。
+ * 工作区路径、编码 agent 连接状态。运行时状态读 [CodingRuntime] 接口、
+ * 连接状态读 [CodingAgentBridge]（Koin 单例，与编码页/引擎路由共享同一实例）。
  */
 @Composable
 internal fun SettingsCoding(
@@ -53,16 +54,16 @@ internal fun SettingsCoding(
     onBack: () -> Unit,
     onOpenEnv: () -> Unit,
 ) {
-    val runtime = koinInject<com.phoneagent.coding.CodingRuntimeManager>()
+    val runtime = koinInject<CodingRuntime>()
     val bridge = koinInject<CodingAgentBridge>()
-    val runtimeState by runtime.state.collectAsStateWithLifecycle()
-    val clientState by bridge.client.state.collectAsStateWithLifecycle()
+    val runtimeState by runtime.status.collectAsStateWithLifecycle()
+    val clientState by bridge.uiStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val buzz = rememberHapticClick()
     val snackbar = LocalSnackbar.current
 
     LaunchedEffect(Unit) { runtime.refresh() }
-    val workspacePath = remember { Workspace.resolve(context).absolutePath }
+    val workspacePath = remember { CodingWorkspace.path(context) }
 
     Column(
         modifier = Modifier
@@ -92,7 +93,7 @@ internal fun SettingsCoding(
 
         CodingWorkspaceSection(
             workspacePath = workspacePath,
-            conn = clientState.conn,
+            conn = clientState.connection,
             error = clientState.error,
             onOpenWorkspace = {
                 buzz()
@@ -123,7 +124,7 @@ private fun CodingEnvEntrySection(onOpen: () -> Unit) {
 
 /** 运行时状态：Node 宿主随主包内置 */
 @Composable
-private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
+private fun CodingRuntimeSection(runtimeState: CodingRuntimeStatus) {
     SettingsSection(
         title = "运行时状态",
         subtitle = "Node 宿主随主包内置，编码 Agent 跑在里面",
@@ -131,7 +132,7 @@ private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
     ) {
         Column(Modifier.padding(horizontal = AppSpacing.Lg, vertical = AppSpacing.Sm)) {
             when (runtimeState) {
-                is CodingRuntimeState.Installed -> {
+                is CodingRuntimeStatus.Ready -> {
                     SettingsStatusRow("状态", "内置就绪")
                     Spacer(Modifier.height(AppSpacing.Sm))
                     SettingsStatusRow(
@@ -140,7 +141,7 @@ private fun CodingRuntimeSection(runtimeState: CodingRuntimeState) {
                     )
                 }
 
-                is CodingRuntimeState.NotReady -> {
+                is CodingRuntimeStatus.Unavailable -> {
                     SettingsStatusRow("状态", "未就绪")
                     Spacer(Modifier.height(AppSpacing.Sm))
                     Text(
@@ -178,7 +179,7 @@ private fun CodingApprovalSection(mode: String, onSelect: (String) -> Unit) {
 @Composable
 private fun CodingWorkspaceSection(
     workspacePath: String,
-    conn: ConnState,
+    conn: CodingConnection,
     error: String?,
     onOpenWorkspace: () -> Unit,
 ) {
@@ -207,9 +208,9 @@ private fun CodingWorkspaceSection(
             SettingsDivider(inset = false)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val (dotColor, label) = when (conn) {
-                    ConnState.CONNECTED -> AppTheme.colors.success to "已连接"
-                    ConnState.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
-                    ConnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
+                    CodingConnection.CONNECTED -> AppTheme.colors.success to "已连接"
+                    CodingConnection.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
+                    CodingConnection.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
                 }
                 Box(
                     Modifier

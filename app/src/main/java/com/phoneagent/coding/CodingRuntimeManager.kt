@@ -2,6 +2,9 @@ package com.phoneagent.coding
 
 import android.content.Context
 import android.os.Build
+import com.phoneagent.coding.agent.LocalAgent
+import com.phoneagent.coding.api.CodingRuntime
+import com.phoneagent.coding.api.CodingRuntimeStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,23 +26,36 @@ sealed class CodingRuntimeState {
  *
  * 运行时不再单独下载安装：libnode.so 存在即恒为就绪（版本取主包 versionName/
  * versionCode）；只有构建产物缺 libnode.so 时才落 NotReady（交给上层做只读错误展示）。
+ *
+ * 对外只经 [CodingRuntime]（`coding/api`）暴露：探测结果以 [CodingRuntimeStatus] 投影出去，
+ * [state] 这一份留给编码页自己渲染（它要的是切片内部那套类型）。
  */
-class CodingRuntimeManager(private val context: Context) {
+class CodingRuntimeManager(private val context: Context) : CodingRuntime {
 
     private val _state = MutableStateFlow<CodingRuntimeState>(probe())
     val state: StateFlow<CodingRuntimeState> = _state.asStateFlow()
+
+    /** 对外投影：与 [state] 同一次探测结果，只是换成了 api 那套类型 */
+    private val _status = MutableStateFlow<CodingRuntimeStatus>(CodingRuntimeStatus.Unavailable("尚未探测"))
+    override val status: StateFlow<CodingRuntimeStatus> = _status.asStateFlow()
 
     init {
         refresh()
     }
 
     /** 重新探测内置运行时：libnode.so 存在 → Installed（主包版本），缺失 → NotReady。 */
-    fun refresh() {
-        _state.value = probe()
+    override fun refresh() {
+        val next = probe()
+        _state.value = next
+        _status.value = next.toStatus()
     }
 
     /** 运行时是否已就绪（供编码入口做门禁判断）。 */
     fun isInstalled(): Boolean = _state.value is CodingRuntimeState.Installed
+
+    override fun stopHost() {
+        LocalAgent.stop()
+    }
 
     private fun probe(): CodingRuntimeState {
         val libDir = context.applicationInfo.nativeLibraryDir
@@ -60,5 +76,10 @@ class CodingRuntimeManager(private val context: Context) {
         } catch (e: Exception) {
             CodingRuntimeState.NotReady("无法读取主包版本信息：${e.message ?: e.javaClass.simpleName}")
         }
+    }
+
+    private fun CodingRuntimeState.toStatus(): CodingRuntimeStatus = when (this) {
+        is CodingRuntimeState.Installed -> CodingRuntimeStatus.Ready(versionName, versionCode)
+        is CodingRuntimeState.NotReady -> CodingRuntimeStatus.Unavailable(reason)
     }
 }

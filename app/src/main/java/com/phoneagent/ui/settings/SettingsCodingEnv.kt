@@ -33,7 +33,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.phoneagent.coding.env.CodingEnvClient
+import com.phoneagent.coding.api.CodingEnvPortal
+import com.phoneagent.coding.api.CodingEnvUiState
 import com.phoneagent.env.EnvApi
 import com.phoneagent.env.ToolchainReadiness
 import com.phoneagent.ui.coding.openAllFilesAccessSettings
@@ -57,7 +58,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 internal fun SettingsCodingEnv(onBack: () -> Unit) {
-    val client = koinInject<CodingEnvClient>()
+    val client = koinInject<CodingEnvPortal>()
     val ui by client.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = LocalSnackbar.current
@@ -151,7 +152,7 @@ private const val MAINTENANCE_TIMEOUT_MS = 120_000L
 
 @Composable
 private fun EnvComponentSection(
-    ui: CodingEnvClient.UiState,
+    ui: CodingEnvUiState,
     onInstall: () -> Unit,
     onGrantStorage: () -> Unit,
     onOpenAllFiles: () -> Unit,
@@ -215,7 +216,7 @@ private fun EnvComponentSection(
 }
 
 @Composable
-private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit) {
+private fun ToolchainSection(ui: CodingEnvUiState, onRefresh: () -> Unit) {
     val buzz = rememberHapticClick()
     val toolchain = ui.toolchain
     SettingsSection(
@@ -265,7 +266,7 @@ private fun ToolchainSection(ui: CodingEnvClient.UiState, onRefresh: () -> Unit)
 }
 
 @Composable
-private fun InstallSection(ui: CodingEnvClient.UiState, onInstall: () -> Unit) {
+private fun InstallSection(ui: CodingEnvUiState, onInstall: () -> Unit) {
     val buzz = rememberHapticClick()
     SettingsSection(
         title = "一键安装",
@@ -304,7 +305,7 @@ private fun InstallSection(ui: CodingEnvClient.UiState, onInstall: () -> Unit) {
 }
 
 @Composable
-private fun BuildSection(ui: CodingEnvClient.UiState, onBuild: () -> Unit) {
+private fun BuildSection(ui: CodingEnvUiState, onBuild: () -> Unit) {
     val buzz = rememberHapticClick()
     SettingsSection(
         title = "构建 APK",
@@ -355,7 +356,7 @@ private fun BuildSection(ui: CodingEnvClient.UiState, onBuild: () -> Unit) {
  */
 @Composable
 private fun MaintenanceSection(
-    ui: CodingEnvClient.UiState,
+    ui: CodingEnvUiState,
     onClean: () -> Unit,
     onResetRequest: () -> Unit,
 ) {
@@ -424,7 +425,7 @@ private fun ResetEnvironmentConfirm(
 }
 
 /** 任务进度：安装与构建共用同一套回调，没有内容时整段不渲染 */@Composable
-private fun TaskSection(ui: CodingEnvClient.UiState, onCancel: () -> Unit) {
+private fun TaskSection(ui: CodingEnvUiState, onCancel: () -> Unit) {
     if (ui.steps.isEmpty() && ui.logs.isEmpty() && ui.message == null) return
     SettingsSection(
         title = "任务进度",

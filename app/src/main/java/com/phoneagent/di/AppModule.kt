@@ -22,6 +22,7 @@ import com.phoneagent.device.shell.TermuxBridge
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.core.context.startKoin
+import org.koin.dsl.bind
 import org.koin.dsl.module
 
 private val appModule = module {
@@ -78,10 +79,14 @@ private val appModule = module {
     single { UpdateManager(androidContext(), get<ShizukuManager>()) }
 
     // 编码运行时管理器：Node 宿主随主 APK 内置（app/src/main/jniLibs），只做就绪探测
-    single { com.phoneagent.coding.CodingRuntimeManager(androidContext()) }
+    // 对外按 CodingRuntime 接口注入，编码页仍可直接取具体类渲染自己的运行时段
+    single { com.phoneagent.coding.CodingRuntimeManager(androidContext()) } bind
+        com.phoneagent.coding.api.CodingRuntime::class
 
     // 编码环境组件（com.phoneagent.env）门户：安装引导、AIDL 绑定、一键安装与构建的进度聚合
-    single { com.phoneagent.coding.env.CodingEnvClient(androidContext()) }
+    // 对外按 CodingEnvPortal 接口注入：设置页只依赖接口，不依赖具体门户类
+    single { com.phoneagent.coding.env.CodingEnvClient(androidContext()) } bind
+        com.phoneagent.coding.api.CodingEnvPortal::class
 
     // 编码 agent 委托桥（Superagent 融合 Phase 4）：引擎路由与 Phase 5 编码页共享同一实例
     // 第四个参数是环境门户：Agent 的 coding_env 工具经它驱动 PRoot 工具链

@@ -20,7 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.phoneagent.coding.env.CodingEnvClient
+import com.phoneagent.coding.api.CodingEnvStep
+import com.phoneagent.coding.api.CodingEnvUiState
 import com.phoneagent.env.EnvApi
 import com.phoneagent.env.ToolchainReadiness
 import com.phoneagent.ui.icons.AppIcons
@@ -34,7 +35,7 @@ import java.util.Locale
 /** [SettingsCodingEnv] 的展示零件：步骤列表、日志框、安装清单与几个文案换算 */
 
 @Composable
-internal fun StepList(steps: List<CodingEnvClient.Step>) {
+internal fun StepList(steps: List<CodingEnvStep>) {
     Column(verticalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
         steps.forEach { step ->
             val tint = when (step.state) {
@@ -120,7 +121,7 @@ internal fun ReadinessRows(report: ToolchainReadiness.Report) {
     }
 }
 
-internal fun installedText(ui: CodingEnvClient.UiState): String = when {
+internal fun installedText(ui: CodingEnvUiState): String = when {
     ui.installedVersion == null -> "未安装"
     ui.needsInstall -> "有新版本（当前 v${ui.installedVersion}，随包 v${ui.bundledVersion ?: "未知"}）"
     else -> "已安装 v${ui.installedVersion}"

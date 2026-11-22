@@ -50,8 +50,8 @@ class SkillDelegate(
     internal fun refreshSkills() { _skills.value = skillRegistry.all() }
 
     // ---- ACA（编码 agent）可用技能：流式扫描 filesDir/skills，逐条刷入列表 ----
-    private val _acaSkills = MutableStateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>>(emptyList())
-    val acaSkills: StateFlow<List<com.phoneagent.coding.skill.AcaSkillInfo>> = _acaSkills.asStateFlow()
+    private val _acaSkills = MutableStateFlow<List<com.phoneagent.coding.api.AcaSkillSummary>>(emptyList())
+    val acaSkills: StateFlow<List<com.phoneagent.coding.api.AcaSkillSummary>> = _acaSkills.asStateFlow()
 
     /** 扫描进行中（true 时主页显示"正在扫描"占位） */
     private val _acaScanning = MutableStateFlow(false)
@@ -85,7 +85,7 @@ class SkillDelegate(
                 _acaSkillErrors.value = emptyList()
                 // 扫盘在 Default 线程，回调里只做状态追加（StateFlow 写是线程安全的）
                 val errors = withContext(Dispatchers.Default) {
-                    com.phoneagent.coding.skill.AcaSkillCatalog.streamScan(context.applicationContext) { info ->
+                    com.phoneagent.coding.api.AcaSkills.stream(context.applicationContext) { info ->
                         _acaSkills.value = _acaSkills.value + info
                     }
                 }
