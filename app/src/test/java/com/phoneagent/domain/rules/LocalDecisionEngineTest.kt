@@ -191,4 +191,46 @@ class LocalDecisionEngineTest {
         repeat(5) { engine.decide(dialog) }
         assertNull(engine.decide(dialog))
     }
+
+    // ---- 空元素树：先等一拍，而不是每拍都升级到完整视觉链 ----
+
+    @Test
+    fun 空元素树先等三拍再交还云端() {
+        val empty = snapshot()
+        repeat(3) { i ->
+            val intent = engine.decide(empty)
+            assertNotNull("第 ${i + 1} 拍应本地等待", intent)
+            assertEquals(IntentType.WAIT, intent!!.intent)
+            assertTrue("等待时长必须为正", (intent.waitMs ?: 0L) > 0L)
+        }
+        // 第 4 拍起交还云端（旧行为），且不会一直等下去
+        assertNull(engine.decide(empty))
+        assertNull(engine.decide(empty))
+    }
+
+    @Test
+    fun 读到非空元素树后空树等待预算重置() {
+        val empty = snapshot()
+        repeat(3) { engine.decide(empty) }
+        assertNull("预算用完，交还云端", engine.decide(empty))
+        // 元素树恢复（哪怕这一拍本地判不出动作）→ 下一次空树又是一串新的空树
+        engine.decide(snapshot(elem(0, text = "随便一段文本", type = "Text")))
+        assertEquals(IntentType.WAIT, engine.decide(empty)?.intent)
+    }
+
+    @Test
+    fun 新任务重置后空树重新可等一拍() {
+        val empty = snapshot()
+        repeat(4) { engine.decide(empty) }
+        assertNull(engine.decide(empty))
+        engine.reset()
+        assertEquals(IntentType.WAIT, engine.decide(empty)?.intent)
+    }
+
+    @Test
+    fun 自家页面的空元素树不走本地等待() {
+        // 守卫顺序不变：本应用自己的界面一律交还云端，空树也不例外
+        val own = LocalDecisionEngine(selfPackage = "com.test.app")
+        assertNull(own.decide(snapshot()))
+    }
 }

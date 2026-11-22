@@ -28,12 +28,25 @@ class LocalDecisionEngine(
     private val maxConsecutiveLocal = 6
     private var consecutiveLocal = 0
 
+    /** 元素树为空时每次等的时长；和 loading 页的等待保持同一个量级 */
+    private val emptyTreeWaitMs = 1200L
+
+    /**
+     * 空元素树最多连等几拍（见 [decide] 的空树分支）。
+     * 3 拍≈3.6s，够覆盖「加载/白屏/首帧」这类短暂空页；再多就该怀疑这页根本不暴露元素了。
+     */
+    private val maxEmptyTreeWaits = 3
+
+    /** 当前这串空树已经等了几拍；只在读到非空元素树或新任务开始时清零 */
+    private var emptyTreeWaits = 0
+
     /**
      * 新任务开始时调用：清零连续本地决策计数。
      * 不清的话，上一个任务结尾的高计数会让新任务开头被强制走一次云端（防死循环计数跨任务残留）。
      */
     fun reset() {
         consecutiveLocal = 0
+        emptyTreeWaits = 0
     }
 
     /**
@@ -52,9 +65,25 @@ class LocalDecisionEngine(
     fun decide(snapshot: ScreenSnapshot, pageType: String?): AgentIntent? {
         // 本应用自己的界面不做本地决策：时间线/横幅里的"失败、重试、无法"等文案是 UI 词汇不是页面证据
         if (selfPackage != null && snapshot.packageName == selfPackage) return null
-        // 元素树为空时同样不做本地决策：读不到页面 ≠ 页面是异常页，
-        // 此时凭空按返回/点关闭只会盲转（真机 BUG 21/22 的帮凶），交还给云端走视觉链路
-        if (snapshot.elements.isEmpty()) return null
+        // 元素树为空时不能在空树上动手（真机 BUG 21/22 的教训），但**也不该立刻升级到视觉链**：
+        // 空树最常见的原因是页面还没画完（加载 / 白屏 / 首帧），下一秒控件就出来了，
+        // 而升级之后这一步要付「截图 + 云端视觉 + 端侧 3B」（视觉看门狗逐层到 25s）。
+        // 所以先等一拍：WAIT 不触任何控件，天然没有盲点风险，代价只有 [emptyTreeWaitMs]。
+        // 防死等：连等满 [maxEmptyTreeWaits] 拍仍为空，说明这页根本不暴露元素（WebView / 自绘 / 游戏），
+        // 交还云端走视觉链（= 旧行为）。计数只在下一次读到非空元素树或 [reset] 时清零，
+        // 因此持续空树的页面只会在每串空树的开头多等几拍，不会"每四步才前进一步"。
+        if (snapshot.elements.isEmpty()) {
+            if (emptyTreeWaits < maxEmptyTreeWaits) {
+                emptyTreeWaits++
+                return AgentIntent(
+                    intent = IntentType.WAIT,
+                    waitMs = emptyTreeWaitMs,
+                    reasoning = "页面控件还没出现，先等一拍（第 $emptyTreeWaits 拍）",
+                )
+            }
+            return null
+        }
+        emptyTreeWaits = 0
         val type = pageType ?: PageTypeRules.inferPageType(snapshot)
         val action: AgentIntent? = when (type) {
             "dialog_overlay" -> handleDialog(snapshot)
