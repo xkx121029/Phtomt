@@ -610,17 +610,17 @@ fun AgentScreen(
                                 val text = raw.trim()
                                 if (text.isNotEmpty()) {
                                     // 能力预检：无障碍没开时先做一次明确选择，
-                                    // 而不是让用户等 40–60 秒才收到一条注定失败的记录
-                                    val needsConsent = (
-                                        mode == ComposerMode.NEW_TASK ||
-                                            mode == ComposerMode.QUEUE_FOLLOW_UP
-                                        ) && AgentPreflight.needsScreenshotConsent(
+                                    // 而不是让用户等 40–60 秒才收到一条注定失败的记录。
+                                    // 判据只看「无障碍可用 + 本轮选过没有」，模型配置只是一句附注
+                                    val ask = AgentPreflight.ask(
                                         a11yEnabled = a11yEnabled,
                                         configProblem = settings.configProblem,
                                         screenshotModeChosen = screenshotModeChosen,
                                     )
+                                    val needsConsent = ask.consent &&
+                                        (mode == ComposerMode.NEW_TASK || mode == ComposerMode.QUEUE_FOLLOW_UP)
                                     if (needsConsent) {
-                                        preflightTask = PreflightRequest(text, mode)
+                                        preflightTask = PreflightRequest(text, mode, ask.configNote)
                                     } else {
                                         submitTask(text, mode)
                                     }
@@ -699,6 +699,8 @@ fun AgentScreen(
             preflightTask?.let { request ->
                 ScreenshotModeDialog(
                     screenshotActive = screenshotActive,
+                    // 配置也拦着这一轮时如实说清：否则用户点了「仍然尝试」却什么都不会起跑
+                    configProblem = request.configNote,
                     onOpenPermissions = {
                         preflightTask = null
                         vm.openPermissionSettings(context, PermissionKind.ACCESSIBILITY)
@@ -891,8 +893,11 @@ private fun AgentTimelineItemView(
     }
 }
 
-/** 预检拦下的待发任务：用户做完选择后按原来的发送模式起跑 */
-private data class PreflightRequest(val text: String, val mode: ComposerMode)
+/**
+ * 预检拦下的待发任务：用户做完选择后按原来的发送模式起跑。
+ * [configNote] 在按下发送那一刻取定：弹窗要如实说出「这一轮也起不来」的原因
+ */
+private data class PreflightRequest(val text: String, val mode: ComposerMode, val configNote: String?)
 
 /**
  * 发送前的一次性说明：无障碍没开时，这一轮只能用截图模式跑。
@@ -903,6 +908,7 @@ private data class PreflightRequest(val text: String, val mode: ComposerMode)
 @Composable
 private fun ScreenshotModeDialog(
     screenshotActive: Boolean,
+    configProblem: String?,
     onOpenPermissions: () -> Unit,
     onContinue: () -> Unit,
     onDismiss: () -> Unit,
@@ -932,6 +938,15 @@ private fun ScreenshotModeDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = AppTheme.colors.onSurfaceRaised,
                 )
+                // 模型配置同样拦着这一轮时不能不说：预检照问，但「仍然尝试」不会真的起跑
+                configProblem?.let { problem ->
+                    Spacer(Modifier.height(AppSpacing.Sm))
+                    Text(
+                        text = "另外，模型配置也还没通过，这一轮点了「仍然尝试」会停在配置失败上：$problem",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
         },
         confirmButton = {
