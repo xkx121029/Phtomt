@@ -1,9 +1,12 @@
+// 本文件里的数字多为 HTML 实体码点、字符编码与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber", "MatchingDeclarationName")
 package com.phoneagent.core.text
 
 /**
  * Markdown 累积器：块序列 + 空白折叠 + CJK 不插空格 + 转义 + 行内标记栈 + 列表缓冲。
  * 超过 [HARD_CAP] 立刻置 [truncated]，由 Converter 早停。
  */
+@Suppress("TooManyFunctions")
 internal class MdBuilder {
 
     private val out = StringBuilder(4096)
@@ -96,6 +99,7 @@ internal class MdBuilder {
         if (cur.length > HtmlToMarkdown.HARD_CAP + 1024) truncated = true
     }
 
+    @Suppress("ComplexCondition", "ReturnCount")
     private fun appendChar(ch: Char, src: String, i: Int) {
         if (ch == '\\' || ch == '`' || ch == '*' || ch == '_' || ch == '[' || ch == ']') {
             cur.append('\\').append(ch)

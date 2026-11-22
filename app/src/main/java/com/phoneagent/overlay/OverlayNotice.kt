@@ -112,6 +112,7 @@ internal fun FloatingWindowService.hideNotice() {
  *
  * 只用一次 addView，之后复用：提示是低频事件，但每条都重建窗口会把成本压在任务关键时刻。
  */
+@Suppress("LongMethod", "ReturnCount")
 internal fun FloatingWindowService.ensureNoticeWindow(): LinearLayout? {
     noticeRoot?.let { return it }
     val wm = windowManager ?: return null

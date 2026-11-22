@@ -21,7 +21,7 @@ internal class AiStreamPump(private val json: Json) {
      * @return 本次流是否出现过思考内容（reasoning_content）
      */
     // 参数已按职责分组，合并成参数对象会牵动较多调用方，此处按规则豁免
-    @Suppress("LongParameterList", "CyclomaticComplexMethod")
+    @Suppress("LongParameterList", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     internal fun pumpSse(
         source: BufferedSource,
         adapter: ChatProtocolAdapter?,

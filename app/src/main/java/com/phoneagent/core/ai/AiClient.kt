@@ -294,6 +294,7 @@ class AiClient(
                                         extras = bodies.decisionBodyExtras(useStructured, useGuided)))
                                     .build()
                             }
+                            @Suppress("MaxLineLength")
                             val fbContent = transport.executeWithRetry(fallbackRequest, adapter?.let { a -> a::extractText })
                             return@runCatching AiDecision(
                                 action = intents.parseAgentIntent(fbContent),
@@ -456,6 +457,7 @@ class AiClient(
                 ),
             )
             val adapter = ChatProtocols.of(protocol)
+            @Suppress("MaxLineLength")
             val content = if (adapter != null) {
                 // 协议适配器路径：Claude/Gemini 无 OpenAI 的 response_format，坐标靠提示词约束 + 兜底解析
                 transport.executeWithRetry(
@@ -677,6 +679,7 @@ class AiClient(
     ): Result<ModelAbility> = probe.probeAbility(baseUrl, apiKey, model, protocol)
 
     /** 流式解析入口：实现见 [AiStreamPump]，签名保持不变供测试与内部调用 */
+    @Suppress("LongParameterList")
     internal fun pumpSse(
         source: BufferedSource,
         adapter: ChatProtocolAdapter?,
@@ -687,6 +690,7 @@ class AiClient(
     ): Boolean = pump.pumpSse(source, adapter, full, onDelta, onUsage, shouldStop)
 
     /** 请求构造入口：实现见 [AiRequestBodies] */
+    @Suppress("LongParameterList")
     internal fun buildStreamRequestBody(
         messages: List<ChatMessageDto>,
         model: String,

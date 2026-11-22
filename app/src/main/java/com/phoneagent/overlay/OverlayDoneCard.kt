@@ -1,5 +1,5 @@
 // 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
-@file:Suppress("MagicNumber")
+@file:Suppress("MagicNumber", "TooManyFunctions")
 package com.phoneagent.overlay
 
 import android.content.ClipData
@@ -236,6 +236,7 @@ internal fun FloatingWindowService.buildDoneBodyBlock(card: LinearLayout) {
 
 }
 
+@Suppress("LongMethod")
 internal fun FloatingWindowService.buildDoneActionsBlock(card: LinearLayout) {
     // 4) 一行三键：复制（结果写剪贴板）/ 完成（关卡片）/ 打开 Agent（回到会话看完整过程）
     val actions = LinearLayout(this).apply {
@@ -432,6 +433,7 @@ internal fun FloatingWindowService.fadeOutAndHide(view: View?, durationMs: Int) 
 
 
 /** 把结果写进卡片：标题/状态色/正文/元信息/失败原因/复制按钮复位 */
+@Suppress("CyclomaticComplexMethod")
 internal fun FloatingWindowService.applyDoneContent(outcome: TaskOutcome) {
     val success = outcome.status == TaskStatus.SUCCESS
     val tone = when (outcome.status) {

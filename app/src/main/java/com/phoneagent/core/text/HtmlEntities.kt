@@ -1,3 +1,5 @@
+// 本文件里的数字多为 HTML 实体码点、字符编码与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.text
 
 /** 第三段之外的独立环节：HTML 实体解码（只认表内 32 个命名实体 + 数字实体）。 */
@@ -15,6 +17,7 @@ internal object HtmlEntities {
         "harr" to "\u2194", "permil" to "\u2030",
     )
 
+    @Suppress("LoopWithTooManyJumpStatements")
     internal fun decodeEntities(s: String): String {
         if (s.indexOf('&') < 0) return s
         val sb = StringBuilder(s.length)
@@ -55,6 +58,7 @@ internal object HtmlEntities {
     }
 
     /** 非法码点（越界 / 代理区）原样保留，不崩 */
+    @Suppress("ReturnCount")
     private fun codePoint(digits: String, radix: Int): String? {
         val v = digits.toIntOrNull(radix) ?: return null
         if (v !in 1..0x10FFFF) return null

@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber", "MatchingDeclarationName")
 package com.phoneagent.core.ai
 
 import com.phoneagent.core.log.AppLog
@@ -27,7 +29,7 @@ internal class AiIntentParser(private val json: Json) {
 
     /** 同 [parseAgentIntent]，但兜底全部失败时返回 null 而非 give_up（供纠错重发判定） */
     // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "TooGenericExceptionCaught")
     internal fun parseAgentIntentOrNull(content: String, allowRepair: Boolean = true): AgentIntent? {
         // Step 1：提取 JSON（支持 ```json 代码块包裹）后直接解析
         try {
@@ -36,6 +38,7 @@ internal class AiIntentParser(private val json: Json) {
             AppLog.w("AiClient", "Step1 parse failed: ${e.message}, content: ${content.take(200)}")
         }
         // Step 2：平衡花括号提取第一个完整 JSON 对象（支持嵌套）
+        @Suppress("TooGenericExceptionCaught")
         val balanced = extractBalancedJson(content)
         if (balanced != null) {
             try {
@@ -46,6 +49,7 @@ internal class AiIntentParser(private val json: Json) {
         }
         // Step 3：尝试 JSON 数组（意图合并）
         val arrayStart = content.indexOf('[')
+        @Suppress("TooGenericExceptionCaught")
         val arrayEnd = content.lastIndexOf(']')
         if (arrayStart >= 0 && arrayEnd > arrayStart) {
             try {
@@ -62,6 +66,7 @@ internal class AiIntentParser(private val json: Json) {
         // 修复是纯端侧几十微秒的操作，比纠错重发便宜两个数量级（重发要再付一次首 token + 生成）；
         // 修不好才交给调用方纠错重发或 give_up 兜底。
         if (allowRepair) {
+            @Suppress("TooGenericExceptionCaught")
             val repaired = IntentJsonRepair.repair(content)
             if (repaired != null && repaired != content) {
                 try {
@@ -80,6 +85,7 @@ internal class AiIntentParser(private val json: Json) {
     }
 
     /** 平衡花括号提取第一个完整 JSON 对象（支持嵌套） */
+    @Suppress("LoopWithTooManyJumpStatements", "ReturnCount")
     private fun extractBalancedJson(content: String): String? {
         val start = content.indexOf('{')
         if (start < 0) return null

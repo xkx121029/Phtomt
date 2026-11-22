@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * 采样参数（max_tokens / temperature / thinking / stream_options）也只在这里决定，
  * 调用方不再各自拼 body。
  */
+@Suppress("MaxLineLength")
 internal class AiRequestBodies(private val json: Json, private val images: AiImageEncoder) {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -27,7 +28,7 @@ internal class AiRequestBodies(private val json: Json, private val images: AiIma
      * （缺 remember、device_query、say、show_agent、fetch、6 个 browse_*、shell、a11y），
      * 结果是"结构化回退"这条路上新意图被 schema 直接判非法。唯一定义点在 [IntentType.ALL]。
      */
-    private val ACTION_SCHEMA = """
+    private val actionSchema = """
     {
       "type": "object",
       "properties": {
@@ -63,9 +64,9 @@ internal class AiRequestBodies(private val json: Json, private val images: AiIma
     }
     """.trimIndent()
 
-    /** [ACTION_SCHEMA] 只解析一次（每次请求都 parse 是纯浪费） */
+    /** [actionSchema] 只解析一次（每次请求都 parse 是纯浪费） */
     private val actionSchemaElement: kotlinx.serialization.json.JsonElement by lazy {
-        json.parseToJsonElement(ACTION_SCHEMA)
+        json.parseToJsonElement(actionSchema)
     }
 
     /** 决策请求可选的顶层结构化字段；全空时请求体与历史版本一致（只有提示词约束） */
@@ -125,6 +126,7 @@ internal class AiRequestBodies(private val json: Json, private val images: AiIma
     )
 
     /** 流式文本请求体（stream=true）；规划阶段用 extractJsonObject 解析，故不强制 response_format */
+    @Suppress("LongParameterList")
     internal fun buildStreamRequestBody(
         messages: List<ChatMessageDto>,
         model: String,
@@ -167,6 +169,7 @@ internal class AiRequestBodies(private val json: Json, private val images: AiIma
     }
 
     /** 按协议适配器构建非流式请求（Claude / Gemini 原生端点） */
+    @Suppress("LongParameterList")
     internal fun protocolRequest(
         adapter: ChatProtocolAdapter,
         baseUrl: String,
@@ -186,6 +189,7 @@ internal class AiRequestBodies(private val json: Json, private val images: AiIma
     }
 
     /** 按协议适配器构建流式请求（max_tokens 与决策链路对齐取 4096） */
+    @Suppress("LongParameterList")
     internal fun protocolStreamRequest(
         adapter: ChatProtocolAdapter,
         baseUrl: String,

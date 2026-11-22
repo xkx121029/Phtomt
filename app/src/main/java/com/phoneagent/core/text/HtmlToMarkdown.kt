@@ -118,18 +118,6 @@ object HtmlToMarkdown {
 
     internal val MARK_TAGS = marksOf(MARK_RULE)
 
-    /** 固定 32 个命名实体；未列入表的一律原样输出（不猜） */
-    private val ENTITIES: Map<String, String> = mapOf(
-        "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to "\u00A0",
-        "mdash" to "\u2014", "ndash" to "\u2013", "hellip" to "\u2026", "laquo" to "\u00AB",
-        "raquo" to "\u00BB", "ldquo" to "\u201C", "rdquo" to "\u201D", "lsquo" to "\u2018",
-        "rsquo" to "\u2019", "copy" to "\u00A9", "reg" to "\u00AE", "trade" to "\u2122",
-        "deg" to "\u00B0", "plusmn" to "\u00B1", "times" to "\u00D7", "divide" to "\u00F7",
-        "middot" to "\u00B7", "bull" to "\u2022", "sect" to "\u00A7", "para" to "\u00B6",
-        "dagger" to "\u2020", "frac12" to "\u00BD", "larr" to "\u2190", "rarr" to "\u2192",
-        "harr" to "\u2194", "permil" to "\u2030",
-    )
-
     /** 弱信号用的 HTML 特征标签名（用于把 XML/UI dump 排除掉） */
     private val HTML_HINT_TAGS = listOf("div", "span", "a", "p", "li", "td", "ul", "table", "h1", "br", "img")
 

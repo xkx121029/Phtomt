@@ -1,5 +1,5 @@
 // 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
-@file:Suppress("MagicNumber")
+@file:Suppress("MagicNumber", "TooManyFunctions")
 package com.phoneagent.overlay
 
 import android.animation.ValueAnimator
@@ -49,6 +49,7 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     return panel
 }
 
+@Suppress("LongMethod")
 internal fun FloatingWindowService.buildHeaderRow(panel: LinearLayout): TextView {
     // 头部：状态呼吸点 + 任务标题 + 关闭（仅头部可拖动；轻点头部也可切换详情）。
     // 三个操作都保留，只重新分层：「详情 / 隐藏」下移到状态行右侧，
@@ -216,6 +217,7 @@ internal fun FloatingWindowService.buildProgressRow(panel: LinearLayout) {
     panel.addView(progressBar)
 }
 
+@Suppress("LongMethod")
 internal fun FloatingWindowService.buildThinkingBlock(panel: LinearLayout) {
     // AI 详情面板：圆角内嵌卡片，按 发送/返回/审核 分栏
     // 默认 GONE（折叠）：只在用户点「详情」或点头部时占位，避免窗口常驻撑高
@@ -422,6 +424,7 @@ internal fun FloatingWindowService.buildInteractInputs() {
  * @param total 总步骤
  * @param phase 阶段（OBSERVING/THINKING/ACTING/DONE/ERROR）
  */
+@Suppress("LongParameterList")
 internal fun FloatingWindowService.updateStatus(
     status: String,
     task: String,

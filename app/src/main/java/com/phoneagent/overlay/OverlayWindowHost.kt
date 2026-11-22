@@ -37,6 +37,7 @@ internal fun FloatingWindowService.cardTopLimit(): Int = statusBarHeight() + dp(
  *
  * 取值顺序：WindowInsets（API 30+，最可靠）→ 系统资源名 → 经验兜底值。
  */
+@Suppress("ReturnCount")
 internal fun FloatingWindowService.statusBarHeight(): Int {
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
         // 同时算上刘海/挖孔：有 cutout 的机型上，屏幕物理顶到可视内容之间的实际距离

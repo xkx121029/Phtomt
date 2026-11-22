@@ -52,7 +52,7 @@
 | `AgentTimelineMap.terminal`（`app/src/main/java/com/phoneagent/ui/agent/AgentTimelineMap.kt:506`） | 这次任务到终态时产出哪一张终态卡：成功 / 用户停止 / 失败三种，失败再按原因分档（能力缺失 / 配置问题 / 决策异常），决定用户看到的是「去修配置」还是「去开权限」 | （docs 未描述；`CHANGELOG.md` 今日失败恢复条目） |
 | `DeviceWorkspace.resolveWithin`（`app/src/main/java/com/phoneagent/coding/device/DeviceWorkspace.kt:50`） | 工作区以内的路径与 workspace 之外的文件读写的边界：**先用 `Path.toRealPath()` 归一真实路径、再比真实前缀**（Windows 的 junction 只解析真实路径才拦得住），越界一律拒绝 | （docs 未描述；见该文件 `:38-44` 的注释） |
 | `HostBridgeAuth.allows`（`app/src/main/java/com/phoneagent/coding/device/HostBridgeAuth.kt:22`） | 宿主桥的 RPC 能不能进：只认与本地生成的 token 相等，**密钥为空时一律拒绝**（fail-closed），不做「没配就不校验」的兜底 | （docs 未描述；见 `app/src/main/java/com/phoneagent/coding/device/HostBridgeTokenProvider.kt:23` 的注释） |
-| `AgentClient` 审批字段（`approvalDanger`）（`app/src/main/java/com/phoneagent/coding/agent/AgentClient.kt:43`） | 审批卡在用户点「允许」**之前**就要带上危险原因：`danger` / `why` 随 `approval_request` 一起下发，等 `tool_approval` 再带就晚了；丢了这个字段，卡上只剩一条命令 | （docs 未描述；`CHANGELOG.md` 今日审批卡条目） |
+| `AgentClient` 审批字段（`approvalDanger`）（`app/src/main/java/com/phoneagent/coding/agent/AgentClient.kt:46`） | 审批卡在用户点「允许」**之前**就要带上危险原因：`danger` / `why` 随 `approval_request` 一起下发，等 `tool_approval` 再带就晚了；丢了这个字段，卡上只剩一条命令 | （docs 未描述；`CHANGELOG.md` 今日审批卡条目） |
 
 ## 怎么用
 

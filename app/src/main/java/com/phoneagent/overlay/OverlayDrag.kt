@@ -8,6 +8,7 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.widget.OverScroller
 
+@Suppress("ReturnCount")
 internal fun FloatingWindowService.onTouchDrag(event: MotionEvent): Boolean {
     val p = params ?: return false
     val vtracker = velocityTracker ?: VelocityTracker.obtain().also { velocityTracker = it }
@@ -61,6 +62,7 @@ internal fun FloatingWindowService.onTouchDrag(event: MotionEvent): Boolean {
  * "窗口拖丢了、任务还在跑却看不到状态"的情况；靠近左右边缘时吸附贴边，
  * 也让悬浮窗更像系统组件而不是随手丢在屏幕中间的补丁。
  */
+@Suppress("ReturnCount")
 internal fun FloatingWindowService.settlePosition(vx: Float, vy: Float) {
     val p = params ?: return
     val r = root ?: return
@@ -133,6 +135,7 @@ internal fun FloatingWindowService.startFling(startX: Int, startY: Int, vx: Floa
     Choreographer.getInstance().postFrameCallback(frameCallback)
 }
 
+@Suppress("ReturnCount")
 internal fun FloatingWindowService.onFlingFrame() {
     if (!isFlinging) return
     val scroller = flingScroller ?: return

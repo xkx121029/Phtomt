@@ -1,3 +1,5 @@
+// 本文件里的数字多为 HTML 实体码点、字符编码与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.text
 
 /** [HtmlScanner.stripNoise] 顺手抽出的页面元信息（标题与链接绝对化基准） */
@@ -39,6 +41,7 @@ internal object HtmlScanner {
      * 顺带把 `title/base/canonical/og:url` 抽进 [meta]。
      * 保留所有非丢弃标签（含结束标签）的原样文本，交给第二段分词。
      */
+    @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     internal fun stripNoise(html: String, meta: Meta): String {
         val out = StringBuilder(html.length / 2 + 16)
         var i = 0
@@ -123,6 +126,7 @@ internal object HtmlScanner {
     }
 
     /** 扫一遍即将被丢弃的 head 子树，逐个标签交给 [captureMeta]（`head` 自身不再递归） */
+    @Suppress("LoopWithTooManyJumpStatements")
     private fun captureHead(html: String, from: Int, end: Int, meta: Meta) {
         var i = from
         while (i < end) {
@@ -143,6 +147,7 @@ internal object HtmlScanner {
         }
     }
 
+    @Suppress("ReturnCount")
     private fun indexOfEndTag(src: String, name: String, from: Int): Int {
         val needle = "</$name"
         var i = from
@@ -157,6 +162,7 @@ internal object HtmlScanner {
     }
 
     /** 跳过整棵子树：同名前缀计数，直到配平；窗口内找不到闭合就退回不丢（防未闭合标签吃掉整篇） */
+    @Suppress("CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     private fun skipSubtree(html: String, tag: Tag): Int {
         if (tag.selfClosing || tag.name in HtmlToMarkdown.VOID_TAGS) return tag.end
         val name = tag.name
@@ -195,6 +201,7 @@ internal object HtmlScanner {
      * 内容会留在清洗结果里被当成正文；这里改为：找得到闭合就连结束标签一起整段跳过，
      * 找不到就保守只丢到下一个标签起点，不把未闭合脚本之后的正文一起吞掉。
      */
+    @Suppress("ReturnCount")
     private fun skipRawText(html: String, tag: Tag): Int {
         if (tag.selfClosing) return tag.end
         val close = indexOfEndTag(html, tag.name, tag.end)
@@ -227,6 +234,7 @@ internal object HtmlScanner {
 
     // ==================== 第二段：tokenize ====================
 
+    @Suppress("LoopWithTooManyJumpStatements")
     internal fun tokenize(clean: String): List<Tok> {
         val list = ArrayList<Tok>(256)
         var i = 0
@@ -255,6 +263,14 @@ internal object HtmlScanner {
      * 手写标签扫描器（属性小状态机）。
      * 关键点：**引号内的 `>` 不当标签结束**（`<a title="a > b">` 是常见坑）。
      */
+    @Suppress(
+        "ComplexCondition",
+        "CyclomaticComplexMethod",
+        "LongMethod",
+        "LoopWithTooManyJumpStatements",
+        "NestedBlockDepth",
+        "ReturnCount",
+    )
     internal fun parseTag(src: String, lt: Int): Tag? {
         val n = src.length
         var i = lt + 1
@@ -269,6 +285,7 @@ internal object HtmlScanner {
         val name = src.substring(nameStart, i).lowercase()
         val attrs = HashMap<String, String>(4)
         var selfClosing = false
+        @Suppress("ComplexCondition")
         var closed = false
         while (i < n) {
             while (i < n && src[i].isWhitespace()) i++

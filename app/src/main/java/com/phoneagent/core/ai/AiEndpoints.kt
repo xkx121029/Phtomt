@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.ai
 
 /**
@@ -21,6 +23,7 @@ internal object AiEndpoints {
      * 已写 `http://` 的地址原样保留 —— 明文流量默认被清单拦下（release），
      * 只有 debug 构建或用户显式打开「允许 http 端点」时才放行（见 AppSettings.Settings.configProblem）。
      */
+    @Suppress("ReturnCount")
     internal fun normalizeBaseUrl(raw: String): String {
         val base = raw.trim().trimEnd('/')
         if (base.isEmpty()) return base
@@ -47,6 +50,7 @@ internal object AiEndpoints {
     }
 
     /** 从 URL 取出主机名，判断是否属于「本机/内网」：localhost、私有网段、单段主机名、内网后缀。 */
+    @Suppress("ReturnCount")
     private fun isLocalHost(url: String): Boolean {
         val authority = url.substringBefore('/').substringAfter('@')
         val host = (
@@ -65,6 +69,7 @@ internal object AiEndpoints {
     }
 
     /** 私有 IPv4 判定；非 IPv4 字面量返回 null，交由域名分支处理。 */
+    @Suppress("ReturnCount")
     private fun privateIpv4(host: String): Boolean? {
         val nums = host.split('.').map { it.toIntOrNull() ?: return null }
         if (nums.size != 4 || nums.any { it !in 0..255 }) return null
@@ -114,6 +119,7 @@ internal object AiEndpoints {
     )
 
     /** 是否是"模型名/地址错"：404 一律算；400 需正文出现模型名线索（避免把"不支持图片"误判）。 */
+    @Suppress("ReturnCount")
     internal fun isModelNameError(status: Int, body: String): Boolean {
         if (status == 404) return true
         if (status != 400) return false

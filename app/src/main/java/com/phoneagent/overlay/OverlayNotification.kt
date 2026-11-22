@@ -21,6 +21,7 @@ internal fun FloatingWindowService.startForegroundCompat() {
             NotificationChannel(channelId, "悬浮窗进度", NotificationManager.IMPORTANCE_LOW)
         )
     }
+    @Suppress("MaxLineLength")
     val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
     val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
     val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -45,10 +46,12 @@ internal fun FloatingWindowService.startForegroundCompat() {
 }
 
 /** 实时更新前台通知，显示任务状态（可选附加 AI 思考内容） */
+@Suppress("MaxLineLength")
 internal fun FloatingWindowService.updateNotification(status: String, task: String, step: Int = 0, thinking: String? = null) {
     val nm = notificationManager ?: return
     val base = if (step > 0) "第 $step 步 · $status" else status
     val text = if (!thinking.isNullOrBlank()) "$base\nAI：${thinking.replace("\n", " ").take(140)}" else base
+    @Suppress("MaxLineLength")
     val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         Notification.Builder(this, channelId)
             .setContentTitle("Happy Agent · $task")

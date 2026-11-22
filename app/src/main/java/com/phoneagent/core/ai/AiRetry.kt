@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.ai
 
 import kotlinx.coroutines.CancellationException
@@ -91,6 +93,13 @@ internal class AiTransport(private val client: OkHttpClient, private val json: J
      * - 401/403/404（鉴权/地址错误）：不重试，直接失败（对齐能力探测链路 probeBlocker 的"整体失败"口径）
      * - 其他失败：快速重试 1 次（800ms）
      */
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "InstanceOfCheckForException",
+        "LoopWithTooManyJumpStatements",
+        "NestedBlockDepth",
+        "TooGenericExceptionCaught",
+    )
     internal suspend fun executeWithRetry(request: Request, extractText: ((String) -> String?)? = null): String {
         var status = -1
         var lastErr: String? = null

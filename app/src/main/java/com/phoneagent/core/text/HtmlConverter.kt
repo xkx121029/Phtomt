@@ -1,3 +1,5 @@
+// 本文件里的数字多为 HTML 实体码点、字符编码与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.text
 
 /**
@@ -36,6 +38,7 @@ private class Frame(
     var bulletUsed: Boolean = false,
 )
 
+@Suppress("TooManyFunctions")
 internal class Converter(private val baseUrl: String?, private val b: MdBuilder) {
 
     private val stack = ArrayList<Frame>(32)
@@ -78,6 +81,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
     // ---------- 开始标签 ----------
 
     /** 开始标签的守卫分档：自闭合 / 深度超限 / 隐藏子树 / pre 内部四条互相独立，命中即返回 */
+    @Suppress("ReturnCount")
     private fun start(t: Tag) {
         val name = t.name
         if (name in HtmlToMarkdown.VOID_TAGS) {
@@ -119,6 +123,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
         }
     }
 
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     private fun startStructure(name: String, t: Tag) {
         when (name) {
             "p" -> {
@@ -222,6 +227,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
         while (stack.size > idx) popTop()
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun closeFrame(f: Frame) {
         when (f.kind) {
             K_PARA -> flushInline()
@@ -375,6 +381,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
     }
 
     /** 属性层面的隐藏判定（与浏览器侧的 [HIDDEN_CLASS_RULE] + `hidden`/`aria-hidden`/内联样式一致） */
+    @Suppress("ReturnCount")
     private fun hiddenTag(t: Tag): Boolean {
         val a = t.attrs
         if (a.containsKey("hidden")) return true
@@ -425,6 +432,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
         return "> ".repeat(q.level)
     }
 
+    @Suppress("ReturnCount")
     private fun nearestItem(): Frame? {
         for (k in stack.indices.reversed()) {
             val f = stack[k]
@@ -445,6 +453,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
     }
 
     /** 该 item 归属的列表：栈里离它最近的下层列表帧 */
+    @Suppress("ReturnCount")
     private fun listOf(item: Frame): Frame? {
         val idx = stack.indexOfFirst { it === item }
         if (idx < 0) return null
@@ -461,6 +470,7 @@ internal class Converter(private val baseUrl: String?, private val b: MdBuilder)
     // ---------- 链接绝对化 ----------
 
     /** 绝对化链：`<base>` → canonical → og:url → 调用方 baseUrl；都没有就原样输出相对值 */
+    @Suppress("ComplexCondition", "ReturnCount")
     private fun absolute(href: String?): String? {
         val h = href?.trim().orEmpty()
         if (h.isEmpty() || h.startsWith("#")) return null

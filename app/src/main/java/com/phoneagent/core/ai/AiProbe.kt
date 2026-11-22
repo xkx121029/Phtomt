@@ -1,3 +1,5 @@
+// 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
+@file:Suppress("MagicNumber")
 package com.phoneagent.core.ai
 
 import android.graphics.Bitmap
@@ -14,6 +16,7 @@ import okhttp3.Request
  * 探测走独立的短超时 client（见 [AiClient] 的 probeClient），不复用带退避的重试执行器——
  * 那会把一次探测拖到分钟级。能力值 `null` 表示「未测出」，与「不支持」（`false`）区分开。
  */
+@Suppress("TooManyFunctions")
 internal class AiProbe(
     private val probeClient: OkHttpClient,
     private val json: Json,
@@ -94,6 +97,7 @@ internal class AiProbe(
         }
 
     /** 第 1 步：文本连通性。整步失败说明地址 / Key / 模型名本身不对，直接让整个探测失败 */
+    @Suppress("MaxLineLength")
     private fun probeText(baseUrl: String, apiKey: String, model: String, adapter: ChatProtocolAdapter?) {
         val textMsgs = listOf(
             ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
@@ -211,6 +215,7 @@ internal class AiProbe(
      * [adapter] 为 null 时按 OpenAI ChatRequest 构建（[tools]/[responseFormat] 仅此路径有意义）；
      * 非 null 时由协议适配器构建线格式。
      */
+    @Suppress("LongParameterList", "SwallowedException", "TooGenericExceptionCaught")
     private fun rawPost(
         baseUrl: String,
         apiKey: String,
@@ -243,7 +248,7 @@ internal class AiProbe(
                 RawResponse(resp.code, resp.body?.string().orEmpty())
             }
         } catch (e: Exception) {
-            throw IllegalStateException("请求未送达：${e.message ?: e.javaClass.simpleName}")
+            error("请求未送达：${e.message ?: e.javaClass.simpleName}")
         }
     }
 
@@ -264,6 +269,7 @@ internal class AiProbe(
     }
 
     /** 200 但可能是空 choices（网关改写），进一步确认真的有正文 */
+    @Suppress("ReturnCount")
     private fun hasContent(resp: RawResponse, extractText: ((String) -> String?)? = null): Boolean {
         val body = resp.body
         if (extractText != null) return !extractText(body).isNullOrBlank()

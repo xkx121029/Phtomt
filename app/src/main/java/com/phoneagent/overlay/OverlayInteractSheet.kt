@@ -1,5 +1,5 @@
 // 本文件里的数字多为设备指令码、位数与毫秒阈值，语义已在紧邻上下文标注，整文件豁免 MagicNumber
-@file:Suppress("MagicNumber")
+@file:Suppress("MagicNumber", "TooManyFunctions")
 package com.phoneagent.overlay
 
 import android.content.Context
@@ -26,6 +26,7 @@ private val FloatingWindowService.self: FloatingWindowService get() = this
  * gravity=BOTTOM 时面板正好落在导航栏上方，不会被导航栏压住。
  * 窗口可触摸、可聚焦（需要点选项与输入文字），但 GONE 时不会干扰任何操作。
  */
+@Suppress("LongMethod")
 internal fun FloatingWindowService.showSheetWindow() {
     if (sheetRoot != null) return
     val wm = windowManager ?: return
@@ -159,6 +160,7 @@ internal fun FloatingWindowService.hideSheet() {
  * @param content 交互内容
  * @param options 澄清选项文本列表（type=clarify 时有效）
  */
+@Suppress("LongMethod", "MaxLineLength")
 internal fun FloatingWindowService.showInteraction(type: String?, title: String?, content: String?, options: List<String>? = null) {
     handler.post {
         if (type == null) {
@@ -294,6 +296,7 @@ internal fun FloatingWindowService.setInputMode(enabled: Boolean) {
  * 重来之前先把"正在输入"这个状态和用户已经打好的字记下来，之后原样还回去 ——
  * 切主题不该让用户丢掉半句已经写完的回答。
  */
+@Suppress("ReturnCount")
 internal fun FloatingWindowService.rerenderInteractRows() {
     val type = lastInteractType ?: return
     // 收起的面板不重绘：它的可见内容只有一枚主色胶囊，本身就不随主题变
@@ -408,6 +411,7 @@ internal fun FloatingWindowService.addActionRow(
  * 圆角取第三层 RADIUS_TILE、底色取下沉实色 —— 与输入框同一档，读起来是"能点的行"而不是按钮。
  * [highlight] 用于「我想自己说」这种不是答案、而是"我要打字"的入口。
  */
+@Suppress("MaxLineLength")
 internal fun FloatingWindowService.addOptionRow(container: LinearLayout?, label: String, highlight: Boolean = false, onClick: () -> Unit) {
     val row = TextView(this).apply {
         text = label
