@@ -48,11 +48,15 @@ object DeviceWorkspace {
     // 三种拒绝理由（空 / 绝对 / 越界）各有各的下一步，合并成一句话会让用户不知道该改哪
     @Suppress("ThrowsCount")
     internal fun resolveWithin(root: File, rel: String): File {
-        val clean = rel.trim().replace('\\', '/').trimStart('/')
+        val clean = rel.trim().replace('\\', '/')
         if (clean.isEmpty()) throw IllegalArgumentException("路径为空")
         // 绝对路径没有任何合法用途：Windows 上拼出 "C:\ws\C:\x" 这种非法路径（报的错
-        // 跟越界毫无关系），POSIX 上会被 File(parent, child) 静默当成相对路径。
-        if (DRIVE_ABSOLUTE.containsMatchIn(clean)) throw IllegalArgumentException("路径越界：$rel")
+        // 跟越界毫无关系）；POSIX 上若先把前导斜杠 trim 掉，`/sdcard/x` 会被静默当成工作区
+        // 内的相对路径——Android 本身就是 Linux，这正是这条判据要挡的那类误配，所以必须在
+        // 归一之前拒掉，而不是先 trimStart('/') 再看。
+        if (clean.startsWith("/") || DRIVE_ABSOLUTE.containsMatchIn(clean)) {
+            throw IllegalArgumentException("路径越界：$rel")
+        }
 
         val rootReal = realPathOrSelf(root)
         val f = File(rootReal, clean)
