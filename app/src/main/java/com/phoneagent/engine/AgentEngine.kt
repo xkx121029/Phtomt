@@ -207,7 +207,7 @@ class AgentEngine(
     private val intentCache = java.util.concurrent.ConcurrentHashMap<String, TaskIntent>()
     /** 任务生命周期：队列 / worker / 单任务协程启停（重构批次 5，见 [TaskLifecycle]）；router 按云端意图分流 */
     private val lifecycle = TaskLifecycle(
-        appContext, settings, scope, store, uiBridge,
+        appContext, scope, store, uiBridge,
         runTask = { task, plan, startStep -> run(task, plan, startStep) },
         safeReset = { taskId, message -> safeResetRuntime(taskId, message) },
         router = { task, chatOnly -> routeTask(task, chatOnly) },
@@ -235,12 +235,23 @@ class AgentEngine(
     /** 主循环护栏：广告自动点击 / 同签名动作熔断 / 无进展看门狗（重构阶段 A，见 [LoopGuard]） */
     private val loopGuard = LoopGuard()
     /** 观察段执行器：页面标注 / semanticId 回填 / 截图决策与复用（重构阶段 B1，见 [StepObserver]） */
+    /** 端侧 3B 的按需预热闸门：同一任务只预热一次（见 [com.phoneagent.device.vision.VisionWarmup]） */
+    private val visionWarmup = com.phoneagent.device.vision.VisionWarmup()
     private val stepObserver = StepObserver(
         capture = { tryOrNull("截图失败") { captureScreenshot() } },
         log = { level, message -> uiBridge.log(level, message) },
         treeStats = { AgentAccessibilityService.instance?.lastTreeStats },
         mainSeesImage = { s -> decisionConfig.mainSeesImage(s) },
+        warm3b = { need3b ->
+            // 端侧 3B 按需预热：只有本步路由真的要用它、且模型还没加载、本任务还没预热过时才启动
+            if (visionWarmup.shouldStart(need3b, com.phoneagent.device.vision.OnDeviceVision.modelLoaded)) {
+                scope.launch {
+                    com.phoneagent.device.vision.OnDeviceVision.loadModel(appContext)
+                }
+            }
+        },
     )
+
     /** 「动作即观察」统计：观察段与执行段共用同一份，指标才对得上（原先是全局单例） */
     private val afterObservationStats = com.phoneagent.engine.loop.AfterObservationStats()
 
@@ -1301,6 +1312,8 @@ class AgentEngine(
         // 端侧决策引擎的连续本地计数也按任务复位：不清的话上一任务结尾的高计数
         // 会让新任务开头被强制走一次云端（防死循环计数跨任务残留）
         localDecision.reset()
+        // 3B 预热闸门同样按任务复位：新任务重新获得一次「需要才预热」的机会
+        visionWarmup.reset()
         // 清空上一任务的记忆事件流（本任务产生的记忆卡片只发生在本次执行期间）
         _memoryEvents.value = emptyList()
         // 同样清掉上一任务里 AI 说过的话，避免新任务开头飘着上一条气泡

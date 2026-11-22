@@ -83,6 +83,11 @@ internal class StepObserver(
     private val treeStats: () -> String?,
     /** 主模型是否能识图（决定「附送截图」这一路是否真的有人消费） */
     private val mainSeesImage: (AppSettings.Settings) -> Boolean = { false },
+    /**
+     * 端侧 3B 的按需预热接缝：本步路由要用 3B 时被调用（是否真的启动由 `VisionWarmup` 决定）。
+     * 放在观察段是因为这里才知道「本步要不要 3B」，且预热能与本步后续工作重叠。
+     */
+    private val warm3b: (Boolean) -> Unit = {},
 ) {
     /** 上一轮截图与其页面指纹：指纹未变时直接复用，省掉一次抓帧与位图分配 */
     private var cachedShot: Bitmap? = null
@@ -108,6 +113,8 @@ internal class StepObserver(
         )
         val treeSparse = ObservationPolicy.isTreeSparse(snapshot)
         val needExternal3b = ObservationPolicy.needExternal3b(settingsVal, treeSparse)
+        // 按需预热端侧 3B：本步真的会用它才算「需要」（是否已加载/已启动由引擎侧的闸门判）
+        warm3b(needExternal3b)
         // 截图链路（MediaProjection / 无障碍）在权限被回收或服务断开时会直接抛异常；
         // 截图只是增强信息，失败即降级为「本轮无截图」，用无障碍元素树继续决策
         val shotNeeded = ObservationPolicy.shotNeeded(
