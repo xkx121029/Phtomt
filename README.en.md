@@ -8,7 +8,7 @@
 <p>
   <a href="https://github.com/xkx121029/Phtomt/actions/workflows/android-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/xkx121029/Phtomt/android-ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
   <a href="https://github.com/xkx121029/Phtomt/releases"><img src="https://img.shields.io/github/v/release/xkx121029/Phtomt?include_prereleases&label=version" alt="Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0E7C66" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-0E7C66" alt="License"></a>
   <a href="https://github.com/xkx121029/Phtomt/wiki"><img src="https://img.shields.io/badge/docs-Wiki-063A2E" alt="Wiki"></a>
   <a href="https://xkx121029.github.io/Phtomt/"><img src="https://img.shields.io/badge/site-online-5FD9B4" alt="Site"></a>
 </p>
@@ -673,7 +673,15 @@ Conventions:
 
 ## 📄 License
 
-Released under the [MIT License](LICENSE).
+Released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+
+- You may use, modify, and distribute this project, but any modified version you distribute must also be released under AGPL-3.0 with full source.
+- If you run a modified version as a network service (AGPL Section 13), you must offer its complete source to users of that service.
+- Copyright notices, the license text, and the third-party notices at the end of `LICENSE` must be preserved.
+
+Releases published before this change were distributed under the MIT License and remain under MIT; versions after the change are AGPL-3.0. For commercial licensing or an exemption, contact the maintainer.
+
+Bundled third-party components (Shizuku, the Node.js runtime, ICU, etc.) keep their own licenses; see the third-party notices at the end of [`LICENSE`](LICENSE) and [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md).
 
 ## 🙏 Acknowledgements
 

@@ -8,7 +8,7 @@
 <p>
   <a href="https://github.com/xkx121029/Phtomt/actions/workflows/android-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/xkx121029/Phtomt/android-ci.yml?branch=main&label=CI&logo=github" alt="CI"></a>
   <a href="https://github.com/xkx121029/Phtomt/releases"><img src="https://img.shields.io/github/v/release/xkx121029/Phtomt?include_prereleases&label=version" alt="Version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-0E7C66" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-0E7C66" alt="License"></a>
   <a href="https://github.com/xkx121029/Phtomt/wiki"><img src="https://img.shields.io/badge/docs-Wiki-063A2E" alt="Wiki"></a>
   <a href="https://xkx121029.github.io/Phtomt/"><img src="https://img.shields.io/badge/site-online-5FD9B4" alt="Site"></a>
 </p>
@@ -672,7 +672,17 @@ settings_btn / sort_btn / clear_input
 
 ## 📄 许可
 
-本项目基于 [MIT License](LICENSE) 开源。
+本项目基于 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）开源。
+
+这意味着：
+
+- 你可以自由使用、修改、分发本项目，但**分发修改版时必须同样以 AGPL-3.0 开放源码**；
+- 如果你把修改版**作为网络服务提供给他人使用**（AGPL 第 13 条），也必须向使用者提供完整源码；
+- 分发时必须保留本项目的版权声明与许可证文本，以及 `LICENSE` 末尾列出的第三方声明。
+
+早期版本（含已发布的历史 Release）在发布时按 MIT 许可分发，那些副本仍适用 MIT；自本许可证变更后的版本适用 AGPL-3.0。如需商业授权或豁免，可联系仓库维护者。
+
+第三方组件（Shizuku、Node.js 运行时、ICU 等）仍适用各自许可证，详见 [`LICENSE`](LICENSE) 末尾的第三方代码声明与 [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md)。
 
 ## 🙏 致谢
 

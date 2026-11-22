@@ -39,6 +39,8 @@ private const val REPO_GITEE = "https://gitee.com/xkx1029/Phtomt"
 private const val SHIZUKU_REPO = "https://github.com/RikkaApps/Shizuku-API"
 /** Shizuku 主程序上游仓库（server/starter 内嵌自这里） */
 private const val SHIZUKU_MAIN_REPO = "https://github.com/RikkaApps/Shizuku"
+/** 本应用仓库的许可证文本（AGPL-3.0，应用内需可查） */
+private const val PROJECT_LICENSE_URL = "https://github.com/xkx121029/Phtomt/blob/main/LICENSE"
 
 /**
  * 致谢条目：名称（点击跳仓库）+ 许可证 + 一句「它启发了我们什么」。
@@ -272,9 +274,11 @@ internal fun SettingsLicenses(onBack: () -> Unit) {
 
         SettingsSection(
             title = "开源许可",
-            subtitle = "本应用使用的第三方开源代码",
+            subtitle = "本应用与第三方开源许可",
             tone = SettingsTone.Neutral,
         ) {
+            LinkRow("Happy Phone Agent（AGPL-3.0）", PROJECT_LICENSE_URL) { openLink(context, PROJECT_LICENSE_URL) }
+            SettingsDivider(inset = false)
             LinkRow("Shizuku API（MIT License）", SHIZUKU_REPO) { openLink(context, SHIZUKU_REPO) }
             SettingsDivider(inset = false)
             LinkRow("Shizuku（Apache License 2.0）", SHIZUKU_MAIN_REPO) { openLink(context, SHIZUKU_MAIN_REPO) }
