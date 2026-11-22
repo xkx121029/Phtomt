@@ -40,6 +40,16 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     // 跑马灯已拆成独立的底部窗口（见 showMarquee），卡片里不再有色带：
     // 卡片只有 300dp 宽，跑马灯挂在里面会跟着卡片一起被拖走
 
+    val hideChip = buildHeaderRow(panel)
+    buildStatusRow(panel, hideChip)
+    buildProgressRow(panel)
+    buildThinkingBlock(panel)
+    buildInteractPanel()
+    buildInteractInputs()
+    return panel
+}
+
+internal fun FloatingWindowService.buildHeaderRow(panel: LinearLayout): TextView {
     // 头部：状态呼吸点 + 任务标题 + 关闭（仅头部可拖动；轻点头部也可切换详情）。
     // 三个操作都保留，只重新分层：「详情 / 隐藏」下移到状态行右侧，
     // 标题因此独占整行，不会被三枚按钮挤成一截。
@@ -70,46 +80,7 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
         setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     }
-    // 关闭按钮：圆形胶囊，按压有反馈。
-    // 两段式确认：第一次点进入待确认态（文案变「再点确认停止」，2.5 秒后自动复位），
-    // 再次点击才真正回调 close 终止任务——一次误触不应杀掉正在执行的任务
-    val close = TextView(this).apply {
-        text = "✕"
-        textSize = 12f
-        gravity = Gravity.CENTER
-        setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-        background = FloatingUi.capsule(self, FloatingUi.RADIUS_CHIP,
-            FloatingUi.ON_BRAND_STATE_WEAK)
-        layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
-        var closeArmed = false
-        setOnClickListener {
-            if (!closeArmed) {
-                // 第一段：进入待确认态（文案变长，宽度改为随内容自适应）
-                closeArmed = true
-                text = FloatingWindowService.CLOSE_CONFIRM_LABEL
-                textSize = 10f
-                setPadding(FloatingUi.PAD_S, 0, FloatingUi.PAD_S, 0)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    dp(26),
-                )
-                postDelayed({
-                    // 超时未确认：自动复位回「✕」，下次点击仍需两段确认
-                    if (closeArmed) {
-                        closeArmed = false
-                        text = "✕"
-                        textSize = 12f
-                        setPadding(0, 0, 0, 0)
-                        layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
-                    }
-                }, FloatingWindowService.CLOSE_CONFIRM_RESET_MS)
-            } else {
-                // 第二段：用户已确认，才回调 close 并关闭悬浮窗
-                FloatingWindowService.onInteraction?.invoke("close", "")
-                stopSelf(); removeWindow()
-            }
-        }
-    }
+    val close = buildCloseChip()
     // 头部三个可点控件（关闭 / 详情 / 隐藏）：按下当帧缩放
     bindPress(close)
     // 详情开关：折叠态只显示三行，AI 的发送/返回/审核内容按需展开
@@ -152,7 +123,53 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     bindPress(hideChip)
     header?.addView(close)
     panel.addView(header)
+    return hideChip
+}
 
+    // 关闭按钮：圆形胶囊，按压有反馈。
+    // 两段式确认：第一次点进入待确认态（文案变「再点确认停止」，2.5 秒后自动复位），
+    // 再次点击才真正回调 close 终止任务——一次误触不应杀掉正在执行的任务
+internal fun FloatingWindowService.buildCloseChip(): TextView {
+    return TextView(this).apply {
+        text = "✕"
+        textSize = 12f
+        gravity = Gravity.CENTER
+        setTextColor(FloatingUi.ON_BRAND_SECONDARY)
+        background = FloatingUi.capsule(self, FloatingUi.RADIUS_CHIP,
+            FloatingUi.ON_BRAND_STATE_WEAK)
+        layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+        var closeArmed = false
+        setOnClickListener {
+            if (!closeArmed) {
+                // 第一段：进入待确认态（文案变长，宽度改为随内容自适应）
+                closeArmed = true
+                text = FloatingWindowService.CLOSE_CONFIRM_LABEL
+                textSize = 10f
+                setPadding(FloatingUi.PAD_S, 0, FloatingUi.PAD_S, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(26),
+                )
+                postDelayed({
+                    // 超时未确认：自动复位回「✕」，下次点击仍需两段确认
+                    if (closeArmed) {
+                        closeArmed = false
+                        text = "✕"
+                        textSize = 12f
+                        setPadding(0, 0, 0, 0)
+                        layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
+                    }
+                }, FloatingWindowService.CLOSE_CONFIRM_RESET_MS)
+            } else {
+                // 第二段：用户已确认，才回调 close 并关闭悬浮窗
+                FloatingWindowService.onInteraction?.invoke("close", "")
+                stopSelf(); removeWindow()
+            }
+        }
+    }
+}
+
+internal fun FloatingWindowService.buildStatusRow(panel: LinearLayout, hideChip: TextView) {
     // 状态行：阶段徽章 + 步骤文字 + 次要操作（详情 / 隐藏）。
     // 完成态整行让位给打勾面板，所以它单独存一份引用。
     statusRow = LinearLayout(this).apply {
@@ -186,6 +203,9 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     statusRow?.addView(expandChip)
     statusRow?.addView(hideChip)
     statusRow?.let { panel.addView(it) }
+}
+
+internal fun FloatingWindowService.buildProgressRow(panel: LinearLayout) {
     // 进度条：用户反馈无用，始终保持隐藏（不占悬浮窗空间）
     progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 100
@@ -194,7 +214,9 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4))
     }
     panel.addView(progressBar)
+}
 
+internal fun FloatingWindowService.buildThinkingBlock(panel: LinearLayout) {
     // AI 详情面板：圆角内嵌卡片，按 发送/返回/审核 分栏
     // 默认 GONE（折叠）：只在用户点「详情」或点头部时占位，避免窗口常驻撑高
     thinkingPanel = LinearLayout(this).apply {
@@ -262,7 +284,9 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     thinkingScroll?.addView(thinkCol)
     thinkingPanel?.addView(thinkingScroll)
     panel.addView(thinkingPanel)
+}
 
+internal fun FloatingWindowService.buildInteractPanel() {
     // 交互区域（批准/澄清/指导，默认隐藏）：暖纸白实色卡 + 发丝描边。
     // 圆角取第一层 RADIUS_CARD：它是这扇窗口最外层的表面，与 App 侧同名的协助浮层
     // （AgentAssistSheet，容器同为 Card 圆角）对齐；内层的选项行/输入框再降一档到 RADIUS_TILE。
@@ -326,6 +350,9 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     interactHeader.addView(interactTitle)
     interactHeader.addView(collapseChip)
     interactPanel?.addView(interactHeader)
+}
+
+internal fun FloatingWindowService.buildInteractInputs() {
     // 内容可滚动（长文本）
     //
     // 这里**不能**用「高度 0 + weight 1」那种"占满剩余空间"的写法：选项卡窗口是
@@ -381,9 +408,8 @@ internal fun FloatingWindowService.buildPanel(): LinearLayout {
     interactPanel?.addView(interactActions)
     // 交互面板不再挂进顶部窗口：它由底部选项卡承载（见 showSheetWindow），
     // 顶部只保留任务状态与跑马灯，两边职责不重叠
-
-    return panel
 }
+
 
 // ==================== 对外更新 ====================
 

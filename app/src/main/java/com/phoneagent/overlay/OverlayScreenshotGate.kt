@@ -13,53 +13,63 @@ import android.view.View
  * 调用方据此决定是否需要恢复，避免对「没藏东西」的调用做无谓的恢复动作。
  * 恢复分支会尊重用户手动隐藏状态（userHidden）：用户主动收起的面板不因截图恢复而弹回。
  */
-// 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
-@Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
 internal fun setOverlayVisible(visible: Boolean): Boolean {
+    val svc = FloatingWindowService.instance ?: return false
+    return if (visible) restoreOverlays(svc) else hideOverlays(svc)
+}
+
+/**
+ * 截图时把每个悬浮窗口落位为 GONE，并记下各自的可见性，交给 [restoreOverlays] 原样还回去。
+ *
+ * 返回「本次确实藏了东西」：本来全都不可见时返回 false，调用方据此跳过一次无谓的恢复。
+ */
+@Suppress("CyclomaticComplexMethod", "ComplexCondition")
+internal fun hideOverlays(svc: FloatingWindowService): Boolean {
+    // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
+    val rootShown = svc.root?.visibility == View.VISIBLE
+    val marqueeShown = svc.isMarqueeVisible()
+    val miniShown = svc.miniRoot?.visibility == View.VISIBLE
+    val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
+    val doneShown = svc.doneRoot?.visibility == View.VISIBLE
+    val noticeShown = svc.noticeRoot?.visibility == View.VISIBLE
+    if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown && !noticeShown) {
+        return false
+    }
     // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
     @Suppress("ComplexCondition")
-    val svc = FloatingWindowService.instance ?: return false
-    // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
-    if (!visible) {
-        val rootShown = svc.root?.visibility == View.VISIBLE
-        val marqueeShown = svc.isMarqueeVisible()
-        val miniShown = svc.miniRoot?.visibility == View.VISIBLE
-        val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
-        val doneShown = svc.doneRoot?.visibility == View.VISIBLE
-        val noticeShown = svc.noticeRoot?.visibility == View.VISIBLE
-        if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown && !noticeShown) {
-            return false
-        }
-        // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
-        @Suppress("ComplexCondition")
-        val hideStartedAt = SystemClock.uptimeMillis()
-        svc.handler.post {
-            svc.root?.visibility = View.GONE
-            // 跑马灯是两层独立窗口（顶部光带 + 底部胶囊），截图时同样要藏起来；
-            // 先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
-            svc.barVisibleBeforeHide = svc.isMarqueeVisible()
-            svc.setMarqueeVisible(false)
-            // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
-            svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
-            svc.miniRoot?.visibility = View.GONE
-            // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
-            // 截图前先记下它本来是否可见，截完按原样恢复
-            svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
-            svc.sheetRoot?.visibility = View.GONE
-            // 完成卡片也是独立窗口：截图时藏起来，截完按原样恢复
-            svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
-            svc.doneRoot?.visibility = View.GONE
-            // 降级提示细条同理：截图时不能截进画面，先停计时再藏，截完按原样恢复并重新计时
-            svc.captureHidden = true
-            svc.noticeVisibleBeforeHide = svc.noticeShowing
-            svc.handler.removeCallbacks(svc.noticeAutoHide)
-            svc.noticeRoot?.visibility = View.GONE
-            // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
-            // 因此这里记「调用 → 落位」的代码耗时，不含任何帧等待
-            OverlayPerf.code("screenshot-hide-code", hideStartedAt)
-        }
-        return true
+    val hideStartedAt = SystemClock.uptimeMillis()
+    svc.handler.post {
+        svc.root?.visibility = View.GONE
+        // 跑马灯是两层独立窗口（顶部光带 + 底部胶囊），截图时同样要藏起来；
+        // 先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
+        svc.barVisibleBeforeHide = svc.isMarqueeVisible()
+        svc.setMarqueeVisible(false)
+        // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
+        svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
+        svc.miniRoot?.visibility = View.GONE
+        // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
+        // 截图前先记下它本来是否可见，截完按原样恢复
+        svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
+        svc.sheetRoot?.visibility = View.GONE
+        // 完成卡片也是独立窗口：截图时藏起来，截完按原样恢复
+        svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
+        svc.doneRoot?.visibility = View.GONE
+        // 降级提示细条同理：截图时不能截进画面，先停计时再藏，截完按原样恢复并重新计时
+        svc.captureHidden = true
+        svc.noticeVisibleBeforeHide = svc.noticeShowing
+        svc.handler.removeCallbacks(svc.noticeAutoHide)
+        svc.noticeRoot?.visibility = View.GONE
+        // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
+        // 因此这里记「调用 → 落位」的代码耗时，不含任何帧等待
+        OverlayPerf.code("screenshot-hide-code", hideStartedAt)
     }
+    return true
+}
+
+/**
+ * 恢复各窗口：尊重用户手动收起（userHidden），提示细条一并恢复并重新计时。
+ */
+internal fun restoreOverlays(svc: FloatingWindowService): Boolean {
     val restoreStartedAt = SystemClock.uptimeMillis()
     svc.handler.post {
         // 用户主动收起（userHidden）时面板保持隐藏：截图恢复不能推翻用户的收起操作

@@ -102,8 +102,7 @@ internal fun FloatingWindowService.terminalPhase(status: TaskStatus): String = w
  * 层级：拖拽把手 → 状态行（20dp 圆点 + 15sp 半粗标题）→ 可滚动正文（底部渐变遮罩）
  *       → 一行三键（复制 / 完成 / 打开 Agent）。
  */
-// 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
-@Suppress("LongMethod", "CyclomaticComplexMethod")
+
 internal fun FloatingWindowService.buildDoneCard(): LinearLayout {
     val card = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -154,6 +153,13 @@ internal fun FloatingWindowService.buildDoneCard(): LinearLayout {
         },
     )
 
+    buildDoneStatusBlock(card)
+    buildDoneBodyBlock(card)
+    buildDoneActionsBlock(card)
+    return card
+}
+
+internal fun FloatingWindowService.buildDoneStatusBlock(card: LinearLayout) {
     // 2) 状态行：20dp 圆点（14% 语义色底 + 语义色勾/叉）+ 15sp 半粗标题
     val statusRow = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -193,6 +199,9 @@ internal fun FloatingWindowService.buildDoneCard(): LinearLayout {
     }
     card.addView(doneReason)
 
+}
+
+internal fun FloatingWindowService.buildDoneBodyBlock(card: LinearLayout) {
     // 3) 正文：内容自适应、超长时限高内部滚动；底部渐变遮罩只在真的滚得动时出现
     val bodyFrame = FrameLayout(this)
     doneScroll = MaxHeightScrollView(this, dp(FloatingWindowService.DONE_BODY_MAX_HEIGHT)).apply {
@@ -225,6 +234,9 @@ internal fun FloatingWindowService.buildDoneCard(): LinearLayout {
     themed { p -> doneFade?.setFadeColor(p.panel) }
     card.addView(bodyFrame)
 
+}
+
+internal fun FloatingWindowService.buildDoneActionsBlock(card: LinearLayout) {
     // 4) 一行三键：复制（结果写剪贴板）/ 完成（关卡片）/ 打开 Agent（回到会话看完整过程）
     val actions = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -297,8 +309,8 @@ internal fun FloatingWindowService.buildDoneCard(): LinearLayout {
         ).apply { topMargin = dp(FloatingUi.PAD_L) },
     )
     bindPressFeedback(doneCopy!!, doneBtn, openBtn)
-    return card
 }
+
 
 /**
  * 创建并显示完成卡片窗口。
