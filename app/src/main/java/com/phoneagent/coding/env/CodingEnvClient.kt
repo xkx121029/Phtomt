@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.phoneagent.coding.agent.Workspace
+import com.phoneagent.coding.api.CodingEnvPortal
 import com.phoneagent.env.EnvApi
 import com.phoneagent.env.IEnvCallback
 import com.phoneagent.env.IEnvProvider
@@ -45,7 +46,7 @@ import kotlin.coroutines.resume
  */
 // 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
 @Suppress("TooManyFunctions")
-class CodingEnvClient(private val context: Context) {
+class CodingEnvClient(private val context: Context) : CodingEnvPortal {
 
     private companion object {
         const val TAG = "CodingEnvClient"
@@ -93,13 +94,13 @@ class CodingEnvClient(private val context: Context) {
     }
 
     private val _state = MutableStateFlow(UiState())
-    val state: StateFlow<UiState> = _state.asStateFlow()
+    override val state: StateFlow<UiState> = _state.asStateFlow()
 
     /** 同步快照：设备内 Agent 的 host 工具跑在阻塞的桥线程里，拿不到 suspend 语境 */
     fun snapshot(): UiState = _state.value
 
     /** 等当前任务结束；超时返回 null，调用方据此报「仍在执行」而不是判失败 */
-    suspend fun awaitFinished(timeoutMs: Long): UiState? =
+    override suspend fun awaitFinished(timeoutMs: Long): UiState? =
         withTimeoutOrNull(timeoutMs) { state.first { !it.running } }
 
     /** 绑定、代理与生命周期全部交给 [EnvBinder]，这里只关心它给出的代理 */
@@ -122,7 +123,7 @@ class CodingEnvClient(private val context: Context) {
     // ==================== 状态读取 ====================
 
     /** 重新探测安装状态、存储权限、工程版本与组件侧进度快照 */
-    suspend fun refresh() = withContext(Dispatchers.IO) {
+    override suspend fun refresh() = withContext(Dispatchers.IO) {
         val installed = installedVersion(context)
         val bundled = bundledVersion(context)
         val toolchain = ProjectToolchainProbe.probe(Workspace.resolve(context))
@@ -150,7 +151,7 @@ class CodingEnvClient(private val context: Context) {
      * 把随包 APK 交给系统安装器；返回 null 表示已拉起或已是最新，非空是失败原因。
      * 用户确认安装后回到前台，设置页的 ON_RESUME 会重新探测版本。
      */
-    suspend fun installComponent(): String? = withContext(Dispatchers.IO) {
+    override suspend fun installComponent(): String? = withContext(Dispatchers.IO) {
         if (!_state.value.needsInstall) return@withContext null
         runCatching {
             val dir = File(context.cacheDir, "env").apply { mkdirs() }
@@ -170,7 +171,7 @@ class CodingEnvClient(private val context: Context) {
     }
 
     /** 打开组件自带的存储授权页；返回非空表示没打开（组件未安装等） */
-    fun openStorageSetup(): String? = runCatching {
+    override fun openStorageSetup(): String? = runCatching {
         context.startActivity(
             Intent().setClassName(EnvApi.PACKAGE, EnvApi.SETUP_ACTIVITY)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -202,20 +203,20 @@ class CodingEnvClient(private val context: Context) {
     // ==================== 安装 / 构建 ====================
 
     /** 一键安装：Linux 根文件系统 + JDK + Gradle + Android SDK + aapt2 兼容层 */
-    suspend fun installEnvironment(): String? = launchRequest(EnvApi.OP_INSTALL, "assembleDebug")
+    override suspend fun installEnvironment(): String? = launchRequest(EnvApi.OP_INSTALL, "assembleDebug")
 
     /** 在容器内跑一次 Gradle 构建 */
-    suspend fun buildApk(task: String = "assembleDebug"): String? =
+    override suspend fun buildApk(task: String): String? =
         launchRequest(EnvApi.OP_BUILD, task)
 
     /** 清理下载缓存与解包中间产物（已装好的工具链原样保留） */
-    suspend fun cleanCache(): String? = launchMaintenance(EnvApi.OP_CLEAN)
+    override suspend fun cleanCache(): String? = launchMaintenance(EnvApi.OP_CLEAN)
 
     /** 重置编码环境：删掉 rootfs 与全部工具链，回到未装配；工程文件不受影响 */
-    suspend fun resetEnvironment(): String? = launchMaintenance(EnvApi.OP_RESET)
+    override suspend fun resetEnvironment(): String? = launchMaintenance(EnvApi.OP_RESET)
 
     /** 请求取消当前任务（组件在下一次检查点停下） */
-    fun cancel() {
+    override fun cancel() {
         val proxy = binder.current() ?: return
         runCatching { proxy.cancel() }
         _state.update { it.copy(message = "正在取消…") }
