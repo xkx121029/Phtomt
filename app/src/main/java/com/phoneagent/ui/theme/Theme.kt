@@ -460,7 +460,7 @@ private fun isSystemDark(): Boolean =
  *
  * 判据只看**传入的底色本身**，不看系统深浅：这套主题里皮肤可以盖过系统
  * （石墨在浅色系统下也是深底），拿系统深浅判会让图标与底色同色。
- * 阈值取相对亮度（WCAG 口径，0 = 黑、1 = 白）的中点，现有的十二套色板都远离中点
+ * 阈值取相对亮度（WCAG 口径，0 = 黑、1 = 白）的中点，现有色板都远离中点
  * （最亮的 #FFFFFF = 1.0，最暗的 #050705 ≈ 0.027），不存在贴边判断。
  */
 internal fun isLightSurface(base: Color): Boolean = base.luminance() > LIGHT_SURFACE_LUMINANCE

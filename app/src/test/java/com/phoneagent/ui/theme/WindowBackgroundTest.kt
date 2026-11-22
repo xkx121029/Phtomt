@@ -93,6 +93,7 @@ class WindowBackgroundTest {
             LightInkBlueAppColors,
             LightPlumAppColors,
             GraphiteLightAppColors,
+            GraphiteLightContrastAppColors,
         ).forEach {
             assertTrue("浅色色板 ${it.surfaceBase} 应判为浅底", isLightSurface(it.surfaceBase))
         }
@@ -105,6 +106,7 @@ class WindowBackgroundTest {
             DarkInkBlueAppColors,
             DarkPlumAppColors,
             GraphiteDarkAppColors,
+            GraphiteDarkContrastAppColors,
         ).forEach {
             assertFalse("深色色板 ${it.surfaceBase} 应判为深底", isLightSurface(it.surfaceBase))
         }
