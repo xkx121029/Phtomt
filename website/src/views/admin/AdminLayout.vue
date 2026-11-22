@@ -47,7 +47,7 @@ onMounted(ensureSession)
         <h1 class="gate__title">管理后台</h1>
 
         <p v-if="staticBlocked" class="msg msg--warn">
-          当前是静态构建（GitHub Pages），没有可写的后端。后台需要配合 Node 服务使用。
+          当前是静态构建（GitHub Pages），没有可写的后端。后台请配合本地 Express 服务使用。
         </p>
 
         <template v-else>

@@ -10,7 +10,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "snapshot": "node scripts/snapshot.mjs",
-    "build:static": "npm run snapshot && cross-env STATIC_EXPORT=1 vite build",
+    "build:static": "npm run snapshot && cross-env STATIC_EXPORT=1 vite build && node scripts/static-post.mjs",
     "start": "node server/index.js",
     "seed": "node scripts/seed.mjs",
     "seed:apk": "node scripts/seed.mjs --apk"

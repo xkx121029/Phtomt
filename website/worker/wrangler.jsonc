@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "phtomt-site-api",
+  "main": "src/index.js",
+  // 只用到 fetch / Response / crypto.subtle，这个日期之后没有行为变更
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  // 官网静态页在 GitHub Pages，这里只接管 /api/*；其余路径原样回到 Pages。
+  // 只想先跑 workers.dev 试接口时，把 routes 注释掉再 deploy。
+  "routes": [
+    {
+      "pattern": "hpa.linshuxu.us.kg/api/*",
+      "zone_name": "linshuxu.us.kg"
+    }
+  ],
+  // 下载计数与客户端反馈是写操作，需要 KV。创建后把 id 填进来：
+  //   npx wrangler kv namespace create STATS_KV
+  // 未绑定时的降级：下载接口照常 302（只是不计数），反馈接口返回 503，
+  // 不会静默丢数据。
+  // "kv_namespaces": [
+  //   { "binding": "STATS_KV", "id": "<namespace-id>", "preview_id": "<preview-id>" }
+  // ],
+  "vars": {
+    // 留空时按请求 Host 推断；配了就固定用它拼下载地址（例如本地 wrangler dev）。
+    "SITE_ORIGIN": ""
+  }
+}

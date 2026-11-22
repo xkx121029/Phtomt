@@ -1,7 +1,7 @@
 name: Site (GitHub Pages)
 
-# 官网的静态部分：把 website 打成纯静态站发到 Pages。
-# 静态站没有后端，内容来自构建期快照（scripts/snapshot.mjs 读 server/data），
+# 官网的静态部分：Vue SPA 发到 GitHub Pages，同域名的 /api/* 由 Cloudflare Worker 接管
+# （见 website/worker）。静态站内容来自构建期快照（scripts/snapshot.mjs 读 server/data），
 # 所以这里必须先跑 snapshot 再构建，否则页面上的内容会停留在上一次快照。
 
 on:
@@ -45,7 +45,7 @@ jobs:
       - name: Build (snapshot + static export)
         working-directory: website
         env:
-          # 静态站回连主站后端：更新日志 / 发布信息 / 问答都走真实接口，
+          # 静态站的读接口回连同域名的 Worker（hpa.linshuxu.us.kg/api/* 由 Worker 接管），
           # 接口不可达时前端自动回落到构建期快照。可用仓库变量 SITE_API_BASE 覆盖。
           VITE_API_BASE: ${{ vars.SITE_API_BASE || 'https://hpa.linshuxu.us.kg' }}
         run: npm run build:static

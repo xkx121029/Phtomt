@@ -27,7 +27,7 @@ export function useCollection(name, idKey) {
 
   async function load() {
     if (staticOnly) {
-      error.value = '当前是静态构建，没有可写的后端。请在部署了 Node 服务的环境下使用后台。'
+      error.value = '当前是静态构建，没有可写的后端。请在本地 Express 服务下使用后台。'
       return
     }
     loading.value = true
