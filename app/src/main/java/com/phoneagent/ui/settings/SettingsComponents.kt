@@ -699,7 +699,7 @@ private fun CapChip(text: String, state: Boolean?) {
 }
 
 /** 键盘动画期间视口还在变：稍微等一下再要一次位置，否则按旧视口算出来的滚动仍会被盖住 */
-private const val KeyboardSettleMs = 320L
+private const val KEYBOARD_SETTLE_MS = 320L
 
 /**
  * 设置页里的单行文本输入框：键盘弹起时把自己滚进可见区（UX-14）。
@@ -724,7 +724,7 @@ internal fun ImeSafeField(
     LaunchedEffect(focused, imeBottom) {
         if (!focused) return@LaunchedEffect
         requester.bringIntoView()
-        delay(KeyboardSettleMs)
+        delay(KEYBOARD_SETTLE_MS)
         requester.bringIntoView()
     }
     OutlinedTextField(
