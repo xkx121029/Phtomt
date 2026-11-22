@@ -95,60 +95,52 @@ import com.phoneagent.ui.MainActivity
  */
 class FloatingWindowService : Service() {
 
-    private var windowManager: WindowManager? = null
-    private var root: LinearLayout? = null
-    private var params: WindowManager.LayoutParams? = null
+    internal var windowManager: WindowManager? = null
+    internal var root: LinearLayout? = null
+    internal var params: WindowManager.LayoutParams? = null
     /** 上一次收到的屏幕方向：只有方向真正翻面时才做窗口重排（深浅色切换不该触发） */
-    private var lastOrientation = android.content.res.Configuration.ORIENTATION_UNDEFINED
+    internal var lastOrientation = android.content.res.Configuration.ORIENTATION_UNDEFINED
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val appSettings: AppSettings by inject()
+    internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    internal val appSettings: AppSettings by inject()
     // 跑马灯内边距（dp，决定面板厚度）与底色配置，从设置读取并随设置实时更新
-    private var marqueeHeightDp = 8
+    internal var marqueeHeightDp = 8
     /** 跟随状态变色：底色由当前阶段决定，不用用户自定义配色 */
-    private var marqueeAutoColor = true
-    private var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
+    internal var marqueeAutoColor = true
+    internal var marqueeColors = listOf(0xFF4FA3FF.toInt(), 0xFF9B5CFF.toInt(), 0xFFFF6B9D.toInt())
     /** 当前执行阶段：跟随状态变色时用它决定跑马灯底色 */
-    private var currentPhase = "PENDING"
+    internal var currentPhase = "PENDING"
 
-    private var dot: View? = null
-    private var dotPulseAnimator: ValueAnimator? = null
+    internal var dot: View? = null
+    internal var dotPulseAnimator: ValueAnimator? = null
     /** 底部胶囊距底边的最小净空（dp）：约 0.5cm，手势条更高时以手势条为准 */
-    private val marqueeBottomGap = 19
+    internal val marqueeBottomGap = 19
 
     /** 胶囊外扩柔光的留白（px）：窗口比胶囊四周各宽/高这么多，光晕才不会被窗口边界裁掉 */
-    private val marqueeGlowPad: Int
+    internal val marqueeGlowPad: Int
         get() = (MarqueeView.GLOW_PAD_DP * resources.displayMetrics.density).toInt()
 
     /** 底部胶囊窗口两侧留白（dp）：窗口宽度 = 真实屏宽 - 2 * 此值，建窗时定死 */
-    private val marqueeSideMargin = 16
+    internal val marqueeSideMargin = 16
 
-    /**
-     * 跑马灯窗口宽度（px）：胶囊宽度之外再留出两侧光晕的绘制空间。
-     *
-     * 胶囊体宽度仍是「屏宽 - 两侧留白」，多出来的只有外圈柔光；
-     * 窗口宽度依旧在建窗时定死，文本更新不会让它改变。
-     */
-    private fun marqueeWindowWidthPx(screenW: Int): Int =
-        OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin)) + 2 * marqueeGlowPad
 
     /**
      * 底部跑马灯（胶囊）：固定宽度窗口，浮在导航栏之上。
      */
-    private var marquee: MarqueeView? = null
+    internal var marquee: MarqueeView? = null
 
-    private var stepText: TextView? = null
-    private var progressBar: ProgressBar? = null
-    private var taskTitle: TextView? = null
+    internal var stepText: TextView? = null
+    internal var progressBar: ProgressBar? = null
+    internal var taskTitle: TextView? = null
 
     /** 最近一次任务名（来自 updateStatus）：销毁时供状态总线做 Widget 空闲摘要 */
-    private var currentTask: String? = null
-    private var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
+    internal var currentTask: String? = null
+    internal var phaseChip: TextView? = null   // 阶段徽章（观察/思考/执行…）
     /** 状态行：阶段徽章 + 步骤文字 + 详情/隐藏。完成态整行让位给打勾面板 */
-    private var statusRow: LinearLayout? = null
+    internal var statusRow: LinearLayout? = null
 
     /** 头部「详情/收起」按钮：控制 AI 详情区是否占位 */
-    private var expandChip: TextView? = null
+    internal var expandChip: TextView? = null
 
     /**
      * AI 详情是否展开。
@@ -157,15 +149,15 @@ class FloatingWindowService : Service() {
      * 遮挡后面的内容；默认折叠，只保留头部 + 状态行两行。
      * 该状态在任务内保持（用户展开后，后续步骤不会被自动收起），任务结束才复位。
      */
-    private var thinkingExpanded = false
+    internal var thinkingExpanded = false
 
     // AI 思考实时面板：发送给 AI 的内容 + 流式返回的内容
-    private var thinkingPanel: LinearLayout? = null
-    private var thinkingScroll: ScrollView? = null
-    private var thinkingSentText: TextView? = null
-    private var thinkingReturnText: TextView? = null
-    private var reviewText: TextView? = null
-    private var lastSentShown = ""
+    internal var thinkingPanel: LinearLayout? = null
+    internal var thinkingScroll: ScrollView? = null
+    internal var thinkingSentText: TextView? = null
+    internal var thinkingReturnText: TextView? = null
+    internal var reviewText: TextView? = null
+    internal var lastSentShown = ""
 
     /**
      * 流式返回区的累积缓冲。
@@ -174,41 +166,41 @@ class FloatingWindowService : Service() {
      * 3000 字的字符串（O(n²) 的总拷贝量）。改为 StringBuilder 追加 + 超限截头，
      * 只有真正写回 TextView 时才 toString 一次。
      */
-    private val thinkingBuffer = StringBuilder(THINKING_DISPLAY_MAX)
+    internal val thinkingBuffer = StringBuilder(THINKING_DISPLAY_MAX)
 
     /** 上次推送 AI 思考通知的时间：流式输出每秒数次，逐条 notify 是跨进程调用，必须节流 */
-    private var lastThinkNotifyAt = 0L
+    internal var lastThinkNotifyAt = 0L
 
     // 头部（可拖动区域）
-    private var header: LinearLayout? = null
+    internal var header: LinearLayout? = null
 
     // ==================== 任务完成卡片（独立底部窗口） ====================
     // 原实现是在顶部任务卡里换一块 donePanel；卡片只有 300dp 宽，长结果没地方放，
     // 也没有「复制 / 完成 / 打开」这类下一步动作。现在改为底部独立窗口：
     // 层级 = 拖拽把手 → 状态行（圆点 + 标题）→ 可滚动正文 → 一行三键。
-    private var doneRoot: LinearLayout? = null
-    private var doneCard: LinearLayout? = null
-    private var doneTitle: TextView? = null
-    private var doneStatusDot: TextView? = null
-    private var doneBody: TextView? = null
-    private var doneScroll: MaxHeightScrollView? = null
-    private var doneFade: DoneFadeView? = null
-    private var doneCopy: TextView? = null
+    internal var doneRoot: LinearLayout? = null
+    internal var doneCard: LinearLayout? = null
+    internal var doneTitle: TextView? = null
+    internal var doneStatusDot: TextView? = null
+    internal var doneBody: TextView? = null
+    internal var doneScroll: MaxHeightScrollView? = null
+    internal var doneFade: DoneFadeView? = null
+    internal var doneCopy: TextView? = null
     /** 卡片当前展示的完整结果文本（「复制」写剪贴板用） */
-    private var doneMessage = ""
+    internal var doneMessage = ""
     /** 元信息行（耗时 / 步数 / 执行通道）：引擎没给的信息直接省略该行 */
-    private var doneMeta: TextView? = null
+    internal var doneMeta: TextView? = null
     /** 失败原因行：只在非成功且有原因时出现 */
-    private var doneReason: TextView? = null
+    internal var doneReason: TextView? = null
     /** 等待交接的终态：胶囊停留期间先存着，交接时再一次性落到卡片上 */
-    private var pendingDoneOutcome: TaskOutcome? = null
+    internal var pendingDoneOutcome: TaskOutcome? = null
     /**
      * 胶囊 → 完成卡片的交接。
      *
      * 顺序是刻意的：胶囊先切终态色停 [DONE_HOLD_MS]，再和任务卡一起淡出，
      * 同一拍卡片淡入。不做位移、不做弹性、不做缩放——这一步是"让位"，不是新一次入场。
      */
-    private val doneHandoff = Runnable {
+    internal val doneHandoff = Runnable {
         if (pendingDoneOutcome == null) return@Runnable
         pendingDoneOutcome = null
         fadeOutAndHide(root, OverlayMotion.ExitMs)
@@ -217,12 +209,12 @@ class FloatingWindowService : Service() {
         revealDoneCard(SystemClock.uptimeMillis())
     }
     /** 用户正在按住/滚动/拖拽卡片：期间暂停 8s 自动关闭，松手后重新计时 */
-    private var doneInteracting = false
+    internal var doneInteracting = false
     /** 下滑关闭：按下时的 rawY 与已累计的下移量（只允许向下） */
-    private var doneDragStartRawY = 0f
-    private var doneDragOffset = 0f
+    internal var doneDragStartRawY = 0f
+    internal var doneDragOffset = 0f
     /** 截图隐藏前完成卡片是否可见，用于截图后原样恢复 */
-    private var doneVisibleBeforeHide = false
+    internal var doneVisibleBeforeHide = false
 
     /**
      * 引擎已请求停止服务，但完成卡片还没走完自己的生命周期。
@@ -231,8 +223,8 @@ class FloatingWindowService : Service() {
      * 「胶囊停留 → 交接」这一段，导致用户读不到失败原因。此时把停止时机
      * 交给卡片自己的关闭/超时（[closeDoneCard] 末尾即 `stopSelf`）。
      */
-    private var stopPending = false
-    private val doneAutoClose = Runnable { closeDoneCard() }
+    internal var stopPending = false
+    internal val doneAutoClose = Runnable { closeDoneCard() }
 
     /**
      * 仅 debug 包：用 adb 广播直接拉起完成卡片，供 UI 走查与首帧耗时量化。
@@ -240,17 +232,17 @@ class FloatingWindowService : Service() {
      * `adb shell am broadcast -a com.phoneagent.DEBUG_DONE --es message "..." -p com.phoneagent`
      * 真实任务链路不会触发它，release 包也不会注册。
      */
-    private var debugDoneReceiver: BroadcastReceiver? = null
+    internal var debugDoneReceiver: BroadcastReceiver? = null
 
     // 交互区域：批准/澄清/指导
-    private var interactPanel: LinearLayout? = null
-    private var interactTitle: TextView? = null
-    private var interactContent: TextView? = null
+    internal var interactPanel: LinearLayout? = null
+    internal var interactTitle: TextView? = null
+    internal var interactContent: TextView? = null
     /** 选项行与出口行的容器（按类型重建，见 [showInteraction]） */
-    private var interactRows: LinearLayout? = null
-    private var hintInput: EditText? = null
+    internal var interactRows: LinearLayout? = null
+    internal var hintInput: EditText? = null
     /** 输入区的出口行容器（「已手动处理 / 指导 AI」） */
-    private var interactActions: LinearLayout? = null
+    internal var interactActions: LinearLayout? = null
 
     /**
      * 答疑面板是否被用户收起。
@@ -260,10 +252,10 @@ class FloatingWindowService : Service() {
      * 收起期间容器里只剩那枚小胶囊，窗口高度随之压到胶囊高 ——
      * 屏幕其余位置的触摸照常落到底下的 App 上。
      */
-    private var interactCollapsed = false
+    internal var interactCollapsed = false
 
     /** 收起后留在右下角的入口胶囊：「需要你回答 · 点开」 */
-    private var collapsedPill: TextView? = null
+    internal var collapsedPill: TextView? = null
 
     /**
      * 当前面板配色（浅色暖纸白 / 深色近黑），跟随系统深浅色。
@@ -272,24 +264,24 @@ class FloatingWindowService : Service() {
      * ——那会丢掉正在跑的任务状态。所以用「登记式重上色」：建视图时顺手登记一段
      * 「拿到配色后怎么涂」的代码，翻面时把所有登记项重跑一遍（见 [themed]）。
      */
-    private var palette = FloatingUi.Palette.Light
-    private val themeAppliers = mutableListOf<(FloatingUi.Palette) -> Unit>()
+    internal var palette = FloatingUi.Palette.Light
+    internal val themeAppliers = mutableListOf<(FloatingUi.Palette) -> Unit>()
 
     /** 最近一次答疑的入参：翻面时要用同样的入参重绘选项行/出口行（它们是每次交互现建的） */
-    private var lastInteractType: String? = null
-    private var lastInteractTitle: String? = null
-    private var lastInteractContent: String? = null
-    private var lastInteractOptions: List<String>? = null
+    internal var lastInteractType: String? = null
+    internal var lastInteractTitle: String? = null
+    internal var lastInteractContent: String? = null
+    internal var lastInteractOptions: List<String>? = null
 
     /**
      * 底部选项卡：AI 需要答疑（澄清歧义）或协助（动作未生效/敏感页保护）时，
      * 从屏幕底边独立拉起一个面板承载选项与输入，而不是挤在顶部悬浮窗里。
      */
-    private var sheetRoot: LinearLayout? = null
-    private var sheetParams: WindowManager.LayoutParams? = null
+    internal var sheetRoot: LinearLayout? = null
+    internal var sheetParams: WindowManager.LayoutParams? = null
 
     /** 截图隐藏前底部选项卡是否可见，用于截图后原样恢复 */
-    private var sheetVisibleBeforeHide = false
+    internal var sheetVisibleBeforeHide = false
 
     /**
      * 底部跑马灯的窗口参数（窗口根视图就是 [marquee]）。
@@ -297,29 +289,29 @@ class FloatingWindowService : Service() {
      * 跑马灯刻意不放进任务卡片：卡片只有 300dp 宽、还能被用户拖走，挂在里面会跟着一起被拖走；
      * 拆成独立窗口浮在屏幕底边之上，才能做到"任务期间常驻 + 长宽随内容自适应"。
      */
-    private var barParams: WindowManager.LayoutParams? = null
+    internal var barParams: WindowManager.LayoutParams? = null
 
     /** 截图隐藏前跑马灯是否可见，用于截图后原样恢复 */
-    private var barVisibleBeforeHide = false
+    internal var barVisibleBeforeHide = false
 
     /**
      * 逐步任务文字的显示位置（跑马灯 / 任务卡状态行 / 两处），用户可在设置里改。
      *
      * 改动即时生效：监听偏好写入后立即按最近一次状态就地重绘，不等下一个任务。
      */
-    private var stepPlacement = OverlayDisplaySettings.DEFAULT_STEP_TEXT_PLACEMENT
+    internal var stepPlacement = OverlayDisplaySettings.DEFAULT_STEP_TEXT_PLACEMENT
 
     /** 最近一次状态更新的原始入参：切换显示位置时就地重绘，不用等下一次 updateStatus */
-    private var lastStatusText = "等待任务..."
-    private var lastReasoningText = ""
-    private var lastStep = 0
-    private var lastTotal = 0
+    internal var lastStatusText = "等待任务..."
+    internal var lastReasoningText = ""
+    internal var lastStep = 0
+    internal var lastTotal = 0
 
     /** 跑马灯最近一次"想不想显示"的请求；实际可见性还要再过一道 [stepPlacement] 闸门 */
-    private var marqueeRequestedVisible = true
+    internal var marqueeRequestedVisible = true
 
     /** 显示设置监听：只关心文字位置这一个键（边缘光效由 EdgeLightingService 自己监听） */
-    private val displaySettingsListener =
+    internal val displaySettingsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == OverlayDisplaySettings.KEY_STEP_TEXT_PLACEMENT) {
                 stepPlacement = OverlayDisplaySettings.stepTextPlacement(this)
@@ -331,21 +323,21 @@ class FloatingWindowService : Service() {
     // 引擎已经产出成品中文（TaskNoticeCenter.notice），浮层只负责展示：
     // 不新增常驻栏，做成底部一次性细条，显示几秒后自己向上淡出。
     // 位置在底部跑马灯胶囊之上（见 [noticeBottomOffset]），宽度与胶囊同宽、建窗时定死。
-    private var noticeRoot: LinearLayout? = null
-    private var noticeParams: WindowManager.LayoutParams? = null
-    private var noticeText: TextView? = null
-    private var noticeMethod: TextView? = null
-    private var noticeBadge: TextView? = null
+    internal var noticeRoot: LinearLayout? = null
+    internal var noticeParams: WindowManager.LayoutParams? = null
+    internal var noticeText: TextView? = null
+    internal var noticeMethod: TextView? = null
+    internal var noticeBadge: TextView? = null
     /** 当前细条语义（true = 需要用户动手）：主题翻面重上色时按它决定白底还是实色 */
-    private var noticeRequiresAction = false
+    internal var noticeRequiresAction = false
     /** 细条是否处于"已展示/计时中"状态；退场动画期间置 false，避免重复收场 */
-    private var noticeShowing = false
+    internal var noticeShowing = false
     /** 截图隐藏期间为 true：此间到达的提示只更新内容，不把窗口弹出来打断抓屏 */
-    private var captureHidden = false
-    private val noticeAutoHide = Runnable { hideNotice() }
+    internal var captureHidden = false
+    internal val noticeAutoHide = Runnable { hideNotice() }
 
     /** 截图隐藏前提示细条是否可见，用于截图后原样恢复 */
-    private var noticeVisibleBeforeHide = false
+    internal var noticeVisibleBeforeHide = false
 
     /**
      * 用户是否主动收起了整套面板（点卡片上的「隐藏」）。
@@ -354,31 +346,25 @@ class FloatingWindowService : Service() {
      * 这个标志必须挡住后续所有"把面板显示出来"的路径（尤其是每步都会跑的 [resetPanel]），
      * 否则下一步状态一刷新，面板就又自己冒出来了。
      */
-    private var userHidden = false
+    internal var userHidden = false
 
     /** 悬浮球窗口：面板收起后留在屏幕上唯一可点的入口 */
-    private var miniRoot: TextView? = null
-    private var miniParams: WindowManager.LayoutParams? = null
+    internal var miniRoot: TextView? = null
+    internal var miniParams: WindowManager.LayoutParams? = null
 
     /** 截图隐藏前悬浮球是否可见，用于截图后原样恢复 */
-    private var miniVisibleBeforeHide = false
+    internal var miniVisibleBeforeHide = false
 
-    /**
-     * 任务卡片可拖动的上边界：退到状态栏之下再留一行。
-     *
-     * 顶部光带已移除，上边界不再需要让出整条光带高度；只保证卡片不压住状态栏文字。
-     */
-    private fun cardTopLimit(): Int = statusBarHeight() + dp(12)
 
-    private val handler = Handler(Looper.getMainLooper())
-    private var notificationManager: NotificationManager? = null
-    private val channelId = "floating_window"
+    internal val handler = Handler(Looper.getMainLooper())
+    internal var notificationManager: NotificationManager? = null
+    internal val channelId = "floating_window"
 
     // ==================== 拖动物理效果 ====================
-    private var velocityTracker: VelocityTracker? = null
-    private var flingScroller: OverScroller? = null
-    private var isFlinging = false
-    private val frameCallback = Choreographer.FrameCallback { onFlingFrame() }
+    internal var velocityTracker: VelocityTracker? = null
+    internal var flingScroller: OverScroller? = null
+    internal var isFlinging = false
+    internal val frameCallback = Choreographer.FrameCallback { onFlingFrame() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -407,77 +393,7 @@ class FloatingWindowService : Service() {
         }
     }
 
-    /**
-     * 跑马灯配色：跟随状态时交给 `MarqueeView.setPhase`（底色/文字色/光晕色三档联动、
-     * 按阶段平滑过渡），否则用用户自定义的渐变配色。
-     */
-    private fun applyMarqueePalette(view: MarqueeView) {
-        if (marqueeAutoColor) view.setPhase(currentPhase) else view.setColors(marqueeColors)
-    }
 
-    /**
-     * 设置跑马灯内边距 / 配色：顶部光带与底部胶囊同步应用。
-     *
-     * 底部胶囊厚度由内边距决定（窗口宽度固定、高度自适应）；顶部光带高度由状态栏 inset 决定，
-     * 内边距只影响文字垂直居中，两者都不需要动窗口 LayoutParams。
-     */
-    private fun applyMarqueeSettings() {
-        marquee?.let {
-            applyMarqueePalette(it)
-            it.setPadV(dp(marqueeHeightDp))
-        }
-    }
-
-    private fun startForegroundCompat() {
-        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            notificationManager?.createNotificationChannel(
-                NotificationChannel(channelId, "悬浮窗进度", NotificationManager.IMPORTANCE_LOW)
-            )
-        }
-        val intent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP }
-        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("Happy Agent 正在执行")
-                .setContentText("实时跟踪任务进度")
-                .setContentIntent(pi)
-                .setSmallIcon(R.drawable.ic_stat_agent)
-                .setOnlyAlertOnce(true)
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this).setContentTitle("Happy Agent 正在执行").setSmallIcon(R.drawable.ic_stat_agent).build()
-        }
-        ServiceCompat.startForeground(
-            this,
-            NOTIFY_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-        )
-    }
-
-    /** 实时更新前台通知，显示任务状态（可选附加 AI 思考内容） */
-    private fun updateNotification(status: String, task: String, step: Int = 0, thinking: String? = null) {
-        val nm = notificationManager ?: return
-        val base = if (step > 0) "第 $step 步 · $status" else status
-        val text = if (!thinking.isNullOrBlank()) "$base\nAI：${thinking.replace("\n", " ").take(140)}" else base
-        val notification: Notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-                .setContentTitle("Happy Agent · $task")
-                .setContentText(text)
-                .setStyle(Notification.BigTextStyle().bigText(text))
-                .setSmallIcon(R.drawable.ic_stat_agent)
-                .setOnlyAlertOnce(true)
-                .setOngoing(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this).setContentTitle("Happy Agent · $task").setContentText(text).setSmallIcon(R.drawable.ic_stat_agent).build()
-        }
-        runCatching { nm.notify(NOTIFY_ID, notification) }
-    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP || intent?.getBooleanExtra("stop", false) == true) {
@@ -495,7 +411,7 @@ class FloatingWindowService : Service() {
     }
 
     /** 任务卡片复位为空闲文案（sticky 重建路径）：标题/阶段/步骤/思考区/跑马灯/通知全部回到待命态 */
-    private fun resetToIdle() {
+    internal fun resetToIdle() {
         handler.post {
             taskTitle?.text = "Happy Agent"
             phaseChip?.text = "待命"
@@ -519,1499 +435,32 @@ class FloatingWindowService : Service() {
         }
     }
 
-    /**
-     * 状态栏高度（像素）。
-     *
-     * 该值决定任务卡片可拖动的上边界（见 [cardTopLimit]），因此不能用「查系统资源名」这一种方式：
-     * `getIdentifier("status_bar_height", ...)` 在相当一部分 ROM / 高版本系统上取不到，返回 0 ——
-     * 于是边界变成 0，卡片会压住状态栏上的时间与电量。
-     *
-     * 取值顺序：WindowInsets（API 30+，最可靠）→ 系统资源名 → 经验兜底值。
-     */
-    private fun statusBarHeight(): Int {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-            // 同时算上刘海/挖孔：有 cutout 的机型上，屏幕物理顶到可视内容之间的实际距离
-            // 比状态栏更高，只取 statusBars 会偏小，卡片就差那么一截压到状态栏上
-            val inset = runCatching {
-                windowManager?.currentWindowMetrics?.windowInsets
-                    ?.getInsetsIgnoringVisibility(
-                        android.view.WindowInsets.Type.statusBars() or
-                            android.view.WindowInsets.Type.displayCutout(),
-                    )
-                    ?.top
-            }.getOrNull()
-            if (inset != null && inset > 0) return inset
-        }
-        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
-        if (id > 0) {
-            val h = resources.getDimensionPixelSize(id)
-            if (h > 0) return h
-        }
-        // 兜底：宁可多留一点，也不能返回 0 —— 返回 0 会让卡片整块压到状态栏上
-        return dp(24)
-    }
 
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun showWindow() {
-        if (root != null) return
-        // 量化埋点起点：从建视图到首个绘制帧（含 addView + 一次测量/布局）
-        val startedAt = SystemClock.uptimeMillis()
-        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-        windowManager = wm
-        val layout = buildPanel()
-        val builtAt = SystemClock.uptimeMillis()
-        OverlayPerf.log("task-card-build", "${builtAt - startedAt}ms")
-        // 获取当前屏幕尺寸，根据横竖屏调整初始位置，避免旋转后悬浮窗位置出屏
-        val point = android.graphics.Point()
-        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
-        val screenW = if (point.x > 0) point.x else dp(360)
-        val winW = dp(FloatingUi.WIDTH)
-        // 宽度固定，高度随内容自适应
-        params = WindowManager.LayoutParams(
-            winW, WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 初始位置：水平居中，纵向落在状态栏下方（跑马灯已移到底部，卡片上边界只看状态栏）
-            x = (screenW - winW) / 2
-            y = cardTopLimit() + dp(FloatingUi.PAD)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                // 关键：API 30+ 默认 fitInsetsTypes = systemBars()，会把窗口内容整体推到状态栏下方，
-                // 这是与 FLAG_LAYOUT_NO_LIMITS 无关的另一套机制（inset 适配）。
-                // 清空后窗口坐标系才真正从物理屏顶开始，y = 0 贴顶、负 y 出屏才有意义。
-                fitInsetsTypes = 0
-            }
-            // 这里曾调用 applyBlurBehind()：blurBehindRadius 会把整块屏幕糊掉（不只是卡片），
-            // 任务一跑整屏发灰。悬浮窗又没有 Window 对象，拿不到"只糊窗口范围"的
-            // Window#setBackgroundBlurRadius，所以卡片就只是一块半透明品牌色。
-        }
-        // 真实投影：让卡片浮起在屏幕之上，elevation 阴影随圆角轮廓（M3 柔和浮起）
-        layout.elevation = dp(FloatingUi.ELEVATION).toFloat()
-        layout.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, dp(FloatingUi.RADIUS_CARD.toInt()).toFloat())
-            }
-        }
-        // 先 addView、成功后再记 root。以前先赋 root 再 try/catch 吞掉失败，
-        // 一旦 addView 抛异常（悬浮窗权限被收回、window token 失效），root 仍是
-        // 非空、后续 showWindow 全部被开头那行 return 挡掉，悬浮窗就永久起不来。
-        val added = runCatching { wm.addView(layout, params) }.isSuccess
-        if (!added) {
-            Log.w("FloatingWindowService", "悬浮窗添加失败，等待下次重试")
-            return
-        }
-        root = layout
-        val addedAt = SystemClock.uptimeMillis()
-        // 代码成本 = 建视图 + addView；帧等待 = 到首个 onPreDraw 的差值
-        OverlayPerf.log("task-card-add", "${addedAt - builtAt}ms")
-        OverlayPerf.firstFrame("task-card-first-frame", layout, startedAt, addedAt - startedAt)
-        showMarquee()
-        showSheetWindow()
-        // 预热完成卡片：任务一开始就把底部卡片窗口建好（隐藏、0 高、不吃触摸），
-        // 收尾时只翻可见性。放到首帧之后再建，避免和任务卡自己抢这一帧的时间。
-        layout.post { ensureDoneWindow() }
-    }
 
-    /**
-     * 创建跑马灯：**同一时刻只存在一个文字载体**，任务期间常驻。
-     *
-     * 形态是贴底长条胶囊：固定宽度（真实屏宽 - 两侧留白）、两端全圆角（半径 = 高度一半，由
-     * `MarqueeView` 自绘）、锚在导航栏之上、离底边约 0.5cm，横向铺开而不是方块色块。
-     *
-     * 为什么只有这一个载体：曾经同时存在「顶部光带 + 底部胶囊」，两个窗口逐字渲染同一段
-     * 任务描述，用户看到的就是"同一步被画了两遍"；去掉光带后文字只有一处可读，也不再需要
-     * 为光带单独处理状态栏 inset、刘海裁切与 `LAYOUT_IN_SCREEN` 那一套窗口参数。
-     *
-     * 窗口是 `FLAG_NOT_TOUCHABLE`：只负责显示，绝不吃掉任何触摸。
-     * 窗口宽度在建窗时一次定死，之后文本怎么高频更新都不会触发窗口重排。
-     */
-    private fun showMarquee() {
-        val wm = windowManager ?: return
-        if (marquee != null) return
-        val screenSize = OverlayWindowSpec.realScreenSize(this)
-        val screenW = screenSize.first
 
-        val startedAt = SystemClock.uptimeMillis()
-        val barW = marqueeWindowWidthPx(screenW)
-        val bar = MarqueeView(this).apply {
-            applyMarqueePalette(this)
-            setPadV(dp(marqueeHeightDp))
-        }
-        val lp = WindowManager.LayoutParams(
-            // 固定宽度：文本更新只改绘制，不重排窗口
-            barW, WindowManager.LayoutParams.WRAP_CONTENT,
-            OverlayWindowSpec.overlayWindowType(),
-            OverlayWindowSpec.passiveFlags(),
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = marqueeBottomOffset()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-        }
-        try {
-            wm.addView(bar, lp)
-            marquee = bar
-            barParams = lp
-            OverlayPerf.code("marquee-add", startedAt)
-        } catch (_: Exception) {
-            // 无悬浮窗权限：跑马灯建不出来，任务卡片照常工作
-        }
-        // 新建的窗口默认可见：这里立刻按用户设置和当前状态补一次（只任务卡模式下直接 GONE）
-        applyStepTextPlacement()
-    }
 
-    /**
-     * 更新跑马灯文案：只写唯一那个载体。
-     *
-     * 相位由 `MarqueeView` 自己保持：换文案不会重置滚动位置，也不会触发窗口重排。
-     */
-    private fun setMarqueeText(text: String) {
-        marquee?.setText(text)
-    }
 
-    /**
-     * 跑马灯整体显示/隐藏。
-     *
-     * [visible] 表达"当前界面状态想不想显示"（任务运行中显示、完成卡/用户收起/截图时隐藏）；
-     * 这里再叠一道用户设置：只任务卡模式（[StepTextPlacement.CARD]）下跑马灯一律不显示。
-     */
-    private fun setMarqueeVisible(visible: Boolean) {
-        marqueeRequestedVisible = visible
-        val v = if (visible && stepPlacement != StepTextPlacement.CARD) View.VISIBLE else View.GONE
-        marquee?.apply {
-            // 交接淡出可能刚把透明度降到 0：重新显示时从 1 开始
-            if (v == View.VISIBLE) alpha = 1f
-            visibility = v
-        }
-    }
 
-    /**
-     * 按当前显示设置重绘两处文字，并重算跑马灯可见性。
-     *
-     * 每次状态更新与设置变更都走这里，切换显示方式时正在跑的任务即时生效。
-     */
-    private fun applyStepTextPlacement() {
-        val desc = lastReasoningText.ifBlank { lastStatusText }
-        val showMarqueeText = stepPlacement != StepTextPlacement.CARD
-        stepText?.text = StepTextContent.cardLabel(
-            step = lastStep,
-            total = lastTotal,
-            description = desc,
-            includeDescription = stepPlacement != StepTextPlacement.MARQUEE,
-        )
-        setMarqueeText(if (showMarqueeText) desc else "")
-        setMarqueeVisible(marqueeRequestedVisible)
-    }
-
-    private fun isMarqueeVisible(): Boolean =
-        marquee?.visibility == View.VISIBLE
-
-    /**
-     * 底部跑马灯距屏幕底边的距离：约 0.5cm；系统手势条更高时让到手势区之上。
-     *
-     * 面板压在系统手势条上会干扰上滑手势，所以取 `max(手势条高度, 19dp)`。
-     * 拿不到导航栏 inset（API 30 以下）就只留基础留白，面板照常显示。
-     *
-     * 窗口高度比胶囊体上下各多出 [marqueeGlowPad]（光晕留白），所以窗口落点要减掉这一截，
-     * 胶囊体的视觉位置才和加光晕之前完全一致。
-     */
-    private fun marqueeBottomOffset(): Int {
-        val navBar = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                windowManager?.currentWindowMetrics?.windowInsets
-                    ?.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars())
-                    ?.bottom
-            } else null
-        }.getOrNull() ?: 0
-        // 纯算术已抽到 OverlayGeometry（可单测）；这里只负责取系统 inset 与 dp 换算
-        return OverlayGeometry.marqueeBottomOffset(navBar, dp(marqueeBottomGap), marqueeGlowPad)
-    }
-
-    // ==================== 降级提示细条 ====================
-
-    /**
-     * 收到一条降级提示（或引擎清除时收到 null）。
-     *
-     * 展示规则（与 docs/task-notice-contract.md 对齐）：
-     * - `text` **原样**显示，界面不再拼文案；
-     * - `method` 作为「当前：X」标签；
-     * - `requiresAction` 用高亮实色条 + 「需操作」徽章，与普通白底提示一眼可辨；
-     * - 一条到底就覆盖，不堆历史；[TaskNoticePresentation.HoldMs] 后自己向上淡出。
-     *
-     * 已经在显示时只换内容、不重跑入场动画：同一次任务里连续换通道时，
-     * 细条若反复"消失再进场"会像在闪，反而不如原地换字稳。
-     */
-    private fun showNotice(notice: TaskNotice?) {
-        handler.post {
-            if (notice == null) {
-                // 引擎主动清除：按正常退场收条，不要"啪"一下消失
-                hideNotice()
-                return@post
-            }
-            // 用户已收起整套面板：不把细条弹出来（收起是"让出屏幕"的明确意图）
-            if (userHidden) return@post
-            val showStartedAt = SystemClock.uptimeMillis()
-            val root = ensureNoticeWindow() ?: return@post
-            noticeRequiresAction = notice.requiresAction
-            // text 是引擎产出的成品中文，原样落到 TextView
-            noticeText?.text = notice.text
-            val methodLabel = TaskNoticePresentation.methodLabel(notice.method)
-            noticeMethod?.text = methodLabel.orEmpty()
-            noticeMethod?.visibility = if (methodLabel == null) View.GONE else View.VISIBLE
-            noticeBadge?.visibility =
-                if (TaskNoticePresentation.actionBadge(notice.requiresAction) != null) View.VISIBLE else View.GONE
-            applyNoticeStyle(noticeRequiresAction)
-            val firstShow = !noticeShowing
-            if (!captureHidden) {
-                // 每次发布都要保证可见：细条窗口是复用的，一旦某条提示的退场/截图隐藏
-                // 把视图留在了 GONE，只靠"首次显示"分支就再也弹不出来（只补动画，不补可见性）
-                root.visibility = View.VISIBLE
-            }
-            if (firstShow && !captureHidden) {
-                OverlayMotion.reset(root)
-                OverlayMotion.enter(root)
-            }
-            noticeShowing = true
-            if (!captureHidden) {
-                scheduleNoticeHide()
-                if (firstShow) {
-                    // 代码成本已含建窗/addView/文案落位；帧等待由 onPreDraw 单独补上
-                    OverlayPerf.firstFrame(
-                        "notice-first-frame",
-                        root,
-                        showStartedAt,
-                        SystemClock.uptimeMillis() - showStartedAt,
-                    )
-                }
-            }
-            // 跑马灯胶囊高度是动态的：细条要稳稳落在它上方，等本帧布局完成后再校正 y
-            root.post {
-                val p = noticeParams ?: return@post
-                p.y = noticeBottomOffset()
-                runCatching { windowManager?.updateViewLayout(root, p) }
-            }
-        }
-    }
-
-    /** 重新计时：新提示覆盖上一条时，从"这一条"开始算停留时长 */
-    private fun scheduleNoticeHide() {
-        handler.removeCallbacks(noticeAutoHide)
-        handler.postDelayed(noticeAutoHide, TaskNoticePresentation.HoldMs)
-    }
-
-    /** 细条退场：统一向上淡出，收完之后留在窗口里待命（下次复用，避免反复 add/remove） */
-    private fun hideNotice() {
-        handler.removeCallbacks(noticeAutoHide)
-        if (!noticeShowing) return
-        noticeShowing = false
-        val view = noticeRoot ?: return
-        OverlayMotion.exit(view) {
-            // 退场期间若来了新提示，[showNotice] 会把 noticeShowing 置回 true，此时不能再收
-            if (!noticeShowing) {
-                view.visibility = View.GONE
-                OverlayMotion.reset(view)
-            }
-        }
-    }
-
-    /**
-     * 细条窗口：固定宽度（与底部胶囊同宽）、高度随内容自适应，`FLAG_NOT_TOUCHABLE` 不吃触摸。
-     *
-     * 只用一次 addView，之后复用：提示是低频事件，但每条都重建窗口会把成本压在任务关键时刻。
-     */
-    private fun ensureNoticeWindow(): LinearLayout? {
-        noticeRoot?.let { return it }
-        val wm = windowManager ?: return null
-        val startedAt = SystemClock.uptimeMillis()
-        val screenW = OverlayWindowSpec.realScreenSize(this).first
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
-            // 配色跟随深浅主题：登记式重上色，翻面时不用重建窗口
-            themed { applyNoticeStyle(noticeRequiresAction) }
-        }
-        val titleRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        noticeBadge = TextView(this).apply {
-            text = TaskNoticePresentation.actionBadge(true).orEmpty()
-            textSize = 10f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            // 暖色实心徽章：在深玄青底上也跳得出来（不靠半透明叠层做强调）
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
-            setPadding(dp(FloatingUi.PAD), dp(2), dp(FloatingUi.PAD), dp(2))
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = dp(FloatingUi.PAD) }
-        }
-        noticeText = TextView(this).apply {
-            textSize = 12f
-            maxLines = 4
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        titleRow.addView(noticeBadge)
-        titleRow.addView(noticeText)
-        noticeMethod = TextView(this).apply {
-            textSize = 10f
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(3), 0, 0)
-            visibility = View.GONE
-        }
-        root.addView(titleRow)
-        root.addView(noticeMethod)
-
-        val lp = WindowManager.LayoutParams(
-            OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin)),
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            OverlayWindowSpec.overlayWindowType(),
-            OverlayWindowSpec.passiveFlags(),
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            x = 0
-            y = noticeBottomOffset()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-        }
-        val added = runCatching { wm.addView(root, lp) }.isSuccess
-        if (!added) return null
-        noticeRoot = root
-        noticeParams = lp
-        OverlayPerf.code("notice-add", startedAt)
-        return root
-    }
-
-    /**
-     * 细条配色：
-     * - 普通提示 = 暖纸白实色 + 发丝描边，是"信息"层级；
-     * - `requiresAction` = 品牌实色条 + 白字，是"要动手"层级，不靠透明度区分。
-     */
-    private fun applyNoticeStyle(requiresAction: Boolean) {
-        val root = noticeRoot ?: return
-        if (requiresAction) {
-            root.background = FloatingUi.capsule(this, FloatingUi.RADIUS_PANEL, FloatingUi.BRAND)
-            noticeText?.setTextColor(FloatingUi.ON_BRAND)
-            noticeMethod?.setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-        } else {
-            root.background = FloatingUi.capsule(
-                this,
-                FloatingUi.RADIUS_PANEL,
-                palette.panel,
-                palette.panelEdge,
-                dp(1),
-            )
-            noticeText?.setTextColor(palette.textPrimary)
-            noticeMethod?.setTextColor(palette.textSecondary)
-        }
-    }
-
-    /** 细条底边：底部胶囊（含导航栏净空）之上再留 8dp，胶囊高度动态，取不到时用经验值兜底 */
-    private fun noticeBottomOffset(): Int {
-        // 胶囊窗口的测量高度含上下光晕留白，扣掉才是胶囊体本身的厚度（公式见 OverlayGeometry）
-        val visible = marquee?.visibility == View.VISIBLE
-        return OverlayGeometry.noticeBottomOffset(
-            marqueeBottomPx = marqueeBottomOffset(),
-            capsuleVisible = visible,
-            windowHeight = marquee?.height ?: 0,
-            glowPadPx = marqueeGlowPad,
-            fallbackCapsulePx = dp(NOTICE_MARQUEE_FALLBACK_HEIGHT_DP),
-            gapPx = dp(FloatingUi.PAD),
-        )
-    }
-
-    /**
-     * 创建悬浮球（只在用户点「隐藏」时才建，建好后长期复用）：收起面板后屏幕上唯一可点的入口。
-     *
-     * 只做一件事——点它把整套面板唤回来，所以刻意做成一个小圆形实色按钮，
-     * 不抢视线，也不挡住用户正在操作的界面。
-     */
-    private fun showMiniBall() {
-        if (miniRoot != null) return
-        val wm = windowManager ?: return
-        val ball = TextView(this).apply {
-            text = "AI"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(FloatingUi.ON_BRAND)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(this@FloatingWindowService, 999f, FloatingUi.BRAND)
-            elevation = dp(6).toFloat()
-            setOnClickListener {
-                showFromUser()
-                onInteraction?.invoke("resume", "")
-            }
-        }
-        // 按下当帧反馈，不等系统 ripple（悬浮球是收起后唯一的入口，反馈必须立刻可见）
-        bindPress(ball)
-        val point = android.graphics.Point()
-        runCatching { wm.defaultDisplay.getRealSize(point) }
-        val screenW = if (point.x > 0) point.x else dp(360)
-        val size = dp(MINI_BALL_SIZE)
-        val lp = WindowManager.LayoutParams(
-            size, size,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            // 右上角、状态栏下方：既不压状态栏，也不容易挡住用户正在看的内容
-            x = screenW - size - dp(FloatingUi.PAD_L)
-            y = cardTopLimit() + dp(FloatingUi.PAD)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) fitInsetsTypes = 0
-        }
-        try {
-            wm.addView(ball, lp)
-            miniRoot = ball
-        } catch (_: Exception) {
-            // 无悬浮窗权限：球建不出来，但卡片上的「隐藏」不会因此崩掉
-        }
-    }
-
-    /**
-     * 用户点「隐藏」：收起卡片/跑马灯，只留悬浮球（任务搁置交由引擎处理）。
-     *
-     * 底部选项卡刻意不动：它承载的是"AI 正在等用户回答/确认"这类不能让用户错过的问题，
-     * 收起状态面板不应顺手把它藏掉——藏了以后 AI 仍在等输入，面板又回不来，任务就永久挂住了。
-     */
-    private fun hideForUser() {
-        // 先确保悬浮球建得出来：球建不出来（无悬浮窗权限）还把面板收起，
-        // 用户就再也叫不回来了——这种情况宁可不收起
-        showMiniBall()
-        val ball = miniRoot ?: return
-        userHidden = true
-        root?.visibility = View.GONE
-        setMarqueeVisible(false)
-        ball.visibility = View.VISIBLE
-        // 收起即"让出屏幕"：降级提示细条一并收掉，不等它 4 秒后自己走
-        hideNotice()
-    }
-
-    /** 用户点悬浮球：原样唤出面板（任务由引擎继续执行） */
-    private fun showFromUser() {
-        if (!userHidden) return
-        userHidden = false
-        root?.visibility = View.VISIBLE
-        setMarqueeVisible(true)
-        miniRoot?.visibility = View.GONE
-    }
-
-    /**
-     * 收起状态下的"防复现"闸门：状态更新每步都会跑 [resetPanel]，而它会把面板重新置为可见；
-     * 每次更新之后按收起状态再压回去，面板才不会自己冒出来。
-     */
-    private fun applyUserHidden() {
-        if (!userHidden) return
-        root?.visibility = View.GONE
-        setMarqueeVisible(false)
-    }
-
-    /**
-     * 创建底部选项卡窗口（常驻、初始不可见）。
-     *
-     * 与顶部窗口相反，这里**不清空 fitInsetsTypes**：默认避开系统栏，
-     * gravity=BOTTOM 时面板正好落在导航栏上方，不会被导航栏压住。
-     * 窗口可触摸、可聚焦（需要点选项与输入文字），但 GONE 时不会干扰任何操作。
-     */
-    private fun showSheetWindow() {
-        if (sheetRoot != null) return
-        val wm = windowManager ?: return
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            visibility = View.GONE
-        }
-        // 交互面板在此挂载（它已在 buildPanel 中构建完成，但未加入顶部窗口）。
-        //
-        // 左右留白与底边留白放在**面板自己的外边距**上，而不是容器的内边距上：
-        // 容器是窗口的根视图，它的内边距在面板隐藏时仍会把窗口撑出一段高度，
-        // 零内容却依然可触摸 —— 那一条透明窗口会持续吃掉屏幕底部的操作。
-        // 面板隐藏时容器高度为 0，窗口才真正不占地方。
-        interactPanel?.let {
-            container.addView(
-                it,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    marginStart = dp(FloatingUi.PAD_XL)
-                    marginEnd = dp(FloatingUi.PAD_XL)
-                    bottomMargin = dp(FloatingUi.PAD)
-                },
-            )
-        }
-        // 收起后的入口胶囊：右下角一枚小胶囊。它是容器里唯一占位的东西 ——
-        // LinearLayout 不计 GONE 子视图（连外边距都不计），所以收起时窗口高度正好等于胶囊高，
-        // 屏幕其余位置的触摸全部落到底下的 App 上（窗口是 FLAG_NOT_TOUCH_MODAL）。
-        collapsedPill = TextView(this).apply {
-            text = "需要你回答 · 点开"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            visibility = View.GONE
-            setOnClickListener { setInteractCollapsed(false) }
-            // 与面板里的主操作同一支主色：它按下去就是"继续回答"，属于同一条动线
-            themed { p ->
-                setTextColor(p.onBrand)
-                background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, p.brand)
-            }
-        }
-        collapsedPill?.let { pill ->
-            bindPress(pill)
-            container.addView(
-                pill,
-                LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply {
-                    gravity = Gravity.END
-                    marginEnd = dp(FloatingUi.PAD_XL)
-                    bottomMargin = dp(FloatingUi.PAD)
-                },
-            )
-        }
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            // 输入框获得焦点时让窗口随软键盘上移，避免面板被键盘盖住
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        }
-        try {
-            wm.addView(container, lp)
-            sheetRoot = container
-            sheetParams = lp
-        } catch (_: Exception) {
-            // 无悬浮窗权限时静默失败，任务照常执行
-        }
-    }
-
-    /** 从底边滑入选项卡 */
-    private fun showSheet() {
-        val container = sheetRoot ?: return
-        if (container.visibility == View.VISIBLE) return
-        container.visibility = View.VISIBLE
-        container.post {
-            val h = container.height.coerceAtLeast(dp(1)).toFloat()
-            // 入场：自下而上（从面板自身高度走进位），曲线与时长走令牌
-            container.animate().cancel()
-            container.alpha = 1f
-            container.translationY = h
-            container.animate()
-                .translationY(0f)
-                .setDuration(OverlayMotion.EnterMs.toLong())
-                .setInterpolator(OverlayMotion.EaseOut)
-                .start()
-        }
-    }
-
-    /** 滑出并隐藏选项卡：向上淡出（与入场方向相反，读起来是"让位"而不是"被抽走"） */
-    private fun hideSheet() {
-        val container = sheetRoot ?: return
-        if (container.visibility != View.VISIBLE) return
-        OverlayMotion.exit(container) {
-            container.visibility = View.GONE
-            // 复位入场/退场留下的透明度与位移，下一次 showSheet 才是干净的自下而上
-            container.alpha = 1f
-            container.translationY = 0f
-            // 面板本身也要收起：容器是窗口根视图，即使它自己 GONE，窗口根仍会被测量，
-            // 面板留在 VISIBLE 会继续把窗口撑出同样高度 —— 一层看不见却可触摸的窗口
-            // 会持续吃掉这块屏幕区域的操作。
-            interactPanel?.visibility = View.GONE
-            // 收起胶囊同理：它是答疑面板的入口，问题已经收起（答复完毕/任务结束）时不该留在屏幕上
-            collapsedPill?.visibility = View.GONE
-            interactCollapsed = false
-            // 窗口尺寸复原为整宽：下一次交互滑进来时是完整的选项卡，而不是一条贴着右边缘的窄窗
-            applySheetCollapsedWindow(false)
-            // 丢掉"上次问了什么"的记录：留着它，系统切深浅色时旧问题会被重新摆回屏幕上
-            lastInteractType = null
-            lastInteractTitle = null
-            lastInteractContent = null
-            lastInteractOptions = null
-        }
-    }
-
-    private fun buildPanel(): LinearLayout {
-        val panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-        }
-        // 卡片底色：玄青 85% 不透明度的半透明底 + 发丝描边。
-        // **没有背景模糊**——卡片曾经配过窗口的 blurBehindRadius，但那个 API 糊的是整块屏幕，
-        // 不是卡片这 300dp 见方（见类注释）；悬浮窗拿不到"只糊窗口范围"的 setBackgroundBlurRadius。
-        // 留着半透明是因为它仍有层次：透出来的底图是清晰的原样，不是磨砂。
-        panel.background = FloatingUi.capsule(this@FloatingWindowService,
-            FloatingUi.RADIUS_CARD,
-            FloatingUi.BRAND_GLASS,
-            FloatingUi.GLASS_EDGE,
-            dp(1),
-        )
-        panel.setPadding(FloatingUi.PAD_L, FloatingUi.PAD_S, FloatingUi.PAD_L, FloatingUi.PAD_S)
-
-        // 跑马灯已拆成独立的底部窗口（见 showMarquee），卡片里不再有色带：
-        // 卡片只有 300dp 宽，跑马灯挂在里面会跟着卡片一起被拖走
-
-        // 头部：状态呼吸点 + 任务标题 + 关闭（仅头部可拖动；轻点头部也可切换详情）。
-        // 三个操作都保留，只重新分层：「详情 / 隐藏」下移到状态行右侧，
-        // 标题因此独占整行，不会被三枚按钮挤成一截。
-        header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(FloatingUi.PAD_L, FloatingUi.PAD, FloatingUi.PAD_S, 0)
-            setOnTouchListener { _, event ->
-                onTouchDrag(event)
-                true
-            }
-        }
-        // 状态呼吸点：阶段色 + 呼吸脉冲，让任务状态“有生命”
-        dot = View(this).apply {
-            setBackgroundResource(0)
-            val d = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(FloatingUi.phaseColor("PENDING")) }
-            background = d
-            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
-        }
-        // 任务标题：单行省略，长任务名不会把右侧的出口按钮顶出卡片
-        taskTitle = TextView(this).apply {
-            text = "Happy Agent"
-            textSize = 14f
-            setTextColor(FloatingUi.ON_BRAND)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        // 关闭按钮：圆形胶囊，按压有反馈。
-        // 两段式确认：第一次点进入待确认态（文案变「再点确认停止」，2.5 秒后自动复位），
-        // 再次点击才真正回调 close 终止任务——一次误触不应杀掉正在执行的任务
-        val close = TextView(this).apply {
-            text = "✕"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
-                FloatingUi.ON_BRAND_STATE_WEAK)
-            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
-            var closeArmed = false
-            setOnClickListener {
-                if (!closeArmed) {
-                    // 第一段：进入待确认态（文案变长，宽度改为随内容自适应）
-                    closeArmed = true
-                    text = CLOSE_CONFIRM_LABEL
-                    textSize = 10f
-                    setPadding(FloatingUi.PAD_S, 0, FloatingUi.PAD_S, 0)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(26),
-                    )
-                    postDelayed({
-                        // 超时未确认：自动复位回「✕」，下次点击仍需两段确认
-                        if (closeArmed) {
-                            closeArmed = false
-                            text = "✕"
-                            textSize = 12f
-                            setPadding(0, 0, 0, 0)
-                            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26))
-                        }
-                    }, CLOSE_CONFIRM_RESET_MS)
-                } else {
-                    // 第二段：用户已确认，才回调 close 并关闭悬浮窗
-                    onInteraction?.invoke("close", "")
-                    stopSelf(); removeWindow()
-                }
-            }
-        }
-        // 头部三个可点控件（关闭 / 详情 / 隐藏）：按下当帧缩放
-        bindPress(close)
-        // 详情开关：折叠态只显示三行，AI 的发送/返回/审核内容按需展开
-        expandChip = TextView(this).apply {
-            text = "详情"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
-                FloatingUi.ON_BRAND_STATE_WEAK)
-            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(26),
-            ).apply { marginStart = dp(6) }
-            setOnClickListener { toggleThinking() }
-        }
-        expandChip?.let { bindPress(it) }
-        header?.addView(dot)
-        header?.addView(taskTitle)
-        // 隐藏按钮：收起整套面板、只留一个悬浮球，同时把任务搁置（引擎在下一轮开始前挂起）；
-        // 用户点悬浮球即可原样唤出并继续执行
-        val hideChip = TextView(this).apply {
-            text = "隐藏"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP,
-                FloatingUi.ON_BRAND_STATE_WEAK)
-            setPadding(FloatingUi.PAD, 0, FloatingUi.PAD, 0)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(26),
-            ).apply { marginStart = dp(6) }
-            setOnClickListener {
-                hideForUser()
-                onInteraction?.invoke("hide", "")
-            }
-        }
-        bindPress(hideChip)
-        header?.addView(close)
-        panel.addView(header)
-
-        // 状态行：阶段徽章 + 步骤文字 + 次要操作（详情 / 隐藏）。
-        // 完成态整行让位给打勾面板，所以它单独存一份引用。
-        statusRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(FloatingUi.PAD_L, dp(2), FloatingUi.PAD, FloatingUi.PAD_S)
-        }
-        phaseChip = TextView(this).apply {
-            text = "待命"
-            textSize = 10f
-            // 主题色底上用实心阶段色胶囊 + 白字：半透明的淡色底在深色卡片上读不出层次
-            setTextColor(FloatingUi.ON_BRAND)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(this@FloatingWindowService, 
-                FloatingUi.RADIUS_CHIP / 2,
-                FloatingUi.phaseColor("PENDING"),
-            )
-            setPadding(FloatingUi.PAD, dp(3), FloatingUi.PAD, dp(3))
-        }
-        stepText = TextView(this).apply {
-            text = "等待任务..."
-            textSize = 12f
-            setTextColor(FloatingUi.ON_BRAND_SECONDARY)
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(FloatingUi.PAD, 0, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        statusRow?.addView(phaseChip)
-        statusRow?.addView(stepText)
-        statusRow?.addView(expandChip)
-        statusRow?.addView(hideChip)
-        statusRow?.let { panel.addView(it) }
-        // 进度条：用户反馈无用，始终保持隐藏（不占悬浮窗空间）
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progress = 0
-            visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4))
-        }
-        panel.addView(progressBar)
-
-        // AI 详情面板：圆角内嵌卡片，按 发送/返回/审核 分栏
-        // 默认 GONE（折叠）：只在用户点「详情」或点头部时占位，避免窗口常驻撑高
-        thinkingPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L, FloatingUi.PAD_L)
-            themed { p -> background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PANEL,
-                p.panel) }
-        }
-        // 内容可滚动，限制高度避免悬浮窗过大（折叠时整块不占位）
-        thinkingScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(FloatingUi.THINKING_H))
-            isVerticalScrollBarEnabled = false
-            isFillViewport = true
-            setPadding(0, FloatingUi.PAD, 0, 0)
-            clipToPadding = false
-            clipToOutline = false
-        }
-        val thinkCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val sentLabel = TextView(this).apply {
-            text = "发送给 AI"
-            textSize = 10f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6), 0, 0)
-            themed { p -> setTextColor(p.textTertiary) }
-        }
-        thinkCol.addView(sentLabel)
-        thinkingSentText = TextView(this).apply {
-            text = ""
-            textSize = 11f
-            setPadding(0, dp(3), 0, dp(2))
-            themed { p -> setTextColor(p.textSecondary) }
-        }
-        thinkCol.addView(thinkingSentText)
-        val retLabel = TextView(this).apply {
-            text = "AI 返回"
-            textSize = 10f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6), 0, 0)
-            themed { p -> setTextColor(p.textTertiary) }
-        }
-        thinkCol.addView(retLabel)
-        thinkingReturnText = TextView(this).apply {
-            text = ""
-            textSize = 11f
-            setPadding(0, dp(3), 0, dp(2))
-            themed { p -> setTextColor(p.textPrimary) }
-        }
-        thinkCol.addView(thinkingReturnText)
-        val reviewLabel = TextView(this).apply {
-            text = "审核结论"
-            textSize = 10f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(0, dp(6), 0, 0)
-            themed { p -> setTextColor(p.brand) }
-        }
-        thinkCol.addView(reviewLabel)
-        reviewText = TextView(this).apply {
-            text = ""
-            textSize = 11f
-            setPadding(0, dp(3), 0, dp(4))
-            themed { p -> setTextColor(p.brand) }
-        }
-        thinkCol.addView(reviewText)
-        thinkingScroll?.addView(thinkCol)
-        thinkingPanel?.addView(thinkingScroll)
-        panel.addView(thinkingPanel)
-
-        // 交互区域（批准/澄清/指导，默认隐藏）：暖纸白实色卡 + 发丝描边。
-        // 圆角取第一层 RADIUS_CARD：它是这扇窗口最外层的表面，与 App 侧同名的协助浮层
-        // （AgentAssistSheet，容器同为 Card 圆角）对齐；内层的选项行/输入框再降一档到 RADIUS_TILE。
-        interactPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL))
-            themed { p ->
-                background = FloatingUi.capsule(this@FloatingWindowService, 
-                    FloatingUi.RADIUS_CARD,
-                    p.panel,
-                    p.panelEdge,
-                    dp(1),
-                )
-            }
-        }
-        // 帮助徽章 + 标题 + 收起
-        val interactHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val helpBadge = TextView(this).apply {
-            text = "助手"
-            textSize = 10f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, FloatingUi.ACCENT_WARM)
-            setPadding(dp(FloatingUi.PAD), dp(3), dp(FloatingUi.PAD), dp(3))
-        }
-        interactTitle = TextView(this).apply {
-            text = "需要确认"
-            textSize = 13f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(FloatingUi.PAD), 0, 0, 0)
-            // 占满中间：把「收起」顶到最右侧，标题多长都不会把它挤走
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            themed { p -> setTextColor(p.textPrimary) }
-        }
-        // 「收起」：让出屏幕。收起后面板整块 GONE，只留右下角一枚入口胶囊，
-        // 用户可以先去动手处理屏幕上的事，处理完再点胶囊回来回答（问题不会丢）
-        val collapseChip = TextView(this).apply {
-            text = "收起"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setPadding(dp(10), 0, dp(10), 0)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26))
-            setOnClickListener { setInteractCollapsed(true) }
-            themed { p ->
-                setTextColor(p.brand)
-                background = FloatingUi.capsule(this@FloatingWindowService, 
-                    FloatingUi.RADIUS_PILL,
-                    p.panelSunken,
-                    p.panelEdge,
-                    dp(1),
-                )
-            }
-        }
-        interactHeader.addView(helpBadge)
-        interactHeader.addView(interactTitle)
-        interactHeader.addView(collapseChip)
-        interactPanel?.addView(interactHeader)
-        // 内容可滚动（长文本）
-        //
-        // 这里**不能**用「高度 0 + weight 1」那种"占满剩余空间"的写法：选项卡窗口是
-        // WRAP_CONTENT，LinearLayout 在 AT_MOST 下会把「沿高度方向的剩余空间」全分给权重子视图，
-        // 而剩余空间就是整块屏幕 —— 面板于是被撑到整屏高，整个窗口变成一张盖住全屏的
-        // 透明可触摸层：屏幕上千点什么都落到这层上（用户侧表现就是"整个手机都点不动"，
-        // 而底部跑马灯是另一个窗口，照旧在滚）。
-        // 改成「限高内滚」：短文案贴合内容高度（不再留一片固定 140dp 的空白），超长才内滚。
-        val contentScroll = MaxHeightScrollView(this, dp(140)).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            )
-            isVerticalScrollBarEnabled = false
-        }
-        interactContent = TextView(this).apply {
-            text = ""
-            textSize = 12f
-            setPadding(0, dp(8), 0, dp(2))
-            themed { p -> setTextColor(p.textPrimary) }
-        }
-        contentScroll.addView(interactContent)
-        interactPanel?.addView(contentScroll)
-        // 选项行 / 出口行的容器（按交互类型重建）
-        interactRows = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        interactPanel?.addView(interactRows)
-        // 指导输入框
-        hintInput = EditText(this).apply {
-            textSize = 12f
-            setHint("告诉 AI 该怎么做（或留空）")
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 2
-            maxLines = 3
-            setBackgroundResource(0)
-            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
-            themed { p ->
-                setTextColor(p.textPrimary)
-                setHintTextColor(p.textTertiary)
-                background = FloatingUi.capsule(this@FloatingWindowService, 
-                    FloatingUi.RADIUS_TILE,
-                    p.panelSunken,
-                    p.panelEdge,
-                    dp(1),
-                )
-            }
-        }
-        interactPanel?.addView(hintInput)
-        interactActions = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        interactPanel?.addView(interactActions)
-        // 交互面板不再挂进顶部窗口：它由底部选项卡承载（见 showSheetWindow），
-        // 顶部只保留任务状态与跑马灯，两边职责不重叠
-
-        return panel
-    }
 
     // ==================== 拖动（仅头部）：点击展开 / 拖动移位 / 松手归位 ====================
-    private var startX = 0
-    private var startY = 0
-    private var startTouchX = 0f
-    private var startTouchY = 0f
+    internal var startX = 0
+    internal var startY = 0
+    internal var startTouchX = 0f
+    internal var startTouchY = 0f
 
     /** 本次手势是否已越过触摸阈值（用于区分"轻点"与"拖动"） */
-    private var dragging = false
+    internal var dragging = false
 
-    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
+    internal val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop }
 
-    private fun onTouchDrag(event: MotionEvent): Boolean {
-        val p = params ?: return false
-        val vtracker = velocityTracker ?: VelocityTracker.obtain().also { velocityTracker = it }
-        vtracker.addMovement(event)
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                // 取消进行中的惯性滑动
-                isFlinging = false
-                flingScroller?.forceFinished(true)
-                startX = p.x; startY = p.y
-                startTouchX = event.rawX; startTouchY = event.rawY
-                dragging = false
-                vtracker.clear()
-                vtracker.addMovement(event)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.rawX - startTouchX
-                val dy = event.rawY - startTouchY
-                // 越过阈值才算拖动：否则手指的微小抖动会把"轻点"变成位移，
-                // 窗口跟着抖一下、点击展开也永远触发不了
-                if (!dragging && (kotlin.math.abs(dx) > touchSlop || kotlin.math.abs(dy) > touchSlop)) {
-                    dragging = true
-                }
-                if (!dragging) return true
-                p.x = (startX + dx).toInt()
-                p.y = (startY + dy).toInt()
-                // 拖动期间悬浮窗可能被销毁（removeWindow），root 为空时跳过更新，避免 NPE
-                root?.let { r -> windowManager?.updateViewLayout(r, p) }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                vtracker.computeCurrentVelocity(1000)
-                val vx = vtracker.xVelocity
-                val vy = vtracker.yVelocity
-                velocityTracker?.recycle()
-                velocityTracker = null
-                if (!dragging) {
-                    // 轻点头部：切换 AI 详情展开/收起
-                    toggleThinking()
-                } else {
-                    settlePosition(vx, vy)
-                }
-            }
-        }
-        return true
-    }
 
-    /**
-     * 松手后的归位：先做「边缘吸附 / 越界回收」，都不需要时才让惯性滑行。
-     *
-     * 窗口用 FLAG_LAYOUT_NO_LIMITS，本身可以被拖到屏幕外——不收拾就会出现
-     * "窗口拖丢了、任务还在跑却看不到状态"的情况；靠近左右边缘时吸附贴边，
-     * 也让悬浮窗更像系统组件而不是随手丢在屏幕中间的补丁。
-     */
-    private fun settlePosition(vx: Float, vy: Float) {
-        val p = params ?: return
-        val r = root ?: return
-        val point = android.graphics.Point()
-        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
-        val screenW = if (point.x > 0) point.x else dp(360)
-        val screenH = if (point.y > 0) point.y else dp(640)
-        val winW = dp(FloatingUi.WIDTH)
-        val winH = if (r.height > 0) r.height else dp(120)
-        val gap = dp(FloatingUi.EDGE_GAP)
-        val snapZone = dp(FloatingUi.SNAP_ZONE)
-        val targetX = when {
-            p.x <= snapZone -> gap
-            p.x + winW >= screenW - snapZone -> (screenW - winW - gap).coerceAtLeast(gap)
-            else -> null
-        }
-        // 纵向：顶部最多贴到状态栏下方，底部至少留一角可抓
-        val minY = cardTopLimit()
-        val maxY = (screenH - winH - dp(24)).coerceAtLeast(minY)
-        val targetY = p.y.coerceIn(minY, maxY)
-        if (targetX != null || targetY != p.y) {
-            animateTo(targetX ?: p.x, targetY)
-            return
-        }
-        if (kotlin.math.abs(vx) + kotlin.math.abs(vy) > 900f) {
-            startFling(p.x, p.y, vx, vy)
-        }
-    }
 
-    /** 位置动画：吸附/回收用，起快收缓，避免窗口"跳"过去 */
-    private fun animateTo(targetX: Int, targetY: Int) {
-        val p = params ?: return
-        val r = root ?: return
-        val sx = p.x
-        val sy = p.y
-        ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = OverlayMotion.EnterMs.toLong()
-            interpolator = OverlayMotion.EaseOut
-            addUpdateListener { anim ->
-                val t = anim.animatedValue as Float
-                p.x = sx + ((targetX - sx) * t).toInt()
-                p.y = sy + ((targetY - sy) * t).toInt()
-                runCatching { windowManager?.updateViewLayout(r, p) }
-            }
-            start()
-        }
-    }
-
-    /** 惯性滑行：用 OverScroller 沿松手速度衰减滑动，平滑停止 */
-    private fun startFling(startX: Int, startY: Int, vx: Float, vy: Float) {
-        val point = android.graphics.Point()
-        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
-        val screenW = if (point.x > 0) point.x else dp(360)
-        val screenH = if (point.y > 0) point.y else dp(640)
-        val winW = dp(FloatingUi.WIDTH)
-        val rootH = root?.height ?: 0
-        val winH = if (rootH > 0) rootH else dp(120)
-        val gap = dp(FloatingUi.EDGE_GAP)
-        flingScroller?.forceFinished(true)
-        flingScroller = OverScroller(this).apply {
-            fling(
-                startX, startY,
-                vx.toInt(), vy.toInt(),
-                gap, (screenW - winW - gap).coerceAtLeast(gap),   // x：始终保留完整窗口在屏内
-                cardTopLimit(),                                    // y：顶部不越过状态栏
-                (screenH - winH - dp(24)).coerceAtLeast(cardTopLimit()),
-            )
-        }
-        isFlinging = true
-        Choreographer.getInstance().postFrameCallback(frameCallback)
-    }
-
-    private fun onFlingFrame() {
-        if (!isFlinging) return
-        val scroller = flingScroller ?: return
-        val p = params ?: return
-        val r = root ?: return
-        if (scroller.computeScrollOffset()) {
-            if (p.x != scroller.currX || p.y != scroller.currY) {
-                p.x = scroller.currX
-                p.y = scroller.currY
-                windowManager?.updateViewLayout(r, p)
-            }
-            Choreographer.getInstance().postFrameCallback(frameCallback)
-        } else {
-            isFlinging = false
-        }
-    }
-
-    // ==================== 对外更新 ====================
-
-    /**
-     * 更新悬浮窗进度状态。
-     * @param status 状态文本
-     * @param task 任务名称
-     * @param reasoning AI 推理/思考内容
-     * @param step 当前步骤
-     * @param total 总步骤
-     * @param phase 阶段（OBSERVING/THINKING/ACTING/DONE/ERROR）
-     */
-    fun updateStatus(
-        status: String,
-        task: String,
-        reasoning: String,
-        step: Int,
-        total: Int,
-        phase: String,
-    ) {
-        handler.post {
-            // 新任务开始时自动恢复常规面板（清除上一个任务的完成态残留）
-            resetPanel()
-            // 记录最近一次任务名：悬浮窗销毁时状态总线要拿它做 Widget 的空闲摘要
-            currentTask = task
-            // 跑马灯底色随阶段变化（跟随状态）或保持用户自定义配色
-            currentPhase = phase
-            marquee?.let { applyMarqueePalette(it) }
-            // 记录原始入参 + 按显示设置落到两处（跑马灯 / 卡片状态行），避免同一条描述画两遍
-            lastStatusText = status
-            lastReasoningText = reasoning
-            lastStep = step
-            lastTotal = total
-            applyStepTextPlacement()
-            taskTitle?.text = task
-            // 阶段徽章：实心阶段色胶囊 + 白字（卡片是实色主题色，徽章也必须实色才压得住）
-            val ph = FloatingUi.phaseColor(phase)
-            phaseChip?.text = phaseLabel(phase)
-            phaseChip?.setTextColor(FloatingUi.ON_BRAND)
-            phaseChip?.background = FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_CHIP / 2, ph)
-            // 进度条已隐藏（用户反馈无用），仅显示步骤文字
-            dot?.setBackgroundColor(dotColor(phase))
-            startDotPulse()
-            // 实时更新通知
-            updateNotification(status, task, step)
-            // 用户收起面板期间：状态照常更新到各控件上，但面板不能自己冒回来
-            applyUserHidden()
-        }
-    }
-
-    /** 阶段枚举 → 友好中文标签 */
-    private fun phaseLabel(phase: String): String = when (phase) {
-        "OBSERVING" -> "观察中"
-        "THINKING" -> "思考中"
-        "ACTING" -> "执行中"
-        "DONE" -> "已完成"
-        "ERROR" -> "出错"
-        else -> "待命"
-    }
-
-    /** 清空思考显示区：流式请求中断自动重试前调用，避免重放内容与旧文本重复累积 */
-    fun resetThinking() {
-        handler.post {
-            clearThinkingReturn()
-            thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
-        }
-    }
-
-    /** 清空流式返回区：TextView 与累积缓冲必须一起清，否则下一轮会把旧内容再接上 */
-    private fun clearThinkingReturn() {
-        thinkingBuffer.setLength(0)
-        thinkingReturnText?.text = ""
-    }
-
-    /**
-     * 实时更新 AI 详情面板：显示发送给 AI 的内容与流式返回的内容，并同步更新通知。
-     *
-     * 折叠状态下**只累积内容、不显示面板** —— 详情区有 112dp 高，若每来一段流式文本
-     * 就自动弹出来，窗口会在任务执行中反复变高变大，正是"遮挡屏幕"的来源。
-     * 用户点开「详情」后内容即刻可见，因为文本一直在后台累积。
-     *
-     * @param sent 发送给 AI 的文本（首次传入；后续传 null 保持已显示内容）
-     * @param delta 流式返回的增量文本（null 表示不更新返回区）
-     */
-    fun updateThinking(sent: String? = null, delta: String? = null) {
-        handler.post {
-            val hasSent = !sent.isNullOrBlank()
-            val hasDelta = !delta.isNullOrBlank()
-            if (!hasSent && !hasDelta) return@post
-            if (hasSent && sent != lastSentShown) {
-                lastSentShown = sent
-                thinkingSentText?.text = sent!!.take(600) + if (sent!!.length > 600) "…" else ""
-            }
-            if (hasDelta) {
-                // 限制展示长度，避免内容无限增长（完整内容由 AI 客户端保留用于解析）；
-                // 返回区是流式追加，用户要看的是最新内容，超限时保留**尾部**。
-                // 用 StringBuilder 累积：逐增量做字符串拼接是 O(n²) 的拷贝量
-                thinkingBuffer.append(delta)
-                if (thinkingBuffer.length > THINKING_DISPLAY_MAX) {
-                    thinkingBuffer.delete(0, thinkingBuffer.length - THINKING_DISPLAY_MAX)
-                }
-                thinkingReturnText?.text = thinkingBuffer.toString()
-                // 只有展开时才需要滚动到底：折叠状态下滚动位置没人看，做了也是白做
-                if (thinkingExpanded) {
-                    thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
-                }
-                notifyThinkingThrottled()
-            }
-        }
-    }
-
-    /** 同步 AI 思考到通知栏（节流）：流式增量每秒数次，逐条 notify 是跨进程调用，代价高 */
-    private fun notifyThinkingThrottled() {
-        val now = SystemClock.uptimeMillis()
-        if (now - lastThinkNotifyAt < NOTIFY_THROTTLE_MS) return
-        lastThinkNotifyAt = now
-        val task = taskTitle?.text?.toString() ?: "Happy Agent"
-        updateNotification("AI 思考中", task, 0, thinkingReturnText?.text?.toString().orEmpty())
-    }
-
-    /**
-     * 状态点呼吸脉冲：透明度在 0.45~1 间往复，让任务执行状态更“有生命”。
-     * 遵循“常驻/循环动效用线性往复”的规范，仅在任务运行期间启用。
-     */
-    private fun startDotPulse() {
-        if (dotPulseAnimator?.isRunning == true) return
-        dotPulseAnimator = ValueAnimator.ofFloat(0.45f, 1f).apply {
-            // 循环动效统一走 OverlayMotion.PulseMs：与骨架/运行指示同一个节拍
-            duration = OverlayMotion.PulseMs.toLong()
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.REVERSE
-            interpolator = OverlayMotion.EaseOut
-            addUpdateListener { dot?.alpha = it.animatedValue as Float }
-            start()
-        }
-    }
-
-    private fun stopDotPulse() {
-        dotPulseAnimator?.cancel()
-        dotPulseAnimator = null
-        dot?.alpha = 1f
-    }
-
-    /** 审核结果行实时更新：在思考面板内展示审核者的 pass/拒绝原因/采用的修正 */
-    private fun updateReview(text: String?) {
-        handler.post {
-            reviewText?.text = text ?: ""
-            updateNotification("AI 思考中", taskTitle?.text?.toString() ?: "Happy Agent", 0,
-                thinkingReturnText?.text?.toString().orEmpty())
-        }
-    }
-
-    /**
-     * 恢复常规面板视图：隐藏完成面板，重新显示步骤/进度/头部。
-     * 用于新任务开始时清除上一个任务完成态的残留。
-     */
-    private fun resetPanel() {
-        // 上一次收尾的交接可能还挂在 800ms 停留里：新任务开始必须取消，
-        // 否则它会在新任务跑到一半时把面板和跑马灯一起淡掉
-        handler.removeCallbacks(doneHandoff)
-        pendingDoneOutcome = null
-        // 新任务开始时把上一次的完成卡片收起来（它可能还在 8s 自动关闭倒计时里）。
-        // 只隐藏不销毁：窗口在任务开始时已预热，留着下次完成态直接复用
-        hideDoneCardNow()
-        // 完成态会把顶部任务卡整块让位给完成卡片；新任务必须把它放回来
-        root?.visibility = View.VISIBLE
-        root?.alpha = 1f
-        marquee?.alpha = 1f
-        dot?.visibility = View.VISIBLE
-        setMarqueeVisible(true)
-        statusRow?.visibility = View.VISIBLE
-        progressBar?.visibility = View.GONE
-        interactPanel?.visibility = View.GONE
-        // 详情区按用户的展开状态恢复：折叠时保持 GONE，否则窗口会在每步更新后突然变高
-        thinkingPanel?.visibility = if (thinkingExpanded) View.VISIBLE else View.GONE
-        thinkingSentText?.text = ""
-        clearThinkingReturn()
-        reviewText?.text = ""
-        lastSentShown = ""
-        lastThinkNotifyAt = 0L
-        header?.visibility = View.VISIBLE
-    }
-
-    /** 切换 AI 详情区的展开/收起（点头部或点「详情」按钮） */
-    private fun toggleThinking() {
-        thinkingExpanded = !thinkingExpanded
-        thinkingPanel?.visibility = if (thinkingExpanded) View.VISIBLE else View.GONE
-        expandChip?.text = if (thinkingExpanded) "收起" else "详情"
-        if (thinkingExpanded) {
-            thinkingScroll?.post { thinkingScroll?.fullScroll(View.FOCUS_DOWN) }
-        }
-    }
-
-    /** 复位为折叠态（新任务/任务结束时调用，避免上一个任务的展开状态带过来） */
-    private fun collapseThinking() {
-        thinkingExpanded = false
-        thinkingPanel?.visibility = View.GONE
-        expandChip?.text = "详情"
-    }
-
-    /**
-     * 显示交互面板（批准/澄清/指导），供用户在悬浮窗内直接操作。
-     * @param type approve=批准计划 / clarify=歧义澄清 / guide=需要指导 / null=隐藏
-     * @param title 交互标题
-     * @param content 交互内容
-     * @param options 澄清选项文本列表（type=clarify 时有效）
-     */
-    fun showInteraction(type: String?, title: String?, content: String?, options: List<String>? = null) {
-        handler.post {
-            if (type == null) {
-                hideSheet()
-                hideKeyboard()
-                return@post
-            }
-            // 记下入参：系统切深浅色时要用同一份入参把动态行重绘一遍
-            lastInteractType = type
-            lastInteractTitle = title
-            lastInteractContent = content
-            lastInteractOptions = options
-            // 所有交互（批准 / 保存模板 / 澄清 / 指导）都渲染在同一个 interactPanel 里，
-            // 而 interactPanel 挂在底部选项卡窗口上，顶部窗口只保留状态与跑马灯。
-            // 所以这里必须做三件事，缺一样用户就操作不了：
-            //   1) 面板置 VISIBLE —— 它的初值/重置值都是 GONE，只让它滑出容器是看不见的；
-            //   2) 按类型重建按钮；
-            //   3) showSheet() 让选项卡容器滑出来 —— 容器默认 GONE，
-            //      之前 approve / savetemplate 走的是"顶部渲染"分支（面板早已不挂在顶部窗口），
-            //      面板永远不可见，于是需要批准时用户点什么都没反应、任务一直挂着。
-            interactRows?.removeAllViews()
-            hintInput?.visibility = View.GONE
-            hintInput?.setText("")
-            interactActions?.removeAllViews()
-            interactTitle?.text = title ?: "需要确认"
-            interactContent?.text = content ?: ""
-            // 每次新交互都从展开态开始：收起是"我现在要腾出手"，不该被下一个问题继承
-            setInteractCollapsed(false)
-
-            when (type) {
-                "approve" -> {
-                    // 批准/取消
-                    addActionRow(
-                        interactRows,
-                        secondaryLabel = "取消",
-                        secondaryClick = { onInteraction?.invoke("cancel", "") },
-                        primaryLabel = "批准并开始",
-                        primaryClick = { onInteraction?.invoke("approve", "") },
-                    )
-                }
-                "savetemplate" -> {
-                    // 任务完成：是否把执行步骤保存为模板（用户主动确认才入库）
-                    addActionRow(
-                        interactRows,
-                        secondaryLabel = "不保存",
-                        secondaryClick = { onInteraction?.invoke("save_template", "no") },
-                        primaryLabel = "保存为模板",
-                        primaryClick = { onInteraction?.invoke("save_template", "yes") },
-                    )
-                }
-                "clarify" -> {
-                    // 选项行：一行一个、点一下即答，与 App 侧协助浮层的选项行同构
-                    options?.forEach { opt ->
-                        addOptionRow(interactRows, opt) { onInteraction?.invoke("clarify", opt) }
-                    }
-                    addOptionRow(interactRows, "✏️ 我想自己说", highlight = true) {
-                        showHintInput()
-                    }
-                }
-                "guide" -> {
-                    showHintInput()
-                }
-                "shellconfirm" -> {
-                    // 自由模式：AI 自写命令的首次确认。批准后本任务内不再问；
-                    // 拒绝只针对本任务，不改动 Agent 页那条动作模式切换条的档位。
-                    addActionRow(
-                        interactRows,
-                        secondaryLabel = "拒绝",
-                        secondaryClick = { onInteraction?.invoke("shell_approve", "no") },
-                        primaryLabel = "批准执行",
-                        primaryClick = { onInteraction?.invoke("shell_approve", "yes") },
-                    )
-                }
-            }
-            showSheet()
-        }
-    }
-
-    private fun showHintInput() {
-        // 输入前切换窗口为可聚焦输入模式，保证软键盘能弹出
-        setInputMode(true)
-        hintInput?.requestFocus()
-        hintInput?.visibility = View.VISIBLE
-        interactActions?.removeAllViews()
-        addActionRow(
-            interactActions,
-            secondaryLabel = "已手动处理",
-            secondaryClick = { onInteraction?.invoke("dismiss", "") },
-            primaryLabel = "指导 AI",
-            primaryClick = {
-                val text = hintInput?.text?.toString()?.trim() ?: ""
-                if (text.isEmpty()) {
-                    // 留空点击「指导 AI」等价「已手动处理」，避免空串被 provideUserHint 吞掉导致静默挂起
-                    onInteraction?.invoke("dismiss", "")
-                } else {
-                    onInteraction?.invoke("hint", text)
-                }
-                hintInput?.setText("")
-            },
-        )
-        // 延迟弹出软键盘，等待窗口布局完成后再唤起输入法
-        hintInput?.postDelayed({
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.showSoftInput(hintInput, InputMethodManager.SHOW_IMPLICIT)
-        }, 200)
-    }
-
-    /** 切换悬浮窗输入模式：输入时窗口移除 NOT_FOCUSABLE 并加 FLAG_ALT_FOCUSABLE_IM 以弹出软键盘，
-     *  输入结束恢复 NOT_FOCUSABLE，保证窗口始终可拖动且不抢占系统焦点 */
-    private fun setInputMode(enabled: Boolean) {
-        // 输入框现在在底部选项卡里，焦点模式切换的是选项卡窗口；
-        // 顶部窗口始终保持 NOT_FOCUSABLE（不抢输入焦点，也不影响拖动）
-        val p = sheetParams ?: return
-        val rootView = sheetRoot ?: return
-        p.flags = if (enabled) {
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM
-        } else {
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        }
-        runCatching { windowManager?.updateViewLayout(rootView, p) }
-    }
 
     /**
      * 登记一个「跟随主题重上色」的视图：登记时立刻按当前配色涂一遍，
      * 之后系统深浅色翻面时会被再跑一遍（见 [onConfigurationChanged]）。
      */
-    private fun themed(apply: (FloatingUi.Palette) -> Unit) {
+    internal fun themed(apply: (FloatingUi.Palette) -> Unit) {
         themeAppliers += apply
         apply(palette)
     }
@@ -2038,1000 +487,17 @@ class FloatingWindowService : Service() {
         rerenderInteractRows()
     }
 
-    /**
-     * 屏幕旋转后重排所有悬浮窗口。
-     *
-     * 各窗口的差异：
-     * - 任务卡片（[root]）：x/y 是拖动/初始定位留下的绝对坐标，旋转后可能整块出屏，
-     *   按新屏幕尺寸夹回「顶部不越状态栏、底部留 24dp、左右留边距」的既有边界（与惯性滑行同界）；
-     * - 悬浮球（[miniRoot]）：固定在右上角，x 按新屏宽重算；
-     * - 跑马灯（[marquee]）：gravity=BOTTOM|CENTER_HORIZONTAL，横向自动跟随新屏宽，
-     *   只需把底部偏移按新方向的导航栏 inset 重算；
-     * - 底部选项卡（[sheetRoot]）：MATCH_PARENT + BOTTOM 居中，系统旋转时自动重排，无需处理。
-     */
-    private fun relayoutOverlays() {
-        val point = android.graphics.Point()
-        runCatching { windowManager?.defaultDisplay?.getRealSize(point) }
-        val screenW = if (point.x > 0) point.x else dp(360)
-        val screenH = if (point.y > 0) point.y else dp(640)
-        val gap = dp(FloatingUi.EDGE_GAP)
-        params?.let { p ->
-            val r = root ?: return@let
-            val winW = dp(FloatingUi.WIDTH)
-            val rootH = r.height
-            val winH = if (rootH > 0) rootH else dp(120)
-            p.x = p.x.coerceIn(gap, (screenW - winW - gap).coerceAtLeast(gap))
-            p.y = p.y.coerceIn(cardTopLimit(), (screenH - winH - dp(24)).coerceAtLeast(cardTopLimit()))
-            runCatching { windowManager?.updateViewLayout(r, p) }
-        }
-        miniRoot?.let { ball ->
-            val lp = ball.layoutParams as? WindowManager.LayoutParams ?: return@let
-            lp.x = screenW - dp(MINI_BALL_SIZE) - dp(FloatingUi.PAD_L)
-            lp.y = cardTopLimit() + dp(FloatingUi.PAD)
-            runCatching { windowManager?.updateViewLayout(ball, lp) }
-        }
-        barParams?.let { lp ->
-            val bar = marquee ?: return@let
-            // 窗口宽度随屏幕方向重算：宽度仍是固定值，文本更新不会改变它
-            lp.width = marqueeWindowWidthPx(screenW)
-            lp.y = marqueeBottomOffset()
-            runCatching { windowManager?.updateViewLayout(bar, lp) }
-        }
-        noticeParams?.let { lp ->
-            val notice = noticeRoot ?: return@let
-            // 提示细条：宽度跟胶囊一起换，底边重新贴到胶囊上方（导航栏 inset 也随方向变了）
-            lp.width = OverlayWindowSpec.marqueeWidthPx(screenW, dp(marqueeSideMargin))
-            lp.y = noticeBottomOffset()
-            runCatching { windowManager?.updateViewLayout(notice, lp) }
-        }
-    }
 
-    /**
-     * 重绘答疑里的动态行（选项行 / 出口行）。
-     *
-     * 这些视图每次交互现建，登记不到静态表里，只能按上次的入参重新渲染一遍。
-     * 重来之前先把"正在输入"这个状态和用户已经打好的字记下来，之后原样还回去 ——
-     * 切主题不该让用户丢掉半句已经写完的回答。
-     */
-    private fun rerenderInteractRows() {
-        val type = lastInteractType ?: return
-        // 收起的面板不重绘：它的可见内容只有一枚主色胶囊，本身就不随主题变
-        if (interactCollapsed) return
-        val draft = hintInput?.text?.toString().orEmpty()
-        val inputOpen = hintInput?.visibility == View.VISIBLE
-        // 重绘走 showInteraction 自己的队列（内部会 post 到主线程）；输入状态用一个后入队的
-        // post 补回来 —— 同一个 Handler 是 FIFO，后入队的一定跑在重绘之后。
-        showInteraction(type, lastInteractTitle, lastInteractContent, lastInteractOptions)
-        if (!inputOpen) return
-        handler.post {
-            showHintInput()
-            hintInput?.setText(draft)
-            hintInput?.setSelection(draft.length)
-        }
-    }
 
-    /**
-     * 收起/展开答疑面板。
-     *
-     * 收起 = 把面板整块让出屏幕，只留右下角一枚入口胶囊（[collapsedPill]）；
-     * 同时收起软键盘并恢复窗口的不可聚焦模式 —— 留着可聚焦的窗口会让底下 App 的输入法行为异常。
-     * 问题本身不受影响：AI 仍在等这个答案，点胶囊即可原样展开继续回答。
-     */
-    private fun setInteractCollapsed(collapsed: Boolean) {
-        interactCollapsed = collapsed
-        if (collapsed) hideKeyboard()
-        interactPanel?.visibility = if (collapsed) View.GONE else View.VISIBLE
-        collapsedPill?.visibility = if (collapsed) View.VISIBLE else View.GONE
-        applySheetCollapsedWindow(collapsed)
-    }
 
-    /**
-     * 收起时把窗口本身也收窄到胶囊大小。
-     *
-     * 只把面板置 GONE 还不够：窗口是 MATCH_PARENT 宽，收起来之后仍然是一条全宽、几十 dp 高、
-     * 什么都看不见却能触摸的窗口，落在其中的操作全被它吃掉。收窄到 WRAP_CONTENT + 右对齐后，
-     * 屏幕上只剩胶囊那一小块归悬浮窗，其余位置照常传给底下的 App。
-     */
-    private fun applySheetCollapsedWindow(collapsed: Boolean) {
-        val p = sheetParams ?: return
-        val root = sheetRoot ?: return
-        p.width = if (collapsed) {
-            WindowManager.LayoutParams.WRAP_CONTENT
-        } else {
-            WindowManager.LayoutParams.MATCH_PARENT
-        }
-        p.gravity = if (collapsed) {
-            Gravity.BOTTOM or Gravity.END
-        } else {
-            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        }
-        runCatching { windowManager?.updateViewLayout(root, p) }
-    }
 
-    /**
-     * 胶囊按钮：主操作 = 主题色实底白字，次要 = 下沉实底 + 发丝描边。
-     * 两种态都是不透明表面（不再用半透明叠层做层次），悬浮在别的 App 之上也不会透出底图。
-     */
-    private fun actionButton(label: String, primary: Boolean, onClick: () -> Unit): TextView =
-        TextView(this).apply {
-            text = label
-            textSize = 12f
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setTextColor(if (primary) palette.onBrand else palette.textPrimary)
-            background = if (primary) {
-                FloatingUi.capsule(this@FloatingWindowService, FloatingUi.RADIUS_PILL, palette.brand)
-            } else {
-                FloatingUi.capsule(this@FloatingWindowService, 
-                    FloatingUi.RADIUS_PILL,
-                    palette.panelSunken,
-                    palette.panelEdge,
-                    dp(1),
-                )
-            }
-            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), 0)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
-            setOnClickListener { onClick() }
-        }.also { bindPress(it) }
 
-    /**
-     * 出口行：次要在左、主操作在右（与 App 侧协助浮层的出口行同构）。
-     * 两个按钮都靠内容定宽，中间用一条权重空隙把主操作推到最右 —— 主操作的落点固定，
-     * 不会因为次要按钮文案长短而左右横跳。
-     */
-    private fun addActionRow(
-        container: LinearLayout?,
-        secondaryLabel: String?,
-        secondaryClick: (() -> Unit)?,
-        primaryLabel: String,
-        primaryClick: () -> Unit,
-    ) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(FloatingUi.PAD_L) }
-        }
-        if (secondaryLabel != null && secondaryClick != null) {
-            row.addView(actionButton(secondaryLabel, false, secondaryClick))
-        }
-        row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        row.addView(actionButton(primaryLabel, true, primaryClick))
-        container?.addView(row)
-    }
 
-    /**
-     * 选项行：一行一个、点一下即答（澄清候选答案）。
-     * 圆角取第三层 RADIUS_TILE、底色取下沉实色 —— 与输入框同一档，读起来是"能点的行"而不是按钮。
-     * [highlight] 用于「我想自己说」这种不是答案、而是"我要打字"的入口。
-     */
-    private fun addOptionRow(container: LinearLayout?, label: String, highlight: Boolean = false, onClick: () -> Unit) {
-        val row = TextView(this).apply {
-            text = label
-            textSize = 12f
-            setTextColor(if (highlight) palette.brand else palette.textPrimary)
-            background = FloatingUi.capsule(this@FloatingWindowService, 
-                FloatingUi.RADIUS_TILE,
-                palette.panelSunken,
-                palette.panelEdge,
-                dp(1),
-            )
-            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(FloatingUi.PAD) }
-            setOnClickListener { onClick() }
-        }
-        bindPress(row)
-        container?.addView(row)
-    }
 
-    /**
-     * 限高滚动容器：内容短时贴合内容高度，超长时限到上限并内部滚动。
-     *
-     * 为什么不用固定高度：短文案下会在卡片里留一片空白，面板看着像"没做完"。
-     * 为什么不用「高度 0 + weight 1」：选项卡窗口是 WRAP_CONTENT，LinearLayout 在 AT_MOST 下
-     * 会把整屏剩余空间分给权重子视图，窗口被撑到整屏高 —— 一层透明却可触摸的窗口会盖住整块屏幕。
-     */
-    private class MaxHeightScrollView(context: Context, private val maxHeightPx: Int) : ScrollView(context) {
-        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(maxHeightPx, View.MeasureSpec.AT_MOST))
-        }
-    }
 
-    /**
-     * 正文底部的渐变遮罩：从透明过渡到卡片底色，提示"下面还有内容"。
-     *
-     * 它只盖在滚动区最后 28dp 上，不改卡片本身的实色——遮罩之外仍是完整不透明的面板底，
-     * 不会出现"半透明长条"。
-     */
-    private class DoneFadeView(context: Context) : View(context) {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private var fadeColor = Color.TRANSPARENT
 
-        fun setFadeColor(color: Int) {
-            if (fadeColor == color) return
-            fadeColor = color
-            invalidate()
-        }
 
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            if (height <= 0 || width <= 0) return
-            paint.shader = LinearGradient(
-                0f, 0f, 0f, height.toFloat(),
-                fadeColor and 0x00FFFFFF,
-                fadeColor,
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-            paint.shader = null
-        }
-    }
 
-    private fun dotColor(phase: String): Int = FloatingUi.phaseColor(phase)
-
-    private fun hideKeyboard() {
-        // 隐藏软键盘并恢复窗口原有的不可聚焦模式（可拖动、不抢占系统焦点）
-        setInputMode(false)
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        val focused = hintInput
-        if (focused != null) imm?.hideSoftInputFromWindow(focused.windowToken, 0)
-    }
-
-    private fun registerDebugDoneReceiver() {
-        if (!BuildConfig.DEBUG) return
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                when (intent.getStringExtra("mode")) {
-                    // 拉起空任务卡：量化「首次显示到首帧」
-                    "show" -> {
-                        showFromUser()
-                        updateNotification("任务执行中", "正在分析页面")
-                    }
-                    // 模拟截图前后隐藏/恢复：量化「隐藏与恢复 ≤0.3s」
-                    "hide" -> setVisible(false)
-                    "restore" -> setVisible(true)
-                    // debug 预览降级提示细条（普通 / 需操作两档），供截图与视觉走查
-                    "notice" -> TaskNoticeCenter.publish(
-                        TaskNotice(
-                            id = "debug:notice:info",
-                            trigger = "channel_unavailable",
-                            source = "launch",
-                            text = intent.getStringExtra("text")
-                                ?: "无障碍通道暂时不可用，已改用内置 Shizuku 继续执行。",
-                            method = intent.getStringExtra("method") ?: "内置 Shizuku",
-                            requiresAction = false,
-                        ),
-                    )
-                    "notice-action" -> TaskNoticeCenter.publish(
-                        TaskNotice(
-                            id = "debug:notice:action",
-                            trigger = "clock_fallback",
-                            source = "clock",
-                            text = intent.getStringExtra("text")
-                                ?: "时钟页已打开，但无法自动写入闹钟，请你手动新建一个 07:30 的闹钟。",
-                            method = null,
-                            requiresAction = true,
-                        ),
-                    )
-                    else -> showDone(
-                        TaskOutcome(
-                            // result 缺省按成功预览；要拍失败态就传 failed / aborted / not_achieved
-                            status = when (intent.getStringExtra("result")) {
-                                "failed" -> TaskStatus.FAILED
-                                "aborted" -> TaskStatus.ABORTED
-                                "not_achieved" -> TaskStatus.NOT_ACHIEVED
-                                else -> TaskStatus.SUCCESS
-                            },
-                            summary = intent.getStringExtra("message")
-                                ?: "已关闭蓝牙并回到桌面。共执行 3 步，用时 12 秒。",
-                            elapsedMs = intent.getLongExtra("elapsed", 12_000L),
-                            steps = intent.getIntExtra("steps", 3),
-                            channel = intent.getStringExtra("channel") ?: "无障碍",
-                            failureReason = intent.getStringExtra("reason").orEmpty(),
-                        ),
-                    )
-                }
-            }
-        }
-        // debug-only 预览入口：不参与发布包，也不改变真实任务链路
-        ContextCompat.registerReceiver(
-            this,
-            receiver,
-            IntentFilter(DEBUG_DONE_ACTION),
-            ContextCompat.RECEIVER_EXPORTED,
-        )
-        debugDoneReceiver = receiver
-    }
-
-    /**
-     * 任务收尾：胶囊先切终态色停留约 800ms，再淡出让位给完成卡片。
-     *
-     * 成败只认 [TaskOutcome.status]，不再从摘要里搜「失败 / 放弃 / 未完成」——
-     * 那种猜法会把「已完成登录，但支付失败」判成失败，也会把没有任何关键词的失败判成功。
-     *
-     * @param outcome 引擎给出的终态、摘要与耗时/步数/通道/失败原因
-     */
-    fun showDone(outcome: TaskOutcome) {
-        handler.post {
-            pendingDoneOutcome = outcome
-            // 用户收起面板时任务恰好收尾：先复位收起态（下一个任务开始时面板要能自己回来）
-            showFromUser()
-            stopDotPulse()
-            collapseThinking()
-            hideSheet()
-            hideKeyboard()
-            // 完成卡片在这 800ms 里预热：窗口与文案先建好，交接时只翻可见性 + 淡入，
-            // 避免"胶囊已经淡出、卡片还没画出来"的空档
-            val t0 = SystemClock.uptimeMillis()
-            doneMessage = outcome.summary
-            val cardReady = ensureDoneWindow()
-            if (cardReady) {
-                applyDoneContent(outcome)
-                OverlayPerf.code("done-card-build", t0)
-            }
-            // 终态先落在胶囊与任务卡上：这一段是用户对"任务结束"的唯一即时反馈，
-            // 不能被卡片入场吞掉。例外是用户主动收起面板——那属于用户意图，不替他弹回来。
-            val phase = terminalPhase(outcome.status)
-            currentPhase = phase
-            marquee?.let { applyMarqueePalette(it) }
-            dot?.setBackgroundColor(dotColor(phase))
-            phaseChip?.apply {
-                text = outcome.status.label
-                setTextColor(FloatingUi.ON_BRAND)
-                background = FloatingUi.capsule(
-                    this@FloatingWindowService,
-                    FloatingUi.RADIUS_CHIP / 2,
-                    FloatingUi.phaseColor(phase),
-                )
-            }
-            // 悬浮球先收：它是"唤起面板"的入口，收尾期间留着会被误点
-            miniRoot?.visibility = View.GONE
-            updateNotification("${outcome.status.label}：${outcome.summary}", "Happy Agent")
-            handler.removeCallbacks(doneHandoff)
-            if (cardReady) {
-                handler.postDelayed(doneHandoff, DONE_HOLD_MS)
-            } else {
-                // 卡片建不出来就不会有交接：把待交接结果丢掉，否则引擎随后的收窗请求
-                // 会被 [deferStopForDoneCard] 一直挂着，前台通知退不掉
-                pendingDoneOutcome = null
-            }
-            // 卡片建不出来（窗口被系统拒绝）时不做交接：胶囊的终态色是唯一还能看完的信息，
-            // 不能把它也淡掉，让屏幕上什么都不剩
-        }
-    }
-
-    /** 终态 → 胶囊阶段色：中断与未达成走等待琥珀（不是链路故障），失败才用危险红 */
-    private fun terminalPhase(status: TaskStatus): String = when (status) {
-        TaskStatus.SUCCESS -> "DONE"
-        TaskStatus.FAILED -> "ERROR"
-        TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> "WAITING"
-    }
-
-    /**
-     * 构建任务完成卡片（对标 Eta 的 result card，视觉仍用本项目令牌）。
-     *
-     * 刻意不照搬 Eta 的两点：
-     * - 不用「50% 屏高 + 固定 420dp」双约束：卡片高度随内容自适应，正文最大
-     *   [DONE_BODY_MAX_HEIGHT]dp 内部滚动，矮屏 / 大字号下正文不会被压没；
-     * - 不从屏幕顶部滑入：进入方向固定自下而上（项目动效铁律）。
-     *
-     * 层级：拖拽把手 → 状态行（20dp 圆点 + 15sp 半粗标题）→ 可滚动正文（底部渐变遮罩）
-     *       → 一行三键（复制 / 完成 / 打开 Agent）。
-     */
-    // 结构完整、拆分风险高，强行拆分会牵动较多调用方，此处按规则豁免
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
-    private fun buildDoneCard(): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            // 左右 16 / 底部 16：与 App 一级内容留白一致；顶部留给拖拽把手
-            setPadding(dp(FloatingUi.PAD_XL), 0, dp(FloatingUi.PAD_XL), dp(FloatingUi.PAD_XL))
-            // 与任务卡同一档浮起高度：卡片是"贴着屏幕底部的一层"，不是贴在底图上的补丁
-            elevation = dp(16).toFloat()
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) {
-                    outline.setRoundRect(
-                        0, 0, view.width, view.height,
-                        dp(FloatingUi.RADIUS_CARD.toInt()).toFloat(),
-                    )
-                }
-            }
-            themed { p ->
-                background = FloatingUi.capsule(
-                    this@FloatingWindowService,
-                    FloatingUi.RADIUS_CARD,
-                    p.panel,
-                    p.panelEdge,
-                    dp(1),
-                )
-            }
-        }
-
-        // 1) 拖拽把手 36×4dp：只在这条上响应下滑，避免和正文滚动抢手势
-        val handle = View(this).apply {
-            themed { p ->
-                // 与标题同色系、30% 透明：只做"可以拖"的暗示，不抢视觉
-                background = FloatingUi.capsule(
-                    this@FloatingWindowService,
-                    FloatingUi.RADIUS_PILL,
-                    (p.textTertiary and 0x00FFFFFF) or 0x33000000,
-                )
-            }
-            setOnTouchListener { _, ev ->
-                onDoneDrag(ev)
-                true
-            }
-        }
-        card.addView(
-            handle,
-            LinearLayout.LayoutParams(dp(36), dp(4)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(FloatingUi.PAD)
-                bottomMargin = dp(FloatingUi.PAD_L)
-            },
-        )
-
-        // 2) 状态行：20dp 圆点（14% 语义色底 + 语义色勾/叉）+ 15sp 半粗标题
-        val statusRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        doneStatusDot = TextView(this).apply {
-            gravity = Gravity.CENTER
-            textSize = 12f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        statusRow.addView(doneStatusDot, LinearLayout.LayoutParams(dp(20), dp(20)))
-        doneTitle = TextView(this).apply {
-            textSize = 15f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(dp(10), 0, 0, 0)
-            themed { p -> setTextColor(p.textPrimary) }
-        }
-        statusRow.addView(
-            doneTitle,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        card.addView(statusRow)
-
-        // 2.5) 元信息 + 失败原因：都是"引擎有才显示"的行，缺数据时整行不出现，
-        //      不写"耗时未知 / 通道未知"这类噪音
-        doneMeta = TextView(this).apply {
-            textSize = 11f
-            setPadding(dp(30), dp(2), 0, 0)
-            themed { p -> setTextColor(p.textTertiary) }
-            visibility = View.GONE
-        }
-        card.addView(doneMeta)
-        doneReason = TextView(this).apply {
-            textSize = 12f
-            setPadding(dp(30), dp(6), 0, 0)
-            visibility = View.GONE
-        }
-        card.addView(doneReason)
-
-        // 3) 正文：内容自适应、超长时限高内部滚动；底部渐变遮罩只在真的滚得动时出现
-        val bodyFrame = FrameLayout(this)
-        doneScroll = MaxHeightScrollView(this, dp(DONE_BODY_MAX_HEIGHT)).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            // 滚动期间暂停自动关闭；松手后重新计时（Eta 的 interacting 语义）
-            setOnScrollChangeListener { _, _, _, _, _ -> restartDoneAutoClose() }
-        }
-        doneBody = TextView(this).apply {
-            textSize = 13f
-            setLineSpacing(dp(3).toFloat(), 1f)
-            setPadding(0, dp(10), 0, dp(12))
-            themed { p -> setTextColor(p.textSecondary) }
-        }
-        doneBody?.let { body -> doneScroll?.addView(body) }
-        bodyFrame.addView(
-            doneScroll,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ),
-        )
-        doneFade = DoneFadeView(this).apply { visibility = View.GONE }
-        bodyFrame.addView(
-            doneFade,
-            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(28)).apply {
-                gravity = Gravity.BOTTOM
-            },
-        )
-        themed { p -> doneFade?.setFadeColor(p.panel) }
-        card.addView(bodyFrame)
-
-        // 4) 一行三键：复制（结果写剪贴板）/ 完成（关卡片）/ 打开 Agent（回到会话看完整过程）
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        doneCopy = TextView(this).apply {
-            text = "复制"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(dp(FloatingUi.PAD_L), dp(10), dp(FloatingUi.PAD_L), dp(10))
-            isClickable = true
-            setOnClickListener { copyDoneResult() }
-            themed { p ->
-                setTextColor(p.textSecondary)
-                background = FloatingUi.capsule(
-                    this@FloatingWindowService,
-                    FloatingUi.RADIUS_PILL,
-                    p.panelSunken,
-                    p.panelEdge,
-                    dp(1),
-                )
-            }
-        }
-        actions.addView(
-            doneCopy,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = dp(FloatingUi.PAD) },
-        )
-        val doneBtn = TextView(this).apply {
-            text = "完成"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(12))
-            isClickable = true
-            setOnClickListener { closeDoneCard() }
-            themed { p -> setTextColor(p.textSecondary) }
-        }
-        actions.addView(
-            doneBtn,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        val openBtn = TextView(this).apply {
-            text = "打开 Agent"
-            textSize = 13f
-            gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, dp(12))
-            isClickable = true
-            setOnClickListener { openAgentFromDone() }
-            themed { p ->
-                setTextColor(p.onBrand)
-                background = FloatingUi.capsule(
-                    this@FloatingWindowService,
-                    FloatingUi.RADIUS_PILL,
-                    p.brand,
-                )
-            }
-        }
-        actions.addView(
-            openBtn,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { marginStart = dp(FloatingUi.PAD) },
-        )
-        card.addView(
-            actions,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(FloatingUi.PAD_L) },
-        )
-        bindPressFeedback(doneCopy!!, doneBtn, openBtn)
-        return card
-    }
-
-    /**
-     * 创建并显示完成卡片窗口。
-     *
-     * 任务开始时预热（见 [showWindow]），完成时只翻可见性——新建一个覆盖层窗口要等完整的
-     * measure / layout / 一次合成（实测首帧 1.6s+，窗口已存在时 341ms），这笔开销不能
-     * 落在"任务刚结束"的那一刻。
-     *
-     * 不被系统栏裁切的三条保证：
-     * 1. `gravity = BOTTOM` + **不清空** `fitInsetsTypes`：内容区停在导航栏之上，
-     *    贴底卡片既不会被手势条压住，也不会被系统栏切掉；左右/底部留白由根容器 padding 负责。
-     * 2. 高度 `WRAP_CONTENT`：卡片长多高长多高，永远不需要「先占屏再裁」。
-     * 3. 正文限高滚动：长结果在卡片内部滚，卡片本身不会长到屏幕外。
-     */
-    // 分派函数多处早退以保证可读性，此处按规则豁免
-    @Suppress("ReturnCount")
-    private fun ensureDoneWindow(): Boolean {
-        if (doneRoot != null) return true
-        val wm = windowManager ?: return false
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            // 留白放在根容器的 padding 上：卡片隐藏/移除时窗口高度为 0，不留透明触摸区
-            setPadding(
-                dp(FloatingUi.PAD_XL),
-                0,
-                dp(FloatingUi.PAD_XL),
-                dp(FloatingUi.PAD),
-            )
-            visibility = View.GONE
-        }
-        val card = buildDoneCard()
-        container.addView(
-            card,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-            ),
-        )
-        val lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-        }
-        val added = runCatching { wm.addView(container, lp) }.isSuccess
-        if (!added) {
-            Log.w("FloatingWindowService", "完成卡片添加失败")
-            doneCard = null
-            return false
-        }
-        doneRoot = container
-        return true
-    }
-
-    /**
-     * 交接：胶囊与任务卡淡出、完成卡片淡入，两件事同一拍开始。
-     *
-     * 卡片在停留期已建好并写好内容，这里只翻可见性 + 透明度，
-     * 所以"胶囊消失"与"卡片出现"之间不会露出空档。
-     */
-    private fun revealDoneCard(startedAt: Long) {
-        val rv = doneRoot ?: return
-        rv.visibility = View.VISIBLE
-        doneCard?.let { card ->
-            card.animate().cancel()
-            // 只做透明度：这是让位，不加位移、弹性或缩放
-            card.translationY = 0f
-            card.alpha = 0f
-            card.animate()
-                .alpha(1f)
-                .setDuration(OverlayMotion.EmphasisMs.toLong())
-                .setInterpolator(OverlayMotion.EaseOut)
-                .start()
-        }
-        rv.post {
-            val postAt = SystemClock.uptimeMillis()
-            OverlayPerf.log("done-card-apply", "${postAt - startedAt}ms")
-            // 正文真的超出限高才显示渐变遮罩（短结果下不出现多余的灰带）
-            val scroll = doneScroll
-            val body = doneBody
-            doneFade?.visibility =
-                if (scroll != null && body != null && body.height > scroll.height) {
-                    View.VISIBLE
-                } else {
-                    View.GONE
-                }
-            OverlayPerf.firstFrame("done-card-first-frame", rv, startedAt, postAt - startedAt)
-            restartDoneAutoClose()
-        }
-    }
-
-    /** 淡出后隐藏：只用于收尾交接，离开的窗口不参与后续布局 */
-    private fun fadeOutAndHide(view: View?, durationMs: Int) {
-        if (view == null) return
-        view.animate().cancel()
-        if (view.visibility != View.VISIBLE) {
-            view.alpha = 1f
-            return
-        }
-        view.animate()
-            .alpha(0f)
-            .setDuration(durationMs.toLong())
-            .setInterpolator(OverlayMotion.EaseIn)
-            .withEndAction {
-                view.visibility = View.GONE
-                // 复位透明度：下一次任务复用时从 1 开始，不然会带着上一次的残影
-                view.alpha = 1f
-            }
-            .start()
-    }
-
-    /** 跑马灯是独立窗口：隐藏状态仍按 [setMarqueeVisible] 的规则走，只是先淡出再落 GONE */
-    private fun fadeOutMarquee(durationMs: Int) {
-        marqueeRequestedVisible = false
-        val v = marquee ?: return
-        v.animate().cancel()
-        if (v.visibility != View.VISIBLE) {
-            v.alpha = 1f
-            return
-        }
-        v.animate()
-            .alpha(0f)
-            .setDuration(durationMs.toLong())
-            .setInterpolator(OverlayMotion.EaseIn)
-            .withEndAction {
-                v.visibility = View.GONE
-                v.alpha = 1f
-            }
-            .start()
-    }
-
-    /** 把结果写进卡片：标题/状态色/正文/元信息/失败原因/复制按钮复位 */
-    private fun applyDoneContent(outcome: TaskOutcome) {
-        val success = outcome.status == TaskStatus.SUCCESS
-        val tone = when (outcome.status) {
-            TaskStatus.SUCCESS -> FloatingUi.phaseColor("DONE")
-            TaskStatus.FAILED -> FloatingUi.phaseColor("ERROR")
-            // 中断与未达成不是故障：用等待琥珀，避免把"用户停手"画成出错
-            TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> FloatingUi.phaseColor("WAITING")
-        }
-        doneTitle?.text = outcome.status.label
-        doneStatusDot?.apply {
-            text = when (outcome.status) {
-                TaskStatus.SUCCESS -> "✓"
-                TaskStatus.FAILED -> "✕"
-                TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED -> "!"
-            }
-            setTextColor(tone)
-            background = FloatingUi.capsule(
-                this@FloatingWindowService,
-                FloatingUi.RADIUS_PILL,
-                // 14% 语义色底：色点只做状态标记，不把整张卡片染成红/绿
-                (tone and 0x00FFFFFF) or 0x24000000,
-            )
-        }
-        val raw = outcome.summary.trim()
-        // 引擎只给了一行"任务完成"时，补一句可执行的下一步；有细节就原样展示
-        doneBody?.text = if (raw.isEmpty() || raw == "任务完成" || raw == "任务已完成") {
-            if (success) "任务已结束。打开 Agent 可以查看完整过程与结果。" else outcome.status.label
-        } else {
-            raw
-        }
-        // 元信息：引擎给什么显示什么，缺一项就少一项，不拿默认值凑
-        val meta = buildDoneMeta(outcome)
-        doneMeta?.apply {
-            text = meta
-            visibility = if (meta.isEmpty()) View.GONE else View.VISIBLE
-        }
-        // 失败原因：摘要本身已经是原因时不再重复一遍
-        val reason = outcome.failureReason.trim()
-        val showReason = reason.isNotEmpty() && reason != raw
-        doneReason?.apply {
-            text = if (showReason) reason else ""
-            setTextColor(tone)
-            visibility = if (showReason) View.VISIBLE else View.GONE
-        }
-        doneCopy?.text = "复制"
-        doneScroll?.scrollTo(0, 0)
-    }
-
-    /** 「耗时 12 秒 · 3 步 · 无障碍」；全空返回空串，卡片直接省略该行 */
-    private fun buildDoneMeta(outcome: TaskOutcome): String = buildList {
-        if (outcome.elapsedMs > 0) add("耗时 ${formatElapsed(outcome.elapsedMs)}")
-        if (outcome.steps > 0) add("${outcome.steps} 步")
-        if (outcome.channel.isNotBlank()) add(outcome.channel)
-    }.joinToString(" · ")
-
-    /** 秒级够用：任务是分钟量级，再多一位小数只会让收尾行变吵 */
-    private fun formatElapsed(ms: Long): String {
-        val seconds = (ms / 1000L).coerceAtLeast(1L)
-        return if (seconds < 60L) {
-            "$seconds 秒"
-        } else {
-            "${seconds / 60L} 分 ${seconds % 60L} 秒"
-        }
-    }
-
-    /** 复制完整结果到剪贴板；1.4s 内按钮显示"已复制"（状态保持，不是动效） */
-    private fun copyDoneResult() {
-        val text = doneBody?.text?.toString().orEmpty().ifBlank { doneMessage }
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        runCatching { cm?.setPrimaryClip(ClipData.newPlainText("任务结果", text)) }
-        doneCopy?.text = "已复制"
-        handler.postDelayed({ doneCopy?.text = "复制" }, COPY_FEEDBACK_MS)
-        restartDoneAutoClose()
-    }
-
-    /** 「打开 Agent」：回到 App 的会话页看完整过程；随后收起完成卡片 */
-    private fun openAgentFromDone() {
-        runCatching {
-            startActivity(
-                Intent(this, MainActivity::class.java).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP,
-                ),
-            )
-        }
-        closeDoneCard()
-    }
-
-    /** 下滑关闭（≥96dp 才算关闭，否则回弹）+ 按住/滚动期间暂停自动关闭 */
-    private fun onDoneDrag(ev: MotionEvent) {
-        val card = doneCard ?: return
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                doneDragStartRawY = ev.rawY
-                doneDragOffset = 0f
-                pauseDoneAutoClose()
-                card.animate().cancel()
-            }
-            MotionEvent.ACTION_MOVE -> {
-                // 只允许向下：向上位移会让卡片跑到状态栏下面，与"不碰系统栏"的约束冲突
-                doneDragOffset = (ev.rawY - doneDragStartRawY).coerceAtLeast(0f)
-                card.translationY = doneDragOffset
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (doneDragOffset >= dp(DONE_SWIPE_CLOSE_DP)) {
-                    closeDoneCard()
-                } else {
-                    card.animate()
-                        .translationY(0f)
-                        .setDuration(OverlayMotion.EnterMs.toLong())
-                        .setInterpolator(OverlayMotion.EaseOut)
-                        .start()
-                    restartDoneAutoClose()
-                }
-            }
-        }
-    }
-
-    /**
-     * 完成卡片还在屏上、或正等胶囊交接时，接住引擎这一次「收窗」请求。
-     *
-     * 引擎的停止语义是"这次任务结束了"；卡片还要把结论与失败原因交给用户读。
-     * 两者可以错开：窗口的可见时长上限由卡片自己管（[DONE_HOLD_MS] 停留 + [DONE_AUTO_CLOSE_MS]
-     * 自动关闭），关闭那一步本来就会 `stopSelf`，服务不会悬着。
-     *
-     * @return true 表示停止时机已由本服务接管，调用方不要再 `stopService`
-     */
-    private fun deferStopForDoneCard(): Boolean {
-        // 既没有卡片、也没有待交接的结果：这次停止与收尾无关，照常执行
-        if (doneRoot == null && pendingDoneOutcome == null) {
-            stopPending = false
-            return false
-        }
-        stopPending = true
-        return true
-    }
-
-    /** 退场：向上淡出（不复用"下滑抽走"——那会被读成系统回收），动画结束后才移除窗口 */
-    private fun closeDoneCard() {
-        handler.removeCallbacks(doneAutoClose)
-        val card = doneCard
-        val rootView = doneRoot
-        if (card == null || rootView == null) {
-            removeDoneCardNow()
-            // 停止请求被挂起过、而卡片已经不在：这里补一次收尾，别让前台通知永远挂着
-            if (stopPending) {
-                stopPending = false
-                stopSelf()
-            }
-            return
-        }
-        OverlayMotion.exit(card, durationMs = OverlayMotion.ExitMs) {
-            // 退场动画 200ms 内可能有新任务接管（resetPanel 已把卡片摘掉）：
-            // 只有"卡片还挂在这个窗口上"时才认为整场任务真正结束并退出服务，
-            // 否则只清理旧窗口，别把新任务的悬浮窗一起带走
-            if (doneRoot === rootView) {
-                removeDoneCardNow()
-                stopSelf()
-                removeWindow()
-            } else {
-                runCatching { windowManager?.removeView(rootView) }
-            }
-        }
-    }
-
-    /** 立即移除完成卡片窗口（不做退场动画）：新任务开始 / 服务销毁时用 */
-    private fun removeDoneCardNow() {
-        handler.removeCallbacks(doneAutoClose)
-        doneRoot?.let { runCatching { windowManager?.removeView(it) } }
-        doneRoot = null
-        doneCard = null
-        doneTitle = null
-        doneStatusDot = null
-        doneBody = null
-        doneMeta = null
-        doneReason = null
-        pendingDoneOutcome = null
-        doneScroll = null
-        doneFade = null
-        doneCopy = null
-        doneInteracting = false
-        doneDragOffset = 0f
-    }
-
-    /**
-     * 只收起、不销毁：完成卡片窗口留给下一次任务复用（它是任务开始时预热好的）。
-     * 8s 自动关闭的计时必须在这里取消，否则下一次任务进行到一半会被上一个倒计时掐掉。
-     */
-    private fun hideDoneCardNow() {
-        handler.removeCallbacks(doneAutoClose)
-        doneRoot?.visibility = View.GONE
-        doneCard?.translationY = 0f
-        doneCard?.alpha = 1f
-        doneInteracting = false
-        doneDragOffset = 0f
-    }
-
-    /** 静止 8s 自动关；任何按压 / 滚动 / 拖拽都会重置计时 */
-    private fun restartDoneAutoClose() {
-        handler.removeCallbacks(doneAutoClose)
-        doneInteracting = false
-        if (doneRoot == null) return
-        handler.postDelayed(doneAutoClose, DONE_AUTO_CLOSE_MS)
-    }
-
-    private fun pauseDoneAutoClose() {
-        doneInteracting = true
-        handler.removeCallbacks(doneAutoClose)
-    }
-
-    /**
-     * 完成卡片三键的按压反馈：ACTION_DOWN 当帧缩到 [OverlayMotion.PressedScale]，
-     * 抬手回弹；同时暂停/恢复 auto-close 计时。
-     *
-     * 为什么不用系统 ripple：ripple 的按下态要等下一帧才显示，手指快按快抬时经常完全看不到；
-     * 这里在 DOWN 事件里直接改 scale，当帧就生效。
-     */
-    private fun bindPressFeedback(vararg views: View) {
-        views.forEach { v ->
-            v.setOnTouchListener { _, ev ->
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        pauseDoneAutoClose()
-                        OverlayMotion.pressDown(v)
-                        // 首个视觉反馈延迟（含帧等待；代码部分是 0ms，缩放是同步落位）
-                        OverlayPerf.firstFrame("press-down-paint", v, ev.eventTime, 0)
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        OverlayMotion.pressUp(v)
-                        restartDoneAutoClose()
-                    }
-                }
-                // 返回 false：不影响 TextView 自身的点击回调
-                false
-            }
-        }
-    }
-
-    /** 普通控件的按压反馈（不涉及完成卡片计时）：同样在 ACTION_DOWN 当帧生效 */
-    private fun bindPress(vararg views: View) {
-        views.forEach { v ->
-            v.setOnTouchListener { _, ev ->
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> OverlayMotion.pressDown(v)
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> OverlayMotion.pressUp(v)
-                }
-                false
-            }
-        }
-    }
-
-    private fun removeWindow() {
-        root?.let { runCatching { windowManager?.removeView(it) } }
-        root = null
-        // 跑马灯是独立窗口：移除后屏幕上不留任何入口
-        marquee?.let { runCatching { windowManager?.removeView(it) } }
-        marquee = null
-        barParams = null
-        // 悬浮球同样是独立窗口：移除后屏幕上不留任何入口（任务已结束，不需要再唤出）
-        miniRoot?.let { runCatching { windowManager?.removeView(it) } }
-        miniRoot = null
-        // 底部选项卡是独立窗口，需一并移除
-        sheetRoot?.let { runCatching { windowManager?.removeView(it) } }
-        sheetRoot = null
-        sheetParams = null
-        // 完成卡片同样是独立窗口：任务结束/服务退出后不能留在屏幕上
-        removeDoneCardNow()
-        // 降级提示细条也是独立窗口：先停计时再移除，避免移除后回调再动已脱离窗口的视图
-        handler.removeCallbacks(noticeAutoHide)
-        noticeShowing = false
-        noticeRoot?.let { runCatching { windowManager?.removeView(it) } }
-        noticeRoot = null
-        noticeParams = null
-    }
 
     override fun onDestroy() {
         OverlayDisplaySettings.unregisterListener(this, displaySettingsListener)
@@ -3051,38 +517,38 @@ class FloatingWindowService : Service() {
         super.onDestroy()
     }
 
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+    internal fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     companion object {
         const val ACTION_STOP = "com.phoneagent.floating.STOP"
-        private const val NOTIFY_ID = 1001
+        internal const val NOTIFY_ID = 1001
 
         /** AI 思考写通知的最小间隔：流式增量每秒数次，逐条 notify 是跨进程调用 */
-        private const val NOTIFY_THROTTLE_MS = 700L
+        internal const val NOTIFY_THROTTLE_MS = 700L
 
         /** 流式返回区最多展示的字符数（保留尾部最新内容） */
-        private const val THINKING_DISPLAY_MAX = 3000
+        internal const val THINKING_DISPLAY_MAX = 3000
 
         /** 关闭按钮两段式确认：第一段显示的待确认文案 */
-        private const val CLOSE_CONFIRM_LABEL = "再点确认停止"
+        internal const val CLOSE_CONFIRM_LABEL = "再点确认停止"
 
         /** 关闭按钮待确认态自动复位的时长（毫秒） */
-        private const val CLOSE_CONFIRM_RESET_MS = 2500L
+        internal const val CLOSE_CONFIRM_RESET_MS = 2500L
 
         /** 悬浮球直径（dp）：小到不挡操作，大到手指点得到 */
-        private const val MINI_BALL_SIZE = 44
+        internal const val MINI_BALL_SIZE = 44
 
         /** 底部胶囊取不到高度时（首帧）的经验值（dp）：提示细条据此让位，不会压在胶囊上 */
-        private const val NOTICE_MARQUEE_FALLBACK_HEIGHT_DP = 36
+        internal const val NOTICE_MARQUEE_FALLBACK_HEIGHT_DP = 36
 
         /** 完成卡片正文最大高度（dp）：超过则在卡片内部滚动，卡片本身不长出屏幕 */
-        private const val DONE_BODY_MAX_HEIGHT = 220
+        internal const val DONE_BODY_MAX_HEIGHT = 220
 
         /** 完成卡片下滑关闭阈值（dp）：与 Eta 的 96dp 对齐 */
-        private const val DONE_SWIPE_CLOSE_DP = 96
+        internal const val DONE_SWIPE_CLOSE_DP = 96
 
         /** 完成卡片静止自动关闭时长（毫秒）：按压/滚动/拖拽期间暂停计时 */
-        private const val DONE_AUTO_CLOSE_MS = 8000L
+        internal const val DONE_AUTO_CLOSE_MS = 8000L
 
         /**
          * 收尾时胶囊停留在终态色的时长（毫秒）。
@@ -3090,14 +556,14 @@ class FloatingWindowService : Service() {
          * 700–900ms 是"看得见但不拖沓"的窗口：低于 500ms 会被卡片入场直接盖掉，
          * 高于 1s 会让用户以为卡住了。**实测截图若临时加长，事后必须调回这个值。**
          */
-        private const val DONE_HOLD_MS = 800L
+        internal const val DONE_HOLD_MS = 800L
 
         /** 「复制」按钮显示"已复制"的保持时长（毫秒）：状态保持，不属于动效 */
-        private const val COPY_FEEDBACK_MS = 1400L
+        internal const val COPY_FEEDBACK_MS = 1400L
 
         /** 调试期量化埋点 tag（仅 debug 包输出，release 不打印） */
         /** debug 预览完成卡片的广播 action（见 [registerDebugDoneReceiver]） */
-        private const val DEBUG_DONE_ACTION = "com.phoneagent.DEBUG_DONE"
+        internal const val DEBUG_DONE_ACTION = "com.phoneagent.DEBUG_DONE"
 
         /** 悬浮窗交互动作回调（由 MainViewModel 注册，转发到 AgentEngine） */
         @Volatile
@@ -3191,102 +657,10 @@ class FloatingWindowService : Service() {
         /**
          * 截图时隐藏悬浮窗 / 截图后恢复，避免悬浮窗出现在 AI 读屏画面中。
          *
-         * 返回「本次调用确实隐藏了内容」：进入 handler.post **前**记录各窗口当前可见性，
-         * 只有原本可见的窗口才算本次隐藏（无实例或本来就全不可见时返回 false），
-         * 调用方据此决定是否需要恢复，避免对「没藏东西」的调用做无谓的恢复动作。
-         * 恢复分支会尊重用户手动隐藏状态（userHidden）：用户主动收起的面板不因截图恢复而弹回。
+         * 返回「本次调用确实隐藏了内容」：调用方据此决定是否需要恢复，避免对「没藏东西」的
+         * 调用做无谓的恢复动作。实现在 [setOverlayVisible]。
          */
-        // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免
-        @Suppress("CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
-        fun setVisible(visible: Boolean): Boolean {
-            // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
-            @Suppress("ComplexCondition")
-            val svc = instance ?: return false
-            // 预读各窗口可见性用于同步返回值（post 内仍会按当前可见性权威记录再落位）
-            if (!visible) {
-                val rootShown = svc.root?.visibility == View.VISIBLE
-                val marqueeShown = svc.isMarqueeVisible()
-                val miniShown = svc.miniRoot?.visibility == View.VISIBLE
-                val sheetShown = svc.sheetRoot?.visibility == View.VISIBLE
-                val doneShown = svc.doneRoot?.visibility == View.VISIBLE
-                val noticeShown = svc.noticeRoot?.visibility == View.VISIBLE
-                if (!rootShown && !marqueeShown && !miniShown && !sheetShown && !doneShown && !noticeShown) {
-                    return false
-                }
-                // 条件由多个协议字段组合而成，抽成具名布尔量会分散逻辑，此处按规则豁免
-                @Suppress("ComplexCondition")
-                val hideStartedAt = SystemClock.uptimeMillis()
-                svc.handler.post {
-                    svc.root?.visibility = View.GONE
-                    // 跑马灯是两层独立窗口（顶部光带 + 底部胶囊），截图时同样要藏起来；
-                    // 先记下本来的可见状态，截完按原样恢复（任务完成后跑马灯本来是隐藏的）
-                    svc.barVisibleBeforeHide = svc.isMarqueeVisible()
-                    svc.setMarqueeVisible(false)
-                    // 悬浮球同理：截图时藏起来（它是个不透明的圆形按钮，被截进画面会干扰 AI 读屏）
-                    svc.miniVisibleBeforeHide = svc.miniRoot?.visibility == View.VISIBLE
-                    svc.miniRoot?.visibility = View.GONE
-                    // 底部选项卡是独立窗口，截图时同样要藏起来，否则会被截进画面；
-                    // 截图前先记下它本来是否可见，截完按原样恢复
-                    svc.sheetVisibleBeforeHide = svc.sheetRoot?.visibility == View.VISIBLE
-                    svc.sheetRoot?.visibility = View.GONE
-                    // 完成卡片也是独立窗口：截图时藏起来，截完按原样恢复
-                    svc.doneVisibleBeforeHide = svc.doneRoot?.visibility == View.VISIBLE
-                    svc.doneRoot?.visibility = View.GONE
-                    // 降级提示细条同理：截图时不能截进画面，先停计时再藏，截完按原样恢复并重新计时
-                    svc.captureHidden = true
-                    svc.noticeVisibleBeforeHide = svc.noticeShowing
-                    svc.handler.removeCallbacks(svc.noticeAutoHide)
-                    svc.noticeRoot?.visibility = View.GONE
-                    // 隐藏是"落位"而不是"绘制"：GONE 的视图不会再有 onPreDraw，
-                    // 因此这里记「调用 → 落位」的代码耗时，不含任何帧等待
-                    OverlayPerf.code("screenshot-hide-code", hideStartedAt)
-                }
-                return true
-            }
-            val restoreStartedAt = SystemClock.uptimeMillis()
-            svc.handler.post {
-                // 用户主动收起（userHidden）时面板保持隐藏：截图恢复不能推翻用户的收起操作
-                svc.root?.visibility = if (svc.userHidden) View.GONE else View.VISIBLE
-                if (svc.barVisibleBeforeHide) {
-                    svc.setMarqueeVisible(true)
-                    svc.barVisibleBeforeHide = false
-                }
-                if (svc.miniVisibleBeforeHide) {
-                    svc.miniRoot?.visibility = View.VISIBLE
-                    svc.miniVisibleBeforeHide = false
-                }
-                if (svc.sheetVisibleBeforeHide) {
-                    svc.sheetRoot?.visibility = View.VISIBLE
-                    svc.sheetVisibleBeforeHide = false
-                }
-                if (svc.doneVisibleBeforeHide) {
-                    svc.doneRoot?.visibility = View.VISIBLE
-                    svc.doneVisibleBeforeHide = false
-                }
-                // 提示细条：截图期间到达的提示已被压住（只更新内容、不弹窗），这里一并恢复并重新计时
-                svc.captureHidden = false
-                if (svc.noticeVisibleBeforeHide || svc.noticeShowing) {
-                    svc.noticeVisibleBeforeHide = false
-                    svc.noticeRoot?.takeIf { !svc.userHidden }?.let { n ->
-                        n.visibility = View.VISIBLE
-                        OverlayMotion.reset(n)
-                        svc.noticeShowing = true
-                        svc.scheduleNoticeHide()
-                    }
-                }
-                // 恢复分两段：先记"代码落位"（不可见窗口重新置为 VISIBLE），
-                // 再等首个真正绘制帧 —— 后者含软件渲染的合成等待，不能当作代码成本
-                val restoreCode = SystemClock.uptimeMillis() - restoreStartedAt
-                OverlayPerf.log("screenshot-restore-code", "${restoreCode}ms")
-                val restoreTarget = svc.doneRoot?.takeIf { it.visibility == View.VISIBLE }
-                    ?: svc.root?.takeIf { it.visibility == View.VISIBLE }
-                    ?: svc.marquee?.takeIf { it.visibility == View.VISIBLE }
-                if (restoreTarget != null) {
-                    OverlayPerf.firstFrame("screenshot-restore-first-frame", restoreTarget, restoreStartedAt,
-                        restoreCode)
-                }
-            }
-            return true
-        }
+        fun setVisible(visible: Boolean): Boolean = setOverlayVisible(visible)
+
     }
 }
