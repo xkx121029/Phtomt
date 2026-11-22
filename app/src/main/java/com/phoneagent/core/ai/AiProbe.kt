@@ -77,93 +77,134 @@ internal class AiProbe(
                 val notes = mutableListOf<String>()
 
                 // 1) 文本：这一步失败说明地址 / Key / 模型名有问题，整体失败
-                val textMsgs = listOf(
-                    ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
-                )
-                val textCall = rawPost(baseUrl, apiKey, model, textMsgs, null, adapter)
-                probeBlocker(textCall)?.let { error(it) }
-                if (textCall.status !in 200..299) error("文本请求失败（HTTP ${textCall.status}）：${AiRetryPolicy.snippet(textCall.body)}")
+                probeText(baseUrl, apiKey, model, adapter)
 
                 // 2) 识图：200 且正文非空才算测出支持
-                val shot = probeImageBitmap()
-                val visionMsgs = listOf(
-                    ChatMessageDto(
-                        role = "user",
-                        content = listOf(
-                            ContentPart(type = "text", text = "这张图是什么颜色？只回答颜色。"),
-                            ContentPart(type = "image_url", image_url = ImageUrl(images.base64Image(shot))),
-                        ),
-                    ),
-                )
-                val visionCall = try {
-                    rawPost(baseUrl, apiKey, model, visionMsgs, null, adapter)
-                } finally {
-                    shot.recycle()
-                }
-                probeBlocker(visionCall)?.let { error(it) }
-                val extract = adapter?.let { a: ChatProtocolAdapter -> a::extractText }
-                val vision: Boolean? = when {
-                    visionCall.status !in 200..299 -> AiEndpoints.probeVerdict(visionCall.status)
-                    hasContent(visionCall, extract) -> true
-                    else -> null
-                }
-                if (vision == null) notes += "识图：${probeNote(visionCall)}"
+                val vision = probeVision(baseUrl, apiKey, model, adapter, notes)
 
-                // 3) 工具调用：仅 OpenAI 兼容协议可探测（Claude/Gemini 原生协议的工具线格式不同，不做探测）
-                var tools: Boolean? = null
-                if (adapter == null) {
-                    val toolsCall = rawPost(
-                        baseUrl, apiKey, model,
-                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
-                            text = "请调用 noop_ping 工具。")))),
-                        listOf(
-                            ToolSpec(
-                                function = FunctionSpec(
-                                    name = "noop_ping",
-                                    description = "无副作用的连通性探测工具",
-                                    parameters = json.parseToJsonElement("""{"type":"object","properties":{}}"""),
-                                ),
-                            ),
-                        ),
-                        adapter,
-                    )
-                    probeBlocker(toolsCall)?.let { error(it) }
-                    tools = AiEndpoints.probeVerdict(toolsCall.status)
-                    if (tools == null) notes += "工具：${probeNote(toolsCall)}"
-                } else {
-                    notes += "工具：该协议未探测（真实可用性以实际调用为准）"
-                }
+                // 3) 工具调用：仅 OpenAI 兼容协议可探测
+                val tools = probeTools(baseUrl, apiKey, model, adapter, notes)
 
-                // 4) 结构化输出（response_format=json_schema）：仅 OpenAI 兼容协议可探测。
-                //    多数服务端用 400/415/422 拒绝，probeVerdict 对 400 返回 null（未测出），
-                //    于是 AUTO 档不会贸然下发一个可能直接 400 的字段 —— 与旧行为一致。
-                var jsonSchema: Boolean? = null
-                if (adapter == null) {
-                    val minimalSchema = json.parseToJsonElement(
-                        """{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}""",
-                    )
-                    val schemaCall = rawPost(
-                        baseUrl, apiKey, model,
-                        listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
-                            text = "请只输出 JSON：{\"ok\":true}")))),
-                        null,
-                        adapter,
-                        ResponseFormat(
-                            type = "json_schema",
-                            json_schema = JsonSchemaSpec(name = "probe_ok", strict = false, schema = minimalSchema),
-                        ),
-                    )
-                    probeBlocker(schemaCall)?.let { error(it) }
-                    jsonSchema = AiEndpoints.probeVerdict(schemaCall.status)
-                    if (jsonSchema == null) notes += "结构化输出：${probeNote(schemaCall)}"
-                } else {
-                    notes += "结构化输出：该协议未探测"
-                }
+                // 4) 结构化输出：仅 OpenAI 兼容协议可探测
+                val jsonSchema = probeJsonSchema(baseUrl, apiKey, model, adapter, notes)
 
                 ModelAbility(vision = vision, tools = tools, jsonSchema = jsonSchema,
                     note = notes.joinToString("；"))
             }
         }
+
+    /** 第 1 步：文本连通性。整步失败说明地址 / Key / 模型名本身不对，直接让整个探测失败 */
+    private fun probeText(baseUrl: String, apiKey: String, model: String, adapter: ChatProtocolAdapter?) {
+        val textMsgs = listOf(
+            ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text", text = "请只回复：OK"))),
+        )
+        val textCall = rawPost(baseUrl, apiKey, model, textMsgs, null, adapter)
+        probeBlocker(textCall)?.let { error(it) }
+        if (textCall.status !in 200..299) error("文本请求失败（HTTP ${textCall.status}）：${AiRetryPolicy.snippet(textCall.body)}")
+    }
+
+    /** 第 2 步：识图。200 且正文非空才算测出支持；未测出时把原因记进 [notes] */
+    private fun probeVision(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        adapter: ChatProtocolAdapter?,
+        notes: MutableList<String>,
+    ): Boolean? {
+        val shot = probeImageBitmap()
+        val visionMsgs = listOf(
+            ChatMessageDto(
+                role = "user",
+                content = listOf(
+                    ContentPart(type = "text", text = "这张图是什么颜色？只回答颜色。"),
+                    ContentPart(type = "image_url", image_url = ImageUrl(images.base64Image(shot))),
+                ),
+            ),
+        )
+        val visionCall = try {
+            rawPost(baseUrl, apiKey, model, visionMsgs, null, adapter)
+        } finally {
+            shot.recycle()
+        }
+        probeBlocker(visionCall)?.let { error(it) }
+        val extract = adapter?.let { a: ChatProtocolAdapter -> a::extractText }
+        val vision: Boolean? = when {
+            visionCall.status !in 200..299 -> AiEndpoints.probeVerdict(visionCall.status)
+            hasContent(visionCall, extract) -> true
+            else -> null
+        }
+        if (vision == null) notes += "识图：${probeNote(visionCall)}"
+        return vision
+    }
+
+    /** 第 3 步：工具调用。Claude/Gemini 原生协议的工具线格式不同，不做探测 */
+    private fun probeTools(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        adapter: ChatProtocolAdapter?,
+        notes: MutableList<String>,
+    ): Boolean? {
+        if (adapter != null) {
+            notes += "工具：该协议未探测（真实可用性以实际调用为准）"
+            return null
+        }
+        val toolsCall = rawPost(
+            baseUrl, apiKey, model,
+            listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                text = "请调用 noop_ping 工具。")))),
+            listOf(
+                ToolSpec(
+                    function = FunctionSpec(
+                        name = "noop_ping",
+                        description = "无副作用的连通性探测工具",
+                        parameters = json.parseToJsonElement("""{"type":"object","properties":{}}"""),
+                    ),
+                ),
+            ),
+            adapter,
+        )
+        probeBlocker(toolsCall)?.let { error(it) }
+        val tools = AiEndpoints.probeVerdict(toolsCall.status)
+        if (tools == null) notes += "工具：${probeNote(toolsCall)}"
+        return tools
+    }
+
+    /**
+     * 第 4 步：结构化输出（`response_format=json_schema`）。
+     * 多数服务端用 400/415/422 拒绝，probeVerdict 对 400 返回 null（未测出），
+     * 于是 AUTO 档不会贸然下发一个可能直接 400 的字段 —— 与旧行为一致。
+     */
+    private fun probeJsonSchema(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        adapter: ChatProtocolAdapter?,
+        notes: MutableList<String>,
+    ): Boolean? {
+        if (adapter != null) {
+            notes += "结构化输出：该协议未探测"
+            return null
+        }
+        val minimalSchema = json.parseToJsonElement(
+            """{"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"]}""",
+        )
+        val schemaCall = rawPost(
+            baseUrl, apiKey, model,
+            listOf(ChatMessageDto(role = "user", content = listOf(ContentPart(type = "text",
+                text = "请只输出 JSON：{\"ok\":true}")))),
+            null,
+            adapter,
+            ResponseFormat(
+                type = "json_schema",
+                json_schema = JsonSchemaSpec(name = "probe_ok", strict = false, schema = minimalSchema),
+            ),
+        )
+        probeBlocker(schemaCall)?.let { error(it) }
+        val jsonSchema = AiEndpoints.probeVerdict(schemaCall.status)
+        if (jsonSchema == null) notes += "结构化输出：${probeNote(schemaCall)}"
+        return jsonSchema
+    }
 
     /**
      * 单发 POST（无重试）：探测走这条，不做退避。
