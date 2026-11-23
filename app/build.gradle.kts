@@ -247,14 +247,30 @@ tasks.named("check") { dependsOn(checkDocAnchors) }
 // 阈值按"不低于当前实测值"起步，随补测逐步抬高，避免一上来就红。
 // ---------------------------------------------------------------------------
 // 阈值取「当前实测值」为基线，只用来防**回落**（覆盖率掉了就失败），
-// 不是"应该达到"的目标：domain/rules 实测 85.6%、core/text 87.7%、
-// engine/execution 45.6%、device/ops 17.1%（后者多为 shell 命令拼装，JVM 测不到）。
-// 补测后请一并抬高这里的数字。
+// 不是"应该达到"的目标：domain/rules 88.6%、core/text 91.7%、engine/execution 62.2%、
+// device/ops 17.2%（后者多为 shell 命令拼装，JVM 测不到）。补测后请一并抬高这里的数字。
+//
+// 每条规则都配一个**可执行行数下限**（见下面的 coverageMinLines）。为什么必须有它：
+// 包级规则只看得见「这个包里还剩什么」，包里的类被搬走时它不会报错，只会悄悄改测剩下的类。
+// 实测事故：core/text 的七个转换类搬进 :core:text 之后，:app 里这个包只剩 HumanTranslator，
+// 闸门照旧绿（91.7%），而转换器真正的覆盖率当时没有任何人在测。
+// 行数下限把这个盲区变成红：类被搬走 → 可执行行数掉下来 → 提示把规则一起迁到新模块。
+// 确实有意删类时，把下限一起调低，并在提交信息里说明。
 val coverageRules = mapOf(
     "com/phoneagent/domain/rules" to 0.85,
+    // :app 里这个包现在只剩 HumanTranslator.kt；转换器那七个类的 87% 红线由
+    // core/text/build.gradle.kts 的 checkCoreTextCoverage 在模块自己的报告里守。
     "com/phoneagent/core/text" to 0.87,
     "com/phoneagent/engine/execution" to 0.45,
     "com/phoneagent/device/ops" to 0.17,
+)
+
+/** 各包在上述报告里的可执行行数下限，用途见 coverageRules 上方的注释。 */
+val coverageMinLines = mapOf(
+    "com/phoneagent/domain/rules" to 536,
+    "com/phoneagent/core/text" to 181,
+    "com/phoneagent/engine/execution" to 2887,
+    "com/phoneagent/device/ops" to 1047,
 )
 
 val checkPureLogicCoverage by tasks.registering {
@@ -276,19 +292,31 @@ val checkPureLogicCoverage by tasks.registering {
             val pkgBlock = Regex("""<package name="${Regex.escape(pkg)}">([\s\S]*?)</package>""")
                 .find(text)?.groupValues?.get(1)
             if (pkgBlock == null) {
-                logger.lifecycle("覆盖率闸门：未在报告中找到 $pkg（包内可能没有可执行行），跳过")
-                return@forEach
+                // 不能跳过：包从报告里消失只有两种原因 —— 包被搬走了（规则过期），
+                // 或者它根本没被测试跑到。两种都必须红，否则闸门会「看着还在、其实不管了」。
+                throw GradleException(
+                    "覆盖率闸门：报告里没有 $pkg —— 该包已不在 :app 的编译集里（多半是搬进了独立模块）。" +
+                        "请把这条规则迁到那个模块自己的闸门里，再从这里删掉；" +
+                        "留在表里只会让人以为它还被守着。",
+                )
             }
             val lineCounter = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
                 .findAll(pkgBlock).lastOrNull()
             if (lineCounter == null) {
-                logger.lifecycle("覆盖率闸门：$pkg 没有 LINE 计数器，跳过")
-                return@forEach
+                throw GradleException("覆盖率闸门：$pkg 在报告里没有 LINE 计数器（报告格式变了？）")
             }
             val missed = lineCounter.groupValues[1].toInt()
             val covered = lineCounter.groupValues[2].toInt()
             val total = missed + covered
-            if (total == 0) return@forEach
+            if (total == 0) {
+                throw GradleException("覆盖率闸门：$pkg 的可执行行为 0 —— 测试没有跑到这个包，不能算通过。")
+            }
+            coverageMinLines[pkg]?.let { minLines ->
+                if (total < minLines) {
+                    failures += "  $pkg 只剩 $total 行可执行代码（下限 $minLines）：包里的类被搬走了？" +
+                        "规则要跟着迁到那个模块自己的闸门里，而不是留在这里改测剩下的类。"
+                }
+            }
             val ratio = covered.toDouble() / total
             val pct = "%.1f%%".format(ratio * 100)
             if (ratio + 1e-9 < threshold) {
