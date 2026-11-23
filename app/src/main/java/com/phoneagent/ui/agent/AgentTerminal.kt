@@ -112,4 +112,44 @@ internal object AgentTerminal {
      */
     fun unconfirmedNote(unconfirmedSteps: Int): String =
         if (unconfirmedSteps > 0) "「已交付未确认」表示动作已经发出，但没有读到执行回执——请到手机上核对一下。" else ""
+
+    // ==================== 规划失败卡（HAPP-79） ====================
+    //
+    // 规划阶段的终态卡与执行终态卡是同一类：都是「这一轮到此为止」，都必须给齐
+    // 原因 / 可执行动作 / 原始消息三条。分开写在这里而不是各留一份 UI 判断，
+    // 是为了让两张卡的出口口径只有一处（规划失败此前只有原因，没有出口与展开）。
+
+    /**
+     * 规划失败的原因行。
+     *
+     * 配置缺失时说引擎原句——那本身就是给用户看的、能直接照做的一句话（`AppSettings.configProblem`）；
+     * 规划本身失败时引擎消息是给排障用的（「规划解析失败：Unexpected token …」），
+     * 直接摆到正文里对用户没有下一步，所以这里说人话，原文留进「查看原始消息」。
+     */
+    fun planFailedCause(message: String, configProblem: Boolean): String {
+        val raw = message.trim()
+        return when {
+            configProblem -> raw.ifBlank { "模型还没配好：填入可用的 API Key 并选一个模型，再回来重试。" }
+            raw.isBlank() -> "AI 这一轮没能给出计划：可能是模型输出无法解析，或者与云端断开。再试一次。"
+            else -> "AI 这一轮没能给出计划：可能是模型输出不是可解析的计划格式，或者中途断线。" +
+                "再试一次通常就好；反复失败时先到设置里测一次模型连接。"
+        }
+    }
+
+    /**
+     * 规划失败卡的出口。
+     *
+     * 配置缺失重试还是同一个结果（`startPlanning` 会在起跑前拦下），所以先去配置；
+     * 其余情况重试就是真的出路——同一条任务重新走一遍规划，而不是拿这份失败的输入去执行。
+     */
+    fun planFailedActions(configProblem: Boolean): List<TerminalAction> =
+        if (configProblem) listOf(TerminalAction.OPEN_SETTINGS) else listOf(TerminalAction.RETRY)
+
+    /**
+     * 规划失败卡是否给出「查看原始消息」。
+     *
+     * 判据只有一条：引擎交过原始消息，不按「与原因行内容相同」去删——控制项不该因为
+     * 内容碰巧重复就时有时无（执行终态卡同一个坑，见 HAPP-76）。
+     */
+    fun planFailedShowsRawMessage(message: String): Boolean = message.isNotBlank()
 }

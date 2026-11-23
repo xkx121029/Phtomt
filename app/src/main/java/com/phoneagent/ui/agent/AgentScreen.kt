@@ -867,7 +867,7 @@ private fun AgentTimelineItemView(
         is AgentTimelineItem.UserTask -> UserTaskItem(item)
         is AgentTimelineItem.PlanStreaming -> PlanStreamingItem(item, vm)
         is AgentTimelineItem.PlanApproved -> PlanApprovedItem(item)
-        is AgentTimelineItem.PlanFailed -> PlanFailedItem(item.message, vm)
+        is AgentTimelineItem.PlanFailed -> PlanFailedItem(item, vm, onOpenSettings = onOpenSettings)
         is AgentTimelineItem.AssistantNote -> AssistantNoteItem(item, vm)
         is AgentTimelineItem.Say -> SayItem(item, vm)
         is AgentTimelineItem.ClarifyQuestion -> ClarifyQuestionItem(item)

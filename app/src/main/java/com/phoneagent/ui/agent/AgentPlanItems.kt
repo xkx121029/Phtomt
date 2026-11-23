@@ -1,5 +1,6 @@
 package com.phoneagent.ui.agent
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -22,6 +23,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,7 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.phoneagent.ui.MainViewModel
+import com.phoneagent.ui.components.PressableScale
 import com.phoneagent.ui.icons.AppIcons
+import com.phoneagent.ui.theme.AppRadii
 import com.phoneagent.ui.theme.AppSpacing
 import com.phoneagent.ui.theme.AppTheme
 import com.phoneagent.ui.theme.DurationPulse
@@ -123,14 +129,24 @@ internal fun PlanApprovedItem(item: AgentTimelineItem.PlanApproved) {
     }
 }
 
-/** 规划失败 */
+/**
+ * 规划失败：这一轮停在规划阶段。
+ *
+ * 与执行终态卡同一套要求（见 [TerminalItem]）：**原因 + 可执行动作 + 原始消息可展开**。
+ * 此前这张卡只有一句原因——用户看到「规划失败」之后没有任何可点的出路，
+ * 而引擎那边（`PlanningFlow.startPlanning`）的注释一直写着它会给出「去配置」出口。
+ */
 @Composable
 internal fun PlanFailedItem(
-    message: String,
+    item: AgentTimelineItem.PlanFailed,
     vm: MainViewModel,
+    onOpenSettings: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    val text = rememberTranslated(message, vm)
+    val cause = AgentTerminal.planFailedCause(item.message, item.configProblem)
+    val actions = AgentTerminal.planFailedActions(item.configProblem)
+    val showsRaw = AgentTerminal.planFailedShowsRawMessage(item.message)
+    var detailOpen by rememberSaveable(item.key) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -154,9 +170,49 @@ internal fun PlanFailedItem(
         }
         Spacer(Modifier.height(AppSpacing.Xs))
         Text(
-            text = text.ifBlank { "AI 没能给出计划，可换个说法再试一次" },
+            text = cause,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onErrorContainer,
+        )
+        if (showsRaw) {
+            PlanRawMessageBlock(
+                message = item.message,
+                open = detailOpen,
+                onToggle = { detailOpen = !detailOpen },
+            )
+        }
+        Spacer(Modifier.height(AppSpacing.Md))
+        TerminalActionRow(
+            actions = actions,
+            onRetry = vm::retryPlanning,
+            onOpenSettings = onOpenSettings,
+        )
+    }
+}
+
+/** 引擎原句的折叠区：默认收起，点一行标题展开（与执行终态卡同一套观感） */
+@Composable
+private fun PlanRawMessageBlock(message: String, open: Boolean, onToggle: () -> Unit) {
+    val colors = AppTheme.colors
+    Spacer(Modifier.height(AppSpacing.Sm))
+    PressableScale(onClick = onToggle) {
+        Text(
+            text = if (open) "收起原始消息" else "查看原始消息",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+            color = colors.onErrorContainer.copy(alpha = 0.9f),
+            modifier = Modifier.padding(vertical = AppSpacing.Xs),
+        )
+    }
+    AnimatedVisibility(visible = open) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onErrorContainer.copy(alpha = 0.85f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(AppRadii.Inline))
+                .background(colors.surfaceSunken.copy(alpha = 0.55f))
+                .padding(AppSpacing.Md),
         )
     }
 }

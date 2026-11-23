@@ -360,7 +360,10 @@ internal object AgentTimelineMapper {
                 is PlanPhase.AwaitingApproval -> Unit
                 // 纯对话：回答已经作为一条 say 气泡出现在上面，这里不再产出条目
                 is PlanPhase.Reply -> Unit
-                is PlanPhase.Error -> items += AgentTimelineItem.PlanFailed(planPhase.message)
+                is PlanPhase.Error -> items += AgentTimelineItem.PlanFailed(
+                    message = planPhase.message,
+                    configProblem = planPhase.configProblem,
+                )
                 else -> Unit
             }
         }

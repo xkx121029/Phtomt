@@ -123,6 +123,9 @@ class AgentTaskDelegate(
 
     fun startPlanning(task: String) = engine.startPlanning(task)
 
+    /** 规划失败卡的重试：重新规划同一条待规划任务（不是拿它去执行） */
+    fun retryPlanning() = engine.retryPlanning()
+
     /**
      * 对话页直提（对话模式）：**只作答、不执行**。
      *

@@ -430,26 +430,45 @@ internal fun TerminalItem(
         }
         if (item.actions.isNotEmpty()) {
             Spacer(Modifier.height(AppSpacing.Md))
-            Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
-                item.actions.forEachIndexed { index, action ->
-                    val (label, actionIcon) = when (action) {
-                        TerminalAction.RETRY -> "重试" to AppIcons.Refresh
-                        TerminalAction.OPEN_SETTINGS -> "去配置" to AppIcons.Settings
-                        TerminalAction.OPEN_PERMISSIONS -> "去开启无障碍" to AppIcons.TouchApp
-                    }
-                    AgentActionButton(
-                        text = label,
-                        icon = actionIcon,
-                        // 第一个动作是「主要出路」：其余降为次级，避免两颗按钮抢同一份注意力
-                        tone = if (index == 0) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
-                        onClick = when (action) {
-                            TerminalAction.RETRY -> vm::retryLastTask
-                            TerminalAction.OPEN_SETTINGS -> onOpenSettings
-                            TerminalAction.OPEN_PERMISSIONS -> onOpenPermissions
-                        },
-                    )
-                }
+            TerminalActionRow(
+                actions = item.actions,
+                onRetry = vm::retryLastTask,
+                onOpenSettings = onOpenSettings,
+                onOpenPermissions = onOpenPermissions,
+            )
+        }
+    }
+}
+
+/**
+ * 终态卡的出口按钮行：执行终态卡与规划失败卡共用，标签 / 图标 / 主次顺序只在这里定义一次。
+ *
+ * 第一个动作是「主要出路」：其余降为次级，避免两颗按钮抢同一份注意力。
+ */
+@Composable
+internal fun TerminalActionRow(
+    actions: List<TerminalAction>,
+    onRetry: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onOpenPermissions: () -> Unit = {},
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm)) {
+        actions.forEachIndexed { index, action ->
+            val (label, actionIcon) = when (action) {
+                TerminalAction.RETRY -> "重试" to AppIcons.Refresh
+                TerminalAction.OPEN_SETTINGS -> "去配置" to AppIcons.Settings
+                TerminalAction.OPEN_PERMISSIONS -> "去开启无障碍" to AppIcons.TouchApp
             }
+            AgentActionButton(
+                text = label,
+                icon = actionIcon,
+                tone = if (index == 0) AgentButtonTone.PRIMARY else AgentButtonTone.NEUTRAL,
+                onClick = when (action) {
+                    TerminalAction.RETRY -> onRetry
+                    TerminalAction.OPEN_SETTINGS -> onOpenSettings
+                    TerminalAction.OPEN_PERMISSIONS -> onOpenPermissions
+                },
+            )
         }
     }
 }

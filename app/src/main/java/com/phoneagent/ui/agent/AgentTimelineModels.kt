@@ -42,8 +42,14 @@ internal sealed interface AgentTimelineItem {
         override val key: String get() = "plan#approved"
     }
 
-    /** 规划失败 */
-    data class PlanFailed(val message: String) : AgentTimelineItem {
+    /**
+     * 规划失败：这一轮停在规划阶段，没有进入执行。
+     *
+     * [message] 是引擎原始消息（解析失败原因 / 配置缺失说明），展开可见；
+     * [configProblem] 来自 [com.phoneagent.engine.PlanPhase.Error.configProblem]，
+     * 决定出口是「去配置」还是「重新规划」。
+     */
+    data class PlanFailed(val message: String, val configProblem: Boolean = false) : AgentTimelineItem {
         override val key: String get() = "plan#failed"
     }
 

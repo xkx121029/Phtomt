@@ -1087,6 +1087,9 @@ class AgentEngine(
 
     fun cancelPlanning() = planningFlow.cancelPlanning()
 
+    /** 规划失败卡的「重试」出口：拿同一条待规划任务重新走一遍规划 */
+    fun retryPlanning() = planningFlow.retryPlanning()
+
     /**
      * 从 AI 响应中提取 JSON 对象（纯逻辑实现见 [EngineRules.extractJsonObject]）。
      * 策略（按优先级）：
@@ -3337,8 +3340,14 @@ sealed class PlanPhase {
     data class Reply(val text: String) : PlanPhase()
     /** 已批准，开始执行 */
     data class Approved(val plan: TaskPlan?) : PlanPhase()
-    /** 规划失败 */
-    data class Error(val message: String) : PlanPhase()
+    /**
+     * 规划失败。
+     *
+     * [configProblem] 标出「失败是因为模型配置还没填齐」——这种失败重试还是同一个结果，
+     * 卡片据此给「去配置」而不是「重试」（见 [com.phoneagent.ui.agent.AgentTerminal.planFailedActions]）。
+     * 判据只在产生失败的地方知道，所以在源头记下，不让界面拿文案去猜。
+     */
+    data class Error(val message: String, val configProblem: Boolean = false) : PlanPhase()
 }
 
 // 视觉/思考模型配置已提为 internal 顶层类（见 DecisionModels.kt，重构批次 4）

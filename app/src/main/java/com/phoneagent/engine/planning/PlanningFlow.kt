@@ -83,7 +83,7 @@ internal class PlanningFlow(
         if (missing != null) {
             store.pendingTask = task
             store.planStream.value = ""
-            store.planPhase.value = PlanPhase.Error(missing)
+            store.planPhase.value = PlanPhase.Error(missing, configProblem = true)
             ui.log(com.phoneagent.domain.model.AgentLog.Level.ERROR, "未开始规划：$missing")
             ui.pushFloating("配置未完成", "ERROR")
             return
@@ -241,6 +241,19 @@ internal class PlanningFlow(
         store.planPhase.value = PlanPhase.Idle
         store.pendingTask = ""
         store.activePlan = null
+    }
+
+    /**
+     * 规划失败后的重试：**重新规划同一条任务**，而不是把它当已批准的执行任务跑掉。
+     *
+     * 失败卡的「重试」必须回到命令行起点（用户当时是「先说计划再动手」才走到这张卡的），
+     * 直接 start 会绕过用户关掉的那个批准门。
+     */
+    fun retryPlanning() {
+        val task = store.pendingTask
+        if (task.isBlank()) return
+        ui.clearFloatingQuery()
+        startPlanning(task)
     }
 
     // 分派逻辑集中在一处，扁平化拆分会破坏原有可读性，此处按规则豁免

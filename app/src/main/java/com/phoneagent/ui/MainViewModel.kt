@@ -190,6 +190,9 @@ class MainViewModel(
 
     fun startPlanning(task: String) = agentDomain.startPlanning(task)
 
+    /** 规划失败卡的重试：重新规划同一条待规划任务 */
+    fun retryPlanning() = agentDomain.retryPlanning()
+
     /** 对话页直提（对话模式，只作答不执行，语义见 [AgentTaskDelegate.submitChatTurn]） */
     fun submitChatTurn(task: String) = agentDomain.submitChatTurn(task)
 
