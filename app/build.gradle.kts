@@ -483,6 +483,10 @@ dependencies {
     // 编码环境跨进程契约（IEnvProvider AIDL）：与 :env 组件共享同一份定义
     implementation(project(":env-api"))
 
+    // 从 :app 抽出的纯逻辑模块（模块化 P0）：包名不变，调用方 import 不用改
+    implementation(project(":core:text"))
+    implementation(project(":core:log"))
+
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)
     implementation(libs.mlkit.common)
