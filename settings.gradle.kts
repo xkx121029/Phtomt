@@ -33,7 +33,7 @@ include(":app")
 // 从 :app 抽出的纯逻辑模块（模块化 P0）。
 //
 // 包名不变、只换编译单元：`com.phoneagent.core.text` / `com.phoneagent.core.log` 仍在原包，
-// 因此 :app 里 47 处 import 一行都不用改。代价是这些包不再随 :app 的测试源集编译，
+// 因此 :app 里这 45 处 import（core.text 22 + core.log 21 + AgentBudgets 2）一行都不用改。代价是这些包不再随 :app 的测试源集编译，
 // 连带的三处闸门（detekt baseline、覆盖率、doc 锚点）必须各自跟着搬——见各模块
 // build.gradle.kts 与 app/build.gradle.kts 里 checkPureLogicCoverage 的注释。
 //
