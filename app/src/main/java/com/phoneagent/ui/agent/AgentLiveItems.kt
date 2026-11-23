@@ -352,7 +352,7 @@ internal fun TerminalItem(
     var detailOpen by rememberSaveable(item.key) { mutableStateOf(false) }
     val stepLine = AgentTerminal.stepLine(item.okSteps, item.unconfirmedSteps, item.failedSteps)
     val unconfirmedNote = AgentTerminal.unconfirmedNote(item.unconfirmedSteps)
-    val hasDetail = item.detail.isNotBlank() && item.detail != item.cause
+    val hasDetail = AgentTerminal.showsRawMessage(item.detail)
 
     Column(
         modifier = Modifier
