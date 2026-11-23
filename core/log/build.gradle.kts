@@ -21,6 +21,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    testOptions {
+        unitTests {
+            // android.util.Log 等返回默认值（0/null），与 :app 的口径一致（app/build.gradle.kts）；
+            // AppLog 直接调 android.util.Log，不开这个开关，本模块的单测一跑就 "not mocked"。
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 kotlin {
@@ -33,6 +40,9 @@ dependencies {
     // Catching.kt 用的是 kotlinx.coroutines.CancellationException（JVM 上等于
     // java.util.concurrent.CancellationException，但保留原 import 以免改动调用方语义）
     implementation(libs.kotlinx.coroutines.core)
+    // runCatchingLogged 的契约单测（原在 :app 的 src/test，搬进本模块才能被
+    // :core:log:testDebugUnitTest 跑到；留在 :app 时这条 CI 任务是 NO-SOURCE）
+    testImplementation(libs.junit)
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,5 @@
 package com.phoneagent.core.text
 
-import com.phoneagent.feature.browser.BrowserGuard
-import com.phoneagent.feature.browser.script.BrowserJs
-import com.phoneagent.feature.browser.script.InteractScripts
-import com.phoneagent.feature.browser.script.ReadScript
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -12,15 +8,17 @@ import org.junit.Test
 /**
  * 自研 HTML → Markdown 转换器单测。
  *
- * 覆盖三层：
+ * 覆盖三层的前两层：
  * 1. **嗅探**（[HtmlToMarkdown.isHtml]）——必须挡住 JSON、纯文本、`uiautomator dump` 的 XML；
- * 2. **转换**（[HtmlToMarkdown.convert]）——标题/列表/引用/代码/表格/链接/实体等结构是否真的转出来了；
- * 3. **两侧同源**——浏览器侧脚本 [ReadScript.READ] 的规则表必须由本侧常量插值生成，
- *    且**不能**把 `html`/`body` 当噪声丢掉（丢它们等于正文全空）。
+ * 2. **转换**（[HtmlToMarkdown.convert]）——标题/列表/引用/代码/表格/链接/实体等结构是否真的转出来了。
+ *
+ * 第三层「两侧同源」（浏览器脚本 [com.phoneagent.feature.browser.script.ReadScript] 的规则表
+ * 由本模块常量插值生成）留在 :app 的 HtmlToMarkdownScriptContractTest：那一侧要 import
+ * feature/browser 的类，不能进纯 JVM 模块。
+ *
+ * 这个文件是从 :app 搬过来的：用例跟着被测包走，本模块的覆盖率闸门才有东西可测。
  */
 class HtmlToMarkdownTest {
-
-    // ==================== 一、嗅探 ====================
 
     @Test
     fun `嗅探_强信号HTML判真`() {
@@ -79,7 +77,8 @@ class HtmlToMarkdownTest {
         val md = HtmlToMarkdown.convert(html).markdown
         assertEquals("你好 **加粗** 与 [链接](https://e.com/x) 以及", md)
         // 图片与换行同样是"空白该落地"的证据，不能把空格丢在标记前面
-        assertEquals("看图 ![图](https://e.com/a.png)", HtmlToMarkdown.convert("<p>看图 <img src=\"https://e.com/a.png\" alt=\"图\"></p>").markdown)
+        val img = HtmlToMarkdown.convert("<p>看图 <img src=\"https://e.com/a.png\" alt=\"图\"></p>").markdown
+        assertEquals("看图 ![图](https://e.com/a.png)", img)
         // 反向护栏：原文没有空白时绝不擅自加空格（CJK 之间尤其）
         assertEquals("你好**加粗**", HtmlToMarkdown.convert("<p>你好<strong>加粗</strong></p>").markdown)
     }
@@ -238,52 +237,5 @@ class HtmlToMarkdownTest {
         assertFalse(linkCut, linkCut.contains("]("))
         assertFalse(linkCut, linkCut.contains("["))
         assertEquals(note, linkCut)
-    }
-
-    @Test
-    fun `浏览器脚本内嵌的规则表与本侧常量同源`() {
-        val read = ReadScript.READ
-        fun table(key: String): String = read.lineSequence().first { it.contains("var $key =") }
-        val drop = table("DROP")
-        val block = table("BLOCK")
-        val hidden = table("HIDDEN_CLASS")
-        // 四张表 + 转义字符表 + 围栏字面量，全部由本侧常量插值生成（改一处即两处生效）
-        HtmlToMarkdown.DROP_RULE.split(' ').filter { it.isNotBlank() }.forEach {
-            assertTrue("丢弃表缺 $it", drop.contains(HtmlToMarkdown.jsStr(it) + ":1"))
-        }
-        HtmlToMarkdown.BLOCK_RULE.split(' ').filter { it.isNotBlank() }.forEach {
-            assertTrue("块级表缺 $it", block.contains(HtmlToMarkdown.jsStr(it) + ":1"))
-        }
-        HtmlToMarkdown.HIDDEN_CLASS_RULE.split(' ').filter { it.isNotBlank() }.forEach {
-            assertTrue("隐藏类名表缺 $it", hidden.contains(HtmlToMarkdown.jsStr(it) + ":1"))
-        }
-        assertTrue(read, read.contains(HtmlToMarkdown.jsMarkPairs(HtmlToMarkdown.MARK_RULE)))
-        assertTrue(read, read.contains(HtmlToMarkdown.jsArr(HtmlToMarkdown.ESCAPE_RULE)))
-        assertTrue(read, read.contains(HtmlToMarkdown.jsStr(HtmlToMarkdown.FENCE)))
-        // 回归护栏：html/body 是正文容器，一旦被列进丢弃表，整页会转出空 Markdown
-        assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("body") + ":1"))
-        assertFalse(drop, drop.contains(HtmlToMarkdown.jsStr("html") + ":1"))
-    }
-
-    @Test
-    fun `清单与点击共用同一套选择器与同一个人话取名函数`() {
-        // 读侧清单（browse_read）与写侧点击（browse_click）必须共享选择器与 labelOf，
-        // 否则会出现"清单里看得见的按钮，点下去却说找不到"。
-        val read = ReadScript.READ
-        assertTrue(read, read.contains(HtmlToMarkdown.jsStr(BrowserJs.LIST_SELECTOR)))
-        assertTrue(read, read.contains(BrowserJs.HELPERS))
-
-        val click = InteractScripts.click("text", "下一页", guard = true)
-        assertTrue(click, click.contains(HtmlToMarkdown.jsStr(BrowserJs.CLICK_SELECTOR)))
-        assertTrue(click, click.contains(BrowserJs.HELPERS))
-        // 候选面必须以清单选择器为前缀（先真控件、再文字宽网），保证"看得见就点得到"
-        assertTrue(BrowserJs.CLICK_SELECTOR.startsWith(BrowserJs.LIST_SELECTOR))
-    }
-
-    @Test
-    fun `只读护栏词表在脚本侧与端侧同源`() {
-        // 词表只在 BrowserGuard 定义一次：Kotlin 判定用它，注入脚本的探针也用它
-        val click = InteractScripts.click("text", "确认支付", guard = true)
-        assertTrue(click, click.contains(BrowserGuard.jsWords()))
     }
 }
