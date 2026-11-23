@@ -130,29 +130,61 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # ---------------------------------------------------------------------
+      # 新模块纳入 CI 闸门 —— 抽包的人照这 4 条做，少一条就是一个静默失效：
+      #   1. 单测：把 `:<模块>:test`（Android 库模块是 `:<模块>:testDebugUnitTest`）
+      #      加进下面 "Unit tests + coverage gates" 那一行。先 `--dry-run` 确认任务存在，
+      #      不存在就说明模块还没有测试源集，别硬加（会红在「任务不存在」而不是测试）。
+      #   2. detekt：把 `:<模块>:detekt` 加进 "Detekt + Lint"，
+      #      `:<模块>:checkDetektBaseline` 加进 "Detekt baseline guards"
+      #      （模块要有自己的 baseline.xml + baseline-count.txt）。
+      #   3. 覆盖率：把**被搬走的那批类**的红线挪进模块自己的闸门；:app 的 coverageRules
+      #      只保留仍留在 :app 的类，并按新的行数调低 coverageMinLines（两边注释互相指向）。
+      #   4. 测试跟着包走：被测类的单测要搬进模块，否则模块的覆盖率闸门量的是空壳
+      #      （:core:text 就是先只有 36.3%）。path 上确认 paths-ignore 没吞掉模块目录。
+      # ---------------------------------------------------------------------
       - name: Detekt + Lint (static analysis, non-blocking)
         # 两个都不阻断出包（存量问题未清理完），合并到同一次 Gradle 调用：
         # 每次 ./gradlew 都要重跑一遍配置阶段（本工程实测 20~40s/次），
         # 同一次调用里跑多任务是 CI 上最直接的时间节省。--continue 保证
         # detekt 失败时 lint 仍然执行、报告都能上传。
         #
-        # 任务名必须带 :app 前缀：detekt 配置与基线只挂在 :app 上，
-        # 跑根项目的 `detekt` 不带基线路径，存量问题会全量报错。
+        # 任务要逐个列出并带模块前缀：detekt 的 config/baseline 挂在各模块自己的
+        # build.gradle.kts 上，跑根项目的 `detekt` 不带基线路径，存量问题会全量报错；
+        # 只列 :app 而不列新模块，那个模块的代码在 CI 上一条规则都没过。
         # 存量约 180 条（MagicNumber 56、ReturnCount 28、MaxLineLength 25、
         # CyclomaticComplexMethod 20…），大多在基线生成之后新增。清理完之前它不该挡住产包，
         # 清理后把 continue-on-error 去掉即可恢复阻断，并把这个步骤拆回独立步骤。
         continue-on-error: true
-        run: ./gradlew :app:detekt :app:lintDebug --continue --stacktrace
+        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt --continue --stacktrace
 
       - name: Detekt baseline guards
         # 基线只减不增 + 分类合计必须等于总条目数（防止只改总数不更新分类表）。
         # 两条守卫都是确定性的、秒级完成，合并成一次调用省一次配置开销。
-        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown --stacktrace
+        #
+        # 每个模块的豁免名单都是本模块自有的：baseline 的匹配键是
+        # `RuleId:文件名$签名`、不含路径，包搬出 :app 后原豁免不再生效，
+        # 所以每个模块都要跑它自己的 checkDetektBaseline。
+        # :core:log 没有 baseline.xml，那个任务会显式打印"跳过"并以成功退出
+        # （见 core/log/build.gradle.kts），因此这里可以无条件列出。
+        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline --stacktrace
 
       - name: Unit tests + coverage gates
         # 测试、覆盖率报告、纯逻辑覆盖率闸门一次跑完：后两者都依赖测试结果，
         # 历史实现是三次独立 ./gradlew，每次都要重新配置整个工程。
-        run: ./gradlew :app:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage --stacktrace
+        #
+        # 每个模块的测试任务必须显式列出：包搬进独立模块后，:app:testDebugUnitTest
+        # 既不编译也不执行它们 —— :core:text 的 10 条 HtmlToMarkdownStagesTest
+        # 曾因此在 CI 上一条都不跑，而这个步骤全绿。
+        # 覆盖率闸门同理分两处：:app 守自己编译集里的包（checkPureLogicCoverage），
+        # 各模块守自己那份（:core:text:checkCoreTextCoverage）。
+        run: ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage --stacktrace
+
+      - name: Doc anchors (docs/judgement-index.md)
+        # 判据索引表的 file:line 锚点校验：函数改名或代码挪位之后，锚点仍然"存在"
+        # 但指向了别的代码 —— 只有这条机械校验能发现。本地一直跑（check 依赖它），
+        # CI 从来没跑过，所以文档与代码脱节在 CI 上无人拦。
+        run: ./gradlew :app:checkDocAnchors --stacktrace
 
       - name: Release variant gates (R8 + lintVital)
         # release 变体（isMinifyEnabled + isShrinkResources + proguard 规则）在 CI 里
