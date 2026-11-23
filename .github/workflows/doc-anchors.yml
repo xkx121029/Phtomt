@@ -1,0 +1,55 @@
+name: Doc anchors
+
+# 判据索引（docs/judgement-index.md）的 file:line 锚点校验，单独一条轻量 workflow。
+#
+# 为什么独立：android-ci.yml 的 push 触发带 paths-ignore，其中包含 `docs/**` ——
+# 只改文档（尤其是这张表本身）的提交不会触发它，而 checkDocAnchors 只在那边跑，
+# 于是「文档与代码脱节」在 CI 上无人拦。这条 workflow 只做这一件事：不构建 APK、
+# 不发 Release、不推进 version.properties（root build.gradle.kts 只在真正出包的调用里
+# 自增 BUILD_NUMBER，`:app:checkDocAnchors` 不在其中）。
+#
+# 与 android-ci.yml 里的同名步骤不是重复，两边各补一半：
+#   代码变更 → android-ci 跑 checkDocAnchors（代码挪位会让锚点指到别的行）；
+#   文档变更 → 这条 workflow 跑 checkDocAnchors（改表会写错锚点）。
+# PR 不用在这里重复监听：android-ci 的 pull_request 触发没有 paths-ignore，PR 已经被覆盖。
+
+on:
+  push:
+    branches: [main, nightly]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/doc-anchors.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doc-anchors-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  anchors:
+    name: Check doc anchors
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Check doc anchors
+        # 只需要配置工程 + 读 docs/judgement-index.md 与对应的 .kt：不需要签名、
+        # 不需要 debug keystore（那份 keystore 只为 assembleDebug 的签名基线）。
+        run: ./gradlew :app:checkDocAnchors --stacktrace
