@@ -1,0 +1,62 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$head.startsWith("&lt;!doctype html") || head.startsWith("&lt;html") || head.startsWith("&lt;head") || head.startsWith("&lt;body")</ID>
+    <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; !src[i].isWhitespace() &amp;&amp; src[i] != '=' &amp;&amp; src[i] != '&gt;' &amp;&amp; src[i] != '/'</ID>
+    <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; (src[i].isLetterOrDigit() || src[i] == '-' || src[i] == ':' || src[i] == '_')</ID>
+    <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("mailto:") || lower.startsWith("tel:")</ID>
+    <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$ch == '\\' || ch == '`' || ch == '*' || ch == '_' || ch == '[' || ch == ']'</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$fun isHtml(raw: String): Boolean</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun skipSubtree(html: String, tag: Tag): Int</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun stripNoise(html: String, meta: Meta): String</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun closeFrame(f: Frame)</ID>
+    <ID>CyclomaticComplexMethod:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun start(t: Tag)</ID>
+    <ID>LongMethod:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
+    <ID>LongMethod:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun start(t: Tag)</ID>
+    <ID>LoopWithTooManyJumpStatements:HtmlToMarkdown.kt$HtmlToMarkdown$while</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0x10FFFF</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0xD800</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0xDFFF</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$10</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$100</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$12</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$15</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$16</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$200</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$256</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$3</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$4</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$8</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$9</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$16</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$3</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$6</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$99_999</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0x2E80</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0x3000</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0x303F</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0x9FFF</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0xFF00</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$0xFFEF</ID>
+    <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$1024</ID>
+    <ID>NestedBlockDepth:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun isHtml(raw: String): Boolean</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun takeBlocks(markdown: String, budget: Int): String</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun codePoint(digits: String, radix: Int): String?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun indexOfEndTag(src: String, name: String, from: Int): Int</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun parseTag(src: String, lt: Int): Tag?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun safeSubstring(s: String, index: Int): String</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun skipRawText(html: String, tag: Tag): Int</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun absolute(href: String?): String?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun hiddenTag(t: Tag): Boolean</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun listOf(item: Frame): Frame?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun nearestItem(): Frame?</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.Converter$private fun start(t: Tag)</ID>
+    <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown.MdBuilder$private fun appendChar(ch: Char, src: String, i: Int)</ID>
+    <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown</ID>
+    <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown$Converter</ID>
+    <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown$MdBuilder</ID>
+  </CurrentIssues>
+</SmellBaseline>
