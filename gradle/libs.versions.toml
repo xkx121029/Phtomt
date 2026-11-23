@@ -59,6 +59,8 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+# 纯 JVM 模块（:core:log）用的协程核心库：不带 Android 依赖
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitText" }
 mlkit-common = { group = "com.google.mlkit", name = "common", version.ref = "mlkitCommon" }
 

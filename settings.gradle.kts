@@ -29,6 +29,23 @@ dependencyResolutionManagement {
 rootProject.name = "PhoneAgent"
 include(":app")
 
+// ---------------------------------------------------------------------------
+// 从 :app 抽出的纯逻辑模块（模块化 P0）。
+//
+// 包名不变、只换编译单元：`com.phoneagent.core.text` / `com.phoneagent.core.log` 仍在原包，
+// 因此 :app 里这 45 处 import（core.text 22 + core.log 21 + AgentBudgets 2）一行都不用改。代价是这些包不再随 :app 的测试源集编译，
+// 连带的三处闸门（detekt baseline、覆盖率、doc 锚点）必须各自跟着搬——见各模块
+// build.gradle.kts 与 app/build.gradle.kts 里 checkPureLogicCoverage 的注释。
+//
+// :core:text 是纯 Kotlin JVM 模块（零 android.* 依赖）；
+// :core:log 必须是 com.android.library（AppLog 直接用 android.util.Log）。
+// ---------------------------------------------------------------------------
+include(":core:text")
+project(":core:text").projectDir = file("core/text")
+
+include(":core:log")
+project(":core:log").projectDir = file("core/log")
+
 // 权限 Provider 应用：承载无障碍 / 内置 Shizuku / Termux 三条通道的独立 APK。
 // 主应用首次打开时引导安装（参考 Operit 的独立 Provider 方案），并通过 AIDL
 // （com.phoneagent.provider.IDeviceProvider）远程调用。Provider 构建产物作为
