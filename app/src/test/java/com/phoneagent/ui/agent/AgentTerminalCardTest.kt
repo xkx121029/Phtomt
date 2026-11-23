@@ -154,4 +154,54 @@ class AgentTerminalCardTest {
         assertEquals(listOf(TerminalAction.OPEN_SETTINGS), card.actions)
         assertTrue("原因要指向配置", card.cause.contains("401"))
     }
+
+    // ==================== 规划失败卡（HAPP-79） ====================
+
+    /** 铺一次规划失败：走到这张卡的入口就是 [PlanPhase.Error]（外部入口经 startPlanning 走到） */
+    private fun planFailed(message: String, configProblem: Boolean = false): AgentTimelineItem.PlanFailed =
+        AgentTimelineMapper.build(
+            submittedTask = "打开相册",
+            state = AgentState(isRunning = false, task = "打开相册", phase = AgentState.Phase.IDLE),
+            planPhase = PlanPhase.Error(message, configProblem = configProblem),
+            planText = "",
+            traces = emptyList(),
+            history = emptyList(),
+            queue = emptyList(),
+            needsUser = false,
+            needsUserReason = "",
+            a11yEnabled = true,
+        ).filterIsInstance<AgentTimelineItem.PlanFailed>().single()
+
+    @Test
+    fun `规划失败卡必须给出出口与可展开的原始消息`() {
+        // 引擎原句（解析失败）是排障用的，正文说人话，原文留在「查看原始消息」里
+        val item = planFailed("规划解析失败：Unexpected token at offset 12")
+        assertEquals("引擎原始消息要带进卡片", "规划解析失败：Unexpected token at offset 12", item.message)
+        assertEquals("规划本身失败时重试就是出路", listOf(TerminalAction.RETRY), AgentTerminal.planFailedActions(item.configProblem))
+        assertTrue("原始消息必须可展开", AgentTerminal.planFailedShowsRawMessage(item.message))
+        val cause = AgentTerminal.planFailedCause(item.message, item.configProblem)
+        assertTrue("原因行要说人话，而不是把解析报错原样摆出来", !cause.contains("Unexpected token"))
+        assertTrue("原因行仍要指出去路", cause.contains("再试一次"))
+    }
+
+    @Test
+    fun `配置缺失导致的规划失败，出口是去配置而不是重试`() {
+        // PlanningFlow.startPlanning 会在起跑前拦下并写成 PlanPhase.Error(configProblem = true)：
+        // 这种情况下重试还是同一个结果
+        val item = planFailed("API Key 未填写", configProblem = true)
+        assertTrue("配置缺失的结构化标记要一路传到卡片", item.configProblem)
+        assertEquals(
+            listOf(TerminalAction.OPEN_SETTINGS),
+            AgentTerminal.planFailedActions(item.configProblem),
+        )
+        val cause = AgentTerminal.planFailedCause(item.message, item.configProblem)
+        assertTrue("原因行要复用引擎那句配置说明", cause.contains("API Key"))
+    }
+
+    @Test
+    fun `规划失败卡在引擎没给原文时不留空展开区`() {
+        val cause = AgentTerminal.planFailedCause("", configProblem = false)
+        assertTrue("没有原文也要有一句能照做的原因", cause.isNotBlank())
+        assertTrue("没有原文就不出「查看原始消息」", !AgentTerminal.planFailedShowsRawMessage(""))
+    }
 }
