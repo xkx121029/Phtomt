@@ -558,9 +558,15 @@ private fun ActivityContent(
         intent.replaceExtras(null)
         // 先清 Intent 再等确认：用户迟迟不点也不会有第二份同样的请求被 onNewIntent 重放
         if (com.phoneagent.feature.entry.EntryTrust.needsUserConfirmation(target, provenInternal)) {
+            AppLog.i(
+                "EntryIntent",
+                "外部入口命中确认门 target=$target provenInternal=$provenInternal " +
+                    "sdk=${android.os.Build.VERSION.SDK_INT}",
+            )
             pendingEntry = target
             return@LaunchedEffect
         }
+        AppLog.i("EntryIntent", "内部入口直接执行 target=$target")
         dispatchEntry(target)
     }
 
@@ -609,164 +615,143 @@ private fun ActivityContent(
         // 否则条下方会留下一条看不见的矩形预留带，看着像把内容截断了。
         // 各页自己按 LocalNavClearance 垫出净空。
     ) { padding ->
-        // 统一白色状态栏边条：所有页面顶部先铺一条与状态栏等高的白色/浅色背景，
-        // 内容整体下移，避免与系统状态栏图标重叠（edge-to-edge 下状态栏区域透明）
-        Column(
+        // 浮层必须与内容层同高：内容列在主轴上会把高度吃满，排在它后面的 fillMaxSize
+        // 子项拿到的剩余高度是 0，于是全屏阅读 / 服务组件安装提示 / 外部入口确认都量成
+        // 0 高、一个像素都画不出来（平板 rail 布局只是让人更容易撞上）。两者并列为同一个
+        // Box 的子项，浮层按绘制顺序压在上面。
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.background),
         ) {
-            Spacer(
-                Modifier
-                    .fillMaxWidth()
-                    .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
-                    .background(MaterialTheme.colorScheme.surface),
-            )
-            // 导航形态由**可用宽度 + 高度**一起决定：
-            // 平板竖屏（800×1280）宽度够，但一列只放得下图标，用收起侧栏；
-            // 平板横屏（1280×800）宽高都够，侧栏展开成「图标 + 文字」；
-            // 手机横屏（891×411）高度放不下底部条——页眉 120dp + 输入板 200dp + 底部条 100dp
-            // 正好吃满 411dp，任务流被挤成一条缝；这里同样走左侧收起侧栏
-            // （5 个条目 × ≤56dp 在 411dp 内放得下），把底部整条空间还给内容。
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val width = maxWidth
-                val height = maxHeight
-                val landscapePhone = width >= WindowWidthRail && height < WindowHeightRail
-                val railNav = landscapePhone || (width >= WindowWidthRail && height >= WindowHeightRail)
-                // 展开态要「宽 + 高」都够：手机横屏只有 411dp 高，侧栏撑不出文字行
-                val expanded = width >= WindowWidthExpanded && height >= WindowHeightRail
+            // 统一白色状态栏边条：所有页面顶部先铺一条与状态栏等高的白色/浅色背景，
+            // 内容整体下移，避免与系统状态栏图标重叠（edge-to-edge 下状态栏区域透明）
+            Column(Modifier.fillMaxSize()) {
+                Spacer(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                        .background(MaterialTheme.colorScheme.surface),
+                )
+                // 导航形态由**可用宽度 + 高度**一起决定：
+                // 平板竖屏（800×1280）宽度够，但一列只放得下图标，用收起侧栏；
+                // 平板横屏（1280×800）宽高都够，侧栏展开成「图标 + 文字」；
+                // 手机横屏（891×411）高度放不下底部条——页眉 120dp + 输入板 200dp + 底部条 100dp
+                // 正好吃满 411dp，任务流被挤成一条缝；这里同样走左侧收起侧栏
+                // （5 个条目 × ≤56dp 在 411dp 内放得下），把底部整条空间还给内容。
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val width = maxWidth
+                    val height = maxHeight
+                    val landscapePhone = width >= WindowWidthRail && height < WindowHeightRail
+                    val railNav = landscapePhone || (width >= WindowWidthRail && height >= WindowHeightRail)
+                    // 展开态要「宽 + 高」都够：手机横屏只有 411dp 高，侧栏撑不出文字行
+                    val expanded = width >= WindowWidthExpanded && height >= WindowHeightRail
 
-                // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
-                var taskDrawerOpen by remember { mutableStateOf(false) }
+                    // Agent 页的任务抽屉是否拉开（由 AgentScreen 上报，见 onDrawerOpenChange）
+                    var taskDrawerOpen by remember { mutableStateOf(false) }
 
-                // 键盘弹出或进全屏二级页时，底部条整块不占位，净空归零。
-                val navSpaceReserved = extrasPage == null && !keyboardUp
-                val navBarVisible = !railNav && navSpaceReserved && !taskDrawerOpen
+                    // 键盘弹出或进全屏二级页时，底部条整块不占位，净空归零。
+                    val navSpaceReserved = extrasPage == null && !keyboardUp
+                    val navBarVisible = !railNav && navSpaceReserved && !taskDrawerOpen
 
-                // 竖栏是**占位**的（内容整体右移，不是浮在内容上），
-                // 因此侧栏形态下不需要给导航条留净空。
-                // 但系统手势条不跟着导航形态走：横屏手机没有底部导航条，
-                // 手势胶囊仍在屏幕下缘，这一份 inset 必须照让，否则输入区会被压在胶囊底下。
-                val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
-                val navClearance = when {
-                    !navSpaceReserved -> PaddingValues(0.dp)
-                    railNav -> PaddingValues(bottom = systemNavInset)
-                    else -> PaddingValues(bottom = barClearanceBottom)
-                }
-
-                // 二级页是全屏的（自带返回出口），侧栏整块让开
-                val railVisible = railNav && extrasPage == null
-                // 宽屏侧栏展开成「图标 + 文字」，中窄屏只留图标列
-                val railWidth = if (expanded) RailExtendedWidth else RailCollapsedWidth
-
-                // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
-                // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
-                // 与 Agent 页顶栏/输入区各自持有的 HazeState 相互独立，不要混用。
-                val navGlass = rememberGlassState()
-
-                // 侧栏与内容之间的发丝分隔线（在 Composable 上下文里取值，drawBehind 里直接用）
-                val railDivider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-
-                Row(Modifier.fillMaxSize()) {
-                    if (railVisible) {
-                        // 侧栏是常驻导航、占住左侧一条空间，不浮在内容之上，
-                        // 所以不用毛玻璃（背后没有可模糊的东西）
-                        NavRail(
-                            tabs = tabs,
-                            selected = safeSelected,
-                            onSelect = { selected = it },
-                            extended = expanded,
-                            modifier = Modifier
-                                .width(railWidth)
-                                .fillMaxHeight()
-                                .padding(start = startNavInset)
-                                .background(MaterialTheme.colorScheme.surface)
-                                .drawBehind {
-                                    // 与内容区之间一道发丝线：两栏是同层内容，不用投影分层
-                                    val x = size.width - 0.5.dp.toPx()
-                                    drawLine(
-                                        color = railDivider,
-                                        start = Offset(x, 0f),
-                                        end = Offset(x, size.height),
-                                        strokeWidth = 1.dp.toPx(),
-                                    )
-                                },
-                        )
+                    // 竖栏是**占位**的（内容整体右移，不是浮在内容上），
+                    // 因此侧栏形态下不需要给导航条留净空。
+                    // 但系统手势条不跟着导航形态走：横屏手机没有底部导航条，
+                    // 手势胶囊仍在屏幕下缘，这一份 inset 必须照让，否则输入区会被压在胶囊底下。
+                    val barClearanceBottom = NavBarHeight + NavBarGap * 2 + systemNavInset
+                    val navClearance = when {
+                        !navSpaceReserved -> PaddingValues(0.dp)
+                        railNav -> PaddingValues(bottom = systemNavInset)
+                        else -> PaddingValues(bottom = barClearanceBottom)
                     }
 
-                    // 内容区：底部条形态下导航浮在它上面（毛玻璃取样源），侧栏形态下导航在它旁边
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .hazeSource(navGlass),
-                        ) {
-                            CompositionLocalProvider(
-                                LocalNavClearance provides navClearance,
-                                LocalIsLandscape provides landscape,
-                                LocalIsExpanded provides expanded,
-                                // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
-                                // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
-                                LocalSnackbar provides snackbarState,
-                            ) {
-                                val currentExtras = extrasPage
-                                if (currentExtras != null) {
-                                    // 全屏二级页：返回栏 + 对应页面
-                                    ExtrasPageContent(
-                                        page = currentExtras,
-                                        vm = vm,
-                                        modifier = Modifier.fillMaxSize(),
-                                        backLabel = backLabel,
-                                        backIcon = backIcon,
-                                        onBack = { extrasPage = null },
-                                        onOpenMarkdownFullscreen = { markdownReader = it },
-                                    )
-                                } else {
-                                    AnimatedContent(
-                                        targetState = safeSelected,
-                                        transitionSpec = transitionSpec,
-                                        label = "screen-switch",
-                                    ) { screenIndex ->
-                                        val contentMod = Modifier.fillMaxSize()
-                                        // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-                                        @Suppress("MaxLineLength")
-                                        val pageId = visibleTabs.getOrNull(screenIndex)?.id ?: MainTabs.HOME
-                                        // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
-                                        // 排序变化只改索引不改落点（与导航共用同一份可见列表）
-                                        tabState.SaveableStateProvider(pageId) {
-                                            when (visibleTabs.getOrNull(screenIndex)?.id) {
-                                                MainTabs.AGENT -> AgentScreen(
-                                                    vm, contentMod,
-                                                    // 记忆页优先当 Tab 打开（与其它 Tab 同一套 chrome）；
-                                                    // 只有用户把记忆 Tab 隐藏时，才退回全屏二级页
-                                                    onOpenMemory = {
-                                                        val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
-                                                        if (idx >= 0) {
-                                                            extrasPage = null
-                                                            selected = idx
-                                                        } else {
-                                                            extrasPage = ExtrasPage.Memory
-                                                        }
-                                                    },
-                                                    onOpenDocFullscreen = { docFullscreen = true },
-                                                    // 失败卡「去配置」：直接落到快速开始（连模型 + 权限 + 重试入口同页），
-                                                    // 用户配置完按返回就回到 Agent 页继续重试
-                                                    onOpenSettings = {
-                                                        settingsLanding = SettingsPage.QUICK_START
-                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
-                                                    },
-                                                    onDrawerOpenChange = { taskDrawerOpen = it },
-                                                )
+                    // 二级页是全屏的（自带返回出口），侧栏整块让开
+                    val railVisible = railNav && extrasPage == null
+                    // 宽屏侧栏展开成「图标 + 文字」，中窄屏只留图标列
+                    val railWidth = if (expanded) RailExtendedWidth else RailCollapsedWidth
 
-                                                MainTabs.HOME -> if (UiStyle.of(settings.uiStyle) == UiStyle.WORKBENCH) {
-                                                    // 工作台风格的首屏：Agent / Coding 同壳切换，状态持久化
-                                                    WorkbenchScreen(
-                                                        vm = vm,
-                                                        modifier = contentMod,
+                    // 悬浮导航栏的毛玻璃取样源：导航栏与内容层必须是同一个 Box 下的兄弟节点，
+                    // 内容层先画、导航栏玻璃后画，玻璃才有东西可模糊。
+                    // 与 Agent 页顶栏/输入区各自持有的 HazeState 相互独立，不要混用。
+                    val navGlass = rememberGlassState()
+
+                    // 侧栏与内容之间的发丝分隔线（在 Composable 上下文里取值，drawBehind 里直接用）
+                    val railDivider = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+
+                    Row(Modifier.fillMaxSize()) {
+                        if (railVisible) {
+                            // 侧栏是常驻导航、占住左侧一条空间，不浮在内容之上，
+                            // 所以不用毛玻璃（背后没有可模糊的东西）
+                            NavRail(
+                                tabs = tabs,
+                                selected = safeSelected,
+                                onSelect = { selected = it },
+                                extended = expanded,
+                                modifier = Modifier
+                                    .width(railWidth)
+                                    .fillMaxHeight()
+                                    .padding(start = startNavInset)
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .drawBehind {
+                                        // 与内容区之间一道发丝线：两栏是同层内容，不用投影分层
+                                        val x = size.width - 0.5.dp.toPx()
+                                        drawLine(
+                                            color = railDivider,
+                                            start = Offset(x, 0f),
+                                            end = Offset(x, size.height),
+                                            strokeWidth = 1.dp.toPx(),
+                                        )
+                                    },
+                            )
+                        }
+
+                        // 内容区：底部条形态下导航浮在它上面（毛玻璃取样源），侧栏形态下导航在它旁边
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .hazeSource(navGlass),
+                            ) {
+                                CompositionLocalProvider(
+                                    LocalNavClearance provides navClearance,
+                                    LocalIsLandscape provides landscape,
+                                    LocalIsExpanded provides expanded,
+                                    // 页面内的轻量反馈统一取这一份：项目不使用系统 Toast，
+                                    // 各页只调 snackbar.show(...)，投递位置与样式由宿主统一决定
+                                    LocalSnackbar provides snackbarState,
+                                ) {
+                                    val currentExtras = extrasPage
+                                    if (currentExtras != null) {
+                                        // 全屏二级页：返回栏 + 对应页面
+                                        ExtrasPageContent(
+                                            page = currentExtras,
+                                            vm = vm,
+                                            modifier = Modifier.fillMaxSize(),
+                                            backLabel = backLabel,
+                                            backIcon = backIcon,
+                                            onBack = { extrasPage = null },
+                                            onOpenMarkdownFullscreen = { markdownReader = it },
+                                        )
+                                    } else {
+                                        AnimatedContent(
+                                            targetState = safeSelected,
+                                            transitionSpec = transitionSpec,
+                                            label = "screen-switch",
+                                        ) { screenIndex ->
+                                            val contentMod = Modifier.fillMaxSize()
+                                            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                            @Suppress("MaxLineLength")
+                                            val pageId = visibleTabs.getOrNull(screenIndex)?.id ?: MainTabs.HOME
+                                            // 页面路由按可见 Tab 的 id 分发：配置隐藏的 Tab 不渲染，
+                                            // 排序变化只改索引不改落点（与导航共用同一份可见列表）
+                                            tabState.SaveableStateProvider(pageId) {
+                                                when (visibleTabs.getOrNull(screenIndex)?.id) {
+                                                    MainTabs.AGENT -> AgentScreen(
+                                                        vm, contentMod,
+                                                        // 记忆页优先当 Tab 打开（与其它 Tab 同一套 chrome）；
+                                                        // 只有用户把记忆 Tab 隐藏时，才退回全屏二级页
                                                         onOpenMemory = {
-                                                            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-                                                            @Suppress("MaxLineLength")
                                                             val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
                                                             if (idx >= 0) {
                                                                 extrasPage = null
@@ -776,130 +761,157 @@ private fun ActivityContent(
                                                             }
                                                         },
                                                         onOpenDocFullscreen = { docFullscreen = true },
-                                                        onOpenSettingsPage = { landing ->
-                                                            settingsLanding = landing
-                                                            selected = tabIndex(vm.settingsFlow.value,
-                                                                MainTabs.SETTINGS)
+                                                        // 失败卡「去配置」：直接落到快速开始（连模型 + 权限 + 重试入口同页），
+                                                        // 用户配置完按返回就回到 Agent 页继续重试
+                                                        onOpenSettings = {
+                                                            settingsLanding = SettingsPage.QUICK_START
+                                                            selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
                                                         },
-                                                        onOpenMarkdownFullscreen = { markdownReader = it },
-                                                        // 工作台的顶栏汉堡同样会展开任务抽屉，导航让位走同一条通道
                                                         onDrawerOpenChange = { taskDrawerOpen = it },
                                                     )
-                                                } else {
-                                                    HomeScreen(
-                                                        vm, contentMod,
-                                                        onRequestScreenshot = {
-                                                            // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
-                                                            @Suppress("MaxLineLength")
-                                                            val mpm = activity.getSystemService(MediaProjectionManager::class.java)
-                                                            screenshotLauncher.launch(mpm.createScreenCaptureIntent())
-                                                        },
-                                                        // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
-                                                        // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动。
-                                                        // 去设置时落到「快速开始」：未配置模型的新用户不再走 设置主页 → 云端模型 两层
-                                                        onNavigate = { legacy ->
-                                                            val s = vm.settingsFlow.value
-                                                            selected = when (legacy) {
-                                                                0 -> tabIndex(s, MainTabs.AGENT)
-                                                                2 -> {
-                                                                    settingsLanding = SettingsPage.QUICK_START
-                                                                    tabIndex(s, MainTabs.SETTINGS)
+
+                                                    MainTabs.HOME -> if (UiStyle.of(settings.uiStyle) == UiStyle.WORKBENCH) {
+                                                        // 工作台风格的首屏：Agent / Coding 同壳切换，状态持久化
+                                                        WorkbenchScreen(
+                                                            vm = vm,
+                                                            modifier = contentMod,
+                                                            onOpenMemory = {
+                                                                // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                                                @Suppress("MaxLineLength")
+                                                                val idx = visibleTabs.indexOfFirst { it.id == MainTabs.MEMORY }
+                                                                if (idx >= 0) {
+                                                                    extrasPage = null
+                                                                    selected = idx
+                                                                } else {
+                                                                    extrasPage = ExtrasPage.Memory
                                                                 }
-                                                                else -> legacy.coerceIn(0, tabs.lastIndex)
-                                                            }
-                                                        },
+                                                            },
+                                                            onOpenDocFullscreen = { docFullscreen = true },
+                                                            onOpenSettingsPage = { landing ->
+                                                                settingsLanding = landing
+                                                                selected = tabIndex(vm.settingsFlow.value,
+                                                                    MainTabs.SETTINGS)
+                                                            },
+                                                            onOpenMarkdownFullscreen = { markdownReader = it },
+                                                            // 工作台的顶栏汉堡同样会展开任务抽屉，导航让位走同一条通道
+                                                            onDrawerOpenChange = { taskDrawerOpen = it },
+                                                        )
+                                                    } else {
+                                                        HomeScreen(
+                                                            vm, contentMod,
+                                                            onRequestScreenshot = {
+                                                                // 此处是面向模型/用户的中文长文案或命令模板，硬折行会切断语义，故按规则豁免行长限制
+                                                                @Suppress("MaxLineLength")
+                                                                val mpm = activity.getSystemService(MediaProjectionManager::class.java)
+                                                                screenshotLauncher.launch(mpm.createScreenCaptureIntent())
+                                                            },
+                                                            // 首页卡片里的跳转还是旧索引语义（0=Agent / 2=设置），
+                                                            // 在这里翻译成当前可见列表的索引，HomeScreen 保持零改动。
+                                                            // 去设置时落到「快速开始」：未配置模型的新用户不再走 设置主页 → 云端模型 两层
+                                                            onNavigate = { legacy ->
+                                                                val s = vm.settingsFlow.value
+                                                                selected = when (legacy) {
+                                                                    0 -> tabIndex(s, MainTabs.AGENT)
+                                                                    2 -> {
+                                                                        settingsLanding = SettingsPage.QUICK_START
+                                                                        tabIndex(s, MainTabs.SETTINGS)
+                                                                    }
+                                                                    else -> legacy.coerceIn(0, tabs.lastIndex)
+                                                                }
+                                                            },
+                                                            onOpenExtras = { extrasPage = it },
+                                                            // 「还缺 N 项授权」直落权限页：首页这一行只报待办数，
+                                                            // 实际授权动作在设置里做，不给第二个改状态的地方
+                                                            onOpenPermissions = {
+                                                                settingsLanding = SettingsPage.PERMISSIONS
+                                                                selected = tabIndex(
+                                                                    vm.settingsFlow.value,
+                                                                    MainTabs.SETTINGS,
+                                                                )
+                                                            },
+                                                            // 状态条的执行通道格：同一个权限页，直接落在「执行通道」段
+                                                            onOpenChannel = {
+                                                                settingsLanding = SettingsPage.PERMISSIONS_CHANNEL
+                                                                selected = tabIndex(
+                                                                    vm.settingsFlow.value,
+                                                                    MainTabs.SETTINGS,
+                                                                )
+                                                            },
+                                                            // 模型未验证 / 验证失败：「去修复」落到云端模型页，
+                                                            // 那里有上次的验证结论与「测试所有 API」
+                                                            onOpenModelSettings = {
+                                                                settingsLanding = SettingsPage.AI_MODELS
+                                                                selected = tabIndex(
+                                                                    vm.settingsFlow.value,
+                                                                    MainTabs.SETTINGS,
+                                                                )
+                                                            },
+                                                        )
+                                                    }
+
+                                                    MainTabs.SETTINGS -> SettingsScreen(
+                                                        vm, contentMod,
+                                                        // 调试 / 测试从「关于」页进入，仍由这里统一接管二级页
                                                         onOpenExtras = { extrasPage = it },
-                                                        // 「还缺 N 项授权」直落权限页：首页这一行只报待办数，
-                                                        // 实际授权动作在设置里做，不给第二个改状态的地方
-                                                        onOpenPermissions = {
-                                                            settingsLanding = SettingsPage.PERMISSIONS
-                                                            selected = tabIndex(
-                                                                vm.settingsFlow.value,
-                                                                MainTabs.SETTINGS,
-                                                            )
-                                                        },
-                                                        // 状态条的执行通道格：同一个权限页，直接落在「执行通道」段
-                                                        onOpenChannel = {
-                                                            settingsLanding = SettingsPage.PERMISSIONS_CHANNEL
-                                                            selected = tabIndex(
-                                                                vm.settingsFlow.value,
-                                                                MainTabs.SETTINGS,
-                                                            )
-                                                        },
-                                                        // 模型未验证 / 验证失败：「去修复」落到云端模型页，
-                                                        // 那里有上次的验证结论与「测试所有 API」
-                                                        onOpenModelSettings = {
-                                                            settingsLanding = SettingsPage.AI_MODELS
-                                                            selected = tabIndex(
-                                                                vm.settingsFlow.value,
-                                                                MainTabs.SETTINGS,
-                                                            )
+                                                        // 工作台配置面板的深链：翻到对应分类后清空，避免反复翻页
+                                                        initialPage = settingsLanding,
+                                                        onInitialPageConsumed = { settingsLanding = null },
+                                                        // 快速开始发完第一个任务直接回 Agent 页
+                                                        onNavigateAgent = {
+                                                            extrasPage = null
+                                                            selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
                                                         },
                                                     )
+                                                    MainTabs.CHAT -> ChatScreen(vm, contentMod)
+                                                    MainTabs.CODING -> CodingScreen(
+                                                        vm, contentMod,
+                                                        onOpenMarkdownFullscreen = { markdownReader = it },
+                                                        // 运行时不可用时给一条明路：切到「设置 → 编码环境」
+                                                        onOpenEnvSettings = {
+                                                            settingsLanding = SettingsPage.CODING_ENV
+                                                            selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
+                                                        },
+                                                    )
+                                                    MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
+                                                    else -> {}
                                                 }
-
-                                                MainTabs.SETTINGS -> SettingsScreen(
-                                                    vm, contentMod,
-                                                    // 调试 / 测试从「关于」页进入，仍由这里统一接管二级页
-                                                    onOpenExtras = { extrasPage = it },
-                                                    // 工作台配置面板的深链：翻到对应分类后清空，避免反复翻页
-                                                    initialPage = settingsLanding,
-                                                    onInitialPageConsumed = { settingsLanding = null },
-                                                    // 快速开始发完第一个任务直接回 Agent 页
-                                                    onNavigateAgent = {
-                                                        extrasPage = null
-                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.AGENT)
-                                                    },
-                                                )
-                                                MainTabs.CHAT -> ChatScreen(vm, contentMod)
-                                                MainTabs.CODING -> CodingScreen(
-                                                    vm, contentMod,
-                                                    onOpenMarkdownFullscreen = { markdownReader = it },
-                                                    // 运行时不可用时给一条明路：切到「设置 → 编码环境」
-                                                    onOpenEnvSettings = {
-                                                        settingsLanding = SettingsPage.CODING_ENV
-                                                        selected = tabIndex(vm.settingsFlow.value, MainTabs.SETTINGS)
-                                                    },
-                                                )
-                                                MainTabs.MEMORY -> MemoryGraphScreen(vm, contentMod)
-                                                else -> {}
                                             }
                                         }
                                     }
-                                }
 
-                                // 全局 Snackbar：垫在导航之上。二级页同样要能弹反馈；
-                                // 侧栏占位、压不到内容，只有底部条形态才需要让出高度
-                                AppSnackbar(
-                                    state = snackbarState,
+                                    // 全局 Snackbar：垫在导航之上。二级页同样要能弹反馈；
+                                    // 侧栏占位、压不到内容，只有底部条形态才需要让出高度
+                                    AppSnackbar(
+                                        state = snackbarState,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(
+                                                bottom = if (navSpaceReserved && !railNav) {
+                                                    barClearanceBottom + AppSpacing.Md
+                                                } else {
+                                                    AppSpacing.Md
+                                                },
+                                            ),
+                                    )
+                                }
+                            }
+
+                            // 底部悬浮导航条：只有窄到放不下侧栏时才存在
+                            if (navBarVisible) {
+                                FloatingNavBar(
+                                    hazeState = navGlass,
+                                    tabs = tabs,
+                                    selected = safeSelected,
+                                    onSelect = { selected = it },
                                     modifier = Modifier
                                         .align(Alignment.BottomCenter)
                                         .padding(
-                                            bottom = if (navSpaceReserved && !railNav) {
-                                                barClearanceBottom + AppSpacing.Md
-                                            } else {
-                                                AppSpacing.Md
-                                            },
+                                            start = AppSpacing.Lg,
+                                            end = AppSpacing.Lg,
+                                            bottom = systemNavInset + NavBarGap,
                                         ),
                                 )
                             }
-                        }
-
-                        // 底部悬浮导航条：只有窄到放不下侧栏时才存在
-                        if (navBarVisible) {
-                            FloatingNavBar(
-                                hazeState = navGlass,
-                                tabs = tabs,
-                                selected = safeSelected,
-                                onSelect = { selected = it },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(
-                                        start = AppSpacing.Lg,
-                                        end = AppSpacing.Lg,
-                                        bottom = systemNavInset + NavBarGap,
-                                    ),
-                            )
                         }
                     }
                 }

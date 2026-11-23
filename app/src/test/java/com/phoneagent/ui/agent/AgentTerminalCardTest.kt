@@ -5,6 +5,7 @@ import com.phoneagent.domain.model.TaskOutcome
 import com.phoneagent.domain.model.TaskStatus
 import com.phoneagent.engine.PlanPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,6 +70,46 @@ class AgentTerminalCardTest {
         val card = timeline(outcome, a11yEnabled = false).card()
         assertEquals("无障碍没开，AI 看不见屏幕", card.headline)
         assertTrue("主出口必须能直接去开授权", card.actions.contains(TerminalAction.OPEN_PERMISSIONS))
+    }
+
+    @Test
+    fun `配置缺失的终态卡同样给出查看原始消息入口`() {
+        // HAPP-73 在 Pad 7 上量到的就是这张卡：原因行本身就是引擎原句（cause == detail），
+        // 旧判据 `detail != cause` 因此把展开入口整块摘掉，dump 里「查看原始消息」出现 0 次。
+        // HAPP-52 验收表 #3 要求「原因 + 可执行动作 + 原始消息可展开」三条每一档都齐
+        val raw = "还没有填写 API Key。请到「设置 → 模型与接入」填写后再下达任务。"
+        val outcome = TaskOutcome(
+            status = TaskStatus.FAILED,
+            summary = raw,
+            failureReason = raw,
+            failureKind = AgentState.FailureKind.CONFIG,
+            atMillis = 500L,
+        )
+        val card = timeline(outcome, configProblem = raw).card()
+        assertEquals("配置这一档的原因行就是引擎原句", card.detail, card.cause)
+        assertTrue("原因与原始消息相同也要能展开核对", AgentTerminal.showsRawMessage(card.detail))
+    }
+
+    @Test
+    fun `每种结束方式都给出查看原始消息入口`() {
+        val raw = "AI 决策链路持续异常，已停止任务"
+        listOf(TaskStatus.FAILED, TaskStatus.ABORTED, TaskStatus.NOT_ACHIEVED).forEach { status ->
+            val outcome = TaskOutcome(
+                status = status,
+                summary = raw,
+                failureReason = raw,
+                failureKind = AgentState.FailureKind.UNKNOWN,
+                atMillis = 500L,
+            )
+            val card = timeline(outcome).card()
+            assertTrue("$status 的终态卡缺原始消息入口", AgentTerminal.showsRawMessage(card.detail))
+        }
+    }
+
+    @Test
+    fun `引擎没给原始消息时不摆一个展开后空白的入口`() {
+        assertFalse(AgentTerminal.showsRawMessage(""))
+        assertFalse(AgentTerminal.showsRawMessage("   "))
     }
 
     @Test
