@@ -178,7 +178,7 @@ class AgentTerminalCardTest {
         val item = planFailed("规划解析失败：Unexpected token at offset 12")
         assertEquals("引擎原始消息要带进卡片", "规划解析失败：Unexpected token at offset 12", item.message)
         assertEquals("规划本身失败时重试就是出路", listOf(TerminalAction.RETRY), AgentTerminal.planFailedActions(item.configProblem))
-        assertTrue("原始消息必须可展开", AgentTerminal.planFailedShowsRawMessage(item.message))
+        assertTrue("原始消息必须可展开", AgentTerminal.showsRawMessage(item.message))
         val cause = AgentTerminal.planFailedCause(item.message, item.configProblem)
         assertTrue("原因行要说人话，而不是把解析报错原样摆出来", !cause.contains("Unexpected token"))
         assertTrue("原因行仍要指出去路", cause.contains("再试一次"))
@@ -202,6 +202,6 @@ class AgentTerminalCardTest {
     fun `规划失败卡在引擎没给原文时不留空展开区`() {
         val cause = AgentTerminal.planFailedCause("", configProblem = false)
         assertTrue("没有原文也要有一句能照做的原因", cause.isNotBlank())
-        assertTrue("没有原文就不出「查看原始消息」", !AgentTerminal.planFailedShowsRawMessage(""))
+        assertTrue("没有原文就不出「查看原始消息」", !AgentTerminal.showsRawMessage(""))
     }
 }

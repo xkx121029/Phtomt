@@ -145,11 +145,4 @@ internal object AgentTerminal {
     fun planFailedActions(configProblem: Boolean): List<TerminalAction> =
         if (configProblem) listOf(TerminalAction.OPEN_SETTINGS) else listOf(TerminalAction.RETRY)
 
-    /**
-     * 规划失败卡是否给出「查看原始消息」。
-     *
-     * 判据只有一条：引擎交过原始消息，不按「与原因行内容相同」去删——控制项不该因为
-     * 内容碰巧重复就时有时无（执行终态卡同一个坑，见 HAPP-76）。
-     */
-    fun planFailedShowsRawMessage(message: String): Boolean = message.isNotBlank()
 }

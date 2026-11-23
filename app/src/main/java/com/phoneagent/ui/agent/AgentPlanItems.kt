@@ -145,7 +145,7 @@ internal fun PlanFailedItem(
     val colors = AppTheme.colors
     val cause = AgentTerminal.planFailedCause(item.message, item.configProblem)
     val actions = AgentTerminal.planFailedActions(item.configProblem)
-    val showsRaw = AgentTerminal.planFailedShowsRawMessage(item.message)
+    val showsRaw = AgentTerminal.showsRawMessage(item.message)
     var detailOpen by rememberSaveable(item.key) { mutableStateOf(false) }
     Column(
         modifier = Modifier
