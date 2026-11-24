@@ -65,9 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.SharedFiles
-import com.phoneagent.coding.agent.ChatMessage
 import com.phoneagent.coding.agent.CodingWorkspaces
-import com.phoneagent.coding.agent.ConnState
+import com.phoneagent.coding.api.CodingConnection
+import com.phoneagent.coding.api.CodingMessageView
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.engine.coding.CodingAgentBridge
 import com.phoneagent.ui.MainViewModel
@@ -111,7 +111,7 @@ import java.io.File
  *
  * 会话（对话记录）与 agent 记忆都按工作区隔离，存在 `<工作区>/.happyac/` 里：
  * 一个工作区可以有多个会话，切工作区就切了一整套记忆；Coding 页用的是自己的 agent
- * 连接（[CodingAgentBridge.uiClient]），操控页委托的 Coding 任务不会再冲掉这里的对话。
+ * 连接（[CodingAgentBridge.uiSession]），操控页委托的 Coding 任务不会再冲掉这里的对话。
  * 审批以内嵌卡片呈现——项目铁律：审批绝不走系统弹窗。
  */
 @Composable
@@ -134,7 +134,7 @@ fun CodingScreen(
     val bridge = koinInject<CodingAgentBridge>()
     val appSettings = koinInject<AppSettings>()
     val runtimeState by runtime.state.collectAsStateWithLifecycle()
-    val clientState by bridge.uiClient.state.collectAsStateWithLifecycle()
+    val sessionState by bridge.uiSession.conversation.collectAsStateWithLifecycle()
     // 模型与审批档位是全局设置：Coding页的选择器直接读写它，和设置页保持同一份真值
     val settings by vm.settingsFlow.collectAsStateWithLifecycle()
 
@@ -167,7 +167,7 @@ fun CodingScreen(
     /** 把当前会话的消息写回工作区（切会话/切工作区/离开页面/一轮结束都会调用） */
     fun saveCurrent() {
         val id = activeSessionId ?: return
-        val msgs = bridge.uiClient.snapshotMessages()
+        val msgs = bridge.uiSession.snapshotMessages()
         if (msgs.isEmpty()) return
         CodingWorkspaces.saveMessages(context, workspace, id, msgs)
         sessionsState = CodingWorkspaces.state(context, workspace)
@@ -191,7 +191,7 @@ fun CodingScreen(
         activeSessionId = id
         sessionsState = CodingWorkspaces.state(context, entry)
         CodingWorkspaces.setActiveSession(context, entry, id)
-        bridge.uiClient.activateSession(id, msgs)
+        bridge.uiSession.activateSession(id, msgs)
     }
 
     /** 进入页面/切工作区：载入该工作区的活动会话，并保证 agent 连接可用 */
@@ -203,10 +203,10 @@ fun CodingScreen(
 
     // 一轮结束后落盘：流式输出过程中不动文件，避免每个 token 都写一次。
     // 条数与索引一致时跳过——切回一个老会话不该把它的"最近活动时间"刷新成现在。
-    LaunchedEffect(workspace.id, activeSessionId, clientState.busy, clientState.messages.size) {
+    LaunchedEffect(workspace.id, activeSessionId, sessionState.busy, sessionState.messages.size) {
         val id = activeSessionId ?: return@LaunchedEffect
         val stored = sessionsState.sessions.firstOrNull { it.id == id }?.count ?: 0
-        if (!clientState.busy && clientState.messages.isNotEmpty() && clientState.messages.size != stored) {
+        if (!sessionState.busy && sessionState.messages.isNotEmpty() && sessionState.messages.size != stored) {
             saveCurrent()
         }
     }
@@ -215,8 +215,8 @@ fun CodingScreen(
     val disposeSessionId = activeSessionId
     DisposableEffect(workspace.id, disposeSessionId) {
         onDispose {
-            if (disposeSessionId != null && bridge.uiClient.currentSessionId == disposeSessionId) {
-                val msgs = bridge.uiClient.snapshotMessages()
+            if (disposeSessionId != null && bridge.uiSession.activeSessionId == disposeSessionId) {
+                val msgs = bridge.uiSession.snapshotMessages()
                 if (msgs.isNotEmpty()) {
                     CodingWorkspaces.saveMessages(context, workspace, disposeSessionId, msgs)
                 }
@@ -225,8 +225,8 @@ fun CodingScreen(
     }
 
     fun newSession() {
-        if (bridge.uiClient.state.value.busy) {
-            bridge.uiClient.cancel()
+        if (bridge.uiSession.conversation.value.busy) {
+            bridge.uiSession.cancel()
             snackbar?.show("已停止当前 Coding 任务")
         }
         saveCurrent()
@@ -239,7 +239,7 @@ fun CodingScreen(
         )
         activeSessionId = fresh.id
         sessionsState = CodingWorkspaces.state(context, workspace)
-        bridge.uiClient.activateSession(fresh.id, emptyList())
+        bridge.uiSession.activateSession(fresh.id, emptyList())
     }
 
     fun openSession(session: CodingWorkspaces.SessionMeta) {
@@ -247,7 +247,7 @@ fun CodingScreen(
             showSessions = false
             return
         }
-        if (bridge.uiClient.state.value.busy) {
+        if (bridge.uiSession.conversation.value.busy) {
             snackbar?.show("Coding 进行中，结束后再切换会话")
             return
         }
@@ -256,12 +256,12 @@ fun CodingScreen(
         CodingWorkspaces.setActiveSession(context, workspace, session.id)
         activeSessionId = session.id
         sessionsState = CodingWorkspaces.state(context, workspace)
-        bridge.uiClient.activateSession(session.id, msgs)
+        bridge.uiSession.activateSession(session.id, msgs)
         showSessions = false
     }
 
     fun deleteSession(session: CodingWorkspaces.SessionMeta) {
-        if (bridge.uiClient.state.value.busy && session.id == activeSessionId) {
+        if (bridge.uiSession.conversation.value.busy && session.id == activeSessionId) {
             snackbar?.show("Coding 进行中，结束后再删除会话")
             return
         }
@@ -283,8 +283,8 @@ fun CodingScreen(
             snackbar?.show("该工作区不可读写，换一个目录试试")
             return
         }
-        if (bridge.uiClient.state.value.busy) {
-            bridge.uiClient.cancel()
+        if (bridge.uiSession.conversation.value.busy) {
+            bridge.uiSession.cancel()
             snackbar?.show("已切换到新工作区，进行中的 Coding 任务已停止")
         }
         bridge.restartForWorkspaceChange()
@@ -326,7 +326,7 @@ fun CodingScreen(
     fun send(raw: String) {
         val text = raw.trim()
         val files = sharedAttachments
-        if ((text.isEmpty() && files.isEmpty()) || clientState.busy) return
+        if ((text.isEmpty() && files.isEmpty()) || sessionState.busy) return
         scope.launch {
             runCatching { bridge.ensureUiConnected() }
                 .onFailure {
@@ -347,12 +347,12 @@ fun CodingScreen(
                     snackbar?.show("目标模式暂不支持附件，请先发送附件")
                     return@launch
                 }
-                bridge.uiClient.startGoal(goalObjective, allowExec = false) { ok, error ->
+                bridge.uiSession.startGoal(goalObjective, allowExec = false) { ok, error ->
                     if (!ok) snackbar?.show(error ?: "目标启动失败")
                 }
                 return@launch
             }
-            bridge.uiClient.sendPrompt(withAttachmentHint(text, files))
+            bridge.uiSession.sendPrompt(withAttachmentHint(text, files))
             SharedFiles.consume()
         }
     }
@@ -383,7 +383,7 @@ fun CodingScreen(
             apiBaseUrl = ep?.baseUrl ?: settings.apiBaseUrl,
             apiKey = ep?.apiKey ?: settings.apiKey,
         )
-        if (clientState.busy) {
+        if (sessionState.busy) {
             pendingModelApply = true
             scope.launch { appSettings.update(next) }
             snackbar?.show("已设为 $trimmed，本轮结束后自动切换")
@@ -403,10 +403,10 @@ fun CodingScreen(
         if (mode == settings.codingApprovalMode) return
         scope.launch {
             appSettings.update(settings.copy(codingApprovalMode = mode))
-            bridge.uiClient.setApprovalMode(mode) { ok, error ->
+            bridge.uiSession.setApprovalMode(mode) { ok, error ->
                 // 没连上（比如首次进页面还没起宿主）时不该报错卡住：
                 // 设置已落盘，下一次连上就按新档位跑。
-                if (!ok && clientState.conn == ConnState.CONNECTED) {
+                if (!ok && sessionState.connection == CodingConnection.CONNECTED) {
                     snackbar?.show("审批档位没切上：${error ?: "未知错误"}")
                 }
             }
@@ -414,8 +414,8 @@ fun CodingScreen(
     }
 
     // 运行中换过模型：这一轮结束（busy=false）后自动重启宿主应用新配置
-    LaunchedEffect(clientState.busy) {
-        if (!clientState.busy && pendingModelApply) {
+    LaunchedEffect(sessionState.busy) {
+        if (!sessionState.busy && pendingModelApply) {
             pendingModelApply = false
             runCatching { bridge.applyConfigChange() }
                 .onFailure { snackbar?.show("新模型连接失败：${it.message ?: "超时"}") }
@@ -471,7 +471,7 @@ fun CodingScreen(
                     )
                     WorkspaceCapsule(
                         workspaceName = workspace.name,
-                        conn = clientState.conn,
+                        conn = sessionState.connection,
                         onOpenFolder = {
                             if (!openWorkspaceDirectory(context)) snackbar?.show("无法打开文件管理器查看该目录")
                         },
@@ -479,7 +479,7 @@ fun CodingScreen(
                     )
                 }
 
-                if (clientState.error != null) {
+                if (sessionState.error != null) {
                     Spacer(Modifier.height(AppSpacing.Xs))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -487,14 +487,14 @@ fun CodingScreen(
                         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Sm),
                     ) {
                         Text(
-                            clientState.error ?: "",
+                            sessionState.error ?: "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.weight(1f),
                         )
                         // 重连耗尽 / 连接断开后必须给一条自助路径：
                         // 以前只能杀进程重进，用户没有任何可点的入口。
-                        if (clientState.conn == ConnState.DISCONNECTED) {
+                        if (sessionState.connection == CodingConnection.DISCONNECTED) {
                             TextButton(
                                 onClick = {
                                     scope.launch {
@@ -510,7 +510,7 @@ fun CodingScreen(
                 }
 
                 ConversationFlow(
-                    messages = clientState.messages,
+                    messages = sessionState.messages,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     onOpenFullscreen = onOpenMarkdownFullscreen,
                 )
@@ -544,12 +544,12 @@ fun CodingScreen(
                     }
                 }
 
-                if (clientState.busy) {
+                if (sessionState.busy) {
                     RunStatusLine(
-                        phase = clientState.phase,
-                        iteration = clientState.iteration,
-                        runStartedAt = clientState.runStartedAt,
-                        activeSubagents = clientState.messages.count { it.role == "subagent" && it.toolOk == null },
+                        phase = sessionState.phase,
+                        iteration = sessionState.iteration,
+                        runStartedAt = sessionState.runStartedAt,
+                        activeSubagents = sessionState.messages.count { it.role == "subagent" && it.toolOk == null },
                     )
                 }
 
@@ -566,7 +566,7 @@ fun CodingScreen(
 
                 CodingComposer(
                     values = ComposerValues(
-                        busy = clientState.busy,
+                        busy = sessionState.busy,
                         enabled = runtimeState is CodingRuntimeState.Installed,
                         draft = draft,
                         attachments = sharedAttachments,
@@ -574,7 +574,7 @@ fun CodingScreen(
                     onDraftChange = { draft = it },
                     onPickAttachment = { pickAttachment.launch("image/*") },
                     onRemoveAttachment = { SharedFiles.remove(it) },
-                    onStop = { bridge.uiClient.cancel() },
+                    onStop = { bridge.uiSession.cancel() },
                     onSend = { send(it) },
                     dialRow = dialRow,
                 )
@@ -602,7 +602,7 @@ fun CodingScreen(
                         workspaces = CodingWorkspaces.list(context)
                         if (wasActive) {
                             // 被移除的是当前工作区：登记表已切到另一个，界面指针与 agent 进程要一起跟上
-                            bridge.uiClient.cancel()
+                            bridge.uiSession.cancel()
                             bridge.restartForWorkspaceChange()
                             workspaceId = CodingWorkspaces.active(context).id
                         }
@@ -640,7 +640,7 @@ fun CodingScreen(
 @Suppress("LongMethod")
 private fun WorkspaceCapsule(
     workspaceName: String,
-    conn: ConnState,
+    conn: CodingConnection,
     onOpenFolder: () -> Unit,
     onSwitch: () -> Unit,
 ) {
@@ -800,12 +800,12 @@ private fun SessionCapsule(
 
 /** 连接状态点：已连接绿、连接中主色、未连接灰；胶囊里只留圆点，文字交给无障碍描述 */
 @Composable
-private fun ConnDot(conn: ConnState) {
+private fun ConnDot(conn: CodingConnection) {
     val colors = AppTheme.colors
     val (color, label) = when (conn) {
-        ConnState.CONNECTED -> colors.success to "已连接"
-        ConnState.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
-        ConnState.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
+        CodingConnection.CONNECTED -> colors.success to "已连接"
+        CodingConnection.CONNECTING -> MaterialTheme.colorScheme.primary to "连接中"
+        CodingConnection.DISCONNECTED -> MaterialTheme.colorScheme.onSurfaceVariant to "未连接"
     }
     Box(
         Modifier
@@ -819,7 +819,7 @@ private fun ConnDot(conn: ConnState) {
 /** Coding 会话流：user/assistant 气泡 + 工具调用卡 + 审批卡 */
 @Composable
 private fun ConversationFlow(
-    messages: List<ChatMessage>,
+    messages: List<CodingMessageView>,
     modifier: Modifier = Modifier,
     onOpenFullscreen: (content: String) -> Unit = {},
 ) {
@@ -915,7 +915,7 @@ private fun firstLine(text: String): String = text.lineSequence().firstOrNull()?
  * 与 Agent 页工具链卡片同一外壳（[SkillCard]），两页不再各长一套。
  */
 @Composable
-private fun ToolCard(msg: ChatMessage) {
+private fun ToolCard(msg: CodingMessageView) {
     var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
     val status = toolStatusStyle(toolRunState(msg.toolOk))
     // 耗时只在结束后显示：运行中的数字每帧都在跳，读起来是噪声。
@@ -957,7 +957,7 @@ private fun ToolCard(msg: ChatMessage) {
 
 /** 子任务卡：并行子 agent 的独立进度（人设 · 任务名 + 当前动作 + 成败 / 耗时） */
 @Composable
-private fun SubagentCard(msg: ChatMessage) {
+private fun SubagentCard(msg: CodingMessageView) {
     var expanded by rememberSaveable(msg.key) { mutableStateOf(false) }
     val status = toolStatusStyle(
         state = toolRunState(msg.toolOk),
@@ -1045,9 +1045,9 @@ private const val APPROVAL_COLLAPSED_CHARS = 160
 // 布局顺序和状态读取拆散，反而更难核对「决定前看到什么」。
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
-private fun ApprovalCard(msg: ChatMessage) {
+private fun ApprovalCard(msg: CodingMessageView) {
     val buzz = rememberHapticClick()
-    val client = koinInject<CodingAgentBridge>().uiClient
+    val session = koinInject<CodingAgentBridge>().uiSession
     val callId = msg.approvalCallId
     val resolved = msg.approvalResolved
     val colors = AppTheme.colors
@@ -1115,14 +1115,14 @@ private fun ApprovalCard(msg: ChatMessage) {
                     Button(
                         onClick = {
                             buzz()
-                            if (callId != null) client.respondApproval(callId, true)
+                            if (callId != null) session.respondApproval(callId, true)
                         },
                         modifier = Modifier.weight(1f),
                     ) { Text("允许") }
                     OutlinedButton(
                         onClick = {
                             buzz()
-                            if (callId != null) client.respondApproval(callId, false)
+                            if (callId != null) session.respondApproval(callId, false)
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         modifier = Modifier.weight(1f),

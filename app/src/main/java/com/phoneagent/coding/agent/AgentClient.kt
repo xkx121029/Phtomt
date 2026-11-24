@@ -6,7 +6,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import com.phoneagent.coding.CodingAgentService
+import com.phoneagent.coding.api.CodingAgentConfig
 import com.phoneagent.coding.api.CodingConnection
+import com.phoneagent.coding.api.CodingConversation
+import com.phoneagent.coding.api.CodingMessageView
+import com.phoneagent.coding.api.CodingSessionPortal
 import com.phoneagent.coding.api.CodingSessionStatus
 import com.phoneagent.coding.api.MappedStateFlow
 import com.phoneagent.coding.device.HostBridgeServer
@@ -72,7 +76,7 @@ class AgentClient(
     private val fixedSessionId: String? = null,
     /** 编码环境门户（宿主桥的 env_* 能力来源）；不接入时 env 工具会报「未接入」 */
     private val envClientProvider: () -> com.phoneagent.coding.env.CodingEnvClient? = { null },
-) {
+) : CodingSessionPortal {
 
     private var transport: AgentTransport? = null
     private var token: String = ""
@@ -81,7 +85,7 @@ class AgentClient(
     private var sessionId: String? = fixedSessionId
 
     /** 当前会话 id（编码页用它把消息落盘到对应会话） */
-    val currentSessionId: String? get() = sessionId
+    override val activeSessionId: String? get() = sessionId
 
     @Volatile
     private var lastRunId: String? = null
@@ -151,7 +155,7 @@ class AgentClient(
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val _state = MutableStateFlow(AgentUiState())
-    val state: StateFlow<AgentUiState> = _state.asStateFlow()
+    private val state: StateFlow<AgentUiState> = _state.asStateFlow()
 
     /**
      * 对外快照：设置页与后台引擎只读这一份，不碰消息明细（那是编码页渲染用的）。
@@ -169,11 +173,13 @@ class AgentClient(
         )
     }
 
-    private fun ConnState.toApi(): CodingConnection = when (this) {
-        ConnState.DISCONNECTED -> CodingConnection.DISCONNECTED
-        ConnState.CONNECTING -> CodingConnection.CONNECTING
-        ConnState.CONNECTED -> CodingConnection.CONNECTED
-    }
+    /**
+     * 编码页的整页快照：连接阶段 + 消息明细 + 运行进度。
+     *
+     * 页面按这一份渲染，消息明细怎么组装归切片自己；投影同样是纯函数、逐条同步。
+     */
+    override val conversation: StateFlow<CodingConversation> =
+        MappedStateFlow(state) { st -> st.toConversation() }
 
     private val listener = object : AgentTransport.Listener {
         override fun onOpen() {
@@ -558,7 +564,7 @@ class AgentClient(
     }
 
     // ---------- actions ----------
-    fun sendPrompt(text: String) {
+    override fun sendPrompt(text: String) {
         val t = transport ?: return update { it.copy(error = "编码 Agent 未连接") }
         // 新一轮必须从新的 assistant 气泡开始：上一轮若是报错/断流收场，
         // assistantKey 还停在旧气泡上，继续拼会把新回答接在旧回答后面。
@@ -635,7 +641,7 @@ class AgentClient(
         }
     }
 
-    fun respondApproval(callId: String, approved: Boolean) {
+    override fun respondApproval(callId: String, approved: Boolean) {
         if (transport?.send(request("approve", JSONObject().put("callId", callId).put("approved", approved))) != true) {
             // 没送出去就不能把卡片置为已决议，否则用户以为批准生效、实际工具永远不会跑
             update { it.copy(error = "审批回执发送失败：编码 Agent 连接已断开") }
@@ -654,13 +660,13 @@ class AgentClient(
      * [onResult] 收到失败（未连接 / 非法档位）时由界面提示；设置本身仍会落盘，
      * 下次宿主启动按新值生效。
      */
-    fun setApprovalMode(mode: String, onResult: ((Boolean, String?) -> Unit)? = null) {
+    override fun setApprovalMode(mode: String, onResult: ((Boolean, String?) -> Unit)?) {
         call("set_approval_mode", JSONObject().put("mode", mode)) { result, error ->
             onResult?.invoke(error == null && result != null, error)
         }
     }
 
-    fun cancel() {
+    override fun cancel() {
         val t = transport ?: return update { it.copy(error = "编码 Agent 未连接") }
         // host 按 sessionId 查 abortController；不带 sessionId 的 cancel 会被当成空操作，
         // 用户以为停了，模型其实还在跑、还在烧 token。
@@ -686,7 +692,7 @@ class AgentClient(
      * host 立刻回 started，进度全部走事件流（goal_start / goal_round / goal_verdict / goal_done）。
      * [allowExec] 默认 false：没人看着的时候不放开 shell，只放行读写文件。
      */
-    fun startGoal(objective: String, allowExec: Boolean = false, onResult: ((Boolean, String?) -> Unit)? = null) {
+    override fun startGoal(objective: String, allowExec: Boolean, onResult: ((Boolean, String?) -> Unit)?) {
         val text = objective.trim()
         if (text.isEmpty()) {
             onResult?.invoke(false, "目标不能为空")
@@ -759,14 +765,70 @@ class AgentClient(
      * 切到某个已存在的会话：把会话 id 与本地的历史消息一起装回来。
      * 会话 id 由 host 侧 `new_session` 产生并持久化，重启后依然有效。
      */
-    fun activateSession(id: String, messages: List<ChatMessage>) {
+    override fun activateSession(id: String, messages: List<CodingMessageView>) {
         assistantKey = null
         lastRunId = null
         sessionId = id
         // busy 保持原样：用户中途离开页面再回来时，正在跑的这一轮要继续显示为「编码中」
-        update { it.copy(messages = messages, error = null) }
+        update { it.copy(messages = messages.map { it.toChatMessage() }, error = null) }
     }
 
     /** 消息有变化时给编码页一个落盘时机（切会话/退页面时保存） */
-    fun snapshotMessages(): List<ChatMessage> = state.value.messages
+    override fun snapshotMessages(): List<CodingMessageView> = state.value.messages.map { it.toView() }
 }
+
+internal fun ConnState.toApi(): CodingConnection = when (this) {
+    ConnState.DISCONNECTED -> CodingConnection.DISCONNECTED
+    ConnState.CONNECTING -> CodingConnection.CONNECTING
+    ConnState.CONNECTED -> CodingConnection.CONNECTED
+}
+
+/** 把切片内部的状态投影成编码页的整页快照：只搬运页面要渲染的字段，别的留在内部。 */
+internal fun AgentUiState.toConversation(): CodingConversation = CodingConversation(
+    connection = conn.toApi(),
+    messages = messages.map { it.toView() },
+    busy = busy,
+    error = error,
+    phase = phase,
+    iteration = iteration,
+    runStartedAt = runStartedAt,
+)
+
+/** 一条内部消息 → 页面视图：渲染要用的字段全带上，归约匹配键（toolCallId / subagentId）不带。 */
+internal fun ChatMessage.toView(): CodingMessageView = CodingMessageView(
+    key = key,
+    role = role,
+    text = text,
+    toolName = toolName,
+    toolOk = toolOk,
+    approvalCallId = approvalCallId,
+    approvalResolved = approvalResolved,
+    approvalCommand = approvalCommand,
+    approvalRisk = approvalRisk,
+    approvalDanger = approvalDanger,
+    durationMs = durationMs,
+    outputPreview = outputPreview,
+    subagentLabel = subagentLabel,
+    subagentPersona = subagentPersona,
+)
+
+/**
+ * 页面视图 → 内部消息：磁盘上装回的会话只带这两类字段的并集（见 CodingWorkspaces），
+ * 归约匹配键本来也是空的，所以这一步与改造前「loadMessages 直接造 ChatMessage」等价。
+ */
+internal fun CodingMessageView.toChatMessage(): ChatMessage = ChatMessage(
+    key = key,
+    role = role,
+    text = text,
+    toolName = toolName,
+    toolOk = toolOk,
+    approvalCallId = approvalCallId,
+    approvalResolved = approvalResolved,
+    approvalCommand = approvalCommand,
+    approvalRisk = approvalRisk,
+    approvalDanger = approvalDanger,
+    durationMs = durationMs,
+    outputPreview = outputPreview,
+    subagentLabel = subagentLabel,
+    subagentPersona = subagentPersona,
+)

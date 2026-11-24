@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
+import com.phoneagent.coding.api.CodingMessageView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -304,7 +305,7 @@ object CodingWorkspaces {
         File(File(entry.metaDir, "sessions"), "$sessionId.json")
 
     @Synchronized
-    fun loadMessages(entry: Entry, sessionId: String): List<ChatMessage> {
+    fun loadMessages(entry: Entry, sessionId: String): List<CodingMessageView> {
         val file = messagesFile(entry, sessionId)
         if (!file.isFile) return emptyList()
         return try {
@@ -313,7 +314,7 @@ object CodingWorkspaces {
                 for (i in 0 until arr.length()) {
                     val m = arr.optJSONObject(i) ?: continue
                     add(
-                        ChatMessage(
+                        CodingMessageView(
                             key = m.optString("key"),
                             role = m.optString("role"),
                             text = m.optString("text"),
@@ -336,7 +337,7 @@ object CodingWorkspaces {
         context: Context,
         entry: Entry,
         sessionId: String,
-        messages: List<ChatMessage>,
+        messages: List<CodingMessageView>,
     ) {
         try {
             val arr = JSONArray()

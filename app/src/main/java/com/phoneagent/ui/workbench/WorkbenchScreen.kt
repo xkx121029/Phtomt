@@ -111,7 +111,7 @@ fun WorkbenchScreen(
     val summary by conversationSummary.text.collectAsStateWithLifecycle()
     val agentState by vm.agentState.collectAsStateWithLifecycle()
     val agentTurns by vm.chatTurns.collectAsStateWithLifecycle()
-    val codingUi by koinInject<CodingAgentBridge>().uiClient.state.collectAsStateWithLifecycle()
+    val codingUi by koinInject<CodingAgentBridge>().uiSession.conversation.collectAsStateWithLifecycle()
     val view = WorkbenchView.normalize(settings.workbenchView)
     val agentBusy = agentState.isRunning || agentTurns.lastOrNull()?.answer?.isBlank() == true
     val agentTranscript = buildList {

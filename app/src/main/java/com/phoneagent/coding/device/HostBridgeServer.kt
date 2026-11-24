@@ -68,7 +68,7 @@ class HostBridgeServer(
      * type:request 的一方都能驱动设备侧能力（工作区读写、编辑器）。现在每个反向
      * 请求都必须带 params.token 且与配置里的密钥一致。
      *
-     * 空密钥（[CodingAgentConfig.token] 没配）按「无鉴权」处理：一律拒绝，
+     * 空密钥（[com.phoneagent.coding.api.CodingAgentConfig.token] 没配）按「无鉴权」处理：一律拒绝，
      * 绝不因为"没配密钥"就放行整条管道。
      */
     fun handle(request: JSONObject, respond: (JSONObject) -> Unit) {

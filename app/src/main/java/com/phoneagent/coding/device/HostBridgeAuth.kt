@@ -16,7 +16,7 @@ package com.phoneagent.coding.device
 internal object HostBridgeAuth {
 
     /**
-     * @param expectedToken 配置里的共享密钥（[com.phoneagent.coding.agent.CodingAgentConfig.token]）
+     * @param expectedToken 配置里的共享密钥（[com.phoneagent.coding.api.CodingAgentConfig.token]）
      * @param providedToken 入站请求 `params.token`；缺省时调用方传空串或 null
      */
     fun allows(expectedToken: String, providedToken: String?): Boolean =
