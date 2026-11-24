@@ -55,7 +55,7 @@ fun rememberConversationSummary(): ConversationSummary {
 fun rememberCodingConversationSummaryText(bridge: CodingAgentBridge): String {
     val summary = rememberConversationSummary()
     val text by summary.text.collectAsStateWithLifecycle()
-    val state by bridge.uiClient.state.collectAsStateWithLifecycle()
+    val state by bridge.uiSession.conversation.collectAsStateWithLifecycle()
     LaunchedEffect(state.busy, state.messages.lastOrNull()) {
         if (!state.busy) {
             val transcript = state.messages.map { (if (it.role == "user") "用户：" else "助手：") + it.text }

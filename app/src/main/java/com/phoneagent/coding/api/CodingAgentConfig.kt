@@ -1,4 +1,4 @@
-package com.phoneagent.coding.agent
+package com.phoneagent.coding.api
 
 /**
  * 编码 agent 的运行配置（纯数据类，无持久化）。

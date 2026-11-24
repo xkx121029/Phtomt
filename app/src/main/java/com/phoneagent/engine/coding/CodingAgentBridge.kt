@@ -2,10 +2,11 @@ package com.phoneagent.engine.coding
 
 import android.content.Context
 import com.phoneagent.coding.agent.AgentClient
-import com.phoneagent.coding.agent.CodingAgentConfig
+import com.phoneagent.coding.api.CodingAgentConfig
 import com.phoneagent.coding.api.CodingConnection
 import com.phoneagent.coding.api.CodingRuntime
 import com.phoneagent.coding.api.CodingRuntimeStatus
+import com.phoneagent.coding.api.CodingSessionPortal
 import com.phoneagent.coding.api.CodingSessionStatus
 import com.phoneagent.coding.device.HostBridgeTokenProvider
 import com.phoneagent.coding.device.HostBridgeTokenStore
@@ -27,9 +28,10 @@ import kotlinx.coroutines.flow.first
  *   生成的密钥（见 [com.phoneagent.coding.device.HostBridgeToken]）——不再有硬编码常量。
  * - 进度同步：把 busy/最新 assistant 文本/等待审批同步到 [AgentStatusStore]（状态总线，桌面
  *   Widget/磁贴读这份快照）与 [TaskProgressNotifier]（任务进度通知，total<=0 为不确定进度条）。
- *   审批不做系统弹窗，只经 [client].state 暴露给 UI 渲染内嵌审批卡（项目铁律：系统弹窗与 Toast 清零）。
+ *   审批不做系统弹窗，只经 [uiSession] 的快照暴露给 UI 渲染内嵌审批卡（项目铁律：系统弹窗与 Toast 清零）。
  *
- * UI 层（Phase 5 CodingScreen）直接消费 [client].state 渲染会话与审批卡；Bridge 只负责"启动/委托/停止"。
+ * UI 层（Phase 5 CodingScreen）只认 [CodingSessionPortal]（[uiSession]）：消息明细的组装归切片自己，
+ * 页面拿到的是一份只读快照，不再接触 [AgentClient] 的类型。Bridge 只负责"启动/委托/停止"。
  */
 // 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
 @Suppress("TooManyFunctions")
@@ -44,16 +46,16 @@ class CodingAgentBridge(
     /**
      * 后台编码引擎的连接：固定挂在 engine 会话上。
      *
-     * 编码页现在有自己独立的连接与独立会话（[uiClient]），两条连接共享同一个 host 进程，
+     * 编码页现在有自己独立的连接与独立会话（[uiSession]），两条连接共享同一个 host 进程，
      * 事件按 sessionId 分流，引擎侧的后台会话不会把编码页的对话冲掉，反之亦然。
      * 会话 id 带进程时间戳：每次冷启动都是一套干净上下文（与改造前的行为一致），
      * 同时又能和编码页的会话彻底分开。
      */
     private val engineSessionId = "engine_${System.currentTimeMillis().toString(36)}"
-    val client = AgentClient(appContext, fixedSessionId = engineSessionId) { envClient }
+    private val engineClient = AgentClient(appContext, fixedSessionId = engineSessionId) { envClient }
 
     /** 编码页专用连接：会话由工作区里的会话列表决定，和引擎完全隔离。 */
-    val uiClient = AgentClient(appContext, envClientProvider = { envClient })
+    private val uiClient = AgentClient(appContext, envClientProvider = { envClient })
 
     /**
      * 宿主桥共享密钥：每装机随机生成一次、加密落盘（见 [HostBridgeTokenProvider]）。
@@ -75,6 +77,13 @@ class CodingAgentBridge(
      */
     val uiStatus: StateFlow<CodingSessionStatus> get() = uiClient.status
 
+    /**
+     * 编码页与工作台的门户：只读快照 + 意图方法（发消息 / 停止 / 切会话 / 审批回执 / 换档位）。
+     *
+     * 页面因此不认识 [AgentClient]——消息明细怎么组装、重连预算怎么算、审批回执怎么发，
+     * 都留在切片内部。要加新的页面能力就在这里加意图方法，不要再把连接对象透出去。
+     */
+    val uiSession: CodingSessionPortal get() = uiClient
 
     /**
      * 委托一个编码任务：确保运行时已装 → 连接本地 agent → sendPrompt → 挂起等待会话结束
@@ -85,12 +94,12 @@ class CodingAgentBridge(
         sync("编码中…")
         ensureRuntimeInstalled()
         val config = currentConfig()
-        client.connectLocal(config)
-        awaitConnected(client)
-        client.sendPrompt(text)
+        engineClient.connectLocal(config)
+        awaitConnected(engineClient)
+        engineClient.sendPrompt(text)
         // 任务进度通知：total<=0 → 不确定进度条（编码时长不可预估）
         TaskProgressNotifier.show(appContext, CODING_TASK_ID, "编码 Agent", 0, 0)
-        while (client.state.value.busy) {
+        while (engineClient.status.value.busy) {
             syncCodingProgress()
             delay(POLL_MS)
         }
@@ -100,13 +109,13 @@ class CodingAgentBridge(
 
     /** 停止当前编码会话（取消子进程当前执行）并清掉进度通知 */
     fun stop() {
-        client.cancel()
+        engineClient.cancel()
         TaskProgressNotifier.cancel(appContext, CODING_TASK_ID)
     }
 
     /** 开启全新编码会话（清空上下文与消息，透传 AgentClient.newSession） */
     fun newSession() {
-        client.newSession()
+        engineClient.newSession()
     }
 
     /**
@@ -127,7 +136,7 @@ class CodingAgentBridge(
      * 不重启的话新工作区只会"看起来"切了，实际还写旧目录。
      */
     fun restartForWorkspaceChange() {
-        client.disconnect()
+        engineClient.disconnect()
         uiClient.disconnect()
         runtime.stopHost()
     }
@@ -143,7 +152,7 @@ class CodingAgentBridge(
      * 否则 currentConfig() 读到的还是旧值。
      */
     suspend fun applyConfigChange() {
-        client.disconnect()
+        engineClient.disconnect()
         uiClient.disconnect()
         runtime.stopHost()
         ensureUiConnected()
@@ -156,7 +165,7 @@ class CodingAgentBridge(
             // 刚换上的密钥，已经在跑的宿主手里还是旧值：它发来的每条反向请求都会被拒
             // （fail-closed，但工作区读写/编辑器/编码环境会集体失效）。停掉宿主，
             // 让紧接着的 connectLocal 用新密钥重新拉起，不留「进程活着但功能全废」的窗口。
-            client.disconnect()
+            engineClient.disconnect()
             uiClient.disconnect()
             runtime.stopHost()
         }
@@ -200,7 +209,7 @@ class CodingAgentBridge(
     /** 把编码会话状态同步到状态总线（busy / 最新 assistant 文本 / 等待审批 / 出错）。
      *  轮询每 250ms 触发一次，状态没变就跳过——磁贴/Widget 读的是快照流，重复写会引发无谓刷新。 */
     private fun syncCodingProgress() {
-        val st = client.status.value
+        val st = engineClient.status.value
         val status = when {
             st.awaitingApproval -> "等待审批"
             st.error != null -> "编码出错"
