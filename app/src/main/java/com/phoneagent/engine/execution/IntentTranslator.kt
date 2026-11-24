@@ -388,16 +388,18 @@ internal class ScrollToStrategy(private val intentResolver: IntentResolver) : In
         val elem = r.element
         // 确定滚动方向：目标在下方 → 向上滚（swipe up，把下方内容翻出来）；目标在上方 → 向下滚（swipe down）；
         // 默认向上滚查找（目标多半在当前视口之下）
+        // target 是 :domain 的 public 属性：跨模块不能智能转换，先捕获
+        val target = intent.target
         val direction = when {
-            intent.target?.by == "text" && intent.target.value.contains("上方") -> "down"
-            intent.target?.by == "text" && intent.target.value.contains("下方") -> "up"
+            target?.by == "text" && target.value.contains("上方") -> "down"
+            target?.by == "text" && target.value.contains("下方") -> "up"
             else -> "up"
         }
         return IntentTranslator.TranslationResult.Command(
             ctx.base.copy(
                 type = ActionType.SCROLL,
                 elementIndex = elem?.index,
-                text = if (intent.target?.by == "text") intent.target.value else null,
+                text = if (target?.by == "text") target.value else null,
                 direction = direction,
                 reason = reasonOf(intent),
             ),
@@ -565,10 +567,13 @@ private fun numText(d: Double): String = if (d == d.toLong().toDouble()) d.toLon
 private fun paramError(p: CapabilityParam, raw: String): String? = when (p.type) {
     "number" -> {
         val v = raw.toDoubleOrNull()
+        // min / max 是 :domain 的 public 属性：跨模块不能智能转换，先捕获
+        val min = p.min
+        val max = p.max
         when {
             v == null -> "「${p.label}」需要数字，收到「$raw」。"
-            p.min != null && v < p.min -> "「${p.label}」不能小于 ${numText(p.min)}，收到 $raw。"
-            p.max != null && v > p.max -> "「${p.label}」不能大于 ${numText(p.max)}，收到 $raw。"
+            min != null && v < min -> "「${p.label}」不能小于 ${numText(min)}，收到 $raw。"
+            max != null && v > max -> "「${p.label}」不能大于 ${numText(max)}，收到 $raw。"
             else -> null
         }
     }

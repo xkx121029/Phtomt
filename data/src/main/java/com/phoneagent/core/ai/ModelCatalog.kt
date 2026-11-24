@@ -68,7 +68,7 @@ object ModelCatalogCodec {
     private val modelsSerializer = ListSerializer(CatalogModel.serializer())
 
     /** 端点 id：归一化后的 URL（补协议、去尾斜杠），与探测/请求实际用的地址一致 */
-    fun endpointId(baseUrl: String): String = AiClient.normalizeBaseUrl(baseUrl.trim())
+    fun endpointId(baseUrl: String): String = AiEndpoints.normalizeBaseUrl(baseUrl.trim())
 
     fun encodeEndpoints(list: List<Endpoint>): String =
         json.encodeToString(endpointsSerializer, list)

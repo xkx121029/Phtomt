@@ -1,5 +1,6 @@
 package com.phoneagent.ui
 
+import com.phoneagent.data.prefs.TabPrefsCodec
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

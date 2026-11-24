@@ -422,10 +422,14 @@ internal class ExecutionCore(
                     executor.openUri(uri, action.app?.let { appNameResolver.resolve(it) }).isSuccess()
                 } else {
                     val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
+                    // 跨模块（:domain）的 public 属性不能智能转换，先落到本地 val
+                    val entryUri = entry?.uri
+                    val entryIntent = entry?.intentAction
+                    val entryPackage = entry?.packageName
                     when {
-                        entry?.uri != null -> executor.openUri(entry.uri)
-                        entry?.intentAction != null -> executor.openSettingsAction(entry.intentAction)
-                        entry?.packageName != null -> executor.launchApp(entry.packageName)
+                        entryUri != null -> executor.openUri(entryUri)
+                        entryIntent != null -> executor.openSettingsAction(entryIntent)
+                        entryPackage != null -> executor.launchApp(entryPackage)
                         else -> com.phoneagent.device.a11y.ActionExecutor.Result.Failure(
                             "未在软件页面索引中找到 ${action.app ?: "未知软件"} 页面${action.page?.toString() ?: "（未指定页码）"}",
                         )
@@ -792,7 +796,9 @@ internal class ExecutionCore(
         fun strArg(key: String): String? = args[key]?.trim()?.takeIf { it.isNotBlank() }
         /** 按文字/语义 id 在快照元素树里找控件（坐标兜底与滚动定位共用） */
         fun elementOf(raw: String) = snapshot.elements.firstOrNull {
-            it.semanticId == raw || (!it.text.isNullOrBlank() && it.text.contains(raw))
+            // text 是 :domain 的 public 属性：跨模块不能智能转换，先捕获
+            val text = it.text
+            it.semanticId == raw || (text != null && text.isNotBlank() && text.contains(raw))
         }
 
         // 感知类端点不经过无障碍动作通道，先单独处理
@@ -1638,12 +1644,15 @@ internal class ExecutionCore(
     private fun buildOpenCommands(action: AgentAction): List<String>? {
         val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
         val uri = action.uri?.takeIf { isShellSafe(it) } ?: entry?.uri?.takeIf { isShellSafe(it) }
+        // 跨模块（:domain）的 public 属性不能智能转换，先落到本地 val
+        val entryIntent = entry?.intentAction
+        val entryPackage = entry?.packageName
         return when {
             uri != null -> listOf("am start -a android.intent.action.VIEW -d '$uri'")
-            entry?.intentAction != null && INTENT_ACTION_RE.matches(entry.intentAction) ->
-                listOf("am start -a ${entry.intentAction}")
-            entry?.packageName != null && PACKAGE_RE.matches(entry.packageName) ->
-                listOf("monkey -p ${entry.packageName} 1")
+            entryIntent != null && INTENT_ACTION_RE.matches(entryIntent) ->
+                listOf("am start -a $entryIntent")
+            entryPackage != null && PACKAGE_RE.matches(entryPackage) ->
+                listOf("monkey -p $entryPackage 1")
             else -> null
         }
     }
@@ -1662,13 +1671,17 @@ internal class ExecutionCore(
             ?.let { VerifyResult(true, "$originalReason；已自动切换本应用直启打开: $it", "", "") }
         ActionType.OPEN -> {
             val entry = com.phoneagent.domain.model.AppPageIndex.resolve(action.app, action.page)
+            // 跨模块（:domain）的 public 属性不能智能转换，先落到本地 val
+            val actionUri = action.uri
+            val entryUri = entry?.uri
+            val entryIntent = entry?.intentAction
             when {
-                action.uri != null && openLocally(action.uri, action.app?.let { appNameResolver.resolve(it) }) ->
-                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: ${action.uri}", "", "")
-                entry?.uri != null && openLocally(entry.uri, null) ->
-                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: ${entry.uri}", "", "")
-                entry?.intentAction != null && openActionLocally(entry.intentAction) ->
-                    VerifyResult(true, "$originalReason；已自动切换本应用直启: ${entry.intentAction}", "", "")
+                actionUri != null && openLocally(actionUri, action.app?.let { appNameResolver.resolve(it) }) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: $actionUri", "", "")
+                entryUri != null && openLocally(entryUri, null) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启打开链接: $entryUri", "", "")
+                entryIntent != null && openActionLocally(entryIntent) ->
+                    VerifyResult(true, "$originalReason；已自动切换本应用直启: $entryIntent", "", "")
                 else -> null
             }
         }
