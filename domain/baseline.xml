@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ConstructorParameterNaming:TaskModels.kt$PlanResponse$val needs_clarification: Boolean = false</ID>
+    <ID>CyclomaticComplexMethod:TaskModels.kt$fun parseTaskSteps(json: kotlinx.serialization.json.JsonArray): List&lt;TaskStep&gt;</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(1, "Wi-Fi", Entry(intentAction = "android.settings.WIFI_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(2, "蓝牙", Entry(intentAction = "android.settings.BLUETOOTH_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(3, "显示", Entry(intentAction = "android.settings.DISPLAY_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(4, "应用管理", Entry(intentAction = "android.settings.MANAGE_APPLICATIONS_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(5, "存储", Entry(intentAction = "android.settings.INTERNAL_STORAGE_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(6, "声音", Entry(intentAction = "android.settings.SOUND_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>MaxLineLength:AppPageIndex.kt$AppPageIndex$Page(7, "位置", Entry(intentAction = "android.settings.LOCATION_SOURCE_SETTINGS", packageName = "com.android.settings"))</ID>
+    <ID>ReturnCount:AppPageIndex.kt$AppPageIndex$fun resolve(appQuery: String?, page: Int?): Entry?</ID>
+  </CurrentIssues>
+</SmellBaseline>

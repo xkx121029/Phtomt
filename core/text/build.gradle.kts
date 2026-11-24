@@ -34,7 +34,9 @@ kotlin {
 }
 
 dependencies {
-    // 刻意不加实现依赖：本模块只依赖 Kotlin 标准库。往这里加依赖前先问一句"这一层还配叫 core 吗"。
+    // HumanTranslator（P1 从 :app 归位到本模块）要用 domain.model.CapabilityRegistry，
+    // 于是本模块第一次有了内部依赖。方向仍是 core:text → domain，没有反向边。
+    implementation(project(":domain"))
     testImplementation(libs.junit)
 }
 
@@ -109,56 +111,78 @@ tasks.named("check") { dependsOn(checkDetektBaseline) }
 // 两个 fail-closed 条件：包/计数器找不到算失败；可执行行数少于下限也算失败
 // （后者防的正是上面那次静默窄化）。
 // ---------------------------------------------------------------------------
-val coveragePackage = "com/phoneagent/core/text"
-val coverageThreshold = 0.87
-
-/** 当前报告里本包的可执行行数；类被搬走或删掉会让它掉下来，闸门据此报警。 */
-val coverageMinLines = 713
+// 覆盖率闸门：百分比 + **可执行行数下限**。
+//
+// 只测百分比会漏掉「包还在、类被搬走」这种静默窄化（HAPP-77 在 core/text 上实测过），
+// 所以每条规则都同时判两件事：可执行行数不得低于下限；行覆盖率不得低于阈值。
+// 规则必须和它守护的类待在同一个编译单元里，否则迟早会拿别人的覆盖率交差。
+// ---------------------------------------------------------------------------
+// 两组分开量，因为它们的历史基线不同：
+// - 转换器七类（HtmlConverter / HtmlEntities / HtmlMdBuilder / HtmlScanner / HtmlToMarkdown /
+//   TimeFormats / AgentBudgets）在 P0 就有 87% 红线、713 行下限，原样保留；
+// - HumanTranslator 是 P1 从 :app 归位进来的，**在 :app 时它没有任何规则**——它和转换器
+//   同包，被转换器的 91.7% 顺带盖住了。合并成一条会悄悄拉低转换器的红线，
+//   所以它单列，阈值取归位时实测值向下取整（74%），行数下限取实测 181。
+val converterThreshold = 0.87
+val converterMinLines = 713
+val humanTranslatorThreshold = 0.74
+val humanTranslatorMinLines = 181
 
 val jacocoTestReport by tasks.existing(JacocoReport::class) {
     dependsOn(tasks.named("test"))
     reports { xml.required.set(true) }
 }
 
+data class LineCoverage(val covered: Int, val total: Int)
+
+/** 按类名前缀从 jacoco XML 里挑类，累加它们的 LINE 计数。 */
+fun coverageOf(text: String, predicate: (String) -> Boolean): LineCoverage {
+    var covered = 0
+    var total = 0
+    Regex("""<class name="([^"]+)"[^>]*>([\s\S]*?)</class>""").findAll(text).forEach { cls ->
+        if (!predicate(cls.groupValues[1])) return@forEach
+        val counter = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
+            .findAll(cls.groupValues[2]).lastOrNull() ?: return@forEach
+        val missed = counter.groupValues[1].toInt()
+        val cov = counter.groupValues[2].toInt()
+        covered += cov
+        total += missed + cov
+    }
+    return LineCoverage(covered, total)
+}
+
+fun requireCoverage(label: String, c: LineCoverage, threshold: Double, minLines: Int) {
+    if (c.total == 0) {
+        throw GradleException("覆盖率闸门：$label 的可执行行为 0 —— 测试没跑到，或类被搬走了。")
+    }
+    if (c.total < minLines) {
+        throw GradleException(
+            "$label 只剩 ${c.total} 行可执行代码（下限 $minLines）：包里的类被搬走了？" +
+                "规则要跟着类走，而不是留在这里改测剩下的类。",
+        )
+    }
+    val ratio = c.covered.toDouble() / c.total
+    val pct = "%.1f%%".format(ratio * 100)
+    if (ratio + 1e-9 < threshold) {
+        throw GradleException("$label 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（${c.covered}/${c.total}）。")
+    }
+    logger.lifecycle("覆盖率闸门通过：$label $pct ≥ ${"%.0f%%".format(threshold * 100)}（${c.covered}/${c.total}，下限 $minLines 行）")
+}
+
 val checkCoreTextCoverage by tasks.registering {
     group = "verification"
-    description = "校验 $coveragePackage 的行覆盖率不低于 ${"%.0f%%".format(coverageThreshold * 100)}"
+    description = "校验 com/phoneagent/core/text 的转换器与 HumanTranslator 各自的覆盖率与行数下限"
     dependsOn(jacocoTestReport)
     doLast {
         val reportXml = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile
         if (!reportXml.exists()) {
             throw GradleException("找不到覆盖率报告 ${reportXml.path}；该闸门需要先跑 :core:text:test。")
         }
-        val pkgBlock = Regex("""<package name="${Regex.escape(coveragePackage)}">([\s\S]*?)</package>""")
-            .find(reportXml.readText())?.groupValues?.get(1)
-            ?: throw GradleException(
-                "覆盖率闸门：报告里没有 $coveragePackage —— 包可能被搬走或改名了。" +
-                    "请把这条规则一起搬到新位置，而不是让它在这里静默失效。",
-            )
-        val lineCounter = Regex("""<counter type="LINE" missed="(\d+)" covered="(\d+)"/>""")
-            .findAll(pkgBlock).lastOrNull()
-            ?: throw GradleException("覆盖率闸门：$coveragePackage 没有 LINE 计数器（报告格式变了？）")
-        val missed = lineCounter.groupValues[1].toInt()
-        val covered = lineCounter.groupValues[2].toInt()
-        val total = missed + covered
-        if (total == 0) {
-            throw GradleException("覆盖率闸门：$coveragePackage 的可执行行为 0 —— 测试没有跑到这个包，不能算通过。")
-        }
-        if (total < coverageMinLines) {
-            throw GradleException(
-                "$coveragePackage 只剩 $total 行可执行代码（下限 $coverageMinLines）：包里的类被搬走了？" +
-                    "规则要跟着类走，而不是留在这里改测剩下的类。",
-            )
-        }
-        val ratio = covered.toDouble() / total
-        val pct = "%.1f%%".format(ratio * 100)
-        if (ratio + 1e-9 < coverageThreshold) {
-            throw GradleException(
-                "$coveragePackage 行覆盖率 $pct < 阈值 ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）。" +
-                    "请补测，或在本文件的 coverageThreshold 里调整阈值（需说明理由）。",
-            )
-        }
-        logger.lifecycle("覆盖率闸门通过：$coveragePackage $pct ≥ ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）")
+        val text = reportXml.readText()
+        val human = coverageOf(text) { it.endsWith("/HumanTranslator") }
+        val rest = coverageOf(text) { !it.endsWith("/HumanTranslator") }
+        requireCoverage("com/phoneagent/core/text（转换器等）", rest, converterThreshold, converterMinLines)
+        requireCoverage("com/phoneagent/core/text（HumanTranslator）", human, humanTranslatorThreshold, humanTranslatorMinLines)
     }
 }
 

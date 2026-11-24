@@ -258,9 +258,9 @@ tasks.named("check") { dependsOn(checkDocAnchors) }
 // 确实有意删类时，把下限一起调低，并在提交信息里说明。
 val coverageRules = mapOf(
     "com/phoneagent/domain/rules" to 0.85,
-    // :app 里这个包现在只剩 HumanTranslator.kt；转换器那七个类的 87% 红线由
-    // core/text/build.gradle.kts 的 checkCoreTextCoverage 在模块自己的报告里守。
-    "com/phoneagent/core/text" to 0.87,
+    // `com/phoneagent/core/text` 这条规则已经搬进 core/text/build.gradle.kts：
+    // 该包最后一个类（HumanTranslator）在模块化 P1 也搬进 :core:text 之后，:app 的报告里
+    // 这个包整个消失，留在这里会让 fail-closed 直接红——规则必须跟着类走。
     "com/phoneagent/engine/execution" to 0.45,
     "com/phoneagent/device/ops" to 0.17,
 )
@@ -268,7 +268,6 @@ val coverageRules = mapOf(
 /** 各包在上述报告里的可执行行数下限，用途见 coverageRules 上方的注释。 */
 val coverageMinLines = mapOf(
     "com/phoneagent/domain/rules" to 536,
-    "com/phoneagent/core/text" to 181,
     "com/phoneagent/engine/execution" to 2887,
     "com/phoneagent/device/ops" to 1047,
 )
@@ -514,6 +513,14 @@ dependencies {
     // 从 :app 抽出的纯逻辑模块（模块化 P0）：包名不变，调用方 import 不用改
     implementation(project(":core:text"))
     implementation(project(":core:log"))
+
+    // 模块化 P1：纯领域模型、安全层（Keystore / 脱敏）、持久化层。
+    // 依赖方向固定为 app → data → {core:security, core:text, core:log} → domain，
+    // 反向一条都没有（data 不能看见 app，所以它持久化的记录类型搬进了 :data 自己）。
+    implementation(project(":domain"))
+    implementation(project(":core:security"))
+    implementation(project(":core:perf"))
+    implementation(project(":data"))
 
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)

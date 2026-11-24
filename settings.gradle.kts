@@ -46,6 +46,29 @@ project(":core:text").projectDir = file("core/text")
 include(":core:log")
 project(":core:log").projectDir = file("core/log")
 
+// ---------------------------------------------------------------------------
+// 模块化 P1：`:domain`（纯模型）、`:core:security`（Keystore + 脱敏）、`:core:perf`（耗时打点）、
+// `:data`（持久化层）。
+//
+// 依赖方向：app → data → core:security / core:text / core:log → domain，没有反向边。
+// 这条顺序不是设计选择，是被实测逼出来的：`com.phoneagent.data` 的 11 个文件反向引用了
+// `:app` 里 9 个包的类型（StepTrace / TaskSession / MemoryEvent / McpServerConfig /
+// TemplateMatcher / TabPrefsCodec / HumanTranslator / SecretCodec+DataSanitizer /
+// ModelCatalog+GlmDefaults / domain.model），而 `:app → :data` 是既有方向，
+// 所以这些类型必须先下沉，否则 `:data` 与 `:app` 成环、一期根本编不过。
+// ---------------------------------------------------------------------------
+include(":domain")
+project(":domain").projectDir = file("domain")
+
+include(":core:security")
+project(":core:security").projectDir = file("core/security")
+
+include(":core:perf")
+project(":core:perf").projectDir = file("core/perf")
+
+include(":data")
+project(":data").projectDir = file("data")
+
 // 权限 Provider 应用：承载无障碍 / 内置 Shizuku / Termux 三条通道的独立 APK。
 // 主应用首次打开时引导安装（参考 Operit 的独立 Provider 方案），并通过 AIDL
 // （com.phoneagent.provider.IDeviceProvider）远程调用。Provider 构建产物作为

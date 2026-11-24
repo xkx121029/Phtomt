@@ -1,0 +1,86 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:DetectedControl.kt$ControlFormat$c.bounds[0] == 0f &amp;&amp; c.bounds[1] == 0f &amp;&amp; c.bounds[2] == 0f &amp;&amp; c.bounds[3] == 0f</ID>
+    <ID>ComplexCondition:MemoryStore.kt$PageMemoryOps$appPackage.isBlank() || fromFp.isBlank() || toFp.isBlank() || fromFp == toFp</ID>
+    <ID>CyclomaticComplexMethod:LogExporter.kt$LogExporter$fun exportDiagnosticReport( context: Context, traces: List&lt;StepTrace&gt;, logs: List&lt;AgentLog&gt;, conversation: List&lt;ConversationMessage&gt;, ): String</ID>
+    <ID>LongMethod:AppSettings.kt$AppSettings$suspend fun update(settings: Settings)</ID>
+    <ID>LongParameterList:DebugRecordsStore.kt$DebugRecordsStore$( ctx: Context, logs: List&lt;AgentLog&gt;, traces: List&lt;StepTrace&gt;, history: List&lt;StepRecord&gt;, conversation: List&lt;ConversationMessage&gt;, sessions: List&lt;TaskSession&gt; = emptyList(), )</ID>
+    <ID>LongParameterList:MemoryStore.kt$MemoryStore$( content: String, kind: String, scopeKind: String, scopeValue: String, sourceTask: String, confidence: Double = 0.7, )</ID>
+    <ID>LongParameterList:MemoryStore.kt$PageMemoryOps$( list: List&lt;PageMemoryEntry&gt;, appPackage: String, fingerprint: String, pageType: String, title: String, hotspots: List&lt;PageMemoryHotspot&gt;, shapes: List&lt;PageShapeNode&gt;, now: Long, shapeSig: String = "", )</ID>
+    <ID>LongParameterList:MemoryStore.kt$PageMemoryOps$( list: List&lt;PagePathEdge&gt;, appPackage: String, fromFp: String, toFp: String, actionLabel: String, fromControl: String, now: Long, )</ID>
+    <ID>LongParameterList:MemoryStore.kt$PageMemoryStore$( appPackage: String, fingerprint: String, pageType: String, title: String, hotspots: List&lt;PageMemoryHotspot&gt;, shapes: List&lt;PageShapeNode&gt; = emptyList(), shapeSig: String = "", )</ID>
+    <ID>LongParameterList:MemoryStore.kt$ProfileLearner$( fingerprint: String, labels: List&lt;String&gt;, anomalyType: String, description: String, solution: String, resolvedAction: String, appPackage: String, )</ID>
+    <ID>LongParameterList:ModelCatalog.kt$ModelCatalogCodec$( apiBaseUrl: String, apiKey: String, model: String, visionBaseUrl: String, visionApiKey: String, visionModel: String, reasonBaseUrl: String, reasonApiKey: String, reasonModel: String, )</ID>
+    <ID>LongParameterList:ModelTrust.kt$ModelTrust$( baseUrl: String, apiKey: String, model: String, verifiedTarget: String, verifiedAt: Long, verifiedOk: Boolean, verifyError: String, )</ID>
+    <ID>LongParameterList:TaskStore.kt$TaskStore$( context: Context, task: String, plan: TaskPlan?, completedSteps: Int, totalPlannedSteps: Int, currentTaskId: Long, )</ID>
+    <ID>LoopWithTooManyJumpStatements:DetectedControl.kt$ControlFormat$for</ID>
+    <ID>LoopWithTooManyJumpStatements:MemoryStore.kt$PageMemoryOps$for</ID>
+    <ID>LoopWithTooManyJumpStatements:ModelCatalog.kt$ModelCatalogCodec$for</ID>
+    <ID>MagicNumber:DebugRecordsStore.kt$DebugRecordsStore$85</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$100</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$100f</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$11f</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$24f</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$3</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$320</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$36f</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$4</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$4f</ID>
+    <ID>MagicNumber:DetectedControl.kt$ControlFormat$5</ID>
+    <ID>MagicNumber:LogExporter.kt$LogExporter$12</ID>
+    <ID>MagicNumber:LogExporter.kt$LogExporter$48</ID>
+    <ID>MagicNumber:LogExporter.kt$LogExporter$500</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$0.6f</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$10</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$16</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$20</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$24</ID>
+    <ID>MagicNumber:MemoryStore.kt$PageMemoryOps$40</ID>
+    <ID>MagicNumber:TemplateMatcher.kt$TemplateMatcher$3</ID>
+    <ID>MaxLineLength:DebugRecordsStore.kt$DebugRecordsStore$LeanMemoryEvent(it.id, it.content, it.category, it.updated, it.runKey, it.step, it.createdAt)</ID>
+    <ID>MaxLineLength:DebugRecordsStore.kt$DebugRecordsStore$conversation = bundle.conversation.map { ConversationMessage(it.role, it.content, it.timestamp, it.hasImage) }</ID>
+    <ID>MaxLineLength:DebugRecordsStore.kt$DebugRecordsStore$planJson = s.plan?.let { runCatching { json.encodeToString(TaskPlan.serializer(), it) }.getOrNull() }.orEmpty()</ID>
+    <ID>MaxLineLength:LogExporter.kt$LogExporter$if</ID>
+    <ID>MaxLineLength:LogExporter.kt$LogExporter$l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", DataSanitizer.sanitize(it)) }</ID>
+    <ID>MaxLineLength:LogExporter.kt$LogExporter$sb.appendLine(" · 第${tr.step}步 ${if (human.isNotBlank()) human else ""}${if (tr.visionModel.isNotBlank()) "（视觉:${tr.visionSource}）" else ""} · ${tr.latencyMs}ms · ${tr.totalTokens}token")</ID>
+    <ID>MaxLineLength:LogExporter.kt$LogExporter$sb.appendLine("· 步骤 ${tr.step} | 视觉=${tr.visionSource}(${tr.visionModel}) | 思考=${tr.thinking} | token=${tr.totalTokens} | ${tr.latencyMs}ms")</ID>
+    <ID>MaxLineLength:LogExporter.kt$LogExporter$val fileName = "hpa_logs_${taskName?.take(12)?.replace(FILE_NAME_UNSAFE_RE, "_") ?: "all"}_${fileStamp()}.txt"</ID>
+    <ID>MaxLineLength:LogExporterTest.kt$LogExporterTest$val conversation = listOf(ConversationMessage(role = "user", content = "给张三发消息", timestamp = 1_700_000_000_000L))</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$context.memoryStore.edit { it[aiMemoryKey] = json.encodeToString(ListSerializer(AiMemoryEntry.serializer()), list) }</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$context.memoryStore.edit { it[anomaliesKey] = json.encodeToString(ListSerializer(AnomalyMemoryEntry.serializer()), capped) }</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$context.memoryStore.edit { it[profileKey] = json.encodeToString(ListSerializer(ProfileEntry.serializer()), capped) }</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$context.memoryStore.edit { it[taskMemoryKey] = json.encodeToString(ListSerializer(TaskMemoryEntry.serializer()), list) }</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$it[evolvedRulesKey] = json.encodeToString(ListSerializer(EvolvedRule.serializer()), EvolvedRule.trimToLimit(list))</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$loadEvolvedRules().map { if (it.id in idSet) it.copy(hitCount = it.hitCount + 1, lastUsedAt = now) else it }</ID>
+    <ID>MaxLineLength:MemoryStore.kt$MemoryStore$val</ID>
+    <ID>MaxLineLength:MemoryStore.kt$PageMemoryOps$"${n.kind}|${n.semanticId}|${(n.l * 10).toInt()}|${(n.t * 10).toInt()}|${(n.r * 10).toInt()}|${(n.b * 10).toInt()}"</ID>
+    <ID>MaxLineLength:MemoryStore.kt$PageMemoryOps$val idx = list.indexOfFirst { it.appPackage == appPackage &amp;&amp; it.fromFp == fromFp &amp;&amp; it.toFp == toFp &amp;&amp; it.actionLabel == label }</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$PageMemoryOps.shapeSignature(listOf(PageShapeNode(kind = "text", label = "纯文字", l = 0.1f, t = 0.1f, r = 0.9f, b = 0.2f)))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$PageShapeNode(kind = "text", label = "项$i", l = 0.0f, t = (i - 1) * 0.02f, r = 0.2f, b = (i - 1) * 0.02f + 0.01f)</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$assertNotEquals(base, PageMemoryOps.shapeSignature(listOf(PageShapeNode(kind = "input", label = "搜索", l = 0.1f, t = 0.1f, r = 0.9f, b = 0.15f))))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$assertNull(PageMemoryOps.upsertEntry(emptyList(), "", FP_A, "generic", "页", emptyList(), shapes = emptyList(), now = 1L))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$assertNull(PageMemoryOps.upsertEntry(emptyList(), PKG, " ", "generic", "页", emptyList(), shapes = emptyList(), now = 1L))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$emptyList()</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$listOf(PageShapeNode(kind = "text", label = "物品甲", l = 0.1f, t = 0.02f, r = 0.9f, b = 0.06f), buttonShape("确认"))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$listOf(PageShapeNode(kind = "text", label = "首页", l = 0.1f, t = 0.02f, r = 0.9f, b = 0.06f), buttonShape("搜索"))</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$val (list1, _) = PageMemoryOps.upsertEntry(emptyList(), PKG, FP_A, "generic", "页", emptyList(), shapes = emptyList(), now = 1L)!!</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$val (list1, first) = PageMemoryOps.upsertEdge(emptyList(), PKG, FP_A, FP_B, "点击『搜索』", fromControl = "", now = 1L)!!</ID>
+    <ID>MaxLineLength:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$val (list2, second) = PageMemoryOps.upsertEntry(list1, PKG, FP_B, "generic", "页", emptyList(), shapes = emptyList(), now = 2L)!!</ID>
+    <ID>ReturnCount:AiMemoryDedupe.kt$AiMemoryDedupe$fun isSame(a: String, b: String): Boolean</ID>
+    <ID>ReturnCount:DebugRecordsStore.kt$DebugRecordsStore$fun thumb(src: Bitmap?, maxWidth: Int = THUMB_MAX_WIDTH): Bitmap?</ID>
+    <ID>ReturnCount:DetectedControl.kt$ControlFormat$fun locate(controls: List&lt;DetectedControl&gt;, targetText: String): Pair&lt;Float, Float&gt;?</ID>
+    <ID>ReturnCount:LogExporter.kt$LogExporter$private fun writeToDownloads(context: Context, values: ContentValues, payload: ByteArray): Boolean</ID>
+    <ID>ReturnCount:MemoryStore.kt$PageMemoryOps$fun upsertEdge( list: List&lt;PagePathEdge&gt;, appPackage: String, fromFp: String, toFp: String, actionLabel: String, fromControl: String, now: Long, ): Pair&lt;List&lt;PagePathEdge&gt;, PagePathEdge&gt;?</ID>
+    <ID>ReturnCount:ModelTrust.kt$ModelTrust$fun resolve( baseUrl: String, apiKey: String, model: String, verifiedTarget: String, verifiedAt: Long, verifiedOk: Boolean, verifyError: String, ): Snapshot</ID>
+    <ID>ReturnCount:TemplateMatcher.kt$TemplateMatcher$fun biGrams(s: String): Set&lt;String&gt;</ID>
+    <ID>ReturnCount:TemplateMatcher.kt$TemplateMatcher$fun match(goal: String, templates: List&lt;TaskTemplate&gt;): TaskTemplate?</ID>
+    <ID>TooManyFunctions:MemoryStore.kt$MemoryStore : PageMemoryStore</ID>
+    <ID>TooManyFunctions:TaskStore.kt$TaskStore</ID>
+    <ID>VariableNaming:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$private val FP_A = "fp_page_a"</ID>
+    <ID>VariableNaming:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$private val FP_B = "fp_page_b"</ID>
+    <ID>VariableNaming:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$private val PKG = "com.sankuai.meituan"</ID>
+    <ID>VariableNaming:TaskMemoryEntryTest.kt$TaskMemoryEntryTest$private val TASK = "帮我在美团点一份黄焖鸡米饭"</ID>
+  </CurrentIssues>
+</SmellBaseline>
