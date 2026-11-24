@@ -70,7 +70,12 @@ data class AgentUiState(
  * 编码页与后台编码引擎现在是两条独立连接：同一台 host 进程里跑多个会话，
  * 事件会广播给所有连接，所以每条连接要用 [fixedSessionId]（引擎固定为 engine 会话）
  * 或自己持有的会话 id 过滤掉别人的流式事件，否则两个界面会互相串台。
+ *
+ * 方法数超阈值是存量：管道、事件归约、审批回执、重连预算挤在同一个连接对象里，
+ * 拆开会把「谁在什么时候改状态」拆散。实现 [CodingSessionPortal] 后类签名变了，
+ * 原先按签名豁免的基线条目不再匹配，所以在这里就地豁免（数量与改造前一致）。
  */
+@Suppress("TooManyFunctions")
 class AgentClient(
     private val context: Context,
     private val fixedSessionId: String? = null,
@@ -564,6 +569,9 @@ class AgentClient(
     }
 
     // ---------- actions ----------
+    // 分支复杂度是存量（重连、补答、超时、发送失败四条出口都在这一处）；
+    // 加 override 后基线里按签名记的那条不再匹配，就地豁免。
+    @Suppress("CyclomaticComplexMethod")
     override fun sendPrompt(text: String) {
         val t = transport ?: return update { it.copy(error = "编码 Agent 未连接") }
         // 新一轮必须从新的 assistant 气泡开始：上一轮若是报错/断流收场，
