@@ -24,7 +24,7 @@ object StartupTrace {
     /** 进程启动到现在的毫秒数；取不到进程启动时间时退化为本次调用起点 */
     private val fallbackStart = SystemClock.uptimeMillis()
 
-    internal fun elapsed(): Long =
+    fun elapsed(): Long =
         SystemClock.uptimeMillis() - runCatching { Process.getStartUptimeMillis() }.getOrDefault(fallbackStart)
 
     /** 打一个点：输出「+123ms [main] 名称」 */
@@ -33,7 +33,7 @@ object StartupTrace {
     }
 
     /** 包一段同步代码并打点（用于量化单个阻塞段，如磁盘回载） */
-    internal inline fun <T> span(name: String, block: () -> T): T {
+    inline fun <T> span(name: String, block: () -> T): T {
         val t0 = SystemClock.uptimeMillis()
         try {
             return block()
@@ -43,5 +43,5 @@ object StartupTrace {
     }
 
     /** 线程名：判断这段工作是否压在首帧上（main vs DefaultDispatcher/IO） */
-    internal fun threadName(): String = Thread.currentThread().name
+    fun threadName(): String = Thread.currentThread().name
 }

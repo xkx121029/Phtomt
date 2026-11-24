@@ -710,7 +710,7 @@ class MemoryStore(private val context: Context) : PageMemoryStore {
  * 页面记忆/路径边的纯合并与淘汰逻辑：不碰 DataStore，可被单测直接覆盖。
  * 上限常量也收口在这里，保证「唯一截断实现点」。
  */
-internal object PageMemoryOps {
+object PageMemoryOps {
     /** 页面记忆总量上限：超出按最近更新时间淘汰最旧的 */
     const val MAX_PAGE_MEMORIES = 100
 

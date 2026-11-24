@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$11</ID>
+    <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$3</ID>
+    <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$4</ID>
+    <ID>MagicNumber:SensitivePageDetector.kt$DataSanitizer$6</ID>
+    <ID>ReturnCount:SensitivePageDetector.kt$SensitivePageDetector$fun isSensitive(snapshot: ScreenSnapshot): Boolean</ID>
+  </CurrentIssues>
+</SmellBaseline>

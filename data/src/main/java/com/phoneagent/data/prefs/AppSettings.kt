@@ -19,7 +19,6 @@ import com.phoneagent.core.ai.Endpoint
 import com.phoneagent.core.ai.GlmDefaults
 import com.phoneagent.core.ai.ModelCatalogCodec
 import com.phoneagent.core.security.SecretCodec
-import com.phoneagent.ui.TabPrefsCodec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -337,7 +336,7 @@ class AppSettings(private val context: Context) {
                 modelTrust.state == com.phoneagent.core.ai.ModelTrust.State.FAILED ->
                     "上次连接测试失败：${modelTrust.error}。" +
                         "请到「设置 → 云端模型」修好 Key / 地址后重新「测试连接」再下达任务。"
-                else -> com.phoneagent.core.ai.AiClient.cleartextProblem(apiBaseUrl)
+                else -> com.phoneagent.core.ai.AiEndpoints.cleartextProblem(apiBaseUrl)
             }
     }
 

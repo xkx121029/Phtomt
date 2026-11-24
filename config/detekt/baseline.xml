@@ -5,7 +5,7 @@
     <ID>ComplexCondition:AgentTimelineMap.kt$AgentTimelineMapper$planPhase is PlanPhase.Planning || planPhase is PlanPhase.Clarifying || planPhase is PlanPhase.AwaitingApproval || planPhase is PlanPhase.Reply || planPhase is PlanPhase.Error</ID>
     <ID>ComplexCondition:ClickRunner.kt$ClickRunner$element == null &amp;&amp; selector == null &amp;&amp; (cx == null || cy == null)</ID>
     <ID>ComplexCondition:ClickRunner.kt$ClickRunner$hitLabel.isNotEmpty() &amp;&amp; labels.any { it.equals(hitLabel, true) || it.contains(hitLabel, true) || hitLabel.contains(it, true) }</ID>
-    <ID>ComplexCondition:DetectedControl.kt$ControlFormat$c.bounds[0] == 0f &amp;&amp; c.bounds[1] == 0f &amp;&amp; c.bounds[2] == 0f &amp;&amp; c.bounds[3] == 0f</ID>
+    <ID>ComplexCondition:ControlFormat.kt$ControlFormat$c.bounds[0] == 0f &amp;&amp; c.bounds[1] == 0f &amp;&amp; c.bounds[2] == 0f &amp;&amp; c.bounds[3] == 0f</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$head.startsWith("&lt;!doctype html") || head.startsWith("&lt;html") || head.startsWith("&lt;head") || head.startsWith("&lt;body")</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; !src[i].isWhitespace() &amp;&amp; src[i] != '=' &amp;&amp; src[i] != '&gt;' &amp;&amp; src[i] != '/'</ID>
     <ID>ComplexCondition:HtmlToMarkdown.kt$HtmlToMarkdown$i &lt; n &amp;&amp; (src[i].isLetterOrDigit() || src[i] == '-' || src[i] == ':' || src[i] == '_')</ID>
@@ -313,7 +313,7 @@
     <ID>LoopWithTooManyJumpStatements:AiClient.kt$AiClient$while</ID>
     <ID>LoopWithTooManyJumpStatements:ClockFallback.kt$ClockFallbackRunner$for</ID>
     <ID>LoopWithTooManyJumpStatements:CodingWorkspaces.kt$CodingWorkspaces$for</ID>
-    <ID>LoopWithTooManyJumpStatements:DetectedControl.kt$ControlFormat$for</ID>
+    <ID>LoopWithTooManyJumpStatements:ControlFormat.kt$ControlFormat$for</ID>
     <ID>LoopWithTooManyJumpStatements:EngineRules.kt$EngineRules$for</ID>
     <ID>LoopWithTooManyJumpStatements:HtmlToMarkdown.kt$HtmlToMarkdown$while</ID>
     <ID>LoopWithTooManyJumpStatements:Markdown.kt$while</ID>
@@ -386,16 +386,16 @@
     <ID>MagicNumber:CursorPointerView.kt$CursorPointerView$24</ID>
     <ID>MagicNumber:CursorPointerView.kt$CursorPointerView$255</ID>
     <ID>MagicNumber:DebugRecordsStore.kt$DebugRecordsStore$85</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$100</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$100f</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$11f</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$24f</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$3</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$320</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$36f</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$4</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$4f</ID>
-    <ID>MagicNumber:DetectedControl.kt$ControlFormat$5</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$100</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$100f</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$11f</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$24f</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$3</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$320</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$36f</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$4</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$4f</ID>
+    <ID>MagicNumber:ControlFormat.kt$ControlFormat$5</ID>
     <ID>MagicNumber:DeviceWorkspace.kt$DeviceWorkspace$5</ID>
     <ID>MagicNumber:EdgeLightingService.kt$EdgeLightingService$0.3f</ID>
     <ID>MagicNumber:EdgeLightingService.kt$EdgeLightingService$20</ID>
@@ -1128,7 +1128,7 @@
     <ID>ReturnCount:DebugRecordsStore.kt$DebugRecordsStore$fun thumb(src: Bitmap?, maxWidth: Int = THUMB_MAX_WIDTH): Bitmap?</ID>
     <ID>ReturnCount:DecisionConfig.kt$DecisionConfig$fun reasoningConfig(settingsVal: AppSettings.Settings): ReasoningConfig?</ID>
     <ID>ReturnCount:DecisionConfig.kt$DecisionConfig$fun visionConfig(settingsVal: AppSettings.Settings, force: Boolean = false): VisionConfig?</ID>
-    <ID>ReturnCount:DetectedControl.kt$ControlFormat$fun locate(controls: List&lt;DetectedControl&gt;, targetText: String): Pair&lt;Float, Float&gt;?</ID>
+    <ID>ReturnCount:ControlFormat.kt$ControlFormat$fun locate(controls: List&lt;DetectedControl&gt;, targetText: String): Pair&lt;Float, Float&gt;?</ID>
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun brightness(level: Int?): OpsResult</ID>
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun darkMode(enable: Boolean?): OpsResult</ID>
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun dnd(enable: Boolean?): OpsResult</ID>

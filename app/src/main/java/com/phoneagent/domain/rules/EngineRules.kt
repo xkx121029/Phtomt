@@ -431,8 +431,10 @@ object EngineRules {
      *  其余动作由执行层验证兜底，跳过二次调用以降低开销 */
     fun needsReviewIntent(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean = when (intent.intent) {
         IntentType.FINISH, IntentType.GIVE_UP -> true
+        // intent.target 现在是 :domain 里的 public 属性：跨模块 Kotlin 不做智能转换，
+        // 先捕获成本地 val（`let` 的 it）再判空，语义不变。
         IntentType.TAP, IntentType.LONG_PRESS, IntentType.INPUT, IntentType.SWIPE ->
-            intent.target == null || intent.target.by == "hint"
+            intent.target.let { it == null || it.by == "hint" }
         else -> false
     }
 }

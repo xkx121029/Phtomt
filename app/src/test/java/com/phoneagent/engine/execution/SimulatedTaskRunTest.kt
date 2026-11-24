@@ -59,7 +59,9 @@ class SimulatedTaskRunTest {
             append("  steps:\n")
             steps.forEach { (i, a) ->
                 append("    intent=${i.intent}")
-                if (i.target != null) append(" target(${i.target.by}=${i.target.value})")
+                // target 是 :domain 的 public 属性：跨模块不能智能转换，先捕获
+                val target = i.target
+                if (target != null) append(" target(${target.by}=${target.value})")
                 if (!i.text.isNullOrBlank()) append(" text=\"${i.text}\"")
                 append("  ->  ${a.type}")
                 if (a.elementIndex != null) append("#${a.elementIndex}")

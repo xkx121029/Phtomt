@@ -156,7 +156,7 @@ jobs:
         # CyclomaticComplexMethod 20…），大多在基线生成之后新增。清理完之前它不该挡住产包，
         # 清理后把 continue-on-error 去掉即可恢复阻断，并把这个步骤拆回独立步骤。
         continue-on-error: true
-        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt --continue --stacktrace
+        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt :domain:detekt :core:security:detekt :core:perf:detekt :data:detekt --continue --stacktrace
 
       - name: Detekt baseline guards
         # 基线只减不增 + 分类合计必须等于总条目数（防止只改总数不更新分类表）。
@@ -167,7 +167,7 @@ jobs:
         # 所以每个模块都要跑它自己的 checkDetektBaseline。
         # :core:log 没有 baseline.xml，那个任务会显式打印"跳过"并以成功退出
         # （见 core/log/build.gradle.kts），因此这里可以无条件列出。
-        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline --stacktrace
+        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline :domain:checkDetektBaseline :core:security:checkDetektBaseline :core:perf:checkDetektBaseline :data:checkDetektBaseline --stacktrace
 
       - name: Unit tests + coverage gates
         # 测试、覆盖率报告、纯逻辑覆盖率闸门一次跑完：后两者都依赖测试结果，
@@ -178,7 +178,7 @@ jobs:
         # 曾因此在 CI 上一条都不跑，而这个步骤全绿。
         # 覆盖率闸门同理分两处：:app 守自己编译集里的包（checkPureLogicCoverage），
         # 各模块守自己那份（:core:text:checkCoreTextCoverage）。
-        run: ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage --stacktrace
 
       - name: Doc anchors (docs/judgement-index.md)
         # 判据索引表的 file:line 锚点校验：函数改名或代码挪位之后，锚点仍然"存在"

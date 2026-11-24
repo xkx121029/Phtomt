@@ -7,7 +7,7 @@ package com.phoneagent.core.ai
  *
  * 全是纯字符串函数：不碰网络、不碰 Android，可以脱离 provider 单测。
  */
-internal object AiEndpoints {
+object AiEndpoints {
 
     /** 内网/本机常见后缀：mDNS、企业内网与家用路由器命名，未写协议时按 http 处理。 */
     private val LOCAL_HOST_SUFFIXES = listOf(
@@ -24,7 +24,7 @@ internal object AiEndpoints {
      * 只有 debug 构建或用户显式打开「允许 http 端点」时才放行（见 AppSettings.Settings.configProblem）。
      */
     @Suppress("ReturnCount")
-    internal fun normalizeBaseUrl(raw: String): String {
+    fun normalizeBaseUrl(raw: String): String {
         val base = raw.trim().trimEnd('/')
         if (base.isEmpty()) return base
         if (base.startsWith("http://", true) || base.startsWith("https://", true)) return base
@@ -39,7 +39,7 @@ internal object AiEndpoints {
      * 会整段明文上路，且不会有任何提示。这里在发请求前拦掉这类配置：
      * 内网/本机仍然允许 http（那正是明文放行的目的），公网一律要求 https。
      */
-    internal fun cleartextProblem(baseUrl: String): String? {
+    fun cleartextProblem(baseUrl: String): String? {
         val base = baseUrl.trim()
         val plainHttp = base.startsWith("http://", ignoreCase = true)
         // 不是明文 http，或目标是本机/内网：都属于「明文放行」的本意，不拦
@@ -81,7 +81,7 @@ internal object AiEndpoints {
      * 模型列表端点：与 [chatCompletionsUrl] 同样兼容各服务商填法差异 ——
      * 用户误把完整端点（`…/v1/chat/completions`）填进「API 地址」时先摘掉，再拼 `/models`。
      */
-    internal fun modelsUrl(baseUrl: String): String {
+    fun modelsUrl(baseUrl: String): String {
         val base = normalizeBaseUrl(baseUrl).removeSuffix("/chat/completions")
         return if (base.endsWith("/models")) base else "$base/models"
     }
@@ -93,7 +93,7 @@ internal object AiEndpoints {
      * - 不带版本段（`https://api.deepseek.com`，DeepSeek 原生支持）
      * - 未写协议（`192.168.1.5:8000/v1`、`localhost:11434/v1`，见 [normalizeBaseUrl]）
      */
-    internal fun chatCompletionsUrl(baseUrl: String): String {
+    fun chatCompletionsUrl(baseUrl: String): String {
         val base = normalizeBaseUrl(baseUrl)
         return if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
     }
@@ -105,7 +105,7 @@ internal object AiEndpoints {
      * - 401 / 403 → `null`：鉴权问题（调用方已在整体层面拦截，不会走到这里）
      * - 400 / 5xx / 其他 → `null`：未测出（字段不认识、网关改写、服务端异常都落这里）
      */
-    internal fun probeVerdict(status: Int): Boolean? = when {
+    fun probeVerdict(status: Int): Boolean? = when {
         status in 200..299 -> true
         status == 415 || status == 422 -> false
         else -> null
@@ -120,7 +120,7 @@ internal object AiEndpoints {
 
     /** 是否是"模型名/地址错"：404 一律算；400 需正文出现模型名线索（避免把"不支持图片"误判）。 */
     @Suppress("ReturnCount")
-    internal fun isModelNameError(status: Int, body: String): Boolean {
+    fun isModelNameError(status: Int, body: String): Boolean {
         if (status == 404) return true
         if (status != 400) return false
         val lower = body.lowercase()

@@ -3299,20 +3299,6 @@ private const val MAX_CHAT_TURNS = 20
 private const val MAX_INTENT_CACHE = 32
 
 /**
- * 一次记忆写入事件（引擎内存态），供 Agent 页在任务流里实时插入记忆卡片。
- * [updated] 为 true 表示这条与已有记忆合并更新，而不是新增。
- */
-data class MemoryEvent(
-    val id: Long,
-    val content: String,
-    val category: String,
-    val updated: Boolean,
-    val runKey: String,
-    val step: Int,
-    val createdAt: Long = System.currentTimeMillis(),
-)
-
-/**
  * AI "对用户说话"的一条记录（引擎内存态），供 Agent 页在任务流里出对话气泡。
  * [id] 为任务内自增序号，用作列表 key（不能用内容哈希，AI 重复说同一句话会撞 key）。
  */

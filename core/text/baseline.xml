@@ -58,5 +58,21 @@
     <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown</ID>
     <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown$Converter</ID>
     <ID>TooManyFunctions:HtmlToMarkdown.kt$HtmlToMarkdown$MdBuilder</ID>
+    <ID>CyclomaticComplexMethod:HumanTranslator.kt$HumanTranslator$fun humanStream(raw: String): String</ID>
+    <ID>LongMethod:HumanTranslator.kt$HumanTranslator$fun humanStream(raw: String): String</ID>
+    <ID>LongParameterList:HumanTranslator.kt$HumanTranslator$( parts: MutableList&lt;String&gt;, key: String?, parent: String?, value: String, intent: String, /** 该字段还没闭合（模型正在逐字吐） */ partial: Boolean = false, )</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$0.6</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$0.75</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$0.9</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$100</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$160</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$40</ID>
+    <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$6</ID>
+    <ID>MaxLineLength:HumanTranslator.kt$HumanTranslator$if (confidence != null) sb.append(" · ").append(confidenceWord(confidence)).append(" ${(confidence * 100).toInt()}%")</ID>
+    <ID>NestedBlockDepth:HumanTranslator.kt$HumanTranslator$fun humanStream(raw: String): String</ID>
+    <ID>ReturnCount:HumanTranslator.kt$HumanTranslator$fun extractSeen(sentText: String): String</ID>
+    <ID>ReturnCount:HumanTranslator.kt$HumanTranslator$fun summarizeDecision(rawText: String): String</ID>
+    <ID>ReturnCount:HumanTranslator.kt$HumanTranslator$fun translateError(technical: String): String</ID>
+    <ID>TooManyFunctions:HumanTranslator.kt$HumanTranslator</ID>
   </CurrentIssues>
 </SmellBaseline>
