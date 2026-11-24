@@ -142,6 +142,10 @@ jobs:
       #      只保留仍留在 :app 的类，并按新的行数调低 coverageMinLines（两边注释互相指向）。
       #   4. 测试跟着包走：被测类的单测要搬进模块，否则模块的覆盖率闸门量的是空壳
       #      （:core:text 就是先只有 36.3%）。path 上确认 paths-ignore 没吞掉模块目录。
+      #   5. NO-SOURCE 兜底：把 `模块|测试任务|用例下限` 加进 tool/check-test-results.sh
+      #      的 EXPECTED 表。这一步不依赖工具链版本，对所有模块统一生效，而且不只是
+      #      「一条都没有」才红——某个模块用例数突然掉到下限以下也红。
+      #      只加 1~3 不加这一条，模块的测试任务可以一直空跑而 CI 永远绿（已发生过两次）。
       # ---------------------------------------------------------------------
       - name: Detekt + Lint (static analysis, non-blocking)
         # 两个都不阻断出包（存量问题未清理完），合并到同一次 Gradle 调用：
@@ -178,7 +182,24 @@ jobs:
         # 曾因此在 CI 上一条都不跑，而这个步骤全绿。
         # 覆盖率闸门同理分两处：:app 守自己编译集里的包（checkPureLogicCoverage），
         # 各模块守自己那份（:core:text:checkCoreTextCoverage）。
-        run: ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage --stacktrace
+        run: |
+          # 先清结果目录：Test 任务是 UP-TO-DATE 或 NO-SOURCE 时压根不会碰它，
+          # 上一次的 XML 会原地留着 —— 不清就直接数文件，「没执行」和「执行过」分不出来。
+          sh tool/check-test-results.sh --clean
+          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage --stacktrace
+
+      - name: Assert unit tests actually ran (NO-SOURCE guard)
+        # 上面那个 gradle 调用绿了，不代表有用例执行过：测试源集为空（NO-SOURCE）时
+        # 任务直接跳过、退出码 0，一条用例都没跑也照样 BUILD SUCCESSFUL。
+        # 这不是假设，本期真实发生过两次：:core:log 的 4 条测试留在 :app 里、
+        # :core:perf 第一版 0 条，两个模块的测试任务都是 NO-SOURCE 而 CI 全绿。
+        #
+        # 兜底分两层，缺一层就会假绿：
+        #   1. 模块清单（含测试任务名与用例下限）只有一份，在 tool/check-test-results.sh 里，
+        #      上一步 --clean 和这里断言读的是同一张表，不会漂移；
+        #   2. 断言看的是**本次跑出来的**结果 XML 与用例数，不是 exit code。
+        # 模块清单与 add 顺序无关。新模块要加进那张表，见任务开头 checklist 第 5 条。
+        run: sh tool/check-test-results.sh
 
       - name: Doc anchors (docs/judgement-index.md)
         # 判据索引表的 file:line 锚点校验：函数改名或代码挪位之后，锚点仍然"存在"
