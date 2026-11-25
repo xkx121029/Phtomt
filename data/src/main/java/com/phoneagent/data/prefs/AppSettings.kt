@@ -39,21 +39,6 @@ private val Context.agentStore: DataStore<Preferences> by preferencesDataStore(
 )
 
 /**
- * 工作台形态（[AppSettings.Settings.agentSurface] 的取值）。
- *
- * unified：操控与对话合成为一个 Agent 页——两者收成一个入口，
- *          提交后由云端判定意图，自动选择「直接作答 / 操控执行」；编码仍是独立 Coding 页；
- * split：  三种能力各占一个页面（操控 / 对话 / 编码 Tab 并列）。
- */
-object AgentSurface {
-    const val UNIFIED = "unified"
-    const val SPLIT = "split"
-
-    /** 脏数据归一：只认这两个值，其余按合并形态 */
-    fun normalize(raw: String?): String = if (raw == SPLIT) SPLIT else UNIFIED
-}
-
-/**
  * 应用设置：AI API 配置与 Agent 运行参数。
  * 使用 DataStore 持久化，配置后无需重新编译即可切换任意 OpenAI 兼容 API。
  */
