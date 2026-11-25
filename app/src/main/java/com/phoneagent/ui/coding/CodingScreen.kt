@@ -65,7 +65,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.SharedFiles
-import com.phoneagent.coding.workspaces.CodingSessionRegistry
 import com.phoneagent.coding.workspaces.CodingWorkspaces
 import com.phoneagent.coding.api.CodingConnection
 import com.phoneagent.coding.api.CodingMessageView
@@ -177,12 +176,12 @@ fun CodingScreen(
     fun startSession(entry: CodingWorkspaces.Entry, preferred: String?) {
         val st = CodingWorkspaces.state(context, entry)
         val target = preferred?.takeIf { id -> st.sessions.any { it.id == id } }
-            ?: CodingSessionRegistry.activeSession(st)
+            ?: CodingWorkspaces.activeSession(st)
         val (id, msgs) = if (target != null) {
             target to CodingWorkspaces.loadMessages(entry, target)
         } else {
             val fresh = CodingWorkspaces.newSession()
-            CodingWorkspaces.saveState(context, entry, CodingSessionRegistry.openCreated(st, fresh))
+            CodingWorkspaces.saveState(context, entry, CodingWorkspaces.openCreated(st, fresh))
             fresh.id to emptyList()
         }
         activeSessionId = id
@@ -229,7 +228,7 @@ fun CodingScreen(
         saveCurrent()
         val st = CodingWorkspaces.state(context, workspace)
         val fresh = CodingWorkspaces.newSession()
-        CodingWorkspaces.saveState(context, workspace, CodingSessionRegistry.openCreated(st, fresh))
+        CodingWorkspaces.saveState(context, workspace, CodingWorkspaces.openCreated(st, fresh))
         activeSessionId = fresh.id
         sessionsState = CodingWorkspaces.state(context, workspace)
         bridge.uiSession.activateSession(fresh.id, emptyList())
