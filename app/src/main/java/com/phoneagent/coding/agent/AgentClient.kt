@@ -10,7 +10,7 @@ import com.phoneagent.coding.api.CodingAgentConfig
 import com.phoneagent.coding.api.CodingConnection
 import com.phoneagent.coding.api.CodingConversation
 import com.phoneagent.coding.api.CodingMessageView
-import com.phoneagent.coding.api.CodingSessionPortal
+import com.phoneagent.coding.api.CodingPageSession
 import com.phoneagent.coding.api.CodingSessionStatus
 import com.phoneagent.coding.api.MappedStateFlow
 import com.phoneagent.coding.device.HostBridgeServer
@@ -72,16 +72,16 @@ data class AgentUiState(
  * 或自己持有的会话 id 过滤掉别人的流式事件，否则两个界面会互相串台。
  *
  * 方法数超阈值是存量：管道、事件归约、审批回执、重连预算挤在同一个连接对象里，
- * 拆开会把「谁在什么时候改状态」拆散。实现 [CodingSessionPortal] 后类签名变了，
+ * 拆开会把「谁在什么时候改状态」拆散。实现 [CodingPageSession] 后类签名变了，
  * 原先按签名豁免的基线条目不再匹配，所以在这里就地豁免（数量与改造前一致）。
  */
 @Suppress("TooManyFunctions")
 class AgentClient(
     private val context: Context,
     private val fixedSessionId: String? = null,
-    /** 编码环境门户（宿主桥的 env_* 能力来源）；不接入时 env 工具会报「未接入」 */
-    private val envClientProvider: () -> com.phoneagent.coding.env.CodingEnvClient? = { null },
-) : CodingSessionPortal {
+    /** 编码环境编排器（宿主桥的 env_* 能力来源）；不接入时 env 工具会报「未接入」 */
+    private val envBootstrapProvider: () -> com.phoneagent.coding.env.CodingEnvBootstrap? = { null },
+) : CodingPageSession {
 
     private var transport: AgentTransport? = null
     private var token: String = ""
@@ -105,7 +105,7 @@ class AgentClient(
 
     /** 反向通道：Node 侧 agent 请求应用侧能力（工作区 / 编辑器 / 预览 / 编码环境）。
      *  入站请求必须带当前配置的 token（见 HostBridgeServer.handle）。 */
-    private val hostBridge = HostBridgeServer(context, { token }, envClientProvider)
+    private val hostBridge = HostBridgeServer(context, { token }, envBootstrapProvider)
 
     /** 界面主动发起的 RPC 的回调表，按 id 索引；断线时整体以错误回包落空（不能静默丢弃，否则 UI 卡在加载态）。 */
     private val pending = java.util.concurrent.ConcurrentHashMap<String, (JSONObject) -> Unit>()
@@ -167,7 +167,7 @@ class AgentClient(
      *
      * 投影是纯函数、按需换算，不新开协程——所以它与 [state] 逐条同步，不会滞后。
      */
-    val status: StateFlow<CodingSessionStatus> = MappedStateFlow(state) { st ->
+    override val status: StateFlow<CodingSessionStatus> = MappedStateFlow(state) { st ->
         CodingSessionStatus(
             connection = st.conn.toApi(),
             busy = st.busy,
@@ -271,10 +271,14 @@ class AgentClient(
 
     // ---------- connections ----------
 
-    fun connectLocal(config: CodingAgentConfig, keepUi: Boolean = false, auto: Boolean = false) {
+    override fun connectLocal(config: CodingAgentConfig, keepUi: Boolean) =
+        connect(config, keepUi, auto = false)
+
+    /** [auto] = 本次是自动重连（不计入「用户主动连接」，重连预算不清零） */
+    private fun connect(config: CodingAgentConfig, keepUi: Boolean, auto: Boolean) {
         disconnect()
         this.token = config.token
-        lastConnect = { keep -> connectLocal(config, keep, auto = true) }
+        lastConnect = { keep -> connect(config, keep, auto = true) }
         if (!auto) reconnectAttempts = 0
         update { it.copy(conn = ConnState.CONNECTING, error = null, messages = if (keepUi) it.messages else emptyList()) }
         LocalAgent.start(
@@ -342,7 +346,7 @@ class AgentClient(
         again(true)
     }
 
-    fun disconnect() {
+    override fun disconnect() {
         // 用户主动断开：清掉重连意图，否则一断开就被自动拉回去。
         lastConnect = null
         reconnectAttempts = 0
@@ -755,7 +759,7 @@ class AgentClient(
         update { it.copy(error = null) }
     }
 
-    fun newSession() {
+    override fun newSession() {
         // 新会话请求没送达时不能清空本地列表：那会让用户以为换了一个会话，
         // 实际宿主那边还留着旧上下文，下一次发消息又会被接回旧对话。
         if (transport?.send(request("new_session", JSONObject())) != true) {

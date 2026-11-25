@@ -1,15 +1,14 @@
 package com.phoneagent.engine.coding
 
 import android.content.Context
-import com.phoneagent.coding.agent.AgentClient
 import com.phoneagent.coding.api.CodingAgentConfig
+import com.phoneagent.coding.api.CodingAgentSession
 import com.phoneagent.coding.api.CodingConnection
 import com.phoneagent.coding.api.CodingRuntime
 import com.phoneagent.coding.api.CodingRuntimeStatus
 import com.phoneagent.coding.api.CodingSessionPortal
 import com.phoneagent.coding.api.CodingSessionStatus
-import com.phoneagent.coding.device.HostBridgeTokenProvider
-import com.phoneagent.coding.device.HostBridgeTokenStore
+import com.phoneagent.coding.api.CodingSessions
 import com.phoneagent.core.notify.TaskProgressNotifier
 import com.phoneagent.data.prefs.AppSettings
 import com.phoneagent.overlay.AgentStatusStore
@@ -21,8 +20,8 @@ import kotlinx.coroutines.flow.first
  * 编码 agent 编排桥（Superagent 融合 Phase 4）：HPA 主引擎与设备端编码 agent（agent-core 子进程）之间的委托通道。
  *
  * - 启停编排：确认内置运行时就绪（[CodingRuntime]）→ 以 AppSettings 注入的配置经
- *   [AgentClient.connectLocal] 拉起 [com.phoneagent.coding.agent.LocalAgent]（node 子进程，
- *   stdio JSON-lines）→ 等 CONNECTED → [AgentClient.sendPrompt] 委托任务。
+ *   [CodingAgentSession.connectLocal] 拉起切片内的 node 子进程（stdio JSON-lines）→ 等 CONNECTED →
+ *   [CodingAgentSession.sendPrompt] 委托任务。
  * - 配置注入：provider 固定 "openai"（agent-core 的 OpenAI 兼容通道），baseUrl/apiKey/model 取
  *   HPA 主设置，审批档位取 codingApprovalMode（ask/risky/bypass，默认 risky），token 取每装机随机
  *   生成的密钥（见 [com.phoneagent.coding.device.HostBridgeToken]）——不再有硬编码常量。
@@ -31,7 +30,10 @@ import kotlinx.coroutines.flow.first
  *   审批不做系统弹窗，只经 [uiSession] 的快照暴露给 UI 渲染内嵌审批卡（项目铁律：系统弹窗与 Toast 清零）。
  *
  * UI 层（Phase 5 CodingScreen）只认 [CodingSessionPortal]（[uiSession]）：消息明细的组装归切片自己，
- * 页面拿到的是一份只读快照，不再接触 [AgentClient] 的类型。Bridge 只负责"启动/委托/停止"。
+ * 页面拿到的是一份只读快照，不再接触切片内部连接类型。Bridge 只负责"启动/委托/停止"。
+ *
+ * 连接与密钥都不在这里 new：切片把「引擎连接 / 编码页连接 / 每装机密钥」封成 [CodingSessions]，
+ * 具体实现由 app 的组合根注入（[com.phoneagent.di.AppModule]）。
  */
 // 该类按能力分片组织，方法数量多但职责清晰，此处按规则豁免
 @Suppress("TooManyFunctions")
@@ -39,48 +41,31 @@ class CodingAgentBridge(
     private val appContext: Context,
     private val settings: AppSettings,
     private val runtime: CodingRuntime,
-    /** 编码环境门户：宿主桥的 env_* 能力据此驱动独立组件的 PRoot 工具链 */
-    private val envClient: com.phoneagent.coding.env.CodingEnvClient,
+    /** 编码切片的会话工厂：引擎连接、编码页连接、每装机共享密钥都从这里取 */
+    private val sessions: CodingSessions,
 ) {
 
     /**
-     * 后台编码引擎的连接：固定挂在 engine 会话上。
+     * 后台编码引擎的连接：固定挂在 engine 会话上，与编码页那条完全隔离。
      *
-     * 编码页现在有自己独立的连接与独立会话（[uiSession]），两条连接共享同一个 host 进程，
-     * 事件按 sessionId 分流，引擎侧的后台会话不会把编码页的对话冲掉，反之亦然。
-     * 会话 id 带进程时间戳：每次冷启动都是一套干净上下文（与改造前的行为一致），
-     * 同时又能和编码页的会话彻底分开。
+     * 两条连接共享同一个 host 进程，事件按 sessionId 分流：
+     * 引擎侧的后台会话不会把编码页的对话冲掉，反之亦然。
      */
-    private val engineSessionId = "engine_${System.currentTimeMillis().toString(36)}"
-    private val engineClient = AgentClient(appContext, fixedSessionId = engineSessionId) { envClient }
+    private val engineClient = sessions.engine
 
     /** 编码页专用连接：会话由工作区里的会话列表决定，和引擎完全隔离。 */
-    private val uiClient = AgentClient(appContext, envClientProvider = { envClient })
-
-    /**
-     * 宿主桥共享密钥：每装机随机生成一次、加密落盘（见 [HostBridgeTokenProvider]）。
-     * 两个方向用的是同一个值——写进子进程环境变量给 node，反向请求也按它校验。
-     */
-    private val bridgeToken = HostBridgeTokenProvider(
-        object : HostBridgeTokenStore {
-            override suspend fun read(): String = settings.readHostBridgeToken()
-
-            override suspend fun write(token: String) {
-                settings.writeHostBridgeToken(token)
-            }
-        },
-    )
+    private val uiClient = sessions.page
 
     /**
      * 编码页连接的对外快照：设置页与工作台摘要只读这一份，
-     * 不需要认识 [AgentClient] 的消息明细类型。
+     * 不需要认识切片内部连接的消息明细类型。
      */
     val uiStatus: StateFlow<CodingSessionStatus> get() = uiClient.status
 
     /**
      * 编码页与工作台的门户：只读快照 + 意图方法（发消息 / 停止 / 切会话 / 审批回执 / 换档位）。
      *
-     * 页面因此不认识 [AgentClient]——消息明细怎么组装、重连预算怎么算、审批回执怎么发，
+     * 页面因此不认识切片内部连接——消息明细怎么组装、重连预算怎么算、审批回执怎么发，
      * 都留在切片内部。要加新的页面能力就在这里加意图方法，不要再把连接对象透出去。
      */
     val uiSession: CodingSessionPortal get() = uiClient
@@ -113,7 +98,7 @@ class CodingAgentBridge(
         TaskProgressNotifier.cancel(appContext, CODING_TASK_ID)
     }
 
-    /** 开启全新编码会话（清空上下文与消息，透传 AgentClient.newSession） */
+    /** 开启全新编码会话（清空上下文与消息，透传切片连接的 newSession） */
     fun newSession() {
         engineClient.newSession()
     }
@@ -160,7 +145,7 @@ class CodingAgentBridge(
 
     private suspend fun currentConfig(): CodingAgentConfig {
         val s = settings.settings.first()
-        val resolved = bridgeToken.ensure()
+        val resolved = sessions.ensureToken()
         if (resolved.fresh) {
             // 刚换上的密钥，已经在跑的宿主手里还是旧值：它发来的每条反向请求都会被拒
             // （fail-closed，但工作区读写/编辑器/编码环境会集体失效）。停掉宿主，
@@ -180,7 +165,7 @@ class CodingAgentBridge(
     }
 
     /** 等待编码 agent 连接就绪；连接失败（带 error）或超时则明确抛错，不让任务无声卡死 */
-    private suspend fun awaitConnected(target: AgentClient) {
+    private suspend fun awaitConnected(target: CodingAgentSession) {
         val deadline = System.currentTimeMillis() + CONNECT_TIMEOUT_MS
         while (target.status.value.connection != CodingConnection.CONNECTED) {
             val st = target.status.value
