@@ -69,6 +69,20 @@ project(":core:perf").projectDir = file("core/perf")
 include(":data")
 project(":data").projectDir = file("data")
 
+// ---------------------------------------------------------------------------
+// 模块化 P2：`:ui:design` —— UI 设计层（`com.phoneagent.ui.theme` 整套主题令牌、
+// `com.phoneagent.ui.components` 的共用组件、`com.phoneagent.ui.icons` 图标集）。
+//
+// 依赖方向只有一条：app → ui:design，下一期的 feature:coding → ui:design；
+// `:ui:design` 自己不依赖本仓库任何模块（只有 Compose / Lucide / Haze），
+// 所以它需要的那一个 UI 形态枚举 `AgentSurface` 必须先下沉到 `:domain`。
+//
+// 包名一个没改（仍是 ui.theme / ui.components / ui.icons），:app 里数百处 import 零改动；
+// 代价是 `com.phoneagent.ui.components` 被两个模块各持一半，与 P1 下沉记录类型同一取舍。
+// ---------------------------------------------------------------------------
+include(":ui:design")
+project(":ui:design").projectDir = file("ui/design")
+
 // 权限 Provider 应用：承载无障碍 / 内置 Shizuku / Termux 三条通道的独立 APK。
 // 主应用首次打开时引导安装（参考 Operit 的独立 Provider 方案），并通过 AIDL
 // （com.phoneagent.provider.IDeviceProvider）远程调用。Provider 构建产物作为
