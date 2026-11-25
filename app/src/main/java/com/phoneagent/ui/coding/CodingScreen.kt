@@ -65,7 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.phoneagent.coding.CodingRuntimeState
 import com.phoneagent.coding.SharedFiles
-import com.phoneagent.coding.agent.CodingWorkspaces
+import com.phoneagent.coding.workspaces.CodingWorkspaces
 import com.phoneagent.coding.api.CodingConnection
 import com.phoneagent.coding.api.CodingMessageView
 import com.phoneagent.data.prefs.AppSettings
@@ -176,16 +176,12 @@ fun CodingScreen(
     fun startSession(entry: CodingWorkspaces.Entry, preferred: String?) {
         val st = CodingWorkspaces.state(context, entry)
         val target = preferred?.takeIf { id -> st.sessions.any { it.id == id } }
-            ?: st.activeSessionId?.takeIf { id -> st.sessions.any { it.id == id } }
+            ?: CodingWorkspaces.activeSession(st)
         val (id, msgs) = if (target != null) {
             target to CodingWorkspaces.loadMessages(entry, target)
         } else {
             val fresh = CodingWorkspaces.newSession()
-            CodingWorkspaces.saveState(
-                context,
-                entry,
-                st.copy(activeSessionId = fresh.id, sessions = listOf(fresh) + st.sessions),
-            )
+            CodingWorkspaces.saveState(context, entry, CodingWorkspaces.openCreated(st, fresh))
             fresh.id to emptyList()
         }
         activeSessionId = id
@@ -232,11 +228,7 @@ fun CodingScreen(
         saveCurrent()
         val st = CodingWorkspaces.state(context, workspace)
         val fresh = CodingWorkspaces.newSession()
-        CodingWorkspaces.saveState(
-            context,
-            workspace,
-            st.copy(activeSessionId = fresh.id, sessions = listOf(fresh) + st.sessions),
-        )
+        CodingWorkspaces.saveState(context, workspace, CodingWorkspaces.openCreated(st, fresh))
         activeSessionId = fresh.id
         sessionsState = CodingWorkspaces.state(context, workspace)
         bridge.uiSession.activateSession(fresh.id, emptyList())
@@ -1452,7 +1444,7 @@ internal fun openAllFilesAccessSettings(context: Context) {
  * 机型不支持时回落 ACTION_OPEN_DOCUMENT_TREE。两种都不行返回 false，由调用方给页内提示。
  */
 internal fun openWorkspaceDirectory(context: Context): Boolean {
-    val path = com.phoneagent.coding.agent.Workspace.resolve(context).absolutePath
+    val path = com.phoneagent.coding.workspaces.Workspace.resolve(context).absolutePath
     if (Environment.getExternalStorageDirectory().absolutePath.let { !path.startsWith(it) }) {
         return false
     }

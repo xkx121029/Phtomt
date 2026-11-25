@@ -13,7 +13,7 @@ import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
-import com.phoneagent.coding.agent.Workspace
+import com.phoneagent.coding.workspaces.Workspace
 import com.phoneagent.coding.api.CodingEnvPortal
 import com.phoneagent.env.EnvApi
 import com.phoneagent.env.IEnvCallback

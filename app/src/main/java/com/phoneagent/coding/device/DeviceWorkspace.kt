@@ -3,7 +3,7 @@ package com.phoneagent.coding.device
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import com.phoneagent.coding.agent.Workspace
+import com.phoneagent.coding.workspaces.Workspace
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
