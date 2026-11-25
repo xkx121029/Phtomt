@@ -146,7 +146,8 @@ val dataPackages = listOf(
     "com/phoneagent/data/export",
 )
 val coverageThreshold = 0.28
-val coverageMinLines = 1351
+// 1351 → 1350：`AgentSurface` 下沉到 `:domain` 带走 1 行可执行代码，2026-11-25 CI 第 9 步因此红
+val coverageMinLines = 1350
 
 data class LineCoverage(val covered: Int, val total: Int)
 
