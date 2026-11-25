@@ -25,7 +25,7 @@ enum class UiStyle(
      * 不动文字色、品牌色与状态色）。工作台要"平铺"，所以层次靠发丝线而不是阴影与色阶，
      * 位移收窄到 0.8，避免整页看起来像一层层浮起的卡片。
      */
-    internal val toneScale: Float,
+    val toneScale: Float,
 ) {
     CLASSIC(
         id = "classic",
