@@ -151,20 +151,35 @@ fun coverageOf(text: String, predicate: (String) -> Boolean): LineCoverage {
     return LineCoverage(covered, total)
 }
 
-fun requireCoverage(label: String, c: LineCoverage, threshold: Double, minLines: Int) {
+// 覆盖率闸门失败时的逐类诊断（实现在 root 的 gradle/coverage-shame.gradle.kts，六个模块共用一份）。
+val coverageShame = rootProject.extra["coverageShame"] as (String, (String) -> Boolean, Int, Int?, String) -> String
+
+fun requireCoverage(
+    label: String,
+    text: String,
+    select: (String) -> Boolean,
+    threshold: Double,
+    minLines: Int,
+    knob: String,
+) {
+    val c = coverageOf(text, select)
     if (c.total == 0) {
         throw GradleException("覆盖率闸门：$label 的可执行行为 0 —— 测试没跑到，或类被搬走了。")
     }
     if (c.total < minLines) {
         throw GradleException(
             "$label 只剩 ${c.total} 行可执行代码（下限 $minLines）：包里的类被搬走了？" +
-                "规则要跟着类走，而不是留在这里改测剩下的类。",
+                "规则要跟着类走，而不是留在这里改测剩下的类。\n" +
+                coverageShame(text, select, c.total, minLines, knob),
         )
     }
     val ratio = c.covered.toDouble() / c.total
     val pct = "%.1f%%".format(ratio * 100)
     if (ratio + 1e-9 < threshold) {
-        throw GradleException("$label 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（${c.covered}/${c.total}）。")
+        throw GradleException(
+            "$label 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（${c.covered}/${c.total}）。\n" +
+                coverageShame(text, select, c.total, null, knob),
+        )
     }
     logger.lifecycle("覆盖率闸门通过：$label $pct ≥ ${"%.0f%%".format(threshold * 100)}（${c.covered}/${c.total}，下限 $minLines 行）")
 }
@@ -179,10 +194,22 @@ val checkCoreTextCoverage by tasks.registering {
             throw GradleException("找不到覆盖率报告 ${reportXml.path}；该闸门需要先跑 :core:text:test。")
         }
         val text = reportXml.readText()
-        val human = coverageOf(text) { it.endsWith("/HumanTranslator") }
-        val rest = coverageOf(text) { !it.endsWith("/HumanTranslator") }
-        requireCoverage("com/phoneagent/core/text（转换器等）", rest, converterThreshold, converterMinLines)
-        requireCoverage("com/phoneagent/core/text（HumanTranslator）", human, humanTranslatorThreshold, humanTranslatorMinLines)
+        requireCoverage(
+            "com/phoneagent/core/text（转换器等）",
+            text,
+            { !it.endsWith("/HumanTranslator") },
+            converterThreshold,
+            converterMinLines,
+            "core/text/build.gradle.kts 的 converterMinLines",
+        )
+        requireCoverage(
+            "com/phoneagent/core/text（HumanTranslator）",
+            text,
+            { it.endsWith("/HumanTranslator") },
+            humanTranslatorThreshold,
+            humanTranslatorMinLines,
+            "core/text/build.gradle.kts 的 humanTranslatorMinLines",
+        )
     }
 }
 

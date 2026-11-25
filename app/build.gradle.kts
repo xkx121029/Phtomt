@@ -272,6 +272,9 @@ val coverageMinLines = mapOf(
     "com/phoneagent/device/ops" to 1047,
 )
 
+// 覆盖率闸门失败时的逐类诊断（实现在 root 的 gradle/coverage-shame.gradle.kts，六个模块共用一份）。
+val coverageShame = rootProject.extra["coverageShame"] as (String, (String) -> Boolean, Int, Int?, String) -> String
+
 val checkPureLogicCoverage by tasks.registering {
     group = "verification"
     description = "校验纯逻辑包的单元测试覆盖率不低于阈值（不含真机依赖的包）"
@@ -313,13 +316,27 @@ val checkPureLogicCoverage by tasks.registering {
             coverageMinLines[pkg]?.let { minLines ->
                 if (total < minLines) {
                     failures += "  $pkg 只剩 $total 行可执行代码（下限 $minLines）：包里的类被搬走了？" +
-                        "规则要跟着迁到那个模块自己的闸门里，而不是留在这里改测剩下的类。"
+                        "规则要跟着迁到那个模块自己的闸门里，而不是留在这里改测剩下的类。\n" +
+                        coverageShame(
+                            text,
+                            { name: String -> name.startsWith("$pkg/") },
+                            total,
+                            minLines,
+                            "app/build.gradle.kts 的 coverageMinLines",
+                        )
                 }
             }
             val ratio = covered.toDouble() / total
             val pct = "%.1f%%".format(ratio * 100)
             if (ratio + 1e-9 < threshold) {
-                failures += "  $pkg 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（$covered/$total）"
+                failures += "  $pkg 行覆盖率 $pct < 阈值 ${"%.0f%%".format(threshold * 100)}（$covered/$total）\n" +
+                    coverageShame(
+                        text,
+                        { name: String -> name.startsWith("$pkg/") },
+                        total,
+                        null,
+                        "app/build.gradle.kts 的 coverageRules",
+                    )
             } else {
                 logger.lifecycle("覆盖率闸门通过：$pkg $pct ≥ ${"%.0f%%".format(threshold * 100)}")
             }

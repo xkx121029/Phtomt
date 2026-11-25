@@ -157,6 +157,9 @@ fun lineCounterOf(block: String): Pair<Int, Int>? {
     return counter.groupValues[1].toInt() to counter.groupValues[2].toInt()
 }
 
+// 覆盖率闸门失败时的逐类诊断（实现在 root 的 gradle/coverage-shame.gradle.kts，六个模块共用一份）。
+val coverageShame = rootProject.extra["coverageShame"] as (String, (String) -> Boolean, Int, Int?, String) -> String
+
 val checkDataCoverage by tasks.registering {
     group = "verification"
     description = "校验 com/phoneagent/data 三个子包的覆盖率与可执行行数下限"
@@ -186,13 +189,29 @@ val checkDataCoverage by tasks.registering {
         }
         if (total < coverageMinLines) {
             throw GradleException(
-                "com/phoneagent/data 只剩 $total 行可执行代码（下限 $coverageMinLines）：子包里的类被搬走了？",
+                "com/phoneagent/data 只剩 $total 行可执行代码（下限 $coverageMinLines）：子包里的类被搬走了？\n" +
+                    coverageShame(
+                        text,
+                        { name: String -> dataPackages.any { pkg -> name.startsWith("$pkg/") } },
+                        total,
+                        coverageMinLines,
+                        "data/build.gradle.kts 的 coverageMinLines",
+                    ),
             )
         }
         val ratio = covered.toDouble() / total
         val pct = "%.1f%%".format(ratio * 100)
         if (ratio + 1e-9 < coverageThreshold) {
-            throw GradleException("com/phoneagent/data 行覆盖率 $pct < 阈值 ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）。")
+            throw GradleException(
+                "com/phoneagent/data 行覆盖率 $pct < 阈值 ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）。\n" +
+                    coverageShame(
+                        text,
+                        { name: String -> dataPackages.any { pkg -> name.startsWith("$pkg/") } },
+                        total,
+                        null,
+                        "data/build.gradle.kts 的 coverageThreshold",
+                    ),
+            )
         }
         logger.lifecycle(
             "覆盖率闸门通过：com/phoneagent/data $pct ≥ ${"%.0f%%".format(coverageThreshold * 100)}" +

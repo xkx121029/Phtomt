@@ -154,6 +154,9 @@ val coverageThreshold = 0.70
 /** 实测可执行行数 1520；下限取同一个数，类被搬走时它会掉下来 */
 val coverageMinLines = 1520
 
+// 覆盖率闸门失败时的逐类诊断（实现在 root 的 gradle/coverage-shame.gradle.kts，六个模块共用一份）。
+val coverageShame = rootProject.extra["coverageShame"] as (String, (String) -> Boolean, Int, Int?, String) -> String
+
 val checkUiDesignCoverage by tasks.registering {
     group = "verification"
     description = "校验 $coveragePackage 的行覆盖率不低于 ${"%.0f%%".format(coverageThreshold * 100)}"
@@ -179,13 +182,29 @@ val checkUiDesignCoverage by tasks.registering {
             throw GradleException("覆盖率闸门：$coveragePackage 的可执行行为 0 —— 测试没有跑到这个包，不能算通过。")
         }
         if (total < coverageMinLines) {
-            throw GradleException("$coveragePackage 只剩 $total 行可执行代码（下限 $coverageMinLines）：包里的类被搬走了？")
+            throw GradleException(
+                "$coveragePackage 只剩 $total 行可执行代码（下限 $coverageMinLines）：包里的类被搬走了？\n" +
+                    coverageShame(
+                        reportXml.readText(),
+                        { name: String -> name.startsWith("$coveragePackage/") },
+                        total,
+                        coverageMinLines,
+                        "ui/design/build.gradle.kts 的 coverageMinLines",
+                    ),
+            )
         }
         val ratio = covered.toDouble() / total
         val pct = "%.1f%%".format(ratio * 100)
         if (ratio + 1e-9 < coverageThreshold) {
             throw GradleException(
-                "$coveragePackage 行覆盖率 $pct < 阈值 ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）。",
+                "$coveragePackage 行覆盖率 $pct < 阈值 ${"%.0f%%".format(coverageThreshold * 100)}（$covered/$total）。\n" +
+                    coverageShame(
+                        reportXml.readText(),
+                        { name: String -> name.startsWith("$coveragePackage/") },
+                        total,
+                        null,
+                        "ui/design/build.gradle.kts 的 coverageThreshold",
+                    ),
             )
         }
         logger.lifecycle(
