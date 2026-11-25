@@ -29,7 +29,7 @@ class PhoneAgentApp : Application() {
         // ensureInitialized 自带 @Synchronized，编码页自己再调一次也不会与这里冲突。
         ioScope.launch {
             StartupTrace.span("编码工作区恢复") {
-                runCatching { com.phoneagent.coding.agent.CodingWorkspaces.ensureInitialized(this@PhoneAgentApp) }
+                runCatching { com.phoneagent.coding.workspaces.CodingWorkspaces.ensureInitialized(this@PhoneAgentApp) }
             }
         }
         // 设置首读预热：界面首帧门控要等 `agent_settings` 读完 —— 首读要解 protobuf，随后整段

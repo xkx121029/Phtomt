@@ -47,8 +47,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.phoneagent.coding.agent.CodingWorkspaces.Entry
-import com.phoneagent.coding.agent.CodingWorkspaces.SessionMeta
+import com.phoneagent.coding.workspaces.CodingWorkspaces.Entry
+import com.phoneagent.coding.workspaces.CodingWorkspaces.SessionMeta
 import com.phoneagent.core.text.TimeFormats
 import com.phoneagent.ui.components.InlineOverlay
 import com.phoneagent.ui.components.rememberHapticClick

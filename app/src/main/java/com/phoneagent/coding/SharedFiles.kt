@@ -3,7 +3,7 @@ package com.phoneagent.coding
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
-import com.phoneagent.coding.agent.CodingWorkspaces
+import com.phoneagent.coding.workspaces.CodingWorkspaces
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
