@@ -37,6 +37,7 @@ domain|test|50
 core/security|testDebugUnitTest|20
 core/perf|testDebugUnitTest|4
 data|testDebugUnitTest|75
+ui/design|testDebugUnitTest|14
 '
 
 MODE=${1:-check}
