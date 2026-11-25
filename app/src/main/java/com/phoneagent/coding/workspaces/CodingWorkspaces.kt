@@ -292,6 +292,13 @@ object CodingWorkspaces {
     /** 新建一个会话：id 同时用作 host 侧 sessionId（host 收到未知 id 会就地创建）。 */
     fun newSession(): SessionMeta = CodingSessionRegistry.newSession(System.currentTimeMillis())
 
+    /** 新会话进表头并设为活动会话（转移规则见 [CodingSessionRegistry.openCreated]） */
+    fun openCreated(state: WorkspaceState, session: SessionMeta): WorkspaceState =
+        CodingSessionRegistry.openCreated(state, session)
+
+    /** 当前活动会话 id；指针悬空（指向已删会话）时为 null，调用方据此新建一个会话 */
+    fun activeSession(state: WorkspaceState): String? = CodingSessionRegistry.activeSession(state)
+
     fun messagesFile(entry: Entry, sessionId: String): File =
         File(File(entry.metaDir, "sessions"), "$sessionId.json")
 
