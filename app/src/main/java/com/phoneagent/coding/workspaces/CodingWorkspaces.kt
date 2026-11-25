@@ -1,4 +1,4 @@
-package com.phoneagent.coding.agent
+package com.phoneagent.coding.workspaces
 
 import android.content.Context
 import android.net.Uri
@@ -290,16 +290,7 @@ object CodingWorkspaces {
     }
 
     /** 新建一个会话：id 同时用作 host 侧 sessionId（host 收到未知 id 会就地创建）。 */
-    fun newSession(): SessionMeta {
-        val now = System.currentTimeMillis()
-        return SessionMeta(
-            id = "u_${UUID.randomUUID().toString().replace("-", "").take(12)}",
-            title = "新会话",
-            createdAt = now,
-            updatedAt = now,
-            count = 0,
-        )
-    }
+    fun newSession(): SessionMeta = CodingSessionRegistry.newSession(System.currentTimeMillis())
 
     fun messagesFile(entry: Entry, sessionId: String): File =
         File(File(entry.metaDir, "sessions"), "$sessionId.json")
@@ -360,36 +351,19 @@ object CodingWorkspaces {
             return
         }
 
-        val state = state(context, entry)
-        val title = messages.firstOrNull { it.role == "user" }?.text
-            ?.trim()?.take(24)?.takeIf { it.isNotBlank() } ?: "新会话"
-        val now = System.currentTimeMillis()
-        val existing = state.sessions.firstOrNull { it.id == sessionId }
-        val meta = (existing ?: SessionMeta(sessionId, title, now, now, 0)).copy(
-            title = if (existing == null || existing.title == "新会话") title else existing.title,
-            updatedAt = now,
-            count = messages.size,
+        val next = CodingSessionRegistry.upsert(
+            state = state(context, entry),
+            sessionId = sessionId,
+            messages = messages,
+            now = System.currentTimeMillis(),
         )
-        val sessions = if (existing == null) {
-            listOf(meta) + state.sessions
-        } else {
-            state.sessions.map { if (it.id == sessionId) meta else it }
-        }.sortedByDescending { it.updatedAt }
-        saveState(context, entry, WorkspaceState(state.activeSessionId, sessions))
+        saveState(context, entry, next)
     }
 
     @Synchronized
     fun deleteSession(context: Context, entry: Entry, sessionId: String) {
         messagesFile(entry, sessionId).delete()
-        val state = state(context, entry)
-        saveState(
-            context,
-            entry,
-            WorkspaceState(
-                activeSessionId = state.activeSessionId.takeIf { it != sessionId },
-                sessions = state.sessions.filterNot { it.id == sessionId },
-            ),
-        )
+        saveState(context, entry, CodingSessionRegistry.remove(state(context, entry), sessionId))
     }
 
     @Synchronized
