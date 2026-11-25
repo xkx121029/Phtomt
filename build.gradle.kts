@@ -28,6 +28,10 @@ plugins {
     alias(libs.plugins.rikka.refine) apply false
 }
 
+// 覆盖率闸门失败时的逐类诊断：实现放在 gradle/coverage-shame.gradle.kts，
+// 六个模块（:app / :data / :domain / :core:text / :core:security / :ui:design）共用同一份。
+apply(from = file("gradle/coverage-shame.gradle.kts"))
+
 // ---------------------------------------------------------------------------
 // 版本号：在 root 统一计算，:app 与 :provider 只读取同一个值。
 //
