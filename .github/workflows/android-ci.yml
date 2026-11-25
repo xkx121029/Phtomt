@@ -146,6 +146,9 @@ jobs:
       #      的 EXPECTED 表。这一步不依赖工具链版本，对所有模块统一生效，而且不只是
       #      「一条都没有」才红——某个模块用例数突然掉到下限以下也红。
       #      只加 1~3 不加这一条，模块的测试任务可以一直空跑而 CI 永远绿（已发生过两次）。
+      #   6. 设计层的覆盖率闸门归属：`:ui:design` 的 `checkUiDesignCoverage` 量的是
+      #      `com/phoneagent/ui/theme`（纯令牌逻辑，JVM 能真跑到）。`ui/components` 的
+      #      @Composable 不做百分比闸门——JVM 上拿不到测量，装一个永远绿的阈值比没有更糟。
       # ---------------------------------------------------------------------
       - name: Detekt + Lint (static analysis, non-blocking)
         # 两个都不阻断出包（存量问题未清理完），合并到同一次 Gradle 调用：
@@ -160,7 +163,7 @@ jobs:
         # CyclomaticComplexMethod 20…），大多在基线生成之后新增。清理完之前它不该挡住产包，
         # 清理后把 continue-on-error 去掉即可恢复阻断，并把这个步骤拆回独立步骤。
         continue-on-error: true
-        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt :domain:detekt :core:security:detekt :core:perf:detekt :data:detekt --continue --stacktrace
+        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt :domain:detekt :core:security:detekt :core:perf:detekt :data:detekt :ui:design:detekt --continue --stacktrace
 
       - name: Detekt baseline guards
         # 基线只减不增 + 分类合计必须等于总条目数（防止只改总数不更新分类表）。
@@ -171,7 +174,7 @@ jobs:
         # 所以每个模块都要跑它自己的 checkDetektBaseline。
         # :core:log 没有 baseline.xml，那个任务会显式打印"跳过"并以成功退出
         # （见 core/log/build.gradle.kts），因此这里可以无条件列出。
-        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline :domain:checkDetektBaseline :core:security:checkDetektBaseline :core:perf:checkDetektBaseline :data:checkDetektBaseline --stacktrace
+        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline :domain:checkDetektBaseline :core:security:checkDetektBaseline :core:perf:checkDetektBaseline :data:checkDetektBaseline :ui:design:checkDetektBaseline --stacktrace
 
       - name: Unit tests + coverage gates
         # 测试、覆盖率报告、纯逻辑覆盖率闸门一次跑完：后两者都依赖测试结果，
@@ -186,7 +189,7 @@ jobs:
           # 先清结果目录：Test 任务是 UP-TO-DATE 或 NO-SOURCE 时压根不会碰它，
           # 上一次的 XML 会原地留着 —— 不清就直接数文件，「没执行」和「执行过」分不出来。
           sh tool/check-test-results.sh --clean
-          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage --stacktrace
+          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :ui:design:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage :ui:design:checkUiDesignCoverage --stacktrace
 
       - name: Assert unit tests actually ran (NO-SOURCE guard)
         # 上面那个 gradle 调用绿了，不代表有用例执行过：测试源集为空（NO-SOURCE）时
