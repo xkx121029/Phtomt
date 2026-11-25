@@ -3,7 +3,6 @@ package com.phoneagent.coding.device
 import android.content.Context
 import android.os.Build
 import com.phoneagent.coding.env.CodingEnvBootstrap
-import com.phoneagent.coding.env.CodingEnvClient
 import com.phoneagent.core.log.AppLog
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -33,8 +32,8 @@ class HostBridgeServer(
     private val context: Context,
     /** 期望的共享密钥（与 CodingAgentConfig.token 一致）。入站反向请求必须带上它。 */
     private val expectedToken: () -> String = { "" },
-    /** 编码环境门户；宿主没接入时为 null，env_* 方法会明确报错而不是静默失败 */
-    private val envClientProvider: () -> CodingEnvClient? = { null },
+    /** 编码环境编排器；宿主没接入时为 null，env_* 方法会明确报错而不是静默失败 */
+    private val envBootstrapProvider: () -> CodingEnvBootstrap? = { null },
 ) {
 
     private companion object {
@@ -51,9 +50,7 @@ class HostBridgeServer(
     }
 
     /** 环境编排器；首次用到时才创建，避免每个进程启动都多一个对象 */
-    private val envBootstrap by lazy {
-        envClientProvider()?.let { CodingEnvBootstrap(context, it) }
-    }
+    private val envBootstrap: CodingEnvBootstrap? by lazy { envBootstrapProvider() }
 
     /** 处理器可能阻塞（读写文件、等界面拉起），绝不能占着 stdout 读线程。 */
     private val pool = Executors.newCachedThreadPool { r ->
@@ -143,7 +140,7 @@ class HostBridgeServer(
     /** env_* 统一入口：桥处理器跑在后台线程池里，这里用 runBlocking 把挂起流程变成一次阻塞调用 */
     private fun env(block: suspend (CodingEnvBootstrap) -> JSONObject): Any {
         val bootstrap = envBootstrap
-            ?: error("编码环境未接入：宿主没有提供 CodingEnvClient")
+            ?: error("编码环境未接入：宿主没有提供环境门户")
         return runBlocking { block(bootstrap) }
     }
 

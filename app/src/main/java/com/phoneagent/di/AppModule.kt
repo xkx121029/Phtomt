@@ -88,8 +88,31 @@ private val appModule = module {
     single { com.phoneagent.coding.env.CodingEnvClient(androidContext()) } bind
         com.phoneagent.coding.api.CodingEnvPortal::class
 
+    // 编码会话工厂：引擎连接 / 编码页连接 / 每装机共享密钥都由切片内部造，
+    // 宿主侧只认 CodingSessions 端口；「谁 new 连接、密钥存在哪」这套装配留在这里。
+    single<com.phoneagent.coding.api.CodingSessions> {
+        val settings = get<AppSettings>()
+        val tokenProvider = com.phoneagent.coding.device.HostBridgeTokenProvider(
+            object : com.phoneagent.coding.device.HostBridgeTokenStore {
+                override suspend fun read(): String = settings.readHostBridgeToken()
+
+                override suspend fun write(token: String) {
+                    settings.writeHostBridgeToken(token)
+                }
+            },
+        )
+        com.phoneagent.coding.agent.AgentClientSessions(
+            context = androidContext(),
+            // 环境编排器按需创建：宿主没接环境组件时 env_* 明确报「未接入」
+            envBootstrapProvider = {
+                com.phoneagent.coding.env.CodingEnvBootstrap(androidContext(), get())
+            },
+            tokenProvider = tokenProvider,
+        )
+    }
+
     // 编码 agent 委托桥（Superagent 融合 Phase 4）：引擎路由与 Phase 5 编码页共享同一实例
-    // 第四个参数是环境门户：Agent 的 coding_env 工具经它驱动 PRoot 工具链
+    // 第四个参数是切片会话工厂：两类连接与宿主桥密钥都由它提供
     single { com.phoneagent.engine.coding.CodingAgentBridge(androidContext(), get(), get(), get()) }
 
     viewModel {
