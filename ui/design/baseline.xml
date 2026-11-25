@@ -1,0 +1,53 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LongMethod:Components.kt$@Composable fun AppSnackbar( state: SnackbarState, modifier: Modifier = Modifier, )</ID>
+    <ID>LongParameterList:Components.kt$( icon: ImageVector, description: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, /** 停止这类破坏性动作：换成错误色，与发送键同尺寸但不抢主色 */ danger: Boolean = false, /** 次要入口（附件等）：不铺底色，只留图标 */ quiet: Boolean = false, )</ID>
+    <ID>LongParameterList:Components.kt$( icon: ImageVector, tint: Color, background: Color, modifier: Modifier = Modifier, tileSize: Dp = 44.dp, iconSize: Dp = 22.dp, cornerRadius: Dp = AppRadii.Tile, )</ID>
+    <ID>LongParameterList:Components.kt$( title: String, count: Int, countColor: Color, onClear: () -&gt; Unit, modifier: Modifier = Modifier, content: @Composable () -&gt; Unit, )</ID>
+    <ID>LongParameterList:Components.kt$( title: String, modifier: Modifier = Modifier, subtitle: String? = null, /** 标题字号：默认大标题；承载摘要这类长文本的页面可传更紧凑的样式 */ titleStyle: TextStyle = MaterialTheme.typography.headlineMedium, titleMaxLines: Int = Int.MAX_VALUE, leadingIcon: ImageVector? = null, leadingContent: (@Composable () -&gt; Unit)? = null, trailingContent: (@Composable () -&gt; Unit)? = null, contentPadding: PaddingValues = PaddingValues( horizontal = LocalHeaderContentPad.current, vertical = 8.dp, ), )</ID>
+    <ID>MagicNumber:Color.kt$0.08f</ID>
+    <ID>MagicNumber:Color.kt$0.12f</ID>
+    <ID>MagicNumber:Color.kt$0.15f</ID>
+    <ID>MagicNumber:Color.kt$0.18f</ID>
+    <ID>MagicNumber:Color.kt$0.1f</ID>
+    <ID>MagicNumber:Color.kt$0.22f</ID>
+    <ID>MagicNumber:Color.kt$0.25f</ID>
+    <ID>MagicNumber:Color.kt$0.2f</ID>
+    <ID>MagicNumber:Color.kt$0.35f</ID>
+    <ID>MagicNumber:Color.kt$0.3f</ID>
+    <ID>MagicNumber:Color.kt$0.4f</ID>
+    <ID>MagicNumber:Color.kt$0.5f</ID>
+    <ID>MagicNumber:Color.kt$0x00FFFFFF</ID>
+    <ID>MagicNumber:Color.kt$0xF2FFFFFF</ID>
+    <ID>MagicNumber:Color.kt$0xFFFFFFFF</ID>
+    <ID>MagicNumber:MotionHelpers.kt$MotionSettings$0.3f</ID>
+    <ID>MagicNumber:Theme.kt$0.02f</ID>
+    <ID>MagicNumber:Theme.kt$0.03f</ID>
+    <ID>MagicNumber:Theme.kt$0.06f</ID>
+    <ID>MagicNumber:Theme.kt$0.09f</ID>
+    <ID>MagicNumber:Theme.kt$0.10f</ID>
+    <ID>MagicNumber:Theme.kt$0.12f</ID>
+    <ID>MagicNumber:Theme.kt$0.14f</ID>
+    <ID>MagicNumber:Theme.kt$0.6f</ID>
+    <ID>MagicNumber:Theme.kt$0xFF000000</ID>
+    <ID>MagicNumber:Theme.kt$230f</ID>
+    <ID>MagicNumber:Theme.kt$255f</ID>
+    <ID>MagicNumber:Theme.kt$40f</ID>
+    <ID>MatchingDeclarationName:InstantPress.kt$InstantPressIndication : IndicationNodeFactory</ID>
+    <ID>MatchingDeclarationName:MotionHelpers.kt$MotionSettings</ID>
+    <ID>TooManyFunctions:Components.kt$com.phoneagent.ui.components.Components.kt</ID>
+    <ID>TooManyFunctions:Theme.kt$com.phoneagent.ui.theme.Theme.kt</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** * 全局按压底色浓度：按下即整块铺上内容色 12% 的平涂，抬手立刻撤掉。 * * 取值以「能一眼看出被按住、又不把文字压糊」为准：8% 在白底上几乎看不见， * 16% 又把正文压成灰字；12% 在深浅两套主题下都能读清底下的字。 */ const val PressTintAlpha = 0.12f</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** * 循环动效周期（毫秒）：状态点脉动、骨架微光、运行指示共用一个节拍。 * * 循环动画不是"过渡"，不套用 100/160/200/280 那套一次性时长；单独给一个慢拍， * 全站所有"呼吸"才是同一口气（原先 800/900 两三种节拍混用，并排出现时会互相打架）。 */ const val DurationPulse = 900</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** * 按压缩放口径：按下瞬间缩到 0.97，抬手回到 1。 * * 这是全项目唯一的按压比例来源——`PressableScale`、悬浮导航栏等所有"按下要缩一下"的地方 * 都引用它，避免同一个手感在各处各写一个魔数（改一处漏三处）。 * 依据 emilkowalski/skills：按钮按下必须给即时反馈，缩放在 pointer-down 发生，不做回弹。 */ const val PressScale = 0.97f</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** Button press feedback — instant feel */ const val DurationInstant = 100</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** Emphasis (celebrations, onboarding) — can be longer, but still restrained */ const val DurationEmphasis = 400</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** Large UI (modals, drawers, screen transitions) — never exceed 300ms for responsiveness */ const val DurationSlow = 280</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** Small UI elements (tooltips, badges, icon transitions) */ const val DurationFast = 160</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** Standard UI (dropdowns, selects, card transitions) */ const val DurationNormal = 200</ID>
+    <ID>TopLevelPropertyNaming:Motion.kt$/** 列表交错动画：相邻元素入场的延迟间隔（毫秒） */ const val StaggerIntervalMs = 45</ID>
+    <ID>TopLevelPropertyNaming:Theme.kt$/** * 无框线档的容器色调位移倍率。 * * 标准档的层次是"底色差 + 发丝描边"两条腿走路，所以容器色调只敢位移 3%~12%； * 描边一旦拿掉，卡片与页面底色就只差约 3%——肉眼看不出边界，卡片会化进页面里。 * 这里把位移量乘上一个系数，用更大的底色差把层次重新撑起来。 * * 取 2.0 而不是更大：这是**补偿**不是重做配色。系数再大，浅色下卡片会开始发灰、 * 深色下会开始发白，等于把配色换成另一套。只动"面与面之间"的距离， * 文字色、品牌色、状态色一律不碰——去掉框线不该顺手把正文也改浓。 */ private const val BorderlessToneBoost = 2.0f</ID>
+  </CurrentIssues>
+</SmellBaseline>

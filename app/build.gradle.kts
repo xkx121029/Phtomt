@@ -522,6 +522,10 @@ dependencies {
     implementation(project(":core:perf"))
     implementation(project(":data"))
 
+    // 模块化 P2：UI 设计层（主题令牌 / 共用组件 / 图标集）。
+    // 包名不变，所以 :app 里对 ui.theme / ui.components / ui.icons 的 import 一行都没改。
+    implementation(project(":ui:design"))
+
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)
     implementation(libs.mlkit.common)

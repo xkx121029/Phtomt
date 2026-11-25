@@ -233,7 +233,7 @@ internal fun glassTintWithOffset(base: Color, offset: Int): Color {
  * `AppTheme.colors.glassTint`（那个在 offset≠0 时已经位移过，再叠就双重位移）。
  */
 @Composable
-internal fun glassTintPreview(offset: Int): Color {
+fun glassTintPreview(offset: Int): Color {
     val highContrast = rememberHighContrast()
     val skin = AppTheme.skin
     val base = if (skin.isGraphite) {
@@ -463,7 +463,7 @@ private fun isSystemDark(): Boolean =
  * 阈值取相对亮度（WCAG 口径，0 = 黑、1 = 白）的中点，现有色板都远离中点
  * （最亮的 #FFFFFF = 1.0，最暗的 #050705 ≈ 0.027），不存在贴边判断。
  */
-internal fun isLightSurface(base: Color): Boolean = base.luminance() > LIGHT_SURFACE_LUMINANCE
+fun isLightSurface(base: Color): Boolean = base.luminance() > LIGHT_SURFACE_LUMINANCE
 
 /** 浅底判据的阈值：相对亮度中点 */
 private const val LIGHT_SURFACE_LUMINANCE = 0.5f
