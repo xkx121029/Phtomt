@@ -491,10 +491,53 @@ jobs:
             echo "::error title=拒绝覆盖已发布版本::tag $TAG 已经存在。不会用 --clobber 覆盖它——请检查 Compute 与 Assert 步骤为何没拦住。"
             exit 1
           fi
-          gh release create "$TAG" "$APK" \
-            --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
-            --notes-file release-notes.md \
-            --prerelease
+          # 建 Release 是整个流水线里唯一会撞上 GitHub 服务端瞬时故障的写操作。
+          # run 3e9f6021 就烧在这里：`HTTP 500 .../releases` → 构建全绿到最后一步才红，
+          # versionCode 9238 报废，而且 Persist 被跳过、计数器没推进。
+          # 所以这里做有限重试（3 次，退避 5s / 15s），但判据必须保守，避免把确定性
+          # 失败也拖成 20 秒等待 + 模糊日志：
+          #   HTTP 5xx / HTTP 429 / timeout / timed out / connection reset → 服务端或链路抖动，重试
+          #   HTTP 4xx（422 已存在、401/403 权限）                          → 重试一万次也一样红，立刻失败
+          # 判据靠匹配 gh 打印在 stderr 上的错误文本（形如 `HTTP 500: ...`），所以命令输出
+          # 必须 2>&1 捕获后再判断，不能让它直接刷到日志里。
+          # 只重试 gh release create 本身：上面那条 gh release view 是 fail-closed 检查，
+          # 撞到「已发布」必须立刻红，绝不能包进重试。
+          retryable_release_error() {
+            case "$1" in
+              *"HTTP 5"*|*"HTTP 429"*|*timeout*|*"timed out"*|*"connection reset"*|*"Connection reset"*) return 0 ;;
+            esac
+            return 1
+          }
+          RELEASE_OK=0
+          RELEASE_ATTEMPT=0
+          RELEASE_OUT=""
+          while [ "$RELEASE_ATTEMPT" -lt 3 ]; do
+            RELEASE_ATTEMPT=$((RELEASE_ATTEMPT + 1))
+            if RELEASE_OUT=$(gh release create "$TAG" "$APK" \
+                 --title "Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+                 --notes-file release-notes.md \
+                 --prerelease 2>&1); then
+              RELEASE_OK=1
+              printf '%s\n' "$RELEASE_OUT"
+              break
+            fi
+            printf '%s\n' "$RELEASE_OUT"
+            # 单行化，避免多行输出把 ::error:: 之后的上下文截掉。
+            RELEASE_LAST=$(printf '%s' "$RELEASE_OUT" | tr '\n' ' ' | cut -c1-400)
+            if ! retryable_release_error "$RELEASE_OUT"; then
+              echo "::error title=GitHub Release 发布失败（不可重试）::tag=$TAG 第 $RELEASE_ATTEMPT/3 次；gh 报的不是瞬时故障（4xx 或本地错误），重试无意义，故不再重试。若是 422 且 $TAG 已存在，说明发行版建成了但附件上传失败，需要人工补传 APK。最后一次输出：$RELEASE_LAST"
+              exit 1
+            fi
+            if [ "$RELEASE_ATTEMPT" -lt 3 ]; then
+              if [ "$RELEASE_ATTEMPT" -eq 1 ]; then RELEASE_DELAY=5; else RELEASE_DELAY=15; fi
+              echo "::warning title=GitHub Release 发布遇到瞬时错误::tag=$TAG 第 $RELEASE_ATTEMPT/3 次失败，${RELEASE_DELAY}s 后重试：$RELEASE_LAST"
+              sleep "$RELEASE_DELAY"
+            fi
+          done
+          if [ "$RELEASE_OK" != "1" ]; then
+            echo "::error title=GitHub Release 发布重试耗尽::tag=$TAG 共试 $RELEASE_ATTEMPT 次仍失败（每次都是瞬时故障）。最后一次输出：$RELEASE_LAST。注意：Persist 步骤不会执行，本次 versionCode 不推进，下一次运行会按「tag 最大值 + 1」自动跳号。"
+            exit 1
+          fi
 
       - name: Persist version counter
         # 出包成功才把计数器推进一步（失败不烧号）。
@@ -599,21 +642,73 @@ jobs:
           BODY=$(printf '**渠道**：%s\n**版本**：%s（versionCode %s）\n**提交**：%s\n**签名**：debug 签名，可直接安装运行。\n**APK**：https://github.com/%s/releases/download/%s/%s\n' \
             "$CHANNEL" "$VERSION_NAME" "$VERSION_CODE" "${GITHUB_SHA:0:7}" \
             "$GITHUB_REPOSITORY" "$TAG" "$APK_NAME")
-          # 先按 tag 复用已有发行版：重跑或计数器重号时 POST /releases 会 400，
-          # 直接复用可以避免重复建发行版。
-          RID=$(curl -sS --max-time 60 "$API/releases/tags/$TAG?$AUTH" | jq -r '.id // empty')
-          if [ -z "$RID" ]; then
-            # Gitee 的发行版响应里没有 upload_url（和 GitHub 不同），附件必须走
-            # /releases/{release_id}/attach_files 这个接口，所以先拿 id。
-            RESP=$(curl -sS --max-time 90 -X POST "$API/releases" \
-              --data-urlencode "access_token=$GITEE_TOKEN" \
-              --data-urlencode "tag_name=$TAG" \
-              --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
-              --data-urlencode "body=$BODY" \
-              --data-urlencode "target_commitish=nightly" \
-              --data-urlencode "prerelease=true")
-            RID=$(echo "$RESP" | jq -r '.id // empty')
-          fi
+          # 与 Publish GitHub Release 那一步共用同一套判据：只有服务端瞬时故障才重试。
+          # Gitee 不回 `HTTP 500:` 这种文本，所以把 curl 拿到的状态码拼成 `HTTP <code>`
+          # 再走同一段匹配，保证两边的「什么算可重试」是同一份定义。
+          retryable_release_error() {
+            case "$1" in
+              *"HTTP 5"*|*"HTTP 429"*|*timeout*|*"timed out"*|*"connection reset"*|*"Connection reset"*) return 0 ;;
+            esac
+            return 1
+          }
+          # 一次「按 tag 取发行版，取不到就建」的尝试。
+          # 返回 0 = 拿到 RID；非 0 = 失败，且把 `HTTP <code> <curl stderr><响应体>` 放进 GITEE_OUT
+          # 交给调用方判定这次失败可不可重试。
+          gitee_find_or_create_release() {
+            RID=""
+            RESP=""
+            GITEE_OUT=""
+            GITEE_CODE=$(curl -sS --max-time 60 -o "$GITEE_BODY_FILE" -w '%{http_code}' \
+              "$API/releases/tags/$TAG?$AUTH" 2>"$GITEE_ERR_FILE") || GITEE_CODE="000"
+            RESP=$(cat "$GITEE_BODY_FILE")
+            GITEE_ERR=$(cat "$GITEE_ERR_FILE")
+            # 先按 tag 复用已有发行版：重跑或计数器重号时 POST /releases 会 400，
+            # 直接复用可以避免重复建发行版。
+            RID=$(printf '%s' "$RESP" | jq -r '.id // empty' 2>/dev/null) || RID=""
+            if [ -z "$RID" ]; then
+              case "$GITEE_CODE" in
+                000|429|5??) GITEE_OUT="HTTP $GITEE_CODE 查询发行版失败：$GITEE_ERR$RESP"; return 1 ;;
+                401|403) GITEE_OUT="HTTP $GITEE_CODE 查询发行版被拒：$RESP"; return 1 ;;
+              esac
+              # Gitee 的发行版响应里没有 upload_url（和 GitHub 不同），附件必须走
+              # /releases/{release_id}/attach_files 这个接口，所以先拿 id。
+              GITEE_CODE=$(curl -sS --max-time 90 -X POST "$API/releases" \
+                --data-urlencode "access_token=$GITEE_TOKEN" \
+                --data-urlencode "tag_name=$TAG" \
+                --data-urlencode "name=Happy Phone Agent $VERSION_NAME ($CHANNEL)" \
+                --data-urlencode "body=$BODY" \
+                --data-urlencode "target_commitish=nightly" \
+                --data-urlencode "prerelease=true" \
+                -o "$GITEE_BODY_FILE" -w '%{http_code}' 2>"$GITEE_ERR_FILE") || GITEE_CODE="000"
+              RESP=$(cat "$GITEE_BODY_FILE")
+              GITEE_ERR=$(cat "$GITEE_ERR_FILE")
+              RID=$(printf '%s' "$RESP" | jq -r '.id // empty' 2>/dev/null) || RID=""
+            fi
+            if [ -n "$RID" ]; then
+              return 0
+            fi
+            GITEE_OUT="HTTP $GITEE_CODE 创建发行版失败：$GITEE_ERR$RESP"
+            return 1
+          }
+          GITEE_BODY_FILE=$(mktemp)
+          GITEE_ERR_FILE=$(mktemp)
+          GITEE_OUT=""
+          for GITEE_ATTEMPT in 1 2 3; do
+            if gitee_find_or_create_release; then
+              break
+            fi
+            if ! retryable_release_error "$GITEE_OUT"; then
+              echo "::error title=Gitee 发行版创建失败（不可重试）::tag=$TAG 第 $GITEE_ATTEMPT/3 次；Gitee 回的是确定性错误（4xx 或本地错误），重试无意义。上一次输出：$GITEE_OUT"
+              break
+            fi
+            if [ "$GITEE_ATTEMPT" -lt 3 ]; then
+              if [ "$GITEE_ATTEMPT" -eq 1 ]; then GITEE_DELAY=5; else GITEE_DELAY=15; fi
+              echo "::warning title=Gitee 发行版创建遇到瞬时错误::tag=$TAG 第 $GITEE_ATTEMPT/3 次失败，${GITEE_DELAY}s 后重试：$GITEE_OUT"
+              sleep "$GITEE_DELAY"
+            else
+              echo "::error title=Gitee 发行版创建重试耗尽::tag=$TAG 共试 3 次仍失败（每次都是瞬时故障）。最后一次输出：$GITEE_OUT"
+            fi
+          done
           if [ -z "$RID" ]; then
             echo "::warning title=Gitee 发行版创建失败::tag=$TAG，响应=$RESP"
             echo "- ⚠️ Gitee 发行版 \`$TAG\` 创建失败，附件未上传（GitHub Release 不受影响）。" >> "$GITHUB_STEP_SUMMARY"
