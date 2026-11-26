@@ -146,6 +146,13 @@ jobs:
       #      的 EXPECTED 表。这一步不依赖工具链版本，对所有模块统一生效，而且不只是
       #      「一条都没有」才红——某个模块用例数突然掉到下限以下也红。
       #      只加 1~3 不加这一条，模块的测试任务可以一直空跑而 CI 永远绿（已发生过两次）。
+      #
+      # 1 和 5 是同一份模块清单的两处写法，以前全靠人记着同时改（:ui:design 那次
+      # 两处都改对纯属运气）。现在由 `sh tool/check-module-lists.sh` 机械强制一致：
+      # 上面这串测试任务 与 EXPECTED 表 多一条少一条都红；settings.gradle.kts 里
+      # include 了、带 src/test 目录却不在清单里的模块也红（:provider / :env /
+      # :shizuku-server 就是这样被抓出来的，它们的 59 条测试以前从没在 CI 上跑过）。
+      # 本地提交前跑同一条命令即可，不用等 CI。
       #   6. 设计层的覆盖率闸门归属：`:ui:design` 的 `checkUiDesignCoverage` 量的是
       #      `com/phoneagent/ui/theme`（纯令牌逻辑，JVM 能真跑到）。`ui/components` 的
       #      @Composable 不做百分比闸门——JVM 上拿不到测量，装一个永远绿的阈值比没有更糟。
@@ -189,7 +196,23 @@ jobs:
           # 先清结果目录：Test 任务是 UP-TO-DATE 或 NO-SOURCE 时压根不会碰它，
           # 上一次的 XML 会原地留着 —— 不清就直接数文件，「没执行」和「执行过」分不出来。
           sh tool/check-test-results.sh --clean
-          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :ui:design:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage :ui:design:checkUiDesignCoverage --stacktrace
+          # 这一串里的测试任务必须与 tool/check-test-results.sh 的 EXPECTED 表逐条一致，
+          # 由下一步（sh tool/check-module-lists.sh）机械校验：多一条少一条都红。
+          #
+          # :provider / :env / :shizuku-server 原本不在这串里，它们的 59 条测试
+          # （22 + 30 + 7）从来没在 CI 上跑过 —— 这三个模块都是独立 APK / 库，
+          # :app 的测试任务编译不到它们，所以「没跑」这件事一直没有出口码。
+          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :ui:design:testDebugUnitTest :provider:testDebugUnitTest :env:testDebugUnitTest :shizuku-server:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage :ui:design:checkUiDesignCoverage --stacktrace
+
+      - name: Assert module lists agree (workflow / EXPECTED / settings)
+        # 两份手写清单必须逐条一致，且不能漏掉带测试的新模块：
+        #   A. 上一步 gradlew 任务串里的测试任务  ==  tool/check-test-results.sh 的 EXPECTED 表
+        #      （表里有却没跑 → 该模块测试不上 CI；跑了却没记 → 兜底断言不看它）；
+        #   B. settings.gradle.kts 里 include 了、目录下有 src/test，却不在清单里 → 红。
+        #      这类模块的测试永远不会执行，而且「一条都没跑」不会产生任何非零退出码；
+        #   C. 清单里有、settings.gradle.kts 里已经没有的模块 → 红（删模块后的残留）。
+        # 顺序有意放在 NO-SOURCE 兜底之前：清单不一致时，下一步的用例数没有意义。
+        run: sh tool/check-module-lists.sh
 
       - name: Assert unit tests actually ran (NO-SOURCE guard)
         # 上面那个 gradle 调用绿了，不代表有用例执行过：测试源集为空（NO-SOURCE）时

@@ -23,6 +23,10 @@
 # 新建模块时必须在这里加一行（module|测试任务|用例下限），
 # 任务名按插件区分：kotlin("jvm") 模块是 test，com.android.library 是 testDebugUnitTest。
 # 用 `./gradlew :<模块>:tasks --dry-run` 核对，写成不存在的任务会在配置期就失败。
+#
+# 这张表与 .github/workflows/android-ci.yml 的 "Unit tests + coverage gates" 任务串
+# 必须逐条一致，由 `sh tool/check-module-lists.sh` 机械校验（多一条少一条都红）。
+# 提交前跑它，比等 CI 快。
 
 set -eu
 
@@ -38,6 +42,9 @@ core/security|testDebugUnitTest|20
 core/perf|testDebugUnitTest|4
 data|testDebugUnitTest|75
 ui/design|testDebugUnitTest|14
+provider|testDebugUnitTest|22
+env|testDebugUnitTest|30
+third_party/shizuku/server|testDebugUnitTest|7
 '
 
 MODE=${1:-check}
