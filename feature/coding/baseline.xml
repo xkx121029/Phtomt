@@ -1,0 +1,61 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:AgentClient.kt$AgentClient$fun sendPrompt(text: String)</ID>
+    <ID>CyclomaticComplexMethod:AgentClient.kt$AgentClient$private fun handleMessage(raw: String)</ID>
+    <ID>LoopWithTooManyJumpStatements:CodingWorkspaces.kt$CodingWorkspaces$for</ID>
+    <ID>MagicNumber:AgentClient.kt$AgentClient$1200L</ID>
+    <ID>MagicNumber:AgentClient.kt$AgentClient$36</ID>
+    <ID>MagicNumber:AgentClient.kt$AgentClient$48</ID>
+    <ID>MagicNumber:AgentClient.kt$AgentClient.Companion$512</ID>
+    <ID>MagicNumber:CodingAgentService.kt$CodingAgentService$34</ID>
+    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$12</ID>
+    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$24</ID>
+    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$36</ID>
+    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$8</ID>
+    <ID>MagicNumber:DeviceWorkspace.kt$DeviceWorkspace$5</ID>
+    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$10</ID>
+    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$3000</ID>
+    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$6</ID>
+    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$800</ID>
+    <ID>MagicNumber:LocalAgent.kt$LocalAgent$800</ID>
+    <ID>MaxLineLength:AgentClient.kt$AgentClient$update { it.copy(conn = ConnState.CONNECTING, error = null, messages = if (keepUi) it.messages else emptyList()) }</ID>
+    <ID>MaxLineLength:AgentClient.kt$AgentClient$val answered = at &gt;= 0 &amp;&amp; s.messages.drop(at + 1).any { it.role == "assistant" &amp;&amp; it.text.isNotBlank() }</ID>
+    <ID>MaxLineLength:AgentClient.kt$AgentClient$val msgs = if (idx &gt;= 0) s.messages.toMutableList().also { it[idx] = it[idx].copy(approvalResolved = approved) } else s.messages</ID>
+    <ID>MaxLineLength:CodingEventReducer.kt$CodingEventReducer$*</ID>
+    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("approval_request", messages = r.messages, assistantKey = r.assistantKey, callId = "c9", tool = "run_cmd")</ID>
+    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("tool_approval", messages = r.messages, assistantKey = r.assistantKey, name = "run_cmd", approved = false, why = "用户拒绝")</ID>
+    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("tool_start", messages = r.messages, assistantKey = r.assistantKey, name = "run_cmd", argsPreview = "cmd=python fib.py")</ID>
+    <ID>MaxLineLength:CodingWorkspaces.kt$CodingWorkspaces$approvalResolved = if (m.has("approvalResolved")) m.optBoolean("approvalResolved") else null</ID>
+    <ID>MaxLineLength:LocalAgent.kt$LocalAgent$ContextCompat.startForegroundService(context, Intent(context, com.phoneagent.coding.CodingAgentService::class.java))</ID>
+    <ID>NestedBlockDepth:AgentProcess.kt$AgentProcess$private fun pumpStderr(proc: java.lang.Process)</ID>
+    <ID>ReturnCount:AcaSkillCatalog.kt$AcaSkillCatalog$private fun parseManifest(dir: File): AcaSkillInfo?</ID>
+    <ID>ReturnCount:AgentClient.kt$AgentClient$private fun handleMessage(raw: String)</ID>
+    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun activate(context: Context, id: String): Entry?</ID>
+    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun createPrivate(context: Context, name: String): Entry?</ID>
+    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun remove(context: Context, id: String): Boolean</ID>
+    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$private fun isUsable(entry: Entry): Boolean</ID>
+    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$private fun readRegistry(context: Context): Registry?</ID>
+    <ID>ReturnCount:DeviceWorkspace.kt$DeviceWorkspace$fun walk(dir: File, depth: Int)</ID>
+    <ID>ReturnCount:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$suspend fun ensure(): Resolved</ID>
+    <ID>ReturnCount:RuntimeBootstrap.kt$RuntimeBootstrap$fun scenarioPath(context: Context, name: String): String</ID>
+    <ID>TooGenericExceptionCaught:AgentProcess.kt$AgentProcess$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CodingRuntimeManager.kt$CodingRuntimeManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:EditorActivity.kt$EditorActivity$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:HostBridgeServer.kt$HostBridgeServer$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LocalAgent.kt$LocalAgent$e: Exception</ID>
+    <ID>TooManyFunctions:AgentClient.kt$AgentClient</ID>
+    <ID>TooManyFunctions:CodingWorkspaces.kt$CodingWorkspaces</ID>
+    <ID>TooManyFunctions:ProjectToolchainProbe.kt$ProjectToolchainProbe</ID>
+    <ID>UnusedParameter:CodingWorkspaces.kt$CodingWorkspaces$context: Context</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 已存在")</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 是一个目录")</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 是一个目录，不能写入")</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("文件不存在：$rel")</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("路径为空")</ID>
+    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("路径越界：$rel")</ID>
+    <ID>UseRequire:HostBridgeServer.kt$HostBridgeServer$throw IllegalArgumentException("preview_open 需要一个 target（工作区相对路径或 http(s) 链接）")</ID>
+  </CurrentIssues>
+</SmellBaseline>

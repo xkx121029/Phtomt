@@ -6,8 +6,11 @@ import kotlinx.coroutines.CancellationException
 /**
  * 宿主桥密钥的存放面。真实实现是 AppSettings 的加密存储（SecretCodec + DataStore），
  * 单测用内存假实现——判据本身不碰 Android。
+ *
+ * **public 而非 internal**：实现它的匿名对象写在 `:app` 的 `di/AppModule` 里，
+ * 模块化 P3 起本接口在 `:feature:coding`，跨模块的 `internal` 不可见。
  */
-internal interface HostBridgeTokenStore {
+interface HostBridgeTokenStore {
     suspend fun read(): String
     suspend fun write(token: String)
 }
@@ -22,8 +25,10 @@ internal interface HostBridgeTokenStore {
  * - 读失败 → 按"没有密钥"重新生成；
  * - 生成不出可用密钥 → 交空串，[HostBridgeAuth] 对空密钥一律拒绝；
  * - 写失败 → 本次进程照常使用新密钥（宿主已按它启动），重启后重新生成一套。
+ *
+ * **public 而非 internal**：由 `:app` 的 `di/AppModule` 构造，原因同 [HostBridgeTokenStore]。
  */
-internal class HostBridgeTokenProvider(
+class HostBridgeTokenProvider(
     private val store: HostBridgeTokenStore,
     private val generate: () -> String = { HostBridgeToken.generate() },
 ) {

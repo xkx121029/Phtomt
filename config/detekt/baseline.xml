@@ -32,8 +32,6 @@
     <ID>ConstructorParameterNaming:ChatModels.kt$StreamOptions$val include_usage: Boolean = true</ID>
     <ID>ConstructorParameterNaming:TaskModels.kt$PlanResponse$val needs_clarification: Boolean = false</ID>
     <ID>CyclomaticComplexMethod:AgentAssistSheet.kt$@Composable internal fun AgentAssistSheet( vm: MainViewModel, title: String, message: String, options: List&lt;ClarificationOption&gt;, allowManualHandle: Boolean, /** 是否给自由输入框：自写命令确认只有「批准 / 拒绝」两个出口，打字无处可去，故隐藏输入与提交 */ allowFreeText: Boolean = true, draft: String, onDraftChange: (String) -&gt; Unit, onPickOption: (ClarificationOption) -&gt; Unit, onSubmitText: (String) -&gt; Unit, onManualHandled: () -&gt; Unit, modifier: Modifier = Modifier, )</ID>
-    <ID>CyclomaticComplexMethod:AgentClient.kt$AgentClient$fun sendPrompt(text: String)</ID>
-    <ID>CyclomaticComplexMethod:AgentClient.kt$AgentClient$private fun handleMessage(raw: String)</ID>
     <ID>CyclomaticComplexMethod:AgentComposer.kt$@Composable internal fun AgentComposer( vm: MainViewModel, draft: String, onDraftChange: (String) -&gt; Unit, mode: ComposerMode, lockHint: String, queueCount: Int, onOpenQueue: () -&gt; Unit, reviewEnabled: Boolean, onToggleReview: (Boolean) -&gt; Unit, /** 先规划再执行：与「审核 AI」同级，默认关闭；关闭时直接进入执行 */ planBeforeAct: Boolean, onTogglePlanBeforeAct: (Boolean) -&gt; Unit, /** * 发送：回传待发文本，而不是让宿主读自己的 draft。 * * 语音"松手即发"这条路径上，识别结果是在 composer 内部拿到的，宿主的 draft 还停在 * 上一帧的值；若宿主自己读 draft，就会把空串（或上一次的旧草稿）发出去。 * 由调用方接收文本，谁先算出文本谁传参，就不存在读到旧状态的问题。 */ onSend: (String) -&gt; Unit, onStop: () -&gt; Unit, onDismissUser: () -&gt; Unit, /** 澄清态的可选答案：非空时输入面顶部先铺一排选项胶囊，点一下即答 */ options: List&lt;ClarificationOption&gt; = emptyList(), onPickOption: (ClarificationOption) -&gt; Unit = {}, /** 待批准的计划：非空且 mode 为 [ComposerMode.PLAN_APPROVAL] 时，整块输入面换成计划面板 */ plan: TaskPlan? = null, onApprovePlan: () -&gt; Unit = {}, onCancelPlan: () -&gt; Unit = {}, /** 模型 / 执行与授权两枚转盘：放在面板内部第一行，与 Coding 页节奏一致；横屏矮屏传 null */ dialRow: (@Composable () -&gt; Unit)? = null, focusRequester: FocusRequester, modifier: Modifier = Modifier, )</ID>
     <ID>CyclomaticComplexMethod:AgentEngine.kt$AgentEngine$private suspend fun handleBrowseIntent( step: Int, intent: AgentIntent, messages: MutableList&lt;ChatMessageDto&gt;, ): Pair&lt;AgentAction, com.phoneagent.engine.execution.VerifyResult&gt;</ID>
     <ID>CyclomaticComplexMethod:AgentEngine.kt$AgentEngine$private suspend fun invokeVisionAsk( step: Int, vision: com.phoneagent.feature.skill.SkillCompat.Normalized.Vision, messages: MutableList&lt;ChatMessageDto&gt;, screenshot: Bitmap?, settingsVal: AppSettings.Settings, )</ID>
@@ -312,7 +310,6 @@
     <ID>LoopWithTooManyJumpStatements:AiClient.kt$AiClient$for</ID>
     <ID>LoopWithTooManyJumpStatements:AiClient.kt$AiClient$while</ID>
     <ID>LoopWithTooManyJumpStatements:ClockFallback.kt$ClockFallbackRunner$for</ID>
-    <ID>LoopWithTooManyJumpStatements:CodingWorkspaces.kt$CodingWorkspaces$for</ID>
     <ID>LoopWithTooManyJumpStatements:ControlFormat.kt$ControlFormat$for</ID>
     <ID>LoopWithTooManyJumpStatements:EngineRules.kt$EngineRules$for</ID>
     <ID>LoopWithTooManyJumpStatements:HtmlToMarkdown.kt$HtmlToMarkdown$while</ID>
@@ -329,10 +326,6 @@
     <ID>MagicNumber:AdbPairingNotifier.kt$AdbPairingNotifier$26</ID>
     <ID>MagicNumber:AdbPairingNotifier.kt$AdbPairingNotifier$33</ID>
     <ID>MagicNumber:AgentAccessibilityService.kt$AgentAccessibilityService$30</ID>
-    <ID>MagicNumber:AgentClient.kt$AgentClient$1200L</ID>
-    <ID>MagicNumber:AgentClient.kt$AgentClient$36</ID>
-    <ID>MagicNumber:AgentClient.kt$AgentClient$48</ID>
-    <ID>MagicNumber:AgentClient.kt$AgentClient.Companion$512</ID>
     <ID>MagicNumber:AgentPrompts.kt$AgentPrompts$120</ID>
     <ID>MagicNumber:AgentPrompts.kt$AgentPrompts$160</ID>
     <ID>MagicNumber:AgentPrompts.kt$AgentPrompts$30</ID>
@@ -353,12 +346,7 @@
     <ID>MagicNumber:AppNameResolver.kt$AppNameResolver$20</ID>
     <ID>MagicNumber:ChatProtocols.kt$JsonPrimitive$8</ID>
     <ID>MagicNumber:CloudAgent.kt$CloudAgent$0.15</ID>
-    <ID>MagicNumber:CodingAgentService.kt$CodingAgentService$34</ID>
     <ID>MagicNumber:CodingWorkspacePanels.kt$86_400_000L</ID>
-    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$12</ID>
-    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$24</ID>
-    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$36</ID>
-    <ID>MagicNumber:CodingWorkspaces.kt$CodingWorkspaces$8</ID>
     <ID>MagicNumber:Color.kt$0.08f</ID>
     <ID>MagicNumber:Color.kt$0.12f</ID>
     <ID>MagicNumber:Color.kt$0.15f</ID>
@@ -396,7 +384,6 @@
     <ID>MagicNumber:ControlFormat.kt$ControlFormat$4</ID>
     <ID>MagicNumber:ControlFormat.kt$ControlFormat$4f</ID>
     <ID>MagicNumber:ControlFormat.kt$ControlFormat$5</ID>
-    <ID>MagicNumber:DeviceWorkspace.kt$DeviceWorkspace$5</ID>
     <ID>MagicNumber:EdgeLightingService.kt$EdgeLightingService$0.3f</ID>
     <ID>MagicNumber:EdgeLightingService.kt$EdgeLightingService$20</ID>
     <ID>MagicNumber:EdgeLightingView.kt$EdgeLightingView$0.05f</ID>
@@ -418,10 +405,6 @@
     <ID>MagicNumber:FloatingUi.kt$FloatingUi$0.62f</ID>
     <ID>MagicNumber:FloatingUi.kt$FloatingUi$0.66f</ID>
     <ID>MagicNumber:FloatingUi.kt$FloatingUi$0.72f</ID>
-    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$10</ID>
-    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$3000</ID>
-    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$6</ID>
-    <ID>MagicNumber:HostBridgeServer.kt$HostBridgeServer$800</ID>
     <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0x10FFFF</ID>
     <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0xD800</ID>
     <ID>MagicNumber:HtmlToMarkdown.kt$HtmlToMarkdown$0xDFFF</ID>
@@ -456,7 +439,6 @@
     <ID>MagicNumber:HumanTranslator.kt$HumanTranslator$6</ID>
     <ID>MagicNumber:IntentResolver.kt$IntentResolver$1080</ID>
     <ID>MagicNumber:IntentResolver.kt$IntentResolver$2400</ID>
-    <ID>MagicNumber:LocalAgent.kt$LocalAgent$800</ID>
     <ID>MagicNumber:LocalDecisionEngine.kt$LocalDecisionEngine$5</ID>
     <ID>MagicNumber:LocalDetector.kt$LocalDetector$0.6f</ID>
     <ID>MagicNumber:LocalDetector.kt$LocalDetector$1.5f</ID>
@@ -672,9 +654,6 @@
     <ID>MatchingDeclarationName:VoiceRecordField.kt$VoiceFinishMode</ID>
     <ID>MaxLineLength:ActiveNotifier.kt$ActiveNotifier$ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED</ID>
     <ID>MaxLineLength:AdbPairingNotifier.kt$AdbPairingNotifier$ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED</ID>
-    <ID>MaxLineLength:AgentClient.kt$AgentClient$update { it.copy(conn = ConnState.CONNECTING, error = null, messages = if (keepUi) it.messages else emptyList()) }</ID>
-    <ID>MaxLineLength:AgentClient.kt$AgentClient$val answered = at &gt;= 0 &amp;&amp; s.messages.drop(at + 1).any { it.role == "assistant" &amp;&amp; it.text.isNotBlank() }</ID>
-    <ID>MaxLineLength:AgentClient.kt$AgentClient$val msgs = if (idx &gt;= 0) s.messages.toMutableList().also { it[idx] = it[idx].copy(approvalResolved = approved) } else s.messages</ID>
     <ID>MaxLineLength:AgentEngine.kt$AgentEngine$"A screenshot is attached only when actually available from the virtual display — never a main-screen capture in disguise. "</ID>
     <ID>MaxLineLength:AgentEngine.kt$AgentEngine$"All touch actions must carry coordinates — click/long_click use target={method:\"coordinate\",value:\"ratioX,ratioY\"} (0..1). "</ID>
     <ID>MaxLineLength:AgentEngine.kt$AgentEngine$"[Virtual display mode] The task runs on a separate virtual display (1080x1920): observation relies primarily on the accessibility tree of that display. "</ID>
@@ -779,11 +758,6 @@
     <ID>MaxLineLength:ClockFallback.kt$ClockFallbackRunner$"无障碍确认：${ClockFallbackPolicy.uiClickUnverifiedMessage(lastClickedLabel, evidence.reason)}"</ID>
     <ID>MaxLineLength:ClockFallback.kt$ClockVerification$fun</ID>
     <ID>MaxLineLength:CloudAgent.kt$CloudAgent$return aiClient.chatForAction(baseUrl, apiKey, model, messages + hintMsg, null, 0.15, onDelta = onDelta, protocol = protocol).map { it.action }</ID>
-    <ID>MaxLineLength:CodingEventReducer.kt$CodingEventReducer$*</ID>
-    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("approval_request", messages = r.messages, assistantKey = r.assistantKey, callId = "c9", tool = "run_cmd")</ID>
-    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("tool_approval", messages = r.messages, assistantKey = r.assistantKey, name = "run_cmd", approved = false, why = "用户拒绝")</ID>
-    <ID>MaxLineLength:CodingEventReducerTest.kt$CodingEventReducerTest$r = apply("tool_start", messages = r.messages, assistantKey = r.assistantKey, name = "run_cmd", argsPreview = "cmd=python fib.py")</ID>
-    <ID>MaxLineLength:CodingWorkspaces.kt$CodingWorkspaces$approvalResolved = if (m.has("approvalResolved")) m.optBoolean("approvalResolved") else null</ID>
     <ID>MaxLineLength:ContextInjector.kt$ContextInjector$if</ID>
     <ID>MaxLineLength:ContextInjector.kt$ContextInjector$probePkg != pkg -&gt; foreground += "（用量统计显示 ${deviceFacts.appLabelOf(probePkg).ifBlank { probePkg }}，可能正在切换）"</ID>
     <ID>MaxLineLength:ContextInjector.kt$ContextInjector$val fp = runCatching { com.phoneagent.engine.perception.PageFingerprint.computeMeaningful(snapshot) }.getOrDefault("")</ID>
@@ -825,7 +799,6 @@
     <ID>MaxLineLength:IntentTranslatorTest.kt$IntentTranslatorTest$assertTrue("期望 MissingParam（缺 target 可追问），实际: $result", result is IntentTranslator.TranslationResult.MissingParam)</ID>
     <ID>MaxLineLength:IntentTranslatorTest.kt$IntentTranslatorTest$private</ID>
     <ID>MaxLineLength:IntentTranslatorTest.kt$IntentTranslatorTest$val result = translator.translate(AgentIntent(intent = IntentType.TAP, target = AgentIntentTarget("text", "发送")), s)</ID>
-    <ID>MaxLineLength:LocalAgent.kt$LocalAgent$ContextCompat.startForegroundService(context, Intent(context, com.phoneagent.coding.CodingAgentService::class.java))</ID>
     <ID>MaxLineLength:LogExporter.kt$LogExporter$if</ID>
     <ID>MaxLineLength:LogExporter.kt$LogExporter$l.detail?.takeIf { it.isNotBlank() }?.let { put("detail", DataSanitizer.sanitize(it)) }</ID>
     <ID>MaxLineLength:LogExporter.kt$LogExporter$sb.appendLine(" · 第${tr.step}步 ${if (human.isNotBlank()) human else ""}${if (tr.visionModel.isNotBlank()) "（视觉:${tr.visionSource}）" else ""} · ${tr.latencyMs}ms · ${tr.totalTokens}token")</ID>
@@ -1063,7 +1036,6 @@
     <ID>MaxLineLength:VoiceAssistantDetectorTest.kt$VoiceAssistantDetectorTest$voiceCommand = VoiceAssistantDetector.Target(VoiceAssistantDetector.Via.VOICE_COMMAND, "com.miui.voiceassist", "VoiceCommandActivity")</ID>
     <ID>MaxLineLength:WorkbenchScreen.kt$conversationSummary.submit(codingTranscript, codingUi.messages.lastOrNull { it.role == "user" }?.text ?: "继续 Coding 对话")</ID>
     <ID>MayBeConst:VoiceRecordField.kt$private val DotsCount = 36 // 声波圆点数量</ID>
-    <ID>NestedBlockDepth:AgentProcess.kt$AgentProcess$private fun pumpStderr(proc: java.lang.Process)</ID>
     <ID>NestedBlockDepth:AiClient.kt$AiClient$private suspend fun executeWithRetry(request: Request, extractText: ((String) -&gt; String?)? = null): String</ID>
     <ID>NestedBlockDepth:ClockFallback.kt$ClockFallbackRunner$@Suppress("ReturnCount", "CyclomaticComplexMethod") suspend fun run(request: ClockRequest): ClockOutcome</ID>
     <ID>NestedBlockDepth:EngineRules.kt$EngineRules$fun extractJsonBackward(text: String): String?</ID>
@@ -1073,13 +1045,11 @@
     <ID>NestedBlockDepth:PromptSnapshotTest.kt$PromptSnapshot$private fun collect(map: MutableMap&lt;String, String&gt;)</ID>
     <ID>NestedBlockDepth:TestEngine.kt$TestEngine$private fun evaluate(case: TestCase, raw: String, latencyMs: Long): TestResult</ID>
     <ID>NestedBlockDepth:VisionModelDownloader.kt$VisionModelDownloader$private fun downloadFile( dir: File, fileName: String, urlStr: String, expectedSize: Long, onPartial: (Long, Long) -&gt; Unit, ): Long</ID>
-    <ID>ReturnCount:AcaSkillCatalog.kt$AcaSkillCatalog$private fun parseManifest(dir: File): AcaSkillInfo?</ID>
     <ID>ReturnCount:ActionExecutor.kt$ActionExecutor$suspend fun assistantVisible(pkg: String?, timeoutMs: Long = ASSISTANT_WAKE_TIMEOUT_MS): Boolean</ID>
     <ID>ReturnCount:AdContentFilter.kt$AdContentFilter$fun filter(snapshot: ScreenSnapshot): AdFilterResult</ID>
     <ID>ReturnCount:AdContentFilter.kt$AdContentFilter$private fun findCloseButton( all: List&lt;UiElement&gt;, region: RectRegion, adElements: List&lt;UiElement&gt;, margin: Int, ): UiElement?</ID>
     <ID>ReturnCount:AdContentFilter.kt$AdContentFilter$private fun isCloseLabel(el: UiElement): Boolean</ID>
     <ID>ReturnCount:AgentAccessibilityService.kt$AgentAccessibilityService$suspend fun takeScreenshotBitmap(): Bitmap?</ID>
-    <ID>ReturnCount:AgentClient.kt$AgentClient$private fun handleMessage(raw: String)</ID>
     <ID>ReturnCount:AgentEngine.kt$AgentEngine$fun confirmSaveTemplate(save: Boolean)</ID>
     <ID>ReturnCount:AgentEngine.kt$AgentEngine$private suspend fun captureScreenshot(): Bitmap?</ID>
     <ID>ReturnCount:AgentEngine.kt$AgentEngine$private suspend fun fillMissingParam( translation: IntentTranslator.TranslationResult, intent: AgentIntent, snapshot: ScreenSnapshot, settingsVal: AppSettings.Settings, ): IntentTranslator.TranslationResult</ID>
@@ -1119,11 +1089,6 @@
     <ID>ReturnCount:ClockFallback.kt$IntentClockDispatcher$private fun resolveClockIntent(intent: Intent): Intent?</ID>
     <ID>ReturnCount:CodingScreen.kt$internal fun openWorkspaceDirectory(context: Context): Boolean</ID>
     <ID>ReturnCount:CodingScreen.kt$private fun goalObjectiveOf(text: String): String?</ID>
-    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun activate(context: Context, id: String): Entry?</ID>
-    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun createPrivate(context: Context, name: String): Entry?</ID>
-    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$@Synchronized fun remove(context: Context, id: String): Boolean</ID>
-    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$private fun isUsable(entry: Entry): Boolean</ID>
-    <ID>ReturnCount:CodingWorkspaces.kt$CodingWorkspaces$private fun readRegistry(context: Context): Registry?</ID>
     <ID>ReturnCount:ContextInjector.kt$ContextInjector$suspend fun anomalyHint(snapshot: ScreenSnapshot): String</ID>
     <ID>ReturnCount:DebugRecordsStore.kt$DebugRecordsStore$fun thumb(src: Bitmap?, maxWidth: Int = THUMB_MAX_WIDTH): Bitmap?</ID>
     <ID>ReturnCount:DecisionConfig.kt$DecisionConfig$fun reasoningConfig(settingsVal: AppSettings.Settings): ReasoningConfig?</ID>
@@ -1133,7 +1098,6 @@
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun darkMode(enable: Boolean?): OpsResult</ID>
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun dnd(enable: Boolean?): OpsResult</ID>
     <ID>ReturnCount:DeviceOpsChannel.kt$DeviceOpsChannel$private suspend fun torch(on: Boolean): OpsResult</ID>
-    <ID>ReturnCount:DeviceWorkspace.kt$DeviceWorkspace$fun walk(dir: File, depth: Int)</ID>
     <ID>ReturnCount:EdgeLightingService.kt$EdgeLightingService$override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int</ID>
     <ID>ReturnCount:EngineRules.kt$EngineRules$fun extractJsonBackward(text: String): String?</ID>
     <ID>ReturnCount:EngineRules.kt$EngineRules$fun extractJsonObject(content: String): String</ID>
@@ -1151,7 +1115,6 @@
     <ID>ReturnCount:FloatingWindowService.kt$FloatingWindowService$private fun statusBarHeight(): Int</ID>
     <ID>ReturnCount:HeadlessWebHost.kt$HeadlessWebHost$fun ensure(context: Context): WebView?</ID>
     <ID>ReturnCount:HeadlessWebHost.kt$HeadlessWebHost$private fun relayoutIfNeeded()</ID>
-    <ID>ReturnCount:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$suspend fun ensure(): Resolved</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun isHtml(raw: String): Boolean</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$fun takeBlocks(markdown: String, budget: Int): String</ID>
     <ID>ReturnCount:HtmlToMarkdown.kt$HtmlToMarkdown$private fun codePoint(digits: String, radix: Int): String?</ID>
@@ -1207,7 +1170,6 @@
     <ID>ReturnCount:ProviderManager.kt$ProviderManager$suspend fun ensureBound(context: Context = requireNotNull(appContext) { "ProviderManager 未初始化" }): IDeviceProvider?</ID>
     <ID>ReturnCount:ProviderManager.kt$ProviderManager$suspend fun readPayload(remote: IDeviceProvider, kind: Int): ByteArray?</ID>
     <ID>ReturnCount:RuleScoper.kt$RuleScoper$fun inferScope( task: String, foregroundPkgCounts: Map&lt;String, Int&gt;, selfPackage: String, keywords: List&lt;String&gt; = emptyList(), ): Scope</ID>
-    <ID>ReturnCount:RuntimeBootstrap.kt$RuntimeBootstrap$fun scenarioPath(context: Context, name: String): String</ID>
     <ID>ReturnCount:ScreenSharingService.kt$ScreenSharingService.&lt;no name provided&gt;$override fun onDisplayChanged(id: Int)</ID>
     <ID>ReturnCount:SensitiveInput.kt$SensitiveInput$fun isPasswordInput(intent: AgentIntent, snapshot: ScreenSnapshot): Boolean</ID>
     <ID>ReturnCount:SensitivePageDetector.kt$SensitivePageDetector$fun isSensitive(snapshot: ScreenSnapshot): Boolean</ID>
@@ -1250,16 +1212,10 @@
     <ID>ThrowsCount:AgentEngine.kt$AgentEngine$@Suppress("ComplexCondition", "LongMethod", "CyclomaticComplexMethod", "LongParameterList") private suspend fun cloudDecide( task: String, snapshot: ScreenSnapshot, annotated: com.phoneagent.engine.perception.AnnotatedPage, messages: MutableList&lt;ChatMessageDto&gt;, screenshot: android.graphics.Bitmap?, settingsVal: AppSettings.Settings, /** 页面记忆提示块（命中已记忆页面时非空，见 pageMemoryHintFor），空串不占上下文 */ pageMemoryHint: String = "", ): AgentIntent?</ID>
     <ID>TooGenericExceptionCaught:AgentEngine.kt$AgentEngine$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AgentEngine.kt$AgentEngine$e: Throwable</ID>
-    <ID>TooGenericExceptionCaught:AgentProcess.kt$AgentProcess$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AiClient.kt$AiClient$e: Exception</ID>
     <ID>TooGenericExceptionCaught:BrowserBridge.kt$BrowserBridge$e: Throwable</ID>
-    <ID>TooGenericExceptionCaught:CodingRuntimeManager.kt$CodingRuntimeManager$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:EditorActivity.kt$EditorActivity$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:ExecutionCore.kt$ExecutionCore$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:HeadlessWebHost.kt$HeadlessWebHost$e: Throwable</ID>
-    <ID>TooGenericExceptionCaught:HostBridgeServer.kt$HostBridgeServer$e: Throwable</ID>
-    <ID>TooGenericExceptionCaught:HostBridgeTokenProvider.kt$HostBridgeTokenProvider$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:LocalAgent.kt$LocalAgent$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Markdown.kt$e: Throwable</ID>
     <ID>TooGenericExceptionCaught:McpClient.kt$HttpMcpTransport$e: Exception</ID>
     <ID>TooGenericExceptionCaught:McpClient.kt$McpClient$e: Exception</ID>
@@ -1273,7 +1229,6 @@
     <ID>TooGenericExceptionCaught:VoiceRecordEngine.kt$CloudAsrEngine$e: Exception</ID>
     <ID>TooManyFunctions:ActionExecutor.kt$ActionExecutor</ID>
     <ID>TooManyFunctions:AdbPairingNotifier.kt$AdbPairingNotifier</ID>
-    <ID>TooManyFunctions:AgentClient.kt$AgentClient</ID>
     <ID>TooManyFunctions:AgentEngine.kt$AgentEngine</ID>
     <ID>TooManyFunctions:AgentPrompts.kt$AgentPrompts</ID>
     <ID>TooManyFunctions:AiClient.kt$AiClient</ID>
@@ -1281,7 +1236,6 @@
     <ID>TooManyFunctions:ChatProtocols.kt$GeminiAdapter : ChatProtocolAdapter</ID>
     <ID>TooManyFunctions:ClockFallback.kt$ClockFallbackRunner</ID>
     <ID>TooManyFunctions:CodingScreen.kt$com.phoneagent.ui.coding.CodingScreen.kt</ID>
-    <ID>TooManyFunctions:CodingWorkspaces.kt$CodingWorkspaces</ID>
     <ID>TooManyFunctions:Components.kt$com.phoneagent.ui.components.Components.kt</ID>
     <ID>TooManyFunctions:ContextInjector.kt$ContextInjector</ID>
     <ID>TooManyFunctions:CursorPointerView.kt$CursorPointerView : View</ID>
@@ -1300,7 +1254,6 @@
     <ID>TooManyFunctions:NativeVisionEngine.kt$NativeVisionEngine</ID>
     <ID>TooManyFunctions:PageMemoryRecorder.kt$PageMemoryRecorder</ID>
     <ID>TooManyFunctions:PlanningFlow.kt$PlanningFlow</ID>
-    <ID>TooManyFunctions:ProjectToolchainProbe.kt$ProjectToolchainProbe</ID>
     <ID>TooManyFunctions:ProviderManager.kt$ProviderManager</ID>
     <ID>TooManyFunctions:ScreenSharingService.kt$ScreenSharingService : Service</ID>
     <ID>TooManyFunctions:SettingsComponents.kt$.SettingsComponents.kt</ID>
@@ -1328,7 +1281,6 @@
     <ID>TopLevelPropertyNaming:Theme.kt$/** * 无框线档的容器色调位移倍率。 * * 标准档的层次是"底色差 + 发丝描边"两条腿走路，所以容器色调只敢位移 3%~12%； * 描边一旦拿掉，卡片与页面底色就只差约 3%——肉眼看不出边界，卡片会化进页面里。 * 这里把位移量乘上一个系数，用更大的底色差把层次重新撑起来。 * * 取 2.0 而不是更大：这是**补偿**不是重做配色。系数再大，浅色下卡片会开始发灰、 * 深色下会开始发白，等于把配色换成另一套。只动"面与面之间"的距离， * 文字色、品牌色、状态色一律不碰——去掉框线不该顺手把正文也改浓。 */ private const val BorderlessToneBoost = 2.0f</ID>
     <ID>UnusedParameter:AgentPlanItems.kt$item: AgentTimelineItem.PlanApproved</ID>
     <ID>UnusedParameter:ClockFallback.kt$ClockFallbackRunner$beforeAlarm: Long?</ID>
-    <ID>UnusedParameter:CodingWorkspaces.kt$CodingWorkspaces$context: Context</ID>
     <ID>UnusedParameter:EdgeLightingView.kt$EdgeLightingView$totalPath: Float</ID>
     <ID>UnusedParameter:EngineRules.kt$EngineRules$snapshot: ScreenSnapshot</ID>
     <ID>UnusedParameter:ExecutionCore.kt$ExecutionCore$executor: ActionExecutor</ID>
@@ -1345,13 +1297,6 @@
     <ID>UnusedPrivateProperty:FloatingWindowService.kt$FloatingWindowService$private var miniParams: WindowManager.LayoutParams? = null</ID>
     <ID>UnusedPrivateProperty:McpClientTest.kt$McpClientTest$private val json = Json</ID>
     <ID>UseCheckOrError:AiClient.kt$AiClient$throw IllegalStateException("请求未送达：${e.message ?: e.javaClass.simpleName}")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 已存在")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 是一个目录")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("$rel 是一个目录，不能写入")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("文件不存在：$rel")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("路径为空")</ID>
-    <ID>UseRequire:DeviceWorkspace.kt$DeviceWorkspace$throw IllegalArgumentException("路径越界：$rel")</ID>
-    <ID>UseRequire:HostBridgeServer.kt$HostBridgeServer$throw IllegalArgumentException("preview_open 需要一个 target（工作区相对路径或 http(s) 链接）")</ID>
     <ID>UseRequire:OkHttpMcpTransportFactory.kt$OkHttpMcpTransportFactory$throw IllegalArgumentException("HTTP ${resp.code}")</ID>
     <ID>VariableNaming:PageMemoryRecorderTest.kt$PageMemoryRecorderTest$private val PKG = "com.example.app"</ID>
     <ID>VariableNaming:PageMemoryStoreOpsTest.kt$PageMemoryStoreOpsTest$private val FP_A = "fp_page_a"</ID>

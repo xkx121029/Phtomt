@@ -51,9 +51,9 @@
 | `AgentTerminal.headline` / `cause`（`app/src/main/java/com/phoneagent/ui/agent/AgentTerminal.kt:20`、`:48`） | 终态卡的标题与可行动原因各自怎么说：失败原因里**配置缺失排在无障碍未开之前**（这一轮根本没起跑，出口是「去配置」）；`headline` 与 `cause` 必须同序，否则卡片会一句话指向两个出口 | （docs 未描述） |
 | `AgentTerminal.showsRawMessage`（`app/src/main/java/com/phoneagent/ui/agent/AgentTerminal.kt:95`） | 终态卡给不给「查看原始消息」这个入口：**只看引擎有没有交过原始消息**，不要求它与原因行不同。早先多一条 `detail != cause`，配置缺失这一档的原因行本身就是引擎原句，两句一相同入口就被整块摘掉，用户没法预判它什么时候在 | （docs 未描述；HAPP-52 验收表 #3 要求「原因 + 可执行动作 + 原始消息可展开」每档齐全） |
 | `AgentTimelineMap.terminal`（`app/src/main/java/com/phoneagent/ui/agent/AgentTimelineMap.kt:509`） | 这次任务到终态时产出哪一张终态卡：成功 / 用户停止 / 失败三种，失败再按原因分档（能力缺失 / 配置问题 / 决策异常），决定用户看到的是「去修配置」还是「去开权限」 | （docs 未描述；`CHANGELOG.md` 今日失败恢复条目） |
-| `DeviceWorkspace.resolveWithin`（`app/src/main/java/com/phoneagent/coding/device/DeviceWorkspace.kt:50`） | 工作区以内的路径与 workspace 之外的文件读写的边界：**先用 `Path.toRealPath()` 归一真实路径、再比真实前缀**（Windows 的 junction 只解析真实路径才拦得住），越界一律拒绝 | （docs 未描述；见该文件 `:38-44` 的注释） |
-| `HostBridgeAuth.allows`（`app/src/main/java/com/phoneagent/coding/device/HostBridgeAuth.kt:22`） | 宿主桥的 RPC 能不能进：只认与本地生成的 token 相等，**密钥为空时一律拒绝**（fail-closed），不做「没配就不校验」的兜底 | （docs 未描述；见 `app/src/main/java/com/phoneagent/coding/device/HostBridgeTokenProvider.kt:23` 的注释） |
-| `AgentClient` 审批字段（`approvalDanger`）（`app/src/main/java/com/phoneagent/coding/agent/AgentClient.kt:50`） | 审批卡在用户点「允许」**之前**就要带上危险原因：`danger` / `why` 随 `approval_request` 一起下发，等 `tool_approval` 再带就晚了；丢了这个字段，卡上只剩一条命令 | （docs 未描述；`CHANGELOG.md` 今日审批卡条目） |
+| `DeviceWorkspace.resolveWithin`（`feature/coding/src/main/java/com/phoneagent/coding/device/DeviceWorkspace.kt:50`） | 工作区以内的路径与 workspace 之外的文件读写的边界：**先用 `Path.toRealPath()` 归一真实路径、再比真实前缀**（Windows 的 junction 只解析真实路径才拦得住），越界一律拒绝 | （docs 未描述；见该文件 `:38-44` 的注释） |
+| `HostBridgeAuth.allows`（`feature/coding/src/main/java/com/phoneagent/coding/device/HostBridgeAuth.kt:22`） | 宿主桥的 RPC 能不能进：只认与本地生成的 token 相等，**密钥为空时一律拒绝**（fail-closed），不做「没配就不校验」的兜底 | （docs 未描述；见 `feature/coding/src/main/java/com/phoneagent/coding/device/HostBridgeTokenProvider.kt:23` 的注释） |
+| `AgentClient` 审批字段（`approvalDanger`）（`feature/coding/src/main/java/com/phoneagent/coding/agent/AgentClient.kt:50`） | 审批卡在用户点「允许」**之前**就要带上危险原因：`danger` / `why` 随 `approval_request` 一起下发，等 `tool_approval` 再带就晚了；丢了这个字段，卡上只剩一条命令 | （docs 未描述；`CHANGELOG.md` 今日审批卡条目） |
 
 ## 怎么用
 

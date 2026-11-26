@@ -543,6 +543,12 @@ dependencies {
     // 包名不变，所以 :app 里对 ui.theme / ui.components / ui.icons 的 import 一行都没改。
     implementation(project(":ui:design"))
 
+    // 模块化 P3 终章：Coding 模式整片切片（原 app/src/main/java/com/phoneagent/coding）。
+    // 包名不变 → 下面这些引用点一行都没改：di/AppModule（组合根）、PhoneAgentApp、
+    // ui/settings/SettingsCoding*、ui/vm/SkillDelegate、ui/MainViewModel、ui/MainActivity、
+    // ui/components/ToolAtoms。AndroidManifest 里 `.coding.*` 三条相对类名同样照旧解析。
+    implementation(project(":feature:coding"))
+
     // 端侧视觉离线兜底：ML Kit 中文 OCR（3B 模型未下载/推理失败时框选控件）
     implementation(libs.mlkit.text.chinese)
     implementation(libs.mlkit.common)

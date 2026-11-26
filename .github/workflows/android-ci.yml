@@ -170,7 +170,7 @@ jobs:
         # CyclomaticComplexMethod 20…），大多在基线生成之后新增。清理完之前它不该挡住产包，
         # 清理后把 continue-on-error 去掉即可恢复阻断，并把这个步骤拆回独立步骤。
         continue-on-error: true
-        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt :domain:detekt :core:security:detekt :core:perf:detekt :data:detekt :ui:design:detekt --continue --stacktrace
+        run: ./gradlew :app:detekt :app:lintDebug :core:text:detekt :core:log:detekt :domain:detekt :core:security:detekt :core:perf:detekt :data:detekt :ui:design:detekt :feature:coding:detekt --continue --stacktrace
 
       - name: Detekt baseline guards
         # 基线只减不增 + 分类合计必须等于总条目数（防止只改总数不更新分类表）。
@@ -181,7 +181,7 @@ jobs:
         # 所以每个模块都要跑它自己的 checkDetektBaseline。
         # :core:log 没有 baseline.xml，那个任务会显式打印"跳过"并以成功退出
         # （见 core/log/build.gradle.kts），因此这里可以无条件列出。
-        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline :domain:checkDetektBaseline :core:security:checkDetektBaseline :core:perf:checkDetektBaseline :data:checkDetektBaseline :ui:design:checkDetektBaseline --stacktrace
+        run: ./gradlew :app:checkDetektBaseline :app:checkDetektBaselineBreakdown :core:text:checkDetektBaseline :core:log:checkDetektBaseline :domain:checkDetektBaseline :core:security:checkDetektBaseline :core:perf:checkDetektBaseline :data:checkDetektBaseline :ui:design:checkDetektBaseline :feature:coding:checkDetektBaseline --stacktrace
 
       - name: Unit tests + coverage gates
         # 测试、覆盖率报告、纯逻辑覆盖率闸门一次跑完：后两者都依赖测试结果，
@@ -197,12 +197,14 @@ jobs:
           # 上一次的 XML 会原地留着 —— 不清就直接数文件，「没执行」和「执行过」分不出来。
           sh tool/check-test-results.sh --clean
           # 这一串里的测试任务必须与 tool/check-test-results.sh 的 EXPECTED 表逐条一致，
-          # 由下一步（sh tool/check-module-lists.sh）机械校验：多一条少一条都红。
+          # 由下面那一步（sh tool/check-module-lists.sh）机械校验：多一条少一条都红。
           #
           # :provider / :env / :shizuku-server 原本不在这串里，它们的 59 条测试
           # （22 + 30 + 7）从来没在 CI 上跑过 —— 这三个模块都是独立 APK / 库，
           # :app 的测试任务编译不到它们，所以「没跑」这件事一直没有出口码。
-          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :ui:design:testDebugUnitTest :provider:testDebugUnitTest :env:testDebugUnitTest :shizuku-server:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage :ui:design:checkUiDesignCoverage --stacktrace
+          # :feature:coding 同理：Coding 整片搬出 :app 之后，它的 93 条测试只有
+          # 显式列出才会执行，:app:testDebugUnitTest 既编不到也跑不到。
+          ./gradlew :app:testDebugUnitTest :core:text:test :core:log:testDebugUnitTest :domain:test :core:security:testDebugUnitTest :core:perf:testDebugUnitTest :data:testDebugUnitTest :ui:design:testDebugUnitTest :feature:coding:testDebugUnitTest :provider:testDebugUnitTest :env:testDebugUnitTest :shizuku-server:testDebugUnitTest :app:createDebugUnitTestCoverageReport :app:checkPureLogicCoverage :core:text:checkCoreTextCoverage :domain:checkDomainCoverage :core:security:checkCoreSecurityCoverage :data:checkDataCoverage :ui:design:checkUiDesignCoverage :feature:coding:checkFeatureCodingCoverage --stacktrace
 
       - name: Assert module lists agree (workflow / EXPECTED / settings)
         # 两份手写清单必须逐条一致，且不能漏掉带测试的新模块：

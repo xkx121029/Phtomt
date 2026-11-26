@@ -34,7 +34,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # module|test task|min test cases
 EXPECTED='
-app|testDebugUnitTest|1499
+app|testDebugUnitTest|1418
 core/text|test|42
 core/log|testDebugUnitTest|4
 domain|test|50
@@ -45,6 +45,7 @@ ui/design|testDebugUnitTest|14
 provider|testDebugUnitTest|22
 env|testDebugUnitTest|30
 third_party/shizuku/server|testDebugUnitTest|7
+feature/coding|testDebugUnitTest|93
 '
 
 MODE=${1:-check}
