@@ -83,6 +83,21 @@ project(":data").projectDir = file("data")
 include(":ui:design")
 project(":ui:design").projectDir = file("ui/design")
 
+// ---------------------------------------------------------------------------
+// 模块化 P3 终章：`:feature:coding` —— Coding 模式整片切片（agent 宿主 / 工作区 /
+// 设备桥 / 编码环境 / 预览 / 编辑器 Activity）。
+//
+// 依赖方向只有一条：app → feature:coding → { core:log, env-api, androidx.* }；
+// **没有 feature:coding → app 这条边**，这是这一期唯一的硬约束（它一旦存在，
+// 整片切片就又被钉死在宿主上，搬出来只剩形式意义）。
+//
+// 包名一个没改（仍是 com.phoneagent.coding.**，命名空间也是），因此 :app 里 9 个引用点
+// 一行 import 都不用改，AndroidManifest 里 `.coding.*` 三条相对类名照旧解析。
+// 代价是跨模块 `internal` 不再可见，三个原本给 `:app` 组合根用的符号已放开为 public。
+// ---------------------------------------------------------------------------
+include(":feature:coding")
+project(":feature:coding").projectDir = file("feature/coding")
+
 // 权限 Provider 应用：承载无障碍 / 内置 Shizuku / Termux 三条通道的独立 APK。
 // 主应用首次打开时引导安装（参考 Operit 的独立 Provider 方案），并通过 AIDL
 // （com.phoneagent.provider.IDeviceProvider）远程调用。Provider 构建产物作为
