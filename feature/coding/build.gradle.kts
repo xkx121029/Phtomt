@@ -201,10 +201,10 @@ tasks.named("check") { dependsOn(checkDetektBaseline) }
 // 只防回落」，不为了把数字做好看而排除这些类——排除出去就等于让它们彻底不受监控。
 // ---------------------------------------------------------------------------
 val coveragePackagePrefix = "com/phoneagent/coding"
-/** 实测值见 coverageThreshold 注释（2026-11-26 搬移后首次实测）——只防回落 */
-val coverageThreshold = 0.0
-/** 实测可执行行数；下限取同一个数，类被搬走时它会掉下来 */
-val coverageMinLines = 0
+/** 实测 20.8%（543/2612，2026-11-26 搬移后首次实测，7 个子包）——只防回落 */
+val coverageThreshold = 0.20
+/** 实测可执行行数 2612；下限取同一个数，类被搬走时它会掉下来 */
+val coverageMinLines = 2612
 
 // 覆盖率闸门失败时的逐类诊断（实现在 root 的 gradle/coverage-shame.gradle.kts，各模块共用一份）。
 val coverageShame = rootProject.extra["coverageShame"] as (String, (String) -> Boolean, Int, Int?, String) -> String
