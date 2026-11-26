@@ -22,7 +22,7 @@ okhttp = "4.12.0"
 koin = "4.0.0"
 coroutines = "1.9.0"
 lucide = "1.1.0"
-haze = "1.4.0"
+haze = "2.1.0"
 # ML Kit 中文 OCR：端侧视觉的离线兜底（无 3B 模型/推理失败时框选文字区域）
 mlkitText = "16.0.1"
 mlkitCommon = "18.11.0"
