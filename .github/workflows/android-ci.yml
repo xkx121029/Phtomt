@@ -693,12 +693,15 @@ jobs:
           GITEE_BODY_FILE=$(mktemp)
           GITEE_ERR_FILE=$(mktemp)
           GITEE_OUT=""
+          # 注解级别必须与退出码一致：这一步任何失败都仍然退让成 exit 0（Gitee 不是构建目标），
+          # 所以只出 ::warning，不出 ::error——绿跑配红色感叹号会让人不再相信红色。
+          # 可见性靠 title= 写清原因 + job summary 那一行，不靠升级注解级别。
           for GITEE_ATTEMPT in 1 2 3; do
             if gitee_find_or_create_release; then
               break
             fi
             if ! retryable_release_error "$GITEE_OUT"; then
-              echo "::error title=Gitee 发行版创建失败（不可重试）::tag=$TAG 第 $GITEE_ATTEMPT/3 次；Gitee 回的是确定性错误（4xx 或本地错误），重试无意义。上一次输出：$GITEE_OUT"
+              echo "::warning title=Gitee 发行版创建失败（不可重试）::tag=$TAG 第 $GITEE_ATTEMPT/3 次；Gitee 回的是确定性错误（4xx 或本地错误），重试无意义。上一次输出：$GITEE_OUT"
               break
             fi
             if [ "$GITEE_ATTEMPT" -lt 3 ]; then
@@ -706,7 +709,7 @@ jobs:
               echo "::warning title=Gitee 发行版创建遇到瞬时错误::tag=$TAG 第 $GITEE_ATTEMPT/3 次失败，${GITEE_DELAY}s 后重试：$GITEE_OUT"
               sleep "$GITEE_DELAY"
             else
-              echo "::error title=Gitee 发行版创建重试耗尽::tag=$TAG 共试 3 次仍失败（每次都是瞬时故障）。最后一次输出：$GITEE_OUT"
+              echo "::warning title=Gitee 发行版创建重试耗尽::tag=$TAG 共试 3 次仍失败（每次都是瞬时故障）。最后一次输出：$GITEE_OUT"
             fi
           done
           if [ -z "$RID" ]; then
