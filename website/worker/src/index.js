@@ -126,18 +126,40 @@ function downloadTarget() {
   return { release: releases[0] || null, stable: false }
 }
 
+/**
+ * 已废弃「渠道偏移号段」的下界，与根 build.gradle.kts 的 LEGACY_CHANNEL_SEGMENT_FLOOR 同值。
+ * 那批包（如 0.2.2000096）在纯数字比较下永远显得比新版本大，不特殊处理就永远收不到更新。
+ */
+const LEGACY_CHANNEL_SEGMENT_FLOOR = 1000000
+
+const isLegacyVersion = (version) =>
+  String(version || '')
+    .replace(/^v/i, '')
+    .split('-')[0]
+    .split('.')
+    .some((p) => Number(p) >= LEGACY_CHANNEL_SEGMENT_FLOOR)
+
 function latestVisible(clientChannel) {
   const channels = visibleChannels(clientChannel)
-  return releases.find((r) => channels.includes(normalizeChannel(r.channel))) || releases[0] || null
+  // 排除废弃号段，避免把已废弃号段的包当成「最新」推给客户端
+  const visible = releases.filter((r) => !isLegacyVersion(r.version))
+  return visible.find((r) => channels.includes(normalizeChannel(r.channel))) || visible[0] || null
 }
 
 /** 频道可见（客户端不该收到自己屏蔽的渠道）+ 确实更新（版本号或构建号更高） */
 function pickUpdate({ clientChannel = 'stable', version = '', build = 0 } = {}) {
   const channels = visibleChannels(clientChannel)
-  const currentBuild = Number(build) || 0
-  const currentVersion = normalizeVersion(version)
+  let currentBuild = Number(build) || 0
+  let currentVersion = normalizeVersion(version)
+  // 废弃号段的客户端版本号不可比，按「没有版本」处理，直接给它该频道最新的一版
+  if (isLegacyVersion(currentVersion)) {
+    currentVersion = ''
+    currentBuild = 0
+  }
   const candidates = releases
     .filter((r) => channels.includes(normalizeChannel(r.channel)))
+    // 候选本身也要排除废弃号段，否则会「更新」到另一个同样的坏包
+    .filter((r) => !isLegacyVersion(r.version))
     .filter((r) => {
       const diff = compareVersion(r.version, currentVersion)
       if (diff > 0) return true

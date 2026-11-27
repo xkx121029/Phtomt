@@ -46,6 +46,22 @@ export function buildOf(release) {
 }
 
 /**
+ * 已废弃的「渠道偏移号段」下界，与根 build.gradle.kts 的 LEGACY_CHANNEL_SEGMENT_FLOOR 同值。
+ *
+ * 2026-11-05 曾用 versionCode 高位编渠道（dev = 1000000+N、beta = 2000000+N），当天就改回
+ * 单序列计数器，但那批包已经装到设备上了。这些客户端上报的 0.2.2000096 之类版本号在
+ * 纯数字比较下永远「比新版本大」，会让它们永远收不到更新（实测 hasUpdate=false）。
+ * 所以号段内的版本视为无效客户端版本：不参与比较，直接给该频道最新版。
+ */
+const LEGACY_CHANNEL_SEGMENT_FLOOR = 1_000_000
+
+/** 客户端上报的版本号是否落在已废弃号段（不可信，需要强制升级） */
+function isLegacyVersion(version) {
+  const parts = String(version || '').replace(/^v/i, '').split('-')[0].split('.')
+  return parts.some((p) => Number(p) >= LEGACY_CHANNEL_SEGMENT_FLOOR)
+}
+
+/**
  * 挑选客户端应当升级到的版本。
  *
  * 判据有两层，缺一不可：
@@ -55,10 +71,19 @@ export function buildOf(release) {
  */
 export function pickUpdate({ clientChannel = 'stable', version = '', build = 0 } = {}) {
   const channels = visibleChannels(clientChannel)
-  const currentBuild = Number(build) || 0
-  const currentVersion = normalizeVersion(version)
+  let currentBuild = Number(build) || 0
+  let currentVersion = normalizeVersion(version)
+  // 废弃号段的客户端：版本号不可比（永远显得“更新”），按「没有版本」处理，
+  // 于是候选集不做版本过滤，直接选出该频道可见范围内最新的一版把它拉回来。
+  if (isLegacyVersion(currentVersion)) {
+    currentVersion = ''
+    currentBuild = 0
+  }
   const candidates = listReleases()
     .filter((r) => channels.includes(normalizeChannel(r.channel)))
+    // 候选版本本身也不能落在废弃号段：那段包（v0.2.2000093-beta 等）还在 Releases 里，
+    // 纯数字排序会把它们顶到最前，结果「更新」到另一个同样的坏包，等于没修。
+    .filter((r) => !isLegacyVersion(r.version))
     .filter((r) => {
       const diff = compareVersion(r.version, currentVersion)
       if (diff > 0) return true
@@ -70,11 +95,14 @@ export function pickUpdate({ clientChannel = 'stable', version = '', build = 0 }
       const diff = compareVersion(a.version, b.version)
       return diff !== 0 ? diff : buildOf(a) - buildOf(b)
     })
-  return candidates.pop() || null
+  // 升序排序，最大的一版在末尾。废弃号段已被排除，所以末位就是该频道可见范围内的最高版本。
+  return candidates[candidates.length - 1] || null
 }
 
 /** 未指定版本时回退到该频道可见范围内的最新一版（按发布时间） */
 export function latestVisible(clientChannel) {
   const channels = visibleChannels(clientChannel)
-  return listReleases().find((r) => channels.includes(normalizeChannel(r.channel))) || latestRelease()
+  // 排除废弃号段：那些包在 Releases 里还在，但不能再推给任何客户端
+  const visible = listReleases().filter((r) => !isLegacyVersion(r.version))
+  return visible.find((r) => channels.includes(normalizeChannel(r.channel))) || visible[0] || latestRelease()
 }
